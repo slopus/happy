@@ -3,7 +3,7 @@ import type { AddressInfo } from 'node:net';
 import { Server } from 'socket.io';
 import { io as createClient, Socket as ClientSocket } from 'socket.io-client';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { terminalHandler } from './terminalHandler';
+import { terminalHandler, terminalOpQueueSize, withTerminalOpLock } from './terminalHandler';
 
 let httpServer: HttpServer;
 let ioServer: Server;
@@ -56,7 +56,6 @@ afterAll(async () => {
 
 describe('terminalHandler', () => {
     it('serializes terminal writer operations per terminal', async () => {
-        const { withTerminalOpLock } = await import('./terminalHandler');
         const order: string[] = [];
         const key = 'terminal:op:lock-test';
 
@@ -71,6 +70,25 @@ describe('terminalHandler', () => {
 
         await Promise.all([first, second]);
         expect(order).toEqual(['forward-start', 'forward-end', 'takeover']);
+        expect(terminalOpQueueSize()).toBe(0);
+    });
+
+    it('continues terminal writer operations after an error and cleans the queue', async () => {
+        const order: string[] = [];
+        const key = 'terminal:op:error-test';
+
+        const failed = withTerminalOpLock(key, async () => {
+            order.push('failed-start');
+            throw new Error('expected failure');
+        });
+        const recovered = withTerminalOpLock(key, async () => {
+            order.push('recovered');
+        });
+
+        await expect(failed).rejects.toThrow('expected failure');
+        await recovered;
+        expect(order).toEqual(['failed-start', 'recovered']);
+        expect(terminalOpQueueSize()).toBe(0);
     });
 
     it('relays daemon output only to subscribed clients of the same user', async () => {
