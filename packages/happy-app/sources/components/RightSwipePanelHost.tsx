@@ -27,6 +27,7 @@ type Props = {
     panelAccessibilityLabel: string;
     enabled?: boolean;
     mode?: Exclude<ResponsiveRightPanelMode, 'persistent'>;
+    showEdgeHandle?: boolean;
 };
 
 type PanelBackHandler = () => boolean;
@@ -108,6 +109,7 @@ export const RightSwipePanelHost = React.memo(function RightSwipePanelHost({
     openAccessibilityLabel,
     panelAccessibilityLabel,
     panelContent,
+    showEdgeHandle = true,
 }: Props) {
     const navigation = useNavigation();
     const isFocused = useIsFocused();
@@ -533,7 +535,7 @@ export const RightSwipePanelHost = React.memo(function RightSwipePanelHost({
                                 <View style={styles.scrimFill} />
                             </Pressable>
                         )}
-                        {Platform.OS === 'web' && responsiveMode === 'edge-handle' && (
+                        {Platform.OS === 'web' && responsiveMode === 'edge-handle' && showEdgeHandle && (
                             <Pressable
                                 accessibilityLabel={open ? closeAccessibilityLabel : openAccessibilityLabel}
                                 accessibilityRole="button"

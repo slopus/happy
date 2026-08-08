@@ -28,6 +28,7 @@ const projectHoverEvidenceDirectory = process.env.HAPPY_PROJECT_HOVER_EVIDENCE_D
 const projectHoverEvidencePhase = process.env.HAPPY_PROJECT_HOVER_EVIDENCE_PHASE ?? 'after';
 const titleTooltipEvidenceDirectory = process.env.HAPPY_TITLE_TOOLTIP_EVIDENCE_DIR;
 const titleTooltipEvidencePhase = process.env.HAPPY_TITLE_TOOLTIP_EVIDENCE_PHASE ?? 'after';
+const subagentInspectorEvidenceDirectory = process.env.HAPPY_SUBAGENT_INSPECTOR_EVIDENCE_DIR;
 
 function projectHoverScreenshotPath(testInfo: { outputPath: (filename: string) => string }): string {
     const filename = `case-1-${projectHoverEvidencePhase}.png`;
@@ -41,6 +42,15 @@ function titleTooltipScreenshotPath(testInfo: { outputPath: (filename: string) =
     if (!titleTooltipEvidenceDirectory) return testInfo.outputPath(filename);
     fs.mkdirSync(titleTooltipEvidenceDirectory, { recursive: true });
     return path.join(titleTooltipEvidenceDirectory, filename);
+}
+
+function subagentInspectorScreenshotPath(
+    testInfo: { outputPath: (filename: string) => string },
+    filename: string,
+): string {
+    if (!subagentInspectorEvidenceDirectory) return testInfo.outputPath(filename);
+    fs.mkdirSync(subagentInspectorEvidenceDirectory, { recursive: true });
+    return path.join(subagentInspectorEvidenceDirectory, filename);
 }
 
 function authenticatedRoute(pathname: string): string {
@@ -225,6 +235,40 @@ async function createE2ESession(
     expect(response.ok()).toBe(true);
     const body = await response.json() as { session: { id: string } };
     return body.session.id;
+}
+
+async function appendE2ESessionEnvelopes(
+    request: APIRequestContext,
+    sessionId: string,
+    envelopes: Array<Record<string, unknown>>,
+): Promise<void> {
+    const authUrl = new URL(authenticatedWebUrl);
+    const token = authUrl.searchParams.get('dev_token');
+    const secret = authUrl.searchParams.get('dev_secret');
+    if (!token || !secret || !e2eServerUrl) {
+        throw new Error('缺少创建 E2E Session envelope 所需的本地认证配置。');
+    }
+
+    const encryptionKey = new Uint8Array(Buffer.from(secret, 'base64url'));
+    const response = await request.post(
+        new URL(`/v3/sessions/${encodeURIComponent(sessionId)}/messages`, e2eServerUrl).toString(),
+        {
+            data: {
+                messages: envelopes.map((envelope, index) => ({
+                    content: encodeBase64(encryptLegacy({
+                        role: 'session',
+                        content: envelope,
+                    }, encryptionKey)),
+                    localId: `subagent-inspector-${index}-${Date.now()}-${Math.random()}`,
+                })),
+            },
+            headers: {
+                Authorization: `Bearer ${token}`,
+                'X-Happy-Client': 'playwright-subagent-inspector',
+            },
+        },
+    );
+    expect(response.ok()).toBe(true);
 }
 
 async function createE2EUserMessage(
@@ -4150,6 +4194,364 @@ test.describe('中文 Web 消息与工具演示', () => {
             path: testInfo.outputPath('chat-activity-status-after.png'),
             fullPage: true,
         });
+    });
+
+    test('[SUBAGENT-INSPECTOR] 子 Agent 活动行在桌面右栏和手机抽屉展示隔离记录', async ({ page, request }, testInfo) => {
+        const parentSubagent = 'ax389dhoj1bran7p3s3fdh6n';
+        const nestedSubagent = 'yghxp0tj8cat500passf65pq';
+        const turn = 'subagent-inspector-turn';
+        const sessionId = await createE2ESession(request, {
+            name: 'Sub-agent inspector E2E',
+            summary: 'Parent and nested agent transcript fixture',
+        });
+        const baseTime = Date.now() - 30_000;
+
+        const envelopes = [
+            {
+                id: 'subagent-root-intro',
+                time: baseTime,
+                role: 'agent',
+                turn,
+                ev: { t: 'text', text: 'Root conversation context must stay outside the inspector.' },
+            },
+            {
+                id: 'subagent-parent-call',
+                time: baseTime + 1_000,
+                role: 'agent',
+                turn,
+                ev: {
+                    t: 'tool-call-start',
+                    call: 'subagent-parent-call',
+                    name: 'Agent',
+                    title: 'Spawn implementation agent',
+                    description: 'Implementation agent',
+                    args: {
+                        description: 'Implementation agent',
+                        prompt: 'Implement the authorization change and ask a review agent to verify it.',
+                        sessionSubagent: parentSubagent,
+                    },
+                },
+            },
+            {
+                id: 'subagent-parent-start',
+                time: baseTime + 2_000,
+                role: 'agent',
+                turn,
+                subagent: parentSubagent,
+                ev: { t: 'start', title: 'Implementation agent' },
+            },
+            {
+                id: 'subagent-parent-text',
+                time: baseTime + 3_000,
+                role: 'agent',
+                turn,
+                subagent: parentSubagent,
+                ev: { t: 'text', text: 'Parent agent visible summary.' },
+            },
+            {
+                id: 'subagent-parent-hidden-reasoning',
+                time: baseTime + 3_500,
+                role: 'agent',
+                turn,
+                subagent: parentSubagent,
+                ev: { t: 'text', text: 'Private parent reasoning must stay hidden.', thinking: true },
+            },
+            {
+                id: 'subagent-parent-bash-call',
+                time: baseTime + 4_000,
+                role: 'agent',
+                turn,
+                subagent: parentSubagent,
+                ev: {
+                    t: 'tool-call-start',
+                    call: 'subagent-parent-bash-call',
+                    name: 'Bash',
+                    title: 'Run focused tests',
+                    description: 'Run focused tests',
+                    args: { command: 'pnpm --filter happy-app test' },
+                },
+            },
+            {
+                id: 'subagent-parent-bash-end',
+                time: baseTime + 5_000,
+                role: 'agent',
+                turn,
+                subagent: parentSubagent,
+                ev: { t: 'tool-call-end', call: 'subagent-parent-bash-call', status: 'completed' },
+            },
+            {
+                id: 'subagent-nested-call',
+                time: baseTime + 6_000,
+                role: 'agent',
+                turn,
+                subagent: parentSubagent,
+                ev: {
+                    t: 'tool-call-start',
+                    call: 'subagent-nested-call',
+                    name: 'Agent',
+                    title: 'Spawn review agent',
+                    description: 'Review agent',
+                    args: {
+                        description: 'Review agent',
+                        prompt: 'Review the authorization changes in packages/happy-app/sources/api/review.ts. Inspect callers, run focused tests, and report findings with severity plus file and line references. Do not edit files.',
+                        sessionSubagent: nestedSubagent,
+                    },
+                },
+            },
+            {
+                id: 'subagent-nested-start',
+                time: baseTime + 7_000,
+                role: 'agent',
+                turn,
+                subagent: nestedSubagent,
+                ev: { t: 'start', title: 'Review agent' },
+            },
+            {
+                id: 'subagent-nested-progress',
+                time: baseTime + 8_000,
+                role: 'agent',
+                turn,
+                subagent: nestedSubagent,
+                ev: { t: 'text', text: 'Checking the authorization boundary and every caller before reporting findings.' },
+            },
+            {
+                id: 'subagent-nested-hidden-reasoning',
+                time: baseTime + 8_500,
+                role: 'agent',
+                turn,
+                subagent: nestedSubagent,
+                ev: { t: 'text', text: 'Private review reasoning must stay hidden.', thinking: true },
+            },
+            {
+                id: 'subagent-review-read-call',
+                time: baseTime + 9_000,
+                role: 'agent',
+                turn,
+                subagent: nestedSubagent,
+                ev: {
+                    t: 'tool-call-start',
+                    call: 'subagent-review-read-call',
+                    name: 'Read',
+                    title: 'Read authorization handler',
+                    description: 'Read authorization handler',
+                    args: {
+                        file_path: 'packages/happy-app/sources/api/review.ts',
+                        offset: 32,
+                        limit: 36,
+                    },
+                },
+            },
+            {
+                id: 'subagent-review-read-end',
+                time: baseTime + 10_000,
+                role: 'agent',
+                turn,
+                subagent: nestedSubagent,
+                ev: { t: 'tool-call-end', call: 'subagent-review-read-call', status: 'completed' },
+            },
+            {
+                id: 'subagent-review-grep-call',
+                time: baseTime + 11_000,
+                role: 'agent',
+                turn,
+                subagent: nestedSubagent,
+                ev: {
+                    t: 'tool-call-start',
+                    call: 'subagent-review-grep-call',
+                    name: 'Grep',
+                    title: 'Find authorization guards',
+                    description: 'Find authorization guards',
+                    args: {
+                        pattern: 'authorize|requireSession',
+                        path: 'packages/happy-app/sources/api',
+                        output_mode: 'content',
+                        '-n': true,
+                    },
+                },
+            },
+            {
+                id: 'subagent-review-grep-end',
+                time: baseTime + 12_000,
+                role: 'agent',
+                turn,
+                subagent: nestedSubagent,
+                ev: { t: 'tool-call-end', call: 'subagent-review-grep-call', status: 'completed' },
+            },
+            {
+                id: 'subagent-review-bash-call',
+                time: baseTime + 13_000,
+                role: 'agent',
+                turn,
+                subagent: nestedSubagent,
+                ev: {
+                    t: 'tool-call-start',
+                    call: 'subagent-review-bash-call',
+                    name: 'Bash',
+                    title: 'Run focused authorization tests',
+                    description: 'Run focused authorization tests',
+                    args: { command: 'pnpm --filter happy-app test --run authorization.test.ts' },
+                },
+            },
+            {
+                id: 'subagent-review-bash-end',
+                time: baseTime + 14_000,
+                role: 'agent',
+                turn,
+                subagent: nestedSubagent,
+                ev: { t: 'tool-call-end', call: 'subagent-review-bash-call', status: 'completed' },
+            },
+            {
+                id: 'subagent-nested-finding',
+                time: baseTime + 15_000,
+                role: 'agent',
+                turn,
+                subagent: nestedSubagent,
+                ev: {
+                    t: 'text',
+                    text: '[P1] Missing authorization guard - packages/happy-app/sources/api/review.ts:42\nThe new handler trusts the request owner before requireSession runs, so another signed-in user can read the review. Add the same requireSession ownership check used by the sibling endpoint.',
+                },
+            },
+            {
+                id: 'subagent-nested-stop',
+                time: baseTime + 16_000,
+                role: 'agent',
+                turn,
+                subagent: nestedSubagent,
+                ev: { t: 'stop', status: 'completed' },
+            },
+            {
+                id: 'subagent-nested-call-end',
+                time: baseTime + 17_000,
+                role: 'agent',
+                turn,
+                subagent: parentSubagent,
+                ev: { t: 'tool-call-end', call: 'subagent-nested-call', status: 'completed' },
+            },
+            {
+                id: 'subagent-parent-stop',
+                time: baseTime + 18_000,
+                role: 'agent',
+                turn,
+                subagent: parentSubagent,
+                ev: { t: 'stop', status: 'completed' },
+            },
+            {
+                id: 'subagent-parent-call-end',
+                time: baseTime + 19_000,
+                role: 'agent',
+                turn,
+                ev: { t: 'tool-call-end', call: 'subagent-parent-call', status: 'completed' },
+            },
+            {
+                id: 'subagent-root-final',
+                time: baseTime + 20_000,
+                role: 'agent',
+                turn,
+                ev: { t: 'text', text: 'Root final answer must stay outside the inspector.' },
+            },
+        ];
+
+        await page.setViewportSize({ width: 1280, height: 720 });
+        await appendE2ESessionEnvelopes(request, sessionId, envelopes.slice(0, 2));
+        await page.goto(authenticatedRoute(`/session/${sessionId}`));
+        await expect(page.getByText('Root conversation context must stay outside the inspector.', { exact: true }))
+            .toBeVisible();
+        await appendE2ESessionEnvelopes(request, sessionId, envelopes.slice(2, 8));
+        const parentRow = page.locator(`[data-testid="activity-subagent-${parentSubagent}"]:visible`).first();
+        const desktopPanel = page.locator('[data-testid="desktop-right-panel"]:visible');
+        await expect(parentRow).toBeVisible();
+        await appendE2ESessionEnvelopes(request, sessionId, envelopes.slice(8));
+        await expect(page.getByText('Root final answer must stay outside the inspector.', { exact: true }))
+            .toBeVisible();
+        await expect(parentRow).toHaveAttribute('role', 'button');
+        await expect(parentRow).toHaveAttribute('aria-expanded', 'false');
+        await expect(desktopPanel).toContainText('能力中心');
+        await page.screenshot({
+            path: subagentInspectorScreenshotPath(testInfo, 'subagent-inspector-desktop-before.png'),
+            fullPage: true,
+        });
+
+        await parentRow.click();
+        const inspector = page.locator('[data-testid="subagent-inspector-panel"]:visible');
+        await expect(inspector).toBeVisible();
+        await expect(inspector.getByTestId('subagent-inspector-title')).toHaveText('Implementation agent');
+        await expect(inspector.getByTestId('subagent-inspector-status')).toHaveText('已完成');
+        await expect(inspector.getByTestId('subagent-inspector-task')).toHaveText(
+            'Implement the authorization change and ask a review agent to verify it.',
+        );
+        await expect(inspector.getByText('Parent agent visible summary.', { exact: true })).toBeVisible();
+        await expect(inspector.getByText('pnpm --filter happy-app test', { exact: true })).toBeVisible();
+        await expect(inspector.getByText('Private parent reasoning must stay hidden.', { exact: true })).toHaveCount(0);
+        await expect(inspector.getByText('Root final answer must stay outside the inspector.', { exact: true })).toHaveCount(0);
+        await expect(page.locator('[data-testid="desktop-right-panel-toggle-button"]:visible'))
+            .toHaveAttribute('aria-label', '收起子 Agent「Implementation agent」详情');
+        const nestedRow = inspector.getByTestId(`activity-subagent-${nestedSubagent}`);
+        await expect(nestedRow).toBeVisible();
+        await nestedRow.click();
+        await expect(inspector.getByTestId('subagent-inspector-title')).toHaveText('Review agent');
+        await expect(inspector.getByTestId('subagent-inspector-task')).toContainText(
+            'Review the authorization changes in packages/happy-app/sources/api/review.ts.',
+        );
+        await expect(inspector.getByText(
+            'Checking the authorization boundary and every caller before reporting findings.',
+            { exact: true },
+        )).toBeVisible();
+        await expect(inspector.getByText('packages/happy-app/sources/api/review.ts', { exact: true })).toBeVisible();
+        await expect(inspector.getByText('grep(pattern: authorize|requireSession)', { exact: true })).toBeVisible();
+        await expect(inspector.getByText(
+            'pnpm --filter happy-app test --run authorization.test.ts',
+            { exact: true },
+        )).toBeVisible();
+        await expect(inspector.getByText(/\[P1\] Missing authorization guard/)).toBeVisible();
+        await expect(inspector.getByText('Private review reasoning must stay hidden.', { exact: true })).toHaveCount(0);
+        await expect(inspector.getByText('Parent agent visible summary.', { exact: true })).toHaveCount(0);
+        await expect(inspector.getByText('Root final answer must stay outside the inspector.', { exact: true })).toHaveCount(0);
+        await pauseForRecordedReview(page, 900);
+        await page.screenshot({
+            path: subagentInspectorScreenshotPath(testInfo, 'subagent-inspector-desktop-after.png'),
+            fullPage: true,
+        });
+
+        await inspector.getByTestId('subagent-inspector-back').click();
+        await expect(inspector).toHaveCount(0);
+        await expect(desktopPanel).toBeVisible();
+        await expect(desktopPanel).toContainText('能力中心');
+
+        await page.setViewportSize({ width: 390, height: 844 });
+        await expect(page.locator('[data-testid="right-swipe-panel-host"]:visible')).toBeVisible();
+        await expect(page.getByTestId('right-swipe-panel-edge-handle')).toHaveCount(0);
+        await expect(desktopPanel).toHaveCount(0);
+        await expect(parentRow).toBeVisible();
+        const mobileParentRowBox = await parentRow.boundingBox();
+        expect(mobileParentRowBox).not.toBeNull();
+        expect(mobileParentRowBox!.x).toBeGreaterThanOrEqual(0);
+        expect(mobileParentRowBox!.x + mobileParentRowBox!.width).toBeLessThanOrEqual(390);
+        await page.screenshot({
+            path: subagentInspectorScreenshotPath(testInfo, 'subagent-inspector-mobile-before.png'),
+        });
+        const mobileReviewRow = page.locator(`[data-testid="activity-subagent-${nestedSubagent}"]:visible`).first();
+        await expect(mobileReviewRow).toBeVisible();
+        await mobileReviewRow.click();
+        const drawer = page.locator('[data-testid="right-swipe-panel-drawer"]:visible');
+        await expect(drawer).toHaveAttribute('role', 'dialog');
+        await expect(drawer.getByTestId('subagent-inspector-panel')).toBeVisible();
+        await expect(drawer.getByTestId('subagent-inspector-title')).toHaveText('Review agent');
+        await expect(drawer.getByTestId('subagent-inspector-task')).toContainText(
+            'Review the authorization changes in packages/happy-app/sources/api/review.ts.',
+        );
+        await expect(drawer.getByText(/\[P1\] Missing authorization guard/)).toBeVisible();
+        await expect(drawer.getByText('Parent agent visible summary.', { exact: true })).toHaveCount(0);
+        await expect(page.getByTestId('right-swipe-panel-edge-handle')).toHaveCount(0);
+        await expect(drawer.getByTestId('right-swipe-panel-close-button'))
+            .toHaveAttribute('aria-label', '收起子 Agent「Review agent」详情');
+        await pauseForRecordedReview(page, 1_000);
+        await page.screenshot({
+            path: subagentInspectorScreenshotPath(testInfo, 'subagent-inspector-mobile-after.png'),
+        });
+
+        await drawer.getByTestId('right-swipe-panel-close-button').click();
+        await expect(page.getByTestId('subagent-inspector-panel')).toHaveCount(0);
+        await expect(page.getByTestId('session-message-input')).toBeVisible();
     });
 
     test('[MP4-AGENT] send_file 输出直接呈现裸视频并支持播放与跳播', async ({ page }, testInfo) => {

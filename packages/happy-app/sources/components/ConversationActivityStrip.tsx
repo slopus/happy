@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { ActivityIndicator, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Message } from '@/sync/typesMessage';
@@ -8,6 +8,7 @@ import {
     collectConversationActivities,
     ConversationActivityStatus,
 } from '@/utils/conversationActivity';
+import { useSubagentInspector } from './subagent/SubagentInspectorContext';
 
 export const ConversationActivitySuppressedContext = React.createContext(false);
 
@@ -18,6 +19,7 @@ export const ConversationActivityStrip = React.memo(function ConversationActivit
 }) {
     const { theme } = useUnistyles();
     const suppressed = React.useContext(ConversationActivitySuppressedContext);
+    const inspector = useSubagentInspector();
     const activities = React.useMemo(
         () => collectConversationActivities(props.messages, { rootSubagentId: props.rootSubagentId }),
         [props.messages, props.rootSubagentId],
@@ -47,6 +49,35 @@ export const ConversationActivityStrip = React.memo(function ConversationActivit
                             <Text style={styles.statusText}>{getStatusLabel(activity.status)}</Text>
                         </View>
                     </View>
+                ) : inspector ? (
+                    <Pressable
+                        accessibilityLabel={t('toolGroup.openSubagentDetails', {
+                            title: activity.title ?? activity.id,
+                        })}
+                        accessibilityRole="button"
+                        accessibilityState={{ expanded: inspector.selection?.id === activity.id }}
+                        aria-expanded={inspector.selection?.id === activity.id}
+                        key={`subagent-${activity.id}`}
+                        onPress={() => inspector.open({
+                            id: activity.id,
+                            title: activity.title,
+                            status: activity.status,
+                        })}
+                        style={({ pressed }) => [
+                            styles.row,
+                            { paddingLeft: 8 + activity.depth * 16 },
+                            pressed && styles.rowPressed,
+                        ]}
+                        testID={`activity-subagent-${activity.id}`}
+                    >
+                        <Ionicons name="git-branch-outline" size={14} color={theme.colors.textSecondary} />
+                        <Text style={styles.kind}>{t('toolGroup.subagentLabel')}</Text>
+                        <Text style={styles.title} numberOfLines={1}>{activity.title ?? activity.id}</Text>
+                        <View style={styles.statusPill}>
+                            <ActivityStatusIcon status={activity.status} />
+                            <Text style={styles.statusText}>{getStatusLabel(activity.status)}</Text>
+                        </View>
+                    </Pressable>
                 ) : (
                     <View
                         key={`subagent-${activity.id}`}
@@ -113,6 +144,9 @@ const styles = StyleSheet.create((theme) => ({
         paddingVertical: 3,
         borderRadius: 7,
         backgroundColor: theme.colors.surfaceHigh,
+    },
+    rowPressed: {
+        opacity: 0.72,
     },
     kind: {
         flexShrink: 0,

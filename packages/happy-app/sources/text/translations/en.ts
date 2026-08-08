@@ -887,6 +887,9 @@ export const en: TranslationStructure = {
         usedSkills: ({ names }: { names: string }) => `Used Skills: ${names}`,
         skillLabel: 'Skill',
         subagentLabel: 'Sub-agent',
+        openSubagentDetails: ({ title }: { title: string }) => `View sub-agent details: ${title}`,
+        subagentPanelLabel: ({ title }: { title: string }) => `sub-agent details for ${title}`,
+        subagentNoDetails: 'No detailed record captured',
         subagentStatus: {
             running: 'Running',
             completed: 'Completed',

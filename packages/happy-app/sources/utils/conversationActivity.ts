@@ -1,4 +1,4 @@
-import { Message, ToolCall } from '@/sync/typesMessage';
+import { Message, ToolCall, ToolCallMessage } from '@/sync/typesMessage';
 
 export type ConversationActivityStatus = 'running' | 'completed' | 'failed' | 'cancelled';
 
@@ -25,6 +25,42 @@ export type ConversationActivities = {
     skills: SkillConversationActivity[];
     subagents: SubagentConversationActivity[];
 };
+
+export type SubagentTranscript = {
+    agent: ToolCallMessage;
+    messages: Message[];
+};
+
+export function findSubagentTranscript(messages: Message[], subagentId: string): SubagentTranscript | null {
+    const chronologicalMessages = [...messages].sort((a, b) => a.createdAt - b.createdAt);
+    for (const message of chronologicalMessages) {
+        if (message.kind !== 'tool-call') {
+            continue;
+        }
+
+        const isAgentTool = message.tool.name === 'Agent' || message.tool.name === 'Task';
+        if (isAgentTool && message.tool.input?.sessionSubagent === subagentId) {
+            return {
+                agent: message,
+                messages: message.children
+                    .filter((child) => {
+                        if (child.kind === 'agent-text' && child.isThinking) return false;
+                        return child.kind !== 'agent-event'
+                            || child.event.type !== 'subagent-status'
+                            || child.event.subagent !== subagentId;
+                    })
+                    .sort((a, b) => a.createdAt - b.createdAt),
+            };
+        }
+
+        const nestedTranscript = findSubagentTranscript(message.children, subagentId);
+        if (nestedTranscript) {
+            return nestedTranscript;
+        }
+    }
+
+    return null;
+}
 
 function toolStatus(tool: ToolCall): ConversationActivityStatus {
     if (tool.permission?.status === 'canceled') {

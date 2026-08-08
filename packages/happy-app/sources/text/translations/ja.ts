@@ -874,6 +874,9 @@ export const ja: TranslationStructure = {
         usedSkills: ({ names }: { names: string }) => `使用したSkill：${names}`,
         skillLabel: 'Skill',
         subagentLabel: 'サブエージェント',
+        openSubagentDetails: ({ title }: { title: string }) => `サブエージェントの詳細を表示：${title}`,
+        subagentPanelLabel: ({ title }: { title: string }) => `サブエージェント「${title}」の詳細`,
+        subagentNoDetails: '詳細な記録は取得されていません',
         subagentStatus: {
             running: '実行中',
             completed: '完了',

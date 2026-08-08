@@ -873,6 +873,9 @@ export const zhHant: TranslationStructure = {
         usedSkills: ({ names }: { names: string }) => `使用的 Skills：${names}`,
         skillLabel: '技能（Skill）',
         subagentLabel: '子 Agent',
+        openSubagentDetails: ({ title }: { title: string }) => `查看子 Agent 詳情：${title}`,
+        subagentPanelLabel: ({ title }: { title: string }) => `子 Agent「${title}」詳情`,
+        subagentNoDetails: '未擷取到詳細記錄',
         subagentStatus: {
             running: '進行中',
             completed: '已完成',

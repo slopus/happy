@@ -873,6 +873,9 @@ export const ca: TranslationStructure = {
         usedSkills: ({ names }: { names: string }) => `Habilitats (Skills): ${names}`,
         skillLabel: 'Habilitat (Skill)',
         subagentLabel: 'Subagent',
+        openSubagentDetails: ({ title }: { title: string }) => `Mostra els detalls del subagent: ${title}`,
+        subagentPanelLabel: ({ title }: { title: string }) => `els detalls del subagent «${title}»`,
+        subagentNoDetails: 'No s\'ha capturat cap registre detallat',
         subagentStatus: {
             running: 'En curs',
             completed: 'Completat',

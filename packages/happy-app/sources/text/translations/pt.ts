@@ -872,6 +872,9 @@ export const pt: TranslationStructure = {
         usedSkills: ({ names }: { names: string }) => `Habilidades (Skills) usadas: ${names}`,
         skillLabel: 'Habilidade (Skill)',
         subagentLabel: 'Subagente',
+        openSubagentDetails: ({ title }: { title: string }) => `Ver detalhes do subagente: ${title}`,
+        subagentPanelLabel: ({ title }: { title: string }) => `os detalhes do subagente “${title}”`,
+        subagentNoDetails: 'Nenhum registro detalhado foi capturado',
         subagentStatus: {
             running: 'Em execução',
             completed: 'Concluído',
