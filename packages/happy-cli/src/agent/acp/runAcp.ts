@@ -552,6 +552,11 @@ export async function runAcp(opts: {
   let shouldExit = false;
   let abortController = new AbortController();
   let pendingTurn: PendingTurn | null = null;
+  // A user-initiated abort makes AcpBackend.cancel() emit status 'stopped',
+  // which is indistinguishable from backend death. Track it so the runner
+  // survives user aborts and only exits on genuine backend failure.
+  let userAbortInFlight = false;
+  let turnCancelledByAbort = false;
 
   const clearPendingTurn = (error?: Error) => {
     if (!pendingTurn) {
@@ -815,7 +820,17 @@ export async function runAcp(opts: {
       if (msg.status === 'idle') {
         clearPendingTurn();
       }
-      if (msg.status === 'error' || msg.status === 'stopped') {
+      if (msg.status === 'stopped' && userAbortInFlight) {
+        // User-initiated abort: end the current turn as cancelled, keep the
+        // runner alive instead of treating it as backend death.
+        userAbortInFlight = false;
+        thinking = false;
+        session.keepAlive(false, 'remote');
+        if (pendingTurn) {
+          turnCancelledByAbort = true;
+          clearPendingTurn();
+        }
+      } else if (msg.status === 'error' || msg.status === 'stopped') {
         stopRunnerFromBackendStatus(msg.status, msg.detail);
       }
     }
@@ -859,11 +874,15 @@ export async function runAcp(opts: {
   async function handleAbort() {
     try {
       if (acpSessionId) {
+        userAbortInFlight = true;
         await backend.cancel(acpSessionId);
       }
       permissionHandler.reset();
       abortController.abort();
     } catch (error) {
+      // Cancel never reached the agent — don't let the flag mark a later
+      // genuine backend failure as user-initiated.
+      userAbortInFlight = false;
       logger.debug(`[${opts.agentName}] Abort failed:`, error);
     } finally {
       abortController = new AbortController();
@@ -912,6 +931,11 @@ export async function runAcp(opts: {
 
       logAcp('incoming', `Incoming prompt: ${formatUnknownForConsole(batch.message, ACP_EVENT_PREVIEW_CHARS)}`);
       sendEnvelopes(sessionManager.startTurn());
+      // Guard against a stale flag: an abort that arrives while idle (e.g. just
+      // after a turn ended naturally, or when cancel() throws) must not cause a
+      // later genuine backend failure to be misread as a user abort.
+      userAbortInFlight = false;
+      turnCancelledByAbort = false;
       const turnEnded = waitForTurnEnd();
       try {
         if (typeof batch.mode.permissionMode === 'string' && batch.mode.permissionMode.length > 0) {
@@ -922,7 +946,8 @@ export async function runAcp(opts: {
         }
         await backend.sendPrompt(acpSessionId, batch.message);
         await turnEnded;
-        sendEnvelopes(sessionManager.endTurn('completed'));
+        sendEnvelopes(sessionManager.endTurn(turnCancelledByAbort ? 'cancelled' : 'completed'));
+        turnCancelledByAbort = false;
         session.sendSessionEvent({ type: 'ready' });
         if (verbose) {
           logAcp('muted', `Outgoing prompt completion from ${opts.agentName}`);
