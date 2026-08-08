@@ -41,7 +41,7 @@ describe('tmux control output unescaping', () => {
 describe.skipIf(!tmuxAvailable())('TmuxShellSession', () => {
     it('runs a shell in a detached session and streams output', async () => {
         const terminalId = `test${Date.now()}`;
-        const session = await TmuxShellSession.create({
+        const session = await TmuxShellSession.createNew({
             terminalId,
             cwd: process.cwd(),
             shell: '/bin/sh',
@@ -64,7 +64,7 @@ describe.skipIf(!tmuxAvailable())('TmuxShellSession', () => {
         await session.kill();
     });
 
-    it('recovers the recorded pane after the user splits panes', async () => {
+    it('snapshots the recorded pane when another split pane is active', async () => {
         const terminalId = `split${Date.now()}`;
         const target = `happy-term-${terminalId}`;
         execFileSync(
@@ -76,12 +76,32 @@ describe.skipIf(!tmuxAvailable())('TmuxShellSession', () => {
             'tmux',
             ['list-panes', '-t', target, '-F', '#{pane_id}'],
         ).toString().trim();
+        const managedMarker = `managed-${terminalId}`;
+        const otherMarker = `other-${terminalId}`;
 
         try {
-            // User splits panes while the managed shell keeps running.
-            execFileSync('tmux', ['split-window', '-t', target], { stdio: 'ignore' });
+            execFileSync('tmux', [
+                'send-keys', '-t', recordedPane, `printf '${managedMarker}\\n'`, 'Enter',
+            ], { stdio: 'ignore' });
+            await waitFor(() => execFileSync(
+                'tmux',
+                ['capture-pane', '-p', '-t', recordedPane],
+            ).toString().includes(managedMarker));
 
-            const recovered = await TmuxShellSession.create({
+            const otherPane = execFileSync(
+                'tmux',
+                ['split-window', '-P', '-F', '#{pane_id}', '-t', target, '/bin/sh'],
+            ).toString().trim();
+            execFileSync('tmux', ['select-pane', '-t', otherPane], { stdio: 'ignore' });
+            execFileSync('tmux', [
+                'send-keys', '-t', otherPane, `printf '${otherMarker}\\n'`, 'Enter',
+            ], { stdio: 'ignore' });
+            await waitFor(() => execFileSync(
+                'tmux',
+                ['capture-pane', '-p', '-t', otherPane],
+            ).toString().includes(otherMarker));
+
+            const recovered = await TmuxShellSession.attachExisting({
                 terminalId,
                 cwd: process.cwd(),
                 shell: '/bin/sh',
@@ -90,13 +110,9 @@ describe.skipIf(!tmuxAvailable())('TmuxShellSession', () => {
                 paneId: recordedPane,
             });
             expect(recovered.paneId).toBe(recordedPane);
-
-            let output = '';
-            recovered.onOutput((data) => {
-                output += data;
-            });
-            recovered.write('echo split-ok\r');
-            await waitFor(() => output.includes('split-ok'));
+            const snapshot = await recovered.snapshot();
+            expect(snapshot).toContain(managedMarker);
+            expect(snapshot).not.toContain(otherMarker);
             await recovered.kill();
         } finally {
             try {
@@ -124,7 +140,7 @@ describe.skipIf(!tmuxAvailable())('TmuxShellSession', () => {
             execFileSync('tmux', ['split-window', '-t', target], { stdio: 'ignore' });
             execFileSync('tmux', ['kill-pane', '-t', recordedPane], { stdio: 'ignore' });
 
-            const recovered = await TmuxShellSession.create({
+            const recovered = await TmuxShellSession.attachExisting({
                 terminalId,
                 cwd: process.cwd(),
                 shell: '/bin/sh',
@@ -142,5 +158,24 @@ describe.skipIf(!tmuxAvailable())('TmuxShellSession', () => {
                 // Session may already be gone after recovered.kill().
             }
         }
+    });
+
+    it('does not recreate a missing tmux session during recovery', async () => {
+        const terminalId = `missing${Date.now()}`;
+        const target = `happy-term-${terminalId}`;
+
+        await expect(TmuxShellSession.attachExisting({
+            terminalId,
+            cwd: process.cwd(),
+            shell: '/bin/sh',
+            cols: 80,
+            rows: 24,
+            paneId: '%999999',
+        })).rejects.toThrow();
+        expect(() => execFileSync(
+            'tmux',
+            ['has-session', '-t', target],
+            { stdio: 'ignore' },
+        )).toThrow();
     });
 });

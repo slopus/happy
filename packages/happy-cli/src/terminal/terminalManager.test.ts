@@ -29,6 +29,7 @@ afterEach(() => {
 class FakeSession implements ShellSession {
     readonly kind: 'pty' | 'tmux';
     readonly tmuxTarget?: string;
+    readonly paneId?: string;
     written: string[] = [];
     resizeCalls: Array<[number, number]> = [];
     paused = false;
@@ -38,9 +39,10 @@ class FakeSession implements ShellSession {
     private readonly outputListeners = new Set<(data: string) => void>();
     private readonly exitListeners = new Set<(exitCode: number) => void>();
 
-    constructor(kind: 'pty' | 'tmux' = 'pty', tmuxTarget?: string) {
+    constructor(kind: 'pty' | 'tmux' = 'pty', tmuxTarget?: string, paneId?: string) {
         this.kind = kind;
         this.tmuxTarget = tmuxTarget;
+        this.paneId = paneId;
     }
 
     write(data: string): void {
@@ -98,6 +100,7 @@ interface Harness {
     manager: TerminalManager;
     sessions: Map<string, FakeSession>;
     frames: TerminalOutputEvent[];
+    sessionModes: Array<'create-new' | 'attach-existing'>;
     files: { terminals: string; policy: string };
     dir: string;
 }
@@ -108,6 +111,8 @@ async function createHarness(
         ringBufferMaxBytes?: number;
         sessionKind?: 'pty' | 'tmux';
         tmuxTargetForRecovery?: string;
+        tmuxPaneIdForRecovery?: string;
+        failAttachExisting?: boolean;
     } = {},
 ): Promise<Harness> {
     const dir = tempDir();
@@ -122,6 +127,7 @@ async function createHarness(
     }
     const sessions = new Map<string, FakeSession>();
     const frames: TerminalOutputEvent[] = [];
+    const sessionModes: Array<'create-new' | 'attach-existing'> = [];
 
     const manager = new TerminalManager({
         terminalsFile: files.terminals,
@@ -132,17 +138,22 @@ async function createHarness(
         emitError: (id, frame) => frames.push(frame),
         tmuxEnabled: false,
         ringBufferMaxBytes: options.ringBufferMaxBytes,
-        sessionFactory: async (record: TerminalRecord) => {
+        sessionFactory: async (record: TerminalRecord, _cols, _rows, mode) => {
+            sessionModes.push(mode);
+            if (mode === 'attach-existing' && options.failAttachExisting) {
+                throw new Error('tmux session missing');
+            }
             const session = new FakeSession(
                 options.sessionKind ?? 'pty',
                 options.tmuxTargetForRecovery,
+                options.tmuxPaneIdForRecovery,
             );
             sessions.set(record.terminalId, session);
             return session;
         },
     });
 
-    return { manager, sessions, frames, files, dir };
+    return { manager, sessions, frames, sessionModes, files, dir };
 }
 
 describe('TerminalManager', () => {
@@ -261,26 +272,30 @@ describe('TerminalManager', () => {
     });
 
     it('reattaches tmux-backed terminals after a restart', async () => {
-        const { manager, sessions, frames, files } = await createHarness({
+        const { manager, sessions, frames, sessionModes, files } = await createHarness({
             policy: 'none',
             sessionKind: 'tmux',
+            tmuxPaneIdForRecovery: '%9',
         });
+        const terminalId = 'b'.repeat(24);
         writeFileSync(files.terminals, JSON.stringify({
             version: 1,
             terminals: [{
-                terminalId: 'b'.repeat(24),
+                terminalId,
                 name: 'persistent',
                 cwd: tmpdir(),
                 shell: '/bin/sh',
                 status: 'running',
-                tmuxTarget: 'happy-term-b'.repeat(1) + 'b'.repeat(24),
+                tmuxTarget: `happy-term-${terminalId}`,
+                tmuxPaneId: '%1',
                 createdAt: 1,
             }],
         }));
         await manager.start();
 
-        const terminalId = 'b'.repeat(24);
         expect(manager.get(terminalId)?.status).toBe('running');
+        expect(manager.get(terminalId)?.tmuxPaneId).toBe('%9');
+        expect(sessionModes).toEqual(['attach-existing']);
         const session = sessions.get(terminalId);
         expect(session).toBeDefined();
 
@@ -290,6 +305,34 @@ describe('TerminalManager', () => {
         const attached = await manager.attach(terminalId, 0);
         expect(attached.status).toBe('running');
         expect(attached.snapshot).toBe('fake-snapshot');
+    });
+
+    it('marks a missing tmux session exited without creating a replacement', async () => {
+        const { manager, sessions, sessionModes, files } = await createHarness({
+            policy: 'none',
+            sessionKind: 'tmux',
+            failAttachExisting: true,
+        });
+        const terminalId = 'c'.repeat(24);
+        writeFileSync(files.terminals, JSON.stringify({
+            version: 1,
+            terminals: [{
+                terminalId,
+                name: 'missing',
+                cwd: tmpdir(),
+                shell: '/bin/sh',
+                status: 'running',
+                tmuxTarget: `happy-term-${terminalId}`,
+                tmuxPaneId: '%3',
+                createdAt: 1,
+            }],
+        }));
+
+        await manager.start();
+
+        expect(sessionModes).toEqual(['attach-existing']);
+        expect(sessions.has(terminalId)).toBe(false);
+        expect(manager.get(terminalId)).toMatchObject({ status: 'exited', exitCode: 1 });
     });
 
     it('pauses and resumes the shell via transport backpressure', async () => {

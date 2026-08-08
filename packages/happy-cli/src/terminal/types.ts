@@ -124,6 +124,7 @@ export interface TerminalControlApplyResult {
 export interface ShellSession {
     readonly kind: 'pty' | 'tmux';
     readonly tmuxTarget?: string;
+    readonly paneId?: string;
     write(data: string): void;
     resize(cols: number, rows: number): void;
     pause(): void;

@@ -41,7 +41,12 @@ export interface TerminalManagerOptions {
     tmuxEnabled?: boolean;
     ringBufferMaxBytes?: number;
     scrollback?: number;
-    sessionFactory?: (record: TerminalRecord, cols: number, rows: number) => Promise<ShellSession>;
+    sessionFactory?: (
+        record: TerminalRecord,
+        cols: number,
+        rows: number,
+        mode: 'create-new' | 'attach-existing',
+    ) => Promise<ShellSession>;
 }
 
 interface TerminalEntry {
@@ -121,7 +126,7 @@ export class TerminalManager {
             }
             if (record.status === 'running' && record.tmuxTarget) {
                 try {
-                    const session = await this.createSession(record, 80, 24);
+                    const session = await this.attachExistingSession(record, 80, 24);
                     recoveredSessions.set(record.terminalId, session);
                     record.status = 'running';
                     kept.push(record);
@@ -460,7 +465,7 @@ export class TerminalManager {
         }
 
         try {
-            const session = await this.createSession(entry.record, cols, rows);
+            const session = await this.createNewSession(entry.record, cols, rows);
             this.wireSession(entry.record, session);
             entry.record.status = 'running';
             await this.persist();
@@ -517,29 +522,36 @@ export class TerminalManager {
         });
     }
 
-    private async createSession(
+    private syncTmuxMetadata(record: TerminalRecord, session: ShellSession): void {
+        if (session.kind !== 'tmux') {
+            return;
+        }
+        record.tmuxTarget = session.tmuxTarget ?? record.tmuxTarget;
+        record.tmuxPaneId = session.paneId ?? record.tmuxPaneId;
+    }
+
+    private async createNewSession(
         record: TerminalRecord,
         cols: number,
         rows: number,
     ): Promise<ShellSession> {
         if (this.options.sessionFactory) {
-            return this.options.sessionFactory(record, cols, rows);
+            const session = await this.options.sessionFactory(record, cols, rows, 'create-new');
+            this.syncTmuxMetadata(record, session);
+            return session;
         }
 
         const useTmux = this.options.tmuxEnabled && await isTmuxAvailable();
         if (useTmux) {
-            const target = `happy-term-${record.terminalId}`;
-            record.tmuxTarget = target;
-            const session = await TmuxShellSession.create({
+            const session = await TmuxShellSession.createNew({
                 terminalId: record.terminalId,
                 cwd: record.cwd,
                 shell: record.shell,
                 cols,
                 rows,
                 env: this.options.env,
-                paneId: record.tmuxPaneId,
             });
-            record.tmuxPaneId = session.paneId;
+            this.syncTmuxMetadata(record, session);
             return session;
         }
 
@@ -551,6 +563,33 @@ export class TerminalManager {
             env: this.options.env,
             scrollback: this.options.scrollback,
         });
+    }
+
+    private async attachExistingSession(
+        record: TerminalRecord,
+        cols: number,
+        rows: number,
+    ): Promise<ShellSession> {
+        if (this.options.sessionFactory) {
+            const session = await this.options.sessionFactory(record, cols, rows, 'attach-existing');
+            this.syncTmuxMetadata(record, session);
+            return session;
+        }
+        if (!this.options.tmuxEnabled || !await isTmuxAvailable()) {
+            throw new Error('tmux is unavailable for terminal recovery');
+        }
+
+        const session = await TmuxShellSession.attachExisting({
+            terminalId: record.terminalId,
+            cwd: record.cwd,
+            shell: record.shell,
+            cols,
+            rows,
+            env: this.options.env,
+            paneId: record.tmuxPaneId,
+        });
+        this.syncTmuxMetadata(record, session);
+        return session;
     }
 
     private async loadRegistry(): Promise<TerminalRecord[]> {
