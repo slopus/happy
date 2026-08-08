@@ -15,17 +15,23 @@
  * Room layout (all scoped by the authenticated userId):
  *   terminal:clients:<userId>:<terminalId>  — user sockets (view + writer)
  *   terminal:daemons:<userId>:<terminalId>  — the machine daemon
- *   terminal:writers:<userId>:<terminalId>  — exactly one writer seat
+ *
+ * Writer ownership is NOT a room. It is an authoritative per-terminal value
+ * (socket id + generation) so takeover is a serialized last-writer-wins swap:
+ * in-process via a per-terminal queue, cross-replica via an atomic Redis Lua
+ * script. Rooms are only used for broadcast/subscription.
  */
 
 import { Server, Socket } from 'socket.io';
 import type { RemoteSocket } from 'socket.io';
 import type { DefaultEventsMap } from 'socket.io/dist/typed-events';
 import { Counter } from 'prom-client';
+import { Redis } from 'ioredis';
 import { log } from '@/utils/log';
 
 const TERMINAL_ID_PATTERN = /^[a-zA-Z0-9_-]{1,64}$/;
 const MAX_PAYLOAD_LENGTH = 1024 * 1024;
+const WRITER_TTL_SECONDS = 24 * 60 * 60;
 
 const terminalEventsCounter = new Counter({
     name: 'terminal_events_total',
@@ -41,8 +47,119 @@ function daemonRoom(userId: string, terminalId: string): string {
     return `terminal:daemons:${userId}:${terminalId}`;
 }
 
-function writerRoom(userId: string, terminalId: string): string {
-    return `terminal:writers:${userId}:${terminalId}`;
+function writerKey(userId: string, terminalId: string): string {
+    return `terminal:writer:${userId}:${terminalId}`;
+}
+
+const TAKE_WRITER_LUA = `
+local current = redis.call('GET', KEYS[1])
+local gen = 0
+if current then
+  local _, _, g = string.find(current, ':(%d+)$')
+  if g then gen = tonumber(g) end
+end
+redis.call('SET', KEYS[1], ARGV[1] .. ':' .. tostring(gen + 1), 'EX', ARGV[2])
+return tostring(gen + 1)
+`;
+
+const DELETE_WRITER_IF_MATCH_LUA = `
+if redis.call('GET', KEYS[1]) == ARGV[1] then
+  redis.call('DEL', KEYS[1])
+  return 1
+end
+return 0
+`;
+
+let redis: Redis | null = null;
+if (process.env.REDIS_URL) {
+    redis = new Redis(process.env.REDIS_URL);
+}
+
+/** Single-replica fallback writer state + per-terminal serialization. */
+const writerState = new Map<string, { socketId: string; generation: number }>();
+const takeoverQueues = new Map<string, Promise<void>>();
+/** socketId -> [{ key, value }] so disconnect can release owned seats exactly. */
+const socketWriterSeats = new Map<string, Array<{ key: string; value: string }>>();
+
+async function claimWriter(key: string, socketId: string): Promise<number> {
+    if (redis) {
+        const generation = await redis.eval(
+            TAKE_WRITER_LUA,
+            1,
+            key,
+            socketId,
+            String(WRITER_TTL_SECONDS),
+        ) as string;
+        const value = `${socketId}:${generation}`;
+        socketWriterSeats.set(socketId, [...(socketWriterSeats.get(socketId) ?? []), { key, value }]);
+        return Number(generation);
+    }
+
+    const previous = takeoverQueues.get(key) ?? Promise.resolve();
+    let release: () => void = () => undefined;
+    const current = new Promise<void>((resolve) => {
+        release = resolve;
+    });
+    takeoverQueues.set(key, previous.then(() => current));
+    await previous;
+    try {
+        const generation = (writerState.get(key)?.generation ?? 0) + 1;
+        writerState.set(key, { socketId, generation });
+        socketWriterSeats.set(socketId, [...(socketWriterSeats.get(socketId) ?? []), {
+            key,
+            value: socketId,
+        }]);
+        return generation;
+    } finally {
+        release();
+        if (takeoverQueues.get(key) === current) {
+            takeoverQueues.delete(key);
+        }
+    }
+}
+
+async function isWriter(key: string, socketId: string): Promise<boolean> {
+    if (redis) {
+        const current = await redis.get(key);
+        return current !== null && current.split(':')[0] === socketId;
+    }
+    return writerState.get(key)?.socketId === socketId;
+}
+
+async function releaseWriterIfOwned(key: string, value: string): Promise<void> {
+    if (redis) {
+        await redis.eval(DELETE_WRITER_IF_MATCH_LUA, 1, key, value);
+        return;
+    }
+    const current = writerState.get(key);
+    if (current && current.socketId === value.split(':')[0]) {
+        writerState.delete(key);
+    }
+}
+
+async function releaseSocketWriters(socketId: string): Promise<void> {
+    const seats = socketWriterSeats.get(socketId);
+    if (!seats) {
+        return;
+    }
+    socketWriterSeats.delete(socketId);
+    await Promise.all(seats.map(({ key, value }) => releaseWriterIfOwned(key, value)));
+}
+
+async function releaseWriterSeat(socketId: string, key: string): Promise<void> {
+    const seats = socketWriterSeats.get(socketId);
+    if (!seats) {
+        return;
+    }
+    const seat = seats.find((candidate) => candidate.key === key);
+    if (!seat) {
+        return;
+    }
+    socketWriterSeats.set(
+        socketId,
+        seats.filter((candidate) => candidate.key !== key),
+    );
+    await releaseWriterIfOwned(key, seat.value);
 }
 
 function isValidTerminalId(value: unknown): value is string {
@@ -136,7 +253,7 @@ export function terminalHandler(userId: string, socket: Socket, io: Server) {
             return;
         }
         socket.leave(clientRoom(userId, terminalId));
-        socket.leave(writerRoom(userId, terminalId));
+        void releaseWriterSeat(socket.id, writerKey(userId, terminalId));
         terminalEventsCounter.inc({ event: 'unsubscribe', role: 'user' });
     });
 
@@ -146,16 +263,18 @@ export function terminalHandler(userId: string, socket: Socket, io: Server) {
             return;
         }
 
-        // Exactly one writer seat: evict the previous writer (if any) and
-        // grant it to the requester. `socketsLeave` is cluster-synced through
-        // the streams adapter.
-        await io.socketsLeave(writerRoom(userId, terminalId));
-        await socket.join(writerRoom(userId, terminalId));
-
+        const key = writerKey(userId, terminalId);
+        const generation = await claimWriter(key, socket.id);
+        if (!socket.connected) {
+            // Socket died while the takeover was queued; drop the seat again.
+            await releaseWriterSeat(socket.id, key);
+            return;
+        }
         terminalEventsCounter.inc({ event: 'takeover', role: 'user' });
         io.to(clientRoom(userId, terminalId)).emit('terminal:writer', {
             terminalId,
             writerSocketId: socket.id,
+            generation,
         });
     });
 
@@ -166,7 +285,7 @@ export function terminalHandler(userId: string, socket: Socket, io: Server) {
         if (!isValidTerminalId(terminalId) || !isValidPayload(payload)) {
             return;
         }
-        if (!socket.rooms.has(writerRoom(userId, terminalId))) {
+        if (!await isWriter(writerKey(userId, terminalId), socket.id)) {
             return; // View-only sockets cannot write.
         }
 
@@ -181,4 +300,8 @@ export function terminalHandler(userId: string, socket: Socket, io: Server) {
     socket.on('terminal:input', forwardWriterFrame('terminal:input'));
     socket.on('terminal:resize', forwardWriterFrame('terminal:resize'));
     socket.on('terminal:signal', forwardWriterFrame('terminal:signal'));
+
+    socket.on('disconnect', () => {
+        void releaseSocketWriters(socket.id);
+    });
 }
