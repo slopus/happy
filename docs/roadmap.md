@@ -33,7 +33,7 @@ Missing the concept of **workspace** (aka project) that spans multiple machines,
 
 [hard]
 - Attachments in composer / in agent output [hard, encrypted attachments, extra storage - needs design]
-- [x] Terminal embedded in app — persistent remote shells behind `HAPPY_TERMINAL_ENABLED=1` (see [remote-terminal.md](remote-terminal.md)); attach-to-existing-tmux and native mobile renderer are follow-ups
+- Terminal embedded in app
 
 ## Underlying Assistant Upkeep
 
@@ -115,4 +115,5 @@ Current state: server stores bare Expo push tokens per account with no device me
   - sprites — same
 - Linear
 - GitHub — PR reviews
+
 
