@@ -2,6 +2,7 @@ import * as React from 'react';
 import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AgentLauncher } from '@/components/agents/launchAgent';
+import type { Message } from '@/sync/typesMessage';
 import {
     AgentSpaceExitButton,
     SessionRightPanelContent,
@@ -47,6 +48,12 @@ const mocks = vi.hoisted(() => ({
     overlayReset: vi.fn(),
     suspendFileViewPanel: false,
     fileViewPanelSuspender: null as Promise<void> | null,
+    sessionMessages: [] as Message[],
+    openSubagent: undefined as ((selection: {
+        id: string;
+        title: string | null;
+        status: 'running' | 'completed' | 'failed' | 'cancelled';
+    }) => void) | undefined,
     session: {
         id: 'session-1',
         seq: 1,
@@ -163,7 +170,16 @@ vi.mock('@/text', () => ({
     },
 }));
 
-vi.mock('@/components/AgentContentView', () => ({ AgentContentView: ({ input }: { input: React.ReactNode }) => input }));
+vi.mock('@/components/AgentContentView', async () => {
+    const ReactModule = await import('react');
+    return {
+        AgentContentView: ({ children, content, input }: {
+            children?: React.ReactNode;
+            content?: React.ReactNode;
+            input: React.ReactNode;
+        }) => ReactModule.createElement('AgentContentView', {}, content ?? children, input),
+    };
+});
 vi.mock('@/components/MessageComposer', () => ({ MessageComposer: 'MessageComposer' }));
 vi.mock('@/components/layout', () => ({ layout: { headerMaxWidth: 800 } }));
 vi.mock('@/components/autocomplete/suggestions', () => ({ getSuggestions: () => [] }));
@@ -177,7 +193,25 @@ vi.mock('@/components/ChatHeaderView', async () => {
 });
 vi.mock('@/components/SessionHeaderChip', () => ({ SessionHeaderChip: 'SessionHeaderChip' }));
 vi.mock('@/components/SessionInfoDropdown', () => ({ SessionInfoDropdown: 'SessionInfoDropdown' }));
-vi.mock('@/components/ChatList', () => ({ ChatList: 'ChatList' }));
+vi.mock('@/components/ChatList', async () => {
+    const ReactModule = await import('react');
+    const { useSubagentInspector } = await import('@/components/subagent/SubagentInspectorContext');
+    return {
+        ChatList: () => {
+            const inspector = useSubagentInspector();
+            mocks.openSubagent = inspector?.open;
+            return ReactModule.createElement('ChatList');
+        },
+    };
+});
+vi.mock('@/components/subagent/SubagentInspectorPanel', async () => {
+    const ReactModule = await import('react');
+    return {
+        SubagentInspectorPanel: (props: Record<string, unknown>) => (
+            ReactModule.createElement('SubagentInspectorPanel', props)
+        ),
+    };
+});
 vi.mock('@/components/Deferred', () => ({ Deferred: ({ children }: { children: React.ReactNode }) => children }));
 vi.mock('@/components/EmptyMessages', () => ({ EmptyMessages: 'EmptyMessages' }));
 vi.mock('@/components/ScreenshotGalleryDrawer', () => ({ ScreenshotGalleryDrawer: 'ScreenshotGalleryDrawer' }));
@@ -291,7 +325,7 @@ vi.mock('@/sync/storage', () => ({
     },
     useMachine: () => null,
     useSession: () => mocks.sessionAvailable ? mocks.session : null,
-    useSessionMessages: () => ({ messages: [], isLoaded: true }),
+    useSessionMessages: () => ({ messages: mocks.sessionMessages, isLoaded: true }),
     useSessionUsage: () => undefined,
     useSetting: (key: string) => key === 'fileDiffsSidebar' ? mocks.fileDiffsSidebarEnabled : false,
 }));
@@ -374,6 +408,8 @@ describe('SessionView Agent-space boundary', () => {
         mocks.desktopRightPanelCollapsed = false;
         mocks.suspendFileViewPanel = false;
         mocks.fileViewPanelSuspender = null;
+        mocks.sessionMessages = [];
+        mocks.openSubagent = undefined;
         mocks.globalRightSidebarShortcut = undefined;
         mocks.spaceAgent = null;
         mocks.useSpaceAgentForSession.mockImplementation(() => mocks.spaceAgent);
@@ -888,6 +924,83 @@ describe('SessionView Agent-space boundary', () => {
         expect(renderer.root.findAllByType('SessionCapabilityHub')).toHaveLength(1);
         expect(renderer.root.findAllByType('RightSwipePanelHost')).toHaveLength(0);
         expect(renderer.root.findByType('ChatHeaderView').props.compactRightSlot).toBe(false);
+
+        act(() => renderer.unmount());
+    });
+
+    it('opens the subagent inspector in the compact drawer and returns to capabilities', () => {
+        mocks.isDataReady = true;
+        mocks.sessionMessages = [{
+            kind: 'agent-text',
+            id: 'message-one',
+            localId: null,
+            createdAt: 1,
+            text: 'Visible message',
+        }];
+        let renderer: any;
+
+        act(() => {
+            renderer = TestRenderer.create(<SessionView id="session-1" />);
+        });
+        expect(renderer.root.findByType('RightSwipePanelHost').props.open).toBe(false);
+
+        expect(mocks.openSubagent).toEqual(expect.any(Function));
+        act(() => mocks.openSubagent?.({
+            id: 'agent-one',
+            title: 'Implementation agent',
+            status: 'running',
+        }));
+
+        expect(renderer.root.findByType('RightSwipePanelHost').props.open).toBe(true);
+        const inspectorPanel = renderer.root.findByType('SubagentInspectorPanel');
+        expect(inspectorPanel.props.selection.id).toBe('agent-one');
+        expect(renderer.root.findAllByType('SessionCapabilityHub')).toHaveLength(0);
+
+        act(() => inspectorPanel.props.onBack());
+        expect(renderer.root.findByType('RightSwipePanelHost').props.open).toBe(true);
+        expect(renderer.root.findAllByType('SubagentInspectorPanel')).toHaveLength(0);
+        expect(renderer.root.findAllByType('SessionCapabilityHub')).toHaveLength(1);
+
+        act(() => renderer.unmount());
+    });
+
+    it('temporarily replaces the desktop Files panel and restores it on inspector back', () => {
+        mocks.isDataReady = true;
+        mocks.fileDiffsSidebarEnabled = true;
+        mocks.windowWidth = 1400;
+        mocks.isTablet = true;
+        mocks.platformOS = 'web';
+        mocks.sessionMessages = [{
+            kind: 'agent-text',
+            id: 'message-one',
+            localId: null,
+            createdAt: 1,
+            text: 'Visible message',
+        }];
+        let renderer: any;
+
+        act(() => {
+            renderer = TestRenderer.create(<SessionView id="session-1" />);
+        });
+        act(() => renderer.root.findByProps({ testID: 'desktop-right-panel-files-tab' }).props.onPress());
+        expect(renderer.root.findAllByType('FilesSidebar')).toHaveLength(1);
+
+        expect(mocks.openSubagent).toEqual(expect.any(Function));
+        act(() => mocks.openSubagent?.({
+            id: 'agent-one',
+            title: 'Implementation agent',
+            status: 'completed',
+        }));
+
+        expect(mocks.setDesktopRightPanelCollapsed).toHaveBeenCalledWith(false);
+        expect(renderer.root.findAllByProps({ testID: 'desktop-right-panel' })).toHaveLength(0);
+        expect(renderer.root.findAllByType('FilesSidebar')).toHaveLength(0);
+        const inspectorPanel = renderer.root.findByType('SubagentInspectorPanel');
+
+        act(() => inspectorPanel.props.onBack());
+        expect(renderer.root.findAllByType('SubagentInspectorPanel')).toHaveLength(0);
+        expect(renderer.root.findAllByProps({ testID: 'desktop-right-panel' })).toHaveLength(1);
+        expect(renderer.root.findAllByType('FilesSidebar')).toHaveLength(1);
 
         act(() => renderer.unmount());
     });

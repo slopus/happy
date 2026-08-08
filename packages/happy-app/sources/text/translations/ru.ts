@@ -889,6 +889,9 @@ export const ru: TranslationStructure = {
         usedSkills: ({ names }: { names: string }) => `Навыки (Skills): ${names}`,
         skillLabel: 'Навык (Skill)',
         subagentLabel: 'Субагент',
+        openSubagentDetails: ({ title }: { title: string }) => `Просмотреть сведения о субагенте: ${title}`,
+        subagentPanelLabel: ({ title }: { title: string }) => `сведения о субагенте «${title}»`,
+        subagentNoDetails: 'Подробные сведения не зафиксированы',
         subagentStatus: {
             running: 'Выполняется',
             completed: 'Завершён',
