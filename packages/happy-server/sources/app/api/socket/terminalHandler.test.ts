@@ -55,6 +55,24 @@ afterAll(async () => {
 });
 
 describe('terminalHandler', () => {
+    it('serializes terminal writer operations per terminal', async () => {
+        const { withTerminalOpLock } = await import('./terminalHandler');
+        const order: string[] = [];
+        const key = 'terminal:op:lock-test';
+
+        const first = withTerminalOpLock(key, async () => {
+            order.push('forward-start');
+            await delay(20);
+            order.push('forward-end');
+        });
+        const second = withTerminalOpLock(key, async () => {
+            order.push('takeover');
+        });
+
+        await Promise.all([first, second]);
+        expect(order).toEqual(['forward-start', 'forward-end', 'takeover']);
+    });
+
     it('relays daemon output only to subscribed clients of the same user', async () => {
         const daemon = await connect('user1', 'machine-scoped');
         const client = await connect('user1', 'user-scoped');
