@@ -494,7 +494,7 @@ describe('SessionView Agent-space boundary', () => {
         act(() => renderer.unmount());
     });
 
-    it('preserves the ordinary phone header while desktop-only controls stay absent', () => {
+    it('keeps new session and adds button-only right panel access to the phone header', () => {
         mocks.isDataReady = true;
         let renderer: any;
 
@@ -506,7 +506,13 @@ describe('SessionView Agent-space boundary', () => {
         expect(renderer.root.findAllByProps({ testID: 'session-header-title' })).toHaveLength(0);
         expect(renderer.root.findAllByProps({ testID: 'session-header-run-status' })).toHaveLength(0);
         expect(renderer.root.findAllByProps({ testID: 'session-header-more-button' })).toHaveLength(0);
-        expect(renderer.root.findAllByProps({ testID: 'desktop-right-panel-toggle-button' })).toHaveLength(0);
+        const panelToggle = renderer.root.findByProps({ testID: 'desktop-right-panel-toggle-button' });
+        expect(panelToggle.props['aria-expanded']).toBe(false);
+        expect(renderer.root.findByType('RightSwipePanelHost').props.gestureEnabled).toBe(false);
+
+        act(() => panelToggle.props.onPress());
+        expect(renderer.root.findByType('RightSwipePanelHost').props.open).toBe(true);
+        expect(renderer.root.findByProps({ testID: 'desktop-right-panel-toggle-button' }).props['aria-expanded']).toBe(true);
 
         const newSession = renderer.root.findByProps({ testID: 'session-header-new-session-button' });
         act(() => newSession.props.onPress());

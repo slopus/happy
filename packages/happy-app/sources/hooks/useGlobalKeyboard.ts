@@ -44,12 +44,12 @@ export function useGlobalKeyboard(
             }
         };
 
-        // Add event listener
-        window.addEventListener('keydown', handleKeyDown);
+        // Capture before focused editors or embedded surfaces can stop bubbling.
+        window.addEventListener('keydown', handleKeyDown, true);
 
         // Cleanup
         return () => {
-            window.removeEventListener('keydown', handleKeyDown);
+            window.removeEventListener('keydown', handleKeyDown, true);
         };
     }, [onCommandPalette, options.onOpenKeyboardShortcuts, options.onOpenSettings, options.onToggleLeftSidebar, options.onToggleRightSidebar]);
 }

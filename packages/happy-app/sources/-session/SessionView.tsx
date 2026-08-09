@@ -335,7 +335,7 @@ const SessionViewContent = React.memo((props: { id: string }) => {
         : widthRightPanelMode === 'edge-handle'
             ? 'edge-handle'
             : 'drawer-toggle';
-    const compactRightDrawerAvailable = responsiveRightPanelMode === 'drawer-toggle' && isDataReady && !!session;
+    const compactRightDrawerAvailable = !desktopRightPanelAvailable && isDataReady && !!session;
     const canShowFilePanel = desktopRightPanelAvailable && fileDiffsSidebarEnabled;
     const desktopRightPanelPresentation = getDesktopRightPanelPresentation({
         available: desktopRightPanelAvailable,
@@ -832,6 +832,7 @@ const SessionViewContent = React.memo((props: { id: string }) => {
             <RightSwipePanelHost
                 closeAccessibilityLabel={t('desktopWorkspace.hidePanel', { panel: compactPanelLabel })}
                 enabled={isDataReady && !!session}
+                gestureEnabled={false}
                 mode={responsiveRightPanelMode === 'edge-handle' ? 'edge-handle' : 'drawer-toggle'}
                 onOpenChange={(nextOpen) => {
                     if (nextOpen) setInfoPanelOpen(false);

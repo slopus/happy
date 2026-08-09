@@ -1347,7 +1347,7 @@ test.describe('会话行组织可见回归', () => {
         const actionsBox = await page.getByTestId(`session-row-actions-${sessionId}`).boundingBox();
         if (!sidebarBox || !detailsBox || !actionsBox) throw new Error('找不到 Codex 侧栏、操作区或右侧详情浮层');
         expect(actionsBox.x + actionsBox.width).toBeLessThanOrEqual(sidebarBox.x + sidebarBox.width + 1);
-        expect(detailsBox.x).toBeGreaterThan(sidebarBox.x + sidebarBox.width);
+        expect(detailsBox.x).toBeGreaterThanOrEqual(sidebarBox.x + sidebarBox.width + 16);
         await page.screenshot({
             path: testInfo.outputPath('nav-13-01-hover-details-1280x900.png'),
             fullPage: true,
@@ -1714,6 +1714,9 @@ test('Web 弹窗不会触发已弃用样式、组件或原生动画警告', asyn
 });
 
 test('Web 深色命令面板跟随主题并支持完整关闭交互', async ({ page }) => {
+    if (process.env.HAPPY_E2E_RECORD === '1') {
+        test.setTimeout(120_000);
+    }
     await page.emulateMedia({ colorScheme: 'dark' });
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto(new URL('/settings/appearance', authenticatedWebUrl).toString());
@@ -1725,12 +1728,22 @@ test('Web 深色命令面板跟随主题并支持完整关闭交互', async ({ p
     const commandPaletteSwitch = page.getByRole('switch', { name: 'Command Palette' });
     await expect(commandPaletteSwitch).toBeChecked();
 
+    // A focused editor or embedded surface may stop bubbling at document.
+    // The application shortcut must already have handled the key in capture.
+    await page.evaluate(() => {
+        document.addEventListener('keydown', (event) => {
+            if ((event.metaKey || event.ctrlKey) && event.code === 'KeyK') {
+                event.stopPropagation();
+            }
+        }, { once: true });
+    });
     await page.keyboard.press('Meta+KeyK');
     const commandInput = page.getByTestId('command-palette-input');
     const palette = page.getByTestId('command-palette');
     await expect(commandInput).toBeVisible();
     await expect.poll(async () => Number(await palette.evaluate((node) => node.parentElement?.style.opacity ?? '0')))
         .toBeCloseTo(1, 2);
+    await pauseForRecordedReview(page, 1_000);
 
     const paletteColors = await page.evaluate(() => {
         const input = document.querySelector('[data-testid="command-palette-input"]');
@@ -1751,6 +1764,11 @@ test('Web 深色命令面板跟随主题并支持完整关闭交互', async ({ p
 
     await commandInput.press('Escape');
     await expect(commandInput).toHaveCount(0);
+
+    if (process.env.HAPPY_E2E_RECORD === '1') {
+        await pauseForRecordedReview(page);
+        return;
+    }
 
     await page.goto(authenticatedWebUrl);
     await page.getByTestId('sidebar-command-palette-button').click();

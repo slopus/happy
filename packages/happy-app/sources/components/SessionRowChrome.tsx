@@ -23,6 +23,7 @@ import { isSessionArchived } from '@/utils/sessionLifecycle';
 import { DesktopShortcutTooltip } from '@/components/DesktopShortcutTooltip';
 
 const INITIAL_INTERACTION = { focused: false, hovered: false };
+const DETAILS_CARD_GAP = 16;
 
 function useWebHoverCapability(): boolean {
     const [canHover, setCanHover] = React.useState(() => (
@@ -213,7 +214,7 @@ export const SessionRowDetails = React.memo(function SessionRowDetails({
 
     const cardWidth = 340;
     const estimatedHeight = 150;
-    const left = Math.min(viewportWidth - cardWidth - 12, anchor.x + anchor.width + 10);
+    const left = Math.min(viewportWidth - cardWidth - 12, anchor.x + anchor.width + DETAILS_CARD_GAP);
     const top = Math.max(12, Math.min(viewportHeight - estimatedHeight - 12, anchor.y - 4));
 
     const card = (

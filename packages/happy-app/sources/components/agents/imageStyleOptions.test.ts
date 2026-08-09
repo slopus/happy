@@ -7,6 +7,24 @@ import {
 } from './imageStyleOptions';
 
 describe('imageStyleOptions', () => {
+    it('round-trips the Torn Paper Editorial Gallery option and keeps its compiler', () => {
+        const style = IMAGE_AGENT_STYLE_PRESETS.find((preset) => preset.id === 'reference-torn-paper-editorial/torn-paper-photo-collage/1');
+        expect(style).toBeTruthy();
+
+        const option = formatImageStyleOption(style!);
+        const parsed = parseImageStyleOptions([option]);
+        const prompt = buildImageStyleContinuationPrompt([style!]);
+
+        expect(parsed).toHaveLength(1);
+        expect(parsed[0]?.style.id).toBe(style!.id);
+        expect(parsed[0]?.title).toBe('撕纸编辑影像拼贴');
+        expect(prompt).toContain(style!.promptContent);
+        expect(prompt).toContain(style!.id);
+        expect(prompt).toContain('45% to 65% of the poster');
+        expect(prompt).toContain('black-and-white halftone');
+        expect(prompt).toContain('一次只能处理一张源图片');
+    });
+
     it('parses encoded GPT Image Gallery options, removes duplicates, and caps at ten', () => {
         const styles = IMAGE_AGENT_STYLE_PRESETS.slice(0, 12);
         const options = [

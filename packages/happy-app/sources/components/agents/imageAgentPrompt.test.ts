@@ -75,6 +75,48 @@ describe('imageAgentPrompt', () => {
         expect(dogStyle?.promptHint).not.toMatch(/OBA|Obsidian/i);
     });
 
+    it('integrates the Torn Paper Editorial collage as a reusable single-photo style', () => {
+        const style = IMAGE_AGENT_STYLE_PRESETS.find((preset) => preset.id === 'reference-torn-paper-editorial/torn-paper-photo-collage/1');
+
+        expect(style).toMatchObject({
+            title: '撕纸编辑影像拼贴',
+            categoryId: 'reference-torn-paper-editorial',
+            sourceRepository: 'curated-reference-examples',
+            templateRef: 'reference-examples/torn-paper-editorial-reference/torn-paper-editorial.md',
+            promptPath: 'garden-gpt-image-2/prompt/torn-paper-editorial-v1.md',
+            sourceCaseId: 'torn-paper-editorial-reference/01-close-portrait',
+            executionKind: 'gpt-image-2',
+            inputMode: 'image-required',
+            multiInputMode: 'single',
+        });
+        expect(style?.promptContent).toContain('45% to 65% of the poster');
+        expect(style?.promptContent).toContain('exposed white paper fibers');
+        expect(style?.promptContent).toContain('black-and-white halftone');
+        expect(style?.promptContent).toContain('cobalt blue, vermilion red, or coral');
+        expect(style?.promptContent).toContain('tiny letter-spaced typewriter caption');
+        expect(style?.promptContent).toContain('flat matte paper scan');
+        expect(style?.promptContent).toContain('status bar, timestamp, watermark, logo');
+
+        const prompt = buildImageAgentPrompt({
+            agent: { ...agent, imageStyleIds: [style!.id] },
+            userPrompt: '把上传的人像做成大面积撕纸编辑拼贴。',
+            imageCount: 1,
+        });
+
+        expect(prompt).toContain(style!.promptContent);
+        expect(prompt).toContain('把上传的人像做成大面积撕纸编辑拼贴。');
+        expect(prompt).toContain('mcp__happy__send_image');
+        expect(prompt).toContain('Transform exactly one supplied source photo');
+
+        const multiSourcePrompt = buildImageAgentPrompt({
+            agent: { ...agent, imageStyleIds: [style!.id] },
+            userPrompt: '分别做成撕纸编辑拼贴。',
+            imageCount: 2,
+        });
+        expect(multiSourcePrompt).toContain('每个结果只能使用当前对应的 1 张用户素材作为源图片');
+        expect(multiSourcePrompt).toContain('禁止把多张用户素材拼图、混合或共同输入同一次图片生成');
+    });
+
     it('integrates the Minimal Zine Poster GitHub skill as a portable gallery style', () => {
         const style = IMAGE_AGENT_STYLE_PRESETS.find((preset) => preset.id === 'github-skills/minimal-zine-poster/1');
         expect(style).toMatchObject({

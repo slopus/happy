@@ -7,6 +7,7 @@ import { PHOTO_ILLUSTRATION_DIPTYCH_LICENSE_NOTICE, PHOTO_ILLUSTRATION_DIPTYCH_P
 import { PHOTO_ILLUSTRATION_DIPTYCH_LAKESIDE_PROMPT } from './photoIllustrationDiptychLakesidePrompt';
 import { SCENE_DISTILLATION_ZINE_LICENSE, SCENE_DISTILLATION_ZINE_PROMPT } from './sceneDistillationZinePrompt';
 import { SCENES_GATHERED_ZINE_LICENSE, SCENES_GATHERED_ZINE_PROMPT } from './scenesGatheredZinePrompt';
+import { TORN_PAPER_EDITORIAL_PROMPT } from './tornPaperEditorialPrompt';
 
 export const EXTRA_IMAGE_AGENT_STYLE_CATEGORIES: ImageAgentStyleCategory[] = [
     {
@@ -26,6 +27,12 @@ export const EXTRA_IMAGE_AGENT_STYLE_CATEGORIES: ImageAgentStyleCategory[] = [
         "id": "reference-graphite-cyan",
         "label": "石墨青暗调案例",
         "accent": "#466B75",
+        "count": 1
+    },
+    {
+        "id": "reference-torn-paper-editorial",
+        "label": "撕纸编辑案例",
+        "accent": "#B34732",
         "count": 1
     },
     {
@@ -66,6 +73,24 @@ export const EXTRA_IMAGE_AGENT_STYLE_PRESETS: ImageAgentStylePreset[] = [
         "inputMode": "image-required",
         "multiInputMode": "single",
         "responseInstructions": "After sending the finished poster, add a concise 1–3 sentence rationale in the user's current conversation language naming the selected orientation, the scene-specific copy idea, and the preserved photo-to-illustration correspondence. Do not reveal the full prompt, private source path, temporary motif, HTML path, or detailed parameters unless explicitly requested."
+    },
+    {
+        "id": "reference-torn-paper-editorial/torn-paper-photo-collage/1",
+        "title": "撕纸编辑影像拼贴",
+        "categoryId": "reference-torn-paper-editorial",
+        "categoryLabel": "撕纸编辑案例",
+        "categoryAccent": "#B34732",
+        "templateRef": "reference-examples/torn-paper-editorial-reference/torn-paper-editorial.md",
+        "templateLabel": "Torn Paper Editorial Photo Collage v1",
+        "promptHint": "把单张照片重构为 3:5 暖色旧纸编辑拼贴：45%–65% 的彩色主体从大面积不规则撕口中显露，环境化为黑白网点复印层，并用一道钴蓝、朱红或珊瑚色干刷建立结构，可选一行微型打字机字幕。",
+        "promptContent": TORN_PAPER_EDITORIAL_PROMPT,
+        "promptPath": "garden-gpt-image-2/prompt/torn-paper-editorial-v1.md",
+        "sourceCaseId": "torn-paper-editorial-reference/01-close-portrait",
+        "sourceRepository": "curated-reference-examples",
+        "executionKind": "gpt-image-2",
+        "inputMode": "image-required",
+        "multiInputMode": "single",
+        "responseInstructions": "After sending the image, add a concise 1-3 sentence rationale in the user's current conversation language that names the preserved subject or scene, torn photographic anchor, monochrome environmental echo, and structural brush color. Do not reveal the full prompt, private source path, or detailed parameters unless explicitly requested."
     },
     {
         "id": "github-skills/photo-illustration-diptych/2",

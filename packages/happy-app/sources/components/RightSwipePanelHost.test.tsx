@@ -11,6 +11,7 @@ import TestRenderer from 'react-test-renderer';
 type SpringCompletion = (finished?: boolean) => void;
 
 const mocks = vi.hoisted(() => ({
+    gestureEnabledValues: [] as boolean[],
     gestureHandlers: {} as Record<string, (...args: any[]) => void>,
     springCompletions: [] as Array<SpringCompletion | undefined>,
 }));
@@ -59,6 +60,9 @@ vi.mock('react-native-gesture-handler', () => {
             'blocksExternalGesture',
         ]) {
             pan[method] = (value: unknown) => {
+                if (method === 'enabled') {
+                    mocks.gestureEnabledValues.push(value as boolean);
+                }
                 if (method.startsWith('on') && typeof value === 'function') {
                     mocks.gestureHandlers[method] = value as (...args: any[]) => void;
                 }
@@ -117,13 +121,14 @@ function flattenStyle(style: unknown): Record<string, unknown> {
     return Object.assign({}, ...style.filter(Boolean));
 }
 
-function renderHost(callback?: () => void, enabled?: boolean) {
+function renderHost(callback?: () => void, enabled?: boolean, gestureEnabled = true) {
     let renderer: any;
     act(() => {
         renderer = TestRenderer.create(
             <RightSwipePanelHost
                 {...PANEL_ACCESSIBILITY_LABELS}
                 enabled={enabled}
+                gestureEnabled={gestureEnabled}
                 panelContent={(
                     <>
                         <CloseControl callback={callback} testID="close-with-callback" />
@@ -153,6 +158,7 @@ describe('RightSwipePanelHost close completion', () => {
     let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
     beforeEach(() => {
+        mocks.gestureEnabledValues = [];
         mocks.gestureHandlers = {};
         mocks.springCompletions = [];
         (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -202,6 +208,7 @@ describe('RightSwipePanelHost close completion', () => {
         act(() => renderer.update(
             <RightSwipePanelHost
                 {...PANEL_ACCESSIBILITY_LABELS}
+                gestureEnabled
                 panelContent={<CloseControl callback={second} testID="close-with-callback" />}
             >
                 <View />
@@ -257,6 +264,15 @@ describe('RightSwipePanelHost close completion', () => {
         const renderer = renderHost();
 
         expect(findControl(renderer, 'right-swipe-panel-edge-handle')).toBeUndefined();
+
+        act(() => renderer.unmount());
+    });
+
+    it('can keep the drawer mounted without registering the horizontal pan gesture', () => {
+        const renderer = renderHost(undefined, true, false);
+
+        expect(mocks.gestureEnabledValues.at(-1)).toBe(false);
+        expect(renderer.root.findByProps({ testID: 'right-swipe-panel-host' })).toBeDefined();
 
         act(() => renderer.unmount());
     });
@@ -324,6 +340,7 @@ describe('RightSwipePanelHost close completion', () => {
                     <RightSwipePanelHost
                         {...PANEL_ACCESSIBILITY_LABELS}
                         enabled
+                        gestureEnabled
                         mode="edge-handle"
                         panelContent={<View />}
                         showEdgeHandle={false}
@@ -356,6 +373,7 @@ describe('RightSwipePanelHost close completion', () => {
             renderer = TestRenderer.create(
                 <RightSwipePanelHost
                     {...PANEL_ACCESSIBILITY_LABELS}
+                    gestureEnabled
                     panelContent={<NestedBackControl onBack={nestedBack} />}
                 >
                     <View />
@@ -406,6 +424,7 @@ describe('RightSwipePanelHost close completion', () => {
             <RightSwipePanelHost
                 {...PANEL_ACCESSIBILITY_LABELS}
                 enabled
+                gestureEnabled
                 mode="drawer-toggle"
                 open={open}
                 panelContent={<View />}
