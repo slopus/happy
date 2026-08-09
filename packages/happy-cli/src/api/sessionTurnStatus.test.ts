@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { applyPersistedTurnStatus, applyQueuedMessageCount, clearStaleRunningTurnStatus } from './sessionTurnStatus';
+import {
+  applyPersistedTurnStatus,
+  applyQueuedMessageCount,
+  clearStaleRunningTurnStatus,
+  updateQueuedMessageCount,
+} from './sessionTurnStatus';
 
 describe('persisted session turn status', () => {
   it('preserves unrelated encrypted agent state fields', () => {
@@ -82,5 +87,23 @@ describe('persisted session turn status', () => {
     const queued = applyQueuedMessageCount(state, 2);
     expect(queued).toEqual({ ...state, queuedMessages: 2 });
     expect(applyQueuedMessageCount(queued, 0)).toEqual(state);
+  });
+
+  it('replays the current queue count when an offline session is swapped online', async () => {
+    const offlineSession = {
+      updateAgentState: async () => {},
+    };
+    let onlineState = { queuedMessages: 3 };
+    const onlineSession = {
+      updateAgentState: async (updater: (state: typeof onlineState) => typeof onlineState) => {
+        onlineState = updater(onlineState);
+      },
+    };
+
+    await updateQueuedMessageCount(offlineSession, 0);
+    expect(onlineState).toEqual({ queuedMessages: 3 });
+
+    await updateQueuedMessageCount(onlineSession, 0);
+    expect(onlineState).toEqual({});
   });
 });

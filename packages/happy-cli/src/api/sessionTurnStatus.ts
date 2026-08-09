@@ -1,4 +1,5 @@
 import type { AgentState } from './types';
+import type { ApiSessionClient } from './apiSession';
 
 export type PersistedTurnStatus = NonNullable<AgentState['turnStatus']>;
 
@@ -67,4 +68,11 @@ export function applyQueuedMessageCount(state: AgentState, count: number): Agent
     return state;
   }
   return { ...state, queuedMessages };
+}
+
+export function updateQueuedMessageCount(
+  session: Pick<ApiSessionClient, 'updateAgentState'>,
+  count: number,
+): Promise<void> {
+  return session.updateAgentState((state) => applyQueuedMessageCount(state, count));
 }
