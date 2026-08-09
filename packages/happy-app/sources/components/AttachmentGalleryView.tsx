@@ -131,10 +131,11 @@ export const AttachmentGalleryView = React.memo<{
         setResolutionRevision((revision) => revision + 1);
     }, []);
 
-    const generatedDownloadState = (() => {
+    const downloadableImages = images.filter((image) => image.kind !== 'audio' && image.kind !== 'video');
+    const downloadState = (() => {
         const items: ImageBatchDownloadItem[] = [];
         let settledCount = 0;
-        for (const image of images) {
+        for (const image of downloadableImages) {
             const resolution = resolutionRef.current.get(image.id);
             if (resolution?.settled) settledCount += 1;
             if (resolution?.uri) {
@@ -145,7 +146,7 @@ export const AttachmentGalleryView = React.memo<{
                 });
             }
         }
-        return { items, settledCount };
+        return { displayedCount: downloadableImages.length, items, settledCount };
     })();
 
     const handleOpen = React.useCallback((tappedId: string) => {
@@ -185,13 +186,21 @@ export const AttachmentGalleryView = React.memo<{
                     pendingCount={placeholderCount}
                     pendingElapsedLabel={pendingElapsedLabel}
                     containerWidth={frameWidth || Math.min(windowDimensions.width, layout.maxWidth)}
-                    downloadItems={generatedDownloadState.items}
-                    settledCount={generatedDownloadState.settledCount}
+                    downloadItems={downloadState.items}
+                    settledCount={downloadState.settledCount}
                     onResolution={handleResolution}
                     onOpen={handleOpen}
                 />
             ) : presentation === 'featured' ? (
                 <View style={styles.featuredList}>
+                    <View style={styles.galleryBatchAction}>
+                        <GeneratedImageBatchDownload
+                            items={downloadState.items}
+                            displayedCount={downloadState.displayedCount}
+                            settledCount={downloadState.settledCount}
+                            pendingCount={0}
+                        />
+                    </View>
                     {images.map((img) => (
                         <GalleryThumbnail
                             key={img.id}
@@ -207,30 +216,40 @@ export const AttachmentGalleryView = React.memo<{
                     ))}
                 </View>
             ) : (
-                // HorizontalScrollView (not a plain ScrollView): on mobile the drawer's
-                // open gesture spans the full screen width and activates symmetrically,
-                // so it would swallow this strip's horizontal swipes. The arbiter Pan in
-                // HorizontalScrollView claims horizontal drags (and yields at the left
-                // edge so the drawer can still open). See HorizontalScrollView.tsx.
-                <HorizontalScrollView
-                    showsHorizontalScrollIndicator={false}
-                    style={styles.strip}
-                    contentContainerStyle={styles.stripContent}
-                >
-                    {images.map((img) => (
-                        <GalleryThumbnail
-                            key={img.id}
-                            image={img}
-                            sessionId={sessionId}
-                            presentation={presentation}
-                            onResolution={handleResolution}
-                            onOpen={handleOpen}
+                <View>
+                    <View style={styles.galleryBatchAction}>
+                        <GeneratedImageBatchDownload
+                            items={downloadState.items}
+                            displayedCount={downloadState.displayedCount}
+                            settledCount={downloadState.settledCount}
+                            pendingCount={0}
                         />
-                    ))}
-                    {Array.from({ length: placeholderCount }, (_, index) => (
-                        <GalleryPlaceholder key={`pending-${index}`} presentation={presentation} elapsedLabel={pendingElapsedLabel} />
-                    ))}
-                </HorizontalScrollView>
+                    </View>
+                    {/* HorizontalScrollView (not a plain ScrollView): on mobile the drawer's
+                        open gesture spans the full screen width and activates symmetrically,
+                        so it would swallow this strip's horizontal swipes. The arbiter Pan in
+                        HorizontalScrollView claims horizontal drags (and yields at the left
+                        edge so the drawer can still open). See HorizontalScrollView.tsx. */}
+                    <HorizontalScrollView
+                        showsHorizontalScrollIndicator={false}
+                        style={styles.strip}
+                        contentContainerStyle={styles.stripContent}
+                    >
+                        {images.map((img) => (
+                            <GalleryThumbnail
+                                key={img.id}
+                                image={img}
+                                sessionId={sessionId}
+                                presentation={presentation}
+                                onResolution={handleResolution}
+                                onOpen={handleOpen}
+                            />
+                        ))}
+                        {Array.from({ length: placeholderCount }, (_, index) => (
+                            <GalleryPlaceholder key={`pending-${index}`} presentation={presentation} elapsedLabel={pendingElapsedLabel} />
+                        ))}
+                    </HorizontalScrollView>
+                </View>
             )}
         </View>
     );
@@ -288,7 +307,7 @@ function GeneratedAttachmentGrid({
                 ) : null}
                 <GeneratedImageBatchDownload
                     items={downloadItems}
-                    displayedCount={images.length}
+                    displayedCount={images.filter((image) => image.kind !== 'audio' && image.kind !== 'video').length}
                     settledCount={settledCount}
                     pendingCount={pendingCount}
                 />
@@ -515,6 +534,11 @@ const styles = StyleSheet.create(() => ({
         marginHorizontal: 8,
         marginVertical: 8,
         paddingHorizontal: 4,
+    },
+    galleryBatchAction: {
+        alignItems: 'flex-end',
+        marginHorizontal: 12,
+        marginTop: 8,
     },
     generatedHeader: {
         flexDirection: 'row',
