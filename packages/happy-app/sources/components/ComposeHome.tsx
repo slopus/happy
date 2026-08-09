@@ -30,7 +30,7 @@ import { useSpawnSession } from '@/hooks/useSpawnSession';
 import { useImagePicker } from '@/hooks/useImagePicker';
 import { getDisplayName, getAvatarUrl } from '@/sync/profile';
 import { Avatar } from './Avatar';
-import { RightSwipePanelHost } from './RightSwipePanelHost';
+import { RightSwipePanelHost, useRightSwipePanel } from './RightSwipePanelHost';
 import { SessionCapabilityHub } from './rightPanel/SessionCapabilityHub';
 import { DesktopRightPanel, DesktopRightPanelToggleButton } from './DesktopRightPanel';
 import { isMachineOnline } from '@/utils/machineUtils';
@@ -115,6 +115,25 @@ function getMachineName(machine: Machine | undefined): string | null {
 type ComposeHomeProps = {
     variant?: 'home' | 'screen';
 };
+
+const CompactRightPanelToggleButton = React.memo(function CompactRightPanelToggleButton({
+    panelLabel,
+}: {
+    panelLabel: string;
+}) {
+    const panel = useRightSwipePanel();
+    if (!panel) return null;
+
+    return (
+        <DesktopRightPanelToggleButton
+            expanded={panel.isOpen}
+            label={panel.isOpen
+                ? t('desktopWorkspace.hidePanel', { panel: panelLabel })
+                : t('desktopWorkspace.showPanel', { panel: panelLabel })}
+            onPress={panel.isOpen ? () => panel.closePanel() : panel.openPanel}
+        />
+    );
+});
 
 export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) => {
     const isScreen = variant === 'screen';
@@ -775,14 +794,17 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
         </View>
     );
 
+    const capabilityHubLabel = t('rightPanelCapabilityHub.title');
     const rightPanelToggleButton = desktopRightPanelAvailable && desktopRightPanelPresentation !== 'zen' ? (
         <DesktopRightPanelToggleButton
             expanded={showDesktopRightPanel}
             label={showDesktopRightPanel
-                ? t('desktopWorkspace.hidePanel', { panel: t('rightPanelCapabilityHub.title') })
-                : t('desktopWorkspace.showPanel', { panel: t('rightPanelCapabilityHub.title') })}
+                ? t('desktopWorkspace.hidePanel', { panel: capabilityHubLabel })
+                : t('desktopWorkspace.showPanel', { panel: capabilityHubLabel })}
             onPress={() => setDesktopRightPanelCollapsed(showDesktopRightPanel)}
         />
+    ) : !isTablet ? (
+        <CompactRightPanelToggleButton panelLabel={capabilityHubLabel} />
     ) : null;
     const composeContent = (
         <View style={styles.container}>
@@ -1080,10 +1102,10 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
     );
 
     if (!desktopRightPanelAvailable) {
-        const capabilityHubLabel = t('rightPanelCapabilityHub.title');
         return (
             <RightSwipePanelHost
                 closeAccessibilityLabel={t('desktopWorkspace.hidePanel', { panel: capabilityHubLabel })}
+                gestureEnabled={false}
                 openAccessibilityLabel={t('desktopWorkspace.showPanel', { panel: capabilityHubLabel })}
                 panelAccessibilityLabel={capabilityHubLabel}
                 panelContent={<SessionCapabilityHub />}
