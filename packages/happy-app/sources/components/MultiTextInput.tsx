@@ -55,6 +55,8 @@ interface MultiTextInputProps {
     onKeyPress?: OnKeyPressCallback;
     onSelectionChange?: (selection: { start: number; end: number }) => void;
     onStateChange?: (state: TextInputState) => void;
+    onSubmitEditing?: () => void;
+    submitBehavior?: 'newline' | 'submit' | 'blurAndSubmit';
 }
 
 export const MultiTextInput = React.memo(React.forwardRef<MultiTextInputHandle, MultiTextInputProps>((props, ref) => {
@@ -72,7 +74,9 @@ export const MultiTextInput = React.memo(React.forwardRef<MultiTextInputHandle, 
         onSubmitEditing,
         onKeyPress,
         onSelectionChange,
-        onStateChange
+        onStateChange,
+        onSubmitEditing,
+        submitBehavior = 'newline',
     } = props;
 
     const isControlled = value !== undefined;
@@ -267,7 +271,7 @@ export const MultiTextInput = React.memo(React.forwardRef<MultiTextInputHandle, 
                     autoCapitalize="sentences"
                     autoCorrect={true}
                     keyboardType="default"
-                    returnKeyType={returnKeyType}
+                    returnKeyType={submitBehavior === 'newline' ? 'default' : 'send'}
                     autoComplete="off"
                     textContentType="none"
                     submitBehavior={submitBehavior}

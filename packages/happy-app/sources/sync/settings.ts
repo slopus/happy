@@ -28,7 +28,7 @@ export const SettingsSchema = z.object({
     analyticsOptOut: z.boolean().describe('Whether to opt out of anonymous analytics'),
     experiments: z.boolean().describe('Whether to enable experimental features'),
     alwaysShowContextSize: z.boolean().describe('Always show context size in agent input'),
-    agentInputEnterToSend: z.boolean().describe('Whether pressing Enter submits/sends in the agent input (web)'),
+    agentInputEnterToSend: z.boolean().describe('Whether pressing Enter submits/sends in the agent input'),
     avatarStyle: z.string().describe('Avatar display style'),
     // Keep the legacy key for synced settings compatibility. It controls the
     // harness badges in the session list.
