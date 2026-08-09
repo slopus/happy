@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import TestRenderer from 'react-test-renderer';
 
 const listeners = vi.hoisted(() => new Map<string, EventListener>());
+const listenerCapture = vi.hoisted(() => new Map<string, boolean>());
 
 vi.mock('react-native', () => ({
     Platform: { OS: 'web' },
@@ -39,9 +40,13 @@ describe('useGlobalKeyboard', () => {
 
     beforeEach(() => {
         listeners.clear();
+        listenerCapture.clear();
         vi.clearAllMocks();
         vi.stubGlobal('window', {
-            addEventListener: (type: string, listener: EventListener) => listeners.set(type, listener),
+            addEventListener: (type: string, listener: EventListener, capture?: boolean) => {
+                listeners.set(type, listener);
+                listenerCapture.set(type, capture === true);
+            },
             removeEventListener: (type: string) => listeners.delete(type),
         });
         vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
@@ -107,6 +112,10 @@ describe('useGlobalKeyboard', () => {
 
         keydown({ ctrlKey: true, key: 'K', metaKey: false });
         expect(onCommandPalette).toHaveBeenCalledTimes(2);
+    });
+
+    it('captures global shortcuts before focused controls can stop propagation', () => {
+        expect(listenerCapture.get('keydown')).toBe(true);
     });
 
     it('uses physical key codes for global shortcuts when a keyboard layout changes event.key', () => {
