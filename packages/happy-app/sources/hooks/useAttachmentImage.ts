@@ -9,6 +9,13 @@ import { sync } from '@/sync/sync';
 import { downloadEncryptedAttachment } from '@/sync/apiAttachments';
 import { decryptBlob } from '@/encryption/blob';
 import { encodeBase64 } from '@/encryption/base64';
+import type { AttachmentImageOptions, AttachmentImageState } from './attachmentImageTypes';
+
+export type { AttachmentImageState } from './attachmentImageTypes';
+
+export function releaseImageViewerImageCache() {
+    // Native keeps the existing data-URI cache; the viewer-specific Blob cache is Web-only.
+}
 
 const MAX_CACHE_ENTRIES = 50;
 const cache = new Map<string, string>();
@@ -76,17 +83,15 @@ async function loadAttachmentDataUri(sessionId: string, ref: string): Promise<st
     return `data:${mime};base64,${encodeBase64(decrypted)}`;
 }
 
-export type AttachmentImageState = {
-    uri: string | null;
-    loading: boolean;
-    error: string | null;
-};
-
 type KeyedAttachmentImageState = AttachmentImageState & {
     cacheKey: string | null;
 };
 
-export function useAttachmentImage(sessionId: string, ref: string | undefined): AttachmentImageState {
+export function useAttachmentImage(
+    sessionId: string,
+    ref: string | undefined,
+    _options?: AttachmentImageOptions,
+): AttachmentImageState {
     const cacheKey = ref ? `${sessionId}:${ref}` : null;
     const [state, setState] = React.useState<KeyedAttachmentImageState>(() => {
         if (!cacheKey) return { cacheKey: null, uri: null, loading: false, error: null };

@@ -39,10 +39,12 @@ import type { ImageViewerSource } from '@/sync/imageViewer';
 import { downloadImage } from '@/utils/imageDownload';
 import { Modal } from '@/modal';
 import { t } from '@/text';
+import { useAttachmentImage } from '@/hooks/useAttachmentImage';
 
 const MAX_SCALE = 4;
 const DOUBLE_TAP_SCALE = 2.5;
 const CLOSE_TRANSLATE_Y = 120; // swipe-down distance that dismisses
+const PAGE_OVERSCAN = 1;
 
 interface ImageViewerProps {
     sources: ImageViewerSource[];
@@ -71,15 +73,27 @@ export function ImageViewer({ sources, initialIndex, onClose }: ImageViewerProps
         }
     }, [initialIndex, screenW]);
 
-    const onMomentumEnd = React.useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
-        const next = Math.round(e.nativeEvent.contentOffset.x / screenW);
+    const updateCurrentIndex = React.useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
+        const next = Math.max(0, Math.min(
+            Math.round(e.nativeEvent.contentOffset.x / screenW),
+            sources.length - 1,
+        ));
         setCurrentIndex((prev) => (prev === next ? prev : next));
-    }, [screenW]);
+    }, [screenW, sources.length]);
 
     const backdropStyle = useAnimatedStyle(() => ({ opacity: backdropOpacity.value }));
 
     const single = sources.length === 1;
     const currentSource = sources[currentIndex];
+    const windowStart = Math.max(0, currentIndex - PAGE_OVERSCAN);
+    const windowEnd = Math.min(sources.length - 1, currentIndex + PAGE_OVERSCAN);
+    const visibleSources = sources.slice(windowStart, windowEnd + 1);
+    const leadingWidth = windowStart * screenW;
+    const trailingWidth = Math.max(0, (sources.length - windowEnd - 1) * screenW);
+
+    const handleZoomChange = React.useCallback((zoomed: boolean) => {
+        setPagingEnabled(!zoomed);
+    }, []);
 
     const handleDownload = React.useCallback(() => {
         if (!currentSource || downloadBusy) return;
@@ -107,22 +121,29 @@ export function ImageViewer({ sources, initialIndex, onClose }: ImageViewerProps
                 showsHorizontalScrollIndicator={false}
                 contentOffset={{ x: initialIndex * screenW, y: 0 }}
                 onLayout={onScrollLayout}
-                onMomentumScrollEnd={onMomentumEnd}
+                onScroll={updateCurrentIndex}
+                onMomentumScrollEnd={updateCurrentIndex}
+                scrollEventThrottle={16}
                 decelerationRate="fast"
                 style={styles.fill}
             >
-                {sources.map((source, i) => (
-                    <ZoomablePage
-                        key={`${i}-${source.uri}`}
-                        source={source}
-                        screenW={screenW}
-                        screenH={screenH}
-                        isActive={i === currentIndex}
-                        backdropOpacity={backdropOpacity}
-                        onZoomChange={(zoomed) => setPagingEnabled(!zoomed)}
-                        onClose={onClose}
-                    />
-                ))}
+                {leadingWidth > 0 && <View style={{ width: leadingWidth, height: screenH }} />}
+                {visibleSources.map((source, relativeIndex) => {
+                    const index = windowStart + relativeIndex;
+                    return (
+                        <ZoomablePage
+                            key={`${index}-${source.uri}`}
+                            source={source}
+                            screenW={screenW}
+                            screenH={screenH}
+                            isActive={index === currentIndex}
+                            backdropOpacity={backdropOpacity}
+                            onZoomChange={handleZoomChange}
+                            onClose={onClose}
+                        />
+                    );
+                })}
+                {trailingWidth > 0 && <View style={{ width: trailingWidth, height: screenH }} />}
             </ScrollView>
 
             {!single && (
@@ -187,6 +208,11 @@ const ZoomablePage = React.memo<ZoomablePageProps>(({
     onZoomChange,
     onClose,
 }) => {
+    const { uri: fullResolutionUri } = useAttachmentImage(
+        source.sessionId ?? '',
+        source.attachmentRef,
+        { lifetime: 'viewer' },
+    );
     const scale = useSharedValue(1);
     const savedScale = useSharedValue(1);
     const translateX = useSharedValue(0);
@@ -314,9 +340,11 @@ const ZoomablePage = React.memo<ZoomablePageProps>(({
             <Animated.View style={[styles.page, { width: screenW, height: screenH }]}>
                 <Animated.View style={[styles.imageWrap, imageStyle]}>
                     <Image
-                        source={{ uri: source.uri }}
+                        source={{ uri: fullResolutionUri ?? source.uri }}
                         style={{ width: screenW, height: screenH }}
                         contentFit="contain"
+                        cachePolicy="none"
+                        recyclingKey={source.attachmentRef ?? source.uri}
                         transition={150}
                     />
                 </Animated.View>

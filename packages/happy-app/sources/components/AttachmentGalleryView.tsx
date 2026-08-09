@@ -21,6 +21,7 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { z } from 'zod';
 import { Message } from '@/sync/typesMessage';
 import { useAttachmentImage } from '@/hooks/useAttachmentImage';
+import { ATTACHMENT_THUMBNAIL_MAX_DIMENSION } from '@/hooks/attachmentImageTypes';
 import { thumbhashToDataUri } from '@/utils/thumbhash';
 import { imageViewer } from '@/sync/imageViewer';
 import { HorizontalScrollView } from '@/components/HorizontalScrollView';
@@ -117,10 +118,17 @@ export const AttachmentGalleryView = React.memo<{
         const index = ordered.findIndex((x) => x.img.id === tappedId);
         if (index < 0) return;
         imageViewer.open(
-            ordered.map((x) => ({ uri: x.uri, width: x.img.width, height: x.img.height, filename: x.img.name })),
+            ordered.map((x) => ({
+                uri: x.uri,
+                width: x.img.width,
+                height: x.img.height,
+                filename: x.img.name,
+                sessionId,
+                attachmentRef: x.img.ref,
+            })),
             index,
         );
-    }, [images]);
+    }, [images, sessionId]);
 
     if (images.length === 0 && placeholderCount === 0) return null;
 
@@ -235,7 +243,15 @@ const GalleryImageThumb = React.memo<{
         return uri ? { uri } : undefined;
     }, [image.thumbhash]);
 
-    const { uri, error } = useAttachmentImage(sessionId, sessionId ? image.ref : undefined);
+    const { uri, error } = useAttachmentImage(
+        sessionId,
+        sessionId ? image.ref : undefined,
+        {
+            maxDimension: ATTACHMENT_THUMBNAIL_MAX_DIMENSION,
+            sourceWidth: image.width,
+            sourceHeight: image.height,
+        },
+    );
 
     // Report this image's resolved URI up so the parent can open the full run.
     React.useEffect(() => {
@@ -267,6 +283,8 @@ const GalleryImageThumb = React.memo<{
                 placeholder={placeholder}
                 style={[displaySize, styles.thumb]}
                 contentFit={isFeatured ? 'contain' : 'cover'}
+                cachePolicy="none"
+                recyclingKey={image.id}
                 transition={150}
             />
             {error && !uri && (

@@ -12,12 +12,18 @@ import { Modal, StatusBar } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { ImageViewer } from './ImageViewer';
 import { useImageViewerStore } from '@/sync/imageViewer';
+import { releaseImageViewerImageCache } from '@/hooks/useAttachmentImage';
 
 export function ImageViewerHost() {
     const visible = useImageViewerStore((s) => s.visible);
     const sources = useImageViewerStore((s) => s.sources);
     const index = useImageViewerStore((s) => s.index);
     const close = useImageViewerStore((s) => s.close);
+    const clear = useImageViewerStore((s) => s.clear);
+    const handleDismiss = React.useCallback(() => {
+        releaseImageViewerImageCache();
+        clear();
+    }, [clear]);
 
     return (
         <Modal
@@ -26,6 +32,7 @@ export function ImageViewerHost() {
             animationType="fade"
             statusBarTranslucent
             onRequestClose={close}
+            onDismiss={handleDismiss}
         >
             <StatusBar backgroundColor="#000" barStyle="light-content" />
             <GestureHandlerRootView style={{ flex: 1, backgroundColor: '#000' }}>
