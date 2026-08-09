@@ -90,6 +90,8 @@ export type ImageAgentStyleLabelKey =
     | 'agents.imageStylePhotoIllustrationDiptychHint'
     | 'agents.imageStylePhotoIllustrationDiptychLakeside'
     | 'agents.imageStylePhotoIllustrationDiptychLakesideHint'
+    | 'agents.imageStylePhotoIllustrationEditorialEcho'
+    | 'agents.imageStylePhotoIllustrationEditorialEchoHint'
     | 'agents.imageStyleVintageFilm'
     | 'agents.imageStylePremiumStudio'
     | 'agents.imageStyleWhiteProduct'

@@ -34,6 +34,21 @@ This ledger records the immutable source and intentional adaptation boundary for
 - Changed: the shared compiler gains a dedicated waterside mode that explicitly locks the path curve, dock rhythm, vessel position, shoreline, horizon, and distant landform while removing 85–95% of lower-panel detail.
 - Omitted: phone status/navigation bars, social viewer controls, progress/download/play UI, screenshot pixels, automatic captions, inferred place names, gradients, decorative symbols, and unrelated stock-vector detail.
 
+## Editorial Echo
+
+- Style: `github-skills/photo-illustration-diptych/3`
+- Source: original Happy/Paws adaptive compiler in `wangjs-jacky/happy@e8716a0a0c949f8e2b45e1e3d7c8d36ad7bba17c`; no third-party Skill code, prompt text, or preview pixels were copied.
+- License: MIT; complete notice in `photoIllustrationDiptychPrompt.ts` and re-exported by `photoIllustrationEditorialEchoPrompt.ts`.
+- User authorization: the user supplied the visual reference and source portrait, iterated on the result, and explicitly asked to save the approved capability as a gallery style. The private portrait and its derived poster are behavior references only and are not shipped.
+- Visual layout reference: `/Users/jacky/.happy/attachments/2026-08-09T11-10-26-228Z-0-138117.jpg` — SHA-256 `2fea6f852a7b4a07b5777e334353edcd3a0f7b4a637aaa33673a88c8835e909f`.
+- Private source portrait: `/Users/jacky/.happy/attachments/2026-08-09T10-41-49-193Z-0-135477.jpg` — SHA-256 `26fd6215f53f78b9a6d36fe385cf28faefbc26c473eca00d8f9e2b664f4bcdbb`; not shipped.
+- Approved portrait behavior reference: `/Users/jacky/.codex/generated_images/mirror-selfie-watercolor-diptych-20260809/portrait-study-v3.png` — SHA-256 `4f42d822c04a39dfdada359c0650a903d9728564186da7e1cf573ac938d8d4bf`; not shipped because it contains the private source portrait and identifiable likeness.
+- Shipped metadata-free 4:3 cover SHA-256: `256b5144a04ce65a9f7eae3461322710bc940e2595fa9f94eec14282c0410647`.
+- Preview relationship: the cover is an original HTML/CSS landscape composition built from the already approved, metadata-free `photo-illustration-diptych-lakeside.jpg` gallery asset. It demonstrates a truthful wide photo anchor, one isolated illustrated scene echo, scene-specific title/study/caption typography, thin rule, warm paper, and source-derived swatches without using the private portrait, portrait-poster pixels, phone UI, or identity data.
+- Preserved: one-photo privacy boundary; internal Scene Map; truthful photographic anchor; source-matched semantic geometry; source-derived palette; subject-aware ink-and-watercolor interpretation; single-input behavior; anatomy, identity, and scene-correspondence quality gates; one targeted motif regeneration maximum.
+- Changed: orientation now adapts among portrait 3:5, landscape 5:3, and neutral 4:3; the generated illustration becomes one isolated organic motif instead of a full second panel; a Copy Map creates one scene-specific title, indexed study label, and short caption; generation is split into a motif-only GPT Image stage and deterministic HTML/CSS typography/composition before screenshot delivery.
+- Omitted: private source and derived-output pixels; generic category titles such as PORTRAIT/TRAVEL/MEMORIES; inferred places, dates, names, brands, or biography; image-model-rendered final typography; rectangular second-image treatment; phone/status/social UI; logos, QR codes, signatures, gradients, rounded cards, and shadows.
+
 ## Minimal Zine Paper Poster
 
 - Style: `github-skills/minimal-zine-poster/1`

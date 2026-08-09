@@ -1717,6 +1717,8 @@ export const pt: TranslationStructure = {
         imageStyleGithubSkills: 'Skills do GitHub',
         imageStylePhotoIllustrationDiptych: 'Díptico de foto e ilustração',
         imageStylePhotoIllustrationDiptychHint: 'Combine uma foto fornecida com uma ilustração de composição correspondente em um pôster sereno de papel 3:5.\nPreserve a quantidade de pontos de referência, a linha do horizonte, a ordem espacial e o movimento; a técnica se adapta da aguada de nanquim à ilustração editorial plana, ao skyline geométrico ou ao Art Deco.',
+        imageStylePhotoIllustrationEditorialEcho: 'Eco editorial',
+        imageStylePhotoIllustrationEditorialEchoHint: 'Transforme uma foto em um pôster editorial vertical ou horizontal adaptado à cena, com a fotografia fiel como âncora, um único eco isolado em aquarela e nanquim e um título, uma etiqueta de estudo e uma legenda breve específicos da cena, compostos como texto real e nítido.',
         imageStylePhotoIllustrationDiptychLakeside: 'Díptico minimalista à beira do lago',
         imageStylePhotoIllustrationDiptychLakesideHint: 'Combine uma foto à beira do lago com uma representação geométrica radicalmente simplificada da mesma cena. Preserve a curva da passarela, o ritmo do píer, a posição da embarcação, a margem, o horizonte e o perfil das montanhas usando campos de cor azul, verde, coral e marfim quente derivados da imagem original.',
         imageStyleMinimalZinePoster: 'Pôster Zine minimalista em papel',

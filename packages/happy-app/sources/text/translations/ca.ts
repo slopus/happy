@@ -1718,6 +1718,8 @@ export const ca: TranslationStructure = {
         imageStyleGithubSkills: 'Skills de GitHub',
         imageStylePhotoIllustrationDiptych: 'Díptic de foto i il·lustració',
         imageStylePhotoIllustrationDiptychHint: 'Combina una fotografia proporcionada amb una il·lustració de composició equivalent en un cartell serè sobre paper, en format 3:5.\nConserva el nombre de punts de referència, l’horitzó, l’ordre espacial i el moviment; la tècnica s’adapta des de l’aiguada de tinta fins a la il·lustració editorial plana, el perfil urbà geomètric o l’Art Deco.',
+        imageStylePhotoIllustrationEditorialEcho: 'Ressò editorial',
+        imageStylePhotoIllustrationEditorialEchoHint: 'Converteix una foto en un pòster editorial vertical o horitzontal adaptat a l’escena, amb la fotografia fidel com a ancoratge, un únic ressò aïllat d’aquarel·la i tinta, i un títol, una etiqueta d’estudi i un peu breu específics de l’escena, compostos com a text real i nítid.',
         imageStylePhotoIllustrationDiptychLakeside: 'Díptic minimalista vora el llac',
         imageStylePhotoIllustrationDiptychLakesideHint: 'Combina una fotografia vora el llac amb una representació geomètrica radicalment simplificada de la mateixa escena. Conserva la corba de la passarel·la, el ritme del moll, la posició de l’embarcació, la riba, l’horitzó i el perfil de les muntanyes mitjançant camps de color blau, verd, coral i ivori càlid derivats de la imatge original.',
         imageStyleMinimalZinePoster: 'Pòster Zine minimalista en paper',
