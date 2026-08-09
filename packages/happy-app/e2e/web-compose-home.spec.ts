@@ -1347,7 +1347,7 @@ test.describe('会话行组织可见回归', () => {
         const actionsBox = await page.getByTestId(`session-row-actions-${sessionId}`).boundingBox();
         if (!sidebarBox || !detailsBox || !actionsBox) throw new Error('找不到 Codex 侧栏、操作区或右侧详情浮层');
         expect(actionsBox.x + actionsBox.width).toBeLessThanOrEqual(sidebarBox.x + sidebarBox.width + 1);
-        expect(detailsBox.x).toBeGreaterThan(sidebarBox.x + sidebarBox.width);
+        expect(detailsBox.x).toBeGreaterThanOrEqual(sidebarBox.x + sidebarBox.width + 16);
         await page.screenshot({
             path: testInfo.outputPath('nav-13-01-hover-details-1280x900.png'),
             fullPage: true,
