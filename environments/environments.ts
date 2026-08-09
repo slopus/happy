@@ -233,6 +233,24 @@ async function waitFor(check: () => boolean | Promise<boolean>, timeoutMs: numbe
     throw new Error(`Timed out waiting for ${label} after ${timeoutMs}ms`);
 }
 
+async function isExpoWebBundleReady(webUrl: string): Promise<boolean> {
+    const documentResponse = await fetch(webUrl);
+    if (!documentResponse.ok) return false;
+
+    const html = await documentResponse.text();
+    const scriptSources = Array.from(
+        html.matchAll(/<script\b[^>]*\bsrc=["']([^"']+)["']/gi),
+        (match) => match[1],
+    );
+    if (scriptSources.length === 0) return false;
+
+    const scriptResponses = await Promise.all(
+        scriptSources.map((source) => fetch(new URL(source, webUrl))),
+    );
+    await Promise.all(scriptResponses.map((response) => response.arrayBuffer()));
+    return scriptResponses.every((response) => response.ok);
+}
+
 function spawnService(
     command: string,
     args: string[],
@@ -345,7 +363,10 @@ export async function createEnvironment(opts?: { noSwitch?: boolean }): Promise<
     return name;
 }
 
-export async function startEnvironmentServices(name: string): Promise<void> {
+export async function startEnvironmentServices(
+    name: string,
+    opts?: { waitForWebBundle?: boolean },
+): Promise<void> {
     const envDir = getEnvironmentDir(name);
     const config = readEnvironmentConfig(name);
     const envVars = buildEnvVars(envDir, config.serverPort, config.expoPort);
@@ -365,7 +386,7 @@ export async function startEnvironmentServices(name: string): Promise<void> {
         await waitFor(async () => {
             const res = await fetch(`${serverUrl}/`);
             return res.ok;
-        }, 30_000, "server");
+        }, opts?.waitForWebBundle ? 90_000 : 30_000, "server");
     } catch {
         throw new Error(`Server failed to start. Check logs: ${serverLogFile}`);
     }
@@ -387,18 +408,12 @@ export async function startEnvironmentServices(name: string): Promise<void> {
         // A listening Metro socket does not mean the first Web bundle is
         // ready. Production-like evidence runs clear the cache, so warm the
         // document before Playwright starts its per-test five-second waits.
-        const waitForWeb = process.env.HAPPY_E2E_WEB_NO_DEV === "1"
-            ? async () => {
-                try {
-                    const response = await fetch(`http://localhost:${config.expoPort}/`);
-                    return response.ok;
-                } catch {
-                    return false;
-                }
-            }
+        const webUrl = `http://localhost:${config.expoPort}/`;
+        const waitForWeb = opts?.waitForWebBundle || process.env.HAPPY_E2E_WEB_NO_DEV === "1"
+            ? () => isExpoWebBundleReady(webUrl)
             : () => isPortInUse(config.expoPort);
         // Metro 首次构建依赖较多，冷启动在开发机上可能超过 30 秒。
-        await waitFor(waitForWeb, 120_000, "web");
+        await waitFor(waitForWeb, 300_000, "web");
     } catch {
         throw new Error(`Web failed to start. Check logs: ${webLogFile}`);
     }

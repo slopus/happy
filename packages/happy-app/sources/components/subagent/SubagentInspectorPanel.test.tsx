@@ -11,6 +11,7 @@ import TestRenderer from 'react-test-renderer';
 
 const mocks = vi.hoisted(() => ({
     messages: [] as Message[],
+    panelBackHandler: null as (() => boolean) | null,
 }));
 
 vi.mock('react-native', () => ({
@@ -45,9 +46,28 @@ vi.mock('react-native-unistyles', () => ({
 vi.mock('@/components/MessageView', () => ({
     MessageView: (props: Record<string, unknown>) => React.createElement('MessageView', props),
 }));
+vi.mock('@/components/ToolGroupView', () => ({
+    AgentWorkGroupView: (props: Record<string, unknown>) => React.createElement('AgentWorkGroupView', props),
+    ToolGroupView: (props: Record<string, unknown>) => React.createElement('ToolGroupView', props),
+}));
+vi.mock('@/components/AttachmentGalleryView', () => ({
+    AttachmentGalleryView: (props: Record<string, unknown>) => React.createElement('AttachmentGalleryView', props),
+}));
+vi.mock('@/components/layout', () => ({ layout: { maxWidth: 800 } }));
+vi.mock('@/components/RightSwipePanelHost', () => ({
+    useRightSwipePanel: () => ({
+        registerBackHandler: (handler: () => boolean) => {
+            mocks.panelBackHandler = handler;
+            return () => {
+                if (mocks.panelBackHandler === handler) mocks.panelBackHandler = null;
+            };
+        },
+    }),
+}));
 vi.mock('@/sync/storage', () => ({
     useSession: () => ({ metadata: { flavor: 'codex' } }),
     useSessionMessages: () => ({ messages: mocks.messages, isLoaded: true }),
+    useSetting: () => false,
 }));
 vi.mock('@/text', () => ({ t: (key: string) => key }));
 
@@ -88,6 +108,7 @@ describe('SubagentInspectorPanel', () => {
 
     beforeEach(() => {
         mocks.messages = [];
+        mocks.panelBackHandler = null;
     });
 
     it('renders the selected review task, visible work, and finding without leaking hidden or parent content', () => {
@@ -134,6 +155,7 @@ describe('SubagentInspectorPanel', () => {
         const readCall = toolMessage('4', { file_path: 'sources/api/review.ts' }, [], 'Read');
         const grepCall = toolMessage('5', { pattern: 'authorize', path: 'sources/api' }, [], 'Grep');
         const bashCall = toolMessage('6', { command: 'pnpm --filter happy-app test' }, [], 'Bash');
+        const skillCall = toolMessage('6.5', { skillNames: ['diagnosing-bugs'] }, [], 'Skill');
         mocks.messages = [
             toolMessage('1', {
                 sessionSubagent: 'agent-target',
@@ -146,6 +168,7 @@ describe('SubagentInspectorPanel', () => {
                 readCall,
                 grepCall,
                 bashCall,
+                skillCall,
                 finalFinding,
             ]),
             toolMessage('8', { sessionSubagent: 'agent-parent', title: 'Parent agent' }, [parentText]),
@@ -172,8 +195,10 @@ describe('SubagentInspectorPanel', () => {
         expect(renderer.root.findByProps({ testID: 'subagent-inspector-title' }).props.children).toBe('Live title');
         expect(renderer.root.findByProps({ testID: 'subagent-inspector-status' }).props.children)
             .toBe('toolGroup.subagentStatus.completed');
-        expect(renderer.root.findByProps({ testID: 'subagent-inspector-task' }).props.children)
+        const taskText = renderer.root.findByProps({ testID: 'subagent-inspector-task' });
+        expect(taskText.props.children)
             .toBe('Review the authorization change. Report findings with file and line references.');
+        expect(taskText.props.style).toEqual(expect.objectContaining({ fontSize: 16, lineHeight: 24 }));
         const renderedMessages = renderer.root.findAllByType('MessageView');
         expect(renderedMessages.map((node: any) => node.props.message)).toEqual([
             visibleProgress,
@@ -182,6 +207,14 @@ describe('SubagentInspectorPanel', () => {
             bashCall,
             finalFinding,
         ]);
+        const skillGroup = renderer.root.findByType('ToolGroupView');
+        expect(skillGroup.props).toMatchObject({
+            expanded: false,
+            group: {
+                id: 'group-6.5',
+                messages: [{ id: '6.5' }],
+            },
+        });
         expect(JSON.stringify(renderer.toJSON())).not.toContain('Private chain of thought');
         expect(JSON.stringify(renderer.toJSON())).not.toContain('Parent implementation summary');
 
@@ -204,5 +237,25 @@ describe('SubagentInspectorPanel', () => {
             .toBe('toolGroup.subagentNoDetails');
         expect(JSON.stringify(renderer.toJSON())).not.toContain('Sibling output');
         act(() => renderer.unmount());
+    });
+
+    it('routes compact system back through the same inspector back action', () => {
+        mocks.messages = [toolMessage('1', {
+            sessionSubagent: 'agent-target',
+            prompt: 'Review the change.',
+        })];
+        const onBack = vi.fn();
+        let renderer: any;
+        act(() => {
+            renderer = TestRenderer.create(
+                <SubagentInspectorPanel onBack={onBack} selection={selection} sessionId="session-one" />,
+            );
+        });
+
+        expect(mocks.panelBackHandler).toEqual(expect.any(Function));
+        expect(mocks.panelBackHandler?.()).toBe(true);
+        expect(onBack).toHaveBeenCalledOnce();
+        act(() => renderer.unmount());
+        expect(mocks.panelBackHandler).toBeNull();
     });
 });

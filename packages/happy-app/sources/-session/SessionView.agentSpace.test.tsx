@@ -958,13 +958,19 @@ describe('SessionView Agent-space boundary', () => {
             status: 'running',
         }));
 
-        expect(renderer.root.findByType('RightSwipePanelHost').props.open).toBe(true);
+        expect(renderer.root.findByType('RightSwipePanelHost').props).toMatchObject({
+            fullWidth: true,
+            open: true,
+        });
         const inspectorPanel = renderer.root.findByType('SubagentInspectorPanel');
         expect(inspectorPanel.props.selection.id).toBe('agent-one');
         expect(renderer.root.findAllByType('SessionCapabilityHub')).toHaveLength(0);
 
         act(() => inspectorPanel.props.onBack());
-        expect(renderer.root.findByType('RightSwipePanelHost').props.open).toBe(true);
+        expect(renderer.root.findByType('RightSwipePanelHost').props).toMatchObject({
+            fullWidth: false,
+            open: true,
+        });
         expect(renderer.root.findAllByType('SubagentInspectorPanel')).toHaveLength(0);
         expect(renderer.root.findAllByType('SessionCapabilityHub')).toHaveLength(1);
 

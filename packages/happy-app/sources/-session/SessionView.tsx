@@ -833,6 +833,7 @@ const SessionViewContent = React.memo((props: { id: string }) => {
                 closeAccessibilityLabel={t('desktopWorkspace.hidePanel', { panel: compactPanelLabel })}
                 enabled={isDataReady && !!session}
                 gestureEnabled={false}
+                fullWidth={subagentSelection !== null}
                 mode={responsiveRightPanelMode === 'edge-handle' ? 'edge-handle' : 'drawer-toggle'}
                 onOpenChange={(nextOpen) => {
                     if (nextOpen) setInfoPanelOpen(false);

@@ -840,13 +840,22 @@ describe('useGroupedMessages', () => {
         const skill = toolMessage('skill-only', 2, { name: 'Skill' });
         skill.tool.input = { skillNames: ['diagnosing-bugs'] };
 
-        const items = groupMessagesForDisplay([skill], true);
-
-        expect(items).toMatchObject([{
-            type: 'tool-group',
-            id: 'group-skill-only',
-            messages: [{ id: 'skill-only' }],
+        expect(groupMessagesForDisplay([skill], false)).toEqual([{
+            type: 'message',
+            id: 'skill-only',
+            message: skill,
         }]);
+
+        for (const [groupingEnabled, options] of [
+            [true, undefined],
+            [false, { groupStandaloneSkills: true }],
+        ] as const) {
+            expect(groupMessagesForDisplay([skill], groupingEnabled, options)).toMatchObject([{
+                type: 'tool-group',
+                id: 'group-skill-only',
+                messages: [{ id: 'skill-only' }],
+            }]);
+        }
     });
 
     it('keeps a standalone question visible so it remains interactive', () => {

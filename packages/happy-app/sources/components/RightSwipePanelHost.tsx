@@ -27,6 +27,7 @@ type Props = {
     panelAccessibilityLabel: string;
     enabled?: boolean;
     gestureEnabled: boolean;
+    fullWidth?: boolean;
     mode?: Exclude<ResponsiveRightPanelMode, 'persistent'>;
     showEdgeHandle?: boolean;
 };
@@ -105,6 +106,7 @@ export const RightSwipePanelHost = React.memo(function RightSwipePanelHost({
     closeAccessibilityLabel,
     enabled: enabledOverride,
     gestureEnabled,
+    fullWidth = false,
     mode,
     onOpenChange,
     open: controlledOpen,
@@ -131,7 +133,9 @@ export const RightSwipePanelHost = React.memo(function RightSwipePanelHost({
         340,
     );
     const minimumVisibleMainWidth = responsiveMode === 'drawer-toggle' ? 240 : 110;
-    const panelWidth = Math.min(preferredPanelWidth, Math.max(0, hostWidth - minimumVisibleMainWidth));
+    const panelWidth = fullWidth
+        ? hostWidth
+        : Math.min(preferredPanelWidth, Math.max(0, hostWidth - minimumVisibleMainWidth));
     const mainWidth = Platform.OS === 'web' && open
         ? Math.max(0, hostWidth - panelWidth)
         : hostWidth;

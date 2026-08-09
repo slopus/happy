@@ -2,8 +2,13 @@ import * as React from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import { AttachmentGalleryView } from '@/components/AttachmentGalleryView';
 import { MessageView } from '@/components/MessageView';
-import { useSession, useSessionMessages } from '@/sync/storage';
+import { useRightSwipePanel } from '@/components/RightSwipePanelHost';
+import { AgentWorkGroupView, ToolGroupView } from '@/components/ToolGroupView';
+import { layout } from '@/components/layout';
+import { groupMessagesForDisplay } from '@/hooks/useGroupedMessages';
+import { useSession, useSessionMessages, useSetting } from '@/sync/storage';
 import { t } from '@/text';
 import {
     collectConversationActivities,
@@ -24,6 +29,12 @@ export const SubagentInspectorPanel = React.memo(function SubagentInspectorPanel
     const { theme } = useUnistyles();
     const session = useSession(sessionId);
     const { messages } = useSessionMessages(sessionId);
+    const groupToolCalls = useSetting('groupToolCalls');
+    const rightSwipePanel = useRightSwipePanel();
+    React.useEffect(() => rightSwipePanel?.registerBackHandler(() => {
+        onBack();
+        return true;
+    }), [onBack, rightSwipePanel]);
     const transcript = React.useMemo(
         () => findSubagentTranscript(messages, selection.id),
         [messages, selection.id],
@@ -35,6 +46,24 @@ export const SubagentInspectorPanel = React.memo(function SubagentInspectorPanel
     const title = liveActivity?.title ?? selection.title ?? selection.id;
     const status = liveActivity?.status ?? selection.status;
     const transcriptMessages = transcript?.messages ?? [];
+    const displayItems = React.useMemo(
+        () => [...groupMessagesForDisplay(
+            [...transcriptMessages].reverse(),
+            groupToolCalls,
+            { collapseCurrentTurn: false, groupStandaloneSkills: true },
+        )].reverse(),
+        [groupToolCalls, transcriptMessages],
+    );
+    const [expandedGroups, setExpandedGroups] = React.useState<Set<string>>(() => new Set());
+    React.useEffect(() => setExpandedGroups(new Set()), [selection.id]);
+    const toggleGroup = React.useCallback((groupId: string) => {
+        setExpandedGroups((current) => {
+            const next = new Set(current);
+            if (next.has(groupId)) next.delete(groupId);
+            else next.add(groupId);
+            return next;
+        });
+    }, []);
     const taskPrompt = typeof transcript?.agent.tool.input?.prompt === 'string'
         ? transcript.agent.tool.input.prompt.trim()
         : '';
@@ -81,14 +110,52 @@ export const SubagentInspectorPanel = React.memo(function SubagentInspectorPanel
                             </Text>
                         </View>
                     )}
-                    {transcriptMessages.map((message) => (
-                        <MessageView
-                            key={`${message.kind}-${message.id}`}
-                            message={message}
-                            metadata={session?.metadata ?? null}
-                            sessionId={sessionId}
-                        />
-                    ))}
+                    {displayItems.map((item) => {
+                        if (item.type === 'tool-group') {
+                            return (
+                                <ToolGroupView
+                                    expanded={expandedGroups.has(item.id)}
+                                    group={item}
+                                    key={item.id}
+                                    metadata={session?.metadata ?? null}
+                                    onToggle={() => toggleGroup(item.id)}
+                                    sessionId={sessionId}
+                                />
+                            );
+                        }
+                        if (item.type === 'agent-work-group') {
+                            return (
+                                <AgentWorkGroupView
+                                    expanded={expandedGroups.has(item.id)}
+                                    group={item}
+                                    key={item.id}
+                                    metadata={session?.metadata ?? null}
+                                    onToggle={() => toggleGroup(item.id)}
+                                    sessionId={sessionId}
+                                />
+                            );
+                        }
+                        if (item.type === 'image-group') {
+                            return (
+                                <AttachmentGalleryView
+                                    key={item.id}
+                                    messages={item.messages}
+                                    pendingCount={item.pendingCount}
+                                    pendingStartedAt={item.pendingStartedAt}
+                                    presentation={item.presentation}
+                                    sessionId={sessionId}
+                                />
+                            );
+                        }
+                        return (
+                            <MessageView
+                                key={item.id}
+                                message={item.message}
+                                metadata={session?.metadata ?? null}
+                                sessionId={sessionId}
+                            />
+                        );
+                    })}
                 </ScrollView>
             ) : (
                 <View style={styles.empty}>
@@ -153,13 +220,13 @@ const styles = StyleSheet.create((theme) => ({
     },
     eyebrow: {
         color: theme.colors.textSecondary,
-        fontSize: 11,
+        fontSize: 12,
         fontWeight: '600',
     },
     title: {
         color: theme.colors.text,
-        fontSize: 13,
-        lineHeight: 17,
+        fontSize: 15,
+        lineHeight: 20,
         fontFamily: 'monospace',
         fontWeight: '600',
     },
@@ -176,7 +243,7 @@ const styles = StyleSheet.create((theme) => ({
     },
     statusText: {
         color: theme.colors.textSecondary,
-        fontSize: 11,
+        fontSize: 12,
     },
     spinner: {
         transform: [{ scaleX: 0.65 }, { scaleY: 0.65 }],
@@ -186,22 +253,25 @@ const styles = StyleSheet.create((theme) => ({
         paddingBottom: 24,
     },
     taskBlock: {
+        alignSelf: 'center',
+        width: '100%',
+        maxWidth: layout.maxWidth,
         gap: 5,
         marginBottom: 12,
-        paddingHorizontal: 12,
+        paddingHorizontal: 16,
         paddingBottom: 12,
         borderBottomWidth: StyleSheet.hairlineWidth,
         borderBottomColor: theme.colors.divider,
     },
     taskLabel: {
         color: theme.colors.textSecondary,
-        fontSize: 11,
+        fontSize: 12,
         fontWeight: '600',
     },
     taskText: {
         color: theme.colors.text,
-        fontSize: 13,
-        lineHeight: 19,
+        fontSize: 16,
+        lineHeight: 24,
     },
     empty: {
         flex: 1,

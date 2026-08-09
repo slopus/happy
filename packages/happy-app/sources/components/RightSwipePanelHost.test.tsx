@@ -459,4 +459,37 @@ describe('RightSwipePanelHost close completion', () => {
             (Platform as { OS: string }).OS = 'ios';
         }
     });
+
+    it('can let a focused detail panel replace the full compact workspace', () => {
+        (Platform as { OS: string }).OS = 'web';
+        let renderer: any;
+
+        try {
+            act(() => {
+                renderer = TestRenderer.create(
+                    <RightSwipePanelHost
+                        {...PANEL_ACCESSIBILITY_LABELS}
+                        enabled
+                        fullWidth
+                        gestureEnabled={false}
+                        mode="drawer-toggle"
+                        open
+                        panelContent={<View />}
+                    >
+                        <View />
+                    </RightSwipePanelHost>,
+                );
+            });
+
+            const main = renderer.root.findByProps({ testID: 'right-swipe-panel-main' });
+            const drawer = renderer.root.findByProps({ testID: 'right-swipe-panel-drawer' });
+            const scrim = renderer.root.findByProps({ testID: 'right-swipe-panel-scrim' });
+            expect(main.props.style).toEqual(expect.objectContaining({ width: 0 }));
+            expect(flattenStyle(drawer.props.style)).toEqual(expect.objectContaining({ width: 400 }));
+            expect(flattenStyle(scrim.props.style)).toEqual(expect.objectContaining({ width: 0 }));
+        } finally {
+            if (renderer) act(() => renderer.unmount());
+            (Platform as { OS: string }).OS = 'ios';
+        }
+    });
 });

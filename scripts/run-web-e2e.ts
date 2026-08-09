@@ -65,13 +65,16 @@ async function main(): Promise<void> {
     try {
         environmentName = await createEnvironment({ noSwitch: true });
         setEnvironmentTemplate(environmentName, 'authenticated-empty');
-        await startEnvironmentServices(environmentName);
 
         console.log('构建本地测试 CLI...');
         run('pnpm', ['--filter', '@wangjs-jacky/paws', 'build']);
 
         const videoFixture = prepareMp4Fixture();
         temporaryVideoDirectory = videoFixture.temporaryDirectory;
+
+        // Keep the server out of the expensive CLI build window. On loaded
+        // development machines it can otherwise exit before seeding starts.
+        await startEnvironmentServices(environmentName, { waitForWebBundle: true });
 
         const originalConsoleLog = console.log;
         console.log = (...values: unknown[]) => {

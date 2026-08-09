@@ -83,7 +83,7 @@ export function useGroupedMessages(
 export function groupMessagesForDisplay(
     messages: Message[],
     enabled: boolean = true,
-    options: { collapseCurrentTurn?: boolean } = {},
+    options: { collapseCurrentTurn?: boolean; groupStandaloneSkills?: boolean } = {},
 ): DisplayItem[] {
     const collapseCurrentTurn = options.collapseCurrentTurn ?? true;
     messages = filterSupersededUserMessages(messages);
@@ -132,6 +132,16 @@ export function groupMessagesForDisplay(
                         ...getPendingStateForImageGroup(chronological, imageAgentPresentation),
                     });
                 }
+                continue;
+            }
+            if (options.groupStandaloneSkills && msg.kind === 'tool-call' && msg.tool.name === 'Skill') {
+                result.push({
+                    type: 'tool-group',
+                    id: `group-${msg.id}`,
+                    messages: [msg],
+                    hasRunning: msg.tool.state === 'running',
+                    hasPendingPermission: hasPendingPermission([msg]),
+                });
                 continue;
             }
             result.push({ type: 'message', id: msg.id, message: msg });

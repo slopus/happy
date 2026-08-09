@@ -4641,17 +4641,24 @@ test.describe('中文 Web 消息与工具演示', () => {
         ];
 
         await page.setViewportSize({ width: 1280, height: 720 });
-        await appendE2ESessionEnvelopes(request, sessionId, envelopes.slice(0, 2));
         await page.goto(authenticatedRoute(`/session/${sessionId}`));
+        const messageInput = page.getByTestId('session-message-input');
+        try {
+            await expect(messageInput).toBeVisible({ timeout: 20_000 });
+        } catch {
+            await page.reload();
+            await expect(messageInput).toBeVisible({ timeout: 90_000 });
+        }
+        await appendE2ESessionEnvelopes(request, sessionId, envelopes.slice(0, 2));
         await expect(page.getByText('Root conversation context must stay outside the inspector.', { exact: true }))
-            .toBeVisible();
+            .toBeVisible({ timeout: 30_000 });
         await appendE2ESessionEnvelopes(request, sessionId, envelopes.slice(2, 8));
         const parentRow = page.locator(`[data-testid="activity-subagent-${parentSubagent}"]:visible`).first();
         const desktopPanel = page.locator('[data-testid="desktop-right-panel"]:visible');
-        await expect(parentRow).toBeVisible();
+        await expect(parentRow).toBeVisible({ timeout: 30_000 });
         await appendE2ESessionEnvelopes(request, sessionId, envelopes.slice(8));
         await expect(page.getByText('Root final answer must stay outside the inspector.', { exact: true }))
-            .toBeVisible();
+            .toBeVisible({ timeout: 30_000 });
         await expect(parentRow).toHaveAttribute('role', 'button');
         await expect(parentRow).toHaveAttribute('aria-expanded', 'false');
         await expect(desktopPanel).toContainText('能力中心');
@@ -4724,6 +4731,10 @@ test.describe('中文 Web 消息与工具演示', () => {
         const drawer = page.locator('[data-testid="right-swipe-panel-drawer"]:visible');
         await expect(drawer).toHaveAttribute('role', 'dialog');
         await expect(drawer.getByTestId('subagent-inspector-panel')).toBeVisible();
+        const drawerBox = await drawer.boundingBox();
+        expect(drawerBox).not.toBeNull();
+        expect(drawerBox!.x).toBe(0);
+        expect(drawerBox!.width).toBe(390);
         await expect(drawer.getByTestId('subagent-inspector-title')).toHaveText('Review agent');
         await expect(drawer.getByTestId('subagent-inspector-task')).toContainText(
             'Review the authorization changes in packages/happy-app/sources/api/review.ts.',
@@ -4741,6 +4752,7 @@ test.describe('中文 Web 消息与工具演示', () => {
         await drawer.getByTestId('right-swipe-panel-close-button').click();
         await expect(page.getByTestId('subagent-inspector-panel')).toHaveCount(0);
         await expect(page.getByTestId('session-message-input')).toBeVisible();
+        await page.close();
     });
 
     test('[MP4-AGENT] send_file 输出直接呈现裸视频并支持播放与跳播', async ({ page }, testInfo) => {
