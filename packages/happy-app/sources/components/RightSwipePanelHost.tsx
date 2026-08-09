@@ -26,6 +26,7 @@ type Props = {
     closeAccessibilityLabel: string;
     panelAccessibilityLabel: string;
     enabled?: boolean;
+    gestureEnabled: boolean;
     mode?: Exclude<ResponsiveRightPanelMode, 'persistent'>;
     showEdgeHandle?: boolean;
 };
@@ -103,6 +104,7 @@ export const RightSwipePanelHost = React.memo(function RightSwipePanelHost({
     children,
     closeAccessibilityLabel,
     enabled: enabledOverride,
+    gestureEnabled,
     mode,
     onOpenChange,
     open: controlledOpen,
@@ -376,7 +378,7 @@ export const RightSwipePanelHost = React.memo(function RightSwipePanelHost({
 
     const horizontalGesture = React.useMemo(() => {
         const pan = Gesture.Pan()
-            .enabled(enabled)
+            .enabled(enabled && gestureEnabled)
             .manualActivation(true)
             .onTouchesDown((e) => {
                 'worklet';
@@ -437,9 +439,12 @@ export const RightSwipePanelHost = React.memo(function RightSwipePanelHost({
             pan.blocksExternalGesture(drawerPan);
         }
         return pan;
-    }, [decided, drawerPan, enabled, open, panelWidth, progress, setPanelOpen, startProgress, startX, startY, supersedePanelAnimation]);
+    }, [decided, drawerPan, enabled, gestureEnabled, open, panelWidth, progress, setPanelOpen, startProgress, startX, startY, supersedePanelAnimation]);
 
-    const externalHorizontalGestures = React.useMemo(() => [horizontalGesture], [horizontalGesture]);
+    const externalHorizontalGestures = React.useMemo(
+        () => gestureEnabled ? [horizontalGesture] : [],
+        [gestureEnabled, horizontalGesture],
+    );
 
     const scrimStyle = useAnimatedStyle(() => ({
         opacity: progress.value * 0.38,
@@ -535,7 +540,7 @@ export const RightSwipePanelHost = React.memo(function RightSwipePanelHost({
                                 <View style={styles.scrimFill} />
                             </Pressable>
                         )}
-                        {Platform.OS === 'web' && responsiveMode === 'edge-handle' && showEdgeHandle && (
+                        {gestureEnabled && Platform.OS === 'web' && responsiveMode === 'edge-handle' && showEdgeHandle && (
                             <Pressable
                                 accessibilityLabel={open ? closeAccessibilityLabel : openAccessibilityLabel}
                                 accessibilityRole="button"
