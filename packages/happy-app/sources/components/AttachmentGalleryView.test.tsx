@@ -104,6 +104,53 @@ function generatedImageMessage(index = 1, ref = `ref-generated-${index}`): ToolC
     };
 }
 
+function uploadedImageMessage(index = 1, ref = `ref-uploaded-${index}`): ToolCallMessage {
+    return {
+        kind: 'tool-call',
+        id: `uploaded-${index}`,
+        localId: null,
+        createdAt: index,
+        tool: {
+            name: 'file',
+            state: 'completed',
+            input: {
+                ref,
+                name: `uploaded-${index}.png`,
+                kind: 'image',
+                image: { width: 1024, height: 1536 },
+            },
+            createdAt: index,
+            startedAt: index,
+            completedAt: index + 1,
+            description: 'uploaded image',
+        },
+        children: [],
+    };
+}
+
+function uploadedAudioMessage(index = 1, ref = `ref-uploaded-audio-${index}`): ToolCallMessage {
+    return {
+        kind: 'tool-call',
+        id: `uploaded-audio-${index}`,
+        localId: null,
+        createdAt: index,
+        tool: {
+            name: 'file',
+            state: 'completed',
+            input: {
+                ref,
+                name: `uploaded-audio-${index}.m4a`,
+                kind: 'audio',
+            },
+            createdAt: index,
+            startedAt: index,
+            completedAt: index + 1,
+            description: 'uploaded audio',
+        },
+        children: [],
+    };
+}
+
 describe('AttachmentGalleryView generated batches', () => {
     let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
@@ -253,9 +300,14 @@ describe('AttachmentGalleryView generated batches', () => {
         act(() => renderer.unmount());
     });
 
-    it.each(['compact', 'featured'] as const)('does not render a batch action in %s galleries', (presentation) => {
-        attachmentImages.set('ref-generated-1', {
-            uri: 'blob:generated-image-1',
+    it.each(['compact', 'featured'] as const)('renders a batch action for multiple images in %s galleries', (presentation) => {
+        attachmentImages.set('ref-uploaded-1', {
+            uri: 'blob:uploaded-image-1',
+            loading: false,
+            error: null,
+        });
+        attachmentImages.set('ref-uploaded-2', {
+            uri: 'blob:uploaded-image-2',
             loading: false,
             error: null,
         });
@@ -263,7 +315,77 @@ describe('AttachmentGalleryView generated batches', () => {
         act(() => {
             renderer = TestRenderer.create(
                 <AttachmentGalleryView
-                    messages={[generatedImageMessage()]}
+                    messages={[uploadedImageMessage(1), uploadedImageMessage(2)]}
+                    sessionId="session-1"
+                    presentation={presentation}
+                />,
+            );
+        });
+
+        const button = renderer.root.findByProps({ testID: 'attachment-gallery-download-all' });
+        expect(button.props.disabled).toBe(false);
+        expect(button.findByType('Text').children.join('')).toBe('Download all 2');
+
+        act(() => renderer.unmount());
+    });
+
+    it('keeps ordinary gallery downloads disabled until every image settles', () => {
+        attachmentImages.set('ref-uploaded-1', { uri: 'blob:uploaded-image-1', loading: false, error: null });
+        attachmentImages.set('ref-uploaded-2', { uri: null, loading: true, error: null });
+        const messages = [uploadedImageMessage(1), uploadedImageMessage(2)];
+        let renderer: any;
+        act(() => {
+            renderer = TestRenderer.create(
+                <AttachmentGalleryView messages={messages} sessionId="session-1" presentation="compact" />,
+            );
+        });
+
+        expect(renderer.root.findByProps({ testID: 'attachment-gallery-download-all' }).props.disabled).toBe(true);
+
+        attachmentImages.set('ref-uploaded-2', { uri: 'blob:uploaded-image-2', loading: false, error: null });
+        act(() => {
+            renderer.update(
+                <AttachmentGalleryView messages={[...messages]} sessionId="session-1" presentation="compact" />,
+            );
+        });
+
+        expect(renderer.root.findByProps({ testID: 'attachment-gallery-download-all' }).props.disabled).toBe(false);
+
+        act(() => renderer.unmount());
+    });
+
+    it('does not let non-image attachments block ordinary gallery downloads', () => {
+        attachmentImages.set('ref-uploaded-1', { uri: 'blob:uploaded-image-1', loading: false, error: null });
+        attachmentImages.set('ref-uploaded-2', { uri: 'blob:uploaded-image-2', loading: false, error: null });
+        let renderer: any;
+        act(() => {
+            renderer = TestRenderer.create(
+                <AttachmentGalleryView
+                    messages={[uploadedImageMessage(1), uploadedAudioMessage(), uploadedImageMessage(2)]}
+                    sessionId="session-1"
+                    presentation="compact"
+                />,
+            );
+        });
+
+        const button = renderer.root.findByProps({ testID: 'attachment-gallery-download-all' });
+        expect(button.props.disabled).toBe(false);
+        expect(button.findByType('Text').children.join('')).toBe('Download all 2');
+
+        act(() => renderer.unmount());
+    });
+
+    it.each(['compact', 'featured'] as const)('does not render a batch action for one image in %s galleries', (presentation) => {
+        attachmentImages.set('ref-uploaded-1', {
+            uri: 'blob:uploaded-image-1',
+            loading: false,
+            error: null,
+        });
+        let renderer: any;
+        act(() => {
+            renderer = TestRenderer.create(
+                <AttachmentGalleryView
+                    messages={[uploadedImageMessage()]}
                     sessionId="session-1"
                     presentation={presentation}
                 />,
