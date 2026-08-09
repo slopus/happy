@@ -2,6 +2,14 @@
 import type { ImageStylePreviewEntry } from './imageStylePreviewManifest';
 
 export const EXTRA_IMAGE_STYLE_PREVIEW_MANIFEST: Record<string, ImageStylePreviewEntry> = {
+    "reference-torn-paper-editorial/torn-paper-photo-collage/1": {
+        "fileName": "torn-paper-editorial-close-portrait.jpg",
+        "sourceSet": "curated-reference-examples",
+        "sourceCaseId": "torn-paper-editorial-reference/01-close-portrait",
+        "sourceIndex": 45,
+        "width": 969,
+        "height": 1615
+    },
     "github-skills/photo-illustration-diptych/2": {
         "fileName": "photo-illustration-diptych-lakeside.jpg",
         "sourceSet": "github-skill",
