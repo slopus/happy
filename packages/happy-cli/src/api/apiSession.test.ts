@@ -559,6 +559,30 @@ describe('ApiSessionClient v3 messages API migration', () => {
         });
     });
 
+    it('waits for the server acknowledgement before resolving an agent state update', async () => {
+        const client = new ApiSessionClient('fake-token', session);
+        let releaseAck!: () => void;
+        const ackGate = new Promise<void>((resolve) => { releaseAck = resolve; });
+        mockSocket.emitWithAck.mockImplementation(async (_event: string, payload: any) => {
+            await ackGate;
+            return {
+                result: 'success',
+                version: 1,
+                agentState: payload.agentState,
+            };
+        });
+
+        let settled = false;
+        const update = client.updateAgentState((state) => ({ ...state, queuedMessages: 1 }))
+            .then(() => { settled = true; });
+
+        await waitForCheck(() => expect(mockSocket.emitWithAck).toHaveBeenCalledTimes(1));
+        expect(settled).toBe(false);
+        releaseAck();
+        await update;
+        expect(settled).toBe(true);
+    });
+
     it('persists root protocol lifecycle outcomes and keeps them after the normal ready event', async () => {
         const client = new ApiSessionClient('fake-token', session);
         mockAxiosPost.mockResolvedValue({ data: { messages: [] } });

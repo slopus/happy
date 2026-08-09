@@ -183,6 +183,7 @@ export const it: TranslationStructure = {
         lastSeen: ({ time }: { time: string }) => `visto l'ultima volta ${time}`,
         idle: 'inattivo',
         running: 'in esecuzione',
+        queued: ({ count }: { count: number }) => `${count} messagg${count === 1 ? 'io' : 'i'} in coda`,
         failed: 'non riuscito',
         completed: 'completato',
         permissionRequired: 'permesso richiesto',

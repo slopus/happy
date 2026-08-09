@@ -9,6 +9,7 @@ import {
     seedEnvironment,
     setEnvironmentTemplate,
     startEnvironmentServices,
+    startEnvironmentWeb,
     stopEnvironment,
 } from '../environments/environments';
 
@@ -16,7 +17,7 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'
 const armHomebrewBin = '/opt/homebrew/bin';
 
 if (process.platform === 'darwin' && process.arch === 'arm64' && fs.existsSync(armHomebrewBin)) {
-    process.env.PATH = `${armHomebrewBin}:${process.env.PATH ?? ''}`;
+    process.env.PATH = `${process.env.PATH ?? ''}:${armHomebrewBin}`;
 }
 
 function run(command: string, args: string[], env?: NodeJS.ProcessEnv): void {
@@ -74,7 +75,10 @@ async function main(): Promise<void> {
 
         // Keep the server out of the expensive CLI build window. On loaded
         // development machines it can otherwise exit before seeding starts.
-        await startEnvironmentServices(environmentName, { waitForWebBundle: true });
+        await startEnvironmentServices(environmentName, {
+            startWeb: false,
+            waitForWebBundle: true,
+        });
 
         const originalConsoleLog = console.log;
         console.log = (...values: unknown[]) => {
@@ -85,10 +89,11 @@ async function main(): Promise<void> {
             originalConsoleLog(...values);
         };
         try {
-            await seedEnvironment(environmentName);
+            await seedEnvironment(environmentName, { startDaemon: false });
         } finally {
             console.log = originalConsoleLog;
         }
+        await startEnvironmentWeb(environmentName, { warmBundle: true });
 
         const config = getEnvironmentConfig(environmentName);
         if (!config.authenticatedWebUrl) {
@@ -106,18 +111,20 @@ async function main(): Promise<void> {
         );
     } catch (error) {
         if (environmentName) {
-            const webLogPath = path.join(
-                repoRoot,
-                'environments',
-                'data',
-                'envs',
-                environmentName,
-                'web',
-                'stdout.log',
-            );
-            if (fs.existsSync(webLogPath)) {
-                console.error('\nWeb 服务日志：\n');
-                console.error(fs.readFileSync(webLogPath, 'utf8'));
+            for (const service of ['server', 'web']) {
+                const logPath = path.join(
+                    repoRoot,
+                    'environments',
+                    'data',
+                    'envs',
+                    environmentName,
+                    service,
+                    'stdout.log',
+                );
+                if (fs.existsSync(logPath)) {
+                    console.error(`\n${service === 'server' ? 'Server' : 'Web'} 服务日志：\n`);
+                    console.error(fs.readFileSync(logPath, 'utf8'));
+                }
             }
         }
         throw error;

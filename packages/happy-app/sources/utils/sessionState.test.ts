@@ -1,11 +1,15 @@
 import { describe, expect, it, vi } from 'vitest';
 import { AgentStateSchema } from '@/sync/storageTypes';
-import { resolveSessionState } from './sessionUtils';
+import { resolveSessionState, useSessionStatus } from './sessionUtils';
 
 vi.mock('react-native-unistyles', () => ({
     useUnistyles: () => ({ theme: { colors: { accent: '#007aff' } } }),
 }));
-vi.mock('@/text', () => ({ t: (key: string) => key }));
+vi.mock('@/text', () => ({
+    t: (key: string, values?: { count?: number }) => key === 'status.queued'
+        ? `${values?.count} queued`
+        : key,
+}));
 
 describe('resolveSessionState', () => {
     it.each([
@@ -25,6 +29,18 @@ describe('resolveSessionState', () => {
                 presence: 'online' as const,
                 thinking: false,
                 agentState: { turnStatus: { status: 'running' as const, updatedAt: 1 } },
+            },
+            expected: { state: 'running', isConnected: true },
+        },
+        {
+            name: 'queued follow-up after a stale completed outcome',
+            session: {
+                presence: 'online' as const,
+                thinking: false,
+                agentState: {
+                    queuedMessages: 1,
+                    turnStatus: { status: 'completed' as const, updatedAt: 1 },
+                },
             },
             expected: { state: 'running', isConnected: true },
         },
@@ -85,10 +101,44 @@ describe('AgentStateSchema turnStatus compatibility', () => {
         expect(AgentStateSchema.parse({ controlledByUser: false })).toEqual({ controlledByUser: false });
         expect(AgentStateSchema.parse({
             requests: { permission: { tool: 'Bash', arguments: {}, createdAt: 1 } },
+            queuedMessages: 2,
             turnStatus: { status: 'failed', updatedAt: 2, turnId: 'turn-1' },
         })).toEqual({
             requests: { permission: { tool: 'Bash', arguments: {}, createdAt: 1 } },
+            queuedMessages: 2,
             turnStatus: { status: 'failed', updatedAt: 2, turnId: 'turn-1' },
+        });
+    });
+});
+
+describe('useSessionStatus queue label priority', () => {
+    const session = {
+        activeAt: 1,
+        presence: 'online',
+        thinking: false,
+        agentState: {
+            queuedMessages: 1,
+            turnStatus: { status: 'completed', updatedAt: 1 },
+        },
+    } as Parameters<typeof useSessionStatus>[0];
+
+    it('shows the queue label over a stale completed outcome', () => {
+        expect(useSessionStatus(session)).toMatchObject({
+            state: 'running',
+            statusText: '1 queued',
+        });
+    });
+
+    it('keeps a permission request more prominent than the queue label', () => {
+        expect(useSessionStatus({
+            ...session,
+            agentState: {
+                ...session.agentState,
+                requests: { permission: { tool: 'Bash', arguments: {}, createdAt: 1 } },
+            },
+        })).toMatchObject({
+            state: 'permission_required',
+            statusText: 'status.permissionRequired',
         });
     });
 });

@@ -229,6 +229,7 @@ export class CodexAppServerClient {
     // before starting a new turn (prevents stale turn/interrupt from aborting the next turn).
     private pendingInterrupt: Promise<void> | null = null;
     private notificationProtocol: 'unknown' | 'legacy' | 'raw' = 'unknown';
+    private startedTurnIds = new Set<string>();
     private completedTurnIds = new Set<string>();
     private rawFileChangesByItemId = new Map<string, LegacyPatchChanges>();
 
@@ -343,6 +344,24 @@ export class CodexAppServerClient {
         });
     }
 
+    private emitTaskStarted(turnId: string | null, event?: EventMsg): void {
+        if (turnId && this.completedTurnIds.has(turnId)) {
+            return;
+        }
+        if (turnId && this.startedTurnIds.has(turnId)) {
+            return;
+        }
+        if (turnId) {
+            this._turnId = turnId;
+            this.startedTurnIds.add(turnId);
+        }
+        this.markPendingTurnStarted(turnId);
+        this.eventHandler?.(event ?? {
+            type: 'task_started',
+            ...(turnId ? { turn_id: turnId } : {}),
+        });
+    }
+
     private handleRawNotification(method: string, params: any): boolean {
         if (!this.shouldHandleRawNotification(method)) {
             return false;
@@ -353,14 +372,7 @@ export class CodexAppServerClient {
                 return true;
             }
             const turnId = this.extractTurnId(params);
-            if (turnId) {
-                this._turnId = turnId;
-            }
-            this.markPendingTurnStarted(turnId);
-            this.eventHandler?.({
-                type: 'task_started',
-                ...(turnId ? { turn_id: turnId } : {}),
-            });
+            this.emitTaskStarted(turnId);
             return true;
         }
 
@@ -756,6 +768,7 @@ export class CodexAppServerClient {
         this.connected = false;
         this._turnId = null;
         this.notificationProtocol = 'unknown';
+        this.startedTurnIds.clear();
         this.completedTurnIds.clear();
         if (!opts?.preserveThreadState) {
             this._threadId = null;
@@ -1197,10 +1210,13 @@ export class CodexAppServerClient {
         const result = await this.request('turn/start', params) as { turn?: { id?: string | null } };
         const turnId = result?.turn?.id;
         if (typeof turnId === 'string' && turnId.length > 0) {
-            this._turnId = turnId;
             if (this.pendingTurnCompletion) {
                 this.pendingTurnCompletion.turnId = turnId;
             }
+            // Some app-server versions accept a turn but omit turn/started and
+            // legacy task_started notifications. The successful RPC response is
+            // authoritative that work has begun, so keep session state live.
+            this.emitTaskStarted(turnId);
         }
     }
 
@@ -1363,6 +1379,7 @@ export class CodexAppServerClient {
         this._threadId = null;
         this._turnId = null;
         this.threadDefaults = null;
+        this.startedTurnIds.clear();
         this.completedTurnIds.clear();
         this.rawFileChangesByItemId.clear();
     }
@@ -1613,10 +1630,11 @@ export class CodexAppServerClient {
                     this._turnId = msg.turn_id;
                 }
                 if (msg.type === 'task_started') {
-                    this.markPendingTurnStarted(msg.turn_id ?? msg.turnId ?? null);
+                    this.emitTaskStarted(msg.turn_id ?? msg.turnId ?? null, msg);
+                } else {
+                    // Fire event handler first (so consumer processes the event)
+                    this.eventHandler?.(msg);
                 }
-                // Fire event handler first (so consumer processes the event)
-                this.eventHandler?.(msg);
                 // Then resolve turn completion promise
                 if (msg.type === 'task_complete' || msg.type === 'turn_aborted') {
                     const turnId = msg.turn_id ?? msg.turnId ?? null;

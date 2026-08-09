@@ -184,6 +184,7 @@ export const pt: TranslationStructure = {
         lastSeen: ({ time }: { time: string }) => `visto por último ${time}`,
         idle: 'inativo',
         running: 'em execução',
+        queued: ({ count }: { count: number }) => `${count} mensage${count === 1 ? 'm' : 'ns'} na fila`,
         failed: 'falhou',
         completed: 'concluído',
         permissionRequired: 'permissão necessária',

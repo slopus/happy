@@ -57,6 +57,7 @@ import { parseSpecialCommand } from '@/parsers/specialCommands';
 import type { GoalCommand, UsageCommand } from '@/parsers/specialCommands';
 import { listCodexSkillNames } from './codexSkills';
 import { registerSessionTitleWorker } from '@/title/sessionTitleWorker';
+import { updateQueuedMessageCount } from '@/api/sessionTurnStatus';
 
 /**
  * Extracts a human-readable error from a codex task_complete/turn_aborted event.
@@ -397,6 +398,10 @@ export async function runCodex(opts: {
     let client!: CodexAppServerClient;
     let reasoningProcessor!: ReasoningProcessor;
     let abortInProgress: Promise<void> | null = null;
+    const messageQueue = new MessageQueue2<EnhancedMode>(hashCodexEnhancedMode);
+    const syncQueuedMessageCount = (targetSession: ApiSessionClient): Promise<void> => (
+        updateQueuedMessageCount(targetSession, messageQueue.size())
+    );
     const { session: initialSession, reconnectionHandle } = setupOfflineReconnection({
         api,
         sessionTag,
@@ -405,6 +410,7 @@ export async function runCodex(opts: {
         response,
         onSessionSwap: (newSession) => {
             session = newSession;
+            void syncQueuedMessageCount(newSession);
             // Update permission handler with new session to avoid stale reference
             if (permissionHandler) {
                 permissionHandler.updateSession(newSession);
@@ -412,6 +418,7 @@ export async function runCodex(opts: {
         }
     });
     session = initialSession;
+    void syncQueuedMessageCount(session);
 
     // On reconnect, un-archive the session and skip replaying old messages.
     if (reconnectSessionId) {
@@ -444,8 +451,6 @@ export async function runCodex(opts: {
             logger.debug('[START] Failed to report to daemon (may not be running):', error);
         }
     }
-
-    const messageQueue = new MessageQueue2<EnhancedMode>(hashCodexEnhancedMode);
 
     // Track current overrides to apply per message
     // Use shared PermissionMode type from api/types for cross-agent compatibility
@@ -621,6 +626,7 @@ export async function runCodex(opts: {
                 attachments: attachmentsForThisMessage,
                 queue: messageQueue,
             });
+            void syncQueuedMessageCount(session);
             await cleanupMediaAttachments(enqueueResult.displacedAttachments.filter(isMediaAttachment));
             if (enqueueResult.status !== 'queued') {
                 logger.debug(`[Codex] /${enqueueResult.status} command pushed to isolated queue`);
@@ -1413,6 +1419,7 @@ export async function runCodex(opts: {
                     break;
                 }
                 message = batch;
+                void syncQueuedMessageCount(session);
             }
 
             // Defensive check for TS narrowing
@@ -1600,6 +1607,21 @@ export async function runCodex(opts: {
     } finally {
         // Clean up resources when main loop exits
         logger.debug('[codex]: Final cleanup start');
+        messageQueue.close();
+        let queueClearTimeout: ReturnType<typeof setTimeout> | undefined;
+        try {
+            await Promise.race([
+                updateQueuedMessageCount(session, 0),
+                new Promise<void>((resolve) => {
+                    queueClearTimeout = setTimeout(() => {
+                        logger.debug('[Codex] Timed out waiting for queued message state to clear during shutdown');
+                        resolve();
+                    }, 2_000);
+                }),
+            ]);
+        } finally {
+            if (queueClearTimeout) clearTimeout(queueClearTimeout);
+        }
         await cleanupAllStagedMediaAttachments();
         logActiveHandles('cleanup-start');
 

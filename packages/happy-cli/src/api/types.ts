@@ -401,6 +401,7 @@ export type Metadata = {
 
 export type AgentState = {
   controlledByUser?: boolean | null | undefined
+  queuedMessages?: number
   turnStatus?: {
     status: 'running' | 'completed' | 'failed' | 'cancelled'
     updatedAt: number

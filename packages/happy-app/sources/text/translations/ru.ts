@@ -704,6 +704,7 @@ export const ru: TranslationStructure = {
         lastSeen: ({ time }: { time: string }) => `в сети ${time}`,
         idle: 'ожидание',
         running: 'выполняется',
+        queued: ({ count }: { count: number }) => `В очереди: ${count}`,
         failed: 'не выполнено',
         completed: 'завершено',
         permissionRequired: 'требуется разрешение',

@@ -185,6 +185,7 @@ export const zhHant: TranslationStructure = {
         lastSeen: ({ time }: { time: string }) => `最後活躍時間 ${time}`,
         idle: '閒置',
         running: '執行中',
+        queued: ({ count }: { count: number }) => `${count} 則訊息排隊中`,
         failed: '已失敗',
         completed: '已完成',
         permissionRequired: '需要權限',

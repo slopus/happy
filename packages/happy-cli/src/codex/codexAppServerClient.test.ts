@@ -1005,6 +1005,160 @@ describe('CodexAppServerClient sandbox integration', () => {
         await client.disconnect();
     });
 
+    it('synthesizes task_started when turn/start succeeds without a lifecycle notification', async () => {
+        const proc = createMockProcess({
+            pid: 3006,
+            onRequest: (msg, stdout) => {
+                if (msg.method === 'thread/start' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: {
+                                thread: { id: 'thread-missing-start', path: '/tmp/thread-missing-start' },
+                                model: 'gpt-test',
+                                modelProvider: 'openai',
+                                cwd: '/tmp/project',
+                                approvalPolicy: 'never',
+                                sandbox: { type: 'dangerFullAccess' },
+                                reasoningEffort: null,
+                            },
+                        });
+                    }, 0);
+                }
+
+                if (msg.method === 'turn/start' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: {
+                                turn: { id: 'turn-missing-start', items: [], status: 'inProgress', error: null },
+                            },
+                        });
+                        setTimeout(() => {
+                            pushJsonLine(stdout, {
+                                method: 'item/completed',
+                                params: {
+                                    threadId: 'thread-missing-start',
+                                    turnId: 'turn-missing-start',
+                                    item: {
+                                        type: 'agentMessage',
+                                        id: 'msg-missing-start',
+                                        text: 'still working',
+                                        phase: 'commentary',
+                                    },
+                                },
+                            });
+                            pushJsonLine(stdout, {
+                                method: 'turn/completed',
+                                params: {
+                                    threadId: 'thread-missing-start',
+                                    turn: { id: 'turn-missing-start', items: [], status: 'completed', error: null },
+                                },
+                            });
+                        }, 10);
+                    }, 0);
+                }
+            },
+        });
+        mockSpawn.mockImplementation(() => proc);
+
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        const events: Array<Record<string, unknown>> = [];
+        client.setEventHandler((msg) => {
+            events.push(msg as Record<string, unknown>);
+        });
+
+        await client.connect();
+        await client.startThread({
+            model: 'gpt-test',
+            cwd: '/tmp/project',
+            approvalPolicy: 'never',
+            sandbox: 'danger-full-access',
+        });
+
+        await expect(client.sendTurnAndWait('keep going')).resolves.toEqual({ aborted: false });
+
+        expect(events.filter((event) => event.type === 'task_started')).toEqual([
+            expect.objectContaining({ turn_id: 'turn-missing-start' }),
+        ]);
+        expect(events).toEqual(expect.arrayContaining([
+            expect.objectContaining({ type: 'agent_message', message: 'still working' }),
+            expect.objectContaining({ type: 'task_complete', turn_id: 'turn-missing-start' }),
+        ]));
+        expect(events.findIndex((event) => event.type === 'task_started'))
+            .toBeLessThan(events.findIndex((event) => event.type === 'task_complete'));
+
+        await client.disconnect();
+    });
+
+    it('does not emit a late task_started when completion beats the turn/start continuation', async () => {
+        const proc = createMockProcess({
+            pid: 3007,
+            onRequest: (msg, stdout) => {
+                if (msg.method === 'thread/start' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: {
+                                thread: { id: 'thread-fast-turn', path: '/tmp/thread-fast-turn' },
+                                model: 'gpt-test',
+                                modelProvider: 'openai',
+                                cwd: '/tmp/project',
+                                approvalPolicy: 'never',
+                                sandbox: { type: 'dangerFullAccess' },
+                                reasoningEffort: null,
+                            },
+                        });
+                    }, 0);
+                }
+
+                if (msg.method === 'turn/start' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: {
+                                turn: { id: 'turn-fast', items: [], status: 'completed', error: null },
+                            },
+                        });
+                        pushJsonLine(stdout, {
+                            method: 'turn/completed',
+                            params: {
+                                threadId: 'thread-fast-turn',
+                                turn: { id: 'turn-fast', items: [], status: 'completed', error: null },
+                            },
+                        });
+                    }, 0);
+                }
+            },
+        });
+        mockSpawn.mockImplementation(() => proc);
+
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        const events: Array<Record<string, unknown>> = [];
+        client.setEventHandler((msg) => {
+            events.push(msg as Record<string, unknown>);
+        });
+
+        await client.connect();
+        await client.startThread({
+            model: 'gpt-test',
+            cwd: '/tmp/project',
+            approvalPolicy: 'never',
+            sandbox: 'danger-full-access',
+        });
+
+        await expect(client.sendTurnAndWait('finish immediately')).resolves.toEqual({ aborted: false });
+
+        expect(events.filter((event) => event.type === 'task_started')).toHaveLength(0);
+        expect(events.filter((event) => event.type === 'task_complete')).toEqual([
+            expect.objectContaining({ turn_id: 'turn-fast' }),
+        ]);
+
+        await client.disconnect();
+    });
+
     it('keeps root turn lifecycle isolated while forwarding interleaved child thread events', async () => {
         let emitNotification = (_payload: unknown): void => {
             throw new Error('App-server notification emitter is not ready');

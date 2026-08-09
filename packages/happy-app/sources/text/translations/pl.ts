@@ -195,6 +195,7 @@ export const pl: TranslationStructure = {
         lastSeen: ({ time }: { time: string }) => `ostatnio widziano ${time}`,
         idle: 'bezczynna',
         running: 'w toku',
+        queued: ({ count }: { count: number }) => `W kolejce: ${count}`,
         failed: 'nieudana',
         completed: 'ukończona',
         permissionRequired: 'wymagane uprawnienie',
