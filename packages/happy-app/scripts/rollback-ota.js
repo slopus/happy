@@ -3,7 +3,7 @@
 // 用法：pnpm ota:rollback [--channel <channel>] [--platform <platform>] [--runtime-version <runtime>]
 //   --channel  回退哪个频道，缺省 production
 //   --platform 平台，缺省 android
-//   --runtime-version  覆盖默认 runtime；默认 preview/development=21，production=22
+//   --runtime-version  覆盖默认 runtime；默认 preview/development=22，production=23
 //
 // 原理：每次 publish-ota.js 发布都会在 OSS 留一份按时间戳命名的 manifest 备份
 //（manifests/<platform>/<runtime>/<channel>/<时间戳>.json），而 latest.json 只是「当前线上」指针。
@@ -13,6 +13,7 @@
 
 const readline = require('readline');
 const { execFileSync } = require('child_process');
+const { defaultRuntimeVersion } = require('./ota-runtime-config.js');
 
 // ---- 解析命令行参数（--channel / --platform） ----
 function parseArgs(argv) {
@@ -30,10 +31,6 @@ function parseArgs(argv) {
   return out;
 }
 const ARGS = parseArgs(process.argv.slice(2));
-
-function defaultRuntimeVersion(channel) {
-  return channel === 'production' ? '22' : '21';
-}
 
 // ============ 配置区：与 publish-ota.js 保持一致 ============
 const BUCKET = 'happy-app-ota-jacky';

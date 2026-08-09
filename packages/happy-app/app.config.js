@@ -1,4 +1,5 @@
 const { execFileSync } = require('node:child_process');
+const { OTA_RUNTIME_VERSION_BY_VARIANT } = require('./scripts/ota-runtime-config.js');
 
 const variant = process.env.APP_ENV || 'development';
 const name = {
@@ -31,11 +32,7 @@ const otaChannel = {
     preview: "preview",
     production: "production",
 }[variant];
-const otaRuntimeVersion = {
-    development: "21",
-    preview: "21",
-    production: "22",
-}[variant];
+const otaRuntimeVersion = OTA_RUNTIME_VERSION_BY_VARIANT[variant];
 const localHttpException = {
     NSExceptionAllowsInsecureHTTPLoads: true,
     NSTemporaryExceptionAllowsInsecureHTTPLoads: true,
@@ -139,6 +136,7 @@ export default {
                 "android.permission.WRITE_EXTERNAL_STORAGE",
                 "android.permission.READ_MEDIA_IMAGES",
                 "android.permission.READ_MEDIA_VIDEO",
+                "android.permission.READ_MEDIA_VISUAL_USER_SELECTED",
             ],
             package: bundleId,
             googleServicesFile: "./google-services.json",
@@ -164,6 +162,14 @@ export default {
             "expo-asset",
             "expo-localization",
             "expo-mail-composer",
+            [
+                "expo-media-library",
+                {
+                    photosPermission: false,
+                    savePhotosPermission: "Allow $(PRODUCT_NAME) to save generated images to your photo library.",
+                    granularPermissions: []
+                }
+            ],
             "expo-secure-store",
             "expo-web-browser",
             "react-native-vision-camera",

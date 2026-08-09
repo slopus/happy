@@ -12,7 +12,7 @@ describe('useOtaVersions runtime defaults', () => {
         vi.restoreAllMocks();
     });
 
-    it('fetches preview runtime 21 metadata by default', async () => {
+    it('fetches preview runtime 22 metadata by default', async () => {
         const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
             ok: true,
             json: async () => ({
@@ -29,16 +29,16 @@ describe('useOtaVersions runtime defaults', () => {
             channel: 'preview',
         });
 
-        expect(DEFAULT_OTA_RUNTIME_VERSION).toBe('21');
-        expect(PREVIEW_OTA_RUNTIME_VERSION).toBe('21');
-        expect(PRODUCTION_OTA_RUNTIME_VERSION).toBe('22');
-        expect(getDefaultOtaRuntimeVersion('preview')).toBe('21');
+        expect(DEFAULT_OTA_RUNTIME_VERSION).toBe('22');
+        expect(PREVIEW_OTA_RUNTIME_VERSION).toBe('22');
+        expect(PRODUCTION_OTA_RUNTIME_VERSION).toBe('23');
+        expect(getDefaultOtaRuntimeVersion('preview')).toBe('22');
         expect(fetchMock).toHaveBeenCalledWith(
-            'https://happy-app-ota-jacky.oss-cn-hangzhou.aliyuncs.com/meta/android/21/preview/1783710188454.json',
+            'https://happy-app-ota-jacky.oss-cn-hangzhou.aliyuncs.com/meta/android/22/preview/1783710188454.json',
         );
     });
 
-    it('fetches production runtime 22 metadata by default', async () => {
+    it('fetches production runtime 23 metadata by default', async () => {
         const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
             ok: true,
             json: async () => ({
@@ -55,9 +55,9 @@ describe('useOtaVersions runtime defaults', () => {
             channel: 'production',
         });
 
-        expect(getDefaultOtaRuntimeVersion('production')).toBe('22');
+        expect(getDefaultOtaRuntimeVersion('production')).toBe('23');
         expect(fetchMock).toHaveBeenCalledWith(
-            'https://happy-app-ota-jacky.oss-cn-hangzhou.aliyuncs.com/meta/android/22/production/1783710188454.json',
+            'https://happy-app-ota-jacky.oss-cn-hangzhou.aliyuncs.com/meta/android/23/production/1783710188454.json',
         );
     });
 });

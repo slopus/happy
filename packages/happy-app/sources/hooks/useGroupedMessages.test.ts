@@ -60,7 +60,8 @@ function imageAgentPrompt(): string {
     ].join('\n');
 }
 
-function imageAgentPromptWithStyleCount(styleCount: number, variants: number = 1): string {
+function imageAgentPromptWithStyleCount(styleCount: number, variants: number = 1, sourceImageCount: number = 1): string {
+    const total = styleCount * variants * sourceImageCount;
     return [
         '使用 $gpt-image-2 skill 执行一次 GPT Image 2 图片编辑 / 生成批处理。',
         '',
@@ -68,6 +69,7 @@ function imageAgentPromptWithStyleCount(styleCount: number, variants: number = 1
         '- 将这次请求视为一个已锁定的图片生成任务。这个锁只用于避免并发图片任务，不限制多风格或多图片输出。',
         '',
         '输出要求：',
+        `- 批次矩阵：源素材 ${sourceImageCount} 张 × 风格 ${styleCount} 个 × 每风格变体 ${variants} 张 = 预计输出总数 ${total} 张。`,
         `- 对下面每个选中的风格，各生成 ${variants} 张变体。`,
         '- 每保存一张 PNG/JPEG 后，立即用绝对本地路径调用 mcp__happy__send_image 内联发送。',
         '',
@@ -76,7 +78,15 @@ function imageAgentPromptWithStyleCount(styleCount: number, variants: number = 1
     ].join('\n');
 }
 
-function fileMessage(id: string, createdAt: number): ToolCallMessage {
+function fileMessage(
+    id: string,
+    createdAt: number,
+    options: {
+        source?: 'user' | 'generated';
+        batchId?: string;
+        prompt?: string;
+    } = {},
+): ToolCallMessage {
     return {
         kind: 'tool-call',
         id,
@@ -85,7 +95,13 @@ function fileMessage(id: string, createdAt: number): ToolCallMessage {
         tool: {
             name: 'file',
             state: 'completed',
-            input: { ref: `ref-${id}`, name: `${id}.jpg` },
+            input: {
+                ref: `ref-${id}`,
+                name: `${id}.jpg`,
+                ...(options.source ? { source: options.source } : {}),
+                ...(options.batchId ? { batchId: options.batchId } : {}),
+                ...(options.prompt ? { prompt: options.prompt } : {}),
+            },
             createdAt,
             startedAt: createdAt,
             completedAt: createdAt + 1,
@@ -449,9 +465,9 @@ describe('useGroupedMessages', () => {
         expect(items.some((item) => item.type === 'message' && (item.id === 'agent-final' || item.id === 'agent-progress'))).toBe(false);
     });
 
-    it('marks uploaded reference images and generated image-agent outputs as featured', () => {
+    it('keeps uploaded references featured and renders generated image-agent outputs as a grid', () => {
         const messages: Message[] = [
-            fileMessage('generated-image', 5),
+            fileMessage('generated-image', 5, { source: 'generated', batchId: 'batch-3' }),
             {
                 kind: 'user-text',
                 id: 'user',
@@ -465,7 +481,7 @@ describe('useGroupedMessages', () => {
         const items = groupMessagesForDisplay(messages, true);
 
         expect(items).toMatchObject([
-            { type: 'image-group', id: 'images-generated-image', presentation: 'featured', pendingCount: 0 },
+            { type: 'image-group', id: 'images-generated-image', presentation: 'generated-grid', pendingCount: 0 },
             { type: 'message', id: 'user' },
             { type: 'image-group', id: 'images-reference-image', presentation: 'featured', pendingCount: 0 },
         ]);
@@ -487,7 +503,7 @@ describe('useGroupedMessages', () => {
         const items = groupMessagesForDisplay(messages, true, { collapseCurrentTurn: false });
 
         expect(items).toMatchObject([
-            { type: 'image-group', id: 'images-pending-user', presentation: 'featured', messages: [], pendingCount: 3, pendingStartedAt: 4 },
+            { type: 'image-group', id: 'images-pending-user', presentation: 'generated-grid', messages: [], pendingCount: 3, pendingStartedAt: 4 },
             { type: 'agent-work-group', id: 'work-image-tool-running', hasRunning: true },
             { type: 'message', id: 'user' },
             { type: 'image-group', id: 'images-reference-image', presentation: 'featured', pendingCount: 0 },
@@ -496,7 +512,7 @@ describe('useGroupedMessages', () => {
 
     it('keeps only missing loading placeholders once some image-agent outputs have arrived', () => {
         const messages: Message[] = [
-            fileMessage('generated-image', 5),
+            fileMessage('generated-image', 5, { source: 'generated', batchId: 'batch-3' }),
             toolMessage('image-tool-running', 4, { state: 'running' }),
             {
                 kind: 'user-text',
@@ -513,10 +529,136 @@ describe('useGroupedMessages', () => {
         expect(items[0]).toMatchObject({
             type: 'image-group',
             id: 'images-generated-image',
-            presentation: 'featured',
+            presentation: 'generated-grid',
             pendingCount: 2,
             pendingStartedAt: 4,
         });
+    });
+
+    it('streams one generated batch gallery across intervening progress messages and decrements loading slots', () => {
+        const prompt = imageAgentPromptWithStyleCount(4, 2, 7);
+        const generatedOne = fileMessage('generated-1', 6, {
+            source: 'generated',
+            batchId: 'batch-56',
+            prompt: 'first result',
+        });
+        const generatedTwo = fileMessage('generated-2', 8, {
+            source: 'generated',
+            batchId: 'batch-56',
+            prompt: 'second result',
+        });
+        const progress: Message = {
+            kind: 'agent-text',
+            id: 'agent-progress',
+            localId: null,
+            createdAt: 7,
+            text: '1/56',
+        };
+        const runningTool = toolMessage('image-tool-running', 5, { state: 'running' });
+        const user: Message = {
+            kind: 'user-text',
+            id: 'user',
+            localId: null,
+            createdAt: 4,
+            text: prompt,
+        };
+
+        const firstItems = groupMessagesForDisplay(
+            [generatedOne, runningTool, user],
+            true,
+            { collapseCurrentTurn: false },
+        );
+        const firstGallery = firstItems.find((item) => item.type === 'image-group');
+        expect(firstGallery).toMatchObject({
+            type: 'image-group',
+            presentation: 'generated-grid',
+            pendingCount: 55,
+        });
+        if (!firstGallery || firstGallery.type !== 'image-group') throw new Error('missing first gallery');
+        expect(firstGallery.messages.map((message) => message.id)).toEqual(['generated-1']);
+
+        const secondItems = groupMessagesForDisplay(
+            [generatedTwo, progress, generatedOne, runningTool, user],
+            true,
+            { collapseCurrentTurn: false },
+        );
+        const generatedGallery = secondItems.find(
+            (item) => item.type === 'image-group' && item.presentation === 'generated-grid',
+        );
+        expect(secondItems.filter(
+            (item) => item.type === 'image-group' && item.presentation === 'generated-grid',
+        )).toHaveLength(1);
+        expect(generatedGallery).toMatchObject({
+            pendingCount: 54,
+        });
+        if (!generatedGallery || generatedGallery.type !== 'image-group') throw new Error('missing generated gallery');
+        expect(generatedGallery.messages.map((message) => message.id)).toEqual([
+            'generated-1',
+            'generated-2',
+        ]);
+    });
+
+    it('keeps different generated batch ids in separate galleries within one turn', () => {
+        const prompt = imageAgentPromptWithStyleCount(2, 1, 2);
+        const messages: Message[] = [
+            fileMessage('batch-b-new', 9, { source: 'generated', batchId: 'batch-b' }),
+            {
+                kind: 'agent-text',
+                id: 'agent-progress',
+                localId: null,
+                createdAt: 8,
+                text: '3/4',
+            },
+            fileMessage('batch-a-new', 7, { source: 'generated', batchId: 'batch-a' }),
+            fileMessage('batch-b-old', 6, { source: 'generated', batchId: 'batch-b' }),
+            fileMessage('batch-a-old', 5, { source: 'generated', batchId: 'batch-a' }),
+            {
+                kind: 'user-text',
+                id: 'user',
+                localId: null,
+                createdAt: 4,
+                text: prompt,
+            },
+        ];
+
+        const galleries = groupMessagesForDisplay(messages, true)
+            .filter((item) => item.type === 'image-group');
+
+        expect(galleries).toHaveLength(2);
+        expect(galleries.map((gallery) => gallery.messages.map((message) => message.id))).toEqual([
+            ['batch-b-old', 'batch-b-new'],
+            ['batch-a-old', 'batch-a-new'],
+        ]);
+    });
+
+    it('keeps the same generated batch id in separate galleries across turns', () => {
+        const messages: Message[] = [
+            fileMessage('current-generated', 9, { source: 'generated', batchId: 'shared-batch' }),
+            {
+                kind: 'user-text',
+                id: 'current-user',
+                localId: null,
+                createdAt: 8,
+                text: imageAgentPromptWithStyleCount(1),
+            },
+            fileMessage('previous-generated', 7, { source: 'generated', batchId: 'shared-batch' }),
+            {
+                kind: 'user-text',
+                id: 'previous-user',
+                localId: null,
+                createdAt: 6,
+                text: imageAgentPromptWithStyleCount(1),
+            },
+        ];
+
+        const galleries = groupMessagesForDisplay(messages, true)
+            .filter((item) => item.type === 'image-group');
+
+        expect(galleries).toHaveLength(2);
+        expect(galleries.map((gallery) => gallery.messages.map((message) => message.id))).toEqual([
+            ['current-generated'],
+            ['previous-generated'],
+        ]);
     });
 
     it('keeps the failure summary visible for an image-agent turn without generated images', () => {
@@ -564,7 +706,7 @@ describe('useGroupedMessages', () => {
             id: 'images-pending-user',
             pendingCount: 1,
             pendingStartedAt: 3,
-            presentation: 'featured',
+            presentation: 'generated-grid',
         });
         expect(items[1]).toMatchObject({
             type: 'agent-work-group',

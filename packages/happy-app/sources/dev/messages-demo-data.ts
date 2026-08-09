@@ -213,6 +213,103 @@ export const activityStatusDemoEnvelopes: Array<Record<string, unknown>> = [
     },
 ];
 
+const GENERATED_BATCH_DEMO_THUMBHASHES = [
+    'LnsCDwRkh3eAeIiHeHeIh3h3RwZ3ZI8H',
+    '5bYBDwRwh3dwiHeHiHd4h3eHBwiHgH8I',
+    'mbgBDwRwh3eAiIiHeHh4iIh3Bwd4gI8H',
+    'pboCDwRwh3dwd4h3h3eHh4h3Bwd4cI8H',
+    'JTcCDwRwh3dwh4h3iHiIh4iHBwiHcI8H',
+    'qzsCDwRwh3eAeHiHh3d4iHh3Bwd4cI8H',
+] as const;
+
+const GENERATED_BATCH_DEMO_IMAGE_REF = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
+
+/**
+ * Deterministic browser fixture for the incremental generated-image batch E2E.
+ * Progress messages deliberately sit between file events so the real grouping
+ * path must use batchId instead of relying on adjacency.
+ */
+export function createGeneratedBatchDemoMessages(generatedCount: number): Message[] {
+    const clampedCount = Math.max(1, Math.min(56, Math.floor(generatedCount)));
+    const batchId = 'e2e-generated-batch-56';
+    const baseTime = Date.now() - 5_000;
+    const messages: Message[] = [
+        {
+            id: 'generated-batch-user',
+            localId: null,
+            createdAt: baseTime,
+            kind: 'user-text',
+            text: [
+                '使用 $gpt-image-2 skill 执行一次 GPT Image 2 图片编辑 / 生成批处理。',
+                '生成锁：本次锁只避免并发图片任务。',
+                '输入：已上传 7 张参考图。',
+                '输出要求：',
+                '- 批次矩阵：源素材 7 张 × 风格 4 个 × 每风格变体 2 张 = 预计输出总数 56 张。',
+                '- 每完成 1 张就立即调用 mcp__happy__send_image 内联发送。',
+            ].join('\n'),
+        },
+        {
+            id: 'generated-batch-running',
+            localId: null,
+            createdAt: baseTime + 500,
+            kind: 'tool-call',
+            tool: {
+                name: 'CodexBash',
+                state: 'running',
+                input: { command: 'generate next image' },
+                createdAt: baseTime + 500,
+                startedAt: baseTime + 500,
+                completedAt: null,
+                description: '正在逐张生成图片',
+            },
+            children: [],
+        },
+    ];
+
+    for (let index = 1; index <= clampedCount; index++) {
+        const createdAt = baseTime + 1_000 + index * 100;
+        messages.push({
+            id: `generated-batch-image-${index}`,
+            localId: null,
+            createdAt,
+            kind: 'tool-call',
+            tool: {
+                name: 'file',
+                state: 'completed',
+                input: {
+                    ref: GENERATED_BATCH_DEMO_IMAGE_REF,
+                    name: `generated-${String(index).padStart(2, '0')}.png`,
+                    size: 128_000 + index,
+                    kind: 'image',
+                    encrypted: false,
+                    source: 'generated',
+                    prompt: `E2E generated image ${index}`,
+                    batchId,
+                    image: {
+                        width: 1024,
+                        height: 1024,
+                        thumbhash: GENERATED_BATCH_DEMO_THUMBHASHES[(index - 1) % GENERATED_BATCH_DEMO_THUMBHASHES.length],
+                    },
+                },
+                createdAt,
+                startedAt: createdAt,
+                completedAt: createdAt + 50,
+                description: `第 ${index} 张图片已发送`,
+            },
+            children: [],
+        });
+        messages.push({
+            id: `generated-batch-progress-${index}`,
+            localId: null,
+            createdAt: createdAt + 25,
+            kind: 'agent-text',
+            text: `已发送 ${index}/56，继续生成下一张。`,
+        });
+    }
+
+    return messages.sort((left, right) => right.createdAt - left.createdAt);
+}
+
 export const debugMessages: Message[] = [
     // Generated plaintext MP4 event matching the Happy MCP send_file output.
     // Playwright routes its ref to a repository-external fixture at runtime.

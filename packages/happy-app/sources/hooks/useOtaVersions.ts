@@ -4,6 +4,7 @@ import {
     listOtaStamps,
     type OtaVersion,
 } from '@/utils/otaVersions';
+import otaRuntimeVersions from '../../ota-runtime-versions.json';
 
 export type { OtaVersion };
 
@@ -19,8 +20,8 @@ export type { OtaVersion };
 
 const OSS_PUBLIC_BASE = 'https://happy-app-ota-jacky.oss-cn-hangzhou.aliyuncs.com';
 const PAGE_SIZE = 20;
-export const PREVIEW_OTA_RUNTIME_VERSION = '21';
-export const PRODUCTION_OTA_RUNTIME_VERSION = '22';
+export const PREVIEW_OTA_RUNTIME_VERSION = otaRuntimeVersions.preview;
+export const PRODUCTION_OTA_RUNTIME_VERSION = otaRuntimeVersions.production;
 export const DEFAULT_OTA_RUNTIME_VERSION = PREVIEW_OTA_RUNTIME_VERSION;
 
 export function getDefaultOtaRuntimeVersion(channel: string | null | undefined): string {

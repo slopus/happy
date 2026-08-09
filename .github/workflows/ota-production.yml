@@ -1,12 +1,13 @@
 name: Self-hosted OTA production (on merge to main)
 
-# 生产 OTA：每当有改动合并进 main（且命中 packages/happy-app/**），
-# 自动把这次改动以 OTA 形式发到 production 频道，线上正式包（build.paws）冷启动即拉到。
+# 生产 OTA：每当 JS-compatible 改动合并进 main（且命中 packages/happy-app/**），
+# 自动把这次改动以 OTA 形式发到 production 频道。native-sensitive merge 会跳过发布，
+# 等匹配二进制就绪后再手动触发。
 # 与 ota-preview.yml 互补：preview 在 PR 阶段真机验证，production 在合并后上线。
 #
 # 前提（不满足则本次 OTA 对线上无效，但不会报错）：
 # - 必须是纯 JS 改动（无原生变更）。原生变了应重新出 APK，OTA 推不动。
-# - runtimeVersion 必须仍与线上装机 APK 一致（当前 22，见 app.config.js）。
+# - runtimeVersion 必须仍与线上装机包一致（当前 production=23，见 ota-runtime-versions.json）。
 #
 # 安全：只在本仓库 push 到 main 时运行。需在仓库 Secrets 配置
 # ALIYUN_OSS_ACCESS_KEY_ID / ALIYUN_OSS_ACCESS_KEY_SECRET（与 preview 共用）。
@@ -34,7 +35,56 @@ permissions:
   contents: write
 
 jobs:
+  classify-ota-compatibility:
+    runs-on: ubuntu-latest
+    outputs:
+      ota-compatible: ${{ steps.changes.outputs.ota_compatible }}
+    steps:
+      - name: Checkout history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect native-sensitive changes
+        id: changes
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "ota_compatible=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          native_changed=false
+          while IFS= read -r file; do
+            case "$file" in
+              packages/happy-app/app.config.js|\
+              packages/happy-app/package.json|\
+              packages/happy-app/ota-runtime-versions.json|\
+              packages/happy-app/eas.json|\
+              packages/happy-app/android/*|\
+              packages/happy-app/ios/*|\
+              packages/happy-app/plugins/*|\
+              pnpm-lock.yaml)
+                native_changed=true
+                echo "Native-sensitive OTA path: $file"
+                ;;
+            esac
+          done < <(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
+
+          if [ "$native_changed" = true ]; then
+            echo "ota_compatible=false" >> "$GITHUB_OUTPUT"
+            echo "### Production OTA skipped" >> "$GITHUB_STEP_SUMMARY"
+            echo "This merge changes native-sensitive files. Release the matching production binary before publishing its runtime manually." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "ota_compatible=true" >> "$GITHUB_OUTPUT"
+          fi
+
   publish-production:
+    needs: classify-ota-compatibility
+    if: needs.classify-ota-compatibility.outputs.ota-compatible == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:

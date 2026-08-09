@@ -5,8 +5,17 @@ import { HappyError } from '@/utils/errors';
 export function useHappyAction<TArgs extends unknown[]>(action: (...args: TArgs) => Promise<void>) {
     const [loading, setLoading] = React.useState(false);
     const loadingRef = React.useRef(false);
+    const mountedRef = React.useRef(true);
+
+    React.useEffect(() => {
+        mountedRef.current = true;
+        return () => {
+            mountedRef.current = false;
+        };
+    }, []);
+
     const doAction = React.useCallback((...args: TArgs) => {
-        if (loadingRef.current) {
+        if (!mountedRef.current || loadingRef.current) {
             return;
         }
         loadingRef.current = true;
@@ -37,7 +46,7 @@ export function useHappyAction<TArgs extends unknown[]>(action: (...args: TArgs)
                 }
             } finally {
                 loadingRef.current = false;
-                setLoading(false);
+                if (mountedRef.current) setLoading(false);
             }
         })();
     }, [action]);

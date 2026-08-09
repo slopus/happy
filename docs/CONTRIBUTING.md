@@ -95,17 +95,17 @@ pnpm --filter happy-server-self-host typecheck
 pnpm --filter happy-server-self-host test
 ```
 
-Do not start Expo/Metro, a simulator, an emulator, Tauri dev, or a real device unless that validation was explicitly requested. For App changes that can ship through Expo Updates, the repository workflow publishes a per-PR preview OTA; native or runtime changes require a new APK instead.
+Do not start Expo/Metro, a simulator, an emulator, Tauri dev, or a real device unless that validation was explicitly requested. For App changes that can ship through Expo Updates, the repository workflow publishes a per-PR preview OTA. The automatic preview and production workflows skip native-sensitive diffs; native or runtime changes require a new matching binary before a manual OTA dispatch.
 
 ## App Variants
 
 | Variant | Package / bundle ID | App name | OTA channel | Runtime |
 |---|---|---|---|---|
-| Development | `build.paws.dev` | `Paws (dev)` | `preview` | `21` |
-| Preview | `build.paws.preview` | `Paws (preview)` | `preview` | `21` |
-| Production | `build.paws` | `Paws` | `production` | `22` |
+| Development | `build.paws.dev` | `Paws (dev)` | `preview` | `22` |
+| Preview | `build.paws.preview` | `Paws (preview)` | `preview` | `22` |
+| Production | `build.paws` | `Paws` | `production` | `23` |
 
-Treat `packages/happy-app/app.config.js` as the source of truth. Changing package IDs, Expo plugins, permissions, update URLs, or runtime versions requires a new native build.
+Treat `packages/happy-app/ota-runtime-versions.json` as the runtime source of truth. Changing package IDs, Expo plugins, permissions, update URLs, or runtime versions requires a new native build.
 
 ## Documentation and Naming
 

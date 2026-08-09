@@ -442,11 +442,11 @@ Runtime 与 OTA 频道映射：
 
 | `APP_ENV` | OTA channel | Runtime version |
 |-----------|-------------|-----------------|
-| `development` | `preview` | `21` |
-| `preview` | `preview` | `21` |
-| `production` | `production` | `22` |
+| `development` | `preview` | `22` |
+| `preview` | `preview` | `22` |
+| `production` | `production` | `23` |
 
-只有 JS 兼容的改动适合通过 OTA 发布。原生依赖、权限、Expo plugin、package ID、更新 URL 和 runtime version 变化都需要重新构建 App。
+只有 JS 兼容的改动适合通过 OTA 发布。自动 preview 和 production workflow 会跳过命中原生敏感配置的 diff；原生依赖、权限、Expo plugin、package ID、更新 URL 和 runtime version 变化都需要重新构建 App，安装匹配二进制后再手动发布对应 runtime。
 
 ## 故障排查
 

@@ -5,6 +5,7 @@ import { t } from '@/text';
 import { isGeneratedImageBatchPromptText } from '@/utils/autoFoldPrompt';
 import type { AttachmentGalleryPresentation } from '@/utils/attachmentGalleryLayout';
 import { getSkillNamesFromTool } from '@/utils/conversationActivity';
+import { isGeneratedImageFileInput } from '@/hooks/generatedImagesModel';
 
 // Display item types for the grouped message list
 export type TextItem = {
@@ -102,10 +103,7 @@ export function groupMessagesForDisplay(
         // independent of the "Group Tool Calls" setting. Without this, images
         // fall back to full-width FileView rows whenever groupToolCalls is
         // false (which is the default), silently undoing the gallery feature.
-        const attachmentRuns = collectToolRuns(
-            messages,
-            (msg, index) => !hiddenWorkIndexes.has(index) && isImageAttachment(msg),
-        );
+        const attachmentRuns = collectImageAttachmentGroups(messages, turnOf, hiddenWorkIndexes);
         const result: DisplayItem[] = [];
         for (let i = 0; i < messages.length; i++) {
             const msg = messages[i];
@@ -160,10 +158,7 @@ export function groupMessagesForDisplay(
     const toolRuns = collectToolRuns(messages, visibleForToolGrouping);
 
     // Consecutive user image attachments collapse into one horizontal gallery.
-    const attachmentRuns = collectToolRuns(
-        messages,
-        (msg, index) => !hiddenWorkIndexes.has(index) && isImageAttachment(msg),
-    );
+    const attachmentRuns = collectImageAttachmentGroups(messages, turnOf, hiddenWorkIndexes);
 
     // Build display items — groups are emitted at their oldest hidden member
     // so the visual order remains user message → collapsed work → final answer.
@@ -319,7 +314,7 @@ function getImageAgentPresentationState(
                 type: 'image-group',
                 id: `images-pending-${msg.id}`,
                 messages: [],
-                presentation: 'featured',
+                presentation: 'generated-grid',
                 pendingCount,
                 pendingStartedAt,
             });
@@ -330,7 +325,13 @@ function getImageAgentPresentationState(
 }
 
 function getAttachmentPresentation(messages: Message[], featuredAttachmentIds: Set<string>): AttachmentGalleryPresentation {
+    if (messages.some(isGeneratedImageAttachment)) return 'generated-grid';
     return messages.some((message) => featuredAttachmentIds.has(message.id)) ? 'featured' : 'compact';
+}
+
+function isGeneratedImageAttachment(message: Message): boolean {
+    if (!isImageAttachment(message) || message.kind !== 'tool-call') return false;
+    return isGeneratedImageFileInput(message.tool.input);
 }
 
 function getPendingStateForImageGroup(
@@ -350,6 +351,11 @@ function getPendingStateForImageGroup(
 }
 
 function getExpectedImageAgentOutputCount(text: string): number {
+    const explicitTotalMatch = text.match(/预计输出总数\s*(\d+)\s*张/);
+    if (explicitTotalMatch) {
+        return Math.max(1, Number.parseInt(explicitTotalMatch[1], 10) || 1);
+    }
+
     const variantsMatch = text.match(/各生成\s*(\d+)\s*张变体/);
     const variants = variantsMatch ? Math.max(1, Number.parseInt(variantsMatch[1], 10) || 1) : 1;
     const styleSectionIndex = text.search(/已选择的\s+GPT Image(?: 2| Gallery)?\s*风格/);
@@ -486,6 +492,51 @@ function collectToolRuns(
     flush();
 
     return runsByIndex;
+}
+
+function collectImageAttachmentGroups(
+    messages: Message[],
+    turnOf: number[],
+    hiddenWorkIndexes: Set<number>,
+): Map<number, { msgs: Message[]; oldestIdx: number }> {
+    const groups = collectToolRuns(
+        messages,
+        (message, index) => (
+            !hiddenWorkIndexes.has(index)
+            && isImageAttachment(message)
+            && getImageAttachmentBatchId(message) === null
+        ),
+    );
+    const batchGroups = new Map<string, { indexes: number[]; msgs: Message[] }>();
+
+    for (let index = 0; index < messages.length; index++) {
+        if (hiddenWorkIndexes.has(index) || !isImageAttachment(messages[index])) continue;
+        const batchId = getImageAttachmentBatchId(messages[index]);
+        if (!batchId) continue;
+        const key = `${turnOf[index]}:${batchId}`;
+        const group = batchGroups.get(key) ?? { indexes: [], msgs: [] };
+        group.indexes.push(index);
+        group.msgs.push(messages[index]);
+        batchGroups.set(key, group);
+    }
+
+    for (const group of batchGroups.values()) {
+        const oldestIdx = group.indexes[group.indexes.length - 1];
+        const indexedGroup = { msgs: group.msgs, oldestIdx };
+        for (const index of group.indexes) {
+            groups.set(index, indexedGroup);
+        }
+    }
+
+    return groups;
+}
+
+function getImageAttachmentBatchId(message: Message): string | null {
+    if (!isImageAttachment(message) || message.kind !== 'tool-call') return null;
+    const batchId = message.tool.input?.batchId;
+    return typeof batchId === 'string' && batchId.trim().length > 0
+        ? batchId.trim()
+        : null;
 }
 
 function collectAgentWorkGroups(

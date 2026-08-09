@@ -40,7 +40,7 @@ function parseGeneratedImageInput(input: unknown): FileImageInput | null {
     if (!ref) return null;
     const image = isRecord(input.image) ? input.image : undefined;
     const name = typeof input.name === 'string' ? input.name : undefined;
-    if (!isGptImage2FileInput({ ...input, name, image })) return null;
+    if (!isGeneratedImageFileInput({ ...input, name, image })) return null;
     return {
         ref,
         name,
@@ -56,11 +56,15 @@ function parseGeneratedImageInput(input: unknown): FileImageInput | null {
     };
 }
 
-function isGptImage2FileInput(input: Record<string, unknown> & { name?: string; image?: Record<string, unknown> }): boolean {
+export function isGeneratedImageFileInput(input: unknown): boolean {
+    if (!isRecord(input)) return false;
+    if (input.source === 'generated') return true;
     if (typeof input.prompt === 'string' && input.prompt.trim()) return true;
     if (typeof input.batchId === 'string' && input.batchId.trim()) return true;
     if (typeof input.localPath === 'string' && input.localPath.includes('/generated-images/')) return true;
-    return !!input.image && !!input.name && /gpt[-_\s]?image[-_\s]?2/i.test(input.name);
+    return isRecord(input.image)
+        && typeof input.name === 'string'
+        && /gpt[-_\s]?image[-_\s]?2/i.test(input.name);
 }
 
 export function collectGeneratedImagesFromMessages(sessionId: string, title: string, messages: Message[]): GeneratedImageEntry[] {

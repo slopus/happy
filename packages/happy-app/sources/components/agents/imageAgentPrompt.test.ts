@@ -150,8 +150,10 @@ describe('imageAgentPrompt', () => {
             userPrompt: '做实景插画对照海报。',
             imageCount: 2,
         });
-        expect(extraInputPrompt).toContain('一次只接受一张源照片');
-        expect(extraInputPrompt).toContain('不要擅自拼图、混合多个场景或启动图片工具');
+        expect(extraInputPrompt).toContain('源素材 2 张 × 风格 1 个 × 每风格变体 2 张 = 预计输出总数 4 张');
+        expect(extraInputPrompt).toContain('每个结果只能使用当前对应的 1 张用户素材作为源图片');
+        expect(extraInputPrompt).toContain('禁止把多张用户素材拼图、混合或共同输入同一次图片生成');
+        expect(extraInputPrompt).not.toContain('暂不执行图片任务');
 
         const mixedPrompt = buildImageAgentPrompt({
             agent: {
@@ -213,8 +215,10 @@ describe('imageAgentPrompt', () => {
             userPrompt: '做湖景极简二联画。',
             imageCount: 2,
         });
-        expect(extraInputPrompt).toContain('一次只接受一张源照片');
-        expect(extraInputPrompt).toContain('不要擅自拼图、混合多个场景或启动图片工具');
+        expect(extraInputPrompt).toContain('源素材 2 张 × 风格 1 个 × 每风格变体 2 张 = 预计输出总数 4 张');
+        expect(extraInputPrompt).toContain('每个结果只能使用当前对应的 1 张用户素材作为源图片');
+        expect(extraInputPrompt).toContain('禁止把多张用户素材拼图、混合或共同输入同一次图片生成');
+        expect(extraInputPrompt).not.toContain('暂不执行图片任务');
     });
 
     it('integrates Scene Distillation Zine with source privacy and exact color-block semantics', () => {
@@ -357,8 +361,9 @@ describe('imageAgentPrompt', () => {
             userPrompt: '做拾景纸刊。',
             imageCount: 2,
         });
-        expect(extraInputPrompt).toContain('一次只接受一张源照片');
-        expect(extraInputPrompt).toContain('不要擅自拼图、混合多个场景或启动图片工具');
+        expect(extraInputPrompt).toContain('源素材 2 张 × 风格 1 个 × 每风格变体 2 张 = 预计输出总数 4 张');
+        expect(extraInputPrompt).toContain('每个结果只能使用当前对应的 1 张用户素材作为源图片');
+        expect(extraInputPrompt).not.toContain('暂不执行图片任务');
 
         const styleReferenceOnlyPrompt = buildImageAgentPrompt({
             agent: { ...agent, imageStyleIds: ['github-skills/scenes-gathered-zine/1'] },
@@ -424,6 +429,8 @@ describe('imageAgentPrompt', () => {
         expect(prompt).toContain('$gpt-image-2');
         expect(prompt).toContain('生成锁');
         expect(prompt).toContain('已上传 3 张参考图');
+        expect(prompt).toContain('源素材 3 张 × 风格 2 个 × 每风格变体 2 张 = 预计输出总数 12 张');
+        expect(prompt).toContain('每完成 1 张就立即调用 mcp__happy__send_image');
         expect(prompt).toContain('product-visuals/premium-studio-product/1');
         expect(prompt).toContain('product-visuals/white-background-product/1');
         expect(prompt).toContain('各生成 2 张变体');
@@ -433,6 +440,29 @@ describe('imageAgentPrompt', () => {
         expect(prompt).toContain('~/.codex/generated_images/<任务 id>/');
         expect(prompt).toContain('不要在未检查该目录前声称');
         expect(prompt).toContain('使用乳制品参考照片，并保留盘子的形状。');
+    });
+
+    it('builds the full source-by-style-by-variant cartesian batch without per-image confirmation', () => {
+        const prompt = buildImageAgentPrompt({
+            agent: {
+                ...agent,
+                imageStyleIds: [
+                    'github-skills/photo-illustration-diptych/1',
+                    'github-skills/scenes-gathered-zine/2',
+                    'github-skills/scenes-gathered-zine/1',
+                    'github-skills/scene-distillation-zine/1',
+                ],
+            },
+            userPrompt: '全部批量生成。',
+            imageCount: 7,
+            userImageCount: 7,
+        });
+
+        expect(prompt).toContain('源素材 7 张 × 风格 4 个 × 每风格变体 2 张 = 预计输出总数 56 张');
+        expect(prompt).toContain('按用户素材顺序逐张遍历，再遍历全部选中风格与变体');
+        expect(prompt).toContain('每完成 1 张就立即调用 mcp__happy__send_image');
+        expect(prompt).toContain('不要等 56 张全部完成后再集中发送');
+        expect(prompt).not.toContain('请只保留或明确选择其中一张图片后再继续');
     });
 
     it('optimizes only reference transport before the first native image request', () => {

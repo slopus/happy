@@ -294,7 +294,7 @@ cd android && APP_ENV=production ./gradlew assembleRelease -PreactNativeArchitec
 ### 发布到 GitHub Release
 
 ```bash
-# 版本号取自 app.config.js（APP_ENV=production 下当前为 1.7.0），不要用 package.json 的 1.0.0
+# 版本号取自 app.config.js（APP_ENV=production 下当前为 1.7.1），不要用 package.json 的 1.0.0
 VERSION=$(cd packages/happy-app && APP_ENV=production node -e "const c=require('./app.config.js');const cfg=typeof c==='function'?c({config:{}}):(c.default||c);console.log(cfg.expo?.version||cfg.version)")
 TAG="android-v$VERSION"            # tag 加 android- 前缀，与桌面/其他端 release 区分
 APK="packages/happy-app/android/app/build/outputs/apk/release/app-release.apk"
@@ -321,7 +321,7 @@ gh release create "$TAG" --repo wangjs-jacky/happy \
 ### 机制速记
 
 - 自建 OTA 把 `expo export` 的产物上传到**阿里云 OSS 桶 `happy-app-ota-jacky`**（`oss-cn-hangzhou`），脚本 `scripts/publish-ota.js`。
-- 当前 production 发 **Android、`runtimeVersion: 22`**；development/preview 仍使用 runtime 21（见 `app.config.js`）。2026-07-10 因 Android Firebase/推送原生配置变化把 production 从 21 升到 22。**runtimeVersion 必须和装机 APK 完全一致**，否则该机器永远跳过这次更新——各 runtime 是互不相通的独立通道 `manifests/android/<runtime>/<channel>/`。改 runtime 要同步 `app.config.js` + `scripts/publish-ota.js` + `scripts/rollback-ota.js`。
+- 当前 production 使用 **`runtimeVersion: 23`**，development/preview 使用 **runtime 22**（见 `scripts/ota-runtime-config.js`）。2026-08-08 因新增 `expo-media-library` 原生模块，分别从旧 runtime 22/21 前移；旧二进制因此不会收到引用该模块的 OTA。**runtimeVersion 必须和装机包完全一致**，否则该机器永远跳过这次更新——各 runtime 是互不相通的独立通道 `manifests/<platform>/<runtime>/<channel>/`。改 runtime 只改共享配置，并运行 `pnpm test:image-batch-native-config` 与对应测试；必须先出包含新原生模块的安装包，不能把此变更发布到旧 runtime。
 - **频道（channel）分流**：App 端 `updates.url` 指向 FC 服务 `happy-oa-server-...fcapp.run`，请求头 `expo-channel-name` **按构建变体注入**（`app.config.js` 的 `otaChannel` 映射）：
   - **dev / preview 包 → `preview` 频道**（给开发在真机预览 PR）
   - **production 包 → `production` 频道**（线上正式用户）
@@ -330,8 +330,8 @@ gh release create "$TAG" --repo wangjs-jacky/happy \
 
 ### 频道模型与常见误区（传承 · 反复踩过）
 
-- **preview 频道的 `latest.json` 被所有 PR 共享、谁最后发谁覆盖**：每个对 `main` 提的 PR 触发的自动 `ota-preview` 都发到同一个 preview `latest.json`。所以「preview latest」≠ 你某个 PR 的包；想在真机看某个具体 PR，必须用「定向锁版本」（版本浏览站扫码 / App 内 Developer→OTA→OTA Versions 选该 stamp），不能只跟 latest。
-- **生产 OTA 不在 PR 的 checks 里**：`ota-production.yml` 触发条件是 **push 到 `main`（即合并 PR）**，不是 `pull_request`。所以它**不会出现在 PR 页面的检查列表**——合并后它作为一个**独立的 push 触发 run**（工作流名「Self-hosted OTA production (on merge to main)」）才跑。盯着 PR checks 找生产 OTA 会误以为「没发」，去 **Actions 页**看那个 run 才对。preview OTA 才是挂在 PR 上的。
+- **preview 频道的 `latest.json` 被所有 JS-compatible PR 共享、谁最后发谁覆盖**：对 `main` 提的 PR 会触发自动 `ota-preview`，但 workflow 检测到原生依赖、lockfile、Expo config、runtime mapping 或 native/plugin 目录变化时会跳过发布，直到匹配的新二进制就绪后手动 dispatch。所以「preview latest」≠ 你某个 PR 的包；想在真机看某个具体 PR，必须用「定向锁版本」（版本浏览站扫码 / App 内 Developer→OTA→OTA Versions 选该 stamp），不能只跟 latest。
+- **生产 OTA 不在 PR 的 checks 里**：`ota-production.yml` 触发条件是 **push 到 `main`（即合并 PR）**，不是 `pull_request`。所以它**不会出现在 PR 页面的检查列表**——合并后它作为一个**独立的 push 触发 run**（工作流名「Self-hosted OTA production (on merge to main)」）才跑。native-sensitive merge 会由兼容性 job 标记并跳过实际发布；JS-compatible merge 才会继续上传。盯着 PR checks 找生产 OTA 会误以为「没发」，去 **Actions 页**看那个 run 才对。preview OTA 才是挂在 PR 上的。
 - **手机拉不到 OTA 的排查顺序**：设置→连点版本号→Developer→**Expo Constants**，核对 **Channel**（preview/production，决定拉哪条频道）+ **Runtime Version**（必须与该 runtime 的 OTA 通道一致，对不上永远跳过）+ **Update ID**（对上 `manifests/android/<rt>/<ch>/latest.json` 的 `id`）。再确认没在 OTA Versions 里锁死旧 stamp。FC 服务按请求头 `expo-runtime-version` 动态取路径，**改 runtime 不用重部署 FC**。
 
 ### 发布
@@ -345,20 +345,20 @@ pnpm ota:selfhost:preview    # 发到 preview 频道（= ... --channel preview�
 
 - **PR 预览自动化**：协作者把分支推到本仓库并对 `main` 提 PR 后，`.github/workflows/ota-preview.yml`
   会自动 `expo export` + 发到 `preview` 频道，并在 PR 上评论 Update ID 与验证步骤。开发用 preview 包真机预览，
-  确认无误再合并。需在仓库 Secrets 配 `ALIYUN_OSS_ACCESS_KEY_ID` / `ALIYUN_OSS_ACCESS_KEY_SECRET`（建议用只授权该桶的 RAM 子账号）。fork 来的 PR 因拿不到 secret 会自动跳过。
+  确认无误再合并。命中 native-sensitive 路径时自动发布会跳过，必须先构建并安装匹配 runtime 的新包，再手动 dispatch。需在仓库 Secrets 配 `ALIYUN_OSS_ACCESS_KEY_ID` / `ALIYUN_OSS_ACCESS_KEY_SECRET`（建议用只授权该桶的 RAM 子账号）。fork 来的 PR 因拿不到 secret 会自动跳过。
 - 建议**先在功能分支提交一次再发**，让发出去的包对得上一个明确 commit。
 - **默认验收闭环**：凡是 `packages/happy-app` 的用户可见 JS/UI/交互改动，完成本地测试/类型检查后，默认还要执行一次 `pnpm ota:selfhost:preview`，把 preview OTA 当成给用户验收的标准交付物；只有原生改动、runtimeVersion 不兼容或其他明确不能走 OTA 的场景，才允许例外，并且要把阻塞写明。
 - **OTA 回复格式**：只要这次交付里实际发布了 Paws OTA，给用户的回复里除人类可读说明外，还要额外附上一段结构化的
   `<happy-ota-preview> ... </happy-ota-preview>` 元数据块（标签名是兼容协议），方便客户端右侧面板直接提取和展示。
 - 发布成功会打印「频道 / 新版本 id（UUID）/ manifest 地址」。OSS 上版本结构（按频道分层）：
-  - `manifests/android/22/<channel>/latest.json` —— 该频道当前线上指针（每次覆盖）
-  - `manifests/android/22/<channel>/<毫秒时间戳>.json` —— 每次发布留的历史备份（JS 包从不删，故任意历史版本可回滚）
+  - `manifests/android/23/<channel>/latest.json` —— production 频道当前线上指针（preview 使用 runtime 22）
+  - `manifests/android/23/<channel>/<毫秒时间戳>.json` —— 每次发布留的历史备份（JS 包从不删，故任意历史版本可回滚）
 
 ### 列出全部 OTA 版本 / 看当前线上
 
 ```bash
 # 注意带上频道段（production / preview）
-aliyun ossutil ls oss://happy-app-ota-jacky/manifests/android/22/production/ | grep -E '\.json'
+aliyun ossutil ls oss://happy-app-ota-jacky/manifests/android/23/production/ | grep -E '\.json'
 ```
 
 - `latest.json` 与某个 `<时间戳>.json` 的 **ETag 相同** → 那个时间戳就是当前线上版本。
@@ -374,7 +374,7 @@ App 内 `useUpdates`（`sources/hooks/useUpdates.ts`）在**每次启动 + 每�
 2. **看 Update ID**（最准）：
    - **设置 → 连点底部「版本号」那一行好几下** 解锁开发者模式（多击 hook 在 `SettingsView.tsx`，切 `devModeEnabled`）。
    - 出现 **Developer** 分组 → `/dev` → **Expo Constants**（`/dev/expo-constants`）。
-   - **Update ID** 应等于发布时打印的那个 UUID；同页 **Runtime Version** 必须是 `22`。对上即真机正跑该 OTA。
+   - **Update ID** 应等于发布时打印的那个 UUID；新 production 原生包的 **Runtime Version** 必须是 `23`（preview 为 `22`）。对上即真机正跑该 OTA。
 
 > 服务端侧无法直接确认设备是否来拉（OSS 未开访问日志）；以真机上的 **Update ID / 行为** 为准。PostHog 有 `ota_update_available` / `ota_update_applied` 事件（带 `ota_version`）可作旁证。
 

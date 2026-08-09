@@ -32,7 +32,7 @@ export async function downloadImage(source: ImageDownloadSource, options: Downlo
     return targetUri;
 }
 
-async function stageImageForDownload(source: ImageDownloadSource): Promise<string> {
+export async function stageImageForDownload(source: ImageDownloadSource): Promise<string> {
     if (!cacheDirectory) {
         throw new Error('Cache directory is unavailable on this platform.');
     }

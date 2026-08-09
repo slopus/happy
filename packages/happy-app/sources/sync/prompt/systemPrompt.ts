@@ -1,4 +1,5 @@
 import { trimIdent } from "@/utils/trimIdent";
+import otaRuntimeVersions from '../../../ota-runtime-versions.json';
 
 export const systemPrompt = trimIdent(`
     # Options
@@ -36,7 +37,7 @@ export const systemPrompt = trimIdent(`
     title: short release title
     channel: preview
     platform: android
-    runtimeVersion: 21
+    runtimeVersion: ${otaRuntimeVersions.preview}
     updateId: full update UUID
     stamp: version timestamp if known
     manifestUrl: full manifest url

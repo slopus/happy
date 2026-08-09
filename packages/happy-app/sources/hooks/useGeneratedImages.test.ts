@@ -76,4 +76,21 @@ describe('collectGeneratedImagesFromMessages', () => {
         })]);
         expect(entries[0]?.prompt).toBeUndefined();
     });
+
+    it('recognizes source metadata without requiring legacy filename or prompt hints', () => {
+        const entries = collectGeneratedImagesFromMessages('session-1', 'Metadata Session', [
+            createFileMessage('source-only', {
+                ref: 'blob://source-only',
+                name: 'result.png',
+                source: 'generated',
+                image: { width: 512, height: 512 },
+            }),
+        ]);
+
+        expect(entries).toEqual([expect.objectContaining({
+            id: 'session-1:source-only',
+            ref: 'blob://source-only',
+            name: 'result.png',
+        })]);
+    });
 });

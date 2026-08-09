@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
     computeAttachmentGalleryImageSize,
+    computeGeneratedAttachmentGridLayout,
     computeInputAttachmentImageSize,
     formatPendingImageElapsed,
 } from './attachmentGalleryLayout';
@@ -67,5 +68,42 @@ describe('computeAttachmentGalleryImageSize', () => {
         expect(formatPendingImageElapsed(56_400)).toBe('56s');
         expect(formatPendingImageElapsed(83_000)).toBe('1m23s');
         expect(formatPendingImageElapsed(3_660_000)).toBe('1h01m');
+    });
+
+    it('packs generated thumbnails into a bounded responsive grid without horizontal overflow', () => {
+        const phoneLayout = computeGeneratedAttachmentGridLayout({ containerWidth: 360 });
+        expect(phoneLayout).toEqual({
+            columns: 2,
+            itemSize: 164,
+            contentWidth: 336,
+            gap: 8,
+            horizontalPadding: 12,
+        });
+
+        const widePhoneLayout = computeGeneratedAttachmentGridLayout({ containerWidth: 390 });
+        expect(widePhoneLayout).toEqual({
+            columns: 3,
+            itemSize: 116,
+            contentWidth: 364,
+            gap: 8,
+            horizontalPadding: 12,
+        });
+
+        const desktopLayout = computeGeneratedAttachmentGridLayout({ containerWidth: 800 });
+        expect(desktopLayout).toEqual({
+            columns: 6,
+            itemSize: 122,
+            contentWidth: 772,
+            gap: 8,
+            horizontalPadding: 12,
+        });
+
+        for (const [containerWidth, layout] of [
+            [360, phoneLayout],
+            [390, widePhoneLayout],
+            [800, desktopLayout],
+        ] as const) {
+            expect(layout.contentWidth + layout.horizontalPadding * 2).toBeLessThanOrEqual(containerWidth);
+        }
     });
 });

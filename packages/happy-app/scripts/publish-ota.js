@@ -3,7 +3,7 @@
 // 用法：node scripts/publish-ota.js [--channel <channel>] [--platform <platform>] [--runtime-version <runtime>] [--skip-latest]
 //   --channel  发布到哪个频道，缺省 production；预览发 preview（仅装了 preview 包的设备会拉到）
 //   --platform 平台，缺省 android
-//   --runtime-version  覆盖默认 runtime；默认 preview/development=21，production=22
+//   --runtime-version  覆盖默认 runtime；默认 preview/development=22，production=23
 //   --skip-latest 只发布时间戳版本和 meta，不覆盖频道 latest.json。PR 自动预览用它避免互相覆盖。
 //   人类可读展示信息可通过环境变量传入，或在 GitHub Actions 中从 GITHUB_EVENT_PATH 自动读取：
 //     OTA_DISPLAY_TITLE / OTA_DISPLAY_MESSAGE / OTA_SOURCE_TYPE / OTA_SOURCE_NUMBER / OTA_SOURCE_URL
@@ -19,6 +19,7 @@ const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
 const { execFileSync } = require('child_process');
+const { defaultRuntimeVersion } = require('./ota-runtime-config.js');
 
 // ---- 解析命令行参数（--channel / --platform / --runtime-version） ----
 function parseArgs(argv) {
@@ -49,10 +50,6 @@ function parseArgs(argv) {
   return out;
 }
 const ARGS = parseArgs(process.argv.slice(2));
-
-function defaultRuntimeVersion(channel) {
-  return channel === 'production' ? '22' : '21';
-}
 
 // ============ 配置区：按你自己的情况修改 ============
 const BUCKET = 'happy-app-ota-jacky';          // OSS 桶名

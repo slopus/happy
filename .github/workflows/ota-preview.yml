@@ -1,12 +1,13 @@
 name: Self-hosted OTA preview (per PR)
 
-# 给开发预览用的 OTA：PR 一开/更新就把这次改动以 OTA 形式发到「preview 频道」的
+# 给开发预览用的 OTA：JS-compatible PR 一开/更新就把这次改动以 OTA 形式发到「preview 频道」的
 # 时间戳版本，但不覆盖全局 latest.json，避免多个 PR 并行时互相抢走 preview latest。
+# 命中原生依赖、runtime 或原生配置时只报告跳过，等匹配二进制就绪后手动触发。
 # 装了 preview 包的开发者通过评论里的 stamp/deep link 锁定到本 PR 版本；确认没问题再合并 PR。
 # 生产用户走 production 频道，完全不受影响。
 #
 # 触发与安全：
-# - 只在「同仓库分支」的 PR 上运行（协作者把分支推到本仓库）。来自 fork 的 PR 拿不到
+# - 只在「同仓库分支」且 OTA-compatible 的 PR 上发布（协作者把分支推到本仓库）。来自 fork 的 PR 拿不到
 #   仓库 secret，会自动跳过（见各 job 的 if 守卫），避免泄露阿里云 AccessKey。
 # - 需要在仓库 Settings → Secrets 配置：
 #     ALIYUN_OSS_ACCESS_KEY_ID      —— 仅对 OSS 桶 happy-app-ota-jacky 有读写权限的子账号 AK
@@ -38,13 +39,62 @@ permissions:
     pull-requests: write
 
 jobs:
+    classify-ota-compatibility:
+        runs-on: ubuntu-latest
+        outputs:
+            ota-compatible: ${{ steps.changes.outputs.ota_compatible }}
+        steps:
+            - name: Checkout history
+              uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0
+
+            - name: Detect native-sensitive changes
+              id: changes
+              shell: bash
+              env:
+                  BASE_SHA: ${{ github.event.pull_request.base.sha }}
+                  HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+              run: |
+                  if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+                    echo "ota_compatible=true" >> "$GITHUB_OUTPUT"
+                    exit 0
+                  fi
+
+                  native_changed=false
+                  while IFS= read -r file; do
+                    case "$file" in
+                      packages/happy-app/app.config.js|\
+                      packages/happy-app/package.json|\
+                      packages/happy-app/ota-runtime-versions.json|\
+                      packages/happy-app/eas.json|\
+                      packages/happy-app/android/*|\
+                      packages/happy-app/ios/*|\
+                      packages/happy-app/plugins/*|\
+                      pnpm-lock.yaml)
+                        native_changed=true
+                        echo "Native-sensitive OTA path: $file"
+                        ;;
+                    esac
+                  done < <(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
+
+                  if [ "$native_changed" = true ]; then
+                    echo "ota_compatible=false" >> "$GITHUB_OUTPUT"
+                    echo "### OTA preview skipped" >> "$GITHUB_STEP_SUMMARY"
+                    echo "This PR changes native-sensitive files. Build and install the matching preview binary before publishing its runtime manually." >> "$GITHUB_STEP_SUMMARY"
+                  else
+                    echo "ota_compatible=true" >> "$GITHUB_OUTPUT"
+                  fi
+
     publish-preview:
+        needs: classify-ota-compatibility
         runs-on: ubuntu-latest
         timeout-minutes: 30
         # fork PR（head 仓库 != 本仓库）没有 secret，跳过；手动触发恒运行
         if: >-
-            github.event_name == 'workflow_dispatch' ||
-            github.event.pull_request.head.repo.full_name == github.repository
+            needs.classify-ota-compatibility.outputs.ota-compatible == 'true' &&
+            (github.event_name == 'workflow_dispatch' ||
+            github.event.pull_request.head.repo.full_name == github.repository)
         env:
             CHANNEL: ${{ github.event.inputs.channel || 'preview' }}
             # aliyun CLI 统一凭证链识别的环境变量（无需再写 ~/.aliyun/config.json）

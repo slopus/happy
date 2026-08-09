@@ -25,9 +25,16 @@ import { ATTACHMENT_THUMBNAIL_MAX_DIMENSION } from '@/hooks/attachmentImageTypes
 import { thumbhashToDataUri } from '@/utils/thumbhash';
 import { imageViewer } from '@/sync/imageViewer';
 import { HorizontalScrollView } from '@/components/HorizontalScrollView';
-import { computeAttachmentGalleryImageSize, formatPendingImageElapsed } from '@/utils/attachmentGalleryLayout';
+import {
+    computeAttachmentGalleryImageSize,
+    computeGeneratedAttachmentGridLayout,
+    formatPendingImageElapsed,
+} from '@/utils/attachmentGalleryLayout';
 import type { AttachmentGalleryPresentation } from '@/utils/attachmentGalleryLayout';
 import { layout } from '@/components/layout';
+import { t } from '@/text';
+import { GeneratedImageBatchDownload } from '@/components/GeneratedImageBatchDownload';
+import type { ImageBatchDownloadItem } from '@/utils/imageBatchDownload';
 
 const THUMB_SIZE = 100;
 const FEATURED_MAX_WIDTH = 360;
@@ -56,6 +63,11 @@ type GalleryImage = {
     thumbhash?: string;
     kind?: 'image' | 'audio' | 'video';
     size?: number;
+};
+
+type GalleryImageResolution = {
+    uri: string | null;
+    settled: boolean;
 };
 
 /** Extract renderable descriptors from a run of `file` messages. */
@@ -96,19 +108,45 @@ export const AttachmentGalleryView = React.memo<{
 }>(({ messages, sessionId, presentation = 'compact', pendingCount = 0, pendingStartedAt = null }) => {
     const images = React.useMemo(() => toGalleryImages(messages), [messages]);
     const placeholderCount = Math.max(0, pendingCount);
+    const windowDimensions = useWindowDimensions();
+    const [frameWidth, setFrameWidth] = React.useState(0);
     const now = useClock(placeholderCount > 0 && !!pendingStartedAt);
     const pendingElapsedLabel = pendingStartedAt
         ? formatPendingImageElapsed(Math.max(0, now - pendingStartedAt))
         : null;
 
-    // Decrypted URIs resolve lazily inside each thumbnail. We collect them here
-    // (in a ref, so resolution doesn't re-render the strip) so that tapping any
-    // thumbnail can open the *whole* run as a swipeable gallery, not just one.
+    // Decrypted URIs resolve lazily inside each thumbnail. Keep the URI map for
+    // swipe-gallery ordering, and separately track settlement for batch actions.
     const resolvedRef = React.useRef<Map<string, string>>(new Map());
-    const handleResolved = React.useCallback((id: string, uri: string | null) => {
-        if (uri) resolvedRef.current.set(id, uri);
+    const resolutionRef = React.useRef<Map<string, GalleryImageResolution>>(new Map());
+    const [, setResolutionRevision] = React.useState(0);
+    const handleResolution = React.useCallback((id: string, resolution: GalleryImageResolution) => {
+        const previous = resolutionRef.current.get(id);
+        if (previous?.uri === resolution.uri && previous.settled === resolution.settled) return;
+
+        resolutionRef.current.set(id, resolution);
+        if (resolution.uri) resolvedRef.current.set(id, resolution.uri);
         else resolvedRef.current.delete(id);
+
+        setResolutionRevision((revision) => revision + 1);
     }, []);
+
+    const generatedDownloadState = (() => {
+        const items: ImageBatchDownloadItem[] = [];
+        let settledCount = 0;
+        for (const image of images) {
+            const resolution = resolutionRef.current.get(image.id);
+            if (resolution?.settled) settledCount += 1;
+            if (resolution?.uri) {
+                items.push({
+                    id: image.id,
+                    uri: resolution.uri,
+                    filename: image.name,
+                });
+            }
+        }
+        return { items, settledCount };
+    })();
 
     const handleOpen = React.useCallback((tappedId: string) => {
         // Build the gallery in display order from whatever has resolved so far.
@@ -136,8 +174,23 @@ export const AttachmentGalleryView = React.memo<{
         <View
             style={styles.galleryFrame}
             testID={`attachment-gallery-${presentation}`}
+            onLayout={presentation === 'generated-grid'
+                ? (event) => setFrameWidth(Math.round(event.nativeEvent.layout.width))
+                : undefined}
         >
-            {presentation === 'featured' ? (
+            {presentation === 'generated-grid' ? (
+                <GeneratedAttachmentGrid
+                    images={images}
+                    sessionId={sessionId}
+                    pendingCount={placeholderCount}
+                    pendingElapsedLabel={pendingElapsedLabel}
+                    containerWidth={frameWidth || Math.min(windowDimensions.width, layout.maxWidth)}
+                    downloadItems={generatedDownloadState.items}
+                    settledCount={generatedDownloadState.settledCount}
+                    onResolution={handleResolution}
+                    onOpen={handleOpen}
+                />
+            ) : presentation === 'featured' ? (
                 <View style={styles.featuredList}>
                     {images.map((img) => (
                         <GalleryThumbnail
@@ -145,7 +198,7 @@ export const AttachmentGalleryView = React.memo<{
                             image={img}
                             sessionId={sessionId}
                             presentation={presentation}
-                            onResolved={handleResolved}
+                            onResolution={handleResolution}
                             onOpen={handleOpen}
                         />
                     ))}
@@ -170,7 +223,7 @@ export const AttachmentGalleryView = React.memo<{
                             image={img}
                             sessionId={sessionId}
                             presentation={presentation}
-                            onResolved={handleResolved}
+                            onResolution={handleResolution}
                             onOpen={handleOpen}
                         />
                     ))}
@@ -182,6 +235,98 @@ export const AttachmentGalleryView = React.memo<{
         </View>
     );
 });
+
+function GeneratedAttachmentGrid({
+    images,
+    sessionId,
+    pendingCount,
+    pendingElapsedLabel,
+    containerWidth,
+    downloadItems,
+    settledCount,
+    onResolution,
+    onOpen,
+}: {
+    images: GalleryImage[];
+    sessionId: string;
+    pendingCount: number;
+    pendingElapsedLabel: string | null;
+    containerWidth: number;
+    downloadItems: ImageBatchDownloadItem[];
+    settledCount: number;
+    onResolution: (id: string, resolution: GalleryImageResolution) => void;
+    onOpen: (id: string) => void;
+}) {
+    const { theme } = useUnistyles();
+    const grid = computeGeneratedAttachmentGridLayout({ containerWidth });
+    const remainingSlotsInRow = grid.columns - (images.length % grid.columns);
+    const visiblePendingCount = Math.min(pendingCount, remainingSlotsInRow);
+    const totalCount = images.length + pendingCount;
+    const itemSize = { width: grid.itemSize, height: grid.itemSize };
+
+    return (
+        <View>
+            <View style={styles.generatedHeader}>
+                {pendingCount > 0 ? (
+                    <View style={styles.generatedProgress}>
+                        <ActivityIndicator size="small" color={theme.colors.textSecondary} />
+                        <Text
+                            testID="attachment-gallery-progress"
+                            style={[styles.generatedProgressText, { color: theme.colors.textSecondary }]}
+                        >
+                            {t('generatedImageBatchDownload.generating', {
+                                completed: images.length,
+                                total: totalCount,
+                            })}
+                        </Text>
+                        {pendingElapsedLabel ? (
+                            <Text style={[styles.generatedElapsed, { color: theme.colors.textSecondary }]}>
+                                {pendingElapsedLabel}
+                            </Text>
+                        ) : null}
+                    </View>
+                ) : null}
+                <GeneratedImageBatchDownload
+                    items={downloadItems}
+                    displayedCount={images.length}
+                    settledCount={settledCount}
+                    pendingCount={pendingCount}
+                />
+            </View>
+            <View
+                testID="attachment-gallery-grid"
+                style={[
+                    styles.generatedGrid,
+                    {
+                        width: grid.contentWidth,
+                        gap: grid.gap,
+                        marginHorizontal: grid.horizontalPadding,
+                    },
+                ]}
+            >
+                {images.map((image) => (
+                    <GalleryThumbnail
+                        key={image.id}
+                        image={image}
+                        sessionId={sessionId}
+                        presentation="generated-grid"
+                        displaySizeOverride={itemSize}
+                        onResolution={onResolution}
+                        onOpen={onOpen}
+                    />
+                ))}
+                {Array.from({ length: visiblePendingCount }, (_, index) => (
+                    <GalleryPlaceholder
+                        key={`pending-${index}`}
+                        presentation="generated-grid"
+                        displaySizeOverride={itemSize}
+                        elapsedLabel={null}
+                    />
+                ))}
+            </View>
+        </View>
+    );
+}
 
 function useClock(enabled: boolean): number {
     const [now, setNow] = React.useState(() => Date.now());
@@ -200,15 +345,16 @@ const GalleryThumbnail = React.memo<{
     image: GalleryImage;
     sessionId: string;
     presentation: AttachmentGalleryPresentation;
-    onResolved: (id: string, uri: string | null) => void;
+    displaySizeOverride?: { width: number; height: number };
+    onResolution: (id: string, resolution: GalleryImageResolution) => void;
     onOpen: (id: string) => void;
-}>(({ image, sessionId, presentation, onResolved, onOpen }) => {
+}>(({ image, sessionId, presentation, displaySizeOverride, onResolution, onOpen }) => {
     // Audio/video have no thumbnail — render a compact card (icon + filename +
     // size). Dispatch before any image hooks so hook order stays stable.
     if (image.kind === 'audio' || image.kind === 'video') {
         return <GalleryMediaCard image={image} />;
     }
-    return <GalleryImageThumb image={image} sessionId={sessionId} presentation={presentation} onResolved={onResolved} onOpen={onOpen} />;
+    return <GalleryImageThumb image={image} sessionId={sessionId} presentation={presentation} displaySizeOverride={displaySizeOverride} onResolution={onResolution} onOpen={onOpen} />;
 });
 
 function GalleryMediaCard({ image }: { image: GalleryImage }) {
@@ -231,9 +377,10 @@ const GalleryImageThumb = React.memo<{
     image: GalleryImage;
     sessionId: string;
     presentation: AttachmentGalleryPresentation;
-    onResolved: (id: string, uri: string | null) => void;
+    displaySizeOverride?: { width: number; height: number };
+    onResolution: (id: string, resolution: GalleryImageResolution) => void;
     onOpen: (id: string) => void;
-}>(({ image, sessionId, presentation, onResolved, onOpen }) => {
+}>(({ image, sessionId, presentation, displaySizeOverride, onResolution, onOpen }) => {
     const { theme } = useUnistyles();
     const windowDimensions = useWindowDimensions();
 
@@ -243,7 +390,8 @@ const GalleryImageThumb = React.memo<{
         return uri ? { uri } : undefined;
     }, [image.thumbhash]);
 
-    const { uri, error } = useAttachmentImage(
+    const directUri = !sessionId && image.ref.startsWith('data:image/') ? image.ref : null;
+    const attachmentState = useAttachmentImage(
         sessionId,
         sessionId ? image.ref : undefined,
         {
@@ -252,14 +400,18 @@ const GalleryImageThumb = React.memo<{
             sourceHeight: image.height,
         },
     );
+    const uri = directUri ?? attachmentState.uri;
+    const settled = directUri !== null || (
+        !!sessionId && (!!attachmentState.uri || !!attachmentState.error || !attachmentState.loading)
+    );
 
-    // Report this image's resolved URI up so the parent can open the full run.
+    // Report both URI and settlement: failures must not deadlock a ready batch.
     React.useEffect(() => {
-        onResolved(image.id, uri ?? null);
-    }, [image.id, uri, onResolved]);
+        onResolution(image.id, { uri, settled });
+    }, [image.id, onResolution, settled, uri]);
 
     const maxFeaturedWidth = Math.max(THUMB_SIZE, Math.min(FEATURED_MAX_WIDTH, windowDimensions.width - 56));
-    const displaySize = computeAttachmentGalleryImageSize({
+    const displaySize = displaySizeOverride ?? computeAttachmentGalleryImageSize({
         presentation,
         sourceWidth: image.width,
         sourceHeight: image.height,
@@ -270,6 +422,7 @@ const GalleryImageThumb = React.memo<{
 
     return (
         <Pressable
+            testID="attachment-gallery-image"
             onPress={uri ? () => onOpen(image.id) : undefined}
             disabled={!uri}
             style={[
@@ -287,8 +440,11 @@ const GalleryImageThumb = React.memo<{
                 recyclingKey={image.id}
                 transition={150}
             />
-            {error && !uri && (
-                <View style={[styles.errorOverlay, { backgroundColor: theme.colors.surfaceHigh }]}>
+            {attachmentState.error && !uri && (
+                <View
+                    testID="attachment-gallery-error"
+                    style={[styles.errorOverlay, { backgroundColor: theme.colors.surfaceHigh }]}
+                >
                     <Ionicons name="alert-circle-outline" size={20} color={theme.colors.textSecondary} />
                 </View>
             )}
@@ -298,12 +454,13 @@ const GalleryImageThumb = React.memo<{
 
 const GalleryPlaceholder = React.memo<{
     presentation: AttachmentGalleryPresentation;
+    displaySizeOverride?: { width: number; height: number };
     elapsedLabel: string | null;
-}>(({ presentation, elapsedLabel }) => {
+}>(({ presentation, displaySizeOverride, elapsedLabel }) => {
     const { theme } = useUnistyles();
     const windowDimensions = useWindowDimensions();
     const maxFeaturedWidth = Math.max(THUMB_SIZE, Math.min(FEATURED_MAX_WIDTH, windowDimensions.width - 56));
-    const displaySize = computeAttachmentGalleryImageSize({
+    const displaySize = displaySizeOverride ?? computeAttachmentGalleryImageSize({
         presentation,
         maxWidth: maxFeaturedWidth,
         maxHeight: FEATURED_MAX_HEIGHT,
@@ -312,6 +469,7 @@ const GalleryPlaceholder = React.memo<{
 
     return (
         <View
+            testID="attachment-gallery-placeholder"
             style={[
                 isFeatured ? styles.featuredWrapper : styles.thumbWrapper,
                 displaySize,
@@ -357,6 +515,39 @@ const styles = StyleSheet.create(() => ({
         marginHorizontal: 8,
         marginVertical: 8,
         paddingHorizontal: 4,
+    },
+    generatedHeader: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        justifyContent: 'flex-end',
+        gap: 12,
+        marginHorizontal: 12,
+        marginTop: 8,
+        marginBottom: 6,
+    },
+    generatedProgress: {
+        flex: 1,
+        minHeight: 28,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 7,
+    },
+    generatedProgressText: {
+        fontSize: 13,
+        fontWeight: '600',
+        fontVariant: ['tabular-nums'],
+    },
+    generatedElapsed: {
+        marginLeft: 'auto',
+        fontSize: 12,
+        fontWeight: '500',
+        fontVariant: ['tabular-nums'],
+    },
+    generatedGrid: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        alignItems: 'flex-start',
+        marginVertical: 8,
     },
     thumbWrapper: {
         width: THUMB_SIZE,

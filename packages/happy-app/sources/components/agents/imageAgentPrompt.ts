@@ -190,7 +190,7 @@ export function getImageAgentContinuationInputRules(styles: ImageAgentStylePrese
         rules.push(`- 这些风格必须有源图片：${imageRequiredStyles.map((style) => style.id).join('、')}。如果当前会话找不到最近一次生成或上传的相关图片，立即停止并请用户先上传一张；不要用纯文字猜测场景，也不要启动图片工具。`);
     }
     if (singleImageStyles.length > 0) {
-        rules.push(`- 这些风格一次只能处理一张源图片：${singleImageStyles.map((style) => style.id).join('、')}。只使用当前结果对应的最近一张图片；如果无法唯一确定，应先请用户选择，禁止擅自拼图或混合多个场景。`);
+        rules.push(`- 这些风格一次只能处理一张源图片：${singleImageStyles.map((style) => style.id).join('、')}。存在多张候选素材时按顺序逐张独立处理；每个结果只绑定当前对应的一张素材，禁止把多张素材共同输入同一次生成、拼图或混合场景。`);
     }
 
     return rules;
@@ -235,11 +235,9 @@ export function buildImageAgentPrompt(args: {
     if (sourceImageCount === 0 && imageRequiredStyles.length > 0) {
         return `暂不执行图片任务。请先上传一张源照片，再使用这些必须以图片为输入的风格：${imageRequiredStyles.map((style) => style.id).join('、')}。不要改用纯文字猜测场景，也不要启动生成式或确定性图片工具。`;
     }
-    const singleImageStyles = styles.filter((style) => style.multiInputMode === 'single');
-    if (sourceImageCount > 1 && singleImageStyles.length > 0) {
-        return `暂不执行图片任务。下面这些风格一次只接受一张源照片：${singleImageStyles.map((style) => style.id).join('、')}。请只保留或明确选择其中一张图片后再继续；不要擅自拼图、混合多个场景或启动图片工具。`;
-    }
     const variants = getImageAgentVariantCount(args.agent);
+    const batchSourceCount = Math.max(1, sourceImageCount);
+    const expectedOutputCount = batchSourceCount * styles.length * variants;
     const userPrompt = args.userPrompt.trim() || '请把上传的参考图作为主体参考，生成一组可复用的风格效果总览。';
     const styleList = styles.map((style, index) => [
         `${index + 1}. ${style.id} (${style.templateRef}; engine=${style.executionKind ?? 'gpt-image-2'}) - ${getImageAgentStyleLabel(style)}: ${getImageAgentStylePromptHint(style)}`,
@@ -253,8 +251,17 @@ export function buildImageAgentPrompt(args: {
     const styleReferenceImageCount = args.styleReferenceImageCount ?? 0;
     const userImageCount = args.userImageCount ?? args.imageCount;
     const inputLine = styleReferenceImageCount > 0
-        ? `输入：已上传 ${args.imageCount} 张图片。其中前 ${styleReferenceImageCount} 张是自定义风格的临时参考图，只用于提取风格；后 ${userImageCount} 张是本次用户素材。除非用户明确说明不使用，否则请把本次用户素材作为主体参考。`
-        : `输入：已上传 ${args.imageCount} 张参考图。除非用户明确说明不使用，否则请把所有上传图片都作为视觉参考。`;
+        ? `输入：已上传 ${args.imageCount} 张图片。其中前 ${styleReferenceImageCount} 张是自定义风格的临时参考图，只用于提取风格；后 ${userImageCount} 张是本次用户素材，并按附件顺序编号。`
+        : `输入：已上传 ${args.imageCount} 张参考图，均为本次用户素材，并按附件顺序编号。`;
+    const batchMatrixLine = sourceImageCount > 0
+        ? `- 批次矩阵：源素材 ${sourceImageCount} 张 × 风格 ${styles.length} 个 × 每风格变体 ${variants} 张 = 预计输出总数 ${expectedOutputCount} 张。`
+        : `- 批次矩阵：文字任务 1 组 × 风格 ${styles.length} 个 × 每风格变体 ${variants} 张 = 预计输出总数 ${expectedOutputCount} 张。`;
+    const multiSourceRules = sourceImageCount > 1
+        ? [
+            '- 按用户素材顺序逐张遍历，再遍历全部选中风格与变体；自动完成整个笛卡尔积，不要逐张向用户确认。',
+            '- 每个结果只能使用当前对应的 1 张用户素材作为源图片；自定义风格参考图仍只承担风格角色。禁止把多张用户素材拼图、混合或共同输入同一次图片生成。',
+        ]
+        : [];
 
     return [
         getImageAgentExecutionLead(styles),
@@ -273,10 +280,13 @@ export function buildImageAgentPrompt(args: {
         `用户目标：${userPrompt}`,
         '',
         '输出要求：',
+        batchMatrixLine,
+        ...multiSourceRules,
         `- 对下面每个选中的风格，各生成 ${variants} 张变体。`,
         '- 生成型风格将 prompt 保存到 garden-gpt-image-2/prompt/、图片保存到 garden-gpt-image-2/image/；deterministic-grade 风格按其 Skill 输出契约保存无损图片、版本化 recipe、质量报告和对比图。',
         '- 为本次批处理生成一个稳定 batchId（例如 gpt-image-2-YYYYMMDD-HHMMSS），同一批所有图片都使用这个 batchId。',
-        '- 每保存一张 PNG/JPEG 后，立即用绝对本地路径调用 mcp__happy__send_image 内联发送，并传入本张图片对应的完整 prompt 和 batchId。不要对本地文件使用 Markdown 图片语法。',
+        '- 每完成 1 张就立即调用 mcp__happy__send_image 内联发送，再继续下一个组合；传入本张图片对应的绝对本地路径、完整 prompt 和 batchId。不要对本地文件使用 Markdown 图片语法。',
+        `- 不要等 ${expectedOutputCount} 张全部完成后再集中发送；客户端需要用同一个 batchId 增量展示进度。`,
         '- 如果切到 native / 宿主图像工具，工具可能会把 PNG/JPEG 先保存到 ~/.codex/generated_images/<任务 id>/；生成后必须用 find/ls 确认实际文件，复制一份到 garden-gpt-image-2/image/，再调用 mcp__happy__send_image。不要在未检查该目录前声称“没有本地路径”或“无法返回”。',
         '- 不要在对话里展示生成过程、命令输出、完整 prompt 或路径清单。',
         `- 最终回复：${responseInstructions}`,

@@ -144,7 +144,8 @@ describe('imageStyleOptions', () => {
         expect(prompt).toContain('exactly one high-chroma print hue');
         expect(prompt).toContain("user's current conversation language");
         expect(prompt).toContain('一次只能处理一张源图片');
-        expect(prompt).toContain('如果无法唯一确定，应先请用户选择');
+        expect(prompt).toContain('存在多张候选素材时按顺序逐张独立处理');
+        expect(prompt).toContain('禁止把多张素材共同输入同一次生成');
 
         const seaStyle = IMAGE_AGENT_STYLE_PRESETS.find((preset) => preset.id === 'github-skills/scenes-gathered-zine/2');
         expect(seaStyle).toBeTruthy();

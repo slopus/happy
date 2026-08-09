@@ -480,13 +480,15 @@ Runtime and channel mapping:
 
 | `APP_ENV` | OTA channel | Runtime version |
 |-----------|-------------|-----------------|
-| `development` | `preview` | `21` |
-| `preview` | `preview` | `21` |
-| `production` | `production` | `22` |
+| `development` | `preview` | `22` |
+| `preview` | `preview` | `22` |
+| `production` | `production` | `23` |
 
 Only JavaScript-compatible changes should be delivered by OTA. Native
 dependencies, permissions, Expo plugins, package IDs, update URLs, and runtime
-version changes require a new app build.
+version changes require a new app build. Automatic preview and production OTA
+workflows skip diffs that touch native-sensitive configuration; publish that
+runtime manually only after installing its matching binary.
 
 ## Troubleshooting
 
