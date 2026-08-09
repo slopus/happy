@@ -184,6 +184,7 @@ export const ca: TranslationStructure = {
         lastSeen: ({ time }: { time: string }) => `vist per última vegada ${time}`,
         idle: 'inactiu',
         running: 'en execució',
+        queued: ({ count }: { count: number }) => `${count} missatge${count === 1 ? '' : 's'} a la cua`,
         failed: 'fallit',
         completed: 'completat',
         permissionRequired: 'permís requerit',

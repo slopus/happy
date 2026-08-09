@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyPersistedTurnStatus, clearStaleRunningTurnStatus } from './sessionTurnStatus';
+import { applyPersistedTurnStatus, applyQueuedMessageCount, clearStaleRunningTurnStatus } from './sessionTurnStatus';
 
 describe('persisted session turn status', () => {
   it('preserves unrelated encrypted agent state fields', () => {
@@ -70,5 +70,17 @@ describe('persisted session turn status', () => {
 
     const completed = { turnStatus: { status: 'completed' as const, updatedAt: 101 } };
     expect(clearStaleRunningTurnStatus(completed)).toBe(completed);
+  });
+
+  it('tracks queued messages without disturbing lifecycle or permission state', () => {
+    const state = {
+      requests: {
+        permission: { tool: 'Bash', arguments: {}, createdAt: 1 },
+      },
+      turnStatus: { status: 'completed' as const, updatedAt: 100, turnId: 'turn-1' },
+    };
+    const queued = applyQueuedMessageCount(state, 2);
+    expect(queued).toEqual({ ...state, queuedMessages: 2 });
+    expect(applyQueuedMessageCount(queued, 0)).toEqual(state);
   });
 });

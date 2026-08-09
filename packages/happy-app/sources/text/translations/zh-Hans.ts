@@ -186,6 +186,7 @@ export const zhHans: TranslationStructure = {
         lastSeen: ({ time }: { time: string }) => `最后活跃时间 ${time}`,
         idle: '空闲',
         running: '执行中',
+        queued: ({ count }: { count: number }) => `${count} 条消息排队中`,
         failed: '已失败',
         completed: '已完成',
         permissionRequired: '需要权限',

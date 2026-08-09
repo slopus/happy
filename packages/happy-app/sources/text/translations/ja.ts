@@ -186,6 +186,7 @@ export const ja: TranslationStructure = {
         lastSeen: ({ time }: { time: string }) => `最終アクセス: ${time}`,
         idle: '待機中',
         running: '実行中',
+        queued: ({ count }: { count: number }) => `${count}件のメッセージが待機中`,
         failed: '失敗',
         completed: '完了',
         permissionRequired: '権限が必要です',

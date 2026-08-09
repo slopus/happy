@@ -183,6 +183,7 @@ export const en = {
         lastSeen: ({ time }: { time: string }) => `last seen ${time}`,
         idle: 'idle',
         running: 'running',
+        queued: ({ count }: { count: number }) => `${count} message${count === 1 ? '' : 's'} queued`,
         failed: 'failed',
         completed: 'completed',
         permissionRequired: 'permission required',

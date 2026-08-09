@@ -37,7 +37,8 @@ export function resolveSessionState(session: Pick<Session, 'agentState' | 'prese
         return { state: 'permission_required', isConnected: isOnline };
     }
     const persisted = session.agentState?.turnStatus?.status;
-    if (isOnline && (session.thinking === true || persisted === 'running')) {
+    const hasQueuedMessages = (session.agentState?.queuedMessages ?? 0) > 0;
+    if (isOnline && (session.thinking === true || persisted === 'running' || hasQueuedMessages)) {
         return { state: 'running', isConnected: true };
     }
     if (persisted === 'failed') {
@@ -63,10 +64,13 @@ export function useSessionStatus(session: Session): SessionStatus {
     const offlineText = resolved.isConnected
         ? ''
         : ` · ${t('status.lastSeen', { time: formatLastSeen(session.activeAt, false) })}`;
+    const queuedMessages = resolved.isConnected ? (session.agentState?.queuedMessages ?? 0) : 0;
 
     return {
         ...resolved,
-        statusText: `${getSessionStateLabel(resolved.state)}${offlineText}`,
+        statusText: queuedMessages > 0 && resolved.state !== 'permission_required'
+            ? t('status.queued', { count: queuedMessages })
+            : `${getSessionStateLabel(resolved.state)}${offlineText}`,
         shouldShowStatus: true,
         statusColor: colors[resolved.state],
         statusDotColor: colors[resolved.state],

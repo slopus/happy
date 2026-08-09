@@ -233,22 +233,33 @@ async function waitFor(check: () => boolean | Promise<boolean>, timeoutMs: numbe
     throw new Error(`Timed out waiting for ${label} after ${timeoutMs}ms`);
 }
 
-async function isExpoWebBundleReady(webUrl: string): Promise<boolean> {
-    const documentResponse = await fetch(webUrl);
-    if (!documentResponse.ok) return false;
-
-    const html = await documentResponse.text();
-    const scriptSources = Array.from(
-        html.matchAll(/<script\b[^>]*\bsrc=["']([^"']+)["']/gi),
-        (match) => match[1],
-    );
-    if (scriptSources.length === 0) return false;
-
-    const scriptResponses = await Promise.all(
-        scriptSources.map((source) => fetch(new URL(source, webUrl))),
-    );
-    await Promise.all(scriptResponses.map((response) => response.arrayBuffer()));
-    return scriptResponses.every((response) => response.ok);
+async function waitForWebBundle(url: string, timeoutMs: number): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+        try {
+            const response = await fetch(url, {
+                signal: AbortSignal.timeout(Math.max(1, deadline - Date.now())),
+            });
+            if (response.ok) {
+                const html = await response.text();
+                const scriptSources = Array.from(
+                    html.matchAll(/<script\b[^>]*\bsrc=["']([^"']+)["']/gi),
+                    (match) => match[1],
+                );
+                if (scriptSources.length > 0) {
+                    const scriptResponses = await Promise.all(scriptSources.map((source) => fetch(new URL(source, url), {
+                        signal: AbortSignal.timeout(Math.max(1, deadline - Date.now())),
+                    })));
+                    await Promise.all(scriptResponses.map((scriptResponse) => scriptResponse.arrayBuffer()));
+                    if (scriptResponses.every((scriptResponse) => scriptResponse.ok)) {
+                        return;
+                    }
+                }
+            }
+        } catch {}
+        await new Promise(r => setTimeout(r, 1_000));
+    }
+    throw new Error(`Timed out waiting for web bundle after ${timeoutMs}ms`);
 }
 
 function spawnService(
@@ -365,7 +376,7 @@ export async function createEnvironment(opts?: { noSwitch?: boolean }): Promise<
 
 export async function startEnvironmentServices(
     name: string,
-    opts?: { waitForWebBundle?: boolean },
+    options?: { startWeb?: boolean; waitForWebBundle?: boolean },
 ): Promise<void> {
     const envDir = getEnvironmentDir(name);
     const config = readEnvironmentConfig(name);
@@ -386,12 +397,21 @@ export async function startEnvironmentServices(
         await waitFor(async () => {
             const res = await fetch(`${serverUrl}/`);
             return res.ok;
-        }, opts?.waitForWebBundle ? 90_000 : 30_000, "server");
+        }, options?.waitForWebBundle ? 120_000 : 30_000, "server");
     } catch {
         throw new Error(`Server failed to start. Check logs: ${serverLogFile}`);
     }
     console.log(`  Server is healthy.`);
 
+    if (options?.startWeb === false) return;
+    await startEnvironmentWeb(name, { warmBundle: options?.waitForWebBundle });
+}
+
+export async function startEnvironmentWeb(name: string, options?: { warmBundle?: boolean }): Promise<void> {
+    const envDir = getEnvironmentDir(name);
+    const config = readEnvironmentConfig(name);
+    const envVars = buildEnvVars(envDir, config.serverPort, config.expoPort);
+    const mergedEnv: Record<string, string | undefined> = { ...process.env, ...envVars };
     const webLogFile = path.join(envDir, "web", "stdout.log");
     fs.mkdirSync(path.join(envDir, "web"), { recursive: true });
     console.log(`Starting web on port ${config.expoPort}...`);
@@ -408,19 +428,18 @@ export async function startEnvironmentServices(
         // A listening Metro socket does not mean the first Web bundle is
         // ready. Production-like evidence runs clear the cache, so warm the
         // document before Playwright starts its per-test five-second waits.
-        const webUrl = `http://localhost:${config.expoPort}/`;
-        const waitForWeb = opts?.waitForWebBundle || process.env.HAPPY_E2E_WEB_NO_DEV === "1"
-            ? () => isExpoWebBundleReady(webUrl)
-            : () => isPortInUse(config.expoPort);
+        const waitForWeb = options?.warmBundle === true || process.env.HAPPY_E2E_WEB_NO_DEV === "1"
+            ? () => waitForWebBundle(`http://localhost:${config.expoPort}/`, 300_000)
+            : () => waitFor(() => isPortInUse(config.expoPort), 120_000, "web");
         // Metro 首次构建依赖较多，冷启动在开发机上可能超过 30 秒。
-        await waitFor(waitForWeb, 300_000, "web");
+        await waitForWeb();
     } catch {
         throw new Error(`Web failed to start. Check logs: ${webLogFile}`);
     }
     console.log(`  Web is listening.`);
 }
 
-export async function seedEnvironment(name: string): Promise<void> {
+export async function seedEnvironment(name: string, options?: { startDaemon?: boolean }): Promise<void> {
     const envDir = getEnvironmentDir(name);
     const config = readEnvironmentConfig(name);
     const serverUrl = `http://localhost:${config.serverPort}`;
@@ -484,40 +503,45 @@ export async function seedEnvironment(name: string): Promise<void> {
     const authenticatedWebUrl = buildAuthenticatedWebUrl(config.expoPort, token, secretBase64);
     writeEnvironmentConfig({ ...config, authenticatedWebUrl });
 
-    const daemonStatePath = path.join(envDir, "cli", "home", "daemon.state.json");
-    if (fs.existsSync(daemonStatePath)) {
-        try {
-            const daemonState = JSON.parse(fs.readFileSync(daemonStatePath, "utf-8"));
-            if (daemonState.pid && isProcessAlive(daemonState.pid)) {
-                console.log(`Stopping existing daemon (PID ${daemonState.pid})...`);
-                killProcess(daemonState.pid);
-                await new Promise(r => setTimeout(r, 1000));
-            }
-        } catch {}
-    }
+    const startDaemon = options?.startDaemon ?? true;
+    if (startDaemon) {
+        const daemonStatePath = path.join(envDir, "cli", "home", "daemon.state.json");
+        if (fs.existsSync(daemonStatePath)) {
+            try {
+                const daemonState = JSON.parse(fs.readFileSync(daemonStatePath, "utf-8"));
+                if (daemonState.pid && isProcessAlive(daemonState.pid)) {
+                    console.log(`Stopping existing daemon (PID ${daemonState.pid})...`);
+                    killProcess(daemonState.pid);
+                    await new Promise(r => setTimeout(r, 1000));
+                }
+            } catch {}
+        }
 
-    const envVars = buildEnvVars(envDir, config.serverPort, config.expoPort);
-    const daemonEnv = { ...process.env, ...envVars };
-    delete daemonEnv.CLAUDECODE;
+        const envVars = buildEnvVars(envDir, config.serverPort, config.expoPort);
+        const daemonEnv = { ...process.env, ...envVars };
+        delete daemonEnv.CLAUDECODE;
 
-    const happyBin = path.join(REPO_ROOT, "packages", "happy-cli", "bin", "happy.mjs");
-    const daemon = spawn("node", [happyBin, "daemon", "start"], {
-        env: daemonEnv,
-        stdio: "ignore",
-        detached: true,
-    });
-    daemon.unref();
-
-    const machineRegistered = await waitFor(async () => {
-        const res = await fetch(`${serverUrl}/v1/machines`, {
-            headers: { Authorization: `Bearer ${token}` },
+        const happyBin = path.join(REPO_ROOT, "packages", "happy-cli", "bin", "happy.mjs");
+        const daemon = spawn("node", [happyBin, "daemon", "start"], {
+            env: daemonEnv,
+            stdio: "ignore",
+            detached: true,
         });
-        if (!res.ok) return false;
-        const machines = (await res.json()) as unknown[];
-        return machines.length > 0;
-    }, 10_000, "machine registration").then(() => true, () => false);
+        daemon.unref();
 
-    console.log(`  Seeded: credentials written, daemon ${machineRegistered ? "registered" : "starting"}`);
+        const machineRegistered = await waitFor(async () => {
+            const res = await fetch(`${serverUrl}/v1/machines`, {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            if (!res.ok) return false;
+            const machines = (await res.json()) as unknown[];
+            return machines.length > 0;
+        }, 10_000, "machine registration").then(() => true, () => false);
+
+        console.log(`  Seeded: credentials written, daemon ${machineRegistered ? "registered" : "starting"}`);
+    } else {
+        console.log("  Seeded: credentials written (daemon skipped)");
+    }
     console.log(`  Auth URL: ${authenticatedWebUrl}`);
 }
 

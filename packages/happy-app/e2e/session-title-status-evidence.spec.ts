@@ -389,3 +389,35 @@ test('T09-03 compact header remains hit-testable at 800/1024 and phone keeps the
         client.close();
     }
 });
+
+test('T09-04 queued follow-up overrides a stale completed header status', async ({ page, request }, testInfo) => {
+    test.setTimeout(240_000);
+    const sessionId = await createSession(request, {
+        path: '/workspace/paws-title-status-queued',
+        summary: 'Queued follow-up status',
+        tag: 'title-status-queued',
+        agentState: {
+            queuedMessages: 1,
+            turnStatus: { status: 'completed', updatedAt: Date.now(), turnId: 'turn-before-queue' },
+        },
+    });
+    const client = await connectSession(sessionId, false);
+
+    try {
+        await page.setViewportSize({ width: 1440, height: 900 });
+        await page.goto(route(`/session/${sessionId}`));
+        client.pulse();
+        await expect(page.getByTestId('session-message-input')).toBeVisible({ timeout: 120_000 });
+
+        const status = page.locator('[data-testid="session-header-run-status"]:visible');
+        if (evidencePhase === 'after') {
+            await expect(status).toHaveText('1 message queued');
+            await expect(status).not.toContainText(/completed/i);
+        } else {
+            await expect(status).toContainText(/completed/i);
+        }
+        await page.screenshot({ path: screenshotPath(testInfo, 4), fullPage: true });
+    } finally {
+        client.close();
+    }
+});
