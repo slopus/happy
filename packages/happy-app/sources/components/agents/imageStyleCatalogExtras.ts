@@ -2,6 +2,7 @@
 import type { ImageAgentStyleCategory, ImageAgentStylePreset } from './imageStyleTypes';
 import { GC_MINIMAL_ZINE_POSTER_LICENSE, GC_MINIMAL_ZINE_POSTER_PROMPT } from './gcMinimalZinePosterPrompt';
 import { GRADE_IMAGES_LICENSE_NOTICE, GRADE_IMAGES_PROMPT } from './gradeImagesPrompt';
+import { PHOTO_ILLUSTRATION_EDITORIAL_ECHO_LICENSE_NOTICE, PHOTO_ILLUSTRATION_EDITORIAL_ECHO_PROMPT } from './photoIllustrationEditorialEchoPrompt';
 import { PHOTO_ILLUSTRATION_DIPTYCH_LICENSE_NOTICE, PHOTO_ILLUSTRATION_DIPTYCH_PROMPT } from './photoIllustrationDiptychPrompt';
 import { PHOTO_ILLUSTRATION_DIPTYCH_LAKESIDE_PROMPT } from './photoIllustrationDiptychLakesidePrompt';
 import { SCENE_DISTILLATION_ZINE_LICENSE, SCENE_DISTILLATION_ZINE_PROMPT } from './sceneDistillationZinePrompt';
@@ -14,7 +15,7 @@ export const EXTRA_IMAGE_AGENT_STYLE_CATEGORIES: ImageAgentStyleCategory[] = [
         "label": "GitHub Skills",
         "labelKey": "agents.imageStyleGithubSkills",
         "accent": "#315D86",
-        "count": 7
+        "count": 8
     },
     {
         "id": "reference-voxcat",
@@ -49,6 +50,30 @@ export const EXTRA_IMAGE_AGENT_STYLE_CATEGORIES: ImageAgentStyleCategory[] = [
 ];
 
 export const EXTRA_IMAGE_AGENT_STYLE_PRESETS: ImageAgentStylePreset[] = [
+    {
+        "id": "github-skills/photo-illustration-diptych/3",
+        "title": "Editorial Echo",
+        "labelKey": "agents.imageStylePhotoIllustrationEditorialEcho",
+        "categoryId": "github-skills",
+        "categoryLabel": "GitHub Skills",
+        "categoryLabelKey": "agents.imageStyleGithubSkills",
+        "categoryAccent": "#315D86",
+        "templateRef": "skills/photo-illustration-diptych/SKILL.md",
+        "templateLabel": "Photo–Illustration Diptych · Editorial Echo",
+        "templateLabelKey": "agents.imageStylePhotoIllustrationEditorialEcho",
+        "promptHint": "Turn one photo into an adaptive portrait or landscape editorial poster with a truthful photo anchor, one isolated watercolor-and-ink echo, and scene-specific title, study label, and short caption composed as crisp real text.",
+        "promptHintKey": "agents.imageStylePhotoIllustrationEditorialEchoHint",
+        "promptContent": PHOTO_ILLUSTRATION_EDITORIAL_ECHO_PROMPT,
+        "promptPath": "garden-gpt-image-2/prompt/photo-illustration-editorial-echo-v1.md",
+        "sourceCaseId": "photo-illustration-diptych/editorial-echo-20260809",
+        "sourceRepository": "wangjs-jacky/happy",
+        "sourceRevision": "e8716a0a0c949f8e2b45e1e3d7c8d36ad7bba17c",
+        "sourceLicenseNotice": PHOTO_ILLUSTRATION_EDITORIAL_ECHO_LICENSE_NOTICE,
+        "executionKind": "gpt-image-2",
+        "inputMode": "image-required",
+        "multiInputMode": "single",
+        "responseInstructions": "After sending the finished poster, add a concise 1–3 sentence rationale in the user's current conversation language naming the selected orientation, the scene-specific copy idea, and the preserved photo-to-illustration correspondence. Do not reveal the full prompt, private source path, temporary motif, HTML path, or detailed parameters unless explicitly requested."
+    },
     {
         "id": "reference-torn-paper-editorial/torn-paper-photo-collage/1",
         "title": "撕纸编辑影像拼贴",

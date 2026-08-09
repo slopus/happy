@@ -1717,6 +1717,8 @@ export const it: TranslationStructure = {
         imageStyleGithubSkills: 'Skill di GitHub',
         imageStylePhotoIllustrationDiptych: 'Dittico foto–illustrazione',
         imageStylePhotoIllustrationDiptychHint: 'Abbina una foto fornita a un’illustrazione dalla composizione corrispondente, in un sobrio poster su carta 3:5.\nMantieni il numero di punti di riferimento, l’orizzonte, l’ordine spaziale e il movimento; la tecnica si adatta dal lavis a inchiostro allo stile editoriale a campiture piatte, allo skyline geometrico o all’Art Deco.',
+        imageStylePhotoIllustrationEditorialEcho: 'Eco editoriale',
+        imageStylePhotoIllustrationEditorialEchoHint: 'Trasforma una foto in un poster editoriale verticale o orizzontale adattato alla scena, con la fotografia fedele come punto fermo, un unico eco isolato ad acquerello e inchiostro e un titolo, un’etichetta di studio e una breve didascalia specifici per la scena, composti come testo reale e nitido.',
         imageStylePhotoIllustrationDiptychLakeside: 'Dittico minimalista in riva al lago',
         imageStylePhotoIllustrationDiptychLakesideHint: 'Abbina una foto in riva al lago a una resa geometrica radicalmente semplificata della stessa scena. Preserva la curva della passerella, il ritmo del pontile, la posizione dell’imbarcazione, la linea di costa, l’orizzonte e il profilo delle montagne usando campiture cromatiche blu, verdi, corallo e avorio caldo ricavate dall’immagine originale.',
         imageStyleMinimalZinePoster: 'Poster Zine minimalista su carta',

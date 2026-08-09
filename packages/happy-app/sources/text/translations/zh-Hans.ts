@@ -2288,6 +2288,8 @@ export const zhHans: TranslationStructure = {
         imageStyleGithubSkills: 'GitHub Skills',
         imageStylePhotoIllustrationDiptych: '实景插画对照海报',
         imageStylePhotoIllustrationDiptychHint: '将一张实景照片与构图对应的插画上下并置，生成安静的 3:5 纸张海报。\n保留地标数量、地平线、空间顺序与动势；根据题材自适应钢笔淡彩、扁平编辑插画、几何城市或装饰艺术。',
+        imageStylePhotoIllustrationEditorialEcho: '画面回声',
+        imageStylePhotoIllustrationEditorialEchoHint: '将一张照片转化为自适应竖版或横版的编辑海报：以真实照片为锚，搭配一个独立的水彩墨线画面回声，并用清晰的真实文字排出贴合场景的标题、习作标签和短文案。',
         imageStylePhotoIllustrationDiptychLakeside: '湖畔极简双联画',
         imageStylePhotoIllustrationDiptychLakesideHint: '将一张湖畔照片与同一场景经过大幅简化的几何化呈现配对。使用取自原图的蓝、绿、珊瑚色和暖象牙白色块，保留栈道曲线、码头节奏、船只位置、岸线、地平线和山峦轮廓。',
         imageStyleMinimalZinePoster: '极简 Zine 纸张海报',

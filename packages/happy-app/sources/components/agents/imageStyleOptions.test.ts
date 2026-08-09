@@ -116,6 +116,25 @@ describe('imageStyleOptions', () => {
         expect(prompt).toContain('source-derived palette, and geometric reduction');
     });
 
+    it('keeps the complete Editorial Echo compiler in continuation batches', () => {
+        const style = IMAGE_AGENT_STYLE_PRESETS.find((preset) => preset.id === 'github-skills/photo-illustration-diptych/3');
+        expect(style).toBeTruthy();
+
+        const prompt = buildImageStyleContinuationPrompt([style!]);
+
+        expect(prompt).toContain(style!.promptContent);
+        expect(prompt).toContain('github-skills/photo-illustration-diptych/3');
+        expect(prompt).toContain('Editorial Echo visual compiler');
+        expect(prompt).toContain('Use landscape 5:3');
+        expect(prompt).toContain('Stage A — generate the illustrated echo only');
+        expect(prompt).toContain('Stage B — compose and rasterize with HTML/CSS');
+        expect(prompt).toContain('Render every character as real HTML text');
+        expect(prompt).toContain('not a second rectangular photo');
+        expect(prompt).toContain('必须有源图片');
+        expect(prompt).toContain('一次只能处理一张源图片');
+        expect(prompt).toContain('selected orientation');
+    });
+
     it('keeps the complete Scene Distillation compiler in continuation batches', () => {
         const style = IMAGE_AGENT_STYLE_PRESETS.find((preset) => preset.id === 'github-skills/scene-distillation-zine/1');
         expect(style).toBeTruthy();

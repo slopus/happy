@@ -1720,6 +1720,8 @@ export const ja: TranslationStructure = {
         imageStyleGithubSkills: 'GitHub Skills',
         imageStylePhotoIllustrationDiptych: '写真とイラストの二連画',
         imageStylePhotoIllustrationDiptychHint: '提供された写真1枚と構図を合わせたイラストを、落ち着いた3:5比率の紙ポスターにまとめます。\nランドマークの数、水平線、空間の並び、動きを保ち、画法を題材に応じて墨のにじみ、フラットなエディトリアル表現、幾何学的なスカイライン、Art Decoに調整します。',
+        imageStylePhotoIllustrationEditorialEcho: 'エディトリアル・エコー',
+        imageStylePhotoIllustrationEditorialEchoHint: '1枚の写真を、縦横を内容に合わせたエディトリアルポスターに仕立てます。忠実な写真を軸に、独立した水彩とインクの残響を1点添え、場面に即したタイトル、スタディラベル、短いキャプションを鮮明な実テキストで組みます。',
         imageStylePhotoIllustrationDiptychLakeside: '湖畔のミニマル二連画',
         imageStylePhotoIllustrationDiptychLakesideHint: '湖畔の写真1枚と、同じ情景を大胆に簡略化した幾何学表現を組み合わせます。元写真に由来する青、緑、コーラル、温かみのあるアイボリーの色面で、遊歩道の曲線、桟橋のリズム、ボートの位置、岸辺、水平線、山並みの輪郭を保ちます。',
         imageStyleMinimalZinePoster: 'ミニマル Zine ペーパーポスター',

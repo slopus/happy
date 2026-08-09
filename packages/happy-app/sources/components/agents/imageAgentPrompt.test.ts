@@ -263,6 +263,61 @@ describe('imageAgentPrompt', () => {
         expect(extraInputPrompt).not.toContain('暂不执行图片任务');
     });
 
+    it('integrates Editorial Echo with adaptive orientation, authored copy, and HTML composition', () => {
+        const style = IMAGE_AGENT_STYLE_PRESETS.find((preset) => preset.id === 'github-skills/photo-illustration-diptych/3');
+        expect(style).toMatchObject({
+            title: 'Editorial Echo',
+            categoryId: 'github-skills',
+            sourceRepository: 'wangjs-jacky/happy',
+            sourceRevision: 'e8716a0a0c949f8e2b45e1e3d7c8d36ad7bba17c',
+            templateRef: 'skills/photo-illustration-diptych/SKILL.md',
+            promptPath: 'garden-gpt-image-2/prompt/photo-illustration-editorial-echo-v1.md',
+            sourceCaseId: 'photo-illustration-diptych/editorial-echo-20260809',
+            executionKind: 'gpt-image-2',
+            inputMode: 'image-required',
+            multiInputMode: 'single',
+        });
+        expect(style?.promptContent).toContain('Editorial Echo visual compiler');
+        expect(style?.promptContent).toContain('Scene Map');
+        expect(style?.promptContent).toContain('Copy Map');
+        expect(style?.promptContent).toContain('Use portrait 3:5');
+        expect(style?.promptContent).toContain('Use landscape 5:3');
+        expect(style?.promptContent).toContain('Use 4:3 only');
+        expect(style?.promptContent).toContain('Stage A — generate the illustrated echo only');
+        expect(style?.promptContent).toContain('Stage B — compose and rasterize with HTML/CSS');
+        expect(style?.promptContent).toContain('Render every character as real HTML text');
+        expect(style?.promptContent).toContain('Avoid empty labels such as PORTRAIT');
+        expect(style?.promptContent).toContain('not a second rectangular photo');
+        expect(style?.promptContent).toContain('regenerate that motif at most once');
+        expect(style?.sourceLicenseNotice).toContain('Happy Coder Contributors');
+        expect(style?.responseInstructions).toContain('selected orientation');
+
+        const prompt = buildImageAgentPrompt({
+            agent: { ...agent, imageStyleIds: ['github-skills/photo-illustration-diptych/3'] },
+            userPrompt: '根据照片构图选择横版或竖版，并写一句真正贴合画面的标题。',
+            imageCount: 1,
+        });
+        expect(prompt).toContain(style!.promptContent);
+        expect(prompt).toContain('根据照片构图选择横版或竖版，并写一句真正贴合画面的标题。');
+        expect(prompt).toContain('mcp__happy__send_image');
+        expect(prompt).toContain('selected orientation');
+
+        const missingInputPrompt = buildImageAgentPrompt({
+            agent: { ...agent, imageStyleIds: ['github-skills/photo-illustration-diptych/3'] },
+            userPrompt: '做画面回声海报。',
+            imageCount: 0,
+        });
+        expect(missingInputPrompt).toContain('请先上传一张源照片');
+
+        const extraInputPrompt = buildImageAgentPrompt({
+            agent: { ...agent, imageStyleIds: ['github-skills/photo-illustration-diptych/3'] },
+            userPrompt: '做画面回声海报。',
+            imageCount: 2,
+        });
+        expect(extraInputPrompt).toContain('每个结果只能使用当前对应的 1 张用户素材作为源图片');
+        expect(extraInputPrompt).toContain('禁止把多张用户素材拼图、混合或共同输入同一次图片生成');
+    });
+
     it('integrates Scene Distillation Zine with source privacy and exact color-block semantics', () => {
         const style = IMAGE_AGENT_STYLE_PRESETS.find((preset) => preset.id === 'github-skills/scene-distillation-zine/1');
         expect(style).toMatchObject({

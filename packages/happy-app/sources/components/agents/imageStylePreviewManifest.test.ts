@@ -8,11 +8,11 @@ import { IMAGE_STYLE_PREVIEW_MANIFEST } from './imageStylePreviewManifest';
 const currentDir = dirname(fileURLToPath(import.meta.url));
 const previewAssetDir = resolve(currentDir, '../../assets/images/gpt-image-2/skill-examples');
 const referencePreviewAssetDir = resolve(currentDir, '../../assets/images/gpt-image-2/reference-examples');
-const IMAGE_STYLE_COUNT = 214;
+const IMAGE_STYLE_COUNT = 215;
 const IMAGE_STYLE_CATEGORY_COUNT = 23;
 const GARDEN_CASE_COUNT = 162;
 const REFERENCE_CASE_COUNT = 45;
-const GITHUB_SKILL_CASE_COUNT = 7;
+const GITHUB_SKILL_CASE_COUNT = 8;
 
 function decodeImageDimensions(bytes: Buffer): { width: number; height: number } {
     if (bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) {
