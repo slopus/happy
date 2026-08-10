@@ -149,6 +149,13 @@ export const ru: TranslationStructure = {
         },
         chat: 'Чат',
         chatDescription: 'Настройте внешний вид сообщений в чате',
+        conversationFontSize: 'Размер шрифта в беседе',
+        conversationFontSizeDescription: 'Выберите размер текста в беседах',
+        conversationFontSizeOptions: {
+            small: 'Маленький',
+            default: 'По умолчанию',
+            large: 'Большой',
+        },
         sessionStatusBar: 'Информация о сессии',
         sessionStatusBarDescription: 'Выберите, где показывать ветку, модель, усилия и контекст',
         sessionStatusDisplayOptions: {

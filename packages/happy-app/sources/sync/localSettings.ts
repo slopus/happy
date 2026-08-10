@@ -1,4 +1,5 @@
 import * as z from 'zod';
+import { CONVERSATION_FONT_SIZES } from '@/utils/conversationFontSize';
 
 //
 // Schema
@@ -11,6 +12,7 @@ export const LocalSettingsSchema = z.object({
     voiceUpsellOverride: z.enum(['control', 'show-paywall-before-first-voice-chat', 'voice-onboarding-and-upsell']).nullable().describe('Developer-only local override for the voice-upsell PostHog flag'),
     commandPaletteEnabled: z.boolean().describe('Enable CMD+K command palette (web only)'),
     themePreference: z.enum(['light', 'dark', 'adaptive']).describe('Theme preference: light, dark, or adaptive (follows system)'),
+    conversationFontSize: z.enum(CONVERSATION_FONT_SIZES).describe('Conversation text size on this device'),
     markdownCopyV2: z.boolean().describe('Replace native paragraph selection with long-press modal for full markdown copy'),
     consoleLoggingEnabled: z.boolean().describe('Enable console output in production builds'),
     verboseLogging: z.boolean().describe('Log all network requests and responses'),
@@ -44,6 +46,7 @@ export const localSettingsDefaults: LocalSettings = {
     voiceUpsellOverride: null,
     commandPaletteEnabled: false,
     themePreference: 'adaptive',
+    conversationFontSize: 'default',
     markdownCopyV2: false,
     consoleLoggingEnabled: false,
     verboseLogging: false,

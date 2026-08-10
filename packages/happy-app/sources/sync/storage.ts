@@ -12,13 +12,13 @@ function useDeepEqual<T>(selector: (state: StorageState) => T): (state: StorageS
 import { Session, Machine, GitStatus, SessionAgentModesPatch } from "./storageTypes";
 import type { GitStatusFiles } from "./gitStatusFiles";
 import type { ProjectFilesList } from "./projectFiles";
-import { buildPathProjectGroups, buildProjectGroups, isProjectSession, type ProjectGroupData } from "./projectGroups";
+import { buildProjectGroups, type ProjectGroupData } from "./projectGroups";
 import { selectPendingCommunications, type PendingAgentCommunication } from "./agentCommunications";
 import { createReducer, reducer, ReducerState } from "./reducer/reducer";
 import { Message } from "./typesMessage";
 import { NormalizedMessage } from "./typesRaw";
 import { isMachineOnline } from '@/utils/machineUtils';
-import { getSessionName, getSessionSubtitle, getSessionAvatarId, type SessionState } from '@/utils/sessionUtils';
+import { getSessionName, getSessionSubtitle, getSessionAvatarId, getSessionProviderKind, type SessionState } from '@/utils/sessionUtils';
 import { applySettings, Settings } from "./settings";
 import { LocalSettings, applyLocalSettings } from "./localSettings";
 import { Purchases, customerInfoToPurchases } from "./purchases";
@@ -139,7 +139,7 @@ function buildSessionRowData(session: Session, unreadSessionIds?: Set<string>): 
         flavor: session.metadata?.flavor ?? null,
         clientId: session.metadata?.client?.id ?? null,
         identityLine: rigIdentity ? `${rigIdentity.clientName} · ${rigIdentity.providerName}` : null,
-        providerKind: session.metadata?.provider?.kind ?? null,
+        providerKind: getSessionProviderKind(session),
         modelName: rigIdentity?.modelName ?? null,
         activitySummary: rigActivity.length > 0
             ? rigActivity.map((item) => `${item.count}${item.queued ? `+${item.queued}` : ''} ${item.key}`).join(' · ')
@@ -274,26 +274,9 @@ function buildSessionListViewData(
     // hasUnread=false everywhere — exactly the bug this parameter caused twice.
     unreadSessionIds: Set<string>,
 ): SessionListViewItem[] {
-    const rigProjectSessions: Session[] = [];
-    const rigPathSessions: Session[] = [];
-    const happySessions: Session[] = [];
-
-    Object.values(sessions).forEach(session => {
-        // Side chats are hidden children of another session — they render only
-        // inside the parent's sidebar panel, never in the top-level list.
-        if (session.metadata?.isSideChat) {
-            return;
-        }
-        if (isRigMetadata(session.metadata)) {
-            if (isProjectSession(session)) {
-                rigProjectSessions.push(session);
-            } else {
-                rigPathSessions.push(session);
-            }
-        } else {
-            happySessions.push(session);
-        }
-    });
+    // Side chats are hidden children of another session — they render only
+    // inside the parent's sidebar panel, never in the top-level list.
+    const listed = Object.values(sessions).filter(session => !session.metadata?.isSideChat);
 
     // Sort by last activity or creation date (newest first), per user setting — matches applySessions behavior
     // Activity sort keys off the last user-sent message, not updatedAt: updatedAt
@@ -302,36 +285,39 @@ function buildSessionListViewData(
     const sortKey = storage.getState().settings.sortSessionsByActivity
         ? (s: Session) => s.lastMessageSentAt ?? s.createdAt
         : (s: Session) => s.createdAt;
-    const sortProjectSessions = (items: Session[]) => items.sort((a, b) => {
+    listed.sort((a, b) => {
         const activeDelta = Number(isSessionActive(b)) - Number(isSessionActive(a));
         return activeDelta !== 0 ? activeDelta : sortKey(b) - sortKey(a);
     });
-    sortProjectSessions(rigProjectSessions);
-    sortProjectSessions(rigPathSessions);
-    sortProjectSessions(happySessions);
+
+    // Rig and Happy CLI keep separate blocks. Partitioning after the sort leaves
+    // each block in activity order, and grouping walks it in that order, so a
+    // project ranks by its liveliest session without a second sort.
+    const toRow = (session: Session) => buildSessionRowData(session, unreadSessionIds);
+    const rigProjects = buildProjectGroups(
+        listed.filter(session => isRigMetadata(session.metadata)),
+        toRow,
+        isSessionActive,
+    );
+    const happyProjects = buildProjectGroups(
+        listed.filter(session => !isRigMetadata(session.metadata)),
+        toRow,
+        isSessionActive,
+    );
+
+    // The source label only earns a row when there is another source to tell it
+    // apart from — on its own it is a header over the entire list saying nothing.
+    const showSourceHeaders = rigProjects.length > 0 && happyProjects.length > 0;
 
     const listData: SessionListViewItem[] = [];
-    const toRow = (session: Session) => buildSessionRowData(session, unreadSessionIds);
-
-    const rigProjects = [
-        ...buildProjectGroups(rigProjectSessions, toRow, isSessionActive),
-        ...buildPathProjectGroups(rigPathSessions, toRow, isSessionActive, 'rig'),
-    ];
     if (rigProjects.length > 0) {
-        listData.push({ type: 'projects-header', source: 'rig' });
+        if (showSourceHeaders) listData.push({ type: 'projects-header', source: 'rig' });
         for (const project of rigProjects) {
             listData.push({ type: 'project', source: 'rig', project });
         }
     }
-
-    const happyProjects = buildPathProjectGroups(
-        happySessions,
-        toRow,
-        isSessionActive,
-        'happy',
-    );
     if (happyProjects.length > 0) {
-        listData.push({ type: 'projects-header', source: 'happy' });
+        if (showSourceHeaders) listData.push({ type: 'projects-header', source: 'happy' });
         for (const project of happyProjects) {
             listData.push({ type: 'project', source: 'happy', project });
         }

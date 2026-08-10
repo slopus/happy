@@ -143,6 +143,59 @@ describe('Rig machine session creation', () => {
         });
     });
 
+    it('asks Rig for a fresh worktree when the machine advertises the capability', () => {
+        const worktreeMachine = {
+            ...rigMachine,
+            capabilities: { newSession: true, resume: false, worktrees: true },
+        };
+
+        expect(buildRigSpawnConfiguration(worktreeMachine, {
+            directory: '/Users/rig/project',
+            clientRequestId: 'mobile-request-3',
+            modelKey: 'claude:shared-model',
+            effort: 'max',
+            newWorktreeName: 'clever-ocean',
+        })).toMatchObject({
+            directory: '/Users/rig/project',
+            worktree: { type: 'new', name: 'clever-ocean' },
+        });
+    });
+
+    it('rejects unsafe worktree names before sending them to Rig', () => {
+        const worktreeMachine = {
+            ...rigMachine,
+            capabilities: { newSession: true, resume: false, worktrees: true },
+        };
+
+        expect(() => buildRigSpawnConfiguration(worktreeMachine, {
+            directory: '/Users/rig/project',
+            clientRequestId: 'mobile-request-unsafe',
+            modelKey: 'claude:shared-model',
+            effort: 'max',
+            newWorktreeName: 'safe; rm -rf project',
+        })).toThrow('worktree name is invalid');
+    });
+
+    it('omits the worktree field when no worktree was asked for', () => {
+        expect(buildRigSpawnConfiguration(rigMachine, {
+            directory: '/Users/rig/project',
+            clientRequestId: 'mobile-request-4',
+            modelKey: 'claude:shared-model',
+            effort: 'max',
+            newWorktreeName: null,
+        })).not.toHaveProperty('worktree');
+    });
+
+    it('refuses a worktree on a machine that does not advertise the capability', () => {
+        expect(() => buildRigSpawnConfiguration(rigMachine, {
+            directory: '/Users/rig/project',
+            clientRequestId: 'mobile-request-5',
+            modelKey: 'claude:shared-model',
+            effort: 'max',
+            newWorktreeName: 'clever-ocean',
+        })).toThrow('cannot create worktrees');
+    });
+
     it('rejects a model/effort combination absent from the published catalog', () => {
         expect(() => buildRigSpawnConfiguration(rigMachine, {
             directory: '/Users/rig/project',

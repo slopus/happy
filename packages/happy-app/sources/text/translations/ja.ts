@@ -164,6 +164,13 @@ export const ja: TranslationStructure = {
         },
         chat: 'チャット',
         chatDescription: 'チャットメッセージの見た目をカスタマイズ',
+        conversationFontSize: '会話の文字サイズ',
+        conversationFontSizeDescription: '会話のテキストサイズを選択',
+        conversationFontSizeOptions: {
+            small: '小さい',
+            default: '標準',
+            large: '大きい',
+        },
         sessionStatusBar: 'セッションステータス情報',
         sessionStatusBarDescription: 'ブランチ、モデル、エフォート、コンテキストの表示場所を選択',
         sessionStatusDisplayOptions: {

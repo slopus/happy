@@ -1,5 +1,6 @@
 import type { Session } from './storageTypes';
 import type { SessionRowData } from './storage';
+import { isRigMetadata } from './rig';
 
 // One git worktree inside a project. `id` is empty and `name` is null for
 // the project's primary tree, which always sorts first.
@@ -28,43 +29,28 @@ export function isProjectSession(session: Session): boolean {
 }
 
 /**
- * Groups sessions without a native project identity by machine and working
- * directory. This gives Happy CLI sessions the same project-card presentation
- * as Rig without merging identical paths from different computers.
+ * The project a session belongs to.
+ *
+ * Rig hands over a durable project identity. Everything else falls back to
+ * machine plus working directory, which keeps identical paths on different
+ * computers apart. The fallback id is namespaced by runtime on purpose: the
+ * same folder opened under Rig and under Happy CLI is two projects that happen
+ * to share a directory, not one project with mixed sessions.
  */
-export function buildPathProjectGroups(
-    sessions: Session[],
-    toRow: (session: Session) => SessionRowData,
-    isActive: (session: Session) => boolean,
-    idPrefix: string,
-): ProjectGroupData[] {
-    const projects = new Map<string, ProjectGroupData>();
-
-    for (const session of sessions) {
-        const machineId = session.metadata?.machineId ?? null;
-        const path = session.metadata?.path?.trim() || '';
-        const key = JSON.stringify([machineId, path]);
-        let group = projects.get(key);
-        if (!group) {
-            group = {
-                id: `${idPrefix}:${key}`,
-                name: pathProjectName(path, session.metadata?.homeDir),
-                machineId,
-                workspaces: [{ id: '', name: null, sessions: [] }],
-                sessionCount: 0,
-                activeCount: 0,
-            };
-            projects.set(key, group);
-        }
-
-        group.workspaces[0].sessions.push(toRow(session));
-        group.sessionCount += 1;
-        if (isActive(session)) {
-            group.activeCount += 1;
-        }
+function projectIdentity(session: Session): { id: string; name: string; machineId: string | null } {
+    const machineId = session.metadata?.machineId ?? null;
+    const project = session.metadata?.project;
+    if (project?.id) {
+        return { id: project.id, name: project.name, machineId };
     }
 
-    return [...projects.values()];
+    const path = session.metadata?.path?.trim() || '';
+    const runtime = isRigMetadata(session.metadata) ? 'rig' : 'happy';
+    return {
+        id: `${runtime}:${JSON.stringify([machineId, path])}`,
+        name: pathProjectName(path, session.metadata?.homeDir),
+        machineId,
+    };
 }
 
 function pathProjectName(path: string, homeDir: string | undefined): string {
@@ -99,9 +85,12 @@ export function filterProjectGroupSessions(
 }
 
 /**
- * Collapses Rig sessions into projects, each holding its worktrees. Sessions
- * arrive already sorted newest-first, so insertion order carries that sort
- * through to projects, worktrees, and the sessions inside them.
+ * Collapses sessions into projects, each holding its worktrees. Rig and Happy
+ * CLI sessions go through the same pass and land in one list — the runtime is
+ * not a grouping level, only an ingredient of a project's identity.
+ *
+ * Sessions arrive already sorted newest-first, so insertion order carries that
+ * sort through to projects, worktrees, and the sessions inside them.
  *
  * `toRow` and `isActive` are injected so this module stays free of the React
  * Native imports that `storage.ts` pulls in.
@@ -115,13 +104,13 @@ export function buildProjectGroups(
     const workspaces = new Map<string, ProjectWorkspaceGroup>();
 
     for (const session of sessions) {
-        const project = session.metadata!.project!;
+        const project = projectIdentity(session);
         let group = projects.get(project.id);
         if (!group) {
             group = {
                 id: project.id,
                 name: project.name,
-                machineId: session.metadata?.machineId ?? null,
+                machineId: project.machineId,
                 workspaces: [],
                 sessionCount: 0,
                 activeCount: 0,

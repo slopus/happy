@@ -327,12 +327,34 @@ export function useSessionQuickActions(
     };
 }
 
+// Stands in for a session that storage does not have. A row can outlive its
+// session — deleted while the list re-renders, or a fixture id in the layout
+// sandbox — and the quick-actions hook still has to run to keep hook order
+// stable. The stub only exists to be read and thrown away: the handler built
+// from it is never handed out.
+export const MISSING_SESSION: Session = {
+    id: '',
+    seq: 0,
+    createdAt: 0,
+    updatedAt: 0,
+    active: false,
+    activeAt: 0,
+    metadata: null,
+    metadataVersion: 0,
+    agentState: null,
+    agentStateVersion: 0,
+    thinking: false,
+    thinkingAt: 0,
+    presence: 0,
+};
+
 /**
  * Lightweight hook for list items that only have a sessionId.
- * Returns a long-press handler that shows the action alert on mobile.
+ * Returns a long-press handler that shows the action alert on mobile,
+ * or undefined when the id has no session behind it.
  */
 export function useSessionActionAlert(sessionId: string) {
     const session = useSession(sessionId);
-    const { showActionAlert } = useSessionQuickActions(session!, {});
+    const { showActionAlert } = useSessionQuickActions(session ?? MISSING_SESSION, {});
     return session ? showActionAlert : undefined;
 }

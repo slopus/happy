@@ -164,6 +164,13 @@ export const zhHans: TranslationStructure = {
         },
         chat: '聊天',
         chatDescription: '自定义聊天消息外观',
+        conversationFontSize: '对话字体大小',
+        conversationFontSizeDescription: '选择对话文本大小',
+        conversationFontSizeOptions: {
+            small: '小',
+            default: '默认',
+            large: '大',
+        },
         sessionStatusBar: '会话状态信息',
         sessionStatusBarDescription: '选择分支、模型、工作量和上下文的显示位置',
         sessionStatusDisplayOptions: {

@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Ionicons } from '@expo/vector-icons';
 import { Typography } from '@/constants/Typography';
-import { useSessionQuickActions, SessionActionItem } from '@/hooks/useSessionQuickActions';
+import { useSessionQuickActions, MISSING_SESSION, SessionActionItem } from '@/hooks/useSessionQuickActions';
 import { useSession } from '@/sync/storage';
 import {
     formatShortcutChord,
@@ -145,7 +145,7 @@ export function SessionActionsPopover({
     const safeArea = useSafeAreaInsets();
     const { height: windowHeight, width: windowWidth } = useWindowDimensions();
     const session = useSession(sessionId);
-    const { actionItems: actions } = useSessionQuickActions(session!, {
+    const { actionItems: actions } = useSessionQuickActions(session ?? MISSING_SESSION, {
         onAfterArchive,
         onAfterDelete,
     });

@@ -133,6 +133,29 @@ describe('MachineMetadataSchema', () => {
         expect(metadata.platform).toBe('darwin');
         expect(metadata.cliAvailability?.rig).toBe(true);
     });
+
+    it('preserves a sparse Rig catalog supported by session creation', () => {
+        const metadata = MachineMetadataSchema.parse({
+            host: 'workstation',
+            platform: 'darwin',
+            happyCliVersion: '1.0.0',
+            happyHomeDir: '/Users/dev/.happy',
+            homeDir: '/Users/dev',
+            machineKind: 'rig',
+            rigOnly: true,
+            capabilities: { newSession: true },
+            defaults: { providerId: 'codex', modelId: 'gpt-5' },
+            models: [{ providerId: 'codex', id: 'gpt-5', name: 'GPT-5' }],
+            operatingModes: [{ code: 'auto', value: 'Auto' }],
+        });
+
+        expect(metadata.models).toEqual([{
+            providerId: 'codex',
+            id: 'gpt-5',
+            name: 'GPT-5',
+        }]);
+        expect(metadata.operatingModes).toEqual([{ code: 'auto', value: 'Auto' }]);
+    });
 });
 
 describe('AgentGoalStatusSchema', () => {

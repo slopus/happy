@@ -22,6 +22,10 @@ import {
 import * as React from 'react';
 import { MobileGlassSurface } from '@/components/MobileGlass';
 import { AnimatedCollapsible } from '@/components/AnimatedOverlay';
+import {
+    getNextConversationFontSize,
+    type ConversationFontSize,
+} from '@/utils/conversationFontSize';
 
 // Define known avatar styles for this version of the app
 type KnownAvatarStyle = 'pixelated' | 'gradient' | 'brutalist';
@@ -66,6 +70,17 @@ const getSessionStatusDisplayIcon = (mode: SessionStatusBarDisplay): React.Compo
             return 'chevron-up-outline';
         case 'below':
             return 'chevron-down-outline';
+    }
+};
+
+const getConversationFontSizeLabel = (size: ConversationFontSize): string => {
+    switch (size) {
+        case 'small':
+            return t('settingsAppearance.conversationFontSizeOptions.small');
+        case 'default':
+            return t('settingsAppearance.conversationFontSizeOptions.default');
+        case 'large':
+            return t('settingsAppearance.conversationFontSizeOptions.large');
     }
 };
 
@@ -219,6 +234,7 @@ export default function AppearanceSettingsScreen() {
     const [sessionStatusBarDisplay, setSessionStatusBarDisplay] = useSettingMutable('sessionStatusBarDisplay');
     const [usageLimitShowRemaining, setUsageLimitShowRemaining] = useSettingMutable('usageLimitShowRemaining');
     const [themePreference, setThemePreference] = useLocalSettingMutable('themePreference');
+    const [conversationFontSize, setConversationFontSize] = useLocalSettingMutable('conversationFontSize');
     const [preferredLanguage] = useSettingMutable('preferredLanguage');
     const [statusPlacementDropdownOpen, setStatusPlacementDropdownOpen] = React.useState(false);
     const [bubbleColorDropdownOpen, setBubbleColorDropdownOpen] = React.useState(false);
@@ -367,27 +383,14 @@ export default function AppearanceSettingsScreen() {
                         ))}
                     </AnimatedCollapsible>
                 )}
+                <Item
+                    title={t('settingsAppearance.conversationFontSize')}
+                    subtitle={t('settingsAppearance.conversationFontSizeDescription')}
+                    icon={<Ionicons name="text-outline" size={29} color="#FF9500" />}
+                    detail={getConversationFontSizeLabel(conversationFontSize)}
+                    onPress={() => setConversationFontSize(getNextConversationFontSize(conversationFontSize))}
+                />
             </ItemGroup>
-
-            {/* Text Settings */}
-            {/* <ItemGroup title="Text" footer="Adjust text size and font preferences">
-                <Item
-                    title="Text Size"
-                    subtitle="Make text larger or smaller"
-                    icon={<Ionicons name="text-outline" size={29} color="#FF9500" />}
-                    detail="Default"
-                    onPress={() => { }}
-                    disabled
-                />
-                <Item
-                    title="Font"
-                    subtitle="Choose your preferred font"
-                    icon={<Ionicons name="text-outline" size={29} color="#FF9500" />}
-                    detail="System"
-                    onPress={() => { }}
-                    disabled
-                />
-            </ItemGroup> */}
 
             {/* Display Settings */}
             <ItemGroup title={t('settingsAppearance.display')} footer={t('settingsAppearance.displayDescription')}>

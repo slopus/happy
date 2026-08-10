@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-    buildPathProjectGroups,
     buildProjectGroups,
     filterProjectGroup,
     filterProjectGroupSessions,
@@ -20,6 +19,7 @@ function session(options: {
     machineId?: string;
     path?: string;
     homeDir?: string;
+    clientId?: string;
 }): Session {
     const active = options.active ?? true;
     return {
@@ -34,7 +34,7 @@ function session(options: {
             ...(options.homeDir === undefined ? {} : { homeDir: options.homeDir }),
             host: 'localhost',
             machineId: options.machineId ?? 'machine-1',
-            client: { id: 'rig', name: 'Rig', version: 'test' },
+            client: { id: options.clientId ?? 'rig', name: 'Rig', version: 'test' },
             ...(options.projectId === undefined ? {} : {
                 project: { id: options.projectId, kind: 'regular', name: options.projectName ?? 'Repo' },
             }),
@@ -138,12 +138,12 @@ describe('buildProjectGroups', () => {
     });
 });
 
-describe('buildPathProjectGroups', () => {
-    it('groups Happy sessions by machine and working directory', () => {
-        const groups = buildPathProjectGroups([
+describe('buildProjectGroups without a native project identity', () => {
+    it('groups sessions by machine and working directory', () => {
+        const groups = buildProjectGroups([
             session({ id: 'a', machineId: 'machine-1', path: '/projects/happy' }),
             session({ id: 'b', machineId: 'machine-1', path: '/projects/happy', active: false }),
-        ], toRow, isActive, 'happy');
+        ], toRow, isActive);
 
         expect(groups).toHaveLength(1);
         expect(groups[0]).toMatchObject({
@@ -156,21 +156,41 @@ describe('buildPathProjectGroups', () => {
     });
 
     it('does not merge the same path from different machines', () => {
-        const groups = buildPathProjectGroups([
+        const groups = buildProjectGroups([
             session({ id: 'a', machineId: 'machine-1', path: '/projects/happy' }),
             session({ id: 'b', machineId: 'machine-2', path: '/projects/happy' }),
-        ], toRow, isActive, 'happy');
+        ], toRow, isActive);
 
         expect(groups.map(group => group.machineId)).toEqual(['machine-1', 'machine-2']);
         expect(new Set(groups.map(group => group.id)).size).toBe(2);
     });
 
+    it('does not merge the same path from Rig and from Happy CLI', () => {
+        const groups = buildProjectGroups([
+            session({ id: 'a', path: '/projects/happy' }),
+            session({ id: 'b', path: '/projects/happy', clientId: 'happy-cli' }),
+        ], toRow, isActive);
+
+        expect(groups).toHaveLength(2);
+        expect(groups.map(group => group.name)).toEqual(['happy', 'happy']);
+    });
+
     it('names the machine home directory Home', () => {
-        const groups = buildPathProjectGroups([
+        const groups = buildProjectGroups([
             session({ id: 'a', path: '/Users/dev', homeDir: '/Users/dev/' }),
-        ], toRow, isActive, 'happy');
+        ], toRow, isActive);
 
         expect(groups[0].name).toBe('Home');
+    });
+
+    it('ranks projects by the first session it sees, keeping the caller sort', () => {
+        const groups = buildProjectGroups([
+            session({ id: 'a', path: '/projects/rig' }),
+            session({ id: 'b', path: '/projects/happy' }),
+            session({ id: 'c', path: '/projects/rig' }),
+        ], toRow, isActive);
+
+        expect(groups.map(group => group.name)).toEqual(['rig', 'happy']);
     });
 });
 

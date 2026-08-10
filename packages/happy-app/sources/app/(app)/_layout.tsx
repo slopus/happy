@@ -308,6 +308,12 @@ export default function RootLayout() {
                 }}
             />
             <Stack.Screen
+                name="dev/session-layouts"
+                options={{
+                    headerTitle: 'Session List Layouts',
+                }}
+            />
+            <Stack.Screen
                 name="session/recent"
                 options={{
                     headerShown: true,

@@ -163,6 +163,13 @@ export const es: TranslationStructure = {
         },
         chat: 'Chat',
         chatDescription: 'Personaliza la apariencia de los mensajes del chat',
+        conversationFontSize: 'Tamaño de fuente de la conversación',
+        conversationFontSizeDescription: 'Elige el tamaño del texto de las conversaciones',
+        conversationFontSizeOptions: {
+            small: 'Pequeño',
+            default: 'Predeterminado',
+            large: 'Grande',
+        },
         sessionStatusBar: 'Información de estado de la sesión',
         sessionStatusBarDescription: 'Elige dónde aparecen la rama, el modelo, el esfuerzo y el contexto',
         sessionStatusDisplayOptions: {

@@ -37,8 +37,8 @@ import { useAllMachines, useLocalSetting, useSessions, useSetting, storage } fro
 import type { NewSessionAgentType } from '@/sync/persistence';
 import { sync } from '@/sync/sync';
 import { isMachineOnline } from '@/utils/machineUtils';
-import { machineSpawnNewSession, sessionSetAgentModes, type SessionAgentModesPatch } from '@/sync/ops';
-import { createWorktree, listWorktrees } from '@/utils/worktree';
+import { machineListRigWorktrees, machineSpawnNewSession, sessionSetAgentModes, type SessionAgentModesPatch } from '@/sync/ops';
+import { createWorktree, generateWorktreeName, listWorktrees } from '@/utils/worktree';
 import { resolveAbsolutePath } from '@/utils/pathUtils';
 import { formatPathRelativeToHome, formatLastSeen } from '@/utils/sessionUtils';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
@@ -755,6 +755,8 @@ function NewSessionScreen() {
         setSessionType: s.setSessionType,
         worktreeKey: s.worktreeKey,
         setWorktreeKey: s.setWorktreeKey,
+        newWorktreeName: s.newWorktreeName,
+        setNewWorktreeName: s.setNewWorktreeName,
     })));
     const selectedAgent = draft.agentType;
     const setSelectedAgent = draft.setAgentType;
@@ -775,6 +777,7 @@ function NewSessionScreen() {
     const [modelIndex, setModelIndex] = React.useState(0);
     const [effortIndex, setEffortIndex] = React.useState(0);
     const [isSpawning, setIsSpawning] = React.useState(false);
+    const isSpawningRef = React.useRef(false);
     const [activePicker, setActivePicker] = React.useState<PickerType | null>(null);
     const [composerSettingsPage, setComposerSettingsPage] = React.useState<ComposerSettingPickerType | null>(null);
     const [mobileComposerHeight, setMobileComposerHeight] = React.useState(NATIVE_COMPOSER_RESERVED_HEIGHT);
@@ -888,16 +891,26 @@ function NewSessionScreen() {
             return;
         }
         let cancelled = false;
-        listWorktrees(selectedMachineId, debouncedResolvedSelectedPath).then(worktrees => {
+        // Rig owns its workspace catalog; CLI machines use git directly.
+        const request = selectedRigCreation
+            ? machineListRigWorktrees(selectedMachineId, debouncedResolvedSelectedPath)
+                .then(workspaces => workspaces.map(workspace => ({
+                    key: workspace.path,
+                    label: workspace.name,
+                    subtitle: workspace.path,
+                })))
+            : listWorktrees(selectedMachineId, debouncedResolvedSelectedPath)
+                .then(worktrees => worktrees.map(worktree => ({
+                    key: worktree.path,
+                    label: worktree.branch,
+                    subtitle: worktree.path,
+                })));
+        request.then(items => {
             if (cancelled) return;
-            setWorktreeItems(worktrees.map(wt => ({
-                key: wt.path,
-                label: wt.branch,
-                subtitle: wt.path,
-            })));
+            setWorktreeItems(items);
         });
         return () => { cancelled = true; };
-    }, [debouncedResolvedSelectedPath, selectedMachineId, selectedMachine, supportsWorktree]);
+    }, [debouncedResolvedSelectedPath, selectedMachineId, selectedMachine, selectedRigCreation, supportsWorktree]);
 
     React.useEffect(() => {
         if (worktreeKey === '__none__' || worktreeKey === '__new__') {
@@ -912,9 +925,10 @@ function NewSessionScreen() {
     // Filter available agents based on CLI availability from machine metadata
     const availableAgents = React.useMemo(() => {
         const availability = selectedMachine?.metadata?.cliAvailability;
+        const rigOnly = selectedMachine?.metadata?.rigOnly === true;
         return ALL_AGENTS.filter((agent) => agent.key === 'rig'
             ? selectedRigCreation !== null
-            : !availability || availability[agent.key]);
+            : !rigOnly && (!availability || availability[agent.key]));
     }, [selectedMachine, selectedRigCreation]);
 
     // If current agent not available on this machine, switch to first available
@@ -968,7 +982,9 @@ function NewSessionScreen() {
             effectiveAgentDefaults.modelMode,
         ]));
 
-        if (!supportsWorktree) setWorktreeKey('__none__');
+        // Metadata may arrive after the first render. Do not discard a pending
+        // worktree choice merely because its capability is not known yet.
+        if (selectedMachine?.metadata && !supportsWorktree) setWorktreeKey('__none__');
     }, [
         permissionModes,
         modelModes,
@@ -1108,7 +1124,7 @@ function NewSessionScreen() {
     const worktreeLabel = worktreeKey === '__none__'
         ? 'no worktree'
         : worktreeKey === '__new__'
-            ? 'new worktree'
+            ? draft.newWorktreeName ?? 'new worktree'
             : worktreeItems.find(wt => wt.key === worktreeKey)?.label || worktreeKey;
 
     // Picker data derived from active picker type
@@ -1179,6 +1195,21 @@ function NewSessionScreen() {
                 break;
             case 'worktree':
                 setWorktreeKey(key);
+                if (key === '__new__') {
+                    const suggested = generateWorktreeName();
+                    draft.setNewWorktreeName(suggested);
+                    void (async () => {
+                        const name = await Modal.prompt('Worktree name', undefined, {
+                            placeholder: suggested,
+                            defaultValue: suggested,
+                            confirmText: t('common.ok'),
+                        });
+                        const chosen = name?.trim();
+                        if (chosen && isMountedRef.current) draft.setNewWorktreeName(chosen);
+                    })();
+                } else {
+                    draft.setNewWorktreeName(null);
+                }
                 break;
             case 'agent':
                 if (availableAgents.some((candidate) => candidate.key === key)) {
@@ -1258,9 +1289,10 @@ function NewSessionScreen() {
     }, [composerSettingsPage, draft.setEffortLevel, draft.setModelMode, draft.setPermissionMode, effortLevels, modelModes, permissionModes]);
 
     // Spawn session handler
-    const handleSend = React.useCallback(async (
-        approvedNewDirectoryCreation: boolean = false,
-    ) => {
+    const handleSend = React.useCallback(async () => {
+        // React state does not update synchronously. Guard the entire flow so
+        // two taps in the same frame cannot create two requests.
+        if (isSpawningRef.current) return;
         if (!selectedMachineId || !selectedMachine) {
             Modal.alert(t('common.error'), 'Please select a machine');
             return;
@@ -1270,6 +1302,7 @@ function NewSessionScreen() {
             return;
         }
 
+        isSpawningRef.current = true;
         setIsSpawning(true);
         try {
             const pathToUse = trimPathInput(selectedPath) || '~';
@@ -1290,58 +1323,90 @@ function NewSessionScreen() {
                 effort: currentEffort?.key ?? null,
             }));
 
-            // Handle worktree selection
+            // Rig creates its own worktrees because it has no machine-level
+            // shell RPC. Passing the requested name also lets Rig bind the
+            // created workspace to the session it reports back.
             let spawnDirectory = absolutePath;
+            let rigNewWorktreeName: string | null = null;
+            if (worktreeKey !== '__none__' && !supportsWorktree) {
+                Modal.alert(
+                    t('common.error'),
+                    'This machine cannot create worktrees right now. Wait for it to come online, or start without one.',
+                );
+                return;
+            }
             if (supportsWorktree && worktreeKey === '__new__') {
-                const worktreeResult = await createWorktree(selectedMachineId, absolutePath);
-                if (!worktreeResult.success) {
-                    Modal.alert(t('common.error'), worktreeResult.error || 'Failed to create worktree');
-                    return;
+                const worktreeName = draft.newWorktreeName?.trim() || generateWorktreeName();
+                if (rigCreation) {
+                    rigNewWorktreeName = worktreeName;
+                } else {
+                    const worktreeResult = await createWorktree(selectedMachineId, absolutePath, worktreeName);
+                    if (!worktreeResult.success) {
+                        Modal.alert(t('common.error'), worktreeResult.error || 'Failed to create worktree');
+                        return;
+                    }
+                    spawnDirectory = worktreeResult.worktreePath;
                 }
-                spawnDirectory = worktreeResult.worktreePath;
             } else if (supportsWorktree && worktreeKey !== '__none__') {
                 // Existing worktree — use its path directly
                 spawnDirectory = worktreeKey;
             }
 
-            const spawnOptions = rigCreation
-                ? {
-                    machineId: selectedMachineId,
-                    ...buildRigSpawnConfiguration(selectedMachine.metadata, {
+            const spawn = async (approvedNewDirectoryCreation: boolean) => {
+                const spawnOptions = rigCreation
+                    ? {
+                        machineId: selectedMachineId,
+                        ...buildRigSpawnConfiguration(selectedMachine.metadata, {
+                            directory: spawnDirectory,
+                            clientRequestId,
+                            approvedNewDirectoryCreation,
+                            modelKey: currentModelKey,
+                            permissionMode: permissionKey,
+                            effort: currentEffort?.key,
+                            newWorktreeName: rigNewWorktreeName,
+                        }),
+                    }
+                    : {
+                        machineId: selectedMachineId,
                         directory: spawnDirectory,
-                        clientRequestId,
                         approvedNewDirectoryCreation,
-                        modelKey: currentModelKey,
-                        permissionMode: permissionKey,
-                        effort: currentEffort?.key,
-                    }),
+                        agent: selectedAgent,
+                        // For codex, 'default' is a concrete ask-first mode (the codex
+                        // launch default is yolo) — it must be forwarded. For other
+                        // agents 'default' is the ambient no-override value.
+                        permissionMode: permissionKey && (selectedAgent === 'codex' || permissionKey !== 'default')
+                            ? permissionKey
+                            : undefined,
+                        modelMode: currentModelKey !== 'default' ? currentModelKey : undefined,
+                        effortLevel: currentEffort?.key,
+                    };
+                let result = await machineSpawnNewSession(spawnOptions);
+                let pendingResults = 0;
+                while (result.type === 'pending' && pendingResults < MAX_RIG_PENDING_RESULTS) {
+                    pendingResults += 1;
+                    await delay(resolveRigPendingRetryDelayMs(
+                        result.retryAfterMs,
+                        rigCreation?.pendingRetryAfterMs,
+                    ));
+                    if (!isMountedRef.current) return null;
+                    result = await machineSpawnNewSession(spawnOptions);
                 }
-                : {
-                    machineId: selectedMachineId,
-                    directory: spawnDirectory,
-                    approvedNewDirectoryCreation,
-                    agent: selectedAgent,
-                    // For codex, 'default' is a concrete ask-first mode (the codex
-                    // launch default is yolo) — it must be forwarded. For other
-                    // agents 'default' is the ambient no-override value.
-                    permissionMode: permissionKey && (selectedAgent === 'codex' || permissionKey !== 'default')
-                        ? permissionKey
-                        : undefined,
-                    modelMode: currentModelKey !== 'default' ? currentModelKey : undefined,
-                    effortLevel: currentEffort?.key,
-                };
-            let result = await machineSpawnNewSession(spawnOptions);
-            let pendingResults = 0;
-            while (result.type === 'pending' && pendingResults < MAX_RIG_PENDING_RESULTS) {
-                pendingResults += 1;
-                await delay(resolveRigPendingRetryDelayMs(
-                    result.retryAfterMs,
-                    rigCreation?.pendingRetryAfterMs,
-                ));
-                if (!isMountedRef.current) return;
-                result = await machineSpawnNewSession(spawnOptions);
+                return result;
+            };
+
+            let result = await spawn(false);
+            while (result?.type === 'requestToApproveDirectoryCreation') {
+                const approved = await Modal.confirm(
+                    'Create Directory?',
+                    `The directory '${result.directory}' does not exist. Would you like to create it?`,
+                    { cancelText: t('common.cancel'), confirmText: t('common.create') },
+                );
+                if (!approved || !isMountedRef.current) return;
+                // Keep the request tuple (and idempotency key) unchanged; only
+                // directory approval differs on this retry.
+                result = await spawn(true);
             }
-            if (!isMountedRef.current) return;
+            if (!result || !isMountedRef.current) return;
 
             switch (result.type) {
                 case 'success':
@@ -1391,19 +1456,6 @@ function NewSessionScreen() {
                     router.back();
                     navigateToSession(result.sessionId);
                     break;
-                case 'requestToApproveDirectoryCreation': {
-                    const approved = await Modal.confirm(
-                        'Create Directory?',
-                        `The directory '${result.directory}' does not exist. Would you like to create it?`,
-                        { cancelText: t('common.cancel'), confirmText: t('common.create') },
-                    );
-                    if (approved) {
-                        // The request is unchanged, so the retry resolves to the
-                        // same clientRequestId.
-                        await handleSend(true);
-                    }
-                    break;
-                }
                 case 'error':
                     Modal.alert(t('common.error'), result.errorMessage);
                     break;
@@ -1420,6 +1472,7 @@ function NewSessionScreen() {
                 : 'Failed to start session';
             Modal.alert(t('common.error'), errorMessage);
         } finally {
+            isSpawningRef.current = false;
             if (isMountedRef.current) setIsSpawning(false);
         }
     }, [selectedMachineId, selectedMachine, selectedPath, selectedAgent, router, navigateToSession, currentPermission?.key, currentModelKey, currentEffort?.key, effectiveAgentDefaults.permissionMode, effectiveAgentDefaults.modelMode, effectiveAgentDefaults.effortLevel, worktreeKey, rigCreation, supportsWorktree]);

@@ -8,7 +8,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { type SessionState, formatLastSeen, vibingMessages } from '@/utils/sessionUtils';
 import { Avatar } from './Avatar';
 import { ActiveSessionsGroupCompact } from './ActiveSessionsGroupCompact';
-import { ProjectGroup } from './ProjectGroup';
+import { ProjectSection } from './ProjectSection';
+import { useProjectMachineLabel } from '@/hooks/useProjectMachineLabel';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useVisibleSessionListViewData } from '@/hooks/useVisibleSessionListViewData';
 import { Typography } from '@/constants/Typography';
@@ -202,6 +203,7 @@ export function SessionsList({
     const styles = stylesheet;
     const safeArea = useSafeAreaInsets();
     const sourceData = useVisibleSessionListViewData();
+    const machineName = useProjectMachineLabel(sourceData);
     const pathname = usePathname();
     const isTablet = useIsTablet();
     // Selection is derived once from pathname so the data array stays stable
@@ -332,8 +334,9 @@ export function SessionsList({
 
             case 'project':
                 return (
-                    <ProjectGroup
+                    <ProjectSection
                         project={item.project}
+                        machineName={machineName(item.project.machineId)}
                         selectedSessionId={selectedSessionId}
                     />
                 );
@@ -370,7 +373,7 @@ export function SessionsList({
                     />
                 );
         }
-    }, [selectedSessionId, data]);
+    }, [selectedSessionId, data, machineName]);
 
 
     // Remove this section as we'll use FlatList for all items now

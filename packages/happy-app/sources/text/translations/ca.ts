@@ -163,6 +163,13 @@ export const ca: TranslationStructure = {
         },
         chat: 'Xat',
         chatDescription: 'Personalitza l\'aspecte dels missatges del xat',
+        conversationFontSize: 'Mida de la lletra de la conversa',
+        conversationFontSizeDescription: 'Tria la mida del text de les converses',
+        conversationFontSizeOptions: {
+            small: 'Petita',
+            default: 'Predeterminada',
+            large: 'Gran',
+        },
         sessionStatusBar: 'Informació d\'estat de la sessió',
         sessionStatusBarDescription: 'Tria on es mostren la branca, el model, l\'esforç i el context',
         sessionStatusDisplayOptions: {

@@ -1,8 +1,8 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { acquireDaemonLock, releaseDaemonLock, SandboxConfigSchema } from './persistence';
+import { acquireDaemonLock, clearDaemonState, releaseDaemonLock, SandboxConfigSchema, writeDaemonState } from './persistence';
 
 const mockConfiguration = vi.hoisted(() => ({
     daemonLockFile: '',
@@ -92,6 +92,7 @@ describe('acquireDaemonLock', () => {
     beforeEach(() => {
         testDir = mkdtempSync(join(tmpdir(), 'happy-daemon-lock-'));
         mockConfiguration.daemonLockFile = join(testDir, 'daemon.state.json.lock');
+        mockConfiguration.daemonStateFile = join(testDir, 'daemon.state.json');
     });
 
     afterEach(() => {
@@ -132,5 +133,56 @@ describe('acquireDaemonLock', () => {
 
         expect(lockHandle).toBeNull();
         expect(readFileSync(mockConfiguration.daemonLockFile, 'utf-8')).toBe(String(process.pid));
+    });
+
+    it('does not remove a replacement lock when releasing an old handle', async () => {
+        const lockHandle = await acquireDaemonLock(1, 0);
+        expect(lockHandle).not.toBeNull();
+
+        await lockHandle!.close();
+        rmSync(mockConfiguration.daemonLockFile);
+        writeFileSync(mockConfiguration.daemonLockFile, '424242', 'utf-8');
+
+        await releaseDaemonLock(lockHandle!);
+
+        expect(readFileSync(mockConfiguration.daemonLockFile, 'utf-8')).toBe('424242');
+    });
+
+    it('only clears daemon files when the expected PID still owns the state', async () => {
+        writeFileSync(mockConfiguration.daemonStateFile, JSON.stringify({ pid: 424242 }), 'utf-8');
+        writeFileSync(mockConfiguration.daemonLockFile, '424242', 'utf-8');
+
+        await expect(clearDaemonState(process.pid)).resolves.toBe(false);
+
+        expect(existsSync(mockConfiguration.daemonStateFile)).toBe(true);
+        expect(existsSync(mockConfiguration.daemonLockFile)).toBe(true);
+
+        await expect(clearDaemonState(424242)).resolves.toBe(true);
+
+        expect(existsSync(mockConfiguration.daemonStateFile)).toBe(false);
+        expect(existsSync(mockConfiguration.daemonLockFile)).toBe(false);
+    });
+
+    it('preserves replacement files when state and lock ownership disagree', async () => {
+        writeFileSync(mockConfiguration.daemonStateFile, JSON.stringify({ pid: process.pid }), 'utf-8');
+        writeFileSync(mockConfiguration.daemonLockFile, '424242', 'utf-8');
+
+        await expect(clearDaemonState(process.pid)).resolves.toBe(false);
+
+        expect(JSON.parse(readFileSync(mockConfiguration.daemonStateFile, 'utf-8'))).toEqual({
+            pid: process.pid,
+        });
+        expect(readFileSync(mockConfiguration.daemonLockFile, 'utf-8')).toBe('424242');
+    });
+
+    it('publishes daemon state through an atomic same-directory rename', () => {
+        writeFileSync(mockConfiguration.daemonStateFile, JSON.stringify({ pid: 1 }), 'utf-8');
+
+        writeDaemonState({ pid: process.pid } as any);
+
+        expect(JSON.parse(readFileSync(mockConfiguration.daemonStateFile, 'utf-8'))).toEqual({
+            pid: process.pid,
+        });
+        expect(readdirSync(testDir).some((name) => name.endsWith('.tmp'))).toBe(false);
     });
 });

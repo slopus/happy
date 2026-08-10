@@ -3,6 +3,7 @@
  */
 
 import { machineBash } from '@/sync/ops';
+import { appendWorktreeNameSuffix, normalizeWorktreeName } from './worktreeName';
 
 /** Relative path prefix where worktrees are stored inside a repo */
 export const WORKTREE_DIR = '.dev/worktree';
@@ -24,7 +25,7 @@ const nouns = [
     'garden', 'meadow', 'canyon', 'island', 'desert'
 ];
 
-function generateWorktreeName(): string {
+export function generateWorktreeName(): string {
     const adjective = adjectives[Math.floor(Math.random() * adjectives.length)];
     const noun = nouns[Math.floor(Math.random() * nouns.length)];
     return `${adjective}-${noun}`;
@@ -34,14 +35,25 @@ function generateWorktreeName(): string {
 
 export async function createWorktree(
     machineId: string,
-    basePath: string
+    basePath: string,
+    /** Chosen by the user before starting; a generated one when they did not care. */
+    requestedName?: string,
 ): Promise<{
     success: boolean;
     worktreePath: string;
     branchName: string;
     error?: string;
 }> {
-    const name = generateWorktreeName();
+    const rawName = requestedName?.trim() || generateWorktreeName();
+    const name = normalizeWorktreeName(rawName);
+    if (!name) {
+        return {
+            success: false,
+            worktreePath: '',
+            branchName: '',
+            error: 'Worktree names may contain only letters, numbers, dots, dashes, and underscores (64 characters maximum)',
+        };
+    }
 
     // Check if it's a git repository
     const gitCheck = await machineBash(
@@ -76,7 +88,7 @@ export async function createWorktree(
     if (!result.success && result.stderr.includes('already exists')) {
         // Try up to 3 times with numbered suffixes
         for (let i = 2; i <= 4; i++) {
-            const newName = `${name}-${i}`;
+            const newName = appendWorktreeNameSuffix(name, `-${i}`);
             const newWorktreePath = `${WORKTREE_DIR}/${newName}`;
             result = await machineBash(
                 machineId,

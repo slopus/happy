@@ -7,7 +7,7 @@ import { useNewSessionDraft } from '@/hooks/useNewSessionDraft';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { resolveAbsolutePath } from '@/utils/pathUtils';
-import { createWorktree } from '@/utils/worktree';
+import { createWorktree, generateWorktreeName } from '@/utils/worktree';
 import {
     getEffortLevelsForModel,
     getHardcodedModelModes,
@@ -70,10 +70,12 @@ export function useStartSessionFromDraft() {
         // The draft survives machine changes and app upgrades. Resolve it again
         // at launch time so a stale Claude selection cannot spawn Claude while
         // the selected machine only reports Codex (the Android 1.7.0 regression).
-        const agentType = resolveMachineAgent(
-            draft.agentType,
-            machine.metadata?.cliAvailability,
-        );
+        const agentType = machine.metadata?.rigOnly === true
+            ? 'rig'
+            : resolveMachineAgent(
+                draft.agentType,
+                machine.metadata?.cliAvailability,
+            );
         const agentChanged = agentType !== draft.agentType;
         const rigCreation = agentType === 'rig'
             ? getRigMachineSessionCreation(machine.metadata)
@@ -120,11 +122,19 @@ export function useStartSessionFromDraft() {
         const attachments = draft.attachments;
         const selectedPath = draft.selectedPath?.trim() || '~';
         const absolutePath = resolveAbsolutePath(selectedPath, machine.metadata?.homeDir);
-        const worktreeSelection = rigCreation?.supportsWorktrees === false
-            ? '__none__'
-            : draft.sessionType === 'worktree'
-                ? draft.worktreeKey ?? '__new__'
-                : '__none__';
+        // A Rig machine that cannot make worktrees must not silently fall back
+        // to the project root: the session would look successful while doing
+        // something materially different from what the user requested.
+        if (draft.sessionType === 'worktree' && rigCreation && !rigCreation.supportsWorktrees) {
+            Modal.alert(
+                t('common.error'),
+                'This Rig machine does not support worktrees. Update Rig on it, or start the session without one.',
+            );
+            return false;
+        }
+        const worktreeSelection = draft.sessionType === 'worktree'
+            ? draft.worktreeKey ?? '__new__'
+            : '__none__';
         // Reused across every retry of this exact request so a second press of
         // Start is deduped by Rig instead of spawning a second session.
         const clientRequestId = resolveSpawnRequestId(buildSpawnRequestSignature({
@@ -141,13 +151,19 @@ export function useStartSessionFromDraft() {
         setIsStarting(true);
         try {
             let spawnDirectory = absolutePath;
+            let rigNewWorktreeName: string | null = null;
             if (worktreeSelection === '__new__') {
-                const worktreeResult = await createWorktree(machine.id, absolutePath);
-                if (!worktreeResult.success) {
-                    Modal.alert(t('common.error'), worktreeResult.error || 'Failed to create worktree');
-                    return false;
+                const worktreeName = draft.newWorktreeName?.trim() || generateWorktreeName();
+                if (rigCreation) {
+                    rigNewWorktreeName = worktreeName;
+                } else {
+                    const worktreeResult = await createWorktree(machine.id, absolutePath, worktreeName);
+                    if (!worktreeResult.success) {
+                        Modal.alert(t('common.error'), worktreeResult.error || 'Failed to create worktree');
+                        return false;
+                    }
+                    spawnDirectory = worktreeResult.worktreePath;
                 }
-                spawnDirectory = worktreeResult.worktreePath;
             } else if (worktreeSelection !== '__none__') {
                 spawnDirectory = worktreeSelection;
             }
@@ -163,6 +179,7 @@ export function useStartSessionFromDraft() {
                             modelKey: model.key,
                             permissionMode: permission.key,
                             effort: effort?.key,
+                            newWorktreeName: rigNewWorktreeName,
                         }),
                     }
                     : {

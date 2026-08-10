@@ -17,7 +17,11 @@ import { spawnHappyCLI } from '@/utils/spawnHappyCLI';
 import { writeDaemonState, DaemonLocallyPersistedState, readDaemonState, acquireDaemonLock, releaseDaemonLock, readPersistedSessions, persistSession } from '@/persistence';
 import type { PersistedSession } from '@/persistence';
 
-import { cleanupDaemonState, isDaemonRunningCurrentlyInstalledHappyVersion, stopDaemon } from './controlClient';
+import {
+  cleanupDaemonState,
+  getDaemonStartupState,
+  stopDaemon,
+} from './controlClient';
 import { startDaemonControlServer } from './controlServer';
 import { statSync } from 'fs';
 import { join } from 'path';
@@ -147,19 +151,22 @@ export async function startDaemon(): Promise<void> {
   logger.debug('[DAEMON RUN] Starting daemon process...');
   logger.debugLargeJson('[DAEMON RUN] Environment', getEnvironmentInfo());
 
-  // Check if already running
-  // Check if running daemon version matches current CLI version
-  const runningDaemonVersionMatches = await isDaemonRunningCurrentlyInstalledHappyVersion();
-  if (!runningDaemonVersionMatches) {
+  // Check presence separately from version. An absent/stale daemon must not go
+  // through stopDaemon(): its force-kill fallback could target a PID that was
+  // reused after the liveness check.
+  const daemonStartupState = await getDaemonStartupState();
+  if (daemonStartupState === 'mismatch') {
     // TODO: This hand-rolled self-restart path is awkward to reason about and awkward to test.
     // We should probably migrate this daemon to native system service management
     // (launchd/systemd, similar to OpenClaw's model), so startup/start-at-login and upgrades
     // are owned by the OS instead of by the daemon trying to replace itself in-process.
     logger.debug('[DAEMON RUN] Daemon version mismatch detected, restarting daemon with current CLI version');
-    await stopDaemon();
-  } else {
-    logger.debug('[DAEMON RUN] Daemon version matches, keeping existing daemon');
-    console.log('Daemon already running with matching version');
+    await stopDaemon({ allowForceKill: false });
+  } else if (daemonStartupState === 'matching' || daemonStartupState === 'indeterminate') {
+    logger.debug('[DAEMON RUN] Daemon is already owned or running, keeping it');
+    console.log(daemonStartupState === 'matching'
+      ? 'Daemon already running with matching version'
+      : 'Daemon ownership is indeterminate; refusing unsafe replacement');
     process.exit(0);
   }
 
@@ -937,7 +944,7 @@ export async function startDaemon(): Promise<void> {
         // leaving nothing running once we also exit.
         apiMachine.shutdown();
         await stopControlServer();
-        await cleanupDaemonState();
+        await cleanupDaemonState(process.pid);
         await releaseDaemonLock(daemonLockHandle);
         await stopCaffeinate();
 
@@ -954,12 +961,14 @@ export async function startDaemon(): Promise<void> {
         process.exit(0);
       }
 
-      // Before wrecklessly overriting the daemon state file, we should check if we are the ones who own it
-      // Race condition is possible, but thats okay for the time being :D
+      // Before writing the heartbeat, verify that this process still owns the
+      // daemon state. A replacement daemon must never be overwritten here.
       const daemonState = await readDaemonState();
       if (daemonState && daemonState.pid !== process.pid) {
         logger.debug('[DAEMON RUN] Somehow a different daemon was started without killing us. We should kill ourselves.')
         requestShutdown('exception', 'A different daemon was started without killing us. We should kill ourselves.')
+        // Do not overwrite the new owner's state before graceful shutdown runs.
+        return;
       }
 
       // Heartbeat
@@ -1006,7 +1015,7 @@ export async function startDaemon(): Promise<void> {
 
       apiMachine.shutdown();
       await stopControlServer();
-      await cleanupDaemonState();
+      await cleanupDaemonState(process.pid);
       await stopCaffeinate();
       await releaseDaemonLock(daemonLockHandle);
 

@@ -26,6 +26,12 @@ import { attachmentRoutes } from "./routes/attachmentRoutes";
 import { isLocalStorage, getLocalFilesDir } from "@/storage/files";
 import * as path from "path";
 import * as fs from "fs";
+import {
+    createWebAppConfigSource,
+    injectWebAppConfig,
+    isWebAppIndexRequest,
+    WEB_APP_CONFIG_PATH,
+} from "./utils/webAppConfig";
 
 export interface StartApiOptions {
     port?: number;
@@ -116,9 +122,23 @@ export async function startApi(opts: StartApiOptions = {}) {
     // Static webapp (self-host mode)
     if (opts.staticDir) {
         const fastifyStatic = (await import('@fastify/static')).default;
-        const injectScript = opts.injectHtmlConfig
-            ? `<script>window.__HAPPY_CONFIG__ = ${JSON.stringify(opts.injectHtmlConfig)};</script>`
-            : null;
+        app.get(WEB_APP_CONFIG_PATH, async (_request, reply) => {
+            reply
+                .type('application/javascript; charset=utf-8')
+                .header('cache-control', 'no-store')
+                .header('x-content-type-options', 'nosniff')
+                .send(createWebAppConfigSource(opts.injectHtmlConfig));
+        });
+        app.addHook('onRequest', async (request) => {
+            const url = request.raw.url || '';
+            if (!isWebAppIndexRequest(url)) return;
+
+            // index.html is rewritten per runtime config, so raw-file cache and
+            // range validators must not turn it into a stale 304/partial response.
+            delete request.headers['if-none-match'];
+            delete request.headers['if-modified-since'];
+            delete request.headers.range;
+        });
         app.register(fastifyStatic, {
             root: opts.staticDir,
             prefix: '/',
@@ -126,33 +146,38 @@ export async function startApi(opts: StartApiOptions = {}) {
             // SPA fallback — if file not found, serve index.html
             wildcard: false,
         });
-        if (injectScript) {
-            app.addHook('onSend', async (request, reply, payload) => {
-                const url = request.raw.url || '';
-                const isIndex = url === '/' || url === '/index.html' || url.startsWith('/?');
-                if (!isIndex) return payload;
-                const contentType = reply.getHeader('content-type');
-                if (typeof contentType !== 'string' || !contentType.includes('text/html')) return payload;
-                let html: string;
-                if (typeof payload === 'string') {
-                    html = payload;
-                } else if (Buffer.isBuffer(payload)) {
-                    html = payload.toString('utf8');
-                } else if (payload && typeof (payload as any).pipe === 'function') {
-                    // stream — read it
-                    const chunks: Buffer[] = [];
-                    for await (const chunk of payload as any) {
-                        chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk);
-                    }
-                    html = Buffer.concat(chunks).toString('utf8');
-                } else {
-                    return payload;
+        app.addHook('onSend', async (request, reply, payload) => {
+            const url = request.raw.url || '';
+            if (!isWebAppIndexRequest(url)) return payload;
+
+            reply.header('cache-control', 'no-store');
+            reply.removeHeader('etag');
+            reply.removeHeader('last-modified');
+            reply.removeHeader('accept-ranges');
+            reply.removeHeader('content-range');
+
+            if (request.method !== 'GET' || reply.statusCode !== 200) return payload;
+            const contentType = reply.getHeader('content-type');
+            if (typeof contentType !== 'string' || !contentType.includes('text/html')) return payload;
+            let html: string;
+            if (typeof payload === 'string') {
+                html = payload;
+            } else if (Buffer.isBuffer(payload)) {
+                html = payload.toString('utf8');
+            } else if (payload && typeof (payload as any).pipe === 'function') {
+                // stream — read it
+                const chunks: Buffer[] = [];
+                for await (const chunk of payload as any) {
+                    chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk);
                 }
-                const injected = html.replace(/<head[^>]*>/i, (m) => `${m}\n${injectScript}`);
-                reply.header('content-length', Buffer.byteLength(injected));
-                return injected;
-            });
-        }
+                html = Buffer.concat(chunks).toString('utf8');
+            } else {
+                return payload;
+            }
+            const injected = injectWebAppConfig(html);
+            reply.header('content-length', Buffer.byteLength(injected));
+            return injected;
+        });
         // SPA fallback: serve index.html for any unmatched GET that looks like a route.
         app.setNotFoundHandler(async (request, reply) => {
             const url = request.raw.url || '';
@@ -167,7 +192,7 @@ export async function startApi(opts: StartApiOptions = {}) {
                 return reply.code(404).send({ error: 'Not found' });
             }
             const html = fs.readFileSync(indexPath, 'utf8');
-            const injected = injectScript ? html.replace(/<head[^>]*>/i, (m) => `${m}\n${injectScript}`) : html;
+            const injected = injectWebAppConfig(html);
             reply.type('text/html').send(injected);
         });
     }

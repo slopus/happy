@@ -22,6 +22,34 @@ happy-server migrate   # apply database migrations
 happy-server serve     # start the server
 ```
 
+## Configuration
+
+When the server hosts the bundled web app, browsers use the page's own origin
+as the API URL by default. This keeps a zero-config self-hosted web app on the
+self-hosted server, including when it is exposed through an HTTPS reverse proxy.
+
+`HAPPY_INJECT_HTML_CONFIG` can override the runtime web configuration for a
+split web/API deployment or disable analytics explicitly:
+
+```bash
+HAPPY_INJECT_HTML_CONFIG='{"serverUrl":"https://api.happy.example.com","disableAnalytics":true}' \
+  happy-server serve
+```
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `HANDY_MASTER_SECRET` | Yes | - | Master secret for authentication and encryption |
+| `PORT` | No | `3005` | HTTP port |
+| `HOST` | No | `0.0.0.0` | Bind address |
+| `DATA_DIR` | No | `./data` | Base data directory |
+| `PGLITE_DIR` | No | `$DATA_DIR/pglite` | Embedded database directory |
+| `HAPPY_STATIC_DIR` | No | bundled `webapp/` | Static web app directory |
+| `HAPPY_INJECT_HTML_CONFIG` | No | same-origin API | JSON runtime configuration injected into the web app |
+| `PUBLIC_URL` | No | `http://localhost:$PORT` | Public base URL used for local file links |
+| `DATABASE_URL` | No | embedded PGlite | External PostgreSQL URL |
+| `REDIS_URL` | No | in-memory events | External Redis URL |
+| `S3_HOST` | No | local filesystem | External S3-compatible storage host |
+
 ## What this package is
 
 This is the *publishing shell* around `packages/happy-server`, which is private

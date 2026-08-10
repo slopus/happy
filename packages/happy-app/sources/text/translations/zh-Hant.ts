@@ -163,6 +163,13 @@ export const zhHant: TranslationStructure = {
         },
         chat: '聊天',
         chatDescription: '自訂聊天訊息外觀',
+        conversationFontSize: '對話字體大小',
+        conversationFontSizeDescription: '選擇對話文字大小',
+        conversationFontSizeOptions: {
+            small: '小',
+            default: '預設',
+            large: '大',
+        },
         sessionStatusBar: '工作階段狀態資訊',
         sessionStatusBarDescription: '選擇分支、模型、工作量和上下文的顯示位置',
         sessionStatusDisplayOptions: {

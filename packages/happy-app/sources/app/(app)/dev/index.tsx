@@ -303,6 +303,12 @@ export default function DevScreen() {
                     icon={<Ionicons name="terminal-outline" size={28} color="#007AFF" />}
                     onPress={() => router.push('/dev/rig-preview' as any)}
                 />
+                <Item
+                    title="Session List Layouts"
+                    subtitle="Compare project/session list layouts on fake data"
+                    icon={<Ionicons name="list-outline" size={28} color="#007AFF" />}
+                    onPress={() => router.push('/dev/session-layouts' as any)}
+                />
             </ItemGroup>
 
             {/* Test Features */}

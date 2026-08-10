@@ -25,6 +25,16 @@ interface NewSessionDraftState {
     effortLevel: string | null;
     sessionType: NewSessionSessionType;
     worktreeKey: string | null;
+    /**
+     * Name for a worktree about to be created, chosen before the session starts
+     * so the branch is never a surprise. Deliberately not persisted: a name left
+     * over from yesterday silently becoming today's branch is worse than none.
+     */
+    newWorktreeName: string | null;
+    // Bumped when something outside the composer wants it opened — the "+" on a
+    // project header, for instance. A counter, not a boolean: two requests in a
+    // row have to be two events. Deliberately not persisted.
+    composerFocusRequest: number;
 
     setInput: (input: string) => void;
     setAttachments: (attachments: AttachmentPreview[]) => void;
@@ -36,6 +46,8 @@ interface NewSessionDraftState {
     setEffortLevel: (level: string) => void;
     setSessionType: (type: NewSessionSessionType) => void;
     setWorktreeKey: (key: string | null) => void;
+    setNewWorktreeName: (name: string | null) => void;
+    requestComposerFocus: () => void;
 }
 
 function persist(state: NewSessionDraftState) {
@@ -68,6 +80,8 @@ export const useNewSessionDraft = create<NewSessionDraftState>()((set, get) => (
     effortLevel: initial?.effortLevel ?? null,
     sessionType: initial?.sessionType ?? 'simple',
     worktreeKey: initial?.worktreeKey ?? null,
+    newWorktreeName: null,
+    composerFocusRequest: 0,
 
     setInput: (input) => { set({ input }); persist(get()); },
     setAttachments: (attachments) => { set({ attachments }); },
@@ -79,4 +93,6 @@ export const useNewSessionDraft = create<NewSessionDraftState>()((set, get) => (
     setEffortLevel: (level) => { set({ effortLevel: level }); persist(get()); },
     setSessionType: (type) => { set({ sessionType: type }); persist(get()); },
     setWorktreeKey: (key) => { set({ worktreeKey: key }); persist(get()); },
+    setNewWorktreeName: (name) => { set({ newWorktreeName: name }); },
+    requestComposerFocus: () => { set({ composerFocusRequest: get().composerFocusRequest + 1 }); },
 }));

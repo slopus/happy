@@ -50,8 +50,22 @@ export function loadPendingSettings(): Partial<Settings> {
     const pending = mmkv.getString('pending-settings');
     if (pending) {
         try {
-            const parsed = JSON.parse(pending);
-            return SettingsSchema.partial().parse(parsed);
+            const raw = JSON.parse(pending);
+            if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+                return {};
+            }
+
+            const parsed = SettingsSchema.partial().parse(raw) as Partial<Settings>;
+            // `.partial()` keeps nested `.default()` wrappers, so parsing an
+            // empty queue injects fields that were never pending. Keep only
+            // explicitly stored keys or a cold start can reset synced settings.
+            const result: Partial<Settings> = {};
+            for (const key of Object.keys(raw)) {
+                if (Object.prototype.hasOwnProperty.call(parsed, key)) {
+                    (result as Record<string, unknown>)[key] = (parsed as Record<string, unknown>)[key];
+                }
+            }
+            return result;
         } catch (e) {
             console.error('Failed to parse pending settings', e);
             return {};

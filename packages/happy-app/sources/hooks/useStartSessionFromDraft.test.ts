@@ -143,6 +143,13 @@ function createRigMachine(metadata: Record<string, unknown> = {}) {
     };
 }
 
+/** A Rig-only machine whose published catalog is the smallest one that can spawn. */
+function rigMachine(capabilities: { worktrees: boolean }) {
+    return createRigMachine({
+        capabilities: { newSession: true, resume: false, worktrees: capabilities.worktrees },
+    });
+}
+
 function createDraft(overrides: Record<string, unknown> = {}) {
     return {
         input: ' Start the implementation ',
@@ -260,6 +267,41 @@ describe('useStartSessionFromDraft', () => {
         expect(mocks.navigateToSession).toHaveBeenCalledWith('session-2');
     });
 
+    it('refuses a worktree that the Rig machine cannot create', async () => {
+        mocks.machines = [rigMachine({ worktrees: false })];
+        mocks.draft = createDraft({ agentType: 'rig', sessionType: 'worktree', worktreeKey: null });
+
+        const { startSession } = useStartSessionFromDraft();
+
+        await expect(startSession()).resolves.toBe(false);
+        expect(mocks.machineSpawnNewSession).not.toHaveBeenCalled();
+        expect(mocks.createWorktree).not.toHaveBeenCalled();
+        expect(mocks.alert).toHaveBeenCalledWith(
+            'common.error',
+            expect.stringContaining('does not support worktrees'),
+        );
+    });
+
+    it('asks Rig to create the named worktree instead of shelling out', async () => {
+        mocks.machines = [rigMachine({ worktrees: true })];
+        mocks.draft = createDraft({
+            agentType: 'rig',
+            sessionType: 'worktree',
+            worktreeKey: null,
+            newWorktreeName: '  quiet-harbor  ',
+        });
+        mocks.machineSpawnNewSession.mockResolvedValue({ type: 'success', sessionId: 'rig-session-worktree' });
+
+        const { startSession } = useStartSessionFromDraft();
+
+        await expect(startSession()).resolves.toBe(true);
+        expect(mocks.createWorktree).not.toHaveBeenCalled();
+        expect(mocks.machineSpawnNewSession).toHaveBeenCalledWith(expect.objectContaining({
+            directory: '/absolute/project',
+            worktree: { type: 'new', name: 'quiet-harbor' },
+        }));
+    });
+
     it('creates a Rig session from its machine catalog and retries pending idempotently', async () => {
         mocks.machines = [{
             id: 'machine-1',
@@ -301,7 +343,7 @@ describe('useStartSessionFromDraft', () => {
         }];
         mocks.draft = createDraft({
             agentType: 'claude',
-            sessionType: 'worktree',
+            sessionType: 'simple',
             worktreeKey: null,
         });
         mocks.machineSpawnNewSession

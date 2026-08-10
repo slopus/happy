@@ -1,5 +1,6 @@
 import type { Machine, MachineMetadata } from './storageTypes';
 import { qualifyRigModelKey } from './rig';
+import { normalizeWorktreeName } from '@/utils/worktreeName';
 
 /** A model option as published by a Rig machine, qualified by provider. */
 export type RigMachineModelOption = {
@@ -39,6 +40,12 @@ export type BuildRigSpawnConfigurationInput = {
     modelKey?: string | null;
     permissionMode?: string | null;
     effort?: string | null;
+    /**
+     * Names a fresh worktree to run in. Rig creates it, unlike the CLI flow where
+     * the app shells out `git worktree add` itself — a Rig machine exposes no
+     * machine-level shell, and a workspace Rig makes is one it can then report.
+     */
+    newWorktreeName?: string | null;
 };
 
 /**
@@ -56,6 +63,7 @@ export type RigSpawnConfiguration = {
     modelId: string;
     permissionMode: string;
     effort: string;
+    worktree?: { type: 'new'; name: string };
 };
 
 type RigMachineMetadata = {
@@ -247,6 +255,17 @@ export function buildRigSpawnConfiguration(
         throw new Error('The selected Rig reasoning level is unavailable for this model.');
     }
 
+    const requestedWorktreeName = input.newWorktreeName?.trim();
+    const worktreeName = requestedWorktreeName
+        ? normalizeWorktreeName(requestedWorktreeName)
+        : null;
+    if (requestedWorktreeName && !worktreeName) {
+        throw new Error('The requested worktree name is invalid.');
+    }
+    if (worktreeName && !creation.supportsWorktrees) {
+        throw new Error('This Rig machine cannot create worktrees.');
+    }
+
     return {
         type: 'spawn-in-directory',
         agent: 'rig',
@@ -257,5 +276,6 @@ export function buildRigSpawnConfiguration(
         modelId: model.id,
         permissionMode,
         effort,
+        ...(worktreeName ? { worktree: { type: 'new' as const, name: worktreeName } } : {}),
     };
 }

@@ -117,7 +117,9 @@ export const settingsDefaults: Settings = {
     sessionStatusBarDisplay: 'hidden',
     usageLimitShowRemaining: false,
 
-    hideInactiveSessions: false,
+    // Finished sessions pile up far faster than live ones and pushed the rows
+    // that still matter off screen. The list header toggle brings them back.
+    hideInactiveSessions: true,
     sortSessionsByActivity: false,
     expResumeSession: false,
     fileDiffsSidebar: false,

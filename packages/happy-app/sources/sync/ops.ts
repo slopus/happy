@@ -182,6 +182,12 @@ export interface SpawnSessionOptions {
     modelId?: string;
     effort?: string;
     /**
+     * Asks Rig to create the worktree itself and run the session in it. Only
+     * Rig accepts this — a Happy CLI machine gets its worktree made by the
+     * client before the spawn, and the directory alone carries the choice.
+     */
+    worktree?: { type: 'new'; name: string };
+    /**
      * If set, the daemon spawns the agent with `--resume <id>` so the new
      * Happy session attaches to a pre-existing on-disk Claude conversation
      * file. Used by the session fork / duplicate flow.
@@ -255,9 +261,33 @@ export interface ResumeSessionOptions {
 /**
  * Spawn a new remote session on a specific machine
  */
+/**
+ * Lists a Rig machine's managed workspaces for the project at a directory.
+ *
+ * The Happy CLI equivalent runs `git worktree list` over the `bash` RPC; Rig has
+ * no machine-level shell, so it answers from the workspaces it already tracks.
+ * An unavailable method means an older Rig, and an empty list is the honest
+ * answer there — the picker still offers creating one.
+ */
+export async function machineListRigWorktrees(
+    machineId: string,
+    directory: string,
+): Promise<{ id: string; name: string; path: string }[]> {
+    try {
+        const result = await apiSocket.machineRPC<
+            { type: 'success'; workspaces: { id: string; name: string; path: string }[] }
+            | { type: 'error'; errorMessage: string },
+            { directory: string }
+        >(machineId, 'list-happy-workspaces', { directory });
+        return result.type === 'success' ? result.workspaces : [];
+    } catch {
+        return [];
+    }
+}
+
 export async function machineSpawnNewSession(options: SpawnSessionOptions): Promise<SpawnSessionResult> {
 
-    const { machineId, directory, approvedNewDirectoryCreation = false, token, agent, permissionMode, modelMode, effortLevel, clientRequestId, providerId, modelId, effort, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, forkedFromMessageId, isSideChat } = options;
+    const { machineId, directory, approvedNewDirectoryCreation = false, token, agent, permissionMode, modelMode, effortLevel, clientRequestId, providerId, modelId, effort, worktree, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, forkedFromMessageId, isSideChat } = options;
 
     try {
         if (agent === 'rig' && !clientRequestId) {
@@ -276,6 +306,7 @@ export async function machineSpawnNewSession(options: SpawnSessionOptions): Prom
             providerId?: string,
             modelId?: string,
             effort?: string,
+            worktree?: { type: 'new'; name: string },
             resumeClaudeSessionId?: string,
             resumeCodexThreadId?: string,
             parentSessionId?: string,
@@ -293,6 +324,7 @@ export async function machineSpawnNewSession(options: SpawnSessionOptions): Prom
                 ...(providerId ? { providerId } : {}),
                 ...(modelId ? { modelId } : {}),
                 ...((effort ?? effortLevel) ? { effort: effort ?? effortLevel } : {}),
+                ...(worktree ? { worktree } : {}),
             }
             : { type: 'spawn-in-directory', directory, approvedNewDirectoryCreation, token, agent, permissionMode, modelMode, effortLevel, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, forkedFromMessageId, isSideChat };
         const result = await apiSocket.machineRPC<SpawnSessionResult, SpawnRequest>(

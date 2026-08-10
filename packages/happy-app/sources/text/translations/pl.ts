@@ -180,6 +180,13 @@ export const pl: TranslationStructure = {
         },
         chat: 'Czat',
         chatDescription: 'Dostosuj wygląd wiadomości czatu',
+        conversationFontSize: 'Rozmiar czcionki rozmowy',
+        conversationFontSizeDescription: 'Wybierz rozmiar tekstu w rozmowach',
+        conversationFontSizeOptions: {
+            small: 'Mały',
+            default: 'Domyślny',
+            large: 'Duży',
+        },
         sessionStatusBar: 'Informacje o stanie sesji',
         sessionStatusBarDescription: 'Wybierz, gdzie wyświetlać gałąź, model, wysiłek i kontekst',
         sessionStatusDisplayOptions: {

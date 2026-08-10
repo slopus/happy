@@ -177,6 +177,13 @@ export const en: TranslationStructure = {
         },
         chat: 'Chat',
         chatDescription: 'Customize chat message appearance',
+        conversationFontSize: 'Conversation Font Size',
+        conversationFontSizeDescription: 'Choose the text size for conversations',
+        conversationFontSizeOptions: {
+            small: 'Small',
+            default: 'Default',
+            large: 'Large',
+        },
         sessionStatusBar: 'Session Status Info',
         sessionStatusBarDescription: 'Choose where branch, model, effort, and context appear',
         sessionStatusDisplayOptions: {
