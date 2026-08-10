@@ -20,11 +20,6 @@ on:
       - 'packages/happy-app/**'
       - '.github/workflows/ota-production.yml'
   workflow_dispatch:
-    inputs:
-      channel:
-        description: '发布到哪个频道'
-        required: true
-        default: 'production'
 
 # 生产发布不抢跑：同一时刻只跑一个，且不取消正在进行的发布
 concurrency:
@@ -88,7 +83,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      CHANNEL: ${{ github.event.inputs.channel || 'production' }}
       ALIBABA_CLOUD_ACCESS_KEY_ID: ${{ secrets.ALIYUN_OSS_ACCESS_KEY_ID }}
       ALIBABA_CLOUD_ACCESS_KEY_SECRET: ${{ secrets.ALIYUN_OSS_ACCESS_KEY_SECRET }}
       ALIBABA_CLOUD_REGION_ID: cn-hangzhou
@@ -115,6 +109,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Verify Android build variant contract
+        run: pnpm --filter happy-app exec vitest run sources/utils/otaRuntimeConfig.test.ts
+
       - name: Install aliyun CLI
         run: |
           set -e
@@ -138,7 +135,7 @@ jobs:
       - name: Publish OTA to production channel
         id: publish
         working-directory: packages/happy-app
-        run: node scripts/publish-ota.js --channel "${CHANNEL}" --platform android
+        run: node scripts/publish-ota.js --variant production --channel production --platform android
 
       - name: Write job summary
         if: success()

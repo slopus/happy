@@ -12,6 +12,16 @@ This document is the source copy for release listings and future store submissio
 - **Preview package / bundle ID:** `build.paws.preview`
 - **Development package / bundle ID:** `build.paws.dev`
 
+## Android Distribution Variants
+
+| Build | Package | OTA channel | runtimeVersion |
+|---|---|---|---|
+| Production | `build.paws` | `production` | `23` |
+| Preview | `build.paws.preview` | `preview` | `22` |
+| Development / test | `build.paws.dev` | `preview` | `22` |
+
+This table mirrors `scripts/ota-runtime-config.js` and `ota-runtime-versions.json`. APK release notes and filenames must identify the variant and runtime explicitly.
+
 ## Short Listing
 
 Paws is an open-source mobile and web companion for AI coding agents. Start Claude Code, Codex, Gemini, OpenCode, or another ACP-compatible agent on your computer, then follow progress, send instructions, handle permission requests, and remotely start sessions from another device.

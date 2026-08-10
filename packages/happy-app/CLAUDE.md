@@ -20,7 +20,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Testing
 - `pnpm test` - Run tests in watch mode (Vitest)
-- No existing tests in the codebase yet
+- `pnpm exec vitest run sources/utils/otaRuntimeConfig.test.ts` - Verify the Android package/channel/runtime contract
+
+### Android Build Variant Contract
+
+| `APP_ENV` | Android package | OTA channel | runtimeVersion |
+|---|---|---|---|
+| `development` (test package) | `build.paws.dev` | `preview` | `22` |
+| `preview` | `build.paws.preview` | `preview` | `22` |
+| `production` | `build.paws` | `production` | `23` |
+
+The machine-readable source of truth is `scripts/ota-runtime-config.js` plus `ota-runtime-versions.json`. Do not duplicate these mappings in build or release scripts. Each variant requires a clean Android prebuild because package, channel, and runtime are compiled into the binary. The root `CLAUDE.md` section 8 defines APK naming, signing, verification, and GitHub Release requirements.
 
 ### Production (self-hosted OTA, 阿里云 OSS)
 - `pnpm ota:selfhost` - 发布 OTA 到 **production** 频道（线上正式用户）

@@ -34,3 +34,6 @@ jobs:
 
             - name: TypeScript typecheck
               run: pnpm --filter happy-app typecheck
+
+            - name: Verify Android build variant contract
+              run: pnpm --filter happy-app exec vitest run sources/utils/otaRuntimeConfig.test.ts

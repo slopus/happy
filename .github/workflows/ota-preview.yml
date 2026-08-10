@@ -23,11 +23,6 @@ on:
             - 'packages/happy-app/**'
             - '.github/workflows/ota-preview.yml'
     workflow_dispatch:
-        inputs:
-            channel:
-                description: '发布到哪个频道'
-                required: true
-                default: 'preview'
 
 # 同一个 PR 后续推送会取消上一次未完成的预览发布，避免抢跑覆盖
 concurrency:
@@ -96,7 +91,6 @@ jobs:
             (github.event_name == 'workflow_dispatch' ||
             github.event.pull_request.head.repo.full_name == github.repository)
         env:
-            CHANNEL: ${{ github.event.inputs.channel || 'preview' }}
             # aliyun CLI 统一凭证链识别的环境变量（无需再写 ~/.aliyun/config.json）
             ALIBABA_CLOUD_ACCESS_KEY_ID: ${{ secrets.ALIYUN_OSS_ACCESS_KEY_ID }}
             ALIBABA_CLOUD_ACCESS_KEY_SECRET: ${{ secrets.ALIYUN_OSS_ACCESS_KEY_SECRET }}
@@ -123,6 +117,9 @@ jobs:
 
             - name: Install dependencies
               run: pnpm install --frozen-lockfile
+
+            - name: Verify Android build variant contract
+              run: pnpm --filter happy-app exec vitest run sources/utils/otaRuntimeConfig.test.ts
 
             - name: Install aliyun CLI (含 ossutil 子命令)
               run: |
@@ -151,10 +148,10 @@ jobs:
               id: publish
               working-directory: packages/happy-app
               run: |
-                  args=(--channel "${CHANNEL}" --platform android)
+                  args=(--variant preview --channel preview --platform android)
                   if [ "${{ github.event_name }}" = "pull_request" ]; then
                     # PR 自动预览只写时间戳版本，不覆盖 preview/latest.json。
-                    # 手动 workflow_dispatch 保持旧行为，可显式把某版推成全局 latest。
+                    # 手动 workflow_dispatch 会把本次 preview 版本推成全局 latest。
                     args+=(--skip-latest)
                   fi
                   node scripts/publish-ota.js "${args[@]}"
