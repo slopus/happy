@@ -63,4 +63,20 @@ describe('TerminalPolicyStore', () => {
         await store.load();
         expect(store.get()).toBe('per-session');
     });
+
+    it('serializes concurrent policy writes', async () => {
+        const file = tempPolicyFile();
+        const store = new TerminalPolicyStore(file);
+        await store.load();
+
+        const policies = Array.from({ length: 20 }, (_, index) => (
+            index % 2 === 0 ? 'none' as const : 'once-per-machine' as const
+        ));
+        await expect(Promise.all(policies.map((policy) => store.set(policy))))
+            .resolves.toHaveLength(policies.length);
+
+        const reloaded = new TerminalPolicyStore(file);
+        await reloaded.load();
+        expect(reloaded.get()).toBe(policies.at(-1));
+    });
 });

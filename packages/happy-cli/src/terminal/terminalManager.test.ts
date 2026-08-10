@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -359,6 +359,20 @@ describe('TerminalManager', () => {
         expect(session.killed).toBe(true);
         expect(manager.get(terminalId)).toBeNull();
         expect(manager.list()).toEqual([]);
+    });
+
+    it('recovers registry persistence after a transient write failure', async () => {
+        const { manager, files } = await createHarness({ policy: 'none' });
+        await manager.start();
+
+        const temporaryPath = `${files.terminals}.tmp`;
+        mkdirSync(temporaryPath);
+        await expect(manager.create({ cwd: tmpdir(), cols: 80, rows: 24 }))
+            .rejects.toThrow();
+
+        rmSync(temporaryPath, { recursive: true });
+        await expect(manager.create({ cwd: tmpdir(), cols: 80, rows: 24 }))
+            .resolves.toMatchObject({ type: 'success' });
     });
 
     it('forwards write, resize, and SIGINT to the session', async () => {

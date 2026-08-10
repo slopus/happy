@@ -617,15 +617,20 @@ export class TerminalManager {
     private async persist(): Promise<void> {
         // Serialize writes: concurrent persists would race on the shared
         // `.tmp` path (one rename consumes the file before the other runs).
-        this.persistQueue = this.persistQueue.then(() => this.writeRegistry());
-        await this.persistQueue;
-    }
-
-    private async writeRegistry(): Promise<void> {
+        // A failed write must reject its caller without poisoning the tail:
+        // later state changes should still be able to retry persistence.
         const payload: PersistedTerminalRegistry = {
             version: REGISTRY_VERSION,
             terminals: this.list(),
         };
+        const write = this.persistQueue
+            .catch(() => undefined)
+            .then(() => this.writeRegistry(payload));
+        this.persistQueue = write;
+        await write;
+    }
+
+    private async writeRegistry(payload: PersistedTerminalRegistry): Promise<void> {
         const dir = dirname(this.options.terminalsFile);
         if (!existsSync(dir)) {
             await mkdir(dir, { recursive: true });

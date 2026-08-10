@@ -23,6 +23,7 @@ const DEFAULT_POLICY: ApprovalPolicy = 'per-session';
 export class TerminalPolicyStore {
     private approvalPolicy: ApprovalPolicy = DEFAULT_POLICY;
     private approvedOnce = false;
+    private persistQueue: Promise<void> = Promise.resolve();
 
     constructor(private readonly file: string) {}
 
@@ -73,6 +74,14 @@ export class TerminalPolicyStore {
             approvalPolicy: this.approvalPolicy,
             approvedOnce: this.approvedOnce,
         };
+        const write = this.persistQueue
+            .catch(() => undefined)
+            .then(() => this.writePolicy(payload));
+        this.persistQueue = write;
+        await write;
+    }
+
+    private async writePolicy(payload: PersistedTerminalPolicy): Promise<void> {
         const dir = dirname(this.file);
         if (!existsSync(dir)) {
             await mkdir(dir, { recursive: true });
