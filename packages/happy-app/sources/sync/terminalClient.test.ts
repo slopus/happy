@@ -242,6 +242,33 @@ describe('TerminalStream', () => {
         expect(outputs).toEqual(['live-3']);
     });
 
+    it('bounds live output buffered during attach and resyncs on overflow', async () => {
+        const { TerminalStream } = await import('./terminalClient');
+        const outputs: string[] = [];
+        let resolveAttach!: (value: TerminalAttachResult) => void;
+        machineRPC.mockReturnValueOnce(new Promise((resolve) => {
+            resolveAttach = resolve;
+        }));
+        const stream = new TerminalStream('machine-1', 't1', {
+            onAttach: () => undefined,
+            onOutput: (data) => outputs.push(data),
+            onExit: () => undefined,
+            onError: () => undefined,
+            onWriter: () => undefined,
+            onStatusChange: () => undefined,
+        });
+
+        const attachPromise = stream.attach();
+        await flush();
+        emit('terminal:output', outFrame(3, 'x'.repeat(512 * 1024 + 1)));
+        await flush();
+        resolveAttach(runningAttach(3));
+        await attachPromise;
+
+        expect(outputs).toEqual([]);
+        expect(machineRPC).toHaveBeenCalledTimes(2);
+    });
+
     it('allocates no control sequence before attach and sends only the latest resize first', async () => {
         const { TerminalStream } = await import('./terminalClient');
         let resolveAttach!: (value: TerminalAttachResult) => void;

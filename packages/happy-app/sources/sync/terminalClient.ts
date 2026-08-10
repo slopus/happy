@@ -178,6 +178,8 @@ export class TerminalStream {
     private status: TerminalStreamStatus = 'connecting';
     private attaching = false;
     private bufferedFrames: Array<{ epoch: string; seq: number; data: string }> = [];
+    private bufferedFrameBytes = 0;
+    private attachBufferOverflowed = false;
     private inboundQueue: Promise<void> = Promise.resolve();
     private outboundQueue: Promise<void> = Promise.resolve();
     private attachInFlight: Promise<TerminalAttachResult> | null = null;
@@ -191,6 +193,7 @@ export class TerminalStream {
     private lifecycleGeneration = 0;
     private detached = false;
     private static readonly MAX_RESYNC_ATTEMPTS = 3;
+    private static readonly MAX_ATTACH_BUFFER_BYTES = 512 * 1024;
 
     constructor(
         private readonly machineId: string,
@@ -254,6 +257,8 @@ export class TerminalStream {
         }
         this.attaching = true;
         this.bufferedFrames = [];
+        this.bufferedFrameBytes = 0;
+        this.attachBufferOverflowed = false;
 
         try {
             // Subscribe first: any output produced while the attach RPC is in
@@ -309,6 +314,8 @@ export class TerminalStream {
             if (this.isLifecycleCurrent(lifecycleGeneration)) {
                 this.attaching = false;
                 this.bufferedFrames = [];
+                this.bufferedFrameBytes = 0;
+                this.attachBufferOverflowed = false;
             }
         }
     }
@@ -374,6 +381,8 @@ export class TerminalStream {
         this.wired = false;
         this.attaching = false;
         this.bufferedFrames = [];
+        this.bufferedFrameBytes = 0;
+        this.attachBufferOverflowed = false;
         this.resyncAttempts = 0;
         this.streamEpoch = '';
         this.writer = false;
@@ -455,11 +464,23 @@ export class TerminalStream {
             return;
         }
         if (this.attaching) {
+            const data = frame.data ?? '';
+            const nextBytes = this.bufferedFrameBytes + data.length;
+            if (nextBytes > TerminalStream.MAX_ATTACH_BUFFER_BYTES) {
+                this.attachBufferOverflowed = true;
+                this.bufferedFrames = [];
+                this.bufferedFrameBytes = 0;
+                return;
+            }
+            if (this.attachBufferOverflowed) {
+                return;
+            }
             this.bufferedFrames.push({
                 epoch: frame.epoch,
                 seq: frame.seq,
-                data: frame.data ?? '',
+                data,
             });
+            this.bufferedFrameBytes = nextBytes;
             return;
         }
         if (frame.epoch !== this.streamEpoch) {
@@ -565,6 +586,9 @@ export class TerminalStream {
      * caller must resync); resets the resync budget on a clean barrier.
      */
     private applyAttachBarrier(result: TerminalAttachResult): boolean {
+        if (this.attachBufferOverflowed) {
+            return true;
+        }
         this.lastOutputSeq = result.nextSeq - 1;
         const ordered = [...this.bufferedFrames]
             .filter((frame) => frame.epoch === this.streamEpoch && frame.seq > this.lastOutputSeq)
