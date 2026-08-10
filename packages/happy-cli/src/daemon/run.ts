@@ -875,17 +875,25 @@ export async function startDaemon(): Promise<void> {
     const apiMachine = api.machineSyncClient(machine);
 
     // Remote terminal manager: persistent shells owned by this daemon.
-    const terminalManager = new TerminalManager({
-      terminalsFile: join(configuration.happyHomeDir, 'terminals.json'),
-      policyStore: new TerminalPolicyStore(
-        join(configuration.happyHomeDir, 'terminal.settings.json'),
-      ),
-      shell: defaultShell(),
-      emitOutput: (terminalId, frame) => apiMachine.emitTerminalOutput(terminalId, frame),
-      emitExit: (terminalId, frame) => apiMachine.emitTerminalExit(terminalId, frame),
-      emitError: (terminalId, frame) => apiMachine.emitTerminalError(terminalId, frame),
-    });
-    await terminalManager.start();
+    // Staged rollout flag — off by default; operators opt in with
+    // HAPPY_TERMINAL_ENABLED=1 on the daemon.
+    const terminalEnabled = ['1', 'true', 'yes'].includes(
+      (process.env.HAPPY_TERMINAL_ENABLED || '').toLowerCase(),
+    );
+    let terminalManager: TerminalManager | null = null;
+    if (terminalEnabled) {
+      terminalManager = new TerminalManager({
+        terminalsFile: join(configuration.happyHomeDir, 'terminals.json'),
+        policyStore: new TerminalPolicyStore(
+          join(configuration.happyHomeDir, 'terminal.settings.json'),
+        ),
+        shell: defaultShell(),
+        emitOutput: (terminalId, frame) => apiMachine.emitTerminalOutput(terminalId, frame),
+        emitExit: (terminalId, frame) => apiMachine.emitTerminalExit(terminalId, frame),
+        emitError: (terminalId, frame) => apiMachine.emitTerminalError(terminalId, frame),
+      });
+      await terminalManager.start();
+    }
 
     // Set RPC handlers
     apiMachine.setRPCHandlers({
@@ -893,7 +901,7 @@ export async function startDaemon(): Promise<void> {
       resumeSession,
       stopSession,
       requestShutdown: () => requestShutdown('happy-app'),
-      terminalManager
+      terminalManager: terminalManager ?? undefined
     });
 
     // Connect to server
@@ -953,7 +961,9 @@ export async function startDaemon(): Promise<void> {
         // isDaemonRunningCurrentlyInstalledHappyVersion() === true, and exits —
         // leaving nothing running once we also exit.
         apiMachine.shutdown();
-        await terminalManager.stop();
+        if (terminalManager) {
+          await terminalManager.stop();
+        }
         await stopControlServer();
         await cleanupDaemonState();
         await releaseDaemonLock(daemonLockHandle);
@@ -1023,7 +1033,9 @@ export async function startDaemon(): Promise<void> {
       await new Promise(resolve => setTimeout(resolve, 100));
 
       apiMachine.shutdown();
-      await terminalManager.stop();
+      if (terminalManager) {
+        await terminalManager.stop();
+      }
       await stopControlServer();
       await cleanupDaemonState();
       await stopCaffeinate();
