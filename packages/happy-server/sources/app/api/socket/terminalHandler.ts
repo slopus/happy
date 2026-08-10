@@ -80,6 +80,14 @@ end
 return 0
 `;
 
+const REFRESH_WRITER_IF_MATCH_LUA = `
+if redis.call('GET', KEYS[1]) == ARGV[1] then
+  redis.call('EXPIRE', KEYS[1], ARGV[2])
+  return 1
+end
+return 0
+`;
+
 let redis: Redis | null = null;
 if (process.env.REDIS_URL) {
     redis = new Redis(process.env.REDIS_URL);
@@ -257,6 +265,25 @@ async function releaseWriterIfOwned(reference: WriterSeatReference): Promise<boo
     return false;
 }
 
+async function refreshWriterIfOwned(
+    key: string,
+    socketId: string,
+    generation: number,
+): Promise<boolean> {
+    const value = `${socketId}:${generation}`;
+    if (redis) {
+        return Number(await redis.eval(
+            REFRESH_WRITER_IF_MATCH_LUA,
+            1,
+            key,
+            value,
+            String(WRITER_TTL_SECONDS),
+        )) === 1;
+    }
+    const current = writerState.get(key);
+    return !!current && `${current.socketId}:${current.generation}` === value;
+}
+
 function broadcastWriter(
     io: Server,
     userId: string,
@@ -403,7 +430,7 @@ export function terminalHandler(userId: string, socket: Socket, io: Server) {
     }
 
     // User-scoped sockets: subscribe / unsubscribe / writer seat / input.
-    socket.on('terminal:subscribe', async (
+    socket.on('terminal:subscribe', (
         data: { terminalId?: unknown },
         acknowledge: TerminalWriterAck = () => undefined,
     ) => {
@@ -412,25 +439,39 @@ export function terminalHandler(userId: string, socket: Socket, io: Server) {
             acknowledge(writerAck(null, socket.id));
             return;
         }
-        await socket.join(clientRoom(userId, terminalId));
-        const key = writerKey(userId, terminalId);
-        await withTerminalOpLock(key, async () => {
-            const { seat, claimed } = await claimWriterIfEmpty(key, socket.id);
-            if (seat.socketId === socket.id) {
-                rememberWriterSeat({ ...seat, key, userId, terminalId });
-            }
-            if (!socket.connected) {
-                const released = await releaseWriterSeat(socket.id, key);
-                if (released) {
-                    broadcastWriter(io, userId, terminalId, null);
+        void (async () => {
+            await socket.join(clientRoom(userId, terminalId));
+            const key = writerKey(userId, terminalId);
+            await withTerminalOpLock(key, async () => {
+                const { seat, claimed } = await claimWriterIfEmpty(key, socket.id);
+                if (seat.socketId === socket.id) {
+                    if (!claimed && !await refreshWriterIfOwned(
+                        key,
+                        socket.id,
+                        seat.generation,
+                    )) {
+                        const latest = await currentWriter(key);
+                        acknowledge(writerAck(latest, socket.id));
+                        return;
+                    }
+                    rememberWriterSeat({ ...seat, key, userId, terminalId });
                 }
-                return;
-            }
-            acknowledge(writerAck(seat, socket.id));
-            if (claimed) {
-                broadcastWriter(io, userId, terminalId, seat);
-            }
-            terminalEventsCounter.inc({ event: 'subscribe', role: 'user' });
+                if (!socket.connected) {
+                    const released = await releaseWriterSeat(socket.id, key);
+                    if (released) {
+                        broadcastWriter(io, userId, terminalId, null);
+                    }
+                    return;
+                }
+                acknowledge(writerAck(seat, socket.id));
+                if (claimed) {
+                    broadcastWriter(io, userId, terminalId, seat);
+                }
+                terminalEventsCounter.inc({ event: 'subscribe', role: 'user' });
+            });
+        })().catch((error) => {
+            log({ module: 'websocket' }, `Terminal subscribe failed: ${error}`);
+            acknowledge(writerAck(null, socket.id));
         });
     });
 
@@ -453,7 +494,7 @@ export function terminalHandler(userId: string, socket: Socket, io: Server) {
         });
     });
 
-    socket.on('terminal:takeover', async (
+    socket.on('terminal:takeover', (
         data: { terminalId?: unknown },
         acknowledge: TerminalWriterAck = () => undefined,
     ) => {
@@ -464,7 +505,7 @@ export function terminalHandler(userId: string, socket: Socket, io: Server) {
         }
 
         const key = writerKey(userId, terminalId);
-        await withTerminalOpLock(key, async () => {
+        void withTerminalOpLock(key, async () => {
             const seat = await takeWriter(key, socket.id);
             rememberWriterSeat({ ...seat, key, userId, terminalId });
             if (!socket.connected) {
@@ -477,18 +518,21 @@ export function terminalHandler(userId: string, socket: Socket, io: Server) {
             terminalEventsCounter.inc({ event: 'takeover', role: 'user' });
             acknowledge(writerAck(seat, socket.id));
             broadcastWriter(io, userId, terminalId, seat);
+        }).catch((error) => {
+            log({ module: 'websocket' }, `Terminal takeover failed: ${error}`);
+            acknowledge(writerAck(null, socket.id));
         });
     });
 
     const forwardWriterFrame = (
         event: 'terminal:input' | 'terminal:resize' | 'terminal:signal',
-    ) => async (data: { terminalId?: unknown; payload?: unknown }) => {
+    ) => (data: { terminalId?: unknown; payload?: unknown }) => {
         const { terminalId, payload } = data ?? {};
         if (!isValidTerminalId(terminalId) || !isValidPayload(payload)) {
             return;
         }
         const key = writerKey(userId, terminalId);
-        await withTerminalOpLock(key, async () => {
+        void withTerminalOpLock(key, async () => {
             const generation = await writerGeneration(key, socket.id);
             if (!generation) {
                 return; // View-only sockets cannot write.
@@ -498,15 +542,15 @@ export function terminalHandler(userId: string, socket: Socket, io: Server) {
             if (targets.length === 0) {
                 return;
             }
-            if (redis) {
-                // Cross-replica fencing: another replica may have swapped the
-                // writer while we were looking up the daemon socket.
-                if (await writerGeneration(key, socket.id) !== generation) {
-                    return;
-                }
+            // Cross-replica fencing: verify the exact lease after daemon
+            // lookup and renew it atomically while this writer is active.
+            if (!await refreshWriterIfOwned(key, socket.id, generation)) {
+                return;
             }
             targets[0].emit(event, { terminalId, payload });
             terminalEventsCounter.inc({ event, role: 'user' });
+        }).catch((error) => {
+            log({ module: 'websocket' }, `Terminal ${event} forwarding failed: ${error}`);
         });
     };
 

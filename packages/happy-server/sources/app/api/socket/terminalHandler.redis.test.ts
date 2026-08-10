@@ -146,10 +146,12 @@ describe.skipIf(!redisUrl)('terminalHandler Redis writer leases', () => {
 
         const daemonInputs: string[] = [];
         daemon.on('terminal:input', (data: { payload: string }) => daemonInputs.push(data.payload));
+        await redis.expire(key, 1);
         clientD.emit('terminal:input', { terminalId, payload: 'FROM-D' });
         clientE.emit('terminal:input', { terminalId, payload: 'FROM-E' });
         await new Promise((resolve) => setTimeout(resolve, 100));
         expect(daemonInputs).toHaveLength(1);
         expect(['FROM-D', 'FROM-E']).toContain(daemonInputs[0]);
+        expect(await redis.ttl(key)).toBeGreaterThan(60);
     });
 });
