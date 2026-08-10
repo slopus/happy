@@ -188,6 +188,8 @@ export class TerminalStream {
     private writer = false;
     private controlReady = false;
     private resyncAttempts = 0;
+    private lifecycleGeneration = 0;
+    private detached = false;
     private static readonly MAX_RESYNC_ATTEMPTS = 3;
 
     constructor(
@@ -207,6 +209,10 @@ export class TerminalStream {
     }
 
     async attach(): Promise<TerminalAttachResult> {
+        if (this.detached) {
+            this.detached = false;
+            this.lifecycleGeneration++;
+        }
         this.resyncAttempts = 0;
         return this.ensureAttached();
     }
@@ -239,6 +245,7 @@ export class TerminalStream {
     }
 
     private async performAttach(): Promise<{ result: TerminalAttachResult; gap: boolean }> {
+        const lifecycleGeneration = this.lifecycleGeneration;
         this.setStatus('connecting');
         this.controlReady = false;
         if (!this.wired) {
@@ -256,8 +263,16 @@ export class TerminalStream {
                 'terminal:subscribe',
                 { terminalId: this.terminalId },
             );
+            if (!this.isLifecycleCurrent(lifecycleGeneration)) {
+                apiSocket.send('terminal:unsubscribe', { terminalId: this.terminalId });
+                throw new Error('Terminal stream detached during subscribe');
+            }
             this.applyWriterState(writerState);
             const result = await terminalAttach(this.machineId, this.terminalId, this.lastOutputSeq);
+            if (!this.isLifecycleCurrent(lifecycleGeneration)) {
+                apiSocket.send('terminal:unsubscribe', { terminalId: this.terminalId });
+                return { result, gap: false };
+            }
 
             // Daemon generation changed (daemon restarted, tmux kept running):
             // old unacked input may already have executed, so it is dropped
@@ -278,7 +293,10 @@ export class TerminalStream {
                     await this.enqueueOutbound(async () => {
                         await this.resendPendingControls();
                         await this.sendDesiredResizeIfNeeded();
-                    });
+                    }, lifecycleGeneration);
+                }
+                if (!this.isLifecycleCurrent(lifecycleGeneration)) {
+                    return { result, gap: false };
                 }
                 this.setStatus('attached');
             } else if (result.status === 'exited') {
@@ -288,8 +306,10 @@ export class TerminalStream {
             }
             return { result, gap: false };
         } finally {
-            this.attaching = false;
-            this.bufferedFrames = [];
+            if (this.isLifecycleCurrent(lifecycleGeneration)) {
+                this.attaching = false;
+                this.bufferedFrames = [];
+            }
         }
     }
 
@@ -330,14 +350,24 @@ export class TerminalStream {
     }
 
     async takeControl(): Promise<void> {
+        const lifecycleGeneration = this.lifecycleGeneration;
         const state = await apiSocket.emitWithAck<TerminalWriterState>(
             'terminal:takeover',
             { terminalId: this.terminalId },
         );
-        this.applyWriterState(state);
+        if (this.isLifecycleCurrent(lifecycleGeneration)) {
+            this.applyWriterState(state);
+        } else {
+            // The server may have granted the seat after this screen closed.
+            // Release it again so other viewers are not left view-only.
+            apiSocket.send('terminal:unsubscribe', { terminalId: this.terminalId });
+        }
     }
 
     detach(): void {
+        this.detached = true;
+        this.lifecycleGeneration++;
+        this.attachInFlight = null;
         for (const dispose of this.disposers.splice(0)) {
             dispose();
         }
@@ -351,7 +381,7 @@ export class TerminalStream {
         this.currentWriterSocketId = null;
         this.writerGeneration = 0;
         this.controlReady = false;
-        this.pendingControls.clear();
+        this.rotateControlStream();
         apiSocket.send('terminal:unsubscribe', { terminalId: this.terminalId });
         this.setStatus('detached');
     }
@@ -361,35 +391,35 @@ export class TerminalStream {
             if (data?.terminalId !== this.terminalId || typeof data.payload !== 'string') {
                 return;
             }
-            this.enqueueInbound(() => this.handleOutputFrame(data.payload));
+            this.enqueueInbound((generation) => this.handleOutputFrame(data.payload, generation));
         }));
 
         this.disposers.push(apiSocket.onMessage('terminal:exit', (data: any) => {
             if (data?.terminalId !== this.terminalId || typeof data.payload !== 'string') {
                 return;
             }
-            this.enqueueInbound(() => this.handleExitFrame(data.payload));
+            this.enqueueInbound((generation) => this.handleExitFrame(data.payload, generation));
         }));
 
         this.disposers.push(apiSocket.onMessage('terminal:control-ack', (data: any) => {
             if (data?.terminalId !== this.terminalId || typeof data.payload !== 'string') {
                 return;
             }
-            this.enqueueInbound(() => this.handleControlAckFrame(data.payload));
+            this.enqueueInbound((generation) => this.handleControlAckFrame(data.payload, generation));
         }));
 
         this.disposers.push(apiSocket.onMessage('terminal:control-nack', (data: any) => {
             if (data?.terminalId !== this.terminalId || typeof data.payload !== 'string') {
                 return;
             }
-            this.enqueueInbound(() => this.handleControlNackFrame(data.payload));
+            this.enqueueInbound((generation) => this.handleControlNackFrame(data.payload, generation));
         }));
 
         this.disposers.push(apiSocket.onMessage('terminal:epoch', (data: any) => {
             if (data?.terminalId !== this.terminalId || typeof data.payload !== 'string') {
                 return;
             }
-            this.enqueueInbound(() => this.handleEpochFrame(data.payload));
+            this.enqueueInbound((generation) => this.handleEpochFrame(data.payload, generation));
         }));
 
         this.disposers.push(apiSocket.onMessage('terminal:writer', (data: any) => {
@@ -410,9 +440,9 @@ export class TerminalStream {
         }));
     }
 
-    private async handleOutputFrame(payload: string): Promise<void> {
+    private async handleOutputFrame(payload: string, generation: number): Promise<void> {
         const frame = await this.decrypt<TerminalOutputFrame>(payload);
-        if (!this.isValidOutputFrame(frame)) {
+        if (!this.isLifecycleCurrent(generation) || !this.isValidOutputFrame(frame)) {
             return;
         }
         if (frame.kind === 'error') {
@@ -449,9 +479,10 @@ export class TerminalStream {
         }
     }
 
-    private async handleExitFrame(payload: string): Promise<void> {
+    private async handleExitFrame(payload: string, generation: number): Promise<void> {
         const frame = await this.decrypt<TerminalOutputFrame>(payload);
-        if (!this.isValidOutputFrame(frame)
+        if (!this.isLifecycleCurrent(generation)
+            || !this.isValidOutputFrame(frame)
             || frame.kind !== 'exit'
             || frame.epoch !== this.streamEpoch) {
             return;
@@ -467,9 +498,10 @@ export class TerminalStream {
         this.handlers.onExit(frame.exitCode ?? 0);
     }
 
-    private async handleControlAckFrame(payload: string): Promise<void> {
+    private async handleControlAckFrame(payload: string, generation: number): Promise<void> {
         const frame = await this.decrypt<TerminalOutputFrame>(payload);
-        if (!this.isValidOutputFrame(frame)
+        if (!this.isLifecycleCurrent(generation)
+            || !this.isValidOutputFrame(frame)
             || frame.kind !== 'control-ack'
             || frame.epoch !== this.streamEpoch
             || frame.streamId !== this.streamId
@@ -479,9 +511,10 @@ export class TerminalStream {
         this.pendingControls.delete(frame.seq);
     }
 
-    private async handleControlNackFrame(payload: string): Promise<void> {
+    private async handleControlNackFrame(payload: string, generation: number): Promise<void> {
         const frame = await this.decrypt<TerminalOutputFrame>(payload);
-        if (!this.isValidOutputFrame(frame)
+        if (!this.isLifecycleCurrent(generation)
+            || !this.isValidOutputFrame(frame)
             || frame.kind !== 'control-nack'
             || frame.epoch !== this.streamEpoch
             || frame.streamId !== this.streamId
@@ -495,9 +528,11 @@ export class TerminalStream {
         });
     }
 
-    private async handleEpochFrame(payload: string): Promise<void> {
+    private async handleEpochFrame(payload: string, generation: number): Promise<void> {
         const frame = await this.decrypt<TerminalOutputFrame>(payload);
-        if (!this.isValidOutputFrame(frame) || frame.kind !== 'epoch') {
+        if (!this.isLifecycleCurrent(generation)
+            || !this.isValidOutputFrame(frame)
+            || frame.kind !== 'epoch') {
             return;
         }
         if (!this.acceptEpoch(frame.epoch)) {
@@ -507,10 +542,17 @@ export class TerminalStream {
     }
 
     private async resync(): Promise<void> {
+        const lifecycleGeneration = this.lifecycleGeneration;
+        if (!this.isLifecycleCurrent(lifecycleGeneration)) {
+            return;
+        }
         this.setStatus('reconnecting');
         try {
             await this.ensureAttached();
         } catch (error) {
+            if (!this.isLifecycleCurrent(lifecycleGeneration)) {
+                return;
+            }
             const message = error instanceof Error ? error.message : String(error);
             this.setStatus('error');
             this.handlers.onError(message);
@@ -733,21 +775,41 @@ export class TerminalStream {
         this.desiredSizeDirty = this.desiredSize !== null;
     }
 
-    private enqueueInbound(operation: () => Promise<void>): void {
-        const next = this.inboundQueue.then(operation);
+    private enqueueInbound(operation: (generation: number) => Promise<void>): void {
+        const lifecycleGeneration = this.lifecycleGeneration;
+        const next = this.inboundQueue.then(async () => {
+            if (this.isLifecycleCurrent(lifecycleGeneration)) {
+                await operation(lifecycleGeneration);
+            }
+        });
         this.inboundQueue = next.catch((error) => {
-            const message = error instanceof Error ? error.message : String(error);
-            this.handlers.onError(message);
+            if (this.isLifecycleCurrent(lifecycleGeneration)) {
+                const message = error instanceof Error ? error.message : String(error);
+                this.handlers.onError(message);
+            }
         });
     }
 
-    private enqueueOutbound(operation: () => Promise<void>): Promise<void> {
-        const next = this.outboundQueue.then(operation);
+    private enqueueOutbound(
+        operation: () => Promise<void>,
+        lifecycleGeneration = this.lifecycleGeneration,
+    ): Promise<void> {
+        const next = this.outboundQueue.then(async () => {
+            if (this.isLifecycleCurrent(lifecycleGeneration)) {
+                await operation();
+            }
+        });
         this.outboundQueue = next.catch((error) => {
-            const message = error instanceof Error ? error.message : String(error);
-            this.handlers.onError(message);
+            if (this.isLifecycleCurrent(lifecycleGeneration)) {
+                const message = error instanceof Error ? error.message : String(error);
+                this.handlers.onError(message);
+            }
         });
         return this.outboundQueue;
+    }
+
+    private isLifecycleCurrent(generation: number): boolean {
+        return !this.detached && generation === this.lifecycleGeneration;
     }
 
     private async encrypt<T>(frame: T): Promise<string> {

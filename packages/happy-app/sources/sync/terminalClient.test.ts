@@ -936,4 +936,66 @@ describe('TerminalStream', () => {
         expect(socketSend).toHaveBeenCalledWith('terminal:unsubscribe', { terminalId: 't1' });
         expect(Object.keys(socketHandlers)).toEqual([]);
     });
+
+    it('drops an in-flight attach result after detach', async () => {
+        const { TerminalStream } = await import('./terminalClient');
+        const attaches: TerminalAttachResult[] = [];
+        const statuses: string[] = [];
+        let resolveAttach!: (value: TerminalAttachResult) => void;
+        machineRPC.mockReturnValueOnce(new Promise((resolve) => {
+            resolveAttach = resolve;
+        }));
+        const stream = new TerminalStream('machine-1', 't1', {
+            onAttach: (result) => attaches.push(result),
+            onOutput: () => undefined,
+            onExit: () => undefined,
+            onError: () => undefined,
+            onWriter: () => undefined,
+            onStatusChange: (status) => statuses.push(status),
+        });
+
+        const attachPromise = stream.attach();
+        await flush();
+        stream.detach();
+        resolveAttach(runningAttach());
+        await attachPromise;
+
+        expect(attaches).toEqual([]);
+        expect(statuses.at(-1)).toBe('detached');
+        expect(socketSend).toHaveBeenCalledWith(
+            'terminal:unsubscribe',
+            { terminalId: 't1' },
+        );
+    });
+
+    it('releases a writer seat granted after detach', async () => {
+        const { TerminalStream } = await import('./terminalClient');
+        const stream = new TerminalStream('machine-1', 't1', {
+            onAttach: () => undefined,
+            onOutput: () => undefined,
+            onExit: () => undefined,
+            onError: () => undefined,
+            onWriter: () => undefined,
+            onStatusChange: () => undefined,
+        });
+        await stream.attach();
+
+        let resolveTakeover!: (state: {
+            writerSocketId: string;
+            generation: number;
+            isWriter: boolean;
+        }) => void;
+        socketEmitWithAck.mockReturnValueOnce(new Promise((resolve) => {
+            resolveTakeover = resolve;
+        }));
+        const takeoverPromise = stream.takeControl();
+        stream.detach();
+        resolveTakeover({ writerSocketId: 'socket-a', generation: 2, isWriter: true });
+        await takeoverPromise;
+
+        expect(stream.isWriter).toBe(false);
+        expect(socketSend.mock.calls.filter(
+            ([event]) => event === 'terminal:unsubscribe',
+        )).toHaveLength(2);
+    });
 });

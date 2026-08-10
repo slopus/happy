@@ -57,14 +57,17 @@ export function useTerminalSession(
         streamRef.current = stream;
 
         void stream.attach().catch((attachError) => {
+            if (streamRef.current !== stream) {
+                return;
+            }
             const message = attachError instanceof Error ? attachError.message : String(attachError);
             setError(message);
             setStatus('error');
         });
 
         return () => {
-            stream.detach();
             streamRef.current = null;
+            stream.detach();
         };
     }, [machineId, terminalId]);
 
