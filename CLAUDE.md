@@ -264,54 +264,76 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 
 ## 八、本地构建 Android APK 并发布到 GitHub Release
 
-> 在本机直接出一个可 sideload 安装的 Android APK，并作为构建产物发到 GitHub Release（不进 npm、不进商店）。所有命令在 `packages/happy-app/` 下执行。
+> 在本机直接构建可 sideload 的 Android APK，并作为构建产物发到 GitHub Release（不进 npm、不进商店）。所有命令在 `packages/happy-app/` 下执行。
+
+### Android 构建变体契约
+
+以下矩阵是安装包、OTA 路径和排障时的固定契约。**测试包指 `development` 变体**，不是 preview 包的别名。
+
+| APP_ENV | 显示名称 | Android package | OTA channel | runtimeVersion |
+|---|---|---|---|---|
+| `development` | `Paws (dev)` | `build.paws.dev` | `preview` | `22` |
+| `preview` | `Paws (preview)` | `build.paws.preview` | `preview` | `22` |
+| `production` | `Paws` | `build.paws` | `production` | `23` |
+
+- 机器可读的唯一来源是 `packages/happy-app/scripts/ota-runtime-config.js` 和 `ota-runtime-versions.json`；`app.config.js`、OTA 发布脚本和 CI 都必须消费/验证这份契约，不得另写一套映射。
+- 改 package、channel、runtimeVersion、原生依赖、权限或 Expo plugin 都必须重新构建对应 APK。只发布 OTA 不能跨 runtime 补齐原生能力。
+- `development` 与 `preview` 共用 preview OTA 路径，但 applicationId 不同，可与 production 并存安装。production 只读 production OTA。
+- PR/CI 必须运行 `pnpm --filter happy-app exec vitest run sources/utils/otaRuntimeConfig.test.ts`；任何一列漂移都应在上传 OTA 前失败。
 
 ### 前置条件（本机已就绪，换机时核对）
 
 - JDK 17（`java -version`）、`ANDROID_HOME` 已指向 Android SDK、`android/gradlew` 存在
 - **无需自备 keystore**：`android/app/build.gradle` 中 release 签名回退到 `debug.keystore`，产物为 debug 签名，足够 sideload 安装/内测（**不可上架商店**）
+- `plugins/certs/selfhosted_server.pem` 被 gitignore 排除；新 worktree prebuild 前必须从受信来源 provision，并核对证书指纹。缺少它时 prebuild 必须失败，不得绕过信任插件。
 
 ### 构建步骤
 
 ```bash
 cd packages/happy-app
 
-# 1) android/ 是 gitignore 的 prebuild 产物。首次/换机/配置变更后需重建；已存在可跳过
-pnpm prebuild                  # = rm -rf android ios && expo prebuild
+# 每个变体都必须 clean prebuild；package/channel/runtime 在构建期写入，不能复用上一个变体的 android/。
+VARIANT=production # development | preview | production
+APP_ENV="$VARIANT" NODE_ENV=production pnpm exec expo prebuild --platform android --clean
 
-# 2) 构建 release APK（APP_ENV 决定环境，按需 preview/production）
-#    必须加 -PreactNativeArchitectures=arm64-v8a 只打真机用的 arm64：
-cd android && APP_ENV=production ./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a
+# 只构建真机 arm64 release APK；本机 Homebrew JDK/SDK 路径要显式传入，避免 Gradle 找错环境。
+cd android
+JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home \
+ANDROID_HOME=/opt/homebrew/share/android-commandlinetools \
+ANDROID_SDK_ROOT=/opt/homebrew/share/android-commandlinetools \
+NODE_ENV=production APP_ENV="$VARIANT" \
+./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a --console=plain
 
-# 产物固定路径：
-#   packages/happy-app/android/app/build/outputs/apk/release/app-release.apk
+# 在构建下一个变体前，把产物复制为带 variant/runtime/SHA 的唯一文件名。
+# android/app/build/outputs/apk/release/app-release.apk
 ```
 
-> ⚠️ **务必带 `-PreactNativeArchitectures=arm64-v8a`**：`gradle.properties` 默认 `reactNativeArchitectures=armeabi-v7a,arm64-v8a,x86,x86_64`，不加参数直接 `assembleRelease` 会打成含 4 种架构的 **universal 包（~293MB）**，其中 x86/x86_64 是模拟器专用、armeabi-v7a 是老 32 位 ARM，真机全用不到。只打 arm64 后包体回到 **~122MB**。sideload 给真机一律只要 arm64。
+> ⚠️ **务必带 `-PreactNativeArchitectures=arm64-v8a`**：依赖模块可能仍编译额外 ABI，但最终 APK 必须只包含 `lib/arm64-v8a/`。不能凭 Gradle 参数猜测，发布前用 `zipinfo`/`apkanalyzer` 实际断言。
 
 > 想直接装到连着的真机/模拟器而不出 APK 文件，用 `pnpm android:production`（会 install 而非只 assemble）。
 
 ### 发布到 GitHub Release
 
-```bash
-# 版本号取自 app.config.js（APP_ENV=production 下当前为 1.7.1），不要用 package.json 的 1.0.0
-VERSION=$(cd packages/happy-app && APP_ENV=production node -e "const c=require('./app.config.js');const cfg=typeof c==='function'?c({config:{}}):(c.default||c);console.log(cfg.expo?.version||cfg.version)")
-TAG="android-v$VERSION"            # tag 加 android- 前缀，与桌面/其他端 release 区分
-APK="packages/happy-app/android/app/build/outputs/apk/release/app-release.apk"
+- 同一代码 revision 的三包优先放在一个 GitHub Release，三个 asset 文件名必须包含 `production|development|preview`、runtime 和短 SHA。
+- tag 必须以 `android-` 开头，并包含 App version 与 revision，例如 `android-v1.7.1-runtimes22-23-eb5c1a999`；不得覆盖已有 tag/release。
+- Release notes 必须列出每个 asset 的 package/channel/runtime、签名性质、大小和 SHA-256。production sideload APK 仍是 debug 签名，不等于 Play Store 正式签名包。
+- 发布后用 GitHub API 核对 `state=uploaded`、asset size/digest，并对 browser download URL 做最终 HTTP 200 检查。
 
-# 走代理（见第七节）后再推 tag 与建 release
-git tag "$TAG" && git push origin "$TAG"
-gh release create "$TAG" --repo wangjs-jacky/happy \
-  --title "Android $TAG" \
-  --notes "本地构建的 Android APK（debug 签名，可直接 sideload）。" \
-  "$APK"
-```
+### APK 发布门禁
+
+每个 APK 都必须独立通过：
+
+1. `aapt2 dump badging`：package/version 与矩阵一致。
+2. `apkanalyzer manifest print` 或 `aapt2 dump resources`：channel/runtime 与矩阵一致。
+3. `zipinfo -1`：只出现 `lib/arm64-v8a/`。
+4. `apksigner verify --verbose --print-certs`：签名有效且签名身份符合 sideload 约定。
+5. `unzip -t`、文件大小、SHA-256：完整性通过。
+6. GitHub Release asset：大小和 digest 与本地完全一致，下载 URL 最终 HTTP 200。
 
 ### 约定
 
-- **Release tag 用 `android-v<version>` 前缀**，避免与 iOS/桌面端或上游 release 命名冲突
 - APK 是构建产物，**不提交进 git**（`*.apk` 已隐含在 prebuild 产物链路中，不要 `git add`）
-- 同一版本号重复发布前先删旧 release/tag，或递增 `app.config.js` 的 version
+- 不删除或复用已发布 tag；同一 App version 重发时在 tag/asset 中加入 runtime 与 commit SHA
 - 此流程纯属本机/内测分发；正式商店包仍走 EAS（`pnpm release:build:appstore`）
 
 ## 九、自建 OTA：发布、版本管理与真机验证

@@ -1,6 +1,7 @@
 // scripts/publish-ota.js
 // 作用：把 `expo export` 的产物上传到阿里云 OSS，并生成 Expo Updates 协议要求的 manifest 清单。
-// 用法：node scripts/publish-ota.js [--channel <channel>] [--platform <platform>] [--runtime-version <runtime>] [--skip-latest]
+// 用法：node scripts/publish-ota.js [--variant <variant>] [--channel <channel>] [--platform <platform>] [--runtime-version <runtime>] [--skip-latest]
+//   --variant  构建变体 development/preview/production；提供后会强制校验 channel/runtime 契约
 //   --channel  发布到哪个频道，缺省 production；预览发 preview（仅装了 preview 包的设备会拉到）
 //   --platform 平台，缺省 android
 //   --runtime-version  覆盖默认 runtime；默认 preview/development=22，production=23
@@ -19,14 +20,15 @@ const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
 const { execFileSync } = require('child_process');
-const { defaultRuntimeVersion } = require('./ota-runtime-config.js');
+const { assertVariantOtaTarget, defaultRuntimeVersion } = require('./ota-runtime-config.js');
 
 // ---- 解析命令行参数（--channel / --platform / --runtime-version） ----
 function parseArgs(argv) {
   const out = {};
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a === '--channel') out.channel = argv[++i];
+    if (a === '--variant') out.variant = argv[++i];
+    else if (a === '--channel') out.channel = argv[++i];
     else if (a === '--platform') out.platform = argv[++i];
     else if (a === '--runtime-version' || a === '--runtime') out.runtimeVersion = argv[++i];
     else if (a === '--display-title') out.displayTitle = argv[++i];
@@ -36,6 +38,7 @@ function parseArgs(argv) {
     else if (a === '--source-url') out.sourceUrl = argv[++i];
     else if (a === '--skip-latest') out.skipLatest = true;
     else if (a === '--write-latest') out.skipLatest = false;
+    else if (a.startsWith('--variant=')) out.variant = a.slice('--variant='.length);
     else if (a.startsWith('--channel=')) out.channel = a.slice('--channel='.length);
     else if (a.startsWith('--platform=')) out.platform = a.slice('--platform='.length);
     else if (a.startsWith('--runtime-version=')) out.runtimeVersion = a.slice('--runtime-version='.length);
@@ -57,6 +60,7 @@ const REGION = 'oss-cn-hangzhou';              // OSS 地域
 const PLATFORM = ARGS.platform || 'android';   // 平台（--platform 覆盖）
 const CHANNEL = ARGS.channel || 'production';  // 频道（--channel 覆盖），缺省 production 保持旧行为
 const RUNTIME_VERSION = ARGS.runtimeVersion || process.env.HAPPY_OTA_RUNTIME_VERSION || defaultRuntimeVersion(CHANNEL);
+const VARIANT = ARGS.variant || process.env.APP_ENV;
 const WRITE_LATEST = !ARGS.skipLatest;          // PR 预览可跳过 latest，避免覆盖其他 PR
 const DIST_DIR = path.join(__dirname, '..', 'dist'); // expo export 输出目录
 const ALIYUN_BIN = process.env.ALIYUN_BIN || 'aliyun'; // aliyun CLI 可执行名/路径
@@ -65,6 +69,15 @@ const OSS_ADDRESSING_STYLE = process.env.OSS_ADDRESSING_STYLE || 'virtual';
 // OSS 公开访问域名（https）
 const OSS_PUBLIC_BASE = `https://${BUCKET}.${REGION}.aliyuncs.com`;
 // ===================================================
+
+if (VARIANT) {
+  try {
+    assertVariantOtaTarget(VARIANT, CHANNEL, RUNTIME_VERSION);
+  } catch (error) {
+    console.error(`错误：${error.message}`);
+    process.exit(1);
+  }
+}
 
 // ---- 工具函数 ----
 
