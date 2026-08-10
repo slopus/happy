@@ -18,7 +18,12 @@ on:
       - main
     paths:
       - 'packages/happy-app/**'
-      - '.github/workflows/ota-production.yml'
+      # Documentation and tests do not change the shipped Expo bundle. Keep
+      # them from publishing a production OTA merely because they live under
+      # packages/happy-app.
+      - '!packages/happy-app/**/*.md'
+      - '!packages/happy-app/**/*.test.*'
+      - '!packages/happy-app/**/*.spec.*'
   workflow_dispatch:
 
 # 生产发布不抢跑：同一时刻只跑一个，且不取消正在进行的发布

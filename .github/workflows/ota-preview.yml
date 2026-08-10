@@ -21,7 +21,10 @@ on:
             - main
         paths:
             - 'packages/happy-app/**'
-            - '.github/workflows/ota-preview.yml'
+            # Documentation and tests do not change the shipped Expo bundle.
+            - '!packages/happy-app/**/*.md'
+            - '!packages/happy-app/**/*.test.*'
+            - '!packages/happy-app/**/*.spec.*'
     workflow_dispatch:
 
 # 同一个 PR 后续推送会取消上一次未完成的预览发布，避免抢跑覆盖
