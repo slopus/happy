@@ -1,5 +1,5 @@
 import fastify from "fastify";
-import { log, logger } from "@/utils/log";
+import { isProduction, log, logger } from "@/utils/log";
 import { serializerCompiler, validatorCompiler, ZodTypeProvider } from "fastify-type-provider-zod";
 import { onShutdown } from "@/utils/shutdown";
 import { Fastify } from "./types";
@@ -42,6 +42,7 @@ export async function startApi(opts: StartApiOptions = {}) {
     // Start API
     const app = fastify({
         loggerInstance: logger,
+        disableRequestLogging: isProduction,
         bodyLimit: 1024 * 1024 * 100, // 100MB
     });
     app.register(import('@fastify/cors'), {
