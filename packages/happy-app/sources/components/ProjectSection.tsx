@@ -18,6 +18,7 @@ import { sessionKill } from '@/sync/ops';
 import type { ProjectGroupData } from '@/sync/projectGroups';
 import { useLocalSettingMutable, type SessionRowData } from '@/sync/storage';
 import { formatLastSeen, type SessionState } from '@/utils/sessionUtils';
+import { shouldShowWorktreeDivider } from '@/utils/projectWorkspaceLayout';
 import { t } from '@/text';
 
 const STATUS_CONFIG: Record<SessionState, { dotColor: string; isPulsing: boolean; isConnected: boolean }> = {
@@ -143,11 +144,9 @@ export const ProjectSection = React.memo(({ project, machineName, selectedSessio
                 <View style={styles.card}>
                     {project.workspaces.map((workspace, workspaceIndex) => (
                         <React.Fragment key={workspace.id || 'primary'}>
-                            {/* Keep the same one-divider rhythm as a flat session
-                                list. When the workspace changes, that divider is
-                                annotated with the worktree name; the first group
-                                starts the card and therefore has no divider. */}
-                            {workspaceIndex > 0 && workspace.name !== null && (
+                            {/* A named workspace needs its label even when it is
+                                first after filtering out the primary workspace. */}
+                            {shouldShowWorktreeDivider(workspace.name) && (
                                 <View style={styles.worktreeDivider}>
                                     <Ionicons
                                         name="git-branch-outline"

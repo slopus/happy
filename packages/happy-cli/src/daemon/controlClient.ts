@@ -126,11 +126,27 @@ export async function spawnDaemonSession(directory: string, sessionId?: string):
   return result;
 }
 
-export async function stopDaemonHttp(): Promise<void> {
+type DaemonStopResponse = {
+  status: 'stopping';
+  /** Added by newer daemons so a force-kill can be tied to this process. */
+  pid?: number;
+};
+
+export async function stopDaemonHttp(): Promise<DaemonStopResponse> {
   const result = await daemonPost('/stop');
   if (result?.error) {
     throw new Error(result.error);
   }
+  if (!result || result.status !== 'stopping') {
+    throw new Error('Daemon stop endpoint returned an invalid identity response');
+  }
+  if (
+    result.pid !== undefined
+    && (!Number.isSafeInteger(result.pid) || result.pid <= 0)
+  ) {
+    throw new Error('Daemon stop endpoint returned an invalid PID');
+  }
+  return result as DaemonStopResponse;
 }
 
 /**
@@ -302,9 +318,16 @@ export async function stopDaemon(options: { allowForceKill?: boolean } = {}) {
 
     logger.debug(`Stopping daemon with PID ${state.pid}`);
 
-    // Try HTTP graceful stop
+    let stopWasVerified = false;
+
+    // Try HTTP graceful stop. A successful response must identify the exact
+    // process named by the state file before a later SIGKILL is ever allowed.
     try {
-      await stopDaemonHttp();
+      const response = await stopDaemonHttp();
+      stopWasVerified = response.pid === state.pid;
+      if (response.pid !== undefined && !stopWasVerified) {
+        logger.debug(`Daemon stop endpoint belongs to PID ${response.pid}, expected ${state.pid}`);
+      }
 
       // Wait for daemon to die
       await waitForProcessDeath(state.pid, 2000);
@@ -313,11 +336,16 @@ export async function stopDaemon(options: { allowForceKill?: boolean } = {}) {
     } catch (error) {
       logger.debug(options.allowForceKill === false
         ? 'HTTP stop failed during automatic replacement'
-        : 'HTTP stop failed, will force kill', error);
+        : 'Graceful stop did not complete; force-kill requires a verified daemon identity', error);
     }
 
     if (options.allowForceKill === false) {
       logger.debug('Automatic daemon replacement will not force-kill an unverified PID');
+      return;
+    }
+
+    if (!stopWasVerified) {
+      logger.debug('Daemon identity was not confirmed by its control endpoint; refusing to force-kill PID');
       return;
     }
 

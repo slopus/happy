@@ -1308,21 +1308,15 @@ function NewSessionScreen() {
             const pathToUse = trimPathInput(selectedPath) || '~';
             const absolutePath = resolveAbsolutePath(pathToUse, selectedMachine.metadata?.homeDir);
             const permissionKey = currentPermission?.key ?? null;
-            // Same key for every retry of this request (directory approval,
-            // pending polling, or the user pressing Start again) so Rig dedupes
-            // instead of spawning a second session. Built from what the user
-            // picked, not from the resolved worktree path, so retrying a "new
-            // worktree" spawn still lands on the session Rig already created.
-            const clientRequestId = resolveSpawnRequestId(buildSpawnRequestSignature({
-                machineId: selectedMachineId,
-                agent: selectedAgent,
-                directory: pathToUse,
-                worktree: supportsWorktree ? worktreeKey : '__none__',
-                modelKey: currentModelKey,
-                permissionMode: permissionKey,
-                effort: currentEffort?.key ?? null,
-            }));
-
+            // Persist the generated fallback only in the in-memory draft so a
+            // retry keeps targeting the same new worktree and idempotency key.
+            const requestedWorktreeName = draft.newWorktreeName?.trim();
+            const newWorktreeName = supportsWorktree && worktreeKey === '__new__'
+                ? requestedWorktreeName || generateWorktreeName()
+                : null;
+            if (newWorktreeName && !requestedWorktreeName) {
+                draft.setNewWorktreeName(newWorktreeName);
+            }
             // Rig creates its own worktrees because it has no machine-level
             // shell RPC. Passing the requested name also lets Rig bind the
             // created workspace to the session it reports back.
@@ -1336,7 +1330,7 @@ function NewSessionScreen() {
                 return;
             }
             if (supportsWorktree && worktreeKey === '__new__') {
-                const worktreeName = draft.newWorktreeName?.trim() || generateWorktreeName();
+                const worktreeName = newWorktreeName!;
                 if (rigCreation) {
                     rigNewWorktreeName = worktreeName;
                 } else {
@@ -1351,6 +1345,22 @@ function NewSessionScreen() {
                 // Existing worktree — use its path directly
                 spawnDirectory = worktreeKey;
             }
+
+            // Same key for every retry of this request (directory approval,
+            // pending polling, or the user pressing Start again) so Rig dedupes
+            // instead of spawning a second session. The signature uses the
+            // resolved directory that reaches Rig, making equivalent path
+            // spellings one request.
+            const clientRequestId = resolveSpawnRequestId(buildSpawnRequestSignature({
+                machineId: selectedMachineId,
+                agent: selectedAgent,
+                directory: spawnDirectory,
+                worktree: supportsWorktree ? worktreeKey : '__none__',
+                newWorktreeName,
+                modelKey: currentModelKey,
+                permissionMode: permissionKey,
+                effort: currentEffort?.key ?? null,
+            }));
 
             const spawn = async (approvedNewDirectoryCreation: boolean) => {
                 const spawnOptions = rigCreation

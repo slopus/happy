@@ -47,6 +47,7 @@ describe('checkIfDaemonRunningAndCleanupStaleState', () => {
   afterEach(() => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+    vi.useRealTimers();
   });
 
   it('keeps a daemon whose control server responds', async () => {
@@ -141,5 +142,49 @@ describe('checkIfDaemonRunningAndCleanupStaleState', () => {
     expect(mocks.loggerDebug).toHaveBeenCalledWith(
       expect.stringContaining('will not force-kill'),
     );
+  });
+
+  it('never force-kills a reused PID when the control endpoint cannot verify it', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('connection refused')));
+
+    await stopDaemon();
+
+    expect(process.kill).not.toHaveBeenCalledWith(state.pid, 'SIGKILL');
+    expect(mocks.loggerDebug).toHaveBeenCalledWith(
+      expect.stringContaining('identity was not confirmed'),
+    );
+  });
+
+  it('still waits for an older daemon that stops without returning its PID', async () => {
+    let livenessChecks = 0;
+    vi.mocked(process.kill).mockImplementation((_pid, signal) => {
+      if (signal === 'SIGKILL') return true;
+      livenessChecks += 1;
+      if (livenessChecks > 1) throw new Error('ESRCH');
+      return true;
+    });
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ status: 'stopping' }),
+    }));
+
+    await stopDaemon();
+
+    expect(process.kill).not.toHaveBeenCalledWith(state.pid, 'SIGKILL');
+    expect(mocks.loggerDebug).toHaveBeenCalledWith('Daemon stopped gracefully via HTTP');
+  });
+
+  it('force-kills only after the control endpoint confirms the state-file PID', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ status: 'stopping', pid: state.pid }),
+    }));
+
+    const stopping = stopDaemon();
+    await vi.advanceTimersByTimeAsync(2_100);
+    await stopping;
+
+    expect(process.kill).toHaveBeenCalledWith(state.pid, 'SIGKILL');
   });
 });

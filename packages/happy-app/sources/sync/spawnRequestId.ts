@@ -15,24 +15,37 @@
  * a spawn actually produced a session, or once the user changed the request.
  *
  * It is deliberately in-memory only. The new session draft persists to MMKV,
- * but this key is like the draft's attachments: it is only meaningful while the
- * machine still remembers the in-flight request, and a key restored days later
- * would at best be ignored and at worst attach to something unrelated.
+ * but this key is like the draft's attachments: it is only meaningful during a
+ * short retry window. Restoring it days later could attach a new Start action to
+ * an old session that Rig still associates with the same key.
  */
 import { randomUUID } from 'expo-crypto';
 
 export type SpawnRequestSignatureInput = {
     machineId: string | null;
     agent: string;
-    /** Directory as the user picked it, before any worktree resolution. */
+    /** Effective directory passed to the spawn RPC. */
     directory: string;
     worktree: string | null;
+    /** Normalized name when `worktree` requests a freshly-created worktree. */
+    newWorktreeName: string | null;
     modelKey: string | null;
     permissionMode: string | null;
     effort: string | null;
 };
 
-let pendingRequest: { signature: string; clientRequestId: string } | null = null;
+/**
+ * A retry is only considered the same user action for a bounded time. Reusing
+ * a key from a session started hours ago would reopen that old session instead
+ * of honoring a new press of Start.
+ */
+export const PENDING_SPAWN_REQUEST_TTL_MS = 5 * 60 * 1000;
+
+let pendingRequest: {
+    signature: string;
+    clientRequestId: string;
+    mintedAt: number;
+} | null = null;
 
 /** Stable description of "the same spawn the user is asking for". */
 export function buildSpawnRequestSignature(input: SpawnRequestSignatureInput): string {
@@ -41,6 +54,7 @@ export function buildSpawnRequestSignature(input: SpawnRequestSignatureInput): s
         input.agent,
         input.directory,
         input.worktree ?? '',
+        input.newWorktreeName ?? '',
         input.modelKey ?? '',
         input.permissionMode ?? '',
         input.effort ?? '',
@@ -52,10 +66,15 @@ export function buildSpawnRequestSignature(input: SpawnRequestSignatureInput): s
  * the previous key; any change to the request mints a new one.
  */
 export function resolveSpawnRequestId(signature: string): string {
-    if (pendingRequest?.signature === signature) {
+    const now = Date.now();
+    if (
+        pendingRequest?.signature === signature
+        && now >= pendingRequest.mintedAt
+        && now - pendingRequest.mintedAt < PENDING_SPAWN_REQUEST_TTL_MS
+    ) {
         return pendingRequest.clientRequestId;
     }
-    pendingRequest = { signature, clientRequestId: randomUUID() };
+    pendingRequest = { signature, clientRequestId: randomUUID(), mintedAt: now };
     return pendingRequest.clientRequestId;
 }
 

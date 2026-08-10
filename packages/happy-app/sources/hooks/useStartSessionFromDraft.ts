@@ -135,25 +135,26 @@ export function useStartSessionFromDraft() {
         const worktreeSelection = draft.sessionType === 'worktree'
             ? draft.worktreeKey ?? '__new__'
             : '__none__';
-        // Reused across every retry of this exact request so a second press of
-        // Start is deduped by Rig instead of spawning a second session.
-        const clientRequestId = resolveSpawnRequestId(buildSpawnRequestSignature({
-            machineId: machine.id,
-            agent: agentType,
-            directory: selectedPath,
-            worktree: worktreeSelection,
-            modelKey: model.key,
-            permissionMode: permission.key,
-            effort: effort?.key ?? null,
-        }));
-
+        // Keep an automatically generated name in the non-persistent draft.
+        // A retry must request the same worktree as the first attempt, not a
+        // second randomly named one under the same idempotency key.
+        const requestedWorktreeName = draft.newWorktreeName?.trim();
+        const newWorktreeName = worktreeSelection === '__new__'
+            ? requestedWorktreeName || generateWorktreeName()
+            : null;
+        if (newWorktreeName && !requestedWorktreeName) {
+            draft.setNewWorktreeName(newWorktreeName);
+        }
         isStartingRef.current = true;
         setIsStarting(true);
         try {
             let spawnDirectory = absolutePath;
             let rigNewWorktreeName: string | null = null;
             if (worktreeSelection === '__new__') {
-                const worktreeName = draft.newWorktreeName?.trim() || generateWorktreeName();
+                // `newWorktreeName` was resolved before minting the idempotency
+                // key, so the worktree payload and key always describe the
+                // same request.
+                const worktreeName = newWorktreeName!;
                 if (rigCreation) {
                     rigNewWorktreeName = worktreeName;
                 } else {
@@ -167,6 +168,21 @@ export function useStartSessionFromDraft() {
             } else if (worktreeSelection !== '__none__') {
                 spawnDirectory = worktreeSelection;
             }
+
+            // Reused across every retry of this exact request so a second
+            // press of Start is deduped by Rig instead of spawning a second
+            // session. Use the same resolved directory that reaches Rig:
+            // `~/project` and its absolute spelling are one request.
+            const clientRequestId = resolveSpawnRequestId(buildSpawnRequestSignature({
+                machineId: machine.id,
+                agent: agentType,
+                directory: spawnDirectory,
+                worktree: worktreeSelection,
+                newWorktreeName,
+                modelKey: model.key,
+                permissionMode: permission.key,
+                effort: effort?.key ?? null,
+            }));
 
             const spawn = async (approvedNewDirectoryCreation = false): Promise<string | null> => {
                 const spawnOptions = rigCreation
