@@ -339,7 +339,20 @@ the `-store` profiles above.
     preview              internal       preview
 
 Version source is remote (EAS manages build numbers, auto-incremented).
-Runtime version "20" — bump when native code changes to invalidate OTA.
+
+Android package/channel/runtime is a single contract whose machine-readable
+source is `packages/happy-app/scripts/ota-runtime-config.js` plus
+`ota-runtime-versions.json`:
+
+    development/test    build.paws.dev       preview OTA      runtime 22
+    preview             build.paws.preview   preview OTA      runtime 22
+    production          build.paws           production OTA   runtime 23
+
+Never infer a runtime from old release notes. A native dependency, permission,
+or Expo plugin change requires a matching new APK before publishing OTA for the
+new runtime. Local Android release builds require a clean prebuild and Gradle
+`--no-build-cache`; verify the packaged manifest before upload, including that
+`android.permission.BLUETOOTH` has no `maxSdkVersion`.
 
 ### App Store Connect
 

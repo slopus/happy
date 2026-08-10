@@ -37,6 +37,24 @@ Before making project changes, read and follow the root `CLAUDE.md`.
 
 If this file conflicts with `CLAUDE.md`, prefer `CLAUDE.md` unless the section below explicitly matches the user's wording.
 
+## Android Runtime Contract
+
+Treat the Android package, OTA channel, and runtime as one release contract:
+
+| Variant | Android package | OTA channel | runtimeVersion |
+|---|---|---|---|
+| `development` (test) | `build.paws.dev` | `preview` | `22` |
+| `preview` | `build.paws.preview` | `preview` | `22` |
+| `production` | `build.paws` | `production` | `23` |
+
+The machine-readable source of truth is
+`packages/happy-app/scripts/ota-runtime-config.js` plus
+`packages/happy-app/ota-runtime-versions.json`. Do not duplicate or infer this
+mapping in code, CI, release notes, or commands. Run the contract test before
+publishing an APK or OTA. Native Android release builds must use a clean
+prebuild and disable the shared Gradle build cache; the detailed build and APK
+verification gates are in root `CLAUDE.md` section 8.
+
 ## Sync To Main
 
 This section is preserved from the original `AGENTS.md` for compatibility with existing Codex workflows. In normal Paws development, `CLAUDE.md` defines `main` as the independent integration branch. Only use this legacy workflow when the user explicitly says `sync to main` or `synt to main`.

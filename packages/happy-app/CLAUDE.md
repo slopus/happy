@@ -32,6 +32,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 The machine-readable source of truth is `scripts/ota-runtime-config.js` plus `ota-runtime-versions.json`. Do not duplicate these mappings in build or release scripts. Each variant requires a clean Android prebuild because package, channel, and runtime are compiled into the binary. The root `CLAUDE.md` section 8 defines APK naming, signing, verification, and GitHub Release requirements.
 
+Native Android release builds must pass `--no-build-cache` to Gradle. Expo
+config-plugin cache entries can retain absolute paths to a deleted sibling
+worktree and silently skip manifest conflict fixes. Verify the packaged APK,
+not only the merged source manifest; specifically,
+`android.permission.BLUETOOTH` must not contain `maxSdkVersion`.
+
 ### Production (self-hosted OTA, 阿里云 OSS)
 - `pnpm ota:selfhost` - 发布 OTA 到 **production** 频道（线上正式用户）
 - `pnpm ota:selfhost:preview` - 发布 OTA 到 **preview** 频道（开发真机预览）

@@ -302,13 +302,16 @@ JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home \
 ANDROID_HOME=/opt/homebrew/share/android-commandlinetools \
 ANDROID_SDK_ROOT=/opt/homebrew/share/android-commandlinetools \
 NODE_ENV=production APP_ENV="$VARIANT" \
-./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a --console=plain
+./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a \
+  --no-build-cache --console=plain
 
 # 在构建下一个变体前，把产物复制为带 variant/runtime/SHA 的唯一文件名。
 # android/app/build/outputs/apk/release/app-release.apk
 ```
 
 > ⚠️ **务必带 `-PreactNativeArchitectures=arm64-v8a`**：依赖模块可能仍编译额外 ABI，但最终 APK 必须只包含 `lib/arm64-v8a/`。不能凭 Gradle 参数猜测，发布前用 `zipinfo`/`apkanalyzer` 实际断言。
+
+> ⚠️ **native release 禁止使用共享 Gradle build cache**：Expo config plugin 的任务输出可能包含 sibling worktree 的绝对路径。旧 worktree 删除后复用该缓存，会让 `expoReleaseOverrideMaxSdkConflicts` 看似成功但实际没有修正最终 manifest。必须保留 `--no-build-cache`；若权限合并结果异常，先用 `./gradlew expoReleaseOverrideMaxSdkConflicts --rerun-tasks --no-build-cache` 重跑，再重新 assemble。发布门禁还必须断言最终 APK 中 `android.permission.BLUETOOTH` 不带 `maxSdkVersion`。
 
 > 想直接装到连着的真机/模拟器而不出 APK 文件，用 `pnpm android:production`（会 install 而非只 assemble）。
 
@@ -325,6 +328,7 @@ NODE_ENV=production APP_ENV="$VARIANT" \
 
 1. `aapt2 dump badging`：package/version 与矩阵一致。
 2. `apkanalyzer manifest print` 或 `aapt2 dump resources`：channel/runtime 与矩阵一致。
+   同时检查最终 APK 的 `android.permission.BLUETOOTH` 权限块不含 `maxSdkVersion`，避免 Android 12+ 蓝牙权限被错误截断到 API 30。
 3. `zipinfo -1`：只出现 `lib/arm64-v8a/`。
 4. `apksigner verify --verbose --print-certs`：签名有效且签名身份符合 sideload 约定。
 5. `unzip -t`、文件大小、SHA-256：完整性通过。
