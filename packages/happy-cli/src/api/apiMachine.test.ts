@@ -4,10 +4,12 @@ import type { Machine } from './types';
 
 const {
     mockIo,
-    mockShouldReconnect
+    mockShouldReconnect,
+    mockRpcHandlers
 } = vi.hoisted(() => ({
     mockIo: vi.fn(),
-    mockShouldReconnect: vi.fn(() => true)
+    mockShouldReconnect: vi.fn(() => true),
+    mockRpcHandlers: {} as Record<string, (...args: any[]) => any>
 }));
 
 vi.mock('socket.io-client', () => ({
@@ -37,7 +39,9 @@ vi.mock('@/api/rpc/RpcHandlerManager', () => ({
         onSocketConnect = vi.fn();
         onSocketDisconnect = vi.fn();
         handleRequest = vi.fn(async () => '');
-        registerHandler = vi.fn();
+        registerHandler = vi.fn((name: string, handler: (...args: any[]) => any) => {
+            mockRpcHandlers[name] = handler;
+        });
         unregisterHandler = vi.fn();
         hasHandler = vi.fn(() => false);
     }
@@ -98,6 +102,9 @@ describe('ApiMachineClient socket reconnection', () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
+        for (const key of Object.keys(mockRpcHandlers)) {
+            delete mockRpcHandlers[key];
+        }
         mockShouldReconnect.mockReturnValue(true);
         socketHandlers = {};
         mockSocket = {
@@ -172,6 +179,68 @@ describe('ApiMachineClient socket reconnection', () => {
         await vi.advanceTimersByTimeAsync(1);
         aliveCalls = mockSocket.emit.mock.calls.filter(([event]: [string]) => event === 'machine-alive');
         expect(aliveCalls).toHaveLength(2);
+
+        client.shutdown();
+    });
+
+    it('registers terminal RPC handlers, stream rooms, and decrypts input frames', async () => {
+        vi.useFakeTimers();
+        mockSocket.emitWithAck.mockImplementation(() => new Promise(() => {}));
+
+        const terminalManager = {
+            start: vi.fn(),
+            create: vi.fn(async () => ({ type: 'success', terminalId: 'term-1' })),
+            approve: vi.fn(),
+            attach: vi.fn(),
+            list: vi.fn(async () => []),
+            close: vi.fn(),
+            write: vi.fn(),
+            resize: vi.fn(),
+            signal: vi.fn(),
+            setTransportPaused: vi.fn(),
+            getRunningTerminalIds: vi.fn(() => ['term-1']),
+            policyStore: { get: vi.fn(() => 'per-session'), set: vi.fn() },
+        } as any;
+
+        const client = new ApiMachineClient('fake-token', makeMachine());
+        client.setRPCHandlers({
+            spawnSession: vi.fn(),
+            stopSession: vi.fn(),
+            requestShutdown: vi.fn(),
+            terminalManager,
+        });
+        client.connect();
+        emitSocketEvent('connect');
+
+        // Control RPCs are registered and routed to the manager.
+        const createHandler = mockRpcHandlers['terminal-create'];
+        expect(createHandler).toBeTypeOf('function');
+        await createHandler({ cwd: '/tmp', name: 'dev', cols: 90, rows: 30 });
+        expect(terminalManager.create).toHaveBeenCalledWith(expect.objectContaining({
+            cwd: '/tmp',
+            name: 'dev',
+            cols: 90,
+            rows: 30,
+        }));
+
+        // Running terminals re-register their stream rooms on connect.
+        expect(mockSocket.emit).toHaveBeenCalledWith('terminal:register', { terminalId: 'term-1' });
+
+        // Encrypted input frames are decrypted and forwarded; input is acked.
+        const { encrypt, encodeBase64 } = await import('@/api/encryption');
+        const machine = makeMachine();
+        const payload = encodeBase64(encrypt(
+            machine.encryptionKey,
+            machine.encryptionVariant,
+            { seq: 7, kind: 'input', data: 'ls -la' },
+        ));
+        emitSocketEvent('terminal:input', { terminalId: 'term-1', payload });
+
+        expect(terminalManager.write).toHaveBeenCalledWith('term-1', 'ls -la');
+        const ackCalls = mockSocket.emit.mock.calls.filter(
+            ([event]: [string]) => event === 'terminal:input-ack',
+        );
+        expect(ackCalls).toHaveLength(1);
 
         client.shutdown();
     });
