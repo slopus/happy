@@ -88,6 +88,25 @@ describe('codexThreadFork', () => {
         });
     });
 
+    it('retains the selected complete turn when forking from an agent response', async () => {
+        const client = {
+            forkThread: vi.fn().mockResolvedValue({ threadId: 'thread-forked', model: 'gpt-test', thread: threadWithTurns }),
+            rollbackThread: vi.fn().mockResolvedValue({ thread: { id: 'thread-forked', turns: threadWithTurns.turns.slice(0, 2) } }),
+            injectItems: vi.fn(),
+        };
+
+        const result = await forkCodexThread(client, {
+            threadId: 'thread-source',
+            cwd: '/tmp/project',
+            cutAfterItemId: 'user-2',
+            retainSelectedTurn: true,
+        });
+
+        expect(result).toEqual({ type: 'success', newCodexThreadId: 'thread-forked' });
+        expect(client.rollbackThread).toHaveBeenCalledWith({ threadId: 'thread-forked', numTurns: 1 });
+        expect(client.injectItems).not.toHaveBeenCalled();
+    });
+
     it('fails duplicate instead of silently returning a full fork when the selected Codex item is absent', async () => {
         const client = {
             forkThread: vi.fn().mockResolvedValue({ threadId: 'thread-forked', model: 'gpt-test', thread: threadWithTurns }),

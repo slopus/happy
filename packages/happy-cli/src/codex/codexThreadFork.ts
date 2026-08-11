@@ -99,6 +99,7 @@ export async function forkCodexThread(
         threadId: string;
         cwd?: string;
         cutAfterItemId?: string;
+        retainSelectedTurn?: boolean;
         model?: string;
         approvalPolicy?: any;
         sandbox?: any;
@@ -120,21 +121,23 @@ export async function forkCodexThread(
             throw new CodexForkRewindPointNotFoundError(opts.cutAfterItemId, opts.threadId);
         }
         const turns = forked.thread.turns ?? [];
-        const turnsToDrop = turns.length - cutTurn.index;
+        const turnsToDrop = turns.length - cutTurn.index - (opts.retainSelectedTurn ? 1 : 0);
         if (turnsToDrop > 0) {
             await client.rollbackThread({
                 threadId: forked.threadId,
                 numTurns: turnsToDrop,
             });
         }
-        await client.injectItems({
-            threadId: forked.threadId,
-            items: [{
-                type: 'message',
-                role: 'user',
-                content: [{ type: 'input_text', text: cutTurn.text }],
-            }],
-        });
+        if (!opts.retainSelectedTurn) {
+            await client.injectItems({
+                threadId: forked.threadId,
+                items: [{
+                    type: 'message',
+                    role: 'user',
+                    content: [{ type: 'input_text', text: cutTurn.text }],
+                }],
+            });
+        }
     }
 
     return {

@@ -31,6 +31,8 @@ const sessionStatusEvidencePhase = process.env.HAPPY_SESSION_STATUS_EVIDENCE_PHA
 const titleTooltipEvidenceDirectory = process.env.HAPPY_TITLE_TOOLTIP_EVIDENCE_DIR;
 const titleTooltipEvidencePhase = process.env.HAPPY_TITLE_TOOLTIP_EVIDENCE_PHASE ?? 'after';
 const subagentInspectorEvidenceDirectory = process.env.HAPPY_SUBAGENT_INSPECTOR_EVIDENCE_DIR;
+const messageHoverEvidenceDirectory = process.env.HAPPY_MESSAGE_HOVER_EVIDENCE_DIR;
+const messageHoverEvidencePhase = process.env.HAPPY_MESSAGE_HOVER_EVIDENCE_PHASE ?? 'after';
 
 function projectHoverScreenshotPath(testInfo: { outputPath: (filename: string) => string }): string {
     const filename = `case-1-${projectHoverEvidencePhase}.png`;
@@ -63,6 +65,13 @@ function subagentInspectorScreenshotPath(
     if (!subagentInspectorEvidenceDirectory) return testInfo.outputPath(filename);
     fs.mkdirSync(subagentInspectorEvidenceDirectory, { recursive: true });
     return path.join(subagentInspectorEvidenceDirectory, filename);
+}
+
+function messageHoverScreenshotPath(testInfo: { outputPath: (filename: string) => string }): string {
+    const filename = `case-1-${messageHoverEvidencePhase}.png`;
+    if (!messageHoverEvidenceDirectory) return testInfo.outputPath(filename);
+    fs.mkdirSync(messageHoverEvidenceDirectory, { recursive: true });
+    return path.join(messageHoverEvidenceDirectory, filename);
 }
 
 function authenticatedRoute(pathname: string): string {
@@ -933,14 +942,18 @@ async function createConnectedE2EWorkingDirectorySession(request: APIRequestCont
     invalidPath: string;
     outsidePath: string;
     recentPath: string;
+    rewindPoints: Array<{ itemId: string; text: string; timestamp: number }>;
     rpcCalls: Array<{
         method: string;
         params: {
             agent?: string;
             codexThreadId?: string;
+            cutAfterItemId?: string;
             directory?: string;
+            forkedFromMessageId?: string;
             parentSessionId?: string;
             path?: string;
+            retainSelectedTurn?: boolean;
             resumeCodexThreadId?: string;
         } | null;
     }>;
@@ -968,14 +981,29 @@ async function createConnectedE2EWorkingDirectorySession(request: APIRequestCont
     const machineId = `cwd-e2e-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const sourceCodexThreadId = `cwd-source-thread-${Date.now()}`;
     const forkedCodexThreadId = `cwd-forked-thread-${Date.now()}`;
+    const rewindPoints = [
+        {
+            itemId: 'message-hover-turn-1',
+            text: 'Summarize the first checkpoint before we continue.',
+            timestamp: Date.now() - 60_000,
+        },
+        {
+            itemId: 'message-hover-turn-2',
+            text: 'Add the browser verification details to the second checkpoint.',
+            timestamp: Date.now() - 30_000,
+        },
+    ];
     const rpcCalls: Array<{
         method: string;
         params: {
             agent?: string;
             codexThreadId?: string;
+            cutAfterItemId?: string;
             directory?: string;
+            forkedFromMessageId?: string;
             parentSessionId?: string;
             path?: string;
+            retainSelectedTurn?: boolean;
             resumeCodexThreadId?: string;
         } | null;
     }> = [];
@@ -1052,9 +1080,12 @@ async function createConnectedE2EWorkingDirectorySession(request: APIRequestCont
             const params = decryptLegacy(decodeBase64(data.params), encryptionKey) as {
                 agent?: string;
                 codexThreadId?: string;
+                cutAfterItemId?: string;
                 directory?: string;
+                forkedFromMessageId?: string;
                 parentSessionId?: string;
                 path?: string;
+                retainSelectedTurn?: boolean;
                 resumeCodexThreadId?: string;
             } | null;
             rpcCalls.push({ method: data.method, params });
@@ -1089,6 +1120,16 @@ async function createConnectedE2EWorkingDirectorySession(request: APIRequestCont
                         directories,
                     };
                 }
+            } else if (data.method === `${machineId}:codex-list-rewind-points`
+                && params?.codexThreadId === sourceCodexThreadId
+                && params.directory === currentPath) {
+                result = { type: 'success', points: rewindPoints };
+            } else if (data.method === `${machineId}:codex-duplicate-thread`
+                && params?.codexThreadId === sourceCodexThreadId
+                && params.directory === currentPath
+                && params.retainSelectedTurn === true
+                && rewindPoints.some((point) => point.itemId === params.cutAfterItemId)) {
+                result = { type: 'success', newCodexThreadId: forkedCodexThreadId };
             } else if (data.method === `${machineId}:codex-fork-thread`
                 && params?.codexThreadId === sourceCodexThreadId
                 && params.directory === recentPath) {
@@ -1145,6 +1186,8 @@ async function createConnectedE2EWorkingDirectorySession(request: APIRequestCont
             const timeout = setTimeout(() => reject(new Error('工作目录 E2E RPC 连接超时。')), 10_000);
             const pendingMethods = new Set([
                 `${machineId}:browseDirectory`,
+                `${machineId}:codex-list-rewind-points`,
+                `${machineId}:codex-duplicate-thread`,
                 `${machineId}:codex-fork-thread`,
                 `${machineId}:spawn-happy-session`,
             ]);
@@ -1207,6 +1250,7 @@ async function createConnectedE2EWorkingDirectorySession(request: APIRequestCont
         invalidPath,
         outsidePath,
         recentPath,
+        rewindPoints,
         rpcCalls,
         sessionId,
         sourceCodexThreadId,
@@ -1638,6 +1682,144 @@ test('[R10-02][CWD-03-01] 工作目录拒绝越界并在 Agent 离线重连后�
         await page.goto(authenticatedRoute(`/session/${fixture.sessionId}`));
         fixture.client.pulse();
         await expect(page.getByTestId('session-working-directory-trigger')).toContainText('~/current-project');
+    } finally {
+        await fixture.client.close();
+    }
+});
+
+test('[MESSAGE-HOVER-ACTIONS] PC Agent 回复悬浮可复制并从所属回合分叉', async ({ context, page, request }, testInfo) => {
+    test.slow();
+    const fixture = await createConnectedE2EWorkingDirectorySession(request);
+    const firstResponse = 'The first checkpoint is complete and preserved in this turn.';
+    const secondResponse = 'The second checkpoint includes browser assertions, a screenshot, and the recorded RPC boundary.';
+    const baseTime = Date.now() - 90_000;
+
+    try {
+        await appendE2ESessionEnvelopes(request, fixture.sessionId, [
+            {
+                id: 'message-hover-user-1',
+                time: baseTime,
+                role: 'user',
+                turn: 'message-hover-turn-1',
+                codexItemId: fixture.rewindPoints[0].itemId,
+                ev: { t: 'text', text: fixture.rewindPoints[0].text },
+            },
+            {
+                id: 'message-hover-agent-1',
+                time: baseTime + 10_000,
+                role: 'agent',
+                turn: 'message-hover-turn-1',
+                ev: { t: 'text', text: firstResponse },
+            },
+            {
+                id: 'message-hover-user-2',
+                time: baseTime + 20_000,
+                role: 'user',
+                turn: 'message-hover-turn-2',
+                codexItemId: fixture.rewindPoints[1].itemId,
+                ev: { t: 'text', text: fixture.rewindPoints[1].text },
+            },
+            {
+                id: 'message-hover-agent-2',
+                time: baseTime + 30_000,
+                role: 'agent',
+                turn: 'message-hover-turn-2',
+                ev: { t: 'text', text: secondResponse },
+            },
+        ]);
+        await context.grantPermissions(['clipboard-read', 'clipboard-write'], {
+            origin: new URL(authenticatedWebUrl).origin,
+        });
+        await page.setViewportSize({ width: 1280, height: 720 });
+
+        await page.goto(authenticatedRoute('/settings/features'));
+        const resumeSwitch = page.getByRole('switch', { name: 'Resume Session' });
+        await expect(resumeSwitch).toBeVisible({ timeout: 120_000 });
+        if (!await resumeSwitch.isChecked()) await resumeSwitch.click();
+        await expect(resumeSwitch).toBeChecked();
+
+        await page.goto(authenticatedRoute(`/session/${fixture.sessionId}`));
+        fixture.client.pulse();
+        const secondResponseText = page.getByText(secondResponse, { exact: true });
+        await expect(secondResponseText).toBeVisible({ timeout: 30_000 });
+        const responseContainer = page.getByTestId(/^message-agent-[^-]+$/)
+            .filter({ has: secondResponseText })
+            .first();
+        const responseTestId = await responseContainer.getAttribute('data-testid');
+        expect(responseTestId).toMatch(/^message-agent-/);
+        const responseMessageId = responseTestId!.slice('message-agent-'.length);
+
+        if (messageHoverEvidencePhase === 'before') {
+            await responseContainer.hover();
+            await expect(responseContainer.getByRole('button', { name: 'Copy' })).toHaveCount(0);
+            await expect(responseContainer.getByRole('button', { name: 'Fork from here' })).toHaveCount(0);
+            await page.screenshot({
+                path: messageHoverScreenshotPath(testInfo),
+                animations: 'disabled',
+            });
+            return;
+        }
+
+        const actions = page.getByTestId(`message-agent-actions-${responseMessageId}`);
+        const copyButton = responseContainer.getByRole('button', { name: 'Copy' });
+        const forkButton = responseContainer.getByRole('button', { name: 'Fork from here' });
+
+        await expect(actions).toHaveCSS('opacity', '0');
+        await expect(actions).toHaveCSS('pointer-events', 'none');
+        await expect(actions).toHaveCSS('position', 'absolute');
+
+        await responseContainer.hover();
+        await expect(actions).toHaveCSS('opacity', '1');
+        await expect(actions).toHaveCSS('pointer-events', 'auto');
+        await expect(copyButton).toBeVisible();
+        await expect(forkButton).toBeVisible();
+        await page.screenshot({
+            path: messageHoverScreenshotPath(testInfo),
+            animations: 'disabled',
+        });
+        await responseContainer.screenshot({
+            path: testInfo.outputPath('message-hover-actions-after.png'),
+            animations: 'disabled',
+            timeout: 15_000,
+        });
+        await pauseForRecordedReview(page, 1_100);
+
+        await copyButton.click();
+        await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(secondResponse);
+        await expect(responseContainer.getByRole('button', { name: 'Copied' })).toBeVisible();
+        await pauseForRecordedReview(page, 900);
+
+        await forkButton.click();
+        const rewindDialog = page.getByRole('dialog');
+        await expect(rewindDialog.getByText('Choose a rewind point', { exact: true })).toBeVisible();
+        await expect(rewindDialog.getByText(fixture.rewindPoints[1].text, { exact: true })).toBeVisible();
+        const selectedRewindPoint = rewindDialog.getByTestId(`duplicate-sheet-rewind-${fixture.rewindPoints[1].itemId}`);
+        await expect(selectedRewindPoint).toHaveAttribute('aria-checked', 'true');
+        const confirmFork = rewindDialog.getByRole('button', { name: 'Duplicate' });
+        await expect(confirmFork).toBeEnabled();
+        await confirmFork.click();
+        await expect.poll(() => new URL(page.url()).pathname, { timeout: 15_000 })
+            .not.toBe(`/session/${fixture.sessionId}`);
+
+        const duplicateCall = fixture.rpcCalls.find((call) => call.method.endsWith(':codex-duplicate-thread'));
+        expect(duplicateCall).toMatchObject({
+            params: {
+                codexThreadId: fixture.sourceCodexThreadId,
+                cutAfterItemId: fixture.rewindPoints[1].itemId,
+                directory: fixture.currentPath,
+                retainSelectedTurn: true,
+            },
+        });
+        const spawnCall = fixture.rpcCalls.find((call) => call.method.endsWith(':spawn-happy-session'));
+        expect(spawnCall).toMatchObject({
+            params: {
+                agent: 'codex',
+                directory: fixture.currentPath,
+                parentSessionId: fixture.sessionId,
+                resumeCodexThreadId: fixture.forkedCodexThreadId,
+            },
+        });
+        expect(spawnCall?.params?.forkedFromMessageId).toBe(responseMessageId);
     } finally {
         await fixture.client.close();
     }

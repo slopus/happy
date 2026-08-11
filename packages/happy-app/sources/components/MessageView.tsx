@@ -15,6 +15,8 @@ import { parseLocalCommandMessage, isUserSlashCommandEcho } from './parseLocalCo
 import { getAutoFoldPromptBodyRenderState, getAutoFoldPromptInfo } from '@/utils/autoFoldPrompt';
 import { ConversationActivityStrip } from './ConversationActivityStrip';
 import { getMessageExecutionModeLabel } from '@/utils/messageExecutionMode';
+import { DesktopShortcutTooltip } from './DesktopShortcutTooltip';
+import type { MessageForkTarget } from '@/utils/messageForkPoint';
 
 
 export const MessageView = React.memo((props: {
@@ -26,7 +28,14 @@ export const MessageView = React.memo((props: {
    * Long-press handler for user-text bubbles. Wired by ChatList from
    * the active session screen and used by the fork-from-message flow.
    */
-  onForkFromUserMessage?: (messageId: string, rewindPointId: string | undefined, messageText: string) => void;
+  onForkFromMessage?: (
+    messageId: string,
+    rewindPointId: string | undefined,
+    messageText: string,
+    retainSelectedTurn?: boolean,
+  ) => void;
+  agentForkTarget?: MessageForkTarget;
+  showAgentMessageActions?: boolean;
   showUserMessageActions?: boolean;
   canEditUserMessage?: boolean;
   onEditUserMessage?: (messageId: string, messageText: string) => Promise<void> | void;
@@ -36,13 +45,20 @@ export const MessageView = React.memo((props: {
       style={styles.messageContainer}
       renderToHardwareTextureAndroid={Platform.OS !== 'web'}
     >
-      <View style={styles.messageContent}>
+      <View
+        style={[
+          styles.messageContent,
+          Platform.OS === 'web' && props.message.kind === 'agent-text' && styles.agentMessageContent,
+        ]}
+      >
         <RenderBlock
           message={props.message}
           metadata={props.metadata}
           sessionId={props.sessionId}
           getMessageById={props.getMessageById}
-          onForkFromUserMessage={props.onForkFromUserMessage}
+          onForkFromMessage={props.onForkFromMessage}
+          agentForkTarget={props.agentForkTarget}
+          showAgentMessageActions={props.showAgentMessageActions}
           showUserMessageActions={props.showUserMessageActions}
           canEditUserMessage={props.canEditUserMessage}
           onEditUserMessage={props.onEditUserMessage}
@@ -58,7 +74,14 @@ function RenderBlock(props: {
   metadata: Metadata | null;
   sessionId: string;
   getMessageById?: (id: string) => Message | null;
-  onForkFromUserMessage?: (messageId: string, rewindPointId: string | undefined, messageText: string) => void;
+  onForkFromMessage?: (
+    messageId: string,
+    rewindPointId: string | undefined,
+    messageText: string,
+    retainSelectedTurn?: boolean,
+  ) => void;
+  agentForkTarget?: MessageForkTarget;
+  showAgentMessageActions?: boolean;
   showUserMessageActions?: boolean;
   canEditUserMessage?: boolean;
   onEditUserMessage?: (messageId: string, messageText: string) => Promise<void> | void;
@@ -70,7 +93,7 @@ function RenderBlock(props: {
           message={props.message}
           metadata={props.metadata}
           sessionId={props.sessionId}
-          onForkFromUserMessage={props.onForkFromUserMessage}
+          onForkFromUserMessage={props.onForkFromMessage}
           showUserMessageActions={props.showUserMessageActions}
           canEditUserMessage={props.canEditUserMessage}
           onEditUserMessage={props.onEditUserMessage}
@@ -78,7 +101,15 @@ function RenderBlock(props: {
       );
 
     case 'agent-text':
-      return <AgentTextBlock message={props.message} sessionId={props.sessionId} />;
+      return (
+        <AgentTextBlock
+          message={props.message}
+          sessionId={props.sessionId}
+          forkTarget={props.agentForkTarget}
+          onForkFromMessage={props.onForkFromMessage}
+          showActions={props.showAgentMessageActions}
+        />
+      );
 
     case 'tool-call':
       return <ToolCallBlock
@@ -344,15 +375,58 @@ function UserMessageModeLabel(props: { messageId: string; label: string | null }
 function AgentTextBlock(props: {
   message: AgentTextMessage;
   sessionId: string;
+  forkTarget?: MessageForkTarget;
+  onForkFromMessage?: (
+    messageId: string,
+    rewindPointId: string | undefined,
+    messageText: string,
+    retainSelectedTurn?: boolean,
+  ) => void;
+  showActions?: boolean;
 }) {
+  const { theme } = useUnistyles();
+  const [isHovered, setIsHovered] = React.useState(false);
+  const [isActionFocused, setIsActionFocused] = React.useState(false);
+  const [hoveredAction, setHoveredAction] = React.useState<'copy' | 'fork' | null>(null);
+  const [isCopied, setIsCopied] = React.useState(false);
+  const copyFeedbackTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleOptionPress = React.useCallback((option: Option) => {
     sync.sendMessage(props.sessionId, option.title, { source: 'option' });
   }, [props.sessionId]);
+  const copyMessage = React.useCallback(async () => {
+    try {
+      await Clipboard.setStringAsync(props.message.text);
+      setIsCopied(true);
+      if (copyFeedbackTimerRef.current) clearTimeout(copyFeedbackTimerRef.current);
+      copyFeedbackTimerRef.current = setTimeout(() => {
+        setIsCopied(false);
+        copyFeedbackTimerRef.current = null;
+      }, 1800);
+    } catch {
+      setIsCopied(false);
+    }
+  }, [props.message.text]);
+  React.useEffect(() => () => {
+    if (copyFeedbackTimerRef.current) clearTimeout(copyFeedbackTimerRef.current);
+  }, []);
 
   // Hide thinking messages
   if (props.message.isThinking) {
     return null;
   }
+
+  const showActions = Platform.OS === 'web' && props.showActions;
+  const canFork = Boolean(props.forkTarget && props.onForkFromMessage);
+  const actionsVisible = Boolean(showActions && (isHovered || isActionFocused || isCopied));
+  const handleFork = () => {
+    if (!props.forkTarget || !props.onForkFromMessage) return;
+    props.onForkFromMessage(
+      props.forkTarget.messageId,
+      props.forkTarget.rewindPointId,
+      props.forkTarget.messageText,
+      true,
+    );
+  };
 
   const autoFoldPrompt = getAutoFoldPromptInfo(props.message.text);
   if (autoFoldPrompt) {
@@ -369,8 +443,84 @@ function AgentTextBlock(props: {
   }
 
   return (
-    <View testID={`message-agent-${props.message.id}`} style={styles.agentMessageContainer}>
+    <View
+      testID={`message-agent-${props.message.id}`}
+      style={styles.agentMessageContainer}
+      {...(Platform.OS === 'web' ? ({
+        onMouseEnter: () => setIsHovered(true),
+        onMouseLeave: () => setIsHovered(false),
+      } as any) : {})}
+    >
       <MarkdownView markdown={props.message.text} onOptionPress={handleOptionPress} sessionId={props.sessionId} />
+      {showActions && (
+        <View
+          testID={`message-agent-actions-${props.message.id}`}
+          pointerEvents={actionsVisible ? 'auto' : 'none'}
+          style={[styles.agentMessageActions, actionsVisible && styles.agentMessageActionsVisible]}
+        >
+          <View style={styles.agentMessageActionSlot}>
+            <Pressable
+              testID={`message-agent-copy-${props.message.id}`}
+              accessibilityLabel={isCopied ? t('common.copied') : t('common.copy')}
+              accessibilityLiveRegion="polite"
+              accessibilityRole="button"
+              hitSlop={6}
+              onBlur={() => { setIsActionFocused(false); setHoveredAction(null); }}
+              onFocus={() => { setIsActionFocused(true); setHoveredAction('copy'); }}
+              onHoverIn={() => setHoveredAction('copy')}
+              onHoverOut={() => setHoveredAction(null)}
+              onPress={() => { void copyMessage(); }}
+              style={({ pressed }) => [
+                styles.agentMessageAction,
+                hoveredAction === 'copy' && styles.agentMessageActionHovered,
+                pressed && styles.agentMessageActionPressed,
+              ]}
+            >
+              <Ionicons
+                name={isCopied ? 'checkmark' : 'copy-outline'}
+                size={16}
+                color={isCopied ? theme.colors.success : theme.colors.textSecondary}
+              />
+            </Pressable>
+            <DesktopShortcutTooltip
+              compact
+              label={isCopied ? t('common.copied') : t('common.copy')}
+              placement="above"
+              testID={`message-agent-copy-tooltip-${props.message.id}`}
+              visible={actionsVisible && hoveredAction === 'copy'}
+            />
+          </View>
+          {canFork && (
+            <View style={styles.agentMessageActionSlot}>
+              <Pressable
+                testID={`message-agent-fork-${props.message.id}`}
+                accessibilityLabel={t('session.forkFromHere')}
+                accessibilityRole="button"
+                hitSlop={6}
+                onBlur={() => { setIsActionFocused(false); setHoveredAction(null); }}
+                onFocus={() => { setIsActionFocused(true); setHoveredAction('fork'); }}
+                onHoverIn={() => setHoveredAction('fork')}
+                onHoverOut={() => setHoveredAction(null)}
+                onPress={handleFork}
+                style={({ pressed }) => [
+                  styles.agentMessageAction,
+                  hoveredAction === 'fork' && styles.agentMessageActionHovered,
+                  pressed && styles.agentMessageActionPressed,
+                ]}
+              >
+                <Ionicons name="git-branch-outline" size={16} color={theme.colors.textSecondary} />
+              </Pressable>
+              <DesktopShortcutTooltip
+                compact
+                label={t('session.forkFromHere')}
+                placement="above"
+                testID={`message-agent-fork-tooltip-${props.message.id}`}
+                visible={actionsVisible && hoveredAction === 'fork'}
+              />
+            </View>
+          )}
+        </View>
+      )}
     </View>
   );
 }
@@ -514,6 +664,10 @@ const styles = StyleSheet.create((theme) => ({
     maxWidth: layout.maxWidth,
     overflow: 'hidden',
   },
+  agentMessageContent: {
+    overflow: 'visible',
+    zIndex: 1,
+  },
   userMessageContainer: {
     maxWidth: '100%',
     flexDirection: 'column',
@@ -645,10 +799,45 @@ const styles = StyleSheet.create((theme) => ({
     marginBottom: 12,
   },
   agentMessageContainer: {
+    position: 'relative',
     marginHorizontal: 16,
     marginBottom: 12,
     borderRadius: 16,
     maxWidth: '100%',
+  },
+  agentMessageActions: {
+    position: 'absolute',
+    left: 0,
+    bottom: -30,
+    zIndex: 30,
+    height: 28,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    marginTop: 2,
+    opacity: 0,
+  },
+  agentMessageActionsVisible: {
+    opacity: 1,
+  },
+  agentMessageActionSlot: {
+    position: 'relative',
+    width: 28,
+    height: 28,
+    zIndex: 20,
+  },
+  agentMessageAction: {
+    width: 28,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 8,
+  },
+  agentMessageActionHovered: {
+    backgroundColor: theme.colors.surfacePressed,
+  },
+  agentMessageActionPressed: {
+    backgroundColor: theme.colors.surfaceSelected,
   },
   agentEventContainer: {
     marginHorizontal: 8,

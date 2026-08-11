@@ -305,12 +305,14 @@ export class ApiMachineClient {
             const directory = requireNonEmptyString(params?.directory, 'directory');
             const codexThreadId = requireNonEmptyString(params?.codexThreadId, 'codexThreadId');
             const cutAfterItemId = requireNonEmptyString(params?.cutAfterItemId, 'cutAfterItemId');
+            const retainSelectedTurn = params?.retainSelectedTurn === true;
 
             try {
                 return await withCodexAppServerClient((client) => forkCodexThread(client, {
                     threadId: codexThreadId,
                     cwd: directory,
                     cutAfterItemId,
+                    retainSelectedTurn,
                 }));
             } catch (error) {
                 if (error instanceof CodexForkRewindPointNotFoundError) {

@@ -21,6 +21,7 @@ import { useSessionQuickActions } from '@/hooks/useSessionQuickActions';
 import { useUserMessageAnchors, type UserMessageAnchor } from '@/hooks/useUserMessageAnchors';
 import { AnchorListSheet } from './AnchorListSheet';
 import { t } from '@/text';
+import { getAgentMessageForkTargets } from '@/utils/messageForkPoint';
 
 const SCROLL_THRESHOLD = 300;
 // How long the anchor pill lingers after the user stops scrolling.
@@ -236,6 +237,12 @@ const ChatListInternal = React.memo((props: {
     }, []);
 
     const keyExtractor = useCallback((item: DisplayItem) => item.id, []);
+    const agentMessageForkTargets = React.useMemo(
+        () => getAgentMessageForkTargets(props.messages, {
+            allowMissingRewindPoint: props.metadata?.flavor === 'codex',
+        }),
+        [props.messages, props.metadata?.flavor],
+    );
 
     // Long-press → fork-from-this-message. Uses the same canFork gate as
     // the rest of the fork affordances: ridden by the expResumeSession
@@ -244,7 +251,12 @@ const ChatListInternal = React.memo((props: {
     // way (the on-disk JSONL exists in both cases).
     const { canFork } = useSessionQuickActions(session!, {});
 
-    const handleForkFromMessage = useCallback((messageId: string, rewindPointId: string | undefined, messageText: string) => {
+    const handleForkFromMessage = useCallback((
+        messageId: string,
+        rewindPointId: string | undefined,
+        messageText: string,
+        retainSelectedTurn?: boolean,
+    ) => {
         Modal.show({
             component: DuplicateSheet,
             props: {
@@ -252,6 +264,7 @@ const ChatListInternal = React.memo((props: {
                 initialRewindPointId: rewindPointId,
                 initialMessageText: messageText,
                 initialForkedFromMessageId: messageId,
+                initialRetainSelectedTurn: retainSelectedTurn,
             },
         } as any);
     }, [props.sessionId]);
@@ -302,7 +315,11 @@ const ChatListInternal = React.memo((props: {
                 message={item.message}
                 metadata={props.metadata}
                 sessionId={props.sessionId}
-                onForkFromUserMessage={canFork ? handleForkFromMessage : undefined}
+                onForkFromMessage={canFork ? handleForkFromMessage : undefined}
+                agentForkTarget={item.message.kind === 'agent-text'
+                    ? agentMessageForkTargets.get(item.message.id)
+                    : undefined}
+                showAgentMessageActions={Platform.OS === 'web'}
                 showUserMessageActions={Platform.OS === 'web'}
                 canEditUserMessage={
                     Platform.OS === 'web'
@@ -319,6 +336,7 @@ const ChatListInternal = React.memo((props: {
         props.sessionId,
         canFork,
         handleForkFromMessage,
+        agentMessageForkTargets,
         collapsedGroups,
         handleToggleGroup,
         latestVisibleUserMessageId,

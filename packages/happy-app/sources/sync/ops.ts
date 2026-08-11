@@ -341,12 +341,10 @@ export async function claudeListRewindPoints(
 }
 
 /**
- * Same as claudeForkSession, but truncates the copied JSONL right after the
- * line with `cutAfterUuid` (keeping the chosen message as the last entry,
- * dropping every line after — including the agent's response). Use this
- * for "rewind to message N and try again" flows. Daemon hard-fails if the
- * UUID isn't present in the source — never silently produces a
- * non-truncated copy.
+ * Same as claudeForkSession, but truncates the copied JSONL before the next
+ * user prompt after `cutAfterUuid`. The selected user prompt, its agent
+ * response, and any tool cycle in that turn remain in the fork. Daemon
+ * hard-fails if the UUID isn't present in the source.
  */
 export async function claudeDuplicateSession(
     options: ClaudeForkSessionOptions & { cutAfterUuid: string },
@@ -392,18 +390,24 @@ export async function codexForkThread(options: CodexForkThreadOptions): Promise<
 }
 
 export async function codexDuplicateThread(
-    options: CodexForkThreadOptions & { cutAfterItemId: string },
+    options: CodexForkThreadOptions & { cutAfterItemId: string; retainSelectedTurn?: boolean },
 ): Promise<CodexForkThreadResult> {
-    const { machineId, directory, codexThreadId, cutAfterItemId } = options;
+    const { machineId, directory, codexThreadId, cutAfterItemId, retainSelectedTurn } = options;
     try {
         const result = await apiSocket.machineRPC<CodexForkThreadResult, {
             directory: string;
             codexThreadId: string;
             cutAfterItemId: string;
+            retainSelectedTurn?: boolean;
         }>(
             machineId,
             'codex-duplicate-thread',
-            { directory, codexThreadId, cutAfterItemId },
+            {
+                directory,
+                codexThreadId,
+                cutAfterItemId,
+                ...(retainSelectedTurn ? { retainSelectedTurn: true } : {}),
+            },
         );
         return result;
     } catch (error) {
@@ -945,6 +949,7 @@ type ForkOptions = {
     cutAfterUuid?: string;
     cutAfterItemId?: string;
     forkedFromMessageId?: string;
+    retainSelectedTurn?: boolean;
     /** Continue the fork in a different validated working directory. */
     targetDirectory?: string;
 };
@@ -973,6 +978,7 @@ export async function forkAndSpawn(
                 directory: spawnDirectory,
                 codexThreadId: source.codexThreadId,
                 cutAfterItemId: opts.cutAfterItemId,
+                retainSelectedTurn: opts.retainSelectedTurn,
             })
             : await codexForkThread({
                 machineId: source.machineId,

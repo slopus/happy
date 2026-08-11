@@ -14,6 +14,7 @@ import {
     type ForkSource,
 } from '@/sync/ops';
 import { getSessionForkSource } from '@/utils/sessionFork';
+import { resolveInitialForkRewindPointId } from '@/utils/messageForkPoint';
 import { hapticsSuccess } from './haptics';
 
 export interface DuplicateSheetProps {
@@ -26,6 +27,8 @@ export interface DuplicateSheetProps {
     initialMessageText?: string;
     /** In-app message id used for fork lineage when opened from a message long-press. */
     initialForkedFromMessageId?: string;
+    /** Keep the selected provider turn when the fork starts from an agent response. */
+    initialRetainSelectedTurn?: boolean;
     /** Injected by the modal infra. */
     onClose?: () => void;
 }
@@ -43,7 +46,15 @@ type RewindPoint = {
  * fork-and-spawn a new Happy session truncated around that provider id.
  */
 export const DuplicateSheet = React.memo(function DuplicateSheet(props: DuplicateSheetProps) {
-    const { sessionId, initialClaudeUuid, initialRewindPointId, initialMessageText, initialForkedFromMessageId, onClose } = props;
+    const {
+        sessionId,
+        initialClaudeUuid,
+        initialRewindPointId,
+        initialMessageText,
+        initialForkedFromMessageId,
+        initialRetainSelectedTurn,
+        onClose,
+    } = props;
     const session = useSession(sessionId);
     const router = useRouter();
     const windowSize = useWindowDimensions();
@@ -108,21 +119,16 @@ export const DuplicateSheet = React.memo(function DuplicateSheet(props: Duplicat
     }, [source]);
 
     React.useEffect(() => {
-        if (points && selectedId && !points.some((p) => p.id === selectedId)) {
-            setSelectedId(null);
-        }
-    }, [points, selectedId]);
-
-    React.useEffect(() => {
-        if (!points || selectedId || !initialMessageText) {
+        if (!points || (selectedId && points.some((point) => point.id === selectedId))) {
             return;
         }
-        const target = normalizeMessageText(initialMessageText);
-        const match = points.find((point) => normalizeMessageText(point.text) === target);
-        if (match) {
-            setSelectedId(match.id);
-        }
-    }, [initialMessageText, points, selectedId]);
+        setSelectedId(resolveInitialForkRewindPointId(
+            points,
+            initialSelectedId ?? undefined,
+            initialMessageText,
+            source?.kind === 'codex' && !initialSelectedId,
+        ));
+    }, [initialMessageText, initialSelectedId, points, selectedId, source?.kind]);
 
     const selected = (points && selectedId)
         ? points.find((p) => p.id === selectedId) ?? null
@@ -145,6 +151,7 @@ export const DuplicateSheet = React.memo(function DuplicateSheet(props: Duplicat
             ? await forkAndSpawn(source as ForkSource, {
                 cutAfterItemId: selected.id,
                 forkedFromMessageId,
+                retainSelectedTurn: initialRetainSelectedTurn,
             })
             : await forkAndSpawn(source as ForkSource, {
                 cutAfterUuid: selected.id,
@@ -187,7 +194,11 @@ export const DuplicateSheet = React.memo(function DuplicateSheet(props: Duplicat
                         return (
                             <Pressable
                                 key={p.id}
+                                accessibilityRole="radio"
+                                accessibilityState={{ checked: isSelected }}
+                                {...(Platform.OS === 'web' ? ({ 'aria-checked': isSelected } as any) : {})}
                                 onPress={() => setSelectedId(p.id)}
+                                testID={`duplicate-sheet-rewind-${p.id}`}
                                 style={({ pressed }) => [
                                     styles.row,
                                     isSelected && styles.rowSelected,
@@ -208,14 +219,20 @@ export const DuplicateSheet = React.memo(function DuplicateSheet(props: Duplicat
 
             <View style={styles.actions}>
                 <Pressable
+                    accessibilityLabel={t('common.cancel')}
+                    accessibilityRole="button"
                     onPress={onClose}
+                    testID="duplicate-sheet-cancel"
                     style={({ pressed }) => [styles.button, styles.buttonSecondary, pressed && styles.buttonPressed]}
                 >
                     <Text style={styles.buttonSecondaryText}>{t('common.cancel')}</Text>
                 </Pressable>
                 <Pressable
+                    accessibilityLabel={t('session.duplicateSheetConfirm')}
+                    accessibilityRole="button"
                     onPress={doDuplicate}
                     disabled={loading || !selected || !canFork}
+                    testID="duplicate-sheet-confirm"
                     style={({ pressed }) => [
                         styles.button,
                         styles.buttonPrimary,

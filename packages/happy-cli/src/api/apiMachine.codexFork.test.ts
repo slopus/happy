@@ -155,7 +155,7 @@ describe('ApiMachineClient Codex fork RPCs', () => {
         });
     });
 
-    it('duplicates a Codex thread by rolling back turns after the selected item', async () => {
+    it('retains the selected Codex turn when duplicating from an agent response', async () => {
         codexClientMethods.forkThread.mockResolvedValue({
             threadId: 'thread-forked',
             thread: {
@@ -181,20 +181,14 @@ describe('ApiMachineClient Codex fork RPCs', () => {
             directory: '/tmp/project',
             codexThreadId: 'thread-source',
             cutAfterItemId: 'user-1',
+            retainSelectedTurn: true,
         });
 
         expect(result).toEqual({ type: 'success', newCodexThreadId: 'thread-forked' });
         expect(codexClientMethods.rollbackThread).toHaveBeenCalledWith({
             threadId: 'thread-forked',
-            numTurns: 2,
+            numTurns: 1,
         });
-        expect(codexClientMethods.injectItems).toHaveBeenCalledWith({
-            threadId: 'thread-forked',
-            items: [{
-                type: 'message',
-                role: 'user',
-                content: [{ type: 'input_text', text: 'one' }],
-            }],
-        });
+        expect(codexClientMethods.injectItems).not.toHaveBeenCalled();
     });
 });
