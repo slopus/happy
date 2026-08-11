@@ -4,10 +4,12 @@ import type { Machine } from './types';
 
 const {
     mockIo,
-    mockShouldReconnect
+    mockShouldReconnect,
+    mockRpcHandlers
 } = vi.hoisted(() => ({
     mockIo: vi.fn(),
-    mockShouldReconnect: vi.fn(() => true)
+    mockShouldReconnect: vi.fn(() => true),
+    mockRpcHandlers: {} as Record<string, (...args: any[]) => any>
 }));
 
 vi.mock('socket.io-client', () => ({
@@ -37,7 +39,9 @@ vi.mock('@/api/rpc/RpcHandlerManager', () => ({
         onSocketConnect = vi.fn();
         onSocketDisconnect = vi.fn();
         handleRequest = vi.fn(async () => '');
-        registerHandler = vi.fn();
+        registerHandler = vi.fn((name: string, handler: (...args: any[]) => any) => {
+            mockRpcHandlers[name] = handler;
+        });
         unregisterHandler = vi.fn();
         hasHandler = vi.fn(() => false);
     }
@@ -98,6 +102,9 @@ describe('ApiMachineClient socket reconnection', () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
+        for (const key of Object.keys(mockRpcHandlers)) {
+            delete mockRpcHandlers[key];
+        }
         mockShouldReconnect.mockReturnValue(true);
         socketHandlers = {};
         mockSocket = {
@@ -172,6 +179,225 @@ describe('ApiMachineClient socket reconnection', () => {
         await vi.advanceTimersByTimeAsync(1);
         aliveCalls = mockSocket.emit.mock.calls.filter(([event]: [string]) => event === 'machine-alive');
         expect(aliveCalls).toHaveLength(2);
+
+        client.shutdown();
+    });
+
+    it('registers terminal RPC handlers, stream rooms, and decrypts input frames', async () => {
+        vi.useFakeTimers();
+        mockSocket.emitWithAck.mockImplementation(() => new Promise(() => {}));
+
+        const terminalManager = {
+            start: vi.fn(),
+            create: vi.fn(async () => ({ type: 'success', terminalId: 'term-1' })),
+            approve: vi.fn(),
+            attach: vi.fn(),
+            list: vi.fn(async () => []),
+            close: vi.fn(),
+            applyFrame: vi.fn((_terminalId: string, frame: { seq: number }) => ({
+                status: 'applied',
+                expectedSeq: frame.seq + 1,
+            })),
+            setTransportPaused: vi.fn(),
+            getRunningTerminalIds: vi.fn(() => ['term-1']),
+            getStreamEpoch: vi.fn(() => 'epoch-1'),
+            policyStore: { get: vi.fn(() => 'per-session'), set: vi.fn() },
+        } as any;
+
+        const client = new ApiMachineClient('fake-token', makeMachine());
+        client.setRPCHandlers({
+            spawnSession: vi.fn(),
+            stopSession: vi.fn(),
+            requestShutdown: vi.fn(),
+            terminalManager,
+        });
+        client.connect();
+        emitSocketEvent('connect');
+        mockSocket.connected = true;
+
+        // Control RPCs are registered and routed to the manager.
+        const createHandler = mockRpcHandlers['terminal-create'];
+        expect(createHandler).toBeTypeOf('function');
+        await createHandler({ cwd: '/tmp', name: 'dev', cols: 90, rows: 30 });
+        expect(terminalManager.create).toHaveBeenCalledWith(expect.objectContaining({
+            cwd: '/tmp',
+            name: 'dev',
+            cols: 90,
+            rows: 30,
+        }));
+
+        // Running terminals re-register their stream rooms on connect.
+        expect(mockSocket.emit).toHaveBeenCalledWith('terminal:register', { terminalId: 'term-1' });
+
+        const { encrypt, encodeBase64, decodeBase64, decrypt } = await import('@/api/encryption');
+        const machine = makeMachine();
+        const epochCalls = mockSocket.emit.mock.calls.filter(
+            ([event]: [string]) => event === 'terminal:epoch',
+        );
+        expect(epochCalls).toHaveLength(2);
+        expect(decrypt(
+            machine.encryptionKey,
+            machine.encryptionVariant,
+            decodeBase64(epochCalls[0][1].payload),
+        )).toEqual(expect.objectContaining({
+            version: 3,
+            epoch: 'epoch-1',
+            terminalId: 'term-1',
+            machineId: 'test-machine-id',
+            direction: 'daemon-to-client',
+            seq: 0,
+            kind: 'epoch',
+        }));
+
+        // Encrypted input frames are decrypted, authenticated, and acked.
+        const inputFrame = {
+            version: 3,
+            epoch: 'epoch-1',
+            streamId: 'stream-1',
+            terminalId: 'term-1',
+            machineId: 'test-machine-id',
+            direction: 'client-to-daemon',
+            seq: 7,
+            kind: 'input',
+            data: 'ls -la',
+        };
+        const payload = encodeBase64(encrypt(
+            machine.encryptionKey,
+            machine.encryptionVariant,
+            inputFrame,
+        ));
+        emitSocketEvent('terminal:input', { terminalId: 'term-1', payload });
+
+        expect(terminalManager.applyFrame).toHaveBeenCalledWith('term-1', expect.objectContaining({
+            version: 3,
+            epoch: 'epoch-1',
+            streamId: 'stream-1',
+            terminalId: 'term-1',
+            machineId: 'test-machine-id',
+            direction: 'client-to-daemon',
+            seq: 7,
+            kind: 'input',
+            data: 'ls -la',
+        }));
+        const ackCalls = mockSocket.emit.mock.calls.filter(
+            ([event]: [string]) => event === 'terminal:control-ack',
+        );
+        expect(ackCalls).toHaveLength(1);
+        const ack = decrypt(
+            machine.encryptionKey,
+            machine.encryptionVariant,
+            decodeBase64(ackCalls[0][1].payload),
+        );
+        expect(ack).toEqual(expect.objectContaining({
+            version: 3,
+            epoch: 'epoch-1',
+            streamId: 'stream-1',
+            terminalId: 'term-1',
+            machineId: 'test-machine-id',
+            direction: 'daemon-to-client',
+            seq: 7,
+            kind: 'control-ack',
+            status: 'applied',
+        }));
+
+        // Duplicate frames are acked again but never re-applied.
+        terminalManager.applyFrame.mockReturnValueOnce({ status: 'duplicate', expectedSeq: 8 });
+        emitSocketEvent('terminal:input', { terminalId: 'term-1', payload });
+        const ackCallsAfterDuplicate = mockSocket.emit.mock.calls.filter(
+            ([event]: [string]) => event === 'terminal:control-ack',
+        );
+        expect(ackCallsAfterDuplicate).toHaveLength(2);
+
+        // A frame whose authenticated terminalId does not match the route is dropped.
+        const misroutedPayload = encodeBase64(encrypt(
+            machine.encryptionKey,
+            machine.encryptionVariant,
+            { ...inputFrame, terminalId: 'other-term' },
+        ));
+        emitSocketEvent('terminal:input', { terminalId: 'term-1', payload: misroutedPayload });
+        expect(terminalManager.applyFrame).toHaveBeenCalledTimes(2);
+        expect(mockSocket.emit.mock.calls.filter(
+            ([event]: [string]) => event === 'terminal:control-ack',
+        )).toHaveLength(2);
+
+        // Resize frames are authenticated and routed to the manager.
+        const resizePayload = encodeBase64(encrypt(
+            machine.encryptionKey,
+            machine.encryptionVariant,
+            {
+                version: 3,
+                epoch: 'epoch-1',
+                streamId: 'stream-1',
+                terminalId: 'term-1',
+                machineId: 'test-machine-id',
+                direction: 'client-to-daemon',
+                seq: 8,
+                kind: 'resize',
+                cols: 120,
+                rows: 40,
+            },
+        ));
+        emitSocketEvent('terminal:resize', { terminalId: 'term-1', payload: resizePayload });
+        expect(terminalManager.applyFrame).toHaveBeenCalledWith('term-1', expect.objectContaining({
+            version: 3,
+            epoch: 'epoch-1',
+            streamId: 'stream-1',
+            seq: 8,
+            kind: 'resize',
+            cols: 120,
+            rows: 40,
+        }));
+        expect(mockSocket.emit.mock.calls.filter(
+            ([event]: [string]) => event === 'terminal:control-ack',
+        )).toHaveLength(3);
+
+        const appliedSignalPayload = encodeBase64(encrypt(
+            machine.encryptionKey,
+            machine.encryptionVariant,
+            {
+                ...inputFrame,
+                seq: 9,
+                kind: 'signal',
+                signal: 'SIGINT',
+                data: undefined,
+            },
+        ));
+        emitSocketEvent('terminal:signal', { terminalId: 'term-1', payload: appliedSignalPayload });
+        expect(mockSocket.emit.mock.calls.filter(
+            ([event]: [string]) => event === 'terminal:control-ack',
+        )).toHaveLength(4);
+
+        terminalManager.applyFrame.mockReturnValueOnce({ status: 'gap', expectedSeq: 10 });
+        const signalPayload = encodeBase64(encrypt(
+            machine.encryptionKey,
+            machine.encryptionVariant,
+            {
+                ...inputFrame,
+                seq: 11,
+                kind: 'signal',
+                signal: 'SIGINT',
+                data: undefined,
+            },
+        ));
+        emitSocketEvent('terminal:signal', { terminalId: 'term-1', payload: signalPayload });
+        const nackCalls = mockSocket.emit.mock.calls.filter(
+            ([event]: [string]) => event === 'terminal:control-nack',
+        );
+        expect(nackCalls).toHaveLength(1);
+        expect(decrypt(
+            machine.encryptionKey,
+            machine.encryptionVariant,
+            decodeBase64(nackCalls[0][1].payload),
+        )).toEqual(expect.objectContaining({
+            version: 3,
+            epoch: 'epoch-1',
+            streamId: 'stream-1',
+            seq: 11,
+            kind: 'control-nack',
+            receivedSeq: 11,
+            expectedSeq: 10,
+            reason: 'gap',
+        }));
 
         client.shutdown();
     });

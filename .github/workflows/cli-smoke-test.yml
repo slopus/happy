@@ -42,6 +42,15 @@ jobs:
     - name: Install dependencies
       run: pnpm install --frozen-lockfile
 
+    - name: Install tmux
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y tmux
+        tmux -V
+
+    - name: Test terminal recovery
+      run: pnpm --filter happy exec vitest run --project unit src/terminal/tmuxSession.test.ts src/terminal/terminalManager.test.ts
+
     - name: Build packages
       run: |
         pnpm --filter @slopus/happy-wire --fail-if-no-match build
