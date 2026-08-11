@@ -51,11 +51,12 @@ export function resolveLoadingThemeName(
     return `${themePack}${isDark ? 'Dark' : 'Light'}`;
 }
 
-function buildThemeBootstrap(): string {
+// Particle coordinates are present in the markup; RAF only enhances that static fallback.
+function buildLoadingBootstrap(): string {
     const themePacks = JSON.stringify(THEME_PACK_IDS);
     const themePreferences = JSON.stringify(THEME_PREFERENCES);
 
-    return `<script id="app-loading-theme-bootstrap">(()=>{let p="adaptive",t="caramel",d=false;try{d=window.matchMedia("(prefers-color-scheme: dark)").matches}catch{}try{const s=JSON.parse(localStorage.getItem("mmkv.default\\\\local-settings")||"{}");if(${themePreferences}.includes(s.themePreference))p=s.themePreference;if(${themePacks}.includes(s.themePack))t=s.themePack}catch{}document.documentElement.dataset.pawsLoaderTheme=t+((p==="dark"||(p==="adaptive"&&d))?"Dark":"Light")})()</script>`;
+    return `<script id="app-loading-bootstrap">(()=>{let p="adaptive",t="caramel",d=false;try{d=window.matchMedia("(prefers-color-scheme: dark)").matches}catch{}try{const s=JSON.parse(localStorage.getItem("mmkv.default\\\\local-settings")||"{}");if(${themePreferences}.includes(s.themePreference))p=s.themePreference;if(${themePacks}.includes(s.themePack))t=s.themePack}catch{}document.documentElement.dataset.pawsLoaderTheme=t+((p==="dark"||(p==="adaptive"&&d))?"Dark":"Light");try{if(window.matchMedia("(prefers-reduced-motion: reduce)").matches)return}catch{}const r=document.getElementById("root"),c=document.getElementById("app-loading-curve"),ps=Array.from(document.querySelectorAll("#app-loading-particles circle")),raf=window.requestAnimationFrame&&window.requestAnimationFrame.bind(window);if(!c||ps.length!==${PARTICLE_COUNT}||!raf)return;try{const l=c.getTotalLength(),s=performance.now();if(!(l>0))return;const f=n=>{if(r&&r.childElementCount>0)return;const b=((n-s)/${LOOP_DURATION_SECONDS * 1000})%1;ps.forEach((e,i)=>{const q=c.getPointAtLength(((b+i/${PARTICLE_COUNT - 1}*${TRAIL_SPAN})%1)*l);e.setAttribute("cx",q.x.toFixed(2));e.setAttribute("cy",q.y.toFixed(2))});raf(f)};raf(f)}catch{}})()</script>`;
 }
 
 function buildThemeStyles(): string {
@@ -73,50 +74,51 @@ function buildThemeStyles(): string {
     )).join('\n');
 }
 
+export function getLissajousPoint(progress: number): { x: number; y: number } {
+    const angle = progress * Math.PI * 2;
+    return {
+        x: 50 + 28 * Math.sin(3 * angle + Math.PI / 2),
+        y: 50 + 24 * Math.sin(4 * angle),
+    };
+}
+
 export function buildLissajousPath(steps = 180): string {
     return Array.from({ length: steps + 1 }, (_, index) => {
-        const angle = (index / steps) * Math.PI * 2;
-        const x = 50 + 28 * Math.sin(3 * angle + Math.PI / 2);
-        const y = 50 + 24 * Math.sin(4 * angle);
+        const { x, y } = getLissajousPoint(index / steps);
         return `${index === 0 ? 'M' : 'L'}${x.toFixed(2)} ${y.toFixed(2)}`;
     }).join(' ');
 }
 
-function buildParticles(curvePath: string): string {
+function buildParticles(): string {
     return Array.from({ length: PARTICLE_COUNT }, (_, index) => {
         const trailPosition = index / (PARTICLE_COUNT - 1);
         const strength = Math.pow(1 - trailPosition, 0.7);
         const radius = 0.7 + strength * 2.15;
         const opacity = 0.04 + strength * 0.96;
-        const offset = trailPosition * TRAIL_SPAN * LOOP_DURATION_SECONDS;
+        const { x, y } = getLissajousPoint(trailPosition * TRAIL_SPAN);
 
-        return `        <circle r="${radius.toFixed(2)}" opacity="${opacity.toFixed(3)}">
-          <animateMotion path="${curvePath}" dur="${LOOP_DURATION_SECONDS}s" begin="-${offset.toFixed(3)}s" repeatCount="indefinite" calcMode="linear" />
-        </circle>`;
+        return `        <circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="${radius.toFixed(2)}" opacity="${opacity.toFixed(3)}" />`;
     }).join('\n');
 }
 
 export function createLoadingPlaceholder(): string {
     const curvePath = buildLissajousPath();
-    const particles = buildParticles(curvePath);
-    const themeBootstrap = buildThemeBootstrap();
+    const particles = buildParticles();
+    const loadingBootstrap = buildLoadingBootstrap();
     const themeStyles = buildThemeStyles();
 
     return `
     <div id="app-loading" role="progressbar" aria-label="Paws">
       <svg id="app-loading-orbit" viewBox="0 0 100 100" aria-hidden="true" focusable="false">
-        <defs>
-          <path id="app-loading-curve" d="${curvePath}" />
-        </defs>
         <g id="app-loading-motion">
-          <use id="app-loading-track" href="#app-loading-curve" />
+          <path id="app-loading-curve" d="${curvePath}" />
           <g id="app-loading-particles">
 ${particles}
           </g>
         </g>
       </svg>
     </div>
-    ${themeBootstrap}
+    ${loadingBootstrap}
     <style id="app-loading-style">
       #app-loading {
         --app-loading-bg: ${DEFAULT_ACCENT.dark.bg};
@@ -144,7 +146,7 @@ ${themeStyles}
         transform-origin: center;
         animation: app-loading-turn 24s linear infinite;
       }
-      #app-loading-track {
+      #app-loading-curve {
         fill: none;
         stroke: currentColor;
         opacity: 0.09;
@@ -170,7 +172,7 @@ ${themeStyles}
       @media (prefers-reduced-motion: reduce) {
         #app-loading-orbit, #app-loading-motion { animation: none; }
         #app-loading-particles { display: none; }
-        #app-loading-track { stroke-width: 2; stroke: currentColor; opacity: 0.34; }
+        #app-loading-curve { stroke-width: 2; stroke: currentColor; opacity: 0.34; }
       }
       #root:not(:empty) ~ #app-loading { display: none; }
     </style>`;
