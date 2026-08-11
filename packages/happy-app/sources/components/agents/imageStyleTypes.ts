@@ -28,6 +28,7 @@ export interface ImageAgentStylePreset {
     executionKind?: 'gpt-image-2' | 'deterministic-grade';
     inputMode?: 'text-or-image' | 'image-required';
     multiInputMode?: 'single' | 'batch';
+    continuationSourceMode?: 'original-upload' | 'latest-result';
     supportedInputFormats?: Array<'jpeg' | 'png'>;
     responseInstructions?: string;
     referenceImages?: ImageAgentStyleReferenceImage[];

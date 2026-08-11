@@ -184,6 +184,7 @@ export function getImageAgentMixedEngineRules(styles: ImageAgentStylePreset[]): 
 export function getImageAgentContinuationInputRules(styles: ImageAgentStylePreset[]): readonly string[] {
     const imageRequiredStyles = styles.filter((style) => style.inputMode === 'image-required');
     const singleImageStyles = styles.filter((style) => style.multiInputMode === 'single');
+    const originalUploadStyles = styles.filter((style) => style.continuationSourceMode === 'original-upload');
     const rules: string[] = [];
 
     if (imageRequiredStyles.length > 0) {
@@ -191,6 +192,9 @@ export function getImageAgentContinuationInputRules(styles: ImageAgentStylePrese
     }
     if (singleImageStyles.length > 0) {
         rules.push(`- 这些风格一次只能处理一张源图片：${singleImageStyles.map((style) => style.id).join('、')}。存在多张候选素材时按顺序逐张独立处理；每个结果只绑定当前对应的一张素材，禁止把多张素材共同输入同一次生成、拼图或混合场景。`);
+    }
+    if (originalUploadStyles.length > 0) {
+        rules.push(`- 这些风格必须复用当前批次最初的用户上传源图：${originalUploadStyles.map((style) => style.id).join('、')}。原始上传图优先于当前会话中的已生成结果；除非用户明确要求把某张生成图作为新源图，否则禁止把已经合成的海报或风格化结果再次当作源图，以免裁切、比例和风格误差逐轮累积。如果找不到原始上传图，立即停止并请用户重新上传。`);
     }
 
     return rules;

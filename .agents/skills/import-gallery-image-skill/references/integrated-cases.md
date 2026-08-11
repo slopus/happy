@@ -16,7 +16,7 @@ This ledger records the immutable source and intentional adaptation boundary for
 - Shipped text-free 4:3 cover SHA-256: `1be05966cb6631a9150626fb06c6fcce7150666efe0d5455c57962c1d8b130e9`.
 - Preview relationship: the cover is an original vector harbor scene authored for this integration. It demonstrates a shared top/bottom skyline, horizon, landmark order, palette, and sailboat position while using no pixels, people, place names, or UI from the supplied screenshots. The screenshots themselves are not shipped.
 - Preserved: vertical photo-above/illustration-below hierarchy; one scene expressed twice; shared semantic geometry; warm paper; subject-aware switching among ink wash, flat editorial, geometric skyline, and Art Deco; optional restrained caption treatment.
-- Changed: default output is text-free unless the user supplies or requests exact copy; the gallery cover uses an original 4:3 harbor demonstration while generated task outputs default to a 3:5 poster.
+- Changed: default output is text-free unless the user supplies or requests exact copy; the gallery cover uses an original 4:3 harbor demonstration while generated task outputs default to a 3:5 poster. The shared compiler now separates canvas, panel, and source-photo ratios; requires one isotropic source scale and a shared Framing Map; and prefers paper inset space over distorted faces, bodies, circles, repeated spacing, or structural axes.
 - Omitted: phone status/navigation bars, social viewer controls, progress indicators, download/play UI, original source-photo pixels, inferred place names, and any unverified third-party prompt or implementation.
 
 ## Lakeside Minimal Diptych
@@ -31,7 +31,7 @@ This ledger records the immutable source and intentional adaptation boundary for
 - Shipped metadata-free 4:3 cover SHA-256: `4b094e1fa099e72c59403bd90a35ae51708746e3090703349e028ee0ab83d314`.
 - Preview relationship: the cover is an original, text-free built-in image-tool adaptation. It demonstrates the reference's lake, boardwalk, dock, boat, shoreline, horizon, mountains, source-derived palette, and upper-photo/lower-geometry hierarchy without shipping screenshot pixels or phone/viewer UI.
 - Preserved: truthful photographic upper panel; scene-map correspondence; original subject order and color atmosphere; radically simplified lower geometry; flat source-derived colors; fine lines; broad warm-ivory negative space; optional exact user-supplied typography; premium editorial restraint.
-- Changed: the shared compiler gains a dedicated waterside mode that explicitly locks the path curve, dock rhythm, vessel position, shoreline, horizon, and distant landform while removing 85–95% of lower-panel detail.
+- Changed: the shared compiler gains a dedicated waterside mode that explicitly locks the path curve, dock rhythm, vessel position, shoreline, horizon, and distant landform while removing 85–95% of lower-panel detail. Its upper-photo requirement now explicitly obeys the base compiler's proportional crop or warm-paper inset instead of forcing panel fill.
 - Omitted: phone status/navigation bars, social viewer controls, progress/download/play UI, screenshot pixels, automatic captions, inferred place names, gradients, decorative symbols, and unrelated stock-vector detail.
 
 ## Editorial Echo

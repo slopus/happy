@@ -72,6 +72,7 @@ export const EXTRA_IMAGE_AGENT_STYLE_PRESETS: ImageAgentStylePreset[] = [
         "executionKind": "gpt-image-2",
         "inputMode": "image-required",
         "multiInputMode": "single",
+        "continuationSourceMode": "original-upload",
         "responseInstructions": "After sending the finished poster, add a concise 1–3 sentence rationale in the user's current conversation language naming the selected orientation, the scene-specific copy idea, and the preserved photo-to-illustration correspondence. Do not reveal the full prompt, private source path, temporary motif, HTML path, or detailed parameters unless explicitly requested."
     },
     {
@@ -114,6 +115,7 @@ export const EXTRA_IMAGE_AGENT_STYLE_PRESETS: ImageAgentStylePreset[] = [
         "executionKind": "gpt-image-2",
         "inputMode": "image-required",
         "multiInputMode": "single",
+        "continuationSourceMode": "original-upload",
         "responseInstructions": "After sending the image, add a concise 1–3 sentence rationale in the user's current conversation language that names the preserved waterside correspondences, source-derived palette, and geometric reduction. Do not reveal the full prompt, private source path, or detailed parameters unless explicitly requested."
     },
     {
@@ -138,6 +140,7 @@ export const EXTRA_IMAGE_AGENT_STYLE_PRESETS: ImageAgentStylePreset[] = [
         "executionKind": "gpt-image-2",
         "inputMode": "image-required",
         "multiInputMode": "single",
+        "continuationSourceMode": "original-upload",
         "responseInstructions": "After sending the image, add a concise 1–3 sentence rationale in the user's current conversation language that names the preserved scene correspondences and the selected illustration medium. Do not reveal the full prompt, private source path, or detailed parameters unless explicitly requested."
     },
     {

@@ -158,6 +158,7 @@ describe('imageAgentPrompt', () => {
             executionKind: 'gpt-image-2',
             inputMode: 'image-required',
             multiInputMode: 'single',
+            continuationSourceMode: 'original-upload',
         });
         expect(style?.promptContent).toContain('Photo–Illustration Diptych v1 visual compiler');
         expect(style?.promptContent).toContain('build a Scene Map');
@@ -165,6 +166,10 @@ describe('imageAgentPrompt', () => {
         expect(style?.promptContent).toContain('Compress foliage, water, crowds, clouds');
         expect(style?.promptContent).toContain('modern skyline or dusk city');
         expect(style?.promptContent).toContain('dramatic night architecture or castle-like forms');
+        expect(style?.promptContent).toContain('Apply one uniform, isotropic scale factor');
+        expect(style?.promptContent).toContain('Build one normalized, content-space Framing Map');
+        expect(style?.promptContent).toContain('same-aspect-ratio content rectangle');
+        expect(style?.promptContent).toContain('turning circles into ovals');
         expect(style?.promptContent).toContain('Default to a text-free poster');
         expect(style?.promptContent).toContain('regenerate at most once');
         expect(style?.sourceLicenseNotice).toContain('Happy Coder Contributors');
@@ -177,6 +182,8 @@ describe('imageAgentPrompt', () => {
         });
         expect(prompt).toContain(style!.promptContent);
         expect(prompt).toContain('把上传的城市黄昏做成实景与几何插画上下对照海报。');
+        expect(prompt).toContain('Prefer breathing paper over distorted content');
+        expect(prompt).toContain('share one Framing Map');
         expect(prompt).toContain('mcp__happy__send_image');
         expect(prompt).toContain('selected illustration medium');
 
@@ -225,9 +232,12 @@ describe('imageAgentPrompt', () => {
             executionKind: 'gpt-image-2',
             inputMode: 'image-required',
             multiInputMode: 'single',
+            continuationSourceMode: 'original-upload',
         });
         expect(style?.promptContent).toContain('Photo–Illustration Diptych v1 visual compiler');
         expect(style?.promptContent).toContain('Apply the Lakeside Minimal Diptych variant');
+        expect(style?.promptContent).toContain("within the base compiler's chosen proportional crop or warm-paper inset");
+        expect(style?.promptContent).toContain('never force it to fill by stretching');
         expect(style?.promptContent).toContain('path or boardwalk curve, dock rhythm, vessel position');
         expect(style?.promptContent).toContain('simple geometric shapes, flat source-derived color fields');
         expect(style?.promptContent).toContain('Remove roughly 85–95%');
@@ -276,6 +286,7 @@ describe('imageAgentPrompt', () => {
             executionKind: 'gpt-image-2',
             inputMode: 'image-required',
             multiInputMode: 'single',
+            continuationSourceMode: 'original-upload',
         });
         expect(style?.promptContent).toContain('Editorial Echo visual compiler');
         expect(style?.promptContent).toContain('Scene Map');

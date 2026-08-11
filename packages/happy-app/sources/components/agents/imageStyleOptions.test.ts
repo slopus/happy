@@ -92,6 +92,13 @@ describe('imageStyleOptions', () => {
         expect(prompt).toContain('github-skills/photo-illustration-diptych/1');
         expect(prompt).toContain('Photo–Illustration Diptych v1 visual compiler');
         expect(prompt).toContain('build a Scene Map');
+        expect(prompt).toContain('Apply one uniform, isotropic scale factor');
+        expect(prompt).toContain('Build one normalized, content-space Framing Map');
+        expect(prompt).toContain('same-aspect-ratio content rectangle');
+        expect(prompt).toContain('Prefer breathing paper over distorted content');
+        expect(prompt).toContain('必须复用当前批次最初的用户上传源图');
+        expect(prompt).toContain('原始上传图优先于当前会话中的已生成结果');
+        expect(prompt).not.toContain('输入：优先使用当前会话中最近一次生成的图片作为视觉参考');
         expect(prompt).toContain('Default to a text-free poster');
         expect(prompt).toContain('regenerate at most once');
         expect(prompt).toContain('必须有源图片');
@@ -109,6 +116,8 @@ describe('imageStyleOptions', () => {
         expect(prompt).toContain('github-skills/photo-illustration-diptych/2');
         expect(prompt).toContain('Photo–Illustration Diptych v1 visual compiler');
         expect(prompt).toContain('Apply the Lakeside Minimal Diptych variant');
+        expect(prompt).toContain("within the base compiler's chosen proportional crop or warm-paper inset");
+        expect(prompt).toContain('never force it to fill by stretching');
         expect(prompt).toContain('path or boardwalk curve, dock rhythm, vessel position');
         expect(prompt).toContain('Remove roughly 85–95%');
         expect(prompt).toContain('必须有源图片');

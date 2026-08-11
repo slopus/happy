@@ -74,7 +74,7 @@ export function buildImageStyleContinuationPrompt(
         '',
         ...getImageAgentMixedEngineRules(styles),
         '',
-        '输入：优先使用当前会话中最近一次生成的图片作为视觉参考；如果不可用，使用最近一次上传或生成的相关图片作为参考。',
+        '输入：按上面的风格级续生成素材规则选择参考图；没有声明原始上传优先的风格，才优先使用当前会话中最近一次生成的相关图片，找不到时再使用最近一次上传的相关图片。',
         '用户目标：基于当前结果继续生成下面选中的 GPT Image Gallery 风格。',
         '',
         '输出要求：',

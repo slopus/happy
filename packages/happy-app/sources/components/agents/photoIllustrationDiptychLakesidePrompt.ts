@@ -7,7 +7,7 @@ export const PHOTO_ILLUSTRATION_DIPTYCH_LAKESIDE_PROMPT = `${PHOTO_ILLUSTRATION_
 
 Apply the Lakeside Minimal Diptych variant. This specialization is for a lake, coast, river, reservoir, or other calm waterside scene whose identity depends on a leading path or boardwalk, a pier or dock, one small vessel or similarly compact focal object, a shoreline, a clear horizon, and a distant landform.
 
-Preserve the source photograph as the entire upper photographic region with truthful natural light, water, vegetation, structure, and atmosphere. Keep the primary path or boardwalk curve, dock rhythm, vessel position, shoreline, horizon height, and mountain or island profile exactly aligned with the source Scene Map. A restrained high-end editorial grade may clarify color and contrast, but it must not replace the location, invent structures, move the vessel, or change the scene's natural color relationships.
+Preserve the source photograph as the truthful visual content of the upper photographic region, within the base compiler's chosen proportional crop or warm-paper inset; never force it to fill by stretching, squashing, or abandoning the shared Framing Map. Keep the primary path or boardwalk curve, dock rhythm, vessel position, shoreline, horizon height, and mountain or island profile exactly aligned with the source Scene Map. A restrained high-end editorial grade may clarify color and contrast, but it must not replace the location, invent structures, move the vessel, or change the scene's natural color relationships.
 
 Make the lower region radically more minimal than the general diptych mode:
 - Extract only the most recognizable silhouettes and spatial relationships from the upper scene.
