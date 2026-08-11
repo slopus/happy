@@ -82,7 +82,7 @@ export function buildLissajousPath(steps = 180): string {
     }).join(' ');
 }
 
-function buildParticles(): string {
+function buildParticles(curvePath: string): string {
     return Array.from({ length: PARTICLE_COUNT }, (_, index) => {
         const trailPosition = index / (PARTICLE_COUNT - 1);
         const strength = Math.pow(1 - trailPosition, 0.7);
@@ -91,16 +91,14 @@ function buildParticles(): string {
         const offset = trailPosition * TRAIL_SPAN * LOOP_DURATION_SECONDS;
 
         return `        <circle r="${radius.toFixed(2)}" opacity="${opacity.toFixed(3)}">
-          <animateMotion dur="${LOOP_DURATION_SECONDS}s" begin="-${offset.toFixed(3)}s" repeatCount="indefinite" calcMode="linear">
-            <mpath href="#app-loading-curve" />
-          </animateMotion>
+          <animateMotion path="${curvePath}" dur="${LOOP_DURATION_SECONDS}s" begin="-${offset.toFixed(3)}s" repeatCount="indefinite" calcMode="linear" />
         </circle>`;
     }).join('\n');
 }
 
 export function createLoadingPlaceholder(): string {
     const curvePath = buildLissajousPath();
-    const particles = buildParticles();
+    const particles = buildParticles(curvePath);
     const themeBootstrap = buildThemeBootstrap();
     const themeStyles = buildThemeStyles();
 

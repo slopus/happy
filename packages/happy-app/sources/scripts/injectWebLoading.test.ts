@@ -23,6 +23,8 @@ describe('injectWebLoading', () => {
 
         expect(placeholder.match(/<circle r=/g)).toHaveLength(36);
         expect(placeholder.match(/<animateMotion /g)).toHaveLength(36);
+        expect(placeholder.match(/<animateMotion path="/g)).toHaveLength(36);
+        expect(placeholder).not.toContain('<mpath');
         expect(placeholder.match(/<script /g)).toHaveLength(1);
         expect(placeholder).toContain('id="app-loading-theme-bootstrap"');
         expect(placeholder).toContain('mmkv.default\\\\local-settings');
