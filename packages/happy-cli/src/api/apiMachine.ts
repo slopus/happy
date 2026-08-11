@@ -14,6 +14,12 @@ import { RpcHandlerManager } from './rpc/RpcHandlerManager';
 import { detectCLIAvailability, CLIAvailability } from '@/utils/detectCLI';
 import { detectResumeSupport, type ResumeSupport } from '@/resume/localHappyAgentAuth';
 import { shouldReconnect } from '@/utils/lidState';
+import { TerminalManager } from '@/terminal/terminalManager';
+import {
+    ApprovalPolicy,
+    TerminalInputFrame,
+    TerminalOutputFrame,
+} from '@/terminal/types';
 import { getProjectPath } from '@/claude/utils/path';
 import {
     forkSession as claudeForkSession,
@@ -37,6 +43,9 @@ interface ServerToDaemonEvents {
     'rpc-registered': (data: { method: string }) => void;
     'rpc-unregistered': (data: { method: string }) => void;
     'rpc-error': (data: { type: string, error: string }) => void;
+    'terminal:input': (data: { terminalId: string; payload: string }) => void;
+    'terminal:resize': (data: { terminalId: string; payload: string }) => void;
+    'terminal:signal': (data: { terminalId: string; payload: string }) => void;
     auth: (data: { success: boolean, user: string }) => void;
     error: (data: { message: string }) => void;
 }
@@ -86,6 +95,12 @@ interface DaemonToServerEvents {
         result?: any
         error?: string
     }) => void) => void;
+
+    'terminal:register': (data: { terminalId: string }) => void;
+    'terminal:unregister': (data: { terminalId: string }) => void;
+    'terminal:output': (data: { terminalId: string; payload: string }) => void;
+    'terminal:exit': (data: { terminalId: string; payload: string }) => void;
+    'terminal:input-ack': (data: { terminalId: string; payload: string }) => void;
 }
 
 type MachineRpcHandlers = {
@@ -93,6 +108,7 @@ type MachineRpcHandlers = {
     resumeSession?: (sessionId: string, options?: { model?: string; permissionMode?: string }) => Promise<SpawnSessionResult>;
     stopSession: (sessionId: string) => boolean;
     requestShutdown: () => void;
+    terminalManager?: TerminalManager;
 }
 
 function requireNonEmptyString(value: unknown, name: string): string {
@@ -120,6 +136,9 @@ export class ApiMachineClient {
     private rpcHandlerManager: RpcHandlerManager;
     private resumeSessionHandler: ((sessionId: string, options?: { model?: string; permissionMode?: string }) => Promise<SpawnSessionResult>) | null = null;
     private reconnectInterval: NodeJS.Timeout | null = null;
+    private terminalManager: TerminalManager | null = null;
+    private terminalBackpressureTimer: NodeJS.Timeout | null = null;
+    private terminalBackpressured = false;
 
     constructor(
         private token: string,
@@ -142,9 +161,11 @@ export class ApiMachineClient {
         spawnSession,
         resumeSession,
         stopSession,
-        requestShutdown
+        requestShutdown,
+        terminalManager
     }: MachineRpcHandlers) {
         this.resumeSessionHandler = resumeSession ?? null;
+        this.terminalManager = terminalManager ?? null;
 
         // Register spawn session handler
         this.rpcHandlerManager.registerHandler('spawn-happy-session', async (params: any) => {
@@ -329,6 +350,76 @@ export class ApiMachineClient {
 
             return { message: 'Daemon stop request acknowledged, starting shutdown sequence...' };
         });
+
+        if (this.terminalManager) {
+            this.registerTerminalRpcHandlers();
+        }
+    }
+
+    private registerTerminalRpcHandlers(): void {
+        const manager = this.terminalManager;
+        if (!manager) {
+            return;
+        }
+
+        this.rpcHandlerManager.registerHandler('terminal-create', async (params: any) => {
+            const { name, cwd, shell, cols, rows } = params || {};
+            if (typeof cwd !== 'string' || cwd.length === 0) {
+                throw new Error('cwd is required');
+            }
+            const result = await manager.create({
+                name: typeof name === 'string' ? name : undefined,
+                cwd,
+                shell: typeof shell === 'string' ? shell : undefined,
+                cols: typeof cols === 'number' ? cols : 80,
+                rows: typeof rows === 'number' ? rows : 24,
+            });
+            if (result.type === 'success') {
+                this.socket?.emit('terminal:register', { terminalId: result.terminalId });
+            }
+            return result;
+        });
+
+        this.rpcHandlerManager.registerHandler('terminal-approve', async (params: any) => {
+            const { approvalId } = params || {};
+            if (typeof approvalId !== 'string' || approvalId.length === 0) {
+                throw new Error('approvalId is required');
+            }
+            const result = await manager.approve(approvalId);
+            if (result.type === 'success') {
+                this.socket?.emit('terminal:register', { terminalId: result.terminalId });
+            }
+            return result;
+        });
+
+        this.rpcHandlerManager.registerHandler('terminal-attach', async (params: any) => {
+            const { terminalId, lastSeq } = params || {};
+            if (typeof terminalId !== 'string' || terminalId.length === 0) {
+                throw new Error('terminalId is required');
+            }
+            return manager.attach(terminalId, typeof lastSeq === 'number' ? lastSeq : 0);
+        });
+
+        this.rpcHandlerManager.registerHandler('terminal-list', async () => manager.list());
+
+        this.rpcHandlerManager.registerHandler('terminal-close', async (params: any) => {
+            const { terminalId } = params || {};
+            if (typeof terminalId !== 'string' || terminalId.length === 0) {
+                throw new Error('terminalId is required');
+            }
+            await manager.close(terminalId);
+            this.socket?.emit('terminal:unregister', { terminalId });
+            return { success: true };
+        });
+
+        this.rpcHandlerManager.registerHandler('terminal-set-policy', async (params: any) => {
+            const { policy } = params || {};
+            if (typeof policy !== 'string') {
+                throw new Error('policy is required');
+            }
+            await manager.policyStore.set(policy as ApprovalPolicy);
+            return { policy: manager.policyStore.get() };
+        });
     }
 
     private syncResumeSessionRpcRegistration(): void {
@@ -458,7 +549,9 @@ export class ApiMachineClient {
 
             this.rpcHandlerManager.onSocketConnect(this.socket);
             this.syncResumeSessionRpcRegistration();
+            this.registerTerminalStreams();
             this.startKeepAlive();
+            this.startTerminalBackpressureMonitoring();
         });
 
         this.socket.on('disconnect', (reason) => {
@@ -473,6 +566,11 @@ export class ApiMachineClient {
             logger.debugLargeJson(`[API MACHINE] Received RPC request:`, data);
             callback(await this.rpcHandlerManager.handleRequest(data));
         });
+
+        // Terminal streaming plane (encrypted frames relayed by the server).
+        this.socket.on('terminal:input', (data) => this.handleTerminalFrame('input', data));
+        this.socket.on('terminal:resize', (data) => this.handleTerminalFrame('resize', data));
+        this.socket.on('terminal:signal', (data) => this.handleTerminalFrame('signal', data));
 
         // Handle update events from server
         this.socket.on('update', (data: Update) => {
@@ -540,6 +638,148 @@ export class ApiMachineClient {
         }
     }
 
+    emitTerminalOutput(terminalId: string, frame: TerminalOutputFrame): void {
+        this.socket?.emit('terminal:output', {
+            terminalId,
+            payload: this.encryptFrame(frame),
+        });
+    }
+
+    emitTerminalExit(terminalId: string, frame: TerminalOutputFrame): void {
+        this.socket?.emit('terminal:exit', {
+            terminalId,
+            payload: this.encryptFrame(frame),
+        });
+    }
+
+    emitTerminalError(terminalId: string, frame: TerminalOutputFrame): void {
+        // Errors travel on the output channel; clients branch on frame.kind.
+        this.emitTerminalOutput(terminalId, frame);
+    }
+
+    private registerTerminalStreams(): void {
+        if (!this.terminalManager) {
+            return;
+        }
+        for (const terminalId of this.terminalManager.getRunningTerminalIds()) {
+            this.socket.emit('terminal:register', { terminalId });
+        }
+    }
+
+    private handleTerminalFrame(
+        kind: TerminalInputFrame['kind'],
+        data: { terminalId: string; payload: string },
+    ): void {
+        if (!this.terminalManager) {
+            return;
+        }
+        const { terminalId, payload } = data ?? {};
+        if (typeof terminalId !== 'string' || typeof payload !== 'string') {
+            return;
+        }
+
+        let frame: TerminalInputFrame;
+        try {
+            frame = this.decryptFrame<TerminalInputFrame>(payload);
+        } catch (error) {
+            logger.debug('[API MACHINE] Failed to decrypt terminal frame:', error);
+            return;
+        }
+        if (!frame || frame.kind !== kind) {
+            return;
+        }
+
+        try {
+            switch (kind) {
+                case 'input':
+                    this.terminalManager.write(terminalId, frame.data ?? '');
+                    this.emitTerminalInputAck(terminalId, frame.seq);
+                    break;
+                case 'resize':
+                    this.terminalManager.resize(
+                        terminalId,
+                        frame.cols ?? 80,
+                        frame.rows ?? 24,
+                    );
+                    break;
+                case 'signal':
+                    this.terminalManager.signal(terminalId, frame.signal ?? '');
+                    break;
+            }
+        } catch (error) {
+            logger.debug('[API MACHINE] Terminal frame handling failed:', error);
+        }
+    }
+
+    private emitTerminalInputAck(terminalId: string, seq: number): void {
+        this.socket.emit('terminal:input-ack', {
+            terminalId,
+            payload: this.encryptFrame({ seq, kind: 'input-ack' as const }),
+        });
+    }
+
+    private encryptFrame(frame: unknown): string {
+        return encodeBase64(encrypt(
+            this.machine.encryptionKey,
+            this.machine.encryptionVariant,
+            frame,
+        ));
+    }
+
+    private decryptFrame<T>(payload: string): T {
+        return decrypt(
+            this.machine.encryptionKey,
+            this.machine.encryptionVariant,
+            decodeBase64(payload),
+        ) as T;
+    }
+
+    /**
+     * Heuristic transport backpressure: while the socket's outbound buffer
+     * grows (e.g. the daemon is offline or the server is congested), pause the
+     * shells; resume once the buffer drains. Exact byte accounting is not
+     * available through socket.io-client, so packet count is the proxy.
+     */
+    private startTerminalBackpressureMonitoring(): void {
+        this.stopTerminalBackpressureMonitoring();
+        if (!this.terminalManager) {
+            return;
+        }
+        this.terminalBackpressureTimer = setInterval(() => {
+            this.updateTerminalBackpressure();
+        }, 250);
+    }
+
+    private updateTerminalBackpressure(): void {
+        if (!this.terminalManager) {
+            return;
+        }
+        const pendingPackets = (this.socket as any)?.sendBuffer?.length ?? 0;
+        const HIGH_WATER_PACKETS = 512;
+        const LOW_WATER_PACKETS = 64;
+
+        if (!this.terminalBackpressured && pendingPackets > HIGH_WATER_PACKETS) {
+            this.terminalBackpressured = true;
+            for (const terminalId of this.terminalManager.getRunningTerminalIds()) {
+                this.terminalManager.setTransportPaused(terminalId, true);
+            }
+            logger.debug('[API MACHINE] Terminal transport backpressured', { pendingPackets });
+        } else if (this.terminalBackpressured && pendingPackets <= LOW_WATER_PACKETS) {
+            this.terminalBackpressured = false;
+            for (const terminalId of this.terminalManager.getRunningTerminalIds()) {
+                this.terminalManager.setTransportPaused(terminalId, false);
+            }
+            logger.debug('[API MACHINE] Terminal transport drained', { pendingPackets });
+        }
+    }
+
+    private stopTerminalBackpressureMonitoring(): void {
+        if (this.terminalBackpressureTimer) {
+            clearInterval(this.terminalBackpressureTimer);
+            this.terminalBackpressureTimer = null;
+        }
+    }
+
     private startKeepAlive() {
         this.stopKeepAlive();
         this.sendKeepAlive();
@@ -582,6 +822,7 @@ export class ApiMachineClient {
 
     shutdown() {
         logger.debug('[API MACHINE] Shutting down');
+        this.stopTerminalBackpressureMonitoring();
         this.stopKeepAlive();
         if (this.reconnectInterval) {
             clearInterval(this.reconnectInterval);
