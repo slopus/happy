@@ -47,6 +47,7 @@
     "dotenv-cli": "^8.0.0",
     "ts-node": "^10.9.2",
     "tsx": "^4.20.6",
+    "socket.io-client": "^4.8.1",
     "typescript": "5.9.3",
     "vite-tsconfig-paths": "^5.1.4",
     "vitest": "^3.2.0",
