@@ -4,6 +4,7 @@ import {
     getTerminalToolCommand,
     getToolSummaryCategory,
     getToolSummaryDetail,
+    isInlineImageFileTool,
     isInlineVideoFileTool,
     isTerminalToolName,
     shouldRenderToolCardHeader,
@@ -60,6 +61,14 @@ describe('terminal tool display helpers', () => {
         expect(isInlineVideoFileTool(tool('file', { kind: 'video' }))).toBe(true);
         expect(isInlineVideoFileTool(tool('file', { kind: 'audio' }))).toBe(false);
         expect(isInlineVideoFileTool(tool('Read', { kind: 'video' }))).toBe(false);
+    });
+
+    it('identifies image file events that render without a protocol-level file header', () => {
+        expect(isInlineImageFileTool(tool('file', { name: 'motion.jpg' }))).toBe(true);
+        expect(isInlineImageFileTool(tool('file', { kind: 'image', name: 'still.jpg' }))).toBe(true);
+        expect(isInlineImageFileTool(tool('file', { kind: 'file', name: 'report.pdf' }))).toBe(false);
+        expect(isInlineImageFileTool(tool('file', { kind: 'audio', name: 'voice.m4a' }))).toBe(false);
+        expect(isInlineImageFileTool(tool('Read', { kind: 'image' }))).toBe(false);
     });
 
     it('classifies tools for compact transcript rows', () => {

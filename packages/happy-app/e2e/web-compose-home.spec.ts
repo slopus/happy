@@ -5035,6 +5035,7 @@ test.describe('中文 Web 消息与工具演示', () => {
         const cover = page.getByTestId('motion-photo-cover');
         await expect(cover).toBeVisible({ timeout: 20_000 });
         await expect(page.getByTestId('attachment-gallery-image')).toHaveCount(0);
+        await expect(page.getByText('file', { exact: true })).toHaveCount(0);
         await pauseForRecordedReview(page, 1_000);
         await page.screenshot({ path: motionPhotoScreenshotPath(testInfo), fullPage: true });
 

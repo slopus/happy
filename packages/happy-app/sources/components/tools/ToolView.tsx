@@ -15,7 +15,7 @@ import { PermissionFooter } from './PermissionFooter';
 import { parseToolUseError } from '@/utils/toolErrorParser';
 import { formatMCPTitle } from './views/MCPToolView';
 import { t } from '@/text';
-import { getTerminalToolCommand, isInlineVideoFileTool, shouldRenderToolCardHeader } from '@/utils/toolDisplay';
+import { getTerminalToolCommand, isInlineImageFileTool, isInlineVideoFileTool, shouldRenderToolCardHeader } from '@/utils/toolDisplay';
 
 interface ToolViewProps {
     metadata: Metadata | null;
@@ -168,7 +168,9 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
     const isCompactTerminalTool = terminalCommand !== null;
     const isInlineCodexPatch = Platform.OS === 'web' && tool.name === 'CodexPatch';
     const isInlineVideoFile = isInlineVideoFileTool(tool);
-    const renderCardHeader = !isInlineVideoFile && shouldRenderToolCardHeader(tool.name, Platform.OS);
+    const isInlineImageFile = isInlineImageFileTool(tool);
+    const isInlineMediaFile = isInlineVideoFile || isInlineImageFile;
+    const renderCardHeader = !isInlineMediaFile && shouldRenderToolCardHeader(tool.name, Platform.OS);
     const renderPermissionFooter = () => (
         tool.permission && sessionId && tool.name !== 'AskUserQuestion'
             ? <PermissionFooter permission={tool.permission} sessionId={sessionId} toolName={tool.name} toolInput={tool.input} metadata={props.metadata} />
@@ -221,7 +223,7 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
     };
 
     return (
-        <View style={isCompactTerminalTool ? styles.compactContainer : (isInlineCodexPatch || isInlineVideoFile) ? styles.inlineContainer : styles.container}>
+        <View style={isCompactTerminalTool ? styles.compactContainer : (isInlineCodexPatch || isInlineMediaFile) ? styles.inlineContainer : styles.container}>
             {renderCardHeader ? (
                 isPressable ? (
                     <TouchableOpacity style={isCompactTerminalTool ? styles.compactHeader : styles.header} onPress={handlePress} activeOpacity={0.8}>
@@ -245,7 +247,7 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
                 const SpecificToolView = getToolViewComponent(tool.name);
                 if (SpecificToolView) {
                     return (
-                        <View style={isInlineVideoFile ? styles.inlineMediaContent : styles.content}>
+                        <View style={isInlineMediaFile ? styles.inlineMediaContent : styles.content}>
                             <SpecificToolView
                                 tool={tool}
                                 metadata={props.metadata}
