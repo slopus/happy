@@ -33,6 +33,7 @@ import {
 } from '@/claude/claudeGoalStatus';
 import { Session } from './session';
 import { applySandboxPermissionPolicy, resolveInitialClaudePermissionMode, resolveRemoteClaudePermissionMode } from './utils/permissionMode';
+import { defaultClaudeEffort, defaultClaudeModel, defaultClaudePermissionMode } from './utils/startupDefaults';
 import { decodeBase64, encodeBase64 } from '@/api/encryption';
 import type { Session as ApiSession } from '@/api/types';
 import { getProjectPath } from './utils/path';
@@ -57,9 +58,9 @@ export interface StartOptions {
     jsRuntime?: JsRuntime
 }
 
-const DEFAULT_CLAUDE_PERMISSION_MODE: PermissionMode = 'yolo';
-const DEFAULT_CLAUDE_MODEL = 'opus';
-const DEFAULT_CLAUDE_EFFORT: 'low' | 'medium' | 'high' | 'xhigh' | 'max' = 'medium';
+const DEFAULT_CLAUDE_PERMISSION_MODE: PermissionMode = defaultClaudePermissionMode();
+const DEFAULT_CLAUDE_MODEL = defaultClaudeModel();
+const DEFAULT_CLAUDE_EFFORT: 'low' | 'medium' | 'high' | 'xhigh' | 'max' = defaultClaudeEffort();
 type ClaudeGoalCommand = NonNullable<ReturnType<typeof parseClaudeGoalActionParams>>;
 type PendingClaudeGoalAction = {
     command: ClaudeGoalCommand;
