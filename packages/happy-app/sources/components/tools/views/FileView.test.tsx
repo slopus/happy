@@ -14,6 +14,16 @@ const mocks = vi.hoisted(() => ({
         headers: {},
         release: mocks.release,
     })),
+    resolveMotionSource: vi.fn(async () => ({
+        uri: 'file:///cache/photo.jpg.mp4',
+        headers: {},
+        release: mocks.release,
+    })),
+    attachmentImageState: { uri: 'data:image/jpeg;base64,AA==', error: null } as {
+        uri: string | null;
+        error: string | null;
+        motionPhoto?: { videoOffset: number; videoLength: number; mimeType: 'video/mp4' };
+    },
 }));
 
 vi.mock('react-native', () => ({
@@ -24,10 +34,11 @@ vi.mock('react-native', () => ({
 }));
 vi.mock('expo-image', () => ({ Image: 'Image' }));
 vi.mock('@expo/vector-icons', () => ({ Ionicons: 'Ionicons' }));
-vi.mock('@/hooks/useAttachmentImage', () => ({ useAttachmentImage: () => ({ uri: null, error: null }) }));
+vi.mock('@/hooks/useAttachmentImage', () => ({ useAttachmentImage: () => mocks.attachmentImageState }));
 vi.mock('@/utils/thumbhash', () => ({ thumbhashToDataUri: () => null }));
 vi.mock('@/sync/imageViewer', () => ({ imageViewer: { open: vi.fn() } }));
 vi.mock('@/sync/resolveMediaAttachmentSource', () => ({ resolveMediaAttachmentSource: mocks.resolveSource }));
+vi.mock('@/sync/resolveMotionPhotoAttachmentSource', () => ({ resolveMotionPhotoAttachmentSource: mocks.resolveMotionSource }));
 vi.mock('@/sync/openDocumentAttachment', () => ({ openDocumentAttachment: mocks.openDocument }));
 vi.mock('./MediaAttachmentPlayer', () => ({ MediaAttachmentPlayer: 'MediaAttachmentPlayer' }));
 vi.mock('@/text', () => ({
@@ -41,6 +52,7 @@ vi.mock('react-native-unistyles', () => {
             text: '#fff',
             textSecondary: '#aaa',
             textDestructive: '#f44',
+            button: { primary: { tint: '#fff' } },
         },
     };
     return {
@@ -87,6 +99,8 @@ describe('FileView media playback', () => {
         mocks.release.mockClear();
         mocks.openDocument.mockClear();
         mocks.resolveSource.mockClear();
+        mocks.resolveMotionSource.mockClear();
+        mocks.attachmentImageState = { uri: 'data:image/jpeg;base64,AA==', error: null };
         consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     });
 
@@ -127,6 +141,67 @@ describe('FileView media playback', () => {
         }));
         expect(renderer.root.findAllByProps({ testID: 'media-attachment-card-user' })).toHaveLength(0);
         expect(renderer.root.findByType('MediaAttachmentPlayer').props.testID).toBe('media-attachment-player-user');
+        act(() => renderer.unmount());
+    });
+
+    it('shows a motion-photo cover and extracts its embedded MP4 on press', async () => {
+        const tool = {
+            name: 'file',
+            state: 'completed',
+            input: {
+                ref: 'sessions/s1/attachments/photo.enc',
+                name: 'photo.jpg',
+                size: 4096,
+                image: { width: 1080, height: 1920 },
+                motionPhoto: { videoOffset: 2000, videoLength: 1000, mimeType: 'video/mp4' },
+            },
+        } as any;
+        let renderer: any;
+        await act(async () => {
+            renderer = TestRenderer.create(
+                <FileView tool={tool} sessionId="s1" metadata={null} messages={[]} />,
+            );
+        });
+
+        const cover = renderer.root.findByProps({ testID: 'motion-photo-cover' });
+        expect(renderer.root.findAllByProps({ testID: 'motion-photo-player' })).toHaveLength(0);
+        await act(async () => { cover.props.onPress(); });
+
+        expect(mocks.resolveMotionSource).toHaveBeenCalledWith({
+            sessionId: 's1',
+            ref: 'sessions/s1/attachments/photo.enc',
+            fileName: 'photo.jpg',
+        });
+        expect(renderer.root.findByProps({ testID: 'motion-photo-player' }).props).toMatchObject({
+            uri: 'file:///cache/photo.jpg.mp4',
+            kind: 'video',
+            aspectRatio: 1080 / 1920,
+        });
+
+        act(() => renderer.unmount());
+        expect(mocks.release).toHaveBeenCalledTimes(1);
+    });
+
+    it('plays a historical motion photo detected from its decrypted JPEG bytes', async () => {
+        mocks.attachmentImageState = {
+            uri: 'data:image/jpeg;base64,AA==',
+            error: null,
+            motionPhoto: { videoOffset: 2000, videoLength: 1000, mimeType: 'video/mp4' },
+        };
+        const tool = {
+            name: 'file', state: 'completed',
+            input: { ref: 'historical.enc', name: 'historical.jpg', size: 4096, image: { width: 1080, height: 1920 } },
+        } as any;
+        let renderer: any;
+        await act(async () => {
+            renderer = TestRenderer.create(
+                <FileView tool={tool} sessionId="s1" metadata={null} messages={[]} />,
+            );
+        });
+
+        const cover = renderer.root.findByProps({ testID: 'motion-photo-cover' });
+        await act(async () => { cover.props.onPress(); });
+        expect(renderer.root.findByProps({ testID: 'motion-photo-player' })).toBeDefined();
         act(() => renderer.unmount());
     });
 

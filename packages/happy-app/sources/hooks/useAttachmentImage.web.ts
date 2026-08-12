@@ -7,15 +7,19 @@ import { detectSupportedImageMime } from '@/utils/detectSupportedImageMime';
 import { createAttachmentImageSource } from '@/utils/attachmentImageSource';
 import type { LoadedAttachmentImageSource } from '@/utils/attachmentImageSourceTypes';
 import type { AttachmentImageOptions, AttachmentImageState } from './attachmentImageTypes';
+import { detectHonorMotionPhoto } from '@slopus/happy-wire';
 
 export type { AttachmentImageState } from './attachmentImageTypes';
 
 const MAX_THUMBNAIL_CACHE_ENTRIES = 80;
 const MAX_FULL_IMAGE_CACHE_ENTRIES = 3;
-const thumbnailCache = new Map<string, LoadedAttachmentImageSource>();
-const fullImageCache = new Map<string, LoadedAttachmentImageSource>();
-const viewerImageCache = new Map<string, LoadedAttachmentImageSource>();
-const inFlight = new Map<string, Promise<LoadedAttachmentImageSource | null>>();
+type LoadedMotionImageSource = LoadedAttachmentImageSource & {
+    motionPhoto?: NonNullable<AttachmentImageState['motionPhoto']>;
+};
+const thumbnailCache = new Map<string, LoadedMotionImageSource>();
+const fullImageCache = new Map<string, LoadedMotionImageSource>();
+const viewerImageCache = new Map<string, LoadedMotionImageSource>();
+const inFlight = new Map<string, Promise<LoadedMotionImageSource | null>>();
 let viewerCacheGeneration = 0;
 
 export function releaseImageViewerImageCache() {
@@ -65,9 +69,9 @@ function getCacheLimit(options: AttachmentImageOptions | undefined): number {
 }
 
 function rememberInCache(
-    cache: Map<string, LoadedAttachmentImageSource>,
+    cache: Map<string, LoadedMotionImageSource>,
     key: string,
-    source: LoadedAttachmentImageSource,
+    source: LoadedMotionImageSource,
     limit: number,
 ) {
     const existing = cache.get(key);
@@ -88,7 +92,7 @@ async function loadAttachmentSource(
     sessionId: string,
     ref: string,
     options: AttachmentImageOptions | undefined,
-): Promise<LoadedAttachmentImageSource | null> {
+): Promise<LoadedMotionImageSource | null> {
     const credentials = sync.getCredentials();
     if (!credentials) {
         console.warn(`[attachment-image] no credentials for ${ref}`);
@@ -113,7 +117,10 @@ async function loadAttachmentSource(
         return null;
     }
     const mime = detectSupportedImageMime(decrypted) ?? 'image/png';
-    return createAttachmentImageSource(decrypted, mime, options);
+    const source: LoadedMotionImageSource = await createAttachmentImageSource(decrypted, mime, options);
+    const motionPhoto = detectHonorMotionPhoto(decrypted);
+    if (motionPhoto) source.motionPhoto = motionPhoto;
+    return source;
 }
 
 type KeyedAttachmentImageState = AttachmentImageState & { cacheKey: string | null };
@@ -136,7 +143,7 @@ export function useAttachmentImage(
         if (!cacheKey) return { cacheKey: null, uri: null, loading: false, error: null };
         const cached = cache.get(cacheKey);
         return cached
-            ? { cacheKey, uri: cached.uri, loading: false, error: null }
+            ? { cacheKey, uri: cached.uri, loading: false, error: null, motionPhoto: cached.motionPhoto }
             : { cacheKey, uri: null, loading: true, error: null };
     });
 
@@ -149,7 +156,7 @@ export function useAttachmentImage(
         if (cached) {
             cache.delete(cacheKey);
             cache.set(cacheKey, cached);
-            setState({ cacheKey, uri: cached.uri, loading: false, error: null });
+            setState({ cacheKey, uri: cached.uri, loading: false, error: null, motionPhoto: cached.motionPhoto });
             return;
         }
         let cancelled = false;
@@ -177,7 +184,7 @@ export function useAttachmentImage(
         promise.then((source) => {
             if (cancelled) return;
             setState(source
-                ? { cacheKey, uri: source.uri, loading: false, error: null }
+                ? { cacheKey, uri: source.uri, loading: false, error: null, motionPhoto: source.motionPhoto }
                 : { cacheKey, uri: null, loading: false, error: 'decrypt_failed' });
         }).catch((error) => {
             if (cancelled) return;

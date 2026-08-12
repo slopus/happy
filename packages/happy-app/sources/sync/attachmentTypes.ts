@@ -14,6 +14,12 @@
  */
 export type AttachmentKind = 'image' | 'audio' | 'video' | 'file';
 
+export type MotionPhotoMetadata = {
+    videoOffset: number;
+    videoLength: number;
+    mimeType: 'video/mp4';
+};
+
 export type AttachmentPreview = {
     /** Stable unique identifier for use as React key and for removal. */
     id: string;
@@ -41,4 +47,5 @@ export type UploadedAttachment = {
     mimeType?: string;
     /** Explicit false selects the plaintext streaming media lane. */
     encrypted?: boolean;
+    motionPhoto?: MotionPhotoMetadata;
 };

@@ -76,6 +76,11 @@ const sessionFileEventSchema = z.object({
     prompt: z.string().optional(),
     batchId: z.string().optional(),
     localPath: z.string().optional(),
+    motionPhoto: z.object({
+        videoOffset: z.number().int().nonnegative(),
+        videoLength: z.number().int().positive(),
+        mimeType: z.literal('video/mp4'),
+    }).optional(),
     image: z.object({
         width: z.number(),
         height: z.number(),
@@ -761,6 +766,7 @@ function normalizeSessionEnvelope(
                         ...(envelope.ev.prompt ? { prompt: envelope.ev.prompt } : {}),
                         ...(envelope.ev.batchId ? { batchId: envelope.ev.batchId } : {}),
                         ...(envelope.ev.localPath ? { localPath: envelope.ev.localPath } : {}),
+                        ...(envelope.ev.motionPhoto ? { motionPhoto: envelope.ev.motionPhoto } : {}),
                         ...maybeImageMetadata
                     },
                     description: envelope.ev.kind === 'audio' || envelope.ev.kind === 'video'

@@ -17,6 +17,7 @@ function mediaDocument(props: MediaAttachmentPlayerProps): string {
     const uri = escapeHtmlAttribute(props.uri);
     const mimeType = escapeHtmlAttribute(props.mimeType);
     const title = escapeHtmlAttribute(props.title);
+    const poster = props.posterUri ? ` poster="${escapeHtmlAttribute(props.posterUri)}"` : '';
     return `<!doctype html>
 <html>
 <head>
@@ -27,7 +28,7 @@ ${tag}{display:block;width:100%;height:100%;object-fit:contain;background:#000}
 </style>
 </head>
 <body>
-<${tag} controls playsinline webkit-playsinline preload="metadata" aria-label="${title}">
+<${tag} controls playsinline webkit-playsinline preload="metadata"${poster} aria-label="${title}">
 <source src="${uri}" type="${mimeType}">
 </${tag}>
 </body>
@@ -46,7 +47,7 @@ export function MediaAttachmentPlayer(props: MediaAttachmentPlayerProps) {
         : {
             width: '100%' as const,
             maxWidth: 960,
-            aspectRatio: 16 / 9,
+            aspectRatio: props.aspectRatio ?? 16 / 9,
             backgroundColor: '#000',
             borderRadius: 12,
             overflow: 'hidden' as const,

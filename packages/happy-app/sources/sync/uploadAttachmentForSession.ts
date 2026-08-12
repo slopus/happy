@@ -2,6 +2,7 @@ import type { AuthCredentials } from '@/auth/tokenStorage';
 import type { AttachmentPreview, UploadedAttachment } from './attachmentTypes';
 import type { RequestUploadResult } from './apiAttachments';
 import { MAX_PDF_FILE_SIZE } from './attachmentLimits';
+import { detectHonorMotionPhoto } from '@slopus/happy-wire';
 
 export type AttachmentUploadDependencies = {
     requestUpload: (
@@ -72,6 +73,7 @@ export async function uploadAttachmentForSession(
         throw new Error('PDF attachment is too large');
     }
     const encrypted = dependencies.encryptBlob(bytes, blobKey);
+    const motionPhoto = kind === 'image' ? detectHonorMotionPhoto(bytes) : null;
     const upload = await dependencies.requestUpload(
         credentials,
         sessionId,
@@ -86,6 +88,7 @@ export async function uploadAttachmentForSession(
         width: attachment.width,
         height: attachment.height,
         thumbhash: attachment.thumbhash,
+        ...(motionPhoto ? { motionPhoto } : {}),
         ...(kind === 'file' ? { kind, mimeType: attachment.mimeType } : {}),
     };
 }

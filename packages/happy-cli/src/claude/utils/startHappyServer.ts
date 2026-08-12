@@ -332,12 +332,13 @@ export async function startHappyServer(
                     batchId,
                     sessionId: client.sessionId,
                 });
-                const { ref, name, size, dims } = await client.uploadImageAttachment(input.path);
+                const { ref, name, size, dims, motionPhoto } = await client.uploadImageAttachment(input.path);
                 client.sendFileEvent(ref, name, size, dims, {
                     source: 'generated',
                     ...(input.prompt ? { prompt: input.prompt } : {}),
                     batchId,
                     localPath: archive.imagePath,
+                    ...(motionPhoto ? { motionPhoto } : {}),
                 });
                 return { success: true };
             } catch (error) {

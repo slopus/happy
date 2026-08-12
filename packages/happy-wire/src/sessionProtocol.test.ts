@@ -104,6 +104,16 @@ describe('session protocol schemas', () => {
     expect(parsed.encrypted).toBeUndefined();
   });
 
+  it('accepts motion-photo playback metadata on image events', () => {
+    expect(sessionFileEventSchema.safeParse({
+      t: 'file',
+      ref: 'upload-motion',
+      name: 'motion.jpg',
+      size: 4_000_000,
+      motionPhoto: { videoOffset: 2_900_000, videoLength: 1_000_000, mimeType: 'video/mp4' },
+    }).success).toBe(true);
+  });
+
   it('rejects invalid kind value', () => {
     expect(
       sessionEventSchema.safeParse({ t: 'file', ref: 'x', name: 'x', size: 1, kind: 'pdf' }).success,

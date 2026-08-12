@@ -48,6 +48,18 @@ describe('sendFileEvent envelope contract', () => {
         expect(envelope.ev).toMatchObject({ kind: 'video', mimeType: 'video/mp4', encrypted: false });
     });
 
+    it('accepts generated Honor motion-photo metadata', () => {
+        const envelope = createEnvelope('user', {
+            t: 'file',
+            ref: 'sessions/s1/attachments/motion.enc',
+            name: 'motion.jpg',
+            size: 4096,
+            source: 'generated',
+            motionPhoto: { videoOffset: 2048, videoLength: 1024, mimeType: 'video/mp4' },
+        });
+        expect(sessionEnvelopeSchema.safeParse(envelope).success).toBe(true);
+    });
+
     it('rejects a file event with image block missing thumbhash (why we omit image)', () => {
         const bad = { id: 'x', time: 1, role: 'user', ev: { t: 'file', ref: 'r', name: 'n', size: 1, image: { width: 10, height: 10 } } };
         expect(sessionEnvelopeSchema.safeParse(bad).success).toBe(false);

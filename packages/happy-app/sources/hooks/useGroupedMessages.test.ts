@@ -85,6 +85,7 @@ function fileMessage(
         source?: 'user' | 'generated';
         batchId?: string;
         prompt?: string;
+        motionPhoto?: boolean;
     } = {},
 ): ToolCallMessage {
     return {
@@ -101,6 +102,9 @@ function fileMessage(
                 ...(options.source ? { source: options.source } : {}),
                 ...(options.batchId ? { batchId: options.batchId } : {}),
                 ...(options.prompt ? { prompt: options.prompt } : {}),
+                ...(options.motionPhoto ? {
+                    motionPhoto: { videoOffset: 100, videoLength: 200, mimeType: 'video/mp4' },
+                } : {}),
             },
             createdAt,
             startedAt: createdAt,
@@ -177,6 +181,18 @@ describe('useGroupedMessages', () => {
         expect(items).toHaveLength(1);
         expect(items[0].type).toBe('image-group');
         expect((items[0] as any).messages).toHaveLength(1);
+    });
+
+    it('keeps motion photos out of static image galleries', () => {
+        const messages: Message[] = [
+            fileMessage('motion', 3, { source: 'generated', batchId: 'batch-motion', motionPhoto: true }),
+            fileMessage('still', 2, { source: 'generated', batchId: 'batch-motion' }),
+        ];
+        const items = groupMessagesForDisplay(messages, true);
+
+        expect(items.some((item) => item.type === 'message' && item.id === 'motion')).toBe(true);
+        const gallery = items.find((item) => item.type === 'image-group');
+        expect((gallery as any).messages.map((message: Message) => message.id)).toEqual(['still']);
     });
 
     it('still collapses image attachments into a gallery when tool grouping is OFF (default)', () => {

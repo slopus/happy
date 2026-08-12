@@ -310,6 +310,11 @@ export const FileEventMessageSchema = z.object({
         prompt: z.string().optional(),
         batchId: z.string().optional(),
         localPath: z.string().optional(),
+        motionPhoto: z.object({
+          videoOffset: z.number().int().nonnegative(),
+          videoLength: z.number().int().positive(),
+          mimeType: z.literal('video/mp4'),
+        }).optional(),
         image: z.object({
           width: z.number(),
           height: z.number(),

@@ -667,6 +667,7 @@ class Sync {
                                         ? { kind: att.kind, ...(att.mimeType ? { mimeType: att.mimeType } : {}) }
                                         : {}),
                                     ...(att.encrypted !== undefined ? { encrypted: att.encrypted } : {}),
+                                    ...(att.motionPhoto ? { motionPhoto: att.motionPhoto } : {}),
                                     // Include image metadata when we have dimensions; thumbhash is
                                     // optional. The native iOS picker can't generate a thumbhash
                                     // without Canvas, so requiring it here would reduce the chat

@@ -33,6 +33,8 @@ const titleTooltipEvidencePhase = process.env.HAPPY_TITLE_TOOLTIP_EVIDENCE_PHASE
 const subagentInspectorEvidenceDirectory = process.env.HAPPY_SUBAGENT_INSPECTOR_EVIDENCE_DIR;
 const messageHoverEvidenceDirectory = process.env.HAPPY_MESSAGE_HOVER_EVIDENCE_DIR;
 const messageHoverEvidencePhase = process.env.HAPPY_MESSAGE_HOVER_EVIDENCE_PHASE ?? 'after';
+const motionPhotoEvidenceDirectory = process.env.HAPPY_MOTION_PHOTO_EVIDENCE_DIR;
+const motionPhotoEvidencePhase = process.env.HAPPY_MOTION_PHOTO_EVIDENCE_PHASE === 'before' ? 'before' : 'after';
 
 function projectHoverScreenshotPath(testInfo: { outputPath: (filename: string) => string }): string {
     const filename = `case-1-${projectHoverEvidencePhase}.png`;
@@ -72,6 +74,13 @@ function messageHoverScreenshotPath(testInfo: { outputPath: (filename: string) =
     if (!messageHoverEvidenceDirectory) return testInfo.outputPath(filename);
     fs.mkdirSync(messageHoverEvidenceDirectory, { recursive: true });
     return path.join(messageHoverEvidenceDirectory, filename);
+}
+
+function motionPhotoScreenshotPath(testInfo: { outputPath: (filename: string) => string }): string {
+    const filename = `motion-01-${motionPhotoEvidencePhase}.png`;
+    if (!motionPhotoEvidenceDirectory) return testInfo.outputPath(filename);
+    fs.mkdirSync(motionPhotoEvidenceDirectory, { recursive: true });
+    return path.join(motionPhotoEvidenceDirectory, filename);
 }
 
 function authenticatedRoute(pathname: string): string {
@@ -4992,6 +5001,62 @@ test.describe('中文 Web 消息与工具演示', () => {
         await exerciseInlineVideo(page, 'media-attachment-player-user');
         await pauseForRecordedReview(page, 1_100);
         await page.screenshot({ path: testInfo.outputPath('mp4-user-after.png'), fullPage: true });
+    });
+
+    test('[MOTION-01] 荣耀动态 JPEG 在桌面端显示播放入口并加载内嵌视频', async ({ page, request }, testInfo) => {
+        test.setTimeout(120_000);
+        const fixturePath = process.env.HAPPY_E2E_MOTION_PHOTO_PATH;
+        if (!fixturePath) throw new Error('缺少 HAPPY_E2E_MOTION_PHOTO_PATH');
+        const sessionId = await createE2ESession(request, {
+            name: 'Honor motion photo E2E',
+            summary: 'Honor motion photo E2E',
+        });
+
+        await page.setViewportSize({ width: 1280, height: 720 });
+        await page.goto(authenticatedRoute(`/session/${sessionId}`));
+        await expect(page.getByRole('textbox', { name: /输入消息|Type a message/i })).toBeVisible({ timeout: 20_000 });
+
+        await page.getByRole('button', { name: /添加附件|Add attachment/i }).click();
+        const fileChooserPromise = page.waitForEvent('filechooser');
+        await page.getByRole('button', { name: /图片|Photo or image/i }).click();
+        const fileChooser = await fileChooserPromise;
+        await fileChooser.setFiles(fixturePath);
+        const sendButton = page.locator('[data-testid="message-composer-send-button"]:not([aria-disabled="true"])');
+        await expect(sendButton).toBeVisible();
+        await sendButton.click();
+
+        if (motionPhotoEvidencePhase === 'before') {
+            await expect(page.getByTestId('attachment-gallery-image')).toBeVisible({ timeout: 20_000 });
+            await expect(page.getByTestId('motion-photo-cover')).toHaveCount(0);
+            await page.screenshot({ path: motionPhotoScreenshotPath(testInfo), fullPage: true });
+            return;
+        }
+
+        const cover = page.getByTestId('motion-photo-cover');
+        await expect(cover).toBeVisible({ timeout: 20_000 });
+        await expect(page.getByTestId('attachment-gallery-image')).toHaveCount(0);
+        await pauseForRecordedReview(page, 1_000);
+        await page.screenshot({ path: motionPhotoScreenshotPath(testInfo), fullPage: true });
+
+        await cover.click();
+        const player = page.getByTestId('motion-photo-player');
+        const video = player.locator('video');
+        await expect(player).toBeVisible({ timeout: 20_000 });
+        await expect.poll(() => video.evaluate((element) => {
+            const media = element as HTMLVideoElement;
+            return media.readyState >= HTMLMediaElement.HAVE_METADATA && media.duration > 4;
+        }), { timeout: 20_000 }).toBe(true);
+        const videoBox = await video.boundingBox();
+        if (!videoBox) throw new Error('找不到动态照片视频的原生播放控件区域');
+        await video.evaluate((element) => {
+            (element as HTMLVideoElement).muted = true;
+        });
+        await video.click({ position: { x: 24, y: videoBox.height - 48 } });
+        await expect.poll(() => video.evaluate((element) => (element as HTMLVideoElement).paused)).toBe(false);
+        await pauseForRecordedReview(page, 1_800);
+        await expect.poll(() => video.evaluate((element) => (element as HTMLVideoElement).currentTime)).toBeGreaterThan(0.5);
+        await video.evaluate((element) => (element as HTMLVideoElement).pause());
+        await page.close();
     });
 
     test('[PDF-USER] 选择、加密发送并重新下载原始 PDF', async ({ page, request }, testInfo) => {

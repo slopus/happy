@@ -45,7 +45,7 @@ export function MediaAttachmentPlayer(props: MediaAttachmentPlayerProps) {
         : {
             width: '100%' as const,
             maxWidth: 960,
-            aspectRatio: 16 / 9,
+            aspectRatio: props.aspectRatio ?? 16 / 9,
             backgroundColor: '#000',
             position: 'relative' as const,
             borderRadius: 12,
@@ -59,6 +59,7 @@ export function MediaAttachmentPlayer(props: MediaAttachmentPlayerProps) {
                 controls: true,
                 playsInline: true,
                 preload: 'metadata',
+                poster: props.posterUri,
                 title: props.title,
                 style: { width: '100%', height: '100%', backgroundColor: '#000', objectFit: 'contain', borderRadius: 12 },
             }) : null}

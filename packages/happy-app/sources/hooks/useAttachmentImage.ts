@@ -10,6 +10,7 @@ import { downloadEncryptedAttachment } from '@/sync/apiAttachments';
 import { decryptBlob } from '@/encryption/blob';
 import { encodeBase64 } from '@/encryption/base64';
 import type { AttachmentImageOptions, AttachmentImageState } from './attachmentImageTypes';
+import { detectHonorMotionPhoto } from '@slopus/happy-wire';
 
 export type { AttachmentImageState } from './attachmentImageTypes';
 
@@ -18,12 +19,13 @@ export function releaseImageViewerImageCache() {
 }
 
 const MAX_CACHE_ENTRIES = 50;
-const cache = new Map<string, string>();
-const inFlight = new Map<string, Promise<string | null>>();
+type CachedImage = { uri: string; motionPhoto?: NonNullable<AttachmentImageState['motionPhoto']> };
+const cache = new Map<string, CachedImage>();
+const inFlight = new Map<string, Promise<CachedImage | null>>();
 
-function rememberInCache(ref: string, dataUri: string) {
+function rememberInCache(ref: string, image: CachedImage) {
     if (cache.has(ref)) cache.delete(ref);
-    cache.set(ref, dataUri);
+    cache.set(ref, image);
     while (cache.size > MAX_CACHE_ENTRIES) {
         const oldest = cache.keys().next().value;
         if (oldest === undefined) break;
@@ -51,7 +53,7 @@ function detectImageMime(bytes: Uint8Array): string {
     return 'image/png';
 }
 
-async function loadAttachmentDataUri(sessionId: string, ref: string): Promise<string | null> {
+async function loadAttachmentDataUri(sessionId: string, ref: string): Promise<CachedImage | null> {
     const credentials = sync.getCredentials();
     if (!credentials) {
         console.warn(`[attachment-image] no credentials for ${ref}`);
@@ -80,7 +82,11 @@ async function loadAttachmentDataUri(sessionId: string, ref: string): Promise<st
         return null;
     }
     const mime = detectImageMime(decrypted);
-    return `data:${mime};base64,${encodeBase64(decrypted)}`;
+    const motionPhoto = detectHonorMotionPhoto(decrypted);
+    return {
+        uri: `data:${mime};base64,${encodeBase64(decrypted)}`,
+        ...(motionPhoto ? { motionPhoto } : {}),
+    };
 }
 
 type KeyedAttachmentImageState = AttachmentImageState & {
@@ -97,7 +103,7 @@ export function useAttachmentImage(
         if (!cacheKey) return { cacheKey: null, uri: null, loading: false, error: null };
         const cached = cache.get(cacheKey);
         return cached
-            ? { cacheKey, uri: cached, loading: false, error: null }
+            ? { cacheKey, uri: cached.uri, loading: false, error: null, motionPhoto: cached.motionPhoto }
             : { cacheKey, uri: null, loading: true, error: null };
     });
 
@@ -110,7 +116,7 @@ export function useAttachmentImage(
         if (cached) {
             cache.delete(cacheKey);
             cache.set(cacheKey, cached);
-            setState({ cacheKey, uri: cached, loading: false, error: null });
+            setState({ cacheKey, uri: cached.uri, loading: false, error: null, motionPhoto: cached.motionPhoto });
             return;
         }
         let cancelled = false;
@@ -123,11 +129,11 @@ export function useAttachmentImage(
             inFlight.set(cacheKey, promise);
         }
 
-        promise.then((uri) => {
+        promise.then((image) => {
             if (cancelled) return;
-            if (uri) {
-                rememberInCache(cacheKey, uri);
-                setState({ cacheKey, uri, loading: false, error: null });
+            if (image) {
+                rememberInCache(cacheKey, image);
+                setState({ cacheKey, uri: image.uri, loading: false, error: null, motionPhoto: image.motionPhoto });
             } else {
                 setState({ cacheKey, uri: null, loading: false, error: 'decrypt_failed' });
             }

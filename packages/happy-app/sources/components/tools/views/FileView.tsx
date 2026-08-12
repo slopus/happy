@@ -23,6 +23,8 @@ import { MediaAttachmentPlayer } from './MediaAttachmentPlayer';
 import { t } from '@/text';
 import { openDocumentAttachment } from '@/sync/openDocumentAttachment';
 import { MAX_PDF_FILE_SIZE } from '@/sync/attachmentLimits';
+import { resolveMotionPhotoAttachmentSource } from '@/sync/resolveMotionPhotoAttachmentSource';
+import type { MotionPhotoMetadata } from '@/sync/attachmentTypes';
 
 const fileInputSchema = z.object({
     ref: z.string(),
@@ -32,6 +34,11 @@ const fileInputSchema = z.object({
     mimeType: z.string().optional(),
     encrypted: z.boolean().optional(),
     source: z.enum(['user', 'generated']).optional(),
+    motionPhoto: z.object({
+        videoOffset: z.number().int().nonnegative(),
+        videoLength: z.number().int().positive(),
+        mimeType: z.literal('video/mp4'),
+    }).optional(),
     image: z.object({
         width: z.number(),
         height: z.number(),
@@ -93,7 +100,13 @@ export const FileView = React.memo<ToolViewProps>(({ tool, sessionId }) => {
             />
         );
     }
-    return <ImageFileView name={parsed.data.name} image={parsed.data.image} ref_={parsed.data.ref} sessionId={sessionId} />;
+    return <ImageFileView
+        name={parsed.data.name}
+        image={parsed.data.image}
+        ref_={parsed.data.ref}
+        sessionId={sessionId}
+        motionPhoto={parsed.data.motionPhoto}
+    />;
 });
 
 function DocumentFileCard({ ref_, sessionId, name, size, mimeType, encrypted, source }: {
@@ -339,14 +352,18 @@ function MediaFileCard({ ref_, sessionId, name, kind, size, mimeType, encrypted,
     );
 }
 
-function ImageFileView({ name, image, ref_, sessionId }: {
+function ImageFileView({ name, image, ref_, sessionId, motionPhoto }: {
     name: string;
     image?: { width: number; height: number; thumbhash?: string };
     ref_: string;
     sessionId?: string;
+    motionPhoto?: MotionPhotoMetadata;
 }) {
     const { theme } = useUnistyles();
     const ref = ref_;
+    const [motionSource, setMotionSource] = React.useState<MediaPlaybackSource | null>(null);
+    const [motionLoading, setMotionLoading] = React.useState(false);
+    const [motionError, setMotionError] = React.useState(false);
 
     const placeholder = React.useMemo(() => {
         if (!image?.thumbhash) return undefined;
@@ -354,7 +371,23 @@ function ImageFileView({ name, image, ref_, sessionId }: {
         return uri ? { uri } : undefined;
     }, [image?.thumbhash]);
 
-    const { uri, error } = useAttachmentImage(sessionId ?? '', sessionId ? ref : undefined);
+    const { uri, error, motionPhoto: detectedMotionPhoto } = useAttachmentImage(sessionId ?? '', sessionId ? ref : undefined);
+    const effectiveMotionPhoto = motionPhoto ?? detectedMotionPhoto;
+
+    React.useEffect(() => () => { void motionSource?.release?.(); }, [motionSource]);
+
+    const handleMotionPlay = React.useCallback(() => {
+        if (!effectiveMotionPhoto || !sessionId || motionLoading || motionSource) return;
+        setMotionLoading(true);
+        setMotionError(false);
+        void resolveMotionPhotoAttachmentSource({ sessionId, ref, fileName: name })
+            .then(setMotionSource)
+            .catch((cause) => {
+                console.warn(`[motion-photo] failed to open ${name}`, cause);
+                setMotionError(true);
+            })
+            .finally(() => setMotionLoading(false));
+    }, [effectiveMotionPhoto, motionLoading, motionSource, name, ref, sessionId]);
 
     // Pick display dimensions. Real w/h drives the aspect ratio when present,
     // but a missing image{} block (older messages, iOS picker that didn't
@@ -374,25 +407,58 @@ function ImageFileView({ name, image, ref_, sessionId }: {
 
     return (
         <View style={styles.inlineContainer}>
-            <Pressable
-                onPress={uri ? () => imageViewer.open({ uri, width: image?.width, height: image?.height, filename: name }) : undefined}
-                disabled={!uri}
-                style={[styles.inlineWrapper, { borderColor: theme.colors.divider }]}
-            >
-                <Image
-                    source={uri ? { uri } : undefined}
-                    placeholder={placeholder}
-                    style={[{ width: displayW, height: displayH }, styles.inlineImage]}
-                    contentFit="cover"
-                    transition={150}
-                />
-                {error && !uri && (
-                    <View style={[styles.errorOverlay, { backgroundColor: theme.colors.surfaceHigh }]}>
-                        <Ionicons name="alert-circle-outline" size={20} color={theme.colors.textSecondary} />
-                    </View>
-                )}
-            </Pressable>
+            {motionSource ? (
+                <View style={{ width: displayW }}>
+                    <MediaAttachmentPlayer
+                        uri={motionSource.uri}
+                        headers={motionSource.headers}
+                        title={name}
+                        kind="video"
+                        mimeType={effectiveMotionPhoto?.mimeType ?? 'video/mp4'}
+                        aspectRatio={aspect}
+                        testID="motion-photo-player"
+                    />
+                </View>
+            ) : (
+                <Pressable
+                    testID={effectiveMotionPhoto ? 'motion-photo-cover' : undefined}
+                    accessibilityRole="button"
+                    accessibilityLabel={effectiveMotionPhoto ? t('imageUpload.mediaPlay', { name }) : name}
+                    onPress={uri
+                        ? effectiveMotionPhoto
+                            ? handleMotionPlay
+                            : () => imageViewer.open({ uri, width: image?.width, height: image?.height, filename: name })
+                        : undefined}
+                    disabled={!uri || motionLoading}
+                    style={[styles.inlineWrapper, { borderColor: theme.colors.divider }]}
+                >
+                    <Image
+                        source={uri ? { uri } : undefined}
+                        placeholder={placeholder}
+                        style={[{ width: displayW, height: displayH }, styles.inlineImage]}
+                        contentFit="cover"
+                        transition={150}
+                    />
+                    {effectiveMotionPhoto && uri && (
+                        <View style={styles.motionPhotoOverlay}>
+                            {motionLoading
+                                ? <ActivityIndicator size="small" color={theme.colors.button.primary.tint} />
+                                : <Ionicons name="play" size={22} color={theme.colors.button.primary.tint} />}
+                        </View>
+                    )}
+                    {(error && !uri || motionError) && (
+                        <View style={[styles.errorOverlay, { backgroundColor: theme.colors.surfaceHigh }]}>
+                            <Ionicons name="alert-circle-outline" size={20} color={theme.colors.textSecondary} />
+                        </View>
+                    )}
+                </Pressable>
+            )}
             <Text style={[styles.filename, { color: theme.colors.textSecondary }]} numberOfLines={1}>{name}</Text>
+            {motionError && (
+                <Text style={[styles.mediaError, { color: theme.colors.textDestructive }]}>
+                    {t('imageUpload.mediaLoadFailed')}
+                </Text>
+            )}
         </View>
     );
 }
@@ -422,6 +488,19 @@ const styles = StyleSheet.create(() => ({
         borderRadius: 12,
         alignItems: 'center',
         justifyContent: 'center',
+    },
+    motionPhotoOverlay: {
+        position: 'absolute',
+        left: '50%',
+        top: '50%',
+        width: 48,
+        height: 48,
+        marginLeft: -24,
+        marginTop: -24,
+        borderRadius: 24,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: 'rgba(0, 0, 0, 0.62)',
     },
     filename: {
         fontSize: 13,
