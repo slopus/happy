@@ -111,6 +111,35 @@ Configuration lives in `src/configuration.ts`:
 - `HAPPY_SERVER_URL` and `HAPPY_WEBAPP_URL` override defaults.
 - `HAPPY_VARIANT`, `HAPPY_EXPERIMENTAL`, `HAPPY_DISABLE_CAFFEINATE` control behavior.
 
+Daemon-owned session resource limits are optional top-level fields in
+`settings.json`:
+
+```json
+{
+  "sessionIdleTimeoutMinutes": 60,
+  "maxConcurrentSessions": 3
+}
+```
+
+Both limits are disabled when omitted. The idle timeout uses the newest
+persisted session message timestamp, not the session liveness heartbeat. The
+concurrency limit rejects new daemon spawn/resume requests when full; it never
+evicts an existing process. Restart the daemon after changing these settings.
+
+### Claude workspace configuration isolation
+
+Happy treats a session workspace as untrusted at process startup. Both the
+Claude Agent SDK and local Claude CLI paths disable filesystem settings sources
+and ambient MCP discovery. This prevents repository `.claude/settings.json`,
+`.claude/settings.local.json`, and `.mcp.json` files from running hooks or
+starting MCP servers merely because a Happy session uses that directory.
+
+Happy's generated session-tracking settings and explicit loopback MCP server
+are still passed through their dedicated command-line/SDK options. Project and
+user Claude customizations that depend on filesystem settings or discovered MCP
+servers are intentionally unavailable until Happy has an explicit workspace
+trust mechanism.
+
 ## API client architecture
 
 ```mermaid

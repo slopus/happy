@@ -91,6 +91,66 @@ describe('ApiMachineClient Codex fork RPCs', () => {
         }));
     });
 
+    it('validates and forwards the untracked-session resume fallback', async () => {
+        const resumeSession = vi.fn().mockResolvedValue({ type: 'success', sessionId: 'happy-new' });
+
+        const { ApiMachineClient } = await import('./apiMachine');
+        const client = new ApiMachineClient('token', machineClient());
+        client.setRPCHandlers({
+            spawnSession: vi.fn(),
+            resumeSession,
+            stopSession: vi.fn(),
+            requestShutdown: vi.fn(),
+        });
+
+        const result = await handlersFrom(client).get('machine-1:resume-happy-session')?.({
+            sessionId: 'happy-old',
+            model: 'opus',
+            permissionMode: 'acceptEdits',
+            effort: 'high',
+            fallback: {
+                directory: '/tmp/project',
+                agent: 'claude',
+                agentSessionId: 'claude-session',
+            },
+        });
+
+        expect(result).toEqual({ type: 'success', sessionId: 'happy-new' });
+        expect(resumeSession).toHaveBeenCalledWith('happy-old', {
+            model: 'opus',
+            permissionMode: 'acceptEdits',
+            effort: 'high',
+            fallback: {
+                directory: '/tmp/project',
+                agent: 'claude',
+                agentSessionId: 'claude-session',
+            },
+        });
+    });
+
+    it('rejects unsupported agents in the resume fallback', async () => {
+        const resumeSession = vi.fn();
+
+        const { ApiMachineClient } = await import('./apiMachine');
+        const client = new ApiMachineClient('token', machineClient());
+        client.setRPCHandlers({
+            spawnSession: vi.fn(),
+            resumeSession,
+            stopSession: vi.fn(),
+            requestShutdown: vi.fn(),
+        });
+
+        await expect(handlersFrom(client).get('machine-1:resume-happy-session')?.({
+            sessionId: 'happy-old',
+            fallback: {
+                directory: '/tmp/project',
+                agent: 'gemini',
+                agentSessionId: 'gemini-session',
+            },
+        })).rejects.toThrow('fallback.agent must be claude or codex');
+        expect(resumeSession).not.toHaveBeenCalled();
+    });
+
     it('lists Codex rewind points from thread/read', async () => {
         codexClientMethods.readThread.mockResolvedValue({
             thread: {

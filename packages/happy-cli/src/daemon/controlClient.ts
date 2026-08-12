@@ -330,7 +330,10 @@ export async function stopDaemon(options: { allowForceKill?: boolean } = {}) {
       }
 
       // Wait for daemon to die
-      await waitForProcessDeath(state.pid, 2000);
+      // Daemon shutdown first gives every owned agent tree time to flush and
+      // terminate. Keep this longer than that bounded cleanup window so the
+      // verified daemon is not SIGKILLed halfway through reaping its children.
+      await waitForProcessDeath(state.pid, 25_000);
       logger.debug('Daemon stopped gracefully via HTTP');
       return;
     } catch (error) {

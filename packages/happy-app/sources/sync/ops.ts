@@ -254,6 +254,11 @@ export type CodexListRewindPointsResult =
 export interface ResumeSessionOptions {
     machineId: string;
     sessionId: string;
+    fallback?: {
+        directory: string;
+        agent: 'claude' | 'codex';
+        agentSessionId: string;
+    };
 }
 
 // Exported session operation functions
@@ -493,14 +498,20 @@ export async function codexListRewindPoints(
     }
 }
 
-export async function machineResumeSession(options: ResumeSessionOptions & { model?: string; permissionMode?: string }): Promise<SpawnSessionResult> {
-    const { machineId, sessionId, model, permissionMode } = options;
+export async function machineResumeSession(options: ResumeSessionOptions & { model?: string; permissionMode?: string; effort?: string }): Promise<SpawnSessionResult> {
+    const { machineId, sessionId, model, permissionMode, effort, fallback } = options;
 
     try {
-        const result = await apiSocket.machineRPC<SpawnSessionResult, { sessionId: string; model?: string; permissionMode?: string }>(
+        const result = await apiSocket.machineRPC<SpawnSessionResult, {
+            sessionId: string;
+            model?: string;
+            permissionMode?: string;
+            effort?: string;
+            fallback?: ResumeSessionOptions['fallback'];
+        }>(
             machineId,
             'resume-happy-session',
-            { sessionId, model, permissionMode },
+            { sessionId, model, permissionMode, effort, fallback },
         );
         return result;
     } catch (error) {

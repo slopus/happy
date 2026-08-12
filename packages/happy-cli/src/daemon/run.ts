@@ -6,7 +6,11 @@ import axios from 'axios';
 import { ApiClient } from '@/api/api';
 import { TrackedSession, SessionEncryptionData } from './types';
 import { MachineMetadata, DaemonState, Metadata } from '@/api/types';
-import { SpawnSessionOptions, SpawnSessionResult } from '@/modules/common/registerCommonHandlers';
+import {
+  type ResumeSessionOptions,
+  type SpawnSessionOptions,
+  type SpawnSessionResult,
+} from '@/modules/common/registerCommonHandlers';
 import { logger } from '@/ui/logger';
 import { authAndSetupMachineIfNeeded } from '@/ui/auth';
 import { configuration } from '@/configuration';
@@ -14,7 +18,7 @@ import { startCaffeinate, stopCaffeinate } from '@/utils/caffeinate';
 import packageJson from '../../package.json';
 import { getEnvironmentInfo } from '@/ui/doctor';
 import { spawnHappyCLI } from '@/utils/spawnHappyCLI';
-import { writeDaemonState, DaemonLocallyPersistedState, readDaemonState, acquireDaemonLock, releaseDaemonLock, readPersistedSessions, persistSession } from '@/persistence';
+import { writeDaemonState, DaemonLocallyPersistedState, readDaemonState, acquireDaemonLock, releaseDaemonLock, readPersistedSessions, persistSession, readSettings } from '@/persistence';
 import type { PersistedSession } from '@/persistence';
 
 import {
@@ -37,6 +41,22 @@ import {
   sanitizeSessionEnvironment,
   wrapTmuxCommandWithSessionEnvironmentSanitizer,
 } from './sessionEnvironment';
+import { createResumeSessionHandler } from './resumeSession';
+import {
+  reapOrphanedDaemonSessions,
+  terminateDaemonOwnedSessions,
+  terminateTrackedSession,
+} from './sessionTermination';
+import { createSessionSpawnGate } from './sessionSpawnGate';
+import { reapClosedTmuxSessions } from './tmuxSessionReaper';
+import {
+  createSessionCapacityLimiter,
+  type SessionCapacityReservation,
+  sessionCapacityError,
+} from './sessionCapacity';
+import { reapIdleDaemonSessions } from './sessionIdleReaper';
+
+const DAEMON_SHUTDOWN_FORCE_TIMEOUT_MS = 35_000;
 
 /** Shell-escape a string for safe interpolation into tmux commands. */
 function shellescape(s: string): string {
@@ -108,7 +128,7 @@ export async function startDaemon(): Promise<void> {
         await new Promise(resolve => setTimeout(resolve, 100))
 
         process.exit(1);
-      }, 1_000);
+      }, DAEMON_SHUTDOWN_FORCE_TIMEOUT_MS);
 
       // Start graceful shutdown
       resolve({ source, errorMessage });
@@ -188,9 +208,28 @@ export async function startDaemon(): Promise<void> {
       logger.debug('[DAEMON RUN] Sleep prevention enabled');
     }
 
+    // A previous daemon can disappear while its detached session trees remain
+    // alive under launchd/systemd. Reap only strict, same-user argv matches;
+    // terminal-started Happy sessions never carry `--started-by daemon`.
+    const orphanCleanup = await reapOrphanedDaemonSessions();
+    if (orphanCleanup.terminated > 0 || orphanCleanup.errors.length > 0) {
+      logger.debug(`[DAEMON RUN] Orphan cleanup terminated ${orphanCleanup.terminated} session tree(s)`, orphanCleanup.errors);
+    }
+
     // Ensure auth and machine registration BEFORE anything else
     const { credentials, machineId } = await authAndSetupMachineIfNeeded();
     logger.debug('[DAEMON RUN] Auth and machine setup complete');
+
+    const settings = await readSettings();
+    const maxConcurrentSessions = settings.maxConcurrentSessions;
+    const sessionIdleTimeoutMs = settings.sessionIdleTimeoutMinutes === undefined
+      ? undefined
+      : settings.sessionIdleTimeoutMinutes * 60_000;
+    if (maxConcurrentSessions !== undefined || sessionIdleTimeoutMs !== undefined) {
+      logger.debug(
+        `[DAEMON RUN] Session resource limits: maxConcurrentSessions=${maxConcurrentSessions ?? 'unlimited'}, idleTimeoutMinutes=${settings.sessionIdleTimeoutMinutes ?? 'disabled'}`,
+      );
+    }
 
     // Setup state - key by PID
     const pidToTrackedSession = new Map<number, TrackedSession>();
@@ -223,6 +262,15 @@ export async function startDaemon(): Promise<void> {
 
     // Helper functions
     const getCurrentChildren = () => Array.from(pidToTrackedSession.values());
+    const sessionCapacity = createSessionCapacityLimiter({
+      maxConcurrentSessions,
+      countActiveSessions: () => Array.from(pidToTrackedSession.values())
+        .filter((session) => session.startedBy === 'daemon').length,
+    });
+    const capacityLimitError = (): SpawnSessionResult => ({
+      type: 'error',
+      errorMessage: sessionCapacityError(maxConcurrentSessions!),
+    });
 
     // Handle webhook from happy session reporting itself
     const onHappySessionWebhook = (sessionId: string, sessionMetadata: Metadata, encryption?: SessionEncryptionData) => {
@@ -282,11 +330,12 @@ export async function startDaemon(): Promise<void> {
     };
 
     // Spawn a new session (sessionId reserved for future --resume functionality)
-    const spawnSession = async (options: SpawnSessionOptions): Promise<SpawnSessionResult> => {
+    const spawnSessionImpl = async (options: SpawnSessionOptions): Promise<SpawnSessionResult> => {
       logger.debugLargeJson('[DAEMON RUN] Spawning session', options);
 
       const { directory, sessionId, machineId, approvedNewDirectoryCreation = true } = options;
       let directoryCreated = false;
+      let capacityReservation: SessionCapacityReservation | undefined;
 
       try {
         await fs.access(directory);
@@ -434,6 +483,11 @@ export async function startDaemon(): Promise<void> {
         }
 
         if (useTmux && tmuxSessionName !== undefined) {
+          capacityReservation = sessionCapacity.tryReserve() ?? undefined;
+          if (!capacityReservation) {
+            return capacityLimitError();
+          }
+
           // Try to spawn in tmux session
           const sessionDesc = tmuxSessionName || 'current/most recent session';
           logger.debug(`[DAEMON RUN] Attempting to spawn session in tmux: ${sessionDesc}`);
@@ -494,6 +548,7 @@ export async function startDaemon(): Promise<void> {
             const trackedSession: TrackedSession = {
               startedBy: 'daemon',
               pid: tmuxResult.pid, // Real PID from tmux -P flag
+              startedAt: Date.now(),
               tmuxSessionId: tmuxResult.sessionId,
               directoryCreated,
               message: directoryCreated
@@ -503,6 +558,8 @@ export async function startDaemon(): Promise<void> {
 
             // Add to tracking map so webhook can find it later
             pidToTrackedSession.set(tmuxResult.pid, trackedSession);
+            capacityReservation.commit();
+            capacityReservation = undefined;
 
             // Wait for webhook to populate session with happySessionId (exact same as regular flow)
             logger.debug(`[DAEMON RUN] Waiting for session webhook for PID ${tmuxResult.pid} (tmux)`);
@@ -558,6 +615,8 @@ export async function startDaemon(): Promise<void> {
               agentCommand = 'agy';
               break;
             default:
+              capacityReservation?.release();
+              capacityReservation = undefined;
               return {
                 type: 'error',
                 errorMessage: `Unsupported agent type: '${options.agent}'. Please update your CLI to the latest version.`
@@ -587,6 +646,7 @@ export async function startDaemon(): Promise<void> {
             env: buildSessionChildEnvironment(ambientEnvironment, extraEnv),
             directoryCreated,
             message: directoryCreated ? `The path '${directory}' did not exist. We created a new folder and spawned a new session there.` : undefined,
+            capacityReservation,
           });
         }
 
@@ -596,6 +656,7 @@ export async function startDaemon(): Promise<void> {
           errorMessage: 'Unexpected error in session spawning'
         };
       } catch (error) {
+        capacityReservation?.release();
         const errorMessage = error instanceof Error ? error.message : String(error);
         logger.debug('[DAEMON RUN] Failed to spawn session:', error);
         return {
@@ -605,27 +666,44 @@ export async function startDaemon(): Promise<void> {
       }
     };
 
+    const sessionSpawnGate = createSessionSpawnGate(spawnSessionImpl);
+    const spawnSession = sessionSpawnGate.spawn;
+
     const spawnTrackedHappyProcess = ({
       args,
       cwd,
       env,
       directoryCreated = false,
       message,
+      capacityReservation: providedCapacityReservation,
     }: {
       args: string[];
       cwd: string;
       env: NodeJS.ProcessEnv;
       directoryCreated?: boolean;
       message?: string;
+      capacityReservation?: SessionCapacityReservation;
     }): Promise<SpawnSessionResult> => {
-      const happyProcess = spawnHappyCLI(args, {
-        cwd,
-        detached: true,
-        stdio: 'ignore',
-        env,
-      });
+      const capacityReservation = providedCapacityReservation ?? sessionCapacity.tryReserve();
+      if (!capacityReservation) {
+        return Promise.resolve(capacityLimitError());
+      }
+
+      let happyProcess;
+      try {
+        happyProcess = spawnHappyCLI(args, {
+          cwd,
+          detached: true,
+          stdio: 'ignore',
+          env,
+        });
+      } catch (error) {
+        capacityReservation.release();
+        throw error;
+      }
 
       if (!happyProcess.pid) {
+        capacityReservation.release();
         logger.debug('[DAEMON RUN] Failed to spawn process - no PID returned');
         return Promise.resolve({
           type: 'error',
@@ -638,12 +716,14 @@ export async function startDaemon(): Promise<void> {
       const trackedSession: TrackedSession = {
         startedBy: 'daemon',
         pid: happyProcess.pid,
+        startedAt: Date.now(),
         childProcess: happyProcess,
         directoryCreated,
         message,
       };
 
       pidToTrackedSession.set(happyProcess.pid, trackedSession);
+      capacityReservation.commit();
 
       happyProcess.on('exit', (code, signal) => {
         logger.debug(`[DAEMON RUN] Child PID ${happyProcess.pid} exited with code ${code}, signal ${signal}`);
@@ -706,33 +786,22 @@ export async function startDaemon(): Promise<void> {
       }
     };
 
-    const resumeSession = async (happySessionId: string, options?: { model?: string; permissionMode?: string }): Promise<SpawnSessionResult> => {
-      try {
-        const tracked = findTrackedSessionById(happySessionId);
-        if (!tracked) {
-          return { type: 'error', errorMessage: `Session ${happySessionId} is not tracked by this daemon. It may have been started before the daemon or on another machine.` };
-        }
-        if (!tracked.happySessionMetadataFromLocalWebhook) {
-          return { type: 'error', errorMessage: `Session ${happySessionId} has no metadata. Cannot resume.` };
-        }
-        if (!tracked.encryption) {
-          return { type: 'error', errorMessage: `Session ${happySessionId} has no stored encryption data. It was likely started before this feature was available. Restart the daemon and start a new session to enable resume.` };
-        }
-
-        // Webhook metadata may be stale (missing claudeSessionId/codexThreadId set after startup).
-        // Fetch fresh metadata from server if needed.
-        let metadata = tracked.happySessionMetadataFromLocalWebhook;
-        const needsFetch = (!metadata.claudeSessionId && (!metadata.flavor || metadata.flavor === 'claude'))
-          || (!metadata.codexThreadId && metadata.flavor === 'codex');
-        if (needsFetch) {
-          logger.debug(`[DAEMON RUN] Session ${happySessionId} missing agent session ID in webhook metadata, fetching from server`);
-          const serverMetadata = await fetchServerSessionMetadata(happySessionId, tracked.encryption.encryptionKey, tracked.encryption.encryptionVariant);
-          if (serverMetadata) {
-            metadata = serverMetadata;
-            tracked.happySessionMetadataFromLocalWebhook = serverMetadata;
-          }
-        }
-
+    const resumeSession = createResumeSessionHandler({
+      findTrackedSessionById,
+      spawnSession,
+      logFallback: (reason) => {
+        logger.debug(`[DAEMON RUN] ${reason}; continuing the provider conversation as a fresh Happy session`);
+      },
+      refreshMetadata: async (happySessionId, tracked) => {
+        if (!tracked.encryption) return null;
+        logger.debug(`[DAEMON RUN] Session ${happySessionId} missing agent session ID in webhook metadata, fetching from server`);
+        return fetchServerSessionMetadata(
+          happySessionId,
+          tracked.encryption.encryptionKey,
+          tracked.encryption.encryptionVariant,
+        );
+      },
+      resumeTrackedSession: (happySessionId, tracked, metadata, options) => sessionSpawnGate.run(async () => {
         const launch = buildResumeLaunch(
           { id: happySessionId, active: true, metadata },
           { startedBy: 'daemon', claudeStartingMode: 'remote' },
@@ -746,6 +815,9 @@ export async function startDaemon(): Promise<void> {
         // ask-first mode and must be forwarded.
         if (options?.permissionMode && (metadata.flavor === 'codex' || options.permissionMode !== 'default')) {
           launch.args.push('--permission-mode', options.permissionMode);
+        }
+        if (options?.effort) {
+          launch.args.push('--effort', options.effort);
         }
 
         await fs.access(launch.cwd);
@@ -762,6 +834,12 @@ export async function startDaemon(): Promise<void> {
             HAPPY_RECONNECT_AGENT_STATE_VERSION: String(tracked.encryption.agentStateVersion),
           }),
         });
+      }),
+    });
+
+    const guardedResumeSession = async (happySessionId: string, options?: ResumeSessionOptions): Promise<SpawnSessionResult> => {
+      try {
+        return await resumeSession(happySessionId, options);
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : (error && typeof error === 'object' ? JSON.stringify(error) : String(error));
         logger.debug(`[DAEMON RUN] Failed to resume session: ${errorMessage}`, error instanceof Error ? error.stack : undefined);
@@ -773,7 +851,9 @@ export async function startDaemon(): Promise<void> {
     };
 
     // Stop a session by sessionId or PID fallback
-    const stopSession = (sessionId: string): boolean => {
+    const killTmuxWindow = (sessionId: string) => getTmuxUtilities().killWindow(sessionId);
+
+    const stopSession = async (sessionId: string): Promise<boolean> => {
       logger.debug(`[DAEMON RUN] Attempting to stop session ${sessionId}`);
 
       // Try to find by sessionId first
@@ -781,12 +861,13 @@ export async function startDaemon(): Promise<void> {
         if (session.happySessionId === sessionId ||
           (sessionId.startsWith('PID-') && pid === parseInt(sessionId.replace('PID-', '')))) {
 
-          if (session.startedBy === 'daemon' && session.childProcess) {
+          if (session.startedBy === 'daemon') {
             try {
-              session.childProcess.kill('SIGTERM');
-              logger.debug(`[DAEMON RUN] Sent SIGTERM to daemon-spawned session ${sessionId}`);
+              await terminateTrackedSession(session, { killTmuxWindow });
+              logger.debug(`[DAEMON RUN] Terminated daemon-spawned session tree ${sessionId}`);
             } catch (error) {
-              logger.debug(`[DAEMON RUN] Failed to kill session ${sessionId}:`, error);
+              logger.debug(`[DAEMON RUN] Failed to terminate session tree ${sessionId}:`, error);
+              return false;
             }
           } else {
             // For externally started sessions, try to kill by PID
@@ -806,6 +887,19 @@ export async function startDaemon(): Promise<void> {
 
       logger.debug(`[DAEMON RUN] Session ${sessionId} not found`);
       return false;
+    };
+
+    const terminateOwnedSessionTrees = async (reason: string) => {
+      // Fence both machine RPC and local HTTP spawns before taking the cleanup
+      // snapshot. Anything already accepted must finish registering its PID so
+      // it is included in pidToTrackedSession below.
+      const activeSpawns = sessionSpawnGate.activeCount();
+      if (activeSpawns > 0) {
+        logger.debug(`[DAEMON RUN] ${reason}: waiting for ${activeSpawns} in-flight session spawn(s)`);
+      }
+      await sessionSpawnGate.fenceAndDrain();
+      const result = await terminateDaemonOwnedSessions(pidToTrackedSession.values(), { killTmuxWindow });
+      logger.debug(`[DAEMON RUN] ${reason}: terminated ${result.terminated} daemon-owned session tree(s)`, result.errors);
     };
 
     // Handle child process exit — preserve session data for resume
@@ -881,7 +975,7 @@ export async function startDaemon(): Promise<void> {
     // Set RPC handlers
     apiMachine.setRPCHandlers({
       spawnSession,
-      resumeSession,
+      resumeSession: guardedResumeSession,
       stopSession,
       requestShutdown: () => requestShutdown('happy-app')
     });
@@ -907,6 +1001,15 @@ export async function startDaemon(): Promise<void> {
       }
 
       // Prune stale sessions
+      const closedTmuxSessions = await reapClosedTmuxSessions({
+        sessions: pidToTrackedSession,
+        isWindowAlive: (sessionIdentifier) => getTmuxUtilities().isWindowAlive(sessionIdentifier),
+        onSessionExited: (pid) => onChildExited(pid),
+      });
+      if (closedTmuxSessions > 0) {
+        logger.debug(`[DAEMON RUN] Removed ${closedTmuxSessions} naturally closed tmux session(s)`);
+      }
+
       for (const [pid, _] of pidToTrackedSession.entries()) {
         try {
           // Check if process is still alive (signal 0 doesn't kill, just checks)
@@ -915,6 +1018,29 @@ export async function startDaemon(): Promise<void> {
           // Process is dead, remove from tracking
           logger.debug(`[DAEMON RUN] Removing stale session with PID ${pid} (process no longer exists)`);
           pidToTrackedSession.delete(pid);
+        }
+      }
+
+      if (sessionIdleTimeoutMs !== undefined) {
+        try {
+          const idleCleanup = await reapIdleDaemonSessions({
+            sessions: getCurrentChildren(),
+            timeoutMs: sessionIdleTimeoutMs,
+            fetchLatestMessageAt: (sessionId) => api.getLatestSessionMessageAt(sessionId),
+            isCurrent: (session) => pidToTrackedSession.get(session.pid) === session,
+            deactivateSession: (sessionId) => api.deactivateSession(sessionId),
+            stopSession,
+          });
+          if (idleCleanup.stopped > 0 || idleCleanup.errors.length > 0) {
+            logger.debug(
+              `[DAEMON RUN] Idle cleanup stopped ${idleCleanup.stopped} daemon session(s)`,
+              idleCleanup.errors,
+            );
+          }
+        } catch (error) {
+          // A resource-policy check must never take down the daemon. Network
+          // and stop failures are retried on the next heartbeat.
+          logger.debug('[DAEMON RUN] Idle cleanup failed open', error);
         }
       }
 
@@ -937,6 +1063,10 @@ export async function startDaemon(): Promise<void> {
         logger.debug('[DAEMON RUN] Daemon bundle replaced on disk, handing off to new daemon');
 
         clearInterval(restartOnStaleVersionAndHeartbeat);
+
+        // Detached agent processes otherwise survive this daemon and are
+        // reparented to PID 1. SIGTERM leaves their Happy rows resumable.
+        await terminateOwnedSessionTrees('Bundle replacement cleanup');
 
         // Release ownership BEFORE spawning the new daemon. Otherwise the spawned
         // `happy daemon start` reads our still-present daemon.state.json, sees
@@ -1012,6 +1142,8 @@ export async function startDaemon(): Promise<void> {
 
       // Give time for metadata update to send
       await new Promise(resolve => setTimeout(resolve, 100));
+
+      await terminateOwnedSessionTrees('Daemon shutdown cleanup');
 
       apiMachine.shutdown();
       await stopControlServer();

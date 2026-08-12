@@ -5,7 +5,7 @@
  * They do NOT require tmux to be installed on the system.
  * All tests mock environment variables and test string parsing only.
  */
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
     parseTmuxSessionIdentifier,
     formatTmuxSessionIdentifier,
@@ -146,6 +146,33 @@ describe('formatTmuxSessionIdentifier', () => {
             pane: '3'
         };
         expect(formatTmuxSessionIdentifier(identifier)).toBe('my.test_session-1:my_test-window-2.3');
+    });
+});
+
+describe('TmuxUtilities.isWindowAlive', () => {
+    it('targets the tracked window and reports a missing window as closed', async () => {
+        const utils = new TmuxUtilities();
+        const executeTmuxCommand = vi.spyOn(utils, 'executeTmuxCommand')
+            .mockResolvedValue({
+                returncode: 1,
+                stdout: '',
+                stderr: 'can\'t find window',
+                command: [],
+            });
+
+        await expect(utils.isWindowAlive('work:happy-1234-claude')).resolves.toBe(false);
+        expect(executeTmuxCommand).toHaveBeenCalledWith(
+            ['display-message', '-p', '-F', '#{window_id}'],
+            'work',
+            'happy-1234-claude',
+        );
+    });
+
+    it('does not treat a failed tmux query as a closed window', async () => {
+        const utils = new TmuxUtilities();
+        vi.spyOn(utils, 'executeTmuxCommand').mockResolvedValue(null);
+
+        await expect(utils.isWindowAlive('work:happy-1234-claude')).resolves.toBeUndefined();
     });
 });
 

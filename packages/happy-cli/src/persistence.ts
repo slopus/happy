@@ -31,12 +31,19 @@ export const SandboxConfigSchema = z.object({
 
 export type SandboxConfig = z.infer<typeof SandboxConfigSchema>;
 
+export const DaemonSessionLimitsSchema = z.object({
+  sessionIdleTimeoutMinutes: z.number().int().positive().optional(),
+  maxConcurrentSessions: z.number().int().positive().optional(),
+});
+
+export type DaemonSessionLimits = z.infer<typeof DaemonSessionLimitsSchema>;
+
 // Settings schema version: Integer for overall Settings structure compatibility
 // Incremented when Settings structure changes (e.g., adding profiles array was v1→v2)
 // Used for migration logic in readSettings()
 export const SUPPORTED_SCHEMA_VERSION = 2;
 
-interface Settings {
+interface Settings extends DaemonSessionLimits {
   schemaVersion: number
   onboardingCompleted: boolean
   machineId?: string
@@ -110,6 +117,16 @@ export async function readSettings(): Promise<Settings> {
       } catch (error: any) {
         logger.warn(`⚠️ Invalid sandbox config - skipping. Error: ${error.message}`);
         migrated.sandboxConfig = undefined;
+      }
+    }
+
+    for (const key of ['sessionIdleTimeoutMinutes', 'maxConcurrentSessions'] as const) {
+      const parsed = DaemonSessionLimitsSchema.shape[key].safeParse(migrated[key]);
+      if (parsed.success) {
+        migrated[key] = parsed.data;
+      } else {
+        logger.warn(`⚠️ Invalid ${key} - disabling it. Error: ${parsed.error.message}`);
+        migrated[key] = undefined;
       }
     }
 

@@ -19,6 +19,7 @@ import { useSession } from '@/sync/storage';
 import { DuplicateSheet } from '@/components/DuplicateSheet';
 import type { SessionActionShortcutId } from '@/keyboard/shortcuts';
 import { isRigMetadata } from '@/sync/rig';
+import { getSessionResumeFallback } from '@/utils/sessionResumeFallback';
 
 export interface SessionActionItem {
     id: SessionActionShortcutId;
@@ -185,19 +186,22 @@ export function useSessionQuickActions(
             sessionId: session.id,
             model: modeMeta.model ?? undefined,
             permissionMode: modeMeta.permissionMode,
+            effort: modeMeta.effort ?? undefined,
+            fallback: getSessionResumeFallback(session.metadata),
         });
 
         switch (result.type) {
             case 'success': {
-                // Session reconnects to the same ID, so messages are preserved.
-                // Refresh to pick up the updated session state.
+                // Usually this reconnects the same Happy ID. If the daemon has
+                // no local reconnect key, it may instead continue the provider
+                // conversation in a fresh Happy row and return that new ID.
                 await sync.refreshSessions();
 
                 if (session.permissionMode) {
                     sessionSetAgentModes(result.sessionId, { permissionMode: session.permissionMode });
                 }
-                // Model / effort picks survive resume on their own — they live
-                // in the session's synced metadata (#1492).
+                // Model / effort picks survive in-place resume through synced
+                // metadata (#1492), and the fallback spawn receives them above.
 
                 navigateToSession(result.sessionId);
                 return;

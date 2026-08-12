@@ -22,6 +22,8 @@ export interface TrackedSession {
   happySessionMetadataFromLocalWebhook?: Metadata;
   encryption?: SessionEncryptionData;
   pid: number;
+  /** Local process launch time, used as the idle baseline before the first message. */
+  startedAt?: number;
   childProcess?: ChildProcess;
   error?: string;
   directoryCreated?: boolean;

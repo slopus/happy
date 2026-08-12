@@ -241,8 +241,29 @@ export async function claudeLocal(opts: {
 
             // Add custom Claude arguments
             if (opts.claudeArgs) {
-                args.push(...opts.claudeArgs)
+                for (let i = 0; i < opts.claudeArgs.length; i += 1) {
+                    const arg = opts.claudeArgs[i];
+                    if (arg === '--setting-sources') {
+                        // Consume both the option and its value. Happy enforces
+                        // its own empty source list below.
+                        i += 1;
+                        continue;
+                    }
+                    if (arg.startsWith('--setting-sources=')) {
+                        continue;
+                    }
+                    args.push(arg);
+                }
             }
+
+            // Happy sets cwd to a potentially untrusted workspace. Disable all
+            // filesystem settings sources so repository hooks/settings cannot
+            // execute before a model tool permission is requested. The empty
+            // value is the CLI equivalent of SDK settingSources: [].
+            args.push('--setting-sources=');
+            // Keep only the MCP configuration Happy passed explicitly above;
+            // do not discover workspace .mcp.json or settings/plugin MCPs.
+            args.push('--strict-mcp-config');
 
             // Add hook settings for session tracking (when available)
             if (opts.hookSettingsPath) {

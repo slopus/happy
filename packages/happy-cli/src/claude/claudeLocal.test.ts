@@ -248,6 +248,34 @@ describe('claudeLocal --continue handling', () => {
         expect(spawnArgs).toContain('-r');
     });
 
+    it('isolates filesystem settings and MCP discovery while preserving Happy config', async () => {
+        await claudeLocal({
+            abort: new AbortController().signal,
+            sessionId: null,
+            path: '/tmp/untrusted-repository',
+            onSessionFound,
+            claudeArgs: ['--setting-sources', 'project'],
+            hookSettingsPath: '/tmp/happy-hook-settings.json',
+            mcpServers: {
+                happy: { type: 'http', url: 'http://127.0.0.1:1234' },
+            },
+        });
+
+        const spawnArgs = mockSpawn.mock.calls[0][1] as string[];
+        expect(spawnArgs).toContain('--setting-sources=');
+        expect(spawnArgs).not.toContain('--setting-sources');
+        expect(spawnArgs).not.toContain('project');
+        expect(spawnArgs).toContain('--strict-mcp-config');
+        expect(spawnArgs).toContain('--mcp-config');
+        expect(spawnArgs).toContain(JSON.stringify({
+            mcpServers: {
+                happy: { type: 'http', url: 'http://127.0.0.1:1234' },
+            },
+        }));
+        expect(spawnArgs).toContain('--settings');
+        expect(spawnArgs).toContain('/tmp/happy-hook-settings.json');
+    });
+
     it('should initialize sandbox, wrap command, and cleanup on exit', async () => {
         await claudeLocal({
             abort: new AbortController().signal,

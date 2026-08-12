@@ -41,7 +41,6 @@ export interface QueryOptions {
     resume?: string
     model?: string
     fallbackModel?: string
-    strictMcpConfig?: boolean
     canCallTool?: CanCallToolCallback
     /** Path to a settings JSON file to pass to Claude via --settings */
     settingsPath?: string

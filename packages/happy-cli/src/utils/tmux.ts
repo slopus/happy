@@ -908,6 +908,35 @@ export class TmuxUtilities {
     }
 
     /**
+     * Check whether a tracked tmux window still exists. `undefined` means the
+     * tmux query itself failed, so callers can avoid treating an outage as a
+     * naturally-exited session.
+     */
+    async isWindowAlive(sessionIdentifier: string): Promise<boolean | undefined> {
+        try {
+            const parsed = parseTmuxSessionIdentifier(sessionIdentifier);
+            if (!parsed.window) {
+                throw new TmuxSessionIdentifierError(`Window identifier required: ${sessionIdentifier}`);
+            }
+
+            const result = await this.executeTmuxCommand(
+                ['display-message', '-p', '-F', '#{window_id}'],
+                parsed.session,
+                parsed.window,
+            );
+            if (!result) return undefined;
+            return result.returncode === 0;
+        } catch (error) {
+            if (error instanceof TmuxSessionIdentifierError) {
+                logger.debug(`[TMUX] Invalid window identifier: ${error.message}`);
+            } else {
+                logger.debug('[TMUX] Error checking window:', error);
+            }
+            return undefined;
+        }
+    }
+
+    /**
      * List windows in a session
      */
     async listWindows(sessionName?: string): Promise<string[]> {

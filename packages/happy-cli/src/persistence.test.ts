@@ -2,14 +2,16 @@ import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSy
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { acquireDaemonLock, clearDaemonState, releaseDaemonLock, SandboxConfigSchema, writeDaemonState } from './persistence';
+import { acquireDaemonLock, clearDaemonState, DaemonSessionLimitsSchema, readSettings, releaseDaemonLock, SandboxConfigSchema, writeDaemonState } from './persistence';
 
 const mockConfiguration = vi.hoisted(() => ({
     daemonLockFile: '',
     daemonStateFile: '',
+    happyHomeDir: '',
     isDaemonProcess: false,
     logsDir: '/tmp',
     sessionsFile: '',
+    settingsFile: '',
 }));
 
 vi.mock('@/configuration', () => ({
@@ -83,6 +85,66 @@ describe('SandboxConfigSchema', () => {
                 denyReadPaths: [123],
             }),
         ).toThrow();
+    });
+});
+
+describe('DaemonSessionLimitsSchema', () => {
+    it('accepts optional positive integer limits', () => {
+        expect(DaemonSessionLimitsSchema.parse({})).toEqual({});
+        expect(DaemonSessionLimitsSchema.parse({
+            sessionIdleTimeoutMinutes: 60,
+            maxConcurrentSessions: 3,
+        })).toEqual({
+            sessionIdleTimeoutMinutes: 60,
+            maxConcurrentSessions: 3,
+        });
+    });
+
+    it.each([
+        { sessionIdleTimeoutMinutes: 0 },
+        { sessionIdleTimeoutMinutes: 1.5 },
+        { maxConcurrentSessions: -1 },
+        { maxConcurrentSessions: '3' },
+    ])('rejects invalid limits: %j', (value) => {
+        expect(() => DaemonSessionLimitsSchema.parse(value)).toThrow();
+    });
+});
+
+describe('daemon session limit settings', () => {
+    let testDir: string;
+
+    beforeEach(() => {
+        testDir = mkdtempSync(join(tmpdir(), 'happy-daemon-settings-'));
+        mockConfiguration.happyHomeDir = testDir;
+        mockConfiguration.settingsFile = join(testDir, 'settings.json');
+    });
+
+    afterEach(() => {
+        rmSync(testDir, { recursive: true, force: true });
+    });
+
+    it('reads valid limits from settings.json', async () => {
+        writeFileSync(mockConfiguration.settingsFile, JSON.stringify({
+            sessionIdleTimeoutMinutes: 45,
+            maxConcurrentSessions: 4,
+        }));
+
+        await expect(readSettings()).resolves.toMatchObject({
+            sessionIdleTimeoutMinutes: 45,
+            maxConcurrentSessions: 4,
+        });
+    });
+
+    it('disables only an invalid limit and preserves the valid sibling', async () => {
+        writeFileSync(mockConfiguration.settingsFile, JSON.stringify({
+            sessionIdleTimeoutMinutes: 0,
+            maxConcurrentSessions: 4,
+        }));
+
+        await expect(readSettings()).resolves.toMatchObject({
+            sessionIdleTimeoutMinutes: undefined,
+            maxConcurrentSessions: 4,
+        });
     });
 });
 

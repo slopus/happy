@@ -596,14 +596,17 @@ ${chalk.bold('happy daemon')} - Daemon management
 
 ${chalk.bold('Usage:')}
   happy daemon start              Start the daemon (detached)
-  happy daemon stop               Stop the daemon (sessions stay alive)
+  happy daemon stop               Stop the daemon and its managed processes
   happy daemon status             Show daemon status
   happy daemon list               List active sessions
+  happy daemon stop-session ID    Stop one managed session
 
   If you want to kill all happy related processes run 
   ${chalk.cyan('happy doctor clean')}
 
-${chalk.bold('Note:')} The daemon runs in the background and manages Claude sessions.
+${chalk.bold('Resource limits:')} Add optional ${chalk.cyan('sessionIdleTimeoutMinutes')} and
+  ${chalk.cyan('maxConcurrentSessions')} fields to ~/.happy/settings.json, then restart
+  the daemon. Stopped sessions remain listed and resumable.
 
 ${chalk.bold('To clean up runaway processes:')} Use ${chalk.cyan('happy doctor clean')}
 `)

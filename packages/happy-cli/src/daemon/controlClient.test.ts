@@ -182,7 +182,7 @@ describe('checkIfDaemonRunningAndCleanupStaleState', () => {
     }));
 
     const stopping = stopDaemon();
-    await vi.advanceTimersByTimeAsync(2_100);
+    await vi.advanceTimersByTimeAsync(25_100);
     await stopping;
 
     expect(process.kill).toHaveBeenCalledWith(state.pid, 'SIGKILL');

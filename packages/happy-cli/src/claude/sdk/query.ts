@@ -41,7 +41,14 @@ export function query(params: { prompt: QueryPrompt; options?: QueryOptions }): 
         mcpServers: opts?.mcpServers as Options['mcpServers'],
         systemPrompt,
         settings: opts?.settingsPath,
-        strictMcpConfig: opts?.strictMcpConfig,
+        // Happy is an embedding host, so repository-controlled Claude
+        // configuration must never execute implicitly when we set cwd to a
+        // workspace. The explicit Happy hook settings above remain in the
+        // separate flag-settings layer.
+        settingSources: [],
+        // Use only MCP servers that Happy passes explicitly. This blocks
+        // automatic discovery from .mcp.json, settings, plugins, and agents.
+        strictMcpConfig: true,
         sessionId: undefined,
         effort: opts?.effort,
     }
