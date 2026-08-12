@@ -198,6 +198,7 @@
     "react-simple-code-editor": "^0.14.1",
     "react-syntax-highlighter": "^15.6.1",
     "react-textarea-autosize": "^8.5.9",
+    "remend": "1.3.0",
     "resolve-path": "^1.4.0",
     "rn-encryption": "^2.5.0",
     "socket.io-client": "^4.8.1",

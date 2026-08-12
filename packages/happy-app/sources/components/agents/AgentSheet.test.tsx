@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
     launchAgent: vi.fn(),
     routerNavigate: vi.fn(),
     builtinAgent: null as AgentLauncher | null,
+    relationshipAgent: null as AgentLauncher | null,
 }));
 
 vi.mock('react-native', () => ({
@@ -69,6 +70,7 @@ vi.mock('./launchAgent', async () => {
 });
 vi.mock('./builtinAgents', () => ({
     createAppBuilderAgent: () => mocks.builtinAgent,
+    createRelationshipAdvisorAgent: () => mocks.relationshipAgent,
     getAgentSubtitle: (agent: AgentLauncher) => agent.path,
 }));
 
@@ -84,6 +86,16 @@ const agent: AgentLauncher = {
     imageStyleIds: [],
     imageVariantsPerStyle: 1,
     presets: [],
+};
+
+const cloudRelationshipAgent: AgentLauncher = {
+    ...agent,
+    id: 'builtin:relationship-advisor',
+    name: '狗头军师',
+    machineId: '',
+    path: '云端极速对话',
+    runtime: 'relationship-advisor',
+    builtin: true,
 };
 
 const machine: Machine = {
@@ -120,6 +132,7 @@ describe('AgentSheet', () => {
         mocks.machines = [machine];
         mocks.entering = false;
         mocks.builtinAgent = null;
+        mocks.relationshipAgent = cloudRelationshipAgent;
         mocks.enter.mockResolvedValue({ type: 'success', sessionId: 'session-1' });
         (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
         consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation((...values: unknown[]) => {
@@ -185,6 +198,25 @@ describe('AgentSheet', () => {
         expect(mocks.launchAgent).toHaveBeenCalledTimes(1);
         expect(mocks.launchAgent.mock.calls[0][0]).toBe(builtinAgent);
         expect(mocks.enter).not.toHaveBeenCalled();
+        act(() => renderer.unmount());
+    });
+
+    it('keeps the cloud relationship advisor available without a machine', async () => {
+        mocks.agents = [];
+        mocks.machines = [];
+        mocks.relationshipAgent = cloudRelationshipAgent;
+        const onClose = vi.fn();
+        let renderer: any;
+        act(() => {
+            renderer = TestRenderer.create(<AgentSheet visible onClose={onClose} />);
+        });
+
+        const row = findPressableByText(renderer.root, cloudRelationshipAgent.name);
+        expect(row.props.disabled).toBe(false);
+        await act(async () => row.props.onPress());
+
+        expect(onClose).toHaveBeenCalledTimes(1);
+        expect(mocks.launchAgent).toHaveBeenCalledWith(cloudRelationshipAgent, expect.anything(), expect.any(Function));
         act(() => renderer.unmount());
     });
 

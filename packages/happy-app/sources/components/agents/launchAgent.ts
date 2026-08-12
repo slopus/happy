@@ -13,6 +13,7 @@ export interface AgentLauncher {
     permissionMode?: PermissionModeKey;
     modelMode?: string;
     effortLevel?: string | null;
+    runtime?: 'relationship-advisor';
     builtin?: boolean;
 }
 
@@ -41,6 +42,10 @@ export function launchAgent(
     navigate: (path: string) => void,
     options?: { initialInput?: string },
 ): void {
+    if (agent.runtime === 'relationship-advisor') {
+        navigate('/relationship-advisor');
+        return;
+    }
     draft.setMachineId(agent.machineId);
     draft.setPath(agent.path);
     const agentType = resolveAgentTypeForLaunch(agent);

@@ -15,6 +15,19 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 }
 
 export const en = {
+    relationshipAdvisor: {
+        title: 'Relationship Advisor',
+        cloudSubtitle: 'Fast cloud chat',
+        placeholder: 'Send what they said, a chat screenshot, or the reply you want to write',
+        clear: 'Clear',
+        clearAccessibility: 'Clear conversation',
+        clearConfirmTitle: 'Clear this conversation?',
+        clearConfirmMessage: 'Saved Relationship Advisor messages will be deleted from this device.',
+        emptyPrompt: "Share the situation and let's work out what to say.",
+        imageCount: ({ count }: { count: number }) => `${count} image${count === 1 ? '' : 's'}`,
+        unavailable: "Can't connect right now. Try again soon.",
+        stopAccessibility: 'Stop generating',
+    },
     healthPanel: {
         title: 'Health Check-in',
         todayTitle: "Today's Check-in",

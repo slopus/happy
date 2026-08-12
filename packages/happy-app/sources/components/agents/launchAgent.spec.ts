@@ -72,4 +72,21 @@ describe('launchAgent', () => {
         expect(draft.setModelMode).toHaveBeenCalledWith('default');
         expect(draft.setEffortLevel).toHaveBeenCalledWith(null);
     });
+
+    it('opens the cloud relationship advisor without touching machine session draft', () => {
+        const draft = {
+            setMachineId: vi.fn(),
+            setPath: vi.fn(),
+            setSessionType: vi.fn(),
+            setInput: vi.fn(),
+            setAgentType: vi.fn(),
+        };
+        const navigate = vi.fn();
+
+        launchAgent({ ...agent, runtime: 'relationship-advisor' }, draft, navigate);
+
+        expect(draft.setMachineId).not.toHaveBeenCalled();
+        expect(draft.setPath).not.toHaveBeenCalled();
+        expect(navigate).toHaveBeenCalledWith('/relationship-advisor');
+    });
 });

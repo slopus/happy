@@ -15,6 +15,19 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
  * Must match the exact structure of the English translations
  */
 export const ca: TranslationStructure = {
+    relationshipAdvisor: {
+        title: 'Conseller sentimental',
+        cloudSubtitle: 'Xat ràpid al núvol',
+        placeholder: 'Envia què t\'ha dit, una captura del xat o la resposta que vols escriure',
+        clear: 'Esborra',
+        clearAccessibility: 'Esborra la conversa',
+        clearConfirmTitle: 'Voleu esborrar aquesta conversa?',
+        clearConfirmMessage: 'Els missatges desats del conseller sentimental se suprimiran d’aquest dispositiu.',
+        emptyPrompt: 'Explica la situació i veurem directament què pots respondre.',
+        imageCount: ({ count }: { count: number }) => `${count} ${count === 1 ? 'imatge' : 'imatges'}`,
+        unavailable: 'Ara mateix no es pot connectar. Torna-ho a provar més tard.',
+        stopAccessibility: 'Atura la generació',
+    },
     healthPanel: {
         title: 'Health Check-in',
         todayTitle: "Today's Check-in",

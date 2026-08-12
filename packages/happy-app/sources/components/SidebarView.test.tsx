@@ -258,6 +258,10 @@ describe('SidebarView Agent space exit', () => {
         expect(
             secondary.findByProps({ testID: 'sidebar-my-agents-button' }).props.style({ pressed: false }),
         ).toContainEqual(expect.objectContaining({ marginHorizontal: 16 }));
+        expect(renderer.root.findByType('AgentSheet').props.visible).toBe(false);
+        act(() => secondary.findByProps({ testID: 'sidebar-my-agents-button' }).props.onPress());
+        expect(renderer.root.findByType('AgentSheet').props.visible).toBe(true);
+        expect(mocks.navigate).not.toHaveBeenCalledWith('/settings/my-agents');
 
         act(() => renderer.unmount());
     });

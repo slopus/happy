@@ -29,6 +29,11 @@ export const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB — image lane
 export const MAX_MEDIA_FILE_SIZE = 50 * 1024 * 1024; // 50MB — audio/video lane
 export { MAX_PDF_FILE_SIZE };
 
+interface UseImagePickerOptions {
+    maxAttachments?: number;
+    maxImageSizeBytes?: number;
+}
+
 export type { AttachmentPreview };
 
 type UseImagePickerResult = {
@@ -70,7 +75,10 @@ async function getActualDocumentSize(asset: DocumentPicker.DocumentPickerAsset):
     return null;
 }
 
-export function useImagePicker(): UseImagePickerResult {
+export function useImagePicker(options: UseImagePickerOptions = {}): UseImagePickerResult {
+    const maxAttachments = Math.max(1, Math.min(MAX_IMAGES_PER_MESSAGE, options.maxAttachments ?? MAX_IMAGES_PER_MESSAGE));
+    const maxImageSizeBytes = Math.max(1, Math.min(MAX_FILE_SIZE, options.maxImageSizeBytes ?? MAX_FILE_SIZE));
+    const maxImageSizeMb = Math.max(1, Math.floor(maxImageSizeBytes / 1024 / 1024));
     const [selectedImages, setSelectedImages] = useState<AttachmentPreview[]>([]);
     // Ref tracks current count to avoid stale closures on rapid taps.
     const selectedCountRef = useRef(0);
@@ -97,11 +105,11 @@ export function useImagePicker(): UseImagePickerResult {
         const hasPermission = await requestPermission();
         if (!hasPermission) return;
 
-        const remaining = MAX_IMAGES_PER_MESSAGE - selectedCountRef.current;
+        const remaining = maxAttachments - selectedCountRef.current;
         if (remaining <= 0) {
             Modal.alert(
                 t('imageUpload.limitTitle'),
-                t('imageUpload.limitMessage', { max: MAX_IMAGES_PER_MESSAGE }),
+                t('imageUpload.limitMessage', { max: maxAttachments }),
                 [{ text: t('common.ok') }],
             );
             return;
@@ -126,10 +134,10 @@ export function useImagePicker(): UseImagePickerResult {
         let unreadableCount = 0;
 
         for (const asset of assets) {
-            if ((asset.fileSize ?? 0) > MAX_FILE_SIZE) {
+            if ((asset.fileSize ?? 0) > maxImageSizeBytes) {
                 Modal.alert(
                     t('imageUpload.fileTooLargeTitle'),
-                    t('imageUpload.fileTooLargeMessage', { name: asset.fileName ?? 'image', maxMb: 10 }),
+                    t('imageUpload.fileTooLargeMessage', { name: asset.fileName ?? 'image', maxMb: maxImageSizeMb }),
                     [{ text: t('common.ok') }],
                 );
                 continue;
@@ -145,10 +153,10 @@ export function useImagePicker(): UseImagePickerResult {
                 continue;
             }
 
-            if (normalized.size > MAX_FILE_SIZE) {
+            if (normalized.size > maxImageSizeBytes) {
                 Modal.alert(
                     t('imageUpload.fileTooLargeTitle'),
-                    t('imageUpload.fileTooLargeMessage', { name: asset.fileName ?? 'image', maxMb: 10 }),
+                    t('imageUpload.fileTooLargeMessage', { name: asset.fileName ?? 'image', maxMb: maxImageSizeMb }),
                     [{ text: t('common.ok') }],
                 );
                 continue;
@@ -180,16 +188,16 @@ export function useImagePicker(): UseImagePickerResult {
         }
 
         if (previews.length > 0) {
-            setSelectedImages(prev => [...prev, ...previews].slice(0, MAX_IMAGES_PER_MESSAGE));
+            setSelectedImages(prev => [...prev, ...previews].slice(0, maxAttachments));
         }
-    }, [requestPermission]);
+    }, [maxAttachments, maxImageSizeBytes, maxImageSizeMb, requestPermission]);
 
     const pickMedia = useCallback(async () => {
-        const remaining = MAX_IMAGES_PER_MESSAGE - selectedCountRef.current;
+        const remaining = maxAttachments - selectedCountRef.current;
         if (remaining <= 0) {
             Modal.alert(
                 t('imageUpload.limitTitle'),
-                t('imageUpload.limitMessage', { max: MAX_IMAGES_PER_MESSAGE }),
+                t('imageUpload.limitMessage', { max: maxAttachments }),
                 [{ text: t('common.ok') }],
             );
             return;
@@ -230,16 +238,16 @@ export function useImagePicker(): UseImagePickerResult {
         }
 
         if (previews.length > 0) {
-            setSelectedImages(prev => [...prev, ...previews].slice(0, MAX_IMAGES_PER_MESSAGE));
+            setSelectedImages(prev => [...prev, ...previews].slice(0, maxAttachments));
         }
-    }, []);
+    }, [maxAttachments]);
 
     const pickPdf = useCallback(async () => {
-        const remaining = MAX_IMAGES_PER_MESSAGE - selectedCountRef.current;
+        const remaining = maxAttachments - selectedCountRef.current;
         if (remaining <= 0) {
             Modal.alert(
                 t('imageUpload.limitTitle'),
-                t('imageUpload.limitMessage', { max: MAX_IMAGES_PER_MESSAGE }),
+                t('imageUpload.limitMessage', { max: maxAttachments }),
                 [{ text: t('common.ok') }],
             );
             return;
@@ -292,9 +300,9 @@ export function useImagePicker(): UseImagePickerResult {
         }
 
         if (previews.length > 0) {
-            setSelectedImages(prev => [...prev, ...previews].slice(0, MAX_IMAGES_PER_MESSAGE));
+            setSelectedImages(prev => [...prev, ...previews].slice(0, maxAttachments));
         }
-    }, []);
+    }, [maxAttachments]);
 
     const pickAttachment = useCallback(() => {
         // Card-style source chooser — see AttachmentSourceSheet.
@@ -334,11 +342,11 @@ export function useImagePicker(): UseImagePickerResult {
 
     const addImages = useCallback((images: AttachmentPreview[]) => {
         setSelectedImages(prev => {
-            const remaining = MAX_IMAGES_PER_MESSAGE - prev.length;
+            const remaining = maxAttachments - prev.length;
             if (remaining <= 0) return prev;
             return [...prev, ...images.slice(0, remaining)];
         });
-    }, []);
+    }, [maxAttachments]);
 
     return { selectedImages, pickImages, pickMedia, pickPdf, pickAttachment, removeImage, clearImages, addImages };
 }

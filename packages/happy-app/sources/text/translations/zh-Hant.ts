@@ -17,6 +17,19 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 }
 
 export const zhHant: TranslationStructure = {
+    relationshipAdvisor: {
+        title: '狗頭軍師',
+        cloudSubtitle: '雲端極速對話',
+        placeholder: '把她說的話、聊天截圖或你想回覆的內容傳來',
+        clear: '清空',
+        clearAccessibility: '清空對話',
+        clearConfirmTitle: '清空這段對話？',
+        clearConfirmMessage: '已儲存的狗頭軍師訊息會從這台裝置刪除。',
+        emptyPrompt: '把局面傳來，我們直接看怎麼回。',
+        imageCount: ({ count }: { count: number }) => `${count} 張圖片`,
+        unavailable: '暫時連不上，請稍後再試',
+        stopAccessibility: '停止生成',
+    },
     healthPanel: {
         title: '健康打卡',
         todayTitle: '今日打卡',

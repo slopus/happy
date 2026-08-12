@@ -2,6 +2,25 @@ import type { Machine } from '@/sync/storageTypes';
 import type { AgentLauncher } from './launchAgent';
 
 export const APP_BUILDER_AGENT_ID = 'builtin:app-builder';
+export const RELATIONSHIP_ADVISOR_AGENT_ID = 'builtin:relationship-advisor';
+
+export function createRelationshipAdvisorAgent(options: { title: string; subtitle: string }): AgentLauncher {
+    return {
+        id: RELATIONSHIP_ADVISOR_AGENT_ID,
+        name: options.title,
+        glyph: '聊',
+        color: '#D65A4A',
+        machineId: '',
+        path: options.subtitle,
+        presets: [],
+        kind: 'standard',
+        spaceType: 'default',
+        imageStyleIds: [],
+        imageVariantsPerStyle: 1,
+        runtime: 'relationship-advisor',
+        builtin: true,
+    };
+}
 
 // 内置 App 生成 agent 的两段预设不再内联整套工作流，而是「意图 + 加载 skill + 硬确认门」：
 // app-flow（全局安装的引擎，按需拉 build/delivery/reviewer 子能力）驱动全程，

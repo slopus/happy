@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { APP_BUILDER_AGENT_ID, createAppBuilderAgent } from './builtinAgents';
+import {
+    APP_BUILDER_AGENT_ID,
+    RELATIONSHIP_ADVISOR_AGENT_ID,
+    createAppBuilderAgent,
+    createRelationshipAdvisorAgent,
+} from './builtinAgents';
 import type { Machine } from '@/sync/storageTypes';
 
 function machine(id: string, active: boolean, homeDir?: string): Machine {
@@ -56,5 +61,23 @@ describe('createAppBuilderAgent', () => {
 
     it('returns null without machines', () => {
         expect(createAppBuilderAgent({ machines: [], ...labels })).toBeNull();
+    });
+});
+
+describe('createRelationshipAdvisorAgent', () => {
+    it('creates a machine-independent cloud chat launcher', () => {
+        const agent = createRelationshipAdvisorAgent({
+            title: '狗头军师',
+            subtitle: '云端极速对话',
+        });
+
+        expect(agent).toEqual(expect.objectContaining({
+            id: RELATIONSHIP_ADVISOR_AGENT_ID,
+            name: '狗头军师',
+            path: '云端极速对话',
+            machineId: '',
+            runtime: 'relationship-advisor',
+            builtin: true,
+        }));
     });
 });

@@ -10,7 +10,7 @@ import { useNewSessionDraft } from '@/hooks/useNewSessionDraft';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
 import { launchAgent, type AgentLauncher } from './launchAgent';
-import { createAppBuilderAgent, getAgentSubtitle } from './builtinAgents';
+import { createAppBuilderAgent, createRelationshipAdvisorAgent, getAgentSubtitle } from './builtinAgents';
 import { useEnterAgentSpace } from '@/hooks/useEnterAgentSpace';
 import { useAgentSpace } from '@/hooks/useAgentSpace';
 
@@ -28,6 +28,12 @@ export const AgentSheet = React.memo(({ visible, onClose }: { visible: boolean; 
     const draft = useNewSessionDraft();
     const { entering, enter } = useEnterAgentSpace();
     const { enter: enterSpace } = useAgentSpace();
+    const relationshipAdvisorTitle = t('relationshipAdvisor.title');
+    const relationshipAdvisorSubtitle = t('relationshipAdvisor.cloudSubtitle');
+    const builtinRelationshipAdvisor = React.useMemo(() => createRelationshipAdvisorAgent({
+        title: relationshipAdvisorTitle,
+        subtitle: relationshipAdvisorSubtitle,
+    }), [relationshipAdvisorSubtitle, relationshipAdvisorTitle]);
     const builtinAppAgent = React.useMemo(() => createAppBuilderAgent({
         machines,
         preferredMachineId: draft.selectedMachineId,
@@ -37,8 +43,8 @@ export const AgentSheet = React.memo(({ visible, onClose }: { visible: boolean; 
         presetBugfixLabel: t('agents.appBuilderPresetBugfix'),
     }), [draft.selectedMachineId, draft.selectedPath, machines]);
     const visibleAgents = React.useMemo(
-        () => (builtinAppAgent ? [builtinAppAgent, ...agents] : agents),
-        [builtinAppAgent, agents],
+        () => [builtinRelationshipAdvisor, ...(builtinAppAgent ? [builtinAppAgent] : []), ...agents],
+        [builtinAppAgent, builtinRelationshipAdvisor, agents],
     );
 
     const goManage = React.useCallback(() => {
@@ -100,13 +106,19 @@ export const AgentSheet = React.memo(({ visible, onClose }: { visible: boolean; 
                     <ScrollView style={styles.list} contentContainerStyle={styles.listContent}>
                         {visibleAgents.map((agent) => {
                             const machine = machines.find((m) => m.id === agent.machineId);
-                            const online = !!machine && isMachineOnline(machine);
-                            const missing = !machine;
-                            const subtitle = getAgentSubtitle(agent, machine, missing ? t('agents.machineMissing') : agent.machineId);
+                            const isCloudAdvisor = agent.runtime === 'relationship-advisor';
+                            const online = isCloudAdvisor || (!!machine && isMachineOnline(machine));
+                            const missing = !isCloudAdvisor && !machine;
+                            const subtitle = isCloudAdvisor
+                                ? agent.path
+                                : getAgentSubtitle(agent, machine, missing ? t('agents.machineMissing') : agent.machineId);
 
                             return (
                                 <Pressable
                                     key={agent.id}
+                                    testID={isCloudAdvisor
+                                        ? 'agent-sheet-relationship-advisor'
+                                        : `agent-sheet-agent-${agent.id}`}
                                     disabled={!online || entering}
                                     onPress={() => onPickAgent(agent)}
                                     style={({ pressed }) => [

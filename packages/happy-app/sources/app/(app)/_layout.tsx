@@ -70,6 +70,14 @@ export default function RootLayout() {
                 }}
             />
             <Stack.Screen
+                name="relationship-advisor"
+                options={{
+                    headerShown: true,
+                    headerTitle: t('relationshipAdvisor.title'),
+                    headerBackTitle: t('common.back'),
+                }}
+            />
+            <Stack.Screen
                 name="session/search"
                 options={{
                     headerShown: true,

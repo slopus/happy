@@ -15,6 +15,19 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
  * Must match the exact structure of the English translations
  */
 export const es: TranslationStructure = {
+    relationshipAdvisor: {
+        title: 'Consejero sentimental',
+        cloudSubtitle: 'Chat rápido en la nube',
+        placeholder: 'Envía lo que te dijo, una captura del chat o la respuesta que quieres escribir',
+        clear: 'Borrar',
+        clearAccessibility: 'Borrar conversación',
+        clearConfirmTitle: '¿Borrar esta conversación?',
+        clearConfirmMessage: 'Los mensajes guardados del consejero sentimental se eliminarán de este dispositivo.',
+        emptyPrompt: 'Cuéntame la situación y vemos directamente qué responder.',
+        imageCount: ({ count }: { count: number }) => `${count} ${count === 1 ? 'imagen' : 'imágenes'}`,
+        unavailable: 'No se puede conectar ahora. Inténtalo de nuevo más tarde.',
+        stopAccessibility: 'Detener la generación',
+    },
     healthPanel: {
         title: 'Health Check-in',
         todayTitle: "Today's Check-in",

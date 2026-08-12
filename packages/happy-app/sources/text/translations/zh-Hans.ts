@@ -17,6 +17,19 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 }
 
 export const zhHans: TranslationStructure = {
+    relationshipAdvisor: {
+        title: '狗头军师',
+        cloudSubtitle: '云端极速对话',
+        placeholder: '把她说的话、聊天截图或你想回的内容发来',
+        clear: '清空',
+        clearAccessibility: '清空对话',
+        clearConfirmTitle: '清空这段对话？',
+        clearConfirmMessage: '已保存的狗头军师消息会从这台设备删除。',
+        emptyPrompt: '把局面发来，我们直接看怎么回。',
+        imageCount: ({ count }: { count: number }) => `${count} 张图片`,
+        unavailable: '暂时连接不上，请稍后重试',
+        stopAccessibility: '停止生成',
+    },
     healthPanel: {
         title: '健康打卡',
         todayTitle: '今日打卡',

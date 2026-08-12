@@ -24,6 +24,7 @@ import { kvRoutes } from "./routes/kvRoutes";
 import { v3SessionRoutes } from "./routes/v3SessionRoutes";
 import { attachmentRoutes } from "./routes/attachmentRoutes";
 import { fileRoutes } from "./routes/fileRoutes";
+import { relationshipAdvisorRoutes } from "./routes/relationshipAdvisorRoutes";
 import * as path from "path";
 import * as fs from "fs";
 
@@ -95,6 +96,7 @@ export async function startApi(opts: StartApiOptions = {}) {
     kvRoutes(typed);
     v3SessionRoutes(typed);
     attachmentRoutes(typed);
+    relationshipAdvisorRoutes(typed);
 
     // Static webapp (self-host mode)
     if (opts.staticDir) {

@@ -368,7 +368,7 @@ export const SidebarView = React.memo(({
                 {/* My Agents remains available, while its add action is a compact
                     secondary affordance instead of another primary navigation row. */}
                 <Pressable
-                    onPress={() => (agents.length > 0 ? setSheetOpen(true) : go('/settings/my-agents'))}
+                    onPress={() => setSheetOpen(true)}
                     testID="sidebar-my-agents-button"
                     style={({ pressed }) => [
                         styles.agentsCard,

@@ -18,6 +18,19 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 }
 
 export const ja: TranslationStructure = {
+    relationshipAdvisor: {
+        title: '恋愛相談',
+        cloudSubtitle: 'クラウドで高速チャット',
+        placeholder: '相手の言葉、チャット画像、または送りたい返信を入力してください',
+        clear: 'クリア',
+        clearAccessibility: '会話をクリア',
+        clearConfirmTitle: 'この会話を消去しますか？',
+        clearConfirmMessage: '保存済みの恋愛相談メッセージはこの端末から削除されます。',
+        emptyPrompt: '状況を送ってください。どう返すか一緒に考えましょう。',
+        imageCount: ({ count }: { count: number }) => `画像 ${count} 枚`,
+        unavailable: '現在接続できません。しばらくしてからもう一度お試しください。',
+        stopAccessibility: '生成を停止',
+    },
     healthPanel: {
         title: 'Health Check-in',
         todayTitle: "Today's Check-in",

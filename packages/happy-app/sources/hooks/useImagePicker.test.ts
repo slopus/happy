@@ -1,14 +1,20 @@
 import * as React from 'react';
 import { act } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import { getInfoAsync } from 'expo-file-system/legacy';
+import { Modal } from '@/modal';
+import { normalizeImageForUpload } from '@/utils/normalizeImageForUpload';
 import { MAX_IMAGES_PER_MESSAGE, MAX_PDF_FILE_SIZE, useImagePicker } from './useImagePicker';
 
 // @ts-expect-error react-test-renderer has no declarations in this workspace.
 import TestRenderer from 'react-test-renderer';
 
-vi.mock('expo-image-picker', () => ({}));
+vi.mock('expo-image-picker', () => ({
+    requestMediaLibraryPermissionsAsync: vi.fn(),
+    launchImageLibraryAsync: vi.fn(),
+}));
 // Same reason as normalizeImageForUpload below: importing the real
 // expo-document-picker drags in expo-modules-core (__DEV__ undefined in node).
 vi.mock('expo-document-picker', () => ({
@@ -42,12 +48,81 @@ vi.mock('@/text', () => ({
 }));
 
 describe('useImagePicker limits', () => {
+    beforeEach(() => {
+        (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+        vi.mocked(ImagePicker.launchImageLibraryAsync).mockReset();
+        vi.mocked(normalizeImageForUpload).mockReset();
+        vi.mocked(Modal.alert).mockReset();
+    });
+
     it('allows up to 50 images per message', () => {
         expect(MAX_IMAGES_PER_MESSAGE).toBe(50);
     });
 
     it('caps PDFs at 10MB while the encrypted flow still buffers whole files', () => {
         expect(MAX_PDF_FILE_SIZE).toBe(10 * 1024 * 1024);
+    });
+
+    it('supports a smaller feature-specific attachment limit', async () => {
+        let current: ReturnType<typeof useImagePicker> | null = null;
+        function Probe() {
+            current = useImagePicker({ maxAttachments: 4 });
+            return null;
+        }
+        let renderer: any;
+        await act(async () => {
+            renderer = TestRenderer.create(React.createElement(Probe));
+        });
+        const images = Array.from({ length: 5 }, (_, index) => ({
+            id: `image-${index}`,
+            uri: `file:///image-${index}.jpg`,
+            width: 100,
+            height: 100,
+            mimeType: 'image/jpeg',
+            size: 100,
+            name: `image-${index}.jpg`,
+        }));
+
+        act(() => current?.addImages(images));
+
+        expect((current as ReturnType<typeof useImagePicker> | null)?.selectedImages).toHaveLength(4);
+        act(() => renderer.unmount());
+    });
+
+    it('rejects images above a feature-specific size limit before normalization', async () => {
+        let current: ReturnType<typeof useImagePicker> | null = null;
+        function Probe() {
+            current = useImagePicker({ maxAttachments: 4, maxImageSizeBytes: 10 * 1024 * 1024 });
+            return null;
+        }
+        vi.mocked(ImagePicker.launchImageLibraryAsync).mockResolvedValue({
+            canceled: false,
+            assets: [{
+                uri: 'file:///large.png',
+                width: 100,
+                height: 100,
+                fileName: 'large.png',
+                fileSize: 11 * 1024 * 1024,
+                mimeType: 'image/png',
+            }],
+        } as any);
+
+        let renderer: any;
+        await act(async () => {
+            renderer = TestRenderer.create(React.createElement(Probe));
+        });
+        await act(async () => {
+            await (current as ReturnType<typeof useImagePicker> | null)?.pickImages();
+        });
+
+        expect(normalizeImageForUpload).not.toHaveBeenCalled();
+        expect(Modal.alert).toHaveBeenCalledWith(
+            'imageUpload.fileTooLargeTitle',
+            'imageUpload.fileTooLargeMessage',
+            [{ text: 'common.ok' }],
+        );
+        expect((current as ReturnType<typeof useImagePicker> | null)?.selectedImages).toEqual([]);
+        act(() => renderer.unmount());
     });
 });
 

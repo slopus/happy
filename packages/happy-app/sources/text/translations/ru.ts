@@ -26,6 +26,19 @@ function plural({ count, one, few, many }: { count: number; one: string; few: st
  * Must match the exact structure of the English translations
  */
 export const ru: TranslationStructure = {
+    relationshipAdvisor: {
+        title: 'Советник по отношениям',
+        cloudSubtitle: 'Быстрый облачный чат',
+        placeholder: 'Отправьте её слова, скриншот переписки или ответ, который хотите написать',
+        clear: 'Очистить',
+        clearAccessibility: 'Очистить переписку',
+        clearConfirmTitle: 'Очистить эту переписку?',
+        clearConfirmMessage: 'Сохранённые сообщения советника по отношениям будут удалены с этого устройства.',
+        emptyPrompt: 'Опишите ситуацию, и мы сразу разберём, что ответить.',
+        imageCount: ({ count }: { count: number }) => `${count} ${plural({ count, one: 'изображение', few: 'изображения', many: 'изображений' })}`,
+        unavailable: 'Сейчас не удаётся подключиться. Попробуйте позже.',
+        stopAccessibility: 'Остановить генерацию',
+    },
     healthPanel: {
         title: 'Health Check-in',
         todayTitle: "Today's Check-in",

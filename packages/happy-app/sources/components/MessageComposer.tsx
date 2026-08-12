@@ -1168,6 +1168,9 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                                             ? 'message-composer-abort-button'
                                             : 'message-composer-send-button'}
                                         accessibilityRole="button"
+                                        accessibilityLabel={(isAbortAction || isAbortConfirmationArmed)
+                                            ? t('keyboardShortcuts.stopRunningAgent')
+                                            : t('keyboardShortcuts.sendMessage')}
                                         style={(p) => ({
                                             width: '100%',
                                             height: '100%',

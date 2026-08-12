@@ -107,3 +107,18 @@ describe('localSettings ask API config', () => {
         });
     });
 });
+
+describe('localSettings relationship advisor history', () => {
+    it('keeps a bounded device-local transcript and defaults older installs to empty', () => {
+        expect(localSettingsParse({}).relationshipAdvisorMessages).toEqual([]);
+        const messages = [{
+            id: 'message-1',
+            role: 'user' as const,
+            text: '右侧蓝色气泡是我',
+            createdAt: 1_786_400_000_000,
+            imageCount: 1,
+        }];
+
+        expect(localSettingsParse({ relationshipAdvisorMessages: messages }).relationshipAdvisorMessages).toEqual(messages);
+    });
+});
