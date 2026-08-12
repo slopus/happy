@@ -454,7 +454,7 @@ export const it: TranslationStructure = {
         enterToSendEnabled: 'Premi Invio per inviare (Maiusc+Invio per una nuova riga)',
         enterToSendDisabled: 'Invio inserisce una nuova riga',
         commandPalette: 'Palette comandi',
-        commandPaletteEnabled: 'Premi ⌘K per aprire',
+        commandPaletteEnabled: 'Premi ⌘P per aprire',
         commandPaletteDisabled: 'Accesso rapido ai comandi disabilitato',
         markdownCopyV2: 'Markdown Copy v2',
         markdownCopyV2Subtitle: 'Pressione lunga apre la finestra di copia',

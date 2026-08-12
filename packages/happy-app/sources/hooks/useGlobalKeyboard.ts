@@ -25,7 +25,7 @@ export function useGlobalKeyboard(
             const matchesKey = (character: string, code: string) => key === character || e.code === code;
             let handler: (() => void) | undefined;
 
-            if (isModifierPressed && !e.altKey && matchesKey('k', 'KeyK')) {
+            if (isModifierPressed && !e.altKey && matchesKey('p', 'KeyP')) {
                 handler = onCommandPalette;
             } else if (isModifierPressed && !e.altKey && matchesKey(',', 'Comma')) {
                 handler = options.onOpenSettings;

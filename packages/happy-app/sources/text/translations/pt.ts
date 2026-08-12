@@ -455,7 +455,7 @@ export const pt: TranslationStructure = {
         enterToSendEnabled: 'Pressione Enter para enviar (Shift+Enter para nova linha)',
         enterToSendDisabled: 'Enter insere uma nova linha',
         commandPalette: 'Paleta de comandos',
-        commandPaletteEnabled: 'Pressione ⌘K para abrir',
+        commandPaletteEnabled: 'Pressione ⌘P para abrir',
         commandPaletteDisabled: 'Acesso rápido a comandos desativado',
         markdownCopyV2: 'Markdown Copy v2',
         markdownCopyV2Subtitle: 'Pressione e segure para abrir modal de cópia',

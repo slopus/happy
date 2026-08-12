@@ -456,7 +456,7 @@ export const ca: TranslationStructure = {
         enterToSendEnabled: 'Prem Enter per enviar (Maj+Enter per a una nova línia)',
         enterToSendDisabled: 'Enter insereix una nova línia',
         commandPalette: 'Paleta de comandes',
-        commandPaletteEnabled: 'Prem ⌘K per obrir',
+        commandPaletteEnabled: 'Prem ⌘P per obrir',
         commandPaletteDisabled: 'Accés ràpid a comandes desactivat',
         markdownCopyV2: 'Markdown Copy v2',
         markdownCopyV2Subtitle: 'Pulsació llarga obre modal de còpia',

@@ -457,7 +457,7 @@ export const zhHans: TranslationStructure = {
         enterToSendEnabled: '按回车发送（Shift+回车换行）',
         enterToSendDisabled: '回车换行',
         commandPalette: '命令面板',
-        commandPaletteEnabled: '按 ⌘K 打开',
+        commandPaletteEnabled: '按 ⌘P 打开',
         commandPaletteDisabled: '快速命令访问已禁用',
         markdownCopyV2: 'Markdown 复制 v2',
         markdownCopyV2Subtitle: '长按打开复制模态框',

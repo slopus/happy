@@ -456,7 +456,7 @@ export const zhHant: TranslationStructure = {
         enterToSendEnabled: '按 Enter 傳送（Shift+Enter 換行）',
         enterToSendDisabled: 'Enter 鍵插入換行',
         commandPalette: '命令面板',
-        commandPaletteEnabled: '按 ⌘K 開啟',
+        commandPaletteEnabled: '按 ⌘P 開啟',
         commandPaletteDisabled: '快速命令存取已停用',
         markdownCopyV2: 'Markdown 複製 v2',
         markdownCopyV2Subtitle: '長按開啟複製強制回應視窗',

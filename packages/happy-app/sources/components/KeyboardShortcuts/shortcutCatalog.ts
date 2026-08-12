@@ -70,7 +70,7 @@ export function createShortcutSections(context: ShortcutCatalogContext): Shortcu
             detail: context.commandPaletteEnabled
                 ? undefined
                 : t('keyboardShortcuts.commandPaletteDisabled'),
-            alternatives: [chord('Meta', 'K')],
+            alternatives: [chord('Meta', 'P')],
         },
         {
             id: 'open-settings',

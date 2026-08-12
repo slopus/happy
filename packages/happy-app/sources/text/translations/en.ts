@@ -470,7 +470,7 @@ export const en: TranslationStructure = {
         enterToSendEnabled: 'Press Enter to send messages',
         enterToSendDisabled: 'Press ⌘+Enter to send messages',
         commandPalette: 'Command Palette',
-        commandPaletteEnabled: 'Press ⌘K to open',
+        commandPaletteEnabled: 'Press ⌘P to open',
         commandPaletteDisabled: 'Quick command access disabled',
         markdownCopyV2: 'Markdown Copy v2',
         markdownCopyV2Subtitle: 'Long press opens copy modal',

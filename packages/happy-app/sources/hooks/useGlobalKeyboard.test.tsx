@@ -106,12 +106,27 @@ describe('useGlobalKeyboard', () => {
         expect(onToggleLeftSidebar).toHaveBeenCalledOnce();
     });
 
-    it('maps both Command+K and Ctrl+K to the command palette', () => {
-        keydown({ key: 'k' });
+    it('maps both Command+P and Ctrl+P to the command palette', () => {
+        const commandEvent = keydown({ key: 'p' });
+        expect(commandEvent.preventDefault).toHaveBeenCalledOnce();
+        expect(commandEvent.stopPropagation).toHaveBeenCalledOnce();
         expect(onCommandPalette).toHaveBeenCalledOnce();
 
-        keydown({ ctrlKey: true, key: 'K', metaKey: false });
+        const ctrlEvent = keydown({ ctrlKey: true, key: 'P', metaKey: false });
+        expect(ctrlEvent.preventDefault).toHaveBeenCalledOnce();
+        expect(ctrlEvent.stopPropagation).toHaveBeenCalledOnce();
         expect(onCommandPalette).toHaveBeenCalledTimes(2);
+    });
+
+    it('leaves Command+K and Ctrl+K available to the browser or extensions', () => {
+        const commandEvent = keydown({ key: 'k' });
+        const ctrlEvent = keydown({ ctrlKey: true, key: 'K', metaKey: false });
+
+        expect(onCommandPalette).not.toHaveBeenCalled();
+        for (const event of [commandEvent, ctrlEvent]) {
+            expect(event.preventDefault).not.toHaveBeenCalled();
+            expect(event.stopPropagation).not.toHaveBeenCalled();
+        }
     });
 
     it('captures global shortcuts before focused controls can stop propagation', () => {
@@ -119,7 +134,7 @@ describe('useGlobalKeyboard', () => {
     });
 
     it('uses physical key codes for global shortcuts when a keyboard layout changes event.key', () => {
-        const commandPaletteEvent = keydown({ code: 'KeyK', key: 'к' });
+        const commandPaletteEvent = keydown({ code: 'KeyP', key: 'з' });
         expect(commandPaletteEvent.preventDefault).toHaveBeenCalledOnce();
         expect(onCommandPalette).toHaveBeenCalledOnce();
 

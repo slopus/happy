@@ -454,7 +454,7 @@ export const en = {
         enterToSendEnabled: 'Press Enter to send (Shift+Enter for a new line)',
         enterToSendDisabled: 'Enter inserts a new line',
         commandPalette: 'Command Palette',
-        commandPaletteEnabled: 'Press ⌘K to open',
+        commandPaletteEnabled: 'Press ⌘P to open',
         commandPaletteDisabled: 'Quick command access disabled',
         markdownCopyV2: 'Markdown Copy v2',
         markdownCopyV2Subtitle: 'Long press opens copy modal',

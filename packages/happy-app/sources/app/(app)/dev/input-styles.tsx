@@ -1232,7 +1232,7 @@ export default function InputStylesDemo() {
                                 backgroundColor: '#f0f0f0',
                                 borderRadius: 6,
                             }}>
-                                <Text style={{ fontSize: 12, color: '#666' }}>⌘K</Text>
+                                <Text style={{ fontSize: 12, color: '#666' }}>⌘P</Text>
                             </Pressable>
                         </View>
                     </View>

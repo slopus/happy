@@ -457,7 +457,7 @@ export const ja: TranslationStructure = {
         enterToSendEnabled: 'Enterで送信（Shift+Enterで改行）',
         enterToSendDisabled: 'Enterで改行',
         commandPalette: 'コマンドパレット',
-        commandPaletteEnabled: '⌘Kで開く',
+        commandPaletteEnabled: '⌘Pで開く',
         commandPaletteDisabled: 'クイックコマンドアクセスは無効',
         markdownCopyV2: 'Markdownコピー v2',
         markdownCopyV2Subtitle: '長押しでコピーモーダルを開く',

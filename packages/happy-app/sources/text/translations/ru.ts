@@ -436,7 +436,7 @@ export const ru: TranslationStructure = {
         enterToSendEnabled: 'Нажмите Enter для отправки (Shift+Enter для новой строки)',
         enterToSendDisabled: 'Enter вставляет новую строку',
         commandPalette: 'Command Palette',
-        commandPaletteEnabled: 'Нажмите ⌘K для открытия',
+        commandPaletteEnabled: 'Нажмите ⌘P для открытия',
         commandPaletteDisabled: 'Быстрый доступ к командам отключён',
         markdownCopyV2: 'Markdown Copy v2',
         markdownCopyV2Subtitle: 'Долгое нажатие открывает модальное окно копирования',

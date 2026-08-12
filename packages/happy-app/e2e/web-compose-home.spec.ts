@@ -1914,12 +1914,12 @@ test('Web 深色命令面板跟随主题并支持完整关闭交互', async ({ p
     // The application shortcut must already have handled the key in capture.
     await page.evaluate(() => {
         document.addEventListener('keydown', (event) => {
-            if ((event.metaKey || event.ctrlKey) && event.code === 'KeyK') {
+            if ((event.metaKey || event.ctrlKey) && event.code === 'KeyP') {
                 event.stopPropagation();
             }
         }, { once: true });
     });
-    await page.keyboard.press('Meta+KeyK');
+    await page.keyboard.press('Meta+KeyP');
     const commandInput = page.getByTestId('command-palette-input');
     const palette = page.getByTestId('command-palette');
     await expect(commandInput).toBeVisible();
@@ -2083,8 +2083,8 @@ test('跨项目命令搜索显示可执行命令与会话元数据', async ({ pa
     await expect(page.getByRole('listbox')).toBeVisible();
     await expect(page.getByRole('option', { selected: true })).toHaveCount(1);
 
-    await page.keyboard.press('Meta+KeyK');
-    await page.keyboard.press('Meta+KeyK');
+    await page.keyboard.press('Meta+KeyP');
+    await page.keyboard.press('Meta+KeyP');
     await expect(page.getByTestId('command-palette')).toHaveCount(1);
     await expect(page.getByTestId('command-palette-item-open-project-folder')).toContainText('Folder');
     const searchFilesCommand = page.getByTestId('command-palette-item-search-project-files');

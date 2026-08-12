@@ -473,7 +473,7 @@ export const pl: TranslationStructure = {
         enterToSendEnabled: 'Naciśnij Enter, aby wysłać (Shift+Enter dla nowej linii)',
         enterToSendDisabled: 'Enter wstawia nową linię',
         commandPalette: 'Paleta poleceń',
-        commandPaletteEnabled: 'Naciśnij ⌘K, aby otworzyć',
+        commandPaletteEnabled: 'Naciśnij ⌘P, aby otworzyć',
         commandPaletteDisabled: 'Szybki dostęp do poleceń wyłączony',
         markdownCopyV2: 'Markdown Copy v2',
         markdownCopyV2Subtitle: 'Długie naciśnięcie otwiera modal kopiowania',

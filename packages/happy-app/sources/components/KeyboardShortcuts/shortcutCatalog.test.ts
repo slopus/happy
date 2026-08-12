@@ -24,7 +24,7 @@ function getRow(context: ShortcutCatalogContext, id: string) {
 
 describe('createShortcutSections', () => {
     it('formats macOS shortcuts with symbol keycaps', () => {
-        expect(getRow(baseContext, 'open-command-palette')?.alternatives).toEqual([['⌘', 'K']]);
+        expect(getRow(baseContext, 'open-command-palette')?.alternatives).toEqual([['⌘', 'P']]);
         expect(getRow(baseContext, 'toggle-right-panel')?.alternatives).toEqual([['⌥', '⌘', 'B']]);
         expect(getRow(baseContext, 'open-keyboard-shortcuts')?.alternatives).toEqual([['⌘', '/']]);
         expect(getRow(baseContext, 'send-message')?.alternatives).toEqual([['↵']]);
@@ -35,7 +35,7 @@ describe('createShortcutSections', () => {
     it('formats Windows and Linux shortcuts with text keycaps', () => {
         const context = { ...baseContext, platform: 'Win32' };
 
-        expect(getRow(context, 'open-command-palette')?.alternatives).toEqual([['Ctrl', 'K']]);
+        expect(getRow(context, 'open-command-palette')?.alternatives).toEqual([['Ctrl', 'P']]);
         expect(getRow(context, 'toggle-right-panel')?.alternatives).toEqual([['Alt', 'Ctrl', 'B']]);
         expect(getRow(context, 'open-keyboard-shortcuts')?.alternatives).toEqual([['Ctrl', '/']]);
         expect(getRow(context, 'send-message')?.alternatives).toEqual([['Enter']]);
@@ -58,7 +58,7 @@ describe('createShortcutSections', () => {
     it('keeps a disabled command-palette shortcut discoverable with localized guidance', () => {
         const row = getRow({ ...baseContext, commandPaletteEnabled: false }, 'open-command-palette');
 
-        expect(row?.alternatives).toEqual([['⌘', 'K']]);
+        expect(row?.alternatives).toEqual([['⌘', 'P']]);
         expect(row?.detail).toBe('keyboardShortcuts.commandPaletteDisabled');
     });
 
