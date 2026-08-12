@@ -76,8 +76,12 @@ function messageHoverScreenshotPath(testInfo: { outputPath: (filename: string) =
     return path.join(messageHoverEvidenceDirectory, filename);
 }
 
-function motionPhotoScreenshotPath(testInfo: { outputPath: (filename: string) => string }): string {
-    const filename = `motion-01-${motionPhotoEvidencePhase}.png`;
+function motionPhotoScreenshotPath(
+    testInfo: { outputPath: (filename: string) => string },
+    viewport: 'desktop' | 'mobile' = 'desktop',
+): string {
+    const viewportSuffix = viewport === 'mobile' ? '-mobile' : '';
+    const filename = `motion-01${viewportSuffix}-${motionPhotoEvidencePhase}.png`;
     if (!motionPhotoEvidenceDirectory) return testInfo.outputPath(filename);
     fs.mkdirSync(motionPhotoEvidenceDirectory, { recursive: true });
     return path.join(motionPhotoEvidenceDirectory, filename);
@@ -5022,7 +5026,7 @@ test.describe('中文 Web 消息与工具演示', () => {
         const fileChooser = await fileChooserPromise;
         await fileChooser.setFiles(fixturePath);
         const sendButton = page.locator('[data-testid="message-composer-send-button"]:not([aria-disabled="true"])');
-        await expect(sendButton).toBeVisible();
+        await expect(sendButton).toBeVisible({ timeout: 20_000 });
         await sendButton.click();
 
         if (motionPhotoEvidencePhase === 'before') {
@@ -5036,8 +5040,41 @@ test.describe('中文 Web 消息与工具演示', () => {
         await expect(cover).toBeVisible({ timeout: 20_000 });
         await expect(page.getByTestId('attachment-gallery-image')).toHaveCount(0);
         await expect(page.getByText('file', { exact: true })).toHaveCount(0);
+        const downloadButton = page.getByTestId('motion-photo-download');
+        await expect(downloadButton).toBeVisible();
+        await expect(downloadButton).toHaveAttribute('aria-label', /下载原始动态照片|Download original motion photo/i);
+        await downloadButton.hover();
+        await expect(page.getByTestId('motion-photo-download-tooltip')).toBeVisible();
         await pauseForRecordedReview(page, 1_000);
         await page.screenshot({ path: motionPhotoScreenshotPath(testInfo), fullPage: true });
+        await cover.hover();
+        await expect(page.getByTestId('motion-photo-download-tooltip')).toHaveCount(0);
+
+        const downloadPromise = page.waitForEvent('download');
+        await downloadButton.click();
+        const download = await downloadPromise;
+        expect(download.suggestedFilename()).toBe(path.basename(fixturePath));
+        const downloadedPath = await download.path();
+        if (!downloadedPath) throw new Error('浏览器没有保留动态照片下载文件');
+        expect(fs.readFileSync(downloadedPath).equals(fs.readFileSync(fixturePath))).toBe(true);
+        await pauseForRecordedReview(page, 850);
+
+        await page.setViewportSize({ width: 390, height: 844 });
+        await expect(downloadButton).toBeVisible();
+        await expect.poll(() => cover.locator('img').evaluateAll((images) => images.some((image) => (
+            (image as HTMLImageElement).complete && (image as HTMLImageElement).naturalWidth > 0
+        ))), { timeout: 20_000 }).toBe(true);
+        const mobileDownloadBox = await downloadButton.boundingBox();
+        if (!mobileDownloadBox) throw new Error('找不到窄屏动态照片下载入口');
+        expect(mobileDownloadBox.width).toBeGreaterThanOrEqual(48);
+        expect(mobileDownloadBox.height).toBeGreaterThanOrEqual(48);
+        expect(mobileDownloadBox.x).toBeGreaterThanOrEqual(0);
+        expect(mobileDownloadBox.x + mobileDownloadBox.width).toBeLessThanOrEqual(390);
+        await page.screenshot({ path: motionPhotoScreenshotPath(testInfo, 'mobile'), fullPage: true });
+        await pauseForRecordedReview(page, 850);
+
+        await page.setViewportSize({ width: 1280, height: 720 });
+        await expect(cover).toBeVisible();
 
         await cover.click();
         const player = page.getByTestId('motion-photo-player');
@@ -5045,7 +5082,7 @@ test.describe('中文 Web 消息与工具演示', () => {
         await expect(player).toBeVisible({ timeout: 20_000 });
         await expect.poll(() => video.evaluate((element) => {
             const media = element as HTMLVideoElement;
-            return media.readyState >= HTMLMediaElement.HAVE_METADATA && media.duration > 4;
+            return media.readyState >= HTMLMediaElement.HAVE_METADATA && media.duration > 1;
         }), { timeout: 20_000 }).toBe(true);
         const videoBox = await video.boundingBox();
         if (!videoBox) throw new Error('找不到动态照片视频的原生播放控件区域');

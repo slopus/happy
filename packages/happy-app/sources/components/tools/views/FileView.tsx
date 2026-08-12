@@ -8,7 +8,7 @@
  * ratio is used until the actual image lands and contentFit shows it.
  */
 import * as React from 'react';
-import { ActivityIndicator, View, Text, Pressable } from 'react-native';
+import { ActivityIndicator, Platform, View, Text, Pressable } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
@@ -25,6 +25,8 @@ import { openDocumentAttachment } from '@/sync/openDocumentAttachment';
 import { MAX_PDF_FILE_SIZE } from '@/sync/attachmentLimits';
 import { resolveMotionPhotoAttachmentSource } from '@/sync/resolveMotionPhotoAttachmentSource';
 import type { MotionPhotoMetadata } from '@/sync/attachmentTypes';
+import { downloadOriginalAttachment } from '@/sync/downloadOriginalAttachment';
+import { DesktopShortcutTooltip } from '@/components/DesktopShortcutTooltip';
 
 const fileInputSchema = z.object({
     ref: z.string(),
@@ -364,6 +366,11 @@ function ImageFileView({ name, image, ref_, sessionId, motionPhoto }: {
     const [motionSource, setMotionSource] = React.useState<MediaPlaybackSource | null>(null);
     const [motionLoading, setMotionLoading] = React.useState(false);
     const [motionError, setMotionError] = React.useState(false);
+    const [downloadLoading, setDownloadLoading] = React.useState(false);
+    const [downloadError, setDownloadError] = React.useState(false);
+    const [downloadHovered, setDownloadHovered] = React.useState(false);
+    const [downloadFocused, setDownloadFocused] = React.useState(false);
+    const downloadTooltipVisible = downloadHovered || downloadFocused;
 
     const placeholder = React.useMemo(() => {
         if (!image?.thumbhash) return undefined;
@@ -388,6 +395,28 @@ function ImageFileView({ name, image, ref_, sessionId, motionPhoto }: {
             })
             .finally(() => setMotionLoading(false));
     }, [effectiveMotionPhoto, motionLoading, motionSource, name, ref, sessionId]);
+
+    const handleOriginalDownload = React.useCallback(async () => {
+        if (!effectiveMotionPhoto || !sessionId || downloadLoading) return;
+        setDownloadLoading(true);
+        setDownloadError(false);
+        let resolved: MediaPlaybackSource | null = null;
+        try {
+            resolved = await resolveMediaAttachmentSource({
+                sessionId,
+                ref,
+                mimeType: 'image/jpeg',
+                fileName: name,
+            });
+            await downloadOriginalAttachment(resolved.uri, name, 'image/jpeg');
+        } catch (cause) {
+            console.warn(`[motion-photo] failed to download ${name}`, cause);
+            setDownloadError(true);
+        } finally {
+            await resolved?.release?.();
+            setDownloadLoading(false);
+        }
+    }, [downloadLoading, effectiveMotionPhoto, name, ref, sessionId]);
 
     // Pick display dimensions. Real w/h drives the aspect ratio when present,
     // but a missing image{} block (older messages, iOS picker that didn't
@@ -453,10 +482,51 @@ function ImageFileView({ name, image, ref_, sessionId, motionPhoto }: {
                     )}
                 </Pressable>
             )}
-            <Text style={[styles.filename, { color: theme.colors.textSecondary }]} numberOfLines={1}>{name}</Text>
+            {effectiveMotionPhoto ? (
+                <View style={[styles.imageMetaRow, { width: displayW }]}>
+                    <Text style={[styles.filename, styles.imageFilename, { color: theme.colors.textSecondary }]} numberOfLines={1}>{name}</Text>
+                    <View style={styles.motionDownloadSlot}>
+                    <Pressable
+                        testID="motion-photo-download"
+                        accessibilityRole="button"
+                        accessibilityLabel={t('imageViewer.downloadOriginalMotionPhoto')}
+                        accessibilityState={{ disabled: !sessionId || downloadLoading, busy: downloadLoading }}
+                        disabled={!sessionId || downloadLoading}
+                        onBlur={() => setDownloadFocused(false)}
+                        onFocus={() => setDownloadFocused(true)}
+                        onHoverIn={() => setDownloadHovered(true)}
+                        onHoverOut={() => setDownloadHovered(false)}
+                        onPress={handleOriginalDownload}
+                        style={(press) => [
+                            styles.motionDownloadButton,
+                            { backgroundColor: (press.pressed || downloadTooltipVisible) ? theme.colors.surfacePressed : theme.colors.surface },
+                        ]}
+                    >
+                        {downloadLoading
+                            ? <ActivityIndicator size="small" color={theme.colors.textSecondary} />
+                            : <Ionicons name="download-outline" size={18} color={theme.colors.textSecondary} />}
+                    </Pressable>
+                        <DesktopShortcutTooltip
+                            align="right"
+                            compact
+                            label={t('imageViewer.downloadOriginalMotionPhoto')}
+                            placement="above"
+                            testID="motion-photo-download-tooltip"
+                            visible={Platform.OS === 'web' && downloadTooltipVisible}
+                        />
+                    </View>
+                </View>
+            ) : (
+                <Text style={[styles.filename, { color: theme.colors.textSecondary }]} numberOfLines={1}>{name}</Text>
+            )}
             {motionError && (
                 <Text style={[styles.mediaError, { color: theme.colors.textDestructive }]}>
                     {t('imageUpload.mediaLoadFailed')}
+                </Text>
+            )}
+            {downloadError && (
+                <Text style={[styles.mediaError, { color: theme.colors.textDestructive }]}>
+                    {t('imageViewer.motionPhotoDownloadFailedMessage')}
                 </Text>
             )}
         </View>
@@ -505,6 +575,25 @@ const styles = StyleSheet.create(() => ({
     filename: {
         fontSize: 13,
         fontWeight: '500',
+    },
+    imageMetaRow: {
+        minHeight: 32,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+    },
+    imageFilename: {
+        flex: 1,
+    },
+    motionDownloadButton: {
+        width: 48,
+        height: 48,
+        borderRadius: 6,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    motionDownloadSlot: {
+        position: 'relative',
     },
     inlineVideoContainer: {
         width: '100%',

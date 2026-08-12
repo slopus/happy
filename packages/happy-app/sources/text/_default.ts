@@ -510,9 +510,11 @@ export const en = {
 
     imageViewer: {
         download: 'Download image',
+        downloadOriginalMotionPhoto: 'Download original motion photo',
         close: 'Close image viewer',
         downloadFailedTitle: 'Download Failed',
         downloadFailedMessage: 'Could not prepare this image for download.',
+        motionPhotoDownloadFailedMessage: 'Could not download the original motion photo.',
     },
 
     errors: {

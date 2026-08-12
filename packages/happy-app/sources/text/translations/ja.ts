@@ -1505,9 +1505,11 @@ export const ja: TranslationStructure = {
 
     imageViewer: {
         download: '画像をダウンロード',
+        downloadOriginalMotionPhoto: '元のモーションフォトをダウンロード',
         close: '画像ビューアを閉じる',
         downloadFailedTitle: 'ダウンロードに失敗しました',
         downloadFailedMessage: 'この画像をダウンロード用に準備できませんでした。',
+        motionPhotoDownloadFailedMessage: '元のモーションフォトをダウンロードできませんでした。',
     },
 
     feed: {
