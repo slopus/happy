@@ -37,22 +37,41 @@ const codeAgentDefaults: Record<AgentKey, AgentDefaultConfig> = {
     agy: { permissionMode: 'default', modelMode: 'Gemini 3.1 Pro (High)', effortLevel: null },
 };
 
-export function normalizeAgentKey(flavor: string | null | undefined): AgentKey {
-    if (flavor === 'codex' || flavor === 'gemini' || flavor === 'openclaw' || flavor === 'agy') {
-        return flavor;
+// Flavors outside `agentKeys` have no static config profile of their own. `resolveSessionFlavor()`
+// in happy-cli emits 'opencode' for OpenCode and 'acp' for every other ACP binary, and generic ACP
+// agents advertise their models and modes at runtime (`available_models`, operating modes), so there
+// is nothing meaningful to hardcode for them. Falling back to Claude's row would hand them
+// Claude-only keys such as `bypassPermissions` and `opus`, which their agent never advertises.
+const NEUTRAL_AGENT_DEFAULTS: AgentDefaultConfig = {
+    permissionMode: 'default',
+    modelMode: 'default',
+    effortLevel: null,
+};
+
+// Returns the matching key, or null when the flavor has no static profile. Membership is derived
+// from `agentKeys` rather than an if-chain so adding an agent cannot silently miss this path.
+function matchAgentKey(flavor: string | null | undefined): AgentKey | null {
+    if (!flavor) {
+        return null;
     }
-    return 'claude';
+    return (agentKeys as readonly string[]).includes(flavor) ? flavor as AgentKey : null;
+}
+
+export function normalizeAgentKey(flavor: string | null | undefined): AgentKey {
+    return matchAgentKey(flavor) ?? 'claude';
 }
 
 export function getCodeAgentDefaults(flavor: string | null | undefined): AgentDefaultConfig {
-    return codeAgentDefaults[normalizeAgentKey(flavor)];
+    const key = matchAgentKey(flavor);
+    return key ? codeAgentDefaults[key] : NEUTRAL_AGENT_DEFAULTS;
 }
 
 export function getAgentDefaultOverride(
     overrides: AgentDefaultOverrides | null | undefined,
     flavor: string | null | undefined,
 ): AgentDefaultOverride {
-    return overrides?.[normalizeAgentKey(flavor)] ?? {};
+    const key = matchAgentKey(flavor);
+    return (key ? overrides?.[key] : undefined) ?? {};
 }
 
 export function resolveAgentDefaultConfig(
@@ -90,7 +109,13 @@ export function setAgentDefaultOverride(
     field: AgentDefaultField,
     value: string | null | undefined,
 ): AgentDefaultOverrides {
-    const key = normalizeAgentKey(flavor);
+    const key = matchAgentKey(flavor);
+    if (!key) {
+        // No slot to write to. Writing under `normalizeAgentKey`'s 'claude' fallback would edit
+        // the user's Claude Code defaults instead. The Agent Defaults screen iterates `agentKeys`
+        // so it never reaches this, but the read paths above are called with live session flavors.
+        return { ...(overrides ?? {}) };
+    }
     const next: AgentDefaultOverrides = { ...(overrides ?? {}) };
     const current: AgentDefaultOverride = { ...(next[key] ?? {}) };
 
