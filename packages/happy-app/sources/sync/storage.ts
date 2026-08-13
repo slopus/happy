@@ -181,6 +181,7 @@ interface StorageState {
     applySettings: (settings: Settings, version: number) => void;
     applySettingsLocal: (settings: Partial<Settings>) => void;
     applyLocalSettings: (settings: Partial<LocalSettings>) => void;
+    updateLocalSettings: (updater: (settings: LocalSettings) => Partial<LocalSettings>) => void;
     applyPurchases: (customerInfo: CustomerInfo) => void;
     applyProfile: (profile: Profile) => void;
     applyGitStatus: (pathKey: string, status: GitStatus | null) => void;
@@ -878,6 +879,14 @@ export const storage = create<StorageState>()((set, get) => {
                 localSettings: updatedLocalSettings
             };
         }),
+        updateLocalSettings: (updater) => set((state) => {
+            const updatedLocalSettings = applyLocalSettings(state.localSettings, updater(state.localSettings));
+            saveLocalSettings(updatedLocalSettings);
+            return {
+                ...state,
+                localSettings: updatedLocalSettings,
+            };
+        }),
         applyPurchases: (customerInfo: CustomerInfo) => set((state) => {
             // Transform CustomerInfo to our Purchases format
             const purchases = customerInfoToPurchases(customerInfo);
@@ -1544,6 +1553,14 @@ export function useLocalSettingMutable<K extends keyof LocalSettings>(name: K): 
     }, [name]);
     const value = useLocalSetting(name);
     return [value, setValue];
+}
+
+export function useLocalSettingUpdater<K extends keyof LocalSettings>(name: K): (updater: (value: LocalSettings[K]) => LocalSettings[K]) => void {
+    return React.useCallback((updater) => {
+        storage.getState().updateLocalSettings((settings) => ({
+            [name]: updater(settings[name]),
+        } as Partial<LocalSettings>));
+    }, [name]);
 }
 
 export function useLocalSetting<K extends keyof LocalSettings>(name: K): LocalSettings[K] {

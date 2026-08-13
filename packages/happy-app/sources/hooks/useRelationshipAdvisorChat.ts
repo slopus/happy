@@ -11,41 +11,66 @@ import {
     discardRelationshipAdvisorImages,
     uploadRelationshipAdvisorImages,
 } from '@/sync/relationshipAdvisorImages';
-import { useLocalSettingMutable } from '@/sync/storage';
+import { useLocalSetting, useLocalSettingUpdater } from '@/sync/storage';
 import {
     relationshipAdvisorChatReducer,
     type RelationshipAdvisorChatMessage,
 } from '@/components/relationship-advisor/relationshipAdvisorChatModel';
+import {
+    buildRelationshipAdvisorConversationTitle,
+    saveRelationshipAdvisorConversation,
+} from '@/components/relationship-advisor/relationshipAdvisorHistoryModel';
 
-/** Owns the single cloud generation, token stream, image uploads, and device-local transcript. */
-export function useRelationshipAdvisorChat() {
-    const [storedMessages, setStoredMessages] = useLocalSettingMutable('relationshipAdvisorMessages');
+/** Owns one cloud generation, token stream, image uploads, and its device-local conversation. */
+export function useRelationshipAdvisorChat(conversationId: string) {
+    const conversations = useLocalSetting('relationshipAdvisorConversations');
+    const updateConversations = useLocalSettingUpdater('relationshipAdvisorConversations');
+    const conversation = conversations.find(({ id }) => id === conversationId);
     const [state, dispatch] = React.useReducer(relationshipAdvisorChatReducer, {
-        messages: storedMessages,
+        messages: conversation?.messages ?? [],
         activeRequestId: null,
         streamingText: '',
         error: null,
     });
+    const persistedMessagesRef = React.useRef(conversation?.messages ?? []);
     const unsubscribeRef = React.useRef<(() => void) | null>(null);
     const activeRequestIdRef = React.useRef<string | null>(null);
     const providerStartedRequestIdRef = React.useRef<string | null>(null);
     const cancelledRequestIdsRef = React.useRef(new Set<string>());
     const lastAttemptRef = React.useRef<{ text: string; images: AttachmentPreview[] } | null>(null);
     const [canRetry, setCanRetry] = React.useState(false);
+    const mountedRef = React.useRef(true);
 
     React.useEffect(() => {
-        setStoredMessages(state.messages.slice(-50));
-    }, [setStoredMessages, state.messages]);
+        if (persistedMessagesRef.current === state.messages) return;
+        persistedMessagesRef.current = state.messages;
+        const messages = state.messages.length > 50 ? state.messages.slice(-50) : state.messages;
+        updateConversations((latest) => {
+            const latestConversation = latest.find(({ id }) => id === conversationId);
+            if (!latestConversation) return latest;
+            const lastMessageAt = messages.at(-1)?.createdAt ?? latestConversation.updatedAt;
+            return saveRelationshipAdvisorConversation(latest, {
+                ...latestConversation,
+                title: buildRelationshipAdvisorConversationTitle(messages, latestConversation.title),
+                updatedAt: Math.max(latestConversation.updatedAt, lastMessageAt),
+                messages,
+            });
+        });
+    }, [conversationId, state.messages, updateConversations]);
 
-    React.useEffect(() => () => {
-        unsubscribeRef.current?.();
-        const activeRequestId = activeRequestIdRef.current;
-        if (activeRequestId) {
-            cancelledRequestIdsRef.current.add(activeRequestId);
-            if (providerStartedRequestIdRef.current === activeRequestId) {
-                relationshipAdvisorClient.cancel(activeRequestId);
+    React.useEffect(() => {
+        mountedRef.current = true;
+        return () => {
+            mountedRef.current = false;
+            unsubscribeRef.current?.();
+            const activeRequestId = activeRequestIdRef.current;
+            if (activeRequestId) {
+                cancelledRequestIdsRef.current.add(activeRequestId);
+                if (providerStartedRequestIdRef.current === activeRequestId) {
+                    relationshipAdvisorClient.cancel(activeRequestId);
+                }
             }
-        }
+        };
     }, []);
 
     const send = React.useCallback(async (
@@ -93,6 +118,7 @@ export function useRelationshipAdvisorChat() {
 
             let terminalEventReceived = false;
             const onEvent = (event: RelationshipAdvisorEvent) => {
+                if (!mountedRef.current) return;
                 dispatch({ type: 'event', event, completedAt: Date.now() });
                 if (event.type === 'done' || event.type === 'error') {
                     activeRequestIdRef.current = null;
@@ -115,7 +141,7 @@ export function useRelationshipAdvisorChat() {
                 messages: requestMessages,
                 imageRefs,
             }, onEvent);
-            if (terminalEventReceived) {
+            if (terminalEventReceived || !mountedRef.current || cancelledRequestIdsRef.current.has(requestId)) {
                 unsubscribe();
             } else {
                 unsubscribeRef.current = unsubscribe;
@@ -134,14 +160,16 @@ export function useRelationshipAdvisorChat() {
             if (activeRequestIdRef.current === requestId) activeRequestIdRef.current = null;
             providerStartedRequestIdRef.current = null;
             cancelledRequestIdsRef.current.delete(requestId);
-            dispatch(wasCancelled
-                ? { type: 'cancel-before-start', requestId }
-                : {
-                    type: 'fail-before-start',
-                    requestId,
-                    error: 'Relationship advisor is temporarily unavailable',
-                });
-            if (!wasCancelled) setCanRetry(true);
+            if (mountedRef.current) {
+                dispatch(wasCancelled
+                    ? { type: 'cancel-before-start', requestId }
+                    : {
+                        type: 'fail-before-start',
+                        requestId,
+                        error: 'Relationship advisor is temporarily unavailable',
+                    });
+                if (!wasCancelled) setCanRetry(true);
+            }
             unsubscribeRef.current?.();
             unsubscribeRef.current = null;
             return false;

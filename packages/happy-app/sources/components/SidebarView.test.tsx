@@ -44,6 +44,8 @@ vi.mock('react-native-safe-area-context', () => ({
 vi.mock('expo-router', () => ({
     useNavigation: () => ({ dispatch: mocks.dispatch }),
     useRouter: () => ({ navigate: mocks.navigate }),
+    useGlobalSearchParams: () => ({}),
+    usePathname: () => '/',
 }));
 vi.mock('@react-navigation/native', () => ({
     DrawerActions: { closeDrawer: () => ({ type: 'CLOSE_DRAWER' }) },
@@ -72,6 +74,8 @@ vi.mock('@/sync/storage', () => ({
     useFriendRequests: () => [],
     useProfile: () => null,
     useLocalSetting: () => [],
+    useLocalSettingMutable: () => [[], vi.fn()],
+    useLocalSettingUpdater: () => vi.fn(),
 }));
 vi.mock('@/sync/profile', () => ({ getDisplayName: () => null }));
 vi.mock('@/text', () => ({ t: (key: string) => key }));
@@ -138,6 +142,9 @@ vi.mock('./CommandPalette/CommandPaletteProvider', () => ({
         isAvailable: mocks.commandPaletteAvailable,
         open: mocks.openCommandPalette,
     }),
+}));
+vi.mock('./relationship-advisor/RelationshipAdvisorSidebarHistory', () => ({
+    RelationshipAdvisorSidebarHistory: 'RelationshipAdvisorSidebarHistory',
 }));
 
 describe('SidebarView Agent space exit', () => {
@@ -228,6 +235,7 @@ describe('SidebarView Agent space exit', () => {
         );
         expect(renderer.root.findAllByProps({ testID: 'sidebar-user-card' })).toHaveLength(0);
         expect(renderer.root.findAllByType('MainView')).toHaveLength(1);
+        expect(renderer.root.findAllByType('RelationshipAdvisorSidebarHistory')).toHaveLength(1);
         expect(renderer.root.findAllByType('Text').some((node: any) => node.props.children === 'agents.empty')).toBe(false);
 
         act(() => renderer.unmount());

@@ -9,7 +9,8 @@ import {
     View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Stack } from 'expo-router';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { randomUUID } from 'expo-crypto';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 
@@ -25,8 +26,38 @@ import { shouldShowRelationshipAdvisorEmptyState } from '@/components/relationsh
 import { StreamingMarkdownView } from '@/components/relationship-advisor/StreamingMarkdownView';
 import { MAX_RELATIONSHIP_ADVISOR_IMAGE_SIZE } from '@/sync/relationshipAdvisorImages';
 import { t } from '@/text';
+import { useLocalSetting, useLocalSettingUpdater } from '@/sync/storage';
+import {
+    createRelationshipAdvisorConversation,
+    saveRelationshipAdvisorConversation,
+} from '@/components/relationship-advisor/relationshipAdvisorHistoryModel';
 
 function RelationshipAdvisorScreen() {
+    const router = useRouter();
+    const params = useLocalSearchParams<{ conversationId?: string | string[] }>();
+    const conversations = useLocalSetting('relationshipAdvisorConversations');
+    const updateConversations = useLocalSettingUpdater('relationshipAdvisorConversations');
+    const requestedConversationId = Array.isArray(params.conversationId) ? params.conversationId[0] : params.conversationId;
+    const conversation = conversations.find(({ id }) => id === requestedConversationId) ?? conversations[0];
+
+    React.useEffect(() => {
+        if (conversation && requestedConversationId === conversation.id) return;
+        const target = conversation ?? createRelationshipAdvisorConversation(
+            randomUUID(),
+            t('relationshipAdvisor.newConversation'),
+        );
+        if (!conversation) updateConversations((current) => saveRelationshipAdvisorConversation(current, target));
+        router.setParams({ conversationId: target.id });
+    }, [conversation, requestedConversationId, router, updateConversations]);
+
+    if (!conversation) {
+        return <View style={styles.root} />;
+    }
+
+    return <RelationshipAdvisorConversationScreen key={conversation.id} conversationId={conversation.id} />;
+}
+
+function RelationshipAdvisorConversationScreen({ conversationId }: { conversationId: string }) {
     const { theme } = useUnistyles();
     const insets = useSafeAreaInsets();
     const scrollRef = React.useRef<ScrollView>(null);
@@ -46,7 +77,7 @@ function RelationshipAdvisorScreen() {
         clear,
         canRetry,
         retry,
-    } = useRelationshipAdvisorChat();
+    } = useRelationshipAdvisorChat(conversationId);
 
     const handleSend = React.useCallback(async () => {
         const started = await send(draft, selectedImages);

@@ -109,8 +109,8 @@ describe('localSettings ask API config', () => {
 });
 
 describe('localSettings relationship advisor history', () => {
-    it('keeps a bounded device-local transcript and defaults older installs to empty', () => {
-        expect(localSettingsParse({}).relationshipAdvisorMessages).toEqual([]);
+    it('migrates the old single transcript into one named conversation', () => {
+        expect(localSettingsParse({}).relationshipAdvisorConversations).toEqual([]);
         const messages = [{
             id: 'message-1',
             role: 'user' as const,
@@ -119,6 +119,53 @@ describe('localSettings relationship advisor history', () => {
             imageCount: 1,
         }];
 
-        expect(localSettingsParse({ relationshipAdvisorMessages: messages }).relationshipAdvisorMessages).toEqual(messages);
+        const parsed = localSettingsParse({ relationshipAdvisorMessages: messages });
+        expect(parsed.relationshipAdvisorMessages).toEqual([]);
+        expect(parsed.relationshipAdvisorConversations).toEqual([{
+            id: 'legacy-relationship-advisor',
+            title: '右侧蓝色气泡是我',
+            createdAt: 1_786_400_000_000,
+            updatedAt: 1_786_400_000_000,
+            messages,
+        }]);
+    });
+
+    it('preserves an existing multi-conversation history without reimporting legacy messages', () => {
+        const conversations = [{
+            id: 'conversation-1',
+            title: '她只回了哈哈',
+            createdAt: 10,
+            updatedAt: 20,
+            messages: [],
+        }];
+
+        expect(localSettingsParse({
+            relationshipAdvisorConversations: conversations,
+            relationshipAdvisorMessages: [{
+                id: 'legacy-message',
+                role: 'user',
+                text: '旧记录',
+                createdAt: 1,
+                imageCount: 0,
+            }],
+        }).relationshipAdvisorConversations).toEqual(conversations);
+    });
+
+    it('keeps an untranslated empty title for legacy transcripts without a user message', () => {
+        const messages = [{
+            id: 'message-1',
+            role: 'assistant' as const,
+            text: '先说说情况',
+            createdAt: 1_786_400_000_000,
+            imageCount: 0,
+        }];
+
+        expect(localSettingsParse({ relationshipAdvisorMessages: messages }).relationshipAdvisorConversations).toEqual([{
+            id: 'legacy-relationship-advisor',
+            title: '',
+            createdAt: 1_786_400_000_000,
+            updatedAt: 1_786_400_000_000,
+            messages,
+        }]);
     });
 });

@@ -2210,6 +2210,129 @@ test('左栏稳定导航、机器项目分组与折叠共同保持当前会话�
     await expect(betaToggle).toHaveAttribute('aria-expanded', 'true');
 });
 
+test('[RELATIONSHIP-ADVISOR-HISTORY] 军师对话写入左栏且 PC Agent 使用紧凑弹层', async ({ page }, testInfo) => {
+    const nestedButtonErrors: string[] = [];
+    page.on('console', (message) => {
+        const text = message.text();
+        if (message.type() === 'error' && text.includes('cannot contain a nested')) nestedButtonErrors.push(text);
+    });
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto(authenticatedRoute('/relationship-advisor'));
+
+    const advisorComposer = page.getByRole('textbox', {
+        name: 'Send what they said, a chat screenshot, or the reply you want to write',
+    });
+    const history = page.getByTestId('relationship-advisor-sidebar-history');
+    await expect(advisorComposer).toBeVisible({ timeout: 20_000 });
+    await expect(history).toBeVisible();
+    await expect.poll(() => new URL(page.url()).searchParams.get('conversationId')).not.toBeNull();
+    const firstUrl = page.url();
+    const firstId = new URL(firstUrl).searchParams.get('conversationId');
+    expect(firstId).toBeTruthy();
+    await expect(page.getByTestId(`relationship-advisor-history-${firstId}`)).toBeVisible();
+
+    await page.reload();
+    await expect(advisorComposer).toBeVisible();
+    await expect(page).toHaveURL(firstUrl);
+    await expect(page.getByTestId(`relationship-advisor-history-${firstId}`)).toBeVisible();
+
+    await page.getByTestId('relationship-advisor-new-conversation').click();
+    await expect.poll(() => new URL(page.url()).searchParams.get('conversationId')).not.toBe(firstId);
+    const secondId = new URL(page.url()).searchParams.get('conversationId');
+    expect(secondId).toBeTruthy();
+    expect(secondId).not.toBe(firstId);
+    await expect(page.getByTestId(`relationship-advisor-history-${secondId}`)).toBeVisible();
+    await expect(history.locator('[data-testid^="relationship-advisor-history-"]')).toHaveCount(2);
+    await pauseForRecordedReview(page, 1_000);
+
+    const historyScreenshot = process.env.HAPPY_RELATIONSHIP_HISTORY_EVIDENCE_DIR
+        ? path.join(process.env.HAPPY_RELATIONSHIP_HISTORY_EVIDENCE_DIR, 'case-1-after-history.png')
+        : testInfo.outputPath('case-1-after-history.png');
+    fs.mkdirSync(path.dirname(historyScreenshot), { recursive: true });
+    await page.screenshot({ path: historyScreenshot, fullPage: true });
+
+    const myAgentsButton = page.getByTestId('sidebar-my-agents-button');
+    await myAgentsButton.click();
+    const dialog = page.getByTestId('agent-sheet-desktop-dialog');
+    await expect(dialog).toBeVisible();
+    await expect(dialog.locator('xpath=ancestor::*[@role="dialog"]').first()).toBeVisible();
+    const dialogBox = await dialog.boundingBox();
+    expect(dialogBox).not.toBeNull();
+    expect(dialogBox!.width).toBeLessThanOrEqual(522);
+    expect(dialogBox!.width).toBeLessThan(1280 * 0.6);
+    expect(Math.abs((dialogBox!.x + dialogBox!.width / 2) - 640)).toBeLessThanOrEqual(2);
+    expect(dialogBox!.y).toBeGreaterThan(80);
+    expect(dialogBox!.y + dialogBox!.height).toBeLessThan(820);
+    await pauseForRecordedReview(page, 1_100);
+
+    const dialogScreenshot = process.env.HAPPY_RELATIONSHIP_HISTORY_EVIDENCE_DIR
+        ? path.join(process.env.HAPPY_RELATIONSHIP_HISTORY_EVIDENCE_DIR, 'case-2-after-agent-dialog.png')
+        : testInfo.outputPath('case-2-after-agent-dialog.png');
+    fs.mkdirSync(path.dirname(dialogScreenshot), { recursive: true });
+    await page.screenshot({ path: dialogScreenshot, fullPage: true });
+
+    await page.keyboard.press('Escape');
+    await expect(dialog).toHaveCount(0);
+    await expect.poll(() => page.evaluate(() => document.activeElement?.getAttribute('role'))).not.toBe('dialog');
+
+    await page.emulateMedia({ colorScheme: 'dark' });
+    await page.goto(authenticatedRoute('/settings/appearance'));
+    await page.getByText('Gingham', { exact: true }).click();
+    await expect.poll(() => page.locator('body').evaluate((element) => (
+        window.getComputedStyle(element).backgroundColor
+    ))).toBe('rgb(18, 24, 33)');
+
+    const darkAdvisorUrl = new URL(authenticatedRoute('/relationship-advisor'));
+    darkAdvisorUrl.searchParams.set('conversationId', secondId!);
+    await page.goto(darkAdvisorUrl.toString());
+    await expect(page.getByRole('textbox', {
+        name: 'Send what they said, a chat screenshot, or the reply you want to write',
+    })).toBeVisible({ timeout: 20_000 });
+    const selectedHistoryRow = page.getByTestId(`relationship-advisor-history-${secondId}`);
+    await expect(selectedHistoryRow).toBeVisible();
+    await expect.poll(() => selectedHistoryRow.evaluate((element) => (
+        window.getComputedStyle(element).backgroundColor
+    ))).toBe('rgb(40, 53, 68)');
+
+    const firstHistoryButton = page
+        .getByTestId(`relationship-advisor-history-${firstId}`)
+        .getByRole('button')
+        .first();
+    const firstHistoryButtonBox = await firstHistoryButton.boundingBox();
+    expect(firstHistoryButtonBox).not.toBeNull();
+    await page.mouse.move(
+        firstHistoryButtonBox!.x + firstHistoryButtonBox!.width / 2,
+        firstHistoryButtonBox!.y + firstHistoryButtonBox!.height / 2,
+    );
+    await page.mouse.down();
+    await expect.poll(() => firstHistoryButton.evaluate((element) => (
+        window.getComputedStyle(element).backgroundColor
+    ))).toBe('rgb(31, 42, 56)');
+
+    const darkHistoryScreenshot = process.env.HAPPY_RELATIONSHIP_HISTORY_EVIDENCE_DIR
+        ? path.join(process.env.HAPPY_RELATIONSHIP_HISTORY_EVIDENCE_DIR, 'case-1-after-history-gingham-dark.png')
+        : testInfo.outputPath('case-1-after-history-gingham-dark.png');
+    fs.mkdirSync(path.dirname(darkHistoryScreenshot), { recursive: true });
+    await page.screenshot({ path: darkHistoryScreenshot, fullPage: true });
+    await page.mouse.up();
+
+    await page.getByTestId('sidebar-my-agents-button').click();
+    const darkDialog = page.getByTestId('agent-sheet-desktop-dialog');
+    await expect(darkDialog).toBeVisible();
+    await expect.poll(() => darkDialog.evaluate((element) => (
+        window.getComputedStyle(element).backgroundColor
+    ))).toBe('rgb(26, 35, 48)');
+    const darkDialogScreenshot = process.env.HAPPY_RELATIONSHIP_HISTORY_EVIDENCE_DIR
+        ? path.join(process.env.HAPPY_RELATIONSHIP_HISTORY_EVIDENCE_DIR, 'case-2-after-agent-dialog-gingham-dark.png')
+        : testInfo.outputPath('case-2-after-agent-dialog-gingham-dark.png');
+    fs.mkdirSync(path.dirname(darkDialogScreenshot), { recursive: true });
+    await page.screenshot({ path: darkDialogScreenshot, fullPage: true });
+
+    await page.keyboard.press('Escape');
+    await expect(darkDialog).toHaveCount(0);
+    expect(nestedButtonErrors).toEqual([]);
+});
+
 test('[SESSION-ARCHIVE-STATUS] 当前项目状态常驻且归档会话保持紧凑', async ({ page, request }, testInfo) => {
     test.slow();
     const fixtureKey = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;

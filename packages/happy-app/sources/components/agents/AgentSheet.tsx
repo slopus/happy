@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Text, View, Pressable, Modal, ScrollView } from 'react-native';
+import { Platform, Text, View, Pressable, Modal, ScrollView, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { StyleSheet } from 'react-native-unistyles';
@@ -15,13 +15,15 @@ import { useEnterAgentSpace } from '@/hooks/useEnterAgentSpace';
 import { useAgentSpace } from '@/hooks/useAgentSpace';
 
 /**
- * 底部抽屉，列出用户配置的「我的 Agent」。
+ * 列出用户配置的「我的 Agent」：手机使用底部抽屉，PC Web/Tauri 使用紧凑居中弹层。
  * 点击在线 Agent → 预填新建会话 draft 并导航；离线 / 机器缺失的 Agent 置灰不可点。
- * 复用 RN 原生 Modal（transparent + slide）+ 半透明 scrim，沿用侧栏卡片视觉语言。
+ * 复用 RN 原生 Modal + 半透明 scrim，沿用侧栏卡片视觉语言。
  */
 export const AgentSheet = React.memo(({ visible, onClose }: { visible: boolean; onClose: () => void }) => {
     const styles = stylesheet;
     const safeArea = useSafeAreaInsets();
+    const windowDimensions = useWindowDimensions();
+    const isDesktop = Platform.OS === 'web' && windowDimensions.width >= 900;
     const router = useRouter();
     const agents = useLocalSetting('agents');
     const machines = useAllMachines({ includeOffline: true });
@@ -74,12 +76,31 @@ export const AgentSheet = React.memo(({ visible, onClose }: { visible: boolean; 
         if (!entering) onClose();
     }, [entering, onClose]);
 
+    React.useEffect(() => {
+        if (!visible || !isDesktop || typeof window === 'undefined') return;
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if (event.key !== 'Escape' || entering) return;
+            event.preventDefault();
+            onClose();
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [entering, isDesktop, onClose, visible]);
+
     return (
-        <Modal visible={visible} transparent animationType="slide" onRequestClose={closeIfIdle}>
-            <Pressable style={styles.scrim} disabled={entering} onPress={closeIfIdle} />
-            <View style={[styles.sheet, { paddingBottom: safeArea.bottom + 12 }]}>
+        <Modal visible={visible} transparent animationType={isDesktop ? 'fade' : 'slide'} onRequestClose={closeIfIdle}>
+            <View style={[styles.modalRoot, isDesktop ? styles.modalRootDesktop : styles.modalRootMobile]}>
+                <Pressable style={styles.scrim} disabled={entering} onPress={closeIfIdle} />
+                <View
+                    style={[
+                        styles.sheet,
+                        isDesktop && styles.sheetDesktop,
+                        { paddingBottom: isDesktop ? 12 : safeArea.bottom + 12 },
+                    ]}
+                    testID={isDesktop ? 'agent-sheet-desktop-dialog' : 'agent-sheet-mobile-drawer'}
+                >
                 {/* Grab handle */}
-                <View style={styles.handle} />
+                {!isDesktop ? <View style={styles.handle} /> : null}
 
                 {/* Header */}
                 <View style={styles.header}>
@@ -165,14 +186,30 @@ export const AgentSheet = React.memo(({ visible, onClose }: { visible: boolean; 
                         })}
                     </ScrollView>
                 )}
+                </View>
             </View>
         </Modal>
     );
 });
 
 const stylesheet = StyleSheet.create((theme) => ({
-    scrim: {
+    modalRoot: {
         flex: 1,
+    },
+    modalRootMobile: {
+        justifyContent: 'flex-end',
+    },
+    modalRootDesktop: {
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 24,
+    },
+    scrim: {
+        position: 'absolute',
+        top: 0,
+        right: 0,
+        bottom: 0,
+        left: 0,
         backgroundColor: 'rgba(0, 0, 0, 0.4)',
     },
     sheet: {
@@ -184,6 +221,20 @@ const stylesheet = StyleSheet.create((theme) => ({
         paddingTop: 8,
         paddingHorizontal: 16,
         maxHeight: '80%',
+    },
+    sheetDesktop: {
+        width: '100%',
+        maxWidth: 520,
+        maxHeight: '70%',
+        backgroundColor: theme.colors.surface,
+        borderRadius: 12,
+        borderWidth: StyleSheet.hairlineWidth,
+        paddingTop: 14,
+        shadowColor: theme.colors.shadow.color,
+        shadowOpacity: theme.colors.shadow.opacity,
+        shadowRadius: 28,
+        shadowOffset: { width: 0, height: 14 },
+        elevation: 16,
     },
     handle: {
         alignSelf: 'center',

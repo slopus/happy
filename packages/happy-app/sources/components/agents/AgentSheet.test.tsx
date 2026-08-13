@@ -19,6 +19,8 @@ const mocks = vi.hoisted(() => ({
     routerNavigate: vi.fn(),
     builtinAgent: null as AgentLauncher | null,
     relationshipAgent: null as AgentLauncher | null,
+    platform: 'web',
+    windowWidth: 1280,
 }));
 
 vi.mock('react-native', () => ({
@@ -27,6 +29,8 @@ vi.mock('react-native', () => ({
     Pressable: 'Pressable',
     Modal: 'Modal',
     ScrollView: 'ScrollView',
+    Platform: { get OS() { return mocks.platform; } },
+    useWindowDimensions: () => ({ width: mocks.windowWidth, height: 800, scale: 1, fontScale: 1 }),
 }));
 vi.mock('react-native-safe-area-context', () => ({
     useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
@@ -39,6 +43,7 @@ vi.mock('react-native-unistyles', () => {
         colors: {
             groupped: { background: '#fff' }, divider: '#ddd', text: '#111', textSecondary: '#666',
             surfacePressed: '#eee', surface: '#fff', status: { connected: '#0a0', disconnected: '#a00' },
+            shadow: { color: '#000', opacity: 0.2 },
         },
     };
     return {
@@ -133,6 +138,8 @@ describe('AgentSheet', () => {
         mocks.entering = false;
         mocks.builtinAgent = null;
         mocks.relationshipAgent = cloudRelationshipAgent;
+        mocks.platform = 'web';
+        mocks.windowWidth = 1280;
         mocks.enter.mockResolvedValue({ type: 'success', sessionId: 'session-1' });
         (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
         consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation((...values: unknown[]) => {
@@ -161,6 +168,36 @@ describe('AgentSheet', () => {
 
         act(() => mocks.enter.mock.calls[0][1].beforeNavigate());
         expect(onClose).toHaveBeenCalledTimes(1);
+        act(() => renderer.unmount());
+    });
+
+    it('uses a compact fading dialog on desktop web', () => {
+        let renderer: any;
+        act(() => {
+            renderer = TestRenderer.create(<AgentSheet visible onClose={vi.fn()} />);
+        });
+
+        expect(renderer.root.findByType('Modal').props.animationType).toBe('fade');
+        const dialog = renderer.root.findByProps({ testID: 'agent-sheet-desktop-dialog' });
+        expect(dialog.props.style).toContainEqual(expect.objectContaining({
+            maxWidth: 520,
+            borderRadius: 12,
+            backgroundColor: '#fff',
+        }));
+        expect(renderer.root.findAllByProps({ testID: 'agent-sheet-mobile-drawer' })).toHaveLength(0);
+        act(() => renderer.unmount());
+    });
+
+    it('keeps the sliding bottom drawer on narrow screens', () => {
+        mocks.windowWidth = 430;
+        let renderer: any;
+        act(() => {
+            renderer = TestRenderer.create(<AgentSheet visible onClose={vi.fn()} />);
+        });
+
+        expect(renderer.root.findByType('Modal').props.animationType).toBe('slide');
+        expect(renderer.root.findAllByProps({ testID: 'agent-sheet-mobile-drawer' })).toHaveLength(1);
+        expect(renderer.root.findAllByProps({ testID: 'agent-sheet-desktop-dialog' })).toHaveLength(0);
         act(() => renderer.unmount());
     });
 

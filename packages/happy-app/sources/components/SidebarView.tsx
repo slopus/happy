@@ -18,6 +18,7 @@ import { AgentSpaceWorkbench } from './agents/AgentSpaceWorkbench';
 import { SidebarAccountMenu } from './SidebarAccountMenu';
 import { SidebarHelpMenu } from './SidebarHelpMenu';
 import { useCommandPaletteLauncher } from './CommandPalette/CommandPaletteProvider';
+import { RelationshipAdvisorSidebarHistory } from './relationship-advisor/RelationshipAdvisorSidebarHistory';
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
@@ -405,6 +406,11 @@ export const SidebarView = React.memo(({
                     ) : null}
                 </Pressable>
             </View>
+
+            <RelationshipAdvisorSidebarHistory
+                desktopDensity={desktopDensity}
+                onNavigate={go}
+            />
 
             {realtimeStatus !== 'disconnected' && (
                 <VoiceAssistantStatusBar variant="sidebar" />
