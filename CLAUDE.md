@@ -91,12 +91,22 @@ gh pr create --repo wangjs-jacky/happy --base main --head <branch-name>
 只要 PR 包含用户可见的 PC Web、布局、图标、状态或交互变化，合并前必须让 PR 正文自身携带逐 Case 证据：
 
 1. 声明 `Visible UI cases: N`。
-2. 用 `Case ID → 问题 → 修复前 → 修复后` 矩阵逐项嵌入图片；每个可见 Case 一组，整页总览或 contact sheet 不得重复代替多组证据。
-3. `N` 必须同时等于矩阵中的可见 Case 数和独立前后截图组数。纯逻辑或不可见后台 Case 不进入 `N`，共享证据必须在表内说明理由。
+2. 用 `Case ID → 问题 → 修复前 → 修复后` 矩阵逐项嵌入图片；每个可见 Case 一组，整页总览或 contact sheet 不得重复代替多组证据。仅下述维护者截图豁免可以跳过图片。
+3. 未使用维护者截图豁免时，`N` 必须同时等于矩阵中的可见 Case 数和独立前后截图组数。纯逻辑或不可见后台 Case 不进入 `N`，共享证据必须在表内说明理由。使用豁免时仍保留真实 `N`，但必须按下述格式记录未提供截图的 Case。
 4. 图片使用不可变 commit SHA 的仓库 URL 或 GitHub 上传附件，不得引用合并后会删除的功能分支。PR 创建或更新后必须打开实际 PR，确认每张图片能够渲染。
-5. 独立验收 Agent 必须评审实际 PR 正文。缺图、错配、重复占位、失效链接或只在聊天/本地报告中存在时，即使测试和 CI 全绿也不得合并。
+5. 独立验收 Agent 必须评审实际 PR 正文。除满足下述维护者截图豁免外，缺图、错配、重复占位、失效链接或只在聊天/本地报告中存在时，即使测试和 CI 全绿也不得合并。
 
 使用根目录 [`.github/pull_request_template.md`](.github/pull_request_template.md) 的 Visual evidence 区块，不要在 `gh pr create --body` 时删掉该区块。非视觉 PR 填 `Visible UI cases: 0` 并说明原因。
+
+#### 维护者截图豁免
+
+仓库维护者可以为某个具体 PR 明确批准跳过 Before/After 截图。该豁免是例外，不是默认流程，并且必须满足全部条件：
+
+1. Agent 先向维护者说明缺少视觉证据的具体风险，并询问是否对当前 PR 豁免；只有对仓库具有 write、maintain 或 admin 权限的维护者明确回复确认后才能使用，不得从“直接合并”等泛化指令中推断。
+2. PR 正文保留真实的 `Visible UI cases: N` 和逐 Case 表格；缺失截图的位置写明 `Waived by maintainer`，不得把文字占位算作截图，也不得把 `N` 改成 `0` 掩盖可见变更。
+3. PR 正文增加 `Visual evidence waiver: approved`，并记录确认者、PR 编号、确认范围、确认日期、批准时的完整 head SHA、确认来源 URL 和未执行的视觉验证。确认必须由 `Confirmed by` 对应的维护者 GitHub 账号本人发布为 PR comment/review；执行 Agent 只有在当前 `gh` 认证账号就是该维护者，且维护者已明确授权记录本次确认时，才能代为执行发布命令。独立验收 Agent 必须打开实际 PR，确认 comment/review author login 与 `Confirmed by` 一致、批准者具有所需权限、waiver 信息与 Case 一致、记录的 SHA 等于当前 head。
+4. 豁免只跳过截图证据，不跳过代码评审、相关自动化测试、typecheck、实际触发的 CI、merge message 展示或分支保护；PR 正文必须逐项记录这些不可豁免检查的结果，全部通过后才能合并。
+5. 维护者确认只对记录的 PR 和 head SHA 有效。PR head 变化后必须重新展示风险并再次确认，即使新增提交没有改变用户可见行为；不能复用其他 PR 或更早 revision 的豁免。
 
 ### 主题与交互表面颜色规范
 
