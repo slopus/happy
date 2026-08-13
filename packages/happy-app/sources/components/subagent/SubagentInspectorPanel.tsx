@@ -50,9 +50,9 @@ export const SubagentInspectorPanel = React.memo(function SubagentInspectorPanel
         () => [...groupMessagesForDisplay(
             [...transcriptMessages].reverse(),
             groupToolCalls,
-            { collapseCurrentTurn: false, groupStandaloneSkills: true },
+            { currentTurnActive: session?.active === true && status === 'running', groupStandaloneSkills: true },
         )].reverse(),
-        [groupToolCalls, transcriptMessages],
+        [groupToolCalls, session?.active, status, transcriptMessages],
     );
     const [expandedGroups, setExpandedGroups] = React.useState<Set<string>>(() => new Set());
     React.useEffect(() => setExpandedGroups(new Set()), [selection.id]);

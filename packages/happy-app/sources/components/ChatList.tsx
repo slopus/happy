@@ -12,7 +12,7 @@ import { DuplicateSheet } from './DuplicateSheet';
 import { Metadata, Session } from '@/sync/storageTypes';
 import { ChatFooter } from './ChatFooter';
 import { Message } from '@/sync/typesMessage';
-import { DisplayItem, ToolGroupItem, useGroupedMessages } from '@/hooks/useGroupedMessages';
+import { DisplayItem, isSessionTurnActive, ToolGroupItem, useGroupedMessages } from '@/hooks/useGroupedMessages';
 import { Octicons } from '@expo/vector-icons';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
@@ -100,10 +100,10 @@ const ChatListInternal = React.memo((props: {
     const hasPendingPermission = Boolean(
         session?.agentState?.requests && Object.keys(session.agentState.requests).length > 0,
     );
-    const collapseCurrentTurn = session?.thinking !== true && !hasPendingPermission;
+    const currentTurnActive = isSessionTurnActive(session);
     const groupingOptions = React.useMemo(
-        () => ({ collapseCurrentTurn }),
-        [collapseCurrentTurn],
+        () => ({ currentTurnActive }),
+        [currentTurnActive],
     );
     const displayItems = useGroupedMessages(props.messages, groupToolCalls, groupingOptions);
     const latestVisibleUserMessageId = React.useMemo(() => {

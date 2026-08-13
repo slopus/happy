@@ -50,7 +50,7 @@ export default React.memo(function MessagesDemoScreen() {
     );
     const generatedBatchItems = React.useMemo(
         () => isGeneratedBatchDemo
-            ? [...groupMessagesForDisplay(generatedBatchMessages, true, { collapseCurrentTurn: false })].reverse()
+            ? [...groupMessagesForDisplay(generatedBatchMessages, true, { currentTurnActive: true })].reverse()
             : [],
         [generatedBatchMessages, isGeneratedBatchDemo],
     );

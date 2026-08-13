@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { groupMessagesForDisplay, groupToolCallsForDisplay } from './useGroupedMessages';
+import { groupMessagesForDisplay, groupToolCallsForDisplay, isSessionTurnActive } from './useGroupedMessages';
 import { Message, ToolCallMessage } from '@/sync/typesMessage';
 
 vi.mock('@/components/tools/knownTools', () => ({
@@ -399,6 +399,129 @@ describe('useGroupedMessages', () => {
         ]);
     });
 
+    it('does not keep a completed turn loading when an earlier tool result is missing', () => {
+        const messages: Message[] = [
+            {
+                kind: 'agent-text',
+                id: 'agent-final',
+                localId: null,
+                createdAt: 5,
+                text: 'done',
+            },
+            toolMessage('tool-without-result', 2, { state: 'running' }),
+            {
+                kind: 'user-text',
+                id: 'user',
+                localId: null,
+                createdAt: 1,
+                text: 'run command',
+            },
+        ];
+
+        const items = groupMessagesForDisplay(messages, true, { currentTurnActive: false });
+
+        expect(items[1]).toMatchObject({
+            type: 'agent-work-group',
+            id: 'work-tool-without-result',
+            hasRunning: false,
+            completedAt: 5,
+        });
+    });
+
+    it('does not keep an interrupted turn loading when no final response was emitted', () => {
+        const messages: Message[] = [
+            toolMessage('tool-without-result', 2, { state: 'running' }),
+            {
+                kind: 'user-text',
+                id: 'user',
+                localId: null,
+                createdAt: 1,
+                text: 'run command',
+            },
+        ];
+
+        const stoppedItems = groupMessagesForDisplay(messages, true, { currentTurnActive: false });
+        const activeItems = groupMessagesForDisplay(messages, true, { currentTurnActive: true });
+
+        expect(stoppedItems[0]).toMatchObject({
+            type: 'tool-group',
+            id: 'group-tool-without-result',
+            hasRunning: false,
+        });
+        expect(activeItems[0]).toMatchObject({
+            type: 'tool-group',
+            id: 'group-tool-without-result',
+            hasRunning: true,
+        });
+    });
+
+    it('settles stale tool loading when tool grouping is disabled without mutating synced messages', () => {
+        const runningTool = toolMessage('tool-without-result', 2, { state: 'running' });
+        const messages: Message[] = [
+            runningTool,
+            {
+                kind: 'user-text',
+                id: 'user',
+                localId: null,
+                createdAt: 1,
+                text: 'run command',
+            },
+        ];
+
+        const items = groupMessagesForDisplay(messages, false, { currentTurnActive: false });
+
+        expect(items[0]).toMatchObject({
+            type: 'message',
+            message: {
+                kind: 'tool-call',
+                tool: { state: 'completed', completedAt: 2 },
+            },
+        });
+        expect(runningTool.tool).toMatchObject({ state: 'running', completedAt: null });
+    });
+
+    it('lets an inactive session override stale thinking and permission activity', () => {
+        const currentTurnActive = isSessionTurnActive({
+            active: false,
+            thinking: true,
+            agentState: {
+                requests: {
+                    permission: {
+                        tool: 'Bash',
+                        arguments: {},
+                    },
+                },
+            } as any,
+        });
+        const items = groupMessagesForDisplay(
+            [toolMessage('tool-without-result', 2, { state: 'running' })],
+            false,
+            { currentTurnActive },
+        );
+
+        expect(items[0]).toMatchObject({
+            type: 'message',
+            message: {
+                kind: 'tool-call',
+                tool: { state: 'completed' },
+            },
+        });
+    });
+
+    it('can suppress stale running state in nested tool details', () => {
+        const items = groupToolCallsForDisplay(
+            [toolMessage('tool-without-result', 2, { state: 'running' })],
+            true,
+            { groupSingleToolCalls: true, showRunning: false },
+        );
+
+        expect(items[0]).toMatchObject({
+            type: 'tool-group',
+            id: 'group-tool-without-result',
+            hasRunning: false,
+        });
+    });
+
     it('collapses image-agent process text while preserving generated images', () => {
         const messages: Message[] = [
             {
@@ -516,7 +639,7 @@ describe('useGroupedMessages', () => {
             fileMessage('reference-image', 2),
         ];
 
-        const items = groupMessagesForDisplay(messages, true, { collapseCurrentTurn: false });
+        const items = groupMessagesForDisplay(messages, true, { currentTurnActive: true });
 
         expect(items).toMatchObject([
             { type: 'image-group', id: 'images-pending-user', presentation: 'generated-grid', messages: [], pendingCount: 3, pendingStartedAt: 4 },
@@ -540,7 +663,7 @@ describe('useGroupedMessages', () => {
             fileMessage('reference-image', 2),
         ];
 
-        const items = groupMessagesForDisplay(messages, true, { collapseCurrentTurn: false });
+        const items = groupMessagesForDisplay(messages, true, { currentTurnActive: true });
 
         expect(items[0]).toMatchObject({
             type: 'image-group',
@@ -582,7 +705,7 @@ describe('useGroupedMessages', () => {
         const firstItems = groupMessagesForDisplay(
             [generatedOne, runningTool, user],
             true,
-            { collapseCurrentTurn: false },
+            { currentTurnActive: true },
         );
         const firstGallery = firstItems.find((item) => item.type === 'image-group');
         expect(firstGallery).toMatchObject({
@@ -596,7 +719,7 @@ describe('useGroupedMessages', () => {
         const secondItems = groupMessagesForDisplay(
             [generatedTwo, progress, generatedOne, runningTool, user],
             true,
-            { collapseCurrentTurn: false },
+            { currentTurnActive: true },
         );
         const generatedGallery = secondItems.find(
             (item) => item.type === 'image-group' && item.presentation === 'generated-grid',
@@ -702,6 +825,67 @@ describe('useGroupedMessages', () => {
         expect(items[0]).toMatchObject({ type: 'message', id: 'agent-final' });
     });
 
+    it('does not keep completed image-agent work loading when a tool result is missing', () => {
+        const messages: Message[] = [
+            {
+                kind: 'agent-text',
+                id: 'agent-final',
+                localId: null,
+                createdAt: 5,
+                text: 'image generation finished',
+            },
+            fileMessage('generated-image', 4, { source: 'generated' }),
+            toolMessage('image-tool-without-result', 3, { state: 'running' }),
+            {
+                kind: 'user-text',
+                id: 'user',
+                localId: null,
+                createdAt: 1,
+                text: imageAgentPrompt(),
+            },
+        ];
+
+        const items = groupMessagesForDisplay(messages, true, { currentTurnActive: false });
+        const workGroup = items.find((item) => item.type === 'agent-work-group');
+
+        expect(workGroup).toMatchObject({
+            type: 'agent-work-group',
+            id: 'work-image-tool-without-result',
+            hasRunning: false,
+            completedAt: 5,
+        });
+    });
+
+    it('removes unfinished image placeholders after a partial batch stops', () => {
+        const messages: Message[] = [
+            {
+                kind: 'agent-text',
+                id: 'agent-final',
+                localId: null,
+                createdAt: 6,
+                text: 'image generation stopped after one result',
+            },
+            fileMessage('generated-image', 5, { source: 'generated', batchId: 'batch-3' }),
+            toolMessage('image-tool-without-result', 4, { state: 'running' }),
+            {
+                kind: 'user-text',
+                id: 'user',
+                localId: null,
+                createdAt: 3,
+                text: imageAgentPromptWithStyleCount(3),
+            },
+        ];
+
+        const items = groupMessagesForDisplay(messages, true, { currentTurnActive: false });
+        const gallery = items.find((item) => item.type === 'image-group');
+
+        expect(gallery).toMatchObject({
+            type: 'image-group',
+            id: 'images-generated-image',
+            pendingCount: 0,
+        });
+    });
+
     it('collapses running image-agent work even while the current turn is active', () => {
         const messages: Message[] = [
             toolMessage('image-tool-running', 3, { state: 'running' }),
@@ -714,7 +898,7 @@ describe('useGroupedMessages', () => {
             },
         ];
 
-        const items = groupMessagesForDisplay(messages, true, { collapseCurrentTurn: false });
+        const items = groupMessagesForDisplay(messages, true, { currentTurnActive: true });
 
         expect(items.map((item) => item.type)).toEqual(['image-group', 'agent-work-group', 'message']);
         expect(items[0]).toMatchObject({
@@ -759,7 +943,7 @@ describe('useGroupedMessages', () => {
             },
         ];
 
-        const items = groupMessagesForDisplay(messages, true, { collapseCurrentTurn: false });
+        const items = groupMessagesForDisplay(messages, true, { currentTurnActive: true });
 
         expect(items.map((item) => item.type)).toEqual([
             'message',
@@ -797,7 +981,7 @@ describe('useGroupedMessages', () => {
             },
         ];
 
-        const items = groupMessagesForDisplay(messages, true, { collapseCurrentTurn: false });
+        const items = groupMessagesForDisplay(messages, true, { currentTurnActive: true });
 
         expect(items.map((item) => item.type)).toEqual(['message', 'tool-group', 'message']);
         expect(items[1]).toMatchObject({

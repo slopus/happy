@@ -12,6 +12,7 @@ import TestRenderer from 'react-test-renderer';
 const mocks = vi.hoisted(() => ({
     messages: [] as Message[],
     panelBackHandler: null as (() => boolean) | null,
+    sessionActive: true,
 }));
 
 vi.mock('react-native', () => ({
@@ -65,7 +66,7 @@ vi.mock('@/components/RightSwipePanelHost', () => ({
     }),
 }));
 vi.mock('@/sync/storage', () => ({
-    useSession: () => ({ metadata: { flavor: 'codex' } }),
+    useSession: () => ({ active: mocks.sessionActive, metadata: { flavor: 'codex' } }),
     useSessionMessages: () => ({ messages: mocks.messages, isLoaded: true }),
     useSetting: () => false,
 }));
@@ -109,6 +110,7 @@ describe('SubagentInspectorPanel', () => {
     beforeEach(() => {
         mocks.messages = [];
         mocks.panelBackHandler = null;
+        mocks.sessionActive = true;
     });
 
     it('renders the selected review task, visible work, and finding without leaking hidden or parent content', () => {
@@ -155,6 +157,8 @@ describe('SubagentInspectorPanel', () => {
         const readCall = toolMessage('4', { file_path: 'sources/api/review.ts' }, [], 'Read');
         const grepCall = toolMessage('5', { pattern: 'authorize', path: 'sources/api' }, [], 'Grep');
         const bashCall = toolMessage('6', { command: 'pnpm --filter happy-app test' }, [], 'Bash');
+        bashCall.tool.state = 'running';
+        bashCall.tool.completedAt = null;
         const skillCall = toolMessage('6.5', { skillNames: ['diagnosing-bugs'] }, [], 'Skill');
         mocks.messages = [
             toolMessage('1', {
@@ -200,13 +204,16 @@ describe('SubagentInspectorPanel', () => {
             .toBe('Review the authorization change. Report findings with file and line references.');
         expect(taskText.props.style).toEqual(expect.objectContaining({ fontSize: 16, lineHeight: 24 }));
         const renderedMessages = renderer.root.findAllByType('MessageView');
-        expect(renderedMessages.map((node: any) => node.props.message)).toEqual([
-            visibleProgress,
-            readCall,
-            grepCall,
-            bashCall,
-            finalFinding,
+        expect(renderedMessages.map((node: any) => node.props.message.id)).toEqual([
+            'review-progress',
+            '4',
+            '5',
+            '6',
+            'review-finding',
         ]);
+        expect(renderedMessages.find((node: any) => node.props.message.id === '6')?.props.message.tool)
+            .toMatchObject({ state: 'completed', completedAt: 6 });
+        expect(bashCall.tool).toMatchObject({ state: 'running', completedAt: null });
         const skillGroup = renderer.root.findByType('ToolGroupView');
         expect(skillGroup.props).toMatchObject({
             expanded: false,
@@ -236,6 +243,43 @@ describe('SubagentInspectorPanel', () => {
         expect(renderer.root.findByProps({ testID: 'subagent-inspector-empty' }).props.children)
             .toBe('toolGroup.subagentNoDetails');
         expect(JSON.stringify(renderer.toJSON())).not.toContain('Sibling output');
+        act(() => renderer.unmount());
+    });
+
+    it('settles stale child tools when the parent session stops without a subagent terminal event', () => {
+        const bashCall = toolMessage('2', { command: 'pnpm test' }, [], 'Bash');
+        bashCall.tool.state = 'running';
+        bashCall.tool.completedAt = null;
+        const staleRunningStatus: Message = {
+            kind: 'agent-event',
+            id: 'stale-running-status',
+            createdAt: 3,
+            event: {
+                type: 'subagent-status',
+                subagent: 'agent-target',
+                status: 'running',
+            },
+        };
+        mocks.sessionActive = false;
+        mocks.messages = [
+            toolMessage('1', {
+                sessionSubagent: 'agent-target',
+                prompt: 'Run the tests.',
+            }, [bashCall, staleRunningStatus]),
+        ];
+
+        let renderer: any;
+        act(() => {
+            renderer = TestRenderer.create(
+                <SubagentInspectorPanel onBack={vi.fn()} selection={selection} sessionId="session-one" />,
+            );
+        });
+
+        expect(renderer.root.findByProps({ testID: 'subagent-inspector-status' }).props.children)
+            .toBe('toolGroup.subagentStatus.running');
+        expect(renderer.root.findByType('MessageView').props.message.tool)
+            .toMatchObject({ state: 'completed', completedAt: 2 });
+        expect(bashCall.tool).toMatchObject({ state: 'running', completedAt: null });
         act(() => renderer.unmount());
     });
 

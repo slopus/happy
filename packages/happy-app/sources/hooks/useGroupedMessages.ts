@@ -6,6 +6,7 @@ import { isGeneratedImageBatchPromptText } from '@/utils/autoFoldPrompt';
 import type { AttachmentGalleryPresentation } from '@/utils/attachmentGalleryLayout';
 import { getSkillNamesFromTool } from '@/utils/conversationActivity';
 import { isGeneratedImageFileInput } from '@/hooks/generatedImagesModel';
+import type { Session } from '@/sync/storageTypes';
 
 // Display item types for the grouped message list
 export type TextItem = {
@@ -60,6 +61,16 @@ type ImageAgentPresentationState = {
     pendingGroupByWorkOldestIndex: Map<number, ImageGroupItem>;
 };
 
+export function isSessionTurnActive(
+    session: Pick<Session, 'active' | 'thinking' | 'agentState'> | null | undefined,
+): boolean {
+    if (session?.active !== true) return false;
+    const hasPendingPermission = Boolean(
+        session.agentState?.requests && Object.keys(session.agentState.requests).length > 0,
+    );
+    return session.thinking === true || hasPendingPermission;
+}
+
 /**
  * The messages array is newest-first for the inverted FlatList.
  *
@@ -72,30 +83,31 @@ type ImageAgentPresentationState = {
 export function useGroupedMessages(
     messages: Message[],
     enabled: boolean = true,
-    options: { collapseCurrentTurn?: boolean } = {},
+    options: { currentTurnActive?: boolean } = {},
 ): DisplayItem[] {
-    const collapseCurrentTurn = options.collapseCurrentTurn ?? true;
+    const currentTurnActive = options.currentTurnActive ?? false;
     return React.useMemo(() => {
-        return groupMessagesForDisplay(messages, enabled, { collapseCurrentTurn });
-    }, [messages, enabled, collapseCurrentTurn]);
+        return groupMessagesForDisplay(messages, enabled, { currentTurnActive });
+    }, [messages, enabled, currentTurnActive]);
 }
 
 export function groupMessagesForDisplay(
     messages: Message[],
     enabled: boolean = true,
-    options: { collapseCurrentTurn?: boolean; groupStandaloneSkills?: boolean } = {},
+    options: { currentTurnActive?: boolean; groupStandaloneSkills?: boolean } = {},
 ): DisplayItem[] {
-    const collapseCurrentTurn = options.collapseCurrentTurn ?? true;
+    const currentTurnActive = options.currentTurnActive ?? false;
     messages = filterSupersededUserMessages(messages);
+    const turnOf = getTurnAssignments(messages);
+    messages = settleInactiveToolMessagesForDisplay(messages, turnOf, currentTurnActive);
 
     if (!enabled) {
-        const turnOf = getTurnAssignments(messages);
-        const workGroups = collectAgentWorkGroups(messages, turnOf, collapseCurrentTurn, { imageOnly: true });
+        const workGroups = collectAgentWorkGroups(messages, turnOf, currentTurnActive, { imageOnly: true });
         const imageAgentPresentation = getImageAgentPresentationState(
             messages,
             turnOf,
             workGroups,
-            collapseCurrentTurn,
+            currentTurnActive,
         );
         const { hiddenWorkIndexes, workGroupByOldestIndex } = indexAgentWorkGroups(workGroups);
         // Tool-call grouping is off, but user image attachments must STILL
@@ -139,7 +151,7 @@ export function groupMessagesForDisplay(
                     type: 'tool-group',
                     id: `group-${msg.id}`,
                     messages: [msg],
-                    hasRunning: msg.tool.state === 'running',
+                    hasRunning: currentTurnActive && turnOf[i] === 0 && msg.tool.state === 'running',
                     hasPendingPermission: hasPendingPermission([msg]),
                 });
                 continue;
@@ -149,13 +161,12 @@ export function groupMessagesForDisplay(
         return result;
     }
 
-    const turnOf = getTurnAssignments(messages);
-    const workGroups = collectAgentWorkGroups(messages, turnOf, collapseCurrentTurn);
+    const workGroups = collectAgentWorkGroups(messages, turnOf, currentTurnActive);
     const imageAgentPresentation = getImageAgentPresentationState(
         messages,
         turnOf,
         workGroups,
-        collapseCurrentTurn,
+        currentTurnActive,
     );
     const { hiddenWorkIndexes, workGroupByOldestIndex } = indexAgentWorkGroups(workGroups);
 
@@ -215,7 +226,12 @@ export function groupMessagesForDisplay(
             if (shouldGroupRun && i === info.oldestIdx) {
                 let hasRunning = false;
                 for (const m of info.msgs) {
-                    if (m.kind === 'tool-call' && m.tool.state === 'running') {
+                    if (
+                        turnOf[i] === 0
+                        && currentTurnActive
+                        && m.kind === 'tool-call'
+                        && m.tool.state === 'running'
+                    ) {
                         hasRunning = true;
                         break;
                     }
@@ -269,7 +285,7 @@ function getImageAgentPresentationState(
     messages: Message[],
     turnOf: number[],
     workGroups: CollectedAgentWorkGroup[],
-    collapseCurrentTurn: boolean,
+    currentTurnActive: boolean,
 ): ImageAgentPresentationState {
     const featuredAttachmentIds = new Set<string>();
     const pendingStateByAnchorAttachmentId = new Map<string, { count: number; startedAt: number | null }>();
@@ -290,16 +306,13 @@ function getImageAgentPresentationState(
         }
 
         const generatedIndexes: number[] = [];
-        let hasRunning = turn === 0 && !collapseCurrentTurn;
+        const hasRunning = turn === 0 && currentTurnActive;
         for (let j = 0; j < messages.length; j++) {
             const candidate = messages[j];
             if (turnOf[j] !== turn) continue;
             if (isImageAttachment(candidate)) {
                 featuredAttachmentIds.add(candidate.id);
                 generatedIndexes.push(j);
-            }
-            if (candidate.kind === 'tool-call' && candidate.tool.state === 'running') {
-                hasRunning = true;
             }
         }
 
@@ -399,13 +412,14 @@ function indexAgentWorkGroups(workGroups: CollectedAgentWorkGroup[]): {
 export function groupToolCallsForDisplay(
     messages: Message[],
     enabled: boolean = true,
-    options: { groupSingleToolCalls?: boolean } = {},
+    options: { groupSingleToolCalls?: boolean; showRunning?: boolean } = {},
 ): ToolDisplayItem[] {
     if (!enabled) {
         return messages.map((msg) => ({ type: 'message', id: msg.id, message: msg } as TextItem));
     }
 
     const groupSingleToolCalls = options.groupSingleToolCalls ?? false;
+    const showRunning = options.showRunning ?? true;
     const toolRuns = collectToolRuns(messages, (msg) => {
         if (msg.kind !== 'tool-call') return false;
         if (isInvisibleMessage(msg) || isUserAttachment(msg)) return false;
@@ -429,7 +443,7 @@ export function groupToolCallsForDisplay(
             if (shouldGroupRun && i === info.oldestIdx) {
                 let hasRunning = false;
                 for (const m of info.msgs) {
-                    if (m.kind === 'tool-call' && m.tool.state === 'running') {
+                    if (showRunning && m.kind === 'tool-call' && m.tool.state === 'running') {
                         hasRunning = true;
                         break;
                     }
@@ -463,6 +477,27 @@ function getTurnAssignments(messages: Message[]): number[] {
         if (messages[i].kind === 'user-text') turn++;
     }
     return turnOf;
+}
+
+function settleInactiveToolMessagesForDisplay(
+    messages: Message[],
+    turnOf: number[],
+    currentTurnActive: boolean,
+): Message[] {
+    return messages.map((message, index) => {
+        const isActiveCurrentTurn = currentTurnActive && turnOf[index] === 0;
+        if (isActiveCurrentTurn || message.kind !== 'tool-call' || message.tool.state !== 'running') {
+            return message;
+        }
+        return {
+            ...message,
+            tool: {
+                ...message.tool,
+                state: 'completed',
+                completedAt: message.tool.completedAt ?? message.createdAt,
+            },
+        };
+    });
 }
 
 function collectToolRuns(
@@ -552,7 +587,7 @@ function getImageAttachmentBatchId(message: Message): string | null {
 function collectAgentWorkGroups(
     messages: Message[],
     turnOf: number[],
-    collapseCurrentTurn: boolean,
+    currentTurnActive: boolean,
     options: { imageOnly?: boolean } = {},
 ): CollectedAgentWorkGroup[] {
     const segments = new Map<number, number[]>();
@@ -583,14 +618,17 @@ function collectAgentWorkGroups(
 
         if (isImageAgentTurn) {
             const hasGeneratedAttachment = indexes.some((index) => isImageAttachment(messages[index]));
-            const isActiveTurn = isCurrentTurn && !collapseCurrentTurn;
+            const isActiveTurn = isCurrentTurn && currentTurnActive;
             if (hasGeneratedAttachment || isActiveTurn) {
                 const hiddenIndexes = visibleAgentIndexes;
                 const oldestIdx = Math.max(...hiddenIndexes);
                 const hiddenMessages = hiddenIndexes.map((index) => messages[index]);
                 const startedAt = Math.min(...hiddenMessages.map((msg) => msg.createdAt));
-                const hasRunning = isActiveTurn
-                    || hiddenMessages.some((msg) => msg.kind === 'tool-call' && msg.tool.state === 'running');
+                // Tool results can be lost when a session is interrupted. The
+                // turn lifecycle is the authoritative signal once work is no
+                // longer active, so stale tool state must not keep the group
+                // spinner alive forever.
+                const hasRunning = isActiveTurn;
                 const completedAt = hasRunning
                     ? null
                     : Math.max(...hiddenMessages.map((msg) => msg.createdAt));
@@ -617,7 +655,7 @@ function collectAgentWorkGroups(
             continue;
         }
 
-        if (isCurrentTurn && !collapseCurrentTurn) {
+        if (isCurrentTurn && currentTurnActive) {
             continue;
         }
 
@@ -631,7 +669,9 @@ function collectAgentWorkGroups(
         const hiddenMessages = hiddenIndexes.map((index) => messages[index]);
         const startedAt = Math.min(...hiddenMessages.map((msg) => msg.createdAt));
         const completedAt = messages[finalTextIndex].createdAt;
-        const hasRunning = hiddenMessages.some((msg) => msg.kind === 'tool-call' && msg.tool.state === 'running');
+        // A final response closes the turn even if an interrupted tool never
+        // emitted its matching result event.
+        const hasRunning = false;
 
         groups.push({
             turn,
