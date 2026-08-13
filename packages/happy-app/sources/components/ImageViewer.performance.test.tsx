@@ -65,6 +65,15 @@ vi.mock('@/utils/imageDownload', () => ({ downloadImage: vi.fn() }));
 vi.mock('@/hooks/useAttachmentImage', () => ({
     useAttachmentImage: () => ({ uri: null, loading: false, error: null }),
 }));
+vi.mock('@/sync/resolveMotionPhotoAttachmentSource', () => ({
+    resolveMotionPhotoAttachmentSource: vi.fn(),
+}));
+vi.mock('@/components/tools/views/MediaAttachmentPlayer', () => ({
+    MediaAttachmentPlayer: 'MediaAttachmentPlayer',
+}));
+vi.mock('@/components/DesktopShortcutTooltip', () => ({
+    DesktopShortcutTooltip: 'DesktopShortcutTooltip',
+}));
 vi.mock('@/modal', () => ({ Modal: { alert: vi.fn() } }));
 vi.mock('@/text', () => ({ t: (key: string) => key }));
 

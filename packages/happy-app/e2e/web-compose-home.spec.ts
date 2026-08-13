@@ -5007,7 +5007,7 @@ test.describe('中文 Web 消息与工具演示', () => {
         await page.screenshot({ path: testInfo.outputPath('mp4-user-after.png'), fullPage: true });
     });
 
-    test('[MOTION-01] 荣耀动态 JPEG 在桌面端显示播放入口并加载内嵌视频', async ({ page, request }, testInfo) => {
+    test('[MOTION-01] 荣耀动态 JPEG 以静态图进入查看器并按需播放内嵌视频', async ({ page, request }, testInfo) => {
         test.setTimeout(120_000);
         const fixturePath = process.env.HAPPY_E2E_MOTION_PHOTO_PATH;
         if (!fixturePath) throw new Error('缺少 HAPPY_E2E_MOTION_PHOTO_PATH');
@@ -5038,6 +5038,8 @@ test.describe('中文 Web 消息与工具演示', () => {
 
         const cover = page.getByTestId('motion-photo-cover');
         await expect(cover).toBeVisible({ timeout: 20_000 });
+        await expect(page.getByTestId('motion-photo-viewer-player')).toHaveCount(0);
+        await expect(page.getByTestId('motion-photo-viewer-toggle')).toHaveCount(0);
         await expect(page.getByTestId('attachment-gallery-image')).toHaveCount(0);
         await expect(page.getByText('file', { exact: true })).toHaveCount(0);
         const downloadButton = page.getByTestId('motion-photo-download');
@@ -5077,9 +5079,24 @@ test.describe('中文 Web 消息与工具演示', () => {
         await expect(cover).toBeVisible();
 
         await cover.click();
-        const player = page.getByTestId('motion-photo-player');
+        await expect(page.getByTestId('image-viewer')).toBeVisible();
+        await expect(page.getByTestId('image-viewer-image')).toBeVisible();
+        const motionToggle = page.getByTestId('motion-photo-viewer-toggle');
+        await expect(motionToggle).toBeVisible();
+        await expect(motionToggle).toHaveAttribute('aria-label', /播放动态照片|Play motion photo/i);
+        await motionToggle.hover();
+        await expect(page.getByTestId('motion-photo-viewer-tooltip')).toContainText(/播放动态照片|Play motion photo/i);
+        await motionToggle.focus();
+        await page.mouse.move(640, 500);
+        await expect(page.getByTestId('motion-photo-viewer-tooltip')).toBeVisible();
+        await expect(page.getByTestId('motion-photo-viewer-player')).toHaveCount(0);
+
+        await motionToggle.press('Enter');
+        const player = page.getByTestId('motion-photo-viewer-player');
         const video = player.locator('video');
         await expect(player).toBeVisible({ timeout: 20_000 });
+        await expect(motionToggle).toHaveAttribute('aria-label', /停止动态照片|Stop motion photo/i);
+        await expect(page.getByTestId('motion-photo-viewer-tooltip')).toContainText(/停止动态照片|Stop motion photo/i);
         await expect.poll(() => video.evaluate((element) => {
             const media = element as HTMLVideoElement;
             return media.readyState >= HTMLMediaElement.HAVE_METADATA && media.duration > 1;

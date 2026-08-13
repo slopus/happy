@@ -511,10 +511,13 @@ export const en = {
     imageViewer: {
         download: 'Download image',
         downloadOriginalMotionPhoto: 'Download original motion photo',
+        playMotionPhoto: 'Play motion photo',
+        stopMotionPhoto: 'Stop motion photo',
         close: 'Close image viewer',
         downloadFailedTitle: 'Download Failed',
         downloadFailedMessage: 'Could not prepare this image for download.',
         motionPhotoDownloadFailedMessage: 'Could not download the original motion photo.',
+        motionPhotoLoadFailedMessage: 'Could not play this motion photo.',
     },
 
     errors: {

@@ -1534,10 +1534,13 @@ export const pl: TranslationStructure = {
     imageViewer: {
         download: 'Pobierz obraz',
         downloadOriginalMotionPhoto: 'Pobierz oryginalne ruchome zdjęcie',
+        playMotionPhoto: 'Odtwórz ruchome zdjęcie',
+        stopMotionPhoto: 'Zatrzymaj ruchome zdjęcie',
         close: 'Zamknij podgląd obrazu',
         downloadFailedTitle: 'Pobieranie nie powiodło się',
         downloadFailedMessage: 'Nie udało się przygotować tego obrazu do pobrania.',
         motionPhotoDownloadFailedMessage: 'Nie udało się pobrać oryginalnego ruchomego zdjęcia.',
+        motionPhotoLoadFailedMessage: 'Nie udało się odtworzyć tego ruchomego zdjęcia.',
     },
 
     feed: {

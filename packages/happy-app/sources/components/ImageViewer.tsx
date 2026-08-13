@@ -40,6 +40,10 @@ import { downloadImage } from '@/utils/imageDownload';
 import { Modal } from '@/modal';
 import { t } from '@/text';
 import { useAttachmentImage } from '@/hooks/useAttachmentImage';
+import { resolveMotionPhotoAttachmentSource } from '@/sync/resolveMotionPhotoAttachmentSource';
+import type { MediaPlaybackSource } from '@/sync/mediaPlaybackSourceTypes';
+import { MediaAttachmentPlayer } from '@/components/tools/views/MediaAttachmentPlayer';
+import { DesktopShortcutTooltip } from '@/components/DesktopShortcutTooltip';
 
 const MAX_SCALE = 4;
 const DOUBLE_TAP_SCALE = 2.5;
@@ -64,6 +68,13 @@ export function ImageViewer({ sources, initialIndex, onClose }: ImageViewerProps
     // Shared backdrop opacity — the active page's swipe-down drives the fade.
     const backdropOpacity = useSharedValue(1);
     const [downloadBusy, setDownloadBusy] = React.useState(false);
+    const [motionSource, setMotionSource] = React.useState<MediaPlaybackSource | null>(null);
+    const [motionLoading, setMotionLoading] = React.useState(false);
+    const [motionError, setMotionError] = React.useState(false);
+    const [motionHovered, setMotionHovered] = React.useState(false);
+    const [motionFocused, setMotionFocused] = React.useState(false);
+    const motionSourceRef = React.useRef<MediaPlaybackSource | null>(null);
+    const motionRequest = React.useRef(0);
 
     // Android honors contentOffset unreliably; jump to the tapped image once we
     // know the screen width.
@@ -85,6 +96,9 @@ export function ImageViewer({ sources, initialIndex, onClose }: ImageViewerProps
 
     const single = sources.length === 1;
     const currentSource = sources[currentIndex];
+    const currentSourceKey = currentSource
+        ? `${currentIndex}:${currentSource.sessionId ?? ''}:${currentSource.attachmentRef ?? currentSource.filename ?? ''}`
+        : '';
     const windowStart = Math.max(0, currentIndex - PAGE_OVERSCAN);
     const windowEnd = Math.min(sources.length - 1, currentIndex + PAGE_OVERSCAN);
     const visibleSources = sources.slice(windowStart, windowEnd + 1);
@@ -94,6 +108,66 @@ export function ImageViewer({ sources, initialIndex, onClose }: ImageViewerProps
     const handleZoomChange = React.useCallback((zoomed: boolean) => {
         setPagingEnabled(!zoomed);
     }, []);
+
+    const stopMotionPhoto = React.useCallback(() => {
+        motionRequest.current += 1;
+        const source = motionSourceRef.current;
+        motionSourceRef.current = null;
+        setMotionSource(null);
+        setMotionLoading(false);
+        setMotionError(false);
+        void source?.release?.();
+    }, []);
+
+    React.useEffect(() => {
+        stopMotionPhoto();
+    }, [currentSourceKey, stopMotionPhoto]);
+
+    React.useEffect(() => () => {
+        motionRequest.current += 1;
+        void motionSourceRef.current?.release?.();
+        motionSourceRef.current = null;
+    }, []);
+
+    const handleMotionToggle = React.useCallback(() => {
+        if (motionSource) {
+            stopMotionPhoto();
+            return;
+        }
+        if (
+            !currentSource?.motionPhoto
+            || !currentSource.sessionId
+            || !currentSource.attachmentRef
+            || motionLoading
+        ) return;
+
+        const request = ++motionRequest.current;
+        setMotionLoading(true);
+        setMotionError(false);
+        void resolveMotionPhotoAttachmentSource({
+            sessionId: currentSource.sessionId,
+            ref: currentSource.attachmentRef,
+            fileName: currentSource.filename ?? 'motion-photo.jpg',
+        }).then((source) => {
+            if (motionRequest.current !== request) {
+                void source.release?.();
+                return;
+            }
+            motionSourceRef.current = source;
+            setMotionSource(source);
+        }).catch((cause) => {
+            if (motionRequest.current !== request) return;
+            console.warn('[motion-photo] failed to open in image viewer', cause);
+            setMotionError(true);
+        }).finally(() => {
+            if (motionRequest.current === request) setMotionLoading(false);
+        });
+    }, [currentSource, motionLoading, motionSource, stopMotionPhoto]);
+
+    const handleClose = React.useCallback(() => {
+        stopMotionPhoto();
+        onClose();
+    }, [onClose, stopMotionPhoto]);
 
     const handleDownload = React.useCallback(() => {
         if (!currentSource || downloadBusy) return;
@@ -110,14 +184,14 @@ export function ImageViewer({ sources, initialIndex, onClose }: ImageViewerProps
     }, [currentSource, downloadBusy]);
 
     return (
-        <View style={styles.root}>
+        <View testID="image-viewer" style={styles.root}>
             <Animated.View style={[styles.backdrop, backdropStyle]} />
 
             <ScrollView
                 ref={scrollRef}
                 horizontal
                 pagingEnabled
-                scrollEnabled={pagingEnabled && !single}
+                scrollEnabled={pagingEnabled && !single && !motionSource}
                 showsHorizontalScrollIndicator={false}
                 contentOffset={{ x: initialIndex * screenW, y: 0 }}
                 onLayout={onScrollLayout}
@@ -139,12 +213,32 @@ export function ImageViewer({ sources, initialIndex, onClose }: ImageViewerProps
                             isActive={index === currentIndex}
                             backdropOpacity={backdropOpacity}
                             onZoomChange={handleZoomChange}
-                            onClose={onClose}
+                            onClose={handleClose}
                         />
                     );
                 })}
                 {trailingWidth > 0 && <View style={{ width: trailingWidth, height: screenH }} />}
             </ScrollView>
+
+            {motionSource && currentSource && (
+                <View
+                    testID="motion-photo-viewer-player-frame"
+                    style={styles.motionPlayerLayer}
+                    pointerEvents="box-none"
+                >
+                    <View style={fitMotionPlayer(currentSource, screenW, screenH)}>
+                        <MediaAttachmentPlayer
+                            uri={motionSource.uri}
+                            headers={motionSource.headers}
+                            title={currentSource.filename ?? 'motion-photo.mp4'}
+                            kind="video"
+                            mimeType={currentSource.motionPhoto?.mimeType ?? 'video/mp4'}
+                            aspectRatio={imageAspect(currentSource)}
+                            testID="motion-photo-viewer-player"
+                        />
+                    </View>
+                </View>
+            )}
 
             {!single && (
                 <View style={[styles.counter, { top: insets.top + 14, pointerEvents: 'none' }]}>
@@ -153,6 +247,39 @@ export function ImageViewer({ sources, initialIndex, onClose }: ImageViewerProps
             )}
 
             <View style={[styles.topActions, { top: insets.top + 8 }]}>
+                {currentSource?.motionPhoto && currentSource.sessionId && currentSource.attachmentRef && (
+                    <View style={styles.motionActionSlot}>
+                        <Pressable
+                            testID="motion-photo-viewer-toggle"
+                            onPress={handleMotionToggle}
+                            hitSlop={8}
+                            disabled={motionLoading}
+                            onBlur={() => setMotionFocused(false)}
+                            onFocus={() => setMotionFocused(true)}
+                            onHoverIn={() => setMotionHovered(true)}
+                            onHoverOut={() => setMotionHovered(false)}
+                            accessibilityRole="button"
+                            accessibilityLabel={t(motionSource ? 'imageViewer.stopMotionPhoto' : 'imageViewer.playMotionPhoto')}
+                            accessibilityState={{ busy: motionLoading, selected: !!motionSource }}
+                            style={[styles.iconButton, motionLoading && styles.iconButtonDisabled]}
+                        >
+                            <Ionicons
+                                name={motionLoading ? 'hourglass-outline' : motionSource ? 'stop-circle-outline' : 'aperture-outline'}
+                                size={23}
+                                color="#fff"
+                            />
+                        </Pressable>
+                        <DesktopShortcutTooltip
+                            align="right"
+                            compact
+                            label={t(motionSource ? 'imageViewer.stopMotionPhoto' : 'imageViewer.playMotionPhoto')}
+                            placement="below"
+                            testID="motion-photo-viewer-tooltip"
+                            visible={Platform.OS === 'web' && (motionHovered || motionFocused)}
+                        />
+                    </View>
+                )}
+
                 <Pressable
                     onPress={handleDownload}
                     hitSlop={8}
@@ -165,7 +292,7 @@ export function ImageViewer({ sources, initialIndex, onClose }: ImageViewerProps
                 </Pressable>
 
                 <Pressable
-                    onPress={onClose}
+                    onPress={handleClose}
                     hitSlop={8}
                     accessibilityRole="button"
                     accessibilityLabel={t('imageViewer.close')}
@@ -185,8 +312,32 @@ export function ImageViewer({ sources, initialIndex, onClose }: ImageViewerProps
                     <Text style={styles.actionText}>{currentSource.actionLabel}</Text>
                 </Pressable>
             )}
+
+            {motionError && (
+                <View style={[styles.motionError, { bottom: Math.max(insets.bottom + 22, 34) }]}>
+                    <Ionicons name="alert-circle-outline" size={18} color="#fff" />
+                    <Text style={styles.actionText}>{t('imageViewer.motionPhotoLoadFailedMessage')}</Text>
+                </View>
+            )}
         </View>
     );
+}
+
+function imageAspect(source: ImageViewerSource): number {
+    return source.width && source.height && source.width > 0 && source.height > 0
+        ? source.width / source.height
+        : 4 / 3;
+}
+
+function fitMotionPlayer(source: ImageViewerSource, screenW: number, screenH: number) {
+    const aspect = imageAspect(source);
+    let width = screenW;
+    let height = width / aspect;
+    if (height > screenH) {
+        height = screenH;
+        width = height * aspect;
+    }
+    return { width, height };
 }
 
 interface ZoomablePageProps {
@@ -340,6 +491,7 @@ const ZoomablePage = React.memo<ZoomablePageProps>(({
             <Animated.View style={[styles.page, { width: screenW, height: screenH }]}>
                 <Animated.View style={[styles.imageWrap, imageStyle]}>
                     <Image
+                        testID={isActive ? 'image-viewer-image' : undefined}
                         source={{ uri: fullResolutionUri ?? source.uri }}
                         style={{ width: screenW, height: screenH }}
                         contentFit="contain"
@@ -405,6 +557,28 @@ const styles = StyleSheet.create({
     },
     iconButtonDisabled: {
         opacity: 0.55,
+    },
+    motionActionSlot: {
+        position: 'relative',
+    },
+    motionPlayerLayer: {
+        ...StyleSheet.absoluteFillObject,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#000',
+    },
+    motionError: {
+        position: 'absolute',
+        alignSelf: 'center',
+        maxWidth: '80%',
+        minHeight: 44,
+        paddingHorizontal: 16,
+        borderRadius: 22,
+        backgroundColor: 'rgba(0,0,0,0.7)',
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 8,
     },
     actionButton: {
         position: 'absolute',

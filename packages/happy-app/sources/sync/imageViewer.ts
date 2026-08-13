@@ -13,6 +13,7 @@
  * fullscreen view.
  */
 import { create } from 'zustand';
+import type { MotionPhotoMetadata } from '@/sync/attachmentTypes';
 import type { ImageDownloadSource } from '@/utils/imageDownloadCore';
 
 export interface ImageViewerSource extends ImageDownloadSource {
@@ -26,6 +27,8 @@ export interface ImageViewerSource extends ImageDownloadSource {
     /** Encrypted attachment identity used to load the full-resolution source lazily. */
     sessionId?: string;
     attachmentRef?: string;
+    /** Identifies a JPEG whose embedded MP4 can be played from the viewer. */
+    motionPhoto?: MotionPhotoMetadata;
     /** Optional contextual action shown in the fullscreen viewer. */
     actionLabel?: string;
     onAction?: () => void;
