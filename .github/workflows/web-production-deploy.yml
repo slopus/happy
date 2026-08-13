@@ -1,0 +1,127 @@
+name: Deploy Paws Web to production (on merge to main)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: paws-web-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production-web
+    env:
+      PAWS_WEB_ORIGIN: https://47.115.228.20:8443
+      PAWS_DEPLOY_HOST: root@47.115.228.20
+      PAWS_DEPLOY_PATH: /var/www/happy-web
+      PAWS_DEPLOY_PORT: '22'
+      PAWS_WEB_OSS_BUCKET: happy-app-ota-jacky
+      ALIBABA_CLOUD_ACCESS_KEY_ID: ${{ secrets.ALIYUN_OSS_ACCESS_KEY_ID }}
+      ALIBABA_CLOUD_ACCESS_KEY_SECRET: ${{ secrets.ALIYUN_OSS_ACCESS_KEY_SECRET }}
+      ALIBABA_CLOUD_REGION_ID: cn-hangzhou
+    steps:
+      - name: Checkout merged main revision
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Restore main branch for release guard
+        run: git checkout -B main "$GITHUB_SHA"
+
+      - name: Guard deployment configuration
+        run: |
+          set -euo pipefail
+          test -n "$ALIBABA_CLOUD_ACCESS_KEY_ID" || { echo '::error::Missing ALIYUN_OSS_ACCESS_KEY_ID secret.'; exit 1; }
+          test -n "$ALIBABA_CLOUD_ACCESS_KEY_SECRET" || { echo '::error::Missing ALIYUN_OSS_ACCESS_KEY_SECRET secret.'; exit 1; }
+          test -n "${{ secrets.PAWS_WEB_DEPLOY_SSH_PRIVATE_KEY }}" || { echo '::error::Missing PAWS_WEB_DEPLOY_SSH_PRIVATE_KEY secret.'; exit 1; }
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Aliyun CLI
+        run: |
+          set -euo pipefail
+          curl -fsSL -o /tmp/aliyun-cli.tgz https://aliyuncli.alicdn.com/aliyun-cli-linux-latest-amd64.tgz
+          tar -xzf /tmp/aliyun-cli.tgz -C /tmp
+          sudo mv /tmp/aliyun /usr/local/bin/aliyun
+          aliyun ossutil --help >/dev/null
+          aliyun configure set --profile default --mode AK \
+            --access-key-id "$ALIBABA_CLOUD_ACCESS_KEY_ID" \
+            --access-key-secret "$ALIBABA_CLOUD_ACCESS_KEY_SECRET" \
+            --region cn-hangzhou
+
+      - name: Configure verified SSH access
+        run: |
+          set -euo pipefail
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "${{ secrets.PAWS_WEB_DEPLOY_SSH_PRIVATE_KEY }}" > ~/.ssh/id_paws_web_deploy
+          chmod 600 ~/.ssh/id_paws_web_deploy
+          cat >> ~/.ssh/config <<EOF
+          Host 47.115.228.20
+            IdentityFile ~/.ssh/id_paws_web_deploy
+            IdentitiesOnly yes
+            StrictHostKeyChecking yes
+          EOF
+          cat >> ~/.ssh/known_hosts <<'EOF'
+          47.115.228.20 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIVfo18lZ0KyBKfSB3phd1CnYAQSH7DAYwVJ49HQOwM+
+          47.115.228.20 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDDcZOQThFyWm+OCABirON7FmBZpTzNv7sSm4VVOpF+kaq4bkLH2wBsMJbpjxut+OZM9bPQZr6m75eU1gZGuYHEkrlU67P6PknEzJXGcE6++UP/iqmKoOZZ1HTWDxUrkn1uhpU40h34O2xxu6vZTyRS3qBPtysrdC1vfhw57kK1fznx5qA47WTMP1yyVQ+NfRPH69zkWFseuiuI5hhDVpy+nCSuVIWwB1yynR4i04iakGrmrRhfw5vgiPqVCW0LM52bxLokukCtNMPCRzD9Odu/gEVDeo10vix1sersYtaYY+kO1c1PXZt+N2wQVbwBzCj0xy58KBSSQuYwGN3SPS1yTudSZYHdpHTSYMZv6+wLqmkmHi0mKz/iJsOMc0g1RimGIiJv8w1Aw5pj3z8I59nK49w+9PrggrNfaU8eP8+lr8ATcH35Qd45SGt4djbd+X6yw06+bp/EU1YIEIJARA5w0jdlDFnohQN0WZS6w5UExu87GpylJm+3hQj+n6IjsM=
+          47.115.228.20 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBEmQUBstAnrOJApt7mRCo0vqiQKe9AG6IgWcwZ+X/RxBwVNPQnCPWjfR3GnxeZOsB5D/6XLIKQAyj/0/N79BlEU=
+          EOF
+
+      - name: Build Web from this main revision
+        run: |
+          set -euo pipefail
+          RELEASE_TIMESTAMP="$(git show -s --format=%cI "$GITHUB_SHA")"
+          CI=1 APP_ENV=production EXPO_PUBLIC_HAPPY_SERVER_URL="$PAWS_WEB_ORIGIN" \
+            HAPPY_BUILD_COMMIT_SHA="$GITHUB_SHA" \
+            HAPPY_BUILD_COMMIT_TIMESTAMP="$RELEASE_TIMESTAMP" \
+            pnpm --filter happy-app exec expo export --platform web --clear
+          pnpm --filter happy-app exec tsx sources/scripts/injectWebLoading.ts
+          printf '%s\n' "$GITHUB_SHA" > packages/happy-app/dist/.paws-release-revision
+
+      - name: Upload and verify immutable Web assets
+        run: |
+          set -euo pipefail
+          bash scripts/upload-web-assets.sh
+          node scripts/verify-web-release.mjs "$PAWS_WEB_ORIGIN" packages/happy-app/dist/index.html
+
+      - name: Atomically switch Web entry
+        env:
+          PAWS_SKIP_BUILD: '1'
+        run: pnpm web:deploy
+
+      - name: Verify live release revision and routes
+        run: |
+          set -euo pipefail
+          ssh -p "$PAWS_DEPLOY_PORT" "$PAWS_DEPLOY_HOST" \
+            "test \"\$(tr -d '[:space:]' < '$PAWS_DEPLOY_PATH/.paws-release-revision')\" = '$GITHUB_SHA'"
+          node scripts/verify-web-release.mjs "$PAWS_WEB_ORIGIN" packages/happy-app/dist/index.html
+
+      - name: Write deployment summary
+        if: success()
+        run: |
+          {
+            echo '### Paws Web deployed'
+            echo ''
+            echo '| Field | Value |'
+            echo '| --- | --- |'
+            echo "| Origin | $PAWS_WEB_ORIGIN |"
+            echo "| Commit | \`$GITHUB_SHA\` |"
+            echo "| Deploy path | \`$PAWS_DEPLOY_PATH\` |"
+          } >> "$GITHUB_STEP_SUMMARY"

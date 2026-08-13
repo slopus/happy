@@ -24,6 +24,21 @@ git rev-parse origin/main
 - `HEAD` 必须等于 `origin/main`。
 - 如果任一条件不满足，先修复根仓库状态，再继续其他任务。
 
+## Paws Web 发布契约
+
+本仓库中“部署 Web”、“上线 Web”、“Web 预览”或“让我在线测试”均指向唯一的正式
+Paws Web origin：`https://47.115.228.20:8443`。
+
+- 合入 `main` 后，由 `.github/workflows/web-production-deploy.yml` 自动构建并发布；它是
+  正式 Web 的唯一常规发布入口。
+- 发布必须复用 `scripts/deploy-web.sh` 的原子切换，并先上传并校验 OSS 上的哈希资源。
+- `scripts/deploy-web.sh` 只接受该正式 origin，且仅允许干净、与 `origin/main` 一致的
+  `main`；不得从功能分支发布。
+- 未经用户明确要求，禁止以 Vercel、Cloudflare Pages、`cloudflared`、Wrangler、临时
+  tunnel 或任何其他 origin/端口代替该正式入口。
+- “在线测试”不授权把未合并分支发布到 `8443`。需要测试未合并分支时，应明确询问是否
+  需要临时外部预览。
+
 ## 一、远端与仓库
 
 | 远端 | 地址 | 用途 |

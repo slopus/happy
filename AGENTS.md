@@ -34,6 +34,8 @@ Before making project changes, read and follow the root `CLAUDE.md`.
 - build, test, and local development commands
 - commit, PR, Android APK, OTA, and historical-upstream handling rules
 - the "root workspace stays clean main" invariant
+- the Paws Web 发布契约：Web 上线或在线测试默认只发布到
+  `https://47.115.228.20:8443`，并由合并到 `main` 的 CI/CD 执行
 
 If this file conflicts with `CLAUDE.md`, prefer `CLAUDE.md` unless the section below explicitly matches the user's wording.
 

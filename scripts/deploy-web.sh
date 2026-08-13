@@ -86,6 +86,12 @@ require_env PAWS_WEB_ORIGIN
 require_env PAWS_DEPLOY_HOST
 require_env PAWS_DEPLOY_PATH
 
+CANONICAL_WEB_ORIGIN="https://47.115.228.20:8443"
+if [[ "$PAWS_WEB_ORIGIN" != "$CANONICAL_WEB_ORIGIN" ]]; then
+    echo "错误：Paws Web 只能发布到 ${CANONICAL_WEB_ORIGIN}。" >&2
+    exit 2
+fi
+
 if [[ ! "$PAWS_WEB_ORIGIN" =~ ^https?://[^[:space:]]+$ ]]; then
     echo "错误：PAWS_WEB_ORIGIN 必须是完整的 http:// 或 https:// 地址。" >&2
     exit 2
