@@ -1505,10 +1505,13 @@ export const es: TranslationStructure = {
     imageViewer: {
         download: 'Descargar imagen',
         downloadOriginalMotionPhoto: 'Descargar la foto con movimiento original',
+        playMotionPhoto: 'Reproducir foto con movimiento',
+        stopMotionPhoto: 'Detener foto con movimiento',
         close: 'Cerrar visor de imagen',
         downloadFailedTitle: 'Error al descargar',
         downloadFailedMessage: 'No se pudo preparar esta imagen para descargarla.',
         motionPhotoDownloadFailedMessage: 'No se pudo descargar la foto con movimiento original.',
+        motionPhotoLoadFailedMessage: 'No se pudo reproducir esta foto con movimiento.',
     },
 
     feed: {

@@ -23,7 +23,6 @@ import { MediaAttachmentPlayer } from './MediaAttachmentPlayer';
 import { t } from '@/text';
 import { openDocumentAttachment } from '@/sync/openDocumentAttachment';
 import { MAX_PDF_FILE_SIZE } from '@/sync/attachmentLimits';
-import { resolveMotionPhotoAttachmentSource } from '@/sync/resolveMotionPhotoAttachmentSource';
 import type { MotionPhotoMetadata } from '@/sync/attachmentTypes';
 import { downloadOriginalAttachment } from '@/sync/downloadOriginalAttachment';
 import { DesktopShortcutTooltip } from '@/components/DesktopShortcutTooltip';
@@ -363,9 +362,6 @@ function ImageFileView({ name, image, ref_, sessionId, motionPhoto }: {
 }) {
     const { theme } = useUnistyles();
     const ref = ref_;
-    const [motionSource, setMotionSource] = React.useState<MediaPlaybackSource | null>(null);
-    const [motionLoading, setMotionLoading] = React.useState(false);
-    const [motionError, setMotionError] = React.useState(false);
     const [downloadLoading, setDownloadLoading] = React.useState(false);
     const [downloadError, setDownloadError] = React.useState(false);
     const [downloadHovered, setDownloadHovered] = React.useState(false);
@@ -380,21 +376,6 @@ function ImageFileView({ name, image, ref_, sessionId, motionPhoto }: {
 
     const { uri, error, motionPhoto: detectedMotionPhoto } = useAttachmentImage(sessionId ?? '', sessionId ? ref : undefined);
     const effectiveMotionPhoto = motionPhoto ?? detectedMotionPhoto;
-
-    React.useEffect(() => () => { void motionSource?.release?.(); }, [motionSource]);
-
-    const handleMotionPlay = React.useCallback(() => {
-        if (!effectiveMotionPhoto || !sessionId || motionLoading || motionSource) return;
-        setMotionLoading(true);
-        setMotionError(false);
-        void resolveMotionPhotoAttachmentSource({ sessionId, ref, fileName: name })
-            .then(setMotionSource)
-            .catch((cause) => {
-                console.warn(`[motion-photo] failed to open ${name}`, cause);
-                setMotionError(true);
-            })
-            .finally(() => setMotionLoading(false));
-    }, [effectiveMotionPhoto, motionLoading, motionSource, name, ref, sessionId]);
 
     const handleOriginalDownload = React.useCallback(async () => {
         if (!effectiveMotionPhoto || !sessionId || downloadLoading) return;
@@ -436,52 +417,35 @@ function ImageFileView({ name, image, ref_, sessionId, motionPhoto }: {
 
     return (
         <View style={styles.inlineContainer}>
-            {motionSource ? (
-                <View style={{ width: displayW }}>
-                    <MediaAttachmentPlayer
-                        uri={motionSource.uri}
-                        headers={motionSource.headers}
-                        title={name}
-                        kind="video"
-                        mimeType={effectiveMotionPhoto?.mimeType ?? 'video/mp4'}
-                        aspectRatio={aspect}
-                        testID="motion-photo-player"
-                    />
-                </View>
-            ) : (
-                <Pressable
-                    testID={effectiveMotionPhoto ? 'motion-photo-cover' : undefined}
-                    accessibilityRole="button"
-                    accessibilityLabel={effectiveMotionPhoto ? t('imageUpload.mediaPlay', { name }) : name}
-                    onPress={uri
-                        ? effectiveMotionPhoto
-                            ? handleMotionPlay
-                            : () => imageViewer.open({ uri, width: image?.width, height: image?.height, filename: name })
-                        : undefined}
-                    disabled={!uri || motionLoading}
-                    style={[styles.inlineWrapper, { borderColor: theme.colors.divider }]}
-                >
-                    <Image
-                        source={uri ? { uri } : undefined}
-                        placeholder={placeholder}
-                        style={[{ width: displayW, height: displayH }, styles.inlineImage]}
-                        contentFit="cover"
-                        transition={150}
-                    />
-                    {effectiveMotionPhoto && uri && (
-                        <View style={styles.motionPhotoOverlay}>
-                            {motionLoading
-                                ? <ActivityIndicator size="small" color={theme.colors.button.primary.tint} />
-                                : <Ionicons name="play" size={22} color={theme.colors.button.primary.tint} />}
-                        </View>
-                    )}
-                    {(error && !uri || motionError) && (
-                        <View style={[styles.errorOverlay, { backgroundColor: theme.colors.surfaceHigh }]}>
-                            <Ionicons name="alert-circle-outline" size={20} color={theme.colors.textSecondary} />
-                        </View>
-                    )}
-                </Pressable>
-            )}
+            <Pressable
+                testID={effectiveMotionPhoto ? 'motion-photo-cover' : undefined}
+                accessibilityRole="button"
+                accessibilityLabel={name}
+                onPress={uri ? () => imageViewer.open({
+                    uri,
+                    width: image?.width,
+                    height: image?.height,
+                    filename: name,
+                    sessionId,
+                    attachmentRef: sessionId ? ref : undefined,
+                    motionPhoto: effectiveMotionPhoto,
+                }) : undefined}
+                disabled={!uri}
+                style={[styles.inlineWrapper, { borderColor: theme.colors.divider }]}
+            >
+                <Image
+                    source={uri ? { uri } : undefined}
+                    placeholder={placeholder}
+                    style={[{ width: displayW, height: displayH }, styles.inlineImage]}
+                    contentFit="cover"
+                    transition={150}
+                />
+                {error && !uri && (
+                    <View style={[styles.errorOverlay, { backgroundColor: theme.colors.surfaceHigh }]}>
+                        <Ionicons name="alert-circle-outline" size={20} color={theme.colors.textSecondary} />
+                    </View>
+                )}
+            </Pressable>
             {effectiveMotionPhoto ? (
                 <View style={[styles.imageMetaRow, { width: displayW }]}>
                     <Text style={[styles.filename, styles.imageFilename, { color: theme.colors.textSecondary }]} numberOfLines={1}>{name}</Text>
@@ -519,11 +483,6 @@ function ImageFileView({ name, image, ref_, sessionId, motionPhoto }: {
             ) : (
                 <Text style={[styles.filename, { color: theme.colors.textSecondary }]} numberOfLines={1}>{name}</Text>
             )}
-            {motionError && (
-                <Text style={[styles.mediaError, { color: theme.colors.textDestructive }]}>
-                    {t('imageUpload.mediaLoadFailed')}
-                </Text>
-            )}
             {downloadError && (
                 <Text style={[styles.mediaError, { color: theme.colors.textDestructive }]}>
                     {t('imageViewer.motionPhotoDownloadFailedMessage')}
@@ -558,19 +517,6 @@ const styles = StyleSheet.create(() => ({
         borderRadius: 12,
         alignItems: 'center',
         justifyContent: 'center',
-    },
-    motionPhotoOverlay: {
-        position: 'absolute',
-        left: '50%',
-        top: '50%',
-        width: 48,
-        height: 48,
-        marginLeft: -24,
-        marginTop: -24,
-        borderRadius: 24,
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: 'rgba(0, 0, 0, 0.62)',
     },
     filename: {
         fontSize: 13,

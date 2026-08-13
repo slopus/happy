@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
     release: vi.fn(),
     openDocument: vi.fn(async () => undefined),
     downloadOriginal: vi.fn(async () => true),
+    openImageViewer: vi.fn(),
     resolveSource: vi.fn(async () => ({
         uri: 'https://files.test/acceptance.mp4',
         headers: {},
@@ -38,7 +39,7 @@ vi.mock('expo-image', () => ({ Image: 'Image' }));
 vi.mock('@expo/vector-icons', () => ({ Ionicons: 'Ionicons' }));
 vi.mock('@/hooks/useAttachmentImage', () => ({ useAttachmentImage: () => mocks.attachmentImageState }));
 vi.mock('@/utils/thumbhash', () => ({ thumbhashToDataUri: () => null }));
-vi.mock('@/sync/imageViewer', () => ({ imageViewer: { open: vi.fn() } }));
+vi.mock('@/sync/imageViewer', () => ({ imageViewer: { open: mocks.openImageViewer } }));
 vi.mock('@/sync/resolveMediaAttachmentSource', () => ({ resolveMediaAttachmentSource: mocks.resolveSource }));
 vi.mock('@/sync/resolveMotionPhotoAttachmentSource', () => ({ resolveMotionPhotoAttachmentSource: mocks.resolveMotionSource }));
 vi.mock('@/sync/openDocumentAttachment', () => ({ openDocumentAttachment: mocks.openDocument }));
@@ -105,6 +106,7 @@ describe('FileView media playback', () => {
         mocks.release.mockClear();
         mocks.openDocument.mockClear();
         mocks.downloadOriginal.mockClear();
+        mocks.openImageViewer.mockClear();
         mocks.resolveSource.mockReset();
         mocks.resolveSource.mockResolvedValue({
             uri: 'https://files.test/acceptance.mp4',
@@ -156,7 +158,7 @@ describe('FileView media playback', () => {
         act(() => renderer.unmount());
     });
 
-    it('shows a motion-photo cover and extracts its embedded MP4 on press', async () => {
+    it('opens a motion-photo cover as a still image in the fullscreen viewer', async () => {
         const tool = {
             name: 'file',
             state: 'completed',
@@ -179,19 +181,18 @@ describe('FileView media playback', () => {
         expect(renderer.root.findAllByProps({ testID: 'motion-photo-player' })).toHaveLength(0);
         await act(async () => { cover.props.onPress(); });
 
-        expect(mocks.resolveMotionSource).toHaveBeenCalledWith({
+        expect(mocks.resolveMotionSource).not.toHaveBeenCalled();
+        expect(mocks.openImageViewer).toHaveBeenCalledWith({
+            uri: 'data:image/jpeg;base64,AA==',
+            width: 1080,
+            height: 1920,
+            filename: 'photo.jpg',
             sessionId: 's1',
-            ref: 'sessions/s1/attachments/photo.enc',
-            fileName: 'photo.jpg',
-        });
-        expect(renderer.root.findByProps({ testID: 'motion-photo-player' }).props).toMatchObject({
-            uri: 'file:///cache/photo.jpg.mp4',
-            kind: 'video',
-            aspectRatio: 1080 / 1920,
+            attachmentRef: 'sessions/s1/attachments/photo.enc',
+            motionPhoto: { videoOffset: 2000, videoLength: 1000, mimeType: 'video/mp4' },
         });
 
         act(() => renderer.unmount());
-        expect(mocks.release).toHaveBeenCalledTimes(1);
     });
 
     it('downloads the complete original motion JPEG without using its preview URI', async () => {
@@ -294,7 +295,7 @@ describe('FileView media playback', () => {
         act(() => renderer.unmount());
     });
 
-    it('plays a historical motion photo detected from its decrypted JPEG bytes', async () => {
+    it('opens a historical detected motion photo in the fullscreen viewer', async () => {
         mocks.attachmentImageState = {
             uri: 'data:image/jpeg;base64,AA==',
             error: null,
@@ -313,7 +314,11 @@ describe('FileView media playback', () => {
 
         const cover = renderer.root.findByProps({ testID: 'motion-photo-cover' });
         await act(async () => { cover.props.onPress(); });
-        expect(renderer.root.findByProps({ testID: 'motion-photo-player' })).toBeDefined();
+        expect(mocks.resolveMotionSource).not.toHaveBeenCalled();
+        expect(mocks.openImageViewer).toHaveBeenCalledWith(expect.objectContaining({
+            attachmentRef: 'historical.enc',
+            motionPhoto: { videoOffset: 2000, videoLength: 1000, mimeType: 'video/mp4' },
+        }));
         act(() => renderer.unmount());
     });
 
