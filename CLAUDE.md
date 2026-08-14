@@ -278,12 +278,10 @@ lsof -nP -iTCP:10802 -sTCP:LISTEN
 
 ```
 <type>(<scope>): <简述>
-
-Generated with [Claude Code](https://claude.ai/code)
-via [Paws](https://paws-landing-eo4.pages.dev)
-
-Co-Authored-By: Claude <noreply@anthropic.com>
 ```
+
+- 提交信息只描述代码变更，不附加工具生成声明或 AI/Agent 联合作者署名。
+- 保留 Git 当前配置的真实作者信息，不为 Claude、Codex、Paws 或其他工具添加署名。
 
 - 推送/拉取前若需代理：`git config --global http.proxy http://127.0.0.1:10802`（https 同理），完成后 `--unset`。
 
