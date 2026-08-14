@@ -1717,7 +1717,7 @@ export const it: TranslationStructure = {
         customImageStyleDeleteMessage: ({ name }: { name: string }) => `Delete "${name}" from your custom styles?`,
         imageStyleGithubSkills: 'Skill di GitHub',
         imageStyleHealingScribbleSketch: 'Schizzo delicato ad acquerello',
-        imageStyleHealingScribbleSketchHint: 'Trasforma una foto in uno studio arioso a matita e inchiostro sciolti, con acquerello essenziale ricavato dai colori originali.\nConserva identità, proporzioni, posa e struttura distintiva; aggiunge testo solo quando fornisci le parole esatte.',
+        imageStyleHealingScribbleSketchHint: 'Trasforma un ritratto in un personaggio anime delicato con volto espressivo, linee gestuali, acquerello pallido selettivo e molto spazio bianco.\nMantiene la persona riconoscibile tramite volto, capelli, occhiali, espressione e abiti chiave; il testo è facoltativo.',
         imageStylePhotoIllustrationDiptych: 'Dittico foto–illustrazione',
         imageStylePhotoIllustrationDiptychHint: 'Abbina una foto fornita a un’illustrazione dalla composizione corrispondente, in un sobrio poster su carta 3:5.\nMantieni il numero di punti di riferimento, l’orizzonte, l’ordine spaziale e il movimento; la tecnica si adatta dal lavis a inchiostro allo stile editoriale a campiture piatte, allo skyline geometrico o all’Art Deco.',
         imageStylePhotoIllustrationEditorialEcho: 'Eco editoriale',

@@ -90,12 +90,6 @@ describe('imageStyleOptions', () => {
 
         expect(prompt).toContain(style!.promptContent);
         expect(prompt).toContain('github-skills/gpt-image-2/1');
-        expect(prompt).toContain('Healing Scribble Sketch v1 visual compiler');
-        expect(prompt).toContain('build a compact Subject Map');
-        expect(prompt).toContain('incidental passersby, reflections, screens, posters, or distant crowd clutter');
-        expect(prompt).toContain('identity fidelity outranks stylization');
-        expect(prompt).toContain('Paper and linework must dominate pigment');
-        expect(prompt).toContain('Default to no text');
         expect(prompt).toContain('必须复用当前批次最初的用户上传源图');
         expect(prompt).toContain('原始上传图优先于当前会话中的已生成结果');
         expect(prompt).toContain('必须有源图片');

@@ -1718,7 +1718,7 @@ export const ca: TranslationStructure = {
         customImageStyleDeleteMessage: ({ name }: { name: string }) => `Delete "${name}" from your custom styles?`,
         imageStyleGithubSkills: 'Skills de GitHub',
         imageStyleHealingScribbleSketch: 'Esbós serè amb aquarel·la',
-        imageStyleHealingScribbleSketchHint: 'Transforma una foto en un estudi espaiós de llapis i tinta lliures amb aquarel·la escassa derivada de la imatge original.\nConserva la identitat, les proporcions, la postura i l’estructura distintiva; només afegeix text quan proporciones les paraules exactes.',
+        imageStyleHealingScribbleSketchHint: 'Transforma un retrat en un personatge anime serè amb una cara expressiva, línies gestuals, aquarel·la pàl·lida selectiva i molt paper en blanc.\nManté la persona recognoscible per la cara, els cabells, les ulleres, l’expressió i la roba clau; el text és opcional.',
         imageStylePhotoIllustrationDiptych: 'Díptic de foto i il·lustració',
         imageStylePhotoIllustrationDiptychHint: 'Combina una fotografia proporcionada amb una il·lustració de composició equivalent en un cartell serè sobre paper, en format 3:5.\nConserva el nombre de punts de referència, l’horitzó, l’ordre espacial i el moviment; la tècnica s’adapta des de l’aiguada de tinta fins a la il·lustració editorial plana, el perfil urbà geomètric o l’Art Deco.',
         imageStylePhotoIllustrationEditorialEcho: 'Ressò editorial',

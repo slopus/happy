@@ -5,7 +5,7 @@ export const EXTRA_IMAGE_STYLE_PREVIEW_MANIFEST: Record<string, ImageStylePrevie
     "github-skills/gpt-image-2/1": {
         "fileName": "gpt-image-2-healing-scribble-portrait.jpg",
         "sourceSet": "github-skill",
-        "sourceCaseId": "gpt-image-2/healing-scribble-sketch-20260815",
+        "sourceCaseId": "gpt-image-2/healing-anime-scribble-20260815",
         "sourceIndex": 9,
         "width": 1448,
         "height": 1086

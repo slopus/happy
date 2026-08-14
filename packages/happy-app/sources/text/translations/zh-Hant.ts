@@ -1818,7 +1818,7 @@ export const zhHant: TranslationStructure = {
         customImageStyleDeleteMessage: ({ name }: { name: string }) => `確定刪除「${name}」嗎？`,
         imageStyleGithubSkills: 'GitHub Skills',
         imageStyleHealingScribbleSketch: '療癒系潦草淡彩',
-        imageStyleHealingScribbleSketchHint: '將任意一張照片重繪為大留白的鬆散鉛筆墨線習作，輔以取自原圖的稀薄水彩。\n保留人物身分、比例、姿態與關鍵結構；預設不加文字，僅在你提供準確文案時加入。',
+        imageStyleHealingScribbleSketchHint: '將一張人物照片重繪為療癒系二次元角色：完整清爽的動漫五官、飛散亂線、局部淡彩與大面積紙白。\n透過臉型、髮型、眼鏡、神態與關鍵衣著保持本人辨識度；預設不加文字。',
         imageStylePhotoIllustrationDiptych: '實景插畫對照海報',
         imageStylePhotoIllustrationDiptychHint: '將一張實景照片與構圖對應的插畫上下並置，生成安靜的 3:5 紙張海報。\n保留地標數量、地平線、空間順序與動勢；依題材自適應鋼筆淡彩、扁平編輯插畫、幾何城市或裝飾藝術。',
         imageStylePhotoIllustrationEditorialEcho: '畫面回聲',

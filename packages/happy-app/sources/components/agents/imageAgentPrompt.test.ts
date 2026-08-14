@@ -153,23 +153,13 @@ describe('imageAgentPrompt', () => {
             sourceRepository: 'ConardLi/garden-skills',
             sourceRevision: 'aaf9a82f5efd73e87cc0998edc398e75bfc35901',
             templateRef: 'skills/gpt-image-2/references/avatars-and-profile/style-transfer-selfie.md',
-            promptPath: 'garden-gpt-image-2/prompt/healing-scribble-sketch-v1.md',
-            sourceCaseId: 'gpt-image-2/healing-scribble-sketch-20260815',
+            promptPath: 'garden-gpt-image-2/prompt/healing-anime-scribble-v2.md',
+            sourceCaseId: 'gpt-image-2/healing-anime-scribble-20260815',
             executionKind: 'gpt-image-2',
             inputMode: 'image-required',
             multiInputMode: 'single',
             continuationSourceMode: 'original-upload',
         });
-        expect(style?.promptContent).toContain('Healing Scribble Sketch v1 visual compiler');
-        expect(style?.promptContent).toContain('build a compact Subject Map');
-        expect(style?.promptContent).toContain('incidental passersby, reflections, screens, posters, or distant crowd clutter');
-        expect(style?.promptContent).toContain('identity fidelity outranks stylization');
-        expect(style?.promptContent).toContain('If the primary subject is an animal, object, plant, or place');
-        expect(style?.promptContent).toContain('roughly 32%-58% as quiet paper');
-        expect(style?.promptContent).toContain('roughly 20%-35% of the canvas');
-        expect(style?.promptContent).toContain('Paper and linework must dominate pigment');
-        expect(style?.promptContent).toContain('Default to no text');
-        expect(style?.promptContent).toContain('regenerate at most once with a targeted correction');
         expect(style?.sourceLicenseNotice).toContain('MIT License');
         expect(style?.responseInstructions).toContain("user's current conversation language");
 

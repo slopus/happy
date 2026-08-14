@@ -1719,7 +1719,7 @@ export const es: TranslationStructure = {
         customImageStyleDeleteMessage: ({ name }: { name: string }) => `Delete "${name}" from your custom styles?`,
         imageStyleGithubSkills: 'Skills de GitHub',
         imageStyleHealingScribbleSketch: 'Boceto sereno con acuarela',
-        imageStyleHealingScribbleSketchHint: 'Convierte una foto en un estudio espacioso de lápiz y tinta sueltos con acuarela escasa derivada de la imagen original.\nConserva identidad, proporciones, pose y estructura distintiva; solo añade texto cuando proporcionas las palabras exactas.',
+        imageStyleHealingScribbleSketchHint: 'Convierte un retrato en un personaje anime sereno con rostro expresivo, líneas gestuales, acuarela pálida selectiva y mucho papel en blanco.\nMantiene a la persona reconocible por el rostro, el pelo, las gafas, la expresión y la ropa clave; el texto es opcional.',
         imageStylePhotoIllustrationDiptych: 'Díptico de foto e ilustración',
         imageStylePhotoIllustrationDiptychHint: 'Combina una foto proporcionada con una ilustración de composición equivalente en un sereno póster de papel 3:5.\nConserva el número de puntos de referencia, el horizonte, el orden espacial y el movimiento; la técnica se adapta desde la aguada de tinta hasta la ilustración editorial plana, el skyline geométrico o el Art Deco.',
         imageStylePhotoIllustrationEditorialEcho: 'Eco editorial',

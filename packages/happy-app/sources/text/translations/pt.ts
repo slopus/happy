@@ -1717,7 +1717,7 @@ export const pt: TranslationStructure = {
         customImageStyleDeleteMessage: ({ name }: { name: string }) => `Delete "${name}" from your custom styles?`,
         imageStyleGithubSkills: 'Skills do GitHub',
         imageStyleHealingScribbleSketch: 'Esboço sereno em aquarela',
-        imageStyleHealingScribbleSketchHint: 'Transforme uma foto em um estudo espaçoso de lápis e tinta soltos, com aquarela econômica derivada da imagem original.\nPreserva identidade, proporções, pose e estrutura marcante; só adiciona texto quando você fornece as palavras exatas.',
+        imageStyleHealingScribbleSketchHint: 'Transforme um retrato em um personagem de anime sereno, com rosto expressivo, linhas gestuais, aquarela pálida seletiva e muito papel em branco.\nMantém a pessoa reconhecível pelo rosto, cabelo, óculos, expressão e roupas principais; o texto é opcional.',
         imageStylePhotoIllustrationDiptych: 'Díptico de foto e ilustração',
         imageStylePhotoIllustrationDiptychHint: 'Combine uma foto fornecida com uma ilustração de composição correspondente em um pôster sereno de papel 3:5.\nPreserve a quantidade de pontos de referência, a linha do horizonte, a ordem espacial e o movimento; a técnica se adapta da aguada de nanquim à ilustração editorial plana, ao skyline geométrico ou ao Art Deco.',
         imageStylePhotoIllustrationEditorialEcho: 'Eco editorial',
