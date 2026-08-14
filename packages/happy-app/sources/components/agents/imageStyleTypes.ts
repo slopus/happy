@@ -77,6 +77,8 @@ export type UserImageStylePromptSource = 'reference-image' | 'extracted-prompt' 
 
 export type ImageAgentStyleLabelKey =
     | 'agents.imageStyleGithubSkills'
+    | 'agents.imageStyleHealingScribbleSketch'
+    | 'agents.imageStyleHealingScribbleSketchHint'
     | 'agents.imageStyleMinimalZinePoster'
     | 'agents.imageStyleMinimalZinePosterHint'
     | 'agents.imageStyleSceneDistillationZine'

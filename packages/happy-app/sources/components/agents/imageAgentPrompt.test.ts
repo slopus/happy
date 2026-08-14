@@ -145,6 +145,60 @@ describe('imageAgentPrompt', () => {
         expect(prompt).toContain('mcp__happy__send_image');
     });
 
+    it('integrates Healing Scribble Sketch with its single-photo generation contract', () => {
+        const style = IMAGE_AGENT_STYLE_PRESETS.find((preset) => preset.id === 'github-skills/gpt-image-2/1');
+        expect(style).toMatchObject({
+            title: 'Healing Scribble Sketch',
+            categoryId: 'github-skills',
+            sourceRepository: 'ConardLi/garden-skills',
+            sourceRevision: 'aaf9a82f5efd73e87cc0998edc398e75bfc35901',
+            templateRef: 'skills/gpt-image-2/references/avatars-and-profile/style-transfer-selfie.md',
+            promptPath: 'garden-gpt-image-2/prompt/healing-scribble-sketch-v1.md',
+            sourceCaseId: 'gpt-image-2/healing-scribble-sketch-20260815',
+            executionKind: 'gpt-image-2',
+            inputMode: 'image-required',
+            multiInputMode: 'single',
+            continuationSourceMode: 'original-upload',
+        });
+        expect(style?.promptContent).toContain('Healing Scribble Sketch v1 visual compiler');
+        expect(style?.promptContent).toContain('build a compact Subject Map');
+        expect(style?.promptContent).toContain('incidental passersby, reflections, screens, posters, or distant crowd clutter');
+        expect(style?.promptContent).toContain('identity fidelity outranks stylization');
+        expect(style?.promptContent).toContain('If the primary subject is an animal, object, plant, or place');
+        expect(style?.promptContent).toContain('roughly 32%-58% as quiet paper');
+        expect(style?.promptContent).toContain('roughly 20%-35% of the canvas');
+        expect(style?.promptContent).toContain('Paper and linework must dominate pigment');
+        expect(style?.promptContent).toContain('Default to no text');
+        expect(style?.promptContent).toContain('regenerate at most once with a targeted correction');
+        expect(style?.sourceLicenseNotice).toContain('MIT License');
+        expect(style?.responseInstructions).toContain("user's current conversation language");
+
+        const prompt = buildImageAgentPrompt({
+            agent: { ...agent, imageStyleIds: [style!.id] },
+            userPrompt: '把上传的照片变成治愈系潦草线稿和稀薄水彩，不要文字。',
+            imageCount: 1,
+        });
+        expect(prompt).toContain(style!.promptContent);
+        expect(prompt).toContain('把上传的照片变成治愈系潦草线稿和稀薄水彩，不要文字。');
+        expect(prompt).toContain('mcp__happy__send_image');
+        expect(prompt).toContain('source-derived palette');
+
+        const missingInputPrompt = buildImageAgentPrompt({
+            agent: { ...agent, imageStyleIds: [style!.id] },
+            userPrompt: '做成治愈系潦草淡彩。',
+            imageCount: 0,
+        });
+        expect(missingInputPrompt).toContain('请先上传一张源照片');
+
+        const multipleInputPrompt = buildImageAgentPrompt({
+            agent: { ...agent, imageStyleIds: [style!.id] },
+            userPrompt: '把这些照片分别做成治愈系潦草淡彩。',
+            imageCount: 3,
+        });
+        expect(multipleInputPrompt).toContain('每个结果只能使用当前对应的 1 张用户素材作为源图片');
+        expect(multipleInputPrompt).toContain('禁止把多张用户素材拼图、混合或共同输入同一次图片生成');
+    });
+
     it('integrates the Photo–Illustration Diptych compiler with one-photo semantics', () => {
         const style = IMAGE_AGENT_STYLE_PRESETS.find((preset) => preset.id === 'github-skills/photo-illustration-diptych/1');
         expect(style).toMatchObject({

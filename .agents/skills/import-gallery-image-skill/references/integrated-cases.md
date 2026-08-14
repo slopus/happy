@@ -97,3 +97,28 @@ This ledger records the immutable source and intentional adaptation boundary for
 - Preserved: truthful photo anchor, Scene Card, layout choices, medium abstraction, 60–80% detail removal, 85–95% organic-detail compression, illustration density/negative space, fibrous torn boundary, one structural hue and removal test, micro-text language/length rules, four-paragraph compiler, targeted one-time regeneration, privacy and output rationale.
 - Changed: Happy delivers the generated file inline and composes the brief rationale with its base failure/privacy response rules.
 - Omitted: no behavior-bearing rule; verbose upstream output templates are reduced to the same user-visible content.
+
+## Healing Scribble Sketch
+
+- Style: `github-skills/gpt-image-2/1`
+- Source: `ConardLi/garden-skills@aaf9a82f5efd73e87cc0998edc398e75bfc35901`
+- Upstream template: `skills/gpt-image-2/references/avatars-and-profile/style-transfer-selfie.md`
+- License: MIT; complete notice in `healingScribbleSketchPrompt.ts`.
+- User authorization: the user supplied all four visual references in this integration task and explicitly requested that the reusable result be integrated into the Happy fork gallery. Ownership beyond that task authorization was not independently verified.
+- Visual references explicitly supplied for this integration:
+  - `/Users/jiashengwang/.happy/attachments/2026-08-14T19-15-44-526Z-0-139959.jpg` — SHA-256 `db55e5318ccc9f6cd5161605f65a7493ce563201be43c3033c6a5020be90eb92`
+  - `/Users/jiashengwang/.happy/attachments/2026-08-14T19-15-44-528Z-1-139958.jpg` — SHA-256 `722a0a8b44abc1b22a3e838d86afcb72e8a958825994786bd5558525d6b2bb3c`
+  - `/Users/jiashengwang/.happy/attachments/2026-08-14T19-15-44-533Z-2-139957.jpg` — SHA-256 `454ffea5fa9f9837e23d2bea32c6edf95ef8aa9029a0d12f65b4299197ff4367`
+  - `/Users/jiashengwang/.happy/attachments/2026-08-14T19-15-44-533Z-3-139956.jpg` — SHA-256 `d93bc311d5d32c760c0d0da87cc094510c43925327484b76714a1a401ffd6c94`
+- Shipped metadata-free 4:3 cover SHA-256: `f5ec54a0cde58678b2515080ccd5079544467659a073da9c028e5ec444c8d6da`.
+- Preview relationship: the cover is an original, text-free GPT Image 2 demonstration created for this integration. It uses a new bespectacled subject and fresh pose while demonstrating controlled searching graphite/ink lines, sparse source-derived watercolor, a small floral accent, and broad quiet paper. It contains no screenshot pixels, phone UI, text, logo, or watermark from the supplied references.
+- Preserved: one-photo style transfer; recognizable subject identity and defining geometry; loose overlapping construction lines; sparse translucent watercolor; restrained source-derived palette; warm or pale paper; generous negative space; gentle candid tone; optional exact user-supplied handwritten caption.
+- Changed: the upstream portrait-transfer scaffold becomes a subject-general compiler through a Subject Map covering people, animals, objects, plants, and places; intentional primary subjects are count-locked while incidental passersby and crowd clutter may dissolve; default output is 3:5 portrait with source-dependent 5:3 landscape fallback; paper and linework explicitly dominate 20-35% watercolor coverage; each uploaded photo is processed independently; continuation always reuses the original upload; one targeted correction is allowed for identity, anatomy, glasses, primary subject count, or text.
+- Omitted: source screenshot pixels; phone/status/viewer controls; automatic captions; inferred names, biography, date, or place; full-background watercolor; arbitrary neon color; photo filters, collage, and retained photographic pixels.
+- Adaptation parity ledger:
+  - Upstream identity-preserving style transfer → Subject Map plus explicit human identity and non-human structure gates.
+  - User-reference loose linework → searching contours, broken strokes, overlapping corrections, light hatching, and protected critical facial geometry.
+  - User-reference sparse watercolor → 2–4 source-derived quiet colors, translucent blooms, dry-brush skips, detached flecks, and substantial untouched paper.
+  - User-reference centered study composition → 42–68% subject occupancy, 32–58% quiet paper, simplified background, and no grid/diptych/frame.
+  - User-reference occasional handwriting → opt-in exact one-line caption with omission on unreliable rendering.
+  - Happy batch and delivery contract → image-required single-input generation, per-source isolation for multiple uploads, original-upload continuation, additive localized rationale, and `mcp__happy__send_image` delivery.

@@ -2,6 +2,14 @@
 import type { ImageStylePreviewEntry } from './imageStylePreviewManifest';
 
 export const EXTRA_IMAGE_STYLE_PREVIEW_MANIFEST: Record<string, ImageStylePreviewEntry> = {
+    "github-skills/gpt-image-2/1": {
+        "fileName": "gpt-image-2-healing-scribble-portrait.jpg",
+        "sourceSet": "github-skill",
+        "sourceCaseId": "gpt-image-2/healing-scribble-sketch-20260815",
+        "sourceIndex": 9,
+        "width": 1448,
+        "height": 1086
+    },
     "github-skills/photo-illustration-diptych/3": {
         "fileName": "photo-illustration-editorial-echo.jpg",
         "sourceSet": "github-skill",

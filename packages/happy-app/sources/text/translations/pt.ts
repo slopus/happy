@@ -1716,6 +1716,8 @@ export const pt: TranslationStructure = {
         customImageStyleDeleteTitle: 'Delete custom style?',
         customImageStyleDeleteMessage: ({ name }: { name: string }) => `Delete "${name}" from your custom styles?`,
         imageStyleGithubSkills: 'Skills do GitHub',
+        imageStyleHealingScribbleSketch: 'Esboço sereno em aquarela',
+        imageStyleHealingScribbleSketchHint: 'Transforme uma foto em um estudo espaçoso de lápis e tinta soltos, com aquarela econômica derivada da imagem original.\nPreserva identidade, proporções, pose e estrutura marcante; só adiciona texto quando você fornece as palavras exatas.',
         imageStylePhotoIllustrationDiptych: 'Díptico de foto e ilustração',
         imageStylePhotoIllustrationDiptychHint: 'Combine uma foto fornecida com uma ilustração de composição correspondente em um pôster sereno de papel 3:5.\nPreserve a quantidade de pontos de referência, a linha do horizonte, a ordem espacial e o movimento; a técnica se adapta da aguada de nanquim à ilustração editorial plana, ao skyline geométrico ou ao Art Deco.',
         imageStylePhotoIllustrationEditorialEcho: 'Eco editorial',

@@ -1746,6 +1746,8 @@ export const ru: TranslationStructure = {
         customImageStyleDeleteTitle: 'Delete custom style?',
         customImageStyleDeleteMessage: ({ name }: { name: string }) => `Delete "${name}" from your custom styles?`,
         imageStyleGithubSkills: 'Навыки GitHub',
+        imageStyleHealingScribbleSketch: 'Уютный набросок с акварелью',
+        imageStyleHealingScribbleSketchHint: 'Превратите одну фотографию в свободный карандашно-тушевый этюд с большим количеством чистой бумаги и редкими акварельными пятнами из палитры снимка.\nСохраняет личность, пропорции, позу и характерную структуру; текст добавляется только по точно указанной формулировке.',
         imageStylePhotoIllustrationDiptych: 'Диптих: фото и иллюстрация',
         imageStylePhotoIllustrationDiptychHint: 'Объедините предоставленную фотографию с иллюстрацией, повторяющей её композицию, в спокойном бумажном постере формата 3:5.\nСохраните число достопримечательностей, линию горизонта, пространственный порядок и движение; техника адаптируется от рисунка тушью с размывкой до плоской редакционной графики, геометрического силуэта города или Art Deco.',
         imageStylePhotoIllustrationEditorialEcho: 'Редакционное эхо',

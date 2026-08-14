@@ -1747,6 +1747,8 @@ export const pl: TranslationStructure = {
         customImageStyleDeleteTitle: 'Delete custom style?',
         customImageStyleDeleteMessage: ({ name }: { name: string }) => `Delete "${name}" from your custom styles?`,
         imageStyleGithubSkills: 'Umiejętności GitHub',
+        imageStyleHealingScribbleSketch: 'Kojący szkic z akwarelą',
+        imageStyleHealingScribbleSketchHint: 'Przekształć jedno zdjęcie w przestronny szkic luźną kreską ołówka i tuszu z oszczędną akwarelą zaczerpniętą z fotografii.\nZachowuje tożsamość, proporcje, pozę i charakterystyczną strukturę; tekst pojawia się tylko po podaniu dokładnego brzmienia.',
         imageStylePhotoIllustrationDiptych: 'Dyptyk zdjęcia i ilustracji',
         imageStylePhotoIllustrationDiptychHint: 'Połącz dostarczone zdjęcie z ilustracją o dopasowanej kompozycji na stonowanym papierowym plakacie 3:5.\nZachowaj liczbę charakterystycznych obiektów, linię horyzontu, układ przestrzenny i ruch; technika dostosowuje się od lawowania tuszem po płaską ilustrację redakcyjną, geometryczną panoramę miasta lub Art Deco.',
         imageStylePhotoIllustrationEditorialEcho: 'Echo redakcyjne',

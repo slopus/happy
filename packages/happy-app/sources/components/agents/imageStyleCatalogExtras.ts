@@ -2,6 +2,7 @@
 import type { ImageAgentStyleCategory, ImageAgentStylePreset } from './imageStyleTypes';
 import { GC_MINIMAL_ZINE_POSTER_LICENSE, GC_MINIMAL_ZINE_POSTER_PROMPT } from './gcMinimalZinePosterPrompt';
 import { GRADE_IMAGES_LICENSE_NOTICE, GRADE_IMAGES_PROMPT } from './gradeImagesPrompt';
+import { HEALING_SCRIBBLE_SKETCH_LICENSE_NOTICE, HEALING_SCRIBBLE_SKETCH_PROMPT } from './healingScribbleSketchPrompt';
 import { PHOTO_ILLUSTRATION_EDITORIAL_ECHO_LICENSE_NOTICE, PHOTO_ILLUSTRATION_EDITORIAL_ECHO_PROMPT } from './photoIllustrationEditorialEchoPrompt';
 import { PHOTO_ILLUSTRATION_DIPTYCH_LICENSE_NOTICE, PHOTO_ILLUSTRATION_DIPTYCH_PROMPT } from './photoIllustrationDiptychPrompt';
 import { PHOTO_ILLUSTRATION_DIPTYCH_LAKESIDE_PROMPT } from './photoIllustrationDiptychLakesidePrompt';
@@ -15,7 +16,7 @@ export const EXTRA_IMAGE_AGENT_STYLE_CATEGORIES: ImageAgentStyleCategory[] = [
         "label": "GitHub Skills",
         "labelKey": "agents.imageStyleGithubSkills",
         "accent": "#315D86",
-        "count": 8
+        "count": 9
     },
     {
         "id": "reference-voxcat",
@@ -50,6 +51,31 @@ export const EXTRA_IMAGE_AGENT_STYLE_CATEGORIES: ImageAgentStyleCategory[] = [
 ];
 
 export const EXTRA_IMAGE_AGENT_STYLE_PRESETS: ImageAgentStylePreset[] = [
+    {
+        "id": "github-skills/gpt-image-2/1",
+        "title": "Healing Scribble Sketch",
+        "labelKey": "agents.imageStyleHealingScribbleSketch",
+        "categoryId": "github-skills",
+        "categoryLabel": "GitHub Skills",
+        "categoryLabelKey": "agents.imageStyleGithubSkills",
+        "categoryAccent": "#315D86",
+        "templateRef": "skills/gpt-image-2/references/avatars-and-profile/style-transfer-selfie.md",
+        "templateLabel": "GPT Image 2 · Healing Scribble Sketch",
+        "templateLabelKey": "agents.imageStyleHealingScribbleSketch",
+        "promptHint": "Redraw one uploaded photo as a spacious pencil-and-ink subject study with loose searching lines, sparse source-derived watercolor, faithful identity and proportions, and an optional exact handwritten caption.",
+        "promptHintKey": "agents.imageStyleHealingScribbleSketchHint",
+        "promptContent": HEALING_SCRIBBLE_SKETCH_PROMPT,
+        "promptPath": "garden-gpt-image-2/prompt/healing-scribble-sketch-v1.md",
+        "sourceCaseId": "gpt-image-2/healing-scribble-sketch-20260815",
+        "sourceRepository": "ConardLi/garden-skills",
+        "sourceRevision": "aaf9a82f5efd73e87cc0998edc398e75bfc35901",
+        "sourceLicenseNotice": HEALING_SCRIBBLE_SKETCH_LICENSE_NOTICE,
+        "executionKind": "gpt-image-2",
+        "inputMode": "image-required",
+        "multiInputMode": "single",
+        "continuationSourceMode": "original-upload",
+        "responseInstructions": "After sending the image, add a concise 1–3 sentence rationale in the user's current conversation language naming the preserved subject cues, source-derived palette, and balance of searching linework, watercolor, and quiet paper. Do not reveal the full prompt, private source path, or detailed parameters unless explicitly requested."
+    },
     {
         "id": "github-skills/photo-illustration-diptych/3",
         "title": "Editorial Echo",
