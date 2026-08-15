@@ -176,6 +176,32 @@ git -C ~/jacky-github/happy rev-parse HEAD
 git -C ~/jacky-github/happy rev-parse origin/main
 ```
 
+### 合并后发布核对（强制）
+
+每次通过 PR 合并到 `main` 后，执行合并的 Agent 必须继续核对该合并提交触发的
+生产发布，不能只报告 GitHub PR 已合并。使用合并 commit SHA 查询并等待对应 GitHub
+Actions 结束，例如：
+
+```bash
+gh run list --repo wangjs-jacky/happy --commit <merge-sha> \
+  --workflow 'Self-hosted OTA production (on merge to main)'
+gh run list --repo wangjs-jacky/happy --commit <merge-sha> \
+  --workflow 'Deploy Paws Web to production (on merge to main)'
+```
+
+- **OTA**：仅当合并命中 `ota-production.yml` 的路径过滤时才会产生 run。若 run 成功，
+  从 job summary 或 merge commit comment 记录并报告 Update ID、channel、runtimeVersion
+  与 manifest URL。若 native-sensitive 检查使发布 job 跳过，必须明确报告“未发布 OTA”
+  及需要匹配原生包的后续动作；若不命中路径过滤，则报告“未触发 OTA”，不得把它表述为
+  已发布。失败或取消同样是发布未完成，必须报告并继续处理或交由维护者决定。
+- **Web**：每次 `main` push 都会触发 `web-production-deploy.yml`。必须等待
+  `Deploy Paws Web to production (on merge to main)` 成功，并确认 workflow summary 中的
+  commit 等于合并 commit、origin 为 `https://47.115.228.20:8443`；失败或取消时不得声称
+  Web 已上线。
+- 最终交付必须分别给出 OTA 与 Web 的 run URL、状态和结论。需要排查失败时，使用
+  `gh run view <run-id> --log-failed`，不要手动重发生产 OTA 或直接部署 Web，除非维护者
+  明确授权。
+
 ## 五、上游关系
 
 - **不做例行 upstream sync。** Paws 的产品、品牌、发布和演进路线独立于原项目。
