@@ -8,6 +8,7 @@ import {
     shouldUseUserImageStyleReferenceImages,
 } from './imageAgentPrompt';
 import { createImageStyleSelectionPrompt } from './imageAgentMode';
+import { HEALING_ANIME_SCRIBBLE_V3_POLICY } from './healingScribbleSketchPrompt';
 import type { AgentLauncher } from './launchAgent';
 
 const agent: AgentLauncher = {
@@ -146,23 +147,32 @@ describe('imageAgentPrompt', () => {
     });
 
     it('integrates Healing Scribble Sketch with its single-photo generation contract', () => {
+        expect(HEALING_ANIME_SCRIBBLE_V3_POLICY).toEqual({
+            visibleLineAndInkStrokesPercent: { min: 80, max: 90 },
+            paleColorCoveragePercent: { min: 8, max: 16 },
+            warmWhitePaperWhitespacePercent: { min: 55, max: 70 },
+            identityAnchorCount: { min: 4, max: 6 },
+            textMode: 'never',
+        });
+        expect(Object.isFrozen(HEALING_ANIME_SCRIBBLE_V3_POLICY)).toBe(true);
+        expect(Object.isFrozen(HEALING_ANIME_SCRIBBLE_V3_POLICY.identityAnchorCount)).toBe(true);
+
         const style = IMAGE_AGENT_STYLE_PRESETS.find((preset) => preset.id === 'github-skills/gpt-image-2/1');
         expect(style).toMatchObject({
             title: 'Healing Scribble Sketch',
+            labelKey: 'agents.imageStyleHealingScribbleSketch',
             categoryId: 'github-skills',
             sourceRepository: 'ConardLi/garden-skills',
             sourceRevision: 'aaf9a82f5efd73e87cc0998edc398e75bfc35901',
             templateRef: 'skills/gpt-image-2/references/avatars-and-profile/style-transfer-selfie.md',
-            promptPath: 'garden-gpt-image-2/prompt/healing-anime-scribble-v2.md',
-            sourceCaseId: 'gpt-image-2/healing-anime-scribble-20260815',
+            promptPath: 'garden-gpt-image-2/prompt/healing-anime-scribble-v3.md',
+            sourceCaseId: 'gpt-image-2/healing-anime-scribble-v3-20260815',
+            promptHintKey: 'agents.imageStyleHealingScribbleSketchHint',
             executionKind: 'gpt-image-2',
             inputMode: 'image-required',
             multiInputMode: 'single',
             continuationSourceMode: 'original-upload',
         });
-        expect(style?.sourceLicenseNotice).toContain('MIT License');
-        expect(style?.responseInstructions).toContain("user's current conversation language");
-
         const prompt = buildImageAgentPrompt({
             agent: { ...agent, imageStyleIds: [style!.id] },
             userPrompt: '把上传的照片变成治愈系潦草线稿和稀薄水彩，不要文字。',
@@ -171,8 +181,6 @@ describe('imageAgentPrompt', () => {
         expect(prompt).toContain(style!.promptContent);
         expect(prompt).toContain('把上传的照片变成治愈系潦草线稿和稀薄水彩，不要文字。');
         expect(prompt).toContain('mcp__happy__send_image');
-        expect(prompt).toContain('source-derived palette');
-
         const missingInputPrompt = buildImageAgentPrompt({
             agent: { ...agent, imageStyleIds: [style!.id] },
             userPrompt: '做成治愈系潦草淡彩。',

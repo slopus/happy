@@ -2296,7 +2296,7 @@ export const en = {
         customImageStyleDeleteMessage: ({ name }: { name: string }) => `Delete "${name}" from your custom styles?`,
         imageStyleGithubSkills: 'GitHub Skills',
         imageStyleHealingScribbleSketch: 'Healing Scribble Sketch',
-        imageStyleHealingScribbleSketchHint: 'Turn one portrait into a healing anime character with a clean expressive face, energetic scribble lines, selective pale watercolor, and generous white paper.\nKeeps the person recognizable through face shape, hair, glasses, expression, and key clothing cues; text is opt-in.',
+        imageStyleHealingScribbleSketchHint: 'Turn one portrait into a raw healing anime construction sketch with dense searching graphite lines, a calm simplified face, sparse pale color, and broad warm-white paper.\nKeeps identity through face shape, hair, glasses, expression, pose, and one key garment or prop; always text-free.',
         imageStylePhotoIllustrationDiptych: 'Photo–Illustration Diptych',
         imageStylePhotoIllustrationDiptychHint: 'Pair one supplied photo with a composition-matched illustration in a calm 3:5 paper poster.\nPreserves landmark count, horizon, spatial order, and movement; medium adapts from ink wash to flat editorial, geometric skyline, or Art Deco.',
         imageStylePhotoIllustrationEditorialEcho: 'Editorial Echo',

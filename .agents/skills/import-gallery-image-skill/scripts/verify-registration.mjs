@@ -67,6 +67,72 @@ const assertStringField = (record, field, expected, relativePath) => {
     if (actual !== expected) throw new Error(`${relativePath} ${field}: expected ${expected}, received ${actual ?? '<missing>'}`);
 };
 
+const hasJpegCommentSegment = (bytes) => {
+    if (bytes[0] !== 0xff || bytes[1] !== 0xd8) return false;
+
+    let offset = 2;
+    let inScanData = false;
+    while (offset + 1 < bytes.length) {
+        if (bytes[offset] !== 0xff) {
+            offset += 1;
+            continue;
+        }
+
+        let markerOffset = offset + 1;
+        while (bytes[markerOffset] === 0xff) markerOffset += 1;
+        const marker = bytes[markerOffset];
+        if (marker === undefined) return false;
+        if (inScanData && marker === 0x00) {
+            offset = markerOffset + 1;
+            continue;
+        }
+        if (inScanData && marker >= 0xd0 && marker <= 0xd7) {
+            offset = markerOffset + 1;
+            continue;
+        }
+        if (marker === 0xfe) return true;
+        if (marker === 0xd9) return false;
+        if (marker === 0xd8 || marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) {
+            offset = markerOffset + 1;
+            continue;
+        }
+        if (markerOffset + 2 >= bytes.length) return false;
+
+        const segmentLength = bytes.readUInt16BE(markerOffset + 1);
+        if (segmentLength < 2) return false;
+        const nextOffset = markerOffset + 1 + segmentLength;
+        if (nextOffset > bytes.length) return false;
+
+        if (marker === 0xda) inScanData = true;
+        else if (!(inScanData && marker === 0xdc)) inScanData = false;
+        offset = nextOffset;
+    }
+    return false;
+};
+
+const jpegCommentBeforeScanProbe = Buffer.from([0xff, 0xd8, 0xff, 0xfe, 0x00, 0x05, 0x41, 0x42, 0x43, 0xff, 0xd9]);
+const jpegStuffedAndRestartProbe = Buffer.from([
+    0xff, 0xd8,
+    0xff, 0xda, 0x00, 0x08, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06,
+    0x11, 0xff, 0x00, 0xfe, 0x22, 0xff, 0xff, 0xd3, 0x33,
+    0xff, 0xd9,
+]);
+const jpegCommentAfterScanProbe = Buffer.from([
+    0xff, 0xd8,
+    0xff, 0xda, 0x00, 0x08, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06,
+    0x11, 0xff, 0xff, 0xd0, 0x22,
+    0xff, 0xc4, 0x00, 0x04, 0xff, 0xfe,
+    0xff, 0xda, 0x00, 0x08, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06,
+    0x33, 0xff, 0xd2, 0x44,
+    0xff, 0xfe, 0x00, 0x05, 0x41, 0x42, 0x43,
+    0xff, 0xd9,
+]);
+if (!hasJpegCommentSegment(jpegCommentBeforeScanProbe)
+    || hasJpegCommentSegment(jpegStuffedAndRestartProbe)
+    || !hasJpegCommentSegment(jpegCommentAfterScanProbe)) {
+    throw new Error('JPEG COM metadata scanner self-check failed');
+}
+
 const decodeDimensions = (bytes) => {
     if (bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) {
         return { width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20) };
@@ -154,8 +220,9 @@ const previewPath = join(app, 'sources/assets/images/gpt-image-2/reference-examp
 if (!existsSync(previewPath)) throw new Error(`Preview asset does not exist: ${previewPath}`);
 const previewBytes = readFileSync(previewPath);
 if (['Exif\0\0', 'http://ns.adobe.com/xap/1.0/', 'eXIf', 'iTXt', 'tEXt', 'zTXt'].some((marker) => previewBytes.includes(Buffer.from(marker)))
-    || previewBytes.includes(Buffer.from([0xff, 0xed]))) {
-    throw new Error(`Preview asset still contains EXIF/XMP metadata: ${previewPath}`);
+    || previewBytes.includes(Buffer.from([0xff, 0xed]))
+    || hasJpegCommentSegment(previewBytes)) {
+    throw new Error(`Preview asset still contains EXIF/XMP/APP13/COM metadata: ${previewPath}`);
 }
 const decoded = decodeDimensions(previewBytes);
 const declared = { width: readNumberField(manifestRecord, 'width'), height: readNumberField(manifestRecord, 'height') };
