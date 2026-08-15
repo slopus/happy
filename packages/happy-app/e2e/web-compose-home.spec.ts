@@ -3029,11 +3029,15 @@ test('[R10-01] 每轮权限、模型与推理强度经 UI 发送并在离线重�
         await expect(permissionTrigger).toHaveAttribute('aria-disabled', 'true');
         await expect(modelTrigger).toHaveAttribute('aria-disabled', 'true');
         await expect(effortTrigger).toHaveAttribute('aria-disabled', 'true');
-        await expect(page.getByTestId('session-composer-permission-disabled-reason')).toHaveText('Machine is offline');
-        await expect(page.getByTestId('session-composer-disabled-reason')).toHaveText('Machine is offline');
+        await expect(page.getByTestId('session-composer-permission-disabled-reason')).toHaveCount(0);
+        await expect(page.getByTestId('session-composer-disabled-reason')).toHaveCount(0);
         await expect(permissionTrigger).toContainText('Full');
         await expect(modelTrigger).toContainText('gpt-5.5');
         await expect(effortTrigger).toContainText('high');
+        await page.screenshot({
+            path: testInfo.outputPath('pc-composer-offline-single-notice-after-1280x900.png'),
+            fullPage: true,
+        });
 
         await fixture.client.reconnect();
         await expect(permissionTrigger).not.toHaveAttribute('aria-disabled', 'true');

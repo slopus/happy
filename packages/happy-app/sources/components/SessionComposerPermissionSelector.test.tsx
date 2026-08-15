@@ -226,7 +226,7 @@ describe('SessionComposerPermissionSelector', () => {
             .toBe('This agent does not expose task permissions.');
     });
 
-    it('disables selection while offline and exposes the offline reason', () => {
+    it('disables selection while offline without repeating the header status', () => {
         act(() => {
             renderer = TestRenderer.create(
                 <SessionComposerPermissionSelector
@@ -245,5 +245,6 @@ describe('SessionComposerPermissionSelector', () => {
         expect(trigger.props.accessibilityLabel).toBe('Task permissions: Full access');
         expect(renderer.root.findByProps({ testID: 'session-composer-permission-trigger-label' }).props.children)
             .toBe('Full');
+        expect(renderer.root.findAllByProps({ testID: 'session-composer-permission-disabled-reason' })).toHaveLength(0);
     });
 });

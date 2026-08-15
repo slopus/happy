@@ -163,7 +163,7 @@ export const SessionComposerPermissionSelector = React.memo(function SessionComp
                     <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={11} color={theme.colors.textSecondary} />
                 ) : null}
             </Pressable>
-            {props.unavailableReason ? (
+            {props.online && props.unavailableReason ? (
                 <Text testID="session-composer-permission-disabled-reason" style={styles.disabledReason} numberOfLines={1}>
                     {props.unavailableReason}
                 </Text>

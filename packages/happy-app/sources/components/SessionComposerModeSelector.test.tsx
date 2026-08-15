@@ -98,7 +98,7 @@ describe('SessionComposerModeSelector', () => {
         act(() => renderer.unmount());
     });
 
-    it('disables both pickers and exposes the offline reason', () => {
+    it('disables both pickers without duplicating the visible offline reason', () => {
         let renderer: any;
         act(() => {
             renderer = TestRenderer.create(
@@ -120,7 +120,7 @@ describe('SessionComposerModeSelector', () => {
         expect(modelTrigger.props.accessibilityHint).toBe('offline');
         expect(effortTrigger.props.disabled).toBe(true);
         expect(effortTrigger.props.accessibilityHint).toBe('offline');
-        expect(renderer.root.findByProps({ testID: 'session-composer-disabled-reason' }).props.children).toBe('offline');
+        expect(renderer.root.findAllByProps({ testID: 'session-composer-disabled-reason' })).toHaveLength(0);
         expect(renderer.root.findAllByType('PickerContent')).toHaveLength(0);
 
         act(() => renderer.unmount());
