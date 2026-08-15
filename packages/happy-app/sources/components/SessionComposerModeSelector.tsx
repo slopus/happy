@@ -50,7 +50,10 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
     const effortItems = React.useMemo(() => toPickerItems(props.effortOptions), [props.effortOptions]);
     const unavailableReason = props.online ? t('settingsAccount.notAvailable') : t('newSession.machineOffline');
     const hasUnavailablePicker = !canChangeModel || (showEffort && !canChangeEffort);
-    const disabledSummary = !props.online || hasUnavailablePicker ? unavailableReason : null;
+    // The permission selector already presents the shared offline state beside
+    // this control. Keep the model controls accessible while avoiding a second
+    // visible offline label that competes for the same narrow composer column.
+    const disabledSummary = props.online && hasUnavailablePicker ? unavailableReason : null;
 
     const togglePicker = React.useCallback((type: Exclude<ActivePicker, null>) => {
         hapticsLight();
