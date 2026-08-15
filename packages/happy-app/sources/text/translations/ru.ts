@@ -1769,6 +1769,8 @@ export const ru: TranslationStructure = {
         customImageStyleDeleteTitle: 'Delete custom style?',
         customImageStyleDeleteMessage: ({ name }: { name: string }) => `Delete "${name}" from your custom styles?`,
         imageStyleGithubSkills: 'Навыки GitHub',
+        imageStyleHealingScribbleSketch: 'Уютный набросок с акварелью',
+        imageStyleHealingScribbleSketchHint: 'Превратите портрет в сырой, умиротворяющий конструктивный аниме-набросок с плотными поисковыми линиями графита, спокойным упрощённым лицом, редкими бледными цветами и большим пространством тёпло-белой бумаги.\nСохраняет узнаваемость через форму лица, волосы, очки, выражение, позу и один ключевой предмет одежды или реквизит; всегда без текста.',
         imageStylePhotoIllustrationDiptych: 'Диптих: фото и иллюстрация',
         imageStylePhotoIllustrationDiptychHint: 'Объедините предоставленную фотографию с иллюстрацией, повторяющей её композицию, в спокойном бумажном постере формата 3:5.\nСохраните число достопримечательностей, линию горизонта, пространственный порядок и движение; техника адаптируется от рисунка тушью с размывкой до плоской редакционной графики, геометрического силуэта города или Art Deco.',
         imageStylePhotoIllustrationEditorialEcho: 'Редакционное эхо',

@@ -2310,6 +2310,8 @@ export const zhHans: TranslationStructure = {
         customImageStyleDeleteTitle: '删除自定义风格？',
         customImageStyleDeleteMessage: ({ name }: { name: string }) => `确定删除“${name}”吗？`,
         imageStyleGithubSkills: 'GitHub Skills',
+        imageStyleHealingScribbleSketch: '治愈系潦草淡彩',
+        imageStyleHealingScribbleSketchHint: '将一张人物照片提炼成原始治愈系动漫结构速写：密集探索式石墨乱线、平静简化的脸、稀疏淡彩和大面积暖白纸。\n通过脸型、头发、眼镜、神态、姿势与一件关键衣物或道具保持身份辨识度；始终不加文字。',
         imageStylePhotoIllustrationDiptych: '实景插画对照海报',
         imageStylePhotoIllustrationDiptychHint: '将一张实景照片与构图对应的插画上下并置，生成安静的 3:5 纸张海报。\n保留地标数量、地平线、空间顺序与动势；根据题材自适应钢笔淡彩、扁平编辑插画、几何城市或装饰艺术。',
         imageStylePhotoIllustrationEditorialEcho: '画面回声',

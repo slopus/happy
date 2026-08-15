@@ -1770,6 +1770,8 @@ export const pl: TranslationStructure = {
         customImageStyleDeleteTitle: 'Delete custom style?',
         customImageStyleDeleteMessage: ({ name }: { name: string }) => `Delete "${name}" from your custom styles?`,
         imageStyleGithubSkills: 'Umiejętności GitHub',
+        imageStyleHealingScribbleSketch: 'Kojący szkic z akwarelą',
+        imageStyleHealingScribbleSketchHint: 'Przekształć portret w surowy, kojący szkic konstrukcyjny anime z gęstymi, poszukującymi liniami grafitu, spokojną uproszczoną twarzą, oszczędnym bladym kolorem i dużą przestrzenią ciepłobiałego papieru.\nZachowuje tożsamość przez kształt twarzy, włosy, okulary, wyraz, pozę oraz jeden kluczowy element stroju lub rekwizyt; zawsze bez tekstu.',
         imageStylePhotoIllustrationDiptych: 'Dyptyk zdjęcia i ilustracji',
         imageStylePhotoIllustrationDiptychHint: 'Połącz dostarczone zdjęcie z ilustracją o dopasowanej kompozycji na stonowanym papierowym plakacie 3:5.\nZachowaj liczbę charakterystycznych obiektów, linię horyzontu, układ przestrzenny i ruch; technika dostosowuje się od lawowania tuszem po płaską ilustrację redakcyjną, geometryczną panoramę miasta lub Art Deco.',
         imageStylePhotoIllustrationEditorialEcho: 'Echo redakcyjne',

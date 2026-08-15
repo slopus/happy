@@ -1840,6 +1840,8 @@ export const zhHant: TranslationStructure = {
         customImageStyleDeleteTitle: '刪除自訂風格？',
         customImageStyleDeleteMessage: ({ name }: { name: string }) => `確定刪除「${name}」嗎？`,
         imageStyleGithubSkills: 'GitHub Skills',
+        imageStyleHealingScribbleSketch: '療癒系潦草淡彩',
+        imageStyleHealingScribbleSketchHint: '將一張人物照片提煉成原始療癒系動漫結構速寫：密集探索式石墨亂線、平靜簡化的臉、稀疏淡彩與大面積暖白紙。\n透過臉型、頭髮、眼鏡、神態、姿勢與一件關鍵衣物或道具保持身分辨識度；始終不加文字。',
         imageStylePhotoIllustrationDiptych: '實景插畫對照海報',
         imageStylePhotoIllustrationDiptychHint: '將一張實景照片與構圖對應的插畫上下並置，生成安靜的 3:5 紙張海報。\n保留地標數量、地平線、空間順序與動勢；依題材自適應鋼筆淡彩、扁平編輯插畫、幾何城市或裝飾藝術。',
         imageStylePhotoIllustrationEditorialEcho: '畫面回聲',

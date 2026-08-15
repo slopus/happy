@@ -1742,6 +1742,8 @@ export const ja: TranslationStructure = {
         customImageStyleDeleteTitle: 'Delete custom style?',
         customImageStyleDeleteMessage: ({ name }: { name: string }) => `Delete "${name}" from your custom styles?`,
         imageStyleGithubSkills: 'GitHub Skills',
+        imageStyleHealingScribbleSketch: '癒やしのラフ水彩スケッチ',
+        imageStyleHealingScribbleSketchHint: '人物写真1枚を、密に探るような鉛筆線、穏やかで簡略化したアニメ顔、わずかな淡彩、広い温白色の紙面で構成する、生々しく癒やしのあるアニメ制作スケッチに変換します。\n顔型、髪、眼鏡、表情、ポーズ、特徴的な衣服または小物で本人らしさを保ち、文字は一切入れません。',
         imageStylePhotoIllustrationDiptych: '写真とイラストの二連画',
         imageStylePhotoIllustrationDiptychHint: '提供された写真1枚と構図を合わせたイラストを、落ち着いた3:5比率の紙ポスターにまとめます。\nランドマークの数、水平線、空間の並び、動きを保ち、画法を題材に応じて墨のにじみ、フラットなエディトリアル表現、幾何学的なスカイライン、Art Decoに調整します。',
         imageStylePhotoIllustrationEditorialEcho: 'エディトリアル・エコー',

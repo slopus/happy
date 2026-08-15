@@ -1739,6 +1739,8 @@ export const it: TranslationStructure = {
         customImageStyleDeleteTitle: 'Delete custom style?',
         customImageStyleDeleteMessage: ({ name }: { name: string }) => `Delete "${name}" from your custom styles?`,
         imageStyleGithubSkills: 'Skill di GitHub',
+        imageStyleHealingScribbleSketch: 'Schizzo delicato ad acquerello',
+        imageStyleHealingScribbleSketchHint: 'Trasforma un ritratto in un grezzo e rasserenante bozzetto costruttivo anime, con fitte linee di ricerca in grafite, un volto calmo e semplificato, pochi colori tenui e ampio spazio di carta bianco caldo.\nMantiene l’identità tramite forma del viso, capelli, occhiali, espressione, posa e un capo o oggetto chiave; sempre senza testo.',
         imageStylePhotoIllustrationDiptych: 'Dittico foto–illustrazione',
         imageStylePhotoIllustrationDiptychHint: 'Abbina una foto fornita a un’illustrazione dalla composizione corrispondente, in un sobrio poster su carta 3:5.\nMantieni il numero di punti di riferimento, l’orizzonte, l’ordine spaziale e il movimento; la tecnica si adatta dal lavis a inchiostro allo stile editoriale a campiture piatte, allo skyline geometrico o all’Art Deco.',
         imageStylePhotoIllustrationEditorialEcho: 'Eco editoriale',

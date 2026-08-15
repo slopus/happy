@@ -82,6 +82,21 @@ describe('imageStyleOptions', () => {
         expect(prompt).toContain('high-chroma hue');
     });
 
+    it('keeps the complete Healing Scribble Sketch compiler and original upload in continuations', () => {
+        const style = IMAGE_AGENT_STYLE_PRESETS.find((preset) => preset.id === 'github-skills/gpt-image-2/1');
+        expect(style).toBeTruthy();
+
+        const prompt = buildImageStyleContinuationPrompt([style!]);
+
+        expect(prompt).toContain(style!.promptContent);
+        expect(prompt).toContain('github-skills/gpt-image-2/1');
+        expect(prompt).toContain('必须复用当前批次最初的用户上传源图');
+        expect(prompt).toContain('原始上传图优先于当前会话中的已生成结果');
+        expect(prompt).toContain('必须有源图片');
+        expect(prompt).toContain('一次只能处理一张源图片');
+        expect(prompt).toContain('source-derived palette');
+    });
+
     it('keeps the complete Photo–Illustration Diptych compiler in continuation batches', () => {
         const style = IMAGE_AGENT_STYLE_PRESETS.find((preset) => preset.id === 'github-skills/photo-illustration-diptych/1');
         expect(style).toBeTruthy();
