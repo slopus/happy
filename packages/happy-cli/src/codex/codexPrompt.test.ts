@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { CHANGE_TITLE_INSTRUCTION } from '@/gemini/constants';
 import {
     buildCodexTurnPrompt,
+    CODEX_HAPPY_SYSTEM_PROMPT_END,
+    CODEX_HAPPY_SYSTEM_PROMPT_START,
     hashCodexEnhancedMode,
     type CodexEnhancedMode,
 } from './codexPrompt';
@@ -19,9 +21,13 @@ describe('buildCodexTurnPrompt', () => {
         });
 
         expect(prompt).toBe(
+            `${CODEX_HAPPY_SYSTEM_PROMPT_START}\n\n` +
             '<options><option>Yes</option></options>\n\n' +
+            `${CODEX_HAPPY_SYSTEM_PROMPT_END}\n\n` +
             'pick an option\n\n' +
-            CHANGE_TITLE_INSTRUCTION,
+            `${CODEX_HAPPY_SYSTEM_PROMPT_START}\n\n` +
+            `${CHANGE_TITLE_INSTRUCTION}\n\n` +
+            CODEX_HAPPY_SYSTEM_PROMPT_END,
         );
     });
 
@@ -33,7 +39,10 @@ describe('buildCodexTurnPrompt', () => {
             includeTitleInstruction: true,
         });
 
-        expect(prompt).toBe(`hello\n\n${CHANGE_TITLE_INSTRUCTION}`);
+        expect(prompt).toBe(
+            `hello\n\n${CODEX_HAPPY_SYSTEM_PROMPT_START}\n\n` +
+            `${CHANGE_TITLE_INSTRUCTION}\n\n${CODEX_HAPPY_SYSTEM_PROMPT_END}`,
+        );
     });
 
     it('does not inject Happy preamble on normal follow-up turns', () => {
@@ -60,7 +69,9 @@ describe('buildCodexTurnPrompt', () => {
         });
 
         expect(prompt).toBe(
+            `${CODEX_HAPPY_SYSTEM_PROMPT_START}\n\n` +
             '<options><option>Yes</option></options>\n\n' +
+            `${CODEX_HAPPY_SYSTEM_PROMPT_END}\n\n` +
             'start fresh',
         );
     });
@@ -77,8 +88,10 @@ describe('buildCodexTurnPrompt', () => {
         });
 
         expect(prompt).toBe(
+            `${CODEX_HAPPY_SYSTEM_PROMPT_START}\n\n` +
             'Happy has already applied these Codex runtime settings for this turn: model=gpt-5.4, reasoning_effort=xhigh. ' +
             'If the user asks to switch to one of these settings, acknowledge that it is already active; do not look for a tool or API to change it.\n\n' +
+            `${CODEX_HAPPY_SYSTEM_PROMPT_END}\n\n` +
             '切换 xhigh 模式',
         );
     });

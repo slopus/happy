@@ -6,6 +6,11 @@ import {
     mapCodexProcessorMessageToSessionEnvelopes,
     mapCodexThreadToSessionEnvelopes,
 } from '../utils/sessionProtocolMapper';
+import {
+    buildCodexTurnPrompt,
+    CODEX_HAPPY_SYSTEM_PROMPT_END,
+    CODEX_HAPPY_SYSTEM_PROMPT_START,
+} from '../codexPrompt';
 
 describe('mapCodexMcpMessageToSessionEnvelopes', () => {
     it('starts and ends turns for task lifecycle events', () => {
@@ -507,6 +512,142 @@ describe('mapCodexProcessorMessageToSessionEnvelopes', () => {
 });
 
 describe('mapCodexThreadToSessionEnvelopes', () => {
+    it('keeps only the user request when a fork backfills a constructed runtime-settings prompt', () => {
+        const userRequest = 'Continue with the implementation plan.';
+        const prompt = buildCodexTurnPrompt({
+            message: userRequest,
+            mode: { model: 'gpt-5.6-terra', effort: 'high' },
+            includeAppendSystemPrompt: false,
+            includeTitleInstruction: false,
+        });
+        const envelopes = mapCodexThreadToSessionEnvelopes({
+            turns: [{
+                id: 'turn-1',
+                startedAt: 100,
+                items: [{
+                    id: 'user-1',
+                    type: 'userMessage',
+                    content: [{ type: 'text', text: prompt }],
+                }],
+            }],
+        });
+
+        expect(envelopes).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                role: 'user',
+                ev: { t: 'text', text: userRequest },
+            }),
+        ]));
+    });
+
+    it('excludes internal Happy system instructions from forked transcript messages', () => {
+        const envelopes = mapCodexThreadToSessionEnvelopes({
+            turns: [{
+                id: 'turn-1',
+                startedAt: 100,
+                items: [{
+                    id: 'user-1',
+                    type: 'userMessage',
+                    content: [{
+                        type: 'text',
+                        text: [
+                            CODEX_HAPPY_SYSTEM_PROMPT_START,
+                            'Internal Happy system instructions.',
+                            CODEX_HAPPY_SYSTEM_PROMPT_END,
+                            'Real user request.',
+                            CODEX_HAPPY_SYSTEM_PROMPT_START,
+                            'Internal title instruction.',
+                            CODEX_HAPPY_SYSTEM_PROMPT_END,
+                        ].join('\n\n'),
+                    }],
+                }],
+            }],
+        });
+
+        expect(envelopes).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                role: 'user',
+                ev: { t: 'text', text: 'Real user request.' },
+            }),
+        ]));
+    });
+
+    it('does not backfill a user message containing only internal Happy system instructions', () => {
+        const envelopes = mapCodexThreadToSessionEnvelopes({
+            turns: [{
+                id: 'turn-1',
+                startedAt: 100,
+                items: [{
+                    id: 'user-1',
+                    type: 'userMessage',
+                    content: [{
+                        type: 'text',
+                        text: `${CODEX_HAPPY_SYSTEM_PROMPT_START}Internal instructions.${CODEX_HAPPY_SYSTEM_PROMPT_END}`,
+                    }],
+                }],
+            }],
+        });
+
+        expect(envelopes.map((envelope) => envelope.ev.t)).toEqual(['turn-start', 'turn-end']);
+    });
+
+    it('does not backfill legacy Codex runtime context from existing forks', () => {
+        const envelopes = mapCodexThreadToSessionEnvelopes({
+            turns: [{
+                id: 'turn-1',
+                startedAt: 100,
+                items: [
+                    {
+                        id: 'runtime-options',
+                        type: 'userMessage',
+                        content: [{
+                            type: 'text',
+                            text: [
+                                '# Options',
+                                'You have a way to give a user a easy way to answer your questions.',
+                                'Whenever you need to show the user an image, call the send_image tool.',
+                            ].join('\n\n'),
+                        }],
+                    },
+                    {
+                        id: 'runtime-agents',
+                        type: 'userMessage',
+                        content: [{
+                            type: 'text',
+                            text: '# AGENTS.md instructions\n\n<environment_context>runtime details</environment_context>',
+                        }],
+                    },
+                ],
+            }],
+        });
+
+        expect(envelopes.map((envelope) => envelope.ev.t)).toEqual(['turn-start', 'turn-end']);
+    });
+
+    it('retains a user message that merely mentions options or AGENTS.md', () => {
+        const envelopes = mapCodexThreadToSessionEnvelopes({
+            turns: [{
+                id: 'turn-1',
+                startedAt: 100,
+                items: [{
+                    id: 'user-1',
+                    type: 'userMessage',
+                    content: [{
+                        type: 'text',
+                        text: 'Please add an Options section to AGENTS.md.',
+                    }],
+                }],
+            }],
+        });
+
+        expect(envelopes).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                role: 'user',
+                ev: { t: 'text', text: 'Please add an Options section to AGENTS.md.' },
+            }),
+        ]));
+    });
+
     it('backfills Codex thread turns as session envelopes with codex item ids', () => {
         const envelopes = mapCodexThreadToSessionEnvelopes({
             turns: [{

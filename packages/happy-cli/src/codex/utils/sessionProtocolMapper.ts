@@ -4,6 +4,10 @@ import type { ReasoningOutput } from './reasoningProcessor';
 import type { DiffToolCall, DiffToolResult } from './diffProcessor';
 import { createEnvelope, type CreateEnvelopeOptions, type SessionEnvelope } from '@slopus/happy-wire';
 import type { Thread, ThreadItem, ThreadTurn } from '../codexAppServerTypes';
+import {
+    CODEX_HAPPY_SYSTEM_PROMPT_END,
+    CODEX_HAPPY_SYSTEM_PROMPT_START,
+} from '../codexPrompt';
 
 export type CodexTurnState = {
     currentTurnId: string | null;
@@ -288,9 +292,43 @@ function textFromInputItems(items: unknown): string | null {
             && typeof (item as { text?: unknown }).text === 'string'
         ))
         .map((item) => item.text)
-        .join('\n')
-        .trim();
-    return text.length > 0 ? text : null;
+        .join('\n');
+    if (isCodexRuntimeContext(text)) {
+        return null;
+    }
+    const visibleText = stripHappySystemPromptBlocks(text).trim();
+    return visibleText.length > 0 ? visibleText : null;
+}
+
+function isCodexRuntimeContext(text: string): boolean {
+    const trimmed = text.trim();
+    return (
+        (trimmed.includes('# AGENTS.md instructions') && trimmed.includes('<environment_context>'))
+        || (
+            trimmed.includes('# Options')
+            && trimmed.includes('You have a way to give a user a easy way to answer your questions')
+            && trimmed.includes('Whenever you need to show the user an image')
+        )
+    );
+}
+
+/**
+ * The first message in a Codex thread carries Happy's app instructions as
+ * prompt text. Keep them available to Codex, but exclude them when a fork
+ * backfills the thread into Happy's user-facing transcript.
+ */
+function stripHappySystemPromptBlocks(text: string): string {
+    let result = text;
+    while (true) {
+        const start = result.indexOf(CODEX_HAPPY_SYSTEM_PROMPT_START);
+        if (start < 0) return result;
+
+        const contentStart = start + CODEX_HAPPY_SYSTEM_PROMPT_START.length;
+        const end = result.indexOf(CODEX_HAPPY_SYSTEM_PROMPT_END, contentStart);
+        if (end < 0) return result;
+
+        result = result.slice(0, start) + result.slice(end + CODEX_HAPPY_SYSTEM_PROMPT_END.length);
+    }
 }
 
 function reasoningText(item: ThreadItem): string | null {

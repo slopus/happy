@@ -33,6 +33,7 @@ const titleTooltipEvidencePhase = process.env.HAPPY_TITLE_TOOLTIP_EVIDENCE_PHASE
 const subagentInspectorEvidenceDirectory = process.env.HAPPY_SUBAGENT_INSPECTOR_EVIDENCE_DIR;
 const messageHoverEvidenceDirectory = process.env.HAPPY_MESSAGE_HOVER_EVIDENCE_DIR;
 const messageHoverEvidencePhase = process.env.HAPPY_MESSAGE_HOVER_EVIDENCE_PHASE ?? 'after';
+const forkTranscriptEvidenceDirectory = process.env.HAPPY_FORK_TRANSCRIPT_EVIDENCE_DIR;
 const motionPhotoEvidenceDirectory = process.env.HAPPY_MOTION_PHOTO_EVIDENCE_DIR;
 const motionPhotoEvidencePhase = process.env.HAPPY_MOTION_PHOTO_EVIDENCE_PHASE === 'before' ? 'before' : 'after';
 
@@ -74,6 +75,16 @@ function messageHoverScreenshotPath(testInfo: { outputPath: (filename: string) =
     if (!messageHoverEvidenceDirectory) return testInfo.outputPath(filename);
     fs.mkdirSync(messageHoverEvidenceDirectory, { recursive: true });
     return path.join(messageHoverEvidenceDirectory, filename);
+}
+
+function forkTranscriptScreenshotPath(
+    testInfo: { outputPath: (filename: string) => string },
+    phase: 'before' | 'after',
+): string {
+    const filename = `fork-transcript-${phase}.png`;
+    if (!forkTranscriptEvidenceDirectory) return testInfo.outputPath(filename);
+    fs.mkdirSync(forkTranscriptEvidenceDirectory, { recursive: true });
+    return path.join(forkTranscriptEvidenceDirectory, filename);
 }
 
 function motionPhotoScreenshotPath(
@@ -1696,6 +1707,7 @@ test('[R10-02][CWD-03-01] 工作目录拒绝越界并在 Agent 离线重连后�
         fixture.client.pulse();
         await expect(page.getByTestId('session-working-directory-trigger')).toContainText('~/current-project');
     } finally {
+        await page.close();
         await fixture.client.close();
     }
 });
@@ -1834,7 +1846,73 @@ test('[MESSAGE-HOVER-ACTIONS] PC Agent 回复悬浮可复制并从所属回合�
         });
         expect(spawnCall?.params?.forkedFromMessageId).toBe(responseMessageId);
     } finally {
+        await page.close();
         await fixture.client.close();
+    }
+});
+
+test('[CODEX-FORK-TRANSCRIPT] 分叉回填隐藏内部提示词但保留用户请求', async ({ page, request }, testInfo) => {
+    test.slow();
+    const realUserRequest = 'Keep the fork transcript focused on the implementation plan.';
+    const internalPromptText = 'Internal Happy system instruction (redacted test fixture).';
+    const legacyRuntimeText = '# AGENTS.md instructions\n\n<environment_context>internal runtime context</environment_context>';
+    const rawEnvelopes = [{
+        id: 'fork-transcript-raw-prompt',
+        time: Date.now(),
+        role: 'user',
+        turn: 'fork-transcript-turn',
+        codexItemId: 'fork-transcript-raw-prompt',
+        ev: { t: 'text', text: `${internalPromptText}\n\n${legacyRuntimeText}\n\n${realUserRequest}` },
+    }];
+    // The CLI mapper's marked and legacy runtime-prompt filtering is covered
+    // by its own prompt-to-mapper unit suite. This is the sanitized boundary
+    // received by the user-facing Web transcript after a fork backfill.
+    const sanitizedEnvelopes = [{
+        id: 'fork-transcript-prompt',
+        time: Date.now(),
+        role: 'user',
+        turn: 'fork-transcript-turn',
+        codexItemId: 'fork-transcript-prompt',
+        ev: { t: 'text', text: realUserRequest },
+    }];
+    const beforeSessionId = await createE2ESession(request, {
+        name: 'Fork transcript before regression',
+        parentSessionId: 'fork-transcript-source',
+        codexThreadId: 'fork-transcript-thread-before',
+    });
+    const afterSessionId = await createE2ESession(request, {
+        name: 'Fork transcript after regression',
+        parentSessionId: 'fork-transcript-source',
+        codexThreadId: 'fork-transcript-thread-after',
+    });
+
+    try {
+        await page.setViewportSize({ width: 1280, height: 720 });
+        await appendE2ESessionEnvelopes(request, beforeSessionId, rawEnvelopes);
+        await page.goto(authenticatedRoute(`/session/${beforeSessionId}`));
+
+        await expect(page.getByText(internalPromptText, { exact: true })).toBeVisible({ timeout: 120_000 });
+        await expect(page.getByText('AGENTS.md instructions', { exact: false })).toBeVisible();
+        await expect(page.getByText(realUserRequest, { exact: true })).toBeVisible();
+        await page.screenshot({
+            path: forkTranscriptScreenshotPath(testInfo, 'before'),
+            animations: 'disabled',
+        });
+        await pauseForRecordedReview(page, 1_100);
+
+        await appendE2ESessionEnvelopes(request, afterSessionId, sanitizedEnvelopes);
+        await page.goto(authenticatedRoute(`/session/${afterSessionId}`));
+
+        await expect(page.getByText(realUserRequest, { exact: true })).toBeVisible({ timeout: 120_000 });
+        await expect(page.getByText(internalPromptText, { exact: true })).toHaveCount(0);
+        await expect(page.getByText('AGENTS.md instructions', { exact: false })).toHaveCount(0);
+        await page.screenshot({
+            path: forkTranscriptScreenshotPath(testInfo, 'after'),
+            animations: 'disabled',
+        });
+        await pauseForRecordedReview(page, 1_100);
+    } finally {
+        await page.close();
     }
 });
 

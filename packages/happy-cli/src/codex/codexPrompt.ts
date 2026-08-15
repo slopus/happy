@@ -4,6 +4,9 @@ import { hashObject } from '@/utils/deterministicJson';
 
 import type { ReasoningEffort } from './codexAppServerTypes';
 
+export const CODEX_HAPPY_SYSTEM_PROMPT_START = '<!-- happy:system-prompt:start -->';
+export const CODEX_HAPPY_SYSTEM_PROMPT_END = '<!-- happy:system-prompt:end -->';
+
 export interface CodexEnhancedMode {
     permissionMode: PermissionMode;
     model?: string;
@@ -31,7 +34,11 @@ export function buildCodexTurnPrompt(opts: {
     const parts: string[] = [];
 
     if (opts.includeAppendSystemPrompt && opts.mode.appendSystemPrompt) {
-        parts.push(opts.mode.appendSystemPrompt);
+        parts.push(
+            CODEX_HAPPY_SYSTEM_PROMPT_START,
+            opts.mode.appendSystemPrompt,
+            CODEX_HAPPY_SYSTEM_PROMPT_END,
+        );
     }
 
     const modeStatus: string[] = [];
@@ -39,15 +46,21 @@ export function buildCodexTurnPrompt(opts: {
     if (opts.mode.effort) modeStatus.push(`reasoning_effort=${opts.mode.effort}`);
     if (modeStatus.length > 0) {
         parts.push(
+            CODEX_HAPPY_SYSTEM_PROMPT_START,
             `Happy has already applied these Codex runtime settings for this turn: ${modeStatus.join(', ')}. ` +
-            `If the user asks to switch to one of these settings, acknowledge that it is already active; do not look for a tool or API to change it.`
+            `If the user asks to switch to one of these settings, acknowledge that it is already active; do not look for a tool or API to change it.`,
+            CODEX_HAPPY_SYSTEM_PROMPT_END,
         );
     }
 
     parts.push(opts.message);
 
     if (opts.includeTitleInstruction) {
-        parts.push(CHANGE_TITLE_INSTRUCTION);
+        parts.push(
+            CODEX_HAPPY_SYSTEM_PROMPT_START,
+            CHANGE_TITLE_INSTRUCTION,
+            CODEX_HAPPY_SYSTEM_PROMPT_END,
+        );
     }
 
     return parts.join('\n\n');

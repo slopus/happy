@@ -56,6 +56,8 @@ config.resolver.assetExts.push('wasm');
 config.resolver.blockList = [
   /[/\\]src-tauri[/\\]target[/\\].*/,
   /[/\\]node_modules[/\\]electron[/\\].*/,
+  // Tests colocated with Expo Router screens are not application routes.
+  /[/\\][^/\\]+\.test\.[cm]?[jt]sx?$/,
 ];
 
 // Force every preact / preact/hooks import (ESM or CJS, from any package) to
