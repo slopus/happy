@@ -664,6 +664,7 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
                     reasoningEffort: message.reasoning_effort ?? message.reasoningEffort,
                     receiverThreadIds,
                     ...(sessionSubagent ? { sessionSubagent } : {}),
+                    ...(receiverThreadId ? { providerThreadId: receiverThreadId } : {}),
                 },
             }, opts));
             if (sessionSubagent && startsSubagentLifecycle(tool)) {
