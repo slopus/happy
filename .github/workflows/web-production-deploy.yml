@@ -7,7 +7,10 @@ on:
 
 concurrency:
   group: paws-web-production
-  cancel-in-progress: false
+  # A newer main revision supersedes any queued or running release. Cancelling
+  # it prevents the release-source guard from reporting an expected race as a
+  # failed deployment, while preserving the latest revision as the only target.
+  cancel-in-progress: true
 
 permissions:
   contents: read
