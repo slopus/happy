@@ -7,6 +7,8 @@ export const NEW_SESSION_AGENT_ORDER: readonly NewSessionAgentType[] = [
     'openclaw',
     'gemini',
     'agy',
+    'hermes',
+    'crush',
 ];
 
 type CliAvailability = Partial<Record<NewSessionAgentType, boolean>>;
