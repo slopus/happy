@@ -45,7 +45,7 @@ export interface McpServerConfig {
 }
 
 /** Transport type for agent communication */
-export type AgentTransport = 'native-claude' | 'mcp-codex' | 'acp';
+export type AgentTransport = 'native-claude' | 'mcp-codex' | 'acp' | 'crush-server';
 
 /** Agent identifier */
 export type AgentId = 'claude' | 'codex' | 'gemini' | 'opencode' | 'openclaw' | 'agy' | 'hermes' | 'crush' | 'claude-acp' | 'codex-acp';

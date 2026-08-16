@@ -413,6 +413,44 @@ Conversation history is preserved on the server, but in-flight tool calls are in
       process.exit(1)
     }
     return;
+  } else if (subcommand === 'crush') {
+    try {
+      const { runAcp } = await import('@/agent/acp/runAcp');
+      const { createCrushBackend } = await import('@/agent/crush');
+
+      let startedBy: 'daemon' | 'terminal' | undefined = undefined;
+      let verbose = false;
+      for (let i = 1; i < args.length; i++) {
+        if (args[i] === '--started-by') {
+          startedBy = args[++i] as 'daemon' | 'terminal';
+        } else if (args[i] === '--verbose') {
+          verbose = true;
+        }
+      }
+
+      const { credentials } = await authAndSetupMachineIfNeeded();
+      await ensureDaemonRunning()
+
+      await runAcp({
+        credentials,
+        startedBy,
+        verbose,
+        agentName: 'crush',
+        createBackend: (context) =>
+          createCrushBackend({
+            cwd: process.cwd(),
+            mcpServers: context.mcpServers,
+          }),
+        externalPermissions: true,
+      });
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
+      if (process.env.DEBUG) {
+        console.error(error)
+      }
+      process.exit(1)
+    }
+    return;
   } else if (subcommand === 'openclaw') {
     try {
       const { runOpenClaw } = await import('@/openclaw/runOpenClaw');

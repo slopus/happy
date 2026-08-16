@@ -42,5 +42,7 @@ export function initializeAgents(): void {
   registerGeminiAgent();
   const { registerHermesAgent } = require('./factories/hermes');
   registerHermesAgent();
+  const { registerCrushAgent } = require('./crush');
+  registerCrushAgent();
 }
 
