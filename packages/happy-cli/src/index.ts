@@ -45,6 +45,12 @@ import { sanitizeSessionEnvironment } from './daemon/sessionEnvironment'
     logger.debug('Starting happy CLI with args: ', process.argv)
   }
 
+  // Hermes is a known ACP agent; route `happy hermes` through the generic ACP runner
+  if (args[0] === 'hermes') {
+    args[0] = 'acp'
+    args.splice(1, 0, 'hermes')
+  }
+
   // Check if first argument is a subcommand
   const subcommand = args[0]
   

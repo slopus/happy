@@ -550,6 +550,12 @@ export async function startDaemon(): Promise<void> {
             case 'agy':
               agentCommand = 'agy';
               break;
+            case 'hermes':
+              agentCommand = 'hermes';
+              break;
+            case 'crush':
+              agentCommand = 'crush';
+              break;
             default:
               return {
                 type: 'error',

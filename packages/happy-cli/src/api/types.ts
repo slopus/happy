@@ -139,6 +139,9 @@ export const MachineMetadataSchema = z.object({
     codex: z.boolean(),
     gemini: z.boolean(),
     openclaw: z.boolean(),
+    agy: z.boolean().optional(),
+    hermes: z.boolean().optional(),
+    crush: z.boolean().optional(),
     detectedAt: z.number(),
   }).optional(),
   resumeSupport: z.object({
