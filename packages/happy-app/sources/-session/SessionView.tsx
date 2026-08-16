@@ -11,6 +11,7 @@ import {
     getAvailablePermissionModes,
     getEffortLevelsForModel,
     getRigCurrentModelOptionKey,
+    resolveNonRigModelOption,
     resolveCurrentOption,
     EffortLevel,
 } from '@/components/modelModeOptions';
@@ -734,13 +735,20 @@ export function SessionViewLoaded({
         ])
     ), [availableModes, session.permissionMode, effectiveAgentDefaults.permissionMode, session.metadata?.currentOperatingModeCode, session.metadata?.permissionMode, session.metadata?.session?.permissionMode, isRig]);
 
-    const modelMode = React.useMemo<ModelMode | null>(() => (
-        resolveCurrentOption(availableModels, [
+    const modelMode = React.useMemo<ModelMode | null>(() => {
+        if (isRig) {
+            return resolveCurrentOption(availableModels, [
+                session.modelMode,
+                getRigCurrentModelOptionKey(session.metadata),
+            ]);
+        }
+        return resolveNonRigModelOption(
+            availableModels,
             session.modelMode,
-            isRig ? getRigCurrentModelOptionKey(session.metadata) : effectiveAgentDefaults.modelMode,
-            isRig ? undefined : session.metadata?.currentModelCode,
-        ])
-    ), [availableModels, session.modelMode, effectiveAgentDefaults.modelMode, session.metadata, isRig]);
+            session.metadata?.currentModelCode,
+            effectiveAgentDefaults.modelMode,
+        );
+    }, [availableModels, session.modelMode, effectiveAgentDefaults.modelMode, session.metadata, isRig]);
 
     // Effort level state
     const modelKey = modelMode?.key ?? 'default';
