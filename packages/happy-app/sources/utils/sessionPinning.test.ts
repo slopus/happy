@@ -31,4 +31,13 @@ describe('sortSessionsForList', () => {
 
         expect(sorted.map(item => item.id)).toEqual(['newer', 'older']);
     });
+
+    it('orders unpinned sessions by their latest activity instead of creation time', () => {
+        const sorted = sortSessionsForList([
+            { id: 'created-today', createdAt: 200, updatedAt: 100 },
+            { id: 'continued-today', createdAt: 100, updatedAt: 200 },
+        ], []);
+
+        expect(sorted.map(item => item.id)).toEqual(['continued-today', 'created-today']);
+    });
 });

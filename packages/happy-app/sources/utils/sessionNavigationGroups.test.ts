@@ -72,6 +72,39 @@ describe('session navigation groups', () => {
         expect(groups[2].sessions.map((item) => item.id)).toEqual(['older']);
     });
 
+    it('places a session in the day of its latest activity instead of its creation day', () => {
+        const now = new Date(2026, 7, 6, 12).getTime();
+        const groups = buildSessionNavigationTimeGroups([
+            session({
+                id: 'continued-today',
+                createdAt: new Date(2026, 7, 5, 18).getTime(),
+                updatedAt: new Date(2026, 7, 6, 10).getTime(),
+            }),
+        ], now);
+
+        expect(groups).toMatchObject([{
+            dayOffset: 0,
+            sessions: [{ id: 'continued-today' }],
+        }]);
+    });
+
+    it('uses a newer live activity timestamp over an older persisted update', () => {
+        const now = new Date(2026, 7, 6, 12).getTime();
+        const groups = buildSessionNavigationTimeGroups([
+            session({
+                id: 'live-today',
+                createdAt: new Date(2026, 7, 5, 18).getTime(),
+                updatedAt: new Date(2026, 7, 5, 20).getTime(),
+                activeAt: new Date(2026, 7, 6, 10).getTime(),
+            }),
+        ], now);
+
+        expect(groups[0]).toMatchObject({
+            dayOffset: 0,
+            sessions: [{ id: 'live-today' }],
+        });
+    });
+
     it('uses machines as grouping and projects as sorted collapsible units', () => {
         const groups = buildSessionNavigationGroups({
             machines: [machine('machine-b', 'Studio'), machine('machine-a', 'Remote')],
