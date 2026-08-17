@@ -156,6 +156,12 @@ export function getHardcodedPermissionModes(flavor: AgentFlavor, translate: Tran
     if (flavor === 'agy') {
         return getAgyPermissionModes(translate);
     }
+    // Hermes and Crush report their real permission modes dynamically (ACP
+    // session config / server events); before a session starts only the
+    // generic default/bypass pair is offered.
+    if (flavor === 'hermes' || flavor === 'crush') {
+        return getOpenClawPermissionModes(translate);
+    }
     return getClaudePermissionModes(translate);
 }
 
@@ -194,6 +200,11 @@ export function getHardcodedModelModes(flavor: AgentFlavor, _translate: Translat
     }
     if (flavor === 'agy') {
         return getAgyModelModes();
+    }
+    // Hermes and Crush expose their model lists dynamically per session;
+    // no hardcoded model options are offered before a session starts.
+    if (flavor === 'hermes' || flavor === 'crush') {
+        return getOpenClawModelModes();
     }
     return getClaudeModelModes();
 }

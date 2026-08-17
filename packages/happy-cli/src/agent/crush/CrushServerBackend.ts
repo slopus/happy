@@ -163,12 +163,22 @@ function parseToolInput(input: unknown): Record<string, unknown> {
 }
 
 /**
+ * Streaming state maintained across Crush SSE events.
+ */
+export interface CrushEventStreamState {
+  /** Cumulative assistant text per message id */
+  accumulatedText: Map<string, string>;
+  /** Tool part keys (`${type}:${callId}`) already emitted, to avoid re-emitting on cumulative updates */
+  emittedToolParts: Set<string>;
+}
+
+/**
  * Pure function that maps one SSE envelope to zero, one, or several
- * AgentMessages. State (accumulated assistant text per message) is passed
- * in and updated by the caller. Extracted from CrushServerBackend for
+ * AgentMessages. State (accumulated assistant text and emitted tool parts)
+ * is passed in and updated in place. Extracted from CrushServerBackend for
  * testability.
  */
-export function mapCrushEventToAgentMessages(event: CrushEvent, accumulatedText: Map<string, string>): AgentMessage[] {
+export function mapCrushEventToAgentMessages(event: CrushEvent, state: CrushEventStreamState): AgentMessage[] {
   const inner = asRecord(event.payload?.payload);
 
   switch (event.type) {
@@ -181,23 +191,33 @@ export function mapCrushEventToAgentMessages(event: CrushEvent, accumulatedText:
       const messages: AgentMessage[] = [];
       const messageId = message.id ?? 'assistant';
 
-      // Emit tool calls / results as they appear in the accumulated parts
+      // Emit tool calls / results as they appear in the accumulated parts.
+      // Crush re-sends every existing part on each cumulative update, so
+      // each tool part is emitted only once per call id.
       for (const part of message.parts ?? []) {
         const data = asRecord(part.data);
         if (!data) continue;
         if (part.type === 'tool_call') {
+          const callId = str(data, 'id') ?? randomUUID();
+          const key = `tool_call:${callId}`;
+          if (state.emittedToolParts.has(key)) continue;
+          state.emittedToolParts.add(key);
           messages.push({
             type: 'tool-call',
             toolName: str(data, 'name') ?? 'unknown',
             args: parseToolInput(data.input),
-            callId: str(data, 'id') ?? randomUUID(),
+            callId,
           });
         } else if (part.type === 'tool_result') {
+          const callId = str(data, 'tool_call_id') ?? randomUUID();
+          const key = `tool_result:${callId}`;
+          if (state.emittedToolParts.has(key)) continue;
+          state.emittedToolParts.add(key);
           messages.push({
             type: 'tool-result',
             toolName: str(data, 'name') ?? 'unknown',
             result: str(data, 'content') ?? str(data, 'data') ?? '',
-            callId: str(data, 'tool_call_id') ?? randomUUID(),
+            callId,
           });
         }
       }
@@ -205,13 +225,13 @@ export function mapCrushEventToAgentMessages(event: CrushEvent, accumulatedText:
       // Stream text as deltas: each message event carries the cumulative
       // text of all text parts, so emit only the newly appended suffix.
       const text = messageText(message);
-      const previous = accumulatedText.get(messageId) ?? '';
+      const previous = state.accumulatedText.get(messageId) ?? '';
       if (text.length > previous.length && text.startsWith(previous)) {
-        accumulatedText.set(messageId, text);
+        state.accumulatedText.set(messageId, text);
         messages.push({ type: 'model-output', textDelta: text.slice(previous.length) });
       } else if (text && text !== previous) {
-        // Unexpected divergence - send the full text
-        accumulatedText.set(messageId, text);
+        // Unexpected divergence - send the full text as the authoritative output
+        state.accumulatedText.set(messageId, text);
         messages.push({ type: 'model-output', fullText: text });
       }
 
@@ -284,7 +304,10 @@ export class CrushServerBackend implements AgentBackend {
   private clientId = randomUUID();
   private abortController: AbortController | null = null;
   private sseRequest: http.ClientRequest | null = null;
-  private accumulatedText = new Map<string, string>();
+  private streamState: CrushEventStreamState = {
+    accumulatedText: new Map<string, string>(),
+    emittedToolParts: new Set<string>(),
+  };
   private pendingPermissions = new Map<string, CrushPermissionRequest>();
 
   constructor(private options: CrushServerBackendOptions) {
@@ -515,7 +538,7 @@ export class CrushServerBackend implements AgentBackend {
       }
     }
 
-    const messages = mapCrushEventToAgentMessages(event, this.accumulatedText);
+    const messages = mapCrushEventToAgentMessages(event, this.streamState);
     if (messages.length > 0) {
       for (const message of messages) {
         this.emit(message);

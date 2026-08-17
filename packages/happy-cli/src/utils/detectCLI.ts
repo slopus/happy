@@ -68,7 +68,8 @@ function detectWindows(): CLIAvailability {
   const gemini = checkCommand('gemini');
   const agy = checkCommand('agy');
   const hermes = checkCommand('hermes');
-  const crush = checkCommand('crush');
+  // The Crush backend requires Unix domain sockets and is unsupported on Windows
+  const crush = false;
 
   // OpenClaw: check command, config file, or env var
   const openclawCommand = checkCommand('openclaw');

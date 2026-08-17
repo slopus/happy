@@ -18,6 +18,21 @@ describe('AcpSessionManager turn lifecycle', () => {
     expect(isCuid(envelopes[0].turn!)).toBe(true);
   });
 
+  it('replaces accumulated output when a fullText model-output arrives', () => {
+    const mapper = new AcpSessionManager();
+    mapper.startTurn();
+    // Accumulate two deltas, then supersede them with an authoritative fullText
+    mapMany(mapper, [
+      { type: 'model-output', textDelta: 'wrong ' },
+      { type: 'model-output', textDelta: 'prefix' },
+    ]);
+    mapper.mapMessage({ type: 'model-output', fullText: 'authoritative answer' });
+    const ended = mapper.endTurn('completed');
+
+    const texts = [...ended,].filter((e) => e.ev.t === 'text').map((e) => (e.ev as { text: string }).text);
+    expect(texts.join(' ')).toBe('authoritative answer');
+  });
+
   it('emits completed turn-end from endTurn()', () => {
     const mapper = new AcpSessionManager();
     const started = mapper.startTurn();

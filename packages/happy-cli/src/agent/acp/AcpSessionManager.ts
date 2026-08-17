@@ -131,6 +131,14 @@ export class AcpSessionManager {
     }
 
     if (msg.type === 'model-output') {
+      // An authoritative fullText replaces any accumulated output buffer
+      // (e.g. a backend that rewrites a cumulative message)
+      if (msg.fullText !== undefined && msg.textDelta === undefined) {
+        const flushed = this.pendingType !== 'output' ? this.flush() : [];
+        this.pendingType = 'output';
+        this.pendingText = msg.fullText;
+        return flushed;
+      }
       const text = msg.textDelta ?? '';
       if (!text) {
         return [];
