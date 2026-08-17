@@ -13,7 +13,7 @@
  */
 
 import { DefaultTransport } from '../DefaultTransport';
-import type { ToolPattern } from '../TransportHandler';
+import type { ToolPattern, ToolNameContext } from '../TransportHandler';
 
 /**
  * Known tool name patterns for Hermes CLI.
@@ -77,6 +77,25 @@ export class HermesTransport extends DefaultTransport {
     }
 
     return null;
+  }
+
+  /**
+   * Resolve the real tool name when Hermes reports a generic kind.
+   *
+   * The ACP permission path calls this method (not extractToolNameFromId),
+   * so tool IDs such as "change_title-..." must be resolved here for the
+   * mobile approval UI to show the correct tool name.
+   */
+  determineToolName(
+    toolName: string,
+    toolCallId: string,
+    _input: Record<string, unknown>,
+    _context: ToolNameContext
+  ): string {
+    if (toolName !== 'other' && toolName !== 'Unknown tool') {
+      return toolName;
+    }
+    return this.extractToolNameFromId(toolCallId) ?? toolName;
   }
 }
 

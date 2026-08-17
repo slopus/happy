@@ -4,7 +4,7 @@ import { ApiClient } from '@/api/api';
 import type { ApiSessionClient } from '@/api/apiSession';
 import type { AgentMessage } from '@/agent/core';
 import { AcpBackend, type AcpPermissionHandler } from './AcpBackend';
-import { DefaultTransport } from '@/agent/transport';
+import { DefaultTransport, hermesTransport } from '@/agent/transport';
 import { AcpSessionManager } from './AcpSessionManager';
 import type { SessionEnvelope } from '@slopus/happy-wire';
 import { logger } from '@/ui/logger';
@@ -546,7 +546,9 @@ export async function runAcp(opts: {
     args: opts.args,
     mcpServers,
     permissionHandler,
-    transportHandler: new DefaultTransport(opts.agentName),
+    // Known agents with custom tool-name quirks get their dedicated transport;
+    // everything else rides the defaults
+    transportHandler: opts.agentName === 'hermes' ? hermesTransport : new DefaultTransport(opts.agentName),
     verbose,
   });
 

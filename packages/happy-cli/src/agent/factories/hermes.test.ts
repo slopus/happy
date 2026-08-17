@@ -41,6 +41,15 @@ describe('hermesTransport', () => {
     expect(hermesTransport.extractToolNameFromId('unknown-tool-1')).toBeNull();
   });
 
+  it('resolves generic tool kinds via determineToolName (permission path)', () => {
+    expect(hermesTransport.determineToolName('other', 'change_title-123', {}, {} as never)).toBe('change_title');
+    expect(hermesTransport.determineToolName('Unknown tool', 'think-456', {}, {} as never)).toBe('think');
+    // Known tool names pass through unchanged
+    expect(hermesTransport.determineToolName('bash', 'toolcall-1', {}, {} as never)).toBe('bash');
+    // Unresolvable generic kinds stay generic
+    expect(hermesTransport.determineToolName('other', 'xyz-1', {}, {} as never)).toBe('other');
+  });
+
   it('exposes hermes tool patterns for auto-approval', () => {
     const patterns = hermesTransport.getToolPatterns();
     const names = patterns.map((p) => p.name);

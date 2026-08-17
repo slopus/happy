@@ -377,6 +377,12 @@ Conversation history is preserved on the server, but in-flight tool calls are in
           startedBy = args[++i] as 'daemon' | 'terminal';
           continue;
         }
+        if (!customCommandMode && args[i] === '--happy-starting-mode') {
+          // Happy-internal flag appended by the daemon when spawning remote
+          // sessions; consume it so it never reaches the agent subprocess
+          i++;
+          continue;
+        }
         if (!customCommandMode && args[i] === '--verbose') {
           verbose = true;
           continue;

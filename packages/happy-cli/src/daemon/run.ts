@@ -435,8 +435,8 @@ export async function startDaemon(): Promise<void> {
 
           // Construct command for the CLI
           const cliPath = join(projectPath(), 'dist', 'index.mjs');
-          // Determine agent command - support claude, codex, gemini, openclaw, and agy
-          const agent = options.agent === 'gemini' ? 'gemini' : (options.agent === 'codex' ? 'codex' : (options.agent === 'openclaw' ? 'openclaw' : (options.agent === 'agy' ? 'agy' : 'claude')));
+          // Determine agent command; undefined falls back to claude (matching the regular-spawn path)
+          const agent = options.agent ?? 'claude';
           const resumeId = agent === 'claude'
             ? options.resumeClaudeSessionId
             : (agent === 'codex' ? options.resumeCodexThreadId : undefined);
