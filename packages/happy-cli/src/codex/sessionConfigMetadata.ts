@@ -6,6 +6,7 @@ type MetadataOption = {
     code: string;
     value: string;
     description?: string | null;
+    serviceTiers?: Array<{ id: string; name: string; description?: string | null }>;
 };
 
 export type CodexSessionConfigSnapshot = {
@@ -19,6 +20,7 @@ function toModelOption(model: Model): MetadataOption {
         code: model.model,
         value: model.model,
         description: model.description || null,
+        serviceTiers: model.serviceTiers ?? model.service_tiers ?? [],
     };
 }
 

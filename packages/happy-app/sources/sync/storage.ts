@@ -23,7 +23,7 @@ import { LocalSettings, applyLocalSettings } from "./localSettings";
 import { Purchases, customerInfoToPurchases } from "./purchases";
 import { Profile } from "./profile";
 import { UserProfile, RelationshipUpdatedEvent } from "./friendTypes";
-import { loadSettings, loadLocalSettings, saveLocalSettings, saveSettings, loadPurchases, savePurchases, loadProfile, saveProfile, loadSessionDrafts, saveSessionDrafts, loadSessionPermissionModes, saveSessionPermissionModes, loadSessionModelModes, saveSessionModelModes, loadSessionEffortLevels, saveSessionEffortLevels } from "./persistence";
+import { loadSettings, loadLocalSettings, saveLocalSettings, saveSettings, loadPurchases, savePurchases, loadProfile, saveProfile, loadSessionDrafts, saveSessionDrafts, loadSessionPermissionModes, saveSessionPermissionModes, loadSessionModelModes, saveSessionModelModes, loadSessionEffortLevels, saveSessionEffortLevels, loadSessionFastModes, saveSessionFastModes } from "./persistence";
 import { collectPersistedSessionPermissionModes, resolveRestoredSessionPermissionMode } from './sessionPermissionModes';
 import type { CustomerInfo } from './revenueCat/types';
 import React from "react";
@@ -221,6 +221,7 @@ interface StorageState {
     updateSessionPermissionMode: (sessionId: string, mode: string | null) => void;
     updateSessionModelMode: (sessionId: string, mode: string | null) => void;
     updateSessionEffortLevel: (sessionId: string, level: string | null) => void;
+    updateSessionFastMode: (sessionId: string, enabled: boolean) => void;
     resetSessionAgentOverrides: (sessionId: string) => void;
     // Artifact methods
     applyArtifacts: (artifacts: DecryptedArtifact[]) => void;
@@ -357,6 +358,7 @@ export const storage = create<StorageState>()((set, get) => {
     let sessionDrafts = loadSessionDrafts();
     let sessionPermissionModes = loadSessionPermissionModes();
     let sessionModelModes = loadSessionModelModes();
+    let sessionFastModes = loadSessionFastModes();
     let sessionEffortLevels = loadSessionEffortLevels();
     return {
         settings,
@@ -463,6 +465,7 @@ export const storage = create<StorageState>()((set, get) => {
                 const resolvedModelMode = existingModelMode ?? savedModelMode ?? session.modelMode ?? null;
                 const existingEffortLevel = state.sessions[session.id]?.effortLevel ?? null;
                 const resolvedEffortLevel = existingEffortLevel ?? savedEffortLevels[session.id] ?? session.effortLevel ?? null;
+                const resolvedFastMode = state.sessions[session.id]?.fastMode ?? sessionFastModes[session.id] ?? null;
 
                 mergedSessions[session.id] = {
                     ...session,
@@ -471,6 +474,7 @@ export const storage = create<StorageState>()((set, get) => {
                     permissionMode: resolvedPermissionMode,
                     modelMode: resolvedModelMode,
                     effortLevel: resolvedEffortLevel,
+                    fastMode: resolvedFastMode,
                 };
             });
 
@@ -1141,6 +1145,17 @@ export const storage = create<StorageState>()((set, get) => {
                 sessions: updatedSessions
             };
         }),
+        updateSessionFastMode: (sessionId: string, enabled: boolean) => set((state) => {
+            const session = state.sessions[sessionId];
+            if (!session) return state;
+            const updatedSessions = { ...state.sessions, [sessionId]: { ...session, fastMode: enabled } };
+            const modes: Record<string, boolean> = {};
+            Object.entries(updatedSessions).forEach(([id, entry]) => {
+                if (entry.fastMode !== undefined && entry.fastMode !== null) modes[id] = entry.fastMode;
+            });
+            saveSessionFastModes(modes);
+            return { ...state, sessions: updatedSessions };
+        }),
         resetSessionAgentOverrides: (sessionId: string) => set((state) => {
             const session = state.sessions[sessionId];
             if (!session) return state;
@@ -1152,6 +1167,7 @@ export const storage = create<StorageState>()((set, get) => {
                     permissionMode: null,
                     modelMode: null,
                     effortLevel: null,
+                    fastMode: null,
                 }
             };
 
@@ -1164,6 +1180,7 @@ export const storage = create<StorageState>()((set, get) => {
             saveSessionPermissionModes(collectPersistedSessionPermissionModes(updatedSessions));
             saveSessionModelModes(modelModes);
             saveSessionEffortLevels(effortLevels);
+            saveSessionFastModes({});
 
             return {
                 ...state,
@@ -1284,6 +1301,9 @@ export const storage = create<StorageState>()((set, get) => {
             const effortLevels = loadSessionEffortLevels();
             delete effortLevels[sessionId];
             saveSessionEffortLevels(effortLevels);
+            const fastModes = loadSessionFastModes();
+            delete fastModes[sessionId];
+            saveSessionFastModes(fastModes);
             
             // Rebuild sessionListViewData without the deleted session
             const sessionListViewData = buildSessionListViewData(remainingSessions);

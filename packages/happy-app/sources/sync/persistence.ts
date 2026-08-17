@@ -296,6 +296,20 @@ export function saveSessionEffortLevels(levels: Record<string, string>) {
     mmkv.set('session-effort-levels', JSON.stringify(levels));
 }
 
+export function loadSessionFastModes(): Record<string, boolean> {
+    const modes = mmkv.getString('session-fast-modes');
+    if (!modes) return {};
+    try {
+        return Object.fromEntries(Object.entries(JSON.parse(modes)).filter((entry): entry is [string, boolean] => typeof entry[1] === 'boolean'));
+    } catch {
+        return {};
+    }
+}
+
+export function saveSessionFastModes(modes: Record<string, boolean>) {
+    mmkv.set('session-fast-modes', JSON.stringify(modes));
+}
+
 export function loadProfile(): Profile {
     const profile = mmkv.getString('profile');
     if (profile) {

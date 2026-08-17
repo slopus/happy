@@ -23,6 +23,7 @@ export interface SpawnSessionArgs {
     permissionMode?: string | null;
     modelMode?: string | null;
     effortLevel?: string | null;
+    fastMode?: boolean;
     /** Initial prompt to send into the freshly spawned session. */
     prompt: string;
     /** Image attachments to send with the initial message (claude-only). */
@@ -58,7 +59,7 @@ export function useSpawnSession() {
         args: SpawnSessionArgs,
         approvedNewDirectoryCreation: boolean = false,
     ): Promise<SpawnSessionCoreResult> => {
-        const { machineId, machine, path, agent, worktreeKey, permissionMode, modelMode, effortLevel, environmentVariables } = args;
+        const { machineId, machine, path, agent, worktreeKey, permissionMode, modelMode, effortLevel, fastMode, environmentVariables } = args;
         if (!isMachineOnline(machine)) {
             const message = t('newSession.machineOffline');
             Modal.alert(t('common.error'), message);
@@ -104,6 +105,9 @@ export function useSpawnSession() {
                         }
                         if (effortLevel !== undefined) {
                             sessionStorage.updateSessionEffortLevel(result.sessionId, effortLevel);
+                        }
+                        if (fastMode !== undefined) {
+                            sessionStorage.updateSessionFastMode(result.sessionId, fastMode);
                         }
                         return { type: 'success', sessionId: result.sessionId };
                     }

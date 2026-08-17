@@ -732,6 +732,7 @@ class Sync {
                 ...(modeMeta.permissionModeExplicit ? { permissionModeExplicit: true } : {}),
                 ...(modeMeta.model !== undefined ? { model: modeMeta.model } : {}),
                 ...(modeMeta.effort !== undefined ? { effort: modeMeta.effort } : {}),
+                ...(modeMeta.fast !== undefined ? { fast: modeMeta.fast } : {}),
                 ...(displayText && { displayText }), // Add displayText if provided
                 ...(editedFromMessageId && { editedFromMessageId })
             }

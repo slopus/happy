@@ -18,6 +18,9 @@ export type SessionComposerModeSelectorConfig = {
     effortOptions: ModeOption[];
     onModelChange: (key: string) => void;
     onEffortChange: (key: string) => void;
+    fastMode?: boolean;
+    supportsFast?: boolean;
+    onFastModeChange?: (enabled: boolean) => void;
 };
 
 function toPickerItems(options: ModeOption[]): PickerItem[] {
@@ -39,6 +42,7 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
     const showEffort = props.effortOptions.length > 0 || props.effort !== null;
     const canChangeModel = props.online && props.modelOptions.length > 1;
     const canChangeEffort = showEffort && props.online && props.effortOptions.length > 1;
+    const canChangeFast = props.online && props.supportsFast === true && !!props.onFastModeChange;
 
     React.useEffect(() => {
         if ((activePicker === 'model' && !canChangeModel) || (activePicker === 'effort' && !canChangeEffort)) {
@@ -151,6 +155,23 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
                         )}
                     </>
                 ) : null}
+                {props.supportsFast ? (
+                    <>
+                        <Text style={styles.separator}>·</Text>
+                        <Pressable
+                            testID="session-composer-fast-toggle"
+                            accessibilityRole="switch"
+                            accessibilityLabel="Fast"
+                            accessibilityState={{ checked: props.fastMode === true, disabled: !canChangeFast }}
+                            aria-checked={props.fastMode === true}
+                            disabled={!canChangeFast}
+                            onPress={() => props.onFastModeChange?.(!props.fastMode)}
+                            style={({ pressed }) => [styles.iconTrigger, !canChangeFast && styles.triggerDisabled, pressed && styles.triggerPressed]}
+                        >
+                            <Ionicons name="flash-outline" size={14} color={props.fastMode ? theme.colors.accent : theme.colors.textSecondary} />
+                        </Pressable>
+                    </>
+                ) : null}
             </View>
             {disabledSummary ? (
                 <Text testID="session-composer-disabled-reason" style={styles.disabledReason} numberOfLines={1}>
@@ -227,6 +248,13 @@ const styles = StyleSheet.create((theme) => ({
         paddingHorizontal: 4,
         height: 24,
         maxWidth: '100%',
+    },
+    iconTrigger: {
+        width: 24,
+        height: 24,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderRadius: 8,
     },
     triggerDisabled: {
         opacity: 0.58,

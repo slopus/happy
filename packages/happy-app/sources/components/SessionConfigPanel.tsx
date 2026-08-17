@@ -42,6 +42,7 @@ import {
 import { getAgentPickerItems, getModePickerItems } from '@/utils/newSessionPickerItems';
 import { resolveNewSessionModeSelection } from '@/utils/newSessionModeSelection';
 import { getLatestSessionModelMetadata } from '@/utils/newSessionModelMetadata';
+import { supportsCodexFast } from '@/utils/codexFast';
 import {
     getCodingAgentPickerItems,
     getSessionConfigExperience,
@@ -676,6 +677,7 @@ export interface SessionConfigSelection {
     effortKey: string | null;
     /** '__none__' | '__new__' | <existing worktree absolute path>. */
     worktreeKey: string;
+    fastMode: boolean;
 }
 
 export interface SessionConfigPanelHandle {
@@ -758,6 +760,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
         const [permissionIndex, setPermissionIndex] = React.useState(0);
         const [modelIndex, setModelIndex] = React.useState(0);
         const [effortIndex, setEffortIndex] = React.useState(0);
+        const [fastMode, setFastMode] = React.useState(false);
         const [activePicker, setActivePicker] = React.useState<PickerType | null>(null);
         const activePickerRef = React.useRef<PickerType | null>(null);
         const previousPickerRef = React.useRef<PickerType | null>(null);
@@ -953,7 +956,14 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
         const supportsWorktree = configExperience.showWorktree && getSupportsWorktree(selectedAgent);
         const showModel = configExperience.showModeDetails && modelModes.length > 1;
         const showEffort = configExperience.showModeDetails && effortLevels.length > 0;
+        const supportsFast = selectedAgent === 'codex' && supportsCodexFast(modelMetadata, currentModelKey);
         const showPermission = configExperience.showPermission && permissionModes.length > 1;
+
+        React.useEffect(() => {
+            if (!supportsFast && fastMode) {
+                setFastMode(false);
+            }
+        }, [fastMode, supportsFast]);
 
         React.useEffect(() => {
             if (!configExperience.isAskMode) {
@@ -1194,9 +1204,10 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                 modelKey: currentModelKey === 'default' ? undefined : currentModelKey,
                 effortKey: draft.effortLevel ?? resolvedModeSelection.effortLevel ?? null,
                 worktreeKey,
+                fastMode,
             }),
             closePickers: dismissPicker,
-        }), [currentPermission?.key, currentModelKey, draft.effortLevel, resolvedModeSelection.effortLevel, worktreeKey, dismissPicker]);
+        }), [currentPermission?.key, currentModelKey, draft.effortLevel, resolvedModeSelection.effortLevel, worktreeKey, fastMode, dismissPicker]);
 
         // Native and sidebar pickers remain embedded. The regular desktop Web
         // layout uses a bounded modal below so long model lists cannot stretch the
@@ -1387,6 +1398,21 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                                                             {currentEffort?.name}
                                                         </Text>
                                                         <Ionicons name="chevron-down" size={12} color={theme.colors.textSecondary} />
+                                                    </Pressable>
+                                                </>
+                                            )}
+                                            {supportsFast && (
+                                                <>
+                                                    <Text style={[styles.configLabel, { color: theme.colors.textSecondary }]}>·</Text>
+                                                    <Pressable
+                                                        accessibilityRole="switch"
+                                                        accessibilityLabel="Fast"
+                                                        accessibilityState={{ checked: fastMode }}
+                                                        testID="session-config-fast-toggle"
+                                                        onPress={() => setFastMode((enabled) => !enabled)}
+                                                        style={(p) => [styles.configFastToggle, p.pressed && styles.configRowPressed]}
+                                                    >
+                                                        <Ionicons name="flash-outline" size={14} color={fastMode ? theme.colors.accent : theme.colors.textSecondary} />
                                                     </Pressable>
                                                 </>
                                             )}
@@ -1781,6 +1807,13 @@ const styles = StyleSheet.create((theme) => ({
         gap: 4,
         minWidth: 0,
         flexShrink: 1,
+    },
+    configFastToggle: {
+        width: 24,
+        height: 24,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderRadius: 8,
     },
     configInlineText: {
         minWidth: 0,

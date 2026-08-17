@@ -48,6 +48,50 @@ describe('resolveMessageModeMeta', () => {
         });
     });
 
+    it('sends the Codex Fast override only after the user selects a speed tier', () => {
+        expect(resolveMessageModeMeta({
+            permissionMode: null,
+            modelMode: null,
+            effortLevel: null,
+            fastMode: true,
+            metadata: {
+                flavor: 'codex',
+                currentModelCode: 'gpt-5.6-sol',
+                models: [{ code: 'gpt-5.6-sol', value: 'gpt-5.6-sol', serviceTiers: [{ id: 'priority', name: 'Fast' }] }],
+            },
+        } as any)).toMatchObject({ fast: true });
+
+        expect(resolveMessageModeMeta({
+            permissionMode: null,
+            modelMode: null,
+            effortLevel: null,
+            fastMode: false,
+            metadata: {
+                flavor: 'codex',
+                currentModelCode: 'gpt-5.6-sol',
+                models: [{ code: 'gpt-5.6-sol', value: 'gpt-5.6-sol', serviceTiers: [{ id: 'priority', name: 'Fast' }] }],
+            },
+        } as any)).toMatchObject({ fast: false });
+    });
+
+    it('does not send a stale Fast override for a model without the priority tier', () => {
+        const meta = resolveMessageModeMeta({
+            permissionMode: null,
+            modelMode: 'gpt-5.5',
+            effortLevel: null,
+            fastMode: true,
+            metadata: {
+                flavor: 'codex',
+                models: [
+                    { code: 'gpt-5.6-sol', value: 'gpt-5.6-sol', serviceTiers: [{ id: 'priority', name: 'Fast' }] },
+                    { code: 'gpt-5.5', value: 'gpt-5.5' },
+                ],
+            },
+        } as any);
+
+        expect(meta).not.toHaveProperty('fast');
+    });
+
     it('sends settings-level overrides when session has no override', () => {
         const meta = resolveMessageModeMeta({
             permissionMode: null,

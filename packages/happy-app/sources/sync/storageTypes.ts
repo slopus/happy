@@ -9,6 +9,11 @@ export const MetadataSchema = z.object({
         code: z.string(),
         value: z.string(),
         description: z.string().nullish(),
+        serviceTiers: z.array(z.object({
+            id: z.string(),
+            name: z.string(),
+            description: z.string().nullish(),
+        })).optional(),
     })).optional(),
     currentModelCode: z.string().optional(),
     operatingModes: z.array(z.object({
@@ -137,6 +142,7 @@ export interface Session {
     permissionMode?: string | null; // Local permission mode key, not synced to server
     modelMode?: string | null; // Local model key, not synced to server
     effortLevel?: string | null; // Local effort level key, not synced to server
+    fastMode?: boolean | null; // Local Codex Fast service tier, not synced to server
     // IMPORTANT: latestUsage is extracted from reducerState.latestUsage after message processing.
     // We store it directly on Session to ensure it's available immediately on load.
     // Do NOT store reducerState itself on Session - it's mutable and should only exist in SessionMessages.

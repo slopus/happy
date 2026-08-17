@@ -7,6 +7,7 @@ import {
 } from '@/components/modelModeOptions';
 import { resolveAgentDefaultConfig, type AgentDefaultOverrides } from '@/sync/agentDefaults';
 import type { Session } from '@/sync/storageTypes';
+import { supportsCodexFast } from '@/utils/codexFast';
 
 type Translate = (key: any) => string;
 
@@ -15,6 +16,7 @@ export type RunningSessionTurnModes = {
     modelMode: ModeOption | null;
     availableEffortLevels: EffortLevel[];
     effortLevel: ModeOption | null;
+    supportsFast: boolean;
 };
 
 function resolvePreferredOption<T extends ModeOption>(
@@ -73,5 +75,6 @@ export function resolveRunningSessionTurnModes(args: {
         modelMode,
         availableEffortLevels,
         effortLevel,
+        supportsFast: supportsCodexFast(metadata, modelMode?.key),
     };
 }

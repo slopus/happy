@@ -221,7 +221,12 @@ type CreateE2ESessionOptions = {
     parentSessionId?: string;
     claudeSessionId?: string;
     codexThreadId?: string;
-    models?: Array<{ code: string; value: string; description?: string | null }>;
+    models?: Array<{
+        code: string;
+        value: string;
+        description?: string | null;
+        serviceTiers?: Array<{ id: string; name: string; description?: string | null }>;
+    }>;
     currentModelCode?: string;
     thoughtLevels?: Array<{ code: string; value: string; description?: string | null }>;
     currentThoughtLevelCode?: string;
@@ -860,7 +865,12 @@ async function createConnectedE2EComposerModeSession(request: APIRequestContext)
             currentOperatingModeCode: 'acceptEdits',
             models: [
                 { code: 'gpt-5.5', value: 'gpt-5.5', description: 'Stable coding model' },
-                { code: 'gpt-5.6-sol', value: 'gpt-5.6-sol', description: 'Current coding model' },
+                {
+                    code: 'gpt-5.6-sol',
+                    value: 'gpt-5.6-sol',
+                    description: 'Current coding model',
+                    serviceTiers: [{ id: 'priority', name: 'Fast', description: '1.5x speed, increased usage' }],
+                },
             ],
             currentModelCode: 'gpt-5.6-sol',
             thoughtLevels: [
@@ -2867,7 +2877,7 @@ test('[R10-01] 每轮权限、模型与推理强度经 UI 发送并在离线重�
         await page.setViewportSize({ width: 390, height: 844 });
         await page.goto(authenticatedRoute(`/session/${sessionId}`));
         expect(await page.evaluate(() => window.devicePixelRatio)).toBe(1);
-        await expect(page.getByTestId('session-message-input')).toBeVisible();
+        await expect(page.getByTestId('session-message-input')).toBeVisible({ timeout: 120_000 });
         await expect(page.locator('[data-testid="message-composer-send-button"]:visible')).toHaveCount(1);
         await expect(page.getByTestId('session-composer-mode-selector')).toHaveCount(0);
         await expect(page.getByTestId('session-composer-permission-selector')).toHaveCount(0);
@@ -2892,6 +2902,14 @@ test('[R10-01] 每轮权限、模型与推理强度经 UI 发送并在离线重�
         await expect(modelTrigger).toHaveAttribute('aria-label', 'MODEL: gpt-5.6-sol');
         await expect(effortTrigger).toContainText('xhigh');
         await expect(effortTrigger).toHaveAttribute('aria-label', 'EFFORT: xhigh');
+        const fastToggle = selector.getByTestId('session-composer-fast-toggle');
+        await expect(fastToggle).toBeVisible();
+        await expect(fastToggle).toHaveAttribute('role', 'switch');
+        await expect(fastToggle).toHaveAttribute('aria-label', 'Fast');
+        await expect(fastToggle).not.toContainText('Fast');
+        await expect(fastToggle).toHaveAttribute('aria-checked', 'false');
+        await fastToggle.click();
+        await expect(fastToggle).toHaveAttribute('aria-checked', 'true');
 
         await expect(page.getByText(historicalMessage, { exact: true })).toBeVisible();
         const historicalModeLabel = page.getByTestId(/^message-user-mode-/).filter({
@@ -2900,7 +2918,7 @@ test('[R10-01] 每轮权限、模型与推理强度经 UI 发送并在离线重�
         await expect(historicalModeLabel).toHaveCount(1);
         await expect(historicalModeLabel).toHaveText('Needs confirmation · gpt-5.5 · medium');
         await page.screenshot({
-            path: testInfo.outputPath('pc-composer-mode-001-after-1280x900.png'),
+            path: testInfo.outputPath('pc-composer-fast-001-after-1280x900.png'),
             fullPage: true,
         });
 

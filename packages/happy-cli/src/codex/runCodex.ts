@@ -459,6 +459,7 @@ export async function runCodex(opts: {
     let currentPermissionMode: PermissionMode | undefined = initialPermissionMode;
     let currentModel: string | undefined = baselineModel;
     let currentEffort: ReasoningEffort | undefined = baselineEffort;
+    let currentFastMode = false;
     let currentAppendSystemPrompt: string | undefined = undefined;
     let codexModelCatalog: Model[] | null = null;
 
@@ -614,11 +615,19 @@ export async function runCodex(opts: {
                 logger.debug(`[Codex] User message received with no append system prompt override, using current: ${currentAppendSystemPrompt ? 'set' : 'none'}`);
             }
 
+            let messageFastMode = currentFastMode;
+            if (message.meta?.hasOwnProperty('fast')) {
+                messageFastMode = message.meta.fast === true;
+                currentFastMode = messageFastMode;
+                logger.debug(`[Codex] Fast mode updated from user message: ${messageFastMode ? 'on' : 'off'}`);
+            }
+
             const enhancedMode: EnhancedMode = {
                 permissionMode: messagePermissionMode || 'default',
                 model: messageModel,
                 appendSystemPrompt: messageAppendSystemPrompt,
                 effort: messageEffort,
+                fast: messageFastMode,
             };
             const enqueueResult = enqueueCodexUserText({
                 text: message.content.text,
@@ -1110,6 +1119,7 @@ export async function runCodex(opts: {
         };
 
         const ensureCodexThread = async (mode: EnhancedMode) => {
+            await client.setServiceTier(mode.fast ? 'fast' : 'standard');
             const executionPolicy = resolveExecutionPolicyForMode(mode);
             if (!client.hasActiveThread()) {
                 const startedThread = await client.startThread({
@@ -1146,6 +1156,7 @@ export async function runCodex(opts: {
         };
 
         const ensureExistingCodexThread = async (mode: EnhancedMode) => {
+            await client.setServiceTier(mode.fast ? 'fast' : 'standard');
             const existingThreadId = client.threadId ?? session.getMetadata()?.codexThreadId;
             if (!existingThreadId) {
                 return null;

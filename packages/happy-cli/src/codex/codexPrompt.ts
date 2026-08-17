@@ -14,6 +14,8 @@ export interface CodexEnhancedMode {
     appendSystemPrompt?: string;
     /** Reasoning effort passed through to Codex's sendTurnAndWait. */
     effort?: ReasoningEffort;
+    /** Uses Codex's Fast service tier for this session. */
+    fast?: boolean;
 }
 
 export function hashCodexEnhancedMode(mode: CodexEnhancedMode): string {
@@ -22,12 +24,13 @@ export function hashCodexEnhancedMode(mode: CodexEnhancedMode): string {
         model: mode.model,
         appendSystemPrompt: mode.appendSystemPrompt,
         effort: mode.effort,
+        fast: mode.fast,
     });
 }
 
 export function buildCodexTurnPrompt(opts: {
     message: string;
-    mode: Pick<CodexEnhancedMode, 'appendSystemPrompt' | 'model' | 'effort'>;
+    mode: Pick<CodexEnhancedMode, 'appendSystemPrompt' | 'model' | 'effort' | 'fast'>;
     includeAppendSystemPrompt: boolean;
     includeTitleInstruction: boolean;
 }): string {
@@ -44,6 +47,7 @@ export function buildCodexTurnPrompt(opts: {
     const modeStatus: string[] = [];
     if (opts.mode.model) modeStatus.push(`model=${opts.mode.model}`);
     if (opts.mode.effort) modeStatus.push(`reasoning_effort=${opts.mode.effort}`);
+    if (opts.mode.fast) modeStatus.push('service_tier=fast');
     if (modeStatus.length > 0) {
         parts.push(
             CODEX_HAPPY_SYSTEM_PROMPT_START,

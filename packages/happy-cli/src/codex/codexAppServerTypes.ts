@@ -159,6 +159,8 @@ export type Model = {
     supportedReasoningEfforts: ReasoningEffortOption[];
     defaultReasoningEffort: ReasoningEffort;
     isDefault: boolean;
+    serviceTiers?: Array<{ id: string; name: string; description?: string | null }>;
+    service_tiers?: Array<{ id: string; name: string; description?: string | null }>;
 };
 
 export type ModelListResponse = {

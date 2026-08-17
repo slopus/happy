@@ -56,6 +56,28 @@ describe('resolveRunningSessionTurnModes', () => {
         expect(result.effortLevel).toMatchObject({ key: 'default', name: 'default effort' });
     });
 
+    it('only enables Fast for the selected Codex model priority tier', () => {
+        const metadata = {
+            flavor: 'codex',
+            models: [
+                { code: 'gpt-5.6-sol', value: 'gpt-5.6-sol', serviceTiers: [{ id: 'priority', name: 'Fast' }] },
+                { code: 'gpt-5.5', value: 'gpt-5.5' },
+            ],
+        };
+
+        expect(resolveRunningSessionTurnModes({
+            session: { modelMode: 'gpt-5.6-sol', effortLevel: null, metadata } as any,
+            agentDefaultOverrides: {},
+            translate,
+        }).supportsFast).toBe(true);
+
+        expect(resolveRunningSessionTurnModes({
+            session: { modelMode: 'gpt-5.5', effortLevel: null, metadata } as any,
+            agentDefaultOverrides: {},
+            translate,
+        }).supportsFast).toBe(false);
+    });
+
     it('drops stale effort state for an agent that does not expose effort options', () => {
         const result = resolveRunningSessionTurnModes({
             session: {

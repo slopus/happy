@@ -705,6 +705,7 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
             permissionMode: liveSelection?.permissionKey ?? resolvedModes.permissionMode,
             modelMode: liveSelection?.modelKey ?? resolvedModes.modelMode,
             effortLevel: liveSelection?.effortKey ?? resolvedModes.effortLevel,
+            fastMode: liveSelection?.fastMode,
             prompt,
             images,
             environmentVariables: spawnAgent === 'ask' ? buildAskApiEnvironment(askApi) : undefined,

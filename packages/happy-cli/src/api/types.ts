@@ -242,6 +242,7 @@ export const MessageMetaSchema = z.object({
   permissionModeExplicit: z.boolean().optional(), // True when the user selected a per-session mode
   model: z.string().nullable().optional(), // Model name for this message (null = reset)
   effort: z.string().nullable().optional(), // Reasoning / thinking effort for this message (null = reset)
+  fast: z.boolean().optional(), // Codex Fast service tier for this message
   fallbackModel: z.string().nullable().optional(), // Fallback model for this message (null = reset)
   customSystemPrompt: z.string().nullable().optional(), // Custom system prompt for this message (null = reset)
   appendSystemPrompt: z.string().nullable().optional(), // Append to system prompt for this message (null = reset)
@@ -351,7 +352,7 @@ export type Metadata = {
    * ACP session config option value (normalized for UI metadata consumers).
    */
   // `code` = protocol value ID, `value` = human label
-  models?: Array<{ code: string; value: string; description?: string | null }>,
+  models?: Array<{ code: string; value: string; description?: string | null; serviceTiers?: Array<{ id: string; name: string; description?: string | null }> }>,
   currentModelCode?: string,
   operatingModes?: Array<{ code: string; value: string; description?: string | null }>,
   currentOperatingModeCode?: string,

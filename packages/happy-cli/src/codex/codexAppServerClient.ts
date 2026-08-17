@@ -206,6 +206,7 @@ export class CodexAppServerClient {
     private sandboxConfig?: SandboxConfig;
     private sandboxCleanup: (() => Promise<void>) | null = null;
     public sandboxEnabled = false;
+    private serviceTier: 'standard' | 'fast' = 'standard';
 
     // Session state
     private _threadId: string | null = null;
@@ -642,13 +643,13 @@ export class CodexAppServerClient {
         }
 
         let command = 'codex';
-        let args = ['app-server', '--listen', 'stdio://'];
+        let args = ['app-server', '--listen', 'stdio://', '-c', `service_tier=\"${this.serviceTier}\"`];
         this.sandboxEnabled = false;
 
         if (this.sandboxConfig?.enabled && process.platform !== 'win32') {
             try {
                 this.sandboxCleanup = await initializeSandbox(this.sandboxConfig, process.cwd());
-                const wrapped = await wrapForMcpTransport('codex', ['app-server', '--listen', 'stdio://']);
+                const wrapped = await wrapForMcpTransport('codex', args);
                 command = wrapped.command;
                 args = wrapped.args;
                 this.sandboxEnabled = true;
@@ -1056,6 +1057,12 @@ export class CodexAppServerClient {
             this.threadDefaults = null;
             return false;
         }
+    }
+
+    async setServiceTier(tier: 'standard' | 'fast'): Promise<boolean> {
+        if (tier === this.serviceTier) return false;
+        this.serviceTier = tier;
+        return await this.reconnectAndResumeThread();
     }
 
     // ─── Turn management ────────────────────────────────────────

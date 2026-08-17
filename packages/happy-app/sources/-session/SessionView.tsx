@@ -74,6 +74,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useDesktopWorkspaceLayout } from '@/hooks/useDesktopWorkspaceLayout';
 import { resolveRunningSessionTurnModes } from '@/utils/runningSessionTurnModes';
+import { supportsCodexFast } from '@/utils/codexFast';
 import {
     SubagentInspectorProvider,
     useSubagentInspector,
@@ -1142,9 +1143,15 @@ function SessionViewLoaded({
     }), [agentDefaultOverrides, session]);
     const handleModelChange = React.useCallback((key: string) => {
         storage.getState().updateSessionModelMode(sessionId, key);
-    }, [sessionId]);
+        if (!supportsCodexFast(session.metadata, key)) {
+            storage.getState().updateSessionFastMode(sessionId, false);
+        }
+    }, [session.metadata, sessionId]);
     const handleEffortChange = React.useCallback((key: string) => {
         storage.getState().updateSessionEffortLevel(sessionId, key);
+    }, [sessionId]);
+    const handleFastModeChange = React.useCallback((enabled: boolean) => {
+        storage.getState().updateSessionFastMode(sessionId, enabled);
     }, [sessionId]);
     const modeSelector = React.useMemo(() => ({
         online: !isDisconnected,
@@ -1154,7 +1161,10 @@ function SessionViewLoaded({
         effortOptions: nextTurnModes.availableEffortLevels,
         onModelChange: handleModelChange,
         onEffortChange: handleEffortChange,
-    }), [handleEffortChange, handleModelChange, isDisconnected, nextTurnModes]);
+        fastMode: session.fastMode === true,
+        supportsFast: nextTurnModes.supportsFast,
+        onFastModeChange: handleFastModeChange,
+    }), [handleEffortChange, handleFastModeChange, handleModelChange, isDisconnected, nextTurnModes, session.fastMode]);
 
     // Attachment state（图片/音视频，会话内默认可用）。pickAttachment 弹出
     // 图片/音视频选择器；音视频不支持的 flavor 由 sendMessage 兜底提示。
