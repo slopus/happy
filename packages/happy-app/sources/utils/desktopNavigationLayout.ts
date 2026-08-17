@@ -42,6 +42,10 @@ export function getPersistentHeaderPointerEvents({
     return isWeb && !inTauri ? 'none' : 'box-none';
 }
 
+export function isSettingsModalRoute(pathname: string): boolean {
+    return pathname === '/settings' || pathname.startsWith('/settings/');
+}
+
 export function getDesktopSidebarWidth(windowWidth: number): number {
     if (windowWidth < WEB_TABLET_MIN_WIDTH) return 0;
     return Math.min(Math.max(Math.floor(windowWidth * 0.3), 250), 360);

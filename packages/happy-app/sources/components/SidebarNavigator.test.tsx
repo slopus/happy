@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
     setDesktopLeftSidebarCollapsed: vi.fn(),
     zenMode: false,
     desktopLeftSidebarCollapsed: false,
+    pathname: '/',
 }));
 
 vi.mock('@/auth/AuthContext', () => ({
@@ -30,6 +31,7 @@ vi.mock('expo-router', () => ({
         back: vi.fn(),
         canGoBack: () => false,
     }),
+    usePathname: () => mocks.pathname,
 }));
 vi.mock('react-native', async () => {
     return {
@@ -165,6 +167,7 @@ describe('SidebarNavigator drawer behavior', () => {
         mocks.isTablet = true;
         mocks.zenMode = false;
         mocks.desktopLeftSidebarCollapsed = false;
+        mocks.pathname = '/';
         vi.clearAllMocks();
         (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
         consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation((...values: unknown[]) => {
@@ -279,6 +282,20 @@ describe('SidebarNavigator drawer behavior', () => {
         act(() => zenToggle.props.onPress());
         expect(mocks.setZenMode).toHaveBeenCalledWith(false);
         expect(mocks.setDesktopLeftSidebarCollapsed).not.toHaveBeenCalled();
+
+        act(() => renderer.unmount());
+    });
+
+    it('hides persistent desktop navigation while settings is presented as a modal', () => {
+        mocks.pathname = '/settings';
+        let renderer: any;
+
+        act(() => {
+            renderer = TestRenderer.create(<SidebarNavigator />);
+        });
+
+        expect(renderer.root.findAllByProps({ testID: 'desktop-navigation-controls' })).toHaveLength(0);
+        expect(renderer.root.findAllByProps({ testID: 'desktop-left-panel-resize-handle' })).toHaveLength(0);
 
         act(() => renderer.unmount());
     });

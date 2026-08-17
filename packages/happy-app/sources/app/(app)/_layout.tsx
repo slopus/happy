@@ -8,6 +8,7 @@ import { isRunningOnMac } from '@/utils/platform';
 import { useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
 import { CardStackScene } from '@/components/CardStackScene';
+import { useIsTablet } from '@/utils/responsive';
 
 export const unstable_settings = {
     initialRouteName: 'index',
@@ -16,6 +17,7 @@ export const unstable_settings = {
 export default function RootLayout() {
     // Use custom header on Android and Mac Catalyst, native header on iOS (non-Catalyst)
     const shouldUseCustomHeader = Platform.OS === 'android' || isRunningOnMac() || Platform.OS === 'web';
+    const useDesktopSettingsModal = Platform.OS === 'web' && useIsTablet();
     const { theme } = useUnistyles();
 
     return (
@@ -56,11 +58,14 @@ export default function RootLayout() {
                 }}
             />
             <Stack.Screen
-                name="settings/index"
+                name="settings"
                 options={{
-                    headerShown: true,
-                    headerTitle: t('settings.title'),
-                    headerBackTitle: t('common.home')
+                    animation: useDesktopSettingsModal ? 'fade' : 'default',
+                    contentStyle: {
+                        backgroundColor: useDesktopSettingsModal ? 'transparent' : theme.colors.surface,
+                    },
+                    headerShown: false,
+                    presentation: useDesktopSettingsModal ? 'transparentModal' : 'card',
                 }}
             />
             <Stack.Screen
@@ -115,86 +120,6 @@ export default function RootLayout() {
                     headerShown: true,
                     headerTitle: t('common.fileViewer'),
                     headerBackTitle: t('common.files'),
-                }}
-            />
-            <Stack.Screen
-                name="settings/account"
-                options={{
-                    headerTitle: t('settings.account'),
-                }}
-            />
-            <Stack.Screen
-                name="settings/profile"
-                options={{
-                    headerTitle: t('settingsAccount.editProfile'),
-                }}
-            />
-            <Stack.Screen
-                name="settings/usage"
-                options={{
-                    headerTitle: t('settings.usage'),
-                }}
-            />
-            <Stack.Screen
-                name="settings/appearance"
-                options={{
-                    headerTitle: t('settings.appearance'),
-                }}
-            />
-            <Stack.Screen
-                name="settings/agents"
-                options={{
-                    headerTitle: t('settings.agentDefaults'),
-                }}
-            />
-            <Stack.Screen
-                name="settings/ask"
-                options={{
-                    headerTitle: t('settings.askApi'),
-                }}
-            />
-            <Stack.Screen
-                name="settings/public-image-gateway"
-                options={{
-                    headerTitle: t('settings.publicImageGateway'),
-                }}
-            />
-            <Stack.Screen
-                name="settings/my-agents"
-                options={{
-                    headerTitle: t('agents.title'),
-                }}
-            />
-            <Stack.Screen
-                name="settings/my-agent-edit"
-                options={{
-                    // 标题随「新建/编辑」动态变化，由组件内联 Stack.Screen 驱动；
-                    // 此处留空标题避免新建时先闪一下 "Edit"。
-                    headerTitle: '',
-                }}
-            />
-            <Stack.Screen
-                name="settings/features"
-                options={{
-                    headerTitle: t('settings.features'),
-                }}
-            />
-            <Stack.Screen
-                name="settings/custom-instructions"
-                options={{
-                    headerTitle: t('settings.customInstructions'),
-                }}
-            />
-            <Stack.Screen
-                name="settings/skills"
-                options={{
-                    headerTitle: t('settingsSkills.title'),
-                }}
-            />
-            <Stack.Screen
-                name="settings/skill"
-                options={{
-                    headerTitle: t('settingsSkills.detailTitle'),
                 }}
             />
             <Stack.Screen
@@ -448,21 +373,6 @@ export default function RootLayout() {
                     headerShown: true,
                     headerTitle: t('sessionHistory.title'),
                     headerBackTitle: t('common.back'),
-                }}
-            />
-            <Stack.Screen
-                name="settings/connect/claude"
-                options={{
-                    headerShown: true,
-                    headerTitle: t('connectClaude.title'),
-                    headerBackTitle: t('common.back'),
-                    // headerStyle: {
-                    //     backgroundColor: Platform.OS === 'web' ? theme.colors.header.background : '#1F1E1C',
-                    // },
-                    // headerTintColor: Platform.OS === 'web' ? theme.colors.header.tint : '#FFFFFF',
-                    // headerTitleStyle: {
-                    //     color: Platform.OS === 'web' ? theme.colors.header.tint : '#FFFFFF',
-                    // },
                 }}
             />
             <Stack.Screen
