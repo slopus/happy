@@ -11,7 +11,7 @@ import { useSession, useIsDataReady } from '@/sync/storage';
 import { getSessionName, useSessionStatus, formatOSPlatform, formatPathRelativeToHome, getSessionAvatarId, getResumeCommand } from '@/utils/sessionUtils';
 import * as Clipboard from 'expo-clipboard';
 import { Modal } from '@/modal';
-import { sessionArchive, sessionKill, sessionDelete } from '@/sync/ops';
+import { sessionForceDeactivate, sessionKill, sessionDelete, sessionSetArchived } from '@/sync/ops';
 import { maybeCleanupWorktree } from '@/hooks/useWorktreeCleanup';
 import { useUnistyles } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
@@ -162,17 +162,37 @@ function SessionInfoContent({ session }: { session: Session }) {
         void copySessionMetadataAndLogsToClipboard(session);
     }, [session]);
 
-    // Use HappyAction for archiving - it handles errors automatically
-    const [archivingSession, performArchive] = useHappyAction(async () => {
+    const isArchived = typeof session.metadata?.archivedAt === 'number';
+    const isRunning = sessionStatus.isConnected || session.active;
+
+    // Stop ends the run and leaves the session in the list; the screen stays
+    // open because the session is still there, only idle now.
+    const [stoppingSession, performStop] = useHappyAction(async () => {
         // Prompt for worktree cleanup before killing (needs an active machine connection)
         await maybeCleanupWorktree(session.id, session.metadata?.path, session.metadata?.machineId);
 
-        // Try to kill the CLI process; if it's already dead, force-archive via server
+        // Try to kill the CLI process; if it's already dead, force it inactive server-side
         const killResult = await sessionKill(session.id);
         if (!killResult.success) {
-            await sessionArchive(session.id);
+            await sessionForceDeactivate(session.id);
         }
-        // Success - navigate back
+    });
+
+    const handleStopSession = useCallback(() => {
+        performStop();
+    }, [performStop]);
+
+    // Archive removes the session from the main list, stopping it on the way
+    // out when it is still running, then returns to wherever we came from.
+    const [archivingSession, performArchive] = useHappyAction(async () => {
+        if (isRunning) {
+            await maybeCleanupWorktree(session.id, session.metadata?.path, session.metadata?.machineId);
+            const killResult = await sessionKill(session.id);
+            if (!killResult.success) {
+                await sessionForceDeactivate(session.id);
+            }
+        }
+        sessionSetArchived(session.id, true);
         router.back();
         router.back();
     });
@@ -180,6 +200,10 @@ function SessionInfoContent({ session }: { session: Session }) {
     const handleArchiveSession = useCallback(() => {
         performArchive();
     }, [performArchive]);
+
+    const handleUnarchiveSession = useCallback(() => {
+        sessionSetArchived(session.id, false);
+    }, [session.id]);
 
     // Use HappyAction for deletion - kills session first if needed, then deletes
     const [deletingSession, performDelete] = useHappyAction(async () => {
@@ -414,12 +438,29 @@ function SessionInfoContent({ session }: { session: Session }) {
                             onPress={() => router.push(`/session/${session.metadata!.parentSessionId}`)}
                         />
                     )}
-                    <Item
-                        title={t('sessionInfo.archiveSession')}
-                        subtitle={t('sessionInfo.archiveSessionSubtitle')}
-                        icon={<Ionicons name="archive-outline" size={29} color="#FF3B30" />}
-                        onPress={handleArchiveSession}
-                    />
+                    {isRunning && (
+                        <Item
+                            title={t('sessionInfo.stopSession')}
+                            subtitle={t('sessionInfo.stopSessionSubtitle')}
+                            icon={<Ionicons name="stop-circle-outline" size={29} color="#FF9500" />}
+                            onPress={handleStopSession}
+                        />
+                    )}
+                    {isArchived ? (
+                        <Item
+                            title={t('sessionInfo.unarchiveSession')}
+                            subtitle={t('archive.emptyDescription')}
+                            icon={<Ionicons name="arrow-undo-outline" size={29} color="#007AFF" />}
+                            onPress={handleUnarchiveSession}
+                        />
+                    ) : (
+                        <Item
+                            title={t('sessionInfo.archiveSession')}
+                            subtitle={t('sessionInfo.archiveSessionSubtitle')}
+                            icon={<Ionicons name="archive-outline" size={29} color="#007AFF" />}
+                            onPress={handleArchiveSession}
+                        />
+                    )}
                     <Item
                         title={t('sessionInfo.deleteSession')}
                         subtitle={t('sessionInfo.deleteSessionSubtitle')}

@@ -58,6 +58,7 @@ export const it: TranslationStructure = {
         loading: 'Caricamento...',
         retry: 'Riprova',
         delete: 'Elimina',
+        archive: 'Archivia',
         optional: 'opzionale',
         saveAs: 'Salva con nome',
     },
@@ -161,6 +162,13 @@ export const it: TranslationStructure = {
         },
         chat: 'Chat',
         chatDescription: 'Personalizza l\'aspetto dei messaggi della chat',
+        conversationFontSize: 'Dimensione del carattere della conversazione',
+        conversationFontSizeDescription: 'Scegli la dimensione del testo per le conversazioni',
+        conversationFontSizeOptions: {
+            small: 'Piccola',
+            default: 'Predefinita',
+            large: 'Grande',
+        },
         sessionStatusBar: 'Informazioni sullo stato della sessione',
         sessionStatusBarDescription: 'Scegli dove mostrare branch, modello, impegno e contesto',
         sessionStatusDisplayOptions: {
@@ -228,10 +236,10 @@ export const it: TranslationStructure = {
         commandPalette: 'Palette comandi',
         commandPaletteEnabled: 'Premi ⌘K per aprire',
         commandPaletteDisabled: 'Accesso rapido ai comandi disabilitato',
-        markdownCopyV2: 'Markdown Copy v2',
-        markdownCopyV2Subtitle: 'Pressione lunga apre la finestra di copia',
-        hideInactiveSessions: 'Nascondi sessioni inattive',
-        hideInactiveSessionsSubtitle: 'Mostra solo le chat attive nella tua lista',
+        fullMessageSelection: 'Selezione messaggio completo',
+        fullMessageSelectionSubtitle: 'La pressione lunga apre tutto il messaggio per selezionare e copiare',
+        hideInactiveSessions: 'Nascondi le sessioni terminate',
+        hideInactiveSessionsSubtitle: 'Mostra solo le sessioni con un agente attivo',
         groupToolCalls: 'Raggruppa chiamate agli strumenti',
         groupToolCallsSubtitle: 'Comprimi le chiamate consecutive agli strumenti in un unico contenitore',
         privacy: 'Privacy',
@@ -295,6 +303,8 @@ export const it: TranslationStructure = {
 
     newSession: {
         title: 'Avvia nuova sessione',
+        rigStillPreparingTitle: 'Ancora in preparazione',
+        rigStillPreparingMessage: 'Rig sta ancora preparando il worktree. Premi di nuovo Avvia tra un momento — la stessa richiesta di sessione continuerà.',
         machineOffline: 'La macchina è offline',
         switchMachinesHint: '• Cambia macchina cliccando sulla macchina sopra',
     },
@@ -362,6 +372,8 @@ export const it: TranslationStructure = {
         killSession: 'Termina sessione',
         killSessionConfirm: 'Sei sicuro di voler terminare questa sessione?',
         archiveSession: 'Archivia sessione',
+        unarchiveSession: 'Togli dall\'archivio',
+        stopSession: 'Interrompi sessione',
         archiveSessionConfirm: 'Sei sicuro di voler archiviare questa sessione?',
         happySessionIdCopied: 'ID sessione Happy copiato negli appunti',
         failedToCopySessionId: 'Impossibile copiare l\'ID sessione Happy',
@@ -393,7 +405,8 @@ export const it: TranslationStructure = {
         resumeSessionMissingBackendId: 'This session does not have a resumable Claude or Codex identifier.',
         resumeSessionUnexpectedDirectoryPrompt: 'Resume cannot create directories. Start the session manually from its original path.',
         killSessionSubtitle: 'Termina immediatamente la sessione',
-        archiveSessionSubtitle: 'Archivia questa sessione e fermala',
+        archiveSessionSubtitle: 'Nascondila dall\'elenco delle sessioni: la interrompe se è ancora attiva',
+        stopSessionSubtitle: 'Termina l\'agente, la sessione resta nell\'elenco',
         metadata: 'Metadati',
         host: 'Host',
         path: 'Percorso',
@@ -541,12 +554,21 @@ export const it: TranslationStructure = {
             count === 1 ? "1 altra domanda" : `${count} altre domande`,
     },
 
+    archive: {
+        title: 'Archivio',
+        empty: 'Nessuna sessione archiviata',
+        emptyDescription: 'Le sessioni che archivi vengono nascoste dall\'elenco principale e conservate qui.',
+        restore: 'Togli dall\'archivio',
+    },
+
     sidebar: {
         sessionsTitle: 'Happy',
-        showArchived: 'Mostra archiviate',
-        hideArchived: 'Nascondi archiviate',
+        archive: 'Archivio',
         newSession: 'Nuova sessione',
         projects: "Progetti",
+        pin: 'Fissa',
+        unpin: 'Rimuovi fissaggio',
+        allWorkspaces: 'Tutti gli spazi di lavoro',
     },
 
     zen: {

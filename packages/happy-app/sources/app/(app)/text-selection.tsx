@@ -1,5 +1,5 @@
 import React from 'react';
-import { Platform, View, Text, ScrollView, TextInput, Pressable } from 'react-native';
+import { Platform, View, Text, ScrollView, Pressable } from 'react-native';
 import { useRouter, useLocalSearchParams, useNavigation } from 'expo-router';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -97,17 +97,14 @@ export default function TextSelectionScreen() {
                     { paddingBottom: insets.bottom + 16 }
                 ]}
             >
-                <TextInput
-                    style={[styles.textInput, { 
-                        color: theme.colors.text,
-                        backgroundColor: 'transparent'
-                    }]}
-                    value={fullText}
-                    multiline={true}
-                    editable={false}
-                    selectTextOnFocus={false}
-                    scrollEnabled={false}
-                />
+                {/* A disabled TextInput is not selectable on Android. Native
+                    Text selection provides handles and partial-copy actions. */}
+                <Text
+                    selectable={true}
+                    style={[styles.sourceText, { color: theme.colors.text }]}
+                >
+                    {fullText}
+                </Text>
             </ScrollView>
             </MobileGlassSurface>
         </View>
@@ -141,17 +138,11 @@ const styles = StyleSheet.create((theme) => ({
     scrollContent: {
         flexGrow: 1,
     },
-    textInput: {
+    sourceText: {
         ...Typography.mono(),
         fontSize: 14,
         lineHeight: 20,
         color: theme.colors.text,
-        minHeight: 200,
-        textAlignVertical: 'top',
-        backgroundColor: 'transparent',
-        borderWidth: 0,
-        paddingHorizontal: 0,
-        paddingVertical: 0,
     },
     copyButton: {
         padding: 8,

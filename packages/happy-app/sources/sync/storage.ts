@@ -9,23 +9,23 @@ function useDeepEqual<T>(selector: (state: StorageState) => T): (state: StorageS
         return equal(prev.current, next) ? prev.current! : (prev.current = next);
     };
 }
-import { Session, Machine, GitStatus, SessionAgentModesPatch } from "./storageTypes";
+import { METADATA_ONLY_FIELDS, Session, Machine, GitStatus, SessionAgentModesPatch } from "./storageTypes";
 import type { GitStatusFiles } from "./gitStatusFiles";
 import type { ProjectFilesList } from "./projectFiles";
-import { buildPathProjectGroups, buildProjectGroups, isProjectSession, type ProjectGroupData } from "./projectGroups";
+import { buildProjectGroups, type ProjectGroupData } from "./projectGroups";
 import { selectPendingCommunications, type PendingAgentCommunication } from "./agentCommunications";
 import { createReducer, reducer, ReducerState } from "./reducer/reducer";
 import { Message } from "./typesMessage";
 import { NormalizedMessage } from "./typesRaw";
 import { isMachineOnline } from '@/utils/machineUtils';
-import { getSessionName, getSessionSubtitle, getSessionAvatarId, type SessionState } from '@/utils/sessionUtils';
+import { getSessionName, getSessionSubtitle, getSessionAvatarId, getSessionProviderKind, type SessionState } from '@/utils/sessionUtils';
 import { applySettings, Settings } from "./settings";
 import { LocalSettings, applyLocalSettings } from "./localSettings";
 import { Purchases, customerInfoToPurchases } from "./purchases";
 import { Profile } from "./profile";
 import { UserProfile, RelationshipUpdatedEvent } from "./friendTypes";
 import { loadSettings, loadLocalSettings, saveLocalSettings, saveSettings, loadPurchases, savePurchases, loadProfile, saveProfile, loadSessionDrafts, saveSessionDrafts } from "./persistence";
-import { isAgentModePushPending } from "./agentModesPending";
+import { isMetadataPushPending } from "./metadataPushPending";
 import { loadSessionLastMessageSentAt, saveSessionLastMessageSentAt } from "./persistence";
 import type { CustomerInfo } from './revenueCat/types';
 import React from "react";
@@ -34,7 +34,7 @@ import { getCurrentRealtimeSessionId, getVoiceSession } from '@/realtime/Realtim
 import { isMutableTool } from "@/components/tools/knownTools";
 import { DecryptedArtifact } from "./artifactTypes";
 import { FeedItem } from "./feedTypes";
-import { getRigActivityIndicators, getRigIdentity, isRigMetadata } from './rig';
+import { getRigActivityIndicators, getRigIdentity } from './rig';
 import { indexSessionsById } from './sessionIdentity';
 
 // Debounce timer for realtimeMode changes
@@ -112,6 +112,8 @@ export interface SessionRowData {
     // Names the git worktree this session runs in; null in the primary tree.
     workspaceId: string | null;
     workspaceName: string | null;
+    pinned?: boolean;
+    pinnedAt?: number;
 }
 
 function buildSessionRowData(session: Session, unreadSessionIds?: Set<string>): SessionRowData {
@@ -139,7 +141,7 @@ function buildSessionRowData(session: Session, unreadSessionIds?: Set<string>): 
         flavor: session.metadata?.flavor ?? null,
         clientId: session.metadata?.client?.id ?? null,
         identityLine: rigIdentity ? `${rigIdentity.clientName} · ${rigIdentity.providerName}` : null,
-        providerKind: session.metadata?.provider?.kind ?? null,
+        providerKind: getSessionProviderKind(session),
         modelName: rigIdentity?.modelName ?? null,
         activitySummary: rigActivity.length > 0
             ? rigActivity.map((item) => `${item.count}${item.queued ? `+${item.queued}` : ''} ${item.key}`).join(' · ')
@@ -148,8 +150,11 @@ function buildSessionRowData(session: Session, unreadSessionIds?: Set<string>): 
         ...(!session.active && { activeAt: session.activeAt, createdAt: session.createdAt }),
         hasDraft: !!session.draft,
         active: session.active,
-        archived: session.metadata?.lifecycleState === 'archived'
-            || (!isRigMetadata(session.metadata) && !session.active),
+        // Archive is a user decision about visibility, never a consequence of
+        // the agent process exiting: a finished session stays in the main list
+        // (dimmed, and hideable through the `hideInactiveSessions` setting)
+        // until the user actually files it away.
+        archived: typeof session.metadata?.archivedAt === 'number',
         machineId: session.metadata?.machineId ?? null,
         path: session.metadata?.path ?? null,
         homeDir: session.metadata?.homeDir ?? null,
@@ -160,17 +165,18 @@ function buildSessionRowData(session: Session, unreadSessionIds?: Set<string>): 
         projectName: session.metadata?.project?.name ?? null,
         workspaceId: session.metadata?.workspace?.id ?? null,
         workspaceName: session.metadata?.workspace?.name ?? null,
+        pinned: typeof session.metadata?.pinnedAt === 'number',
+        ...(typeof session.metadata?.pinnedAt === 'number' ? { pinnedAt: session.metadata.pinnedAt } : {}),
     };
 }
 
 
 // Unified list item type for SessionsList component
 export type SessionListViewItem =
-    | { type: 'header'; title: string }
+    | { type: 'section'; title: string }
     | { type: 'active-sessions'; sessions: SessionRowData[] }
     | { type: 'project-group'; displayPath: string; machine: Machine }
-    | { type: 'projects-header'; source: 'rig' | 'happy' }
-    | { type: 'project'; source: 'rig' | 'happy'; project: ProjectGroupData }
+    | { type: 'project'; project: ProjectGroupData }
     | { type: 'session'; session: SessionRowData };
 
 export type { ProjectGroupData, ProjectWorkspaceGroup } from './projectGroups';
@@ -274,9 +280,18 @@ function buildSessionListViewData(
     // hasUnread=false everywhere — exactly the bug this parameter caused twice.
     unreadSessionIds: Set<string>,
 ): SessionListViewItem[] {
-    const rigProjectSessions: Session[] = [];
-    const rigPathSessions: Session[] = [];
-    const happySessions: Session[] = [];
+    const now = Date.now();
+    const pinnedSessions: Session[] = [];
+    const recentSessions: Session[] = [];
+    const projectSessions: Session[] = [];
+
+    // "Today" is about recency of work, not of creation: a week-old session the
+    // agent is running right now belongs at the top, not buried in its project.
+    // lastMessageSentAt is used rather than updatedAt because updatedAt bumps on
+    // every background agent update and would shuffle the bucket constantly.
+    const DAY_MS = 24 * 60 * 60 * 1000;
+    const lastTouchedAt = (session: Session) => Math.max(session.createdAt, session.lastMessageSentAt ?? 0);
+    const isRecent = (session: Session) => isSessionActive(session) || now - lastTouchedAt(session) < DAY_MS;
 
     Object.values(sessions).forEach(session => {
         // Side chats are hidden children of another session — they render only
@@ -284,15 +299,15 @@ function buildSessionListViewData(
         if (session.metadata?.isSideChat) {
             return;
         }
-        if (isRigMetadata(session.metadata)) {
-            if (isProjectSession(session)) {
-                rigProjectSessions.push(session);
-            } else {
-                rigPathSessions.push(session);
-            }
-        } else {
-            happySessions.push(session);
+        if (typeof session.metadata?.pinnedAt === 'number') {
+            pinnedSessions.push(session);
+            return;
         }
+        if (isRecent(session)) {
+            recentSessions.push(session);
+            return;
+        }
+        projectSessions.push(session);
     });
 
     // Sort by last activity or creation date (newest first), per user setting — matches applySessions behavior
@@ -302,42 +317,59 @@ function buildSessionListViewData(
     const sortKey = storage.getState().settings.sortSessionsByActivity
         ? (s: Session) => s.lastMessageSentAt ?? s.createdAt
         : (s: Session) => s.createdAt;
-    const sortProjectSessions = (items: Session[]) => items.sort((a, b) => {
+    projectSessions.sort((a, b) => {
         const activeDelta = Number(isSessionActive(b)) - Number(isSessionActive(a));
         return activeDelta !== 0 ? activeDelta : sortKey(b) - sortKey(a);
     });
-    sortProjectSessions(rigProjectSessions);
-    sortProjectSessions(rigPathSessions);
-    sortProjectSessions(happySessions);
 
     const listData: SessionListViewItem[] = [];
     const toRow = (session: Session) => buildSessionRowData(session, unreadSessionIds);
 
-    const rigProjects = [
-        ...buildProjectGroups(rigProjectSessions, toRow, isSessionActive),
-        ...buildPathProjectGroups(rigPathSessions, toRow, isSessionActive, 'rig'),
-    ];
-    if (rigProjects.length > 0) {
-        listData.push({ type: 'projects-header', source: 'rig' });
-        for (const project of rigProjects) {
-            listData.push({ type: 'project', source: 'rig', project });
-        }
-    }
+    const flatRows = (title: string, items: Session[]) => {
+        if (items.length === 0) return;
+        items.sort((a, b) => lastTouchedAt(b) - lastTouchedAt(a));
+        listData.push({ type: 'section', title });
+        items.forEach(session => listData.push({ type: 'session', session: toRow(session) }));
+    };
+    flatRows('Pinned', pinnedSessions);
+    flatRows('Today', recentSessions);
 
-    const happyProjects = buildPathProjectGroups(
-        happySessions,
-        toRow,
-        isSessionActive,
-        'happy',
-    );
-    if (happyProjects.length > 0) {
-        listData.push({ type: 'projects-header', source: 'happy' });
-        for (const project of happyProjects) {
-            listData.push({ type: 'project', source: 'happy', project });
-        }
+    // Rig and Happy projects share one list. Where a session came from is a
+    // property of the row, not a reason to split the list in two — the runtime
+    // only feeds into a project's identity, which buildProjectGroups handles.
+    // Sessions arrive sorted, and grouping walks them in that order, so a
+    // project already ranks by its liveliest session without a second pass.
+    for (const project of buildProjectGroups(projectSessions, toRow, isSessionActive)) {
+        listData.push({ type: 'project', project });
     }
 
     return listData;
+}
+
+/**
+ * An archived session can come back to life: the user resumes it from another
+ * device, or the CLI reconnects the same id. Leaving `archivedAt` on it would
+ * strand live work on the archive screen, so the flag is dropped when a session
+ * transitions from inactive to active while archived. Only that transition
+ * counts — archiving a still-running session flips it active -> inactive, which
+ * must not bounce the archive straight back off.
+ *
+ * ops.ts imports this module, so the writer is pulled in lazily to keep the
+ * dependency one-directional.
+ */
+function scheduleAutoUnarchive(sessionIds: string[]): void {
+    if (sessionIds.length === 0) {
+        return;
+    }
+    queueMicrotask(() => {
+        void import('./ops')
+            .then(({ sessionSetArchived }) => {
+                sessionIds.forEach((id) => sessionSetArchived(id, false));
+            })
+            .catch(() => {
+                // Best-effort: the next inbound update re-runs this check.
+            });
+    });
 }
 
 export const storage = create<StorageState>()((set, get) => {
@@ -401,6 +433,8 @@ export const storage = create<StorageState>()((set, get) => {
             return Object.values(state.sessions).filter(s => s.active);
         },
         applySessions: (sessions: (Omit<Session, 'presence'> & { presence?: "online" | number })[]) => set((state) => {
+            // Sessions that woke up while archived; un-archived after this update.
+            const revivedArchivedIds: string[] = [];
             // Load drafts if sessions are empty (initial load)
             const isInitialLoad = Object.keys(state.sessions).length === 0;
             const savedDrafts = isInitialLoad ? sessionDrafts : {};
@@ -427,7 +461,7 @@ export const storage = create<StorageState>()((set, get) => {
                 // the field keeps the local value.
                 const resolveModePick = (field: 'permissionMode' | 'modelMode' | 'effortLevel'): string | null => {
                     const existing = state.sessions[session.id]?.[field] ?? null;
-                    if (isAgentModePushPending(session.id, field)) {
+                    if (isMetadataPushPending(session.id, field)) {
                         return existing;
                     }
                     return session.metadata && session.metadata[field] !== undefined
@@ -438,11 +472,43 @@ export const storage = create<StorageState>()((set, get) => {
                 const resolvedModelMode = resolveModePick('modelMode');
                 const resolvedEffortLevel = resolveModePick('effortLevel');
 
+                // Pin and archive have no top-level mirror to fall back on:
+                // metadata is the only copy, and inbound updates keep arriving
+                // with the pre-change metadata while the push is in flight.
+                // Re-apply the optimistic value or the row unpins (or
+                // un-archives) itself under the user.
+                const resolveMetadata = (): typeof session.metadata => {
+                    if (!session.metadata) {
+                        return session.metadata;
+                    }
+                    const pending = METADATA_ONLY_FIELDS.filter((field) => isMetadataPushPending(session.id, field));
+                    if (pending.length === 0) {
+                        return session.metadata;
+                    }
+                    const resolved = { ...session.metadata };
+                    for (const field of pending) {
+                        resolved[field] = state.sessions[session.id]?.metadata?.[field] ?? null;
+                    }
+                    return resolved;
+                };
+
                 // Local activity timestamp — preserve in-memory value, else restore from MMKV.
                 const resolvedLastMessageSentAt = state.sessions[session.id]?.lastMessageSentAt ?? savedLastMessageSentAt[session.id];
 
+                const previous = state.sessions[session.id];
+                if (
+                    previous
+                    && !previous.active
+                    && session.active
+                    && typeof previous.metadata?.archivedAt === 'number'
+                    && !isMetadataPushPending(session.id, 'archivedAt')
+                ) {
+                    revivedArchivedIds.push(session.id);
+                }
+
                 mergedSessions[session.id] = {
                     ...session,
+                    metadata: resolveMetadata(),
                     presence,
                     draft: existingDraft || savedDraft || session.draft || null,
                     permissionMode: resolvedPermissionMode,
@@ -604,6 +670,8 @@ export const storage = create<StorageState>()((set, get) => {
                 mergedSessions,
                 unreadSessionIds,
             );
+
+            scheduleAutoUnarchive(revivedArchivedIds);
 
             return {
                 ...state,

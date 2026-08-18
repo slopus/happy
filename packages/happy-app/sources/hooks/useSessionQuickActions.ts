@@ -2,7 +2,7 @@ import * as React from 'react';
 import { useHappyAction } from '@/hooks/useHappyAction';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { Modal } from '@/modal';
-import { machineResumeSession, sessionArchive, sessionKill, sessionSetAgentModes, forkAndSpawn, type ForkSource } from '@/sync/ops';
+import { machineResumeSession, sessionDelete, sessionForceDeactivate, sessionKill, sessionSetAgentModes, sessionSetArchived, sessionSetPinned, forkAndSpawn, type ForkSource } from '@/sync/ops';
 import { maybeCleanupWorktree } from '@/hooks/useWorktreeCleanup';
 import { storage, useLocalSetting, useMachine, useSetting } from '@/sync/storage';
 import { Machine, Session } from '@/sync/storageTypes';
@@ -19,6 +19,7 @@ import { useSession } from '@/sync/storage';
 import { DuplicateSheet } from '@/components/DuplicateSheet';
 import type { SessionActionShortcutId } from '@/keyboard/shortcuts';
 import { isRigMetadata } from '@/sync/rig';
+import { getSessionResumeFallback } from '@/utils/sessionResumeFallback';
 
 export interface SessionActionItem {
     id: SessionActionShortcutId;
@@ -32,6 +33,20 @@ interface UseSessionQuickActionsOptions {
     onAfterArchive?: () => void;
     onAfterDelete?: () => void;
     onAfterCopySessionMetadata?: () => void;
+}
+
+/**
+ * Stop the agent behind a session: ask the CLI to exit, and if nothing answers
+ * (process already gone, daemon offline) force the row inactive server-side so
+ * it stops claiming to be live. Worktree cleanup is offered first because it
+ * needs the machine connection this is about to end.
+ */
+async function stopSessionProcess(session: Session): Promise<void> {
+    await maybeCleanupWorktree(session.id, session.metadata?.path, session.metadata?.machineId);
+    const killResult = await sessionKill(session.id);
+    if (!killResult.success) {
+        await sessionForceDeactivate(session.id);
+    }
 }
 
 type ResumeAvailability = {
@@ -115,6 +130,7 @@ export function useSessionQuickActions(
     const {
         onAfterArchive,
         onAfterCopySessionMetadata,
+        onAfterDelete,
     } = options;
     const router = useRouter();
     const navigateToSession = useNavigateToSession();
@@ -185,19 +201,22 @@ export function useSessionQuickActions(
             sessionId: session.id,
             model: modeMeta.model ?? undefined,
             permissionMode: modeMeta.permissionMode,
+            effort: modeMeta.effort ?? undefined,
+            fallback: getSessionResumeFallback(session.metadata),
         });
 
         switch (result.type) {
             case 'success': {
-                // Session reconnects to the same ID, so messages are preserved.
-                // Refresh to pick up the updated session state.
+                // Usually this reconnects the same Happy ID. If the daemon has
+                // no local reconnect key, it may instead continue the provider
+                // conversation in a fresh Happy row and return that new ID.
                 await sync.refreshSessions();
 
                 if (session.permissionMode) {
                     sessionSetAgentModes(result.sessionId, { permissionMode: session.permissionMode });
                 }
-                // Model / effort picks survive resume on their own — they live
-                // in the session's synced metadata (#1492).
+                // Model / effort picks survive in-place resume through synced
+                // metadata (#1492), and the fallback spawn receives them above.
 
                 navigateToSession(result.sessionId);
                 return;
@@ -209,20 +228,65 @@ export function useSessionQuickActions(
         }
     });
 
-    const [archivingSession, performArchive] = useHappyAction(async () => {
-        await maybeCleanupWorktree(session.id, session.metadata?.path, session.metadata?.machineId);
+    const isArchived = typeof session.metadata?.archivedAt === 'number';
+    const isRunning = sessionStatus.isConnected || session.active;
 
-        // Try to kill the CLI process; if it's already dead, force-archive via server
-        const killResult = await sessionKill(session.id);
-        if (!killResult.success) {
-            await sessionArchive(session.id);
+    // Stop — ends the run, leaves the session in the list. Only worth offering
+    // while something is actually running.
+    const [stoppingSession, performStop] = useHappyAction(async () => {
+        await stopSessionProcess(session);
+    });
+
+    const stopSession = React.useCallback(() => {
+        performStop();
+    }, [performStop]);
+
+    // Archive — files the session away into the archive screen. A session that
+    // is still running is stopped on the way out: hiding a live agent would
+    // leave it working where nobody can see it.
+    const [archivingSession, performArchive] = useHappyAction(async () => {
+        if (isRunning) {
+            await stopSessionProcess(session);
         }
+        sessionSetArchived(session.id, true);
         onAfterArchive?.();
     });
 
     const archiveSession = React.useCallback(() => {
         performArchive();
     }, [performArchive]);
+
+    const unarchiveSession = React.useCallback(() => {
+        sessionSetArchived(session.id, false);
+    }, [session.id]);
+
+    // Delete — irreversible, so it always goes through a confirmation.
+    const [deletingSession, performDelete] = useHappyAction(async () => {
+        if (isRunning) {
+            await maybeCleanupWorktree(session.id, session.metadata?.path, session.metadata?.machineId);
+            await sessionKill(session.id).catch(() => {});
+        }
+        const result = await sessionDelete(session.id);
+        if (!result.success) {
+            throw new HappyError(result.message || t('sessionInfo.failedToDeleteSession'), false);
+        }
+        onAfterDelete?.();
+    });
+
+    const deleteSession = React.useCallback(() => {
+        Modal.alert(
+            t('sessionInfo.deleteSession'),
+            t('sessionInfo.deleteSessionWarning'),
+            [
+                { text: t('common.cancel'), style: 'cancel' },
+                { text: t('sessionInfo.deleteSession'), style: 'destructive', onPress: performDelete },
+            ],
+        );
+    }, [performDelete]);
+
+    const togglePinned = React.useCallback(() => {
+        sessionSetPinned(session.id, typeof session.metadata?.pinnedAt !== 'number');
+    }, [session.id, session.metadata?.pinnedAt]);
 
     const resumeSession = React.useCallback(() => {
         performResume();
@@ -278,7 +342,24 @@ export function useSessionQuickActions(
             items.push({ id: 'copy-metadata-and-logs', icon: 'document-text-outline', label: t('sessionInfo.copyMetadata') + ' & Client Logs', onPress: copySessionMetadataAndLogs });
         }
 
-        items.push({ id: 'archive', icon: 'archive-outline', label: 'Archive', onPress: archiveSession, destructive: true });
+        items.push({
+            id: 'pin',
+            icon: typeof session.metadata?.pinnedAt === 'number' ? 'pin' : 'pin-outline',
+            label: typeof session.metadata?.pinnedAt === 'number' ? t('sidebar.unpin') : t('sidebar.pin'),
+            onPress: togglePinned,
+        });
+
+        if (isRunning) {
+            items.push({ id: 'stop', icon: 'stop-circle-outline', label: t('sessionInfo.stopSession'), onPress: stopSession });
+        }
+
+        if (isArchived) {
+            items.push({ id: 'unarchive', icon: 'archive-outline', label: t('sessionInfo.unarchiveSession'), onPress: unarchiveSession });
+        } else {
+            items.push({ id: 'archive', icon: 'archive-outline', label: t('sessionInfo.archiveSession'), onPress: archiveSession });
+        }
+
+        items.push({ id: 'delete', icon: 'trash-outline', label: t('sessionInfo.deleteSession'), onPress: deleteSession, destructive: true });
 
         return items;
     }, [
@@ -287,10 +368,17 @@ export function useSessionQuickActions(
         canFork,
         copySessionMetadata,
         copySessionMetadataAndLogs,
+        deleteSession,
         forkSource,
         forkSession,
+        isArchived,
+        isRunning,
         openDetails,
         openDuplicateSheet,
+        stopSession,
+        togglePinned,
+        unarchiveSession,
+        session.metadata?.pinnedAt,
         resumeAvailability.canShowResume,
         resumeSession,
     ]);
@@ -310,8 +398,15 @@ export function useSessionQuickActions(
         showActionAlert,
         archiveSession,
         archivingSession,
-        canArchive: true,
+        canArchive: !isArchived,
         canCopySessionMetadata,
+        canStop: isRunning,
+        deleteSession,
+        deletingSession,
+        isArchived,
+        stopSession,
+        stoppingSession,
+        unarchiveSession,
         canResume: resumeAvailability.canResume,
         canShowResume: resumeAvailability.canShowResume,
         canFork,
@@ -321,18 +416,58 @@ export function useSessionQuickActions(
         forking,
         openDetails,
         openDuplicateSheet,
+        togglePinned,
         resumeSession,
         resumeSessionSubtitle: resumeAvailability.subtitle,
         resumingSession,
     };
 }
 
+// Stands in for a session that storage does not have. A row can outlive its
+// session — deleted while the list re-renders, or a fixture id in the layout
+// sandbox — and the quick-actions hook still has to run to keep hook order
+// stable. The stub only exists to be read and thrown away: the handler built
+// from it is never handed out.
+export const MISSING_SESSION: Session = {
+    id: '',
+    seq: 0,
+    createdAt: 0,
+    updatedAt: 0,
+    active: false,
+    activeAt: 0,
+    metadata: null,
+    metadataVersion: 0,
+    agentState: null,
+    agentStateVersion: 0,
+    thinking: false,
+    thinkingAt: 0,
+    presence: 0,
+};
+
+/**
+ * Swipe-action helper for list rows, which hold a `SessionRowData` rather than
+ * a full session. Resolves the session and hands back the archive pair, so a
+ * row in the main list can file a session away and a row on the archive screen
+ * can send it back — both going through the same logic as the menus.
+ */
+export function useSessionArchiveActions(sessionId: string) {
+    const session = useSession(sessionId);
+    const { archiveSession, archivingSession, unarchiveSession } = useSessionQuickActions(session ?? MISSING_SESSION, {});
+    return {
+        archiveSession,
+        archivingSession,
+        unarchiveSession,
+        hasSession: session !== null,
+    };
+}
+
 /**
  * Lightweight hook for list items that only have a sessionId.
- * Returns a long-press handler that shows the action alert on mobile.
+ * Returns a long-press handler that shows the action alert on mobile,
+ * or undefined when the id has no session behind it.
  */
 export function useSessionActionAlert(sessionId: string) {
     const session = useSession(sessionId);
-    const { showActionAlert } = useSessionQuickActions(session!, {});
+    const { showActionAlert } = useSessionQuickActions(session ?? MISSING_SESSION, {});
     return session ? showActionAlert : undefined;
 }

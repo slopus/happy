@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { Session } from '@/sync/storageTypes';
+import { isRigMetadata } from '@/sync/rig';
 import { t } from '@/text';
 import { buildResumeCommand, buildResumeCommandBlock, ResumeCommandBlock } from './resumeCommand';
 
@@ -77,6 +78,27 @@ export function useSessionStatus(session: Session): SessionStatus {
  * Extracts a display name from a session's metadata path.
  * Returns the last segment of the path, or 'unknown' if no path is available.
  */
+/**
+ * The provider a session runs on, in the vocabulary `ProviderIcon` speaks.
+ *
+ * Rig names its provider outright. Happy CLI sessions never fill that field —
+ * all they carry is a flavor, under two long-standing conventions: Codex went
+ * by `gpt`/`openai` before it was renamed, and a session with no flavor at all
+ * is Claude.
+ */
+export function getSessionProviderKind(session: Session): string | null {
+    const declared = session.metadata?.provider?.kind;
+    if (declared) return declared;
+    // A Rig session with no provider is genuinely unknown — don't guess Claude
+    // for it the way the flavor convention does for Happy CLI.
+    if (isRigMetadata(session.metadata)) return null;
+
+    const flavor = session.metadata?.flavor;
+    if (!flavor) return 'claude';
+    if (flavor === 'gpt' || flavor === 'openai') return 'codex';
+    return flavor;
+}
+
 export function getSessionName(session: Session): string {
     if (session.metadata?.summary) {
         return session.metadata.summary.text;

@@ -59,6 +59,7 @@ export const en = {
         loading: 'Loading...',
         retry: 'Retry',
         delete: 'Delete',
+        archive: 'Archive',
         optional: 'optional',
     },
 
@@ -161,6 +162,13 @@ export const en = {
         },
         chat: 'Chat',
         chatDescription: 'Customize chat message appearance',
+        conversationFontSize: 'Conversation Font Size',
+        conversationFontSizeDescription: 'Choose the text size for conversations',
+        conversationFontSizeOptions: {
+            small: 'Small',
+            default: 'Default',
+            large: 'Large',
+        },
         sessionStatusBar: 'Session Status Info',
         sessionStatusBarDescription: 'Choose where branch, model, effort, and context appear',
         sessionStatusDisplayOptions: {
@@ -228,10 +236,10 @@ export const en = {
         commandPalette: 'Command Palette',
         commandPaletteEnabled: 'Press ⌘K to open',
         commandPaletteDisabled: 'Quick command access disabled',
-        markdownCopyV2: 'Markdown Copy v2',
-        markdownCopyV2Subtitle: 'Long press opens copy modal',
-        hideInactiveSessions: 'Hide inactive sessions',
-        hideInactiveSessionsSubtitle: 'Show only active chats in your list',
+        fullMessageSelection: 'Full message selection',
+        fullMessageSelectionSubtitle: 'Long press opens the whole message for selecting and copying',
+        hideInactiveSessions: 'Hide finished sessions',
+        hideInactiveSessionsSubtitle: 'Show only sessions with a running agent',
         groupToolCalls: 'Group Tool Calls',
         groupToolCallsSubtitle: 'Collapse consecutive tool calls into one container',
         privacy: 'Privacy',
@@ -310,6 +318,8 @@ export const en = {
 
     newSession: {
         title: 'Start New Session',
+        rigStillPreparingTitle: 'Still preparing',
+        rigStillPreparingMessage: 'Rig is still preparing the worktree. Press Start again in a moment — the same session request will continue.',
         machineOffline: 'Machine is offline',
         switchMachinesHint: '• Switch machines by clicking on the machine above',
     },
@@ -378,6 +388,8 @@ export const en = {
         killSession: 'Kill Session',
         killSessionConfirm: 'Are you sure you want to terminate this session?',
         archiveSession: 'Archive Session',
+        unarchiveSession: 'Move Out of Archive',
+        stopSession: 'Stop Session',
         archiveSessionConfirm: 'Are you sure you want to archive this session?',
         happySessionIdCopied: 'Happy Session ID copied to clipboard',
         failedToCopySessionId: 'Failed to copy Happy Session ID',
@@ -409,7 +421,8 @@ export const en = {
         resumeSessionMissingBackendId: 'This session does not have a resumable Claude or Codex identifier.',
         resumeSessionUnexpectedDirectoryPrompt: 'Resume cannot create directories. Start the session manually from its original path.',
         killSessionSubtitle: 'Immediately terminate the session',
-        archiveSessionSubtitle: 'Archive this session and stop it',
+        archiveSessionSubtitle: 'Hide from your session list — stops the agent if still running',
+        stopSessionSubtitle: 'End the agent, keep the session in your list',
         metadata: 'Metadata',
         host: 'Host',
         path: 'Path',
@@ -558,12 +571,21 @@ export const en = {
             count === 1 ? '1 more question' : `${count} more questions`,
     },
 
+    archive: {
+        title: 'Archive',
+        empty: 'Nothing archived',
+        emptyDescription: 'Sessions you archive are hidden from the main list and kept here.',
+        restore: 'Move out of archive',
+    },
+
     sidebar: {
         sessionsTitle: 'Happy',
-        showArchived: 'Show archived',
-        hideArchived: 'Hide archived',
+        archive: 'Archive',
         newSession: 'New session',
         projects: 'Projects',
+        pin: 'Pin',
+        unpin: 'Unpin',
+        allWorkspaces: 'All Workspaces',
     },
 
     zen: {

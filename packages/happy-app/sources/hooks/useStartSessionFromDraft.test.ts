@@ -73,11 +73,14 @@ vi.mock('@/utils/machineUtils', () => ({
 }));
 
 vi.mock('@/utils/pathUtils', () => ({
-    resolveAbsolutePath: (path: string) => `/absolute/${path.replace(/^~\/?/, '')}`,
+    resolveAbsolutePath: (path: string) => path === '/Users/dev/project'
+        ? '/absolute/project'
+        : `/absolute/${path.replace(/^~\/?/, '')}`,
 }));
 
 vi.mock('@/utils/worktree', () => ({
     createWorktree: mocks.createWorktree,
+    generateWorktreeName: vi.fn(() => 'generated-worktree'),
 }));
 
 vi.mock('@/utils/time', () => ({ delay: mocks.delay }));
@@ -143,6 +146,13 @@ function createRigMachine(metadata: Record<string, unknown> = {}) {
     };
 }
 
+/** A Rig-only machine whose published catalog is the smallest one that can spawn. */
+function rigMachine(capabilities: { worktrees: boolean }) {
+    return createRigMachine({
+        capabilities: { newSession: true, resume: false, worktrees: capabilities.worktrees },
+    });
+}
+
 function createDraft(overrides: Record<string, unknown> = {}) {
     return {
         input: ' Start the implementation ',
@@ -155,8 +165,12 @@ function createDraft(overrides: Record<string, unknown> = {}) {
         effortLevel: null,
         sessionType: 'simple',
         worktreeKey: null,
+        newWorktreeName: null,
         setInput: vi.fn(),
         setAttachments: vi.fn(),
+        setNewWorktreeName: vi.fn((name: string | null) => {
+            mocks.draft.newWorktreeName = name;
+        }),
         ...overrides,
     };
 }
@@ -260,6 +274,41 @@ describe('useStartSessionFromDraft', () => {
         expect(mocks.navigateToSession).toHaveBeenCalledWith('session-2');
     });
 
+    it('refuses a worktree that the Rig machine cannot create', async () => {
+        mocks.machines = [rigMachine({ worktrees: false })];
+        mocks.draft = createDraft({ agentType: 'rig', sessionType: 'worktree', worktreeKey: null });
+
+        const { startSession } = useStartSessionFromDraft();
+
+        await expect(startSession()).resolves.toBe(false);
+        expect(mocks.machineSpawnNewSession).not.toHaveBeenCalled();
+        expect(mocks.createWorktree).not.toHaveBeenCalled();
+        expect(mocks.alert).toHaveBeenCalledWith(
+            'common.error',
+            expect.stringContaining('does not support worktrees'),
+        );
+    });
+
+    it('asks Rig to create the named worktree instead of shelling out', async () => {
+        mocks.machines = [rigMachine({ worktrees: true })];
+        mocks.draft = createDraft({
+            agentType: 'rig',
+            sessionType: 'worktree',
+            worktreeKey: null,
+            newWorktreeName: '  quiet-harbor  ',
+        });
+        mocks.machineSpawnNewSession.mockResolvedValue({ type: 'success', sessionId: 'rig-session-worktree' });
+
+        const { startSession } = useStartSessionFromDraft();
+
+        await expect(startSession()).resolves.toBe(true);
+        expect(mocks.createWorktree).not.toHaveBeenCalled();
+        expect(mocks.machineSpawnNewSession).toHaveBeenCalledWith(expect.objectContaining({
+            directory: '/absolute/project',
+            worktree: { type: 'new', name: 'quiet-harbor' },
+        }));
+    });
+
     it('creates a Rig session from its machine catalog and retries pending idempotently', async () => {
         mocks.machines = [{
             id: 'machine-1',
@@ -301,7 +350,7 @@ describe('useStartSessionFromDraft', () => {
         }];
         mocks.draft = createDraft({
             agentType: 'claude',
-            sessionType: 'worktree',
+            sessionType: 'simple',
             worktreeKey: null,
         });
         mocks.machineSpawnNewSession
@@ -367,11 +416,12 @@ describe('useStartSessionFromDraft', () => {
         const { startSession } = useStartSessionFromDraft();
 
         await expect(startSession()).resolves.toBe(false);
-        expect(mocks.machineSpawnNewSession).toHaveBeenCalledTimes(4);
-        expect(mocks.delay).toHaveBeenCalledTimes(3);
+        // 1 initial call + the retry budget, sized for a slow `git worktree add`.
+        expect(mocks.machineSpawnNewSession).toHaveBeenCalledTimes(16);
+        expect(mocks.delay).toHaveBeenCalledTimes(15);
         expect(mocks.alert).toHaveBeenCalledWith(
-            'common.error',
-            'Rig created the session, but it is still syncing with Happy. It should appear shortly.',
+            'newSession.rigStillPreparingTitle',
+            'newSession.rigStillPreparingMessage',
         );
         expect(mocks.navigateToSession).not.toHaveBeenCalled();
     });
@@ -413,6 +463,75 @@ describe('useStartSessionFromDraft', () => {
         expect(mocks.machineSpawnNewSession).toHaveBeenLastCalledWith(expect.objectContaining({
             clientRequestId: 'rig-request-2',
         }));
+    });
+
+    it('freezes a generated worktree name across a pending retry', async () => {
+        mocks.machines = [rigMachine({ worktrees: true })];
+        mocks.draft = createDraft({ agentType: 'rig', sessionType: 'worktree' });
+        mocks.machineSpawnNewSession.mockResolvedValue({
+            type: 'pending', clientRequestId: 'rig-request-1', retryAfterMs: 0,
+        });
+
+        const { startSession } = useStartSessionFromDraft();
+
+        await expect(startSession()).resolves.toBe(false);
+        expect(mocks.draft.setNewWorktreeName).toHaveBeenCalledWith('generated-worktree');
+
+        mocks.machineSpawnNewSession.mockResolvedValue({ type: 'success', sessionId: 'rig-session-1' });
+        await expect(startSession()).resolves.toBe(true);
+
+        const worktrees = mocks.machineSpawnNewSession.mock.calls
+            .map(([options]) => options.worktree);
+        const requestIds = mocks.machineSpawnNewSession.mock.calls
+            .map(([options]) => options.clientRequestId);
+        expect(worktrees).toEqual(Array.from({ length: 17 }, () => ({ type: 'new', name: 'generated-worktree' })));
+        expect(new Set(requestIds)).toEqual(new Set(['rig-request-1']));
+    });
+
+    it('mints a new Rig request when the requested worktree name changes', async () => {
+        mocks.machines = [rigMachine({ worktrees: true })];
+        mocks.draft = createDraft({
+            agentType: 'rig',
+            sessionType: 'worktree',
+            newWorktreeName: 'quiet-harbor',
+        });
+        mocks.machineSpawnNewSession.mockResolvedValue({
+            type: 'pending', clientRequestId: 'rig-request-1', retryAfterMs: 0,
+        });
+
+        const { startSession } = useStartSessionFromDraft();
+
+        await expect(startSession()).resolves.toBe(false);
+        mocks.draft.newWorktreeName = 'bright-forest';
+        mocks.machineSpawnNewSession.mockResolvedValue({ type: 'success', sessionId: 'rig-session-1' });
+        await expect(startSession()).resolves.toBe(true);
+
+        const requestIds = mocks.machineSpawnNewSession.mock.calls
+            .map(([options]) => options.clientRequestId);
+        expect(requestIds.slice(0, 16)).toEqual(Array(16).fill('rig-request-1'));
+        expect(requestIds[16]).toBe('rig-request-2');
+        expect(mocks.machineSpawnNewSession).toHaveBeenLastCalledWith(expect.objectContaining({
+            worktree: { type: 'new', name: 'bright-forest' },
+        }));
+    });
+
+    it('reuses a Rig request for equivalent selected-path spellings', async () => {
+        mocks.machines = [createRigMachine()];
+        mocks.draft = createDraft({ agentType: 'rig', selectedPath: '~/project' });
+        mocks.machineSpawnNewSession.mockResolvedValue({
+            type: 'pending', clientRequestId: 'rig-request-1', retryAfterMs: 0,
+        });
+
+        const { startSession } = useStartSessionFromDraft();
+
+        await expect(startSession()).resolves.toBe(false);
+        mocks.draft.selectedPath = '/Users/dev/project';
+        mocks.machineSpawnNewSession.mockResolvedValue({ type: 'success', sessionId: 'rig-session-1' });
+        await expect(startSession()).resolves.toBe(true);
+
+        const requestIds = mocks.machineSpawnNewSession.mock.calls
+            .map(([options]) => options.clientRequestId);
+        expect(new Set(requestIds)).toEqual(new Set(['rig-request-1']));
     });
 
     it('backs off with the published delay when a pending result omits one', async () => {

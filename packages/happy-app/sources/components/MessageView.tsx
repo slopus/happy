@@ -9,11 +9,12 @@ import { Metadata } from "@/sync/storageTypes";
 import { ToolView } from "./tools/ToolView";
 import { AgentEvent } from "@/sync/typesRaw";
 import { sync } from '@/sync/sync';
-import { useSetting } from '@/sync/storage';
+import { useLocalSetting, useSetting } from '@/sync/storage';
 import { Option } from './markdown/MarkdownView';
 import { layout } from "./layout";
 import { parseLocalCommandMessage, isUserSlashCommandEcho } from './parseLocalCommandMessage';
 import { resolveUserMessageBubbleColor } from '@/utils/userMessageBubbleColor';
+import type { ConversationFontSize } from '@/utils/conversationFontSize';
 
 
 export const MessageView = React.memo((props: {
@@ -22,6 +23,8 @@ export const MessageView = React.memo((props: {
   sessionId: string;
   getMessageById?: (id: string) => Message | null;
 }) => {
+  const conversationFontSize = useLocalSetting('conversationFontSize');
+
   return (
     <View
       style={styles.messageContainer}
@@ -33,6 +36,7 @@ export const MessageView = React.memo((props: {
           metadata={props.metadata}
           sessionId={props.sessionId}
           getMessageById={props.getMessageById}
+          conversationFontSize={conversationFontSize}
         />
       </View>
     </View>
@@ -45,6 +49,7 @@ function RenderBlock(props: {
   metadata: Metadata | null;
   sessionId: string;
   getMessageById?: (id: string) => Message | null;
+  conversationFontSize: ConversationFontSize;
 }): React.ReactElement {
   switch (props.message.kind) {
     case 'user-text':
@@ -53,11 +58,12 @@ function RenderBlock(props: {
           message={props.message}
           metadata={props.metadata}
           sessionId={props.sessionId}
+          conversationFontSize={props.conversationFontSize}
         />
       );
 
     case 'agent-text':
-      return <AgentTextBlock message={props.message} sessionId={props.sessionId} />;
+      return <AgentTextBlock message={props.message} sessionId={props.sessionId} conversationFontSize={props.conversationFontSize} />;
 
     case 'tool-call':
       return <ToolCallBlock
@@ -82,6 +88,7 @@ function UserTextBlock(props: {
   message: UserTextMessage;
   metadata: Metadata | null;
   sessionId: string;
+  conversationFontSize: ConversationFontSize;
 }) {
   const handleOptionPress = React.useCallback((option: Option) => {
     sync.sendMessage(props.sessionId, option.title, { source: 'option' });
@@ -122,7 +129,7 @@ function UserTextBlock(props: {
     return (
       <View style={styles.userMessageContainer}>
         <View style={[styles.userMessageBubble, styles.userMessageBubbleSolid, bubbleStyle, styles.goalMessageBubble]}>
-          <MarkdownView markdown={parsed.goal} onOptionPress={handleOptionPress} sessionId={props.sessionId} />
+          <MarkdownView markdown={parsed.goal} onOptionPress={handleOptionPress} sessionId={props.sessionId} conversationFontSize={props.conversationFontSize} />
         </View>
         <View style={styles.goalSentRow}>
           <Ionicons name="locate-outline" size={16} color={styles.goalSentText.color} />
@@ -136,7 +143,7 @@ function UserTextBlock(props: {
       <View style={styles.userMessageContainer}>
         {parsed.args ? (
           <View style={[styles.userMessageBubble, styles.userMessageBubbleSolid, bubbleStyle, styles.commandMessageBubble]}>
-            <MarkdownView markdown={parsed.args} onOptionPress={handleOptionPress} sessionId={props.sessionId} />
+            <MarkdownView markdown={parsed.args} onOptionPress={handleOptionPress} sessionId={props.sessionId} conversationFontSize={props.conversationFontSize} />
           </View>
         ) : null}
         <View style={[styles.commandChip, styles.userMessageBubbleSolid, bubbleStyle]}>
@@ -151,7 +158,7 @@ function UserTextBlock(props: {
       {/* Text owns long-press so native selection / Markdown Copy v2 can work
           without also opening the rewind picker. Rewind remains in session actions. */}
       <View style={[styles.userMessageBubble, styles.userMessageBubbleSolid, bubbleStyle]}>
-        <MarkdownView markdown={parsed.text} onOptionPress={handleOptionPress} sessionId={props.sessionId} />
+        <MarkdownView markdown={parsed.text} onOptionPress={handleOptionPress} sessionId={props.sessionId} conversationFontSize={props.conversationFontSize} />
       </View>
     </View>
   );
@@ -160,6 +167,7 @@ function UserTextBlock(props: {
 function AgentTextBlock(props: {
   message: AgentTextMessage;
   sessionId: string;
+  conversationFontSize: ConversationFontSize;
 }) {
   const handleOptionPress = React.useCallback((option: Option) => {
     sync.sendMessage(props.sessionId, option.title, { source: 'option' });
@@ -172,7 +180,7 @@ function AgentTextBlock(props: {
 
   return (
     <View style={styles.agentMessageContainer}>
-      <MarkdownView markdown={props.message.text} onOptionPress={handleOptionPress} sessionId={props.sessionId} />
+      <MarkdownView markdown={props.message.text} onOptionPress={handleOptionPress} sessionId={props.sessionId} conversationFontSize={props.conversationFontSize} />
     </View>
   );
 }

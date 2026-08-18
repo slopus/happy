@@ -25,6 +25,59 @@ export class ApiClient {
   }
 
   /**
+   * Return the server timestamp of the newest persisted session message.
+   * This deliberately does not use Session.lastActiveAt, which is a process
+   * heartbeat and advances even when nobody is interacting with the session.
+   */
+  async getLatestSessionMessageAt(sessionId: string): Promise<number | null> {
+    const headers = {
+      Authorization: `Bearer ${this.credential.token}`,
+      'X-Happy-Client': `cli-daemon/${configuration.currentCliVersion}`,
+    };
+    let response: { data: { messages?: Array<{ createdAt?: unknown }> } };
+    try {
+      response = await axios.get<{ messages?: Array<{ createdAt?: unknown }> }>(
+        `${configuration.serverUrl}/v3/sessions/${encodeURIComponent(sessionId)}/messages`,
+        {
+          params: {
+            // Prisma stores message seq as a signed 32-bit Int. Backward paging
+            // lets the server return only the newest row.
+            before_seq: 2_147_483_647,
+            limit: 1,
+          },
+          headers,
+          timeout: 10_000,
+        },
+      );
+    } catch (error) {
+      if (!axios.isAxiosError(error) || error.response?.status !== 404) {
+        throw error;
+      }
+      // Older self-hosted servers predate the v3 paging endpoint. Their v1
+      // endpoint returns newest-first, so it remains a compatible fallback.
+      response = await axios.get<{ messages?: Array<{ createdAt?: unknown }> }>(
+        `${configuration.serverUrl}/v1/sessions/${encodeURIComponent(sessionId)}/messages`,
+        { headers, timeout: 10_000 },
+      );
+    }
+
+    if (!response.data || !Array.isArray(response.data.messages)) {
+      throw new Error('Session messages endpoint returned an invalid response');
+    }
+    const createdAt = response.data.messages[0]?.createdAt;
+    if (response.data.messages.length > 0 && (
+      typeof createdAt !== 'number'
+      || !Number.isFinite(createdAt)
+      || createdAt < 0
+    )) {
+      throw new Error('Session messages endpoint returned an invalid timestamp');
+    }
+    return typeof createdAt === 'number' && Number.isFinite(createdAt) && createdAt >= 0
+      ? createdAt
+      : null;
+  }
+
+  /**
    * Create a new session or load existing one with the given tag
    */
   async getOrCreateSession(opts: {

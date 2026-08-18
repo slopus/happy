@@ -176,6 +176,20 @@ export const MetadataSchema = z.object({
     permissionMode: z.string().nullish(),
     modelMode: z.string().nullish(),
     effortLevel: z.string().nullish(),
+    /**
+     * When the user pinned this session, as an epoch timestamp. Synced through
+     * metadata so a pin follows the session across devices. Explicit null means
+     * unpinned; absent means never pinned.
+     */
+    pinnedAt: z.number().nullish(),
+    /**
+     * When the user archived this session, as an epoch timestamp. Archiving is
+     * a user decision about visibility — the session leaves the main list and
+     * lives in the archive screen — and is unrelated to `lifecycleState`, which
+     * only reports whether the agent process is still running. Explicit null
+     * means un-archived; absent means never archived.
+     */
+    archivedAt: z.number().nullish(),
     // Passthrough so read-modify-write metadata updates from this app never
     // drop fields written by newer CLI or app versions.
 }).passthrough();
@@ -361,6 +375,24 @@ export interface SessionAgentModesPatch {
     effortLevel?: string | null;
 }
 
+/**
+ * Everything this app writes back into session metadata through the optimistic
+ * read-modify-write path. Agent-mode picks additionally keep a top-level mirror
+ * on Session; `pinnedAt` and `archivedAt` live in metadata only.
+ */
+export interface SessionMetadataPatch extends SessionAgentModesPatch {
+    pinnedAt?: number | null;
+    archivedAt?: number | null;
+}
+
+/**
+ * Metadata fields with no top-level mirror on Session. They need the inbound
+ * update path to re-apply the optimistic local value while their push is in
+ * flight, and the conflict-retry path to read the live value out of metadata.
+ */
+export const METADATA_ONLY_FIELDS = ['pinnedAt', 'archivedAt'] as const;
+export type MetadataOnlyField = typeof METADATA_ONLY_FIELDS[number];
+
 export interface Session {
     id: string,
     seq: number,
@@ -467,11 +499,11 @@ export const MachineMetadataSchema = z.object({
         name: z.string().optional(),
     }).passthrough()).optional().catch(undefined),
     models: z.array(z.object({
-        code: z.string(),
-        value: z.string(),
-        description: z.string().nullish(),
         id: z.string().optional(),
+        code: z.string().optional(),
         name: z.string().optional(),
+        value: z.string().optional(),
+        description: z.string().nullish(),
         providerId: z.string().optional(),
         providerKind: z.string().optional(),
         providerName: z.string().optional(),

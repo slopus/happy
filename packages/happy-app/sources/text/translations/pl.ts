@@ -70,6 +70,7 @@ export const pl: TranslationStructure = {
         loading: 'Ładowanie...',
         retry: 'Ponów',
         delete: 'Usuń',
+        archive: 'Archiwizuj',
         optional: 'opcjonalnie',
     },
 
@@ -180,6 +181,13 @@ export const pl: TranslationStructure = {
         },
         chat: 'Czat',
         chatDescription: 'Dostosuj wygląd wiadomości czatu',
+        conversationFontSize: 'Rozmiar czcionki rozmowy',
+        conversationFontSizeDescription: 'Wybierz rozmiar tekstu w rozmowach',
+        conversationFontSizeOptions: {
+            small: 'Mały',
+            default: 'Domyślny',
+            large: 'Duży',
+        },
         sessionStatusBar: 'Informacje o stanie sesji',
         sessionStatusBarDescription: 'Wybierz, gdzie wyświetlać gałąź, model, wysiłek i kontekst',
         sessionStatusDisplayOptions: {
@@ -247,10 +255,10 @@ export const pl: TranslationStructure = {
         commandPalette: 'Paleta poleceń',
         commandPaletteEnabled: 'Naciśnij ⌘K, aby otworzyć',
         commandPaletteDisabled: 'Szybki dostęp do poleceń wyłączony',
-        markdownCopyV2: 'Markdown Copy v2',
-        markdownCopyV2Subtitle: 'Długie naciśnięcie otwiera modal kopiowania',
-        hideInactiveSessions: 'Ukryj nieaktywne sesje',
-        hideInactiveSessionsSubtitle: 'Wyświetlaj tylko aktywne czaty na liście',
+        fullMessageSelection: 'Zaznaczanie całej wiadomości',
+        fullMessageSelectionSubtitle: 'Długie naciśnięcie otwiera całą wiadomość do zaznaczania i kopiowania',
+        hideInactiveSessions: 'Ukryj zakończone sesje',
+        hideInactiveSessionsSubtitle: 'Pokazuj tylko sesje z działającym agentem',
         groupToolCalls: 'Grupuj wywołania narzędzi',
         groupToolCallsSubtitle: 'Zwijaj kolejne wywołania narzędzi w jeden kontener',
         privacy: 'Prywatność',
@@ -314,6 +322,8 @@ export const pl: TranslationStructure = {
 
     newSession: {
         title: 'Rozpocznij nową sesję',
+        rigStillPreparingTitle: 'Wciąż przygotowuje',
+        rigStillPreparingMessage: 'Rig wciąż przygotowuje worktree. Naciśnij Start ponownie za chwilę — to samo żądanie sesji będzie kontynuowane.',
         machineOffline: 'Maszyna jest offline',
         switchMachinesHint: '• Przełącz maszynę, klikając na nią powyżej',
     },
@@ -381,6 +391,8 @@ export const pl: TranslationStructure = {
         killSession: 'Zakończ sesję',
         killSessionConfirm: 'Czy na pewno chcesz zakończyć tę sesję?',
         archiveSession: 'Zarchiwizuj sesję',
+        unarchiveSession: 'Przywróć z archiwum',
+        stopSession: 'Zatrzymaj sesję',
         archiveSessionConfirm: 'Czy na pewno chcesz zarchiwizować tę sesję?',
         happySessionIdCopied: 'ID sesji Happy skopiowane do schowka',
         failedToCopySessionId: 'Nie udało się skopiować ID sesji Happy',
@@ -412,7 +424,8 @@ export const pl: TranslationStructure = {
         resumeSessionMissingBackendId: 'This session does not have a resumable Claude or Codex identifier.',
         resumeSessionUnexpectedDirectoryPrompt: 'Resume cannot create directories. Start the session manually from its original path.',
         killSessionSubtitle: 'Natychmiastowo zakończ sesję',
-        archiveSessionSubtitle: 'Zarchiwizuj tę sesję i zatrzymaj ją',
+        archiveSessionSubtitle: 'Ukryj z listy sesji — zatrzyma agenta, jeśli nadal działa',
+        stopSessionSubtitle: 'Kończy agenta, sesja zostaje na liście',
         metadata: 'Metadane',
         host: 'Host',
         path: 'Ścieżka',
@@ -559,12 +572,21 @@ export const pl: TranslationStructure = {
             count === 1 ? "jeszcze 1 pytanie" : `${count} pytań więcej`,
     },
 
+    archive: {
+        title: 'Archiwum',
+        empty: 'Archiwum jest puste',
+        emptyDescription: 'Zarchiwizowane sesje są ukryte z głównej listy i przechowywane tutaj.',
+        restore: 'Przywróć z archiwum',
+    },
+
     sidebar: {
         sessionsTitle: 'Happy',
-        showArchived: 'Pokaż zarchiwizowane',
-        hideArchived: 'Ukryj zarchiwizowane',
+        archive: 'Archiwum',
         newSession: 'Nowa sesja',
         projects: "Projekty",
+        pin: 'Przypnij',
+        unpin: 'Odepnij',
+        allWorkspaces: 'Wszystkie przestrzenie robocze',
     },
 
     zen: {

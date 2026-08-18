@@ -70,6 +70,7 @@ export const ru: TranslationStructure = {
         loading: 'Загрузка...',
         retry: 'Повторить',
         delete: 'Удалить',
+        archive: 'В архив',
         optional: 'необязательно',
     },
 
@@ -149,6 +150,13 @@ export const ru: TranslationStructure = {
         },
         chat: 'Чат',
         chatDescription: 'Настройте внешний вид сообщений в чате',
+        conversationFontSize: 'Размер шрифта в беседе',
+        conversationFontSizeDescription: 'Выберите размер текста в беседах',
+        conversationFontSizeOptions: {
+            small: 'Маленький',
+            default: 'По умолчанию',
+            large: 'Большой',
+        },
         sessionStatusBar: 'Информация о сессии',
         sessionStatusBarDescription: 'Выберите, где показывать ветку, модель, усилия и контекст',
         sessionStatusDisplayOptions: {
@@ -216,10 +224,10 @@ export const ru: TranslationStructure = {
         commandPalette: 'Command Palette',
         commandPaletteEnabled: 'Нажмите ⌘K для открытия',
         commandPaletteDisabled: 'Быстрый доступ к командам отключён',
-        markdownCopyV2: 'Markdown Copy v2',
-        markdownCopyV2Subtitle: 'Долгое нажатие открывает модальное окно копирования',
-        hideInactiveSessions: 'Скрывать неактивные сессии',
-        hideInactiveSessionsSubtitle: 'Показывать в списке только активные чаты',
+        fullMessageSelection: 'Выделение всего сообщения',
+        fullMessageSelectionSubtitle: 'Долгое нажатие открывает всё сообщение для выделения и копирования',
+        hideInactiveSessions: 'Скрывать завершённые сессии',
+        hideInactiveSessionsSubtitle: 'Показывать только сессии с работающим агентом',
         groupToolCalls: 'Группировать вызовы инструментов',
         groupToolCallsSubtitle: 'Сворачивать подряд идущие вызовы инструментов в один блок',
         privacy: 'Конфиденциальность',
@@ -283,6 +291,8 @@ export const ru: TranslationStructure = {
 
     newSession: {
         title: 'Начать новую сессию',
+        rigStillPreparingTitle: 'Ещё готовится',
+        rigStillPreparingMessage: 'Rig ещё готовит воркtree. Нажми Start ещё раз через мгновение — продолжится тот же запрос сессии.',
         machineOffline: 'Машина недоступна',
         switchMachinesHint: '• Переключите машину, нажав на неё выше',
     },
@@ -320,6 +330,8 @@ export const ru: TranslationStructure = {
         killSession: 'Завершить сессию',
         killSessionConfirm: 'Вы уверены, что хотите завершить эту сессию?',
         archiveSession: 'Архивировать сессию',
+        unarchiveSession: 'Вернуть из архива',
+        stopSession: 'Остановить сессию',
         archiveSessionConfirm: 'Вы уверены, что хотите архивировать эту сессию?',
         happySessionIdCopied: 'ID сессии Happy скопирован в буфер обмена',
         failedToCopySessionId: 'Не удалось скопировать ID сессии Happy',
@@ -351,7 +363,8 @@ export const ru: TranslationStructure = {
         resumeSessionMissingBackendId: 'This session does not have a resumable Claude or Codex identifier.',
         resumeSessionUnexpectedDirectoryPrompt: 'Resume cannot create directories. Start the session manually from its original path.',
         killSessionSubtitle: 'Немедленно завершить сессию',
-        archiveSessionSubtitle: 'Архивировать эту сессию и остановить её',
+        archiveSessionSubtitle: 'Скрыть из списка сессий — остановит агента, если он ещё работает',
+        stopSessionSubtitle: 'Завершить агента, сессия останется в списке',
         metadata: 'Метаданные',
         host: 'Хост',
         path: 'Путь',
@@ -559,12 +572,21 @@ export const ru: TranslationStructure = {
             count === 1 ? "ещё 1 вопрос" : `${count} вопросов ещё`,
     },
 
+    archive: {
+        title: 'Архив',
+        empty: 'В архиве пусто',
+        emptyDescription: 'Сессии, отправленные в архив, скрыты из основного списка и хранятся здесь.',
+        restore: 'Вернуть из архива',
+    },
+
     sidebar: {
         sessionsTitle: 'Happy',
-        showArchived: 'Показать архив',
-        hideArchived: 'Скрыть архив',
+        archive: 'Архив',
         newSession: 'Новая сессия',
         projects: "Проекты",
+        pin: 'Закрепить',
+        unpin: 'Открепить',
+        allWorkspaces: 'Все воркспейсы',
     },
 
     zen: {

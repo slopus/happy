@@ -12,7 +12,7 @@ export default function FeaturesSettingsScreen() {
     const [analyticsOptOut, setAnalyticsOptOut] = useSettingMutable('analyticsOptOut');
     const [agentInputEnterToSend, setAgentInputEnterToSend] = useSettingMutable('agentInputEnterToSend');
     const [commandPaletteEnabled, setCommandPaletteEnabled] = useLocalSettingMutable('commandPaletteEnabled');
-    const [markdownCopyV2, setMarkdownCopyV2] = useLocalSettingMutable('markdownCopyV2');
+    const [fullMessageSelection, setFullMessageSelection] = useLocalSettingMutable('fullMessageSelection');
     const [hideInactiveSessions, setHideInactiveSessions] = useSettingMutable('hideInactiveSessions');
     const [expResumeSession, setExpResumeSession] = useSettingMutable('expResumeSession');
     const [fileDiffsSidebar, setFileDiffsSidebar] = useSettingMutable('fileDiffsSidebar');
@@ -83,13 +83,13 @@ export default function FeaturesSettingsScreen() {
                     showChevron={false}
                 />
                 <Item
-                    title={t('settingsFeatures.markdownCopyV2')}
-                    subtitle={t('settingsFeatures.markdownCopyV2Subtitle')}
+                    title={t('settingsFeatures.fullMessageSelection')}
+                    subtitle={t('settingsFeatures.fullMessageSelectionSubtitle')}
                     icon={<Ionicons name="text-outline" size={29} color="#34C759" />}
                     rightElement={
                         <Switch
-                            value={markdownCopyV2}
-                            onValueChange={setMarkdownCopyV2}
+                            value={fullMessageSelection}
+                            onValueChange={setFullMessageSelection}
                         />
                     }
                     showChevron={false}

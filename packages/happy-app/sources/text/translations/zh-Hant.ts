@@ -61,6 +61,7 @@ export const zhHant: TranslationStructure = {
         loading: '載入中...',
         retry: '重試',
         delete: '刪除',
+        archive: '封存',
         optional: '選填',
     },
 
@@ -163,6 +164,13 @@ export const zhHant: TranslationStructure = {
         },
         chat: '聊天',
         chatDescription: '自訂聊天訊息外觀',
+        conversationFontSize: '對話字體大小',
+        conversationFontSizeDescription: '選擇對話文字大小',
+        conversationFontSizeOptions: {
+            small: '小',
+            default: '預設',
+            large: '大',
+        },
         sessionStatusBar: '工作階段狀態資訊',
         sessionStatusBarDescription: '選擇分支、模型、工作量和上下文的顯示位置',
         sessionStatusDisplayOptions: {
@@ -230,10 +238,10 @@ export const zhHant: TranslationStructure = {
         commandPalette: '命令面板',
         commandPaletteEnabled: '按 ⌘K 開啟',
         commandPaletteDisabled: '快速命令存取已停用',
-        markdownCopyV2: 'Markdown 複製 v2',
-        markdownCopyV2Subtitle: '長按開啟複製強制回應視窗',
-        hideInactiveSessions: '隱藏非活躍工作階段',
-        hideInactiveSessionsSubtitle: '僅在清單中顯示活躍的聊天',
+        fullMessageSelection: '整則訊息選取',
+        fullMessageSelectionSubtitle: '長按開啟整則訊息以選取和複製',
+        hideInactiveSessions: '隱藏已結束的工作階段',
+        hideInactiveSessionsSubtitle: '僅顯示有代理程式執行中的工作階段',
         groupToolCalls: '分組工具呼叫',
         groupToolCallsSubtitle: '將連續的工具呼叫摺疊到單一容器中',
         privacy: '隱私',
@@ -297,6 +305,8 @@ export const zhHant: TranslationStructure = {
 
     newSession: {
         title: '開始新工作階段',
+        rigStillPreparingTitle: '仍在準備',
+        rigStillPreparingMessage: 'Rig 仍在準備工作樹。稍後再按一次開始 — 同一個工作階段請求將繼續。',
         machineOffline: '裝置離線',
         switchMachinesHint: '• 點擊上方的裝置來切換裝置',
     },
@@ -364,6 +374,8 @@ export const zhHant: TranslationStructure = {
         killSession: '終止工作階段',
         killSessionConfirm: '您確定要終止此工作階段嗎？',
         archiveSession: '封存工作階段',
+        unarchiveSession: '移出封存',
+        stopSession: '停止工作階段',
         archiveSessionConfirm: '您確定要封存此工作階段嗎？',
         happySessionIdCopied: 'Happy 工作階段 ID 已複製到剪貼簿',
         failedToCopySessionId: '複製 Happy 工作階段 ID 失敗',
@@ -395,7 +407,8 @@ export const zhHant: TranslationStructure = {
         resumeSessionMissingBackendId: 'This session does not have a resumable Claude or Codex identifier.',
         resumeSessionUnexpectedDirectoryPrompt: 'Resume cannot create directories. Start the session manually from its original path.',
         killSessionSubtitle: '立即終止工作階段',
-        archiveSessionSubtitle: '封存此工作階段並停止它',
+        archiveSessionSubtitle: '從工作階段清單中隱藏；若代理程式仍在執行會先停止',
+        stopSessionSubtitle: '結束代理程式，工作階段仍保留在清單中',
         metadata: '中繼資料',
         host: '主機',
         path: '路徑',
@@ -543,12 +556,21 @@ export const zhHant: TranslationStructure = {
             count === 1 ? "還有 1 個問題" : `${count} 個問題`,
     },
 
+    archive: {
+        title: '封存',
+        empty: '封存是空的',
+        emptyDescription: '封存的工作階段會從主清單隱藏，並保存在這裡。',
+        restore: '移出封存',
+    },
+
     sidebar: {
         sessionsTitle: 'Happy',
-        showArchived: '顯示已封存',
-        hideArchived: '隱藏已封存',
+        archive: '封存',
         newSession: '新建對話',
         projects: "專案",
+        pin: '置頂',
+        unpin: '取消置頂',
+        allWorkspaces: '所有工作區',
     },
 
     zen: {

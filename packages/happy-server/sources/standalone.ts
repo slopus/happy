@@ -212,7 +212,10 @@ Environment variables:
   DATABASE_URL      PostgreSQL URL (if set, uses external Postgres instead of PGlite)
   REDIS_URL         Redis URL (optional, not required for standalone)
   PORT              Server port (default: 3005)
+  HOST              Bind address (default: 0.0.0.0)
   HANDY_MASTER_SECRET  Required: master secret for auth/encryption
+  HAPPY_STATIC_DIR  Static web app directory (auto-detected by default)
+  HAPPY_INJECT_HTML_CONFIG  Optional JSON runtime config for the web app
 `);
             process.exit(command === "--help" || command === "-h" ? 0 : 1);
     }

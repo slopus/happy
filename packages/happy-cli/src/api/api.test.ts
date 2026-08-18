@@ -4,13 +4,15 @@ import axios from 'axios';
 import { connectionState } from '@/utils/serverConnectionErrors';
 
 // Use vi.hoisted to ensure mock functions are available when vi.mock factory runs
-const { mockPost, mockIsAxiosError } = vi.hoisted(() => ({
+const { mockGet, mockPost, mockIsAxiosError } = vi.hoisted(() => ({
+    mockGet: vi.fn(),
     mockPost: vi.fn(),
     mockIsAxiosError: vi.fn(() => true)
 }));
 
 vi.mock('axios', () => ({
     default: {
+        get: mockGet,
         post: mockPost,
         isAxiosError: mockIsAxiosError
     },
@@ -32,9 +34,10 @@ vi.mock('./encryption', () => ({
 }));
 
 // Mock configuration
-vi.mock('./configuration', () => ({
+vi.mock('@/configuration', () => ({
     configuration: {
-        serverUrl: 'https://api.example.com'
+        serverUrl: 'https://api.example.com',
+        currentCliVersion: '1.2.3',
     }
 }));
 
@@ -79,6 +82,48 @@ describe('Api server error handling', () => {
         };
 
         api = await ApiClient.create(mockCredential);
+    });
+
+    describe('getLatestSessionMessageAt', () => {
+        it('requests only the newest message timestamp', async () => {
+            mockGet.mockResolvedValue({ data: { messages: [{ createdAt: 12_345 }] } });
+
+            await expect(api.getLatestSessionMessageAt('session/with spaces')).resolves.toBe(12_345);
+            expect(mockGet).toHaveBeenCalledWith(
+                'https://api.example.com/v3/sessions/session%2Fwith%20spaces/messages',
+                expect.objectContaining({
+                    params: { before_seq: 2_147_483_647, limit: 1 },
+                    headers: expect.objectContaining({
+                        Authorization: 'Bearer fake-token',
+                        'X-Happy-Client': 'cli-daemon/1.2.3',
+                    }),
+                }),
+            );
+        });
+
+        it('returns null when the session has no valid message timestamp', async () => {
+            mockGet.mockResolvedValue({ data: { messages: [] } });
+            await expect(api.getLatestSessionMessageAt('empty')).resolves.toBeNull();
+
+            mockGet.mockResolvedValue({ data: { messages: [{ createdAt: 'bad' }] } });
+            await expect(api.getLatestSessionMessageAt('bad')).rejects.toThrow('invalid timestamp');
+
+            mockGet.mockResolvedValue({ data: {} });
+            await expect(api.getLatestSessionMessageAt('malformed')).rejects.toThrow('invalid response');
+        });
+
+        it('falls back to the legacy newest-first endpoint on v3 404', async () => {
+            mockGet
+                .mockRejectedValueOnce({ response: { status: 404 } })
+                .mockResolvedValueOnce({ data: { messages: [{ createdAt: 55_000 }] } });
+
+            await expect(api.getLatestSessionMessageAt('legacy')).resolves.toBe(55_000);
+            expect(mockGet).toHaveBeenNthCalledWith(
+                2,
+                'https://api.example.com/v1/sessions/legacy/messages',
+                expect.objectContaining({ timeout: 10_000 }),
+            );
+        });
     });
 
     describe('getOrCreateSession', () => {

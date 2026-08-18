@@ -52,20 +52,34 @@ export function machinesRoutes(app: Fastify) {
             // Create new machine
             log({ module: 'machines', machineId: id, userId }, 'Creating new machine');
 
-            const newMachine = await db.machine.create({
-                data: {
-                    id,
-                    accountId: userId,
-                    metadata,
-                    metadataVersion: 1,
-                    daemonState: daemonState || null,
-                    daemonStateVersion: daemonState ? 1 : 0,
-                    dataEncryptionKey: dataEncryptionKey ? new Uint8Array(Buffer.from(dataEncryptionKey, 'base64')) : undefined,
-                    // Default to offline - in case the user does not start daemon
-                    active: false,
-                    // lastActiveAt and activeAt defaults to now() in schema
+            let newMachine;
+            try {
+                newMachine = await db.machine.create({
+                    data: {
+                        id,
+                        accountId: userId,
+                        metadata,
+                        metadataVersion: 1,
+                        daemonState: daemonState || null,
+                        daemonStateVersion: daemonState ? 1 : 0,
+                        dataEncryptionKey: dataEncryptionKey ? new Uint8Array(Buffer.from(dataEncryptionKey, 'base64')) : undefined,
+                        // Default to offline - in case the user does not start daemon
+                        active: false,
+                        // lastActiveAt and activeAt defaults to now() in schema
+                    }
+                });
+            } catch (error) {
+                // The existence check above is scoped to the caller's account,
+                // but machine ids are globally unique. A machine id that a
+                // different account already registered used to surface as an
+                // opaque 500 — which daemons retry forever, silently. Name the
+                // conflict so the client can mint a fresh id instead.
+                if ((error as { code?: string } | null)?.code === 'P2002') {
+                    log({ module: 'machines', machineId: id, userId }, 'Machine id already registered to another account');
+                    return reply.code(409).send({ error: 'Machine id is already registered to another account' });
                 }
-            });
+                throw error;
+            }
 
             // Emit both new-machine and update-machine events for backward compatibility
             const updSeq1 = await allocateUserSeq(userId);

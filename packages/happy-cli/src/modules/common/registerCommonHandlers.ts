@@ -157,6 +157,23 @@ export type SpawnSessionResult =
     | { type: 'requestToApproveDirectoryCreation'; directory: string }
     | { type: 'error'; errorMessage: string };
 
+export interface ResumeSessionFallbackOptions {
+    directory: string;
+    agent: 'claude' | 'codex';
+    agentSessionId: string;
+}
+
+export interface ResumeSessionOptions {
+    model?: string;
+    permissionMode?: string;
+    effort?: string;
+    /**
+     * Enough provider metadata to continue the conversation as a fresh Happy
+     * session when this daemon has no local reconnect key for the old row.
+     */
+    fallback?: ResumeSessionFallbackOptions;
+}
+
 /**
  * Register all RPC handlers with the session
  *

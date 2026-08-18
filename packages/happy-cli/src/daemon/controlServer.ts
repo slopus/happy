@@ -20,7 +20,7 @@ export function startDaemonControlServer({
   onHappySessionWebhook
 }: {
   getChildren: () => TrackedSession[];
-  stopSession: (sessionId: string) => boolean;
+  stopSession: (sessionId: string) => Promise<boolean>;
   spawnSession: (options: SpawnSessionOptions) => Promise<SpawnSessionResult>;
   requestShutdown: () => void;
   onHappySessionWebhook: (sessionId: string, metadata: Metadata, encryption?: SessionEncryptionData) => void;
@@ -119,7 +119,7 @@ export function startDaemonControlServer({
       const { sessionId } = request.body;
 
       logger.debug(`[CONTROL SERVER] Stop session request: ${sessionId}`);
-      const success = stopSession(sessionId);
+      const success = await stopSession(sessionId);
       return { success };
     });
 
@@ -198,7 +198,8 @@ export function startDaemonControlServer({
       schema: {
         response: {
           200: z.object({
-            status: z.string()
+            status: z.literal('stopping'),
+            pid: z.number().int().positive(),
           })
         }
       }
@@ -211,7 +212,7 @@ export function startDaemonControlServer({
         requestShutdown();
       }, 50);
 
-      return { status: 'stopping' };
+      return { status: 'stopping' as const, pid: process.pid };
     });
 
     app.listen({ port: 0, host: '127.0.0.1' }, (err, address) => {

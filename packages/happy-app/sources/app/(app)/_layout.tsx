@@ -167,6 +167,13 @@ export default function RootLayout() {
                 }}
             />
             <Stack.Screen
+                name="archive"
+                options={{
+                    // The screen draws the chat-style overlay header itself.
+                    headerShown: false,
+                }}
+            />
+            <Stack.Screen
                 name="changelog"
                 options={{
                     headerShown: true,
@@ -305,6 +312,12 @@ export default function RootLayout() {
                 name="dev/rig-preview"
                 options={{
                     headerTitle: 'Rig Preview',
+                }}
+            />
+            <Stack.Screen
+                name="dev/session-layouts"
+                options={{
+                    headerTitle: 'Session List Layouts',
                 }}
             />
             <Stack.Screen

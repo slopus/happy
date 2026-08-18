@@ -323,6 +323,30 @@ export function resolveCurrentOption<T extends ModeOption>(
     return null;
 }
 
+/**
+ * Resolves a non-Rig effort level from the session pick, the level the agent
+ * reports running at, then the configured default.
+ *
+ * The agent's own level has to outrank the configured default: a session
+ * launched from a terminal with `--effort low` runs at low regardless of what
+ * this device has configured, and showing the configured value there makes the
+ * picker describe a session that does not exist (#1701).
+ *
+ * @param options - Effort levels currently available to the session.
+ * @param sessionEffortLevel - Explicit effort selected for this session in the app.
+ * @param currentThoughtLevelCode - Level the agent reports in session metadata.
+ * @param configuredEffortLevel - User-configured or code-defined fallback.
+ * @returns The first matching effort option, or null when none of the keys is available.
+ */
+export function resolveNonRigEffortOption(
+    options: EffortLevel[],
+    sessionEffortLevel: string | null | undefined,
+    currentThoughtLevelCode: string | null | undefined,
+    configuredEffortLevel: string | null | undefined,
+): EffortLevel | null {
+    return resolveCurrentOption(options, [sessionEffortLevel, currentThoughtLevelCode, configuredEffortLevel]);
+}
+
 export function getDefaultModelKey(flavor: AgentFlavor): string {
     return getCodeAgentDefaults(flavor).modelMode;
 }

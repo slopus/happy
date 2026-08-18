@@ -7,7 +7,12 @@ import { io, Socket } from 'socket.io-client';
 import { logger } from '@/ui/logger';
 import { configuration } from '@/configuration';
 import { MachineMetadata, DaemonState, Machine, Update, UpdateMachineBody } from './types';
-import { registerCommonHandlers, SpawnSessionOptions, SpawnSessionResult } from '../modules/common/registerCommonHandlers';
+import {
+    registerCommonHandlers,
+    type ResumeSessionOptions,
+    type SpawnSessionOptions,
+    type SpawnSessionResult,
+} from '../modules/common/registerCommonHandlers';
 import { encodeBase64, decodeBase64, encrypt, decrypt } from './encryption';
 import { backoff } from '@/utils/time';
 import { RpcHandlerManager } from './rpc/RpcHandlerManager';
@@ -90,8 +95,8 @@ interface DaemonToServerEvents {
 
 type MachineRpcHandlers = {
     spawnSession: (options: SpawnSessionOptions) => Promise<SpawnSessionResult>;
-    resumeSession?: (sessionId: string, options?: { model?: string; permissionMode?: string }) => Promise<SpawnSessionResult>;
-    stopSession: (sessionId: string) => boolean;
+    resumeSession?: (sessionId: string, options?: ResumeSessionOptions) => Promise<SpawnSessionResult>;
+    stopSession: (sessionId: string) => boolean | Promise<boolean>;
     requestShutdown: () => void;
 }
 
@@ -118,7 +123,7 @@ export class ApiMachineClient {
     private lastKnownCLIAvailability: CLIAvailability | null = null;
     private lastKnownResumeSupport: ResumeSupport | null = null;
     private rpcHandlerManager: RpcHandlerManager;
-    private resumeSessionHandler: ((sessionId: string, options?: { model?: string; permissionMode?: string }) => Promise<SpawnSessionResult>) | null = null;
+    private resumeSessionHandler: ((sessionId: string, options?: ResumeSessionOptions) => Promise<SpawnSessionResult>) | null = null;
     private reconnectInterval: NodeJS.Timeout | null = null;
 
     constructor(
@@ -174,14 +179,14 @@ export class ApiMachineClient {
         this.syncResumeSessionRpcRegistration();
 
         // Register stop session handler
-        this.rpcHandlerManager.registerHandler('stop-session', (params: any) => {
+        this.rpcHandlerManager.registerHandler('stop-session', async (params: any) => {
             const { sessionId } = params || {};
 
             if (!sessionId) {
                 throw new Error('Session ID is required');
             }
 
-            const success = stopSession(sessionId);
+            const success = await stopSession(sessionId);
             if (!success) {
                 throw new Error('Session not found or failed to stop');
             }
@@ -337,10 +342,21 @@ export class ApiMachineClient {
         if (this.resumeSessionHandler) {
             if (!this.rpcHandlerManager.hasHandler(method)) {
                 this.rpcHandlerManager.registerHandler(method, async (params: any) => {
-                    const { sessionId, model, permissionMode } = params || {};
+                    const { sessionId, model, permissionMode, effort } = params || {};
 
                     if (!sessionId || typeof sessionId !== 'string') {
                         throw new Error('Session ID is required');
+                    }
+
+                    let fallback: ResumeSessionOptions['fallback'];
+                    if (params?.fallback !== undefined) {
+                        const directory = requireNonEmptyString(params.fallback?.directory, 'fallback.directory');
+                        const agentSessionId = requireNonEmptyString(params.fallback?.agentSessionId, 'fallback.agentSessionId');
+                        const agent = params.fallback?.agent;
+                        if (agent !== 'claude' && agent !== 'codex') {
+                            throw new Error('fallback.agent must be claude or codex');
+                        }
+                        fallback = { directory, agent, agentSessionId };
                     }
 
                     const handler = this.resumeSessionHandler;
@@ -348,7 +364,7 @@ export class ApiMachineClient {
                         throw new Error('Resume session handler not available');
                     }
 
-                    const result = await handler(sessionId, { model, permissionMode });
+                    const result = await handler(sessionId, { model, permissionMode, effort, fallback });
                     switch (result.type) {
                         case 'success':
                             return { type: 'success', sessionId: result.sessionId };

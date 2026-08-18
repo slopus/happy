@@ -25,28 +25,42 @@ export function SessionActionsNativeMenu({
         canArchive,
         canCopySessionMetadata,
         canShowResume,
+        canStop,
         copySessionMetadata,
+        deleteSession,
         openDetails,
         resumeSession,
+        stopSession,
+        togglePinned,
+        unarchiveSession,
     } = useSessionQuickActions(session, {
         onAfterArchive,
         onAfterDelete,
     });
 
+    const isPinned = typeof session.metadata?.pinnedAt === 'number';
+
     return (
         <Host matchContents>
             <ContextMenu>
                 <ContextMenu.Items>
-                    <Button onPress={openDetails} systemImage={iosSymbol('info.circle')} label="Details" />
-                    {canArchive && (
-                        <Button onPress={archiveSession} systemImage={iosSymbol('archivebox')} label="Archive" />
+                    <Button onPress={openDetails} systemImage={iosSymbol('info.circle')} label={t('profile.details')} />
+                    <Button onPress={togglePinned} systemImage={iosSymbol(isPinned ? 'pin.slash' : 'pin')} label={isPinned ? t('sidebar.unpin') : t('sidebar.pin')} />
+                    {canStop && (
+                        <Button onPress={stopSession} systemImage={iosSymbol('stop.circle')} label={t('sessionInfo.stopSession')} />
+                    )}
+                    {canArchive ? (
+                        <Button onPress={archiveSession} systemImage={iosSymbol('archivebox')} label={t('sessionInfo.archiveSession')} />
+                    ) : (
+                        <Button onPress={unarchiveSession} systemImage={iosSymbol('tray.and.arrow.up')} label={t('sessionInfo.unarchiveSession')} />
                     )}
                     {canShowResume && (
-                        <Button onPress={resumeSession} systemImage={iosSymbol('play.circle')} label="Resume" />
+                        <Button onPress={resumeSession} systemImage={iosSymbol('play.circle')} label={t('sessionInfo.resumeSession')} />
                     )}
                     {canCopySessionMetadata && (
                         <Button onPress={copySessionMetadata} systemImage={iosSymbol('ladybug')} label={t('sessionInfo.copyMetadata')} />
                     )}
+                    <Button onPress={deleteSession} systemImage={iosSymbol('trash')} label={t('sessionInfo.deleteSession')} />
                 </ContextMenu.Items>
                 <ContextMenu.Trigger>{children}</ContextMenu.Trigger>
             </ContextMenu>

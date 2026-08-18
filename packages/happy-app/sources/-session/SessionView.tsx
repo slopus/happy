@@ -12,6 +12,7 @@ import {
     getEffortLevelsForModel,
     getRigCurrentModelOptionKey,
     resolveCurrentOption,
+    resolveNonRigEffortOption,
     EffortLevel,
 } from '@/components/modelModeOptions';
 import { getSuggestions } from '@/components/autocomplete/suggestions';
@@ -28,7 +29,7 @@ import { Modal } from '@/modal';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { getCurrentVoiceConversationId, getCurrentVoiceSessionDurationSeconds, startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSession';
 import { gitStatusSync } from '@/sync/gitStatusSync';
-import { sessionAbort, sessionGoalAction, sessionSetAgentModes, spawnSideChat, sessionKill, sessionArchive } from '@/sync/ops';
+import { sessionAbort, sessionGoalAction, sessionSetAgentModes, spawnSideChat, sessionKill, sessionForceDeactivate } from '@/sync/ops';
 import { storage, useIsDataReady, useLocalSetting, useRealtimeStatus, useSessionGitStatus, useSessionMessages, useSessionUsage, useSetting, useSideChatSessions } from '@/sync/storage';
 import { useSession } from '@/sync/storage';
 import { getSessionForkSource } from '@/utils/sessionFork';
@@ -209,7 +210,7 @@ export const SessionView = React.memo((props: { id: string }) => {
         (async () => {
             const killed = await sessionKill(id);
             if (!killed.success) {
-                await sessionArchive(id);
+                await sessionForceDeactivate(id);
             }
             try {
                 await sync.refreshSessions();
@@ -747,12 +748,20 @@ export function SessionViewLoaded({
     const availableEffortLevels = React.useMemo<EffortLevel[]>(() => (
         getEffortLevelsForModel(flavor, modelKey, session.metadata)
     ), [flavor, modelKey, session.metadata]);
-    const effortLevel = React.useMemo<EffortLevel | null>(() => (
-        resolveCurrentOption(availableEffortLevels, [
+    const effortLevel = React.useMemo<EffortLevel | null>(() => {
+        if (isRig) {
+            return resolveCurrentOption(availableEffortLevels, [
+                session.effortLevel,
+                getRigReasoningSelection(session.metadata, modelKey),
+            ]);
+        }
+        return resolveNonRigEffortOption(
+            availableEffortLevels,
             session.effortLevel,
-            isRig ? getRigReasoningSelection(session.metadata, modelKey) : effectiveAgentDefaults.effortLevel,
-        ])
-    ), [availableEffortLevels, session.effortLevel, effectiveAgentDefaults.effortLevel, session.metadata, modelKey, isRig]);
+            session.metadata?.currentThoughtLevelCode,
+            effectiveAgentDefaults.effortLevel,
+        );
+    }, [availableEffortLevels, session.effortLevel, effectiveAgentDefaults.effortLevel, session.metadata, modelKey, isRig]);
 
     const sessionStatus = useSessionStatus(session);
     const sessionUsage = useSessionUsage(sessionId);

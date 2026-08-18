@@ -1,4 +1,5 @@
 import * as z from 'zod';
+import { CONVERSATION_FONT_SIZES } from '@/utils/conversationFontSize';
 
 //
 // Schema
@@ -11,7 +12,11 @@ export const LocalSettingsSchema = z.object({
     voiceUpsellOverride: z.enum(['control', 'show-paywall-before-first-voice-chat', 'voice-onboarding-and-upsell']).nullable().describe('Developer-only local override for the voice-upsell PostHog flag'),
     commandPaletteEnabled: z.boolean().describe('Enable CMD+K command palette (web only)'),
     themePreference: z.enum(['light', 'dark', 'adaptive']).describe('Theme preference: light, dark, or adaptive (follows system)'),
-    markdownCopyV2: z.boolean().describe('Replace native paragraph selection with long-press modal for full markdown copy'),
+    conversationFontSize: z.enum(CONVERSATION_FONT_SIZES).describe('Conversation text size on this device'),
+    // Renamed from markdownCopyV2 on purpose: local settings are persisted as a
+    // whole object, so every existing install already had the old key stored as
+    // false and would never have picked up a flipped default (#1696).
+    fullMessageSelection: z.boolean().describe('Long press opens the whole message for selection instead of selecting one paragraph in place'),
     consoleLoggingEnabled: z.boolean().describe('Enable console output in production builds'),
     verboseLogging: z.boolean().describe('Log all network requests and responses'),
     zenMode: z.boolean().describe('Hide all sidebars and non-essential UI for focused work'),
@@ -44,7 +49,8 @@ export const localSettingsDefaults: LocalSettings = {
     voiceUpsellOverride: null,
     commandPaletteEnabled: false,
     themePreference: 'adaptive',
-    markdownCopyV2: false,
+    conversationFontSize: 'default',
+    fullMessageSelection: true,
     consoleLoggingEnabled: false,
     verboseLogging: false,
     zenMode: false,

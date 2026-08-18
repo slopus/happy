@@ -28,7 +28,11 @@ export type SessionActionShortcutId =
     | 'duplicate'
     | 'copy-metadata'
     | 'copy-metadata-and-logs'
-    | 'archive';
+    | 'pin'
+    | 'stop'
+    | 'archive'
+    | 'unarchive'
+    | 'delete';
 
 export type SidebarPickerShortcutId = 'changes' | 'allFiles' | 'newSideChat';
 
@@ -47,7 +51,13 @@ export const SESSION_ACTION_SHORTCUTS: Readonly<Record<SessionActionShortcutId, 
     duplicate: { key: 'd', code: 'KeyD', keyLabel: 'D', altKey: true, shiftKey: true },
     'copy-metadata': { key: 'm', code: 'KeyM', keyLabel: 'M', altKey: true },
     'copy-metadata-and-logs': { key: 'm', code: 'KeyM', keyLabel: 'M', altKey: true, shiftKey: true },
+    pin: { key: 'p', code: 'KeyP', keyLabel: 'P', altKey: true },
+    stop: { key: 's', code: 'KeyS', keyLabel: 'S', shiftKey: true },
+    // Archive and un-archive are the same key: a session is only ever offered
+    // one of them, so the chord is unambiguous wherever it fires.
     archive: { key: 'a', code: 'KeyA', keyLabel: 'A', shiftKey: true },
+    unarchive: { key: 'a', code: 'KeyA', keyLabel: 'A', shiftKey: true },
+    delete: { key: 'Backspace', code: 'Backspace', keyLabel: '⌫', shiftKey: true },
 };
 
 export const SIDEBAR_PICKER_SHORTCUTS: Readonly<Record<SidebarPickerShortcutId, ShortcutChord>> = {

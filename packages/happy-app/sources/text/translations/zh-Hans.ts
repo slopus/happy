@@ -61,6 +61,7 @@ export const zhHans: TranslationStructure = {
         loading: '加载中...',
         retry: '重试',
         delete: '删除',
+        archive: '归档',
         optional: '可选的',
     },
 
@@ -164,6 +165,13 @@ export const zhHans: TranslationStructure = {
         },
         chat: '聊天',
         chatDescription: '自定义聊天消息外观',
+        conversationFontSize: '对话字体大小',
+        conversationFontSizeDescription: '选择对话文本大小',
+        conversationFontSizeOptions: {
+            small: '小',
+            default: '默认',
+            large: '大',
+        },
         sessionStatusBar: '会话状态信息',
         sessionStatusBarDescription: '选择分支、模型、工作量和上下文的显示位置',
         sessionStatusDisplayOptions: {
@@ -231,10 +239,10 @@ export const zhHans: TranslationStructure = {
         commandPalette: '命令面板',
         commandPaletteEnabled: '按 ⌘K 打开',
         commandPaletteDisabled: '快速命令访问已禁用',
-        markdownCopyV2: 'Markdown 复制 v2',
-        markdownCopyV2Subtitle: '长按打开复制模态框',
-        hideInactiveSessions: '隐藏非活跃会话',
-        hideInactiveSessionsSubtitle: '仅在列表中显示活跃的聊天',
+        fullMessageSelection: '整条消息选择',
+        fullMessageSelectionSubtitle: '长按打开整条消息以选择和复制',
+        hideInactiveSessions: '隐藏已结束的会话',
+        hideInactiveSessionsSubtitle: '仅显示有代理运行的会话',
         groupToolCalls: '分组工具调用',
         groupToolCallsSubtitle: '将连续的工具调用折叠到一个容器中',
         privacy: '隐私',
@@ -298,6 +306,8 @@ export const zhHans: TranslationStructure = {
 
     newSession: {
         title: '开始新会话',
+        rigStillPreparingTitle: '仍在准备',
+        rigStillPreparingMessage: 'Rig 仍在准备工作树。稍后再按一次开始 — 同一个会话请求将继续。',
         machineOffline: '设备离线',
         switchMachinesHint: '• 点击上方的设备来切换设备',
     },
@@ -365,6 +375,8 @@ export const zhHans: TranslationStructure = {
         killSession: '终止会话',
         killSessionConfirm: '您确定要终止此会话吗？',
         archiveSession: '归档会话',
+        unarchiveSession: '移出归档',
+        stopSession: '停止会话',
         archiveSessionConfirm: '您确定要归档此会话吗？',
         happySessionIdCopied: 'Happy 会话 ID 已复制到剪贴板',
         failedToCopySessionId: '复制 Happy 会话 ID 失败',
@@ -396,7 +408,8 @@ export const zhHans: TranslationStructure = {
         resumeSessionMissingBackendId: 'This session does not have a resumable Claude or Codex identifier.',
         resumeSessionUnexpectedDirectoryPrompt: 'Resume cannot create directories. Start the session manually from its original path.',
         killSessionSubtitle: '立即终止会话',
-        archiveSessionSubtitle: '归档此会话并停止它',
+        archiveSessionSubtitle: '从会话列表中隐藏；若代理仍在运行会先停止',
+        stopSessionSubtitle: '结束代理，会话仍保留在列表中',
         metadata: '元数据',
         host: '主机',
         path: '路径',
@@ -544,12 +557,21 @@ export const zhHans: TranslationStructure = {
             count === 1 ? "还有 1 个问题" : `${count} 个问题`,
     },
 
+    archive: {
+        title: '归档',
+        empty: '归档为空',
+        emptyDescription: '归档的会话会从主列表隐藏，并保存在这里。',
+        restore: '移出归档',
+    },
+
     sidebar: {
         sessionsTitle: 'Happy',
-        showArchived: '显示已归档',
-        hideArchived: '隐藏已归档',
+        archive: '归档',
         newSession: '新建会话',
         projects: "项目",
+        pin: '置顶',
+        unpin: '取消置顶',
+        allWorkspaces: '所有工作区',
     },
 
     zen: {

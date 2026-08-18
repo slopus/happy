@@ -28,7 +28,8 @@ import { resolveAgentDefaultConfig } from '@/sync/agentDefaults';
 import { formatLastSeen, formatPathRelativeToHome } from '@/utils/sessionUtils';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { resolveAbsolutePath } from '@/utils/pathUtils';
-import { listWorktrees } from '@/utils/worktree';
+import { generateWorktreeName, listWorktrees } from '@/utils/worktree';
+import { machineListRigWorktrees } from '@/sync/ops';
 import type { Machine, Session } from '@/sync/storageTypes';
 import {
     getEffortLevelsForModel,
@@ -41,7 +42,7 @@ import type { NewSessionAgentType } from '@/sync/persistence';
 import { useImagePicker } from '@/hooks/useImagePicker';
 import { Modal } from '@/modal';
 import { resolveMultiTextInputLayout } from './multiTextInputLayout';
-import { resolveCustomProjectPathSelection } from './homeDockInteraction';
+import { resolveCustomProjectPathSelection, resolveDockAgentType } from './homeDockInteraction';
 import { resolveMachineAgent } from '@/utils/newSessionAgentSelection';
 import { findConnectedRigMachine, getRigMachineSessionCreation } from '@/sync/rigSessionCreation';
 import {
@@ -298,7 +299,8 @@ const styles = StyleSheet.create((theme) => ({
     focusConfigValue: {
         flex: 1,
         minWidth: 0,
-        color: theme.colors.text,
+        // On the fixed dark focus scrim in both themes.
+        color: '#FFFFFF',
         fontSize: 17,
         ...Typography.default(),
     },
@@ -471,6 +473,8 @@ export const HomeDock = React.memo(({
     const setPath = useNewSessionDraft((state) => state.setPath);
     const setSessionType = useNewSessionDraft((state) => state.setSessionType);
     const setWorktreeKey = useNewSessionDraft((state) => state.setWorktreeKey);
+    const newWorktreeName = useNewSessionDraft((state) => state.newWorktreeName);
+    const setNewWorktreeName = useNewSessionDraft((state) => state.setNewWorktreeName);
     const setPermissionMode = useNewSessionDraft((state) => state.setPermissionMode);
     const setModelMode = useNewSessionDraft((state) => state.setModelMode);
     const setEffortLevel = useNewSessionDraft((state) => state.setEffortLevel);
@@ -557,18 +561,28 @@ export const HomeDock = React.memo(({
         }
 
         let cancelled = false;
-        listWorktrees(selectedMachineId, path).then((worktrees) => {
+        // Rig knows its own worktrees; a CLI machine is asked through git.
+        const request = selectedRigCreation
+            ? machineListRigWorktrees(selectedMachineId, path)
+                .then((workspaces) => workspaces.map((workspace) => ({
+                    key: workspace.path,
+                    name: workspace.name,
+                    description: workspace.path,
+                })))
+            : listWorktrees(selectedMachineId, path)
+                .then((worktrees) => worktrees.map((worktree) => ({
+                    key: worktree.path,
+                    name: worktree.branch,
+                    description: worktree.path,
+                })));
+        request.then((options) => {
             if (cancelled) return;
-            setExistingWorktrees(worktrees.map((worktree) => ({
-                key: worktree.path,
-                name: worktree.branch,
-                description: worktree.path,
-            })));
+            setExistingWorktrees(options);
         });
         return () => {
             cancelled = true;
         };
-    }, [selectedMachine, selectedMachineId, selectedPath, supportsWorktree]);
+    }, [selectedMachine, selectedMachineId, selectedPath, selectedRigCreation, supportsWorktree]);
 
     React.useEffect(() => {
         if (!supportsWorktree && sessionType === 'worktree') {
@@ -587,7 +601,13 @@ export const HomeDock = React.memo(({
         }
         const options: ModeOption[] = [
             { key: '__none__', name: 'No worktree' },
-            { key: '__new__', name: 'Create new worktree' },
+            {
+                key: '__new__',
+                name: 'Create new worktree',
+                // Naming it here is what stops the branch from being a surprise
+                // the user only meets after the session has already started.
+                ...(newWorktreeName ? { description: newWorktreeName } : {}),
+            },
             ...existingWorktrees,
         ];
         if (
@@ -604,10 +624,11 @@ export const HomeDock = React.memo(({
     // otherwise leaves a single checked row that looks like it does nothing.
     const availableAgents = React.useMemo<ModeOption[]>(() => {
         const availability = selectedMachine?.metadata?.cliAvailability;
+        const rigOnly = selectedMachine?.metadata?.rigOnly === true;
         return AGENTS.map((agent) => {
             const available = agent.key === 'rig'
                 ? rigSelectionMachine !== null
-                : !availability || availability[agent.key];
+                : !rigOnly && (!availability || availability[agent.key]);
             return available
                 ? agent
                 : {
@@ -619,11 +640,19 @@ export const HomeDock = React.memo(({
                 };
         });
     }, [rigSelectionMachine, selectedMachine]);
-    const resolvedAgentType = agentType === 'rig' && !rigSelectionMachine
-        ? (availableAgents.find((agent) => !agent.disabled && agent.key !== 'rig')?.key as NewSessionAgentType | undefined) ?? agentType
+    const resolvedAgentType = selectedMachine?.metadata?.rigOnly === true && selectedRigCreation
+        ? 'rig'
         : agentType === 'rig'
-            ? agentType
-            : resolveMachineAgent(agentType, selectedMachine?.metadata?.cliAvailability);
+        ? resolveDockAgentType({
+            agentType,
+            rigAgentType: 'rig' as NewSessionAgentType,
+            machineSelected: selectedMachine !== null,
+            rigConnectedHere: selectedRigIsConnected,
+            fallbackAgentType: availableAgents.find(
+                (agent) => !agent.disabled && agent.key !== 'rig',
+            )?.key as NewSessionAgentType | undefined,
+        })
+        : resolveMachineAgent(agentType, selectedMachine?.metadata?.cliAvailability);
     const defaults = React.useMemo(() => rigCreation
         ? {
             permissionMode: rigCreation.defaultPermissionMode ?? '',
@@ -780,6 +809,17 @@ export const HomeDock = React.memo(({
         }, 16);
     }, [focusPresentation]);
 
+    // The "+" on a project header preselects machine and path in the draft, then
+    // asks the dock to open — the composer stays on the home screen instead of
+    // pushing the full new-session page.
+    const composerFocusRequest = useNewSessionDraft((state) => state.composerFocusRequest);
+    const handledFocusRequestRef = React.useRef(composerFocusRequest);
+    React.useEffect(() => {
+        if (composerFocusRequest === handledFocusRequestRef.current) return;
+        handledFocusRequestRef.current = composerFocusRequest;
+        openFocusMode();
+    }, [composerFocusRequest, openFocusMode]);
+
     const finishCloseFocusMode = React.useCallback(() => {
         setIsFocused(false);
         setFocusModeVisible(false);
@@ -822,12 +862,6 @@ export const HomeDock = React.memo(({
     }, [defaultOverrides, rigSelectionCreation, rigSelectionMachine, selectedMachineId, setAgentType, setEffortLevel, setMachineId, setModelMode, setPermissionMode]);
 
     React.useEffect(() => {
-        if (agentType === 'rig' && rigSelectionMachine && rigSelectionMachine.id !== selectedMachineId) {
-            setMachineId(rigSelectionMachine.id);
-        }
-    }, [agentType, rigSelectionMachine, selectedMachineId, setMachineId]);
-
-    React.useEffect(() => {
         if (resolvedAgentType !== agentType) {
             selectAgent(resolvedAgentType);
         }
@@ -843,7 +877,15 @@ export const HomeDock = React.memo(({
     const environmentRows: SettingsRow[] = [
         { page: 'machine', label: 'MACHINE', value: currentMachine?.name ?? 'Select machine', icon: 'desktop-outline' },
         { page: 'project', label: 'PROJECT', value: currentProject?.name ?? '~', icon: 'folder-outline' },
-        { page: 'worktree', label: 'WORKTREE', value: currentWorktree?.name ?? 'No worktree', icon: 'git-branch-outline' },
+        {
+            page: 'worktree',
+            label: 'WORKTREE',
+            // The name matters more than the word "new" once one is chosen.
+            value: selectedWorktreeKey === '__new__' && newWorktreeName
+                ? newWorktreeName
+                : currentWorktree?.name ?? 'No worktree',
+            icon: 'git-branch-outline',
+        },
     ];
     const agentRows: SettingsRow[] = [
         { page: 'agent', label: 'AGENT', value: currentAgent.name, icon: 'hardware-chip-outline' },
@@ -881,6 +923,24 @@ export const HomeDock = React.memo(({
         })();
     };
 
+    const requestNewWorktreeName = () => {
+        Keyboard.dismiss();
+        const suggested = generateWorktreeName();
+        setNewWorktreeName(suggested);
+        void (async () => {
+            const name = await Modal.prompt('Worktree name', undefined, {
+                placeholder: suggested,
+                defaultValue: suggested,
+                confirmText: t('common.ok'),
+            });
+            if (!mountedRef.current) return;
+            // Dismissing keeps the suggestion rather than dropping the choice:
+            // the user already asked for a worktree, they just did not rename it.
+            const chosen = name?.trim();
+            if (chosen) setNewWorktreeName(chosen);
+        })();
+    };
+
     const getEnvironmentPickerConfig = (setting: EnvironmentSetting): PickerConfig => {
         if (setting === 'machine') {
             return { title: 'Machine', options: machineOptions, selectedKey: selectedMachineId, onSelect: setMachineId };
@@ -912,6 +972,11 @@ export const HomeDock = React.memo(({
             onSelect: (key) => {
                 setSessionType(key === '__none__' ? 'simple' : 'worktree');
                 setWorktreeKey(key === '__none__' || key === '__new__' ? null : key);
+                if (key === '__new__') {
+                    requestNewWorktreeName();
+                    return;
+                }
+                setNewWorktreeName(null);
             },
         };
     };
@@ -960,6 +1025,9 @@ export const HomeDock = React.memo(({
         <NativeOptionsPicker
             key={row.page}
             title={config.title}
+            // Compact rows sit on the fixed rgba(0,0,0,0.88) focus scrim, dark
+            // in both themes — the label must stay white, not follow the theme.
+            tintColor={compact ? '#FFFFFF' : undefined}
             triggerLabel={row.value}
             systemImage={{
                 machine: 'desktopcomputer',
@@ -979,7 +1047,7 @@ export const HomeDock = React.memo(({
                     <Ionicons
                         name={row.icon}
                         size={compact ? 21 : 18}
-                        color={theme.colors.text}
+                        color={compact ? '#FFFFFF' : theme.colors.text}
                     />
                 </View>
                 {compact ? (

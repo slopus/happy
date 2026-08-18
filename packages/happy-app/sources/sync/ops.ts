@@ -6,8 +6,8 @@
 import { apiSocket } from './apiSocket';
 import { sync } from './sync';
 import { storage } from './storage';
-import type { AgentQuestionAnswer, MachineMetadata, SessionAgentModesPatch } from './storageTypes';
-import { markAgentModePushPending, clearAgentModePushPending, type AgentModeField } from './agentModesPending';
+import { METADATA_ONLY_FIELDS, type AgentQuestionAnswer, type MachineMetadata, type MetadataOnlyField, type Session, type SessionAgentModesPatch, type SessionMetadataPatch } from './storageTypes';
+import { markMetadataPushPending, clearMetadataPushPending, type PendingMetadataField } from './metadataPushPending';
 import {
     isRigMetadata,
     rigCanAbort,
@@ -18,7 +18,7 @@ import {
     rigHasRpcMethod,
 } from './rig';
 
-export type { SessionAgentModesPatch };
+export type { SessionAgentModesPatch, SessionMetadataPatch };
 
 // Strict type definitions for all operations
 
@@ -182,6 +182,12 @@ export interface SpawnSessionOptions {
     modelId?: string;
     effort?: string;
     /**
+     * Asks Rig to create the worktree itself and run the session in it. Only
+     * Rig accepts this — a Happy CLI machine gets its worktree made by the
+     * client before the spawn, and the directory alone carries the choice.
+     */
+    worktree?: { type: 'new'; name: string };
+    /**
      * If set, the daemon spawns the agent with `--resume <id>` so the new
      * Happy session attaches to a pre-existing on-disk Claude conversation
      * file. Used by the session fork / duplicate flow.
@@ -248,6 +254,11 @@ export type CodexListRewindPointsResult =
 export interface ResumeSessionOptions {
     machineId: string;
     sessionId: string;
+    fallback?: {
+        directory: string;
+        agent: 'claude' | 'codex';
+        agentSessionId: string;
+    };
 }
 
 // Exported session operation functions
@@ -255,9 +266,33 @@ export interface ResumeSessionOptions {
 /**
  * Spawn a new remote session on a specific machine
  */
+/**
+ * Lists a Rig machine's managed workspaces for the project at a directory.
+ *
+ * The Happy CLI equivalent runs `git worktree list` over the `bash` RPC; Rig has
+ * no machine-level shell, so it answers from the workspaces it already tracks.
+ * An unavailable method means an older Rig, and an empty list is the honest
+ * answer there — the picker still offers creating one.
+ */
+export async function machineListRigWorktrees(
+    machineId: string,
+    directory: string,
+): Promise<{ id: string; name: string; path: string }[]> {
+    try {
+        const result = await apiSocket.machineRPC<
+            { type: 'success'; workspaces: { id: string; name: string; path: string }[] }
+            | { type: 'error'; errorMessage: string },
+            { directory: string }
+        >(machineId, 'list-happy-workspaces', { directory });
+        return result.type === 'success' ? result.workspaces : [];
+    } catch {
+        return [];
+    }
+}
+
 export async function machineSpawnNewSession(options: SpawnSessionOptions): Promise<SpawnSessionResult> {
 
-    const { machineId, directory, approvedNewDirectoryCreation = false, token, agent, permissionMode, modelMode, effortLevel, clientRequestId, providerId, modelId, effort, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, forkedFromMessageId, isSideChat } = options;
+    const { machineId, directory, approvedNewDirectoryCreation = false, token, agent, permissionMode, modelMode, effortLevel, clientRequestId, providerId, modelId, effort, worktree, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, forkedFromMessageId, isSideChat } = options;
 
     try {
         if (agent === 'rig' && !clientRequestId) {
@@ -276,6 +311,7 @@ export async function machineSpawnNewSession(options: SpawnSessionOptions): Prom
             providerId?: string,
             modelId?: string,
             effort?: string,
+            worktree?: { type: 'new'; name: string },
             resumeClaudeSessionId?: string,
             resumeCodexThreadId?: string,
             parentSessionId?: string,
@@ -293,6 +329,7 @@ export async function machineSpawnNewSession(options: SpawnSessionOptions): Prom
                 ...(providerId ? { providerId } : {}),
                 ...(modelId ? { modelId } : {}),
                 ...((effort ?? effortLevel) ? { effort: effort ?? effortLevel } : {}),
+                ...(worktree ? { worktree } : {}),
             }
             : { type: 'spawn-in-directory', directory, approvedNewDirectoryCreation, token, agent, permissionMode, modelMode, effortLevel, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, forkedFromMessageId, isSideChat };
         const result = await apiSocket.machineRPC<SpawnSessionResult, SpawnRequest>(
@@ -461,14 +498,20 @@ export async function codexListRewindPoints(
     }
 }
 
-export async function machineResumeSession(options: ResumeSessionOptions & { model?: string; permissionMode?: string }): Promise<SpawnSessionResult> {
-    const { machineId, sessionId, model, permissionMode } = options;
+export async function machineResumeSession(options: ResumeSessionOptions & { model?: string; permissionMode?: string; effort?: string }): Promise<SpawnSessionResult> {
+    const { machineId, sessionId, model, permissionMode, effort, fallback } = options;
 
     try {
-        const result = await apiSocket.machineRPC<SpawnSessionResult, { sessionId: string; model?: string; permissionMode?: string }>(
+        const result = await apiSocket.machineRPC<SpawnSessionResult, {
+            sessionId: string;
+            model?: string;
+            permissionMode?: string;
+            effort?: string;
+            fallback?: ResumeSessionOptions['fallback'];
+        }>(
             machineId,
             'resume-happy-session',
-            { sessionId, model, permissionMode },
+            { sessionId, model, permissionMode, effort, fallback },
         );
         return result;
     } catch (error) {
@@ -617,14 +660,27 @@ export async function machineUpdateMetadata(
 }
 
 /**
- * Persist per-session mode picks into synced session metadata with optimistic
- * concurrency and automatic retry. On version conflict the latest metadata is
- * taken from the server via the schema-free raw decrypt, so fields this app
- * version doesn't know about survive the read-modify-write.
+ * Where a patched field's newest local value lives. Agent-mode picks are
+ * mirrored on the session itself; everything else exists only inside metadata,
+ * and reading those off the session would compare against a permanent
+ * `undefined` and drop the field from every retry.
  */
-async function sessionUpdateAgentModesMetadata(
+function liveValueOf(session: Session | undefined, field: PendingMetadataField): string | number | null | undefined {
+    if ((METADATA_ONLY_FIELDS as readonly string[]).includes(field)) {
+        return session?.metadata?.[field as MetadataOnlyField];
+    }
+    return session?.[field as keyof SessionAgentModesPatch];
+}
+
+/**
+ * Persist a patch into synced session metadata with optimistic concurrency and
+ * automatic retry. On version conflict the latest metadata is taken from the
+ * server via the schema-free raw decrypt, so fields this app version doesn't
+ * know about survive the read-modify-write.
+ */
+async function sessionUpdateMetadata(
     sessionId: string,
-    patch: SessionAgentModesPatch,
+    patch: SessionMetadataPatch,
     maxRetries: number = 3
 ): Promise<void> {
     const encryption = sync.encryption.getSessionEncryption(sessionId);
@@ -634,7 +690,7 @@ async function sessionUpdateAgentModesMetadata(
     }
 
     // Defensive copy: retries drop fields from the patch (see below)
-    let pendingPatch: SessionAgentModesPatch = { ...patch };
+    let pendingPatch: SessionMetadataPatch = { ...patch };
     let currentVersion = session.metadataVersion;
     let currentMetadata: Record<string, unknown> = { ...session.metadata, ...pendingPatch };
 
@@ -664,8 +720,8 @@ async function sessionUpdateAgentModesMetadata(
             // owns the field now, and blindly replaying the original patch
             // would resurrect a pick the user already cleared.
             const liveSession = storage.getState().sessions[sessionId];
-            for (const field of Object.keys(pendingPatch) as (keyof SessionAgentModesPatch)[]) {
-                if ((liveSession?.[field] ?? null) !== (pendingPatch[field] ?? null)) {
+            for (const field of Object.keys(pendingPatch) as PendingMetadataField[]) {
+                if ((liveValueOf(liveSession, field) ?? null) !== (pendingPatch[field] ?? null)) {
                     delete pendingPatch[field];
                 }
             }
@@ -679,6 +735,76 @@ async function sessionUpdateAgentModesMetadata(
     }
 
     throw new Error(`Failed to update session metadata after ${maxRetries} retries due to version conflicts`);
+}
+
+/**
+ * Toggle a session's pinned state and persist it in encrypted metadata.
+ *
+ * Pin has no top-level mirror on Session — metadata is the only copy — so the
+ * optimistic local write has to be protected from the inbound session updates
+ * that keep arriving while the push is in flight, all of them still carrying
+ * the pre-pin metadata. Never throws: a failed push leaves the optimistic
+ * value and the next inbound update reconciles it.
+ */
+export function sessionSetPinned(sessionId: string, pinned: boolean): void {
+    const state = storage.getState();
+    const session = state.sessions[sessionId];
+    if (!session?.metadata) return;
+
+    const alreadyPinned = typeof session.metadata.pinnedAt === 'number';
+    if (pinned === alreadyPinned) return;
+
+    const pinnedAt = pinned ? Date.now() : null;
+    // Order matters: the optimistic write goes in FIRST, and only then is the
+    // field marked pending. applySessions re-applies the stored value for any
+    // pending field — running it while this very write is in flight would
+    // resolve the field back to its pre-change value and swallow the change
+    // until the server echoed it back.
+    state.applySessions([{ ...session, metadata: { ...session.metadata, pinnedAt } }]);
+    markMetadataPushPending(sessionId, ['pinnedAt']);
+    sessionUpdateMetadata(sessionId, { pinnedAt })
+        .catch((error) => {
+            console.error(`Failed to sync pinned state for session ${sessionId}`, error);
+        })
+        .finally(() => {
+            clearMetadataPushPending(sessionId, ['pinnedAt']);
+        });
+}
+
+/**
+ * Archive or un-archive a session.
+ *
+ * Archiving is purely about where the session is listed: an archived session
+ * leaves the main list and shows up on the archive screen, and nothing about
+ * it is destroyed. It is deliberately independent of whether the agent process
+ * is still alive — a session that merely finished stays in the main list, and
+ * an archived one that gets resumed comes back out of the archive (see
+ * storage.ts). Stopping a still-running session is a separate step the caller
+ * does first (see useSessionQuickActions).
+ *
+ * Shares the pinned-state plumbing: metadata is the only copy of `archivedAt`,
+ * so the optimistic write is guarded against the inbound updates still
+ * carrying pre-archive metadata. Never throws.
+ */
+export function sessionSetArchived(sessionId: string, archived: boolean): void {
+    const state = storage.getState();
+    const session = state.sessions[sessionId];
+    if (!session?.metadata) return;
+
+    const alreadyArchived = typeof session.metadata.archivedAt === 'number';
+    if (archived === alreadyArchived) return;
+
+    const archivedAt = archived ? Date.now() : null;
+    // Optimistic write first, pending flag second — see sessionSetPinned.
+    state.applySessions([{ ...session, metadata: { ...session.metadata, archivedAt } }]);
+    markMetadataPushPending(sessionId, ['archivedAt']);
+    sessionUpdateMetadata(sessionId, { archivedAt })
+        .catch((error) => {
+            console.error(`Failed to sync archived state for session ${sessionId}`, error);
+        })
+        .finally(() => {
+            clearMetadataPushPending(sessionId, ['archivedAt']);
+        });
 }
 
 /**
@@ -723,14 +849,14 @@ export function sessionSetAgentModes(sessionId: string, patch: SessionAgentModes
     // While the push is in flight, inbound updates still carry the OLD
     // metadata; mark the fields pending so applySessions keeps the fresher
     // local mirror instead of bouncing the pick back.
-    const changedFields = Object.keys(changed) as AgentModeField[];
-    markAgentModePushPending(sessionId, changedFields);
-    sessionUpdateAgentModesMetadata(sessionId, changed)
+    const changedFields = Object.keys(changed) as PendingMetadataField[];
+    markMetadataPushPending(sessionId, changedFields);
+    sessionUpdateMetadata(sessionId, changed)
         .catch((error) => {
             console.error(`Failed to sync agent modes for session ${sessionId}`, error);
         })
         .finally(() => {
-            clearAgentModePushPending(sessionId, changedFields);
+            clearMetadataPushPending(sessionId, changedFields);
         });
 }
 
@@ -995,10 +1121,14 @@ export async function sessionKill(sessionId: string): Promise<SessionKillRespons
 }
 
 /**
- * Archive a session by deactivating it on the server.
- * Use this when the CLI process is already dead and sessionKill can't reach it.
+ * Force a session inactive on the server.
+ *
+ * This ends the session's *run* — it does not archive it in the user-facing
+ * sense (that is `sessionSetArchived`). Used when the CLI process is already
+ * gone and `sessionKill` has nothing to talk to, so the row would otherwise sit
+ * in the list claiming to be live.
  */
-export async function sessionArchive(sessionId: string): Promise<{ success: boolean; message?: string }> {
+export async function sessionForceDeactivate(sessionId: string): Promise<{ success: boolean; message?: string }> {
     try {
         const response = await apiSocket.request(`/v1/sessions/${sessionId}/archive`, {
             method: 'POST'
@@ -1015,7 +1145,7 @@ export async function sessionArchive(sessionId: string): Promise<{ success: bool
 /**
  * Permanently delete a session from the server
  * This will remove the session and all its associated data (messages, usage reports, access keys)
- * The session should be inactive/archived before deletion
+ * The session should be stopped (inactive) before deletion
  */
 export async function sessionDelete(sessionId: string): Promise<{ success: boolean; message?: string }> {
     try {

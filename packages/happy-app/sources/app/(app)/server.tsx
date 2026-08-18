@@ -10,6 +10,7 @@ import { Modal } from '@/modal';
 import { layout } from '@/components/layout';
 import { t } from '@/text';
 import { getServerUrl, setServerUrl, validateServerUrl, getServerInfo } from '@/sync/serverConfig';
+import { validateHappyServerConnection } from '@/sync/serverConnectionValidation';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 
 const stylesheet = StyleSheet.create((theme) => ({
@@ -85,30 +86,24 @@ export default function ServerConfigScreen() {
     const [isValidating, setIsValidating] = useState(false);
 
     const validateServer = async (url: string): Promise<boolean> => {
+        setIsValidating(true);
+        setError(null);
+
         try {
-            setIsValidating(true);
-            setError(null);
-            
-            const response = await fetch(url, {
-                method: 'GET',
-                headers: {
-                    'Accept': 'text/plain'
+            const result = await validateHappyServerConnection(url);
+            if (!result.valid) {
+                if (result.reason === 'server-error') {
+                    setError(t('server.serverReturnedError'));
+                } else if (result.reason === 'not-happy-server') {
+                    setError(t('server.notValidHappyServer'));
+                } else {
+                    setError(t('server.failedToConnectToServer'));
                 }
-            });
-            
-            if (!response.ok) {
-                setError(t('server.serverReturnedError'));
                 return false;
             }
-            
-            const text = await response.text();
-            if (!text.includes('Welcome to Happy Server!')) {
-                setError(t('server.notValidHappyServer'));
-                return false;
-            }
-            
+
             return true;
-        } catch (err) {
+        } catch {
             setError(t('server.failedToConnectToServer'));
             return false;
         } finally {

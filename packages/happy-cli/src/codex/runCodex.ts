@@ -149,6 +149,10 @@ export async function runCodex(opts: {
     //
 
     const initialPermissionMode = opts.permissionMode ?? DEFAULT_CODEX_PERMISSION_MODE;
+    // What every turn actually runs at, whether it came from --effort or the
+    // built-in default. Resolved here rather than next to `currentEffort` below
+    // because session metadata is built first and has to carry it.
+    const launchEffort: ReasoningEffort = opts.effort ?? DEFAULT_CODEX_EFFORT;
     // Lineage from the daemon's spawn RPC (set by app-side fork / duplicate).
     const forkedFromSessionId = process.env.HAPPY_FORKED_FROM_SESSION_ID;
     const forkedFromMessageId = process.env.HAPPY_FORKED_FROM_MESSAGE_ID;
@@ -164,6 +168,12 @@ export async function runCodex(opts: {
         ...(forkedFromMessageId ? { forkedFromMessageId } : {}),
         ...(isSideChat ? { isSideChat: true } : {}),
     });
+
+    // The app picker has no other way to learn what the terminal launched with:
+    // left unpublished it falls back to the configured default and shows a
+    // level the session is not running at (#1701). An explicit in-app pick
+    // still wins over this — it is the agent's current level, not a lock.
+    metadata.currentThoughtLevelCode = launchEffort;
 
     const skillCommands = await discoverCodexSkillCommands();
     if (skillCommands.length > 0) {
@@ -273,7 +283,7 @@ export async function runCodex(opts: {
     // straggler approval after an abort.
     let currentPermissionModeExplicitlySet = false;
     let currentModel: string | undefined = opts.model ?? DEFAULT_CODEX_MODEL;
-    let currentEffort: ReasoningEffort | undefined = opts.effort ?? DEFAULT_CODEX_EFFORT;
+    let currentEffort: ReasoningEffort | undefined = launchEffort;
     let currentAppendSystemPrompt: string | undefined = undefined;
 
     const resetCurrentModeDefaults = () => {

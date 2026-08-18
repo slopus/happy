@@ -240,22 +240,28 @@ export function sessionRoutes(app: Fastify) {
         if (session) {
             log({ module: 'session-create', sessionId: session.id, userId, tag }, `Found existing session: ${session.id} for tag ${tag}`);
 
-            // Session is starting back up - stop ignoring its heartbeats if it was stopped
-            activityCache.resumeSessionUpdates(session.id);
+            // A process can recreate the same tag after it was ended or archived.
+            // Reactivate it before accepting heartbeats again; otherwise the
+            // cache's active=true guard correctly drops every later heartbeat.
+            const restartedSession = await db.session.update({
+                where: { id: session.id },
+                data: { active: true, lastActiveAt: new Date() },
+            });
+            activityCache.resumeSessionUpdates(restartedSession.id);
 
             return reply.send({
                 session: {
-                    id: session.id,
-                    seq: session.seq,
-                    metadata: session.metadata,
-                    metadataVersion: session.metadataVersion,
-                    agentState: session.agentState,
-                    agentStateVersion: session.agentStateVersion,
-                    dataEncryptionKey: session.dataEncryptionKey ? Buffer.from(session.dataEncryptionKey).toString('base64') : null,
-                    active: session.active,
-                    activeAt: session.lastActiveAt.getTime(),
-                    createdAt: session.createdAt.getTime(),
-                    updatedAt: session.updatedAt.getTime(),
+                    id: restartedSession.id,
+                    seq: restartedSession.seq,
+                    metadata: restartedSession.metadata,
+                    metadataVersion: restartedSession.metadataVersion,
+                    agentState: restartedSession.agentState,
+                    agentStateVersion: restartedSession.agentStateVersion,
+                    dataEncryptionKey: restartedSession.dataEncryptionKey ? Buffer.from(restartedSession.dataEncryptionKey).toString('base64') : null,
+                    active: restartedSession.active,
+                    activeAt: restartedSession.lastActiveAt.getTime(),
+                    createdAt: restartedSession.createdAt.getTime(),
+                    updatedAt: restartedSession.updatedAt.getTime(),
                     lastMessage: null
                 }
             });
@@ -374,8 +380,6 @@ export function sessionRoutes(app: Fastify) {
         const userId = request.userId;
         const { sessionId } = request.params;
 
-        activityCache.clearSessionUpdates(sessionId);
-
         const result = await db.session.updateMany({
             where: { id: sessionId, accountId: userId },
             data: { active: false, lastActiveAt: new Date() }
@@ -384,6 +388,8 @@ export function sessionRoutes(app: Fastify) {
         if (result.count === 0) {
             return reply.code(404).send({ error: 'Session not found' });
         }
+
+        activityCache.clearSessionUpdates(sessionId);
 
         // Notify all clients about the session deactivation
         const sessionActivity = buildSessionActivityEphemeral(sessionId, false, Date.now(), false);
@@ -408,13 +414,13 @@ export function sessionRoutes(app: Fastify) {
         const userId = request.userId;
         const { sessionId } = request.params;
 
-        activityCache.clearSessionUpdates(sessionId);
-
         const deleted = await sessionDelete({ uid: userId }, sessionId);
 
         if (!deleted) {
             return reply.code(404).send({ error: 'Session not found or not owned by user' });
         }
+
+        activityCache.clearSessionUpdates(sessionId);
 
         return reply.send({ success: true });
     });

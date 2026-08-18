@@ -8,6 +8,27 @@ import { clearDaemonState, readDaemonState } from '@/persistence';
 import { Metadata } from '@/api/types';
 import { configuration } from '@/configuration';
 
+function hasErrorCode(error: unknown, expectedCode: string, seen = new Set<object>()): boolean {
+  if (!error || typeof error !== 'object') {
+    return false;
+  }
+  if (seen.has(error)) return false;
+  seen.add(error);
+
+  const candidate = error as {
+    code?: unknown;
+    cause?: unknown;
+    errors?: unknown[];
+  };
+  if (candidate.code === expectedCode) {
+    return true;
+  }
+  if (hasErrorCode(candidate.cause, expectedCode, seen)) {
+    return true;
+  }
+  return candidate.errors?.some(nestedError => hasErrorCode(nestedError, expectedCode, seen)) ?? false;
+}
+
 async function daemonPost(path: string, body?: any): Promise<{ error?: string } | any> {
   const state = await readDaemonState();
   if (!state?.httpPort) {
@@ -105,8 +126,27 @@ export async function spawnDaemonSession(directory: string, sessionId?: string):
   return result;
 }
 
-export async function stopDaemonHttp(): Promise<void> {
-  await daemonPost('/stop');
+type DaemonStopResponse = {
+  status: 'stopping';
+  /** Added by newer daemons so a force-kill can be tied to this process. */
+  pid?: number;
+};
+
+export async function stopDaemonHttp(): Promise<DaemonStopResponse> {
+  const result = await daemonPost('/stop');
+  if (result?.error) {
+    throw new Error(result.error);
+  }
+  if (!result || result.status !== 'stopping') {
+    throw new Error('Daemon stop endpoint returned an invalid identity response');
+  }
+  if (
+    result.pid !== undefined
+    && (!Number.isSafeInteger(result.pid) || result.pid <= 0)
+  ) {
+    throw new Error('Daemon stop endpoint returned an invalid PID');
+  }
+  return result as DaemonStopResponse;
 }
 
 /**
@@ -136,10 +176,12 @@ export async function stopDaemonHttp(): Promise<void> {
  * We can destructure the response on the caller for richer output.
  * For instance when running `happy daemon status` we can show more information.
  */
-export async function checkIfDaemonRunningAndCleanupStaleState(): Promise<boolean> {
+type DaemonHealth = 'running' | 'absent' | 'indeterminate';
+
+async function inspectDaemonHealth(): Promise<DaemonHealth> {
   const state = await readDaemonState();
   if (!state) {
-    return false;
+    return 'absent';
   }
 
   // Check if the PID is alive
@@ -147,8 +189,14 @@ export async function checkIfDaemonRunningAndCleanupStaleState(): Promise<boolea
     process.kill(state.pid, 0);
   } catch {
     logger.debug('[DAEMON RUN] Daemon PID not running, cleaning up state');
-    await cleanupDaemonState();
-    return false;
+    const cleaned = await cleanupDaemonState(state.pid);
+    if (!cleaned) {
+      logger.debug('[DAEMON RUN] Stale daemon state no longer owns the daemon lock; preserving it for the current owner');
+    }
+    // The PID was proven dead. Startup may safely continue without ever calling
+    // stopDaemon/SIGKILL; the exclusive lock still prevents replacing a newer
+    // owner if one appeared during cleanup.
+    return 'absent';
   }
 
   // PID is alive, but on Windows PIDs get reused after reboot.
@@ -162,17 +210,49 @@ export async function checkIfDaemonRunningAndCleanupStaleState(): Promise<boolea
         signal: AbortSignal.timeout(2000)
       });
       if (response.ok) {
-        return true;
+        return 'running';
       }
-    } catch {
-      // HTTP check failed - the PID is not our daemon (likely reused by OS after reboot)
-      logger.debug(`[DAEMON RUN] PID ${state.pid} is alive but HTTP health check failed on port ${state.httpPort}, cleaning up stale state`);
-      await cleanupDaemonState();
-      return false;
+      return 'indeterminate';
+    } catch (error) {
+      // ECONNREFUSED is strong evidence that the live PID was reused and no
+      // daemon owns the recorded port. A timeout or other transport failure is
+      // not: the daemon may simply be busy. Preserve its state and lock so a
+      // child process cannot start a replacement daemon (#1654).
+      if (hasErrorCode(error, 'ECONNREFUSED')) {
+        logger.debug(`[DAEMON RUN] PID ${state.pid} is alive but no daemon is listening on port ${state.httpPort}, cleaning up stale state`);
+        const cleaned = await cleanupDaemonState(state.pid);
+        if (!cleaned) {
+          // A mismatched/missing lock means the state cannot be safely claimed
+          // as stale. In particular, do not fall through to stopDaemon(), which
+          // could SIGKILL an unrelated process after PID reuse.
+          logger.debug('[DAEMON RUN] Daemon ownership changed during cleanup; refusing unsafe replacement');
+        }
+        return cleaned ? 'absent' : 'indeterminate';
+      }
+
+      logger.debug(`[DAEMON RUN] PID ${state.pid} is alive but its HTTP health check was inconclusive on port ${state.httpPort}; preserving daemon state`);
+      return 'indeterminate';
     }
   }
 
-  return true;
+  return 'running';
+}
+
+export async function checkIfDaemonRunningAndCleanupStaleState(): Promise<boolean> {
+  return (await inspectDaemonHealth()) !== 'absent';
+}
+
+export type DaemonStartupState = 'absent' | 'matching' | 'mismatch' | 'indeterminate';
+
+export async function getDaemonStartupState(): Promise<DaemonStartupState> {
+  const health = await inspectDaemonHealth();
+  if (health !== 'running') return health;
+
+  const state = await readDaemonState();
+  if (!state) return 'absent';
+  return configuration.currentCliVersion === state.startedWithCliVersion
+    ? 'matching'
+    : 'mismatch';
 }
 
 /**
@@ -180,20 +260,22 @@ export async function checkIfDaemonRunningAndCleanupStaleState(): Promise<boolea
  * This should work from both the daemon itself & a new CLI process.
  * Works via the daemon.state.json file.
  * 
- * @returns true if versions match, false if versions differ or no daemon running
+ * @returns true when the current daemon is safe to keep (matching or
+ * indeterminate), false when it is absent or a verified version mismatch.
  */
 export async function isDaemonRunningCurrentlyInstalledHappyVersion(): Promise<boolean> {
   logger.debug('[DAEMON CONTROL] Checking if daemon is running same version');
-  const runningDaemon = await checkIfDaemonRunningAndCleanupStaleState();
-  if (!runningDaemon) {
+  const startupState = await getDaemonStartupState();
+  if (startupState === 'absent') {
     logger.debug('[DAEMON CONTROL] No daemon running, returning false');
     return false;
   }
 
-  const state = await readDaemonState();
-  if (!state) {
-    logger.debug('[DAEMON CONTROL] No daemon state found, returning false');
-    return false;
+  if (startupState === 'indeterminate') {
+    // A slow/unverified process must not enter the version-mismatch restart
+    // path: stopDaemon's fallback is SIGKILL, which is unsafe after PID reuse.
+    logger.debug('[DAEMON CONTROL] Daemon health is indeterminate; refusing automatic replacement');
+    return true;
   }
   
   // Compare the running daemon's recorded version against THIS CLI invocation's
@@ -210,21 +292,23 @@ export async function isDaemonRunningCurrentlyInstalledHappyVersion(): Promise<b
   // Using `configuration.currentCliVersion` instead guarantees the writer and
   // reader agree whenever they're executing the same `dist/` bundle, and still
   // correctly detects real npm upgrades (the new bundle has a new baked version).
-  const currentCliVersion = configuration.currentCliVersion;
-  logger.debug(`[DAEMON CONTROL] Current CLI version: ${currentCliVersion}, Daemon started with version: ${state.startedWithCliVersion}`);
-  return currentCliVersion === state.startedWithCliVersion;
+  return startupState === 'matching';
 }
 
-export async function cleanupDaemonState(): Promise<void> {
+export async function cleanupDaemonState(expectedPid?: number): Promise<boolean> {
   try {
-    await clearDaemonState();
-    logger.debug('[DAEMON RUN] Daemon state file removed');
+    const cleaned = await clearDaemonState(expectedPid);
+    logger.debug(cleaned
+      ? '[DAEMON RUN] Daemon state file removed'
+      : '[DAEMON RUN] Daemon state file was not removed because ownership changed');
+    return cleaned;
   } catch (error) {
     logger.debug('[DAEMON RUN] Error cleaning up daemon metadata', error);
+    return false;
   }
 }
 
-export async function stopDaemon() {
+export async function stopDaemon(options: { allowForceKill?: boolean } = {}) {
   try {
     const state = await readDaemonState();
     if (!state) {
@@ -234,16 +318,38 @@ export async function stopDaemon() {
 
     logger.debug(`Stopping daemon with PID ${state.pid}`);
 
-    // Try HTTP graceful stop
+    let stopWasVerified = false;
+
+    // Try HTTP graceful stop. A successful response must identify the exact
+    // process named by the state file before a later SIGKILL is ever allowed.
     try {
-      await stopDaemonHttp();
+      const response = await stopDaemonHttp();
+      stopWasVerified = response.pid === state.pid;
+      if (response.pid !== undefined && !stopWasVerified) {
+        logger.debug(`Daemon stop endpoint belongs to PID ${response.pid}, expected ${state.pid}`);
+      }
 
       // Wait for daemon to die
-      await waitForProcessDeath(state.pid, 2000);
+      // Daemon shutdown first gives every owned agent tree time to flush and
+      // terminate. Keep this longer than that bounded cleanup window so the
+      // verified daemon is not SIGKILLed halfway through reaping its children.
+      await waitForProcessDeath(state.pid, 25_000);
       logger.debug('Daemon stopped gracefully via HTTP');
       return;
     } catch (error) {
-      logger.debug('HTTP stop failed, will force kill', error);
+      logger.debug(options.allowForceKill === false
+        ? 'HTTP stop failed during automatic replacement'
+        : 'Graceful stop did not complete; force-kill requires a verified daemon identity', error);
+    }
+
+    if (options.allowForceKill === false) {
+      logger.debug('Automatic daemon replacement will not force-kill an unverified PID');
+      return;
+    }
+
+    if (!stopWasVerified) {
+      logger.debug('Daemon identity was not confirmed by its control endpoint; refusing to force-kill PID');
+      return;
     }
 
     // Force kill

@@ -3,12 +3,13 @@
  */
 
 import { machineBash } from '@/sync/ops';
+import { appendWorktreeNameSuffix, normalizeWorktreeName } from './worktreeName';
+import { WORKTREE_DIR, WORKTREE_PATH_MARKER } from './worktreePath';
 
-/** Relative path prefix where worktrees are stored inside a repo */
-export const WORKTREE_DIR = '.dev/worktree';
+// Path helpers moved to worktreePath.ts (pure, importable from sync modules);
+// re-exported here so existing imports keep working.
+export * from './worktreePath';
 
-/** Absolute path marker used to detect worktree paths */
-export const WORKTREE_PATH_MARKER = `/${WORKTREE_DIR}/`;
 
 // --- Name generation ---
 
@@ -24,7 +25,7 @@ const nouns = [
     'garden', 'meadow', 'canyon', 'island', 'desert'
 ];
 
-function generateWorktreeName(): string {
+export function generateWorktreeName(): string {
     const adjective = adjectives[Math.floor(Math.random() * adjectives.length)];
     const noun = nouns[Math.floor(Math.random() * nouns.length)];
     return `${adjective}-${noun}`;
@@ -34,14 +35,25 @@ function generateWorktreeName(): string {
 
 export async function createWorktree(
     machineId: string,
-    basePath: string
+    basePath: string,
+    /** Chosen by the user before starting; a generated one when they did not care. */
+    requestedName?: string,
 ): Promise<{
     success: boolean;
     worktreePath: string;
     branchName: string;
     error?: string;
 }> {
-    const name = generateWorktreeName();
+    const rawName = requestedName?.trim() || generateWorktreeName();
+    const name = normalizeWorktreeName(rawName);
+    if (!name) {
+        return {
+            success: false,
+            worktreePath: '',
+            branchName: '',
+            error: 'Worktree names may contain only letters, numbers, dots, dashes, and underscores (64 characters maximum)',
+        };
+    }
 
     // Check if it's a git repository
     const gitCheck = await machineBash(
@@ -76,7 +88,7 @@ export async function createWorktree(
     if (!result.success && result.stderr.includes('already exists')) {
         // Try up to 3 times with numbered suffixes
         for (let i = 2; i <= 4; i++) {
-            const newName = `${name}-${i}`;
+            const newName = appendWorktreeNameSuffix(name, `-${i}`);
             const newWorktreePath = `${WORKTREE_DIR}/${newName}`;
             result = await machineBash(
                 machineId,
@@ -172,21 +184,3 @@ export async function removeWorktree(
     };
 }
 
-/** Check if a path is inside a worktree */
-export function isWorktreePath(path: string): boolean {
-    return path.includes(WORKTREE_PATH_MARKER);
-}
-
-/** Extract the main repository checkout path from a possibly-worktree path */
-export function getRepoPath(path: string): string {
-    const idx = path.indexOf(WORKTREE_PATH_MARKER);
-    if (idx === -1) return path;
-    return path.slice(0, idx);
-}
-
-/** Extract the worktree name from a worktree path, or null if not a worktree */
-export function getWorktreeName(path: string): string | null {
-    const idx = path.indexOf(WORKTREE_PATH_MARKER);
-    if (idx === -1) return null;
-    return path.slice(idx + WORKTREE_PATH_MARKER.length);
-}

@@ -1,3 +1,4 @@
+import { getRepoPath } from '@/utils/worktreePath';
 import type { Session } from './storageTypes';
 import type { SessionRowData } from './storage';
 
@@ -28,47 +29,30 @@ export function isProjectSession(session: Session): boolean {
 }
 
 /**
- * Groups sessions without a native project identity by machine and working
- * directory. This gives Happy CLI sessions the same project-card presentation
- * as Rig without merging identical paths from different computers.
+ * The project a session belongs to.
+ *
+ * Identity is the project's NAME — Rig's native project name when the session
+ * carries one, the working directory's last segment otherwise. Runtime and
+ * machine are deliberately not part of it: the same repository reached through
+ * Rig, through Happy CLI, or through a second daemon on the same box is one
+ * project, and splitting it three ways buried the work under bookkeeping. The
+ * price is that genuinely different repositories sharing a folder name merge
+ * into one card — accepted, a single legible list is worth more here than a
+ * distinction almost nobody hits.
  */
-export function buildPathProjectGroups(
-    sessions: Session[],
-    toRow: (session: Session) => SessionRowData,
-    isActive: (session: Session) => boolean,
-    idPrefix: string,
-): ProjectGroupData[] {
-    const projects = new Map<string, ProjectGroupData>();
-
-    for (const session of sessions) {
-        const machineId = session.metadata?.machineId ?? null;
-        const path = session.metadata?.path?.trim() || '';
-        const key = JSON.stringify([machineId, path]);
-        let group = projects.get(key);
-        if (!group) {
-            group = {
-                id: `${idPrefix}:${key}`,
-                name: pathProjectName(path, session.metadata?.homeDir),
-                machineId,
-                workspaces: [{ id: '', name: null, sessions: [] }],
-                sessionCount: 0,
-                activeCount: 0,
-            };
-            projects.set(key, group);
-        }
-
-        group.workspaces[0].sessions.push(toRow(session));
-        group.sessionCount += 1;
-        if (isActive(session)) {
-            group.activeCount += 1;
-        }
-    }
-
-    return [...projects.values()];
+function projectIdentity(session: Session): { id: string; name: string; machineId: string | null } {
+    const machineId = session.metadata?.machineId ?? null;
+    const name = session.metadata?.project?.name?.trim()
+        || pathProjectName(session.metadata?.path?.trim() || '', session.metadata?.homeDir);
+    return { id: `project:${name.toLowerCase()}`, name, machineId };
 }
 
 function pathProjectName(path: string, homeDir: string | undefined): string {
-    const normalizedPath = path.replace(/[\\/]+$/, '');
+    // A worktree session's path points inside the tree
+    // (…/happy/.dev/worktree/calm-meadow); the project is the repository, so
+    // the name must come from the repo root or the card inherits the
+    // worktree's name.
+    const normalizedPath = getRepoPath(path).replace(/[\\/]+$/, '');
     const normalizedHome = homeDir?.replace(/[\\/]+$/, '');
     if (!normalizedPath || normalizedPath === '~' || normalizedPath === normalizedHome) {
         return 'Home';
@@ -99,9 +83,12 @@ export function filterProjectGroupSessions(
 }
 
 /**
- * Collapses Rig sessions into projects, each holding its worktrees. Sessions
- * arrive already sorted newest-first, so insertion order carries that sort
- * through to projects, worktrees, and the sessions inside them.
+ * Collapses sessions into projects, each holding its worktrees. Rig and Happy
+ * CLI sessions go through the same pass and land in one list — the runtime is
+ * not a grouping level, only an ingredient of a project's identity.
+ *
+ * Sessions arrive already sorted newest-first, so insertion order carries that
+ * sort through to projects, worktrees, and the sessions inside them.
  *
  * `toRow` and `isActive` are injected so this module stays free of the React
  * Native imports that `storage.ts` pulls in.
@@ -115,13 +102,13 @@ export function buildProjectGroups(
     const workspaces = new Map<string, ProjectWorkspaceGroup>();
 
     for (const session of sessions) {
-        const project = session.metadata!.project!;
+        const project = projectIdentity(session);
         let group = projects.get(project.id);
         if (!group) {
             group = {
                 id: project.id,
                 name: project.name,
-                machineId: session.metadata?.machineId ?? null,
+                machineId: project.machineId,
                 workspaces: [],
                 sessionCount: 0,
                 activeCount: 0,

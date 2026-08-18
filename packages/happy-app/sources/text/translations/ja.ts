@@ -61,6 +61,7 @@ export const ja: TranslationStructure = {
         loading: '読み込み中...',
         retry: '再試行',
         delete: '削除',
+        archive: 'アーカイブ',
         optional: '任意',
         saveAs: '名前を付けて保存',
     },
@@ -164,6 +165,13 @@ export const ja: TranslationStructure = {
         },
         chat: 'チャット',
         chatDescription: 'チャットメッセージの見た目をカスタマイズ',
+        conversationFontSize: '会話の文字サイズ',
+        conversationFontSizeDescription: '会話のテキストサイズを選択',
+        conversationFontSizeOptions: {
+            small: '小さい',
+            default: '標準',
+            large: '大きい',
+        },
         sessionStatusBar: 'セッションステータス情報',
         sessionStatusBarDescription: 'ブランチ、モデル、エフォート、コンテキストの表示場所を選択',
         sessionStatusDisplayOptions: {
@@ -231,10 +239,10 @@ export const ja: TranslationStructure = {
         commandPalette: 'コマンドパレット',
         commandPaletteEnabled: '⌘Kで開く',
         commandPaletteDisabled: 'クイックコマンドアクセスは無効',
-        markdownCopyV2: 'Markdownコピー v2',
-        markdownCopyV2Subtitle: '長押しでコピーモーダルを開く',
-        hideInactiveSessions: '非アクティブセッションを非表示',
-        hideInactiveSessionsSubtitle: 'アクティブなチャットのみをリストに表示',
+        fullMessageSelection: 'メッセージ全体の選択',
+        fullMessageSelectionSubtitle: '長押しでメッセージ全体を開いて選択・コピー',
+        hideInactiveSessions: '終了したセッションを非表示',
+        hideInactiveSessionsSubtitle: 'エージェントが実行中のセッションのみ表示',
         groupToolCalls: 'ツール呼び出しをグループ化',
         groupToolCallsSubtitle: '連続するツール呼び出しを1つのコンテナにまとめる',
         privacy: 'プライバシー',
@@ -298,6 +306,8 @@ export const ja: TranslationStructure = {
 
     newSession: {
         title: '新しいセッションを開始',
+        rigStillPreparingTitle: '準備中',
+        rigStillPreparingMessage: 'Rig はまだワークツリーを準備しています。しばらくしてからもう一度開始を押してください — 同じセッションリクエストが継続されます。',
         machineOffline: 'マシンがオフラインです',
         switchMachinesHint: '• 上のマシンをクリックしてマシンを切り替えてください',
     },
@@ -365,6 +375,8 @@ export const ja: TranslationStructure = {
         killSession: 'セッションを終了',
         killSessionConfirm: 'このセッションを終了してもよろしいですか？',
         archiveSession: 'セッションをアーカイブ',
+        unarchiveSession: 'アーカイブから戻す',
+        stopSession: 'セッションを停止',
         archiveSessionConfirm: 'このセッションをアーカイブしてもよろしいですか？',
         happySessionIdCopied: 'Happy Session IDがクリップボードにコピーされました',
         failedToCopySessionId: 'Happy Session IDのコピーに失敗しました',
@@ -396,7 +408,8 @@ export const ja: TranslationStructure = {
         resumeSessionMissingBackendId: 'This session does not have a resumable Claude or Codex identifier.',
         resumeSessionUnexpectedDirectoryPrompt: 'Resume cannot create directories. Start the session manually from its original path.',
         killSessionSubtitle: 'セッションを即座に終了',
-        archiveSessionSubtitle: 'このセッションをアーカイブして停止',
+        archiveSessionSubtitle: 'セッション一覧から隠します。実行中なら停止します',
+        stopSessionSubtitle: 'エージェントを終了します。セッションは一覧に残ります',
         metadata: 'メタデータ',
         host: 'ホスト',
         path: 'パス',
@@ -544,12 +557,21 @@ export const ja: TranslationStructure = {
             count === 1 ? "他に1件の質問" : `${count} 件の質問`,
     },
 
+    archive: {
+        title: 'アーカイブ',
+        empty: 'アーカイブは空です',
+        emptyDescription: 'アーカイブしたセッションはメイン一覧から隠され、ここに保管されます。',
+        restore: 'アーカイブから戻す',
+    },
+
     sidebar: {
         sessionsTitle: 'Happy',
-        showArchived: 'アーカイブを表示',
-        hideArchived: 'アーカイブを非表示',
+        archive: 'アーカイブ',
         newSession: '新しいセッション',
         projects: "プロジェクト",
+        pin: 'ピン留め',
+        unpin: 'ピン留めを外す',
+        allWorkspaces: 'すべてのワークスペース',
     },
 
     zen: {

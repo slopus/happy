@@ -59,6 +59,7 @@ export const ca: TranslationStructure = {
         loading: 'Carregant...',
         retry: 'Torna-ho a provar',
         delete: 'Elimina',
+        archive: 'Arxiva',
         optional: 'Opcional',
     },
 
@@ -163,6 +164,13 @@ export const ca: TranslationStructure = {
         },
         chat: 'Xat',
         chatDescription: 'Personalitza l\'aspecte dels missatges del xat',
+        conversationFontSize: 'Mida de la lletra de la conversa',
+        conversationFontSizeDescription: 'Tria la mida del text de les converses',
+        conversationFontSizeOptions: {
+            small: 'Petita',
+            default: 'Predeterminada',
+            large: 'Gran',
+        },
         sessionStatusBar: 'Informació d\'estat de la sessió',
         sessionStatusBarDescription: 'Tria on es mostren la branca, el model, l\'esforç i el context',
         sessionStatusDisplayOptions: {
@@ -230,10 +238,10 @@ export const ca: TranslationStructure = {
         commandPalette: 'Paleta de comandes',
         commandPaletteEnabled: 'Prem ⌘K per obrir',
         commandPaletteDisabled: 'Accés ràpid a comandes desactivat',
-        markdownCopyV2: 'Markdown Copy v2',
-        markdownCopyV2Subtitle: 'Pulsació llarga obre modal de còpia',
-        hideInactiveSessions: 'Amaga les sessions inactives',
-        hideInactiveSessionsSubtitle: 'Mostra només els xats actius a la llista',
+        fullMessageSelection: 'Selecció de missatge complet',
+        fullMessageSelectionSubtitle: 'La pulsació llarga obre tot el missatge per seleccionar i copiar',
+        hideInactiveSessions: 'Amaga les sessions finalitzades',
+        hideInactiveSessionsSubtitle: 'Mostra només sessions amb un agent en execució',
         groupToolCalls: 'Agrupa les crides a eines',
         groupToolCallsSubtitle: 'Replega les crides consecutives a eines en un sol contenidor',
         privacy: 'Privadesa',
@@ -297,6 +305,8 @@ export const ca: TranslationStructure = {
 
     newSession: {
         title: 'Iniciar nova sessió',
+        rigStillPreparingTitle: 'Encara preparant',
+        rigStillPreparingMessage: "Rig encara està preparant el worktree. Torna a prémer Inicia d'aquí a un moment — la mateixa sol·licitud de sessió continuarà.",
         machineOffline: 'La màquina està fora de línia',
         switchMachinesHint: '• Canvia de màquina fent clic a la màquina de dalt',
     },
@@ -364,6 +374,8 @@ export const ca: TranslationStructure = {
         killSession: 'Finalitza la sessió',
         killSessionConfirm: 'Segur que vols finalitzar aquesta sessió?',
         archiveSession: 'Arxiva la sessió',
+        unarchiveSession: 'Treu de l\'arxiu',
+        stopSession: 'Atura la sessió',
         archiveSessionConfirm: 'Segur que vols arxivar aquesta sessió?',
         happySessionIdCopied: 'ID de la sessió de Happy copiat al porta-retalls',
         failedToCopySessionId: 'Ha fallat copiar l\'ID de la sessió de Happy',
@@ -395,7 +407,8 @@ export const ca: TranslationStructure = {
         resumeSessionMissingBackendId: 'This session does not have a resumable Claude or Codex identifier.',
         resumeSessionUnexpectedDirectoryPrompt: 'Resume cannot create directories. Start the session manually from its original path.',
         killSessionSubtitle: 'Finalitzar immediatament la sessió',
-        archiveSessionSubtitle: 'Arxiva aquesta sessió i atura-la',
+        archiveSessionSubtitle: 'Amaga-la de la llista de sessions: l\'atura si encara s\'executa',
+        stopSessionSubtitle: 'Finalitza l\'agent; la sessió es queda a la llista',
         metadata: 'Metadades',
         host: 'Host',
         path: 'Camí',
@@ -543,12 +556,21 @@ export const ca: TranslationStructure = {
             count === 1 ? "1 pregunta més" : `${count} preguntes més`,
     },
 
+    archive: {
+        title: 'Arxiu',
+        empty: 'No hi ha res arxivat',
+        emptyDescription: 'Les sessions que arxives s\'amaguen de la llista principal i es guarden aquí.',
+        restore: 'Treu de l\'arxiu',
+    },
+
     sidebar: {
         sessionsTitle: 'Happy',
-        showArchived: 'Mostra arxivades',
-        hideArchived: 'Amaga arxivades',
+        archive: 'Arxiu',
         newSession: 'Nova sessió',
         projects: "Projectes",
+        pin: 'Fixar',
+        unpin: 'Desfixar',
+        allWorkspaces: 'Tots els espais de treball',
     },
 
     zen: {

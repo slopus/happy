@@ -1,5 +1,5 @@
 import React from 'react';
-import { Text, View } from 'react-native';
+import { StyleProp, Text, TextStyle, View } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
 
@@ -7,6 +7,7 @@ interface SimpleSyntaxHighlighterProps {
   code: string;
   language: string | null;
   selectable: boolean;
+  textStyle?: StyleProp<TextStyle>;
 }
 
 // Get theme-aware colors
@@ -250,7 +251,8 @@ const tokenizeCode = (code: string, language: string | null) => {
 export const SimpleSyntaxHighlighter: React.FC<SimpleSyntaxHighlighterProps> = ({
   code,
   language,
-  selectable
+  selectable,
+  textStyle,
 }) => {
   const { theme } = useUnistyles();
   const colors = getColors(theme);
@@ -297,11 +299,14 @@ export const SimpleSyntaxHighlighter: React.FC<SimpleSyntaxHighlighterProps> = (
     <View>
       <Text 
         selectable={selectable}
-        style={{ 
-          fontFamily: Typography.mono().fontFamily,
-          fontSize: 14,
-          lineHeight: 20,
-        }}
+        style={[
+          {
+            fontFamily: Typography.mono().fontFamily,
+            fontSize: 14,
+            lineHeight: 20,
+          },
+          textStyle,
+        ]}
       >
         {tokens.map((token, index) => (
           <Text
@@ -319,4 +324,4 @@ export const SimpleSyntaxHighlighter: React.FC<SimpleSyntaxHighlighterProps> = (
       </Text>
     </View>
   );
-}; 
+};

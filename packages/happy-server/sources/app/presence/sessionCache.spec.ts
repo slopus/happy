@@ -8,7 +8,7 @@ const {
     const dbMock = {
         session: {
             findUnique: vi.fn(),
-            update: vi.fn(),
+            updateMany: vi.fn(),
         },
         machine: {
             findUnique: vi.fn(),
@@ -18,7 +18,7 @@ const {
     const counterIncMock = vi.fn();
     const resetMocks = () => {
         dbMock.session.findUnique.mockReset();
-        dbMock.session.update.mockReset();
+        dbMock.session.updateMany.mockReset();
         dbMock.machine.findUnique.mockReset();
         dbMock.machine.update.mockReset();
         counterIncMock.mockReset();
@@ -95,7 +95,31 @@ describe("ActivityCache machine heartbeats", () => {
 
         await vi.advanceTimersByTimeAsync(5000);
 
-        expect(dbMock.session.update).not.toHaveBeenCalled();
+        expect(dbMock.session.updateMany).not.toHaveBeenCalled();
+        activityCache.shutdown();
+    });
+
+    it('flushes heartbeats only while the session is still active', async () => {
+        const now = Date.parse("2026-01-01T00:00:00.000Z");
+        vi.setSystemTime(now);
+        dbMock.session.findUnique.mockResolvedValue({
+            id: "session-1",
+            accountId: "user-1",
+            active: true,
+            lastActiveAt: new Date(now - 60_000),
+        });
+        dbMock.session.updateMany.mockResolvedValue({ count: 0 });
+
+        const { activityCache } = await import("./sessionCache");
+
+        await activityCache.isSessionValid("session-1", "user-1");
+        activityCache.queueSessionUpdate("session-1", now);
+        await vi.advanceTimersByTimeAsync(5000);
+
+        expect(dbMock.session.updateMany).toHaveBeenCalledWith({
+            where: { id: "session-1", active: true },
+            data: { lastActiveAt: new Date(now), active: true },
+        });
         activityCache.shutdown();
     });
 
@@ -122,7 +146,7 @@ describe("ActivityCache machine heartbeats", () => {
 
         await vi.advanceTimersByTimeAsync(5000);
 
-        expect(dbMock.session.update).not.toHaveBeenCalled();
+        expect(dbMock.session.updateMany).not.toHaveBeenCalled();
         activityCache.shutdown();
     });
 
@@ -152,7 +176,7 @@ describe("ActivityCache machine heartbeats", () => {
         await vi.advanceTimersByTimeAsync(5000);
 
         // Updating a deleted row would throw P2025 and fail the whole batch
-        expect(dbMock.session.update).not.toHaveBeenCalled();
+        expect(dbMock.session.updateMany).not.toHaveBeenCalled();
         activityCache.shutdown();
     });
 
@@ -164,7 +188,7 @@ describe("ActivityCache machine heartbeats", () => {
             accountId: "user-1",
             lastActiveAt: new Date(now - 60_000),
         });
-        dbMock.session.update.mockResolvedValue({});
+        dbMock.session.updateMany.mockResolvedValue({ count: 1 });
 
         const { activityCache } = await import("./sessionCache");
 
@@ -180,8 +204,8 @@ describe("ActivityCache machine heartbeats", () => {
 
         await vi.advanceTimersByTimeAsync(5000);
 
-        expect(dbMock.session.update).toHaveBeenCalledWith({
-            where: { id: "session-1" },
+        expect(dbMock.session.updateMany).toHaveBeenCalledWith({
+            where: { id: "session-1", active: true },
             data: {
                 lastActiveAt: new Date(now),
                 active: true,

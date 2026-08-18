@@ -253,8 +253,10 @@ class ActivityCache {
         if (sessionUpdates.length > 0) {
             try {
                 await Promise.all(sessionUpdates.map(update =>
-                    db.session.update({
-                        where: { id: update.id },
+                    db.session.updateMany({
+                        // Never let a queued/racing heartbeat resurrect a session
+                        // after archive/session-end committed active=false.
+                        where: { id: update.id, active: true },
                         data: { lastActiveAt: new Date(update.timestamp), active: true }
                     })
                 ));

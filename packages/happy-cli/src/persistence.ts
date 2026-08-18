@@ -8,6 +8,7 @@ import { FileHandle } from 'node:fs/promises'
 import { readFile, writeFile, mkdir, open, unlink, rename, stat } from 'node:fs/promises'
 import { existsSync, writeFileSync, readFileSync, unlinkSync, renameSync, linkSync } from 'node:fs'
 import { constants } from 'node:fs'
+import { randomUUID } from 'node:crypto'
 import { configuration } from '@/configuration'
 import * as z from 'zod';
 import { encodeBase64, decodeBase64 } from '@/api/encryption';
@@ -30,12 +31,19 @@ export const SandboxConfigSchema = z.object({
 
 export type SandboxConfig = z.infer<typeof SandboxConfigSchema>;
 
+export const DaemonSessionLimitsSchema = z.object({
+  sessionIdleTimeoutMinutes: z.number().int().positive().optional(),
+  maxConcurrentSessions: z.number().int().positive().optional(),
+});
+
+export type DaemonSessionLimits = z.infer<typeof DaemonSessionLimitsSchema>;
+
 // Settings schema version: Integer for overall Settings structure compatibility
 // Incremented when Settings structure changes (e.g., adding profiles array was v1→v2)
 // Used for migration logic in readSettings()
 export const SUPPORTED_SCHEMA_VERSION = 2;
 
-interface Settings {
+interface Settings extends DaemonSessionLimits {
   schemaVersion: number
   onboardingCompleted: boolean
   machineId?: string
@@ -109,6 +117,16 @@ export async function readSettings(): Promise<Settings> {
       } catch (error: any) {
         logger.warn(`⚠️ Invalid sandbox config - skipping. Error: ${error.message}`);
         migrated.sandboxConfig = undefined;
+      }
+    }
+
+    for (const key of ['sessionIdleTimeoutMinutes', 'maxConcurrentSessions'] as const) {
+      const parsed = DaemonSessionLimitsSchema.shape[key].safeParse(migrated[key]);
+      if (parsed.success) {
+        migrated[key] = parsed.data;
+      } else {
+        logger.warn(`⚠️ Invalid ${key} - disabling it. Error: ${parsed.error.message}`);
+        migrated[key] = undefined;
       }
     }
 
@@ -313,24 +331,59 @@ export async function readDaemonState(): Promise<DaemonLocallyPersistedState | n
  * Write daemon state to local file (synchronously for atomic operation)
  */
 export function writeDaemonState(state: DaemonLocallyPersistedState): void {
-  writeFileSync(configuration.daemonStateFile, JSON.stringify(state, null, 2), 'utf-8');
+  const temporaryFile = `${configuration.daemonStateFile}.${process.pid}.${randomUUID()}.tmp`;
+  try {
+    writeFileSync(temporaryFile, JSON.stringify(state, null, 2), {
+      encoding: 'utf-8',
+      flag: 'wx',
+      mode: 0o600,
+    });
+    renameSync(temporaryFile, configuration.daemonStateFile);
+  } finally {
+    try {
+      unlinkSync(temporaryFile);
+    } catch { }
+  }
 }
 
 /**
- * Clean up daemon state file and lock file
+ * Clean up daemon state file and lock file.
+ *
+ * When expectedPid is provided, only remove files still owned by that process.
+ * This prevents a daemon that lost ownership from deleting its replacement's
+ * state during shutdown.
  */
-export async function clearDaemonState(): Promise<void> {
+export async function clearDaemonState(expectedPid?: number): Promise<boolean> {
+  if (expectedPid !== undefined) {
+    try {
+      const currentState = JSON.parse(
+        readFileSync(configuration.daemonStateFile, 'utf-8'),
+      ) as DaemonLocallyPersistedState;
+      const lockPid = readFileSync(configuration.daemonLockFile, 'utf-8').trim();
+      if (currentState.pid !== expectedPid || lockPid !== String(expectedPid)) {
+        return false;
+      }
+    } catch {
+      return false;
+    }
+  }
+
   if (existsSync(configuration.daemonStateFile)) {
-    await unlink(configuration.daemonStateFile);
+    unlinkSync(configuration.daemonStateFile);
   }
   // Also clean up lock file if it exists (for stale cleanup)
   if (existsSync(configuration.daemonLockFile)) {
     try {
-      await unlink(configuration.daemonLockFile);
+      const lockPid = readFileSync(configuration.daemonLockFile, 'utf-8').trim();
+      if (expectedPid === undefined || lockPid === String(expectedPid)) {
+        unlinkSync(configuration.daemonLockFile);
+      }
     } catch {
       // Lock file might be held by running daemon, ignore error
     }
   }
+  return !existsSync(configuration.daemonStateFile)
+    && !existsSync(configuration.daemonLockFile);
 }
 
 /**
@@ -407,7 +460,10 @@ export async function releaseDaemonLock(lockHandle: FileHandle): Promise<void> {
   } catch { }
 
   try {
-    if (existsSync(configuration.daemonLockFile)) {
+    if (
+      existsSync(configuration.daemonLockFile)
+      && readFileSync(configuration.daemonLockFile, 'utf-8').trim() === String(process.pid)
+    ) {
       unlinkSync(configuration.daemonLockFile);
     }
   } catch { }
