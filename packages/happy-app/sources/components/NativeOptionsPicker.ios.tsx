@@ -97,6 +97,10 @@ export function NativeOptionsPicker({
                                 frame({ maxWidth: 10000, maxHeight: 10000, minHeight: 42 }),
                                 contentShape(shapes.rectangle()),
                                 accessibilityLabel(`${title}: ${triggerLabel}`),
+                                // Belt and braces: the color inherits down to
+                                // the icon and text even if a child-level
+                                // modifier is ignored on some iOS version.
+                                foregroundStyle(tintColor ?? theme.colors.text),
                             ]}
                         >
                             {triggerSystemImage ? (
