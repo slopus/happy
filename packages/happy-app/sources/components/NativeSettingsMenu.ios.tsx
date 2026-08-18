@@ -44,7 +44,6 @@ const styles = StyleSheet.create({
 
 export function NativeSettingsMenu({
     accessibilityLabel = 'Settings',
-    tintColor,
     groups,
     children,
     style,
@@ -86,7 +85,7 @@ export function NativeSettingsMenu({
                     // invisible against the light-mode composer.
                     // No glass capsule: the plain style leaves the system less
                     // chrome to morph when the menu opens.
-                    modifiers={[tint(tintColor ?? theme.colors.text), buttonStyle('plain')]}
+                    modifiers={[tint(theme.colors.text), buttonStyle('plain')]}
                     label={(
                         // With a native trigger this draws the chip itself, so the
                         // system morphs a real label instead of lensing the React

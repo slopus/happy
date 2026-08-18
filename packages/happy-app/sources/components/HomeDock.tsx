@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { ActivityIndicator, Keyboard, LayoutChangeEvent, Modal as RNModal, Platform, Pressable, StyleSheet as RNStyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Keyboard, LayoutChangeEvent, Modal as RNModal, Platform, Pressable, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
@@ -185,10 +185,6 @@ const styles = StyleSheet.create((theme) => ({
         paddingTop: MOBILE_COMPOSER_METRICS.shellPaddingTop,
         paddingBottom: MOBILE_COMPOSER_METRICS.shellPaddingBottom,
     },
-    focusedComposerDim: {
-        ...RNStyleSheet.absoluteFillObject,
-        backgroundColor: 'rgba(20, 20, 22, 0.85)',
-    },
     focusedInput: {
         flex: 1,
         width: '100%',
@@ -197,8 +193,7 @@ const styles = StyleSheet.create((theme) => ({
         paddingRight: 0,
         paddingTop: MOBILE_COMPOSER_METRICS.inputPaddingTop,
         paddingBottom: MOBILE_COMPOSER_METRICS.inputPaddingBottom,
-        // On the always-dark focused surface.
-        color: '#FFFFFF',
+        color: theme.colors.text,
         fontSize: MOBILE_COMPOSER_METRICS.inputFontSize,
         lineHeight: MOBILE_COMPOSER_METRICS.inputLineHeight,
         textAlignVertical: 'top',
@@ -236,13 +231,13 @@ const styles = StyleSheet.create((theme) => ({
     focusedModeText: {
         flexShrink: 1,
         minWidth: 0,
-        color: 'rgba(255, 255, 255, 0.78)',
+        color: theme.colors.text,
         fontSize: 14,
         ...Typography.default(),
     },
     focusedModeSeparator: {
         flexShrink: 0,
-        color: 'rgba(255, 255, 255, 0.5)',
+        color: theme.colors.textSecondary,
         fontSize: 14,
         ...Typography.default(),
     },
@@ -1172,10 +1167,6 @@ export const HomeDock = React.memo(({
                     { height: focusedComposerHeight },
                 ]}
             >
-                {/* The focus scene is dark in both themes (fixed dark scrim,
-                    white picker rows) — the composer surface joins it instead
-                    of flipping light with the theme. */}
-                <View pointerEvents="none" style={styles.focusedComposerDim} />
                 <View style={styles.focusedComposerContent}>
                     {expImageUpload && selectedImages.length > 0 && (
                         <Animated.View style={focusedInputRevealStyle}>
@@ -1201,8 +1192,8 @@ export const HomeDock = React.memo(({
                             onChangeText={onPromptChange}
                             onFocus={() => setIsFocused(true)}
                             placeholder="Ask Codex"
-                            placeholderTextColor="rgba(255, 255, 255, 0.55)"
-                            selectionColor="#FFFFFF" 
+                            placeholderTextColor={theme.colors.textSecondary}
+                            selectionColor={theme.colors.text}
                             autoCorrect
                             multiline
                             scrollEnabled={focusedInputLayout.scrollEnabled}
@@ -1220,7 +1211,7 @@ export const HomeDock = React.memo(({
                                 <Ionicons
                                     name="add"
                                     size={MOBILE_COMPOSER_METRICS.addIconSize}
-                                    color="#FFFFFF"
+                                    color={theme.colors.text}
                                 />
                             </BubblePressable>
                         )}
@@ -1228,11 +1219,10 @@ export const HomeDock = React.memo(({
                             accessibilityLabel={t('settings.title')}
                             groups={gearSettingsGroups}
                             triggerSystemImage="gearshape"
-                            tintColor="#FFFFFF"
                             style={styles.nativeIconMenuFrame}
                         >
                             <View style={styles.nativeIconMenuContent}>
-                                <Ionicons name="settings-outline" size={20} color="#FFFFFF" />
+                                <Ionicons name="settings-outline" size={20} color={theme.colors.text} />
                             </View>
                         </NativeSettingsMenu>
                         {/* Pushes model/effort right so the pair sits against the
@@ -1243,7 +1233,6 @@ export const HomeDock = React.memo(({
                                 accessibilityLabel={t('agentInput.model.title')}
                                 groups={[modelSettingsGroup]}
                                 flat
-                                tintColor="rgba(255, 255, 255, 0.78)"
                                 triggerLabel={currentModel?.name ?? currentAgent.name}
                                 triggerAlignment="trailing"
                                 style={styles.nativeModeMenu}
@@ -1274,7 +1263,6 @@ export const HomeDock = React.memo(({
                                 accessibilityLabel={t('agentInput.effort.title')}
                                 groups={[effortSettingsGroup]}
                                 flat
-                                tintColor="rgba(255, 255, 255, 0.78)"
                                 triggerLabel={currentEffort?.name ?? t('agentInput.effort.title')}
                                 triggerAlignment="leading"
                                 style={styles.nativeEffortMenu}
