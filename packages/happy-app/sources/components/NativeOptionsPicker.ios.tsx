@@ -16,8 +16,8 @@ import {
     buttonStyle,
     contentShape,
     disabled,
-    foregroundStyle,
     frame,
+    opacity,
     shapes,
     tint,
 } from '@expo/ui/swift-ui/modifiers';
@@ -82,35 +82,29 @@ export function NativeOptionsPicker({
                     // white would render it invisible in light mode.
                     // No glass capsule: the plain style leaves the system less
                     // chrome to morph when the menu opens.
-                    modifiers={[tint(tintColor ?? theme.colors.text), buttonStyle('plain')]}
+                    modifiers={[tint(theme.colors.text), buttonStyle('plain')]}
                     label={(
-                        // The whole row is the label, so every part of it opens
-                        // the menu: the icon, the value, and the space between.
-                        // Icon and text carry an explicit foregroundStyle: on
-                        // newer iOS a plain-style Menu label ignores the tint
-                        // and falls back to the environment's primary color,
-                        // which made the tintColor override a no-op — black
-                        // rows on the dark focus scrim in light mode.
+                        // The label is a hit target ONLY: the visible row is the
+                        // React Native child underneath, which colors reliably
+                        // in both themes. Coloring the SwiftUI label proved a
+                        // moving target — the plain-style Menu ignored tint(),
+                        // and its UIKit-backed Text ignored foregroundStyle
+                        // while the Image obeyed it, leaving black text next to
+                        // a white icon on the dark scrim. Hidden, not removed:
+                        // the row must still span the full trigger area.
                         <HStack
                             spacing={12}
                             modifiers={[
                                 frame({ maxWidth: 10000, maxHeight: 10000, minHeight: 42 }),
                                 contentShape(shapes.rectangle()),
                                 accessibilityLabel(`${title}: ${triggerLabel}`),
-                                // Belt and braces: the color inherits down to
-                                // the icon and text even if a child-level
-                                // modifier is ignored on some iOS version.
-                                foregroundStyle(tintColor ?? theme.colors.text),
+                                opacity(0.01),
                             ]}
                         >
                             {triggerSystemImage ? (
-                                <Image
-                                    systemName={systemImage(triggerSystemImage)}
-                                    size={18}
-                                    modifiers={[foregroundStyle(tintColor ?? theme.colors.text)]}
-                                />
+                                <Image systemName={systemImage(triggerSystemImage)} size={18} />
                             ) : null}
-                            <Text modifiers={[foregroundStyle(tintColor ?? theme.colors.text)]}>{triggerLabel}</Text>
+                            <Text>{triggerLabel}</Text>
                             <Spacer minLength={8} />
                         </HStack>
                     )}
