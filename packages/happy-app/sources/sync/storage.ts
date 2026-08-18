@@ -9,7 +9,7 @@ function useDeepEqual<T>(selector: (state: StorageState) => T): (state: StorageS
         return equal(prev.current, next) ? prev.current! : (prev.current = next);
     };
 }
-import { Session, Machine, GitStatus, SessionAgentModesPatch } from "./storageTypes";
+import { METADATA_ONLY_FIELDS, Session, Machine, GitStatus, SessionAgentModesPatch } from "./storageTypes";
 import type { GitStatusFiles } from "./gitStatusFiles";
 import type { ProjectFilesList } from "./projectFiles";
 import { buildProjectGroups, type ProjectGroupData } from "./projectGroups";
@@ -34,7 +34,7 @@ import { getCurrentRealtimeSessionId, getVoiceSession } from '@/realtime/Realtim
 import { isMutableTool } from "@/components/tools/knownTools";
 import { DecryptedArtifact } from "./artifactTypes";
 import { FeedItem } from "./feedTypes";
-import { getRigActivityIndicators, getRigIdentity, isRigMetadata } from './rig';
+import { getRigActivityIndicators, getRigIdentity } from './rig';
 import { indexSessionsById } from './sessionIdentity';
 
 // Debounce timer for realtimeMode changes
@@ -150,8 +150,11 @@ function buildSessionRowData(session: Session, unreadSessionIds?: Set<string>): 
         ...(!session.active && { activeAt: session.activeAt, createdAt: session.createdAt }),
         hasDraft: !!session.draft,
         active: session.active,
-        archived: session.metadata?.lifecycleState === 'archived'
-            || (!isRigMetadata(session.metadata) && !session.active),
+        // Archive is a user decision about visibility, never a consequence of
+        // the agent process exiting: a finished session stays in the main list
+        // (dimmed, and hideable through the `hideInactiveSessions` setting)
+        // until the user actually files it away.
+        archived: typeof session.metadata?.archivedAt === 'number',
         machineId: session.metadata?.machineId ?? null,
         path: session.metadata?.path ?? null,
         homeDir: session.metadata?.homeDir ?? null,
@@ -343,6 +346,32 @@ function buildSessionListViewData(
     return listData;
 }
 
+/**
+ * An archived session can come back to life: the user resumes it from another
+ * device, or the CLI reconnects the same id. Leaving `archivedAt` on it would
+ * strand live work on the archive screen, so the flag is dropped when a session
+ * transitions from inactive to active while archived. Only that transition
+ * counts — archiving a still-running session flips it active -> inactive, which
+ * must not bounce the archive straight back off.
+ *
+ * ops.ts imports this module, so the writer is pulled in lazily to keep the
+ * dependency one-directional.
+ */
+function scheduleAutoUnarchive(sessionIds: string[]): void {
+    if (sessionIds.length === 0) {
+        return;
+    }
+    queueMicrotask(() => {
+        void import('./ops')
+            .then(({ sessionSetArchived }) => {
+                sessionIds.forEach((id) => sessionSetArchived(id, false));
+            })
+            .catch(() => {
+                // Best-effort: the next inbound update re-runs this check.
+            });
+    });
+}
+
 export const storage = create<StorageState>()((set, get) => {
     let { settings, version } = loadSettings();
     let localSettings = loadLocalSettings();
@@ -404,6 +433,8 @@ export const storage = create<StorageState>()((set, get) => {
             return Object.values(state.sessions).filter(s => s.active);
         },
         applySessions: (sessions: (Omit<Session, 'presence'> & { presence?: "online" | number })[]) => set((state) => {
+            // Sessions that woke up while archived; un-archived after this update.
+            const revivedArchivedIds: string[] = [];
             // Load drafts if sessions are empty (initial load)
             const isInitialLoad = Object.keys(state.sessions).length === 0;
             const savedDrafts = isInitialLoad ? sessionDrafts : {};
@@ -441,22 +472,39 @@ export const storage = create<StorageState>()((set, get) => {
                 const resolvedModelMode = resolveModePick('modelMode');
                 const resolvedEffortLevel = resolveModePick('effortLevel');
 
-                // Pin has no top-level mirror to fall back on: metadata is the
-                // only copy, and inbound updates keep arriving with the
-                // pre-pin metadata while the push is in flight. Re-apply the
-                // optimistic value or the row unpins itself under the user.
+                // Pin and archive have no top-level mirror to fall back on:
+                // metadata is the only copy, and inbound updates keep arriving
+                // with the pre-change metadata while the push is in flight.
+                // Re-apply the optimistic value or the row unpins (or
+                // un-archives) itself under the user.
                 const resolveMetadata = (): typeof session.metadata => {
-                    if (!session.metadata || !isMetadataPushPending(session.id, 'pinnedAt')) {
+                    if (!session.metadata) {
                         return session.metadata;
                     }
-                    return {
-                        ...session.metadata,
-                        pinnedAt: state.sessions[session.id]?.metadata?.pinnedAt ?? null,
-                    };
+                    const pending = METADATA_ONLY_FIELDS.filter((field) => isMetadataPushPending(session.id, field));
+                    if (pending.length === 0) {
+                        return session.metadata;
+                    }
+                    const resolved = { ...session.metadata };
+                    for (const field of pending) {
+                        resolved[field] = state.sessions[session.id]?.metadata?.[field] ?? null;
+                    }
+                    return resolved;
                 };
 
                 // Local activity timestamp — preserve in-memory value, else restore from MMKV.
                 const resolvedLastMessageSentAt = state.sessions[session.id]?.lastMessageSentAt ?? savedLastMessageSentAt[session.id];
+
+                const previous = state.sessions[session.id];
+                if (
+                    previous
+                    && !previous.active
+                    && session.active
+                    && typeof previous.metadata?.archivedAt === 'number'
+                    && !isMetadataPushPending(session.id, 'archivedAt')
+                ) {
+                    revivedArchivedIds.push(session.id);
+                }
 
                 mergedSessions[session.id] = {
                     ...session,
@@ -622,6 +670,8 @@ export const storage = create<StorageState>()((set, get) => {
                 mergedSessions,
                 unreadSessionIds,
             );
+
+            scheduleAutoUnarchive(revivedArchivedIds);
 
             return {
                 ...state,

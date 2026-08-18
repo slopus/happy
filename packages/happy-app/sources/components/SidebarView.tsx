@@ -4,14 +4,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useHeaderHeight } from '@/utils/responsive';
 import { VoiceAssistantStatusBar } from './VoiceAssistantStatusBar';
-import { useRealtimeStatus, useSettingMutable } from '@/sync/storage';
+import { useRealtimeStatus } from '@/sync/storage';
 import { MainView } from './MainView';
 import { StyleSheet } from 'react-native-unistyles';
 import { t } from '@/text';
 import { Ionicons } from '@expo/vector-icons';
 import { Typography } from '@/constants/Typography';
 import { ShortcutHintBadge, useShortcutHints } from './ShortcutHints';
-import { useHasArchivedSessions } from '@/hooks/useVisibleSessionListViewData';
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
@@ -54,9 +53,6 @@ const stylesheet = StyleSheet.create((theme) => ({
         borderColor: theme.colors.divider,
         backgroundColor: theme.colors.surface,
     },
-    archiveButtonActive: {
-        backgroundColor: theme.colors.surfaceSelected,
-    },
     shortcutTargetActive: {
         backgroundColor: theme.colors.surfacePressed,
     },
@@ -92,18 +88,14 @@ export const SidebarView = React.memo(() => {
     const router = useRouter();
     const headerHeight = useHeaderHeight();
     const realtimeStatus = useRealtimeStatus();
-    const hasArchivedSessions = useHasArchivedSessions();
-    // Stored under its original `hideInactiveSessions` key — synced settings
-    // have no rename migration — but it hides archived sessions only.
-    const [hideArchivedSessions, setHideArchivedSessions] = useSettingMutable('hideInactiveSessions');
     const { visible: shortcutHintsVisible } = useShortcutHints();
 
     const handleNewSession = React.useCallback(() => {
         router.navigate('/new');
     }, [router]);
-    const handleArchiveVisibility = React.useCallback(() => {
-        setHideArchivedSessions(!hideArchivedSessions);
-    }, [hideArchivedSessions, setHideArchivedSessions]);
+    const handleOpenArchive = React.useCallback(() => {
+        router.push('/archive');
+    }, [router]);
 
     return (
         <View style={[styles.container, { paddingTop: safeArea.top + headerHeight }]}>
@@ -120,27 +112,21 @@ export const SidebarView = React.memo(() => {
                     <Text style={styles.newSessionText}>{t('sidebar.newSession')}</Text>
                     <ShortcutHintBadge shortcutKey="N" style={styles.shortcutBadgeInline} />
                 </Pressable>
-                {hasArchivedSessions && (
-                    <Pressable
-                        onPress={handleArchiveVisibility}
-                        accessibilityLabel={hideArchivedSessions
-                            ? t('sidebar.showArchived')
-                            : t('sidebar.hideArchived')}
-                        accessibilityRole="button"
-                        accessibilityState={{ selected: !hideArchivedSessions }}
-                        style={({ pressed }) => [
-                            styles.archiveButton,
-                            !hideArchivedSessions && styles.archiveButtonActive,
-                            pressed && styles.newSessionButtonPressed,
-                        ]}
-                    >
-                        <Ionicons
-                            name={hideArchivedSessions ? 'archive-outline' : 'archive'}
-                            size={18}
-                            color={stylesheet.newSessionText.color}
-                        />
-                    </Pressable>
-                )}
+                <Pressable
+                    onPress={handleOpenArchive}
+                    accessibilityLabel={t('sidebar.archive')}
+                    accessibilityRole="button"
+                    style={({ pressed }) => [
+                        styles.archiveButton,
+                        pressed && styles.newSessionButtonPressed,
+                    ]}
+                >
+                    <Ionicons
+                        name="archive-outline"
+                        size={18}
+                        color={stylesheet.newSessionText.color}
+                    />
+                </Pressable>
             </View>
 
             {realtimeStatus !== 'disconnected' && (

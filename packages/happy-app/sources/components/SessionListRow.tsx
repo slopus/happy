@@ -1,7 +1,7 @@
 import React from 'react';
-import { View, Pressable, Platform } from 'react-native';
+import { View, Pressable, Platform, Animated } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Text } from '@/components/StyledText';
 import { Typography } from '@/constants/Typography';
@@ -9,15 +9,16 @@ import { SessionRowData, useSessionGitStatus } from '@/sync/storage';
 import { type SessionState } from '@/utils/sessionUtils';
 import { getWorktreeName, isWorktreePath } from '@/utils/worktree';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
-import { useHappyAction } from '@/hooks/useHappyAction';
-import { useSessionActionAlert } from '@/hooks/useSessionQuickActions';
-import { HappyError } from '@/utils/errors';
-import { sessionKill } from '@/sync/ops';
+import { useRouter } from 'expo-router';
+import { useSessionActionAlert, useSessionArchiveActions } from '@/hooks/useSessionQuickActions';
+import { sessionSetPinned } from '@/sync/ops';
 import { t } from '@/text';
 import { StatusDot } from './StatusDot';
 import { SessionActionsAnchor, SessionActionsPopover } from './SessionActionsPopover';
 import { SessionShortcutHintBadge } from './ShortcutHints';
 import { sessionRowLayout } from './sessionRowLayout';
+
+const SWIPE_ACTION_WIDTH = 84;
 
 const STATUS_CONFIG: Record<SessionState, { color: string; dotColor: string; isPulsing: boolean; isConnected: boolean }> = {
     disconnected: { color: '#999', dotColor: '#999', isPulsing: false, isConnected: false },
@@ -27,17 +28,18 @@ const STATUS_CONFIG: Record<SessionState, { color: string; dotColor: string; isP
 };
 
 /**
- * Second line of a row: where the session came from and where it runs —
- * "Rig · happy". The live state is carried by the dot, so this line stays a
- * stable identity rather than flipping between "online" and "last seen …".
+ * Second line of a row: which project the session runs in, and the worktree
+ * when it is not the primary one — "happy · feature-x". The live state is
+ * carried by the dot, so this line stays a stable identity rather than
+ * flipping between "online" and "last seen …".
  */
-function sessionSourceLabel(session: SessionRowData): string {
-    const isRig = session.flavor === 'rig' || Boolean(session.projectId) || session.identityLine?.startsWith('Rig');
+function sessionProjectLabel(session: SessionRowData, worktreeName: string | null): string {
     const project = session.projectName
         || session.path?.split(/[/\\]/).filter(Boolean).pop()
         || session.subtitle
-        || (isRig ? 'Rig' : 'Happy');
-    return `${isRig ? 'Rig' : 'Happy'} · ${project}`;
+        || '';
+    if (!project) return worktreeName ?? '';
+    return worktreeName ? `${project} · ${worktreeName}` : project;
 }
 
 /**
@@ -65,6 +67,7 @@ export const SessionListRow = React.memo(({ session, selected, showDivider }: {
     const styles = stylesheet;
     const { theme } = useUnistyles();
     const navigateToSession = useNavigateToSession();
+    const router = useRouter();
     const [actionsAnchor, setActionsAnchor] = React.useState<SessionActionsAnchor | null>(null);
     const gitStatus = useSessionGitStatus(session.id);
     const swipeableRef = React.useRef<Swipeable | null>(null);
@@ -76,21 +79,36 @@ export const SessionListRow = React.memo(({ session, selected, showDivider }: {
         ? { ...baseStatus, color: '#007AFF', dotColor: '#007AFF', isPulsing: false, isConnected: baseStatus.isConnected }
         : baseStatus;
 
-    const worktreeName = sessionWorktreeName(session);
     const linesAdded = gitStatus?.unstagedLinesAdded ?? 0;
     const linesRemoved = gitStatus?.unstagedLinesRemoved ?? 0;
 
-    const [archivingSession, performArchive] = useHappyAction(async () => {
-        const result = await sessionKill(session.id);
-        if (!result.success) {
-            throw new HappyError(result.message || t('sessionInfo.failedToArchiveSession'), false);
-        }
-    });
+    // Only the worktree earns a place here. The primary checkout's branch is
+    // not what tells two sessions apart — every session in a project shares it
+    // — so a row outside a worktree names just its project.
+    const worktreeName = sessionWorktreeName(session);
+
+    // Swipe files the session away (stopping it first if it is still running),
+    // or brings it back when the row is being shown on the archive screen.
+    const { archiveSession, archivingSession, unarchiveSession } = useSessionArchiveActions(session.id);
 
     const handleArchive = React.useCallback(() => {
         swipeableRef.current?.close();
-        performArchive();
-    }, [performArchive]);
+        if (session.archived) {
+            unarchiveSession();
+        } else {
+            archiveSession();
+        }
+    }, [archiveSession, session.archived, unarchiveSession]);
+
+    const handleOpenDetails = React.useCallback(() => {
+        swipeableRef.current?.close();
+        router.push(`/session/${session.id}/info`);
+    }, [router, session.id]);
+
+    const handleTogglePin = React.useCallback(() => {
+        swipeableRef.current?.close();
+        sessionSetPinned(session.id, !session.pinned);
+    }, [session.id, session.pinned]);
 
     const handlePress = React.useCallback(() => {
         navigateToSession(session.id);
@@ -117,7 +135,12 @@ export const SessionListRow = React.memo(({ session, selected, showDivider }: {
         onLongPress: showActionAlert,
     };
 
-    let indicator: React.ReactNode = <StatusDot color={theme.colors.textSecondary} isPulsing={false} />;
+    // Idle rows split on the connection: a session that is still up and simply
+    // has nothing to say keeps a filled dot, one that is gone goes hollow, so
+    // "here but quiet" and "not running" stop looking identical.
+    let indicator: React.ReactNode = status.isConnected
+        ? <StatusDot color={theme.colors.textSecondary} isPulsing={false} />
+        : <StatusDot color={theme.colors.textSecondary} hollow />;
     if (session.hasUnread) {
         indicator = <StatusDot color={status.dotColor} isPulsing={false} />;
     } else if (session.state === 'waiting' && session.hasDraft) {
@@ -150,16 +173,8 @@ export const SessionListRow = React.memo(({ session, selected, showDivider }: {
 
                 <View style={styles.subtitleRow}>
                     <Text style={styles.subtitle} numberOfLines={1}>
-                        {sessionSourceLabel(session)}
+                        {sessionProjectLabel(session, worktreeName)}
                     </Text>
-                    {worktreeName && (
-                        <>
-                            <MaterialCommunityIcons name="tree" size={11} color={theme.colors.textSecondary} />
-                            <Text style={styles.worktree} numberOfLines={1}>
-                                {worktreeName}
-                            </Text>
-                        </>
-                    )}
                     {linesAdded > 0 && (
                         <Text style={styles.addedText}>+{linesAdded}</Text>
                     )}
@@ -190,14 +205,65 @@ export const SessionListRow = React.memo(({ session, selected, showDivider }: {
         );
     }
 
-    const renderRightActions = () => (
-        <Pressable style={styles.swipeAction} onPress={handleArchive} disabled={archivingSession}>
-            <Ionicons name="archive-outline" size={20} color="#FFFFFF" />
-            <Text style={styles.swipeActionText} numberOfLines={2}>
-                {t('sessionInfo.archiveSession')}
-            </Text>
-        </Pressable>
-    );
+    // Ordered least to most destructive, so the finger has to travel furthest
+    // for the one action that ends the session. Each button slides in from the
+    // screen edge to its slot — the row uncovers a moving stack rather than a
+    // preassembled block, so the farther a button sits from the edge, the
+    // farther it travels.
+    const renderRightActions = (progress: Animated.AnimatedInterpolation<number>) => {
+        const actions = [
+            {
+                key: 'details',
+                icon: 'information-circle-outline' as const,
+                label: t('profile.details'),
+                onPress: handleOpenDetails,
+                style: styles.swipeActionDetails,
+                color: theme.colors.text,
+            },
+            {
+                key: 'pin',
+                icon: session.pinned ? ('pin' as const) : ('pin-outline' as const),
+                label: session.pinned ? t('sidebar.unpin') : t('sidebar.pin'),
+                onPress: handleTogglePin,
+                style: styles.swipeActionPin,
+                color: '#FFFFFF',
+            },
+            {
+                key: 'archive',
+                icon: session.archived ? ('arrow-undo-outline' as const) : ('archive-outline' as const),
+                label: session.archived ? t('archive.restore') : t('common.archive'),
+                onPress: handleArchive,
+                disabled: archivingSession,
+                style: styles.swipeActionArchive,
+                color: '#FFFFFF',
+            },
+        ];
+        return (
+            <View style={styles.swipeActions}>
+                {actions.map((action, index) => (
+                    <Animated.View
+                        key={action.key}
+                        style={{
+                            height: '100%',
+                            transform: [{
+                                translateX: progress.interpolate({
+                                    inputRange: [0, 1],
+                                    outputRange: [SWIPE_ACTION_WIDTH * (actions.length - index), 0],
+                                }),
+                            }],
+                        }}
+                    >
+                        <Pressable style={[styles.swipeAction, action.style]} onPress={action.onPress} disabled={action.disabled}>
+                            <Ionicons name={action.icon} size={20} color={action.color} />
+                            <Text style={[styles.swipeActionText, { color: action.color }]} numberOfLines={2}>
+                                {action.label}
+                            </Text>
+                        </Pressable>
+                    </Animated.View>
+                ))}
+            </View>
+        );
+    };
 
     return (
         <>
@@ -277,13 +343,6 @@ const stylesheet = StyleSheet.create((theme) => ({
         flexShrink: 1,
         ...Typography.default(),
     },
-    worktree: {
-        fontSize: 13,
-        lineHeight: 17,
-        color: theme.colors.textSecondary,
-        flexShrink: 1,
-        ...Typography.default(),
-    },
     addedText: {
         fontSize: 13,
         lineHeight: 17,
@@ -298,17 +357,29 @@ const stylesheet = StyleSheet.create((theme) => ({
         flexShrink: 0,
         ...Typography.default(),
     },
+    swipeActions: {
+        flexDirection: 'row',
+        height: '100%',
+    },
     swipeAction: {
-        width: 112,
+        width: SWIPE_ACTION_WIDTH,
         height: '100%',
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: theme.colors.status.error,
+        paddingHorizontal: 4,
+    },
+    swipeActionDetails: {
+        backgroundColor: theme.colors.surfaceHighest,
+    },
+    swipeActionPin: {
+        backgroundColor: '#007AFF',
+    },
+    swipeActionArchive: {
+        backgroundColor: theme.colors.deleteAction,
     },
     swipeActionText: {
         marginTop: 4,
         fontSize: 12,
-        color: '#FFFFFF',
         textAlign: 'center',
         ...Typography.default('semiBold'),
     },

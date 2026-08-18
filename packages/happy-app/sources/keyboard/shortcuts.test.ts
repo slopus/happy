@@ -119,7 +119,10 @@ describe('session action shortcuts', () => {
             'copy-metadata',
             'copy-metadata-and-logs',
             'pin',
+            'stop',
             'archive',
+            'unarchive',
+            'delete',
         ]);
     });
 

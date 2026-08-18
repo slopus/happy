@@ -167,6 +167,14 @@ export default function RootLayout() {
                 }}
             />
             <Stack.Screen
+                name="archive"
+                options={{
+                    headerShown: true,
+                    headerTitle: t('archive.title'),
+                    headerBackTitle: t('common.back'),
+                }}
+            />
+            <Stack.Screen
                 name="changelog"
                 options={{
                     headerShown: true,

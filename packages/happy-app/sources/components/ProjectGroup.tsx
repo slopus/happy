@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Text } from '@/components/StyledText';
 import { Typography } from '@/constants/Typography';
-import { ProjectGroupData, ProjectWorkspaceGroup, useAllMachines } from '@/sync/storage';
+import { ProjectGroupData, ProjectWorkspaceGroup } from '@/sync/storage';
 import { SessionListRow } from './SessionListRow';
 import { sessionRowLayout } from './sessionRowLayout';
 
@@ -19,13 +19,6 @@ interface ProjectGroupProps {
  */
 export const ProjectGroup = React.memo(({ project, selectedSessionId }: ProjectGroupProps) => {
     const styles = stylesheet;
-    const machines = useAllMachines();
-
-    const machineName = React.useMemo(() => {
-        if (!project.machineId) return null;
-        const machine = machines.find(m => m.id === project.machineId);
-        return machine?.metadata?.displayName || machine?.metadata?.host || null;
-    }, [machines, project.machineId]);
 
     // Worktrees only need naming when the project actually has more than one
     const showWorkspaceLabels = project.workspaces.length > 1;
@@ -36,11 +29,6 @@ export const ProjectGroup = React.memo(({ project, selectedSessionId }: ProjectG
                 <Text style={styles.title} numberOfLines={1}>
                     {project.name}
                 </Text>
-                {machineName && (
-                    <Text style={styles.machine} numberOfLines={1}>
-                        {machineName}
-                    </Text>
-                )}
             </View>
 
             {project.workspaces.map(workspace => (
@@ -108,13 +96,6 @@ const stylesheet = StyleSheet.create((theme) => ({
         fontSize: 13,
         lineHeight: 18,
         color: theme.colors.groupped.sectionTitle,
-        flexShrink: 1,
-        ...Typography.default(),
-    },
-    machine: {
-        fontSize: 13,
-        lineHeight: 18,
-        color: theme.colors.textSecondary,
         flexShrink: 1,
         ...Typography.default(),
     },

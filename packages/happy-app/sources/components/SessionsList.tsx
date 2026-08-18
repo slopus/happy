@@ -71,15 +71,23 @@ export function SessionsList({
     bottomContentInset = 128,
     onScroll,
     searchQuery = '',
+    items,
+    emptyComponent,
 }: {
     topContentInset?: number;
     bottomContentInset?: number;
     onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
     searchQuery?: string;
+    /** Rows to render. Defaults to the main list; the archive screen passes its own. */
+    items?: SessionListViewItem[] | null;
+    emptyComponent?: React.ReactElement | null;
 } = {}) {
     const styles = stylesheet;
     const safeArea = useSafeAreaInsets();
-    const sourceData = useVisibleSessionListViewData();
+    // Always called — hook order cannot depend on which list this is — and
+    // ignored when the caller supplies its own rows.
+    const mainListData = useVisibleSessionListViewData();
+    const sourceData = items !== undefined ? items : mainListData;
     const pathname = usePathname();
     const isTablet = useIsTablet();
     // Selection is derived once from pathname so the data array stays stable
@@ -259,7 +267,7 @@ export function SessionsList({
                         <View style={{ paddingTop: 48, alignItems: 'center' }}>
                             <Text style={styles.headerText}>{t('sessionHistory.empty')}</Text>
                         </View>
-                    ) : null}
+                    ) : emptyComponent ?? null}
                     windowSize={5}
                     maxToRenderPerBatch={8}
                     initialNumToRender={12}

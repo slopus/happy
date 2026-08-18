@@ -9,12 +9,9 @@ import { Typography } from '@/constants/Typography';
 import { StatusDot } from './StatusDot';
 import { SessionShortcutHintBadge } from './ShortcutHints';
 import { SessionActionsAnchor, SessionActionsPopover } from './SessionActionsPopover';
-import { useSessionActionAlert } from '@/hooks/useSessionQuickActions';
+import { useSessionActionAlert, useSessionArchiveActions } from '@/hooks/useSessionQuickActions';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { useNewSessionDraft } from '@/hooks/useNewSessionDraft';
-import { useHappyAction } from '@/hooks/useHappyAction';
-import { HappyError } from '@/utils/errors';
-import { sessionKill } from '@/sync/ops';
 import type { ProjectGroupData } from '@/sync/projectGroups';
 import { useLocalSettingMutable, type SessionRowData } from '@/sync/storage';
 import { formatLastSeen, type SessionState } from '@/utils/sessionUtils';
@@ -194,17 +191,18 @@ const ProjectSessionRow = React.memo(({ session, selected, showBorder, onPressSe
     const status = STATUS_CONFIG[session.state];
     const connected = status.isConnected;
 
-    const [archiving, performArchive] = useHappyAction(async () => {
-        const result = await sessionKill(session.id);
-        if (!result.success) {
-            throw new HappyError(result.message || t('sessionInfo.failedToArchiveSession'), false);
-        }
-    });
+    // Swipe files the session away (stopping it first if it is still running),
+    // or brings it back when the row is being shown on the archive screen.
+    const { archiveSession, archivingSession: archiving, unarchiveSession } = useSessionArchiveActions(session.id);
 
     const handleArchive = React.useCallback(() => {
         swipeableRef.current?.close();
-        performArchive();
-    }, [performArchive]);
+        if (session.archived) {
+            unarchiveSession();
+        } else {
+            archiveSession();
+        }
+    }, [archiveSession, session.archived, unarchiveSession]);
 
     const handlePress = React.useCallback(() => {
         if (onPressSession) {
@@ -299,9 +297,9 @@ const ProjectSessionRow = React.memo(({ session, selected, showBorder, onPressSe
                     onPress={handleArchive}
                     disabled={archiving}
                     accessibilityRole="button"
-                    accessibilityLabel={t('sessionInfo.archiveSession')}
+                    accessibilityLabel={session.archived ? t('archive.restore') : t('sessionInfo.archiveSession')}
                 >
-                    <Ionicons name="archive-outline" size={20} color="#FFFFFF" />
+                    <Ionicons name={session.archived ? 'arrow-undo-outline' : 'archive-outline'} size={20} color="#FFFFFF" />
                 </Pressable>
             )}
             overshootRight={false}

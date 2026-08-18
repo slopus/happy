@@ -1,6 +1,5 @@
 import type { Session } from './storageTypes';
 import type { SessionRowData } from './storage';
-import { isRigMetadata } from './rig';
 
 // One git worktree inside a project. `id` is empty and `name` is null for
 // the project's primary tree, which always sorts first.
@@ -31,26 +30,20 @@ export function isProjectSession(session: Session): boolean {
 /**
  * The project a session belongs to.
  *
- * Rig hands over a durable project identity. Everything else falls back to
- * machine plus working directory, which keeps identical paths on different
- * computers apart. The fallback id is namespaced by runtime on purpose: the
- * same folder opened under Rig and under Happy CLI is two projects that happen
- * to share a directory, not one project with mixed sessions.
+ * Identity is the project's NAME — Rig's native project name when the session
+ * carries one, the working directory's last segment otherwise. Runtime and
+ * machine are deliberately not part of it: the same repository reached through
+ * Rig, through Happy CLI, or through a second daemon on the same box is one
+ * project, and splitting it three ways buried the work under bookkeeping. The
+ * price is that genuinely different repositories sharing a folder name merge
+ * into one card — accepted, a single legible list is worth more here than a
+ * distinction almost nobody hits.
  */
 function projectIdentity(session: Session): { id: string; name: string; machineId: string | null } {
     const machineId = session.metadata?.machineId ?? null;
-    const project = session.metadata?.project;
-    if (project?.id) {
-        return { id: project.id, name: project.name, machineId };
-    }
-
-    const path = session.metadata?.path?.trim() || '';
-    const runtime = isRigMetadata(session.metadata) ? 'rig' : 'happy';
-    return {
-        id: `${runtime}:${JSON.stringify([machineId, path])}`,
-        name: pathProjectName(path, session.metadata?.homeDir),
-        machineId,
-    };
+    const name = session.metadata?.project?.name?.trim()
+        || pathProjectName(session.metadata?.path?.trim() || '', session.metadata?.homeDir);
+    return { id: `project:${name.toLowerCase()}`, name, machineId };
 }
 
 function pathProjectName(path: string, homeDir: string | undefined): string {

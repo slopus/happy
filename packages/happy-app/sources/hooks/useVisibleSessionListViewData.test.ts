@@ -3,13 +3,15 @@ import type { SessionListViewItem, SessionRowData } from '@/sync/storage';
 
 const mocks = vi.hoisted(() => ({
     data: null as SessionListViewItem[] | null,
-    hideArchivedSessions: false,
+    hideInactiveSessions: false,
 }));
 
-// The hook only ever reads `React.useMemo`, and storage.ts pulls in React
-// Native, so both are stubbed down to the surface the hook actually touches.
+// The hooks only ever read `React.useMemo` / `React.useCallback`, and
+// storage.ts pulls in React Native, so both are stubbed down to the surface
+// the hooks actually touch.
 vi.mock('react', () => ({
     useMemo: <T,>(factory: () => T) => factory(),
+    useCallback: <T,>(callback: T) => callback,
 }));
 
 vi.mock('@/sync/storage', () => ({
@@ -18,11 +20,14 @@ vi.mock('@/sync/storage', () => ({
         if (key !== 'hideInactiveSessions') {
             throw new Error(`Unexpected setting read: ${key}`);
         }
-        return mocks.hideArchivedSessions;
+        return mocks.hideInactiveSessions;
     },
 }));
 
-import { useHasArchivedSessions, useVisibleSessionListViewData } from './useVisibleSessionListViewData';
+import {
+    useArchivedSessionListViewData,
+    useVisibleSessionListViewData,
+} from './useVisibleSessionListViewData';
 
 // Only the fields the visibility filter reads; the real rows are built in
 // storage.ts.
@@ -61,17 +66,17 @@ function flatSessionIds(items: SessionListViewItem[]): string[] {
 
 beforeEach(() => {
     mocks.data = null;
-    mocks.hideArchivedSessions = false;
+    mocks.hideInactiveSessions = false;
 });
 
 describe('useVisibleSessionListViewData', () => {
-    // A project card and a flat row, each holding one merely-disconnected
-    // session and one archived one.
+    // A project card and a flat row, each holding one finished-but-listed
+    // session and one the user archived.
     function mixedList(): SessionListViewItem[] {
         return [
-            project('p1', [row('project-disconnected'), row('project-archived', { archived: true })]),
+            project('p1', [row('project-finished'), row('project-archived', { archived: true })]),
             { type: 'section', title: 'Today' },
-            { type: 'session', session: row('flat-disconnected') },
+            { type: 'session', session: row('flat-finished') },
             { type: 'session', session: row('flat-archived', { archived: true }) },
         ];
     }
@@ -82,19 +87,20 @@ describe('useVisibleSessionListViewData', () => {
         expect(useVisibleSessionListViewData()).toBeNull();
     });
 
-    it('keeps a disconnected-but-unarchived session in both list shapes while hiding the archive', () => {
+    it('keeps a finished session in both list shapes and hides the archived one', () => {
         mocks.data = mixedList();
-        mocks.hideArchivedSessions = true;
 
         const result = useVisibleSessionListViewData()!;
 
-        expect(projectSessionIds(result)).toEqual(['project-disconnected']);
-        expect(flatSessionIds(result)).toEqual(['flat-disconnected']);
+        expect(projectSessionIds(result)).toEqual(['project-finished']);
+        expect(flatSessionIds(result)).toEqual(['flat-finished']);
     });
 
-    it('hides an archived session in both list shapes', () => {
+    // The two axes are independent: archiving is the user's call, and a session
+    // whose agent merely exited was never archived by anyone.
+    it('still hides an archived session when finished sessions are shown', () => {
         mocks.data = mixedList();
-        mocks.hideArchivedSessions = true;
+        mocks.hideInactiveSessions = false;
 
         const result = useVisibleSessionListViewData()!;
 
@@ -102,13 +108,26 @@ describe('useVisibleSessionListViewData', () => {
         expect(flatSessionIds(result)).not.toContain('flat-archived');
     });
 
+    it('hides finished sessions too once the setting is on', () => {
+        mocks.data = [
+            project('p1', [row('live', { active: true }), row('finished')]),
+            { type: 'session', session: row('flat-live', { active: true }) },
+            { type: 'session', session: row('flat-finished') },
+        ];
+        mocks.hideInactiveSessions = true;
+
+        const result = useVisibleSessionListViewData()!;
+
+        expect(projectSessionIds(result)).toEqual(['live']);
+        expect(flatSessionIds(result)).toEqual(['flat-live']);
+    });
+
     it('refreshes the project badge to match the rows left', () => {
         mocks.data = [project('p1', [
             row('live', { active: true }),
-            row('disconnected'),
+            row('finished'),
             row('archived', { archived: true }),
         ])];
-        mocks.hideArchivedSessions = true;
 
         const [item] = useVisibleSessionListViewData()!;
 
@@ -118,24 +137,13 @@ describe('useVisibleSessionListViewData', () => {
         });
     });
 
-    it('shows every session in both list shapes when the archive is revealed', () => {
-        mocks.data = mixedList();
-        mocks.hideArchivedSessions = false;
-
-        const result = useVisibleSessionListViewData()!;
-
-        expect(projectSessionIds(result)).toEqual(['project-disconnected', 'project-archived']);
-        expect(flatSessionIds(result)).toEqual(['flat-disconnected', 'flat-archived']);
-    });
-
-    it('drops a date header once everything under it is archived', () => {
+    it('drops a date header once everything under it is filtered out', () => {
         mocks.data = [
             { type: 'section', title: 'Today' },
             { type: 'session', session: row('archived', { archived: true }) },
             { type: 'section', title: 'Yesterday' },
-            { type: 'session', session: row('disconnected') },
+            { type: 'session', session: row('finished') },
         ];
-        mocks.hideArchivedSessions = true;
 
         const result = useVisibleSessionListViewData()!;
 
@@ -145,38 +153,45 @@ describe('useVisibleSessionListViewData', () => {
 
     it('drops a project once every session under it is archived', () => {
         mocks.data = [project('p1', [row('archived', { archived: true })])];
-        mocks.hideArchivedSessions = true;
 
         expect(useVisibleSessionListViewData()).toEqual([]);
     });
 
-    it('keeps the active-sessions group regardless of the toggle', () => {
+    it('keeps the active-sessions group regardless of the setting', () => {
         mocks.data = [{ type: 'active-sessions', sessions: [row('live', { active: true })] }];
-        mocks.hideArchivedSessions = true;
+        mocks.hideInactiveSessions = true;
 
         expect(useVisibleSessionListViewData()).toEqual(mocks.data);
     });
 });
 
-describe('useHasArchivedSessions', () => {
-    it('is false when nothing is archived, even with disconnected sessions around', () => {
+describe('useArchivedSessionListViewData', () => {
+    it('shows only archived sessions, in both list shapes', () => {
         mocks.data = [
-            project('p1', [row('project-disconnected')]),
-            { type: 'session', session: row('flat-disconnected') },
+            project('p1', [row('finished'), row('project-archived', { archived: true })]),
+            { type: 'section', title: 'Today' },
+            { type: 'session', session: row('flat-finished') },
+            { type: 'session', session: row('flat-archived', { archived: true }) },
         ];
 
-        expect(useHasArchivedSessions()).toBe(false);
+        const result = useArchivedSessionListViewData()!;
+
+        expect(projectSessionIds(result)).toEqual(['project-archived']);
+        expect(flatSessionIds(result)).toEqual(['flat-archived']);
     });
 
-    it('spots an archived session nested inside a project', () => {
-        mocks.data = [project('p1', [row('archived', { archived: true })])];
+    // The archive is not a live-session view: whether the agent is running says
+    // nothing about whether the user filed the session away.
+    it('keeps an archived session that is somehow still running', () => {
+        mocks.data = [{ type: 'session', session: row('archived-live', { active: true, archived: true }) }];
+        mocks.hideInactiveSessions = true;
 
-        expect(useHasArchivedSessions()).toBe(true);
+        expect(flatSessionIds(useArchivedSessionListViewData()!)).toEqual(['archived-live']);
     });
 
-    it('spots an archived session in the flat list', () => {
-        mocks.data = [{ type: 'session', session: row('archived', { archived: true }) }];
+    it('is empty when nothing is archived', () => {
+        mocks.data = [project('p1', [row('finished')]), { type: 'session', session: row('flat-finished') }];
 
-        expect(useHasArchivedSessions()).toBe(true);
+        expect(useArchivedSessionListViewData()).toEqual([]);
     });
 });

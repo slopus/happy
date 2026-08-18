@@ -239,13 +239,17 @@ function RailProject({ project, machineName }: { project: ProjectGroupData; mach
 /* Helpers  */
 /* -------- */
 
+// Sandbox mirror of the production rule: the archive is always hidden, and the
+// toggle only decides whether finished sessions stay on screen.
 function useVisibleProjects(projects: ProjectGroupData[], hideInactive: boolean): ProjectGroupData[] {
-    return React.useMemo(() => {
-        if (!hideInactive) return projects;
-        return projects
-            .map((project) => filterProjectGroupSessions(project, (session) => !session.archived))
-            .filter((project): project is ProjectGroupData => !!project);
-    }, [hideInactive, projects]);
+    return React.useMemo(() => (
+        projects
+            .map((project) => filterProjectGroupSessions(
+                project,
+                (session) => !session.archived && (!hideInactive || session.active),
+            ))
+            .filter((project): project is ProjectGroupData => !!project)
+    ), [hideInactive, projects]);
 }
 
 /** Machine names only earn a slot once the list actually spans machines. */

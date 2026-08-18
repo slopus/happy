@@ -191,7 +191,7 @@ describe('settings', () => {
                 userMessageBubbleColor: 'gray',
                 sessionStatusBarDisplay: 'hidden',
                 usageLimitShowRemaining: false,
-                hideInactiveSessions: true,
+                hideInactiveSessions: false,
                 sortSessionsByActivity: false,
                 expResumeSession: false,
                 fileDiffsSidebar: false,

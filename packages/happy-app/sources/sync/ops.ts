@@ -6,7 +6,7 @@
 import { apiSocket } from './apiSocket';
 import { sync } from './sync';
 import { storage } from './storage';
-import type { AgentQuestionAnswer, MachineMetadata, Session, SessionAgentModesPatch, SessionMetadataPatch } from './storageTypes';
+import { METADATA_ONLY_FIELDS, type AgentQuestionAnswer, type MachineMetadata, type MetadataOnlyField, type Session, type SessionAgentModesPatch, type SessionMetadataPatch } from './storageTypes';
 import { markMetadataPushPending, clearMetadataPushPending, type PendingMetadataField } from './metadataPushPending';
 import {
     isRigMetadata,
@@ -666,10 +666,10 @@ export async function machineUpdateMetadata(
  * `undefined` and drop the field from every retry.
  */
 function liveValueOf(session: Session | undefined, field: PendingMetadataField): string | number | null | undefined {
-    if (field === 'pinnedAt') {
-        return session?.metadata?.pinnedAt;
+    if ((METADATA_ONLY_FIELDS as readonly string[]).includes(field)) {
+        return session?.metadata?.[field as MetadataOnlyField];
     }
-    return session?.[field];
+    return session?.[field as keyof SessionAgentModesPatch];
 }
 
 /**
@@ -755,14 +755,55 @@ export function sessionSetPinned(sessionId: string, pinned: boolean): void {
     if (pinned === alreadyPinned) return;
 
     const pinnedAt = pinned ? Date.now() : null;
-    markMetadataPushPending(sessionId, ['pinnedAt']);
+    // Order matters: the optimistic write goes in FIRST, and only then is the
+    // field marked pending. applySessions re-applies the stored value for any
+    // pending field — running it while this very write is in flight would
+    // resolve the field back to its pre-change value and swallow the change
+    // until the server echoed it back.
     state.applySessions([{ ...session, metadata: { ...session.metadata, pinnedAt } }]);
+    markMetadataPushPending(sessionId, ['pinnedAt']);
     sessionUpdateMetadata(sessionId, { pinnedAt })
         .catch((error) => {
             console.error(`Failed to sync pinned state for session ${sessionId}`, error);
         })
         .finally(() => {
             clearMetadataPushPending(sessionId, ['pinnedAt']);
+        });
+}
+
+/**
+ * Archive or un-archive a session.
+ *
+ * Archiving is purely about where the session is listed: an archived session
+ * leaves the main list and shows up on the archive screen, and nothing about
+ * it is destroyed. It is deliberately independent of whether the agent process
+ * is still alive — a session that merely finished stays in the main list, and
+ * an archived one that gets resumed comes back out of the archive (see
+ * storage.ts). Stopping a still-running session is a separate step the caller
+ * does first (see useSessionQuickActions).
+ *
+ * Shares the pinned-state plumbing: metadata is the only copy of `archivedAt`,
+ * so the optimistic write is guarded against the inbound updates still
+ * carrying pre-archive metadata. Never throws.
+ */
+export function sessionSetArchived(sessionId: string, archived: boolean): void {
+    const state = storage.getState();
+    const session = state.sessions[sessionId];
+    if (!session?.metadata) return;
+
+    const alreadyArchived = typeof session.metadata.archivedAt === 'number';
+    if (archived === alreadyArchived) return;
+
+    const archivedAt = archived ? Date.now() : null;
+    // Optimistic write first, pending flag second — see sessionSetPinned.
+    state.applySessions([{ ...session, metadata: { ...session.metadata, archivedAt } }]);
+    markMetadataPushPending(sessionId, ['archivedAt']);
+    sessionUpdateMetadata(sessionId, { archivedAt })
+        .catch((error) => {
+            console.error(`Failed to sync archived state for session ${sessionId}`, error);
+        })
+        .finally(() => {
+            clearMetadataPushPending(sessionId, ['archivedAt']);
         });
 }
 
@@ -1080,10 +1121,14 @@ export async function sessionKill(sessionId: string): Promise<SessionKillRespons
 }
 
 /**
- * Archive a session by deactivating it on the server.
- * Use this when the CLI process is already dead and sessionKill can't reach it.
+ * Force a session inactive on the server.
+ *
+ * This ends the session's *run* — it does not archive it in the user-facing
+ * sense (that is `sessionSetArchived`). Used when the CLI process is already
+ * gone and `sessionKill` has nothing to talk to, so the row would otherwise sit
+ * in the list claiming to be live.
  */
-export async function sessionArchive(sessionId: string): Promise<{ success: boolean; message?: string }> {
+export async function sessionForceDeactivate(sessionId: string): Promise<{ success: boolean; message?: string }> {
     try {
         const response = await apiSocket.request(`/v1/sessions/${sessionId}/archive`, {
             method: 'POST'
@@ -1100,7 +1145,7 @@ export async function sessionArchive(sessionId: string): Promise<{ success: bool
 /**
  * Permanently delete a session from the server
  * This will remove the session and all its associated data (messages, usage reports, access keys)
- * The session should be inactive/archived before deletion
+ * The session should be stopped (inactive) before deletion
  */
 export async function sessionDelete(sessionId: string): Promise<{ success: boolean; message?: string }> {
     try {

@@ -22,10 +22,14 @@ export function SessionActionsNativeMenu({
         canArchive,
         canCopySessionMetadata,
         canShowResume,
+        canStop,
         copySessionMetadata,
+        deleteSession,
         openDetails,
         resumeSession,
+        stopSession,
         togglePinned,
+        unarchiveSession,
     } = useSessionQuickActions(session, {
         onAfterArchive,
         onAfterDelete,
@@ -42,9 +46,18 @@ export function SessionActionsNativeMenu({
                 <DropdownMenuItem onClick={togglePinned}>
                     <DropdownMenuItem.Text>{isPinned ? t('sidebar.unpin') : t('sidebar.pin')}</DropdownMenuItem.Text>
                 </DropdownMenuItem>
-                {canArchive && (
+                {canStop && (
+                    <DropdownMenuItem onClick={stopSession}>
+                        <DropdownMenuItem.Text>{t('sessionInfo.stopSession')}</DropdownMenuItem.Text>
+                    </DropdownMenuItem>
+                )}
+                {canArchive ? (
                     <DropdownMenuItem onClick={archiveSession}>
                         <DropdownMenuItem.Text>{t('sessionInfo.archiveSession')}</DropdownMenuItem.Text>
+                    </DropdownMenuItem>
+                ) : (
+                    <DropdownMenuItem onClick={unarchiveSession}>
+                        <DropdownMenuItem.Text>{t('sessionInfo.unarchiveSession')}</DropdownMenuItem.Text>
                     </DropdownMenuItem>
                 )}
                 {canShowResume && (
@@ -57,6 +70,9 @@ export function SessionActionsNativeMenu({
                         <DropdownMenuItem.Text>{t('sessionInfo.copyMetadata')}</DropdownMenuItem.Text>
                     </DropdownMenuItem>
                 )}
+                <DropdownMenuItem onClick={deleteSession}>
+                    <DropdownMenuItem.Text>{t('sessionInfo.deleteSession')}</DropdownMenuItem.Text>
+                </DropdownMenuItem>
             </DropdownMenu.Items>
             <DropdownMenu.Trigger>{children}</DropdownMenu.Trigger>
         </DropdownMenu>

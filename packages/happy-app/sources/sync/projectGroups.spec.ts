@@ -66,17 +66,19 @@ function toRow(session: Session): SessionRowData {
 
 const isActive = (session: Session) => session.active;
 
-// A row carrying only the fields the search filter reads.
-function row(id: string, name: string, active = true): SessionRowData {
-    return { id, name, active, archived: !active } as SessionRowData;
+// A row carrying only the fields the search filter reads. `archived` is set
+// independently of `active`: filing a session away and its agent exiting are
+// two different things.
+function row(id: string, name: string, active = true, archived = false): SessionRowData {
+    return { id, name, active, archived } as SessionRowData;
 }
 
 describe('buildProjectGroups', () => {
     it('gathers every worktree of a repo under one project', () => {
         const groups = buildProjectGroups([
             session({ id: 'a', projectId: 'p1', projectName: 'happy' }),
-            session({ id: 'b', projectId: 'p1', workspaceId: 'w1', workspaceName: 'feature' }),
-            session({ id: 'c', projectId: 'p1', workspaceId: 'w2', workspaceName: 'bugfix' }),
+            session({ id: 'b', projectId: 'p1', projectName: 'happy', workspaceId: 'w1', workspaceName: 'feature' }),
+            session({ id: 'c', projectId: 'p1', projectName: 'happy', workspaceId: 'w2', workspaceName: 'bugfix' }),
         ], toRow, isActive);
 
         expect(groups).toHaveLength(1);
@@ -155,24 +157,39 @@ describe('buildProjectGroups without a native project identity', () => {
         expect(groups[0].workspaces[0].sessions.map(s => s.id)).toEqual(['a', 'b']);
     });
 
-    it('does not merge the same path from different machines', () => {
+    it('merges the same project from different machines', () => {
+        // Two daemons on one box register as two machines; the project is
+        // still one project.
         const groups = buildProjectGroups([
             session({ id: 'a', machineId: 'machine-1', path: '/projects/happy' }),
             session({ id: 'b', machineId: 'machine-2', path: '/projects/happy' }),
         ], toRow, isActive);
 
-        expect(groups.map(group => group.machineId)).toEqual(['machine-1', 'machine-2']);
-        expect(new Set(groups.map(group => group.id)).size).toBe(2);
+        expect(groups).toHaveLength(1);
+        expect(groups[0].workspaces[0].sessions.map(s => s.id)).toEqual(['a', 'b']);
     });
 
-    it('does not merge the same path from Rig and from Happy CLI', () => {
+    it('merges the same project from Rig and from Happy CLI', () => {
         const groups = buildProjectGroups([
             session({ id: 'a', path: '/projects/happy' }),
             session({ id: 'b', path: '/projects/happy', clientId: 'happy-cli' }),
         ], toRow, isActive);
 
-        expect(groups).toHaveLength(2);
-        expect(groups.map(group => group.name)).toEqual(['happy', 'happy']);
+        expect(groups).toHaveLength(1);
+        expect(groups[0].name).toBe('happy');
+        expect(groups[0].sessionCount).toBe(2);
+    });
+
+    it('merges a native Rig project with path sessions sharing its name', () => {
+        // The exact split the one-list rule exists to kill: rig opened the
+        // repo through its project catalog, Happy CLI through the directory.
+        const groups = buildProjectGroups([
+            session({ id: 'a', projectId: 'p1', projectName: 'happy' }),
+            session({ id: 'b', path: '/projects/happy', clientId: 'happy-cli' }),
+        ], toRow, isActive);
+
+        expect(groups).toHaveLength(1);
+        expect(groups[0].name).toBe('happy');
     });
 
     it('names the machine home directory Home', () => {
@@ -205,7 +222,7 @@ describe('filterProjectGroupSessions', () => {
             workspaces: [{
                 id: '',
                 name: null,
-                sessions: [row('active', 'active'), row('archived', 'archived', false)],
+                sessions: [row('active', 'active'), row('archived', 'archived', false, true)],
             }],
         };
 
@@ -216,7 +233,7 @@ describe('filterProjectGroupSessions', () => {
         });
     });
 
-    // A Rig session that dropped its connection is inactive but not archived —
+    // A session that dropped its connection is inactive but not archived —
     // hiding the archive must leave it on screen.
     it('keeps a disconnected session that was never archived', () => {
         const project: ProjectGroupData = {

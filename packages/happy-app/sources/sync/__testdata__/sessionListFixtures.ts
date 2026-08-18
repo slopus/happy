@@ -33,7 +33,8 @@ interface FakeSessionInput {
 }
 
 function fakeSession(input: FakeSessionInput): SessionRowData {
-    const active = input.state !== 'disconnected' && !input.archived;
+    // Archive is independent of the agent lifecycle — a fixture can be either.
+    const active = input.state !== 'disconnected';
     const provider = input.provider ?? 'codex';
     const providerName = provider === 'claude' ? 'Claude Code' : 'OpenAI Codex';
     const activeAt = NOW - (input.agoMinutes ?? 0) * MINUTE;
