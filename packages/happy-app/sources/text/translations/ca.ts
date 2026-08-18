@@ -305,6 +305,8 @@ export const ca: TranslationStructure = {
 
     newSession: {
         title: 'Iniciar nova sessió',
+        rigStillPreparingTitle: 'Encara preparant',
+        rigStillPreparingMessage: "Rig encara està preparant el worktree. Torna a prémer Inicia d'aquí a un moment — la mateixa sol·licitud de sessió continuarà.",
         machineOffline: 'La màquina està fora de línia',
         switchMachinesHint: '• Canvia de màquina fent clic a la màquina de dalt',
     },

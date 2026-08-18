@@ -305,6 +305,8 @@ export const es: TranslationStructure = {
 
     newSession: {
         title: 'Iniciar nueva sesión',
+        rigStillPreparingTitle: 'Aún preparando',
+        rigStillPreparingMessage: 'Rig todavía está preparando el worktree. Pulsa Iniciar de nuevo en un momento — la misma solicitud de sesión continuará.',
         machineOffline: 'La máquina está desconectada',
         switchMachinesHint: '• Cambia de máquina haciendo clic en la máquina de arriba',
     },

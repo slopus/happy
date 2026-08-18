@@ -28,7 +28,12 @@ import {
     resolveSpawnRequestId,
 } from '@/sync/spawnRequestId';
 
-const MAX_RIG_PENDING_RESULTS = 3;
+// A worktree spawn is bounded by a real `git worktree add`: on a large repo
+// the checkout takes tens of seconds (48s observed on this codebase), while
+// Rig holds each RPC only ~8s before answering `pending`. Three retries gave
+// up at ~40s — right before the workspace turned ready, orphaning it. The
+// budget must comfortably exceed a slow checkout; each retry is cheap.
+const MAX_RIG_PENDING_RESULTS = 15;
 
 function resolveOption<T extends { key: string }>(
     options: T[],
@@ -228,9 +233,12 @@ export function useStartSessionFromDraft() {
                     return null;
                 }
                 if (result.type === 'pending') {
+                    // Not an error and nothing is lost: the workspace
+                    // reservation is durable and the idempotency key is kept,
+                    // so the next Start resumes this same request.
                     Modal.alert(
-                        t('common.error'),
-                        'Rig created the session, but it is still syncing with Happy. It should appear shortly.',
+                        t('newSession.rigStillPreparingTitle'),
+                        t('newSession.rigStillPreparingMessage'),
                     );
                     return null;
                 }

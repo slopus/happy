@@ -291,6 +291,8 @@ export const ru: TranslationStructure = {
 
     newSession: {
         title: 'Начать новую сессию',
+        rigStillPreparingTitle: 'Ещё готовится',
+        rigStillPreparingMessage: 'Rig ещё готовит воркtree. Нажми Start ещё раз через мгновение — продолжится тот же запрос сессии.',
         machineOffline: 'Машина недоступна',
         switchMachinesHint: '• Переключите машину, нажав на неё выше',
     },

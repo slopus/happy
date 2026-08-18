@@ -306,6 +306,8 @@ export const ja: TranslationStructure = {
 
     newSession: {
         title: '新しいセッションを開始',
+        rigStillPreparingTitle: '準備中',
+        rigStillPreparingMessage: 'Rig はまだワークツリーを準備しています。しばらくしてからもう一度開始を押してください — 同じセッションリクエストが継続されます。',
         machineOffline: 'マシンがオフラインです',
         switchMachinesHint: '• 上のマシンをクリックしてマシンを切り替えてください',
     },

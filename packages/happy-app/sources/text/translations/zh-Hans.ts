@@ -306,6 +306,8 @@ export const zhHans: TranslationStructure = {
 
     newSession: {
         title: '开始新会话',
+        rigStillPreparingTitle: '仍在准备',
+        rigStillPreparingMessage: 'Rig 仍在准备工作树。稍后再按一次开始 — 同一个会话请求将继续。',
         machineOffline: '设备离线',
         switchMachinesHint: '• 点击上方的设备来切换设备',
     },

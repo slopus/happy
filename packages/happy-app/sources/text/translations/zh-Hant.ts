@@ -305,6 +305,8 @@ export const zhHant: TranslationStructure = {
 
     newSession: {
         title: '開始新工作階段',
+        rigStillPreparingTitle: '仍在準備',
+        rigStillPreparingMessage: 'Rig 仍在準備工作樹。稍後再按一次開始 — 同一個工作階段請求將繼續。',
         machineOffline: '裝置離線',
         switchMachinesHint: '• 點擊上方的裝置來切換裝置',
     },

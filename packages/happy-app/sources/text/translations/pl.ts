@@ -322,6 +322,8 @@ export const pl: TranslationStructure = {
 
     newSession: {
         title: 'Rozpocznij nową sesję',
+        rigStillPreparingTitle: 'Wciąż przygotowuje',
+        rigStillPreparingMessage: 'Rig wciąż przygotowuje worktree. Naciśnij Start ponownie za chwilę — to samo żądanie sesji będzie kontynuowane.',
         machineOffline: 'Maszyna jest offline',
         switchMachinesHint: '• Przełącz maszynę, klikając na nią powyżej',
     },

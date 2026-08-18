@@ -416,11 +416,12 @@ describe('useStartSessionFromDraft', () => {
         const { startSession } = useStartSessionFromDraft();
 
         await expect(startSession()).resolves.toBe(false);
-        expect(mocks.machineSpawnNewSession).toHaveBeenCalledTimes(4);
-        expect(mocks.delay).toHaveBeenCalledTimes(3);
+        // 1 initial call + the retry budget, sized for a slow `git worktree add`.
+        expect(mocks.machineSpawnNewSession).toHaveBeenCalledTimes(16);
+        expect(mocks.delay).toHaveBeenCalledTimes(15);
         expect(mocks.alert).toHaveBeenCalledWith(
-            'common.error',
-            'Rig created the session, but it is still syncing with Happy. It should appear shortly.',
+            'newSession.rigStillPreparingTitle',
+            'newSession.rigStillPreparingMessage',
         );
         expect(mocks.navigateToSession).not.toHaveBeenCalled();
     });
@@ -483,7 +484,7 @@ describe('useStartSessionFromDraft', () => {
             .map(([options]) => options.worktree);
         const requestIds = mocks.machineSpawnNewSession.mock.calls
             .map(([options]) => options.clientRequestId);
-        expect(worktrees).toEqual(Array.from({ length: 5 }, () => ({ type: 'new', name: 'generated-worktree' })));
+        expect(worktrees).toEqual(Array.from({ length: 17 }, () => ({ type: 'new', name: 'generated-worktree' })));
         expect(new Set(requestIds)).toEqual(new Set(['rig-request-1']));
     });
 
@@ -507,8 +508,8 @@ describe('useStartSessionFromDraft', () => {
 
         const requestIds = mocks.machineSpawnNewSession.mock.calls
             .map(([options]) => options.clientRequestId);
-        expect(requestIds.slice(0, 4)).toEqual(Array(4).fill('rig-request-1'));
-        expect(requestIds[4]).toBe('rig-request-2');
+        expect(requestIds.slice(0, 16)).toEqual(Array(16).fill('rig-request-1'));
+        expect(requestIds[16]).toBe('rig-request-2');
         expect(mocks.machineSpawnNewSession).toHaveBeenLastCalledWith(expect.objectContaining({
             worktree: { type: 'new', name: 'bright-forest' },
         }));

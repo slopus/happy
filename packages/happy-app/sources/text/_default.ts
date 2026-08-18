@@ -318,6 +318,8 @@ export const en = {
 
     newSession: {
         title: 'Start New Session',
+        rigStillPreparingTitle: 'Still preparing',
+        rigStillPreparingMessage: 'Rig is still preparing the worktree. Press Start again in a moment — the same session request will continue.',
         machineOffline: 'Machine is offline',
         switchMachinesHint: '• Switch machines by clicking on the machine above',
     },
