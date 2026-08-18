@@ -572,6 +572,8 @@ export const pl: TranslationStructure = {
         hideArchived: 'Ukryj zarchiwizowane',
         newSession: 'Nowa sesja',
         projects: "Projekty",
+        pin: 'Przypnij',
+        unpin: 'Odepnij',
     },
 
     zen: {

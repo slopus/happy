@@ -25,6 +25,7 @@ export function SessionActionsNativeMenu({
         copySessionMetadata,
         openDetails,
         resumeSession,
+        togglePinned,
     } = useSessionQuickActions(session, {
         onAfterArchive,
         onAfterDelete,
@@ -34,16 +35,19 @@ export function SessionActionsNativeMenu({
         <DropdownMenu>
             <DropdownMenu.Items>
                 <DropdownMenuItem onClick={openDetails}>
-                    <DropdownMenuItem.Text>Details</DropdownMenuItem.Text>
+                    <DropdownMenuItem.Text>{t('profile.details')}</DropdownMenuItem.Text>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={togglePinned}>
+                    <DropdownMenuItem.Text>{typeof session.metadata?.pinnedAt === 'number' ? t('sidebar.unpin') : t('sidebar.pin')}</DropdownMenuItem.Text>
                 </DropdownMenuItem>
                 {canArchive && (
                     <DropdownMenuItem onClick={archiveSession}>
-                        <DropdownMenuItem.Text>Archive</DropdownMenuItem.Text>
+                        <DropdownMenuItem.Text>{t('sessionInfo.archiveSession')}</DropdownMenuItem.Text>
                     </DropdownMenuItem>
                 )}
                 {canShowResume && (
                     <DropdownMenuItem onClick={resumeSession}>
-                        <DropdownMenuItem.Text>Resume</DropdownMenuItem.Text>
+                        <DropdownMenuItem.Text>{t('sessionInfo.resumeSession')}</DropdownMenuItem.Text>
                     </DropdownMenuItem>
                 )}
                 {canCopySessionMetadata && (

@@ -572,6 +572,8 @@ export const ru: TranslationStructure = {
         hideArchived: 'Скрыть архив',
         newSession: 'Новая сессия',
         projects: "Проекты",
+        pin: 'Закрепить',
+        unpin: 'Открепить',
     },
 
     zen: {

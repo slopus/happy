@@ -7,7 +7,7 @@ import { ItemList } from '@/components/ItemList';
 import { useRouter } from 'expo-router';
 import Constants from 'expo-constants';
 import * as Application from 'expo-application';
-import { useLocalSettingMutable, useSocketStatus } from '@/sync/storage';
+import { storage, useLocalSettingMutable, useSocketStatus } from '@/sync/storage';
 import { Modal } from '@/modal';
 import { sync } from '@/sync/sync';
 import { getServerUrl, setServerUrl, validateServerUrl, getLogServerUrl, setLogServerUrl } from '@/sync/serverConfig';
@@ -23,6 +23,61 @@ export default function DevScreen() {
     const socketStatus = useSocketStatus();
     const anonymousId = sync.encryption!.anonID;
     const { theme } = useUnistyles();
+
+    const seedDemoSessions = () => {
+        const now = Date.now();
+        const projects = [
+            { id: 'seed-happy', name: 'happy', path: '/Users/devdvlive/Projects/happy', rig: false },
+            { id: 'seed-codium', name: 'codium', path: '/Users/devdvlive/Projects/codium', rig: true },
+            { id: 'seed-website', name: 'website', path: '/Users/devdvlive/Projects/website', rig: false },
+        ];
+        const workspaces = [null, 'cursor-redesign', 'fix/mobile-list', 'release-preview'] as const;
+        const states = ['waiting', 'thinking', 'disconnected'] as const;
+        const sessions = Array.from({ length: 24 }, (_, index) => {
+            const project = projects[index % projects.length];
+            const age = index < 8 ? 0 : index < 12 ? 1 : index < 18 ? 3 : 7;
+            const workspace = project.rig ? workspaces[index % workspaces.length] : null;
+            const createdAt = now - age * 24 * 60 * 60 * 1000 - index * 3600000;
+            const metadata: any = {
+                path: project.path,
+                homeDir: '/Users/devdvlive',
+                machineId: `seed-machine-${project.rig ? 'rig' : 'happy'}`,
+                flavor: project.rig ? 'rig' : 'claude',
+                summary: { text: `Seeded ${project.name} session ${index + 1}` },
+                ...(project.rig ? {
+                    rig: true,
+                    client: { id: 'rig-dev', name: 'Rig' },
+                    project: { id: project.id, name: project.name },
+                    ...(workspace ? { workspace: { id: workspace, name: workspace } } : {}),
+                } : {}),
+            };
+            if (index === 0 || index === 1 || index === 2) metadata.pinnedAt = now - index * 1000;
+            return {
+                id: `seed-session-${index}`,
+                seq: index,
+                createdAt,
+                updatedAt: createdAt,
+                active: index % 4 !== 3,
+                activeAt: createdAt,
+                metadata,
+                metadataVersion: 1,
+                agentState: null,
+                agentStateVersion: 1,
+                thinking: states[index % states.length] === 'thinking',
+                thinkingAt: createdAt,
+                presence: states[index % states.length] === 'disconnected' ? createdAt : 'online' as const,
+            };
+        });
+        storage.getState().applySessions(sessions);
+        Modal.alert('Seeded', '24 mixed Rig and Happy sessions with workspaces added to this dev account.');
+    };
+
+    const clearDemoSessions = () => {
+        Object.keys(storage.getState().sessions)
+            .filter((id) => id.startsWith('seed-session-'))
+            .forEach((id) => storage.getState().deleteSession(id));
+        Modal.alert('Cleared', 'Seeded sessions removed.');
+    };
 
     const handleEditServerUrl = async () => {
         const currentUrl = getServerUrl();
@@ -308,6 +363,19 @@ export default function DevScreen() {
                     subtitle="Compare project/session list layouts on fake data"
                     icon={<Ionicons name="list-outline" size={28} color="#007AFF" />}
                     onPress={() => router.push('/dev/session-layouts' as any)}
+                />
+                <Item
+                    title="Seed Cursor Sessions"
+                    subtitle="Add mixed Rig and Happy sessions across projects and dates"
+                    icon={<Ionicons name="flask-outline" size={28} color="#AF52DE" />}
+                    onPress={seedDemoSessions}
+                />
+                <Item
+                    title="Clear Seeded Sessions"
+                    subtitle="Remove only sessions created by the seed tool"
+                    icon={<Ionicons name="trash-outline" size={28} color="#FF3B30" />}
+                    destructive
+                    onPress={clearDemoSessions}
                 />
             </ItemGroup>
 

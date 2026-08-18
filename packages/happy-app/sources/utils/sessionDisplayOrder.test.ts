@@ -90,10 +90,8 @@ describe('session display order', () => {
 
     it('numbers sessions nested in the shared project-card layout', () => {
         const data: SessionListViewItem[] = [
-            { type: 'projects-header', source: 'rig' },
             {
                 type: 'project',
-                source: 'rig',
                 project: {
                     id: 'rig-project',
                     name: 'rig',
@@ -107,10 +105,8 @@ describe('session display order', () => {
                     }],
                 },
             },
-            { type: 'projects-header', source: 'happy' },
             {
                 type: 'project',
-                source: 'happy',
                 project: {
                     id: 'happy-project',
                     name: 'happy',

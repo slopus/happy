@@ -667,7 +667,7 @@ export async function machineUpdateMetadata(
  */
 async function sessionUpdateAgentModesMetadata(
     sessionId: string,
-    patch: SessionAgentModesPatch,
+    patch: Record<string, unknown>,
     maxRetries: number = 3
 ): Promise<void> {
     const encryption = sync.encryption.getSessionEncryption(sessionId);
@@ -677,7 +677,7 @@ async function sessionUpdateAgentModesMetadata(
     }
 
     // Defensive copy: retries drop fields from the patch (see below)
-    let pendingPatch: SessionAgentModesPatch = { ...patch };
+    let pendingPatch: Record<string, unknown> = { ...patch };
     let currentVersion = session.metadataVersion;
     let currentMetadata: Record<string, unknown> = { ...session.metadata, ...pendingPatch };
 
@@ -707,8 +707,8 @@ async function sessionUpdateAgentModesMetadata(
             // owns the field now, and blindly replaying the original patch
             // would resurrect a pick the user already cleared.
             const liveSession = storage.getState().sessions[sessionId];
-            for (const field of Object.keys(pendingPatch) as (keyof SessionAgentModesPatch)[]) {
-                if ((liveSession?.[field] ?? null) !== (pendingPatch[field] ?? null)) {
+            for (const field of Object.keys(pendingPatch)) {
+                if (((liveSession as unknown as Record<string, unknown>)?.[field] ?? null) !== (pendingPatch[field] ?? null)) {
                     delete pendingPatch[field];
                 }
             }
@@ -722,6 +722,20 @@ async function sessionUpdateAgentModesMetadata(
     }
 
     throw new Error(`Failed to update session metadata after ${maxRetries} retries due to version conflicts`);
+}
+
+/** Toggle a session's pinned state and persist it in encrypted metadata. */
+export function sessionSetPinned(sessionId: string, pinned: boolean): void {
+    const state = storage.getState();
+    const session = state.sessions[sessionId];
+    if (!session?.metadata) return;
+    const pinnedAt = pinned ? (session.metadata.pinnedAt as number | undefined) ?? Date.now() : undefined;
+    const metadata = { ...session.metadata } as Record<string, unknown>;
+    if (pinnedAt === undefined) delete metadata.pinnedAt;
+    else metadata.pinnedAt = pinnedAt;
+    state.applySessions([{ ...session, metadata: metadata as typeof session.metadata }]);
+    sessionUpdateAgentModesMetadata(sessionId, pinnedAt === undefined ? { pinnedAt: null } : { pinnedAt })
+        .catch((error) => console.error(`Failed to sync pinned state for session ${sessionId}`, error));
 }
 
 /**
@@ -768,7 +782,7 @@ export function sessionSetAgentModes(sessionId: string, patch: SessionAgentModes
     // local mirror instead of bouncing the pick back.
     const changedFields = Object.keys(changed) as AgentModeField[];
     markAgentModePushPending(sessionId, changedFields);
-    sessionUpdateAgentModesMetadata(sessionId, changed)
+    sessionUpdateAgentModesMetadata(sessionId, { ...changed })
         .catch((error) => {
             console.error(`Failed to sync agent modes for session ${sessionId}`, error);
         })

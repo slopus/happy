@@ -554,6 +554,8 @@ export const it: TranslationStructure = {
         hideArchived: 'Nascondi archiviate',
         newSession: 'Nuova sessione',
         projects: "Progetti",
+        pin: 'Fissa',
+        unpin: 'Rimuovi fissaggio',
     },
 
     zen: {

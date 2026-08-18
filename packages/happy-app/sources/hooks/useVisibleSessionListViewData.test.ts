@@ -38,7 +38,6 @@ function row(id: string, options: { active?: boolean; archived?: boolean } = {})
 function project(id: string, sessions: SessionRowData[]): SessionListViewItem {
     return {
         type: 'project',
-        source: 'rig',
         project: {
             id,
             name: id,
@@ -70,9 +69,8 @@ describe('useVisibleSessionListViewData', () => {
     // session and one archived one.
     function mixedList(): SessionListViewItem[] {
         return [
-            { type: 'projects-header', source: 'rig' },
             project('p1', [row('project-disconnected'), row('project-archived', { archived: true })]),
-            { type: 'header', title: 'Today' },
+            { type: 'section', title: 'Today' },
             { type: 'session', session: row('flat-disconnected') },
             { type: 'session', session: row('flat-archived', { archived: true }) },
         ];
@@ -132,24 +130,21 @@ describe('useVisibleSessionListViewData', () => {
 
     it('drops a date header once everything under it is archived', () => {
         mocks.data = [
-            { type: 'header', title: 'Today' },
+            { type: 'section', title: 'Today' },
             { type: 'session', session: row('archived', { archived: true }) },
-            { type: 'header', title: 'Yesterday' },
+            { type: 'section', title: 'Yesterday' },
             { type: 'session', session: row('disconnected') },
         ];
         mocks.hideArchivedSessions = true;
 
         const result = useVisibleSessionListViewData()!;
 
-        expect(result.map((item) => (item.type === 'header' ? item.title : item.type)))
+        expect(result.map((item) => (item.type === 'section' ? item.title : item.type)))
             .toEqual(['Yesterday', 'session']);
     });
 
-    it('drops a projects header once every project under it is archived', () => {
-        mocks.data = [
-            { type: 'projects-header', source: 'rig' },
-            project('p1', [row('archived', { archived: true })]),
-        ];
+    it('drops a project once every session under it is archived', () => {
+        mocks.data = [project('p1', [row('archived', { archived: true })])];
         mocks.hideArchivedSessions = true;
 
         expect(useVisibleSessionListViewData()).toEqual([]);

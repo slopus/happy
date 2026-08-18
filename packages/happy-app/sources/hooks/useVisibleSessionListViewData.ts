@@ -27,7 +27,7 @@ export function useVisibleSessionListViewData(): SessionListViewItem[] | null {
         }
 
         const visibleProjects = new Map<number, SessionListViewItem>();
-        const visibleProjectSources = new Set<'rig' | 'happy'>();
+        const result: SessionListViewItem[] = [];
         data.forEach((item, index) => {
             if (item.type !== 'project') return;
             const project = hideArchivedSessions
@@ -35,14 +35,12 @@ export function useVisibleSessionListViewData(): SessionListViewItem[] | null {
                 : item.project;
             if (project) {
                 visibleProjects.set(index, { ...item, project });
-                visibleProjectSources.add(item.source);
             }
         });
 
-        const result: SessionListViewItem[] = [];
         data.forEach((item, index) => {
-            if (item.type === 'projects-header') {
-                if (visibleProjectSources.has(item.source)) result.push(item);
+            if (item.type === 'section') {
+                result.push(item);
                 return;
             }
             if (item.type === 'project') {
@@ -51,27 +49,16 @@ export function useVisibleSessionListViewData(): SessionListViewItem[] | null {
                 return;
             }
             if (item.type === 'active-sessions') result.push(item);
+            if (item.type === 'session' && (!hideArchivedSessions || !item.session.archived)) result.push(item);
         });
 
-        // Flat, date-grouped rows trail the project cards. A date header is
-        // held back until a row underneath it survives the filter, so hiding
-        // the archive never leaves a heading with nothing under it.
-        let pendingHeader: SessionListViewItem | null = null;
-        for (const item of data) {
-            if (item.type === 'header') {
-                pendingHeader = item;
-                continue;
-            }
-            if (item.type !== 'session') continue;
-            if (hideArchivedSessions && item.session.archived) continue;
-            if (pendingHeader) {
-                result.push(pendingHeader);
-                pendingHeader = null;
-            }
-            result.push(item);
-        }
-
-        return result;
+        // A section heading is dropped once nothing under it survives the
+        // filter, so hiding the archive never leaves a heading with no rows.
+        return result.filter((item, index) => {
+            if (item.type !== 'section') return true;
+            const next = result[index + 1];
+            return next != null && next.type === 'session';
+        });
     }, [data, hideArchivedSessions]);
 }
 

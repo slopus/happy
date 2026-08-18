@@ -557,6 +557,8 @@ export const zhHans: TranslationStructure = {
         hideArchived: '隐藏已归档',
         newSession: '新建会话',
         projects: "项目",
+        pin: '置顶',
+        unpin: '取消置顶',
     },
 
     zen: {

@@ -28,6 +28,7 @@ export function SessionActionsNativeMenu({
         copySessionMetadata,
         openDetails,
         resumeSession,
+        togglePinned,
     } = useSessionQuickActions(session, {
         onAfterArchive,
         onAfterDelete,
@@ -37,12 +38,13 @@ export function SessionActionsNativeMenu({
         <Host matchContents>
             <ContextMenu>
                 <ContextMenu.Items>
-                    <Button onPress={openDetails} systemImage={iosSymbol('info.circle')} label="Details" />
+                    <Button onPress={openDetails} systemImage={iosSymbol('info.circle')} label={t('profile.details')} />
+                    <Button onPress={togglePinned} systemImage={iosSymbol('pin')} label={typeof session.metadata?.pinnedAt === 'number' ? t('sidebar.unpin') : t('sidebar.pin')} />
                     {canArchive && (
-                        <Button onPress={archiveSession} systemImage={iosSymbol('archivebox')} label="Archive" />
+                        <Button onPress={archiveSession} systemImage={iosSymbol('archivebox')} label={t('sessionInfo.archiveSession')} />
                     )}
                     {canShowResume && (
-                        <Button onPress={resumeSession} systemImage={iosSymbol('play.circle')} label="Resume" />
+                        <Button onPress={resumeSession} systemImage={iosSymbol('play.circle')} label={t('sessionInfo.resumeSession')} />
                     )}
                     {canCopySessionMetadata && (
                         <Button onPress={copySessionMetadata} systemImage={iosSymbol('ladybug')} label={t('sessionInfo.copyMetadata')} />

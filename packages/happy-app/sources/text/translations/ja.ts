@@ -557,6 +557,8 @@ export const ja: TranslationStructure = {
         hideArchived: 'アーカイブを非表示',
         newSession: '新しいセッション',
         projects: "プロジェクト",
+        pin: 'ピン留め',
+        unpin: 'ピン留めを外す',
     },
 
     zen: {

@@ -112,6 +112,8 @@ export interface SessionRowData {
     // Names the git worktree this session runs in; null in the primary tree.
     workspaceId: string | null;
     workspaceName: string | null;
+    pinned?: boolean;
+    pinnedAt?: number;
 }
 
 function buildSessionRowData(session: Session, unreadSessionIds?: Set<string>): SessionRowData {
@@ -160,17 +162,18 @@ function buildSessionRowData(session: Session, unreadSessionIds?: Set<string>): 
         projectName: session.metadata?.project?.name ?? null,
         workspaceId: session.metadata?.workspace?.id ?? null,
         workspaceName: session.metadata?.workspace?.name ?? null,
+        pinned: typeof session.metadata?.pinnedAt === 'number',
+        ...(typeof session.metadata?.pinnedAt === 'number' ? { pinnedAt: session.metadata.pinnedAt } : {}),
     };
 }
 
 
 // Unified list item type for SessionsList component
 export type SessionListViewItem =
-    | { type: 'header'; title: string }
+    | { type: 'section'; title: string }
     | { type: 'active-sessions'; sessions: SessionRowData[] }
     | { type: 'project-group'; displayPath: string; machine: Machine }
-    | { type: 'projects-header'; source: 'rig' | 'happy' }
-    | { type: 'project'; source: 'rig' | 'happy'; project: ProjectGroupData }
+    | { type: 'project'; project: ProjectGroupData }
     | { type: 'session'; session: SessionRowData };
 
 export type { ProjectGroupData, ProjectWorkspaceGroup } from './projectGroups';
@@ -274,9 +277,35 @@ function buildSessionListViewData(
     // hasUnread=false everywhere — exactly the bug this parameter caused twice.
     unreadSessionIds: Set<string>,
 ): SessionListViewItem[] {
-    // Side chats are hidden children of another session — they render only
-    // inside the parent's sidebar panel, never in the top-level list.
-    const listed = Object.values(sessions).filter(session => !session.metadata?.isSideChat);
+    const now = Date.now();
+    const pinnedSessions: Session[] = [];
+    const recentSessions: Session[] = [];
+    const projectSessions: Session[] = [];
+
+    // "Today" is about recency of work, not of creation: a week-old session the
+    // agent is running right now belongs at the top, not buried in its project.
+    // lastMessageSentAt is used rather than updatedAt because updatedAt bumps on
+    // every background agent update and would shuffle the bucket constantly.
+    const DAY_MS = 24 * 60 * 60 * 1000;
+    const lastTouchedAt = (session: Session) => Math.max(session.createdAt, session.lastMessageSentAt ?? 0);
+    const isRecent = (session: Session) => isSessionActive(session) || now - lastTouchedAt(session) < DAY_MS;
+
+    Object.values(sessions).forEach(session => {
+        // Side chats are hidden children of another session — they render only
+        // inside the parent's sidebar panel, never in the top-level list.
+        if (session.metadata?.isSideChat) {
+            return;
+        }
+        if (typeof session.metadata?.pinnedAt === 'number') {
+            pinnedSessions.push(session);
+            return;
+        }
+        if (isRecent(session)) {
+            recentSessions.push(session);
+            return;
+        }
+        projectSessions.push(session);
+    });
 
     // Sort by last activity or creation date (newest first), per user setting — matches applySessions behavior
     // Activity sort keys off the last user-sent message, not updatedAt: updatedAt
@@ -285,42 +314,30 @@ function buildSessionListViewData(
     const sortKey = storage.getState().settings.sortSessionsByActivity
         ? (s: Session) => s.lastMessageSentAt ?? s.createdAt
         : (s: Session) => s.createdAt;
-    listed.sort((a, b) => {
+    projectSessions.sort((a, b) => {
         const activeDelta = Number(isSessionActive(b)) - Number(isSessionActive(a));
         return activeDelta !== 0 ? activeDelta : sortKey(b) - sortKey(a);
     });
 
-    // Rig and Happy CLI keep separate blocks. Partitioning after the sort leaves
-    // each block in activity order, and grouping walks it in that order, so a
-    // project ranks by its liveliest session without a second sort.
-    const toRow = (session: Session) => buildSessionRowData(session, unreadSessionIds);
-    const rigProjects = buildProjectGroups(
-        listed.filter(session => isRigMetadata(session.metadata)),
-        toRow,
-        isSessionActive,
-    );
-    const happyProjects = buildProjectGroups(
-        listed.filter(session => !isRigMetadata(session.metadata)),
-        toRow,
-        isSessionActive,
-    );
-
-    // The source label only earns a row when there is another source to tell it
-    // apart from — on its own it is a header over the entire list saying nothing.
-    const showSourceHeaders = rigProjects.length > 0 && happyProjects.length > 0;
-
     const listData: SessionListViewItem[] = [];
-    if (rigProjects.length > 0) {
-        if (showSourceHeaders) listData.push({ type: 'projects-header', source: 'rig' });
-        for (const project of rigProjects) {
-            listData.push({ type: 'project', source: 'rig', project });
-        }
-    }
-    if (happyProjects.length > 0) {
-        if (showSourceHeaders) listData.push({ type: 'projects-header', source: 'happy' });
-        for (const project of happyProjects) {
-            listData.push({ type: 'project', source: 'happy', project });
-        }
+    const toRow = (session: Session) => buildSessionRowData(session, unreadSessionIds);
+
+    const flatRows = (title: string, items: Session[]) => {
+        if (items.length === 0) return;
+        items.sort((a, b) => lastTouchedAt(b) - lastTouchedAt(a));
+        listData.push({ type: 'section', title });
+        items.forEach(session => listData.push({ type: 'session', session: toRow(session) }));
+    };
+    flatRows('Pinned', pinnedSessions);
+    flatRows('Today', recentSessions);
+
+    // Rig and Happy projects share one list. Where a session came from is a
+    // property of the row, not a reason to split the list in two — the runtime
+    // only feeds into a project's identity, which buildProjectGroups handles.
+    // Sessions arrive sorted, and grouping walks them in that order, so a
+    // project already ranks by its liveliest session without a second pass.
+    for (const project of buildProjectGroups(projectSessions, toRow, isSessionActive)) {
+        listData.push({ type: 'project', project });
     }
 
     return listData;

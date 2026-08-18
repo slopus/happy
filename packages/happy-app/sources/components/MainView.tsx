@@ -231,7 +231,7 @@ const HeaderTitle = React.memo(({ activeTab }: { activeTab: ActiveTabType }) => 
     return (
         <View style={styles.titleContainer}>
             <Text style={styles.titleText}>
-                {t(TAB_TITLES[activeTab])}
+                {activeTab === 'sessions' ? 'All Workspaces' : t(TAB_TITLES[activeTab])}
             </Text>
             {connectionStatus.text && (
                 <View style={styles.statusContainer}>
@@ -339,7 +339,7 @@ const HeaderRight = React.memo(({
                         accessibilityRole="button"
                         style={styles.headerActionButton}
                     >
-                        <Ionicons name="settings-outline" size={21} color={theme.colors.header.tint} />
+                        <Ionicons name="options-outline" size={22} color={theme.colors.header.tint} />
                     </Pressable>
                 </View>
             );
