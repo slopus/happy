@@ -549,6 +549,8 @@ export const ca: TranslationStructure = {
         hideArchived: 'Amaga arxivades',
         newSession: 'Nova sessió',
         projects: "Projectes",
+        pin: 'Fixar',
+        unpin: 'Desfixar',
     },
 
     zen: {

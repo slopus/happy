@@ -564,6 +564,8 @@ export const en = {
         hideArchived: 'Hide archived',
         newSession: 'New session',
         projects: 'Projects',
+        pin: 'Pin',
+        unpin: 'Unpin',
     },
 
     zen: {

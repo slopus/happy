@@ -1,11 +1,12 @@
 import React from 'react';
-import { View, Pressable } from 'react-native';
+import { View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Text } from '@/components/StyledText';
 import { Typography } from '@/constants/Typography';
-import { ProjectGroupData, ProjectWorkspaceGroup, useAllMachines, useLocalSettingMutable } from '@/sync/storage';
-import { CompactSessionRow } from './ActiveSessionsGroupCompact';
+import { ProjectGroupData, ProjectWorkspaceGroup, useAllMachines } from '@/sync/storage';
+import { SessionListRow } from './SessionListRow';
+import { sessionRowLayout } from './sessionRowLayout';
 
 interface ProjectGroupProps {
     project: ProjectGroupData;
@@ -18,14 +19,7 @@ interface ProjectGroupProps {
  */
 export const ProjectGroup = React.memo(({ project, selectedSessionId }: ProjectGroupProps) => {
     const styles = stylesheet;
-    const { theme } = useUnistyles();
     const machines = useAllMachines();
-    const [collapsedProjects, setCollapsedProjects] = useLocalSettingMutable('collapsedProjects');
-    const collapsed = !!collapsedProjects[project.id];
-
-    const toggleCollapsed = React.useCallback(() => {
-        setCollapsedProjects({ ...collapsedProjects, [project.id]: !collapsed });
-    }, [collapsed, collapsedProjects, project.id, setCollapsedProjects]);
 
     const machineName = React.useMemo(() => {
         if (!project.machineId) return null;
@@ -38,29 +32,18 @@ export const ProjectGroup = React.memo(({ project, selectedSessionId }: ProjectG
 
     return (
         <View style={styles.container}>
-            <Pressable style={styles.header} onPress={toggleCollapsed} hitSlop={8}>
-                <Ionicons
-                    name={collapsed ? 'chevron-forward' : 'chevron-down'}
-                    size={16}
-                    color={theme.colors.textSecondary}
-                    style={styles.chevron}
-                />
-                <View style={styles.headerText}>
-                    <Text style={styles.title} numberOfLines={1}>
-                        {project.name}
-                    </Text>
-                    {machineName && (
-                        <Text style={styles.subtitle} numberOfLines={1}>
-                            {machineName}
-                        </Text>
-                    )}
-                </View>
-                <Text style={styles.count}>
-                    {project.activeCount > 0 ? `${project.activeCount}/${project.sessionCount}` : project.sessionCount}
+            <View style={styles.header}>
+                <Text style={styles.title} numberOfLines={1}>
+                    {project.name}
                 </Text>
-            </Pressable>
+                {machineName && (
+                    <Text style={styles.machine} numberOfLines={1}>
+                        {machineName}
+                    </Text>
+                )}
+            </View>
 
-            {!collapsed && project.workspaces.map(workspace => (
+            {project.workspaces.map(workspace => (
                 <WorkspaceSection
                     key={workspace.id || 'primary'}
                     workspace={workspace}
@@ -95,11 +78,11 @@ const WorkspaceSection = React.memo(({ workspace, showLabel, selectedSessionId }
                 </View>
             )}
             {workspace.sessions.map((session, index) => (
-                <CompactSessionRow
+                <SessionListRow
                     key={session.id}
                     session={session}
                     selected={session.id === selectedSessionId}
-                    showBorder={index > 0}
+                    showDivider={index < workspace.sessions.length - 1}
                 />
             ))}
         </View>
@@ -108,50 +91,42 @@ const WorkspaceSection = React.memo(({ workspace, showLabel, selectedSessionId }
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
-        backgroundColor: theme.colors.surface,
-        marginHorizontal: 8,
-        marginBottom: 8,
-        borderRadius: 12,
-        overflow: 'hidden',
+        backgroundColor: 'transparent',
+        marginBottom: 6,
     },
+    // Same metrics as the "Pinned" / "Today" headings in SessionsList — a
+    // project name is a section heading, nothing more.
     header: {
         flexDirection: 'row',
         alignItems: 'center',
-        paddingHorizontal: 12,
-        paddingVertical: 10,
+        paddingHorizontal: sessionRowLayout.gutter,
+        paddingTop: 20,
+        paddingBottom: 6,
         gap: 6,
     },
-    chevron: {
-        width: 16,
-    },
-    headerText: {
-        flex: 1,
-        minWidth: 0,
-    },
     title: {
-        fontSize: 15,
-        color: theme.colors.text,
-        ...Typography.default('semiBold'),
-    },
-    subtitle: {
-        fontSize: 12,
-        color: theme.colors.textSecondary,
-        marginTop: 1,
+        fontSize: 13,
+        lineHeight: 18,
+        color: theme.colors.groupped.sectionTitle,
+        flexShrink: 1,
         ...Typography.default(),
     },
-    count: {
-        fontSize: 12,
+    machine: {
+        fontSize: 13,
+        lineHeight: 18,
         color: theme.colors.textSecondary,
+        flexShrink: 1,
         ...Typography.default(),
     },
     workspace: {
-        paddingLeft: 10,
+        paddingLeft: 0,
     },
     workspaceHeader: {
         flexDirection: 'row',
         alignItems: 'center',
         gap: 5,
-        paddingHorizontal: 12,
+        paddingLeft: sessionRowLayout.textInset,
+        paddingRight: sessionRowLayout.gutter,
         paddingTop: 8,
         paddingBottom: 4,
     },

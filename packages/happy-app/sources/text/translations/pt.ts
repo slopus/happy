@@ -548,6 +548,8 @@ export const pt: TranslationStructure = {
         hideArchived: 'Ocultar arquivadas',
         newSession: 'Nova sessão',
         projects: "Projetos",
+        pin: 'Fixar',
+        unpin: 'Desafixar',
     },
 
     zen: {

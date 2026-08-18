@@ -112,6 +112,8 @@ export interface SessionRowData {
     // Names the git worktree this session runs in; null in the primary tree.
     workspaceId: string | null;
     workspaceName: string | null;
+    pinned?: boolean;
+    pinnedAt?: number;
 }
 
 function buildSessionRowData(session: Session, unreadSessionIds?: Set<string>): SessionRowData {
@@ -160,17 +162,18 @@ function buildSessionRowData(session: Session, unreadSessionIds?: Set<string>): 
         projectName: session.metadata?.project?.name ?? null,
         workspaceId: session.metadata?.workspace?.id ?? null,
         workspaceName: session.metadata?.workspace?.name ?? null,
+        pinned: typeof session.metadata?.pinnedAt === 'number',
+        ...(typeof session.metadata?.pinnedAt === 'number' ? { pinnedAt: session.metadata.pinnedAt } : {}),
     };
 }
 
 
 // Unified list item type for SessionsList component
 export type SessionListViewItem =
-    | { type: 'header'; title: string }
+    | { type: 'section'; title: string }
     | { type: 'active-sessions'; sessions: SessionRowData[] }
     | { type: 'project-group'; displayPath: string; machine: Machine }
-    | { type: 'projects-header'; source: 'rig' | 'happy' }
-    | { type: 'project'; source: 'rig' | 'happy'; project: ProjectGroupData }
+    | { type: 'project'; project: ProjectGroupData }
     | { type: 'session'; session: SessionRowData };
 
 export type { ProjectGroupData, ProjectWorkspaceGroup } from './projectGroups';
@@ -274,14 +277,33 @@ function buildSessionListViewData(
     // hasUnread=false everywhere — exactly the bug this parameter caused twice.
     unreadSessionIds: Set<string>,
 ): SessionListViewItem[] {
+    const now = Date.now();
+    const pinnedSessions: Session[] = [];
+    const recentSessions: Session[] = [];
     const rigProjectSessions: Session[] = [];
     const rigPathSessions: Session[] = [];
     const happySessions: Session[] = [];
+
+    // "Today" is about recency of work, not of creation: a week-old session the
+    // agent is running right now belongs at the top, not buried in its project.
+    // lastMessageSentAt is used rather than updatedAt because updatedAt bumps on
+    // every background agent update and would shuffle the bucket constantly.
+    const DAY_MS = 24 * 60 * 60 * 1000;
+    const lastTouchedAt = (session: Session) => Math.max(session.createdAt, session.lastMessageSentAt ?? 0);
+    const isRecent = (session: Session) => isSessionActive(session) || now - lastTouchedAt(session) < DAY_MS;
 
     Object.values(sessions).forEach(session => {
         // Side chats are hidden children of another session — they render only
         // inside the parent's sidebar panel, never in the top-level list.
         if (session.metadata?.isSideChat) {
+            return;
+        }
+        if (typeof session.metadata?.pinnedAt === 'number') {
+            pinnedSessions.push(session);
+            return;
+        }
+        if (isRecent(session)) {
+            recentSessions.push(session);
             return;
         }
         if (isRigMetadata(session.metadata)) {
@@ -313,28 +335,38 @@ function buildSessionListViewData(
     const listData: SessionListViewItem[] = [];
     const toRow = (session: Session) => buildSessionRowData(session, unreadSessionIds);
 
-    const rigProjects = [
+    const flatRows = (title: string, items: Session[]) => {
+        if (items.length === 0) return;
+        items.sort((a, b) => lastTouchedAt(b) - lastTouchedAt(a));
+        listData.push({ type: 'section', title });
+        items.forEach(session => listData.push({ type: 'session', session: toRow(session) }));
+    };
+    flatRows('Pinned', pinnedSessions);
+    flatRows('Today', recentSessions);
+
+    // Rig and Happy projects share one list. Where a session came from is a
+    // property of the row, not a reason to split the list in two, so the three
+    // builders are merged and re-ordered by their newest session — otherwise
+    // the origin would still show through as a block ordering.
+    const projects = [
         ...buildProjectGroups(rigProjectSessions, toRow, isSessionActive),
         ...buildPathProjectGroups(rigPathSessions, toRow, isSessionActive, 'rig'),
+        ...buildPathProjectGroups(happySessions, toRow, isSessionActive, 'happy'),
     ];
-    if (rigProjects.length > 0) {
-        listData.push({ type: 'projects-header', source: 'rig' });
-        for (const project of rigProjects) {
-            listData.push({ type: 'project', source: 'rig', project });
-        }
+    const sessionRank = new Map<string, number>();
+    [...rigProjectSessions, ...rigPathSessions, ...happySessions]
+        .sort((a, b) => sortKey(b) - sortKey(a))
+        .forEach((session, index) => sessionRank.set(session.id, index));
+    const projectRank = new Map<string, number>();
+    for (const project of projects) {
+        const ranks = project.workspaces
+            .flatMap(workspace => workspace.sessions)
+            .map(session => sessionRank.get(session.id) ?? Number.MAX_SAFE_INTEGER);
+        projectRank.set(project.id, Math.min(...ranks));
     }
-
-    const happyProjects = buildPathProjectGroups(
-        happySessions,
-        toRow,
-        isSessionActive,
-        'happy',
-    );
-    if (happyProjects.length > 0) {
-        listData.push({ type: 'projects-header', source: 'happy' });
-        for (const project of happyProjects) {
-            listData.push({ type: 'project', source: 'happy', project });
-        }
+    projects.sort((a, b) => projectRank.get(a.id)! - projectRank.get(b.id)!);
+    for (const project of projects) {
+        listData.push({ type: 'project', project });
     }
 
     return listData;

@@ -2,7 +2,7 @@ import * as React from 'react';
 import { useHappyAction } from '@/hooks/useHappyAction';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { Modal } from '@/modal';
-import { machineResumeSession, sessionArchive, sessionKill, sessionSetAgentModes, forkAndSpawn, type ForkSource } from '@/sync/ops';
+import { machineResumeSession, sessionArchive, sessionKill, sessionSetAgentModes, sessionSetPinned, forkAndSpawn, type ForkSource } from '@/sync/ops';
 import { maybeCleanupWorktree } from '@/hooks/useWorktreeCleanup';
 import { storage, useLocalSetting, useMachine, useSetting } from '@/sync/storage';
 import { Machine, Session } from '@/sync/storageTypes';
@@ -224,6 +224,10 @@ export function useSessionQuickActions(
         performArchive();
     }, [performArchive]);
 
+    const togglePinned = React.useCallback(() => {
+        sessionSetPinned(session.id, typeof session.metadata?.pinnedAt !== 'number');
+    }, [session.id, session.metadata?.pinnedAt]);
+
     const resumeSession = React.useCallback(() => {
         performResume();
     }, [performResume]);
@@ -278,7 +282,14 @@ export function useSessionQuickActions(
             items.push({ id: 'copy-metadata-and-logs', icon: 'document-text-outline', label: t('sessionInfo.copyMetadata') + ' & Client Logs', onPress: copySessionMetadataAndLogs });
         }
 
-        items.push({ id: 'archive', icon: 'archive-outline', label: 'Archive', onPress: archiveSession, destructive: true });
+        items.push({
+            id: 'pin',
+            icon: typeof session.metadata?.pinnedAt === 'number' ? 'pin' : 'pin-outline',
+            label: typeof session.metadata?.pinnedAt === 'number' ? t('sidebar.unpin') : t('sidebar.pin'),
+            onPress: togglePinned,
+        });
+
+        items.push({ id: 'archive', icon: 'archive-outline', label: t('sessionInfo.archiveSession'), onPress: archiveSession, destructive: true });
 
         return items;
     }, [
@@ -291,6 +302,8 @@ export function useSessionQuickActions(
         forkSession,
         openDetails,
         openDuplicateSheet,
+        togglePinned,
+        session.metadata?.pinnedAt,
         resumeAvailability.canShowResume,
         resumeSession,
     ]);
@@ -321,6 +334,7 @@ export function useSessionQuickActions(
         forking,
         openDetails,
         openDuplicateSheet,
+        togglePinned,
         resumeSession,
         resumeSessionSubtitle: resumeAvailability.subtitle,
         resumingSession,

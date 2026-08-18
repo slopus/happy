@@ -549,6 +549,8 @@ export const zhHant: TranslationStructure = {
         hideArchived: '隱藏已封存',
         newSession: '新建對話',
         projects: "專案",
+        pin: '置頂',
+        unpin: '取消置頂',
     },
 
     zen: {

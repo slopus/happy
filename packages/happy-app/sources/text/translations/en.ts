@@ -563,6 +563,8 @@ export const en: TranslationStructure = {
         hideArchived: 'Hide archived',
         newSession: 'New session',
         projects: "Projects",
+        pin: 'Pin',
+        unpin: 'Unpin',
     },
 
     zen: {
