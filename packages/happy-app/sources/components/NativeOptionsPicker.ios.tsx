@@ -16,6 +16,7 @@ import {
     buttonStyle,
     contentShape,
     disabled,
+    foregroundStyle,
     frame,
     shapes,
     tint,
@@ -85,6 +86,11 @@ export function NativeOptionsPicker({
                     label={(
                         // The whole row is the label, so every part of it opens
                         // the menu: the icon, the value, and the space between.
+                        // Icon and text carry an explicit foregroundStyle: on
+                        // newer iOS a plain-style Menu label ignores the tint
+                        // and falls back to the environment's primary color,
+                        // which made the tintColor override a no-op — black
+                        // rows on the dark focus scrim in light mode.
                         <HStack
                             spacing={12}
                             modifiers={[
@@ -94,9 +100,13 @@ export function NativeOptionsPicker({
                             ]}
                         >
                             {triggerSystemImage ? (
-                                <Image systemName={systemImage(triggerSystemImage)} size={18} />
+                                <Image
+                                    systemName={systemImage(triggerSystemImage)}
+                                    size={18}
+                                    modifiers={[foregroundStyle(tintColor ?? theme.colors.text)]}
+                                />
                             ) : null}
-                            <Text>{triggerLabel}</Text>
+                            <Text modifiers={[foregroundStyle(tintColor ?? theme.colors.text)]}>{triggerLabel}</Text>
                             <Spacer minLength={8} />
                         </HStack>
                     )}
