@@ -161,6 +161,24 @@ describe("machinesRoutes — POST /v1/machines creation emits", () => {
         }
     });
 
+    it("returns 409 when the machine id belongs to another account, instead of an opaque 500", async () => {
+        app = await createApp();
+        // The route's existence check is account-scoped, so a foreign machine
+        // id passes it and hits the global unique constraint on create.
+        (dbMock.machine.create as any).mockRejectedValueOnce({ code: "P2002" });
+
+        const res = await app.inject({
+            method: "POST",
+            url: "/v1/machines",
+            headers: { "x-user-id": "user-2" },
+            payload: { id: "machine-1", metadata: "encrypted-metadata-blob" },
+        });
+
+        expect(res.statusCode).toBe(409);
+        expect(res.json()).toEqual({ error: "Machine id is already registered to another account" });
+        expect(emitUpdateSpy).not.toHaveBeenCalled();
+    });
+
     it("emits a new-machine update that also validates when there is no data encryption key", async () => {
         app = await createApp();
 
