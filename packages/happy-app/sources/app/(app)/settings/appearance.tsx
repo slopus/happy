@@ -281,6 +281,13 @@ export default function AppearanceSettingsScreen() {
                         // Update the setting
                         setThemePreference(nextTheme);
                         
+                        // Keep the NATIVE appearance in step: SwiftUI menus,
+                        // the keyboard, and native context menus follow UIKit,
+                        // not unistyles (see unistyles.ts).
+                        if (Platform.OS !== 'web') {
+                            Appearance.setColorScheme(nextTheme === 'adaptive' ? 'unspecified' : nextTheme);
+                        }
+
                         // Apply the theme change immediately
                         if (nextTheme === 'adaptive') {
                             // Enable adaptive themes and set to system theme
