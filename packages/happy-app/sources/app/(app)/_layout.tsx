@@ -169,9 +169,8 @@ export default function RootLayout() {
             <Stack.Screen
                 name="archive"
                 options={{
-                    headerShown: true,
-                    headerTitle: t('archive.title'),
-                    headerBackTitle: t('common.back'),
+                    // The screen draws the chat-style overlay header itself.
+                    headerShown: false,
                 }}
             />
             <Stack.Screen

@@ -299,7 +299,8 @@ const styles = StyleSheet.create((theme) => ({
     focusConfigValue: {
         flex: 1,
         minWidth: 0,
-        color: theme.colors.text,
+        // On the fixed dark focus scrim in both themes.
+        color: '#FFFFFF',
         fontSize: 17,
         ...Typography.default(),
     },
@@ -1024,6 +1025,9 @@ export const HomeDock = React.memo(({
         <NativeOptionsPicker
             key={row.page}
             title={config.title}
+            // Compact rows sit on the fixed rgba(0,0,0,0.88) focus scrim, dark
+            // in both themes — the label must stay white, not follow the theme.
+            tintColor={compact ? '#FFFFFF' : undefined}
             triggerLabel={row.value}
             systemImage={{
                 machine: 'desktopcomputer',
@@ -1043,7 +1047,7 @@ export const HomeDock = React.memo(({
                     <Ionicons
                         name={row.icon}
                         size={compact ? 21 : 18}
-                        color={theme.colors.text}
+                        color={compact ? '#FFFFFF' : theme.colors.text}
                     />
                 </View>
                 {compact ? (

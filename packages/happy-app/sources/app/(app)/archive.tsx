@@ -1,9 +1,12 @@
 import * as React from 'react';
 import { Platform, View } from 'react-native';
+import { useRouter } from 'expo-router';
 import { Text } from '@/components/StyledText';
 import { StyleSheet } from 'react-native-unistyles';
+import { ChatHeaderView } from '@/components/ChatHeaderView';
 import { SessionsList } from '@/components/SessionsList';
 import { useArchivedSessionListViewData } from '@/hooks/useVisibleSessionListViewData';
+import { useHeaderHeight } from '@/utils/responsive';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
 
@@ -17,6 +20,8 @@ import { t } from '@/text';
  */
 export default React.memo(function ArchiveScreen() {
     const items = useArchivedSessionListViewData();
+    const router = useRouter();
+    const headerHeight = useHeaderHeight();
 
     const empty = React.useMemo(() => (
         <View style={styles.empty}>
@@ -27,7 +32,18 @@ export default React.memo(function ArchiveScreen() {
 
     return (
         <View style={styles.container}>
-            <SessionsList items={items} emptyComponent={empty} bottomContentInset={32} />
+            <SessionsList
+                items={items}
+                emptyComponent={empty}
+                topContentInset={headerHeight}
+                bottomContentInset={32}
+            />
+            {/* The same overlay header the chat screen uses (glass scrim +
+                round back control) instead of the native stack header, so
+                this screen reads like the main list and the chat. */}
+            <View style={styles.headerOverlay}>
+                <ChatHeaderView title={t('archive.title')} onBackPress={() => router.back()} />
+            </View>
         </View>
     );
 });
@@ -41,6 +57,13 @@ const styles = StyleSheet.create((theme) => ({
         // an opaque fill here gave this screen a flat, different-looking
         // header in both themes.
         backgroundColor: Platform.select({ web: theme.colors.groupped.background, default: 'transparent' }),
+    },
+    headerOverlay: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        zIndex: 1000,
     },
     empty: {
         paddingTop: 64,

@@ -51,6 +51,7 @@ export function NativeOptionsPicker({
     selectedKey,
     onSelect,
     children,
+    tintColor,
 }: NativeOptionsPickerProps) {
     const { theme } = useUnistyles();
     return (
@@ -80,7 +81,7 @@ export function NativeOptionsPicker({
                     // white would render it invisible in light mode.
                     // No glass capsule: the plain style leaves the system less
                     // chrome to morph when the menu opens.
-                    modifiers={[tint(theme.colors.text), buttonStyle('plain')]}
+                    modifiers={[tint(tintColor ?? theme.colors.text), buttonStyle('plain')]}
                     label={(
                         // The whole row is the label, so every part of it opens
                         // the menu: the icon, the value, and the space between.
