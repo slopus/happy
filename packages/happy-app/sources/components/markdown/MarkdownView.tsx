@@ -40,13 +40,16 @@ export const MarkdownView = React.memo((props: {
         [props.conversationFontSize],
     );
     
-    // Backwards compatibility: The original version just returned the view, wrapping the list of blocks.
-    // It made each of the individual text elements selectable. When we enable the markdownCopyV2 feature,
-    // we disable the selectable property on individual text segments on mobile only. Instead, the long press
-    // will be handled by a wrapper Pressable. If we don't disable the selectable property, then you will see
-    // the native copy modal come up at the same time as the long press handler is fired.
-    const markdownCopyV2 = useLocalSetting('markdownCopyV2');
-    const selectable = Platform.OS === 'web' || !markdownCopyV2;
+    // Every block is its own <Text>, and native selection cannot cross a Text
+    // boundary — selecting in place therefore never reaches past one paragraph
+    // (#1696). On mobile the long press hands the whole message to the text
+    // selection screen instead, where it is a single Text and any range is
+    // selectable. The two cannot coexist: leaving the segments selectable pops
+    // the native copy menu at the same moment the long press fires, so this
+    // turns them off. Web keeps in-place selection — the browser spans blocks
+    // on its own.
+    const fullMessageSelection = useLocalSetting('fullMessageSelection');
+    const selectable = Platform.OS === 'web' || !fullMessageSelection;
     const router = useRouter();
 
     const handleLinkPress = React.useCallback((url: string) => {
@@ -98,7 +101,7 @@ export const MarkdownView = React.memo((props: {
         );
     }
 
-    if (!markdownCopyV2) {
+    if (!fullMessageSelection) {
         return renderContent();
     }
     
