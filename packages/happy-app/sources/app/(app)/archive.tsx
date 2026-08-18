@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { View } from 'react-native';
+import { Platform, View } from 'react-native';
 import { Text } from '@/components/StyledText';
 import { StyleSheet } from 'react-native-unistyles';
 import { SessionsList } from '@/components/SessionsList';
@@ -35,7 +35,12 @@ export default React.memo(function ArchiveScreen() {
 const styles = StyleSheet.create((theme) => ({
     container: {
         flex: 1,
-        backgroundColor: theme.colors.groupped.background,
+        // Same pattern as every other sub-screen (session/recent,
+        // text-selection): mobile stays transparent so the shared glass
+        // backdrop shows through under the translucent native header —
+        // an opaque fill here gave this screen a flat, different-looking
+        // header in both themes.
+        backgroundColor: Platform.select({ web: theme.colors.groupped.background, default: 'transparent' }),
     },
     empty: {
         paddingTop: 64,
