@@ -11,15 +11,26 @@ function route(pathname: string): string {
     return url.toString();
 }
 
-test('[PC SETTINGS MODAL] hides persistent desktop controls behind the modal', async ({ page }, testInfo) => {
+test('[PC SETTINGS MODAL] opens as a component without changing the current route', async ({ page }, testInfo) => {
     await page.setViewportSize({ width: 1280, height: 900 });
-    await page.goto(route('/settings'));
+    await page.goto(route('/'), { waitUntil: 'domcontentloaded' });
+    await expect(page.getByTestId('compose-home-settings-button')).toBeVisible();
+
+    const currentUrl = page.url();
+    await page.getByTestId('compose-home-settings-button').click();
 
     await expect(page.getByTestId('settings-modal-panel')).toBeVisible();
     await expect(page.getByTestId('settings-modal-close')).toBeVisible();
-    await expect(page.getByTestId('desktop-navigation-controls')).toHaveCount(0);
-    await expect(page.getByTestId('desktop-left-panel-resize-handle')).toHaveCount(0);
-    await expect(page.getByTestId('desktop-right-panel-resize-handle')).toHaveCount(0);
+    await expect(page).toHaveURL(currentUrl);
+
+    const modalPanel = page.getByTestId('settings-modal-panel');
+    await modalPanel.getByText('Theme', { exact: true }).click();
+    await expect(modalPanel.getByText('Appearance', { exact: true })).toBeVisible();
+    await expect(page).toHaveURL(currentUrl);
+
+    await page.getByTestId('settings-modal-back').click();
+    await expect(modalPanel.getByText('Settings', { exact: true })).toBeVisible();
+    await expect(page).toHaveURL(currentUrl);
 
     if (evidenceDirectory) {
         fs.mkdirSync(evidenceDirectory, { recursive: true });
@@ -29,8 +40,7 @@ test('[PC SETTINGS MODAL] hides persistent desktop controls behind the modal', a
         });
     }
 
-    await expect(page.getByTestId('settings-modal-backdrop')).toBeVisible();
-    await page.getByTestId('settings-modal-backdrop').click({ position: { x: 8, y: 8 } });
+    await page.getByTestId('settings-modal-close').click();
     await expect(page.getByTestId('settings-modal-panel')).toHaveCount(0);
-    await expect(page).toHaveURL(new RegExp(`${new URL(authenticatedWebUrl).origin}/?$`));
+    await expect(page).toHaveURL(currentUrl);
 });

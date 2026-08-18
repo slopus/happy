@@ -19,6 +19,7 @@ import { SidebarAccountMenu } from './SidebarAccountMenu';
 import { SidebarHelpMenu } from './SidebarHelpMenu';
 import { useCommandPaletteLauncher } from './CommandPalette/CommandPaletteProvider';
 import { RelationshipAdvisorSidebarHistory } from './relationship-advisor/RelationshipAdvisorSidebarHistory';
+import { useDesktopSettingsModal } from './DesktopSettingsModal';
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
@@ -234,6 +235,7 @@ export const SidebarView = React.memo(({
     const [footerMenu, setFooterMenu] = React.useState<FooterMenu>(null);
     const { agent: spaceAgent, exit: exitSpace } = useAgentSpace();
     const commandPaletteLauncher = useCommandPaletteLauncher();
+    const { openSettings } = useDesktopSettingsModal();
     const displayName = getDisplayName(profile) ?? t('settings.title');
 
     React.useEffect(() => {
@@ -434,6 +436,7 @@ export const SidebarView = React.memo(({
                             desktopDensity
                             displayName={displayName}
                             onNavigate={go}
+                            onOpenSettings={openSettings}
                             onOpenChange={setAccountMenuOpen}
                             open={footerMenu === 'account'}
                             profile={profile}
@@ -446,6 +449,7 @@ export const SidebarView = React.memo(({
                         desktopDensity={desktopDensity}
                         displayName={displayName}
                         onNavigate={go}
+                        onOpenSettings={openSettings}
                         onOpenChange={setAccountMenuOpen}
                         open={footerMenu === 'account'}
                         profile={profile}

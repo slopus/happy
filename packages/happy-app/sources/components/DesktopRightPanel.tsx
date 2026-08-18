@@ -6,9 +6,8 @@ import { Typography } from '@/constants/Typography';
 import { DesktopPanelResizeHandle } from './DesktopPanelResizeHandle';
 import { DesktopShortcutTooltip } from './DesktopShortcutTooltip';
 import { useDesktopWorkspaceLayout } from '@/hooks/useDesktopWorkspaceLayout';
-import { getDesktopPanelShortcutPresentation, isSettingsModalRoute } from '@/utils/desktopNavigationLayout';
+import { getDesktopPanelShortcutPresentation } from '@/utils/desktopNavigationLayout';
 import { t } from '@/text';
-import { usePathname } from 'expo-router';
 
 export type DesktopRightPanelTab = {
     key: string;
@@ -37,9 +36,6 @@ export const DesktopRightPanel = React.memo(function DesktopRightPanel({
 }) {
     const { theme } = useUnistyles();
     const { enabled: resizable } = useDesktopWorkspaceLayout();
-    const pathname = usePathname();
-    const shouldShowResizeHandle = resizable
-        && !(Platform.OS === 'web' && isSettingsModalRoute(pathname));
     const [tooltipVisible, setTooltipVisible] = React.useState(false);
     const shortcuts = getDesktopPanelShortcutPresentation();
     const activePanelLabel = tabs.find((tab) => tab.key === activeTab)?.label ?? tabs[0]?.label ?? 'Panel';
@@ -49,7 +45,7 @@ export const DesktopRightPanel = React.memo(function DesktopRightPanel({
             style={[styles.container, resizable && styles.containerResizable]}
             testID="desktop-right-panel"
         >
-            {shouldShowResizeHandle && (
+            {resizable && (
                 <DesktopPanelResizeHandle
                     accessibilityLabel={t('desktopWorkspace.resizePanel', { panel: activePanelLabel })}
                     offset={0}

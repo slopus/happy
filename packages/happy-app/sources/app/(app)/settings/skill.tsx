@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { ScrollView, View, ActivityIndicator } from 'react-native';
-import { Stack, useLocalSearchParams } from 'expo-router';
+import { Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
@@ -10,11 +10,12 @@ import { readSkillFileBase64 } from '@/sync/skills';
 import { decodeBase64 } from '@/encryption/base64';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
+import { useSettingsSearchParams } from '@/components/DesktopSettingsNavigation';
 
 export default React.memo(function SkillDetailScreen() {
     const { theme } = useUnistyles();
     const styles = stylesheet;
-    const { path, machineId, name } = useLocalSearchParams<{ path: string; machineId: string; name: string }>();
+    const { path, machineId, name } = useSettingsSearchParams<{ path: string; machineId: string; name: string }>();
 
     const [text, setText] = React.useState('');
     const [loading, setLoading] = React.useState(true);

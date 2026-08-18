@@ -6,7 +6,7 @@ import { SidebarView } from './SidebarView';
 import { useWindowDimensions, View, Pressable, Platform, BackHandler, Text } from 'react-native';
 import { useLocalSettingMutable } from '@/sync/storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { usePathname, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
@@ -25,7 +25,6 @@ import { KeyboardShortcutsProvider } from './KeyboardShortcuts';
 import {
     getDesktopPanelShortcutPresentation,
     getPersistentHeaderPointerEvents,
-    isSettingsModalRoute,
     PERSISTENT_NAVIGATION_BUTTON_SIZE,
     PERSISTENT_NAVIGATION_DESKTOP_CONTROLS_WIDTH,
     PERSISTENT_NAVIGATION_SIDEBAR_CONTROL_WIDTH,
@@ -57,9 +56,7 @@ const SidebarNavigatorContent = React.memo(() => {
     } = useDesktopWorkspaceLayout();
     const selectionMode = useSessionSelection((s) => s.active);
     const clearSelection = useSessionSelection((s) => s.clearSelection);
-    const pathname = usePathname();
     const isDesktopLayout = auth.isAuthenticated && isTablet;
-    const isDesktopSettingsModal = Platform.OS === 'web' && isSettingsModalRoute(pathname);
     const { width: windowWidth } = useWindowDimensions();
 
     // Calculate target drawer width
@@ -195,10 +192,10 @@ const SidebarNavigatorContent = React.memo(() => {
                 drawerContent={(isDesktopLayout || auth.isAuthenticated) ? drawerContent : undefined}
             />
             {/* Persistent header overlay — always visible on desktop, same position regardless of zen mode */}
-            {isDesktopLayout && !isDesktopSettingsModal && (
+            {isDesktopLayout && (
                 <PersistentHeader />
             )}
-            {isDesktopLayout && showSidebar && !isDesktopSettingsModal && (
+            {isDesktopLayout && showSidebar && (
                 <DesktopPanelResizeHandle
                     accessibilityLabel={t('desktopWorkspace.resizePanel', {
                         panel: t('desktopWorkspace.sessions'),

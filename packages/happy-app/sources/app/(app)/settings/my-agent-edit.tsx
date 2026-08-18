@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { View, Text, TextInput, Pressable, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { Stack } from 'expo-router';
 import { randomUUID } from 'expo-crypto';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Item } from '@/components/Item';
@@ -15,6 +15,7 @@ import { entityColor } from '@/components/entityColor';
 import { Modal } from '@/modal';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
+import { useSettingsRouter, useSettingsSearchParams } from '@/components/DesktopSettingsNavigation';
 import type { AgentPreset } from '@/components/agents/launchAgent';
 import { formatPathRelativeToHome } from '@/utils/sessionUtils';
 import type { Session } from '@/sync/storageTypes';
@@ -51,8 +52,8 @@ function firstGlyph(name: string): string {
 export default React.memo(function AgentEditScreen() {
     const { theme } = useUnistyles();
     const styles = stylesheet;
-    const router = useRouter();
-    const params = useLocalSearchParams<{ id?: string; kind?: string }>();
+    const router = useSettingsRouter();
+    const params = useSettingsSearchParams<{ id?: string; kind?: string }>();
     const editingId = typeof params.id === 'string' && params.id.length > 0 ? params.id : null;
 
     const [agents, setAgents] = useLocalSettingMutable('agents');

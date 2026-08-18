@@ -1,6 +1,5 @@
 import * as React from 'react';
 import { View, TextInput, ActivityIndicator, Platform } from 'react-native';
-import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
@@ -10,11 +9,12 @@ import { scanSkills, type SkillEntry } from '@/sync/skills';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
 import { t } from '@/text';
+import { useSettingsRouter } from '@/components/DesktopSettingsNavigation';
 
 export default React.memo(function SkillsScreen() {
     const { theme } = useUnistyles();
     const styles = stylesheet;
-    const router = useRouter();
+    const router = useSettingsRouter();
     const machines = useAllMachines();
 
     const [selectedMachineId, setSelectedMachineId] = React.useState<string | null>(null);

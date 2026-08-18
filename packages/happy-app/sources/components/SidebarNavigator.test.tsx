@@ -286,7 +286,7 @@ describe('SidebarNavigator drawer behavior', () => {
         act(() => renderer.unmount());
     });
 
-    it('hides persistent desktop navigation while settings is presented as a modal', () => {
+    it('does not couple persistent desktop navigation to settings routes', () => {
         mocks.pathname = '/settings';
         let renderer: any;
 
@@ -294,8 +294,8 @@ describe('SidebarNavigator drawer behavior', () => {
             renderer = TestRenderer.create(<SidebarNavigator />);
         });
 
-        expect(renderer.root.findAllByProps({ testID: 'desktop-navigation-controls' })).toHaveLength(0);
-        expect(renderer.root.findAllByProps({ testID: 'desktop-left-panel-resize-handle' })).toHaveLength(0);
+        expect(renderer.root.findAllByProps({ testID: 'desktop-navigation-controls' })).toHaveLength(1);
+        expect(renderer.root.findAllByProps({ testID: 'desktop-left-panel-resize-handle' })).toHaveLength(1);
 
         act(() => renderer.unmount());
     });

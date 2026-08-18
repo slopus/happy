@@ -1,7 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { View, TextInput, FlatList } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
@@ -9,10 +8,11 @@ import { useSettingMutable } from '@/sync/storage';
 import { useUnistyles } from 'react-native-unistyles';
 import { LANGUAGES, getLanguageDisplayName, type Language } from '@/constants/Languages';
 import { t } from '@/text';
+import { useSettingsRouter } from '@/components/DesktopSettingsNavigation';
 
 export default function LanguageSelectionScreen() {
     const { theme } = useUnistyles();
-    const router = useRouter();
+    const router = useSettingsRouter();
     const [voiceAssistantLanguage, setVoiceAssistantLanguage] = useSettingMutable('voiceAssistantLanguage');
     const [searchQuery, setSearchQuery] = useState('');
 

@@ -8,7 +8,6 @@ import { isRunningOnMac } from '@/utils/platform';
 import { useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
 import { CardStackScene } from '@/components/CardStackScene';
-import { useIsTablet } from '@/utils/responsive';
 
 export const unstable_settings = {
     initialRouteName: 'index',
@@ -17,7 +16,6 @@ export const unstable_settings = {
 export default function RootLayout() {
     // Use custom header on Android and Mac Catalyst, native header on iOS (non-Catalyst)
     const shouldUseCustomHeader = Platform.OS === 'android' || isRunningOnMac() || Platform.OS === 'web';
-    const useDesktopSettingsModal = Platform.OS === 'web' && useIsTablet();
     const { theme } = useUnistyles();
 
     return (
@@ -58,14 +56,11 @@ export default function RootLayout() {
                 }}
             />
             <Stack.Screen
-                name="settings"
+                name="settings/index"
                 options={{
-                    animation: useDesktopSettingsModal ? 'fade' : 'default',
-                    contentStyle: {
-                        backgroundColor: useDesktopSettingsModal ? 'transparent' : theme.colors.surface,
-                    },
-                    headerShown: false,
-                    presentation: useDesktopSettingsModal ? 'transparentModal' : 'card',
+                    headerShown: true,
+                    headerTitle: t('settings.title'),
+                    headerBackTitle: t('common.home'),
                 }}
             />
             <Stack.Screen

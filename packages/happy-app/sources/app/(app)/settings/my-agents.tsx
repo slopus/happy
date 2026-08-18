@@ -1,7 +1,6 @@
 import * as React from 'react';
 import { View, Text } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
@@ -10,6 +9,7 @@ import { useLocalSetting, useAllMachines } from '@/sync/storage';
 import { useNewSessionDraft } from '@/hooks/useNewSessionDraft';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
+import { useSettingsRouter } from '@/components/DesktopSettingsNavigation';
 import { launchAgent, type AgentLauncher } from '@/components/agents/launchAgent';
 import { createAppBuilderAgent, getAgentSubtitle } from '@/components/agents/builtinAgents';
 
@@ -20,7 +20,7 @@ import { createAppBuilderAgent, getAgentSubtitle } from '@/components/agents/bui
 export default React.memo(function MyAgentsSettingsScreen() {
     const { theme } = useUnistyles();
     const styles = stylesheet;
-    const router = useRouter();
+    const router = useSettingsRouter();
     const agents = useLocalSetting('agents');
     const machines = useAllMachines({ includeOffline: true });
     const draft = useNewSessionDraft();

@@ -7,9 +7,6 @@ import { DesktopRightPanel } from './DesktopRightPanel';
 // @ts-expect-error The test only needs the small create/unmount surface typed below.
 import TestRenderer from 'react-test-renderer';
 
-const mocks = vi.hoisted(() => ({ pathname: '/' }));
-
-vi.mock('expo-router', () => ({ usePathname: () => mocks.pathname }));
 vi.mock('react-native', () => ({
     Platform: { OS: 'web' },
     Pressable: 'Pressable',
@@ -49,18 +46,15 @@ vi.mock('./DesktopShortcutTooltip', () => ({ DesktopShortcutTooltip: 'DesktopSho
 vi.mock('@/hooks/useDesktopWorkspaceLayout', () => ({ useDesktopWorkspaceLayout: () => ({ enabled: true }) }));
 vi.mock('@/utils/desktopNavigationLayout', () => ({
     getDesktopPanelShortcutPresentation: () => ({ rightLabel: '⌘]', rightAria: 'Meta+]'}),
-    isSettingsModalRoute: (pathname: string) => pathname === '/settings' || pathname.startsWith('/settings/'),
 }));
 vi.mock('@/text', () => ({ t: (key: string) => key }));
 
 describe('DesktopRightPanel', () => {
     beforeEach(() => {
-        mocks.pathname = '/';
         (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
     });
 
-    it('removes the high-layer resize handle while settings is modal', () => {
-        mocks.pathname = '/settings/appearance';
+    it('keeps the resize handle independent from settings routes', () => {
         let renderer: any;
         act(() => {
             renderer = TestRenderer.create(
@@ -77,7 +71,7 @@ describe('DesktopRightPanel', () => {
             );
         });
 
-        expect(renderer.root.findAllByType('DesktopPanelResizeHandle')).toHaveLength(0);
+        expect(renderer.root.findAllByType('DesktopPanelResizeHandle')).toHaveLength(1);
         act(() => renderer.unmount());
     });
 });

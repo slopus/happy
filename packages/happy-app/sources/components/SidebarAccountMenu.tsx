@@ -13,6 +13,7 @@ type SidebarAccountMenuProps = {
     desktopDensity?: boolean;
     displayName: string;
     onNavigate: (path: string) => void;
+    onOpenSettings?: () => void;
     onOpenChange: (open: boolean) => void;
     open: boolean;
     profile: Profile;
@@ -58,6 +59,7 @@ export const SidebarAccountMenu = React.memo(function SidebarAccountMenu({
     desktopDensity = false,
     displayName,
     onNavigate,
+    onOpenSettings,
     onOpenChange,
     open,
     profile,
@@ -155,7 +157,14 @@ export const SidebarAccountMenu = React.memo(function SidebarAccountMenu({
                     <MenuAction
                         icon="settings-outline"
                         label={t('settings.title')}
-                        onPress={() => navigate('/settings')}
+                        onPress={() => {
+                            if (!onOpenSettings) {
+                                navigate('/settings');
+                                return;
+                            }
+                            onOpenChange(false);
+                            onOpenSettings();
+                        }}
                         testID="sidebar-account-settings-action"
                     />
                     <MenuAction

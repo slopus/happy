@@ -70,6 +70,7 @@ import { machineSpawnNewSession, sessionArchive } from '@/sync/ops';
 import { sync } from '@/sync/sync';
 import { resolveAbsolutePath } from '@/utils/pathUtils';
 import { useDesktopWorkspaceLayout } from '@/hooks/useDesktopWorkspaceLayout';
+import { useDesktopSettingsModal } from './DesktopSettingsModal';
 
 // Agent display labels for the compose chip. Mirrors the list used in /new.
 const AGENT_LABELS: Record<string, string> = {
@@ -138,6 +139,7 @@ const CompactRightPanelToggleButton = React.memo(function CompactRightPanelToggl
 export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) => {
     const isScreen = variant === 'screen';
     const { theme } = useUnistyles();
+    const { openSettings: showSettings } = useDesktopSettingsModal();
     const router = useRouter();
     const navigation = useNavigation();
     const insets = useSafeAreaInsets();
@@ -349,8 +351,8 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
     }, [navigation]);
 
     const openSettings = React.useCallback(() => {
-        router.push('/settings');
-    }, [router]);
+        showSettings();
+    }, [showSettings]);
 
     const goBack = React.useCallback(() => {
         if (router.canGoBack()) {
@@ -839,7 +841,13 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
                     <View style={styles.desktopHeaderActions}>
                         {rightPanelToggleButton}
                         {!isScreen && (
-                            <Pressable onPress={openSettings} hitSlop={12} style={styles.headerButton}>
+                            <Pressable
+                                accessibilityLabel={t('settings.title')}
+                                onPress={openSettings}
+                                hitSlop={12}
+                                style={styles.headerButton}
+                                testID="compose-home-settings-button"
+                            >
                                 <Avatar
                                     id={profile.id}
                                     size={28}

@@ -81,6 +81,9 @@ vi.mock('@/sync/profile', () => ({ getDisplayName: () => null }));
 vi.mock('@/text', () => ({ t: (key: string) => key }));
 vi.mock('@/constants/Typography', () => ({ Typography: { default: () => ({}) } }));
 vi.mock('./useDrawerHaptics', () => ({ useDrawerHaptics: () => undefined }));
+vi.mock('./DesktopSettingsModal', () => ({
+    useDesktopSettingsModal: () => ({ openSettings: vi.fn() }),
+}));
 vi.mock('./VoiceAssistantStatusBar', () => ({ VoiceAssistantStatusBar: 'VoiceAssistantStatusBar' }));
 vi.mock('./MainView', () => ({ MainView: 'MainView' }));
 vi.mock('./SidebarAccountMenu', async () => {

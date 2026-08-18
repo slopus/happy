@@ -9,6 +9,7 @@ import { useAuth } from '@/auth/AuthContext';
 import { storage } from '@/sync/storage';
 import { useShallow } from 'zustand/react/shallow';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
+import { useDesktopSettingsModal } from '@/components/DesktopSettingsModal';
 import { t } from '@/text';
 import { formatLastSeen } from '@/utils/sessionUtils';
 import type { Message } from '@/sync/typesMessage';
@@ -62,6 +63,7 @@ export function firstUserMessageSummary(messages: Message[] | undefined): string
 
 export function CommandPaletteProvider({ children }: { children: React.ReactNode }) {
     const router = useRouter();
+    const { openSettings } = useDesktopSettingsModal();
     const { logout } = useAuth();
     const { state: modalState, showModal } = useModal();
     const paletteOpeningRef = useRef(false);
@@ -97,10 +99,6 @@ export function CommandPaletteProvider({ children }: { children: React.ReactNode
             await logout();
         }
     }, [logout]);
-
-    const openSettings = useCallback(() => {
-        router.push('/settings');
-    }, [router]);
 
     // Define available commands
     const commands = useMemo((): Command[] => {

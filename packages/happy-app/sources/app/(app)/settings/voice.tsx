@@ -3,7 +3,6 @@ import { View, ActivityIndicator, Platform } from 'react-native';
 import { Text } from '@/components/StyledText';
 import { Ionicons } from '@expo/vector-icons';
 import { useUnistyles } from 'react-native-unistyles';
-import { useRouter } from 'expo-router';
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
@@ -14,6 +13,7 @@ import { useAuth } from '@/auth/AuthContext';
 import { findLanguageByCode, getLanguageDisplayName, LANGUAGES } from '@/constants/Languages';
 import { fetchVoiceUsage, type VoiceUsageResponse } from '@/sync/apiVoice';
 import { t } from '@/text';
+import { useSettingsRouter } from '@/components/DesktopSettingsNavigation';
 import { Modal } from '@/modal';
 import { sync } from '@/sync/sync';
 import { trackPaywallButtonClicked } from '@/track';
@@ -54,7 +54,7 @@ function getVoiceExperimentSourceTranslation(source: VoiceUpsellVariantSource): 
 
 export default React.memo(function VoiceSettingsScreen() {
     const { theme } = useUnistyles();
-    const router = useRouter();
+    const router = useSettingsRouter();
     const auth = useAuth();
     const [voiceAssistantLanguage] = useSettingMutable('voiceAssistantLanguage');
     const [voiceCustomAgentId, setVoiceCustomAgentId] = useSettingMutable('voiceCustomAgentId');

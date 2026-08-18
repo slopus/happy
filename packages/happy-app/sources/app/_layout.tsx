@@ -16,6 +16,7 @@ import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { initialWindowMetrics, SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SidebarNavigator } from '@/components/SidebarNavigator';
+import { DesktopSettingsModalProvider } from '@/components/DesktopSettingsModal';
 import { ThemeCaptureRoot } from '@/components/ThemeTransition';
 import sodium from '@/encryption/libsodium.lib';
 import { View, Platform, AppState } from 'react-native';
@@ -426,16 +427,18 @@ export default function RootLayout() {
                             <ThemeProvider value={navigationTheme}>
                                 <StatusBarProvider />
                                 <ModalProvider>
-                                    <BrowserNavigationShortcuts />
-                                    <CommandPaletteProvider>
-                                        <RealtimeProvider>
-                                            <HorizontalSafeAreaWrapper>
-                                                <SidebarNavigator />
-                                            </HorizontalSafeAreaWrapper>
-                                            <OtaPreviewFloatingButton visible={showOtaFloatingSwitcher} />
-                                        </RealtimeProvider>
-                                    </CommandPaletteProvider>
-                                    <ImageViewerHost />
+                                    <DesktopSettingsModalProvider>
+                                        <BrowserNavigationShortcuts />
+                                        <CommandPaletteProvider>
+                                            <RealtimeProvider>
+                                                <HorizontalSafeAreaWrapper>
+                                                    <SidebarNavigator />
+                                                </HorizontalSafeAreaWrapper>
+                                                <OtaPreviewFloatingButton visible={showOtaFloatingSwitcher} />
+                                            </RealtimeProvider>
+                                        </CommandPaletteProvider>
+                                        <ImageViewerHost />
+                                    </DesktopSettingsModalProvider>
                                 </ModalProvider>
                             </ThemeProvider>
                         </AuthProvider>

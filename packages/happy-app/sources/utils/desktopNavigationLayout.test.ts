@@ -10,7 +10,6 @@ import {
     getDesktopRightPanelPresentation,
     getResponsiveRightPanelMode,
     isDesktopRightPanelAvailable,
-    isSettingsModalRoute,
     shouldUseCompactSessionHeader,
     getPersistentHeaderPointerEvents,
     getPersistentHeaderContentInset,
@@ -22,15 +21,6 @@ import {
 } from './desktopNavigationLayout';
 
 describe('desktopNavigationLayout', () => {
-    it.each([
-        { pathname: '/settings', expected: true },
-        { pathname: '/settings/appearance', expected: true },
-        { pathname: '/settings-archive', expected: false },
-        { pathname: '/', expected: false },
-    ])('identifies settings modal route $pathname as $expected', ({ pathname, expected }) => {
-        expect(isSettingsModalRoute(pathname)).toBe(expected);
-    });
-
     it.each([
         { width: 390, expected: 'edge-handle' },
         { width: 500, expected: 'edge-handle' },

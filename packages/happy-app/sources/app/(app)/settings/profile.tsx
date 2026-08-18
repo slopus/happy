@@ -9,7 +9,7 @@ import {
     TextInput,
     View,
 } from 'react-native';
-import { Stack, useRouter } from 'expo-router';
+import { Stack } from 'expo-router';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useAuth } from '@/auth/AuthContext';
 import { ProfileAvatarControl } from '@/components/ProfileAvatarControl';
@@ -21,6 +21,7 @@ import { getDisplayName } from '@/sync/profile';
 import { useProfile } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { t } from '@/text';
+import { useSettingsRouter } from '@/components/DesktopSettingsNavigation';
 
 const stylesheet = StyleSheet.create((theme) => ({
     root: {
@@ -87,7 +88,7 @@ const stylesheet = StyleSheet.create((theme) => ({
 export default function ProfileSettingsScreen() {
     const styles = stylesheet;
     const { theme } = useUnistyles();
-    const router = useRouter();
+    const router = useSettingsRouter();
     const auth = useAuth();
     const profile = useProfile();
     const currentName = getDisplayName(profile) ?? '';

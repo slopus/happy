@@ -2,7 +2,6 @@ import { Platform, View } from 'react-native';
 import { openExternalUrl } from '@/utils/openExternalUrl';
 import { Image } from 'expo-image';
 import * as React from 'react';
-import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
 import * as Updates from 'expo-updates';
@@ -32,6 +31,7 @@ import { t, getLanguageNativeName, SUPPORTED_LANGUAGES } from '@/text';
 import * as Localization from 'expo-localization';
 import { loadAppConfig } from '@/sync/appConfig';
 import { getSettingsFeatureEntries } from '@/components/settingsFeatureEntries';
+import { useSettingsRouter } from '@/components/DesktopSettingsNavigation';
 
 type BuildConfig = {
     repositoryUrl?: unknown;
@@ -84,7 +84,7 @@ function formatBuildSubtitle(buildConfig: BuildConfig): string | undefined {
 
 export const SettingsView = React.memo(function SettingsView() {
     const { theme } = useUnistyles();
-    const router = useRouter();
+    const router = useSettingsRouter();
     const buildConfig = React.useMemo(() => getBuildConfig(), []);
     const appVersion = Constants.expoConfig?.version || '1.0.0';
     const runtimeVersion = typeof Constants.expoConfig?.runtimeVersion === 'string'
