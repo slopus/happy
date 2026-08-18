@@ -20,6 +20,12 @@ export type NativeSettingsMenuGroup = {
 };
 
 export type NativeSettingsMenuProps = {
+    /**
+     * Overrides the native trigger tint. The focused home composer is dark in
+     * both themes (it sits on the fixed dark focus scrim), so it passes fixed
+     * white; without an override the trigger follows theme.colors.text.
+     */
+    tintColor?: string;
     groups: NativeSettingsMenuGroup[];
     children: React.ReactNode;
     style?: StyleProp<ViewStyle>;
