@@ -556,6 +556,7 @@ export const it: TranslationStructure = {
         projects: "Progetti",
         pin: 'Fissa',
         unpin: 'Rimuovi fissaggio',
+        allWorkspaces: 'Tutti gli spazi di lavoro',
     },
 
     zen: {

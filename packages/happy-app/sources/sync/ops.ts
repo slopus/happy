@@ -6,8 +6,8 @@
 import { apiSocket } from './apiSocket';
 import { sync } from './sync';
 import { storage } from './storage';
-import type { AgentQuestionAnswer, MachineMetadata, SessionAgentModesPatch } from './storageTypes';
-import { markAgentModePushPending, clearAgentModePushPending, type AgentModeField } from './agentModesPending';
+import type { AgentQuestionAnswer, MachineMetadata, Session, SessionAgentModesPatch, SessionMetadataPatch } from './storageTypes';
+import { markMetadataPushPending, clearMetadataPushPending, type PendingMetadataField } from './metadataPushPending';
 import {
     isRigMetadata,
     rigCanAbort,
@@ -18,7 +18,7 @@ import {
     rigHasRpcMethod,
 } from './rig';
 
-export type { SessionAgentModesPatch };
+export type { SessionAgentModesPatch, SessionMetadataPatch };
 
 // Strict type definitions for all operations
 
@@ -660,14 +660,27 @@ export async function machineUpdateMetadata(
 }
 
 /**
- * Persist per-session mode picks into synced session metadata with optimistic
- * concurrency and automatic retry. On version conflict the latest metadata is
- * taken from the server via the schema-free raw decrypt, so fields this app
- * version doesn't know about survive the read-modify-write.
+ * Where a patched field's newest local value lives. Agent-mode picks are
+ * mirrored on the session itself; everything else exists only inside metadata,
+ * and reading those off the session would compare against a permanent
+ * `undefined` and drop the field from every retry.
  */
-async function sessionUpdateAgentModesMetadata(
+function liveValueOf(session: Session | undefined, field: PendingMetadataField): string | number | null | undefined {
+    if (field === 'pinnedAt') {
+        return session?.metadata?.pinnedAt;
+    }
+    return session?.[field];
+}
+
+/**
+ * Persist a patch into synced session metadata with optimistic concurrency and
+ * automatic retry. On version conflict the latest metadata is taken from the
+ * server via the schema-free raw decrypt, so fields this app version doesn't
+ * know about survive the read-modify-write.
+ */
+async function sessionUpdateMetadata(
     sessionId: string,
-    patch: Record<string, unknown>,
+    patch: SessionMetadataPatch,
     maxRetries: number = 3
 ): Promise<void> {
     const encryption = sync.encryption.getSessionEncryption(sessionId);
@@ -677,7 +690,7 @@ async function sessionUpdateAgentModesMetadata(
     }
 
     // Defensive copy: retries drop fields from the patch (see below)
-    let pendingPatch: Record<string, unknown> = { ...patch };
+    let pendingPatch: SessionMetadataPatch = { ...patch };
     let currentVersion = session.metadataVersion;
     let currentMetadata: Record<string, unknown> = { ...session.metadata, ...pendingPatch };
 
@@ -707,8 +720,8 @@ async function sessionUpdateAgentModesMetadata(
             // owns the field now, and blindly replaying the original patch
             // would resurrect a pick the user already cleared.
             const liveSession = storage.getState().sessions[sessionId];
-            for (const field of Object.keys(pendingPatch)) {
-                if (((liveSession as unknown as Record<string, unknown>)?.[field] ?? null) !== (pendingPatch[field] ?? null)) {
+            for (const field of Object.keys(pendingPatch) as PendingMetadataField[]) {
+                if ((liveValueOf(liveSession, field) ?? null) !== (pendingPatch[field] ?? null)) {
                     delete pendingPatch[field];
                 }
             }
@@ -724,18 +737,33 @@ async function sessionUpdateAgentModesMetadata(
     throw new Error(`Failed to update session metadata after ${maxRetries} retries due to version conflicts`);
 }
 
-/** Toggle a session's pinned state and persist it in encrypted metadata. */
+/**
+ * Toggle a session's pinned state and persist it in encrypted metadata.
+ *
+ * Pin has no top-level mirror on Session — metadata is the only copy — so the
+ * optimistic local write has to be protected from the inbound session updates
+ * that keep arriving while the push is in flight, all of them still carrying
+ * the pre-pin metadata. Never throws: a failed push leaves the optimistic
+ * value and the next inbound update reconciles it.
+ */
 export function sessionSetPinned(sessionId: string, pinned: boolean): void {
     const state = storage.getState();
     const session = state.sessions[sessionId];
     if (!session?.metadata) return;
-    const pinnedAt = pinned ? (session.metadata.pinnedAt as number | undefined) ?? Date.now() : undefined;
-    const metadata = { ...session.metadata } as Record<string, unknown>;
-    if (pinnedAt === undefined) delete metadata.pinnedAt;
-    else metadata.pinnedAt = pinnedAt;
-    state.applySessions([{ ...session, metadata: metadata as typeof session.metadata }]);
-    sessionUpdateAgentModesMetadata(sessionId, pinnedAt === undefined ? { pinnedAt: null } : { pinnedAt })
-        .catch((error) => console.error(`Failed to sync pinned state for session ${sessionId}`, error));
+
+    const alreadyPinned = typeof session.metadata.pinnedAt === 'number';
+    if (pinned === alreadyPinned) return;
+
+    const pinnedAt = pinned ? Date.now() : null;
+    markMetadataPushPending(sessionId, ['pinnedAt']);
+    state.applySessions([{ ...session, metadata: { ...session.metadata, pinnedAt } }]);
+    sessionUpdateMetadata(sessionId, { pinnedAt })
+        .catch((error) => {
+            console.error(`Failed to sync pinned state for session ${sessionId}`, error);
+        })
+        .finally(() => {
+            clearMetadataPushPending(sessionId, ['pinnedAt']);
+        });
 }
 
 /**
@@ -780,14 +808,14 @@ export function sessionSetAgentModes(sessionId: string, patch: SessionAgentModes
     // While the push is in flight, inbound updates still carry the OLD
     // metadata; mark the fields pending so applySessions keeps the fresher
     // local mirror instead of bouncing the pick back.
-    const changedFields = Object.keys(changed) as AgentModeField[];
-    markAgentModePushPending(sessionId, changedFields);
-    sessionUpdateAgentModesMetadata(sessionId, { ...changed })
+    const changedFields = Object.keys(changed) as PendingMetadataField[];
+    markMetadataPushPending(sessionId, changedFields);
+    sessionUpdateMetadata(sessionId, changed)
         .catch((error) => {
             console.error(`Failed to sync agent modes for session ${sessionId}`, error);
         })
         .finally(() => {
-            clearAgentModePushPending(sessionId, changedFields);
+            clearMetadataPushPending(sessionId, changedFields);
         });
 }
 

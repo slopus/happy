@@ -1,21 +1,22 @@
-import type { SessionAgentModesPatch } from './storageTypes';
+import type { SessionMetadataPatch } from './storageTypes';
 
 /**
- * Tracks per-session agent-mode fields that have an optimistic metadata push
- * in flight. While a push is pending, the local mirror is newer than anything
- * the server can echo back, so applySessions must not resolve those fields
- * from inbound (stale) metadata — otherwise the pick visibly bounces back and
- * a message sent in that window carries the old mode.
+ * Tracks per-session metadata fields that have an optimistic push in flight.
+ * While a push is pending the local value is newer than anything the server
+ * can echo back, so applySessions must not resolve those fields from inbound
+ * (stale) metadata — otherwise the change visibly bounces back: an agent-mode
+ * pick reverts and a message sent in that window carries the old mode, and a
+ * pinned session unpins itself under the user.
  *
  * Lives in its own module so both ops.ts (writer) and storage.ts (reader) can
  * use it without an import cycle. Counters (not booleans) so overlapping
  * pushes for the same field don't clear each other's pending state.
  */
-export type AgentModeField = keyof SessionAgentModesPatch;
+export type PendingMetadataField = keyof SessionMetadataPatch;
 
-const pendingBySession = new Map<string, Map<AgentModeField, number>>();
+const pendingBySession = new Map<string, Map<PendingMetadataField, number>>();
 
-export function markAgentModePushPending(sessionId: string, fields: AgentModeField[]): void {
+export function markMetadataPushPending(sessionId: string, fields: PendingMetadataField[]): void {
     let counters = pendingBySession.get(sessionId);
     if (!counters) {
         counters = new Map();
@@ -26,7 +27,7 @@ export function markAgentModePushPending(sessionId: string, fields: AgentModeFie
     }
 }
 
-export function clearAgentModePushPending(sessionId: string, fields: AgentModeField[]): void {
+export function clearMetadataPushPending(sessionId: string, fields: PendingMetadataField[]): void {
     const counters = pendingBySession.get(sessionId);
     if (!counters) {
         return;
@@ -44,6 +45,6 @@ export function clearAgentModePushPending(sessionId: string, fields: AgentModeFi
     }
 }
 
-export function isAgentModePushPending(sessionId: string, field: AgentModeField): boolean {
+export function isMetadataPushPending(sessionId: string, field: PendingMetadataField): boolean {
     return (pendingBySession.get(sessionId)?.get(field) ?? 0) > 0;
 }

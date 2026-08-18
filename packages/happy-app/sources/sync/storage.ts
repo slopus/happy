@@ -25,7 +25,7 @@ import { Purchases, customerInfoToPurchases } from "./purchases";
 import { Profile } from "./profile";
 import { UserProfile, RelationshipUpdatedEvent } from "./friendTypes";
 import { loadSettings, loadLocalSettings, saveLocalSettings, saveSettings, loadPurchases, savePurchases, loadProfile, saveProfile, loadSessionDrafts, saveSessionDrafts } from "./persistence";
-import { isAgentModePushPending } from "./agentModesPending";
+import { isMetadataPushPending } from "./metadataPushPending";
 import { loadSessionLastMessageSentAt, saveSessionLastMessageSentAt } from "./persistence";
 import type { CustomerInfo } from './revenueCat/types';
 import React from "react";
@@ -430,7 +430,7 @@ export const storage = create<StorageState>()((set, get) => {
                 // the field keeps the local value.
                 const resolveModePick = (field: 'permissionMode' | 'modelMode' | 'effortLevel'): string | null => {
                     const existing = state.sessions[session.id]?.[field] ?? null;
-                    if (isAgentModePushPending(session.id, field)) {
+                    if (isMetadataPushPending(session.id, field)) {
                         return existing;
                     }
                     return session.metadata && session.metadata[field] !== undefined
@@ -441,11 +441,26 @@ export const storage = create<StorageState>()((set, get) => {
                 const resolvedModelMode = resolveModePick('modelMode');
                 const resolvedEffortLevel = resolveModePick('effortLevel');
 
+                // Pin has no top-level mirror to fall back on: metadata is the
+                // only copy, and inbound updates keep arriving with the
+                // pre-pin metadata while the push is in flight. Re-apply the
+                // optimistic value or the row unpins itself under the user.
+                const resolveMetadata = (): typeof session.metadata => {
+                    if (!session.metadata || !isMetadataPushPending(session.id, 'pinnedAt')) {
+                        return session.metadata;
+                    }
+                    return {
+                        ...session.metadata,
+                        pinnedAt: state.sessions[session.id]?.metadata?.pinnedAt ?? null,
+                    };
+                };
+
                 // Local activity timestamp — preserve in-memory value, else restore from MMKV.
                 const resolvedLastMessageSentAt = state.sessions[session.id]?.lastMessageSentAt ?? savedLastMessageSentAt[session.id];
 
                 mergedSessions[session.id] = {
                     ...session,
+                    metadata: resolveMetadata(),
                     presence,
                     draft: existingDraft || savedDraft || session.draft || null,
                     permissionMode: resolvedPermissionMode,

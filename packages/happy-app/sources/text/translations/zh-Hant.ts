@@ -558,6 +558,7 @@ export const zhHant: TranslationStructure = {
         projects: "專案",
         pin: '置頂',
         unpin: '取消置頂',
+        allWorkspaces: '所有工作區',
     },
 
     zen: {

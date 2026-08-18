@@ -574,6 +574,7 @@ export const ru: TranslationStructure = {
         projects: "Проекты",
         pin: 'Закрепить',
         unpin: 'Открепить',
+        allWorkspaces: 'Все воркспейсы',
     },
 
     zen: {

@@ -559,6 +559,7 @@ export const ja: TranslationStructure = {
         projects: "プロジェクト",
         pin: 'ピン留め',
         unpin: 'ピン留めを外す',
+        allWorkspaces: 'すべてのワークスペース',
     },
 
     zen: {

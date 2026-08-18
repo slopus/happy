@@ -559,6 +559,7 @@ export const zhHans: TranslationStructure = {
         projects: "项目",
         pin: '置顶',
         unpin: '取消置顶',
+        allWorkspaces: '所有工作区',
     },
 
     zen: {

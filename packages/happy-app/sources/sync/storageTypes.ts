@@ -176,6 +176,12 @@ export const MetadataSchema = z.object({
     permissionMode: z.string().nullish(),
     modelMode: z.string().nullish(),
     effortLevel: z.string().nullish(),
+    /**
+     * When the user pinned this session, as an epoch timestamp. Synced through
+     * metadata so a pin follows the session across devices. Explicit null means
+     * unpinned; absent means never pinned.
+     */
+    pinnedAt: z.number().nullish(),
     // Passthrough so read-modify-write metadata updates from this app never
     // drop fields written by newer CLI or app versions.
 }).passthrough();
@@ -359,6 +365,15 @@ export interface SessionAgentModesPatch {
     permissionMode?: string | null;
     modelMode?: string | null;
     effortLevel?: string | null;
+}
+
+/**
+ * Everything this app writes back into session metadata through the optimistic
+ * read-modify-write path. Agent-mode picks additionally keep a top-level mirror
+ * on Session; `pinnedAt` lives in metadata only.
+ */
+export interface SessionMetadataPatch extends SessionAgentModesPatch {
+    pinnedAt?: number | null;
 }
 
 export interface Session {

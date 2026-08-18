@@ -231,7 +231,7 @@ const HeaderTitle = React.memo(({ activeTab }: { activeTab: ActiveTabType }) => 
     return (
         <View style={styles.titleContainer}>
             <Text style={styles.titleText}>
-                {activeTab === 'sessions' ? 'All Workspaces' : t(TAB_TITLES[activeTab])}
+                {t(activeTab === 'sessions' ? 'sidebar.allWorkspaces' : TAB_TITLES[activeTab])}
             </Text>
             {connectionStatus.text && (
                 <View style={styles.statusContainer}>

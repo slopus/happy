@@ -31,6 +31,8 @@ export function SessionActionsNativeMenu({
         onAfterDelete,
     });
 
+    const isPinned = typeof session.metadata?.pinnedAt === 'number';
+
     return (
         <DropdownMenu>
             <DropdownMenu.Items>
@@ -38,7 +40,7 @@ export function SessionActionsNativeMenu({
                     <DropdownMenuItem.Text>{t('profile.details')}</DropdownMenuItem.Text>
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={togglePinned}>
-                    <DropdownMenuItem.Text>{typeof session.metadata?.pinnedAt === 'number' ? t('sidebar.unpin') : t('sidebar.pin')}</DropdownMenuItem.Text>
+                    <DropdownMenuItem.Text>{isPinned ? t('sidebar.unpin') : t('sidebar.pin')}</DropdownMenuItem.Text>
                 </DropdownMenuItem>
                 {canArchive && (
                     <DropdownMenuItem onClick={archiveSession}>

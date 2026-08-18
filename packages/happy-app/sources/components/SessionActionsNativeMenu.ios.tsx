@@ -34,12 +34,14 @@ export function SessionActionsNativeMenu({
         onAfterDelete,
     });
 
+    const isPinned = typeof session.metadata?.pinnedAt === 'number';
+
     return (
         <Host matchContents>
             <ContextMenu>
                 <ContextMenu.Items>
                     <Button onPress={openDetails} systemImage={iosSymbol('info.circle')} label={t('profile.details')} />
-                    <Button onPress={togglePinned} systemImage={iosSymbol('pin')} label={typeof session.metadata?.pinnedAt === 'number' ? t('sidebar.unpin') : t('sidebar.pin')} />
+                    <Button onPress={togglePinned} systemImage={iosSymbol(isPinned ? 'pin.slash' : 'pin')} label={isPinned ? t('sidebar.unpin') : t('sidebar.pin')} />
                     {canArchive && (
                         <Button onPress={archiveSession} systemImage={iosSymbol('archivebox')} label={t('sessionInfo.archiveSession')} />
                     )}

@@ -574,6 +574,7 @@ export const pl: TranslationStructure = {
         projects: "Projekty",
         pin: 'Przypnij',
         unpin: 'Odepnij',
+        allWorkspaces: 'Wszystkie przestrzenie robocze',
     },
 
     zen: {

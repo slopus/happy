@@ -558,6 +558,7 @@ export const ca: TranslationStructure = {
         projects: "Projectes",
         pin: 'Fixar',
         unpin: 'Desfixar',
+        allWorkspaces: 'Tots els espais de treball',
     },
 
     zen: {

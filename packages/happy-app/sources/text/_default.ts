@@ -573,6 +573,7 @@ export const en = {
         projects: 'Projects',
         pin: 'Pin',
         unpin: 'Unpin',
+        allWorkspaces: 'All Workspaces',
     },
 
     zen: {

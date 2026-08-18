@@ -572,6 +572,7 @@ export const en: TranslationStructure = {
         projects: "Projects",
         pin: 'Pin',
         unpin: 'Unpin',
+        allWorkspaces: 'All Workspaces',
     },
 
     zen: {
