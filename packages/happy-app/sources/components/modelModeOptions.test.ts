@@ -3,6 +3,7 @@ import {
     getAgyModelModes,
     getAvailableModels,
     getAvailablePermissionModes,
+    getCodexEffortLevels,
     getCodexModelModes,
     getClaudeModelModes,
     getClaudePermissionModes,
@@ -11,6 +12,7 @@ import {
     getDefaultPermissionModeKey,
     mapMetadataOptions,
     resolveCurrentOption,
+    resolveNonRigEffortOption,
 } from './modelModeOptions';
 import { rigMetadataFixture } from '@/sync/__testdata__/rigMetadata';
 
@@ -149,6 +151,21 @@ describe('modelModeOptions', () => {
 
         expect(resolveCurrentOption(options, ['missing', 'b', 'a'])).toEqual({ key: 'b', name: 'B' });
         expect(resolveCurrentOption(options, ['missing'])).toBeNull();
+    });
+
+    it('resolves an explicit session effort before metadata and configured defaults', () => {
+        expect(resolveNonRigEffortOption(getCodexEffortLevels(), 'high', 'low', 'medium')?.key).toBe('high');
+    });
+
+    it('resolves the effort the agent reports before the configured default', () => {
+        // `happy codex --effort low` with medium configured on this device:
+        // the picker has to describe the session that is running, not the one
+        // this device would have started (#1701).
+        expect(resolveNonRigEffortOption(getCodexEffortLevels(), undefined, 'low', 'medium')?.key).toBe('low');
+    });
+
+    it('falls back to the configured effort when the agent reports none', () => {
+        expect(resolveNonRigEffortOption(getCodexEffortLevels(), undefined, undefined, 'medium')?.key).toBe('medium');
     });
 
     it('builds the Rig catalog dynamically with provider-qualified keys', () => {

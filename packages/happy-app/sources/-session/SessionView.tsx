@@ -12,6 +12,7 @@ import {
     getEffortLevelsForModel,
     getRigCurrentModelOptionKey,
     resolveCurrentOption,
+    resolveNonRigEffortOption,
     EffortLevel,
 } from '@/components/modelModeOptions';
 import { getSuggestions } from '@/components/autocomplete/suggestions';
@@ -747,12 +748,20 @@ export function SessionViewLoaded({
     const availableEffortLevels = React.useMemo<EffortLevel[]>(() => (
         getEffortLevelsForModel(flavor, modelKey, session.metadata)
     ), [flavor, modelKey, session.metadata]);
-    const effortLevel = React.useMemo<EffortLevel | null>(() => (
-        resolveCurrentOption(availableEffortLevels, [
+    const effortLevel = React.useMemo<EffortLevel | null>(() => {
+        if (isRig) {
+            return resolveCurrentOption(availableEffortLevels, [
+                session.effortLevel,
+                getRigReasoningSelection(session.metadata, modelKey),
+            ]);
+        }
+        return resolveNonRigEffortOption(
+            availableEffortLevels,
             session.effortLevel,
-            isRig ? getRigReasoningSelection(session.metadata, modelKey) : effectiveAgentDefaults.effortLevel,
-        ])
-    ), [availableEffortLevels, session.effortLevel, effectiveAgentDefaults.effortLevel, session.metadata, modelKey, isRig]);
+            session.metadata?.currentThoughtLevelCode,
+            effectiveAgentDefaults.effortLevel,
+        );
+    }, [availableEffortLevels, session.effortLevel, effectiveAgentDefaults.effortLevel, session.metadata, modelKey, isRig]);
 
     const sessionStatus = useSessionStatus(session);
     const sessionUsage = useSessionUsage(sessionId);
