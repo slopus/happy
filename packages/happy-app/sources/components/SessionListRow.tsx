@@ -12,6 +12,7 @@ import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { useRouter } from 'expo-router';
 import { useSessionActionAlert, useSessionArchiveActions } from '@/hooks/useSessionQuickActions';
 import { sessionSetPinned } from '@/sync/ops';
+import { gitStatusSync } from '@/sync/gitStatusSync';
 import { t } from '@/text';
 import { StatusDot } from './StatusDot';
 import { SessionActionsAnchor, SessionActionsPopover } from './SessionActionsPopover';
@@ -73,6 +74,12 @@ export const SessionListRow = React.memo(({ session, selected, showDivider }: {
     const router = useRouter();
     const [actionsAnchor, setActionsAnchor] = React.useState<SessionActionsAnchor | null>(null);
     const gitStatus = useSessionGitStatus(session.id);
+    // The sync only ever started when a session was opened, so list rows of
+    // never-opened sessions (every fresh Rig session) never got a diff badge.
+    // Kick it from the row itself; fetches are deduplicated per project.
+    React.useEffect(() => {
+        gitStatusSync.getSync(session.id).invalidate();
+    }, [session.id]);
     const swipeableRef = React.useRef<Swipeable | null>(null);
     const swipeEnabled = Platform.OS !== 'web';
 
