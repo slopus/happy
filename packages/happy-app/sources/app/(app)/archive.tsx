@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { Platform, View } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text } from '@/components/StyledText';
 import { StyleSheet } from 'react-native-unistyles';
 import { ChatHeaderView } from '@/components/ChatHeaderView';
@@ -22,6 +23,10 @@ export default React.memo(function ArchiveScreen() {
     const items = useArchivedSessionListViewData();
     const router = useRouter();
     const headerHeight = useHeaderHeight();
+    const safeArea = useSafeAreaInsets();
+    // The overlay header occupies the status bar inset PLUS the header row —
+    // useHeaderHeight alone left the list starting under the status bar.
+    const headerInset = safeArea.top + headerHeight;
 
     const empty = React.useMemo(() => (
         <View style={styles.empty}>
@@ -35,7 +40,7 @@ export default React.memo(function ArchiveScreen() {
             <SessionsList
                 items={items}
                 emptyComponent={empty}
-                topContentInset={headerHeight}
+                topContentInset={headerInset}
                 bottomContentInset={32}
             />
             {/* The same overlay header the chat screen uses (glass scrim +
