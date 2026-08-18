@@ -1,3 +1,4 @@
+import { getRepoPath } from '@/utils/worktreePath';
 import type { Session } from './storageTypes';
 import type { SessionRowData } from './storage';
 
@@ -47,7 +48,11 @@ function projectIdentity(session: Session): { id: string; name: string; machineI
 }
 
 function pathProjectName(path: string, homeDir: string | undefined): string {
-    const normalizedPath = path.replace(/[\\/]+$/, '');
+    // A worktree session's path points inside the tree
+    // (…/happy/.dev/worktree/calm-meadow); the project is the repository, so
+    // the name must come from the repo root or the card inherits the
+    // worktree's name.
+    const normalizedPath = getRepoPath(path).replace(/[\\/]+$/, '');
     const normalizedHome = homeDir?.replace(/[\\/]+$/, '');
     if (!normalizedPath || normalizedPath === '~' || normalizedPath === normalizedHome) {
         return 'Home';

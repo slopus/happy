@@ -7,7 +7,7 @@ import { Text } from '@/components/StyledText';
 import { Typography } from '@/constants/Typography';
 import { SessionRowData, useSessionGitStatus } from '@/sync/storage';
 import { type SessionState } from '@/utils/sessionUtils';
-import { getWorktreeName, isWorktreePath } from '@/utils/worktree';
+import { getRepoPath, getWorktreeName, isWorktreePath } from '@/utils/worktreePath';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { useRouter } from 'expo-router';
 import { useSessionActionAlert, useSessionArchiveActions } from '@/hooks/useSessionQuickActions';
@@ -34,8 +34,11 @@ const STATUS_CONFIG: Record<SessionState, { color: string; dotColor: string; isP
  * flipping between "online" and "last seen …".
  */
 function sessionProjectLabel(session: SessionRowData, worktreeName: string | null): string {
+    // The path may point inside a worktree; the project is the repository, so
+    // its name comes from the repo root — otherwise a worktree session reads
+    // "calm-meadow · calm-meadow".
     const project = session.projectName
-        || session.path?.split(/[/\\]/).filter(Boolean).pop()
+        || (session.path ? getRepoPath(session.path) : '').split(/[/\\]/).filter(Boolean).pop()
         || session.subtitle
         || '';
     if (!project) return worktreeName ?? '';

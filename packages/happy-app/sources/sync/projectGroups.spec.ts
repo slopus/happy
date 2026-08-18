@@ -192,6 +192,17 @@ describe('buildProjectGroups without a native project identity', () => {
         expect(groups[0].name).toBe('happy');
     });
 
+    it('groups a worktree session under its repository, not under the worktree name', () => {
+        const groups = buildProjectGroups([
+            session({ id: 'a', path: '/projects/happy', clientId: 'happy-cli' }),
+            session({ id: 'b', path: '/projects/happy/.dev/worktree/calm-meadow', clientId: 'happy-cli' }),
+        ], toRow, isActive);
+
+        expect(groups).toHaveLength(1);
+        expect(groups[0].name).toBe('happy');
+        expect(groups[0].sessionCount).toBe(2);
+    });
+
     it('names the machine home directory Home', () => {
         const groups = buildProjectGroups([
             session({ id: 'a', path: '/Users/dev', homeDir: '/Users/dev/' }),
