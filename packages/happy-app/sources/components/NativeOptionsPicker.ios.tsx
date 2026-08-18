@@ -32,12 +32,14 @@ const styles = StyleSheet.create({
         position: 'relative',
         width: '100%',
     },
-    // The React Native row is kept for layout only: it gives the container its
-    // height and width while SwiftUI draws everything that is visible.
+    // The React Native row IS the visual: it colors reliably in both themes,
+    // matching the dark theme exactly on the fixed dark scrim. SwiftUI above
+    // it is only an invisible full-row hit target for the native menu —
+    // coloring its label proved impossible (tint ignored by the plain-style
+    // Menu, foregroundStyle ignored by its Text).
     trigger: {
         width: '100%',
         minWidth: 0,
-        opacity: 0,
     },
     host: {
         ...StyleSheet.absoluteFillObject,
