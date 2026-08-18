@@ -67,7 +67,13 @@ export function NativeOptionsPicker({
             {/* The host must not perform keyboard avoidance: it is pinned over a
                 control React Native already positions, so SwiftUI keyboard
                 avoidance would drag the trigger off it. */}
-            <Host ignoreSafeArea="keyboard" style={styles.host}>
+            <Host
+                // Same remount-on-theme-change as NativeSettingsMenu: SwiftUI
+                // hosts keep the old tint when the app theme flips at runtime.
+                key={theme.dark ? 'dark' : 'light'}
+                ignoreSafeArea="keyboard"
+                style={styles.host}
+            >
                 <Menu
                     // The tint is what colors the label, so it has to follow the
                     // theme: SwiftUI draws the visible row here, and a fixed
