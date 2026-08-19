@@ -3088,6 +3088,123 @@ describe('reducer', () => {
             }
         });
 
+        it('nests CUID-linked Agent sidechains when history arrives newest first', () => {
+            const state = createReducer();
+            const sessionSubagent = createId();
+            const result = reducer(state, [
+                {
+                    id: 'agent-child-msg',
+                    localId: null,
+                    createdAt: 2000,
+                    role: 'agent',
+                    isSidechain: true,
+                    content: [{
+                        type: 'text',
+                        text: 'Review completed with no blocking findings.',
+                        uuid: 'agent-child-uuid',
+                        parentUUID: sessionSubagent,
+                    }],
+                },
+                {
+                    id: 'agent-parent-msg',
+                    localId: null,
+                    createdAt: 1000,
+                    role: 'agent',
+                    isSidechain: false,
+                    content: [{
+                        type: 'tool-call',
+                        id: 'agent-parent-call',
+                        name: 'Agent',
+                        input: {
+                            prompt: 'Review the pull request',
+                            sessionSubagent,
+                        },
+                        description: 'Review the pull request',
+                        uuid: 'agent-parent-uuid',
+                        parentUUID: null,
+                    }],
+                },
+            ]);
+
+            expect(result.messages).toHaveLength(1);
+            expect(result.messages[0].kind).toBe('tool-call');
+            if (result.messages[0].kind === 'tool-call') {
+                expect(result.messages[0].children).toHaveLength(1);
+                expect(result.messages[0].children[0]).toMatchObject({
+                    kind: 'agent-text',
+                    text: 'Review completed with no blocking findings.',
+                });
+            }
+        });
+
+        it('does not let a non-subagent tool claim a CUID-linked child', () => {
+            const state = createReducer();
+            const sessionSubagent = createId();
+            const result = reducer(state, [
+                {
+                    id: 'unowned-child-msg',
+                    localId: null,
+                    createdAt: 3000,
+                    role: 'agent',
+                    isSidechain: true,
+                    content: [{
+                        type: 'text',
+                        text: 'This must not be claimed by a Bash tool.',
+                        uuid: 'unowned-child-uuid',
+                        parentUUID: sessionSubagent,
+                    }],
+                },
+                {
+                    id: 'ordinary-tool-msg',
+                    localId: null,
+                    createdAt: 2000,
+                    role: 'agent',
+                    isSidechain: false,
+                    content: [{
+                        type: 'tool-call',
+                        id: 'ordinary-tool-call',
+                        name: 'Bash',
+                        input: { sessionSubagent },
+                        description: 'Run diagnostics',
+                        uuid: 'ordinary-tool-uuid',
+                        parentUUID: null,
+                    }],
+                },
+                {
+                    id: 'agent-parent-msg',
+                    localId: null,
+                    createdAt: 1000,
+                    role: 'agent',
+                    isSidechain: false,
+                    content: [{
+                        type: 'tool-call',
+                        id: 'agent-parent-call',
+                        name: 'Agent',
+                        input: {
+                            prompt: 'Review the pull request',
+                            sessionSubagent,
+                        },
+                        description: 'Review the pull request',
+                        uuid: 'agent-parent-uuid',
+                        parentUUID: null,
+                    }],
+                },
+            ]);
+
+            expect(result.messages).toHaveLength(2);
+            const bash = result.messages.find((message) => message.kind === 'tool-call' && message.tool.name === 'Bash');
+            const agent = result.messages.find((message) => message.kind === 'tool-call' && message.tool.name === 'Agent');
+            expect(bash).toMatchObject({
+                children: [],
+            });
+            expect(agent).toMatchObject({
+                children: [expect.objectContaining({
+                    kind: 'agent-text',
+                    text: 'This must not be claimed by a Bash tool.',
+                })],
+            });
+        });
+
         it('keeps root final output while nesting reused child messages after the root turn ends', () => {
             const turn = 'session-turn-1';
             const sessionSubagent = createId();
