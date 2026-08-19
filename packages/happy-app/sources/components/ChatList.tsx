@@ -8,7 +8,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MessageView } from './MessageView';
 import { AgentWorkGroupView, ToolGroupView } from './ToolGroupView';
 import { AttachmentGalleryView } from './AttachmentGalleryView';
-import { DuplicateSheet } from './DuplicateSheet';
 import { Metadata, Session } from '@/sync/storageTypes';
 import { ChatFooter } from './ChatFooter';
 import { Message } from '@/sync/typesMessage';
@@ -239,7 +238,7 @@ const ChatListInternal = React.memo((props: {
     const keyExtractor = useCallback((item: DisplayItem) => item.id, []);
     const agentMessageForkTargets = React.useMemo(
         () => getAgentMessageForkTargets(props.messages, {
-            allowMissingRewindPoint: props.metadata?.flavor === 'codex',
+            flavor: props.metadata?.flavor === 'codex' ? 'codex' : 'claude',
         }),
         [props.messages, props.metadata?.flavor],
     );
@@ -249,7 +248,7 @@ const ChatListInternal = React.memo((props: {
     // experiments toggle, requires a Claude session with claudeSessionId
     // and a machine that's online. Active OR inactive — fork works either
     // way (the on-disk JSONL exists in both cases).
-    const { canFork } = useSessionQuickActions(session!, {});
+    const { canFork, forkFromMessage } = useSessionQuickActions(session!, {});
 
     const handleForkFromMessage = useCallback((
         messageId: string,
@@ -257,17 +256,8 @@ const ChatListInternal = React.memo((props: {
         messageText: string,
         retainSelectedTurn?: boolean,
     ) => {
-        Modal.show({
-            component: DuplicateSheet,
-            props: {
-                sessionId: props.sessionId,
-                initialRewindPointId: rewindPointId,
-                initialMessageText: messageText,
-                initialForkedFromMessageId: messageId,
-                initialRetainSelectedTurn: retainSelectedTurn,
-            },
-        } as any);
-    }, [props.sessionId]);
+        forkFromMessage({ messageId, messageText, rewindPointId, retainSelectedTurn });
+    }, [forkFromMessage]);
 
     const handleEditUserMessage = useCallback(async (messageId: string, messageText: string) => {
         await sync.sendMessage(props.sessionId, messageText, {

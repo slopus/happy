@@ -24,6 +24,7 @@ import { canRegenerateSessionTitle } from '@/utils/sessionTitleRegeneration';
 import { buildSessionQuickActionItems } from './sessionQuickActionItems';
 import { useSessionManagementPreferences } from './useSessionManagementPreferences';
 import { isSessionArchived } from '@/utils/sessionLifecycle';
+import { buildDirectMessageForkOptions, type MessageForkTarget } from '@/utils/messageForkPoint';
 
 export interface SessionActionItem {
     id: string;
@@ -418,6 +419,30 @@ export function useSessionQuickActions(
         performFork();
     }, [performFork]);
 
+    const [forkingFromMessage, performForkFromMessage] = useHappyAction(async (
+        target: MessageForkTarget & { retainSelectedTurn?: boolean },
+    ) => {
+        if (!canFork || !forkSource) {
+            throw new HappyError(t('session.forkErrorMissingMetadata'), false);
+        }
+        const forkOptions = buildDirectMessageForkOptions(forkSource.kind, target);
+        if (!forkOptions) {
+            throw new HappyError(t('session.forkErrorMissingMetadata'), false);
+        }
+        const result = await forkAndSpawn(forkSource as ForkSource, forkOptions);
+        if (result.type !== 'success') {
+            throw new HappyError(result.type === 'error' ? result.errorMessage : t('session.forkErrorGeneric'), false);
+        }
+        hapticsSuccess();
+        navigateToSession(result.sessionId);
+    });
+
+    const forkFromMessage = React.useCallback((
+        target: MessageForkTarget & { retainSelectedTurn?: boolean },
+    ) => {
+        performForkFromMessage(target);
+    }, [performForkFromMessage]);
+
     const openDuplicateSheet = React.useCallback(() => {
         if (!canFork) return;
         Modal.show({
@@ -524,6 +549,8 @@ export function useSessionQuickActions(
         copySessionMetadataAndLogs,
         forkSession,
         forking,
+        forkFromMessage,
+        forkingFromMessage,
         openDetails,
         openDuplicateSheet,
         regenerateTitle,

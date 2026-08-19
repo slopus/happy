@@ -67,8 +67,10 @@ async function main(): Promise<void> {
         environmentName = await createEnvironment({ noSwitch: true });
         setEnvironmentTemplate(environmentName, 'authenticated-empty');
 
-        console.log('构建本地测试 CLI...');
-        run('pnpm', ['--filter', '@wangjs-jacky/paws', 'build']);
+        if (process.env.HAPPY_E2E_SKIP_CLI_BUILD !== '1') {
+            console.log('构建本地测试 CLI...');
+            run('pnpm', ['--filter', '@wangjs-jacky/paws', 'build']);
+        }
 
         const videoFixture = prepareMp4Fixture();
         temporaryVideoDirectory = videoFixture.temporaryDirectory;

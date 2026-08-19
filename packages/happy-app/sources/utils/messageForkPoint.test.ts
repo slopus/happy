@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { Message } from '@/sync/typesMessage';
-import { getAgentMessageForkTargets, resolveInitialForkRewindPointId } from './messageForkPoint';
+import {
+    buildDirectMessageForkOptions,
+    getAgentMessageForkTargets,
+    getUserMessageForkRewindPointId,
+    resolveInitialForkRewindPointId,
+} from './messageForkPoint';
 
 describe('getAgentMessageForkTargets', () => {
     it('maps each visible agent response to the user prompt that owns its turn', () => {
@@ -57,11 +62,11 @@ describe('getAgentMessageForkTargets', () => {
                 localId: null,
                 createdAt: 1,
                 text: 'Old prompt',
-                claudeUuid: 'claude-user-old',
+                codexItemId: 'codex-user-old',
             },
         ];
 
-        const targets = getAgentMessageForkTargets(messages);
+        const targets = getAgentMessageForkTargets(messages, { flavor: 'codex' });
 
         expect(targets.get('agent-new')).toEqual({
             messageId: 'agent-new',
@@ -71,7 +76,7 @@ describe('getAgentMessageForkTargets', () => {
         expect(targets.get('agent-old')).toEqual({
             messageId: 'agent-old',
             messageText: 'Old prompt',
-            rewindPointId: 'claude-user-old',
+            rewindPointId: 'codex-user-old',
         });
         expect(targets.has('thinking-old')).toBe(false);
     });
@@ -121,7 +126,7 @@ describe('getAgentMessageForkTargets', () => {
             },
         ];
 
-        const targets = getAgentMessageForkTargets(messages);
+        const targets = getAgentMessageForkTargets(messages, { flavor: 'claude' });
 
         expect(targets.has('agent-old')).toBe(false);
         expect(targets.get('agent-new')?.rewindPointId).toBe('claude-user-new');
@@ -145,12 +150,27 @@ describe('getAgentMessageForkTargets', () => {
             },
         ];
 
-        expect(getAgentMessageForkTargets(messages, { allowMissingRewindPoint: true }).get('agent-live'))
+        expect(getAgentMessageForkTargets(messages, {
+            flavor: 'codex',
+            allowMissingRewindPoint: true,
+        }).get('agent-live'))
             .toEqual({
                 messageId: 'agent-live',
                 messageText: 'Live prompt',
                 rewindPointId: undefined,
             });
+    });
+
+    it('uses only the provider id for the active session flavor', () => {
+        const message = {
+            claudeUuid: 'claude-turn',
+            codexItemId: 'codex-turn',
+        };
+
+        expect(getUserMessageForkRewindPointId(message, 'codex')).toBe('codex-turn');
+        expect(getUserMessageForkRewindPointId(message, 'claude')).toBe('claude-turn');
+        expect(getUserMessageForkRewindPointId({ claudeUuid: 'claude-only' }, 'codex')).toBeUndefined();
+        expect(getUserMessageForkRewindPointId({ codexItemId: 'codex-only' }, 'claude')).toBeUndefined();
     });
 });
 
@@ -172,5 +192,38 @@ describe('resolveInitialForkRewindPointId', () => {
     it('only uses text fallback when the caller explicitly allows it without an id', () => {
         expect(resolveInitialForkRewindPointId(repeatedPoints, undefined, 'continue', false)).toBeNull();
         expect(resolveInitialForkRewindPointId(repeatedPoints, undefined, ' continue ', true)).toBe('new-point');
+    });
+});
+
+describe('buildDirectMessageForkOptions', () => {
+    it('forks a Codex agent response from its owning turn without another selection step', () => {
+        expect(buildDirectMessageForkOptions('codex', {
+            messageId: 'agent-turn-2',
+            rewindPointId: 'codex-user-turn-2',
+            retainSelectedTurn: true,
+        })).toEqual({
+            cutAfterItemId: 'codex-user-turn-2',
+            forkedFromMessageId: 'agent-turn-2',
+            retainSelectedTurn: true,
+        });
+    });
+
+    it('does not guess a turn when the provider rewind id is unavailable', () => {
+        expect(buildDirectMessageForkOptions('codex', {
+            messageId: 'agent-turn-2',
+            rewindPointId: undefined,
+            retainSelectedTurn: true,
+        })).toBeNull();
+    });
+
+    it('uses the owning Claude turn id directly', () => {
+        expect(buildDirectMessageForkOptions('claude', {
+            messageId: 'agent-turn-2',
+            rewindPointId: 'claude-user-turn-2',
+            retainSelectedTurn: true,
+        })).toEqual({
+            cutAfterUuid: 'claude-user-turn-2',
+            forkedFromMessageId: 'agent-turn-2',
+        });
     });
 });

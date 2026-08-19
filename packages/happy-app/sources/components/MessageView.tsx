@@ -16,7 +16,8 @@ import { getAutoFoldPromptBodyRenderState, getAutoFoldPromptInfo } from '@/utils
 import { ConversationActivityStrip } from './ConversationActivityStrip';
 import { getMessageExecutionModeLabel } from '@/utils/messageExecutionMode';
 import { DesktopShortcutTooltip } from './DesktopShortcutTooltip';
-import type { MessageForkTarget } from '@/utils/messageForkPoint';
+import { getUserMessageForkRewindPointId, type MessageForkTarget } from '@/utils/messageForkPoint';
+import { getUserMessageDisplayText } from './messageDisplayText';
 
 
 export const MessageView = React.memo((props: {
@@ -149,16 +150,18 @@ function UserTextBlock(props: {
     sync.sendMessage(props.sessionId, option.title, { source: 'option' });
   }, [props.sessionId]);
 
-  const rewindPointId = props.message.claudeUuid ?? props.message.codexItemId;
-  const canFork = Boolean(props.onForkFromUserMessage)
-    && (Boolean(rewindPointId) || props.metadata?.flavor === 'codex');
+  const rewindPointId = getUserMessageForkRewindPointId(
+    props.message,
+    props.metadata?.flavor === 'codex' ? 'codex' : 'claude',
+  );
+  const canFork = Boolean(props.onForkFromUserMessage) && Boolean(rewindPointId);
   const modeLabel = getMessageExecutionModeLabel(props.message.meta, props.metadata?.flavor, t);
+  const visibleText = getUserMessageDisplayText(props.message.displayText || props.message.text);
   const handleLongPress = React.useCallback(() => {
     if (props.onForkFromUserMessage) {
-      props.onForkFromUserMessage(props.message.id, rewindPointId, props.message.text);
+      props.onForkFromUserMessage(props.message.id, rewindPointId, visibleText);
     }
-  }, [props.message.id, props.message.text, props.onForkFromUserMessage, rewindPointId]);
-  const visibleText = props.message.displayText || props.message.text;
+  }, [props.message.id, props.onForkFromUserMessage, rewindPointId, visibleText]);
   const showActions = Platform.OS === 'web' && props.showUserMessageActions;
   const canEdit = showActions && props.canEditUserMessage && Boolean(props.onEditUserMessage);
   const startEditing = React.useCallback(() => {
@@ -215,7 +218,10 @@ function UserTextBlock(props: {
   // echo there would drop the command with nothing to replace it. (Absent
   // flavor == Claude, matching the convention used elsewhere.)
   const isClaudeFlavor = !props.metadata?.flavor || props.metadata.flavor === 'claude';
-  if (isClaudeFlavor && isUserSlashCommandEcho(props.message.text, props.message.localId != null)) {
+  if (!visibleText.trim()) {
+    return null;
+  }
+  if (isClaudeFlavor && isUserSlashCommandEcho(visibleText, props.message.localId != null)) {
     return null;
   }
 
@@ -837,7 +843,7 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surfacePressed,
   },
   agentMessageActionPressed: {
-    backgroundColor: theme.colors.surfaceSelected,
+    backgroundColor: theme.colors.surfacePressed,
   },
   agentEventContainer: {
     marginHorizontal: 8,
