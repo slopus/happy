@@ -14,6 +14,8 @@
  *   - Full Stream-JSON parsing (text deltas, thinking, tool calls, tool results, usage).
  *   - Auto-recovery: if the process unexpectedly exits between turns, it is cleanly respawned
  *     with `--conversation <id>` to preserve context.
+ *   - Live model switching: `setModel()` restarts the persistent process (the model is a
+ *     spawn-time `--model` flag), deferring the restart until the active turn finishes.
  */
 
 import { spawn, type ChildProcess } from 'node:child_process';
@@ -90,6 +92,7 @@ export class AgyBackend implements AgentBackend {
   private activeTurnStderr = '';
   private isTurnRunning = false;
   private isDisposed = false;
+  private pendingModelRestart = false;
 
   constructor(opts: AgyBackendOptions) {
     this.cwd = opts.cwd;
@@ -112,7 +115,33 @@ export class AgyBackend implements AgentBackend {
   }
 
   setModel(model: string | undefined): void {
-    this.model = resolveAgyModelName(model, this.models);
+    const resolved = resolveAgyModelName(model, this.models);
+    if (resolved === this.model) {
+      return;
+    }
+    this.model = resolved;
+
+    // The model is only applied as a spawn-time `--model` flag, so a live child
+    // keeps running the old model until respawned. Restart the persistent process
+    // to honor the change; the respawn passes `--conversation <id>` so context is
+    // preserved. Never kill mid-turn — that would fail the in-flight prompt — so
+    // defer to the sendPrompt finally block while a turn is running.
+    if (this.child && !this.child.killed) {
+      if (this.isTurnRunning) {
+        this.pendingModelRestart = true;
+      } else {
+        this.restartChildForModelChange();
+      }
+    }
+  }
+
+  private restartChildForModelChange(): void {
+    this.log(
+      `Model changed to "${this.model ?? 'default'}" — restarting persistent agy process ` +
+        `(conversation ${this.conversationId ?? 'none'} is preserved on respawn)`,
+    );
+    this.child?.kill('SIGTERM');
+    this.child = null;
   }
 
   setDiscoveredModels(models: DiscoveredModel[]): void {
@@ -228,6 +257,10 @@ export class AgyBackend implements AgentBackend {
       this.activeTurnResolve = null;
       this.activeTurnReject = null;
       this.currentTurnParser = null;
+      if (this.pendingModelRestart) {
+        this.pendingModelRestart = false;
+        this.restartChildForModelChange();
+      }
     }
   }
 
@@ -324,7 +357,7 @@ export class AgyBackend implements AgentBackend {
           }
         }
 
-        if (this.currentTurnParser) {
+        if (this.currentTurnParser && this.child === child) {
           this.currentTurnParser.feed(chunk);
         }
       });
@@ -343,19 +376,32 @@ export class AgyBackend implements AgentBackend {
           initialized = true;
           reject(err);
         }
-        if (this.isTurnRunning) {
+        // A late error from a replaced child (e.g. after a model-change restart)
+        // must not fail the turn running on the new process.
+        if (this.isTurnRunning && this.child === child) {
           this.activeTurnReject?.(err);
         }
       });
 
       child.on('close', (code: number | null) => {
         this.log(`Persistent agy process exited with code ${code ?? 'null'}`);
-        this.child = null;
+        // The close of a killed process arrives asynchronously, possibly after a
+        // replacement was already spawned (model-change restart). Only clear the
+        // reference if it still points at THIS child — otherwise the next prompt
+        // would be written into the void via `this.child?.stdin?.write` on null.
+        if (this.child === child) {
+          this.child = null;
+        }
         if (!initialized) {
           initialized = true;
           reject(new Error(`agy process exited during startup with code ${code ?? 'null'}: ${this.activeTurnStderr}`));
         }
-        if (this.isTurnRunning) {
+        // Reject the active turn when the process serving it died. After a
+        // model-change restart `this.child` already points at the replacement,
+        // so a late close from the old process must not reject the new turn.
+        // `this.child === null` covers cancel()/abort, which nulls the
+        // reference before this event arrives and still needs the rejection.
+        if (this.isTurnRunning && (this.child === child || this.child === null)) {
           this.activeTurnReject?.(new Error(`agy process exited unexpectedly during turn (code ${code})`));
         }
       });

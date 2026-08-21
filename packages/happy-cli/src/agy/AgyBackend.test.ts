@@ -172,4 +172,294 @@ describe('AgyBackend persistent single-process', () => {
     await expect(startPromise).resolves.toEqual({ sessionId: '/work' });
     expect(backend.getConversationId()).toBe('c-retry-success');
   });
+
+  it('emits exactly one error status when a turn fails with an ERROR result', async () => {
+    const { child, stdout } = makeFakeChild();
+    const spawnFn = vi.fn(() => child) as unknown as SpawnFn;
+
+    const backend = new AgyBackend({
+      cwd: '/work',
+      permissionMode: 'default',
+      spawnFn,
+    });
+
+    const messages: AgentMessage[] = [];
+    backend.onMessage((m) => messages.push(m));
+
+    const startPromise = backend.startSession();
+    stdout.emit(
+      'data',
+      '{"event":"init","conversation_id":"c-fail","init":{"cwd":"/work"}}\n'
+    );
+    await startPromise;
+
+    const turn = backend.sendPrompt('/work', 'boom');
+    await new Promise((r) => setTimeout(r, 10));
+
+    stdout.emit(
+      'data',
+      '{"event":"result","result":{"conversation_id":"c-fail","status":"ERROR","error":"Model rate limit reached"}}\n'
+    );
+
+    await expect(turn).rejects.toThrow('Model rate limit reached');
+
+    // The parser must not emit its own error status on top of the one from
+    // the sendPrompt catch — the chat would show the same error twice.
+    const errorStatuses = messages.filter((m) => m.type === 'status' && m.status === 'error');
+    expect(errorStatuses).toEqual([
+      { type: 'status', status: 'error', detail: 'Model rate limit reached' },
+    ]);
+  });
+
+  it('emits an error status when the process exits mid-turn', async () => {
+    const { child, stdout } = makeFakeChild();
+    const spawnFn = vi.fn(() => child) as unknown as SpawnFn;
+
+    const backend = new AgyBackend({
+      cwd: '/work',
+      permissionMode: 'default',
+      spawnFn,
+    });
+
+    const messages: AgentMessage[] = [];
+    backend.onMessage((m) => messages.push(m));
+
+    const startPromise = backend.startSession();
+    stdout.emit(
+      'data',
+      '{"event":"init","conversation_id":"c-crash","init":{"cwd":"/work"}}\n'
+    );
+    await startPromise;
+
+    const turn = backend.sendPrompt('/work', 'crash please');
+    await new Promise((r) => setTimeout(r, 10));
+
+    child.emit('close', 1);
+
+    await expect(turn).rejects.toThrow('agy process exited unexpectedly during turn');
+
+    const errorStatuses = messages.filter((m) => m.type === 'status' && m.status === 'error');
+    expect(errorStatuses).toHaveLength(1);
+    expect(errorStatuses[0]).toMatchObject({ status: 'error' });
+  });
+});
+
+describe('AgyBackend model switching', () => {
+  it('does not restart the child when the model is unchanged', async () => {
+    const { child, stdout } = makeFakeChild();
+    const spawnFn = vi.fn(() => child) as unknown as SpawnFn;
+
+    const backend = new AgyBackend({
+      cwd: '/work',
+      permissionMode: 'default',
+      model: 'Gemini 3.5 Flash (Low)',
+      spawnFn,
+    });
+
+    const startPromise = backend.startSession();
+    stdout.emit(
+      'data',
+      '{"event":"init","conversation_id":"c-same-model","init":{"cwd":"/work"}}\n'
+    );
+    await startPromise;
+
+    backend.setModel('Gemini 3.5 Flash (Low)');
+    // Also a no-op when the slug resolves to the same display name.
+    backend.setModel('gemini-3.5-flash-low');
+
+    expect(child.kill).not.toHaveBeenCalled();
+    expect(spawnFn).toHaveBeenCalledTimes(1);
+  });
+
+  it('restarts the idle child immediately and respawns with the new model and same conversation', async () => {
+    const first = makeFakeChild();
+    const second = makeFakeChild();
+    const spawnFn = vi
+      .fn()
+      .mockReturnValueOnce(first.child)
+      .mockReturnValueOnce(second.child) as unknown as SpawnFn;
+
+    const backend = new AgyBackend({
+      cwd: '/work',
+      permissionMode: 'default',
+      model: 'Gemini 3.5 Flash (Low)',
+      spawnFn,
+    });
+
+    const startPromise = backend.startSession();
+    first.stdout.emit(
+      'data',
+      '{"event":"init","conversation_id":"c-switch","init":{"cwd":"/work"}}\n'
+    );
+    await startPromise;
+
+    backend.setModel('Gemini 3.7 Flash (High)');
+
+    expect(first.child.kill).toHaveBeenCalledWith('SIGTERM');
+
+    const turn = backend.sendPrompt('/work', 'hello on the new model');
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(spawnFn).toHaveBeenCalledTimes(2);
+    const respawnArgs = (spawnFn as unknown as ReturnType<typeof vi.fn>).mock.calls[1][1] as string[];
+    expect(respawnArgs).toContain('Gemini 3.7 Flash (High)');
+    expect(respawnArgs).toEqual(
+      expect.arrayContaining(['--conversation', 'c-switch'])
+    );
+
+    second.stdout.emit(
+      'data',
+      '{"event":"init","conversation_id":"c-switch","init":{"cwd":"/work"}}\n'
+    );
+    await new Promise((r) => setTimeout(r, 10));
+    second.stdout.emit(
+      'data',
+      '{"event":"result","result":{"conversation_id":"c-switch","status":"SUCCESS"}}\n'
+    );
+    await expect(turn).resolves.toBeUndefined();
+    expect(backend.getModel()).toBe('Gemini 3.7 Flash (High)');
+    expect(backend.getConversationId()).toBe('c-switch');
+  });
+
+  it('defers the restart until the in-flight turn finishes', async () => {
+    const first = makeFakeChild();
+    const second = makeFakeChild();
+    const spawnFn = vi
+      .fn()
+      .mockReturnValueOnce(first.child)
+      .mockReturnValueOnce(second.child) as unknown as SpawnFn;
+
+    const backend = new AgyBackend({
+      cwd: '/work',
+      permissionMode: 'default',
+      model: 'Gemini 3.5 Flash (Low)',
+      spawnFn,
+    });
+
+    const startPromise = backend.startSession();
+    first.stdout.emit(
+      'data',
+      '{"event":"init","conversation_id":"c-defer","init":{"cwd":"/work"}}\n'
+    );
+    await startPromise;
+
+    const turn = backend.sendPrompt('/work', 'still running');
+    await new Promise((r) => setTimeout(r, 10));
+
+    // Model change arrives mid-turn: the running prompt must not be killed.
+    backend.setModel('Gemini 3.7 Flash (High)');
+    expect(first.child.kill).not.toHaveBeenCalled();
+
+    first.stdout.emit(
+      'data',
+      '{"event":"result","result":{"conversation_id":"c-defer","status":"SUCCESS"}}\n'
+    );
+    await expect(turn).resolves.toBeUndefined();
+
+    // Turn finished — the pending restart kicks in now.
+    expect(first.child.kill).toHaveBeenCalledWith('SIGTERM');
+
+    const turn2 = backend.sendPrompt('/work', 'next turn uses new model');
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(spawnFn).toHaveBeenCalledTimes(2);
+    const respawnArgs = (spawnFn as unknown as ReturnType<typeof vi.fn>).mock.calls[1][1] as string[];
+    expect(respawnArgs).toContain('Gemini 3.7 Flash (High)');
+    expect(respawnArgs).toEqual(
+      expect.arrayContaining(['--conversation', 'c-defer'])
+    );
+
+    second.stdout.emit(
+      'data',
+      '{"event":"init","conversation_id":"c-defer","init":{"cwd":"/work"}}\n'
+    );
+    await new Promise((r) => setTimeout(r, 10));
+    second.stdout.emit(
+      'data',
+      '{"event":"result","result":{"conversation_id":"c-defer","status":"SUCCESS"}}\n'
+    );
+    await expect(turn2).resolves.toBeUndefined();
+  });
+
+  it('survives a late close event from the killed child arriving after the replacement spawned', async () => {
+    const first = makeFakeChild();
+    const second = makeFakeChild();
+    const spawnFn = vi
+      .fn()
+      .mockReturnValueOnce(first.child)
+      .mockReturnValueOnce(second.child) as unknown as SpawnFn;
+
+    const backend = new AgyBackend({
+      cwd: '/work',
+      permissionMode: 'default',
+      model: 'Gemini 3.5 Flash (Low)',
+      spawnFn,
+    });
+
+    const startPromise = backend.startSession();
+    first.stdout.emit(
+      'data',
+      '{"event":"init","conversation_id":"c-race","init":{"cwd":"/work"}}\n'
+    );
+    await startPromise;
+
+    // Model change kills the old child — its close event has NOT fired yet.
+    backend.setModel('Gemini 3.7 Flash (High)');
+    expect(first.child.kill).toHaveBeenCalledWith('SIGTERM');
+
+    // The next prompt spawns the replacement...
+    const turn = backend.sendPrompt('/work', 'hello on the new model');
+    await new Promise((r) => setTimeout(r, 10));
+    expect(spawnFn).toHaveBeenCalledTimes(2);
+
+    // ...and only NOW does the old child's close event arrive. It must not
+    // clear `this.child` (which points at the replacement) or fail the turn.
+    first.child.emit('close', 1);
+
+    second.stdout.emit(
+      'data',
+      '{"event":"init","conversation_id":"c-race","init":{"cwd":"/work"}}\n'
+    );
+    await new Promise((r) => setTimeout(r, 10));
+
+    // The prompt must have been written to the REPLACEMENT's stdin — before the
+    // fix, the late close nulled `this.child` and the write was silently dropped,
+    // leaving the turn pending forever ("处理中").
+    expect(second.stdin.write).toHaveBeenCalledWith(
+      JSON.stringify({ event: 'user', message: { content: 'hello on the new model' } }) + '\n'
+    );
+
+    second.stdout.emit(
+      'data',
+      '{"event":"result","result":{"conversation_id":"c-race","status":"SUCCESS"}}\n'
+    );
+    await expect(turn).resolves.toBeUndefined();
+  });
+
+  it('cancel still rejects the in-flight turn when the killed process closes', async () => {
+    const { child, stdout } = makeFakeChild();
+    const spawnFn = vi.fn(() => child) as unknown as SpawnFn;
+
+    const backend = new AgyBackend({
+      cwd: '/work',
+      permissionMode: 'default',
+      spawnFn,
+    });
+
+    const startPromise = backend.startSession();
+    stdout.emit(
+      'data',
+      '{"event":"init","conversation_id":"c-cancel","init":{"cwd":"/work"}}\n'
+    );
+    await startPromise;
+
+    const turn = backend.sendPrompt('/work', 'abort me');
+    await new Promise((r) => setTimeout(r, 10));
+
+    // cancel() kills and nulls the reference BEFORE the close event arrives.
+    await backend.cancel();
+    child.emit('close', null);
+
+    await expect(turn).rejects.toThrow('agy process exited unexpectedly during turn');
+  });
 });
