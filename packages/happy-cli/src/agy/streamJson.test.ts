@@ -117,23 +117,28 @@ describe('StreamJsonParser', () => {
     ]);
   });
 
-  it('emits error status on result ERROR status', () => {
+  it('does not emit a status message on result ERROR status (surfaced via onResult instead)', () => {
     const messages: AgentMessage[] = [];
+    const onResult = vi.fn();
     const parser = new StreamJsonParser({
       onMessage: (msg) => messages.push(msg),
+      onResult,
     });
 
     parser.feed(
       '{"event":"result","result":{"conversation_id":"cid-123","status":"ERROR","error":"Model rate limit reached"}}\n',
     );
 
-    expect(messages).toEqual([
-      {
-        type: 'status',
-        status: 'error',
-        detail: 'Model rate limit reached',
-      },
-    ]);
+    // The error reaches the user through the turn rejection in AgyBackend,
+    // which emits the single error status. The parser only reports the raw
+    // result event (and usage, when present).
+    expect(messages).toEqual([]);
+    expect(onResult).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'result',
+        result: expect.objectContaining({ status: 'ERROR', error: 'Model rate limit reached' }),
+      }),
+    );
   });
 
   it('ignores non-JSON lines and logs them without crashing', () => {

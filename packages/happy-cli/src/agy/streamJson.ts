@@ -232,13 +232,8 @@ export class StreamJsonParser {
       });
     }
 
-    if (result.status === 'ERROR') {
-      const detail = result.error || result.response || 'agy turn failed';
-      this.options.onMessage?.({
-        type: 'status',
-        status: 'error',
-        detail,
-      });
-    }
+    // Note: an ERROR result is surfaced through onResult -> turn rejection ->
+    // AgyBackend.sendPrompt catch, which emits the single user-visible error
+    // status. Emitting another one here would duplicate the chat message.
   }
 }
