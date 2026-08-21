@@ -34,7 +34,7 @@ import { MessageBuffer } from '@/ui/ink/messageBuffer';
 import { AgyDisplay } from '@/ui/ink/AgyDisplay';
 import type { AgentMessage } from '@/agent/core';
 import type { PermissionMode } from '@/api/types';
-import { AgyBackend } from './AgyBackend';
+import { createAgyBackend } from './createAgyBackend';
 import { DEFAULT_AGY_MODEL } from './constants';
 import { discoverAgyModels, resolveAgyModelName } from './discoverModels';
 import { extractSessionTitle } from './title';
@@ -140,7 +140,7 @@ export async function runAgy(opts: RunAgyOptions): Promise<void> {
 
   let displayedModel = initialModel;
 
-  const backend = new AgyBackend({
+  const backend = createAgyBackend({
     cwd: process.cwd(),
     permissionMode: initialPermissionMode,
     model: initialModel,
@@ -252,7 +252,7 @@ export async function runAgy(opts: RunAgyOptions): Promise<void> {
   async function handleAbort() {
     log('Abort requested');
     try {
-      await backend.cancel();
+      await backend.cancel(sessionTag);
     } catch (error) {
       logger.debug('[agy] Abort failed:', error);
     }
