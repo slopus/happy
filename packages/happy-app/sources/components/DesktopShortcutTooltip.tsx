@@ -13,7 +13,7 @@ export const DesktopShortcutTooltip = React.memo(function DesktopShortcutTooltip
     testID,
     visible,
 }: {
-    align?: 'left' | 'right';
+    align?: 'center' | 'left' | 'right';
     compact?: boolean;
     label: string;
     multiline?: boolean;
@@ -32,7 +32,11 @@ export const DesktopShortcutTooltip = React.memo(function DesktopShortcutTooltip
                 placement === 'above' ? styles.placementAbove : styles.placementBelow,
                 compact && styles.tooltipCompact,
                 multiline && styles.tooltipMultiline,
-                align === 'right' ? styles.alignRight : styles.alignLeft,
+                align === 'center'
+                    ? styles.alignCenter
+                    : align === 'right'
+                        ? styles.alignRight
+                        : styles.alignLeft,
             ]}
             testID={testID}
         >
@@ -47,6 +51,7 @@ export const DesktopShortcutTooltip = React.memo(function DesktopShortcutTooltip
                 <View
                     style={[
                         styles.caret,
+                        align === 'center' ? styles.caretCenter : styles.caretRight,
                         placement === 'above' ? styles.caretBelow : styles.caretAbove,
                     ]}
                 />
@@ -90,6 +95,10 @@ const styles = StyleSheet.create((theme) => ({
     alignLeft: {
         left: 0,
     },
+    alignCenter: {
+        left: '50%',
+        transform: [{ translateX: '-50%' }],
+    },
     alignRight: {
         right: 0,
     },
@@ -115,11 +124,17 @@ const styles = StyleSheet.create((theme) => ({
     },
     caret: {
         position: 'absolute',
-        right: 13,
         width: 9,
         height: 9,
         backgroundColor: theme.colors.text,
         transform: [{ rotate: '45deg' }],
+    },
+    caretRight: {
+        right: 13,
+    },
+    caretCenter: {
+        left: '50%',
+        marginLeft: -4.5,
     },
     caretAbove: {
         top: -4,

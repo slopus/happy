@@ -70,8 +70,11 @@ function subagentInspectorScreenshotPath(
     return path.join(subagentInspectorEvidenceDirectory, filename);
 }
 
-function messageHoverScreenshotPath(testInfo: { outputPath: (filename: string) => string }): string {
-    const filename = `case-1-${messageHoverEvidencePhase}.png`;
+function messageHoverScreenshotPath(
+    testInfo: { outputPath: (filename: string) => string },
+    caseId: 1 | 2 = 1,
+): string {
+    const filename = `case-${caseId}-${messageHoverEvidencePhase}.png`;
     if (!messageHoverEvidenceDirectory) return testInfo.outputPath(filename);
     fs.mkdirSync(messageHoverEvidenceDirectory, { recursive: true });
     return path.join(messageHoverEvidenceDirectory, filename);
@@ -1728,7 +1731,8 @@ test('[MESSAGE-HOVER-ACTIONS] PC Agent 回复悬浮后直接从所属回合分�
     const fixture = await createConnectedE2EWorkingDirectorySession(request);
     const firstResponse = 'The first checkpoint is complete and preserved in this turn.';
     const secondResponse = 'The second checkpoint includes browser assertions, a screenshot, and the recorded RPC boundary.';
-    const baseTime = Date.now() - 90_000;
+    fixture.rewindPoints[0].text = fixture.rewindPoints[1].text;
+    const baseTime = fixture.rewindPoints[0].timestamp;
     const pulseTimer = setInterval(() => fixture.client.pulse(), 60_000);
 
     try {
@@ -1738,7 +1742,6 @@ test('[MESSAGE-HOVER-ACTIONS] PC Agent 回复悬浮后直接从所属回合分�
                 time: baseTime,
                 role: 'user',
                 turn: 'message-hover-turn-1',
-                codexItemId: fixture.rewindPoints[0].itemId,
                 ev: { t: 'text', text: fixture.rewindPoints[0].text },
             },
             {
@@ -1750,15 +1753,14 @@ test('[MESSAGE-HOVER-ACTIONS] PC Agent 回复悬浮后直接从所属回合分�
             },
             {
                 id: 'message-hover-user-2',
-                time: baseTime + 20_000,
+                time: fixture.rewindPoints[1].timestamp,
                 role: 'user',
                 turn: 'message-hover-turn-2',
-                codexItemId: fixture.rewindPoints[1].itemId,
                 ev: { t: 'text', text: fixture.rewindPoints[1].text },
             },
             {
                 id: 'message-hover-agent-2',
-                time: baseTime + 30_000,
+                time: fixture.rewindPoints[1].timestamp + 10_000,
                 role: 'agent',
                 turn: 'message-hover-turn-2',
                 ev: { t: 'text', text: secondResponse },
@@ -1830,6 +1832,53 @@ test('[MESSAGE-HOVER-ACTIONS] PC Agent 回复悬浮后直接从所属回合分�
         expect(forkButtonCenter).not.toBeNull();
         await page.mouse.move(forkButtonCenter!.x, forkButtonCenter!.y);
         await pauseForRecordedReview(page, 1_100);
+        const forkTooltipAlignment = await page.evaluate(() => {
+            const forkButton = document.querySelector<HTMLElement>('[aria-label="Fork from here"]');
+            const forkTooltip = document.querySelector<HTMLElement>(
+                '[data-testid^="message-agent-fork-tooltip-"]',
+            );
+            if (!forkButton || !forkTooltip) return null;
+            const buttonBounds = forkButton.getBoundingClientRect();
+            const tooltipBounds = forkTooltip.getBoundingClientRect();
+            return {
+                buttonCenterX: buttonBounds.left + buttonBounds.width / 2,
+                tooltipCenterX: tooltipBounds.left + tooltipBounds.width / 2,
+            };
+        });
+        expect(forkTooltipAlignment).not.toBeNull();
+        expect(Math.abs(
+            forkTooltipAlignment!.tooltipCenterX - forkTooltipAlignment!.buttonCenterX,
+        )).toBeLessThanOrEqual(1);
+        const actionHitTargets = await page.evaluate(() => {
+            const inspectButton = (label: string) => {
+                const button = document.querySelector<HTMLElement>(`[aria-label="${label}"]`);
+                if (!button) return null;
+                const bounds = button.getBoundingClientRect();
+                const inset = 3;
+                const points = [
+                    [bounds.left + inset, bounds.top + inset],
+                    [bounds.right - inset, bounds.top + inset],
+                    [bounds.left + inset, bounds.bottom - inset],
+                    [bounds.right - inset, bounds.bottom - inset],
+                    [bounds.left + bounds.width / 2, bounds.top + bounds.height / 2],
+                ];
+                return points.map(([x, y]) => (
+                    document.elementFromPoint(x, y)?.closest('button') === button
+                ));
+            };
+            return {
+                copy: inspectButton('Copy'),
+                fork: inspectButton('Fork from here'),
+            };
+        });
+        expect(actionHitTargets).toEqual({
+            copy: [true, true, true, true, true],
+            fork: [true, true, true, true, true],
+        });
+        await page.screenshot({
+            path: messageHoverScreenshotPath(testInfo),
+            animations: 'disabled',
+        });
 
         const forkClicked = await page.evaluate(() => {
             const forkButton = document.querySelector<HTMLElement>('[aria-label="Fork from here"]');
@@ -1838,6 +1887,11 @@ test('[MESSAGE-HOVER-ACTIONS] PC Agent 回复悬浮后直接从所属回合分�
             return true;
         });
         expect(forkClicked).toBe(true);
+        await expect(page.getByRole('dialog')).toHaveCount(0);
+        await expect.poll(
+            () => fixture.rpcCalls.some((call) => call.method.endsWith(':codex-list-rewind-points')),
+            { timeout: 15_000 },
+        ).toBe(true);
         await expect.poll(
             () => fixture.rpcCalls.some((call) => call.method.endsWith(':codex-duplicate-thread')),
             { timeout: 15_000 },
@@ -1854,6 +1908,13 @@ test('[MESSAGE-HOVER-ACTIONS] PC Agent 回复悬浮后直接从所属回合分�
                 retainSelectedTurn: true,
             },
         });
+        const forkRpcMethods = fixture.rpcCalls
+            .filter((call) => call.method.includes(':codex-'))
+            .map((call) => call.method.slice(call.method.lastIndexOf(':') + 1));
+        expect(forkRpcMethods).toEqual([
+            'codex-list-rewind-points',
+            'codex-duplicate-thread',
+        ]);
         const spawnCall = fixture.rpcCalls.find((call) => call.method.endsWith(':spawn-happy-session'));
         expect(spawnCall).toMatchObject({
             params: {
@@ -1864,6 +1925,10 @@ test('[MESSAGE-HOVER-ACTIONS] PC Agent 回复悬浮后直接从所属回合分�
             },
         });
         expect(spawnCall?.params?.forkedFromMessageId).toEqual(expect.any(String));
+        await page.screenshot({
+            path: messageHoverScreenshotPath(testInfo, 2),
+            animations: 'disabled',
+        });
     } finally {
         clearInterval(pulseTimer);
         await page.close();

@@ -34,6 +34,7 @@ export const MessageView = React.memo((props: {
     rewindPointId: string | undefined,
     messageText: string,
     retainSelectedTurn?: boolean,
+    messageCreatedAt?: number,
   ) => void;
   agentForkTarget?: MessageForkTarget;
   showAgentMessageActions?: boolean;
@@ -80,6 +81,7 @@ function RenderBlock(props: {
     rewindPointId: string | undefined,
     messageText: string,
     retainSelectedTurn?: boolean,
+    messageCreatedAt?: number,
   ) => void;
   agentForkTarget?: MessageForkTarget;
   showAgentMessageActions?: boolean;
@@ -135,7 +137,13 @@ function UserTextBlock(props: {
   message: UserTextMessage;
   metadata: Metadata | null;
   sessionId: string;
-  onForkFromUserMessage?: (messageId: string, rewindPointId: string | undefined, messageText: string) => void;
+  onForkFromUserMessage?: (
+    messageId: string,
+    rewindPointId: string | undefined,
+    messageText: string,
+    retainSelectedTurn?: boolean,
+    messageCreatedAt?: number,
+  ) => void;
   showUserMessageActions?: boolean;
   canEditUserMessage?: boolean;
   onEditUserMessage?: (messageId: string, messageText: string) => Promise<void> | void;
@@ -159,9 +167,9 @@ function UserTextBlock(props: {
   const visibleText = getUserMessageDisplayText(props.message.displayText || props.message.text);
   const handleLongPress = React.useCallback(() => {
     if (props.onForkFromUserMessage) {
-      props.onForkFromUserMessage(props.message.id, rewindPointId, visibleText);
+      props.onForkFromUserMessage(props.message.id, rewindPointId, visibleText, undefined, props.message.createdAt);
     }
-  }, [props.message.id, props.onForkFromUserMessage, rewindPointId, visibleText]);
+  }, [props.message.createdAt, props.message.id, props.onForkFromUserMessage, rewindPointId, visibleText]);
   const showActions = Platform.OS === 'web' && props.showUserMessageActions;
   const canEdit = showActions && props.canEditUserMessage && Boolean(props.onEditUserMessage);
   const startEditing = React.useCallback(() => {
@@ -387,6 +395,7 @@ function AgentTextBlock(props: {
     rewindPointId: string | undefined,
     messageText: string,
     retainSelectedTurn?: boolean,
+    messageCreatedAt?: number,
   ) => void;
   showActions?: boolean;
 }) {
@@ -431,6 +440,7 @@ function AgentTextBlock(props: {
       props.forkTarget.rewindPointId,
       props.forkTarget.messageText,
       true,
+      props.forkTarget.messageCreatedAt,
     );
   };
 
@@ -451,7 +461,7 @@ function AgentTextBlock(props: {
   return (
     <View
       testID={`message-agent-${props.message.id}`}
-      style={styles.agentMessageContainer}
+      style={[styles.agentMessageContainer, showActions && styles.agentMessageContainerWithActions]}
       {...(Platform.OS === 'web' ? ({
         onMouseEnter: () => setIsHovered(true),
         onMouseLeave: () => setIsHovered(false),
@@ -489,6 +499,7 @@ function AgentTextBlock(props: {
               />
             </Pressable>
             <DesktopShortcutTooltip
+              align="center"
               compact
               label={isCopied ? t('common.copied') : t('common.copy')}
               placement="above"
@@ -517,6 +528,7 @@ function AgentTextBlock(props: {
                 <Ionicons name="git-branch-outline" size={16} color={theme.colors.textSecondary} />
               </Pressable>
               <DesktopShortcutTooltip
+                align="center"
                 compact
                 label={t('session.forkFromHere')}
                 placement="above"
@@ -810,6 +822,9 @@ const styles = StyleSheet.create((theme) => ({
     marginBottom: 12,
     borderRadius: 16,
     maxWidth: '100%',
+  },
+  agentMessageContainerWithActions: {
+    marginBottom: 46,
   },
   agentMessageActions: {
     position: 'absolute',

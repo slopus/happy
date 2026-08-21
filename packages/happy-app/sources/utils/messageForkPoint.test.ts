@@ -4,6 +4,7 @@ import {
     buildDirectMessageForkOptions,
     getAgentMessageForkTargets,
     getUserMessageForkRewindPointId,
+    resolveCodexMessageForkRewindPointId,
     resolveInitialForkRewindPointId,
 } from './messageForkPoint';
 
@@ -71,11 +72,13 @@ describe('getAgentMessageForkTargets', () => {
         expect(targets.get('agent-new')).toEqual({
             messageId: 'agent-new',
             messageText: 'New prompt',
+            messageCreatedAt: 4,
             rewindPointId: 'codex-user-new',
         });
         expect(targets.get('agent-old')).toEqual({
             messageId: 'agent-old',
             messageText: 'Old prompt',
+            messageCreatedAt: 1,
             rewindPointId: 'codex-user-old',
         });
         expect(targets.has('thinking-old')).toBe(false);
@@ -157,6 +160,7 @@ describe('getAgentMessageForkTargets', () => {
             .toEqual({
                 messageId: 'agent-live',
                 messageText: 'Live prompt',
+                messageCreatedAt: 1,
                 rewindPointId: undefined,
             });
     });
@@ -171,6 +175,81 @@ describe('getAgentMessageForkTargets', () => {
         expect(getUserMessageForkRewindPointId(message, 'claude')).toBe('claude-turn');
         expect(getUserMessageForkRewindPointId({ claudeUuid: 'claude-only' }, 'codex')).toBeUndefined();
         expect(getUserMessageForkRewindPointId({ codexItemId: 'codex-only' }, 'claude')).toBeUndefined();
+    });
+});
+
+describe('resolveCodexMessageForkRewindPointId', () => {
+    const points = [
+        { itemId: 'turn-1', text: 'continue', timestamp: 10_000 },
+        { itemId: 'turn-2', text: 'continue', timestamp: 20_000 },
+    ];
+
+    it('uses an existing provider id without guessing', () => {
+        expect(resolveCodexMessageForkRewindPointId(points, {
+            messageText: 'continue',
+            messageCreatedAt: 20_100,
+            rewindPointId: 'turn-1',
+        })).toBe('turn-1');
+    });
+
+    it('resolves repeated live prompt text to the clicked turn by timestamp', () => {
+        expect(resolveCodexMessageForkRewindPointId(points, {
+            messageText: ' continue ',
+            messageCreatedAt: 19_900,
+            rewindPointId: undefined,
+        })).toBe('turn-2');
+    });
+
+    it('uses the nearest timestamp when Codex wrapped the visible prompt with an internal prefix', () => {
+        expect(resolveCodexMessageForkRewindPointId([
+            { itemId: 'turn-1', text: 'internal prompt\n\nFirst request', timestamp: 10_000 },
+            { itemId: 'turn-2', text: 'internal prompt\n\nSecond request', timestamp: 20_000 },
+        ], {
+            messageText: 'Second request',
+            messageCreatedAt: 20_100,
+            rewindPointId: undefined,
+        })).toBe('turn-2');
+    });
+
+    it('requires even a unique exact-text match to be within the freshness window', () => {
+        expect(resolveCodexMessageForkRewindPointId([
+            { itemId: 'stale-turn', text: 'unique prompt', timestamp: 10_000 },
+        ], {
+            messageText: 'unique prompt',
+            messageCreatedAt: 900_000,
+            rewindPointId: undefined,
+        })).toBeNull();
+    });
+
+    it('does not guess a nearby historical turn when the current live turn is missing', () => {
+        expect(resolveCodexMessageForkRewindPointId([
+            { itemId: 'historical-turn', text: 'previous prompt', timestamp: 19_900 },
+        ], {
+            messageText: 'current prompt',
+            messageCreatedAt: 20_000,
+            rewindPointId: undefined,
+        })).toBeNull();
+    });
+
+    it('refuses an ambiguous or stale timestamp instead of forking the wrong turn', () => {
+        expect(resolveCodexMessageForkRewindPointId(points, {
+            messageText: 'continue',
+            messageCreatedAt: 15_000,
+            rewindPointId: undefined,
+        })).toBeNull();
+        expect(resolveCodexMessageForkRewindPointId(points, {
+            messageText: 'different prompt',
+            messageCreatedAt: 900_000,
+            rewindPointId: undefined,
+        })).toBeNull();
+    });
+
+    it('does not treat an empty visible prompt as a wrapped match', () => {
+        expect(resolveCodexMessageForkRewindPointId(points, {
+            messageText: '   ',
+            messageCreatedAt: 20_000,
+            rewindPointId: undefined,
+        })).toBeNull();
     });
 });
 

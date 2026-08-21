@@ -239,6 +239,7 @@ const ChatListInternal = React.memo((props: {
     const agentMessageForkTargets = React.useMemo(
         () => getAgentMessageForkTargets(props.messages, {
             flavor: props.metadata?.flavor === 'codex' ? 'codex' : 'claude',
+            allowMissingRewindPoint: props.metadata?.flavor === 'codex',
         }),
         [props.messages, props.metadata?.flavor],
     );
@@ -255,8 +256,15 @@ const ChatListInternal = React.memo((props: {
         rewindPointId: string | undefined,
         messageText: string,
         retainSelectedTurn?: boolean,
+        messageCreatedAt?: number,
     ) => {
-        forkFromMessage({ messageId, messageText, rewindPointId, retainSelectedTurn });
+        forkFromMessage({
+            messageId,
+            messageText,
+            messageCreatedAt: messageCreatedAt ?? 0,
+            rewindPointId,
+            retainSelectedTurn,
+        });
     }, [forkFromMessage]);
 
     const handleEditUserMessage = useCallback(async (messageId: string, messageText: string) => {

@@ -2,7 +2,7 @@ import * as React from 'react';
 import { useHappyAction } from '@/hooks/useHappyAction';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { Modal } from '@/modal';
-import { machineResumeSession, sessionArchive, sessionRequestArchiveMetadata, sessionRestoreMetadata, sessionKill, sessionDelete, sessionRegenerateTitle, sessionUpdateMetadata, forkAndSpawn, type ForkSource } from '@/sync/ops';
+import { machineResumeSession, sessionArchive, sessionRequestArchiveMetadata, sessionRestoreMetadata, sessionKill, sessionDelete, sessionRegenerateTitle, sessionUpdateMetadata, forkAndSpawn, codexListRewindPoints, type ForkSource } from '@/sync/ops';
 import { maybeCleanupWorktree } from '@/hooks/useWorktreeCleanup';
 import { storage, useMachine, useSetting } from '@/sync/storage';
 import { Machine, Session } from '@/sync/storageTypes';
@@ -24,7 +24,7 @@ import { canRegenerateSessionTitle } from '@/utils/sessionTitleRegeneration';
 import { buildSessionQuickActionItems } from './sessionQuickActionItems';
 import { useSessionManagementPreferences } from './useSessionManagementPreferences';
 import { isSessionArchived } from '@/utils/sessionLifecycle';
-import { buildDirectMessageForkOptions, type MessageForkTarget } from '@/utils/messageForkPoint';
+import { buildDirectMessageForkOptions, resolveCodexMessageForkRewindPointId, type MessageForkTarget } from '@/utils/messageForkPoint';
 
 export interface SessionActionItem {
     id: string;
@@ -425,7 +425,23 @@ export function useSessionQuickActions(
         if (!canFork || !forkSource) {
             throw new HappyError(t('session.forkErrorMissingMetadata'), false);
         }
-        const forkOptions = buildDirectMessageForkOptions(forkSource.kind, target);
+        let resolvedTarget = target;
+        if (forkSource.kind === 'codex' && !target.rewindPointId) {
+            const rewindPointsResult = await codexListRewindPoints({
+                machineId: forkSource.machineId,
+                directory: forkSource.directory,
+                codexThreadId: forkSource.codexThreadId,
+            });
+            if (rewindPointsResult.type !== 'success') {
+                throw new HappyError(rewindPointsResult.errorMessage, false);
+            }
+            const rewindPointId = resolveCodexMessageForkRewindPointId(rewindPointsResult.points, target);
+            if (!rewindPointId) {
+                throw new HappyError(t('session.forkErrorMissingMetadata'), false);
+            }
+            resolvedTarget = { ...target, rewindPointId };
+        }
+        const forkOptions = buildDirectMessageForkOptions(forkSource.kind, resolvedTarget);
         if (!forkOptions) {
             throw new HappyError(t('session.forkErrorMissingMetadata'), false);
         }
