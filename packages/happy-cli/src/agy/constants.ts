@@ -58,14 +58,17 @@ export function resolveAgyBin(): string {
  * agy expects the full display string, not a slug.
  */
 export const AGY_MODELS = [
-  'Gemini 3.6 Flash (Medium)',
+  'Gemini 3.7 Flash (High)',
+  'Gemini 3.7 Flash (Medium)',
+  'Gemini 3.7 Flash (Low)',
   'Gemini 3.6 Flash (High)',
+  'Gemini 3.6 Flash (Medium)',
   'Gemini 3.6 Flash (Low)',
-  'Gemini 3.5 Flash (Medium)',
   'Gemini 3.5 Flash (High)',
+  'Gemini 3.5 Flash (Medium)',
   'Gemini 3.5 Flash (Low)',
-  'Gemini 3.1 Pro (Low)',
   'Gemini 3.1 Pro (High)',
+  'Gemini 3.1 Pro (Low)',
   'Claude Sonnet 4.6 (Thinking)',
   'Claude Opus 4.6 (Thinking)',
   'GPT-OSS 120B (Medium)',

@@ -127,7 +127,17 @@ export class AcpSessionManager {
     }
 
     if (msg.type === 'status') {
-      return [];
+      // Surface backend errors as visible service messages so mobile/web
+      // clients can see why a turn failed. Other statuses only drive local
+      // thinking state and stay invisible.
+      if (msg.status !== 'error') {
+        return [];
+      }
+      const detail = msg.detail?.trim();
+      return [
+        ...this.flush(),
+        createEnvelope('agent', { t: 'service', text: detail ? `⚠️ ${detail}` : '⚠️ Agent error' }, turnOptions(this.currentTurnId, this.nextTime())),
+      ];
     }
 
     if (msg.type === 'model-output') {

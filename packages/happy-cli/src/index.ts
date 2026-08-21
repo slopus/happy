@@ -449,11 +449,24 @@ Conversation history is preserved on the server, but in-flight tool calls are in
 
       let startedBy: 'daemon' | 'terminal' | undefined = undefined;
       let verbose = false;
+      let model: string | undefined = undefined;
+      let permissionMode: any = undefined;
+      let dangerouslySkipPermissions = false;
+      let resumeConversationId: string | undefined = undefined;
       for (let i = 1; i < args.length; i++) {
         if (args[i] === '--started-by') {
           startedBy = args[++i] as 'daemon' | 'terminal';
         } else if (args[i] === '--verbose') {
           verbose = true;
+        } else if (args[i] === '--model') {
+          model = args[++i];
+        } else if (args[i] === '--permission-mode') {
+          permissionMode = args[++i];
+        } else if (args[i] === '--resume') {
+          resumeConversationId = args[++i];
+        } else if (args[i] === '--dangerously-skip-permissions' || args[i] === '--yolo' || args[i] === '-y') {
+          dangerouslySkipPermissions = true;
+          permissionMode = 'bypassPermissions';
         }
       }
 
@@ -464,6 +477,10 @@ Conversation history is preserved on the server, but in-flight tool calls are in
         credentials,
         startedBy,
         verbose,
+        model,
+        permissionMode,
+        dangerouslySkipPermissions,
+        resumeConversationId,
       });
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')

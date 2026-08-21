@@ -94,6 +94,11 @@ Agent-only service text shown to the user as-is. Supports markdown.
 |---|---|---|
 | `text` | string | Service message text (markdown) |
 
+Producers also use `service` to surface backend errors in the chat: when an
+agent backend reports `status: 'error'` (e.g. a failed or interrupted turn),
+the CLI emits a `⚠️ <detail>` service message before the failed `turn-end`, so
+mobile/web clients can see why the turn failed instead of it stopping silently.
+
 ### `tool-call-start`
 
 Agent begins a tool invocation.

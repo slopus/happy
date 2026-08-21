@@ -1,18 +1,21 @@
 /**
  * Agy AgentBackend Implementation
  *
- * Custom AgentBackend that drives the agy (Antigravity) CLI. Unlike the ACP-based
- * backends, agy has no streaming-event protocol — its only non-interactive surface
- * is `agy --print "<prompt>"`, which streams the final answer as plain text and
- * exits. So this backend spawns one `agy --print` process per turn and maps:
+ * Drives the agy (Antigravity) CLI in persistent streaming mode via:
+ *   `--input-format stream-json --output-format stream-json`
  *
- *   spawn            → { type: 'status', status: 'running' }
- *   stdout chunk     → { type: 'model-output', textDelta }
- *   exit code 0      → { type: 'status', status: 'idle' }
- *   exit code != 0   → { type: 'status', status: 'error', detail }
+ * A single long-lived agy child process is maintained throughout the Happy session lifecycle.
+ * Prompts are dispatched across turns via stdio NDJSON using the native schema:
+ *   `{"event":"user","message":{"content":"..."}}`
  *
- * There are no tool-call or permission events: print mode is one-shot and governed
- * by the CLI flags (see cliArgs.ts) plus agy's own settings.json.
+ * Features:
+ *   - Zero cold start on multi-turn conversations (Harness, keyring, and session stay hot).
+ *   - Automatic startup retry on transient Google OAuth / network EOF errors.
+ *   - Full Stream-JSON parsing (text deltas, thinking, tool calls, tool results, usage).
+ *   - Auto-recovery: if the process unexpectedly exits between turns, it is cleanly respawned
+ *     with `--conversation <id>` to preserve context.
+ *   - Live model switching: `setModel()` restarts the persistent process (the model is a
+ *     spawn-time `--model` flag), deferring the restart until the active turn finishes.
  */
 
 import { spawn, type ChildProcess } from 'node:child_process';
@@ -25,126 +28,337 @@ import type {
   StartSessionResult,
 } from '@/agent/core/AgentBackend';
 import { resolveAgyBin, AGY_PRINT_TIMEOUT } from './constants';
-import { buildAgyArgs } from './cliArgs';
-import { readAgyConversationId } from './conversationStore';
+import { resolveAgyModelName, type DiscoveredModel } from './discoverModels';
+import { StreamJsonParser, type AgyResult } from './streamJson';
 
-/** Signature of node's `spawn`, injectable so tests can supply a fake process. */
 export type SpawnFn = typeof spawn;
 
 export interface AgyBackendOptions {
-  /** Working directory the agy process runs in (and the conversation cache key). */
+  /** Working directory the agy process runs in. */
   cwd: string;
-  /** Initial permission mode; updated per turn from message meta. */
+  /** Initial permission mode. */
   permissionMode: PermissionMode;
-  /** Initial model display name; updated per turn from message meta. */
+  /** Initial model display name or slug. */
   model?: string;
+  /** List of discovered models for resolving slugs to display names. */
+  models?: DiscoveredModel[];
+  /** Optional initial conversation ID to resume. */
+  conversationId?: string | null;
   /** Value for `--print-timeout`. Defaults to AGY_PRINT_TIMEOUT. */
   printTimeout?: string;
   /** Optional logger. */
   log?: (msg: string) => void;
   /** Injectable spawn (defaults to node's child_process.spawn). */
   spawnFn?: SpawnFn;
-  /** Optional override for resolving the resume conversation id (tests). */
-  resolveConversationId?: (cwd: string) => string | null;
+  /** Optional callback fired whenever a conversation ID is confirmed. */
+  onConversationId?: (conversationId: string) => void;
+  /** Maximum number of retries for transient startup errors (default 3). */
+  maxRetries?: number;
 }
 
-/** Parse an agy duration string ("10m", "30s", "1h") to milliseconds; defaults to 10m. */
-function parsePrintTimeoutMs(value: string): number {
-  const m = /^(\d+)\s*(s|m|h)$/.exec(value.trim());
-  if (!m) return 10 * 60_000;
-  const n = Number(m[1]);
-  return m[2] === 'h' ? n * 3_600_000 : m[2] === 'm' ? n * 60_000 : n * 1_000;
+export function isRetryableAgyError(errorText: string, stderrText = ''): boolean {
+  const combined = `${errorText} ${stderrText}`.toLowerCase();
+  return (
+    combined.includes('eligibility check failed') ||
+    combined.includes('failed to get profile picture') ||
+    combined.includes(': eof') ||
+    combined.includes('tls handshake timeout') ||
+    combined.includes('connection reset by peer') ||
+    combined.includes('i/o timeout') ||
+    combined.includes('rate limit') ||
+    combined.includes('resource_exhausted') ||
+    combined.includes('currently overloaded')
+  );
 }
 
 export class AgyBackend implements AgentBackend {
   private readonly handlers = new Set<AgentMessageHandler>();
+  private readonly conversationIdListeners = new Set<(id: string) => void>();
   private readonly cwd: string;
   private readonly printTimeout: string;
   private readonly log: (msg: string) => void;
   private readonly spawnFn: SpawnFn;
-  private readonly resolveConversationId: (cwd: string) => string | null;
+  private readonly maxRetries: number;
 
   private permissionMode: PermissionMode;
   private model?: string;
+  private models?: DiscoveredModel[];
   private conversationId: string | null = null;
+
   private child: ChildProcess | null = null;
+  private currentTurnParser: StreamJsonParser | null = null;
+  private activeTurnResolve: (() => void) | null = null;
+  private activeTurnReject: ((err: Error) => void) | null = null;
+  private activeTurnStderr = '';
+  private isTurnRunning = false;
+  private isDisposed = false;
+  private pendingModelRestart = false;
 
   constructor(opts: AgyBackendOptions) {
     this.cwd = opts.cwd;
     this.permissionMode = opts.permissionMode;
-    this.model = opts.model;
+    this.models = opts.models;
+    this.model = resolveAgyModelName(opts.model, this.models);
+    this.conversationId = opts.conversationId ?? null;
     this.printTimeout = opts.printTimeout ?? AGY_PRINT_TIMEOUT;
     this.log = opts.log ?? (() => {});
     this.spawnFn = opts.spawnFn ?? spawn;
-    this.resolveConversationId = opts.resolveConversationId ?? readAgyConversationId;
+    this.maxRetries = opts.maxRetries ?? 3;
+
+    if (opts.onConversationId) {
+      this.conversationIdListeners.add(opts.onConversationId);
+    }
   }
 
-  /** Update the permission mode applied to subsequent turns. */
   setPermissionMode(mode: PermissionMode): void {
     this.permissionMode = mode;
   }
 
-  /** Update the model applied to subsequent turns. */
   setModel(model: string | undefined): void {
-    this.model = model;
+    const resolved = resolveAgyModelName(model, this.models);
+    if (resolved === this.model) {
+      return;
+    }
+    this.model = resolved;
+
+    // The model is only applied as a spawn-time `--model` flag, so a live child
+    // keeps running the old model until respawned. Restart the persistent process
+    // to honor the change; the respawn passes `--conversation <id>` so context is
+    // preserved. Never kill mid-turn — that would fail the in-flight prompt — so
+    // defer to the sendPrompt finally block while a turn is running.
+    if (this.child && !this.child.killed) {
+      if (this.isTurnRunning) {
+        this.pendingModelRestart = true;
+      } else {
+        this.restartChildForModelChange();
+      }
+    }
+  }
+
+  private restartChildForModelChange(): void {
+    this.log(
+      `Model changed to "${this.model ?? 'default'}" — restarting persistent agy process ` +
+        `(conversation ${this.conversationId ?? 'none'} is preserved on respawn)`,
+    );
+    this.child?.kill('SIGTERM');
+    this.child = null;
+  }
+
+  setDiscoveredModels(models: DiscoveredModel[]): void {
+    this.models = models;
+    if (this.model) {
+      this.model = resolveAgyModelName(this.model, this.models);
+    }
+  }
+
+  getModel(): string | undefined {
+    return this.model;
+  }
+
+  getConversationId(): string | null {
+    return this.conversationId;
+  }
+
+  setConversationId(id: string | null): void {
+    if (id && id !== this.conversationId) {
+      this.conversationId = id;
+      for (const listener of this.conversationIdListeners) {
+        try {
+          listener(id);
+        } catch (err) {
+          this.log(`Error in conversation ID listener: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
+    } else if (id === null) {
+      this.conversationId = null;
+    }
+  }
+
+  onConversationId(listener: (id: string) => void): () => void {
+    this.conversationIdListeners.add(listener);
+    if (this.conversationId) {
+      try {
+        listener(this.conversationId);
+      } catch (err) {
+        this.log(`Error in conversation ID listener: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+    return () => {
+      this.conversationIdListeners.delete(listener);
+    };
   }
 
   async startSession(): Promise<StartSessionResult> {
-    // agy spawns lazily per prompt; there is nothing long-lived to start.
-    // Deliberately do NOT seed from the cwd conversation cache: it holds whatever
-    // conversation last ran in this cwd — possibly another live session's — so
-    // seeding would cross-resume it. A fresh session starts a fresh conversation;
-    // resuming a specific one across restarts needs explicit id plumbing (follow-up).
+    await this.ensureChildRunning();
     return { sessionId: this.cwd };
   }
 
   async sendPrompt(_sessionId: SessionId, prompt: string): Promise<void> {
-    const args = buildAgyArgs({
-      prompt,
-      model: this.model,
-      conversationId: this.conversationId,
-      permissionMode: this.permissionMode,
-      addDirs: [this.cwd],
-      printTimeout: this.printTimeout,
-    });
+    if (this.isDisposed) {
+      throw new Error('AgyBackend is disposed');
+    }
 
     this.emit({ type: 'status', status: 'running' });
+    this.isTurnRunning = true;
+    this.activeTurnStderr = '';
 
-    // Until we have pinned our own conversation, snapshot the cwd cache so we can
-    // tell after the turn whether the entry is ours (changed → our turn wrote it)
-    // or a leftover from another session (unchanged → not ours to adopt).
-    const preTurnCacheId =
-      this.conversationId === null ? this.resolveConversationId(this.cwd) : null;
+    try {
+      await this.ensureChildRunning();
 
-    await new Promise<void>((resolve, reject) => {
+      let lastResult: AgyResult | null = null;
+      const turnPromise = new Promise<void>((resolve, reject) => {
+        this.activeTurnResolve = resolve;
+        this.activeTurnReject = reject;
+      });
+
+      this.currentTurnParser = new StreamJsonParser({
+        onInit: (event) => {
+          if (event.conversation_id) {
+            this.setConversationId(event.conversation_id);
+          }
+        },
+        onResult: (event) => {
+          lastResult = event.result;
+          if (event.result.conversation_id) {
+            this.setConversationId(event.result.conversation_id);
+          }
+          if (event.result.status === 'SUCCESS') {
+            this.activeTurnResolve?.();
+          } else {
+            const err = new Error(event.result.error || event.result.response || 'Turn failed');
+            this.activeTurnReject?.(err);
+          }
+        },
+        onMessage: (msg) => {
+          this.emit(msg);
+        },
+        log: this.log,
+      });
+
+      // Send prompt via stream-json user event
+      const payload = {
+        event: 'user',
+        message: {
+          content: prompt,
+        },
+      };
+
+      this.log(`Dispatching user turn to persistent agy process (length: ${prompt.length})`);
+      this.child?.stdin?.write(JSON.stringify(payload) + '\n');
+
+      await turnPromise;
+      this.emit({ type: 'status', status: 'idle' });
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      this.emit({ type: 'status', status: 'error', detail: errorMsg });
+      throw err;
+    } finally {
+      this.isTurnRunning = false;
+      this.activeTurnResolve = null;
+      this.activeTurnReject = null;
+      this.currentTurnParser = null;
+      if (this.pendingModelRestart) {
+        this.pendingModelRestart = false;
+        this.restartChildForModelChange();
+      }
+    }
+  }
+
+  private async ensureChildRunning(): Promise<void> {
+    if (this.child && !this.child.killed) {
+      return;
+    }
+
+    let lastError: Error | null = null;
+
+    for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
+      try {
+        await this.spawnPersistentChild();
+        return;
+      } catch (err) {
+        lastError = err instanceof Error ? err : new Error(String(err));
+        const isRetryable = isRetryableAgyError(lastError.message, this.activeTurnStderr);
+        if (isRetryable && attempt < this.maxRetries && !this.isDisposed) {
+          const delayMs = (attempt + 1) * 750;
+          this.log(`Transient startup error on attempt ${attempt + 1}: ${lastError.message}. Retrying in ${delayMs}ms...`);
+          await new Promise((r) => setTimeout(r, delayMs));
+          continue;
+        }
+        throw lastError;
+      }
+    }
+
+    if (lastError) {
+      throw lastError;
+    }
+  }
+
+  private spawnPersistentChild(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const args = [
+        '--input-format',
+        'stream-json',
+        '--output-format',
+        'stream-json',
+      ];
+
+      if (this.permissionMode === 'bypassPermissions' || this.permissionMode === 'yolo') {
+        args.push('--dangerously-skip-permissions');
+      }
+
+      if (this.model) {
+        args.push('--model', this.model);
+      }
+
+      if (this.conversationId) {
+        args.push('--conversation', this.conversationId);
+      }
+
+      args.push('--add-dir', this.cwd);
+
+      this.log(`Spawning persistent agy: ${resolveAgyBin()} ${args.join(' ')}`);
+
       const child = this.spawnFn(resolveAgyBin(), args, {
         cwd: this.cwd,
         env: process.env,
         windowsHide: true,
-        // agy --print blocks until stdin reaches EOF. We never write stdin, so
-        // give the child an empty stdin (immediate EOF) instead of an open pipe;
-        // otherwise it hangs forever and the turn never completes.
-        stdio: ['ignore', 'pipe', 'pipe'],
+        stdio: ['pipe', 'pipe', 'pipe'],
       });
-      this.child = child;
 
-      // Node can fire both 'error' and 'close' on spawn failure; act on the first only.
-      let settled = false;
-      const watchdog = setTimeout(() => {
-        this.log(`agy turn exceeded ${this.printTimeout}; killing process`);
-        child.kill('SIGKILL');
-      }, parsePrintTimeoutMs(this.printTimeout) + 30_000);
-      const cleanup = () => {
-        clearTimeout(watchdog);
-        if (this.child === child) {
-          this.child = null;
-        }
-      };
+      this.child = child;
+      let initialized = false;
 
       child.stdout?.setEncoding('utf8');
       child.stdout?.on('data', (chunk: string) => {
-        if (chunk) {
-          this.emit({ type: 'model-output', textDelta: chunk });
+        if (!initialized) {
+          // Check for initial init or result event
+          const lines = chunk.split('\n');
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed) continue;
+            try {
+              const data = JSON.parse(trimmed);
+              if (data.event === 'init') {
+                initialized = true;
+                if (data.conversation_id) {
+                  this.setConversationId(data.conversation_id);
+                  this.log(`Persistent agy initialized with conversation ID: ${data.conversation_id}`);
+                }
+                resolve();
+                return;
+              } else if (data.event === 'result' && data.result?.status === 'ERROR') {
+                initialized = true;
+                reject(new Error(data.result.error || 'Startup failed'));
+                return;
+              }
+            } catch {
+              // Ignore non-JSON line during startup handshake
+            }
+          }
+        }
+
+        if (this.currentTurnParser && this.child === child) {
+          this.currentTurnParser.feed(chunk);
         }
       });
 
@@ -152,51 +366,43 @@ export class AgyBackend implements AgentBackend {
       child.stderr?.on('data', (chunk: string) => {
         const text = chunk.trimEnd();
         if (text) {
-          this.log(`stderr: ${text}`);
+          this.log(`[agy stderr] ${text}`);
+          this.activeTurnStderr += chunk;
         }
       });
 
       child.on('error', (err: Error) => {
-        if (settled) return;
-        settled = true;
-        cleanup();
-        const detail = (err as NodeJS.ErrnoException).code === 'ENOENT'
-          ? `agy executable not found. Install the Antigravity CLI, or set HAPPY_AGY_PATH to its absolute path (tried 'agy' on PATH and ~/.local/bin/agy).`
-          : err.message;
-        this.emit({ type: 'status', status: 'error', detail });
-        reject(err);
+        if (!initialized) {
+          initialized = true;
+          reject(err);
+        }
+        // A late error from a replaced child (e.g. after a model-change restart)
+        // must not fail the turn running on the new process.
+        if (this.isTurnRunning && this.child === child) {
+          this.activeTurnReject?.(err);
+        }
       });
 
       child.on('close', (code: number | null) => {
-        if (settled) return;
-        settled = true;
-        cleanup();
-        // Pin the conversation our first turn created so later turns resume it.
-        // Once pinned, never re-read the cache: another session in the same cwd
-        // may have updated it since, and adopting that id would cross-resume.
-        // Best effort while unpinned: any concurrent same-cwd write that differs
-        // from the pre-turn snapshot (another session's turn, or bare interactive
-        // agy) would be adopted just the same — agy doesn't echo the id it
-        // created, so we cannot attribute the cache entry more precisely.
-        // Deliberately runs on failed turns too: agy may have created the
-        // conversation before the turn errored, and resuming it keeps context.
-        if (this.conversationId === null) {
-          const cid = this.resolveConversationId(this.cwd);
-          if (cid && cid !== preTurnCacheId) {
-            this.conversationId = cid;
-            this.log(`pinned agy conversation ${cid}`);
-          } else {
-            this.log('agy conversation cache unchanged after turn; not adopting (will retry next turn)');
-          }
+        this.log(`Persistent agy process exited with code ${code ?? 'null'}`);
+        // The close of a killed process arrives asynchronously, possibly after a
+        // replacement was already spawned (model-change restart). Only clear the
+        // reference if it still points at THIS child — otherwise the next prompt
+        // would be written into the void via `this.child?.stdin?.write` on null.
+        if (this.child === child) {
+          this.child = null;
         }
-
-        if (code === 0) {
-          this.emit({ type: 'status', status: 'idle' });
-          resolve();
-        } else {
-          const detail = `agy exited with code ${code ?? 'null'}`;
-          this.emit({ type: 'status', status: 'error', detail });
-          reject(new Error(detail));
+        if (!initialized) {
+          initialized = true;
+          reject(new Error(`agy process exited during startup with code ${code ?? 'null'}: ${this.activeTurnStderr}`));
+        }
+        // Reject the active turn when the process serving it died. After a
+        // model-change restart `this.child` already points at the replacement,
+        // so a late close from the old process must not reject the new turn.
+        // `this.child === null` covers cancel()/abort, which nulls the
+        // reference before this event arrives and still needs the rejection.
+        if (this.isTurnRunning && (this.child === child || this.child === null)) {
+          this.activeTurnReject?.(new Error(`agy process exited unexpectedly during turn (code ${code})`));
         }
       });
     });
@@ -218,13 +424,19 @@ export class AgyBackend implements AgentBackend {
   }
 
   async dispose(): Promise<void> {
+    this.isDisposed = true;
     await this.cancel();
     this.handlers.clear();
+    this.conversationIdListeners.clear();
   }
 
   private emit(msg: AgentMessage): void {
     for (const handler of this.handlers) {
-      handler(msg);
+      try {
+        handler(msg);
+      } catch (err) {
+        this.log(`Error in message handler: ${err instanceof Error ? err.message : String(err)}`);
+      }
     }
   }
 }

@@ -36,6 +36,14 @@ describe('buildResumeCommand', () => {
         })).toBe('happy claude --resume 93a9705e-bc6a-406d-8dce-8acc014dedbd');
     });
 
+    it('builds an agy resume command for agy sessions', () => {
+        expect(buildResumeCommand({
+            path: '/tmp/project',
+            flavor: 'agy',
+            agyConversationId: 'c3b66b04-1234-5678',
+        })).toBe(`cd '/tmp/project' && happy agy --resume c3b66b04-1234-5678`);
+    });
+
     it('returns null when there is no resumable session identifier', () => {
         expect(buildResumeCommand({
             path: '/tmp/project',

@@ -40,10 +40,10 @@ function shellescape(s: string): string {
 }
 
 function appendDaemonSpawnModeArgs(args: string[], options: SpawnSessionOptions, agent: string): void {
-  if (agent !== 'claude' && agent !== 'codex') {
+  if (agent !== 'claude' && agent !== 'codex' && agent !== 'agy') {
     return;
   }
-  // For claude, 'default' is the app's ambient "no override" value — forwarding
+  // For claude/agy, 'default' is the app's ambient "no override" value — forwarding
   // it would pin the session to prompting mode and lose the CLI's own default
   // (e.g. a --yolo setup where sessions must bypass permissions). For codex,
   // 'default' IS a concrete ask-first mode (untrusted + workspace-write)
@@ -571,6 +571,9 @@ export async function startDaemon(): Promise<void> {
           if (options.resumeCodexThreadId && agentCommand === 'codex') {
             args.push('--resume', options.resumeCodexThreadId);
           }
+          if (options.resumeAgyConversationId && agentCommand === 'agy') {
+            args.push('--resume', options.resumeAgyConversationId);
+          }
 
           // TODO: In future, sessionId could be used with --resume to continue existing sessions
           // For now, we ignore it - each spawn creates a new session
@@ -716,7 +719,8 @@ export async function startDaemon(): Promise<void> {
         // Fetch fresh metadata from server if needed.
         let metadata = tracked.happySessionMetadataFromLocalWebhook;
         const needsFetch = (!metadata.claudeSessionId && (!metadata.flavor || metadata.flavor === 'claude'))
-          || (!metadata.codexThreadId && metadata.flavor === 'codex');
+          || (!metadata.codexThreadId && metadata.flavor === 'codex')
+          || (!metadata.agyConversationId && metadata.flavor === 'agy');
         if (needsFetch) {
           logger.debug(`[DAEMON RUN] Session ${happySessionId} missing agent session ID in webhook metadata, fetching from server`);
           const serverMetadata = await fetchServerSessionMetadata(happySessionId, tracked.encryption.encryptionKey, tracked.encryption.encryptionVariant);

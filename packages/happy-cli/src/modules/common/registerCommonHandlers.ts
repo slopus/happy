@@ -139,6 +139,11 @@ export interface SpawnSessionOptions {
      * session attaches to a forked Codex app-server thread.
      */
     resumeCodexThreadId?: string;
+    /**
+     * If set, the daemon spawns agy with `--resume <id>` so a fresh Happy
+     * session attaches to a previous agy conversation ID.
+     */
+    resumeAgyConversationId?: string;
     /** Happy session id this fork was branched from (lineage). */
     parentSessionId?: string;
     /** Happy message id used as the rewind point (only set for "duplicate"). */

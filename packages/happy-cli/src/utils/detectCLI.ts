@@ -38,7 +38,7 @@ function detectPosix(): CLIAvailability {
   const claude = commandExists('claude');
   const codex = commandExists('codex');
   const gemini = commandExists('gemini');
-  const agy = commandExists('agy');
+  const agy = commandExists('agy') || existsSync(join(os.homedir(), '.local', 'bin', 'agy')) || !!process.env.HAPPY_AGY_PATH;
 
   // OpenClaw: check command, config file, or env var
   const openclawCommand = commandExists('openclaw');

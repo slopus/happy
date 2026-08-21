@@ -5,9 +5,12 @@
  * pattern. The daemon spawns this as:
  *   `node dist/index.mjs agy --happy-starting-mode remote --started-by daemon`
  *
- * agy is a plain-text streaming CLI (no ACP), so this drives an AgyBackend that
- * spawns `agy --print` per turn, and forwards its AgentMessage stream through the
- * same session pipeline used by the other backends.
+ * agy is executed with `--output-format stream-json`, and this runner drives an AgyBackend
+ * that maps its structured events (text deltas, tool calls, tool results, thinking) into
+ * Happy's ACP Session envelopes and mobile/web UI.
+ *
+ * Happy session lifecycle is fully decoupled from the agy subprocess: the Happy session
+ * stays alive across turns, and dynamically binds to the agy conversation ID.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -31,13 +34,19 @@ import { MessageBuffer } from '@/ui/ink/messageBuffer';
 import { AgyDisplay } from '@/ui/ink/AgyDisplay';
 import type { AgentMessage } from '@/agent/core';
 import type { PermissionMode } from '@/api/types';
-import { AgyBackend } from './AgyBackend';
+import { createAgyBackend } from './createAgyBackend';
 import { DEFAULT_AGY_MODEL } from './constants';
+import { discoverAgyModels, resolveAgyModelName } from './discoverModels';
+import { extractSessionTitle } from './title';
 
 export interface RunAgyOptions {
   credentials: Credentials;
   startedBy?: 'daemon' | 'terminal';
   verbose?: boolean;
+  model?: string;
+  permissionMode?: PermissionMode;
+  dangerouslySkipPermissions?: boolean;
+  resumeConversationId?: string;
 }
 
 export async function runAgy(opts: RunAgyOptions): Promise<void> {
@@ -63,11 +72,34 @@ export async function runAgy(opts: RunAgyOptions): Promise<void> {
     metadata: initialMachineMetadata,
   });
 
+  const discoveredModels = await discoverAgyModels({ log });
+
+  const initialModel = resolveAgyModelName(opts.model, discoveredModels) ?? DEFAULT_AGY_MODEL;
+  const isSkipPermissions =
+    opts.dangerouslySkipPermissions === true ||
+    opts.permissionMode === 'bypassPermissions' ||
+    opts.permissionMode === 'yolo';
+  const initialPermissionMode: PermissionMode =
+    opts.permissionMode ?? (isSkipPermissions ? 'bypassPermissions' : 'default');
+
+  const initialConversationId = opts.resumeConversationId;
+
   const { state, metadata } = createSessionMetadata({
     flavor: 'agy',
     machineId: settings.machineId,
     startedBy: opts.startedBy,
+    dangerouslySkipPermissions: isSkipPermissions,
   });
+  metadata.models = discoveredModels.map((m) => ({
+    code: m.code,
+    value: m.value,
+    description: m.description ?? null,
+  }));
+  metadata.currentModelCode = initialModel;
+  if (initialConversationId) {
+    metadata.agyConversationId = initialConversationId;
+  }
+
   const response = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
   if (response) {
     log(`Happy Session ID: ${response.id}`);
@@ -106,13 +138,25 @@ export async function runAgy(opts: RunAgyOptions): Promise<void> {
   let abortController = new AbortController();
   let thinking = false;
 
-  let displayedModel = DEFAULT_AGY_MODEL;
+  let displayedModel = initialModel;
 
-  const backend = new AgyBackend({
+  const backend = createAgyBackend({
     cwd: process.cwd(),
-    permissionMode: 'default',
-    model: DEFAULT_AGY_MODEL,
+    permissionMode: initialPermissionMode,
+    model: initialModel,
+    models: discoveredModels,
+    conversationId: initialConversationId,
     log,
+    onConversationId: (cid) => {
+      if (metadata.agyConversationId !== cid) {
+        metadata.agyConversationId = cid;
+        session.updateMetadata((currentMetadata) => ({
+          ...currentMetadata,
+          agyConversationId: cid,
+        }));
+        log(`Persisted agy conversation ID to session metadata: ${cid}`);
+      }
+    },
   });
 
   // Terminal UI (only with a real TTY; the daemon runs headless).
@@ -133,6 +177,8 @@ export async function runAgy(opts: RunAgyOptions): Promise<void> {
 
     if (msg.type === 'model-output' && msg.textDelta) {
       messageBuffer.addMessage(msg.textDelta, 'assistant');
+    } else if (msg.type === 'tool-call') {
+      messageBuffer.addMessage(`🔧 ${msg.toolName}`, 'status');
     } else if (msg.type === 'status') {
       const nextThinking = msg.status === 'running';
       if (thinking !== nextThinking) {
@@ -182,8 +228,13 @@ export async function runAgy(opts: RunAgyOptions): Promise<void> {
       backend.setPermissionMode(message.meta.permissionMode as PermissionMode);
     }
     if (message.meta?.hasOwnProperty('model') && message.meta.model) {
-      backend.setModel(message.meta.model);
-      displayedModel = message.meta.model;
+      const canonicalModel = resolveAgyModelName(message.meta.model, discoveredModels) ?? message.meta.model;
+      backend.setModel(canonicalModel);
+      displayedModel = canonicalModel;
+      session.updateMetadata((currentMetadata) => ({
+        ...currentMetadata,
+        currentModelCode: displayedModel,
+      }));
       if (hasTTY) {
         messageBuffer.addMessage(`[MODEL:${displayedModel}]`, 'system');
       }
@@ -201,7 +252,7 @@ export async function runAgy(opts: RunAgyOptions): Promise<void> {
   async function handleAbort() {
     log('Abort requested');
     try {
-      await backend.cancel();
+      await backend.cancel(sessionTag);
     } catch (error) {
       logger.debug('[agy] Abort failed:', error);
     }
@@ -232,6 +283,19 @@ export async function runAgy(opts: RunAgyOptions): Promise<void> {
       }
 
       log(`Incoming prompt: ${batch.message.slice(0, 200)}`);
+      if (!metadata.summary) {
+        const title = extractSessionTitle(batch.message);
+        metadata.summary = {
+          text: title,
+          updatedAt: Date.now(),
+        };
+        session.updateMetadata((currentMetadata) => ({
+          ...currentMetadata,
+          summary: metadata.summary,
+        }));
+        log(`Generated session title: "${title}"`);
+      }
+
       sendEnvelopes(sessionManager.startTurn());
       try {
         await backend.sendPrompt(process.cwd(), batch.message);
