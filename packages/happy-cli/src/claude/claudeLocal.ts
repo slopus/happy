@@ -12,7 +12,7 @@ import { projectPath } from "@/projectPath";
 import { systemPrompt } from "./utils/systemPrompt";
 import type { SandboxConfig } from "@/persistence";
 import { initializeSandbox, wrapCommand } from "@/sandbox/manager";
-import { mapToClaudeMode } from "./utils/permissionMode";
+import { normalizeLocalClaudePermissionArgs } from "./utils/permissionMode";
 import type { PermissionMode } from "@/api/types";
 
 /**
@@ -242,23 +242,15 @@ export async function claudeLocal(opts: {
                 args.push('--allowedTools', opts.allowedTools.join(','));
             }
 
-            // Add custom Claude arguments
-            if (opts.claudeArgs) {
-                args.push(...opts.claudeArgs)
-            }
-
-            // Forward the resolved permission mode to Claude. Local mode does not
-            // install --permission-prompt-tool (unlike daemon/remote mode, which
-            // intercepts canUseTool via the SDK), so Claude manages permissions
-            // itself and must be told the mode explicitly. Without this,
-            // `--permission-mode bypassPermissions` is silently dropped in local
-            // mode and Claude falls back to default/manual.
-            if (opts.permissionMode) {
-                const claudeMode = mapToClaudeMode(opts.permissionMode);
-                if (claudeMode !== 'default') {
-                    args.push('--permission-mode', claudeMode);
-                }
-            }
+            // Local Claude manages permissions itself. Forward the resolved mode
+            // as the single source of truth, replacing any raw permission-mode
+            // argument and avoiding a redundant flag when sandbox/bypass already
+            // enforces the policy at the process boundary.
+            args.push(...normalizeLocalClaudePermissionArgs(
+                opts.claudeArgs,
+                opts.permissionMode,
+                Boolean(opts.sandboxConfig?.enabled),
+            ));
 
             // Add hook settings for session tracking (when available)
             if (opts.hookSettingsPath) {
