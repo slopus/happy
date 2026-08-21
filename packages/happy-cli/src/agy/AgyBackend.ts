@@ -10,6 +10,8 @@
  *
  * The conversation ID received from the `init` event is saved in memory and bound to Happy's
  * session state, so subsequent turns continue the same conversation via `--conversation <id>`.
+ *
+ * Includes automatic retry for transient network/eligibility errors during process startup.
  */
 
 import { spawn, type ChildProcess } from 'node:child_process';
@@ -48,6 +50,8 @@ export interface AgyBackendOptions {
   spawnFn?: SpawnFn;
   /** Optional callback fired whenever a conversation ID is confirmed or discovered. */
   onConversationId?: (conversationId: string) => void;
+  /** Maximum number of retries for transient startup errors (default 2). */
+  maxRetries?: number;
 }
 
 /** Parse an agy duration string ("10m", "30s", "1h") to milliseconds; defaults to 10m. */
@@ -58,6 +62,24 @@ function parsePrintTimeoutMs(value: string): number {
   return m[2] === 'h' ? n * 3_600_000 : m[2] === 'm' ? n * 60_000 : n * 1_000;
 }
 
+/**
+ * Detect transient initialization or network errors that are safe to retry.
+ */
+export function isRetryableAgyError(errorText: string, stderrText = ''): boolean {
+  const combined = `${errorText} ${stderrText}`.toLowerCase();
+  return (
+    combined.includes('eligibility check failed') ||
+    combined.includes('failed to get profile picture') ||
+    combined.includes(': eof') ||
+    combined.includes('tls handshake timeout') ||
+    combined.includes('connection reset by peer') ||
+    combined.includes('i/o timeout') ||
+    combined.includes('rate limit') ||
+    combined.includes('resource_exhausted') ||
+    combined.includes('currently overloaded')
+  );
+}
+
 export class AgyBackend implements AgentBackend {
   private readonly handlers = new Set<AgentMessageHandler>();
   private readonly conversationIdListeners = new Set<(id: string) => void>();
@@ -65,12 +87,14 @@ export class AgyBackend implements AgentBackend {
   private readonly printTimeout: string;
   private readonly log: (msg: string) => void;
   private readonly spawnFn: SpawnFn;
+  private readonly maxRetries: number;
 
   private permissionMode: PermissionMode;
   private model?: string;
   private models?: DiscoveredModel[];
   private conversationId: string | null = null;
   private child: ChildProcess | null = null;
+  private cancelled = false;
 
   constructor(opts: AgyBackendOptions) {
     this.cwd = opts.cwd;
@@ -81,6 +105,7 @@ export class AgyBackend implements AgentBackend {
     this.printTimeout = opts.printTimeout ?? AGY_PRINT_TIMEOUT;
     this.log = opts.log ?? (() => {});
     this.spawnFn = opts.spawnFn ?? spawn;
+    this.maxRetries = opts.maxRetries ?? 2;
 
     if (opts.onConversationId) {
       this.conversationIdListeners.add(opts.onConversationId);
@@ -151,6 +176,58 @@ export class AgyBackend implements AgentBackend {
   }
 
   async sendPrompt(_sessionId: SessionId, prompt: string): Promise<void> {
+    this.cancelled = false;
+    this.emit({ type: 'status', status: 'running' });
+
+    let lastError: Error | null = null;
+
+    for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
+      if (this.cancelled) {
+        throw new Error('Turn was cancelled');
+      }
+
+      let stderrAccumulator = '';
+      let hasEmittedOutput = false;
+
+      try {
+        await this.executeTurn(prompt, {
+          onStderr: (chunk) => {
+            stderrAccumulator += chunk;
+          },
+          onOutput: () => {
+            hasEmittedOutput = true;
+          },
+        });
+        this.emit({ type: 'status', status: 'idle' });
+        return;
+      } catch (err) {
+        lastError = err instanceof Error ? err : new Error(String(err));
+        const errorMsg = lastError.message;
+        const isRetryable = isRetryableAgyError(errorMsg, stderrAccumulator);
+
+        if (isRetryable && !hasEmittedOutput && attempt < this.maxRetries && !this.cancelled) {
+          const delayMs = (attempt + 1) * 750;
+          this.log(
+            `Transient network/eligibility error on attempt ${attempt + 1}: "${errorMsg}". Retrying in ${delayMs}ms...`
+          );
+          await new Promise((r) => setTimeout(r, delayMs));
+          continue;
+        }
+
+        this.emit({ type: 'status', status: 'error', detail: errorMsg });
+        throw lastError;
+      }
+    }
+
+    if (lastError) {
+      throw lastError;
+    }
+  }
+
+  private executeTurn(
+    prompt: string,
+    hooks: { onStderr: (chunk: string) => void; onOutput: () => void }
+  ): Promise<void> {
     const args = buildAgyArgs({
       prompt,
       model: this.model,
@@ -159,8 +236,6 @@ export class AgyBackend implements AgentBackend {
       addDirs: [this.cwd],
       printTimeout: this.printTimeout,
     });
-
-    this.emit({ type: 'status', status: 'running' });
 
     let lastResult: AgyResult | null = null;
     const parser = new StreamJsonParser({
@@ -177,12 +252,15 @@ export class AgyBackend implements AgentBackend {
         }
       },
       onMessage: (msg) => {
+        if (msg.type === 'model-output' || msg.type === 'tool-call') {
+          hooks.onOutput();
+        }
         this.emit(msg);
       },
       log: this.log,
     });
 
-    await new Promise<void>((resolve, reject) => {
+    return new Promise<void>((resolve, reject) => {
       const child = this.spawnFn(resolveAgyBin(), args, {
         cwd: this.cwd,
         env: process.env,
@@ -217,6 +295,7 @@ export class AgyBackend implements AgentBackend {
         const text = chunk.trimEnd();
         if (text) {
           this.log(`stderr: ${text}`);
+          hooks.onStderr(chunk);
         }
       });
 
@@ -227,8 +306,7 @@ export class AgyBackend implements AgentBackend {
         const detail = (err as NodeJS.ErrnoException).code === 'ENOENT'
           ? `agy executable not found. Install the Antigravity CLI, or set HAPPY_AGY_PATH to its absolute path (tried 'agy' on PATH and ~/.local/bin/agy).`
           : err.message;
-        this.emit({ type: 'status', status: 'error', detail });
-        reject(err);
+        reject(new Error(detail));
       });
 
       child.on('close', (code: number | null) => {
@@ -238,14 +316,12 @@ export class AgyBackend implements AgentBackend {
         parser.flush();
 
         if (code === 0 && (!lastResult || lastResult.status !== 'ERROR')) {
-          this.emit({ type: 'status', status: 'idle' });
           resolve();
         } else {
           const errorDetail =
             lastResult?.error ||
             lastResult?.response ||
             `agy exited with code ${code ?? 'null'}`;
-          this.emit({ type: 'status', status: 'error', detail: errorDetail });
           reject(new Error(errorDetail));
         }
       });
@@ -253,6 +329,7 @@ export class AgyBackend implements AgentBackend {
   }
 
   async cancel(_sessionId?: SessionId): Promise<void> {
+    this.cancelled = true;
     if (this.child) {
       this.child.kill('SIGTERM');
       this.child = null;

@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events';
 import { describe, expect, it, vi } from 'vitest';
 
-import { AgyBackend, type SpawnFn } from './AgyBackend';
+import { AgyBackend, isRetryableAgyError, type SpawnFn } from './AgyBackend';
 import type { AgentMessage } from '@/agent/core/AgentBackend';
 
 /** Minimal fake of a spawned child process for driving AgyBackend in tests. */
@@ -20,6 +20,23 @@ function makeFakeChild() {
   child.kill = vi.fn(() => true);
   return { child, stdout, stderr };
 }
+
+describe('isRetryableAgyError', () => {
+  it('identifies eligibility check and EOF errors as retryable', () => {
+    expect(
+      isRetryableAgyError('Error: Eligibility check failed: failed to get profile picture: Get "...": EOF')
+    ).toBe(true);
+    expect(
+      isRetryableAgyError('agy exited with code 1', 'failed to get profile picture: Get "...": EOF')
+    ).toBe(true);
+    expect(isRetryableAgyError('The model API is currently overloaded')).toBe(true);
+  });
+
+  it('identifies permanent errors as non-retryable', () => {
+    expect(isRetryableAgyError('invalid model selection (--model "unknown")')).toBe(false);
+    expect(isRetryableAgyError('Syntax error in prompt')).toBe(false);
+  });
+});
 
 describe('AgyBackend', () => {
   it('maps a successful turn: running → stream-json events → idle', async () => {
@@ -99,7 +116,7 @@ describe('AgyBackend', () => {
     expect(discoveredIds).toEqual(['cid-discovered-abc']);
     expect(backend.getConversationId()).toBe('cid-discovered-abc');
 
-    // Turn 2: resumes the captured id
+    // Turn 2: uses --conversation cid-discovered-abc
     current = makeFakeChild();
     const t2 = backend.sendPrompt('/work', 'second');
     current.stdout.emit(
@@ -109,14 +126,14 @@ describe('AgyBackend', () => {
     current.child.emit('close', 0);
     await t2;
 
+    expect(spawnCalls[1]).toContain('--conversation');
     const idx = spawnCalls[1].indexOf('--conversation');
-    expect(idx).toBeGreaterThanOrEqual(0);
     expect(spawnCalls[1][idx + 1]).toBe('cid-discovered-abc');
   });
 
   it('resumes pre-existing conversation ID passed in constructor', async () => {
     const spawnCalls: string[][] = [];
-    const { child } = makeFakeChild();
+    const { child, stdout } = makeFakeChild();
     const spawnFn = vi.fn((_bin: string, args: string[]) => {
       spawnCalls.push(args);
       return child;
@@ -125,18 +142,23 @@ describe('AgyBackend', () => {
     const backend = new AgyBackend({
       cwd: '/work',
       permissionMode: 'default',
-      conversationId: 'resumed-cid-999',
+      conversationId: 'existing-cid-999',
       spawnFn,
     });
 
     await backend.startSession();
-    const t1 = backend.sendPrompt('/work', 'hello');
+    const turn = backend.sendPrompt('/work', 'resumed turn');
+    stdout.emit(
+      'data',
+      '{"event":"init","conversation_id":"existing-cid-999"}\n',
+    );
     child.emit('close', 0);
-    await t1;
+    await turn;
 
+    expect(spawnCalls[0]).toContain('--conversation');
     const idx = spawnCalls[0].indexOf('--conversation');
-    expect(idx).toBeGreaterThanOrEqual(0);
-    expect(spawnCalls[0][idx + 1]).toBe('resumed-cid-999');
+    expect(spawnCalls[0][idx + 1]).toBe('existing-cid-999');
+    expect(backend.getConversationId()).toBe('existing-cid-999');
   });
 
   it('maps tool calls and tool results from step_update', async () => {
@@ -155,27 +177,38 @@ describe('AgyBackend', () => {
     await backend.startSession();
     const turn = backend.sendPrompt('/work', 'list files');
 
+    stdout.emit('data', '{"event":"init","conversation_id":"c-tools"}\n');
+    // Active tool call
     stdout.emit(
       'data',
-      '{"event":"init","conversation_id":"c-123"}\n' +
-      '{"event":"step_update","step_update":{"conversation_id":"c-123","step_index":2,"state":"ACTIVE","step_type":"tool","tool_name":"run_command","tool_info":{"name":"run_command","parameters":{"CommandLine":"ls"}}}}\n' +
-      '{"event":"step_update","step_update":{"conversation_id":"c-123","step_index":2,"state":"DONE","step_type":"tool","tool_name":"run_command","tool_info":{"name":"run_command","output":"file.txt"}}}\n',
+      '{"event":"step_update","step_update":{"conversation_id":"c-tools","step_index":3,"state":"ACTIVE","step_type":"tool","tool_name":"run_command","tool_info":{"parameters":{"CommandLine":"ls -la"}}}}\n',
+    );
+    // Tool done
+    stdout.emit(
+      'data',
+      '{"event":"step_update","step_update":{"conversation_id":"c-tools","step_index":3,"state":"DONE","step_type":"tool","tool_name":"run_command","tool_info":{"output":"file1.txt\\nfile2.txt\\n"}}}\n',
+    );
+    stdout.emit(
+      'data',
+      '{"event":"result","result":{"conversation_id":"c-tools","status":"SUCCESS"}}\n',
     );
     child.emit('close', 0);
 
-    await expect(turn).resolves.toBeUndefined();
+    await turn;
 
-    expect(messages).toContainEqual({
+    const toolCall = messages.find((m) => m.type === 'tool-call');
+    expect(toolCall).toMatchObject({
       type: 'tool-call',
-      callId: 'agy-step-2',
+      callId: 'agy-step-3',
       toolName: 'run_command',
-      args: { CommandLine: 'ls' },
+      args: { CommandLine: 'ls -la' },
     });
-    expect(messages).toContainEqual({
+
+    const toolResult = messages.find((m) => m.type === 'tool-result');
+    expect(toolResult).toMatchObject({
       type: 'tool-result',
-      callId: 'agy-step-2',
-      toolName: 'run_command',
-      result: 'file.txt',
+      callId: 'agy-step-3',
+      result: 'file1.txt\nfile2.txt\n',
     });
   });
 
@@ -193,23 +226,28 @@ describe('AgyBackend', () => {
     backend.onMessage((m) => messages.push(m));
 
     await backend.startSession();
-    const turn = backend.sendPrompt('/work', 'think');
+    const turn = backend.sendPrompt('/work', 'think about it');
 
+    stdout.emit('data', '{"event":"init","conversation_id":"c-think"}\n');
     stdout.emit(
       'data',
-      '{"event":"step_update","step_update":{"conversation_id":"c-123","step_index":1,"state":"ACTIVE","step_type":"reasoning","text_delta":"Deep thoughts..."}}\n',
+      '{"event":"step_update","step_update":{"conversation_id":"c-think","step_index":1,"state":"ACTIVE","step_type":"reasoning","text_delta":"Let me analyze the problem..."}}\n',
+    );
+    stdout.emit(
+      'data',
+      '{"event":"result","result":{"conversation_id":"c-think","status":"SUCCESS"}}\n',
     );
     child.emit('close', 0);
 
-    await expect(turn).resolves.toBeUndefined();
+    await turn;
 
-    expect(messages).toContainEqual({
+    const thinkingMsg = messages.find(
+      (m) => m.type === 'event' && m.name === 'thinking',
+    );
+    expect(thinkingMsg).toMatchObject({
       type: 'event',
       name: 'thinking',
-      payload: {
-        text: 'Deep thoughts...',
-        streaming: true,
-      },
+      payload: { text: 'Let me analyze the problem...', streaming: true },
     });
   });
 
@@ -221,6 +259,7 @@ describe('AgyBackend', () => {
       cwd: '/work',
       permissionMode: 'default',
       spawnFn,
+      maxRetries: 0,
     });
 
     const messages: AgentMessage[] = [];
@@ -231,16 +270,59 @@ describe('AgyBackend', () => {
 
     stdout.emit(
       'data',
-      '{"event":"result","result":{"conversation_id":"c-123","status":"ERROR","error":"Token quota exceeded"}}\n',
+      '{"event":"result","result":{"conversation_id":"c-err","status":"ERROR","error":"Token quota exceeded"}}\n',
     );
     child.emit('close', 1);
 
-    await expect(turn).rejects.toThrow(/Token quota exceeded/);
+    await expect(turn).rejects.toThrow('Token quota exceeded');
     expect(messages.at(-1)).toMatchObject({
       type: 'status',
       status: 'error',
       detail: 'Token quota exceeded',
     });
+  });
+
+  it('automatically retries on transient startup eligibility / EOF network errors', async () => {
+    let callCount = 0;
+    const fake1 = makeFakeChild();
+    const fake2 = makeFakeChild();
+
+    const spawnFn = vi.fn(() => {
+      callCount++;
+      return callCount === 1 ? fake1.child : fake2.child;
+    }) as unknown as SpawnFn;
+
+    const backend = new AgyBackend({
+      cwd: '/work',
+      permissionMode: 'default',
+      spawnFn,
+    });
+
+    await backend.startSession();
+    const turnPromise = backend.sendPrompt('/work', 'test retry');
+
+    // First attempt fails immediately with Eligibility check failed ... EOF
+    fake1.stderr.emit(
+      'data',
+      'Error: Eligibility check failed: failed to get profile picture: Get "https://lh3.googleusercontent.com/a/ACg8oc...": EOF\n'
+    );
+    fake1.child.emit('close', 1);
+
+    // Give retry backoff a moment to trigger
+    await new Promise((r) => setTimeout(r, 800));
+
+    // Second attempt succeeds
+    fake2.stdout.emit('data', '{"event":"init","conversation_id":"c-retry-123"}\n');
+    fake2.stdout.emit(
+      'data',
+      '{"event":"step_update","step_update":{"conversation_id":"c-retry-123","step_index":1,"state":"DONE","step_type":"agent_response","text_delta":"Recovered!"}}\n'
+    );
+    fake2.stdout.emit('data', '{"event":"result","result":{"conversation_id":"c-retry-123","status":"SUCCESS"}}\n');
+    fake2.child.emit('close', 0);
+
+    await expect(turnPromise).resolves.toBeUndefined();
+    expect(callCount).toBe(2);
+    expect(backend.getConversationId()).toBe('c-retry-123');
   });
 
   it('cancels child process via SIGTERM', async () => {
