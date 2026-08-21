@@ -33,11 +33,15 @@ import type { AgentMessage } from '@/agent/core';
 import type { PermissionMode } from '@/api/types';
 import { AgyBackend } from './AgyBackend';
 import { DEFAULT_AGY_MODEL } from './constants';
+import { discoverAgyModels, resolveAgyModelName } from './discoverModels';
 
 export interface RunAgyOptions {
   credentials: Credentials;
   startedBy?: 'daemon' | 'terminal';
   verbose?: boolean;
+  model?: string;
+  permissionMode?: PermissionMode;
+  dangerouslySkipPermissions?: boolean;
 }
 
 export async function runAgy(opts: RunAgyOptions): Promise<void> {
@@ -63,11 +67,29 @@ export async function runAgy(opts: RunAgyOptions): Promise<void> {
     metadata: initialMachineMetadata,
   });
 
+  const discoveredModels = await discoverAgyModels({ log });
+
+  const initialModel = resolveAgyModelName(opts.model, discoveredModels) ?? DEFAULT_AGY_MODEL;
+  const isSkipPermissions =
+    opts.dangerouslySkipPermissions === true ||
+    opts.permissionMode === 'bypassPermissions' ||
+    opts.permissionMode === 'yolo';
+  const initialPermissionMode: PermissionMode =
+    opts.permissionMode ?? (isSkipPermissions ? 'bypassPermissions' : 'default');
+
   const { state, metadata } = createSessionMetadata({
     flavor: 'agy',
     machineId: settings.machineId,
     startedBy: opts.startedBy,
+    dangerouslySkipPermissions: isSkipPermissions,
   });
+  metadata.models = discoveredModels.map((m) => ({
+    code: m.code,
+    value: m.value,
+    description: m.description ?? null,
+  }));
+  metadata.currentModelCode = initialModel;
+
   const response = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
   if (response) {
     log(`Happy Session ID: ${response.id}`);
@@ -106,12 +128,13 @@ export async function runAgy(opts: RunAgyOptions): Promise<void> {
   let abortController = new AbortController();
   let thinking = false;
 
-  let displayedModel = DEFAULT_AGY_MODEL;
+  let displayedModel = initialModel;
 
   const backend = new AgyBackend({
     cwd: process.cwd(),
-    permissionMode: 'default',
-    model: DEFAULT_AGY_MODEL,
+    permissionMode: initialPermissionMode,
+    model: initialModel,
+    models: discoveredModels,
     log,
   });
 
@@ -182,8 +205,13 @@ export async function runAgy(opts: RunAgyOptions): Promise<void> {
       backend.setPermissionMode(message.meta.permissionMode as PermissionMode);
     }
     if (message.meta?.hasOwnProperty('model') && message.meta.model) {
-      backend.setModel(message.meta.model);
-      displayedModel = message.meta.model;
+      const canonicalModel = resolveAgyModelName(message.meta.model, discoveredModels) ?? message.meta.model;
+      backend.setModel(canonicalModel);
+      displayedModel = canonicalModel;
+      session.updateMetadata((currentMetadata) => ({
+        ...currentMetadata,
+        currentModelCode: displayedModel,
+      }));
       if (hasTTY) {
         messageBuffer.addMessage(`[MODEL:${displayedModel}]`, 'system');
       }

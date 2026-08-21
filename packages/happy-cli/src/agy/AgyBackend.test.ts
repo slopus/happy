@@ -313,4 +313,68 @@ describe('AgyBackend', () => {
     child.emit('close', null);
     await expect(turn).rejects.toThrow();
   });
+
+  it('resolves model slug and passes canonical display name to spawn', async () => {
+    const spawnCalls: string[][] = [];
+    const child = makeFakeChild();
+    const spawnFn = vi.fn((_bin: string, args: string[]) => {
+      spawnCalls.push(args);
+      return child.child;
+    }) as unknown as SpawnFn;
+
+    const backend = new AgyBackend({
+      cwd: '/work',
+      permissionMode: 'default',
+      model: 'gemini-3.7-flash-high',
+      spawnFn,
+      resolveConversationId: () => null,
+    });
+
+    await backend.startSession();
+    const turn = backend.sendPrompt('/work', 'hi');
+    child.child.emit('close', 0);
+    await turn;
+
+    expect(backend.getModel()).toBe('Gemini 3.7 Flash (High)');
+    const modelIdx = spawnCalls[0].indexOf('--model');
+    expect(modelIdx).toBeGreaterThanOrEqual(0);
+    expect(spawnCalls[0][modelIdx + 1]).toBe('Gemini 3.7 Flash (High)');
+  });
+
+  it('updates model when setModel is called', async () => {
+    const spawnCalls: string[][] = [];
+    let child = makeFakeChild();
+    const spawnFn = vi.fn((_bin: string, args: string[]) => {
+      spawnCalls.push(args);
+      return child.child;
+    }) as unknown as SpawnFn;
+
+    const backend = new AgyBackend({
+      cwd: '/work',
+      permissionMode: 'default',
+      model: 'Gemini 3.1 Pro (High)',
+      spawnFn,
+      resolveConversationId: () => null,
+    });
+
+    await backend.startSession();
+
+    // First turn with initial model
+    const t1 = backend.sendPrompt('/work', 'first');
+    child.child.emit('close', 0);
+    await t1;
+    expect(spawnCalls[0][spawnCalls[0].indexOf('--model') + 1]).toBe('Gemini 3.1 Pro (High)');
+
+    // Switch model via slug
+    backend.setModel('gemini-3.7-flash-medium');
+    expect(backend.getModel()).toBe('Gemini 3.7 Flash (Medium)');
+
+    // Second turn with updated model
+    child = makeFakeChild();
+    const t2 = backend.sendPrompt('/work', 'second');
+    child.child.emit('close', 0);
+    await t2;
+    expect(spawnCalls[1][spawnCalls[1].indexOf('--model') + 1]).toBe('Gemini 3.7 Flash (Medium)');
+  });
 });
+

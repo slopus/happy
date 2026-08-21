@@ -27,6 +27,7 @@ import type {
 import { resolveAgyBin, AGY_PRINT_TIMEOUT } from './constants';
 import { buildAgyArgs } from './cliArgs';
 import { readAgyConversationId } from './conversationStore';
+import { resolveAgyModelName, type DiscoveredModel } from './discoverModels';
 
 /** Signature of node's `spawn`, injectable so tests can supply a fake process. */
 export type SpawnFn = typeof spawn;
@@ -36,8 +37,10 @@ export interface AgyBackendOptions {
   cwd: string;
   /** Initial permission mode; updated per turn from message meta. */
   permissionMode: PermissionMode;
-  /** Initial model display name; updated per turn from message meta. */
+  /** Initial model display name or slug; updated per turn from message meta. */
   model?: string;
+  /** List of discovered models for resolving slugs to display names. */
+  models?: DiscoveredModel[];
   /** Value for `--print-timeout`. Defaults to AGY_PRINT_TIMEOUT. */
   printTimeout?: string;
   /** Optional logger. */
@@ -66,13 +69,15 @@ export class AgyBackend implements AgentBackend {
 
   private permissionMode: PermissionMode;
   private model?: string;
+  private models?: DiscoveredModel[];
   private conversationId: string | null = null;
   private child: ChildProcess | null = null;
 
   constructor(opts: AgyBackendOptions) {
     this.cwd = opts.cwd;
     this.permissionMode = opts.permissionMode;
-    this.model = opts.model;
+    this.models = opts.models;
+    this.model = resolveAgyModelName(opts.model, this.models);
     this.printTimeout = opts.printTimeout ?? AGY_PRINT_TIMEOUT;
     this.log = opts.log ?? (() => {});
     this.spawnFn = opts.spawnFn ?? spawn;
@@ -84,9 +89,22 @@ export class AgyBackend implements AgentBackend {
     this.permissionMode = mode;
   }
 
-  /** Update the model applied to subsequent turns. */
+  /** Update the model applied to subsequent turns (resolves slugs to display names). */
   setModel(model: string | undefined): void {
-    this.model = model;
+    this.model = resolveAgyModelName(model, this.models);
+  }
+
+  /** Update the discovered model catalog. */
+  setDiscoveredModels(models: DiscoveredModel[]): void {
+    this.models = models;
+    if (this.model) {
+      this.model = resolveAgyModelName(this.model, this.models);
+    }
+  }
+
+  /** Get the current resolved model display name. */
+  getModel(): string | undefined {
+    return this.model;
   }
 
   async startSession(): Promise<StartSessionResult> {
