@@ -1,12 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import {
+    IMAGE_AGENT_STYLE_CATEGORIES,
     IMAGE_AGENT_STYLE_PRESETS,
     buildImageAgentPrompt,
+    canonicalizeImageAgentStyleIds,
     createUserImageStylePreset,
     getImageAgentStyleOptionsForAgent,
     getImageAgentStylesForAgent,
     shouldUseUserImageStyleReferenceImages,
 } from './imageAgentPrompt';
+import { EXTRA_LEGACY_IMAGE_STYLE_ID_ALIASES } from './imageStyleCatalogExtras';
 import { createImageStyleSelectionPrompt } from './imageAgentMode';
 import { HEALING_ANIME_SCRIBBLE_V3_POLICY } from './healingScribbleSketchPrompt';
 import type { AgentLauncher } from './launchAgent';
@@ -48,11 +51,11 @@ describe('imageAgentPrompt', () => {
         expect(prompt).not.toContain('"typography"');
     });
 
-    it('includes curated reference article styles without local Obsidian labels', () => {
+    it('keeps specialty references and exposes the migrated cases through semantic styles', () => {
         const mountainStyle = IMAGE_AGENT_STYLE_PRESETS.find((preset) => preset.id === 'reference-voxcat/wild-mountain-sketchbook/1');
         const graphiteCyanStyle = IMAGE_AGENT_STYLE_PRESETS.find((preset) => preset.id === 'reference-graphite-cyan/dark-urban-grade/1');
-        const tiramisuStyle = IMAGE_AGENT_STYLE_PRESETS.find((preset) => preset.id === 'reference-tiramisu/vintage-film-cafe/1');
-        const dogStyle = IMAGE_AGENT_STYLE_PRESETS.find((preset) => preset.id === 'reference-dog/healing-watercolor/1');
+        const vintageFilmStyle = IMAGE_AGENT_STYLE_PRESETS.find((preset) => preset.id === 'editing-workflows/vintage-film-editorial/1');
+        const merchStyle = IMAGE_AGENT_STYLE_PRESETS.find((preset) => preset.id === 'branding-and-packaging/character-merch-board/1');
 
         expect(mountainStyle?.sourceRepository).toBe('curated-reference-examples');
         expect(mountainStyle?.promptPath).toContain('voxcat-wild-mountain-sketchbook');
@@ -64,16 +67,14 @@ describe('imageAgentPrompt', () => {
         expect(graphiteCyanStyle?.promptContent).toContain('低饱和石墨灰青色');
         expect(graphiteCyanStyle?.promptContent).toContain('不会压成死黑');
         expect(graphiteCyanStyle?.templateRef).not.toContain('local-obsidian');
-        expect(tiramisuStyle?.sourceRepository).toBe('curated-reference-examples');
-        expect(tiramisuStyle?.promptPath).toContain('tiramisu-vintage-film-cafe');
-        expect(tiramisuStyle?.promptContent).toContain('nostalgic 35mm film');
-        expect(tiramisuStyle?.templateRef).not.toContain('local-obsidian');
-        expect(tiramisuStyle?.promptHint).not.toMatch(/OBA|Obsidian/i);
-        expect(dogStyle?.sourceRepository).toBe('curated-reference-examples');
-        expect(dogStyle?.promptPath).toContain('dog-healing-watercolor');
-        expect(dogStyle?.promptContent).toContain('cream-colored curly dog');
-        expect(dogStyle?.templateRef).not.toContain('local-obsidian');
-        expect(dogStyle?.promptHint).not.toMatch(/OBA|Obsidian/i);
+        expect(vintageFilmStyle?.sourceRepository).toBe('wangjs-jacky/happy');
+        expect(vintageFilmStyle?.promptContent).toContain('nostalgic 35mm editorial photograph');
+        expect(vintageFilmStyle?.promptContent).not.toMatch(/tiramisu|dog/i);
+        expect(merchStyle?.sourceRepository).toBe('wangjs-jacky/happy');
+        expect(merchStyle?.promptContent).toContain('editorial merchandise concept board');
+        expect(merchStyle?.promptContent).not.toMatch(/tiramisu|dog/i);
+        expect(IMAGE_AGENT_STYLE_PRESETS.some((preset) => preset.categoryId === 'reference-tiramisu')).toBe(false);
+        expect(IMAGE_AGENT_STYLE_PRESETS.some((preset) => preset.categoryId === 'reference-dog')).toBe(false);
     });
 
     it('integrates the Torn Paper Editorial collage as a reusable single-photo style', () => {
@@ -567,16 +568,43 @@ describe('imageAgentPrompt', () => {
         expect(prompt).toContain('如有失败的风格，只简短说明失败的风格 id 和原因');
     });
 
-    it('resolves legacy reference ids to the renamed reference styles for saved agents', () => {
+    it('resolves legacy subject ids directly to canonical semantic styles for saved agents', () => {
         const styles = getImageAgentStylesForAgent({
             ...agent,
             imageStyleIds: ['oba-tiramisu/vintage-film-cafe/1', 'oba-dog/healing-watercolor/1'],
         });
 
         expect(styles.map((style) => style.id)).toEqual([
-            'reference-tiramisu/vintage-film-cafe/1',
-            'reference-dog/healing-watercolor/1',
+            'editing-workflows/vintage-film-editorial/1',
+            'scenes-and-illustrations/healing-scene/2',
         ]);
+    });
+
+    it('covers every old subject case with a canonical target and removes subject categories', () => {
+        const migratedEntries = Object.entries(EXTRA_LEGACY_IMAGE_STYLE_ID_ALIASES)
+            .filter(([legacyId]) => legacyId.startsWith('reference-tiramisu/') || legacyId.startsWith('reference-dog/'));
+        const canonicalIds = new Set(IMAGE_AGENT_STYLE_PRESETS.map((style) => style.id));
+
+        expect(migratedEntries).toHaveLength(42);
+        for (const [, canonicalId] of migratedEntries) {
+            expect(canonicalIds.has(canonicalId)).toBe(true);
+        }
+        expect(new Set(migratedEntries.map(([, canonicalId]) => canonicalId)).size).toBe(35);
+        expect(getImageAgentStylesForAgent({
+            ...agent,
+            imageStyleIds: migratedEntries.map(([legacyId]) => legacyId),
+        })).toHaveLength(35);
+        expect(canonicalizeImageAgentStyleIds(migratedEntries.map(([legacyId]) => legacyId))).toHaveLength(35);
+        expect(IMAGE_AGENT_STYLE_CATEGORIES.some((category) => category.id === 'reference-tiramisu')).toBe(false);
+        expect(IMAGE_AGENT_STYLE_CATEGORIES.some((category) => category.id === 'reference-dog')).toBe(false);
+
+        const locallyAuthoredStyles = IMAGE_AGENT_STYLE_PRESETS
+            .filter((style) => style.sourceCaseId.startsWith('semantic-gallery/'));
+        expect(locallyAuthoredStyles).toHaveLength(6);
+        for (const style of locallyAuthoredStyles) {
+            expect(style.promptPath).toBe('packages/happy-app/sources/components/agents/semanticGalleryPrompts.ts');
+            expect(style.sourceRevision).toBeUndefined();
+        }
     });
 
     it('builds a locked multi-image GPT Image 2 batch prompt', () => {

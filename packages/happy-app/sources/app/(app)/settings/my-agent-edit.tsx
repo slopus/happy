@@ -19,7 +19,11 @@ import { useSettingsRouter, useSettingsSearchParams } from '@/components/Desktop
 import type { AgentPreset } from '@/components/agents/launchAgent';
 import { formatPathRelativeToHome } from '@/utils/sessionUtils';
 import type { Session } from '@/sync/storageTypes';
-import { IMAGE_AGENT_STYLE_PRESETS, getImageAgentStyleLabel } from '@/components/agents/imageAgentPrompt';
+import {
+    IMAGE_AGENT_STYLE_PRESETS,
+    canonicalizeImageAgentStyleIds,
+    getImageAgentStyleLabel,
+} from '@/components/agents/imageAgentPrompt';
 import { buildAgentForSave, validateAgentSave } from '@/components/agents/agentEditorModel';
 import { getHardcodedModelModes, getEffortLevelsForModel } from '@/components/modelModeOptions';
 import type { NewSessionAgentType } from '@/sync/persistence';
@@ -77,7 +81,9 @@ export default React.memo(function AgentEditScreen() {
     const [effortLevel, setEffortLevel] = React.useState<string | null>(existing?.effortLevel ?? null);
     const [imageStyleIds, setImageStyleIds] = React.useState<string[]>(
         () => existing?.kind === 'image-styles'
-            ? (existing.imageStyleIds?.length ? existing.imageStyleIds : DEFAULT_IMAGE_STYLE_IDS)
+            ? (existing.imageStyleIds?.length
+                ? canonicalizeImageAgentStyleIds(existing.imageStyleIds)
+                : DEFAULT_IMAGE_STYLE_IDS)
             : DEFAULT_IMAGE_STYLE_IDS,
     );
     const [imageVariantsPerStyle, setImageVariantsPerStyle] = React.useState(existing?.imageVariantsPerStyle ?? 1);
