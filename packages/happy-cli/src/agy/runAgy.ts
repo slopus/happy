@@ -37,6 +37,7 @@ import type { PermissionMode } from '@/api/types';
 import { AgyBackend } from './AgyBackend';
 import { DEFAULT_AGY_MODEL } from './constants';
 import { discoverAgyModels, resolveAgyModelName } from './discoverModels';
+import { extractSessionTitle } from './title';
 
 export interface RunAgyOptions {
   credentials: Credentials;
@@ -282,6 +283,19 @@ export async function runAgy(opts: RunAgyOptions): Promise<void> {
       }
 
       log(`Incoming prompt: ${batch.message.slice(0, 200)}`);
+      if (!metadata.summary) {
+        const title = extractSessionTitle(batch.message);
+        metadata.summary = {
+          text: title,
+          updatedAt: Date.now(),
+        };
+        session.updateMetadata((currentMetadata) => ({
+          ...currentMetadata,
+          summary: metadata.summary,
+        }));
+        log(`Generated session title: "${title}"`);
+      }
+
       sendEnvelopes(sessionManager.startTurn());
       try {
         await backend.sendPrompt(process.cwd(), batch.message);
