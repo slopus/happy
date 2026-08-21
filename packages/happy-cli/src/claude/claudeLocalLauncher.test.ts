@@ -103,6 +103,7 @@ describe('claudeLocalLauncher', () => {
             allowedTools: [],
             hookSettingsPath: '/tmp/hook-settings.json',
             sandboxConfig: undefined,
+            permissionMode: 'plan',
         };
 
         const launcher = claudeLocalLauncher(session as any);
@@ -111,6 +112,9 @@ describe('claudeLocalLauncher', () => {
             expect(observed.localAbortSignal).toBeDefined();
             expect(observed.queueHandler).toBeDefined();
         });
+        expect(mockClaudeLocal).toHaveBeenCalledWith(expect.objectContaining({
+            permissionMode: 'plan',
+        }));
 
         queuedMessages = 1;
         const handler = observed.queueHandler;
@@ -205,5 +209,55 @@ describe('claudeLocalLauncher', () => {
 
         localRun.resolve();
         await launcher;
+    });
+
+    it('reports the underlying error when a launch throws, instead of a bare notice', async () => {
+        // The SDK surfaces an unresolvable native binary as a plain Error; the
+        // launcher used to drop it and report only "Process exited unexpectedly".
+        const sdkFailure = new Error(
+            'Native CLI binary for darwin-arm64 not found. Reinstall @anthropic-ai/claude-agent-sdk without --omit=optional, or set options.pathToClaudeCodeExecutable.'
+        );
+        mockClaudeLocal
+            .mockRejectedValueOnce(sdkFailure)
+            .mockResolvedValueOnce(undefined);
+
+        const session = {
+            sessionId: 'claude-session-3',
+            path: '/tmp/project',
+            client: {
+                sendClaudeSessionMessage: vi.fn(),
+                sendClaudeSessionMessageFromLocalTranscript: vi.fn(async () => {}),
+                closeClaudeSessionTurn: vi.fn(),
+                sendSessionEvent: vi.fn(),
+                rpcHandlerManager: {
+                    registerHandler: vi.fn(),
+                },
+            },
+            queue: {
+                reset: vi.fn(),
+                setOnMessage: vi.fn(),
+                size: vi.fn(() => 0),
+            },
+            addSessionFoundCallback: vi.fn(),
+            removeSessionFoundCallback: vi.fn(),
+            onAbort: vi.fn(),
+            onSessionFound: vi.fn(),
+            onThinkingChange: vi.fn(),
+            consumeOneTimeFlags: vi.fn(),
+            claudeEnvVars: undefined,
+            claudeArgs: undefined,
+            mcpServers: {},
+            allowedTools: [],
+            hookSettingsPath: '/tmp/hook-settings.json',
+            sandboxConfig: undefined,
+        };
+
+        // The failed launch retries, so the second attempt settles the launcher.
+        await expect(claudeLocalLauncher(session as any)).resolves.toEqual({ type: 'exit', code: 0 });
+
+        expect(session.client.sendSessionEvent).toHaveBeenCalledWith({
+            type: 'message',
+            message: `Process exited unexpectedly: ${sdkFailure.message}`,
+        });
     });
 });
