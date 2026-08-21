@@ -40,10 +40,10 @@ function shellescape(s: string): string {
 }
 
 function appendDaemonSpawnModeArgs(args: string[], options: SpawnSessionOptions, agent: string): void {
-  if (agent !== 'claude' && agent !== 'codex') {
+  if (agent !== 'claude' && agent !== 'codex' && agent !== 'agy') {
     return;
   }
-  // For claude, 'default' is the app's ambient "no override" value — forwarding
+  // For claude/agy, 'default' is the app's ambient "no override" value — forwarding
   // it would pin the session to prompting mode and lose the CLI's own default
   // (e.g. a --yolo setup where sessions must bypass permissions). For codex,
   // 'default' IS a concrete ask-first mode (untrusted + workspace-write)
