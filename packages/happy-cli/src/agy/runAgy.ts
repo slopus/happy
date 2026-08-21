@@ -5,9 +5,12 @@
  * pattern. The daemon spawns this as:
  *   `node dist/index.mjs agy --happy-starting-mode remote --started-by daemon`
  *
- * agy is a plain-text streaming CLI (no ACP), so this drives an AgyBackend that
- * spawns `agy --print` per turn, and forwards its AgentMessage stream through the
- * same session pipeline used by the other backends.
+ * agy is executed with `--output-format stream-json`, and this runner drives an AgyBackend
+ * that maps its structured events (text deltas, tool calls, tool results, thinking) into
+ * Happy's ACP Session envelopes and mobile/web UI.
+ *
+ * Happy session lifecycle is fully decoupled from the agy subprocess: the Happy session
+ * stays alive across turns, and dynamically binds to the agy conversation ID.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -42,6 +45,7 @@ export interface RunAgyOptions {
   model?: string;
   permissionMode?: PermissionMode;
   dangerouslySkipPermissions?: boolean;
+  resumeConversationId?: string;
 }
 
 export async function runAgy(opts: RunAgyOptions): Promise<void> {
@@ -77,6 +81,8 @@ export async function runAgy(opts: RunAgyOptions): Promise<void> {
   const initialPermissionMode: PermissionMode =
     opts.permissionMode ?? (isSkipPermissions ? 'bypassPermissions' : 'default');
 
+  const initialConversationId = opts.resumeConversationId;
+
   const { state, metadata } = createSessionMetadata({
     flavor: 'agy',
     machineId: settings.machineId,
@@ -89,6 +95,9 @@ export async function runAgy(opts: RunAgyOptions): Promise<void> {
     description: m.description ?? null,
   }));
   metadata.currentModelCode = initialModel;
+  if (initialConversationId) {
+    metadata.agyConversationId = initialConversationId;
+  }
 
   const response = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
   if (response) {
@@ -135,7 +144,18 @@ export async function runAgy(opts: RunAgyOptions): Promise<void> {
     permissionMode: initialPermissionMode,
     model: initialModel,
     models: discoveredModels,
+    conversationId: initialConversationId,
     log,
+    onConversationId: (cid) => {
+      if (metadata.agyConversationId !== cid) {
+        metadata.agyConversationId = cid;
+        session.updateMetadata((currentMetadata) => ({
+          ...currentMetadata,
+          agyConversationId: cid,
+        }));
+        log(`Persisted agy conversation ID to session metadata: ${cid}`);
+      }
+    },
   });
 
   // Terminal UI (only with a real TTY; the daemon runs headless).
@@ -156,6 +176,8 @@ export async function runAgy(opts: RunAgyOptions): Promise<void> {
 
     if (msg.type === 'model-output' && msg.textDelta) {
       messageBuffer.addMessage(msg.textDelta, 'assistant');
+    } else if (msg.type === 'tool-call') {
+      messageBuffer.addMessage(`🔧 ${msg.toolName}`, 'status');
     } else if (msg.type === 'status') {
       const nextThinking = msg.status === 'running';
       if (thinking !== nextThinking) {

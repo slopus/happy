@@ -51,4 +51,11 @@ describe('buildAgyArgs', () => {
     expect(idx).toBeGreaterThanOrEqual(0);
     expect(args[idx + 1]).toBe('10m');
   });
+
+  it('always includes --output-format stream-json', () => {
+    const args = buildAgyArgs({ prompt: 'p', permissionMode: 'default' });
+    const idx = args.indexOf('--output-format');
+    expect(idx).toBeGreaterThanOrEqual(0);
+    expect(args[idx + 1]).toBe('stream-json');
+  });
 });

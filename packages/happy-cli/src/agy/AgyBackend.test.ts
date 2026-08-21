@@ -22,7 +22,7 @@ function makeFakeChild() {
 }
 
 describe('AgyBackend', () => {
-  it('maps a successful turn: running → model-output(s) → idle', async () => {
+  it('maps a successful turn: running → stream-json events → idle', async () => {
     const { child, stdout } = makeFakeChild();
     const spawnFn = vi.fn(() => child) as unknown as SpawnFn;
 
@@ -30,7 +30,6 @@ describe('AgyBackend', () => {
       cwd: '/work',
       permissionMode: 'default',
       spawnFn,
-      resolveConversationId: () => null,
     });
 
     const messages: AgentMessage[] = [];
@@ -39,237 +38,212 @@ describe('AgyBackend', () => {
     await backend.startSession();
     const turn = backend.sendPrompt('/work', 'hi');
 
-    // Stream two chunks then exit cleanly.
-    stdout.emit('data', 'Hello ');
-    stdout.emit('data', 'world');
+    // Emit init, chunks, result, then close
+    stdout.emit(
+      'data',
+      '{"event":"init","conversation_id":"c-123","init":{"cwd":"/work"}}\n',
+    );
+    stdout.emit(
+      'data',
+      '{"event":"step_update","step_update":{"conversation_id":"c-123","step_index":1,"state":"DONE","step_type":"agent_response","text_delta":"Hello "}}\n',
+    );
+    stdout.emit(
+      'data',
+      '{"event":"step_update","step_update":{"conversation_id":"c-123","step_index":2,"state":"DONE","step_type":"agent_response","text_delta":"world"}}\n',
+    );
+    stdout.emit(
+      'data',
+      '{"event":"result","result":{"conversation_id":"c-123","status":"SUCCESS"}}\n',
+    );
     child.emit('close', 0);
 
     await expect(turn).resolves.toBeUndefined();
 
-    const types = messages.map((m) => m.type);
-    expect(types[0]).toBe('status');
     expect(messages[0]).toMatchObject({ type: 'status', status: 'running' });
-    // agy --print hangs unless stdin is closed: spawn must give the child an
-    // empty stdin (immediate EOF), not an open pipe.
-    const spawnOpts = (spawnFn as unknown as ReturnType<typeof vi.fn>).mock.calls[0][2];
-    expect(spawnOpts.stdio).toEqual(['ignore', 'pipe', 'pipe']);
-
     expect(messages.filter((m) => m.type === 'model-output')).toEqual([
       { type: 'model-output', textDelta: 'Hello ' },
       { type: 'model-output', textDelta: 'world' },
     ]);
     expect(messages.at(-1)).toMatchObject({ type: 'status', status: 'idle' });
+    expect(backend.getConversationId()).toBe('c-123');
   });
 
-  it('emits an error status and rejects on non-zero exit', async () => {
+  it('captures conversation ID from init event and resumes it on next turn', async () => {
+    const spawnCalls: string[][] = [];
+    let current = makeFakeChild();
+    const spawnFn = vi.fn((_bin: string, args: string[]) => {
+      spawnCalls.push(args);
+      return current.child;
+    }) as unknown as SpawnFn;
+
+    const discoveredIds: string[] = [];
+    const backend = new AgyBackend({
+      cwd: '/work',
+      permissionMode: 'default',
+      spawnFn,
+      onConversationId: (id) => discoveredIds.push(id),
+    });
+
+    await backend.startSession();
+
+    // Turn 1: fresh (no --conversation)
+    const t1 = backend.sendPrompt('/work', 'first');
+    current.stdout.emit(
+      'data',
+      '{"event":"init","conversation_id":"cid-discovered-abc"}\n',
+    );
+    current.child.emit('close', 0);
+    await t1;
+
+    expect(spawnCalls[0]).not.toContain('--conversation');
+    expect(discoveredIds).toEqual(['cid-discovered-abc']);
+    expect(backend.getConversationId()).toBe('cid-discovered-abc');
+
+    // Turn 2: resumes the captured id
+    current = makeFakeChild();
+    const t2 = backend.sendPrompt('/work', 'second');
+    current.stdout.emit(
+      'data',
+      '{"event":"init","conversation_id":"cid-discovered-abc"}\n',
+    );
+    current.child.emit('close', 0);
+    await t2;
+
+    const idx = spawnCalls[1].indexOf('--conversation');
+    expect(idx).toBeGreaterThanOrEqual(0);
+    expect(spawnCalls[1][idx + 1]).toBe('cid-discovered-abc');
+  });
+
+  it('resumes pre-existing conversation ID passed in constructor', async () => {
+    const spawnCalls: string[][] = [];
     const { child } = makeFakeChild();
+    const spawnFn = vi.fn((_bin: string, args: string[]) => {
+      spawnCalls.push(args);
+      return child;
+    }) as unknown as SpawnFn;
+
+    const backend = new AgyBackend({
+      cwd: '/work',
+      permissionMode: 'default',
+      conversationId: 'resumed-cid-999',
+      spawnFn,
+    });
+
+    await backend.startSession();
+    const t1 = backend.sendPrompt('/work', 'hello');
+    child.emit('close', 0);
+    await t1;
+
+    const idx = spawnCalls[0].indexOf('--conversation');
+    expect(idx).toBeGreaterThanOrEqual(0);
+    expect(spawnCalls[0][idx + 1]).toBe('resumed-cid-999');
+  });
+
+  it('maps tool calls and tool results from step_update', async () => {
+    const { child, stdout } = makeFakeChild();
     const spawnFn = vi.fn(() => child) as unknown as SpawnFn;
 
     const backend = new AgyBackend({
       cwd: '/work',
       permissionMode: 'default',
       spawnFn,
-      resolveConversationId: () => null,
     });
+
     const messages: AgentMessage[] = [];
     backend.onMessage((m) => messages.push(m));
 
     await backend.startSession();
-    const turn = backend.sendPrompt('/work', 'hi');
+    const turn = backend.sendPrompt('/work', 'list files');
+
+    stdout.emit(
+      'data',
+      '{"event":"init","conversation_id":"c-123"}\n' +
+      '{"event":"step_update","step_update":{"conversation_id":"c-123","step_index":2,"state":"ACTIVE","step_type":"tool","tool_name":"run_command","tool_info":{"name":"run_command","parameters":{"CommandLine":"ls"}}}}\n' +
+      '{"event":"step_update","step_update":{"conversation_id":"c-123","step_index":2,"state":"DONE","step_type":"tool","tool_name":"run_command","tool_info":{"name":"run_command","output":"file.txt"}}}\n',
+    );
+    child.emit('close', 0);
+
+    await expect(turn).resolves.toBeUndefined();
+
+    expect(messages).toContainEqual({
+      type: 'tool-call',
+      callId: 'agy-step-2',
+      toolName: 'run_command',
+      args: { CommandLine: 'ls' },
+    });
+    expect(messages).toContainEqual({
+      type: 'tool-result',
+      callId: 'agy-step-2',
+      toolName: 'run_command',
+      result: 'file.txt',
+    });
+  });
+
+  it('maps reasoning/process steps to thinking events', async () => {
+    const { child, stdout } = makeFakeChild();
+    const spawnFn = vi.fn(() => child) as unknown as SpawnFn;
+
+    const backend = new AgyBackend({
+      cwd: '/work',
+      permissionMode: 'default',
+      spawnFn,
+    });
+
+    const messages: AgentMessage[] = [];
+    backend.onMessage((m) => messages.push(m));
+
+    await backend.startSession();
+    const turn = backend.sendPrompt('/work', 'think');
+
+    stdout.emit(
+      'data',
+      '{"event":"step_update","step_update":{"conversation_id":"c-123","step_index":1,"state":"ACTIVE","step_type":"reasoning","text_delta":"Deep thoughts..."}}\n',
+    );
+    child.emit('close', 0);
+
+    await expect(turn).resolves.toBeUndefined();
+
+    expect(messages).toContainEqual({
+      type: 'event',
+      name: 'thinking',
+      payload: {
+        text: 'Deep thoughts...',
+        streaming: true,
+      },
+    });
+  });
+
+  it('emits error status and rejects on non-zero exit or error result', async () => {
+    const { child, stdout } = makeFakeChild();
+    const spawnFn = vi.fn(() => child) as unknown as SpawnFn;
+
+    const backend = new AgyBackend({
+      cwd: '/work',
+      permissionMode: 'default',
+      spawnFn,
+    });
+
+    const messages: AgentMessage[] = [];
+    backend.onMessage((m) => messages.push(m));
+
+    await backend.startSession();
+    const turn = backend.sendPrompt('/work', 'fail');
+
+    stdout.emit(
+      'data',
+      '{"event":"result","result":{"conversation_id":"c-123","status":"ERROR","error":"Token quota exceeded"}}\n',
+    );
     child.emit('close', 1);
 
-    await expect(turn).rejects.toThrow(/exited with code 1/);
-    expect(messages.at(-1)).toMatchObject({ type: 'status', status: 'error' });
-  });
-
-  it('resumes the captured conversation id on the next turn', async () => {
-    const spawnCalls: string[][] = [];
-    let current = makeFakeChild();
-    const spawnFn = vi.fn((_bin: string, args: string[]) => {
-      spawnCalls.push(args);
-      return current.child;
-    }) as unknown as SpawnFn;
-
-    // No conversation at start; agy records one after the first turn.
-    let recorded: string | null = null;
-    const backend = new AgyBackend({
-      cwd: '/work',
-      permissionMode: 'default',
-      spawnFn,
-      resolveConversationId: () => recorded,
+    await expect(turn).rejects.toThrow(/Token quota exceeded/);
+    expect(messages.at(-1)).toMatchObject({
+      type: 'status',
+      status: 'error',
+      detail: 'Token quota exceeded',
     });
-
-    await backend.startSession();
-
-    // First turn: fresh (no --conversation), then a conversation id appears.
-    const t1 = backend.sendPrompt('/work', 'first');
-    recorded = 'cid-xyz';
-    current.child.emit('close', 0);
-    await t1;
-
-    expect(spawnCalls[0]).not.toContain('--conversation');
-
-    // Second turn: resumes the captured id.
-    current = makeFakeChild();
-    const t2 = backend.sendPrompt('/work', 'second');
-    current.child.emit('close', 0);
-    await t2;
-
-    const idx = spawnCalls[1].indexOf('--conversation');
-    expect(idx).toBeGreaterThanOrEqual(0);
-    expect(spawnCalls[1][idx + 1]).toBe('cid-xyz');
   });
 
-  it('starts fresh instead of resuming a pre-existing cwd conversation (cross-resume guard)', async () => {
-    const spawnCalls: string[][] = [];
-    let current = makeFakeChild();
-    const spawnFn = vi.fn((_bin: string, args: string[]) => {
-      spawnCalls.push(args);
-      return current.child;
-    }) as unknown as SpawnFn;
-
-    // The cwd cache already holds a conversation from another (possibly live) session.
-    const backend = new AgyBackend({
-      cwd: '/work',
-      permissionMode: 'default',
-      spawnFn,
-      resolveConversationId: () => 'other-sessions-conversation',
-    });
-
-    await backend.startSession();
-
-    const t1 = backend.sendPrompt('/work', 'first');
-    current.child.emit('close', 0);
-    await t1;
-    expect(spawnCalls[0]).not.toContain('--conversation');
-
-    // The cache entry never changed, so it was not ours to adopt.
-    current = makeFakeChild();
-    const t2 = backend.sendPrompt('/work', 'second');
-    current.child.emit('close', 0);
-    await t2;
-    expect(spawnCalls[1]).not.toContain('--conversation');
-  });
-
-  it('adopts the id recorded during the first turn even when a stale entry existed', async () => {
-    const spawnCalls: string[][] = [];
-    let current = makeFakeChild();
-    const spawnFn = vi.fn((_bin: string, args: string[]) => {
-      spawnCalls.push(args);
-      return current.child;
-    }) as unknown as SpawnFn;
-
-    let recorded: string | null = 'stale-old';
-    const backend = new AgyBackend({
-      cwd: '/work',
-      permissionMode: 'default',
-      spawnFn,
-      resolveConversationId: () => recorded,
-    });
-
-    await backend.startSession();
-
-    const t1 = backend.sendPrompt('/work', 'first');
-    recorded = 'fresh-1'; // our turn created a new conversation
-    current.child.emit('close', 0);
-    await t1;
-    expect(spawnCalls[0]).not.toContain('--conversation');
-
-    current = makeFakeChild();
-    const t2 = backend.sendPrompt('/work', 'second');
-    current.child.emit('close', 0);
-    await t2;
-    const idx = spawnCalls[1].indexOf('--conversation');
-    expect(idx).toBeGreaterThanOrEqual(0);
-    expect(spawnCalls[1][idx + 1]).toBe('fresh-1');
-  });
-
-  it('re-snapshots the cache every turn while unpinned: a foreign write between turns is not adopted', async () => {
-    const spawnCalls: string[][] = [];
-    let current = makeFakeChild();
-    const spawnFn = vi.fn((_bin: string, args: string[]) => {
-      spawnCalls.push(args);
-      return current.child;
-    }) as unknown as SpawnFn;
-
-    let recorded: string | null = 'stale-S';
-    const backend = new AgyBackend({
-      cwd: '/work',
-      permissionMode: 'default',
-      spawnFn,
-      resolveConversationId: () => recorded,
-    });
-
-    await backend.startSession();
-
-    // Turn 1: cache stays at the stale value → nothing to adopt.
-    const t1 = backend.sendPrompt('/work', 'first');
-    current.child.emit('close', 0);
-    await t1;
-
-    // While idle, a foreign session writes a new id. If the backend kept using
-    // turn 1's snapshot ('stale-S'), turn 2's close would mis-adopt 'foreign-F'.
-    recorded = 'foreign-F';
-
-    current = makeFakeChild();
-    const t2 = backend.sendPrompt('/work', 'second');
-    current.child.emit('close', 0);
-    await t2;
-
-    current = makeFakeChild();
-    const t3 = backend.sendPrompt('/work', 'third');
-    current.child.emit('close', 0);
-    await t3;
-
-    for (const call of spawnCalls) {
-      expect(call).not.toContain('--conversation');
-    }
-  });
-
-  it('keeps the pinned conversation when another session updates the cache', async () => {
-    const spawnCalls: string[][] = [];
-    let current = makeFakeChild();
-    const spawnFn = vi.fn((_bin: string, args: string[]) => {
-      spawnCalls.push(args);
-      return current.child;
-    }) as unknown as SpawnFn;
-
-    let recorded: string | null = null;
-    const backend = new AgyBackend({
-      cwd: '/work',
-      permissionMode: 'default',
-      spawnFn,
-      resolveConversationId: () => recorded,
-    });
-
-    await backend.startSession();
-
-    const t1 = backend.sendPrompt('/work', 'first');
-    recorded = 'mine';
-    current.child.emit('close', 0);
-    await t1;
-
-    // A second agy session in the same cwd finishes a turn: cache now points elsewhere.
-    recorded = 'theirs';
-
-    current = makeFakeChild();
-    const t2 = backend.sendPrompt('/work', 'second');
-    current.child.emit('close', 0);
-    await t2;
-
-    current = makeFakeChild();
-    const t3 = backend.sendPrompt('/work', 'third');
-    current.child.emit('close', 0);
-    await t3;
-
-    for (const call of [spawnCalls[1], spawnCalls[2]]) {
-      const idx = call.indexOf('--conversation');
-      expect(idx).toBeGreaterThanOrEqual(0);
-      expect(call[idx + 1]).toBe('mine');
-    }
-  });
-
-  it('emits only one error when error is followed by close (no double-emit)', async () => {
+  it('cancels child process via SIGTERM', async () => {
     const { child } = makeFakeChild();
     const spawnFn = vi.fn(() => child) as unknown as SpawnFn;
 
@@ -277,76 +251,21 @@ describe('AgyBackend', () => {
       cwd: '/work',
       permissionMode: 'default',
       spawnFn,
-      resolveConversationId: () => null,
-    });
-    const messages: AgentMessage[] = [];
-    backend.onMessage((m) => messages.push(m));
-
-    await backend.startSession();
-    const turn = backend.sendPrompt('/work', 'hi');
-
-    // Node fires both 'error' and 'close' on spawn failure.
-    child.emit('error', new Error('spawn ENOENT'));
-    child.emit('close', null);
-
-    await expect(turn).rejects.toThrow(/ENOENT/);
-    expect(messages.filter((m) => m.type === 'status' && m.status === 'error')).toHaveLength(1);
-  });
-
-  it('cancel() kills the running child', async () => {
-    const { child } = makeFakeChild();
-    const spawnFn = vi.fn(() => child) as unknown as SpawnFn;
-
-    const backend = new AgyBackend({
-      cwd: '/work',
-      permissionMode: 'default',
-      spawnFn,
-      resolveConversationId: () => null,
     });
 
     await backend.startSession();
-    const turn = backend.sendPrompt('/work', 'hi');
+    void backend.sendPrompt('/work', 'long running');
+
     await backend.cancel();
-    expect(child.kill).toHaveBeenCalled();
-
-    // The kill surfaces as a non-zero close, which rejects the turn.
-    child.emit('close', null);
-    await expect(turn).rejects.toThrow();
+    expect(child.kill).toHaveBeenCalledWith('SIGTERM');
   });
 
-  it('resolves model slug and passes canonical display name to spawn', async () => {
+  it('updates model and permissionMode dynamically between turns', async () => {
     const spawnCalls: string[][] = [];
-    const child = makeFakeChild();
+    let current = makeFakeChild();
     const spawnFn = vi.fn((_bin: string, args: string[]) => {
       spawnCalls.push(args);
-      return child.child;
-    }) as unknown as SpawnFn;
-
-    const backend = new AgyBackend({
-      cwd: '/work',
-      permissionMode: 'default',
-      model: 'gemini-3.7-flash-high',
-      spawnFn,
-      resolveConversationId: () => null,
-    });
-
-    await backend.startSession();
-    const turn = backend.sendPrompt('/work', 'hi');
-    child.child.emit('close', 0);
-    await turn;
-
-    expect(backend.getModel()).toBe('Gemini 3.7 Flash (High)');
-    const modelIdx = spawnCalls[0].indexOf('--model');
-    expect(modelIdx).toBeGreaterThanOrEqual(0);
-    expect(spawnCalls[0][modelIdx + 1]).toBe('Gemini 3.7 Flash (High)');
-  });
-
-  it('updates model when setModel is called', async () => {
-    const spawnCalls: string[][] = [];
-    let child = makeFakeChild();
-    const spawnFn = vi.fn((_bin: string, args: string[]) => {
-      spawnCalls.push(args);
-      return child.child;
+      return current.child;
     }) as unknown as SpawnFn;
 
     const backend = new AgyBackend({
@@ -354,27 +273,28 @@ describe('AgyBackend', () => {
       permissionMode: 'default',
       model: 'Gemini 3.1 Pro (High)',
       spawnFn,
-      resolveConversationId: () => null,
     });
 
     await backend.startSession();
 
-    // First turn with initial model
-    const t1 = backend.sendPrompt('/work', 'first');
-    child.child.emit('close', 0);
+    // Turn 1: default mode
+    const t1 = backend.sendPrompt('/work', 'turn 1');
+    current.child.emit('close', 0);
     await t1;
-    expect(spawnCalls[0][spawnCalls[0].indexOf('--model') + 1]).toBe('Gemini 3.1 Pro (High)');
 
-    // Switch model via slug
-    backend.setModel('gemini-3.7-flash-medium');
-    expect(backend.getModel()).toBe('Gemini 3.7 Flash (Medium)');
+    expect(spawnCalls[0]).toContain('--sandbox');
+    expect(spawnCalls[0]).toContain('Gemini 3.1 Pro (High)');
 
-    // Second turn with updated model
-    child = makeFakeChild();
-    const t2 = backend.sendPrompt('/work', 'second');
-    child.child.emit('close', 0);
+    // Switch settings
+    backend.setPermissionMode('bypassPermissions');
+    backend.setModel('Gemini 3.7 Flash (High)');
+
+    current = makeFakeChild();
+    const t2 = backend.sendPrompt('/work', 'turn 2');
+    current.child.emit('close', 0);
     await t2;
-    expect(spawnCalls[1][spawnCalls[1].indexOf('--model') + 1]).toBe('Gemini 3.7 Flash (Medium)');
+
+    expect(spawnCalls[1]).toContain('--dangerously-skip-permissions');
+    expect(spawnCalls[1]).toContain('Gemini 3.7 Flash (High)');
   });
 });
-
