@@ -1,5 +1,6 @@
 import type { Session } from './storageTypes';
 import type { SessionRowData } from './storage';
+import { getRepoPath, getWorktreeName, isWorktreePath } from '@/utils/worktreePaths';
 
 // One git worktree inside a project. `id` is empty and `name` is null for
 // the project's primary tree, which always sorts first.
@@ -28,9 +29,10 @@ export function isProjectSession(session: Session): boolean {
 }
 
 /**
- * Groups sessions without a native project identity by machine and working
- * directory. This gives Happy CLI sessions the same project-card presentation
- * as Rig without merging identical paths from different computers.
+ * Groups sessions without a native project identity by machine and repository
+ * path. Happy-created worktree paths are nested under their main checkout,
+ * giving CLI sessions the same project/worktree hierarchy as Rig without
+ * merging identical paths from different computers.
  */
 export function buildPathProjectGroups(
     sessions: Session[],
@@ -39,28 +41,51 @@ export function buildPathProjectGroups(
     idPrefix: string,
 ): ProjectGroupData[] {
     const projects = new Map<string, ProjectGroupData>();
+    const workspaces = new Map<string, ProjectWorkspaceGroup>();
 
     for (const session of sessions) {
         const machineId = session.metadata?.machineId ?? null;
-        const path = session.metadata?.path?.trim() || '';
-        const key = JSON.stringify([machineId, path]);
+        const sessionPath = session.metadata?.path?.trim() || '';
+        const worktree = isWorktreePath(sessionPath);
+        const projectPath = worktree ? getRepoPath(sessionPath) : sessionPath;
+        const workspaceId = worktree ? sessionPath : '';
+        const workspaceName = worktree ? getWorktreeName(sessionPath) : null;
+        const key = JSON.stringify([machineId, projectPath]);
         let group = projects.get(key);
         if (!group) {
             group = {
                 id: `${idPrefix}:${key}`,
-                name: pathProjectName(path, session.metadata?.homeDir),
+                name: pathProjectName(projectPath, session.metadata?.homeDir),
                 machineId,
-                workspaces: [{ id: '', name: null, sessions: [] }],
+                workspaces: [],
                 sessionCount: 0,
                 activeCount: 0,
             };
             projects.set(key, group);
         }
 
-        group.workspaces[0].sessions.push(toRow(session));
+        const workspaceKey = `${key}\u0000${workspaceId}`;
+        let workspace = workspaces.get(workspaceKey);
+        if (!workspace) {
+            workspace = { id: workspaceId, name: workspaceName, sessions: [] };
+            workspaces.set(workspaceKey, workspace);
+            group.workspaces.push(workspace);
+        }
+
+        workspace.sessions.push(toRow(session));
         group.sessionCount += 1;
         if (isActive(session)) {
             group.activeCount += 1;
+        }
+    }
+
+    // Keep the primary checkout above its worktrees even when the newest
+    // session happened to come from a worktree.
+    for (const group of projects.values()) {
+        const primaryIndex = group.workspaces.findIndex(workspace => workspace.id === '');
+        if (primaryIndex > 0) {
+            const [primary] = group.workspaces.splice(primaryIndex, 1);
+            group.workspaces.unshift(primary);
         }
     }
 
@@ -156,54 +181,4 @@ export function buildProjectGroups(
     }
 
     return [...projects.values()];
-}
-
-/** The session fields the sessions-list search box looks at. */
-export function sessionMatchesQuery(session: SessionRowData, normalizedQuery: string): boolean {
-    return [
-        session.name,
-        session.subtitle,
-        session.path,
-        session.machineId,
-        session.flavor,
-    ].some((value) => value?.toLocaleLowerCase().includes(normalizedQuery));
-}
-
-/**
- * Narrows a project to what matches a search query, or drops it entirely.
- *
- * Projects hold their sessions nested inside worktrees, so the flat filter the
- * list applies to ordinary sessions cannot see them: without this every Rig
- * project disappeared as soon as anything was typed. Matching the project or a
- * worktree by name keeps everything under it, so a search for a repo still
- * shows the whole repo. Counts are recomputed so the badge agrees with the rows
- * that are actually left.
- */
-export function filterProjectGroup(
-    project: ProjectGroupData,
-    normalizedQuery: string,
-): ProjectGroupData | null {
-    if (project.name.toLocaleLowerCase().includes(normalizedQuery)) {
-        return project;
-    }
-
-    const workspaces = project.workspaces
-        .map((workspace) => (
-            workspace.name?.toLocaleLowerCase().includes(normalizedQuery)
-                ? workspace
-                : { ...workspace, sessions: workspace.sessions.filter((s) => sessionMatchesQuery(s, normalizedQuery)) }
-        ))
-        .filter((workspace) => workspace.sessions.length > 0);
-
-    if (workspaces.length === 0) {
-        return null;
-    }
-
-    const sessions = workspaces.flatMap((workspace) => workspace.sessions);
-    return {
-        ...project,
-        workspaces,
-        sessionCount: sessions.length,
-        activeCount: sessions.filter((session) => session.active).length,
-    };
 }

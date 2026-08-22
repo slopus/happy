@@ -75,7 +75,7 @@ export const Header = React.memo((props: HeaderProps) => {
     const headerLeftUsesGlass = headerLeftGlass && !isDesktop;
     const headerRightUsesGlass = headerRightGlass && !isDesktop;
     const contentHeight = floatingControlsEnabled ? Math.max(headerHeight, MOBILE_GLASS_HEADER_HEIGHT) : headerHeight;
-    const strongBackdrop = headerBackdropVariant === 'strong';
+    const strongBackdrop = headerBackdropVariant !== 'subtle';
     const backdropRestingOpacity = headerBackdropAlwaysVisible
         ? strongBackdrop ? MOBILE_STRONG_HEADER_SCRIM_RESTING_OPACITY : 1
         : 0;

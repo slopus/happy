@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest';
 import {
     buildPathProjectGroups,
     buildProjectGroups,
-    filterProjectGroup,
     filterProjectGroupSessions,
 } from './projectGroups';
 import type { ProjectGroupData } from './projectGroups';
@@ -137,7 +136,6 @@ describe('buildProjectGroups', () => {
         });
     });
 });
-
 describe('buildPathProjectGroups', () => {
     it('groups Happy sessions by machine and working directory', () => {
         const groups = buildPathProjectGroups([
@@ -171,6 +169,35 @@ describe('buildPathProjectGroups', () => {
         ], toRow, isActive, 'happy');
 
         expect(groups[0].name).toBe('Home');
+    });
+
+    it('nests Happy worktrees under their repository project', () => {
+        const groups = buildPathProjectGroups([
+            session({ id: 'worktree', path: '/projects/happy/.dev/worktree/simpler-home' }),
+            session({ id: 'main', path: '/projects/happy' }),
+        ], toRow, isActive, 'happy');
+
+        expect(groups).toHaveLength(1);
+        expect(groups[0]).toMatchObject({
+            name: 'happy',
+            workspaces: [
+                { id: '', name: null, sessions: [{ id: 'main' }] },
+                {
+                    id: '/projects/happy/.dev/worktree/simpler-home',
+                    name: 'simpler-home',
+                    sessions: [{ id: 'worktree' }],
+                },
+            ],
+        });
+    });
+
+    it('keeps worktrees with the same name separate across repositories', () => {
+        const groups = buildPathProjectGroups([
+            session({ id: 'happy', path: '/projects/happy/.dev/worktree/review' }),
+            session({ id: 'website', path: '/projects/website/.dev/worktree/review' }),
+        ], toRow, isActive, 'happy');
+
+        expect(groups.map(group => group.name)).toEqual(['happy', 'website']);
     });
 });
 
@@ -220,48 +247,5 @@ describe('filterProjectGroupSessions', () => {
             activeCount: 0,
             workspaces: [{ sessions: [{ id: 'disconnected' }] }],
         });
-    });
-});
-
-describe('filterProjectGroup', () => {
-    const project = (): ProjectGroupData => ({
-        id: 'p1',
-        name: 'happy',
-        machineId: 'machine-1',
-        sessionCount: 3,
-        activeCount: 3,
-        workspaces: [
-            { id: '', name: null, sessions: [row('a', 'refactor the parser')] },
-            { id: 'w1', name: 'feature', sessions: [row('b', 'add the picker'), row('c', 'idle one', false)] },
-        ],
-    });
-
-    it('keeps only the worktrees holding a matching session', () => {
-        const filtered = filterProjectGroup(project(), 'picker');
-
-        expect(filtered?.workspaces.map(w => w.name)).toEqual(['feature']);
-        expect(filtered?.workspaces[0].sessions.map(s => s.id)).toEqual(['b']);
-    });
-
-    it('recomputes the counts so the badge matches the rows left', () => {
-        const filtered = filterProjectGroup(project(), 'the');
-
-        expect(filtered?.sessionCount).toBe(2);
-        expect(filtered?.activeCount).toBe(2);
-    });
-
-    it('keeps the whole project when the project name matches', () => {
-        expect(filterProjectGroup(project(), 'happy')).toEqual(project());
-    });
-
-    it('keeps a whole worktree when the worktree name matches', () => {
-        const filtered = filterProjectGroup(project(), 'feature');
-
-        expect(filtered?.workspaces).toHaveLength(1);
-        expect(filtered?.workspaces[0].sessions.map(s => s.id)).toEqual(['b', 'c']);
-    });
-
-    it('drops a project nothing inside it matches', () => {
-        expect(filterProjectGroup(project(), 'nothing-here')).toBeNull();
     });
 });

@@ -39,12 +39,10 @@ export const SessionsListWrapper = React.memo(({
     topContentInset = 0,
     bottomContentInset = 128,
     onScroll,
-    searchQuery = '',
 }: {
     topContentInset?: number;
     bottomContentInset?: number;
     onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
-    searchQuery?: string;
 }) => {
     const { theme } = useUnistyles();
     const sessionListViewData = useVisibleSessionListViewData();
@@ -80,7 +78,6 @@ export const SessionsListWrapper = React.memo(({
                 topContentInset={topContentInset}
                 bottomContentInset={bottomContentInset}
                 onScroll={onScroll}
-                searchQuery={searchQuery}
             />
         </View>
     );

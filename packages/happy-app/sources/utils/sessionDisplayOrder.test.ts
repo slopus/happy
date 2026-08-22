@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { SessionListViewItem, SessionRowData } from '@/sync/storage';
 import {
     buildActiveSessionDisplayGroups,
+    buildSessionProjectDisplayGroups,
     getSessionShortcutIdsInDisplayOrder,
 } from './sessionDisplayOrder';
 
@@ -127,8 +128,69 @@ describe('session display order', () => {
         ];
 
         expect(getSessionShortcutIdsInDisplayOrder(data, machines, 'Unknown')).toEqual([
-            'rig-session',
             'happy-session',
+            'rig-session',
+        ]);
+    });
+
+    it('groups project cards by machine and sorts projects within each machine', () => {
+        const data: SessionListViewItem[] = [
+            {
+                type: 'project',
+                source: 'happy',
+                project: {
+                    id: 'z-project',
+                    name: 'Zulu project',
+                    machineId: 'machine-a',
+                    activeCount: 1,
+                    sessionCount: 1,
+                    workspaces: [{ id: '', name: null, sessions: [session('z', 'machine-a', '/z')] }],
+                },
+            },
+            {
+                type: 'project',
+                source: 'happy',
+                project: {
+                    id: 'a-project',
+                    name: 'Alpha project',
+                    machineId: 'machine-a',
+                    activeCount: 1,
+                    sessionCount: 1,
+                    workspaces: [{ id: '', name: null, sessions: [session('a', 'machine-a', '/a')] }],
+                },
+            },
+            {
+                type: 'project',
+                source: 'happy',
+                project: {
+                    id: 'other-machine',
+                    name: 'Other project',
+                    machineId: 'machine-z',
+                    activeCount: 1,
+                    sessionCount: 1,
+                    workspaces: [{ id: '', name: null, sessions: [session('other', 'machine-z', '/other')] }],
+                },
+            },
+            {
+                type: 'project',
+                source: 'happy',
+                project: {
+                    id: 'unknown-machine',
+                    name: 'Unknown project',
+                    machineId: null,
+                    activeCount: 1,
+                    sessionCount: 1,
+                    workspaces: [{ id: '', name: null, sessions: [session('unknown', '', '/unknown')] }],
+                },
+            },
+        ];
+
+        const groups = buildSessionProjectDisplayGroups(data, machines, 'Unknown');
+
+        expect(groups.map(group => group.machineName)).toEqual(['Alpha', 'Zulu', '<Unknown>']);
+        expect(groups[0].projects.map(item => item.project.name)).toEqual([
+            'Alpha project',
+            'Zulu project',
         ]);
     });
 });

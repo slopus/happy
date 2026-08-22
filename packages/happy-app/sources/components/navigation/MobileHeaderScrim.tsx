@@ -5,7 +5,7 @@ import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useUnistyles } from 'react-native-unistyles';
 
-export type MobileHeaderScrimVariant = 'subtle' | 'strong';
+export type MobileHeaderScrimVariant = 'subtle' | 'strong' | 'home';
 export type MobileHeaderScrimEdge = 'top' | 'bottom';
 
 // Shared by headers that keep a strong material visible at rest and deepen it
@@ -27,7 +27,8 @@ export function MobileHeaderScrim({
     edge?: MobileHeaderScrimEdge;
 }) {
     const { theme } = useUnistyles();
-    const isStrong = variant === 'strong';
+    const isHome = variant === 'home';
+    const isStrong = variant !== 'subtle';
     const gradientStart = edge === 'bottom' ? { x: 0.5, y: 1 } : { x: 0.5, y: 0 };
     const gradientEnd = edge === 'bottom' ? { x: 0.5, y: 0 } : { x: 0.5, y: 1 };
     const strongBlurMaskColors = [
@@ -53,7 +54,11 @@ export function MobileHeaderScrim({
                 maskElement={(
                     <LinearGradient
                         colors={blurMaskColors}
-                        locations={isStrong ? [0, 0.20, 0.68, 1] : [0, 0.34, 0.7, 1]}
+                        locations={isHome
+                            ? [0, 0.55, 0.90, 1]
+                            : isStrong
+                                ? [0, 0.20, 0.68, 1]
+                                : [0, 0.34, 0.7, 1]}
                         start={gradientStart}
                         end={gradientEnd}
                         style={styles.fill}
@@ -71,13 +76,21 @@ export function MobileHeaderScrim({
             <LinearGradient
                 pointerEvents="none"
                 colors={theme.dark
-                    ? isStrong
+                    ? isHome
+                        ? ['rgba(0, 0, 0, 1)', 'rgba(0, 0, 0, 0.99)', 'rgba(0, 0, 0, 0.90)', 'rgba(0, 0, 0, 0)']
+                        : isStrong
                         ? ['rgba(0, 0, 0, 0.20)', 'rgba(0, 0, 0, 0.14)', 'rgba(0, 0, 0, 0.05)', 'rgba(0, 0, 0, 0)']
                         : ['rgba(0, 0, 0, 0.50)', 'rgba(0, 0, 0, 0.36)', 'rgba(0, 0, 0, 0.12)', 'rgba(0, 0, 0, 0)']
-                    : isStrong
+                    : isHome
+                        ? ['rgba(255, 255, 255, 1)', 'rgba(255, 255, 255, 0.99)', 'rgba(255, 255, 255, 0.90)', 'rgba(255, 255, 255, 0)']
+                        : isStrong
                         ? ['rgba(255, 255, 255, 0.34)', 'rgba(255, 255, 255, 0.22)', 'rgba(255, 255, 255, 0.07)', 'rgba(255, 255, 255, 0)']
                         : ['rgba(255, 255, 255, 0.68)', 'rgba(255, 255, 255, 0.50)', 'rgba(255, 255, 255, 0.18)', 'rgba(255, 255, 255, 0)']}
-                locations={isStrong ? [0, 0.34, 0.80, 1] : [0, 0.34, 0.7, 1]}
+                locations={isHome
+                    ? [0, 0.55, 0.90, 1]
+                    : isStrong
+                        ? [0, 0.34, 0.80, 1]
+                        : [0, 0.34, 0.7, 1]}
                 start={gradientStart}
                 end={gradientEnd}
                 style={styles.fill}

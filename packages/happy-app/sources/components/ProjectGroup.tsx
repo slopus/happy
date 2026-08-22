@@ -1,11 +1,12 @@
 import React from 'react';
-import { View, Pressable } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Platform, View } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Text } from '@/components/StyledText';
 import { Typography } from '@/constants/Typography';
-import { ProjectGroupData, ProjectWorkspaceGroup, useAllMachines, useLocalSettingMutable } from '@/sync/storage';
+import { ProjectGroupData, ProjectWorkspaceGroup } from '@/sync/storage';
 import { CompactSessionRow } from './ActiveSessionsGroupCompact';
+import { Avatar } from './Avatar';
 
 interface ProjectGroupProps {
     project: ProjectGroupData;
@@ -13,58 +14,28 @@ interface ProjectGroupProps {
 }
 
 /**
- * One project and its sessions. Rig projects may contain named worktrees;
- * Happy CLI projects use a single workspace derived from their working path.
+ * One project and its sessions, split into the primary checkout and any named
+ * worktrees reported by Rig or created through Happy.
  */
 export const ProjectGroup = React.memo(({ project, selectedSessionId }: ProjectGroupProps) => {
     const styles = stylesheet;
-    const { theme } = useUnistyles();
-    const machines = useAllMachines();
-    const [collapsedProjects, setCollapsedProjects] = useLocalSettingMutable('collapsedProjects');
-    const collapsed = !!collapsedProjects[project.id];
-
-    const toggleCollapsed = React.useCallback(() => {
-        setCollapsedProjects({ ...collapsedProjects, [project.id]: !collapsed });
-    }, [collapsed, collapsedProjects, project.id, setCollapsedProjects]);
-
-    const machineName = React.useMemo(() => {
-        if (!project.machineId) return null;
-        const machine = machines.find(m => m.id === project.machineId);
-        return machine?.metadata?.displayName || machine?.metadata?.host || null;
-    }, [machines, project.machineId]);
-
-    // Worktrees only need naming when the project actually has more than one
-    const showWorkspaceLabels = project.workspaces.length > 1;
+    const firstSession = project.workspaces[0]?.sessions[0];
 
     return (
         <View style={styles.container}>
-            <Pressable style={styles.header} onPress={toggleCollapsed} hitSlop={8}>
-                <Ionicons
-                    name={collapsed ? 'chevron-forward' : 'chevron-down'}
-                    size={16}
-                    color={theme.colors.textSecondary}
-                    style={styles.chevron}
-                />
-                <View style={styles.headerText}>
-                    <Text style={styles.title} numberOfLines={1}>
-                        {project.name}
-                    </Text>
-                    {machineName && (
-                        <Text style={styles.subtitle} numberOfLines={1}>
-                            {machineName}
-                        </Text>
-                    )}
-                </View>
-                <Text style={styles.count}>
-                    {project.activeCount > 0 ? `${project.activeCount}/${project.sessionCount}` : project.sessionCount}
+            <View style={styles.header}>
+                {firstSession && (
+                    <Avatar id={firstSession.avatarId} size={24} flavor={null} />
+                )}
+                <Text style={styles.title} numberOfLines={1}>
+                    {project.name}
                 </Text>
-            </Pressable>
+            </View>
 
-            {!collapsed && project.workspaces.map(workspace => (
+            {project.workspaces.map((workspace) => (
                 <WorkspaceSection
                     key={workspace.id || 'primary'}
                     workspace={workspace}
-                    showLabel={showWorkspaceLabels}
                     selectedSessionId={selectedSessionId}
                 />
             ))}
@@ -72,34 +43,31 @@ export const ProjectGroup = React.memo(({ project, selectedSessionId }: ProjectG
     );
 });
 
-const WorkspaceSection = React.memo(({ workspace, showLabel, selectedSessionId }: {
+const WorkspaceSection = React.memo(({ workspace, selectedSessionId }: {
     workspace: ProjectWorkspaceGroup;
-    showLabel: boolean;
     selectedSessionId?: string;
 }) => {
     const styles = stylesheet;
     const { theme } = useUnistyles();
 
     return (
-        <View style={styles.workspace}>
-            {showLabel && (
-                <View style={styles.workspaceHeader}>
-                    <Ionicons
-                        name={workspace.name ? 'git-branch-outline' : 'folder-outline'}
-                        size={13}
-                        color={theme.colors.textSecondary}
-                    />
-                    <Text style={styles.workspaceTitle} numberOfLines={1}>
-                        {workspace.name ?? 'main'}
-                    </Text>
-                </View>
-            )}
+        <View style={styles.workspaceCard}>
+            <View style={styles.workspaceHeader}>
+                <MaterialCommunityIcons
+                    name={workspace.id ? 'source-branch' : 'folder-outline'}
+                    size={13}
+                    color={theme.colors.textSecondary}
+                />
+                <Text style={styles.workspaceTitle} numberOfLines={1}>
+                    {workspace.name ?? (workspace.id || 'main')}
+                </Text>
+            </View>
             {workspace.sessions.map((session, index) => (
                 <CompactSessionRow
                     key={session.id}
                     session={session}
                     selected={session.id === selectedSessionId}
-                    showBorder={index > 0}
+                    showBorder={index < workspace.sessions.length - 1}
                 />
             ))}
         </View>
@@ -108,50 +76,46 @@ const WorkspaceSection = React.memo(({ workspace, showLabel, selectedSessionId }
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
-        backgroundColor: theme.colors.surface,
-        marginHorizontal: 8,
-        marginBottom: 8,
-        borderRadius: 12,
-        overflow: 'hidden',
+        backgroundColor: 'transparent',
+        marginBottom: 4,
     },
     header: {
         flexDirection: 'row',
         alignItems: 'center',
-        paddingHorizontal: 12,
-        paddingVertical: 10,
-        gap: 6,
-    },
-    chevron: {
-        width: 16,
-    },
-    headerText: {
-        flex: 1,
-        minWidth: 0,
+        paddingTop: 12,
+        paddingBottom: Platform.select({ ios: 6, default: 8 }),
+        paddingHorizontal: Platform.select({ ios: 32, default: 24 }),
+        gap: 8,
     },
     title: {
-        fontSize: 15,
-        color: theme.colors.text,
-        ...Typography.default('semiBold'),
+        flex: 1,
+        minWidth: 0,
+        color: theme.colors.groupped.sectionTitle,
+        fontSize: Platform.select({ ios: 13, default: 14 }),
+        lineHeight: Platform.select({ ios: 18, default: 20 }),
+        letterSpacing: Platform.select({ ios: -0.08, default: 0.1 }),
+        fontWeight: Platform.select({ ios: 'normal', default: '500' }),
+        ...Typography.default('regular'),
     },
-    subtitle: {
-        fontSize: 12,
-        color: theme.colors.textSecondary,
-        marginTop: 1,
-        ...Typography.default(),
-    },
-    count: {
-        fontSize: 12,
-        color: theme.colors.textSecondary,
-        ...Typography.default(),
-    },
-    workspace: {
-        paddingLeft: 10,
+    workspaceCard: {
+        backgroundColor: theme.colors.surface,
+        marginHorizontal: Platform.select({ ios: 16, default: 12 }),
+        marginBottom: 8,
+        borderRadius: Platform.select({ web: 16, default: 18 }),
+        borderWidth: Platform.select({ web: 0, default: StyleSheet.hairlineWidth }),
+        borderColor: theme.colors.divider,
+        overflow: 'hidden',
+        shadowColor: Platform.select({ web: theme.colors.shadow.color, default: 'transparent' }),
+        shadowOffset: { width: 0, height: 0.33 },
+        shadowOpacity: Platform.select({ web: theme.colors.shadow.opacity, default: 0 }),
+        shadowRadius: 0,
+        elevation: Platform.select({ web: 1, default: 0 }),
     },
     workspaceHeader: {
         flexDirection: 'row',
         alignItems: 'center',
         gap: 5,
-        paddingHorizontal: 12,
+        paddingHorizontal: 16,
         paddingTop: 8,
         paddingBottom: 4,
     },

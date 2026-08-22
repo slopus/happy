@@ -3,14 +3,12 @@ import { SessionListViewItem, useSessionListViewData, useSetting } from '@/sync/
 import { filterProjectGroupSessions } from '@/sync/projectGroups';
 
 /**
- * Applies the archive-visibility control to the session list.
+ * Applies the persistent archive-visibility preference to the session list.
  *
  * The rule is `session.archived`, never `!session.active`: a Rig session that
  * merely lost its connection is still live work and stays on screen, while a
  * session the agent actually retired hides. Both list shapes — the project
- * cards and the flat, date-grouped rows — run that one rule, so the single
- * toggle in the header and sidebar means the same thing wherever the list
- * happens to be rendered.
+ * cards and the flat, date-grouped rows — run that one rule.
  *
  * The setting behind it is still stored as `hideInactiveSessions`: it is a
  * server-synced settings field (see sync/settings.ts) with no per-field rename
@@ -76,9 +74,9 @@ export function useVisibleSessionListViewData(): SessionListViewItem[] | null {
 }
 
 /**
- * Whether anything is currently hidden-able, i.e. whether the archive toggle
- * has any work to do. Keyed off the same `archived` flag the filter above uses
- * so the control never appears without changing what is on screen.
+ * Whether the archive-visibility control can change anything. Keyed off the
+ * same `archived` flag the filter above uses so the control never appears
+ * without changing what is on screen.
  */
 export function useHasArchivedSessions(): boolean {
     const data = useSessionListViewData();

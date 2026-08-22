@@ -22,7 +22,7 @@ vi.mock('@/sync/storage', () => ({
     },
 }));
 
-import { useHasArchivedSessions, useVisibleSessionListViewData } from './useVisibleSessionListViewData';
+import { useVisibleSessionListViewData } from './useVisibleSessionListViewData';
 
 // Only the fields the visibility filter reads; the real rows are built in
 // storage.ts.
@@ -160,28 +160,5 @@ describe('useVisibleSessionListViewData', () => {
         mocks.hideArchivedSessions = true;
 
         expect(useVisibleSessionListViewData()).toEqual(mocks.data);
-    });
-});
-
-describe('useHasArchivedSessions', () => {
-    it('is false when nothing is archived, even with disconnected sessions around', () => {
-        mocks.data = [
-            project('p1', [row('project-disconnected')]),
-            { type: 'session', session: row('flat-disconnected') },
-        ];
-
-        expect(useHasArchivedSessions()).toBe(false);
-    });
-
-    it('spots an archived session nested inside a project', () => {
-        mocks.data = [project('p1', [row('archived', { archived: true })])];
-
-        expect(useHasArchivedSessions()).toBe(true);
-    });
-
-    it('spots an archived session in the flat list', () => {
-        mocks.data = [{ type: 'session', session: row('archived', { archived: true }) }];
-
-        expect(useHasArchivedSessions()).toBe(true);
     });
 });

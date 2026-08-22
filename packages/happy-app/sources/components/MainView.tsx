@@ -6,7 +6,6 @@ import {
     Pressable,
     Platform,
     Keyboard,
-    TextInput,
     NativeScrollEvent,
     NativeSyntheticEvent,
 } from 'react-native';
@@ -141,15 +140,15 @@ const styles = StyleSheet.create((theme) => ({
         justifyContent: 'center',
         backgroundColor: 'transparent',
     },
-    headerActions: {
-        flexDirection: 'row',
-        alignItems: 'center',
-    },
     headerActionButton: {
         width: 44,
         height: 44,
         alignItems: 'center',
         justifyContent: 'center',
+    },
+    headerActions: {
+        flexDirection: 'row',
+        alignItems: 'center',
     },
     headerActionButtonActive: {
         width: 36,
@@ -157,23 +156,6 @@ const styles = StyleSheet.create((theme) => ({
         marginHorizontal: 4,
         borderRadius: 12,
         backgroundColor: theme.colors.surfaceSelected,
-    },
-    headerSearch: {
-        width: '100%',
-        height: 40,
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 8,
-        paddingHorizontal: 4,
-    },
-    headerSearchInput: {
-        flex: 1,
-        minWidth: 0,
-        height: 40,
-        paddingVertical: 0,
-        color: theme.colors.text,
-        fontSize: 16,
-        ...Typography.default(),
     },
 }));
 
@@ -250,45 +232,14 @@ const HeaderTitle = React.memo(({ activeTab }: { activeTab: ActiveTabType }) => 
     );
 });
 
-const HeaderSearch = React.memo(({
-    value,
-    onChangeText,
-}: {
-    value: string;
-    onChangeText: (value: string) => void;
-}) => {
-    const { theme } = useUnistyles();
-
-    return (
-        <View style={styles.headerSearch}>
-            <Ionicons name="search" size={18} color={theme.colors.textSecondary} />
-            <TextInput
-                autoFocus
-                value={value}
-                onChangeText={onChangeText}
-                placeholder={t('tools.names.search')}
-                placeholderTextColor={theme.colors.textSecondary}
-                selectionColor={theme.colors.text}
-                returnKeyType="search"
-                autoCorrect={false}
-                style={styles.headerSearchInput}
-            />
-        </View>
-    );
-});
-
 // Header right button - varies by tab
 const HeaderRight = React.memo(({
     activeTab,
-    searchActive,
-    onSearchPress,
     hasArchivedSessions,
     hideArchivedSessions,
     onArchiveVisibilityPress,
 }: {
     activeTab: ActiveTabType;
-    searchActive: boolean;
-    onSearchPress: () => void;
     hasArchivedSessions: boolean;
     hideArchivedSessions: boolean;
     onArchiveVisibilityPress: () => void;
@@ -301,19 +252,7 @@ const HeaderRight = React.memo(({
         if (Platform.OS !== 'web') {
             return (
                 <View style={styles.headerActions}>
-                    <Pressable
-                        onPress={onSearchPress}
-                        accessibilityLabel={t('tools.names.search')}
-                        accessibilityRole="button"
-                        style={styles.headerActionButton}
-                    >
-                        <Ionicons
-                            name={searchActive ? 'close' : 'search'}
-                            size={searchActive ? 24 : 21}
-                            color={theme.colors.header.tint}
-                        />
-                    </Pressable>
-                    {hasArchivedSessions && !searchActive && (
+                    {hasArchivedSessions && (
                         <Pressable
                             onPress={onArchiveVisibilityPress}
                             accessibilityLabel={hideArchivedSessions
@@ -427,8 +366,6 @@ export const MainView = React.memo(({ variant }: MainViewProps) => {
     // Tab state management
     // NOTE: Zen tab removed - the feature never got to a useful state
     const [activeTab, setActiveTab] = React.useState<ActiveTabType>('sessions');
-    const [searchQuery, setSearchQuery] = React.useState('');
-    const [searchActive, setSearchActive] = React.useState(false);
     const [homePrompt, setHomePrompt] = React.useState('');
     const [headerBackdropVisible, setHeaderBackdropVisible] = React.useState(false);
     const headerBackdropVisibleRef = React.useRef(false);
@@ -441,7 +378,7 @@ export const MainView = React.memo(({ variant }: MainViewProps) => {
             + 12;
     const bottomContentInset = Platform.OS === 'web'
         ? 0
-        : searchActive ? 16 : MOBILE_HOME_DOCK_CONTENT_INSET;
+        : MOBILE_HOME_DOCK_CONTENT_INSET;
 
     const handleHomePromptSubmit = React.useCallback(async (): Promise<boolean> => {
         const prompt = homePrompt.trim();
@@ -455,16 +392,6 @@ export const MainView = React.memo(({ variant }: MainViewProps) => {
         if (started) setHomePrompt('');
         return started;
     }, [homePrompt, startHomeSession]);
-
-    const handleSearchPress = React.useCallback(() => {
-        setSearchActive((currentValue) => {
-            if (currentValue) {
-                setSearchQuery('');
-                Keyboard.dismiss();
-            }
-            return !currentValue;
-        });
-    }, []);
 
     const handleArchiveVisibilityPress = React.useCallback(() => {
         setHideArchivedSessions(!hideArchivedSessions);
@@ -544,14 +471,10 @@ export const MainView = React.memo(({ variant }: MainViewProps) => {
     const phoneHeader = (
         <View style={[styles.phoneHeader, Platform.OS !== 'web' && styles.phoneHeaderOverlay]}>
             <Header
-                title={searchActive && Platform.OS !== 'web'
-                    ? <HeaderSearch value={searchQuery} onChangeText={setSearchQuery} />
-                    : <HeaderTitle activeTab={activeTab} />}
+                title={<HeaderTitle activeTab={activeTab} />}
                 headerRight={showHeaderRight ? () => (
                     <HeaderRight
                         activeTab={activeTab}
-                        searchActive={searchActive}
-                        onSearchPress={handleSearchPress}
                         hasArchivedSessions={hasArchivedSessions}
                         hideArchivedSessions={hideArchivedSessions}
                         onArchiveVisibilityPress={handleArchiveVisibilityPress}
@@ -561,7 +484,7 @@ export const MainView = React.memo(({ variant }: MainViewProps) => {
                 headerLeftGlass={Platform.OS !== 'web'}
                 headerBackdropVisible={headerBackdropVisible}
                 headerBackdropAlwaysVisible={Platform.OS !== 'web'}
-                headerBackdropVariant="strong"
+                headerBackdropVariant="home"
                 headerShadowVisible={false}
                 headerTransparent={true}
                 mobileTitleSurface="plain"
@@ -582,7 +505,6 @@ export const MainView = React.memo(({ variant }: MainViewProps) => {
                             topContentInset={topContentInset}
                             bottomContentInset={bottomContentInset}
                             onScroll={handleContentScroll}
-                            searchQuery={searchQuery}
                         />
                     </View>
                 )}
@@ -596,15 +518,13 @@ export const MainView = React.memo(({ variant }: MainViewProps) => {
                 />
             ) : (
                 <View pointerEvents="box-none" style={styles.phoneBottomDockOverlay}>
-                    {!searchActive && (
-                        <HomeDock
-                            prompt={homePrompt}
-                            onPromptChange={setHomePrompt}
-                            onSubmit={handleHomePromptSubmit}
-                            isSubmitting={isStartingHomeSession}
-                            showBottomBackdrop={sessionListViewData !== null && sessionListViewData.length > 0}
-                        />
-                    )}
+                    <HomeDock
+                        prompt={homePrompt}
+                        onPromptChange={setHomePrompt}
+                        onSubmit={handleHomePromptSubmit}
+                        isSubmitting={isStartingHomeSession}
+                        showBottomBackdrop={sessionListViewData !== null && sessionListViewData.length > 0}
+                    />
                 </View>
             )}
         </View>
