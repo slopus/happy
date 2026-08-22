@@ -143,6 +143,9 @@ const COMPOSER_INPUT_VERTICAL_PADDING = Platform.OS === 'web' ? 10 : 8;
 // Taller composer on web/desktop where vertical space is plentiful; keep the
 // compact cap on native mobile so the input doesn't dominate the screen.
 const COMPOSER_INPUT_MAX_HEIGHT = Platform.OS === 'web' ? 480 : 240;
+// The compact (native mobile) composer grows to the same cap as the in-session
+// composer — see AgentInput's `maxHeight` — instead of a single fixed line.
+const COMPACT_COMPOSER_INPUT_MAX_HEIGHT = 120;
 const COMPOSER_SEND_BUTTON_SIZE = 32;
 const WORKTREE_PATH_DEBOUNCE_MS = 300;
 
@@ -684,7 +687,6 @@ function getMachineName(machine: Machine): string {
 // because all of its props are stable.
 type PromptInputProps = {
     compact?: boolean;
-    onSubmitEditing?: () => void;
     placeholder: string;
     onKeyPress?: (e: KeyPressEvent) => boolean;
 };
@@ -701,11 +703,13 @@ const PromptInput = React.memo(React.forwardRef<MultiTextInputHandle, PromptInpu
                 lineHeight={MULTI_TEXT_INPUT_LINE_HEIGHT}
                 paddingTop={props.compact ? 0 : COMPOSER_INPUT_VERTICAL_PADDING}
                 paddingBottom={props.compact ? 0 : COMPOSER_INPUT_VERTICAL_PADDING}
-                maxHeight={props.compact ? MULTI_TEXT_INPUT_LINE_HEIGHT : COMPOSER_INPUT_MAX_HEIGHT}
-                multiline={!props.compact}
-                returnKeyType={props.compact ? 'done' : 'default'}
-                submitBehavior={props.compact ? 'blurAndSubmit' : 'newline'}
-                onSubmitEditing={props.onSubmitEditing}
+                maxHeight={props.compact ? COMPACT_COMPOSER_INPUT_MAX_HEIGHT : COMPOSER_INPUT_MAX_HEIGHT}
+                // No multiline/returnKeyType/submitBehavior overrides: MultiTextInput
+                // already defaults to a multiline field whose return key types a line
+                // break. The compact composer used to opt out of that, which turned the
+                // key into "Done" and left the first message of a session as the only
+                // one that could not contain a newline — the in-session composer
+                // (AgentInput) has always been multiline.
                 onKeyPress={props.onKeyPress}
             />
         );
@@ -1942,9 +1946,6 @@ function NewSessionScreen() {
                     ref={composerInputRef}
                     compact={isNativeMobile}
                     placeholder={isNativeMobile ? composerPlaceholder : 'What would you like to work on?'}
-                    onSubmitEditing={isNativeMobile
-                        ? () => composerInputRef.current?.blur()
-                        : undefined}
                     onKeyPress={handleKeyPress}
                 />
             </View>
@@ -2551,7 +2552,11 @@ const styles = StyleSheet.create((theme) => ({
         minHeight: 40,
     },
     mobileInputField: {
-        flex: 1,
+        // No `flex: 1` here: inside this auto-height column it resolves to a
+        // zero flex-basis with no free space to grow into, which pinned the row
+        // to `minHeight` and clipped the composer to two lines. The in-session
+        // composer's equivalent (AgentInput's `mobileInputContainer`) sizes to
+        // content the same way.
         minWidth: 0,
         minHeight: 44,
         paddingLeft: 10,
