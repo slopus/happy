@@ -36,6 +36,7 @@ import { DecryptedArtifact } from "./artifactTypes";
 import { FeedItem } from "./feedTypes";
 import { getRigActivityIndicators, getRigIdentity, isRigMetadata } from './rig';
 import { indexSessionsById } from './sessionIdentity';
+import { t } from '@/text';
 
 // Debounce timer for realtimeMode changes
 let realtimeModeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -56,6 +57,32 @@ function resolveSessionOnlineState(session: { active: boolean; activeAt: number 
 function isSessionActive(session: { active: boolean; activeAt: number }): boolean {
     // Use the active flag directly, no timeout checks
     return session.active;
+}
+
+/**
+ * A session the agent retired, or a Happy CLI session that has ended. Rig
+ * sessions that merely lost their connection are still live work.
+ *
+ * Archived sessions never sit inside a project card: they trail the list as
+ * flat, date-grouped rows, so revealing the archive appends to the bottom
+ * instead of reshaping the groups above it.
+ */
+function isSessionArchived(session: Session): boolean {
+    return session.metadata?.lifecycleState === 'archived'
+        || (!isRigMetadata(session.metadata) && !session.active);
+}
+
+/** "Today", "Yesterday", or "N days ago" for a flat row's date heading. */
+function relativeDayTitle(timestamp: number): string {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const then = new Date(timestamp);
+    const day = new Date(then.getFullYear(), then.getMonth(), then.getDate());
+    // Rounded because a DST boundary makes a calendar day 23 or 25 hours long.
+    const diffDays = Math.round((today.getTime() - day.getTime()) / (24 * 60 * 60 * 1000));
+    if (diffDays <= 0) return t('sessionHistory.today');
+    if (diffDays === 1) return t('sessionHistory.yesterday');
+    return t('sessionHistory.daysAgo', { count: diffDays });
 }
 
 // Known entitlement IDs
@@ -148,8 +175,7 @@ function buildSessionRowData(session: Session, unreadSessionIds?: Set<string>): 
         ...(!session.active && { activeAt: session.activeAt, createdAt: session.createdAt }),
         hasDraft: !!session.draft,
         active: session.active,
-        archived: session.metadata?.lifecycleState === 'archived'
-            || (!isRigMetadata(session.metadata) && !session.active),
+        archived: isSessionArchived(session),
         machineId: session.metadata?.machineId ?? null,
         path: session.metadata?.path ?? null,
         homeDir: session.metadata?.homeDir ?? null,
@@ -277,11 +303,17 @@ function buildSessionListViewData(
     const rigProjectSessions: Session[] = [];
     const rigPathSessions: Session[] = [];
     const happySessions: Session[] = [];
+    const archivedSessions: Session[] = [];
 
     Object.values(sessions).forEach(session => {
         // Side chats are hidden children of another session — they render only
         // inside the parent's sidebar panel, never in the top-level list.
         if (session.metadata?.isSideChat) {
+            return;
+        }
+        // The archive is a flat chronological tail, not part of any project.
+        if (isSessionArchived(session)) {
+            archivedSessions.push(session);
             return;
         }
         if (isRigMetadata(session.metadata)) {
@@ -309,6 +341,7 @@ function buildSessionListViewData(
     sortProjectSessions(rigProjectSessions);
     sortProjectSessions(rigPathSessions);
     sortProjectSessions(happySessions);
+    archivedSessions.sort((a, b) => sortKey(b) - sortKey(a));
 
     const listData: SessionListViewItem[] = [];
     const toRow = (session: Session) => buildSessionRowData(session, unreadSessionIds);
@@ -335,6 +368,19 @@ function buildSessionListViewData(
         for (const project of happyProjects) {
             listData.push({ type: 'project', source: 'happy', project });
         }
+    }
+
+    // The archive trails everything as plain rows, newest first, split by the
+    // day they were last worked on.
+    let currentDay: number | null = null;
+    for (const session of archivedSessions) {
+        const timestamp = sortKey(session);
+        const day = new Date(timestamp).setHours(0, 0, 0, 0);
+        if (day !== currentDay) {
+            currentDay = day;
+            listData.push({ type: 'header', title: relativeDayTitle(timestamp) });
+        }
+        listData.push({ type: 'session', session: toRow(session) });
     }
 
     return listData;

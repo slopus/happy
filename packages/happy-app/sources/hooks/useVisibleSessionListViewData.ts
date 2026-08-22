@@ -10,6 +10,10 @@ import { filterProjectGroupSessions } from '@/sync/projectGroups';
  * session the agent actually retired hides. Both list shapes — the project
  * cards and the flat, date-grouped rows — run that one rule.
  *
+ * `buildSessionListViewData` already routes every archived session into the
+ * flat tail, so revealing the archive appends rows below the project cards
+ * rather than growing them. The project pass here stays as a backstop.
+ *
  * The setting behind it is still stored as `hideInactiveSessions`: it is a
  * server-synced settings field (see sync/settings.ts) with no per-field rename
  * migration, so the key stays put and only the local naming reflects what it

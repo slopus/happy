@@ -1,9 +1,11 @@
 import React from 'react';
-import { Platform, View } from 'react-native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { Platform, Pressable, View } from 'react-native';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Text } from '@/components/StyledText';
 import { Typography } from '@/constants/Typography';
+import { t } from '@/text';
 import { ProjectGroupData, ProjectWorkspaceGroup } from '@/sync/storage';
 import { CompactSessionRow } from './ActiveSessionsGroupCompact';
 import { Avatar } from './Avatar';
@@ -15,26 +17,19 @@ interface ProjectGroupProps {
 
 /**
  * One project and its sessions, split into the primary checkout and any named
- * worktrees reported by Rig or created through Happy.
+ * worktrees reported by Rig or created through Happy. Each worktree gets its
+ * own header and card: the worktree name reads as a second line under the
+ * project, so the card itself stays a plain list of sessions.
  */
 export const ProjectGroup = React.memo(({ project, selectedSessionId }: ProjectGroupProps) => {
     const styles = stylesheet;
-    const firstSession = project.workspaces[0]?.sessions[0];
 
     return (
         <View style={styles.container}>
-            <View style={styles.header}>
-                {firstSession && (
-                    <Avatar id={firstSession.avatarId} size={24} flavor={null} />
-                )}
-                <Text style={styles.title} numberOfLines={1}>
-                    {project.name}
-                </Text>
-            </View>
-
             {project.workspaces.map((workspace) => (
                 <WorkspaceSection
                     key={workspace.id || 'primary'}
+                    project={project}
                     workspace={workspace}
                     selectedSessionId={selectedSessionId}
                 />
@@ -43,33 +38,67 @@ export const ProjectGroup = React.memo(({ project, selectedSessionId }: ProjectG
     );
 });
 
-const WorkspaceSection = React.memo(({ workspace, selectedSessionId }: {
+const WorkspaceSection = React.memo(({ project, workspace, selectedSessionId }: {
+    project: ProjectGroupData;
     workspace: ProjectWorkspaceGroup;
     selectedSessionId?: string;
 }) => {
     const styles = stylesheet;
     const { theme } = useUnistyles();
+    const router = useRouter();
+    const firstSession = workspace.sessions[0];
+    // The primary checkout is the project itself, so naming it twice adds
+    // nothing. Only a real worktree earns the second line.
+    const worktreeName = workspace.name ?? (workspace.id || null);
+
+    const handleNewSession = React.useCallback(() => {
+        router.navigate('/new');
+    }, [router]);
 
     return (
-        <View style={styles.workspaceCard}>
-            <View style={styles.workspaceHeader}>
-                <MaterialCommunityIcons
-                    name={workspace.id ? 'source-branch' : 'folder-outline'}
-                    size={13}
-                    color={theme.colors.textSecondary}
-                />
-                <Text style={styles.workspaceTitle} numberOfLines={1}>
-                    {workspace.name ?? (workspace.id || 'main')}
-                </Text>
+        <View style={styles.section}>
+            <View style={styles.header}>
+                {firstSession && (
+                    <Avatar id={firstSession.avatarId} size={24} flavor={null} />
+                )}
+                <View style={styles.headerText}>
+                    <Text style={styles.title} numberOfLines={1}>
+                        {project.name}
+                    </Text>
+                    {worktreeName && (
+                        <View style={styles.worktreeRow}>
+                            <Text style={styles.worktreeTitle} numberOfLines={1}>
+                                {worktreeName}
+                            </Text>
+                            <MaterialCommunityIcons
+                                name="source-branch"
+                                size={11}
+                                color={theme.colors.textSecondary}
+                            />
+                        </View>
+                    )}
+                </View>
+                <Pressable
+                    onPress={handleNewSession}
+                    hitSlop={12}
+                    accessibilityRole="button"
+                    accessibilityLabel={t('sidebar.newSession')}
+                    style={({ pressed }) => [styles.addButton, pressed && styles.addButtonPressed]}
+                >
+                    <Ionicons name="add" size={20} color={theme.colors.textSecondary} />
+                </Pressable>
             </View>
-            {workspace.sessions.map((session, index) => (
-                <CompactSessionRow
-                    key={session.id}
-                    session={session}
-                    selected={session.id === selectedSessionId}
-                    showBorder={index < workspace.sessions.length - 1}
-                />
-            ))}
+
+            <View style={styles.workspaceCard}>
+                {workspace.sessions.map((session, index) => (
+                    <CompactSessionRow
+                        key={session.id}
+                        session={session}
+                        selected={session.id === selectedSessionId}
+                        showBorder={index < workspace.sessions.length - 1}
+                    />
+                ))}
+            </View>
         </View>
     );
 });
@@ -79,6 +108,9 @@ const stylesheet = StyleSheet.create((theme) => ({
         backgroundColor: 'transparent',
         marginBottom: 4,
     },
+    section: {
+        backgroundColor: 'transparent',
+    },
     header: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -87,15 +119,39 @@ const stylesheet = StyleSheet.create((theme) => ({
         paddingHorizontal: Platform.select({ ios: 32, default: 24 }),
         gap: 8,
     },
-    title: {
+    headerText: {
         flex: 1,
         minWidth: 0,
+    },
+    title: {
         color: theme.colors.groupped.sectionTitle,
         fontSize: Platform.select({ ios: 13, default: 14 }),
         lineHeight: Platform.select({ ios: 18, default: 20 }),
         letterSpacing: Platform.select({ ios: -0.08, default: 0.1 }),
         fontWeight: Platform.select({ ios: 'normal', default: '500' }),
         ...Typography.default('regular'),
+    },
+    worktreeRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+    },
+    worktreeTitle: {
+        flexShrink: 1,
+        minWidth: 0,
+        fontSize: 12,
+        lineHeight: 16,
+        color: theme.colors.textSecondary,
+        ...Typography.default('regular'),
+    },
+    addButton: {
+        width: 28,
+        height: 28,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    addButtonPressed: {
+        opacity: 0.5,
     },
     workspaceCard: {
         backgroundColor: theme.colors.surface,
@@ -110,19 +166,5 @@ const stylesheet = StyleSheet.create((theme) => ({
         shadowOpacity: Platform.select({ web: theme.colors.shadow.opacity, default: 0 }),
         shadowRadius: 0,
         elevation: Platform.select({ web: 1, default: 0 }),
-    },
-    workspaceHeader: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 5,
-        paddingHorizontal: 16,
-        paddingTop: 8,
-        paddingBottom: 4,
-    },
-    workspaceTitle: {
-        flex: 1,
-        fontSize: 12,
-        color: theme.colors.textSecondary,
-        ...Typography.default('semiBold'),
     },
 }));

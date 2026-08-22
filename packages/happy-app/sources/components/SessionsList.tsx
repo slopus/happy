@@ -2,14 +2,14 @@ import React from 'react';
 import { View, Pressable, FlatList, NativeScrollEvent, NativeSyntheticEvent, Platform } from 'react-native';
 import { Text } from '@/components/StyledText';
 import { usePathname, useRouter } from 'expo-router';
-import { SessionListViewItem, SessionRowData, useAllMachines } from '@/sync/storage';
+import { SessionListViewItem, SessionRowData, useAllMachines, useSettingMutable } from '@/sync/storage';
 import { Ionicons } from '@expo/vector-icons';
 import { type SessionState, formatLastSeen, vibingMessages } from '@/utils/sessionUtils';
 import { Avatar } from './Avatar';
 import { ActiveSessionsGroupCompact } from './ActiveSessionsGroupCompact';
 import { ProjectGroup } from './ProjectGroup';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useVisibleSessionListViewData } from '@/hooks/useVisibleSessionListViewData';
+import { useHasArchivedSessions, useVisibleSessionListViewData } from '@/hooks/useVisibleSessionListViewData';
 import { Typography } from '@/constants/Typography';
 import { StatusDot } from './StatusDot';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
@@ -29,6 +29,9 @@ type SessionListDisplayItem = SessionListViewItem | {
     type: 'machine-header';
     machineId: string | null;
     machineName: string;
+} | {
+    type: 'archive-toggle';
+    hidden: boolean;
 };
 
 const stylesheet = StyleSheet.create((theme) => ({
@@ -48,6 +51,27 @@ const stylesheet = StyleSheet.create((theme) => ({
         paddingHorizontal: 24,
         paddingTop: 20,
         paddingBottom: 8,
+    },
+    archiveToggle: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+        paddingHorizontal: 24,
+        paddingTop: 20,
+        paddingBottom: 12,
+    },
+    archiveTogglePressed: {
+        opacity: 0.5,
+    },
+    archiveToggleLine: {
+        flex: 1,
+        height: StyleSheet.hairlineWidth,
+        backgroundColor: theme.colors.divider,
+    },
+    archiveToggleText: {
+        fontSize: 14,
+        color: theme.colors.textSecondary,
+        ...Typography.default('regular'),
     },
     headerText: {
         fontSize: 14,
@@ -262,6 +286,10 @@ export function SessionsList({
     const styles = stylesheet;
     const safeArea = useSafeAreaInsets();
     const sourceData = useVisibleSessionListViewData();
+    const hasArchivedSessions = useHasArchivedSessions();
+    // Stored under its original `hideInactiveSessions` key — synced settings
+    // have no rename migration — but it hides archived sessions only.
+    const [hideArchivedSessions, setHideArchivedSessions] = useSettingMutable('hideInactiveSessions');
     const machines = useAllMachines();
     const pathname = usePathname();
     const isTablet = useIsTablet();
@@ -285,12 +313,27 @@ export function SessionsList({
     const data = React.useMemo<SessionListDisplayItem[] | null>(() => {
         if (!sourceData) return sourceData;
 
+        // The archive is a flat, date-grouped tail rather than extra rows
+        // inside the project cards, so the toggle is the divider that opens
+        // it and always sits directly above those rows.
+        const archivedRows = sourceData.filter((item) => (
+            item.type === 'header' || item.type === 'session'
+        ));
+        const groupedRows = sourceData.filter((item) => (
+            item.type !== 'header' && item.type !== 'session'
+        ));
+        const archiveToggle: SessionListDisplayItem[] = hasArchivedSessions
+            ? [{ type: 'archive-toggle', hidden: hideArchivedSessions }]
+            : [];
+
         const machineGroups = buildSessionProjectDisplayGroups(
-            sourceData,
+            groupedRows,
             machines,
             t('status.unknown'),
         );
-        if (machineGroups.length === 0) return sourceData;
+        if (machineGroups.length === 0) {
+            return [...groupedRows, ...archiveToggle, ...archivedRows];
+        }
 
         const hierarchy = machineGroups.flatMap<SessionListDisplayItem>((group) => [
             {
@@ -300,11 +343,11 @@ export function SessionsList({
             },
             ...group.projects,
         ]);
-        const legacyItems = sourceData.filter((item) => (
+        const legacyItems = groupedRows.filter((item) => (
             item.type !== 'project' && item.type !== 'projects-header'
         ));
-        return [...hierarchy, ...legacyItems];
-    }, [machines, sourceData]);
+        return [...hierarchy, ...legacyItems, ...archiveToggle, ...archivedRows];
+    }, [hasArchivedSessions, hideArchivedSessions, machines, sourceData]);
 
     // Early return if no data yet
     if (!data) {
@@ -316,6 +359,7 @@ export function SessionsList({
     const keyExtractor = React.useCallback((item: SessionListDisplayItem, index: number) => {
         switch (item.type) {
             case 'machine-header': return `machine-header-${JSON.stringify(item.machineId)}`;
+            case 'archive-toggle': return 'archive-toggle';
             case 'header': return `header-${item.title}-${index}`;
             case 'active-sessions': return 'active-sessions';
             case 'project-group': return `project-group-${item.machine.id}-${item.displayPath}-${index}`;
@@ -333,6 +377,22 @@ export function SessionsList({
                         machineId={item.machineId}
                         machineName={item.machineName}
                     />
+                );
+
+            case 'archive-toggle':
+                return (
+                    <Pressable
+                        onPress={() => setHideArchivedSessions(!item.hidden)}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: !item.hidden }}
+                        style={({ pressed }) => [styles.archiveToggle, pressed && styles.archiveTogglePressed]}
+                    >
+                        <View style={styles.archiveToggleLine} />
+                        <Text style={styles.archiveToggleText}>
+                            {item.hidden ? t('sidebar.showArchived') : t('sidebar.hideArchived')}
+                        </Text>
+                        <View style={styles.archiveToggleLine} />
+                    </Pressable>
                 );
 
             case 'header':
