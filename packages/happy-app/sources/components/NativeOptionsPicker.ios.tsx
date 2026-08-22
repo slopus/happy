@@ -17,6 +17,7 @@ import {
     contentShape,
     disabled,
     frame,
+    opacity,
     shapes,
     tint,
 } from '@expo/ui/swift-ui/modifiers';
@@ -31,12 +32,14 @@ const styles = StyleSheet.create({
         position: 'relative',
         width: '100%',
     },
-    // The React Native row is kept for layout only: it gives the container its
-    // height and width while SwiftUI draws everything that is visible.
+    // The React Native row IS the visual: it colors reliably in both themes,
+    // matching the dark theme exactly on the fixed dark scrim. SwiftUI above
+    // it is only an invisible full-row hit target for the native menu —
+    // coloring its label proved impossible (tint ignored by the plain-style
+    // Menu, foregroundStyle ignored by its Text).
     trigger: {
         width: '100%',
         minWidth: 0,
-        opacity: 0,
     },
     host: {
         ...StyleSheet.absoluteFillObject,
@@ -51,6 +54,7 @@ export function NativeOptionsPicker({
     selectedKey,
     onSelect,
     children,
+    tintColor,
 }: NativeOptionsPickerProps) {
     const { theme } = useUnistyles();
     return (
@@ -67,7 +71,13 @@ export function NativeOptionsPicker({
             {/* The host must not perform keyboard avoidance: it is pinned over a
                 control React Native already positions, so SwiftUI keyboard
                 avoidance would drag the trigger off it. */}
-            <Host ignoreSafeArea="keyboard" style={styles.host}>
+            <Host
+                // Same remount-on-theme-change as NativeSettingsMenu: SwiftUI
+                // hosts keep the old tint when the app theme flips at runtime.
+                key={theme.dark ? 'dark' : 'light'}
+                ignoreSafeArea="keyboard"
+                style={styles.host}
+            >
                 <Menu
                     // The tint is what colors the label, so it has to follow the
                     // theme: SwiftUI draws the visible row here, and a fixed
@@ -84,6 +94,7 @@ export function NativeOptionsPicker({
                                 frame({ maxWidth: 10000, maxHeight: 10000, minHeight: 42 }),
                                 contentShape(shapes.rectangle()),
                                 accessibilityLabel(`${title}: ${triggerLabel}`),
+                                opacity(0.01),
                             ]}
                         >
                             {triggerSystemImage ? (

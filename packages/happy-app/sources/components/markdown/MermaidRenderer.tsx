@@ -8,13 +8,14 @@ import { t } from '@/text';
 // Tall diagrams scroll inside a capped container instead of taking over the chat
 const MAX_DIAGRAM_HEIGHT = 600;
 
-// Style for Web platform
-const webStyle: any = {
-    backgroundColor: '#1a1a1a',
+// Style for Web platform; background follows the theme — a hardcoded dark
+// block used to sit like a stain in the light theme.
+const webStyle = (backgroundColor: string): any => ({
+    backgroundColor,
     borderRadius: 8,
     padding: 16,
     overflow: 'auto',
-};
+});
 
 // Mermaid render component that works on all platforms
 export const MermaidRenderer = React.memo((props: {
@@ -45,7 +46,7 @@ export const MermaidRenderer = React.memo((props: {
                     if (mermaid.initialize) {
                         mermaid.initialize({
                             startOnLoad: false,
-                            theme: 'dark'
+                            theme: theme.dark ? 'dark' : 'default'
                         });
                     }
 
@@ -72,7 +73,7 @@ export const MermaidRenderer = React.memo((props: {
             return () => {
                 isMounted = false;
             };
-        }, [props.content]);
+        }, [props.content, theme.dark]);
 
         if (hasError) {
             return (
@@ -99,7 +100,7 @@ export const MermaidRenderer = React.memo((props: {
             <View style={style.container}>
                 {/* @ts-ignore - Web only */}
                 <div
-                    style={webStyle}
+                    style={webStyle(theme.colors.surfaceHighest)}
                     dangerouslySetInnerHTML={{ __html: svgContent }}
                 />
             </View>
@@ -159,7 +160,7 @@ export const MermaidRenderer = React.memo((props: {
                     try {
                         mermaid.initialize({
                             startOnLoad: false,
-                            theme: 'dark'
+                            theme: '${theme.dark ? 'dark' : 'default'}'
                         });
 
                         const { svg } = await mermaid.render('mermaid-diagram', content);

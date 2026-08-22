@@ -152,10 +152,10 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     unifiedPanelShadow: {
         borderRadius: 24,
         shadowColor: theme.colors.shadow.color,
-        shadowOffset: { width: 0, height: 6 },
-        shadowOpacity: 0.22,
-        shadowRadius: 16,
-        elevation: 4,
+        shadowOffset: { width: 0, height: theme.dark ? 6 : 2 },
+        shadowOpacity: theme.dark ? 0.22 : 0.08,
+        shadowRadius: theme.dark ? 16 : 8,
+        elevation: theme.dark ? 4 : 2,
     },
     mobileUnifiedPanel: {
         // The frosted material is supplied by MobileGlassSurface. The dense

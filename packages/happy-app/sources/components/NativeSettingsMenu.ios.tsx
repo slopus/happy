@@ -70,7 +70,15 @@ export function NativeSettingsMenu({
                 SwiftUI shifts the menu's invisible trigger up by the keyboard
                 height while the host's RN frame stays put, so the chip becomes
                 untappable whenever the keyboard is open. */}
-            <Host ignoreSafeArea="keyboard" style={styles.host}>
+            <Host
+                // SwiftUI hosts do not reliably re-resolve modifiers when the
+                // app theme flips at runtime, so a chip tinted for dark mode
+                // stayed white on the light composer until a cold restart.
+                // Remounting the host on a theme change re-applies the tint.
+                key={theme.dark ? 'dark' : 'light'}
+                ignoreSafeArea="keyboard"
+                style={styles.host}
+            >
                 <Menu
                     // The tint is what colors the label, so with a native trigger
                     // it has to follow the theme: a fixed white renders the chip

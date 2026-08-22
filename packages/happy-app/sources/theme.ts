@@ -69,9 +69,11 @@ export const lightTheme = {
             highlight: 'rgba(255, 255, 255, 0.94)',
             shadow: 'rgba(39, 47, 54, 0.16)',
             tint: 'rgba(255, 255, 255, 0.14)',
-            backdrop: ['#F5F2EC', '#ECF5F3', '#F1EEF7'] as readonly [string, string, string],
-            glowPrimary: 'rgba(96, 211, 184, 0.18)',
-            glowSecondary: 'rgba(118, 139, 255, 0.14)',
+            // Plain white, mirroring the dark theme's plain black: the tinted
+            // gradient + colored glows read as a stain behind white surfaces.
+            backdrop: ['#FFFFFF', '#FFFFFF', '#FFFFFF'] as readonly [string, string, string],
+            glowPrimary: 'transparent',
+            glowSecondary: 'transparent',
         },
 
         //
