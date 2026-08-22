@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { DropdownMenu, DropdownMenuItem } from '@expo/ui/jetpack-compose';
+import { DropdownMenu, DropdownMenuItem, Text as ComposeText } from '@expo/ui/jetpack-compose';
 import { View } from 'react-native';
 import type { NativeSettingsMenuProps } from './NativeSettingsMenu';
 
@@ -14,8 +14,15 @@ export function NativeSettingsMenu({ groups, children, style, flat = false }: Na
                             enabled={!option.disabled}
                             onClick={() => group.onSelect(option.key)}
                         >
+                            {/* The slot is a native view, so a bare string child makes
+                                React Native throw "Text strings must be rendered within
+                                a <Text> component" once per option while the menu
+                                renders. Compose's own Text turns children into the
+                                native `text` prop instead. */}
                             <DropdownMenuItem.Text>
-                                {`${flat ? '' : `${group.label}: `}${option.key === group.selectedKey ? '✓ ' : ''}${option.label}`}
+                                <ComposeText>
+                                    {`${flat ? '' : `${group.label}: `}${option.key === group.selectedKey ? '✓ ' : ''}${option.label}`}
+                                </ComposeText>
                             </DropdownMenuItem.Text>
                         </DropdownMenuItem>
                     )))}
