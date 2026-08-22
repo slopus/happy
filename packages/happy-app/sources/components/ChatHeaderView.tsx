@@ -63,7 +63,9 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
     const folderNameColor = glassEnabled
         ? theme.dark ? 'rgba(255, 255, 255, 0.78)' : 'rgba(24, 23, 28, 0.72)'
         : theme.colors.textSecondary;
-    const backdropOpacity = React.useRef(new Animated.Value(
+    // Drives the scrim's dim layer only. The backdrop container itself stays
+    // fully opaque so the native blur keeps sampling live content.
+    const backdropStrength = React.useRef(new Animated.Value(
         backdropVisible ? MOBILE_STRONG_HEADER_SCRIM_UNDERLAP_OPACITY : MOBILE_STRONG_HEADER_SCRIM_RESTING_OPACITY,
     )).current;
     const [backdropMounted, setBackdropMounted] = React.useState(glassEnabled);
@@ -75,12 +77,12 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
         }
 
         setBackdropMounted(true);
-        Animated.timing(backdropOpacity, {
+        Animated.timing(backdropStrength, {
             toValue: backdropVisible ? MOBILE_STRONG_HEADER_SCRIM_UNDERLAP_OPACITY : MOBILE_STRONG_HEADER_SCRIM_RESTING_OPACITY,
             duration: 200,
             useNativeDriver: true,
         }).start();
-    }, [backdropOpacity, backdropVisible, glassEnabled]);
+    }, [backdropStrength, backdropVisible, glassEnabled]);
 
     if (Platform.OS === 'web') {
         return (
@@ -234,12 +236,9 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
             ]}
         >
             {glassEnabled && backdropMounted && (
-                <Animated.View
-                    pointerEvents="none"
-                    style={[styles.headerBackdrop, { opacity: backdropOpacity }]}
-                >
-                    <MobileHeaderScrim variant="strong" />
-                </Animated.View>
+                <View pointerEvents="none" style={styles.headerBackdrop}>
+                    <MobileHeaderScrim variant="strong" overlayOpacity={backdropStrength} />
+                </View>
             )}
             <View style={styles.contentWrapper}>
                 <View style={[styles.content, { height: contentHeight }]}>

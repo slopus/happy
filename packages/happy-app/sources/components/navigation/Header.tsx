@@ -11,7 +11,7 @@ import { StyleSheet } from 'react-native-unistyles';
 import { MobileGlassSurface } from '../MobileGlass';
 import {
     MobileHeaderScrim,
-    MOBILE_HOME_HEADER_SCRIM_RESTING_OPACITY,
+    MOBILE_HOME_SCRIM_OVERLAY_OPACITY,
     MOBILE_STRONG_HEADER_SCRIM_RESTING_OPACITY,
     MOBILE_STRONG_HEADER_SCRIM_UNDERLAP_OPACITY,
     type MobileHeaderScrimVariant,
@@ -78,20 +78,22 @@ export const Header = React.memo((props: HeaderProps) => {
     const contentHeight = floatingControlsEnabled ? Math.max(headerHeight, MOBILE_GLASS_HEADER_HEIGHT) : headerHeight;
     const homeBackdrop = headerBackdropVariant === 'home';
     const strongBackdrop = headerBackdropVariant !== 'subtle';
-    const backdropRestingOpacity = headerBackdropAlwaysVisible
-        ? homeBackdrop
-            ? MOBILE_HOME_HEADER_SCRIM_RESTING_OPACITY
-            : strongBackdrop
-                ? MOBILE_STRONG_HEADER_SCRIM_RESTING_OPACITY
-                : 1
-        : 0;
-    const backdropTargetOpacity = homeBackdrop
-        ? backdropRestingOpacity
-        : headerBackdropVisible
-            ? strongBackdrop ? MOBILE_STRONG_HEADER_SCRIM_UNDERLAP_OPACITY : 1
-            : backdropRestingOpacity;
-    const backdropShouldBeVisible = floatingControlsEnabled && backdropTargetOpacity > 0;
-    const backdropOpacity = React.useRef(new Animated.Value(backdropTargetOpacity)).current;
+    // Mount/unmount fade only - it must land on exactly 1, because a
+    // translucent ancestor kills the native blur underneath it. How heavy the
+    // scrim reads is carried by backdropStrength, which the scrim applies to
+    // its dim gradient alone.
+    const backdropShouldBeVisible = floatingControlsEnabled && (
+        headerBackdropAlwaysVisible || (!homeBackdrop && headerBackdropVisible)
+    );
+    const backdropStrengthTarget = homeBackdrop
+        ? MOBILE_HOME_SCRIM_OVERLAY_OPACITY
+        : strongBackdrop
+            ? headerBackdropVisible
+                ? MOBILE_STRONG_HEADER_SCRIM_UNDERLAP_OPACITY
+                : MOBILE_STRONG_HEADER_SCRIM_RESTING_OPACITY
+            : 1;
+    const backdropOpacity = React.useRef(new Animated.Value(backdropShouldBeVisible ? 1 : 0)).current;
+    const backdropStrength = React.useRef(new Animated.Value(backdropStrengthTarget)).current;
     const [backdropMounted, setBackdropMounted] = React.useState(backdropShouldBeVisible);
 
     React.useEffect(() => {
@@ -103,8 +105,13 @@ export const Header = React.memo((props: HeaderProps) => {
         if (backdropShouldBeVisible) {
             setBackdropMounted(true);
         }
+        Animated.timing(backdropStrength, {
+            toValue: backdropStrengthTarget,
+            duration: 200,
+            useNativeDriver: true,
+        }).start();
         Animated.timing(backdropOpacity, {
-            toValue: backdropTargetOpacity,
+            toValue: backdropShouldBeVisible ? 1 : 0,
             duration: 200,
             useNativeDriver: true,
         }).start(({ finished }) => {
@@ -112,7 +119,7 @@ export const Header = React.memo((props: HeaderProps) => {
                 setBackdropMounted(false);
             }
         });
-    }, [backdropOpacity, backdropShouldBeVisible, backdropTargetOpacity, floatingControlsEnabled]);
+    }, [backdropOpacity, backdropShouldBeVisible, backdropStrength, backdropStrengthTarget, floatingControlsEnabled]);
 
     const containerStyle = [
         styles.container,
@@ -151,7 +158,10 @@ export const Header = React.memo((props: HeaderProps) => {
                         { opacity: backdropOpacity },
                     ]}
                 >
-                    <MobileHeaderScrim variant={headerBackdropVariant} />
+                    <MobileHeaderScrim
+                        variant={headerBackdropVariant}
+                        overlayOpacity={backdropStrength}
+                    />
                 </Animated.View>
             )}
             <View style={styles.contentWrapper}>
@@ -193,9 +203,12 @@ export const Header = React.memo((props: HeaderProps) => {
 
                     <View style={styles.rightContainer}>
                         {headerRight && headerRightUsesGlass && (
+                            // `interactive`, not `nativeEffect`: it puts this on
+                            // the exact same surface path as the left control,
+                            // press feedback included.
                             <MobileGlassSurface
                                 enabled={floatingControlsEnabled}
-                                nativeEffect
+                                interactive
                                 material="static"
                                 intensity={76}
                                 style={styles.rightControlGlass}

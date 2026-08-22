@@ -54,7 +54,7 @@ import { resolveMachineAgent } from '@/utils/newSessionAgentSelection';
 import { findConnectedRigMachine, getRigMachineSessionCreation } from '@/sync/rigSessionCreation';
 import {
     MobileHeaderScrim,
-    MOBILE_STRONG_HEADER_SCRIM_RESTING_OPACITY,
+    MOBILE_HOME_SCRIM_OVERLAY_OPACITY,
 } from './navigation/MobileHeaderScrim';
 import {
     MOBILE_COMPOSER_LAYOUT,
@@ -95,9 +95,11 @@ const styles = StyleSheet.create((theme) => ({
     keyboardFollower: {
         width: '100%',
     },
+    // Reaches above the dock so the scrim's ramp lands on content rather than
+    // on the composer itself.
     bottomBackdrop: {
         ...StyleSheet.absoluteFillObject,
-        top: -36,
+        top: -26,
     },
     safeArea: {
         paddingHorizontal: 16,
@@ -1527,7 +1529,7 @@ export const HomeDock = React.memo(({
                         <MobileHeaderScrim
                             variant="strong"
                             edge="bottom"
-                            overlayOpacity={MOBILE_STRONG_HEADER_SCRIM_RESTING_OPACITY}
+                            overlayOpacity={MOBILE_HOME_SCRIM_OVERLAY_OPACITY}
                         />
                     </View>
                 )}

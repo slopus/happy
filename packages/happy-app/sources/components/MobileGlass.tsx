@@ -30,6 +30,11 @@ type MobileGlassSurfaceProps = ViewProps & {
 const AnimatedGlassView = Animated.createAnimatedComponent(GlassView);
 const AnimatedBlurView = Animated.createAnimatedComponent(BlurView);
 
+// Header chrome is the only consumer of the static material. Letting more blur
+// through, and painting less flat tint over it, is what makes these controls
+// read as glass rather than as filled circles.
+const STATIC_MATERIAL_BLUR_CAP = 44;
+
 /**
  * Performance-aware material surface. Interactive controls and explicit
  * `nativeEffect` surfaces use Liquid Glass/material blur; `material="static"`
@@ -147,8 +152,8 @@ function MobileGlassSurfaceBase({
                 RNStyleSheet.absoluteFill,
                 {
                     backgroundColor: theme.dark
-                        ? usesFrostedMaterial ? 'rgba(20, 20, 22, 0.82)' : 'rgba(44, 44, 47, 0.62)'
-                        : usesFrostedMaterial ? 'rgba(255, 255, 255, 0.82)' : 'rgba(255, 255, 255, 0.66)',
+                        ? usesFrostedMaterial ? 'rgba(20, 20, 22, 0.82)' : 'rgba(44, 44, 47, 0.40)'
+                        : usesFrostedMaterial ? 'rgba(255, 255, 255, 0.82)' : 'rgba(255, 255, 255, 0.44)',
                 },
             ]}
         />
@@ -197,7 +202,7 @@ function MobileGlassSurfaceBase({
         return animated ? (
             <AnimatedBlurView
                 {...props}
-                intensity={Math.min(intensity, usesFrostedMaterial ? 42 : usesStaticMaterial ? 18 : 36)}
+                intensity={Math.min(intensity, usesFrostedMaterial ? 42 : usesStaticMaterial ? STATIC_MATERIAL_BLUR_CAP : 36)}
                 tint={theme.dark ? 'systemUltraThinMaterialDark' : 'systemUltraThinMaterialLight'}
                 style={style}
             >
@@ -207,7 +212,7 @@ function MobileGlassSurfaceBase({
         ) : (
             <BlurView
                 {...props}
-                intensity={Math.min(intensity, usesFrostedMaterial ? 42 : usesStaticMaterial ? 18 : 36)}
+                intensity={Math.min(intensity, usesFrostedMaterial ? 42 : usesStaticMaterial ? STATIC_MATERIAL_BLUR_CAP : 36)}
                 tint={theme.dark ? 'systemUltraThinMaterialDark' : 'systemUltraThinMaterialLight'}
                 style={style}
             >
