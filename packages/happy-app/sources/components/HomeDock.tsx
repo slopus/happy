@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { ActivityIndicator, Keyboard, LayoutChangeEvent, Modal as RNModal, Platform, Pressable, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Keyboard, LayoutChangeEvent, Modal as RNModal, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
@@ -17,7 +17,7 @@ import Animated, {
 import { MobileGlassSurface } from './MobileGlass';
 import { BubblePressable } from './BubblePressable';
 import { NativeOptionsPicker } from './NativeOptionsPicker';
-import { NativeSettingsMenu, type NativeSettingsMenuGroup } from './NativeSettingsMenu';
+import { NativeSettingsMenu, type NativeSettingsMenuGroup, type NativeSettingsMenuProps } from './NativeSettingsMenu';
 import { AgentInputAttachmentStrip } from './AgentInputAttachmentStrip';
 import { Typography } from '@/constants/Typography';
 import { layout } from './layout';
@@ -41,7 +41,13 @@ import type { NewSessionAgentType } from '@/sync/persistence';
 import { useImagePicker } from '@/hooks/useImagePicker';
 import { Modal } from '@/modal';
 import { resolveMultiTextInputLayout } from './multiTextInputLayout';
-import { resolveCustomProjectPathSelection } from './homeDockInteraction';
+import {
+    isHomeDockOptionSelectable,
+    resolveCustomProjectPathSelection,
+    resolveHomeDockPickerBackAction,
+    shouldShowHomeDockEnvironmentPicker,
+    shouldUseNativeHomeDockMenus,
+} from './homeDockInteraction';
 import { resolveMachineAgent } from '@/utils/newSessionAgentSelection';
 import { findConnectedRigMachine, getRigMachineSessionCreation } from '@/sync/rigSessionCreation';
 import {
@@ -62,6 +68,7 @@ export const MOBILE_HOME_DOCK_CONTENT_INSET = 108;
 
 type EnvironmentSetting = 'machine' | 'project' | 'worktree';
 type AgentSetting = 'agent' | 'model' | 'permission' | 'effort';
+type PickerPage = EnvironmentSetting | AgentSetting;
 
 const CUSTOM_PROJECT_PATH_KEY = '__custom_project_path__';
 
@@ -367,6 +374,9 @@ const styles = StyleSheet.create((theme) => ({
     optionPressed: {
         backgroundColor: theme.colors.surfacePressedOverlay,
     },
+    optionDisabled: {
+        opacity: 0.45,
+    },
     optionCopy: {
         flex: 1,
         minWidth: 0,
@@ -456,6 +466,12 @@ export const HomeDock = React.memo(({
     const [isFocused, setIsFocused] = React.useState(false);
     const [focusModeVisible, setFocusModeVisible] = React.useState(false);
     const [focusedInputContentHeight, setFocusedInputContentHeight] = React.useState(0);
+    // Expo's Compose bridge can freeze a DropdownMenu trigger at 0x0 when it
+    // composes before React Native measures its child. Keep iOS/web unchanged,
+    // and use an in-modal React Native picker only on Android.
+    const useNativeMenus = shouldUseNativeHomeDockMenus(Platform.OS);
+    const [sheetPage, setSheetPage] = React.useState<PickerPage | null>(null);
+    const [sheetRootVisible, setSheetRootVisible] = React.useState(false);
     const expImageUpload = useSetting('expImageUpload');
     const { selectedImages, pickImages, removeImage, clearImages } = useImagePicker();
     const agentType = useNewSessionDraft((state) => state.agentType);
@@ -783,6 +799,8 @@ export const HomeDock = React.memo(({
     const finishCloseFocusMode = React.useCallback(() => {
         setIsFocused(false);
         setFocusModeVisible(false);
+        setSheetPage(null);
+        setSheetRootVisible(false);
     }, []);
 
     const closeFocusMode = React.useCallback(() => {
@@ -802,6 +820,27 @@ export const HomeDock = React.memo(({
             }
         });
     }, [finishCloseFocusMode, focusPresentation]);
+
+    const closePicker = React.useCallback(() => {
+        setSheetPage(null);
+        setSheetRootVisible(false);
+    }, []);
+
+    const handleFocusModeRequestClose = React.useCallback(() => {
+        const action = resolveHomeDockPickerBackAction({
+            hasPage: sheetPage !== null,
+            rootVisible: sheetRootVisible,
+        });
+        if (action === 'show-root') {
+            setSheetPage(null);
+            return;
+        }
+        if (action === 'close-picker') {
+            closePicker();
+            return;
+        }
+        closeFocusMode();
+    }, [closeFocusMode, closePicker, sheetPage, sheetRootVisible]);
 
     const selectAgent = React.useCallback((agent: NewSessionAgentType) => {
         const nextRigCreation = agent === 'rig' ? rigSelectionCreation : null;
@@ -956,53 +995,231 @@ export const HomeDock = React.memo(({
     const modelSettingsGroup = agentSettingsGroups.find((group) => group.key === 'model');
     const effortSettingsGroup = agentSettingsGroups.find((group) => group.key === 'effort');
 
-    const renderNativePicker = (row: SettingsRow, config: PickerConfig, compact: boolean) => (
-        <NativeOptionsPicker
-            key={row.page}
-            title={config.title}
-            triggerLabel={row.value}
-            systemImage={{
-                machine: 'desktopcomputer',
-                project: 'folder',
-                worktree: 'arrow.triangle.branch',
-                agent: 'cpu',
-                model: 'cube',
-                permission: 'shield',
-                effort: 'bolt',
-            }[row.page]}
-            options={config.options.map((option) => ({ key: option.key, label: option.name }))}
-            selectedKey={config.selectedKey}
-            onSelect={config.onSelect}
-        >
-            <View style={compact ? styles.focusConfigRow : styles.option}>
-                <View style={styles.focusConfigIcon}>
-                    <Ionicons
-                        name={row.icon}
-                        size={compact ? 21 : 18}
-                        color={theme.colors.text}
-                    />
-                </View>
-                {compact ? (
-                    <Text style={styles.focusConfigValue} numberOfLines={1}>{row.value}</Text>
-                ) : (
-                    <View style={styles.optionCopy}>
-                        <Text style={styles.optionLabel}>{row.label}</Text>
-                        <Text style={styles.optionValue} numberOfLines={1}>{row.value}</Text>
-                    </View>
-                )}
+    const getPickerConfig = (page: PickerPage): PickerConfig => (
+        page === 'machine' || page === 'project' || page === 'worktree'
+            ? getEnvironmentPickerConfig(page)
+            : getAgentPickerConfig(page)
+    );
+    const sheetVisible = !useNativeMenus && (sheetRootVisible || sheetPage !== null);
+
+    const renderPickerRowContent = (row: SettingsRow, compact: boolean) => (
+        <View style={compact ? styles.focusConfigRow : styles.option}>
+            <View style={styles.focusConfigIcon}>
+                <Ionicons
+                    name={row.icon}
+                    size={compact ? 21 : 18}
+                    color={theme.colors.text}
+                />
             </View>
-        </NativeOptionsPicker>
+            {compact ? (
+                <Text style={styles.focusConfigValue} numberOfLines={1}>{row.value}</Text>
+            ) : (
+                <View style={styles.optionCopy}>
+                    <Text style={styles.optionLabel}>{row.label}</Text>
+                    <Text style={styles.optionValue} numberOfLines={1}>{row.value}</Text>
+                </View>
+            )}
+        </View>
     );
 
-    const renderEnvironmentPickers = () => environmentRows.map((row, index) => (
-        <FocusConfigRevealRow
-            key={row.page}
-            progress={focusPresentation}
-            index={index}
-        >
-            {renderNativePicker(row, getEnvironmentPickerConfig(row.page as EnvironmentSetting), true)}
-        </FocusConfigRevealRow>
+    const renderPickerRow = (row: SettingsRow, config: PickerConfig, compact: boolean) => {
+        if (!useNativeMenus) {
+            return (
+                <Pressable
+                    key={row.page}
+                    onPress={() => {
+                        setSheetRootVisible(false);
+                        setSheetPage(row.page as PickerPage);
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${row.label}: ${row.value}`}
+                >
+                    {renderPickerRowContent(row, compact)}
+                </Pressable>
+            );
+        }
+        return (
+            <NativeOptionsPicker
+                key={row.page}
+                title={config.title}
+                triggerLabel={row.value}
+                systemImage={{
+                    machine: 'desktopcomputer',
+                    project: 'folder',
+                    worktree: 'arrow.triangle.branch',
+                    agent: 'cpu',
+                    model: 'cube',
+                    permission: 'shield',
+                    effort: 'bolt',
+                }[row.page]}
+                options={config.options.map((option) => ({ key: option.key, label: option.name }))}
+                selectedKey={config.selectedKey}
+                onSelect={config.onSelect}
+            >
+                {renderPickerRowContent(row, compact)}
+            </NativeOptionsPicker>
+        );
+    };
+
+    const renderEnvironmentPickers = () => environmentRows
+        .filter((row) => shouldShowHomeDockEnvironmentPicker(row.page, Platform.OS))
+        .map((row, index) => (
+            <FocusConfigRevealRow
+                key={row.page}
+                progress={focusPresentation}
+                index={index}
+            >
+                {renderPickerRow(row, getEnvironmentPickerConfig(row.page as EnvironmentSetting), true)}
+            </FocusConfigRevealRow>
+        ));
+
+    const renderMenuControl = ({
+        page,
+        groups,
+        flat,
+        style,
+        accessibilityLabel,
+        triggerSystemImage,
+        triggerLabel,
+        triggerAlignment,
+        children,
+    }: {
+        page: PickerPage | 'root';
+        groups: NativeSettingsMenuGroup[];
+        flat?: boolean;
+        style: NativeSettingsMenuProps['style'];
+        accessibilityLabel: string;
+        triggerSystemImage?: NativeSettingsMenuProps['triggerSystemImage'];
+        triggerLabel?: NativeSettingsMenuProps['triggerLabel'];
+        triggerAlignment?: NativeSettingsMenuProps['triggerAlignment'];
+        children: React.ReactNode;
+    }) => {
+        if (!useNativeMenus) {
+            return (
+                <Pressable
+                    onPress={() => {
+                        if (page === 'root') {
+                            setSheetPage(null);
+                            setSheetRootVisible(true);
+                            return;
+                        }
+                        setSheetRootVisible(false);
+                        setSheetPage(page);
+                    }}
+                    style={style}
+                    accessibilityRole="button"
+                    accessibilityLabel={accessibilityLabel}
+                >
+                    {children}
+                </Pressable>
+            );
+        }
+        return (
+            <NativeSettingsMenu
+                accessibilityLabel={accessibilityLabel}
+                groups={groups}
+                flat={flat}
+                style={style}
+                triggerSystemImage={triggerSystemImage}
+                triggerLabel={triggerLabel}
+                triggerAlignment={triggerAlignment}
+            >
+                {children}
+            </NativeSettingsMenu>
+        );
+    };
+
+    const sheetRootRows = agentRows.filter((row) => (
+        row.page === 'agent' || row.page === 'permission'
     ));
+
+    const renderSettingsSheet = () => {
+        const config = sheetPage ? getPickerConfig(sheetPage) : null;
+        const canGoBack = sheetPage !== null && sheetRootVisible;
+        return (
+            <View style={styles.settingsStack}>
+                <MobileGlassSurface
+                    nativeEffect
+                    intensity={78}
+                    glassEffectStyle="regular"
+                    style={styles.settingsSurface}
+                >
+                    <View style={styles.settingsHeader}>
+                        <Pressable
+                            onPress={() => (canGoBack ? setSheetPage(null) : closePicker())}
+                            style={styles.backButton}
+                            accessibilityRole="button"
+                            accessibilityLabel={canGoBack ? t('common.back') : t('common.cancel')}
+                        >
+                            <Ionicons
+                                name={canGoBack ? 'chevron-back' : 'close'}
+                                size={canGoBack ? 22 : 20}
+                                color={theme.colors.text}
+                            />
+                        </Pressable>
+                        <Text style={styles.settingsTitle} numberOfLines={1}>
+                            {config?.title ?? t('settings.title')}
+                        </Text>
+                    </View>
+                    <ScrollView style={styles.optionList} keyboardShouldPersistTaps="always">
+                        {config ? config.options.map((option) => {
+                            const selectable = isHomeDockOptionSelectable(option.disabled);
+                            const selected = option.key === config.selectedKey;
+                            return (
+                                <Pressable
+                                    key={option.key}
+                                    disabled={!selectable}
+                                    onPress={() => {
+                                        if (!selectable) return;
+                                        config.onSelect(option.key);
+                                        closePicker();
+                                    }}
+                                    style={({ pressed }) => [
+                                        styles.option,
+                                        !selectable && styles.optionDisabled,
+                                        pressed && selectable && styles.optionPressed,
+                                    ]}
+                                    accessibilityRole="button"
+                                    accessibilityState={{ disabled: !selectable, selected }}
+                                >
+                                    <View style={styles.focusConfigIcon}>
+                                        {selected && (
+                                            <Ionicons name="checkmark" size={16} color={theme.colors.text} />
+                                        )}
+                                    </View>
+                                    <View style={styles.optionCopy}>
+                                        <Text style={styles.optionValue} numberOfLines={1}>{option.name}</Text>
+                                        {!!option.description && (
+                                            <Text style={styles.optionDescription} numberOfLines={2}>
+                                                {option.description}
+                                            </Text>
+                                        )}
+                                    </View>
+                                </Pressable>
+                            );
+                        }) : sheetRootRows.map((row) => (
+                            <Pressable
+                                key={row.page}
+                                onPress={() => setSheetPage(row.page as PickerPage)}
+                                style={({ pressed }) => [styles.option, pressed && styles.optionPressed]}
+                                accessibilityRole="button"
+                                accessibilityLabel={`${row.label}: ${row.value}`}
+                            >
+                                <View style={styles.focusConfigIcon}>
+                                    <Ionicons name={row.icon} size={18} color={theme.colors.text} />
+                                </View>
+                                <View style={styles.optionCopy}>
+                                    <Text style={styles.optionLabel}>{row.label}</Text>
+                                    <Text style={styles.optionValue} numberOfLines={1}>{row.value}</Text>
+                                </View>
+                                <Ionicons name="chevron-forward" size={14} color={theme.colors.textSecondary} />
+                            </Pressable>
+                        ))}
+                    </ScrollView>
+                </MobileGlassSurface>
+            </View>
+        );
+    };
 
     const renderComposer = ({
         ref,
@@ -1084,6 +1301,7 @@ export const HomeDock = React.memo(({
         if (!canSubmit) return;
         setFocusModeVisible(false);
         setIsFocused(false);
+        closePicker();
         void submit();
     };
 
@@ -1147,34 +1365,38 @@ export const HomeDock = React.memo(({
                                 />
                             </BubblePressable>
                         )}
-                        <NativeSettingsMenu
-                            accessibilityLabel={t('settings.title')}
-                            groups={gearSettingsGroups}
-                            triggerSystemImage="gearshape"
-                            style={styles.nativeIconMenuFrame}
-                        >
-                            <View style={styles.nativeIconMenuContent}>
-                                <Ionicons name="settings-outline" size={20} color={theme.colors.text} />
-                            </View>
-                        </NativeSettingsMenu>
+                        {renderMenuControl({
+                            page: 'root',
+                            groups: gearSettingsGroups,
+                            style: styles.nativeIconMenuFrame,
+                            accessibilityLabel: t('settings.title'),
+                            triggerSystemImage: 'gearshape',
+                            children: (
+                                <View style={styles.nativeIconMenuContent}>
+                                    <Ionicons name="settings-outline" size={20} color={theme.colors.text} />
+                                </View>
+                            ),
+                        })}
                         {/* Pushes model/effort right so the pair sits against the
                             send button instead of drifting when a label changes. */}
                         <View style={{ flex: 1 }} />
                         {modelSettingsGroup ? (
-                            <NativeSettingsMenu
-                                accessibilityLabel={t('agentInput.model.title')}
-                                groups={[modelSettingsGroup]}
-                                flat
-                                triggerLabel={currentModel?.name ?? currentAgent.name}
-                                triggerAlignment="trailing"
-                                style={styles.nativeModeMenu}
-                            >
-                                <View style={styles.focusedModeButton}>
-                                    <Text style={styles.focusedModeText} numberOfLines={1}>
-                                        {currentModel?.name ?? currentAgent.name}
-                                    </Text>
-                                </View>
-                            </NativeSettingsMenu>
+                            renderMenuControl({
+                                page: 'model',
+                                groups: [modelSettingsGroup],
+                                flat: true,
+                                style: styles.nativeModeMenu,
+                                accessibilityLabel: t('agentInput.model.title'),
+                                triggerLabel: currentModel?.name ?? currentAgent.name,
+                                triggerAlignment: 'trailing',
+                                children: (
+                                    <View style={styles.focusedModeButton}>
+                                        <Text style={styles.focusedModeText} numberOfLines={1}>
+                                            {currentModel?.name ?? currentAgent.name}
+                                        </Text>
+                                    </View>
+                                ),
+                            })
                         ) : (
                             <View style={styles.nativeModeMenu}>
                                 <View style={styles.focusedModeButton}>
@@ -1190,22 +1412,22 @@ export const HomeDock = React.memo(({
                         {effortSettingsGroup && (
                             <Text style={styles.focusedModeSeparator}>·</Text>
                         )}
-                        {effortSettingsGroup && (
-                            <NativeSettingsMenu
-                                accessibilityLabel={t('agentInput.effort.title')}
-                                groups={[effortSettingsGroup]}
-                                flat
-                                triggerLabel={currentEffort?.name ?? t('agentInput.effort.title')}
-                                triggerAlignment="leading"
-                                style={styles.nativeEffortMenu}
-                            >
+                        {effortSettingsGroup && renderMenuControl({
+                            page: 'effort',
+                            groups: [effortSettingsGroup],
+                            flat: true,
+                            style: styles.nativeEffortMenu,
+                            accessibilityLabel: t('agentInput.effort.title'),
+                            triggerLabel: currentEffort?.name ?? t('agentInput.effort.title'),
+                            triggerAlignment: 'leading',
+                            children: (
                                 <View style={styles.focusedEffortButton}>
                                     <Text style={styles.focusedModeText} numberOfLines={1}>
                                         {currentEffort?.name ?? t('agentInput.effort.title')}
                                     </Text>
                                 </View>
-                            </NativeSettingsMenu>
-                        )}
+                            ),
+                        })}
                         <BubblePressable
                             onPress={submitFromFocusMode}
                             disabled={!canSubmit}
@@ -1265,7 +1487,7 @@ export const HomeDock = React.memo(({
                 visible={focusModeVisible}
                 transparent
                 animationType="none"
-                onRequestClose={closeFocusMode}
+                onRequestClose={handleFocusModeRequestClose}
             >
                 <View style={styles.modalRoot}>
                     <Animated.View
@@ -1274,7 +1496,7 @@ export const HomeDock = React.memo(({
                     >
                         <Pressable
                             style={styles.modalBackdrop}
-                            onPress={closeFocusMode}
+                            onPress={sheetVisible ? closePicker : closeFocusMode}
                         />
                     </Animated.View>
                     {/* No back affordance here on purpose: tapping the backdrop
@@ -1283,9 +1505,11 @@ export const HomeDock = React.memo(({
 
                     <Animated.View style={[styles.focusDock, keyboardStyle]}>
                         <View style={styles.focusConfig}>
-                            <View style={styles.focusConfigGroup}>
-                                {renderEnvironmentPickers()}
-                            </View>
+                            {sheetVisible ? renderSettingsSheet() : (
+                                <View style={styles.focusConfigGroup}>
+                                    {renderEnvironmentPickers()}
+                                </View>
+                            )}
                         </View>
                         <View style={[
                             styles.focusComposerArea,
