@@ -44,8 +44,10 @@ import { resolveMultiTextInputLayout } from './multiTextInputLayout';
 import {
     isHomeDockOptionSelectable,
     resolveCustomProjectPathSelection,
+    resolveHomeDockBackdropPressAction,
+    resolveHomeDockMachineSelection,
     resolveHomeDockPickerBackAction,
-    shouldShowHomeDockEnvironmentPicker,
+    resolveHomeDockPromptPlaceholder,
     shouldUseNativeHomeDockMenus,
 } from './homeDockInteraction';
 import { resolveMachineAgent } from '@/utils/newSessionAgentSelection';
@@ -179,6 +181,17 @@ const styles = StyleSheet.create((theme) => ({
         borderRadius: MOBILE_COMPOSER_METRICS.shellRadius,
         overflow: 'hidden',
     },
+    focusedComposerShadow: {
+        width: '100%',
+        maxWidth: layout.maxWidth,
+        alignSelf: 'center',
+        borderRadius: MOBILE_COMPOSER_METRICS.shellRadius,
+        shadowColor: theme.colors.shadow.color,
+        shadowOffset: { width: 0, height: theme.dark ? 6 : 2 },
+        shadowOpacity: theme.dark ? 0.22 : 0.08,
+        shadowRadius: theme.dark ? 16 : 8,
+        elevation: theme.dark ? 4 : 2,
+    },
     focusedComposerAnchored: {
         position: 'absolute',
         left: 0,
@@ -265,7 +278,7 @@ const styles = StyleSheet.create((theme) => ({
         bottom: 0,
     },
     focusBackdrop: {
-        backgroundColor: 'rgba(0, 0, 0, 0.88)',
+        backgroundColor: theme.dark ? 'rgba(0, 0, 0, 0.88)' : 'rgba(255, 255, 255, 0.88)',
     },
     focusDock: {
         position: 'absolute',
@@ -305,8 +318,7 @@ const styles = StyleSheet.create((theme) => ({
     focusConfigValue: {
         flex: 1,
         minWidth: 0,
-        // Compact rows sit on the fixed dark focus scrim in both themes.
-        color: '#FFFFFF',
+        color: theme.colors.text,
         fontSize: 17,
         ...Typography.default(),
     },
@@ -463,6 +475,7 @@ export const HomeDock = React.memo(({
     const focusedInputRef = React.useRef<TextInput>(null);
     const mountedRef = React.useRef(true);
     const focusAnimationTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+    const nativeMenuOpenRef = React.useRef(false);
     const focusPresentation = useSharedValue(0);
     const [isFocused, setIsFocused] = React.useState(false);
     const [focusModeVisible, setFocusModeVisible] = React.useState(false);
@@ -510,12 +523,16 @@ export const HomeDock = React.memo(({
             }))
     ), [machines]);
     const currentMachine = resolveOption(machineOptions, [selectedMachineId]);
+    const resolvedMachineId = resolveHomeDockMachineSelection(
+        selectedMachineId,
+        machineOptions.map((machine) => machine.key),
+    );
 
     React.useEffect(() => {
-        if (!selectedMachineId && machineOptions[0]) {
-            setMachineId(machineOptions[0].key);
+        if (resolvedMachineId !== selectedMachineId) {
+            setMachineId(resolvedMachineId);
         }
-    }, [machineOptions, selectedMachineId, setMachineId]);
+    }, [resolvedMachineId, selectedMachineId, setMachineId]);
 
     const projectOptions = React.useMemo<ModeOption[]>(() => {
         const paths = new Set<string>();
@@ -668,6 +685,7 @@ export const HomeDock = React.memo(({
         ?? defaults.effortLevel;
     const currentEffort = resolveOption(effortOptions, [effortLevel, currentEffortDefault]);
     const currentAgent = availableAgents.find((agent) => agent.key === agentType) ?? availableAgents[0] ?? AGENTS[0];
+    const focusedPromptPlaceholder = resolveHomeDockPromptPlaceholder(currentAgent.key, currentAgent.name);
     const canSubmit = !isSubmitting && (
         prompt.trim().length > 0 || (expImageUpload && selectedImages.length > 0)
     );
@@ -785,6 +803,7 @@ export const HomeDock = React.memo(({
         if (focusAnimationTimerRef.current) {
             clearTimeout(focusAnimationTimerRef.current);
         }
+        nativeMenuOpenRef.current = false;
         focusPresentation.value = 0;
         setIsFocused(true);
         setFocusModeVisible(true);
@@ -798,6 +817,7 @@ export const HomeDock = React.memo(({
     }, [focusPresentation]);
 
     const finishCloseFocusMode = React.useCallback(() => {
+        nativeMenuOpenRef.current = false;
         setIsFocused(false);
         setFocusModeVisible(false);
         setSheetPage(null);
@@ -1002,6 +1022,24 @@ export const HomeDock = React.memo(({
             : getAgentPickerConfig(page)
     );
     const sheetVisible = !useNativeMenus && (sheetRootVisible || sheetPage !== null);
+    const markNativeMenuOpen = React.useCallback(() => {
+        nativeMenuOpenRef.current = true;
+    }, []);
+    const handleFocusBackdropPress = React.useCallback(() => {
+        const action = resolveHomeDockBackdropPressAction({
+            nativeMenuOpen: useNativeMenus && nativeMenuOpenRef.current,
+            pickerVisible: sheetVisible,
+        });
+        nativeMenuOpenRef.current = false;
+        if (action === 'dismiss-menu') {
+            return;
+        }
+        if (action === 'close-picker') {
+            closePicker();
+            return;
+        }
+        closeFocusMode();
+    }, [closeFocusMode, closePicker, sheetVisible, useNativeMenus]);
 
     const renderPickerRowContent = (row: SettingsRow, compact: boolean) => (
         <View style={compact ? styles.focusConfigRow : styles.option}>
@@ -1009,7 +1047,7 @@ export const HomeDock = React.memo(({
                 <Ionicons
                     name={row.icon}
                     size={compact ? 21 : 18}
-                    color={compact ? '#FFFFFF' : theme.colors.text}
+                    color={theme.colors.text}
                 />
             </View>
             {compact ? (
@@ -1043,9 +1081,7 @@ export const HomeDock = React.memo(({
             <NativeOptionsPicker
                 key={row.page}
                 title={config.title}
-                // Compact rows sit on the fixed dark focus scrim in both
-                // themes, so their native trigger stays white.
-                tintColor={compact ? '#FFFFFF' : undefined}
+                tintColor={compact ? theme.colors.text : undefined}
                 triggerLabel={row.value}
                 systemImage={{
                     machine: 'desktopcomputer',
@@ -1058,24 +1094,26 @@ export const HomeDock = React.memo(({
                 }[row.page]}
                 options={config.options.map((option) => ({ key: option.key, label: option.name }))}
                 selectedKey={config.selectedKey}
-                onSelect={config.onSelect}
+                onMenuOpen={markNativeMenuOpen}
+                onSelect={(key) => {
+                    nativeMenuOpenRef.current = false;
+                    config.onSelect(key);
+                }}
             >
                 {renderPickerRowContent(row, compact)}
             </NativeOptionsPicker>
         );
     };
 
-    const renderEnvironmentPickers = () => environmentRows
-        .filter((row) => shouldShowHomeDockEnvironmentPicker(row.page, Platform.OS))
-        .map((row, index) => (
-            <FocusConfigRevealRow
-                key={row.page}
-                progress={focusPresentation}
-                index={index}
-            >
-                {renderPickerRow(row, getEnvironmentPickerConfig(row.page as EnvironmentSetting), true)}
-            </FocusConfigRevealRow>
-        ));
+    const renderEnvironmentPickers = () => environmentRows.map((row, index) => (
+        <FocusConfigRevealRow
+            key={row.page}
+            progress={focusPresentation}
+            index={index}
+        >
+            {renderPickerRow(row, getEnvironmentPickerConfig(row.page as EnvironmentSetting), true)}
+        </FocusConfigRevealRow>
+    ));
 
     const renderMenuControl = ({
         page,
@@ -1121,7 +1159,14 @@ export const HomeDock = React.memo(({
         return (
             <NativeSettingsMenu
                 accessibilityLabel={accessibilityLabel}
-                groups={groups}
+                groups={groups.map((group) => ({
+                    ...group,
+                    onSelect: (key) => {
+                        nativeMenuOpenRef.current = false;
+                        group.onSelect(key);
+                    },
+                }))}
+                onMenuOpen={markNativeMenuOpen}
                 flat={flat}
                 style={style}
                 triggerSystemImage={triggerSystemImage}
@@ -1310,17 +1355,18 @@ export const HomeDock = React.memo(({
     };
 
     const renderFocusedComposer = () => (
-        <Animated.View style={[styles.focusedComposerAnimationShell, focusedComposerAnimationStyle]}>
-            <MobileGlassSurface
-                nativeEffect
-                material="frosted"
-                intensity={92}
-                style={[
-                    styles.focusedComposerSurface,
-                    styles.focusedComposerAnchored,
-                    { height: focusedComposerHeight },
-                ]}
-            >
+        <View style={styles.focusedComposerShadow}>
+            <Animated.View style={[styles.focusedComposerAnimationShell, focusedComposerAnimationStyle]}>
+                <MobileGlassSurface
+                    nativeEffect
+                    material="frosted"
+                    intensity={92}
+                    style={[
+                        styles.focusedComposerSurface,
+                        styles.focusedComposerAnchored,
+                        { height: focusedComposerHeight },
+                    ]}
+                >
                 <View style={styles.focusedComposerContent}>
                     {expImageUpload && selectedImages.length > 0 && (
                         <Animated.View style={focusedInputRevealStyle}>
@@ -1345,7 +1391,7 @@ export const HomeDock = React.memo(({
                             value={prompt}
                             onChangeText={onPromptChange}
                             onFocus={() => setIsFocused(true)}
-                            placeholder="Ask Codex"
+                            placeholder={focusedPromptPlaceholder}
                             placeholderTextColor={theme.colors.textSecondary}
                             selectionColor={theme.colors.text}
                             autoCorrect
@@ -1453,8 +1499,9 @@ export const HomeDock = React.memo(({
                         </BubblePressable>
                     </Animated.View>
                 </View>
-            </MobileGlassSurface>
-        </Animated.View>
+                </MobileGlassSurface>
+            </Animated.View>
+        </View>
     );
 
     return (
@@ -1500,7 +1547,7 @@ export const HomeDock = React.memo(({
                     >
                         <Pressable
                             style={styles.modalBackdrop}
-                            onPress={sheetVisible ? closePicker : closeFocusMode}
+                            onPress={handleFocusBackdropPress}
                         />
                     </Animated.View>
                     {/* No back affordance here on purpose: tapping the backdrop

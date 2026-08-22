@@ -113,6 +113,7 @@ function expectNoVisibleTriggerContent(
 
 describe('iOS Expo-native menu triggers', () => {
     it('draws the picker row in SwiftUI and keeps the RN row for layout alone', () => {
+        const onMenuOpen = vi.fn();
         const renderer = render(React.createElement(NativeOptionsPicker, {
             title: 'Machine',
             triggerLabel: 'Mac',
@@ -120,6 +121,7 @@ describe('iOS Expo-native menu triggers', () => {
             options: [{ key: 'mac', label: 'Mac' }],
             selectedKey: 'mac',
             onSelect: vi.fn(),
+            onMenuOpen,
             children: React.createElement('Trigger'),
         }));
 
@@ -132,6 +134,8 @@ describe('iOS Expo-native menu triggers', () => {
 
         const container = renderer.root.findAllByType('View' as any).find((view: any) => view.props.style?.position === 'relative');
         expect(container?.props.hitSlop).toBeUndefined();
+        expect(container?.props.onStartShouldSetResponderCapture()).toBe(false);
+        expect(onMenuOpen).toHaveBeenCalledOnce();
         expect(renderer.root.findByType('ExpoHost' as any).props.style).toEqual({ position: 'absolute', inset: 0 });
 
         const menu = renderer.root.findByType('ExpoMenu' as any);
@@ -247,6 +251,7 @@ describe('iOS Expo-native menu triggers', () => {
 
     it('renders grouped settings as sections in one native menu with full trigger bounds', () => {
         const onSelect = vi.fn();
+        const onMenuOpen = vi.fn();
         const renderer = render(React.createElement(NativeSettingsMenu, {
             accessibilityLabel: 'Settings',
             groups: [{
@@ -262,6 +267,7 @@ describe('iOS Expo-native menu triggers', () => {
                 onSelect,
             }],
             style: { width: 42, height: 42 },
+            onMenuOpen,
             children: React.createElement('Trigger'),
         }));
 
@@ -273,6 +279,8 @@ describe('iOS Expo-native menu triggers', () => {
         const container = renderer.root.findAllByType('View' as any).find((view: any) => Array.isArray(view.props.style));
         expect(container?.props.style).toContainEqual({ width: 42, height: 42 });
         expect(container?.props.hitSlop).toBeUndefined();
+        expect(container?.props.onStartShouldSetResponderCapture()).toBe(false);
+        expect(onMenuOpen).toHaveBeenCalledOnce();
         expect(renderer.root.findByType('ExpoHost' as any).props.style).toEqual({ position: 'absolute', inset: 0 });
         expectFullTriggerHitArea(menus[0].props.label, 40);
         expectInvisibleTrigger(menus[0].props.label);

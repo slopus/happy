@@ -17,7 +17,6 @@ import {
     contentShape,
     disabled,
     frame,
-    opacity,
     shapes,
     tint,
 } from '@expo/ui/swift-ui/modifiers';
@@ -32,14 +31,13 @@ const styles = StyleSheet.create({
         position: 'relative',
         width: '100%',
     },
-    // The React Native row IS the visual: it colors reliably in both themes,
-    // matching the dark theme exactly on the fixed dark scrim. SwiftUI above
-    // it is only an invisible full-row hit target for the native menu —
-    // coloring its label proved impossible (tint ignored by the plain-style
-    // Menu, foregroundStyle ignored by its Text).
+    // React Native keeps the row's layout bounds while SwiftUI draws the
+    // visible trigger. iOS 26 can then morph that real native label into the
+    // menu platter instead of lensing a separate RN row underneath it.
     trigger: {
         width: '100%',
         minWidth: 0,
+        opacity: 0,
     },
     host: {
         ...StyleSheet.absoluteFillObject,
@@ -53,12 +51,19 @@ export function NativeOptionsPicker({
     options,
     selectedKey,
     onSelect,
+    onMenuOpen,
     children,
     tintColor,
 }: NativeOptionsPickerProps) {
     const { theme } = useUnistyles();
     return (
-        <View style={styles.container}>
+        <View
+            style={styles.container}
+            onStartShouldSetResponderCapture={() => {
+                onMenuOpen?.();
+                return false;
+            }}
+        >
             <View
                 pointerEvents="none"
                 accessible={false}
@@ -84,7 +89,7 @@ export function NativeOptionsPicker({
                     // white would render it invisible in light mode.
                     // No glass capsule: the plain style leaves the system less
                     // chrome to morph when the menu opens.
-                    modifiers={[tint(theme.colors.text), buttonStyle('plain')]}
+                    modifiers={[tint(tintColor ?? theme.colors.text), buttonStyle('plain')]}
                     label={(
                         // The whole row is the label, so every part of it opens
                         // the menu: the icon, the value, and the space between.
@@ -94,7 +99,6 @@ export function NativeOptionsPicker({
                                 frame({ maxWidth: 10000, maxHeight: 10000, minHeight: 42 }),
                                 contentShape(shapes.rectangle()),
                                 accessibilityLabel(`${title}: ${triggerLabel}`),
-                                opacity(0.01),
                             ]}
                         >
                             {triggerSystemImage ? (

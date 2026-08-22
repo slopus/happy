@@ -13,10 +13,11 @@ export type NativeOptionsPickerProps = {
     options: NativeOptionsPickerOption[];
     selectedKey: string | null | undefined;
     onSelect: (key: string) => void;
+    /** Called as the native trigger begins handling a touch. */
+    onMenuOpen?: () => void;
     /**
-     * Overrides the native trigger label color. The environment rows sit on a
-     * fixed dark scrim in both themes, so they pass fixed white; without an
-     * override the label follows theme.colors.text.
+     * Overrides the native trigger label color. Without an override the label
+     * follows theme.colors.text.
      */
     tintColor?: string;
     children: React.ReactNode;

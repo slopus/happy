@@ -47,6 +47,7 @@ export function NativeSettingsMenu({
     groups,
     children,
     style,
+    onMenuOpen,
     flat = false,
     triggerLabel,
     triggerSystemImage,
@@ -55,7 +56,13 @@ export function NativeSettingsMenu({
     const { theme } = useUnistyles();
     const nativeTrigger = triggerLabel !== undefined || triggerSystemImage !== undefined;
     return (
-        <View style={[styles.container, style]}>
+        <View
+            style={[styles.container, style]}
+            onStartShouldSetResponderCapture={() => {
+                onMenuOpen?.();
+                return false;
+            }}
+        >
             <View
                 pointerEvents="none"
                 accessible={false}

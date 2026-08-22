@@ -24,6 +24,8 @@ export type NativeSettingsMenuProps = {
     children: React.ReactNode;
     style?: StyleProp<ViewStyle>;
     accessibilityLabel?: string;
+    /** Called as the native trigger begins handling a touch. */
+    onMenuOpen?: () => void;
     /** Render all options directly in the root menu without native section headers. */
     flat?: boolean;
     /**

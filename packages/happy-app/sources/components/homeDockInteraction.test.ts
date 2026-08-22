@@ -3,8 +3,10 @@ import { describe, expect, it } from 'vitest';
 import {
     isHomeDockOptionSelectable,
     resolveCustomProjectPathSelection,
+    resolveHomeDockBackdropPressAction,
+    resolveHomeDockMachineSelection,
     resolveHomeDockPickerBackAction,
-    shouldShowHomeDockEnvironmentPicker,
+    resolveHomeDockPromptPlaceholder,
     shouldUseNativeHomeDockMenus,
 } from './homeDockInteraction';
 
@@ -24,10 +26,31 @@ describe('HomeDock interaction lifecycle', () => {
         expect(shouldUseNativeHomeDockMenus('web')).toBe(true);
     });
 
-    it('keeps worktree interaction out of the Android picker repair', () => {
-        expect(shouldShowHomeDockEnvironmentPicker('worktree', 'android')).toBe(false);
-        expect(shouldShowHomeDockEnvironmentPicker('project', 'android')).toBe(true);
-        expect(shouldShowHomeDockEnvironmentPicker('worktree', 'ios')).toBe(true);
+    it('reconciles a missing machine ID with the machine HomeDock displays', () => {
+        expect(resolveHomeDockMachineSelection(null, ['online', 'offline'])).toBe('online');
+        expect(resolveHomeDockMachineSelection('removed', ['online', 'offline'])).toBe('online');
+        expect(resolveHomeDockMachineSelection('offline', ['online', 'offline'])).toBe('offline');
+        expect(resolveHomeDockMachineSelection('loading', [])).toBe('loading');
+    });
+
+    it('names the selected legacy agent in the focused prompt', () => {
+        expect(resolveHomeDockPromptPlaceholder('codex', 'Codex')).toBe('Ask Codex');
+        expect(resolveHomeDockPromptPlaceholder('claude', 'Claude Code')).toBe('Ask Claude Code');
+    });
+
+    it('dismisses an open native menu before closing the focused dock', () => {
+        expect(resolveHomeDockBackdropPressAction({
+            nativeMenuOpen: true,
+            pickerVisible: false,
+        })).toBe('dismiss-menu');
+        expect(resolveHomeDockBackdropPressAction({
+            nativeMenuOpen: false,
+            pickerVisible: true,
+        })).toBe('close-picker');
+        expect(resolveHomeDockBackdropPressAction({
+            nativeMenuOpen: false,
+            pickerVisible: false,
+        })).toBe('close-focus');
     });
 
     it('uses Android Back to unwind the picker before focus mode', () => {
