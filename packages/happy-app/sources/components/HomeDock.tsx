@@ -50,6 +50,7 @@ import {
     resolveHomeDockPromptPlaceholder,
     shouldUseNativeHomeDockMenus,
 } from './homeDockInteraction';
+import { registerHomeDockFocusListener, useHomeDockFocusStore } from './homeDockFocus';
 import { resolveMachineAgent } from '@/utils/newSessionAgentSelection';
 import { findConnectedRigMachine, getRigMachineSessionCreation } from '@/sync/rigSessionCreation';
 import {
@@ -104,6 +105,13 @@ const styles = StyleSheet.create((theme) => ({
     safeArea: {
         paddingHorizontal: 16,
         paddingTop: 8,
+    },
+    // The focused composer replaces the resting one rather than covering it:
+    // the modal sits a safe-area inset higher, so leaving this on screen showed
+    // its send button peeking out below. `display` rather than `opacity` because
+    // an ancestor below full alpha kills the native blur underneath.
+    safeAreaBehindFocus: {
+        display: 'none',
     },
     composerSurface: {
         width: '100%',
@@ -828,6 +836,18 @@ export const HomeDock = React.memo(({
         }, 16);
     }, [focusPresentation]);
 
+    // A "+" in the session list prefills the draft and then asks the dock to
+    // open. The last id seen is captured on mount so a remount after an earlier
+    // request does not re-open the composer on its own.
+    const focusRequestId = useHomeDockFocusStore((state) => state.requestId);
+    const servedFocusRequestRef = React.useRef(focusRequestId);
+    React.useEffect(() => registerHomeDockFocusListener(), []);
+    React.useEffect(() => {
+        if (focusRequestId === servedFocusRequestRef.current) return;
+        servedFocusRequestRef.current = focusRequestId;
+        openFocusMode();
+    }, [focusRequestId, openFocusMode]);
+
     const finishCloseFocusMode = React.useCallback(() => {
         nativeMenuOpenRef.current = false;
         setIsFocused(false);
@@ -1534,10 +1554,11 @@ export const HomeDock = React.memo(({
                     </View>
                 )}
                 <View
-                    pointerEvents="box-none"
+                    pointerEvents={focusModeVisible ? 'none' : 'box-none'}
                     style={[
                         styles.safeArea,
                         { paddingBottom: isFocused ? 8 : Math.max(10, safeArea.bottom) },
+                        focusModeVisible && styles.safeAreaBehindFocus,
                     ]}
                 >
                     {renderComposer({

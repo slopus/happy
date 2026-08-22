@@ -9,6 +9,10 @@ import { t } from '@/text';
 import { ProjectGroupData, ProjectWorkspaceGroup } from '@/sync/storage';
 import { CompactSessionRow } from './ActiveSessionsGroupCompact';
 import { Avatar } from './Avatar';
+import { requestHomeDockFocus } from './homeDockFocus';
+import { useNewSessionDraft } from '@/hooks/useNewSessionDraft';
+import { formatPathRelativeToHome } from '@/utils/sessionUtils';
+import { getRepoPath, isWorktreePath } from '@/utils/worktreePaths';
 
 interface ProjectGroupProps {
     project: ProjectGroupData;
@@ -51,9 +55,30 @@ const WorkspaceSection = React.memo(({ project, workspace, selectedSessionId }: 
     // nothing. Only a real worktree earns the second line.
     const worktreeName = workspace.name ?? (workspace.id || null);
 
+    // Point the draft at this exact checkout before opening the composer, so
+    // the dock's machine, project and worktree rows already read correctly.
+    // `setMachineId` clears the path and worktree, so the order matters.
     const handleNewSession = React.useCallback(() => {
-        router.navigate('/new');
-    }, [router]);
+        const draft = useNewSessionDraft.getState();
+        const sessionPath = firstSession?.path ?? '';
+        const worktree = isWorktreePath(sessionPath);
+        const repoPath = worktree ? getRepoPath(sessionPath) : sessionPath;
+
+        if (firstSession?.machineId) {
+            draft.setMachineId(firstSession.machineId);
+        }
+        if (repoPath) {
+            draft.setPath(formatPathRelativeToHome(repoPath, firstSession?.homeDir ?? undefined));
+        }
+        draft.setSessionType(worktree ? 'worktree' : 'simple');
+        draft.setWorktreeKey(worktree ? sessionPath : null);
+
+        // Nothing is listening in the sidebar layout or on web, where the dock
+        // is never mounted; those fall back to the standalone screen.
+        if (!requestHomeDockFocus()) {
+            router.navigate('/new');
+        }
+    }, [firstSession, router]);
 
     return (
         <View style={styles.section}>
