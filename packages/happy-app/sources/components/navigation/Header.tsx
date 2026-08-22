@@ -11,6 +11,7 @@ import { StyleSheet } from 'react-native-unistyles';
 import { MobileGlassSurface } from '../MobileGlass';
 import {
     MobileHeaderScrim,
+    MOBILE_HOME_HEADER_SCRIM_RESTING_OPACITY,
     MOBILE_STRONG_HEADER_SCRIM_RESTING_OPACITY,
     MOBILE_STRONG_HEADER_SCRIM_UNDERLAP_OPACITY,
     type MobileHeaderScrimVariant,
@@ -75,13 +76,20 @@ export const Header = React.memo((props: HeaderProps) => {
     const headerLeftUsesGlass = headerLeftGlass && !isDesktop;
     const headerRightUsesGlass = headerRightGlass && !isDesktop;
     const contentHeight = floatingControlsEnabled ? Math.max(headerHeight, MOBILE_GLASS_HEADER_HEIGHT) : headerHeight;
+    const homeBackdrop = headerBackdropVariant === 'home';
     const strongBackdrop = headerBackdropVariant !== 'subtle';
     const backdropRestingOpacity = headerBackdropAlwaysVisible
-        ? strongBackdrop ? MOBILE_STRONG_HEADER_SCRIM_RESTING_OPACITY : 1
+        ? homeBackdrop
+            ? MOBILE_HOME_HEADER_SCRIM_RESTING_OPACITY
+            : strongBackdrop
+                ? MOBILE_STRONG_HEADER_SCRIM_RESTING_OPACITY
+                : 1
         : 0;
-    const backdropTargetOpacity = headerBackdropVisible
-        ? strongBackdrop ? MOBILE_STRONG_HEADER_SCRIM_UNDERLAP_OPACITY : 1
-        : backdropRestingOpacity;
+    const backdropTargetOpacity = homeBackdrop
+        ? backdropRestingOpacity
+        : headerBackdropVisible
+            ? strongBackdrop ? MOBILE_STRONG_HEADER_SCRIM_UNDERLAP_OPACITY : 1
+            : backdropRestingOpacity;
     const backdropShouldBeVisible = floatingControlsEnabled && backdropTargetOpacity > 0;
     const backdropOpacity = React.useRef(new Animated.Value(backdropTargetOpacity)).current;
     const [backdropMounted, setBackdropMounted] = React.useState(backdropShouldBeVisible);
@@ -137,7 +145,9 @@ export const Header = React.memo((props: HeaderProps) => {
                     pointerEvents="none"
                     style={[
                         styles.headerBackdrop,
-                        strongBackdrop && styles.headerBackdropStrong,
+                        homeBackdrop
+                            ? styles.headerBackdropHome
+                            : strongBackdrop && styles.headerBackdropStrong,
                         { opacity: backdropOpacity },
                     ]}
                 >
@@ -339,13 +349,17 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     containerNormal: {
         backgroundColor: theme.colors.header.background,
     },
-    // The header stays transparent until content scrolls underneath it. Then
-    // a subtle scrim fades into the content; only the controls use glass.
+    // Backdrops are material layers behind floating controls. The Home variant
+    // stays stable while content scrolls; other headers may still opt into a
+    // stronger underlap state.
     headerBackdrop: {
         ...StyleSheet.absoluteFillObject,
     },
     headerBackdropStrong: {
         bottom: -36,
+    },
+    headerBackdropHome: {
+        bottom: -18,
     },
     contentWrapper: {
         width: '100%',

@@ -98,7 +98,6 @@ const styles = StyleSheet.create((theme) => ({
     bottomBackdrop: {
         ...StyleSheet.absoluteFillObject,
         top: -36,
-        opacity: MOBILE_STRONG_HEADER_SCRIM_RESTING_OPACITY,
     },
     safeArea: {
         paddingHorizontal: 16,
@@ -120,6 +119,17 @@ const styles = StyleSheet.create((theme) => ({
             android: theme.colors.glass.backgroundStrong,
             default: theme.colors.glass.backgroundStrong,
         }),
+    },
+    composerShadow: {
+        width: '100%',
+        maxWidth: layout.maxWidth,
+        alignSelf: 'center',
+        borderRadius: MOBILE_COLLAPSED_COMPOSER_GEOMETRY.shellRadius,
+        shadowColor: theme.colors.shadow.color,
+        shadowOffset: { width: 0, height: theme.dark ? 6 : 2 },
+        shadowOpacity: theme.dark ? 0.22 : 0.08,
+        shadowRadius: theme.dark ? 16 : 8,
+        elevation: theme.dark ? 4 : 2,
     },
     composerContent: {
         flex: 1,
@@ -1283,59 +1293,61 @@ export const HomeDock = React.memo(({
         onSend: () => void;
         activateOnPress?: () => void;
     }) => (
-        <MobileGlassSurface
-            nativeEffect
-            material="frosted"
-            intensity={92}
-            style={styles.composerSurface}
-        >
-            <View style={styles.composerContent}>
-                {activateOnPress ? (
-                    <Pressable onPress={activateOnPress} style={styles.inputEntry}>
-                        <Text
-                            style={[styles.inputEntryText, !prompt && styles.inputEntryPlaceholder]}
-                            numberOfLines={1}
-                        >
-                            {prompt || 'Plan, ask, build…'}
-                        </Text>
-                    </Pressable>
-                ) : (
-                    <TextInput
-                        ref={ref}
-                        value={prompt}
-                        onChangeText={onPromptChange}
-                        onSubmitEditing={() => canSubmit && onSend()}
-                        onFocus={onFocus}
-                        onBlur={onBlur}
-                        placeholder="Plan, ask, build…"
-                        placeholderTextColor={theme.colors.textSecondary}
-                        selectionColor={theme.colors.text}
-                        returnKeyType="send"
-                        autoCorrect
-                        style={styles.input}
-                    />
-                )}
-                <BubblePressable
-                    onPress={onSend}
-                    disabled={!canSubmit}
-                    style={[styles.sendButton, canSubmit && styles.sendButtonActive]}
-                    accessibilityRole="button"
-                    accessibilityLabel="Send"
-                >
-                    {isSubmitting ? (
-                        <ActivityIndicator size="small" color={theme.colors.textSecondary} />
+        <View style={styles.composerShadow}>
+            <MobileGlassSurface
+                nativeEffect
+                material="frosted"
+                intensity={92}
+                style={styles.composerSurface}
+            >
+                <View style={styles.composerContent}>
+                    {activateOnPress ? (
+                        <Pressable onPress={activateOnPress} style={styles.inputEntry}>
+                            <Text
+                                style={[styles.inputEntryText, !prompt && styles.inputEntryPlaceholder]}
+                                numberOfLines={1}
+                            >
+                                {prompt || 'Plan, ask, build…'}
+                            </Text>
+                        </Pressable>
                     ) : (
-                        <Ionicons
-                            name="arrow-up"
-                            size={16}
-                            color={canSubmit
-                                ? theme.dark ? '#111111' : theme.colors.button.primary.tint
-                                : theme.colors.textSecondary}
+                        <TextInput
+                            ref={ref}
+                            value={prompt}
+                            onChangeText={onPromptChange}
+                            onSubmitEditing={() => canSubmit && onSend()}
+                            onFocus={onFocus}
+                            onBlur={onBlur}
+                            placeholder="Plan, ask, build…"
+                            placeholderTextColor={theme.colors.textSecondary}
+                            selectionColor={theme.colors.text}
+                            returnKeyType="send"
+                            autoCorrect
+                            style={styles.input}
                         />
                     )}
-                </BubblePressable>
-            </View>
-        </MobileGlassSurface>
+                    <BubblePressable
+                        onPress={onSend}
+                        disabled={!canSubmit}
+                        style={[styles.sendButton, canSubmit && styles.sendButtonActive]}
+                        accessibilityRole="button"
+                        accessibilityLabel="Send"
+                    >
+                        {isSubmitting ? (
+                            <ActivityIndicator size="small" color={theme.colors.textSecondary} />
+                        ) : (
+                            <Ionicons
+                                name="arrow-up"
+                                size={16}
+                                color={canSubmit
+                                    ? theme.dark ? '#111111' : theme.colors.button.primary.tint
+                                    : theme.colors.textSecondary}
+                            />
+                        )}
+                    </BubblePressable>
+                </View>
+            </MobileGlassSurface>
+        </View>
     );
 
     const submit = async () => {
@@ -1512,7 +1524,11 @@ export const HomeDock = React.memo(({
             >
                 {showBottomBackdrop && (
                     <View pointerEvents="none" style={styles.bottomBackdrop}>
-                        <MobileHeaderScrim variant="strong" edge="bottom" />
+                        <MobileHeaderScrim
+                            variant="strong"
+                            edge="bottom"
+                            overlayOpacity={MOBILE_STRONG_HEADER_SCRIM_RESTING_OPACITY}
+                        />
                     </View>
                 )}
                 <View

@@ -6,13 +6,11 @@ import {
     Pressable,
     Platform,
     Keyboard,
-    NativeScrollEvent,
-    NativeSyntheticEvent,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
-import { useFriendRequests, useSocketStatus, useRealtimeStatus, useSettingMutable } from '@/sync/storage';
-import { useHasArchivedSessions, useVisibleSessionListViewData } from '@/hooks/useVisibleSessionListViewData';
+import { useFriendRequests, useSocketStatus, useRealtimeStatus } from '@/sync/storage';
+import { useVisibleSessionListViewData } from '@/hooks/useVisibleSessionListViewData';
 import { useIsTablet } from '@/utils/responsive';
 import { useRouter } from 'expo-router';
 import { EmptySessionsTablet } from './EmptySessionsTablet';
@@ -150,13 +148,6 @@ const styles = StyleSheet.create((theme) => ({
         flexDirection: 'row',
         alignItems: 'center',
     },
-    headerActionButtonActive: {
-        width: 36,
-        height: 36,
-        marginHorizontal: 4,
-        borderRadius: 12,
-        backgroundColor: theme.colors.surfaceSelected,
-    },
 }));
 
 // Tab header configuration
@@ -233,17 +224,7 @@ const HeaderTitle = React.memo(({ activeTab }: { activeTab: ActiveTabType }) => 
 });
 
 // Header right button - varies by tab
-const HeaderRight = React.memo(({
-    activeTab,
-    hasArchivedSessions,
-    hideArchivedSessions,
-    onArchiveVisibilityPress,
-}: {
-    activeTab: ActiveTabType;
-    hasArchivedSessions: boolean;
-    hideArchivedSessions: boolean;
-    onArchiveVisibilityPress: () => void;
-}) => {
+const HeaderRight = React.memo(({ activeTab }: { activeTab: ActiveTabType }) => {
     const router = useRouter();
     const { theme } = useUnistyles();
     const isCustomServer = isUsingCustomServer();
@@ -252,26 +233,6 @@ const HeaderRight = React.memo(({
         if (Platform.OS !== 'web') {
             return (
                 <View style={styles.headerActions}>
-                    {hasArchivedSessions && (
-                        <Pressable
-                            onPress={onArchiveVisibilityPress}
-                            accessibilityLabel={hideArchivedSessions
-                                ? t('sidebar.showArchived')
-                                : t('sidebar.hideArchived')}
-                            accessibilityRole="button"
-                            accessibilityState={{ selected: !hideArchivedSessions }}
-                            style={[
-                                styles.headerActionButton,
-                                !hideArchivedSessions && styles.headerActionButtonActive,
-                            ]}
-                        >
-                            <Ionicons
-                                name={hideArchivedSessions ? 'archive-outline' : 'archive'}
-                                size={20}
-                                color={theme.colors.header.tint}
-                            />
-                        </Pressable>
-                    )}
                     <Pressable
                         onPress={() => router.push('/settings')}
                         accessibilityLabel={t('settings.title')}
@@ -285,26 +246,6 @@ const HeaderRight = React.memo(({
         }
         return (
             <View style={styles.headerActions}>
-                {hasArchivedSessions && (
-                    <Pressable
-                        onPress={onArchiveVisibilityPress}
-                        accessibilityLabel={hideArchivedSessions
-                            ? t('sidebar.showArchived')
-                            : t('sidebar.hideArchived')}
-                        accessibilityRole="button"
-                        accessibilityState={{ selected: !hideArchivedSessions }}
-                        style={[
-                            styles.headerButton,
-                            !hideArchivedSessions && styles.headerActionButtonActive,
-                        ]}
-                    >
-                        <Ionicons
-                            name={hideArchivedSessions ? 'archive-outline' : 'archive'}
-                            size={19}
-                            color={theme.colors.header.tint}
-                        />
-                    </Pressable>
-                )}
                 <Pressable
                     onPress={() => router.navigate('/new')}
                     hitSlop={15}
@@ -352,10 +293,6 @@ const HeaderRight = React.memo(({
 export const MainView = React.memo(({ variant }: MainViewProps) => {
     const { theme } = useUnistyles();
     const sessionListViewData = useVisibleSessionListViewData();
-    const hasArchivedSessions = useHasArchivedSessions();
-    // Stored under its original `hideInactiveSessions` key — synced settings
-    // have no rename migration — but it hides archived sessions only.
-    const [hideArchivedSessions, setHideArchivedSessions] = useSettingMutable('hideInactiveSessions');
     const isTablet = useIsTablet();
     const router = useRouter();
     const friendRequests = useFriendRequests();
@@ -367,8 +304,6 @@ export const MainView = React.memo(({ variant }: MainViewProps) => {
     // NOTE: Zen tab removed - the feature never got to a useful state
     const [activeTab, setActiveTab] = React.useState<ActiveTabType>('sessions');
     const [homePrompt, setHomePrompt] = React.useState('');
-    const [headerBackdropVisible, setHeaderBackdropVisible] = React.useState(false);
-    const headerBackdropVisibleRef = React.useRef(false);
     const showHeaderRight = activeTab !== 'settings' || isUsingCustomServer();
     const topContentInset = Platform.OS === 'web'
         ? 0
@@ -393,26 +328,11 @@ export const MainView = React.memo(({ variant }: MainViewProps) => {
         return started;
     }, [homePrompt, startHomeSession]);
 
-    const handleArchiveVisibilityPress = React.useCallback(() => {
-        setHideArchivedSessions(!hideArchivedSessions);
-    }, [hideArchivedSessions, setHideArchivedSessions]);
-
     const handleTabPress = React.useCallback((tab: ActiveTabType) => {
         // This callback is intentionally independent of activeTab. Gesture
         // worklets can outlive the render that created them, so comparing with a
         // captured tab here can discard a newer tap or drag commit.
-        headerBackdropVisibleRef.current = false;
-        setHeaderBackdropVisible(false);
         setActiveTab((currentTab) => currentTab === tab ? currentTab : tab);
-    }, []);
-
-    const handleContentScroll = React.useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
-        const nextVisible = event.nativeEvent.contentOffset.y > 12;
-        if (nextVisible === headerBackdropVisibleRef.current) {
-            return;
-        }
-        headerBackdropVisibleRef.current = nextVisible;
-        setHeaderBackdropVisible(nextVisible);
     }, []);
 
     const renderWebTabContent = () => {
@@ -420,10 +340,10 @@ export const MainView = React.memo(({ variant }: MainViewProps) => {
             case 'inbox':
                 return <InboxView />;
             case 'settings':
-                return <SettingsViewWrapper topContentInset={topContentInset} bottomContentInset={bottomContentInset} onScroll={handleContentScroll} />;
+                return <SettingsViewWrapper topContentInset={topContentInset} bottomContentInset={bottomContentInset} />;
             case 'sessions':
             default:
-                return <SessionsListWrapper topContentInset={topContentInset} onScroll={handleContentScroll} />;
+                return <SessionsListWrapper topContentInset={topContentInset} />;
         }
     };
 
@@ -473,16 +393,10 @@ export const MainView = React.memo(({ variant }: MainViewProps) => {
             <Header
                 title={<HeaderTitle activeTab={activeTab} />}
                 headerRight={showHeaderRight ? () => (
-                    <HeaderRight
-                        activeTab={activeTab}
-                        hasArchivedSessions={hasArchivedSessions}
-                        hideArchivedSessions={hideArchivedSessions}
-                        onArchiveVisibilityPress={handleArchiveVisibilityPress}
-                    />
+                    <HeaderRight activeTab={activeTab} />
                 ) : undefined}
                 headerLeft={() => <HeaderLogo />}
                 headerLeftGlass={Platform.OS !== 'web'}
-                headerBackdropVisible={headerBackdropVisible}
                 headerBackdropAlwaysVisible={Platform.OS !== 'web'}
                 headerBackdropVariant="home"
                 headerShadowVisible={false}
@@ -504,7 +418,6 @@ export const MainView = React.memo(({ variant }: MainViewProps) => {
                         <SessionsListWrapper
                             topContentInset={topContentInset}
                             bottomContentInset={bottomContentInset}
-                            onScroll={handleContentScroll}
                         />
                     </View>
                 )}

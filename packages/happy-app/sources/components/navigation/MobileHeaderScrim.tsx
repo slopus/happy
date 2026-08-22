@@ -12,6 +12,9 @@ export type MobileHeaderScrimEdge = 'top' | 'bottom';
 // slightly as scrolling content moves underneath.
 export const MOBILE_STRONG_HEADER_SCRIM_RESTING_OPACITY = 0.80;
 export const MOBILE_STRONG_HEADER_SCRIM_UNDERLAP_OPACITY = 0.96;
+// Keep the iOS visual effect's ancestor fully opaque. Home tint strength is
+// controlled inside MobileHeaderScrim so native backdrop sampling stays live.
+export const MOBILE_HOME_HEADER_SCRIM_RESTING_OPACITY = 1;
 
 /**
  * The shared native-phone header backdrop. A feathered blur/dim layer keeps
@@ -22,12 +25,13 @@ export const MOBILE_STRONG_HEADER_SCRIM_UNDERLAP_OPACITY = 0.96;
 export function MobileHeaderScrim({
     variant = 'subtle',
     edge = 'top',
+    overlayOpacity,
 }: {
     variant?: MobileHeaderScrimVariant;
     edge?: MobileHeaderScrimEdge;
+    overlayOpacity?: number;
 }) {
     const { theme } = useUnistyles();
-    const isHome = variant === 'home';
     const isStrong = variant !== 'subtle';
     const gradientStart = edge === 'bottom' ? { x: 0.5, y: 1 } : { x: 0.5, y: 0 };
     const gradientEnd = edge === 'bottom' ? { x: 0.5, y: 0 } : { x: 0.5, y: 1 };
@@ -44,56 +48,57 @@ export function MobileHeaderScrim({
         'rgba(255, 255, 255, 0)',
     ] as const;
     const blurMaskColors = isStrong ? strongBlurMaskColors : subtleBlurMaskColors;
+    const resolvedOverlayOpacity = overlayOpacity
+        ?? (variant === 'home' ? MOBILE_STRONG_HEADER_SCRIM_RESTING_OPACITY : 1);
+    const blurLayer = (
+        <BlurView
+            blurMethod={Platform.OS === 'android' ? 'dimezisBlurViewSdk31Plus' : undefined}
+            blurReductionFactor={2}
+            intensity={isStrong ? 100 : 18}
+            tint={theme.dark ? 'systemUltraThinMaterialDark' : 'systemUltraThinMaterialLight'}
+            style={styles.fill}
+        />
+    );
 
     return (
         <View pointerEvents="none" style={styles.fill}>
-            <MaskedView
-                pointerEvents="none"
-                androidRenderingMode="software"
-                style={styles.fill}
-                maskElement={(
-                    <LinearGradient
-                        colors={blurMaskColors}
-                        locations={isHome
-                            ? [0, 0.55, 0.90, 1]
-                            : isStrong
+            {/* A masked ancestor disables UIVisualEffectView backdrop sampling
+                on iOS. Android keeps the feathered software-mask path. */}
+            {Platform.OS === 'ios' ? blurLayer : (
+                <MaskedView
+                    pointerEvents="none"
+                    androidRenderingMode="software"
+                    style={styles.fill}
+                    maskElement={(
+                        <LinearGradient
+                            colors={blurMaskColors}
+                            locations={isStrong
                                 ? [0, 0.20, 0.68, 1]
                                 : [0, 0.34, 0.7, 1]}
-                        start={gradientStart}
-                        end={gradientEnd}
-                        style={styles.fill}
-                    />
-                )}
-            >
-                <BlurView
-                    blurMethod={Platform.OS === 'android' ? 'dimezisBlurViewSdk31Plus' : undefined}
-                    blurReductionFactor={2}
-                    intensity={isStrong ? 88 : 18}
-                    tint={theme.dark ? 'systemUltraThinMaterialDark' : 'systemUltraThinMaterialLight'}
-                    style={styles.fill}
-                />
-            </MaskedView>
+                            start={gradientStart}
+                            end={gradientEnd}
+                            style={styles.fill}
+                        />
+                    )}
+                >
+                    {blurLayer}
+                </MaskedView>
+            )}
             <LinearGradient
                 pointerEvents="none"
                 colors={theme.dark
-                    ? isHome
-                        ? ['rgba(0, 0, 0, 1)', 'rgba(0, 0, 0, 0.99)', 'rgba(0, 0, 0, 0.90)', 'rgba(0, 0, 0, 0)']
-                        : isStrong
+                    ? isStrong
                         ? ['rgba(0, 0, 0, 0.20)', 'rgba(0, 0, 0, 0.14)', 'rgba(0, 0, 0, 0.05)', 'rgba(0, 0, 0, 0)']
                         : ['rgba(0, 0, 0, 0.50)', 'rgba(0, 0, 0, 0.36)', 'rgba(0, 0, 0, 0.12)', 'rgba(0, 0, 0, 0)']
-                    : isHome
-                        ? ['rgba(255, 255, 255, 1)', 'rgba(255, 255, 255, 0.99)', 'rgba(255, 255, 255, 0.90)', 'rgba(255, 255, 255, 0)']
-                        : isStrong
+                    : isStrong
                         ? ['rgba(255, 255, 255, 0.34)', 'rgba(255, 255, 255, 0.22)', 'rgba(255, 255, 255, 0.07)', 'rgba(255, 255, 255, 0)']
                         : ['rgba(255, 255, 255, 0.68)', 'rgba(255, 255, 255, 0.50)', 'rgba(255, 255, 255, 0.18)', 'rgba(255, 255, 255, 0)']}
-                locations={isHome
-                    ? [0, 0.55, 0.90, 1]
-                    : isStrong
-                        ? [0, 0.34, 0.80, 1]
-                        : [0, 0.34, 0.7, 1]}
+                locations={isStrong
+                    ? [0, 0.34, 0.80, 1]
+                    : [0, 0.34, 0.7, 1]}
                 start={gradientStart}
                 end={gradientEnd}
-                style={styles.fill}
+                style={[styles.fill, { opacity: resolvedOverlayOpacity }]}
             />
         </View>
     );
