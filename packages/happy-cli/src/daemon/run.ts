@@ -33,6 +33,7 @@ import {
   sanitizeSessionEnvironment,
   wrapTmuxCommandWithSessionEnvironmentSanitizer,
 } from './sessionEnvironment';
+import { startHappyTerminalDaemon } from './happyTerminalBoot';
 
 /** Shell-escape a string for safe interpolation into tmux commands. */
 function shellescape(s: string): string {
@@ -175,6 +176,11 @@ export async function startDaemon(): Promise<void> {
   // 2. Should not have another daemon process running
 
   try {
+    // Happy Agent is a machine-level service shared by the mobile app and
+    // Happy Terminal. Start it concurrently and keep this daemon boot path
+    // independent from its install/download/network state.
+    startHappyTerminalDaemon();
+
     // Start caffeinate
     const caffeinateStarted = startCaffeinate();
     if (caffeinateStarted) {
