@@ -205,7 +205,7 @@ interface StorageState {
     friendsLoaded: boolean;  // True after initial friends fetch
     realtimeStatus: 'disconnected' | 'connecting' | 'connected' | 'error';
     realtimeMode: 'idle' | 'agent-speaking' | 'user-speaking';
-    voiceSessionGeneration: number;
+    voiceProviderGeneration: number;
     socketStatus: 'disconnected' | 'connecting' | 'connected' | 'error';
     socketLastConnectedAt: number | null;
     socketLastDisconnectedAt: number | null;
@@ -235,7 +235,7 @@ interface StorageState {
     setRealtimeStatus: (status: 'disconnected' | 'connecting' | 'connected' | 'error') => void;
     setRealtimeMode: (mode: 'idle' | 'agent-speaking' | 'user-speaking', immediate?: boolean) => void;
     clearRealtimeModeDebounce: () => void;
-    incrementVoiceSessionGeneration: () => void;
+    resetVoiceProvider: () => void;
     setSocketStatus: (status: 'disconnected' | 'connecting' | 'connected' | 'error') => void;
     getActiveSessions: () => Session[];
     updateSessionDraft: (sessionId: string, draft: string | null) => void;
@@ -373,7 +373,7 @@ export const storage = create<StorageState>()((set, get) => {
         sessionFileCache: {},
         realtimeStatus: 'disconnected',
         realtimeMode: 'idle',
-        voiceSessionGeneration: 0,
+        voiceProviderGeneration: 0,
         socketStatus: 'disconnected',
         socketLastConnectedAt: null,
         socketLastDisconnectedAt: null,
@@ -961,9 +961,9 @@ export const storage = create<StorageState>()((set, get) => {
                 realtimeModeDebounceTimer = null;
             }
         },
-        incrementVoiceSessionGeneration: () => set((state) => ({
+        resetVoiceProvider: () => set((state) => ({
             ...state,
-            voiceSessionGeneration: state.voiceSessionGeneration + 1
+            voiceProviderGeneration: state.voiceProviderGeneration + 1,
         })),
         setSocketStatus: (status: 'disconnected' | 'connecting' | 'connected' | 'error') => set((state) => {
             const now = Date.now();
@@ -1540,8 +1540,8 @@ export function useRealtimeMode(): 'idle' | 'agent-speaking' | 'user-speaking' {
     return storage(useShallow((state) => state.realtimeMode));
 }
 
-export function useVoiceSessionGeneration(): number {
-    return storage(useShallow((state) => state.voiceSessionGeneration));
+export function useVoiceProviderGeneration(): number {
+    return storage(useShallow((state) => state.voiceProviderGeneration));
 }
 
 export function useSocketStatus() {

@@ -1,14 +1,15 @@
 import React from 'react';
+import { ConversationProvider } from '@elevenlabs/react';
 import { RealtimeVoiceSession } from './RealtimeVoiceSession';
-import { useVoiceSessionGeneration } from '@/sync/storage';
+import { useVoiceProviderGeneration } from '@/sync/storage';
 
 export const RealtimeProvider = ({ children }: { children: React.ReactNode }) => {
-    // Web SDK (@elevenlabs/react) uses a plain WebSocket — no LiveKit Room to
-    // go stale — so this re-key is mostly defensive. Kept symmetric with native.
-    const generation = useVoiceSessionGeneration();
+    const providerGeneration = useVoiceProviderGeneration();
     return (
         <>
-            <RealtimeVoiceSession key={generation} />
+            <ConversationProvider key={providerGeneration}>
+                <RealtimeVoiceSession />
+            </ConversationProvider>
             {children}
         </>
     );

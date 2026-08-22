@@ -15,5 +15,12 @@ export interface VoiceSession {
     sendContextualUpdate(update: string): void;
 }
 
+export class VoiceSessionCancellationError extends Error {
+    constructor() {
+        super('Voice session start was cancelled');
+        this.name = 'VoiceSessionCancellationError';
+    }
+}
+
 export type ConversationStatus = 'disconnected' | 'connecting' | 'connected';
 export type ConversationMode = 'idle' | 'agent-speaking' | 'user-speaking';

@@ -11,6 +11,19 @@ import { config } from '@/config';
 
 export type { VoiceConversationResponse, VoiceUsageResponse };
 
+const VOICE_API_TIMEOUT_MS = 35_000;
+
+async function fetchVoiceApi(url: string, init: RequestInit): Promise<Response> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), VOICE_API_TIMEOUT_MS);
+
+    try {
+        return await fetch(url, { ...init, signal: controller.signal });
+    } finally {
+        clearTimeout(timeout);
+    }
+}
+
 export async function fetchVoiceCredentials(
     credentials: AuthCredentials,
     sessionId: string
@@ -23,7 +36,7 @@ export async function fetchVoiceCredentials(
         throw new Error('Agent ID not configured');
     }
 
-    const response = await fetch(`${serverUrl}/v1/voice/conversations`, {
+    const response = await fetchVoiceApi(`${serverUrl}/v1/voice/conversations`, {
         method: 'POST',
         headers: {
             'Authorization': `Bearer ${credentials.token}`,
@@ -36,7 +49,9 @@ export async function fetchVoiceCredentials(
     });
 
     if (!response.ok) {
-        throw new Error(`Voice token request failed: ${response.status}`);
+        const body = await response.json().catch(() => null) as { error?: unknown } | null;
+        const detail = typeof body?.error === 'string' ? `: ${body.error}` : '';
+        throw new Error(`Voice token request failed (${response.status})${detail}`);
     }
 
     return VoiceConversationResponseSchema.parse(await response.json());
@@ -47,7 +62,7 @@ export async function fetchVoiceUsage(
 ): Promise<VoiceUsageResponse> {
     const serverUrl = getServerUrl();
 
-    const response = await fetch(`${serverUrl}/v1/voice/usage`, {
+    const response = await fetchVoiceApi(`${serverUrl}/v1/voice/usage`, {
         method: 'GET',
         headers: {
             'Authorization': `Bearer ${credentials.token}`,
@@ -56,7 +71,9 @@ export async function fetchVoiceUsage(
     });
 
     if (!response.ok) {
-        throw new Error(`Voice usage request failed: ${response.status}`);
+        const body = await response.json().catch(() => null) as { error?: unknown } | null;
+        const detail = typeof body?.error === 'string' ? `: ${body.error}` : '';
+        throw new Error(`Voice usage request failed (${response.status})${detail}`);
     }
 
     return VoiceUsageResponseSchema.parse(await response.json());

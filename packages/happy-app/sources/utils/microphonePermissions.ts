@@ -32,12 +32,8 @@ export async function requestMicrophonePermission(): Promise<MicrophonePermissio
       const result = await AudioModule.requestRecordingPermissionsAsync();
 
       if (result.granted) {
-        // Configure audio mode for recording
-        await AudioModule.setAudioModeAsync({
-          allowsRecording: true,
-          playsInSilentMode: true,
-        });
-
+        // ElevenLabs/LiveKit owns the native audio-session lifecycle. Configuring
+        // expo-audio here as well can race AVAudioSession/audio-focus changes.
         return { granted: true, canAskAgain: result.canAskAgain };
       }
 

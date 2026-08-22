@@ -1,4 +1,4 @@
-import type { VoiceSession } from './types';
+import { VoiceSessionCancellationError, type VoiceSession } from './types';
 import { fetchVoiceCredentials } from '@/sync/apiVoice';
 import { sync } from '@/sync/sync';
 import { Modal } from '@/modal';
@@ -21,11 +21,45 @@ let voiceSessionStarted: boolean = false;
 let currentSessionId: string | null = null;
 let currentVoiceConversationId: string | null = null;
 let currentVoiceSessionStartedAt: number | null = null;
+let startInFlight: Promise<string | null> | null = null;
+let stopInFlight: Promise<void> | null = null;
+let startAttemptGeneration = 0;
+const PROVIDER_RESET_TIMEOUT_MS = 5_000;
+type ProviderResetWaiter = {
+    previous: VoiceSession | null;
+    resolve: () => void;
+    timeout: ReturnType<typeof setTimeout>;
+};
+const providerResetWaiters = new Set<ProviderResetWaiter>();
+
+function assertStartAttemptActive(generation: number) {
+    if (generation !== startAttemptGeneration) {
+        throw new VoiceSessionCancellationError();
+    }
+}
 
 /**
  * Start a voice session. Returns the ElevenLabs conversation ID if started, null otherwise.
  */
-export async function startRealtimeSession(sessionId: string, initialContext?: string): Promise<string | null> {
+export function startRealtimeSession(sessionId: string, initialContext?: string): Promise<string | null> {
+    if (startInFlight) return startInFlight;
+    if (stopInFlight) {
+        return stopInFlight.then(() => startRealtimeSession(sessionId, initialContext));
+    }
+
+    const generation = ++startAttemptGeneration;
+    const attempt = startRealtimeSessionInternal(sessionId, initialContext, generation);
+    startInFlight = attempt.finally(() => {
+        startInFlight = null;
+    });
+    return startInFlight;
+}
+
+async function startRealtimeSessionInternal(
+    sessionId: string,
+    initialContext: string | undefined,
+    generation: number,
+): Promise<string | null> {
     currentVoiceConversationId = null;
     currentVoiceSessionStartedAt = null;
 
@@ -37,16 +71,17 @@ export async function startRealtimeSession(sessionId: string, initialContext?: s
     // Show connecting state immediately so the user sees feedback
     storage.getState().setRealtimeStatus('connecting');
 
-    // Request microphone permission before starting voice session
-    // Critical for iOS/Android - first session will fail without this
-    const permissionResult = await requestMicrophonePermission();
-    if (!permissionResult.granted) {
-        storage.getState().setRealtimeStatus('disconnected');
-        showMicrophonePermissionDeniedAlert(permissionResult.canAskAgain);
-        return null;
-    }
-
     try {
+        // Request microphone permission before starting voice session.
+        // Keep it in the guarded attempt so Stop can cancel the permission flow.
+        const permissionResult = await requestMicrophonePermission();
+        assertStartAttemptActive(generation);
+        if (!permissionResult.granted) {
+            storage.getState().setRealtimeStatus('disconnected');
+            showMicrophonePermissionDeniedAlert(permissionResult.canAskAgain);
+            return null;
+        }
+
         // Bypass Happy server token — only when user has their own custom agent
         const { voiceBypassToken, voiceCustomAgentId } = storage.getState().settings;
         if (voiceBypassToken && voiceCustomAgentId) {
@@ -57,6 +92,7 @@ export async function startRealtimeSession(sessionId: string, initialContext?: s
                 initialContext,
                 agentId: voiceCustomAgentId,
             });
+            assertStartAttemptActive(generation);
             currentVoiceConversationId = conversationId;
             currentVoiceSessionStartedAt = Date.now();
             voiceSessionStarted = true;
@@ -64,6 +100,7 @@ export async function startRealtimeSession(sessionId: string, initialContext?: s
         }
 
         const credentials = await TokenStorage.getCredentials();
+        assertStartAttemptActive(generation);
         if (!credentials) {
             storage.getState().setRealtimeStatus('disconnected');
             Modal.alert(t('common.error'), t('errors.authenticationFailed'));
@@ -71,7 +108,20 @@ export async function startRealtimeSession(sessionId: string, initialContext?: s
         }
 
         const response = await fetchVoiceCredentials(credentials, sessionId);
-        console.log('[Voice] fetchVoiceCredentials response:', response);
+        assertStartAttemptActive(generation);
+        console.log('[Voice] Credentials response:', response.allowed
+            ? {
+                allowed: true,
+                conversationId: response.conversationId,
+                usedSeconds: response.usedSeconds,
+                limitSeconds: response.limitSeconds,
+            }
+            : {
+                allowed: false,
+                reason: response.reason,
+                usedSeconds: response.usedSeconds,
+                limitSeconds: response.limitSeconds,
+            });
 
         if (!response.allowed) {
             storage.getState().setRealtimeStatus('disconnected');
@@ -87,9 +137,10 @@ export async function startRealtimeSession(sessionId: string, initialContext?: s
             // Server hard-declined — must pay to continue
             console.log('[Voice] Not allowed (reason: %s), presenting must-pay paywall...', response.reason);
             const result = await sync.presentPaywall('voice_must_pay');
+            assertStartAttemptActive(generation);
             console.log('[Voice] Must-pay paywall result:', result);
             if (result.purchased) {
-                return startRealtimeSession(sessionId, initialContext);
+                return startRealtimeSessionInternal(sessionId, initialContext, generation);
             }
             return null;
         }
@@ -109,6 +160,7 @@ export async function startRealtimeSession(sessionId: string, initialContext?: s
             console.log('[Voice] First voice attempt on free tier, showing soft paywall...');
             incrementVoiceSoftPaywallShown();
             const result = await sync.presentPaywall('voice_trial_eligible');
+            assertStartAttemptActive(generation);
             console.log('[Voice] Soft paywall result:', result);
             // Dismissed or error — continue anyway, they can still use free tier.
         }
@@ -137,6 +189,7 @@ export async function startRealtimeSession(sessionId: string, initialContext?: s
             agentId: response.agentId,
             userId: response.elevenUserId,
         });
+        assertStartAttemptActive(generation);
         if (!hasPro && voiceUpsellVariant === 'voice-onboarding-and-upsell') {
             incrementVoiceOnboardingPromptLoadCount();
         }
@@ -145,18 +198,32 @@ export async function startRealtimeSession(sessionId: string, initialContext?: s
         voiceSessionStarted = true;
         return currentVoiceConversationId;
     } catch (error) {
-        console.error('Failed to start realtime session:', error);
         storage.getState().setRealtimeStatus('disconnected');
         currentSessionId = null;
         currentVoiceConversationId = null;
         currentVoiceSessionStartedAt = null;
         voiceSessionStarted = false;
-        Modal.alert(t('common.error'), t('errors.voiceServiceUnavailable'));
-        return null;
+        if (error instanceof VoiceSessionCancellationError) {
+            return null;
+        }
+        console.error('Failed to start realtime session:', error);
+        throw error;
     }
 }
 
-export async function stopRealtimeSession() {
+export function stopRealtimeSession(): Promise<void> {
+    // Cancel permission/token/paywall work that has not reached the SDK yet.
+    startAttemptGeneration++;
+    if (stopInFlight) return stopInFlight;
+
+    const attempt = stopRealtimeSessionInternal();
+    stopInFlight = attempt.finally(() => {
+        stopInFlight = null;
+    });
+    return stopInFlight;
+}
+
+async function stopRealtimeSessionInternal() {
     if (!voiceSession) {
         return;
     }
@@ -174,10 +241,46 @@ export async function stopRealtimeSession() {
 }
 
 export function registerVoiceSession(session: VoiceSession) {
-    if (voiceSession) {
+    if (voiceSession && voiceSession !== session) {
         console.warn('Voice session already registered, replacing with new one');
     }
     voiceSession = session;
+    for (const waiter of providerResetWaiters) {
+        if (session === waiter.previous) continue;
+        providerResetWaiters.delete(waiter);
+        clearTimeout(waiter.timeout);
+        waiter.resolve();
+    }
+}
+
+export function unregisterVoiceSession(session: VoiceSession) {
+    if (voiceSession === session) {
+        voiceSession = null;
+    }
+}
+
+export function resetVoiceProviderAndWait(): Promise<void> {
+    const previous = voiceSession;
+    return new Promise<void>((resolve) => {
+        let waiter!: ProviderResetWaiter;
+        waiter = {
+            previous,
+            resolve: () => {
+                providerResetWaiters.delete(waiter);
+                resolve();
+            },
+            timeout: setTimeout(() => waiter.resolve(), PROVIDER_RESET_TIMEOUT_MS),
+        };
+        providerResetWaiters.add(waiter);
+        storage.getState().resetVoiceProvider();
+    });
+}
+
+export function notifyVoiceSessionDisconnected() {
+    currentSessionId = null;
+    currentVoiceConversationId = null;
+    currentVoiceSessionStartedAt = null;
+    voiceSessionStarted = false;
 }
 
 export function isVoiceSessionStarted(): boolean {
