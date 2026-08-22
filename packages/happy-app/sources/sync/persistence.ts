@@ -50,8 +50,24 @@ export function loadPendingSettings(): Partial<Settings> {
     const pending = mmkv.getString('pending-settings');
     if (pending) {
         try {
-            const parsed = JSON.parse(pending);
-            return SettingsSchema.partial().parse(parsed);
+            const raw = JSON.parse(pending);
+            if (!raw || typeof raw !== 'object') {
+                return {};
+            }
+            const parsed = SettingsSchema.partial().parse(raw) as Partial<Settings>;
+            // Keep only the keys that were actually pending. `.partial()` leaves the
+            // `.default()` wrappers intact (schemaVersion, agentDefaultOverrides,
+            // dismissedCLIWarnings), so zod re-injects those defaults for keys that
+            // were never queued. Returning them would turn "nothing is pending" into
+            // "reset these fields", which overwrites the real values on the next sync
+            // and pushes the reset to the server — wiping them on every device.
+            const result: Partial<Settings> = {};
+            for (const key of Object.keys(raw) as (keyof Settings)[]) {
+                if (key in parsed) {
+                    (result as any)[key] = parsed[key];
+                }
+            }
+            return result;
         } catch (e) {
             console.error('Failed to parse pending settings', e);
             return {};
