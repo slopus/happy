@@ -174,6 +174,15 @@ export class AgyBackend implements AgentBackend {
     }
   }
 
+  reset(): void {
+    this.log('Resetting agy backend: clearing conversation ID and child process');
+    this.conversationId = null;
+    if (this.child) {
+      this.child.kill('SIGTERM');
+      this.child = null;
+    }
+  }
+
   onConversationId(listener: (id: string) => void): () => void {
     this.conversationIdListeners.add(listener);
     if (this.conversationId) {

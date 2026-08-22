@@ -164,4 +164,40 @@ describe('AgySdkBackend', () => {
 
     await expect(turn).rejects.toThrow('Quota exceeded');
   });
+
+  it('reset clears conversation ID, terminates child bridge, and allows clean respawn', async () => {
+    const first = makeFakeSdkChild();
+    const second = makeFakeSdkChild();
+    const spawnFn = vi
+      .fn()
+      .mockReturnValueOnce(first.child)
+      .mockReturnValueOnce(second.child) as unknown as SpawnFn;
+
+    const backend = new AgySdkBackend({
+      cwd: '/my/project',
+      permissionMode: 'default',
+      spawnFn,
+    });
+
+    const startPromise = backend.startSession();
+    first.stdout.emit('data', '{"event":"ready","conversation_id":"sdk-old-conv"}\n');
+    await startPromise;
+    expect(backend.getConversationId()).toBe('sdk-old-conv');
+
+    // Reset clears state and kills child
+    backend.reset();
+    expect(backend.getConversationId()).toBeNull();
+    expect(first.child.kill).toHaveBeenCalledWith('SIGTERM');
+
+    // Next turn spawns a new bridge
+    const turn = backend.sendPrompt('/my/project', 'hello after reset');
+    second.stdout.emit('data', '{"event":"ready","conversation_id":"sdk-fresh-conv"}\n');
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(spawnFn).toHaveBeenCalledTimes(2);
+    expect(backend.getConversationId()).toBe('sdk-fresh-conv');
+
+    second.stdout.emit('data', '{"event":"turn_complete","status":"SUCCESS","conversation_id":"sdk-fresh-conv"}\n');
+    await expect(turn).resolves.toBeUndefined();
+  });
 });

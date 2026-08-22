@@ -117,6 +117,23 @@ export class AgySdkBackend implements AgentBackend {
     }
   }
 
+  reset(): void {
+    this.log('Resetting agy SDK backend: clearing conversation ID and child bridge');
+    this.conversationId = null;
+    this.isReady = false;
+    this.readyPromise = null;
+    if (this.child) {
+      try {
+        const exitReq = JSON.stringify({ action: 'dispose' });
+        this.child.stdin?.write(exitReq + '\n');
+        this.child.kill('SIGTERM');
+      } catch {
+        // Ignore write errors during reset
+      }
+      this.child = null;
+    }
+  }
+
   onConversationId(listener: (id: string) => void): () => void {
     this.conversationIdListeners.add(listener);
     if (this.conversationId) {

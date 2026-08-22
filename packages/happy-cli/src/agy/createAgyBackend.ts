@@ -27,6 +27,7 @@ export type AnyAgyBackend = AgentBackend & {
   setModel: (model: string | undefined) => void;
   getModel: () => string | undefined;
   setDiscoveredModels: (models: DiscoveredModel[]) => void;
+  reset: () => void;
   offMessage: (handler: AgentMessageHandler) => void;
   dispose: () => Promise<void>;
 };

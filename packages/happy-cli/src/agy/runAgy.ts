@@ -38,6 +38,7 @@ import { createAgyBackend } from './createAgyBackend';
 import { DEFAULT_AGY_MODEL } from './constants';
 import { discoverAgyModels, resolveAgyModelName } from './discoverModels';
 import { extractSessionTitle } from './title';
+import { parseSpecialCommand } from '@/parsers/specialCommands';
 
 export interface RunAgyOptions {
   credentials: Credentials;
@@ -240,6 +241,13 @@ export async function runAgy(opts: RunAgyOptions): Promise<void> {
       }
     }
 
+    const specialCommand = parseSpecialCommand(message.content.text);
+    if (specialCommand.type === 'clear') {
+      log('Detected /clear command');
+      messageQueue.pushIsolateAndClear(message.content.text, {});
+      return;
+    }
+
     messageBuffer.addMessage(message.content.text, 'user');
     messageQueue.push(message.content.text, {});
   });
@@ -280,6 +288,26 @@ export async function runAgy(opts: RunAgyOptions): Promise<void> {
         if (shouldExit) break;
         if (waitSignal.aborted) continue;
         break;
+      }
+
+      const specialCommand = parseSpecialCommand(batch.message);
+      if (specialCommand.type === 'clear') {
+        log('Handling /clear command - resetting agy session');
+        backend.reset();
+        delete metadata.agyConversationId;
+        delete metadata.summary;
+        session.updateMetadata((currentMetadata) => {
+          const nextMetadata = { ...currentMetadata };
+          delete nextMetadata.agyConversationId;
+          delete nextMetadata.summary;
+          return nextMetadata;
+        });
+        messageBuffer.addMessage('Context was reset', 'status');
+        session.sendSessionEvent({ type: 'message', message: 'Context was reset' });
+        thinking = false;
+        session.keepAlive(false, 'remote');
+        session.sendSessionEvent({ type: 'ready' });
+        continue;
       }
 
       log(`Incoming prompt: ${batch.message.slice(0, 200)}`);

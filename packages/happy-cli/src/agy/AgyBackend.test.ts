@@ -462,4 +462,54 @@ describe('AgyBackend model switching', () => {
 
     await expect(turn).rejects.toThrow('agy process exited unexpectedly during turn');
   });
+
+  it('reset clears conversation ID, terminates child, and respawns without --conversation on next turn', async () => {
+    const first = makeFakeChild();
+    const second = makeFakeChild();
+    const spawnFn = vi
+      .fn()
+      .mockReturnValueOnce(first.child)
+      .mockReturnValueOnce(second.child) as unknown as SpawnFn;
+
+    const backend = new AgyBackend({
+      cwd: '/work',
+      permissionMode: 'default',
+      spawnFn,
+    });
+
+    const startPromise = backend.startSession();
+    first.stdout.emit(
+      'data',
+      '{"event":"init","conversation_id":"c-old-session","init":{"cwd":"/work"}}\n'
+    );
+    await startPromise;
+    expect(backend.getConversationId()).toBe('c-old-session');
+
+    // Call reset
+    backend.reset();
+    expect(backend.getConversationId()).toBeNull();
+    expect(first.child.kill).toHaveBeenCalledWith('SIGTERM');
+
+    // Next turn spawns a new process without --conversation
+    const turn = backend.sendPrompt('/work', 'brand new prompt');
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(spawnFn).toHaveBeenCalledTimes(2);
+    const spawnArgs = vi.mocked(spawnFn).mock.calls[1][1] as string[];
+    expect(spawnArgs).not.toContain('--conversation');
+
+    second.stdout.emit(
+      'data',
+      '{"event":"init","conversation_id":"c-fresh-session","init":{"cwd":"/work"}}\n'
+    );
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(backend.getConversationId()).toBe('c-fresh-session');
+
+    second.stdout.emit(
+      'data',
+      '{"event":"result","result":{"conversation_id":"c-fresh-session","status":"SUCCESS"}}\n'
+    );
+    await expect(turn).resolves.toBeUndefined();
+  });
 });
