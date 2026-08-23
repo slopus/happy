@@ -14,6 +14,33 @@ describe('resolveMessageModeMeta', () => {
         expect(meta).toEqual({});
     });
 
+    // The composer resolves a saved `dontAsk` to Auto because the key is gone
+    // from the catalog. Without retiring it at the read path the wire kept
+    // sending `dontAsk`, which the CLI's message schema rejects outright.
+    it('retires a dontAsk left on an existing session instead of sending it', () => {
+        const meta = resolveMessageModeMeta({
+            permissionMode: 'dontAsk',
+            modelMode: null,
+            effortLevel: null,
+            metadata: { flavor: 'claude' },
+        } as any);
+
+        expect(meta.permissionMode).toBe('acceptEdits');
+    });
+
+    it('retires a saved dontAsk default instead of sending it', () => {
+        const meta = resolveMessageModeMeta({
+            permissionMode: null,
+            modelMode: null,
+            effortLevel: null,
+            metadata: { flavor: 'claude' },
+        } as any, {
+            agentDefaultOverrides: { claude: { permissionMode: 'dontAsk' } },
+        } as any);
+
+        expect(meta.permissionMode).toBe('acceptEdits');
+    });
+
     it('sends explicit per-session overrides', () => {
         const meta = resolveMessageModeMeta({
             permissionMode: 'read-only',

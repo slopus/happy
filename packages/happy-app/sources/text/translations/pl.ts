@@ -473,6 +473,8 @@ export const pl: TranslationStructure = {
         permissionMode: {
             title: 'TRYB UPRAWNIEŃ',
             default: 'Domyślny',
+            agyDefault: 'piaskownica agy, bez pytań',
+            openclawInert: 'nieużywane przez openclaw',
             acceptEdits: 'Akceptuj edycje',
             plan: 'Tryb planowania',
             dontAsk: 'Nie pytaj',

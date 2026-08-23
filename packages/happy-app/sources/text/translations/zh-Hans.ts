@@ -458,6 +458,8 @@ export const zhHans: TranslationStructure = {
         permissionMode: {
             title: '权限模式',
             default: '默认',
+            agyDefault: 'agy 沙箱，不询问',
+            openclawInert: 'openclaw 不使用此设置',
             acceptEdits: '接受编辑',
             plan: '计划模式',
             dontAsk: '不再询问',

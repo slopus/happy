@@ -1,6 +1,6 @@
 import type { Session } from './storageTypes';
 import type { Settings } from './settings';
-import { getAgentDefaultOverride } from './agentDefaults';
+import { getAgentDefaultOverride, retirePermissionMode } from './agentDefaults';
 import type { PermissionModeKey } from '@/components/PermissionModeSelector';
 import {
     getRigCurrentModel,
@@ -55,7 +55,9 @@ export function resolveMessageModeMeta(
     const meta: MessageModeMeta = {};
 
     if (session.permissionMode !== null && session.permissionMode !== undefined) {
-        meta.permissionMode = session.permissionMode;
+        // A session picked before a mode was retired still carries the old key,
+        // and the CLI rejects the whole message envelope on an unknown one.
+        meta.permissionMode = retirePermissionMode(session.permissionMode);
     } else if (agentOverrides.permissionMode !== undefined) {
         meta.permissionMode = agentOverrides.permissionMode;
     }

@@ -52,6 +52,8 @@ import {
 } from './homeDockInteraction';
 import { registerHomeDockFocusListener, useHomeDockFocusStore } from './homeDockFocus';
 import { resolveMachineAgent } from '@/utils/newSessionAgentSelection';
+import { getHarnessName, listAvailableHarnesses } from '@/utils/harnessCatalog';
+import { getPermissionModeMenuLabel, getPermissionModeShortLabel } from '@/utils/permissionModeLabels';
 import { findConnectedRigMachine, getRigMachineSessionCreation } from '@/sync/rigSessionCreation';
 import {
     MobileHeaderScrim,
@@ -75,18 +77,9 @@ type PickerPage = EnvironmentSetting | AgentSetting;
 
 const CUSTOM_PROJECT_PATH_KEY = '__custom_project_path__';
 
-const AGENTS: Array<{ key: NewSessionAgentType; name: string }> = [
-    { key: 'rig', name: 'Rig' },
-    { key: 'claude', name: 'Claude Code' },
-    { key: 'codex', name: 'Codex' },
-    { key: 'openclaw', name: 'OpenClaw' },
-    { key: 'gemini', name: 'Gemini' },
-    { key: 'agy', name: 'Agy' },
-];
-
-const MOBILE_ICON_MENU_GEOMETRY = resolveMobileComposerMenuGeometry('icon');
 const MOBILE_MODEL_MENU_GEOMETRY = resolveMobileComposerMenuGeometry('model');
 const MOBILE_EFFORT_MENU_GEOMETRY = resolveMobileComposerMenuGeometry('effort');
+const MOBILE_PERMISSION_MENU_GEOMETRY = resolveMobileComposerMenuGeometry('permission');
 const MOBILE_ACTION_ROW_GEOMETRY = resolveMobileComposerActionRowGeometry();
 const MOBILE_ICON_ACTION_GEOMETRY = resolveMobileComposerActionGeometry('icon');
 const MOBILE_PRIMARY_ACTION_GEOMETRY = resolveMobileComposerActionGeometry('primary');
@@ -261,12 +254,12 @@ const styles = StyleSheet.create((theme) => ({
         paddingBottom: MOBILE_COMPOSER_METRICS.inputPaddingBottom,
     },
     focusedComposerActions: MOBILE_ACTION_ROW_GEOMETRY,
-    nativeIconMenuFrame: MOBILE_ICON_MENU_GEOMETRY.frame,
-    nativeIconMenuContent: MOBILE_ICON_MENU_GEOMETRY.content,
     nativeModeMenu: MOBILE_MODEL_MENU_GEOMETRY.frame,
     focusedModeButton: MOBILE_MODEL_MENU_GEOMETRY.content,
     nativeEffortMenu: MOBILE_EFFORT_MENU_GEOMETRY.frame,
     focusedEffortButton: MOBILE_EFFORT_MENU_GEOMETRY.content,
+    nativePermissionMenu: MOBILE_PERMISSION_MENU_GEOMETRY.frame,
+    focusedPermissionButton: MOBILE_PERMISSION_MENU_GEOMETRY.content,
     focusedModeText: {
         flexShrink: 1,
         minWidth: 0,
@@ -505,7 +498,6 @@ export const HomeDock = React.memo(({
     // and use an in-modal React Native picker only on Android.
     const useNativeMenus = shouldUseNativeHomeDockMenus(Platform.OS);
     const [sheetPage, setSheetPage] = React.useState<PickerPage | null>(null);
-    const [sheetRootVisible, setSheetRootVisible] = React.useState(false);
     const expImageUpload = useSetting('expImageUpload');
     const { selectedImages, pickImages, removeImage, clearImages } = useImagePicker();
     const agentType = useNewSessionDraft((state) => state.agentType);
@@ -636,7 +628,7 @@ export const HomeDock = React.memo(({
             return [{
                 key: '__none__',
                 name: 'No worktree',
-                description: `Not supported by ${AGENTS.find((agent) => agent.key === agentType)?.name ?? agentType}`,
+                description: `Not supported by ${getHarnessName(agentType)}`,
             }];
         }
         const options: ModeOption[] = [
@@ -653,31 +645,17 @@ export const HomeDock = React.memo(({
         return options;
     }, [agentType, existingWorktrees, supportsWorktree, worktreeKey]);
     const currentWorktree = resolveOption(worktreeOptions, [selectedWorktreeKey]);
-    // Every agent stays listed so the picker always reads as a choice. The ones
-    // the selected machine has no CLI for are disabled rather than hidden, which
-    // otherwise leaves a single checked row that looks like it does nothing.
-    const availableAgents = React.useMemo<ModeOption[]>(() => {
-        const availability = selectedMachine?.metadata?.cliAvailability;
-        return AGENTS.map((agent) => {
-            const available = agent.key === 'rig'
-                ? rigSelectionMachine !== null
-                : !availability || availability[agent.key];
-            return available
-                ? agent
-                : {
-                    ...agent,
-                    disabled: true,
-                    description: agent.key === 'rig'
-                        ? 'Select a connected Rig machine'
-                        : 'Not installed on this machine',
-                };
-        });
-    }, [rigSelectionMachine, selectedMachine]);
-    const resolvedAgentType = agentType === 'rig' && !rigSelectionMachine
-        ? (availableAgents.find((agent) => !agent.disabled && agent.key !== 'rig')?.key as NewSessionAgentType | undefined) ?? agentType
-        : agentType === 'rig'
+    // Only the harnesses this machine can actually run, in pick order.
+    const availableAgents = React.useMemo<ModeOption[]>(() => listAvailableHarnesses({
+        availability: selectedMachine?.metadata?.cliAvailability,
+        happyAgentAvailable: rigSelectionMachine !== null,
+        selected: agentType,
+    }), [agentType, rigSelectionMachine, selectedMachine]);
+    const resolvedAgentType = agentType === 'rig'
+        ? rigSelectionMachine
             ? agentType
-            : resolveMachineAgent(agentType, selectedMachine?.metadata?.cliAvailability);
+            : (availableAgents.find((agent) => agent.key !== 'rig')?.key as NewSessionAgentType | undefined) ?? agentType
+        : resolveMachineAgent(agentType, selectedMachine?.metadata?.cliAvailability);
     const defaults = React.useMemo(() => rigCreation
         ? {
             permissionMode: rigCreation.defaultPermissionMode ?? '',
@@ -704,7 +682,10 @@ export const HomeDock = React.memo(({
     const currentEffortDefault = rigCreation?.defaultEffortForModel(currentModel?.key)
         ?? defaults.effortLevel;
     const currentEffort = resolveOption(effortOptions, [effortLevel, currentEffortDefault]);
-    const currentAgent = availableAgents.find((agent) => agent.key === agentType) ?? availableAgents[0] ?? AGENTS[0];
+    const currentAgent = availableAgents.find((agent) => agent.key === agentType)
+        ?? availableAgents[0]
+        ?? { key: agentType, name: getHarnessName(agentType) };
+    const permissionLabel = getPermissionModeShortLabel(currentPermission);
     const focusedPromptPlaceholder = resolveHomeDockPromptPlaceholder(currentAgent.key, currentAgent.name);
     const canSubmit = !isSubmitting && (
         prompt.trim().length > 0 || (expImageUpload && selectedImages.length > 0)
@@ -853,7 +834,6 @@ export const HomeDock = React.memo(({
         setIsFocused(false);
         setFocusModeVisible(false);
         setSheetPage(null);
-        setSheetRootVisible(false);
     }, []);
 
     const closeFocusMode = React.useCallback(() => {
@@ -876,24 +856,16 @@ export const HomeDock = React.memo(({
 
     const closePicker = React.useCallback(() => {
         setSheetPage(null);
-        setSheetRootVisible(false);
     }, []);
 
     const handleFocusModeRequestClose = React.useCallback(() => {
-        const action = resolveHomeDockPickerBackAction({
-            hasPage: sheetPage !== null,
-            rootVisible: sheetRootVisible,
-        });
-        if (action === 'show-root') {
-            setSheetPage(null);
-            return;
-        }
+        const action = resolveHomeDockPickerBackAction({ hasPage: sheetPage !== null });
         if (action === 'close-picker') {
             closePicker();
             return;
         }
         closeFocusMode();
-    }, [closeFocusMode, closePicker, sheetPage, sheetRootVisible]);
+    }, [closeFocusMode, closePicker, sheetPage]);
 
     const selectAgent = React.useCallback((agent: NewSessionAgentType) => {
         const nextRigCreation = agent === 'rig' ? rigSelectionCreation : null;
@@ -932,15 +904,18 @@ export const HomeDock = React.memo(({
         icon: React.ComponentProps<typeof Ionicons>['name'];
     };
 
+    // The rows stacked above the focused composer. The harness sits with
+    // machine/project/worktree because all four say where and with what the
+    // session runs, and all four are settled before anything is typed.
     const environmentRows: SettingsRow[] = [
         { page: 'machine', label: 'MACHINE', value: currentMachine?.name ?? 'Select machine', icon: 'desktop-outline' },
         { page: 'project', label: 'PROJECT', value: currentProject?.name ?? '~', icon: 'folder-outline' },
         { page: 'worktree', label: 'WORKTREE', value: currentWorktree?.name ?? 'No worktree', icon: 'git-branch-outline' },
+        { page: 'agent', label: 'HARNESS', value: currentAgent.name, icon: 'hardware-chip-outline' },
     ];
     const agentRows: SettingsRow[] = [
-        { page: 'agent', label: 'AGENT', value: currentAgent.name, icon: 'hardware-chip-outline' },
         ...(currentModel ? [{ page: 'model', label: t('agentInput.model.title'), value: currentModel.name, icon: 'cube-outline' as const }] : []),
-        ...(currentPermission ? [{ page: 'permission', label: t('agentInput.permissionMode.title'), value: currentPermission.name, icon: 'shield-outline' as const }] : []),
+        ...(currentPermission ? [{ page: 'permission', label: t('agentInput.permissionMode.title'), value: permissionLabel ?? currentPermission.name, icon: 'shield-outline' as const }] : []),
         ...(currentEffort ? [{ page: 'effort', label: t('agentInput.effort.title'), value: currentEffort.name, icon: 'speedometer-outline' as const }] : []),
     ];
 
@@ -1010,7 +985,7 @@ export const HomeDock = React.memo(({
 
     const getAgentPickerConfig = (setting: AgentSetting): PickerConfig => {
         if (setting === 'agent') {
-            return { title: 'Agent', options: availableAgents, selectedKey: agentType, onSelect: (key) => selectAgent(key as NewSessionAgentType) };
+            return { title: 'Harness', options: availableAgents, selectedKey: agentType, onSelect: (key) => selectAgent(key as NewSessionAgentType) };
         }
         if (setting === 'model') {
             return { title: t('agentInput.model.title'), options: modelOptions, selectedKey: currentModel?.key, onSelect: setModelMode };
@@ -1035,25 +1010,25 @@ export const HomeDock = React.memo(({
             }[row.page],
             options: config.options.map((option) => ({
                 key: option.key,
-                label: option.name,
+                // The permission menu spells the mode out; only its chip is
+                // short on space. Model and effort read fine on their own.
+                label: row.page === 'permission' ? getPermissionModeMenuLabel(option) : option.name,
                 disabled: option.disabled,
             })),
             selectedKey: config.selectedKey,
             onSelect: config.onSelect,
         };
     });
-    const gearSettingsGroups = agentSettingsGroups.filter((group) => (
-        group.key === 'agent' || group.key === 'permission'
-    ));
     const modelSettingsGroup = agentSettingsGroups.find((group) => group.key === 'model');
     const effortSettingsGroup = agentSettingsGroups.find((group) => group.key === 'effort');
+    const permissionSettingsGroup = agentSettingsGroups.find((group) => group.key === 'permission');
 
     const getPickerConfig = (page: PickerPage): PickerConfig => (
         page === 'machine' || page === 'project' || page === 'worktree'
             ? getEnvironmentPickerConfig(page)
             : getAgentPickerConfig(page)
     );
-    const sheetVisible = !useNativeMenus && (sheetRootVisible || sheetPage !== null);
+    const sheetVisible = !useNativeMenus && sheetPage !== null;
     const markNativeMenuOpen = React.useCallback(() => {
         nativeMenuOpenRef.current = true;
     }, []);
@@ -1098,10 +1073,7 @@ export const HomeDock = React.memo(({
             return (
                 <Pressable
                     key={row.page}
-                    onPress={() => {
-                        setSheetRootVisible(false);
-                        setSheetPage(row.page as PickerPage);
-                    }}
+                    onPress={() => setSheetPage(row.page as PickerPage)}
                     accessibilityRole="button"
                     accessibilityLabel={`${row.label}: ${row.value}`}
                 >
@@ -1143,7 +1115,7 @@ export const HomeDock = React.memo(({
             progress={focusPresentation}
             index={index}
         >
-            {renderPickerRow(row, getEnvironmentPickerConfig(row.page as EnvironmentSetting), true)}
+            {renderPickerRow(row, getPickerConfig(row.page as PickerPage), true)}
         </FocusConfigRevealRow>
     ));
 
@@ -1158,7 +1130,7 @@ export const HomeDock = React.memo(({
         triggerAlignment,
         children,
     }: {
-        page: PickerPage | 'root';
+        page: PickerPage;
         groups: NativeSettingsMenuGroup[];
         flat?: boolean;
         style: NativeSettingsMenuProps['style'];
@@ -1171,15 +1143,7 @@ export const HomeDock = React.memo(({
         if (!useNativeMenus) {
             return (
                 <Pressable
-                    onPress={() => {
-                        if (page === 'root') {
-                            setSheetPage(null);
-                            setSheetRootVisible(true);
-                            return;
-                        }
-                        setSheetRootVisible(false);
-                        setSheetPage(page);
-                    }}
+                    onPress={() => setSheetPage(page)}
                     style={style}
                     accessibilityRole="button"
                     accessibilityLabel={accessibilityLabel}
@@ -1210,13 +1174,9 @@ export const HomeDock = React.memo(({
         );
     };
 
-    const sheetRootRows = agentRows.filter((row) => (
-        row.page === 'agent' || row.page === 'permission'
-    ));
-
-    const renderSettingsSheet = () => {
-        const config = sheetPage ? getPickerConfig(sheetPage) : null;
-        const canGoBack = sheetPage !== null && sheetRootVisible;
+    // Only reached with a page selected: `sheetVisible` gates the whole sheet.
+    const renderSettingsSheet = (page: PickerPage) => {
+        const config = getPickerConfig(page);
         return (
             <View style={styles.settingsStack}>
                 <MobileGlassSurface
@@ -1227,23 +1187,19 @@ export const HomeDock = React.memo(({
                 >
                     <View style={styles.settingsHeader}>
                         <Pressable
-                            onPress={() => (canGoBack ? setSheetPage(null) : closePicker())}
+                            onPress={closePicker}
                             style={styles.backButton}
                             accessibilityRole="button"
-                            accessibilityLabel={canGoBack ? t('common.back') : t('common.cancel')}
+                            accessibilityLabel={t('common.cancel')}
                         >
-                            <Ionicons
-                                name={canGoBack ? 'chevron-back' : 'close'}
-                                size={canGoBack ? 22 : 20}
-                                color={theme.colors.text}
-                            />
+                            <Ionicons name="close" size={20} color={theme.colors.text} />
                         </Pressable>
                         <Text style={styles.settingsTitle} numberOfLines={1}>
-                            {config?.title ?? t('settings.title')}
+                            {config.title}
                         </Text>
                     </View>
                     <ScrollView style={styles.optionList} keyboardShouldPersistTaps="always">
-                        {config ? config.options.map((option) => {
+                        {config.options.map((option) => {
                             const selectable = isHomeDockOptionSelectable(option.disabled);
                             const selected = option.key === config.selectedKey;
                             return (
@@ -1278,24 +1234,7 @@ export const HomeDock = React.memo(({
                                     </View>
                                 </Pressable>
                             );
-                        }) : sheetRootRows.map((row) => (
-                            <Pressable
-                                key={row.page}
-                                onPress={() => setSheetPage(row.page as PickerPage)}
-                                style={({ pressed }) => [styles.option, pressed && styles.optionPressed]}
-                                accessibilityRole="button"
-                                accessibilityLabel={`${row.label}: ${row.value}`}
-                            >
-                                <View style={styles.focusConfigIcon}>
-                                    <Ionicons name={row.icon} size={18} color={theme.colors.text} />
-                                </View>
-                                <View style={styles.optionCopy}>
-                                    <Text style={styles.optionLabel}>{row.label}</Text>
-                                    <Text style={styles.optionValue} numberOfLines={1}>{row.value}</Text>
-                                </View>
-                                <Ionicons name="chevron-forward" size={14} color={theme.colors.textSecondary} />
-                            </Pressable>
-                        ))}
+                        })}
                     </ScrollView>
                 </MobileGlassSurface>
             </View>
@@ -1449,15 +1388,27 @@ export const HomeDock = React.memo(({
                                 />
                             </BubblePressable>
                         )}
-                        {renderMenuControl({
-                            page: 'root',
-                            groups: gearSettingsGroups,
-                            style: styles.nativeIconMenuFrame,
-                            accessibilityLabel: t('settings.title'),
-                            triggerSystemImage: 'gearshape',
+                        {/* The permission mode reads out in words instead of
+                            hiding behind a gear: it is the one setting here that
+                            changes what the agent is allowed to do to your
+                            machine, so it is worth the width. */}
+                        {permissionSettingsGroup && permissionLabel && renderMenuControl({
+                            page: 'permission',
+                            groups: [permissionSettingsGroup],
+                            flat: true,
+                            style: styles.nativePermissionMenu,
+                            accessibilityLabel: t('agentInput.permissionMode.title'),
+                            triggerLabel: permissionLabel,
+                            // Centered to agree with the React Native chip this
+                            // stands in for on iOS: the frame is sized by that
+                            // chip, so a leading trigger would print the word
+                            // flush left while the chip reserves padding.
+                            triggerAlignment: 'center',
                             children: (
-                                <View style={styles.nativeIconMenuContent}>
-                                    <Ionicons name="settings-outline" size={20} color={theme.colors.text} />
+                                <View style={styles.focusedPermissionButton}>
+                                    <Text style={styles.focusedModeText} numberOfLines={1}>
+                                        {permissionLabel}
+                                    </Text>
                                 </View>
                             ),
                         })}
@@ -1595,7 +1546,7 @@ export const HomeDock = React.memo(({
 
                     <Animated.View style={[styles.focusDock, keyboardStyle]}>
                         <View style={styles.focusConfig}>
-                            {sheetVisible ? renderSettingsSheet() : (
+                            {sheetVisible && sheetPage ? renderSettingsSheet(sheetPage) : (
                                 <View style={styles.focusConfigGroup}>
                                     {renderEnvironmentPickers()}
                                 </View>

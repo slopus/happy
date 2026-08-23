@@ -24,6 +24,7 @@ import { GitStatusBadge, useHasMeaningfulGitStatus } from './GitStatusBadge';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useSetting } from '@/sync/storage';
 import { hackMode, hackModes } from '@/sync/modeHacks';
+import { getPermissionModeMenuLabel, getPermissionModeShortLabel } from '@/utils/permissionModeLabels';
 import { Theme } from '@/theme';
 import { t } from '@/text';
 import { Metadata } from '@/sync/storageTypes';
@@ -124,9 +125,9 @@ function permissionKindIcon(kind: string | null | undefined): React.ComponentPro
     return 'folder-open-outline';
 }
 
-const MOBILE_ICON_MENU_GEOMETRY = resolveMobileComposerMenuGeometry('icon');
 const MOBILE_MODEL_MENU_GEOMETRY = resolveMobileComposerMenuGeometry('model');
 const MOBILE_EFFORT_MENU_GEOMETRY = resolveMobileComposerMenuGeometry('effort');
+const MOBILE_PERMISSION_MENU_GEOMETRY = resolveMobileComposerMenuGeometry('permission');
 const MOBILE_ACTION_ROW_GEOMETRY = resolveMobileComposerActionRowGeometry();
 const MOBILE_ICON_ACTION_GEOMETRY = resolveMobileComposerActionGeometry('icon');
 const MOBILE_PRIMARY_ACTION_GEOMETRY = resolveMobileComposerActionGeometry('primary');
@@ -327,12 +328,16 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     },
     mobileActionButtonsContainer: MOBILE_ACTION_ROW_GEOMETRY,
     mobileIconButton: MOBILE_ICON_ACTION_GEOMETRY,
-    mobileIconMenuFrame: MOBILE_ICON_MENU_GEOMETRY.frame,
-    mobileIconMenuContent: MOBILE_ICON_MENU_GEOMETRY.content,
     mobileModelMenuFrame: MOBILE_MODEL_MENU_GEOMETRY.frame,
     mobileModelMenuContent: MOBILE_MODEL_MENU_GEOMETRY.content,
     mobileEffortMenuFrame: MOBILE_EFFORT_MENU_GEOMETRY.frame,
     mobileEffortMenuContent: MOBILE_EFFORT_MENU_GEOMETRY.content,
+    mobilePermissionMenuFrame: MOBILE_PERMISSION_MENU_GEOMETRY.frame,
+    mobilePermissionMenuContent: MOBILE_PERMISSION_MENU_GEOMETRY.content,
+    mobilePermissionButton: {
+        ...MOBILE_PERMISSION_MENU_GEOMETRY.content,
+        flexShrink: 0,
+    },
     mobileModeButton: {
         flex: 1,
         minWidth: 0,
@@ -724,6 +729,9 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         props.permissionMode ? hackMode(props.permissionMode) : null
     ), [props.permissionMode]);
     const permissionModeKey = displayPermissionMode?.key ?? 'default';
+    // The chip is one word; the sandbox qualifier stays on the menu options and
+    // the status badge, which both have room to spell it out.
+    const permissionShortLabel = getPermissionModeShortLabel(displayPermissionMode);
     const availableModes = React.useMemo(() => (
         hackModes(props.availableModes ?? [])
     ), [props.availableModes]);
@@ -1120,7 +1128,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
             systemImage: 'shield',
             options: availableModes.map((mode) => ({
                 key: mode.key,
-                label: withSandboxSuffix(mode.name, mode.key),
+                label: withSandboxSuffix(getPermissionModeMenuLabel(mode), mode.key),
                 disabled: mode.disabled,
             })),
             selectedKey: permissionModeKey,
@@ -1182,6 +1190,17 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
             {effortLabel ?? t('agentInput.effort.title')}
         </Text>
     );
+
+    // A session started in a mode this build no longer offers resolves to no
+    // mode at all. Falling back to the shield keeps the picker reachable rather
+    // than inventing a word for a state we cannot name.
+    const renderPermissionValue = () => (permissionShortLabel ? (
+        <Text style={styles.mobileModeText} numberOfLines={1}>
+            {permissionShortLabel}
+        </Text>
+    ) : (
+        <Ionicons name="shield-outline" size={18} color={theme.colors.text} />
+    ));
 
     // Handle keyboard navigation
     const handleKeyPress = React.useCallback((event: KeyPressEvent): boolean => {
@@ -2007,30 +2026,38 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                             </BubblePressable>
                         )}
 
+                        {/* Named in words rather than hidden behind a gear: the
+                            permission mode is the one control here that changes
+                            what the agent may do to the machine. Matches the
+                            same chip in the Home composer. */}
                         {!props.zenMode && permissionSettingsGroups.length > 0 && (
                             useNativeSettingsMenus ? (
                                 <NativeSettingsMenu
                                     accessibilityLabel={permissionSettingsGroups[0]?.label}
                                     groups={permissionSettingsGroups}
                                     flat
-                                    triggerSystemImage="gearshape"
-                                    style={styles.mobileIconMenuFrame}
+                                    triggerLabel={permissionShortLabel ?? undefined}
+                                    triggerSystemImage={permissionShortLabel ? undefined : 'shield'}
+                                    // Centered to agree with the React Native
+                                    // chip underneath, which sizes the frame.
+                                    triggerAlignment="center"
+                                    style={styles.mobilePermissionMenuFrame}
                                 >
-                                    <View style={styles.mobileIconMenuContent}>
-                                        <Ionicons name="settings-outline" size={20} color={theme.colors.text} />
+                                    <View style={styles.mobilePermissionMenuContent}>
+                                        {renderPermissionValue()}
                                     </View>
                                 </NativeSettingsMenu>
                             ) : (
                                 <BubblePressable
                                     onPress={handleSettingsPress}
                                     hitSlop={6}
-                                    style={styles.mobileIconButton}
+                                    style={styles.mobilePermissionButton}
                                     accessibilityRole="button"
                                     accessibilityLabel={isCodex
                                         ? t('agentInput.codexPermissionMode.title')
                                         : t('agentInput.permissionMode.title')}
                                 >
-                                    <Ionicons name="settings-outline" size={20} color={theme.colors.text} />
+                                    {renderPermissionValue()}
                                 </BubblePressable>
                             )
                         )}

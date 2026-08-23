@@ -469,12 +469,18 @@ export const en = {
 
     agentInput: {
         permissionMode: {
+            // Modes are named with one untranslated word so they fit the
+            // composer chip; these strings describe them under that name.
             title: 'PERMISSION MODE',
-            default: 'default permissions',
-            acceptEdits: 'accept edits',
-            plan: 'plan',
+            // Not "every tool": Claude runs reads without asking, and only
+            // stops for edits and commands.
+            default: 'ask before edits & commands',
+            agyDefault: 'agy sandbox, no prompts',
+            openclawInert: 'not applied by openclaw',
+            acceptEdits: 'accept file edits',
+            plan: 'read only, plan first',
             dontAsk: "don't ask",
-            bypassPermissions: 'yolo',
+            bypassPermissions: 'never ask, full access',
             badgeAcceptAllEdits: 'accept all edits',
             badgeBypassAllPermissions: 'yolo',
             badgePlanMode: 'plan mode',
@@ -500,7 +506,9 @@ export const en = {
             yolo: 'yolo',
             defaultDescription: 'ask before untrusted commands',
             readOnlyDescription: 'no writes',
-            safeYoloDescription: 'no prompts, workspace sandbox',
+            // Not "no prompts": shouldAutoApproveCodexApproval deliberately
+            // skips safe-yolo, so a sandbox escalation still reaches you.
+            safeYoloDescription: 'workspace sandbox, asks to escalate',
             yoloDescription: 'no prompts, full access',
             badgeReadOnly: 'read-only',
             badgeSafeYolo: 'safe yolo',
@@ -518,10 +526,10 @@ export const en = {
         },
         geminiPermissionMode: {
             title: 'GEMINI PERMISSION MODE',
-            default: 'default permissions',
-            autoEdit: 'auto edit',
-            yolo: 'yolo',
-            plan: 'plan',
+            default: 'ask before every tool',
+            autoEdit: 'accept file edits',
+            yolo: 'never ask, full access',
+            plan: 'read only, plan first',
             badgeAutoEdit: 'auto edit',
             badgeYolo: 'yolo',
             badgePlan: 'plan',

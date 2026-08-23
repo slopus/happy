@@ -457,6 +457,8 @@ export const zhHant: TranslationStructure = {
         permissionMode: {
             title: '權限模式',
             default: '預設',
+            agyDefault: 'agy 沙箱，不詢問',
+            openclawInert: 'openclaw 不使用此設定',
             acceptEdits: '接受編輯',
             plan: '計畫模式',
             dontAsk: '不再詢問',

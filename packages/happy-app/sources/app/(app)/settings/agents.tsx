@@ -21,6 +21,7 @@ import {
     type AgentDefaultField,
     type AgentKey,
 } from '@/sync/agentDefaults';
+import { getHarnessName, isRetiredHarness } from '@/utils/harnessCatalog';
 import { t } from '@/text';
 
 type ExpandedField = {
@@ -37,12 +38,17 @@ type FieldConfig = {
 };
 
 const agentLabels: Record<AgentKey, string> = {
-    claude: 'Claude Code',
-    codex: 'Codex',
-    gemini: 'Gemini',
-    openclaw: 'OpenClaw',
-    agy: 'Agy',
+    claude: getHarnessName('claude'),
+    codex: getHarnessName('codex'),
+    gemini: getHarnessName('gemini'),
+    openclaw: getHarnessName('openclaw'),
+    agy: getHarnessName('agy'),
 };
+
+// A retired harness keeps its stored defaults — the schema still carries them,
+// and "Reset all" still clears them — but there is nothing to configure for an
+// agent you can no longer start a session with.
+const configurableAgentKeys = agentKeys.filter((agent) => !isRetiredHarness(agent));
 
 function optionName(options: ModeOption[], key: string | null | undefined): string {
     if (!key) return 'none';
@@ -140,7 +146,7 @@ export default function AgentDefaultsSettingsScreen() {
                 />
             </ItemGroup>
 
-            {agentKeys.map((agent) => {
+            {configurableAgentKeys.map((agent) => {
                 const codeDefaults = getCodeAgentDefaults(agent);
                 const effectiveDefaults = resolveAgentDefaultConfig(agentDefaultOverrides, agent);
                 const permissionOptions = getHardcodedPermissionModes(agent, t);

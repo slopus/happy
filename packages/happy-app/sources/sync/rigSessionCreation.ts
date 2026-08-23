@@ -1,4 +1,5 @@
 import type { Machine, MachineMetadata } from './storageTypes';
+import { sortPermissionModes } from '@/utils/permissionModeLabels';
 import { qualifyRigModelKey } from './rig';
 
 /** A model option as published by a Rig machine, qualified by provider. */
@@ -172,7 +173,7 @@ export function getRigMachineSessionCreation(
         }];
     });
 
-    const permissionModes = records(rig.operatingModes).flatMap((mode): RigMachineModeOption[] => {
+    const publishedPermissionModes = records(rig.operatingModes).flatMap((mode): RigMachineModeOption[] => {
         const key = nonEmptyString(mode.code);
         if (!key) return [];
         return [{
@@ -182,6 +183,7 @@ export function getRigMachineSessionCreation(
             semanticKind: nonEmptyString(mode.kind),
         }];
     });
+    const permissionModes = sortPermissionModes(publishedPermissionModes);
 
     const defaultModelKey = (() => {
         const providerId = nonEmptyString(rig.defaults?.providerId);
@@ -194,9 +196,13 @@ export function getRigMachineSessionCreation(
             : models[0]?.key ?? null;
     })();
     const publishedPermission = nonEmptyString(rig.defaults?.permissionMode);
+    // Falls back to the harness's own first mode, not the display-sorted one.
+    // sortPermissionModes ranks for the picker, where Full access outranks
+    // Default; letting that decide the fallback would silently start a session
+    // with more access than the harness listed first.
     const defaultPermissionMode = permissionModes.some((mode) => mode.key === publishedPermission)
         ? publishedPermission
-        : permissionModes[0]?.key ?? null;
+        : publishedPermissionModes[0]?.key ?? null;
 
     const modelFor = (modelKey: string | null | undefined) => (
         models.find((model) => model.key === modelKey)

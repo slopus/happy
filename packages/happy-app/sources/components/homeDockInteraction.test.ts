@@ -53,11 +53,9 @@ describe('HomeDock interaction lifecycle', () => {
         })).toBe('close-focus');
     });
 
-    it('uses Android Back to unwind the picker before focus mode', () => {
-        expect(resolveHomeDockPickerBackAction({ hasPage: true, rootVisible: true })).toBe('show-root');
-        expect(resolveHomeDockPickerBackAction({ hasPage: true, rootVisible: false })).toBe('close-picker');
-        expect(resolveHomeDockPickerBackAction({ hasPage: false, rootVisible: true })).toBe('close-picker');
-        expect(resolveHomeDockPickerBackAction({ hasPage: false, rootVisible: false })).toBe('close-focus');
+    it('uses Android Back to close the picker before focus mode', () => {
+        expect(resolveHomeDockPickerBackAction({ hasPage: true })).toBe('close-picker');
+        expect(resolveHomeDockPickerBackAction({ hasPage: false })).toBe('close-focus');
     });
 
     it('does not select disabled picker options', () => {

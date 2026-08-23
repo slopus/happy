@@ -99,12 +99,13 @@ const agentIcons = {
 };
 
 type AgentKey = NewSessionAgentType;
+// Lowercased to match this screen's type, but the same names and pick order as
+// the Home composer's harness picker. Retired harnesses are absent from both.
 const ALL_AGENTS: { key: AgentKey; label: string }[] = [
-    { key: 'rig', label: 'rig' },
     { key: 'claude', label: 'claude code' },
     { key: 'codex', label: 'codex' },
-    { key: 'openclaw', label: 'openclaw' },
-    { key: 'agy', label: 'agy' },
+    { key: 'rig', label: 'happy' },
+    { key: 'agy', label: 'antigravity' },
 ];
 
 type PickerItem = { key: string; label: string; subtitle?: string; dimmed?: boolean };

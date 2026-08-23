@@ -14,6 +14,7 @@ import { Typography } from '@/constants/Typography';
 import { StatusDot } from './StatusDot';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useIsTablet } from '@/utils/responsive';
+import { getHarnessName } from '@/utils/harnessCatalog';
 import { requestReview } from '@/utils/requestReview';
 import { UpdateBanner } from './UpdateBanner';
 import { layout } from './layout';
@@ -416,7 +417,7 @@ export function SessionsList({
                 return (
                     <View style={styles.headerSection}>
                         <Text style={styles.headerText}>
-                            {item.source === 'rig' ? 'Rig' : t('sidebar.sessionsTitle')}
+                            {item.source === 'rig' ? getHarnessName('rig') : t('sidebar.sessionsTitle')}
                         </Text>
                     </View>
                 );

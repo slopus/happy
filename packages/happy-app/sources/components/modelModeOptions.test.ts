@@ -1,17 +1,22 @@
 import { describe, expect, it } from 'vitest';
 import {
     getAgyModelModes,
+    getAgyPermissionModes,
     getAvailableModels,
     getAvailablePermissionModes,
     getCodexModelModes,
+    getCodexPermissionModes,
     getClaudeModelModes,
     getClaudePermissionModes,
+    getGeminiPermissionModes,
     getDefaultEffortKey,
     getDefaultModelKey,
     getDefaultPermissionModeKey,
+    getOpenClawPermissionModes,
     mapMetadataOptions,
     resolveCurrentOption,
 } from './modelModeOptions';
+import { sortPermissionModes } from '@/utils/permissionModeLabels';
 import { rigMetadataFixture } from '@/sync/__testdata__/rigMetadata';
 
 const translate = (key: string) => `tr:${key}`;
@@ -27,10 +32,59 @@ describe('modelModeOptions', () => {
         ]);
     });
 
-    it('builds claude permission fallbacks with translated names', () => {
+    it('names claude permission modes with one word each, most-used first', () => {
         const modes = getClaudePermissionModes(translate);
-        expect(modes.map((mode) => mode.key)).toEqual(['default', 'plan', 'dontAsk', 'acceptEdits', 'bypassPermissions']);
-        expect(modes[0].name).toBe('tr:agentInput.permissionMode.default');
+        expect(modes.map((mode) => [mode.key, mode.name])).toEqual([
+            ['acceptEdits', 'Edits'],
+            ['plan', 'Plan'],
+            ['bypassPermissions', 'Yolo'],
+            ['default', 'Default'],
+        ]);
+        expect(modes[0].description).toBe('tr:agentInput.permissionMode.acceptEdits');
+    });
+
+    it('drops dontAsk and auto, which the CLI rejects as permission modes', () => {
+        const keys = getClaudePermissionModes(translate).map((mode) => mode.key);
+        expect(keys).not.toContain('dontAsk');
+        expect(keys).not.toContain('auto');
+    });
+
+    it('never calls a harness default Auto, which is a reviewed mode and not a default', () => {
+        const named = (modes: { key: string; name: string }[]) => modes.find((mode) => mode.key === 'default')?.name;
+        expect(named(getClaudePermissionModes(translate))).toBe('Default');
+        expect(named(getCodexPermissionModes(translate))).toBe('Default');
+        expect(named(getAgyPermissionModes(translate))).toBe('Default');
+        expect(named(getGeminiPermissionModes(translate))).toBe('Default');
+    });
+
+    // The hardcoded catalogs are written in order rather than sorted, so this
+    // is what stops them drifting out of step with the rank table.
+    it.each([
+        ['claude', getClaudePermissionModes],
+        ['codex', getCodexPermissionModes],
+        ['gemini', getGeminiPermissionModes],
+        ['openclaw', getOpenClawPermissionModes],
+    ] as const)('lists %s modes in the shared rank order', (_flavor, build) => {
+        const modes = build(translate);
+        expect(modes.map((mode) => mode.key)).toEqual(sortPermissionModes(modes).map((mode) => mode.key));
+    });
+
+    it('leads agy with Default, the one harness where Default is the safe mode', () => {
+        // Deliberately against the shared ranking: agy --print cannot prompt, so
+        // its Default is the sandboxed launch default rather than "ask me first".
+        expect(getAgyPermissionModes(translate).map((mode) => mode.key)).toEqual([
+            'default',
+            'bypassPermissions',
+        ]);
+        expect(getDefaultPermissionModeKey('agy')).toBe('default');
+    });
+
+    it('only offers gemini modes runGemini actually honours', () => {
+        // auto_edit is absent from MessageMetaSchema and would drop the whole
+        // message; plan passes the schema but runGemini ignores it.
+        const keys = getGeminiPermissionModes(translate).map((mode) => mode.key);
+        expect(keys).not.toContain('auto_edit');
+        expect(keys).not.toContain('plan');
     });
 
     it('builds codex model fallbacks', () => {
@@ -108,7 +162,12 @@ describe('modelModeOptions', () => {
             operatingModes: [{ code: 'metadata-only', value: 'Metadata Mode', description: null }],
         } as any, translate);
 
-        expect(modes.map((mode) => mode.key)).toEqual(['default', 'read-only', 'safe-yolo', 'yolo']);
+        expect(modes.map((mode) => [mode.key, mode.name])).toEqual([
+            ['safe-yolo', 'Workspace'],
+            ['read-only', 'Read'],
+            ['yolo', 'Yolo'],
+            ['default', 'Default'],
+        ]);
         expect(modes.find((mode) => mode.key === 'safe-yolo')?.description).toBe('tr:agentInput.codexPermissionMode.safeYoloDescription');
     });
 
@@ -121,8 +180,8 @@ describe('modelModeOptions', () => {
         } as any, translate);
 
         expect(modes).toEqual([
-            { key: 'build', name: 'Build', description: 'Do build steps' },
             { key: 'plan', name: 'Plan', description: 'Plan first' },
+            { key: 'build', name: 'Build', description: 'Do build steps' },
         ]);
     });
 
@@ -160,7 +219,7 @@ describe('modelModeOptions', () => {
         expect(models.some((model) => model.key === 'default')).toBe(false);
     });
 
-    it('renders all native Rig permission codes and semantic kinds without flavor fallbacks', () => {
+    it('renders all native Happy permission codes and semantic kinds without flavor fallbacks', () => {
         const modes = getAvailablePermissionModes('codex', rigMetadataFixture, translate);
         expect(modes.map((mode) => [mode.key, mode.name, mode.semanticKind])).toEqual([
             ['auto', 'Auto', 'safe-yolo'],
@@ -194,7 +253,7 @@ describe('modelModeOptions', () => {
 
         expect(getAvailableModels('codex', metadata, translate)).toEqual(getCodexModelModes());
         expect(getAvailablePermissionModes('codex', metadata, translate).map((mode) => mode.key)).toEqual([
-            'default', 'read-only', 'safe-yolo', 'yolo',
+            'safe-yolo', 'read-only', 'yolo', 'default',
         ]);
     });
 });

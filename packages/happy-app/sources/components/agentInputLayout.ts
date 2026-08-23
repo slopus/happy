@@ -59,7 +59,7 @@ export function resolveMobileComposerHeight(inputHeight: number, hasAttachments 
         + (hasAttachments ? MOBILE_COMPOSER_METRICS.attachmentExtraHeight : 0);
 }
 
-export type MobileComposerMenuVariant = 'icon' | 'model' | 'effort';
+export type MobileComposerMenuVariant = 'icon' | 'model' | 'effort' | 'permission';
 
 export interface MobileComposerGeometryStyle {
     width?: number | '100%';
@@ -135,6 +135,26 @@ export function resolveMobileComposerMenuGeometry(
                 height: '100%',
                 alignItems: 'center',
                 justifyContent: 'center',
+            },
+        };
+    }
+
+    // The permission chip anchors the left of the row next to the add button,
+    // so it sizes to its own label and never shrinks: it is always one word,
+    // and a clipped permission is worse than a clipped model name.
+    if (variant === 'permission') {
+        return {
+            frame: {
+                flexShrink: 0,
+                height: MOBILE_COMPOSER_METRICS.secondaryActionHeight,
+            },
+            content: {
+                height: MOBILE_COMPOSER_METRICS.secondaryActionHeight,
+                borderRadius: MOBILE_COMPOSER_METRICS.secondaryActionHeight / 2,
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'center',
+                paddingHorizontal: 10,
             },
         };
     }

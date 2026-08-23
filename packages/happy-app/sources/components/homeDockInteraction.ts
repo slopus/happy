@@ -9,22 +9,18 @@ export function resolveCustomProjectPathSelection(
     return trimmedPath || null;
 }
 
-export type HomeDockPickerBackAction = 'show-root' | 'close-picker' | 'close-focus';
+export type HomeDockPickerBackAction = 'close-picker' | 'close-focus';
 
+/**
+ * Every picker is now opened straight from the control it belongs to, so there
+ * is no settings root to unwind to: Back closes the picker, then the dock.
+ */
 export function resolveHomeDockPickerBackAction({
     hasPage,
-    rootVisible,
 }: {
     hasPage: boolean;
-    rootVisible: boolean;
 }): HomeDockPickerBackAction {
-    if (hasPage && rootVisible) {
-        return 'show-root';
-    }
-    if (hasPage || rootVisible) {
-        return 'close-picker';
-    }
-    return 'close-focus';
+    return hasPage ? 'close-picker' : 'close-focus';
 }
 
 export function isHomeDockOptionSelectable(disabled?: boolean) {

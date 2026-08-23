@@ -371,7 +371,7 @@ describe('useStartSessionFromDraft', () => {
         expect(mocks.delay).toHaveBeenCalledTimes(3);
         expect(mocks.alert).toHaveBeenCalledWith(
             'common.error',
-            'Rig created the session, but it is still syncing with Happy. It should appear shortly.',
+            'The session was created, but it is still syncing. It should appear shortly.',
         );
         expect(mocks.navigateToSession).not.toHaveBeenCalled();
     });

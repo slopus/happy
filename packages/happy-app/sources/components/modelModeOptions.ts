@@ -1,5 +1,6 @@
 import type { Metadata } from '@/sync/storageTypes';
 import { hackModes } from '@/sync/modeHacks';
+import { sortPermissionModes } from '@/utils/permissionModeLabels';
 import { getCodeAgentDefaults } from '@/sync/agentDefaults';
 import {
     getRigCurrentModel,
@@ -65,31 +66,56 @@ export function mapMetadataOptions(options?: MetadataOption[] | null): ModeOptio
     }));
 }
 
+// Mode names are deliberately untranslated single words, because the composer
+// chip that shows the current mode has room for one word — see
+// permissionModeLabels.ts. They are Happy's own vocabulary, not a quote of each
+// CLI's: Claude's UI calls our `default` "Manual", and Codex uses "Auto" for a
+// preset we do not expose. Every list below is ordered by that file's ranking so
+// the modes line up across harnesses, with one documented exception at agy.
+
+// No harness we ship a catalog for offers Auto. Upstream Claude Code does have
+// a real `auto` that reviews each call, but Happy cannot reach it: our own SDK
+// adapter stops at four modes (happy-cli/src/claude/sdk/types.ts) and the wire
+// enum in MessageMetaSchema does not accept the word. Sending it would not just
+// lose the mode — UserMessageSchema.safeParse fails and apiSession drops the
+// whole prompt. That is why `dontAsk` is absent too. Auto reaches this picker
+// only from Happy's agent, which publishes it in its own catalog.
 export function getClaudePermissionModes(translate: Translate): PermissionMode[] {
     return [
-        { key: 'default', name: translate('agentInput.permissionMode.default'), description: null },
-        { key: 'plan', name: translate('agentInput.permissionMode.plan'), description: null },
-        { key: 'dontAsk', name: translate('agentInput.permissionMode.dontAsk'), description: null },
-        { key: 'acceptEdits', name: translate('agentInput.permissionMode.acceptEdits'), description: null },
-        { key: 'bypassPermissions', name: translate('agentInput.permissionMode.bypassPermissions'), description: null },
+        { key: 'acceptEdits', name: 'Edits', description: translate('agentInput.permissionMode.acceptEdits') },
+        { key: 'plan', name: 'Plan', description: translate('agentInput.permissionMode.plan') },
+        { key: 'bypassPermissions', name: 'Yolo', description: translate('agentInput.permissionMode.bypassPermissions') },
+        { key: 'default', name: 'Default', description: translate('agentInput.permissionMode.default') },
     ];
 }
 
+// `default` here is Happy's own baseline, not Codex's. Codex's default preset
+// is "Auto" (on-request + workspace-write); resolveCodexExecutionPolicy sends
+// our `default` through as `untrusted` + workspace-write, which is stricter —
+// it stops for anything off the trusted list. It is named Default because it is
+// the mode you land on when you pick nothing, and it is emphatically not Auto:
+// Codex spells auto-review separately as `--approve-for-me`, which Happy does
+// not wire up. `safe-yolo` is the one that keeps the workspace sandbox and
+// stops asking, so it is the one named for the sandbox.
 export function getCodexPermissionModes(translate: Translate): PermissionMode[] {
     return [
-        { key: 'default', name: translate('agentInput.codexPermissionMode.default'), description: translate('agentInput.codexPermissionMode.defaultDescription') },
-        { key: 'read-only', name: translate('agentInput.codexPermissionMode.readOnly'), description: translate('agentInput.codexPermissionMode.readOnlyDescription') },
-        { key: 'safe-yolo', name: translate('agentInput.codexPermissionMode.safeYolo'), description: translate('agentInput.codexPermissionMode.safeYoloDescription') },
-        { key: 'yolo', name: translate('agentInput.codexPermissionMode.yolo'), description: translate('agentInput.codexPermissionMode.yoloDescription') },
+        { key: 'safe-yolo', name: 'Workspace', description: translate('agentInput.codexPermissionMode.safeYoloDescription') },
+        { key: 'read-only', name: 'Read', description: translate('agentInput.codexPermissionMode.readOnlyDescription') },
+        { key: 'yolo', name: 'Yolo', description: translate('agentInput.codexPermissionMode.yoloDescription') },
+        { key: 'default', name: 'Default', description: translate('agentInput.codexPermissionMode.defaultDescription') },
     ];
 }
 
+// Only the keys runGemini actually honours (its validModes list). Gemini is
+// retired from the harness picker, but existing sessions still open this menu,
+// and the two modes that used to be here were both broken: `auto_edit` is not
+// in MessageMetaSchema at all, so picking it dropped the entire message, and
+// `plan` passed the schema only to be ignored by runGemini — which left the
+// session on whatever it had before, up to and including yolo.
 export function getGeminiPermissionModes(translate: Translate): PermissionMode[] {
     return [
-        { key: 'default', name: translate('agentInput.geminiPermissionMode.default'), description: null },
-        { key: 'auto_edit', name: translate('agentInput.geminiPermissionMode.autoEdit'), description: null },
-        { key: 'yolo', name: translate('agentInput.geminiPermissionMode.yolo'), description: null },
-        { key: 'plan', name: translate('agentInput.geminiPermissionMode.plan'), description: null },
+        { key: 'yolo', name: 'Yolo', description: translate('agentInput.geminiPermissionMode.yolo') },
+        { key: 'default', name: 'Default', description: translate('agentInput.geminiPermissionMode.default') },
     ];
 }
 
@@ -127,19 +153,31 @@ export function getGeminiModelModes(): ModelMode[] {
     return GEMINI_MODEL_FALLBACKS;
 }
 
+// runOpenClaw never reads permissionMode, so neither of these changes what
+// openclaw does. Both are kept so an existing session's saved mode still has a
+// row to select, but the descriptions say plainly that the choice is inert.
 export function getOpenClawPermissionModes(translate: Translate): PermissionMode[] {
     return [
-        { key: 'default', name: translate('agentInput.permissionMode.default'), description: null },
-        { key: 'bypassPermissions', name: translate('agentInput.permissionMode.bypassPermissions'), description: null },
+        { key: 'bypassPermissions', name: 'Yolo', description: translate('agentInput.permissionMode.openclawInert') },
+        { key: 'default', name: 'Default', description: translate('agentInput.permissionMode.openclawInert') },
     ];
 }
 
 // agy --print only distinguishes --sandbox (default) from --dangerously-skip-permissions,
-// so only these two modes are offered.
+// so only these two modes are offered. Default gets its own wording because agy
+// --print is one-shot and cannot prompt: it never asks, it just runs under agy's
+// own sandbox settings.
+//
+// The one place the shared ranking is deliberately ignored. Default sorts last
+// everywhere else because it means "ask me about everything", the choice you
+// make when none of the others fit. Here it means the opposite: it is agy's own
+// launch default, the only sandboxed option, and the one agentDefaults picks.
+// Ranking it below Yolo would put the escape hatch at the top of a two-item
+// list and read as the recommendation.
 export function getAgyPermissionModes(translate: Translate): PermissionMode[] {
     return [
-        { key: 'default', name: translate('agentInput.permissionMode.default'), description: null },
-        { key: 'bypassPermissions', name: translate('agentInput.permissionMode.bypassPermissions'), description: null },
+        { key: 'default', name: 'Default', description: translate('agentInput.permissionMode.agyDefault') },
+        { key: 'bypassPermissions', name: 'Yolo', description: translate('agentInput.permissionMode.bypassPermissions') },
     ];
 }
 
@@ -270,12 +308,12 @@ export function getAvailablePermissionModes(
     selectedKey?: string | null,
 ): PermissionMode[] {
     if (isRigMetadataV1(metadata)) {
-        const modes: PermissionMode[] = (metadata?.operatingModes ?? []).map((mode) => ({
+        const modes: PermissionMode[] = sortPermissionModes((metadata?.operatingModes ?? []).map((mode) => ({
             key: mode.code,
             name: mode.value,
             description: mode.description ?? null,
             semanticKind: mode.kind ?? null,
-        }));
+        })));
         const current = selectedKey
             ?? metadata?.currentOperatingModeCode
             ?? metadata?.permissionMode
@@ -284,7 +322,7 @@ export function getAvailablePermissionModes(
             modes.unshift({
                 key: current,
                 name: current,
-                description: 'Unavailable in the current Rig mode catalog',
+                description: 'Unavailable in the current Happy mode catalog',
                 semanticKind: null,
                 disabled: true,
             });
@@ -297,7 +335,7 @@ export function getAvailablePermissionModes(
 
     const metadataModes = mapMetadataOptions(metadata?.operatingModes);
     if (metadataModes.length > 0) {
-        return hackModes(metadataModes);
+        return sortPermissionModes(hackModes(metadataModes));
     }
 
     return hackModes(getHardcodedPermissionModes(flavor, translate));

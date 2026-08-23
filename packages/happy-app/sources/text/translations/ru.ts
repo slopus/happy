@@ -473,6 +473,8 @@ export const ru: TranslationStructure = {
         permissionMode: {
             title: 'РЕЖИМ РАЗРЕШЕНИЙ',
             default: 'По умолчанию',
+            agyDefault: 'песочница agy, без запросов',
+            openclawInert: 'не применяется в openclaw',
             acceptEdits: 'Принимать правки',
             plan: 'Режим планирования',
             dontAsk: 'Не спрашивать',

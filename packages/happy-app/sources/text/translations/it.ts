@@ -455,6 +455,8 @@ export const it: TranslationStructure = {
         permissionMode: {
             title: 'MODALITÀ PERMESSI',
             default: 'Predefinito',
+            agyDefault: 'sandbox di agy, nessuna richiesta',
+            openclawInert: 'non applicato da openclaw',
             acceptEdits: 'Accetta modifiche',
             plan: 'Modalità piano',
             dontAsk: 'Non chiedere',

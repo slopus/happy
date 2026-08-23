@@ -458,6 +458,8 @@ export const ja: TranslationStructure = {
         permissionMode: {
             title: '権限モード',
             default: 'デフォルト',
+            agyDefault: 'agy サンドボックス、確認なし',
+            openclawInert: 'openclaw では適用されません',
             acceptEdits: '編集を許可',
             plan: 'プランモード',
             dontAsk: '確認しない',

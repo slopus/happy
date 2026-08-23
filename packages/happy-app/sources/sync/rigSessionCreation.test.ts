@@ -152,6 +152,24 @@ describe('Rig machine session creation', () => {
         })).toThrow('reasoning level is unavailable');
     });
 
+    it('falls back to the published first mode, not the display-sorted first', () => {
+        const creation = getRigMachineSessionCreation({
+            ...rigMachine,
+            // No published default, and the harness leads with its safest mode.
+            // The picker sorts Full access (rank 50) above Default (rank 100),
+            // so a sorted fallback would silently hand out full access.
+            defaults: undefined,
+            operatingModes: [
+                { code: 'ask', value: 'Default', description: 'Ask first', kind: 'default' },
+                { code: 'full_access', value: 'Full access', description: 'No limits', kind: 'yolo' },
+            ],
+        } as unknown as MachineMetadata);
+
+        expect(creation?.defaultPermissionMode).toBe('ask');
+        // Display order still ranks for the picker.
+        expect(creation?.permissionModes.map((mode) => mode.key)).toEqual(['full_access', 'ask']);
+    });
+
     it('has an empty catalog when the machine publishes no operating modes', () => {
         const creation = getRigMachineSessionCreation({
             ...rigMachine,

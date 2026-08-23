@@ -79,7 +79,7 @@ export function useStartSessionFromDraft() {
             ? getRigMachineSessionCreation(machine.metadata)
             : null;
         if (agentType === 'rig' && !rigCreation) {
-            Modal.alert(t('common.error'), 'This Rig machine is not available for session creation');
+            Modal.alert(t('common.error'), 'This machine cannot start Happy agent sessions');
             return false;
         }
         const defaults = rigCreation
@@ -197,7 +197,7 @@ export function useStartSessionFromDraft() {
                 if (result.type === 'pending') {
                     Modal.alert(
                         t('common.error'),
-                        'Rig created the session, but it is still syncing with Happy. It should appear shortly.',
+                        'The session was created, but it is still syncing. It should appear shortly.',
                     );
                     return null;
                 }

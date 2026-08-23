@@ -48,11 +48,34 @@ export function getCodeAgentDefaults(flavor: string | null | undefined): AgentDe
     return codeAgentDefaults[normalizeAgentKey(flavor)];
 }
 
+/**
+ * Permission keys that were offered once and are no longer accepted, mapped to
+ * what they meant. `dontAsk` never passed the CLI's message schema, so it was
+ * already dropped on the wire; it is retired here so a saved copy cannot make
+ * the composer show one mode while sending another.
+ */
+const RETIRED_PERMISSION_MODES: Record<string, string> = {
+    dontAsk: 'acceptEdits',
+};
+
+/**
+ * Maps a stored permission mode onto one the CLI still accepts. Applies to
+ * flavor-based agents only: a harness that publishes its own catalog owns its
+ * codes, and none of them collide with a retired Claude key.
+ */
+export function retirePermissionMode<T extends string | null | undefined>(mode: T): T | string {
+    return mode ? RETIRED_PERMISSION_MODES[mode] ?? mode : mode;
+}
+
 export function getAgentDefaultOverride(
     overrides: AgentDefaultOverrides | null | undefined,
     flavor: string | null | undefined,
 ): AgentDefaultOverride {
-    return overrides?.[normalizeAgentKey(flavor)] ?? {};
+    const override = overrides?.[normalizeAgentKey(flavor)] ?? {};
+    const permissionMode = retirePermissionMode(override.permissionMode);
+    return permissionMode === override.permissionMode
+        ? override
+        : { ...override, permissionMode };
 }
 
 export function resolveAgentDefaultConfig(
