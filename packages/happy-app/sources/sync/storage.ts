@@ -1647,9 +1647,15 @@ export function useSessionPendingCommunications(sessionId: string): PendingAgent
         selectPendingCommunications(state.sessions[sessionId]?.agentState ?? null)));
 }
 
-/** Agent form joined to one transcript tool call, pending or completed. */
+/**
+ * Agent form joined to one transcript tool call, pending or completed.
+ *
+ * Deep-equal for the same reason as the hook above: the selection is a fresh
+ * object whose `questions` is a fresh array, so shallow compares those by
+ * identity and never settles.
+ */
 export function useSessionAgentFormCommunication(sessionId: string, toolUseId: string) {
-    return storage(useShallow((state) =>
+    return storage(useDeepEqual((state) =>
         selectAgentFormCommunication(state.sessions[sessionId]?.agentState ?? null, toolUseId)));
 }
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { shallow } from 'zustand/shallow';
 
-import { selectPendingCommunications } from './agentCommunications';
+import { selectAgentFormCommunication, selectPendingCommunications } from './agentCommunications';
 import { memoizeDeepEqual } from './storeSelectors';
 import type { AgentState } from './storageTypes';
 
@@ -65,6 +65,25 @@ describe('pending communications through the store', () => {
         const answered = read({ agentState: agentState({ 'call-1': { status: 'answered' } }) });
         expect(answered).not.toBe(first);
         expect(answered).toEqual([]);
+    });
+
+    it('settles the form joined to a transcript tool call too', () => {
+        // Same trap, second selector: the returned object is fresh, and its
+        // `questions` comes from a .filter() that allocates every call, so
+        // shallow — which compares those values by identity — never agrees.
+        const state = { agentState: agentState() };
+        const a = selectAgentFormCommunication(state.agentState, 'call-1');
+        const b = selectAgentFormCommunication(state.agentState, 'call-1');
+        expect(a).toEqual(b);
+        expect(shallow(a, b)).toBe(false);
+
+        const read = memoizeDeepEqual(
+            (s: State) => selectAgentFormCommunication(s.agentState, 'call-1'),
+            { current: undefined },
+        );
+        const first = read(state);
+        expect(first).toMatchObject({ id: 'call-1', kind: 'form' });
+        expect(read(state)).toBe(first);
     });
 
     it('mints fresh objects, which is why shallow comparison could not settle it', () => {
