@@ -20,16 +20,6 @@ Use Claude Code or Codex from anywhere with end-to-end encryption.
 
 </div>
 
-<div align="center">
-  <a href="https://github.com/slopus/happy-desktop/releases/latest">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="/.github/banner-desktop-dark.png">
-      <source media="(prefers-color-scheme: light)" srcset="/.github/banner-desktop-light.png">
-      <img src="/.github/banner-desktop-dark.png" width="640" alt="Now on Mac desktop — download for macOS">
-    </picture>
-  </a>
-</div>
-
 <img width="5178" height="2364" alt="github" src="/.github/header.png" />
 
 
@@ -40,10 +30,6 @@ Step 1: Download App
 <div align="center">
 <a href="https://apps.apple.com/us/app/happy-claude-code-client/id6748571505"><img width="135" height="39" alt="appstore" src="https://github.com/user-attachments/assets/45e31a11-cf6b-40a2-a083-6dc8d1f01291" /></a>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<a href="https://play.google.com/store/apps/details?id=com.ex3ndr.happy"><img width="135" height="39" alt="googleplay" src="https://github.com/user-attachments/assets/acbba639-858f-4c74-85c7-92a4096efbf5" /></a>
 </div>
-
-<p align="center">
-On a Mac? <a href="https://github.com/slopus/happy-desktop/releases/latest"><b>⬇️&nbsp;&nbsp;Download Happy for macOS</b></a> — open it and setup runs itself, no CLI needed.
-</p>
 
 <h3 align="center">
 Step 2: Install CLI on your computer
@@ -65,6 +51,24 @@ happy claude
 # or
 happy codex
 ```
+
+<h3 align="center">
+Step 4 (optional): Get the desktop app
+</h3>
+
+<div align="center">
+  <a href="https://github.com/slopus/happy-desktop/releases/latest">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="/.github/banner-desktop-dark.png">
+      <source media="(prefers-color-scheme: light)" srcset="/.github/banner-desktop-light.png">
+      <img src="/.github/banner-desktop-dark.png" width="640" alt="Now on Mac desktop — download for macOS">
+    </picture>
+  </a>
+</div>
+
+<p align="center">
+Prefer a native app over the terminal? <a href="https://github.com/slopus/happy-desktop/releases/latest"><b>Download Happy for macOS</b></a> — conversations beside the files, diffs, terminals, and previews your work actually touches.
+</p>
 
 ## How does it work?
 
