@@ -1,6 +1,7 @@
 import { createRequire } from 'node:module';
 import { spawn, type ChildProcess } from 'node:child_process';
 
+import { configuration } from '@/configuration';
 import { logger } from '@/ui/logger';
 
 const HAPPY_TERMINAL_ENTRYPOINT = '@slopus/happy-terminal/dist/main.js';
@@ -40,8 +41,14 @@ function logChildOutput(stream: NodeJS.ReadableStream | null, label: string): vo
  *
  * The child is intentionally not part of Happy daemon shutdown: the agent
  * daemon is a machine service shared with Happy Terminal and other clients.
+ *
+ * Off unless asked for. Happy Agent registers a machine of its own on the
+ * account, and until the phone knows the two daemons are one computer, booting
+ * it for everybody would split every upgraded user's laptop into two rows in
+ * their picker.
  */
 export function startHappyTerminalDaemon(): ChildProcess | null {
+  if (!configuration.bootHappyAgent) return null;
   if (bootAttempted) return null;
   bootAttempted = true;
 
