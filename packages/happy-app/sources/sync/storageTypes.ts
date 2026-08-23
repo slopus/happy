@@ -117,6 +117,17 @@ export const MetadataSchema = z.object({
         text: z.string(),
         updatedAt: z.number()
     }).optional(),
+    /**
+     * When the session last did something a person would call activity: the
+     * newest visible user message, visible agent text, or user-facing question.
+     * Tool calls, tool results, reasoning, permission prompts, heartbeats and
+     * metadata writes deliberately do not advance it, so a long tool-only tail
+     * cannot float a session to the top of the list.
+     *
+     * The agent publishes it, so every device sorts the same way — unlike
+     * `Session.lastMessageSentAt`, which only knows what this device sent.
+     */
+    lastMeaningfulMessageAt: z.number().optional(),
     machineId: z.string().optional(),
     claudeSessionId: z.string().optional(), // Claude Code session ID
     codexThreadId: z.string().optional(), // Codex app-server thread ID

@@ -19,6 +19,7 @@ import { Message } from "./typesMessage";
 import { NormalizedMessage } from "./typesRaw";
 import { isMachineOnline } from '@/utils/machineUtils';
 import { getSessionName, getSessionSubtitle, getSessionAvatarId, type SessionState } from '@/utils/sessionUtils';
+import { getSessionActivityAt } from '@/utils/sessionActivity';
 import { applySettings, Settings } from "./settings";
 import { LocalSettings, applyLocalSettings } from "./localSettings";
 import { Purchases, customerInfoToPurchases } from "./purchases";
@@ -123,14 +124,20 @@ export interface SessionRowData {
     // and activeAt updates on every heartbeat, causing needless deep-equal diffs
     activeAt?: number;
     createdAt: number;
-    // Last time the user sent a message, falling back to creation. Grouping the
-    // list by project loses the global ordering the sessions were sorted into,
-    // so the flat list re-sorts on these two immutable-enough keys instead.
+    // Last meaningful message, falling back to this device's sent-message
+    // record and then creation — see getSessionActivityAt. Grouping the list by
+    // project loses the global ordering the sessions were sorted into, so the
+    // flat list re-sorts on these two keys instead.
     lastActivityAt: number;
     hasDraft: boolean;
     active: boolean;
     archived: boolean;
     machineId: string | null;
+    // True only when the machine this session runs on is known to be offline.
+    // A session that merely dropped its own socket is still live work on a live
+    // machine, so the row greys out for this and never for that. Unknown
+    // machines count as online: better an unshaded row than a wrongly dead one.
+    machineOffline: boolean;
     path: string | null;
     homeDir: string | null;
     completedTodosCount: number;
@@ -145,7 +152,11 @@ export interface SessionRowData {
     workspaceName: string | null;
 }
 
-function buildSessionRowData(session: Session, unreadSessionIds?: Set<string>): SessionRowData {
+function buildSessionRowData(
+    session: Session,
+    unreadSessionIds?: Set<string>,
+    machines?: Record<string, Machine>,
+): SessionRowData {
     const isOnline = session.presence === "online";
     const hasPermissions = !!(session.agentState?.requests && Object.keys(session.agentState.requests).length > 0);
 
@@ -162,6 +173,8 @@ function buildSessionRowData(session: Session, unreadSessionIds?: Set<string>): 
 
     const rigIdentity = getRigIdentity(session.metadata);
     const rigActivity = getRigActivityIndicators(session.metadata);
+    const machineId = session.metadata?.machineId ?? null;
+    const machine = machineId ? machines?.[machineId] : undefined;
     return {
         id: session.id,
         name: getSessionName(session),
@@ -177,12 +190,13 @@ function buildSessionRowData(session: Session, unreadSessionIds?: Set<string>): 
             : null,
         state,
         createdAt: session.createdAt,
-        lastActivityAt: session.lastMessageSentAt ?? session.createdAt,
+        lastActivityAt: getSessionActivityAt(session),
         ...(!session.active && { activeAt: session.activeAt }),
         hasDraft: !!session.draft,
         active: session.active,
         archived: isSessionArchived(session),
-        machineId: session.metadata?.machineId ?? null,
+        machineId,
+        machineOffline: machine ? !isMachineOnline(machine) : false,
         path: session.metadata?.path ?? null,
         homeDir: session.metadata?.homeDir ?? null,
         completedTodosCount: session.todos?.filter(todo => todo.status === 'completed').length ?? 0,
@@ -305,6 +319,9 @@ function buildSessionListViewData(
     // Required on purpose: an omitted set silently rebuilds the list with
     // hasUnread=false everywhere — exactly the bug this parameter caused twice.
     unreadSessionIds: Set<string>,
+    // Also required: rows grey out on their machine's presence, and an omitted
+    // map would quietly report every machine as online.
+    machines: Record<string, Machine>,
 ): SessionListViewItem[] {
     const rigProjectSessions: Session[] = [];
     const rigPathSessions: Session[] = [];
@@ -334,11 +351,11 @@ function buildSessionListViewData(
     });
 
     // Sort by last activity or creation date (newest first), per user setting — matches applySessions behavior
-    // Activity sort keys off the last user-sent message, not updatedAt: updatedAt
+    // Activity sort keys off the last meaningful message, not updatedAt: updatedAt
     // bumps on every background agent update, which would make the list jump while
-    // several sessions stream at once. lastMessageSentAt only moves when the user acts.
+    // several sessions stream at once.
     const sortKey = storage.getState().settings.sortSessionsByActivity
-        ? (s: Session) => s.lastMessageSentAt ?? s.createdAt
+        ? getSessionActivityAt
         : (s: Session) => s.createdAt;
     const sortProjectSessions = (items: Session[]) => items.sort((a, b) => {
         const activeDelta = Number(isSessionActive(b)) - Number(isSessionActive(a));
@@ -350,7 +367,7 @@ function buildSessionListViewData(
     archivedSessions.sort((a, b) => sortKey(b) - sortKey(a));
 
     const listData: SessionListViewItem[] = [];
-    const toRow = (session: Session) => buildSessionRowData(session, unreadSessionIds);
+    const toRow = (session: Session) => buildSessionRowData(session, unreadSessionIds, machines);
 
     const rigProjects = [
         ...buildProjectGroups(rigProjectSessions, toRow, isSessionActive),
@@ -531,7 +548,7 @@ export const storage = create<StorageState>()((set, get) => {
 
             // Sort both arrays by last activity or creation date (newest first), per user setting
             const sortKey = get().settings.sortSessionsByActivity
-                ? (s: Session) => s.lastMessageSentAt ?? s.createdAt
+                ? getSessionActivityAt
                 : (s: Session) => s.createdAt;
             activeSessions.sort((a, b) => sortKey(b) - sortKey(a));
             inactiveSessions.sort((a, b) => sortKey(b) - sortKey(a));
@@ -655,6 +672,7 @@ export const storage = create<StorageState>()((set, get) => {
             const sessionListViewData = buildSessionListViewData(
                 mergedSessions,
                 unreadSessionIds,
+                state.machines,
             );
 
             return {
@@ -1068,7 +1086,7 @@ export const storage = create<StorageState>()((set, get) => {
             return {
                 ...state,
                 sessions: updatedSessions,
-                sessionListViewData: buildSessionListViewData(updatedSessions, state.unreadSessionIds)
+                sessionListViewData: buildSessionListViewData(updatedSessions, state.unreadSessionIds, state.machines)
             };
         }),
         // Permission / model / effort picks are local mirrors of synced session
@@ -1119,7 +1137,7 @@ export const storage = create<StorageState>()((set, get) => {
             return {
                 ...state,
                 sessions: updatedSessions,
-                sessionListViewData: buildSessionListViewData(updatedSessions, state.unreadSessionIds)
+                sessionListViewData: buildSessionListViewData(updatedSessions, state.unreadSessionIds, state.machines)
             };
         }),
         getSessionPathKey: (sessionId: string): string | null => {
@@ -1145,10 +1163,13 @@ export const storage = create<StorageState>()((set, get) => {
                 });
             }
 
-            // Rebuild sessionListViewData to reflect machine changes
+            // Rebuild sessionListViewData to reflect machine changes — from the
+            // merged map, since a machine going offline is exactly what has to
+            // reach the rows here.
             const sessionListViewData = buildSessionListViewData(
                 state.sessions,
-                state.unreadSessionIds
+                state.unreadSessionIds,
+                mergedMachines,
             );
 
             return {
@@ -1165,7 +1186,7 @@ export const storage = create<StorageState>()((set, get) => {
             return {
                 ...state,
                 machines: remaining,
-                sessionListViewData: buildSessionListViewData(state.sessions, state.unreadSessionIds)
+                sessionListViewData: buildSessionListViewData(state.sessions, state.unreadSessionIds, remaining)
             };
         }),
         // Artifact methods
@@ -1233,7 +1254,7 @@ export const storage = create<StorageState>()((set, get) => {
 
             // Rebuild sessionListViewData without the deleted session.
             // Pass unreadSessionIds so the remaining sessions keep their unread badges.
-            const sessionListViewData = buildSessionListViewData(remainingSessions, state.unreadSessionIds);
+            const sessionListViewData = buildSessionListViewData(remainingSessions, state.unreadSessionIds, state.machines);
             
             return {
                 ...state,
@@ -1373,7 +1394,7 @@ export const storage = create<StorageState>()((set, get) => {
             return {
                 ...state,
                 unreadSessionIds: next,
-                sessionListViewData: buildSessionListViewData(state.sessions, next),
+                sessionListViewData: buildSessionListViewData(state.sessions, next, state.machines),
             };
         }),
         markSessionUnread: (sessionId: string) => set((state) => {
@@ -1383,7 +1404,7 @@ export const storage = create<StorageState>()((set, get) => {
             return {
                 ...state,
                 unreadSessionIds: next,
-                sessionListViewData: buildSessionListViewData(state.sessions, next),
+                sessionListViewData: buildSessionListViewData(state.sessions, next, state.machines),
             };
         }),
         setCurrentViewingSession: (sessionId: string | null) => set((state) => {
@@ -1397,7 +1418,7 @@ export const storage = create<StorageState>()((set, get) => {
                 currentViewingSessionId: sessionId,
                 unreadSessionIds: next,
                 ...(next !== state.unreadSessionIds ? {
-                    sessionListViewData: buildSessionListViewData(state.sessions, next),
+                    sessionListViewData: buildSessionListViewData(state.sessions, next, state.machines),
                 } : {}),
             };
         }),

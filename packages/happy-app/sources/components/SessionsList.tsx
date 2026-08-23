@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Pressable, FlatList, NativeScrollEvent, NativeSyntheticEvent, Platform } from 'react-native';
 import { Text } from '@/components/StyledText';
 import { usePathname, useRouter } from 'expo-router';
-import { SessionListViewItem, SessionRowData, useAllMachines, useLocalSetting, useSetting, useSettingMutable } from '@/sync/storage';
+import { SessionListViewItem, SessionRowData, useAllMachines, useLocalSetting, useSettingMutable } from '@/sync/storage';
 import { Ionicons } from '@expo/vector-icons';
 import { type SessionState, formatLastSeen, vibingMessages } from '@/utils/sessionUtils';
 import { Avatar } from './Avatar';
@@ -322,7 +322,6 @@ export function SessionsList({
     // The flat variant replaces the machine → project → worktree hierarchy with
     // one full-width chronological column. Both shapes read the same data.
     const flatSessionList = useLocalSetting('flatSessionList');
-    const sortSessionsByActivity = useSetting('sortSessionsByActivity');
     const machines = useAllMachines();
     const pathname = usePathname();
     const isTablet = useIsTablet();
@@ -360,9 +359,12 @@ export function SessionsList({
             : [];
 
         if (flatSessionList) {
-            const flatRows = buildFlatSessionRows(groupedRows, {
-                sortByActivity: sortSessionsByActivity,
-            });
+            // Always by activity, regardless of `sortSessionsByActivity`. That
+            // setting exists for the project cards, where a card is a place and
+            // creation order is a reasonable way to list places. This is a chat
+            // list: a chat list that does not float the thing you just replied
+            // to is simply broken, and creation order would freeze it forever.
+            const flatRows = buildFlatSessionRows(groupedRows, { sortByActivity: true });
             const flatItems = flatRows.map<SessionListDisplayItem>((row, index) => ({
                 type: 'flat-session',
                 row,
@@ -410,7 +412,7 @@ export function SessionsList({
             item.type !== 'project' && item.type !== 'projects-header'
         ));
         return [...hierarchy, ...legacyItems, ...archiveToggle, ...archivedRows];
-    }, [flatSessionList, hasArchivedSessions, hideArchivedSessions, machines, sortSessionsByActivity, sourceData]);
+    }, [flatSessionList, hasArchivedSessions, hideArchivedSessions, machines, sourceData]);
 
     // Early return if no data yet
     if (!data) {

@@ -20,6 +20,7 @@ function row(overrides: Partial<SessionRowData> & { id: string }): SessionRowDat
         active: true,
         archived: false,
         machineId: 'machine',
+        machineOffline: false,
         path: null,
         homeDir: null,
         completedTodosCount: 0,

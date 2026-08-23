@@ -25,6 +25,10 @@ const AVATAR_SIZE = 60;
 const ROW_PADDING_LEFT = 16;
 const AVATAR_GAP = 12;
 
+/** The project / worktree line, and a branch mark matched to its cap height. */
+const LOCATION_FONT_SIZE = 15;
+const LOCATION_ICON_SIZE = LOCATION_FONT_SIZE - 1;
+
 /**
  * The single colour the flat list paints, rows and page alike, so nothing reads
  * as a card sitting on a backdrop: plain white in light, the page's own black in
@@ -63,11 +67,18 @@ export const FlatSessionRow = React.memo(({ row, selected, showBorder, archived 
     const swipeEnabled = Platform.OS !== 'web';
     const [actionsAnchor, setActionsAnchor] = React.useState<SessionActionsAnchor | null>(null);
 
+    // Greying out is about the machine, not the session's own socket. A session
+    // idle since yesterday on a machine that is still up is ordinary work you
+    // can pick back up, and drawing it as dead makes a healthy list look like a
+    // graveyard. Only retired work, or work whose machine is actually gone,
+    // fades.
+    const faded = !!archived || session.machineOffline;
+
     // Archived work reads as retired whatever its connection says, so it never
     // pulses or shows a live colour. Otherwise unread results outrank the live
     // state: blue and steady, like an unread chat.
-    const baseStatus = archived ? STATUS_CONFIG.disconnected : STATUS_CONFIG[session.state];
-    const status = session.hasUnread && !archived
+    const baseStatus = faded ? STATUS_CONFIG.disconnected : STATUS_CONFIG[session.state];
+    const status = session.hasUnread && !faded
         ? { ...baseStatus, color: '#007AFF', dotColor: '#007AFF', isPulsing: false }
         : baseStatus;
 
@@ -82,8 +93,10 @@ export const FlatSessionRow = React.memo(({ row, selected, showBorder, archived 
     // A session that is merely connected and idle has nothing worth saying: the
     // row already gives its name and where it runs, and "online" on every line
     // just repeats itself down the list. Only a state worth acting on — working,
-    // waiting on you, or gone — earns the third line.
-    const statusText = archived
+    // waiting on you, or on a machine that is gone — earns the third line. A
+    // session whose own socket dropped while its machine stayed up says nothing,
+    // exactly like an idle one.
+    const statusText = faded
         ? lastSeenText
         : session.hasUnread
             ? t('status.unread')
@@ -91,9 +104,7 @@ export const FlatSessionRow = React.memo(({ row, selected, showBorder, archived 
                 ? vibingMessage
                 : session.state === 'permission_required'
                     ? t('status.permissionRequired')
-                    : session.state === 'disconnected'
-                        ? lastSeenText
-                        : null;
+                    : null;
 
     const statusLine = [statusText, session.activitySummary].filter(Boolean).join(' · ');
 
@@ -136,11 +147,11 @@ export const FlatSessionRow = React.memo(({ row, selected, showBorder, archived 
             onPress={handlePress}
             {...menuProps}
         >
-            <View style={[styles.avatar, archived && styles.avatarArchived]}>
+            <View style={[styles.avatar, faded && styles.avatarFaded]}>
                 <Avatar
                     id={session.avatarId}
                     size={AVATAR_SIZE}
-                    monochrome={archived || !status.isConnected}
+                    monochrome={faded}
                     flavor={session.flavor}
                     clientId={session.clientId}
                 />
@@ -151,12 +162,12 @@ export const FlatSessionRow = React.memo(({ row, selected, showBorder, archived 
                 )}
             </View>
 
-            <View style={[styles.content, archived && styles.contentArchived]}>
+            <View style={[styles.content, faded && styles.contentFaded]}>
                 <View style={styles.titleRow}>
                     <Text
                         style={[
                             styles.title,
-                            status.isConnected && !archived ? styles.titleConnected : styles.titleDisconnected,
+                            faded ? styles.titleDisconnected : styles.titleConnected,
                         ]}
                         numberOfLines={1}
                     >
@@ -165,9 +176,25 @@ export const FlatSessionRow = React.memo(({ row, selected, showBorder, archived 
                     <SessionShortcutHintBadge sessionId={session.id} style={styles.shortcutBadge} />
                 </View>
 
+                {/*
+                  * The branch mark does the separating: the same icon the
+                  * worktree picker uses, so the name after it reads as a
+                  * worktree rather than as more path. Nested in the Text so it
+                  * sits on the line's baseline and truncates with it.
+                  */}
                 <Text style={styles.location} numberOfLines={1}>
                     {projectName}
-                    {workspaceName ? <Text style={styles.locationSeparator}>{' · '}</Text> : null}
+                    {workspaceName ? (
+                        <Text>
+                            {'  '}
+                            <Ionicons
+                                name="git-branch-outline"
+                                size={LOCATION_ICON_SIZE}
+                                color={theme.colors.textSecondary}
+                            />
+                            {' '}
+                        </Text>
+                    ) : null}
                     {workspaceName ?? ''}
                 </Text>
 
@@ -249,12 +276,12 @@ const stylesheet = StyleSheet.create((theme) => ({
         marginRight: AVATAR_GAP,
         position: 'relative',
     },
-    // Archived rows keep the exact geometry of live ones and differ only by
-    // being faded back, so the list stays one column rather than two designs.
-    avatarArchived: {
+    // Faded rows keep the exact geometry of live ones and differ only by being
+    // pulled back, so the list stays one column rather than two designs.
+    avatarFaded: {
         opacity: 0.5,
     },
-    contentArchived: {
+    contentFaded: {
         opacity: 0.6,
     },
     draftBadge: {
@@ -291,13 +318,10 @@ const stylesheet = StyleSheet.create((theme) => ({
         marginLeft: 8,
     },
     location: {
-        fontSize: 15,
+        fontSize: LOCATION_FONT_SIZE,
         lineHeight: 20,
         color: theme.colors.textSecondary,
         ...Typography.default('regular'),
-    },
-    locationSeparator: {
-        color: theme.colors.groupped.chevron,
     },
     statusRow: {
         flexDirection: 'row',

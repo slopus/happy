@@ -164,6 +164,8 @@ export function isSessionActive(session: Session): boolean {
     return session.active;
 }
 
+export { getSessionActivityAt } from './sessionActivity';
+
 /**
  * Formats OS platform string into a more readable format
  */

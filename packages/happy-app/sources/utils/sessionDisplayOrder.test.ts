@@ -30,6 +30,7 @@ function session(
         active: true,
         archived: false,
         machineId,
+        machineOffline: false,
         path,
         homeDir: null,
         completedTodosCount: 0,
