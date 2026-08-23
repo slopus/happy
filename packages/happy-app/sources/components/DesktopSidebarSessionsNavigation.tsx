@@ -1,7 +1,6 @@
 import * as React from 'react';
 import {
     FlatList,
-    Modal as RNModal,
     Platform,
     Pressable,
     ScrollView,
@@ -26,21 +25,23 @@ import {
 import type { NewSessionAgentType } from '@/sync/persistence';
 import { t } from '@/text';
 import { MainView } from './MainView';
+import { DesktopDialogFrame } from './DesktopDialogFrame';
 import { PathPickerContent, PickerContent, type PickerItem } from './SessionConfigPanel';
+import { SessionOrganizerDialog } from './SessionOrganizerDialog';
 import {
     buildSidebarSessionIndex,
     createSidebarOrganizationId,
-    organizeSession,
+    normalizeSidebarTagName,
+    organizeSessionWithCreatedTags,
     removeSidebarList,
     SIDEBAR_LIST_COLORS,
     SIDEBAR_LIST_MAX_COUNT,
     SIDEBAR_LIST_NAME_MAX_LENGTH,
-    SIDEBAR_SESSION_TAG_MAX_COUNT,
     SIDEBAR_TAG_MAX_COUNT,
     type SidebarList,
     type SidebarListColor,
     type SidebarOrganization,
-    type SidebarSessionOrganization,
+    type SidebarTag,
 } from '@/sync/sidebarOrganization';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { formatPathRelativeToHome } from '@/utils/sessionUtils';
@@ -173,6 +174,10 @@ const stylesheet = StyleSheet.create((theme) => ({
     sessionMain: { flex: 1, minWidth: 0, paddingVertical: 6 },
     sessionTitle: { color: theme.colors.text, fontSize: 13, ...Typography.default() },
     sessionMeta: { color: theme.colors.textSecondary, fontSize: 11, marginTop: 2, ...Typography.default() },
+    sessionTags: { alignItems: 'center', flexDirection: 'row', gap: 4, marginTop: 4, overflow: 'hidden' },
+    sessionTag: { backgroundColor: theme.colors.surfaceHigh, borderRadius: 8, maxWidth: 92, paddingHorizontal: 6, paddingVertical: 1 },
+    sessionTagText: { color: theme.colors.textSecondary, fontSize: 10, ...Typography.default('semiBold') },
+    sessionTagMore: { color: theme.colors.textSecondary, fontSize: 10, ...Typography.default('semiBold') },
     newSessionRow: {
         alignItems: 'center',
         borderLeftColor: theme.colors.divider,
@@ -418,11 +423,11 @@ function SidebarListsView() {
 
     const addTag = React.useCallback(async () => {
         if (organization.tags.length >= SIDEBAR_TAG_MAX_COUNT) return;
-        const name = (await Modal.prompt(t('sidebarLists.newTag'), undefined, {
+        const name = normalizeSidebarTagName((await Modal.prompt(t('sidebarLists.newTag'), undefined, {
             placeholder: t('sidebarLists.tagNamePlaceholder'),
             cancelText: t('common.cancel'),
             confirmText: t('common.create'),
-        }))?.trim().slice(0, SIDEBAR_LIST_NAME_MAX_LENGTH);
+        })) ?? '');
         if (!name) return;
         updateOrganization((current) => {
             if (current.tags.length >= SIDEBAR_TAG_MAX_COUNT || current.tags.some((tag) => tag.name.toLocaleLowerCase() === name.toLocaleLowerCase())) return current;
@@ -585,7 +590,10 @@ function SidebarListsView() {
             );
         }
         if (item.type === 'session') {
-            return <OrganizedSessionRow nested={item.nested} onOpen={openSession} onOrganize={openOrganizer} selected={selectedSessionId === item.session.id} session={item.session} />;
+            const sessionTags = (organization.sessions[item.session.id]?.tagIds ?? [])
+                .map((tagId) => organization.tags.find((tag) => tag.id === tagId))
+                .filter((tag) => !!tag);
+            return <OrganizedSessionRow nested={item.nested} onOpen={openSession} onOrganize={openOrganizer} selected={selectedSessionId === item.session.id} session={item.session} tags={sessionTags} />;
         }
         if (item.type === 'empty') {
             return <Text style={[styles.empty, item.nested && styles.sessionRowNested]}>{item.label}</Text>;
@@ -605,7 +613,7 @@ function SidebarListsView() {
                 {organization.tags.length === 0 ? <Text style={styles.empty}>{t('sidebarLists.noTags')}</Text> : null}
             </View>
         );
-    }, [addTag, createSession, deleteList, expanded, listColors, openCreate, openEdit, openOrganizer, openSession, organization.lists.length, organization.tags, selectedSessionId, selectedTagId, sessionIndex, styles, theme.colors]);
+    }, [addTag, createSession, deleteList, expanded, listColors, openCreate, openEdit, openOrganizer, openSession, organization.lists.length, organization.sessions, organization.tags, selectedSessionId, selectedTagId, sessionIndex, styles, theme.colors]);
 
     return (
         <View style={styles.container} testID="sidebar-lists-view">
@@ -636,10 +644,10 @@ function SidebarListsView() {
                 visible={editorVisible}
             />
             {organizingSession ? (
-                <OrganizeSessionDialog
+                <SessionOrganizerDialog
                     assignment={organization.sessions[organizingSession.id] ?? { listId: null, tagIds: [] }}
                     onClose={() => setOrganizingSession(null)}
-                    onSave={(assignment) => updateOrganization((current) => organizeSession(current, organizingSession.id, assignment))}
+                    onSave={(assignment, createdTags) => updateOrganization((current) => organizeSessionWithCreatedTags(current, organizingSession.id, assignment, createdTags))}
                     organization={organization}
                     sessionName={organizingSession.name}
                     visible
@@ -649,7 +657,7 @@ function SidebarListsView() {
     );
 }
 
-const OrganizedSessionRow = React.memo(function OrganizedSessionRow({ nested, onOpen, onOrganize, selected, session }: { nested: boolean; onOpen: (session: SessionRowData) => void; onOrganize: (session: SessionRowData) => void; selected: boolean; session: SessionRowData }) {
+const OrganizedSessionRow = React.memo(function OrganizedSessionRow({ nested, onOpen, onOrganize, selected, session, tags }: { nested: boolean; onOpen: (session: SessionRowData) => void; onOrganize: (session: SessionRowData) => void; selected: boolean; session: SessionRowData; tags: SidebarTag[] }) {
     const styles = stylesheet;
     const { theme } = useUnistyles();
     return (
@@ -657,6 +665,12 @@ const OrganizedSessionRow = React.memo(function OrganizedSessionRow({ nested, on
             <Pressable aria-selected={selected} accessibilityRole="button" accessibilityState={{ selected }} onPress={() => onOpen(session)} style={({ pressed }) => [styles.sessionMain, pressed && styles.sessionRowPressed]} testID={`organized-session-${session.id}`}>
                 <Text numberOfLines={1} style={styles.sessionTitle}>{session.name}</Text>
                 <Text numberOfLines={1} style={styles.sessionMeta}>{session.subtitle}</Text>
+                {tags.length > 0 ? (
+                    <View style={styles.sessionTags} testID={`organized-session-tags-${session.id}`}>
+                        {tags.slice(0, 2).map((tag) => <View key={tag.id} style={styles.sessionTag} testID={`organized-session-tag-${tag.id}`}><Text numberOfLines={1} style={styles.sessionTagText}>#{tag.name}</Text></View>)}
+                        {tags.length > 2 ? <Text style={styles.sessionTagMore}>+{tags.length - 2}</Text> : null}
+                    </View>
+                ) : null}
             </Pressable>
             <Pressable accessibilityLabel={t('sidebarLists.organizeSession')} onPress={() => onOrganize(session)} style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]} testID={`organize-session-${session.id}`}>
                 <Feather color={theme.colors.textSecondary} name="tag" size={14} />
@@ -664,27 +678,6 @@ const OrganizedSessionRow = React.memo(function OrganizedSessionRow({ nested, on
         </View>
     );
 });
-
-function DialogFrame({ children, onClose, title, visible }: { children: React.ReactNode; onClose: () => void; title: string; visible: boolean }) {
-    const styles = stylesheet;
-    const { theme } = useUnistyles();
-    return (
-        <RNModal animationType="fade" onRequestClose={onClose} transparent visible={visible}>
-            <View style={styles.modalRoot}>
-                <Pressable accessibilityElementsHidden onPress={onClose} style={styles.modalBackdrop} />
-                <View accessibilityViewIsModal style={styles.dialog}>
-                    <View style={styles.dialogHeader}>
-                        <Text style={styles.dialogTitle}>{title}</Text>
-                        <Pressable accessibilityLabel={t('sidebarLists.close')} onPress={onClose} style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}>
-                            <Feather color={theme.colors.textSecondary} name="x" size={18} />
-                        </Pressable>
-                    </View>
-                    {children}
-                </View>
-            </View>
-        </RNModal>
-    );
-}
 
 function ListEditorDialog({ list, onClose, onDelete, onSave, organization, sessions, visible }: {
     list: SidebarList | null;
@@ -764,7 +757,7 @@ function ListEditorDialog({ list, onClose, onDelete, onSave, organization, sessi
     };
 
     return (
-        <DialogFrame onClose={onClose} title={list ? t('sidebarLists.editList') : t('sidebarLists.newList')} visible={visible}>
+        <DesktopDialogFrame onClose={onClose} title={list ? t('sidebarLists.editList') : t('sidebarLists.newList')} visible={visible}>
             <ScrollView contentContainerStyle={styles.dialogBody}>
                 <View style={styles.field}>
                     <Text style={styles.fieldLabel}>{t('sidebarLists.listName')}</Text>
@@ -840,7 +833,7 @@ function ListEditorDialog({ list, onClose, onDelete, onSave, organization, sessi
                 <Pressable onPress={onClose} style={[styles.button, styles.secondaryButton]} testID="sidebar-create-list-cancel"><Text style={styles.secondaryButtonText}>{t('common.cancel')}</Text></Pressable>
                 <Pressable disabled={!canSave} onPress={save} style={[styles.button, styles.primaryButton, !canSave && styles.buttonDisabled]} testID={list ? 'sidebar-edit-list-submit' : 'sidebar-create-list-submit'}><Text style={styles.primaryButtonText}>{list ? t('common.save') : t('common.create')}</Text></Pressable>
             </View>
-        </DialogFrame>
+        </DesktopDialogFrame>
     );
 }
 
@@ -848,35 +841,4 @@ function Choice({ disabled = false, label, onPress, selected, testID }: { disabl
     const styles = stylesheet;
     const { theme } = useUnistyles();
     return <Pressable aria-checked={selected} accessibilityLabel={label} accessibilityRole="radio" accessibilityState={{ checked: selected, disabled }} disabled={disabled} onPress={onPress} style={[styles.choice, selected && styles.choiceSelected]} testID={testID}><Feather color={selected ? theme.colors.accent : theme.colors.textSecondary} name={selected ? 'check-circle' : 'circle'} size={14} /><Text style={styles.choiceText}>{label}</Text></Pressable>;
-}
-
-function OrganizeSessionDialog({ assignment, onClose, onSave, organization, sessionName, visible }: { assignment: SidebarSessionOrganization; onClose: () => void; onSave: (assignment: SidebarSessionOrganization) => void; organization: SidebarOrganization; sessionName: string; visible: boolean }) {
-    const styles = stylesheet;
-    const { theme } = useUnistyles();
-    const listColors = getListColors(theme.colors);
-    const [draft, setDraft] = React.useState(assignment);
-    React.useEffect(() => setDraft(assignment), [assignment, visible]);
-    const toggleTag = (tagId: string) => setDraft((current) => {
-        if (current.tagIds.includes(tagId)) return { ...current, tagIds: current.tagIds.filter((id) => id !== tagId) };
-        if (current.tagIds.length >= SIDEBAR_SESSION_TAG_MAX_COUNT) return current;
-        return { ...current, tagIds: [...current.tagIds, tagId] };
-    });
-    return (
-        <DialogFrame onClose={onClose} title={t('sidebarLists.organizeSession')} visible={visible}>
-            <ScrollView contentContainerStyle={styles.dialogBody}>
-                <View style={styles.field}><Text numberOfLines={1} style={styles.fieldLabel}>{sessionName}</Text></View>
-                <View accessibilityLabel={t('sidebarLists.belongsToList')} accessibilityRole="radiogroup" style={styles.field}>
-                    <Text style={styles.fieldLabel}>{t('sidebarLists.belongsToList')}</Text>
-                    <Pressable aria-checked={draft.listId === null} accessibilityLabel={t('sidebarLists.unassigned')} accessibilityRole="radio" accessibilityState={{ checked: draft.listId === null }} onPress={() => setDraft((current) => ({ ...current, listId: null }))} style={styles.assignmentRow}><View style={[styles.check, draft.listId === null && styles.checkSelected]}>{draft.listId === null ? <Feather color={theme.colors.button.primary.tint} name="check" size={13} /> : null}</View><Text style={styles.assignmentLabel}>{t('sidebarLists.unassigned')}</Text></Pressable>
-                    {organization.lists.map((list) => <Pressable aria-checked={draft.listId === list.id} accessibilityLabel={list.name} accessibilityRole="radio" accessibilityState={{ checked: draft.listId === list.id }} key={list.id} onPress={() => setDraft((current) => ({ ...current, listId: list.id }))} style={styles.assignmentRow}><View style={[styles.check, draft.listId === list.id && styles.checkSelected]}>{draft.listId === list.id ? <Feather color={theme.colors.button.primary.tint} name="check" size={13} /> : null}</View><Text style={styles.assignmentLabel}>{list.name}</Text></Pressable>)}
-                </View>
-                <View style={styles.field}>
-                    <Text style={styles.fieldLabel}>{t('sidebarLists.tagsMultiSelect')}</Text>
-                    {organization.tags.map((tag) => { const selected = draft.tagIds.includes(tag.id); return <Pressable aria-checked={selected} accessibilityLabel={tag.name} accessibilityRole="checkbox" accessibilityState={{ checked: selected }} key={tag.id} onPress={() => toggleTag(tag.id)} style={styles.assignmentRow}><View style={[styles.check, selected && styles.checkSelected]}>{selected ? <Feather color={theme.colors.button.primary.tint} name="check" size={13} /> : null}</View><View style={[styles.tagDot, { backgroundColor: listColors[tag.color] }]} /><Text style={styles.assignmentLabel}>{tag.name}</Text></Pressable>; })}
-                    {organization.tags.length === 0 ? <Text style={styles.empty}>{t('sidebarLists.noTags')}</Text> : null}
-                </View>
-            </ScrollView>
-            <View style={styles.dialogFooter}><Pressable onPress={onClose} style={[styles.button, styles.secondaryButton]}><Text style={styles.secondaryButtonText}>{t('common.cancel')}</Text></Pressable><Pressable onPress={() => { onSave(draft); onClose(); }} style={[styles.button, styles.primaryButton]} testID="organize-session-save"><Text style={styles.primaryButtonText}>{t('common.save')}</Text></Pressable></View>
-        </DialogFrame>
-    );
 }

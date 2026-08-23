@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
     buildSidebarSessionIndex,
+    normalizeSidebarTagName,
     normalizeSidebarOrganization,
     organizeSession,
+    organizeSessionWithCreatedTags,
     removeSidebarList,
     removeSidebarTag,
     type SidebarOrganization,
@@ -21,6 +23,11 @@ const organization: SidebarOrganization = {
 };
 
 describe('sidebar organization model', () => {
+    it('normalizes a typed hashtag without storing the hash marker', () => {
+        expect(normalizeSidebarTagName('  ##  Product  ')).toBe('Product');
+        expect(normalizeSidebarTagName('#')).toBe('');
+    });
+
     it('keeps one list and multiple unique tags per session', () => {
         const next = organizeSession(organization, 'session-1', {
             listId: 'workspace',
@@ -31,6 +38,27 @@ describe('sidebar organization model', () => {
             listId: 'workspace',
             tagIds: ['product', 'research'],
         });
+    });
+
+    it('creates and assigns draft Tags atomically while reusing case-insensitive matches', () => {
+        const next = organizeSessionWithCreatedTags({
+            lists: [],
+            tags: [{ id: 'existing', name: 'product', color: 'green', createdAt: 1 }],
+            sessions: {},
+        }, 'session-1', {
+            listId: null,
+            tagIds: ['draft-existing', 'draft-new'],
+        }, [
+            { id: 'draft-existing', name: '#Product', color: 'blue', createdAt: 2 },
+            { id: 'draft-new', name: '#research', color: 'purple', createdAt: 3 },
+            { id: 'draft-unused', name: '#unused', color: 'orange', createdAt: 4 },
+        ]);
+
+        expect(next.tags).toEqual([
+            { id: 'existing', name: 'product', color: 'green', createdAt: 1 },
+            { id: 'draft-new', name: 'research', color: 'purple', createdAt: 3 },
+        ]);
+        expect(next.sessions['session-1']).toEqual({ listId: null, tagIds: ['existing', 'draft-new'] });
     });
 
     it('clears deleted list and tag references without removing the session', () => {

@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
     setInput: vi.fn(),
     setMachineId: vi.fn(),
     setPath: vi.fn(),
+    organization: null as any,
 }));
 
 vi.mock('react-native', async () => {
@@ -82,17 +83,9 @@ vi.mock('@/hooks/useVisibleSessionListViewData', () => ({
 vi.mock('@/modal', () => ({ Modal: { confirm: mocks.confirm, prompt: vi.fn() } }));
 vi.mock('@/sync/storage', async () => {
     const ReactModule = await import('react');
-    const organization = {
-        lists: [
-            { id: 'happy', name: 'Happy', kind: 'workspace', color: 'blue', machineId: 'mac', path: '~/happy', defaultAgent: 'codex', createdAt: 1 },
-            { id: 'advisor', name: 'Advisor', kind: 'agent', color: 'pink', createdAt: 2 },
-        ],
-        tags: [{ id: 'product', name: 'product', color: 'green', createdAt: 1 }],
-        sessions: { 'session-1': { listId: 'happy', tagIds: ['product'] } },
-    };
     return {
         useAllMachines: () => [{ id: 'mac', active: true, lastActiveAt: Date.now(), metadata: { displayName: 'Mac mini', homeDir: '/Users/test' } }],
-        useLocalSettingMutable: (name: string) => ReactModule.useState(name === 'desktopSidebarMode' ? 'projects' : organization),
+        useLocalSettingMutable: (name: string) => ReactModule.useState(name === 'desktopSidebarMode' ? 'projects' : mocks.organization),
         useLocalSettingUpdater: () => mocks.updateOrganization,
     };
 });
@@ -103,7 +96,17 @@ vi.mock('@/utils/machineUtils', () => ({ isMachineOnline: () => true }));
 vi.mock('@/utils/sessionUtils', () => ({ formatPathRelativeToHome: (path: string) => path }));
 
 describe('DesktopSidebarSessionsNavigation', () => {
-    beforeEach(() => vi.clearAllMocks());
+    beforeEach(() => {
+        vi.clearAllMocks();
+        mocks.organization = {
+            lists: [
+                { id: 'happy', name: 'Happy', kind: 'workspace', color: 'blue', machineId: 'mac', path: '~/happy', defaultAgent: 'codex', createdAt: 1 },
+                { id: 'advisor', name: 'Advisor', kind: 'agent', color: 'pink', createdAt: 2 },
+            ],
+            tags: [{ id: 'product', name: 'product', color: 'green', createdAt: 1 }],
+            sessions: { 'session-1': { listId: 'happy', tagIds: ['product'] } },
+        };
+    });
 
     it('keeps Projects as default and does not navigate for sidebar-only organization actions', () => {
         let renderer: any;
@@ -143,6 +146,74 @@ describe('DesktopSidebarSessionsNavigation', () => {
             pathname: '/new',
             params: { sidebarListId: 'happy' },
         });
+        act(() => renderer.unmount());
+    });
+
+    it('searches with # and creates a Tag only when the organizer is saved', () => {
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<DesktopSidebarSessionsNavigation />); });
+        act(() => renderer.root.findByProps({ testID: 'desktop-sidebar-tab-lists' }).props.onPress());
+        act(() => renderer.root.findByProps({ testID: 'organize-session-session-1' }).props.onPress());
+
+        const input = renderer.root.findByProps({ testID: 'organize-tag-input' });
+        act(() => input.props.onChangeText('#'));
+        expect(renderer.root.findByProps({ testID: 'organize-tag-result-product' })).toBeDefined();
+
+        act(() => renderer.root.findByProps({ testID: 'organize-tag-input' }).props.onChangeText('#research'));
+        act(() => renderer.root.findByProps({ testID: 'organize-create-tag' }).props.onPress());
+        expect(mocks.updateOrganization).not.toHaveBeenCalled();
+
+        act(() => renderer.root.findByProps({ testID: 'organize-session-save' }).props.onPress());
+        const save = mocks.updateOrganization.mock.calls.at(-1)?.[0];
+        const next = save({
+            lists: [{ id: 'happy', name: 'Happy', kind: 'workspace', color: 'blue', machineId: 'mac', path: '~/happy', defaultAgent: 'codex', createdAt: 1 }],
+            tags: [{ id: 'product', name: 'product', color: 'green', createdAt: 1 }],
+            sessions: { 'session-1': { listId: 'happy', tagIds: ['product'] } },
+        });
+        const research = next.tags.find((tag: any) => tag.name === 'research');
+        expect(research).toBeDefined();
+        expect(next.sessions['session-1'].tagIds).toEqual(['product', research.id]);
+        act(() => renderer.unmount());
+    });
+
+    it('discards a newly drafted Tag when the organizer is cancelled', () => {
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<DesktopSidebarSessionsNavigation />); });
+        act(() => renderer.root.findByProps({ testID: 'desktop-sidebar-tab-lists' }).props.onPress());
+        act(() => renderer.root.findByProps({ testID: 'organize-session-session-1' }).props.onPress());
+        act(() => renderer.root.findByProps({ testID: 'organize-tag-input' }).props.onChangeText('#temporary'));
+        act(() => renderer.root.findByProps({ testID: 'organize-create-tag' }).props.onPress());
+        act(() => renderer.root.findByProps({ testID: 'organize-session-cancel' }).props.onPress());
+
+        expect(mocks.updateOrganization).not.toHaveBeenCalled();
+        act(() => renderer.unmount());
+    });
+
+    it('disables unselected results and explains the limit when a session already has 100 Tags', () => {
+        const selectedTags = Array.from({ length: 100 }, (_, index) => ({
+            id: `selected-${index}`,
+            name: `selected-${index}`,
+            color: 'blue',
+            createdAt: index,
+        }));
+        mocks.organization = {
+            lists: [],
+            tags: [...selectedTags, { id: 'available', name: 'available', color: 'green', createdAt: 101 }],
+            sessions: { 'session-1': { listId: null, tagIds: selectedTags.map((tag) => tag.id) } },
+        };
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<DesktopSidebarSessionsNavigation />); });
+        act(() => renderer.root.findByProps({ testID: 'desktop-sidebar-tab-lists' }).props.onPress());
+        act(() => renderer.root.findByProps({ testID: 'organize-session-session-1' }).props.onPress());
+
+        act(() => renderer.root.findByProps({ testID: 'organize-tag-input' }).props.onChangeText('#available'));
+        expect(renderer.root.findByProps({ testID: 'organize-tag-result-available' }).props).toMatchObject({
+            disabled: true,
+            accessibilityState: { disabled: true, selected: false },
+        });
+
+        act(() => renderer.root.findByProps({ testID: 'organize-tag-input' }).props.onChangeText('#brand-new'));
+        expect(renderer.root.findAllByType('Text').some((node: any) => node.props.children === 'sidebarLists.tagLimitReached')).toBe(true);
         act(() => renderer.unmount());
     });
 

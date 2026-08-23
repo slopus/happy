@@ -1,9 +1,12 @@
 import { expect, test, type APIRequestContext, type Locator, type Page, type TestInfo } from '@playwright/test';
+import fs from 'node:fs';
+import path from 'node:path';
 import { encodeBase64, encryptLegacy } from '../../happy-cli/src/api/encryption';
 
 const authenticatedWebUrl = process.env.HAPPY_E2E_WEB_URL!;
 const e2eServerUrl = process.env.HAPPY_E2E_SERVER_URL!;
 const recordEvidence = process.env.HAPPY_E2E_RECORD === '1';
+const tagComboboxEvidenceDirectory = process.env.HAPPY_TAG_COMBOBOX_EVIDENCE_DIR;
 
 test.use({ video: 'off', trace: 'off' });
 test.setTimeout(360_000);
@@ -135,11 +138,24 @@ async function captureEvidenceFrame(page: Page, testInfo: TestInfo, name: string
     await page.screenshot({ path: testInfo.outputPath(`evidence-${name}.png`), fullPage: true });
 }
 
+function tagComboboxEvidencePath(testInfo: TestInfo, filename: string): string {
+    if (!tagComboboxEvidenceDirectory) return testInfo.outputPath(filename);
+    fs.mkdirSync(tagComboboxEvidenceDirectory, { recursive: true });
+    return path.join(tagComboboxEvidenceDirectory, filename);
+}
+
 async function expectMobileTouchTarget(locator: Locator): Promise<void> {
     const box = await locator.boundingBox();
     expect(box).not.toBeNull();
     expect(box!.width).toBeGreaterThanOrEqual(44);
     expect(box!.height).toBeGreaterThanOrEqual(44);
+}
+
+async function clickVisibleCenter(page: Page, locator: Locator): Promise<void> {
+    await expect(locator).toBeVisible();
+    const box = await locator.boundingBox();
+    expect(box).not.toBeNull();
+    await page.mouse.click(box!.x + box!.width / 2, box!.y + box!.height / 2);
 }
 
 async function createList(
@@ -340,6 +356,149 @@ test('[SIDEBAR-LISTS-TAGS] desktop Lists and Tags organize sessions without repl
         await page.close();
         await Promise.allSettled(createdSessionIds.map((sessionId) => deleteSession(request, sessionId)));
         if (machineId) await deleteMachine(request, machineId);
+    }
+});
+
+test('[SESSION-TAG-COMBOBOX] title hash creates, searches, and syncs tags outside the title', async ({ page, request }, testInfo: TestInfo) => {
+    page.setDefaultTimeout(120_000);
+    page.setDefaultNavigationTimeout(180_000);
+    const sessionId = await createSession(request, {
+        name: 'Session tag combobox',
+        summary: 'Tag from the title',
+        path: '/workspace/session-tag-combobox',
+    });
+
+    try {
+        await page.emulateMedia({ colorScheme: 'dark' });
+        await page.setViewportSize({ width: 1440, height: 900 });
+        await page.goto(authenticatedRoute('/settings/appearance'));
+        await page.getByText('Gingham', { exact: true }).click();
+        await expect.poll(() => page.locator('body').evaluate((element) => (
+            window.getComputedStyle(element).backgroundColor
+        ))).toBe('rgb(18, 24, 33)');
+
+        await page.goto(authenticatedRoute(`/session/${sessionId}`));
+        const title = page.locator('[data-testid="session-header-title"]:visible');
+        await expect(title).toHaveText('Tag from the title', { timeout: 120_000 });
+        await expect(page.getByTestId('session-canvas-tags')).toBeVisible();
+        const emptyCanvasAdd = page.getByTestId('session-canvas-add-tag');
+        await expect(emptyCanvasAdd).toHaveAttribute('role', 'button');
+        await page.screenshot({ path: tagComboboxEvidencePath(testInfo, '00-empty-bottom-add.png'), fullPage: true });
+        await captureEvidenceFrame(page, testInfo, 'tag-combobox-00-empty-bottom-add');
+        await emptyCanvasAdd.click();
+        await expect(page.getByText('Organize session', { exact: true })).toBeVisible();
+        await clickVisibleCenter(page, page.getByTestId('organize-session-cancel'));
+        const headerTags = page.locator('[data-testid="session-header-tags-button"]:visible');
+        await expect(headerTags).toBeVisible();
+        await expect(headerTags).toHaveText('#');
+        await headerTags.click();
+
+        const input = page.getByTestId('session-header-title-input');
+        await expect(input).toBeFocused();
+        await expect(input).toHaveAttribute('role', 'combobox');
+        await expect(input).toHaveValue('Tag from the title #');
+        await expect(input).toHaveAttribute('aria-expanded', 'true');
+        await expect(page.getByRole('listbox')).toBeVisible();
+        await input.fill('Tag from the title #product');
+        const createProduct = page.getByTestId('session-title-create-tag');
+        await expect(createProduct).toContainText('Create #product');
+        await expect(createProduct).toHaveCSS('background-color', 'rgb(40, 53, 68)');
+        await page.screenshot({ path: tagComboboxEvidencePath(testInfo, '01-desktop-create-option.png'), fullPage: true });
+        await captureEvidenceFrame(page, testInfo, 'tag-combobox-01-create-option');
+
+        await input.press('Enter');
+        await expect(input).toHaveValue('Tag from the title');
+        await expect(page.getByTestId('session-canvas-tags')).toContainText('#product');
+        await expect(page.locator('[data-testid^="session-row-tag-"]:visible').filter({ hasText: '#product' }).first()).toBeVisible();
+
+        await page.getByTestId('desktop-sidebar-tab-lists').click();
+        await page.getByRole('button', { name: /^product 1$/ }).click();
+        await expect(page.getByTestId(`organized-session-tags-${sessionId}`)).toContainText('#product');
+        await page.screenshot({ path: tagComboboxEvidencePath(testInfo, '04-lists-sidebar-tags.png'), fullPage: true });
+        await captureEvidenceFrame(page, testInfo, 'tag-combobox-04-lists-sidebar-tags');
+        await page.goto(authenticatedRoute(`/session/${sessionId}`));
+        await expect(page.locator('[data-testid="session-header-title"]:visible')).toHaveText('Tag from the title', { timeout: 120_000 });
+        await page.locator('[data-testid="session-header-tags-button"]:visible').click();
+        const restoredInput = page.getByTestId('session-header-title-input');
+        await expect(restoredInput).toBeFocused();
+        await restoredInput.fill('Tag from the title #research');
+        await restoredInput.press('Enter');
+        await expect(restoredInput).toHaveValue('Tag from the title');
+        await expect(page.getByTestId('session-canvas-tags')).toContainText('#research');
+
+        await restoredInput.fill('Tag from the title #pro');
+        const productResult = page.getByRole('option').filter({ hasText: '#product' });
+        await expect(productResult).toBeVisible();
+        await expect(productResult).toHaveAttribute('aria-selected', 'true');
+        await page.screenshot({ path: tagComboboxEvidencePath(testInfo, '02-desktop-search-selected.png'), fullPage: true });
+        await captureEvidenceFrame(page, testInfo, 'tag-combobox-02-search-selected');
+        await productResult.click();
+        await expect(restoredInput).toHaveValue('Tag from the title');
+        await expect(restoredInput).toBeFocused();
+        await restoredInput.press('Enter');
+
+        await expect(title).toHaveText('Tag from the title');
+        await expect(headerTags).toHaveText('#');
+        await expect(page.getByTestId('session-canvas-tags')).toContainText('#product');
+        await expect(page.getByTestId('session-canvas-tags')).toContainText('#research');
+        await page.reload({ timeout: 180_000 });
+        await expect(page.locator('[data-testid="session-header-title"]:visible')).toHaveText('Tag from the title', { timeout: 120_000 });
+        await expect(page.locator('[data-testid="session-header-tags-button"]:visible')).toHaveText('#');
+        await expect(page.getByTestId('session-canvas-tags')).toContainText('#product');
+        await page.getByTestId('desktop-sidebar-tab-projects').click();
+        await expect(page.locator('[data-testid^="session-row-tag-"]:visible').filter({ hasText: '#product' }).first()).toBeVisible();
+
+        await page.setViewportSize({ width: 800, height: 900 });
+        const compactHeaderTags = page.locator('[data-testid="session-header-tags-button"]:visible');
+        await expect(compactHeaderTags).toBeVisible();
+        await expect(page.getByTestId('session-canvas-tags')).toContainText('#product');
+        await expect(page.getByTestId('session-canvas-tags')).toContainText('#research');
+        await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+        await page.screenshot({ path: tagComboboxEvidencePath(testInfo, '03-narrow-selected-tags.png'), fullPage: true });
+        await captureEvidenceFrame(page, testInfo, 'tag-combobox-03-narrow-selected-tags');
+
+        await page.getByTestId('session-canvas-add-tag').click();
+        const organizerInput = page.getByTestId('organize-tag-input');
+        const selectedTag = (name: string) => page.locator('[data-testid^="organize-selected-tag-"]').filter({ hasText: name });
+        await expect(selectedTag('#product')).toBeVisible();
+        await organizerInput.fill('#discarded');
+        await page.getByTestId('organize-create-tag').click();
+        await expect(selectedTag('#discarded')).toBeVisible();
+        await clickVisibleCenter(page, page.getByTestId('organize-session-cancel'));
+        await page.getByTestId('session-canvas-add-tag').click();
+        await expect(selectedTag('#discarded')).toHaveCount(0);
+        await expect(selectedTag('#product')).toBeVisible();
+        await clickVisibleCenter(page, page.getByTestId('organize-session-cancel'));
+
+        await page.setViewportSize({ width: 1440, height: 900 });
+        await compactHeaderTags.click();
+        const manyTagsInput = page.getByTestId('session-header-title-input');
+        for (const tagName of ['alpha', 'beta', 'gamma', 'delta', 'epsilon', 'zeta', 'eta']) {
+            await manyTagsInput.fill(`Tag from the title #${tagName}`);
+            await manyTagsInput.press('Enter');
+            await expect(manyTagsInput).toHaveValue('Tag from the title');
+        }
+        await manyTagsInput.fill('Tag from the title #');
+        const allTagOptions = page.getByTestId('session-title-tag-results').getByRole('option');
+        await expect(allTagOptions).toHaveCount(8);
+        const tagResults = page.getByTestId('session-title-tag-results');
+        await expect.poll(() => tagResults.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
+        for (let index = 1; index < 8; index += 1) await manyTagsInput.press('ArrowDown');
+        await expect(manyTagsInput).toHaveAttribute('aria-activedescendant', 'session-title-tag-option-7');
+        await expect.poll(async () => {
+            const containerBounds = await tagResults.boundingBox();
+            const activeBounds = await page.locator('#session-title-tag-option-7').boundingBox();
+            return !!containerBounds && !!activeBounds
+                && activeBounds.y >= containerBounds.y
+                && activeBounds.y + activeBounds.height <= containerBounds.y + containerBounds.height;
+        }).toBe(true);
+        await page.screenshot({ path: tagComboboxEvidencePath(testInfo, '05-scrollable-all-tags.png'), fullPage: true });
+        await captureEvidenceFrame(page, testInfo, 'tag-combobox-05-scrollable-all-tags');
+        await manyTagsInput.press('Enter');
+        await expect(manyTagsInput).toHaveValue('Tag from the title');
+    } finally {
+        await page.close();
+        await deleteSession(request, sessionId);
     }
 });
 

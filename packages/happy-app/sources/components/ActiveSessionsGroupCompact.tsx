@@ -5,7 +5,7 @@ import { Feather } from '@expo/vector-icons';
 import { type SessionState, getSessionStateLabel } from '@/utils/sessionUtils';
 import { Typography } from '@/constants/Typography';
 import { StatusDot } from './StatusDot';
-import { storage, type SessionRowData, useAllMachines, useLocalSettingMutable } from '@/sync/storage';
+import { storage, type SessionRowData, useAllMachines, useLocalSetting, useLocalSettingMutable } from '@/sync/storage';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
@@ -303,6 +303,7 @@ export const CompactSessionRow = React.memo(({ session, selected, bulkSelected, 
     const { theme } = useUnistyles();
     const navigateToSession = useNavigateToSession();
     const router = useRouter();
+    const organization = useLocalSetting('sidebarOrganization');
     const [actionsAnchor, setActionsAnchor] = React.useState<SessionActionsAnchor | null>(null);
     const disclosure = useSessionRowDisclosure(session.name);
     const presentation = useSessionRowPresentation(session);
@@ -310,6 +311,9 @@ export const CompactSessionRow = React.memo(({ session, selected, bulkSelected, 
     const status = session.hasUnread
         ? { ...baseStatus, dotColor: theme.colors.accent, isPulsing: false }
         : baseStatus;
+    const sessionTags = (organization.sessions[session.id]?.tagIds ?? [])
+        .map((tagId) => organization.tags.find((tag) => tag.id === tagId))
+        .filter((tag) => !!tag);
 
     const handlePress = React.useCallback(async () => {
         if (selectionMode) {
@@ -437,6 +441,16 @@ export const CompactSessionRow = React.memo(({ session, selected, bulkSelected, 
                             <Text numberOfLines={1} style={styles.timeLocationText}>
                                 {presentation.project} · {presentation.machine}
                             </Text>
+                        </View>
+                    ) : null}
+                    {sessionTags.length > 0 ? (
+                        <View style={styles.sessionTags} testID={`session-row-tags-${session.id}`}>
+                            {sessionTags.slice(0, 2).map((tag) => (
+                                <View key={tag.id} style={styles.sessionTag} testID={`session-row-tag-${tag.id}`}>
+                                    <Text numberOfLines={1} style={styles.sessionTagText}>#{tag.name}</Text>
+                                </View>
+                            ))}
+                            {sessionTags.length > 2 ? <Text style={styles.sessionTagMore}>+{sessionTags.length - 2}</Text> : null}
                         </View>
                     ) : null}
                     <View style={styles.statusRow} testID="session-row-status">
@@ -609,6 +623,22 @@ const stylesheet = StyleSheet.create((theme) => ({
         lineHeight: 16,
         ...Typography.default('regular'),
     },
+    sessionTags: {
+        alignItems: 'center',
+        flexDirection: 'row',
+        gap: 4,
+        minHeight: 18,
+        overflow: 'hidden',
+    },
+    sessionTag: {
+        backgroundColor: theme.colors.surfaceHigh,
+        borderRadius: 8,
+        maxWidth: 96,
+        paddingHorizontal: 6,
+        paddingVertical: 1,
+    },
+    sessionTagText: { color: theme.colors.textSecondary, fontSize: 10, lineHeight: 14, ...Typography.default('semiBold') },
+    sessionTagMore: { color: theme.colors.textSecondary, fontSize: 10, ...Typography.default('semiBold') },
     statusRow: {
         alignItems: 'center',
         flexDirection: 'row',

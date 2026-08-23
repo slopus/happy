@@ -7,6 +7,7 @@ import { getSuggestions } from '@/components/autocomplete/suggestions';
 import { ChatHeaderView } from '@/components/ChatHeaderView';
 import { SessionHeaderChip } from '@/components/SessionHeaderChip';
 import { SessionInfoDropdown } from '@/components/SessionInfoDropdown';
+import { SessionOrganizerDialog } from '@/components/SessionOrganizerDialog';
 import { DesktopRightPanel, DesktopRightPanelToggleButton } from '@/components/DesktopRightPanel';
 import { DesktopPresenceTransition } from '@/components/DesktopPresenceTransition';
 import type { DesktopTransitionDirection } from '@/components/DesktopPresenceTransition.types';
@@ -30,9 +31,17 @@ import {
 import { ScreenshotGalleryDrawer } from '@/components/ScreenshotGalleryDrawer';
 import { imageViewer } from '@/sync/imageViewer';
 import { Modal } from '@/modal';
-import { storage, useIsDataReady, useLocalSetting, useLocalSettingMutable, useMachine, useSessionMessages, useSessionUsage, useSetting } from '@/sync/storage';
+import { storage, useIsDataReady, useLocalSetting, useLocalSettingMutable, useLocalSettingUpdater, useMachine, useSessionMessages, useSessionUsage, useSetting } from '@/sync/storage';
 import { useSession } from '@/sync/storage';
 import { Session } from '@/sync/storageTypes';
+import {
+    createSidebarOrganizationId,
+    organizeSessionWithCreatedTags,
+    SIDEBAR_LIST_COLORS,
+    SIDEBAR_SESSION_TAG_MAX_COUNT,
+    SIDEBAR_TAG_MAX_COUNT,
+    type SidebarTag,
+} from '@/sync/sidebarOrganization';
 import { sync } from '@/sync/sync';
 import { t } from '@/text';
 import { isRunningOnMac } from '@/utils/platform';
@@ -68,7 +77,7 @@ import { useRouter, useNavigation } from 'expo-router';
 import { DrawerActions } from '@react-navigation/native';
 import * as React from 'react';
 import { useMemo } from 'react';
-import { ActivityIndicator, Platform, Pressable, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, ScrollView, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import Animated, { useSharedValue, useAnimatedStyle, withTiming, Easing } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
@@ -80,6 +89,7 @@ import {
     useSubagentInspector,
 } from '@/components/subagent/SubagentInspectorContext';
 import { SubagentInspectorPanel } from '@/components/subagent/SubagentInspectorPanel';
+import { findSessionTitleTagQuery, removeSessionTitleTagQuery } from '@/utils/sessionTitleTags';
 
 // Agent display labels for the header chip. Mirrors ComposeHome's map, but keyed
 // off the running session's `flavor` (an active session reports its agent there).
@@ -139,21 +149,30 @@ function SessionNewSessionAction({
 }
 
 function SessionHeaderTitle({
+    availableTags = [],
     compact = false,
+    onAddTag,
     session,
+    tags = [],
     title,
     tintColor,
 }: {
+    availableTags?: readonly SidebarTag[];
     compact?: boolean;
+    onAddTag?: (tag: SidebarTag) => void;
     session: Session;
+    tags?: readonly SidebarTag[];
     title: string;
     tintColor?: string;
 }) {
     const { theme } = useUnistyles();
     const [editing, setEditing] = React.useState(false);
     const [draftTitle, setDraftTitle] = React.useState(title);
+    const [activeTagOption, setActiveTagOption] = React.useState(0);
     const editingRef = React.useRef(false);
     const draftTitleRef = React.useRef(title);
+    const inputRef = React.useRef<TextInput>(null);
+    const choosingTagRef = React.useRef(false);
     const { renameSessionToTitle, renamingSession } = useSessionQuickActions(session);
     const sessionStatus = useSessionStatus(session);
 
@@ -171,6 +190,15 @@ function SessionHeaderTitle({
         setEditing(true);
     }, [title]);
 
+    const beginAddingTag = React.useCallback(() => {
+        const nextTitle = `${title.trimEnd()} #`;
+        draftTitleRef.current = nextTitle;
+        setDraftTitle(nextTitle);
+        setActiveTagOption(0);
+        editingRef.current = true;
+        setEditing(true);
+    }, [title]);
+
     const finishEditing = React.useCallback((save: boolean) => {
         if (!editingRef.current) {
             return;
@@ -179,7 +207,13 @@ function SessionHeaderTitle({
         setEditing(false);
 
         if (save) {
-            renameSessionToTitle(draftTitleRef.current);
+            const pendingTagQuery = findSessionTitleTagQuery(draftTitleRef.current);
+            const cleanTitle = pendingTagQuery
+                ? removeSessionTitleTagQuery(draftTitleRef.current, pendingTagQuery.start) || title
+                : draftTitleRef.current;
+            draftTitleRef.current = cleanTitle;
+            setDraftTitle(cleanTitle);
+            renameSessionToTitle(cleanTitle);
         } else {
             draftTitleRef.current = title;
             setDraftTitle(title);
@@ -189,7 +223,65 @@ function SessionHeaderTitle({
     const handleDraftTitleChange = React.useCallback((value: string) => {
         draftTitleRef.current = value;
         setDraftTitle(value);
+        setActiveTagOption(0);
     }, []);
+    const tagQuery = React.useMemo(() => findSessionTitleTagQuery(draftTitle), [draftTitle]);
+    const foldedTagQuery = tagQuery?.query.toLocaleLowerCase() ?? '';
+    const matchingTags = React.useMemo(() => tagQuery
+        ? availableTags.filter((tag) => tag.name.toLocaleLowerCase().includes(foldedTagQuery))
+        : [], [availableTags, foldedTagQuery, tagQuery]);
+    const exactTag = tagQuery
+        ? availableTags.find((tag) => tag.name.toLocaleLowerCase() === foldedTagQuery)
+        : undefined;
+    const canCreateTag = !!tagQuery
+        && tagQuery.query.trim().length > 0
+        && !exactTag
+        && availableTags.length < SIDEBAR_TAG_MAX_COUNT
+        && tags.length < SIDEBAR_SESSION_TAG_MAX_COUNT;
+    const tagOptionCount = matchingTags.length + (canCreateTag ? 1 : 0);
+    const sessionTagLimitReached = tags.length >= SIDEBAR_SESSION_TAG_MAX_COUNT;
+    const tagCreationLimitReached = availableTags.length >= SIDEBAR_TAG_MAX_COUNT || sessionTagLimitReached;
+
+    React.useEffect(() => {
+        setActiveTagOption((current) => Math.max(0, Math.min(current, Math.max(0, tagOptionCount - 1))));
+    }, [tagOptionCount]);
+
+    React.useEffect(() => {
+        if (Platform.OS !== 'web' || !tagQuery || tagOptionCount === 0 || typeof document === 'undefined') return;
+        document
+            .getElementById(`session-title-tag-option-${activeTagOption}`)
+            ?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    }, [activeTagOption, tagOptionCount, tagQuery]);
+
+    const applyTag = React.useCallback((tag: SidebarTag) => {
+        if (!tagQuery || !onAddTag) return;
+        if (!tags.some((selectedTag) => selectedTag.id === tag.id) && sessionTagLimitReached) return;
+        const cleanTitle = removeSessionTitleTagQuery(draftTitleRef.current, tagQuery.start) || title;
+        draftTitleRef.current = cleanTitle;
+        setDraftTitle(cleanTitle);
+        setActiveTagOption(0);
+        onAddTag(tag);
+        setTimeout(() => {
+            inputRef.current?.focus();
+            choosingTagRef.current = false;
+        }, 0);
+    }, [onAddTag, sessionTagLimitReached, tagQuery, tags, title]);
+
+    const createTag = React.useCallback(() => {
+        if (!tagQuery || !canCreateTag) return;
+        applyTag({
+            id: createSidebarOrganizationId('tag'),
+            name: tagQuery.query.trim(),
+            color: SIDEBAR_LIST_COLORS[availableTags.length % SIDEBAR_LIST_COLORS.length],
+            createdAt: Date.now(),
+        });
+    }, [applyTag, availableTags.length, canCreateTag, tagQuery]);
+
+    const activateTagOption = React.useCallback(() => {
+        const tag = matchingTags[activeTagOption];
+        if (tag) applyTag(tag);
+        else if (canCreateTag && activeTagOption === matchingTags.length) createTag();
+    }, [activeTagOption, applyTag, canCreateTag, createTag, matchingTags]);
     sessionHeaderTitleStyles.useVariants({ headerTitleDensity: compact ? 'compact' : 'regular' });
 
     return (
@@ -199,16 +291,37 @@ function SessionHeaderTitle({
                     <TextInput
                         accessibilityLabel={t('sessionInfo.renameSession')}
                         autoFocus
-                        onBlur={() => finishEditing(true)}
+                        aria-activedescendant={tagQuery && tagOptionCount > 0 ? `session-title-tag-option-${activeTagOption}` : undefined}
+                        aria-controls="session-title-tag-results"
+                        aria-expanded={!!tagQuery}
+                        blurOnSubmit={false}
+                        onBlur={() => {
+                            setTimeout(() => {
+                                if (!choosingTagRef.current) finishEditing(true);
+                            }, 0);
+                        }}
                         onChangeText={handleDraftTitleChange}
                         onKeyPress={(event) => {
                             if (event.nativeEvent.key === 'Escape') {
-                                finishEditing(false);
+                                if (tagQuery) {
+                                    const cleanTitle = removeSessionTitleTagQuery(draftTitleRef.current, tagQuery.start) || title;
+                                    draftTitleRef.current = cleanTitle;
+                                    setDraftTitle(cleanTitle);
+                                } else {
+                                    finishEditing(false);
+                                }
+                            } else if (tagQuery && event.nativeEvent.key === 'ArrowDown') {
+                                if (Platform.OS === 'web') event.preventDefault();
+                                setActiveTagOption((current) => tagOptionCount > 0 ? (current + 1) % tagOptionCount : 0);
+                            } else if (tagQuery && event.nativeEvent.key === 'ArrowUp') {
+                                if (Platform.OS === 'web') event.preventDefault();
+                                setActiveTagOption((current) => tagOptionCount > 0 ? (current - 1 + tagOptionCount) % tagOptionCount : 0);
                             }
                         }}
-                        onSubmitEditing={() => finishEditing(true)}
+                        onSubmitEditing={() => tagQuery ? activateTagOption() : finishEditing(true)}
+                        ref={inputRef}
                         returnKeyType="done"
-                        selectTextOnFocus
+                        role="combobox"
                         style={[
                             sessionHeaderTitleStyles.headerTitleInput,
                             tintColor ? { color: tintColor, borderColor: tintColor } : null,
@@ -237,6 +350,22 @@ function SessionHeaderTitle({
                 {renamingSession ? (
                     <ActivityIndicator size="small" color={tintColor ?? theme.colors.header.tint} />
                 ) : null}
+                {!editing && onAddTag ? (
+                    <Pressable
+                        accessibilityLabel={t('sidebarLists.tagInputPlaceholder')}
+                        accessibilityRole="button"
+                        onPress={beginAddingTag}
+                        style={({ pressed }) => [
+                            sessionHeaderTitleStyles.headerTagsButton,
+                            pressed && sessionHeaderTitleStyles.headerTagsButtonPressed,
+                        ]}
+                        testID="session-header-tags-button"
+                    >
+                        <Text numberOfLines={1} style={sessionHeaderTitleStyles.headerTagsText}>
+                            #
+                        </Text>
+                    </Pressable>
+                ) : null}
                 <View
                     accessibilityLabel={sessionStatus.statusText}
                     style={sessionHeaderTitleStyles.headerRunStatus}
@@ -251,6 +380,57 @@ function SessionHeaderTitle({
                     </Text>
                 </View>
             </View>
+            {editing && tagQuery ? (
+                <ScrollView
+                    keyboardShouldPersistTaps="handled"
+                    nativeID="session-title-tag-results"
+                    role={'listbox' as never}
+                    style={sessionHeaderTitleStyles.tagResults}
+                    testID="session-title-tag-results"
+                >
+                    {matchingTags.map((tag, index) => (
+                        <Pressable
+                            accessibilityState={{
+                                disabled: !tags.some((selectedTag) => selectedTag.id === tag.id) && sessionTagLimitReached,
+                                selected: tags.some((selectedTag) => selectedTag.id === tag.id),
+                            }}
+                            aria-disabled={!tags.some((selectedTag) => selectedTag.id === tag.id) && sessionTagLimitReached}
+                            aria-selected={tags.some((selectedTag) => selectedTag.id === tag.id)}
+                            disabled={!tags.some((selectedTag) => selectedTag.id === tag.id) && sessionTagLimitReached}
+                            key={tag.id}
+                            nativeID={`session-title-tag-option-${index}`}
+                            onPress={() => applyTag(tag)}
+                            onPressIn={() => { choosingTagRef.current = true; }}
+                            role="option"
+                            style={({ pressed }) => [
+                                sessionHeaderTitleStyles.tagResult,
+                                (pressed || activeTagOption === index) && sessionHeaderTitleStyles.tagResultActive,
+                                !tags.some((selectedTag) => selectedTag.id === tag.id) && sessionTagLimitReached && sessionHeaderTitleStyles.tagResultDisabled,
+                            ]}
+                            testID={`session-title-tag-result-${tag.id}`}
+                        >
+                            <Text numberOfLines={1} style={sessionHeaderTitleStyles.tagResultText}>#{tag.name}</Text>
+                            {tags.some((selectedTag) => selectedTag.id === tag.id) ? <Ionicons color={theme.colors.accent} name="checkmark" size={15} /> : null}
+                        </Pressable>
+                    ))}
+                    {canCreateTag ? (
+                        <Pressable
+                            nativeID={`session-title-tag-option-${matchingTags.length}`}
+                            onPress={createTag}
+                            onPressIn={() => { choosingTagRef.current = true; }}
+                            role="option"
+                            style={({ pressed }) => [sessionHeaderTitleStyles.tagResult, (pressed || activeTagOption === matchingTags.length) && sessionHeaderTitleStyles.tagResultActive]}
+                            testID="session-title-create-tag"
+                        >
+                            <Ionicons color={theme.colors.textSecondary} name="add" size={16} />
+                            <Text numberOfLines={1} style={sessionHeaderTitleStyles.tagResultText}>{t('sidebarLists.createTagNamed', { name: `#${tagQuery.query.trim()}` })}</Text>
+                        </Pressable>
+                    ) : null}
+                    {matchingTags.length === 0 && !canCreateTag ? (
+                        <Text style={sessionHeaderTitleStyles.tagEmpty}>{tagCreationLimitReached ? t('sidebarLists.tagLimitReached') : t('sidebarLists.noTags')}</Text>
+                    ) : null}
+                </ScrollView>
+            ) : null}
         </View>
     );
 }
@@ -314,8 +494,11 @@ const SessionViewContent = React.memo((props: { id: string }) => {
     const isMacTauri = inTauri && typeof navigator !== 'undefined' && /Mac/.test(navigator.platform);
     const fileDiffsSidebarEnabled = useSetting('fileDiffsSidebar');
     const zenMode = useLocalSetting('zenMode');
+    const sidebarOrganization = useLocalSetting('sidebarOrganization');
+    const updateSidebarOrganization = useLocalSettingUpdater('sidebarOrganization');
     const [desktopRightPanelCollapsed, setDesktopRightPanelCollapsed] = useLocalSettingMutable('desktopRightPanelCollapsed');
     const [rightDrawerOpen, setRightDrawerOpen] = React.useState(false);
+    const [organizerOpen, setOrganizerOpen] = React.useState(false);
     const {
         leftVisible: desktopLeftSidebarVisible,
         leftWidth: desktopLeftSidebarWidth,
@@ -579,6 +762,21 @@ const SessionViewContent = React.memo((props: { id: string }) => {
         || null;
     const showChip = isDataReady && !!session;
     const compactSessionHeader = shouldUseCompactSessionHeader({ isTablet, windowWidth });
+    const sessionOrganization = sidebarOrganization.sessions[sessionId] ?? { listId: null, tagIds: [] };
+    const sessionTags = sessionOrganization.tagIds
+        .map((tagId) => sidebarOrganization.tags.find((tag) => tag.id === tagId))
+        .filter((tag): tag is SidebarTag => !!tag);
+    const addSessionTag = React.useCallback((tag: SidebarTag) => {
+        updateSidebarOrganization((current) => {
+            const currentAssignment = current.sessions[sessionId] ?? { listId: null, tagIds: [] };
+            if (currentAssignment.tagIds.includes(tag.id)) return current;
+            if (currentAssignment.tagIds.length >= SIDEBAR_SESSION_TAG_MAX_COUNT) return current;
+            return organizeSessionWithCreatedTags(current, sessionId, {
+                ...currentAssignment,
+                tagIds: [...currentAssignment.tagIds, tag.id],
+            }, current.tags.some((currentTag) => currentTag.id === tag.id) ? [] : [tag]);
+        });
+    }, [sessionId, updateSidebarOrganization]);
     const constrainedDrawerHeader = compactSessionHeader && compactRightDrawerAvailable && rightDrawerOpen;
     // 会话内「进入空间/退出空间」：进入 = 设 agentSpaceId + 拉出工作台抽屉；退出 = 清空间并回首页。
     const { enter: enterSpace, exit: exitSpace } = useAgentSpace();
@@ -606,11 +804,25 @@ const SessionViewContent = React.memo((props: { id: string }) => {
     const headerTitleSlot = showChip ? (
         desktopWebHeader ? (
             <View style={workspaceStyles.headerIdentity}>
-                <SessionHeaderTitle compact={compactSessionHeader} session={session!} title={headerProps.title} />
+                <SessionHeaderTitle
+                    availableTags={sidebarOrganization.tags}
+                    compact={compactSessionHeader}
+                    onAddTag={addSessionTag}
+                    session={session!}
+                    tags={sessionTags}
+                    title={headerProps.title}
+                />
             </View>
         ) : isTablet ? (
             <View style={workspaceStyles.headerIdentity}>
-                <SessionHeaderTitle compact={compactSessionHeader} session={session!} title={headerProps.title} />
+                <SessionHeaderTitle
+                    availableTags={sidebarOrganization.tags}
+                    compact={compactSessionHeader}
+                    onAddTag={addSessionTag}
+                    session={session!}
+                    tags={sessionTags}
+                    title={headerProps.title}
+                />
                 <View style={workspaceStyles.headerAgentChip}>
                     {sessionHeaderChip}
                 </View>
@@ -642,7 +854,7 @@ const SessionViewContent = React.memo((props: { id: string }) => {
                 <Text style={{ fontSize: 15 }}>{spaceAgent.glyph}</Text>
             </View>
             {isTablet ? (
-                <SessionHeaderTitle session={session!} title={headerProps.title} tintColor={spaceTint} />
+                <SessionHeaderTitle availableTags={sidebarOrganization.tags} onAddTag={addSessionTag} session={session!} tags={sessionTags} title={headerProps.title} tintColor={spaceTint} />
             ) : (
                 <Text numberOfLines={1} ellipsizeMode="tail" style={{ flex: 1, minWidth: 0, color: spaceTint, fontSize: 15, fontWeight: '600' }}>
                     {headerProps.title}
@@ -789,7 +1001,14 @@ const SessionViewContent = React.memo((props: { id: string }) => {
                         <Text style={{ color: theme.colors.textSecondary, fontSize: 15, marginTop: 8, textAlign: 'center', paddingHorizontal: 32 }}>{t('errors.sessionDeletedDescription')}</Text>
                     </View>
                 ) : (
-                    <SessionViewLoaded key={sessionId} composerHandleRef={sessionComposerHandleRef} sessionId={sessionId} session={session} />
+                    <SessionViewLoaded
+                        key={sessionId}
+                        composerHandleRef={sessionComposerHandleRef}
+                        onManageTags={() => setOrganizerOpen(true)}
+                        sessionId={sessionId}
+                        session={session}
+                        tags={sessionTags}
+                    />
                 )}
             </View>
 
@@ -812,6 +1031,19 @@ const SessionViewContent = React.memo((props: { id: string }) => {
                     }}
                 />
             )}
+            {session ? (
+                <SessionOrganizerDialog
+                    assignment={sessionOrganization}
+                    autoFocusTags
+                    onClose={() => setOrganizerOpen(false)}
+                    onSave={(assignment, createdTags) => updateSidebarOrganization((current) => (
+                        organizeSessionWithCreatedTags(current, sessionId, assignment, createdTags)
+                    ))}
+                    organization={sidebarOrganization}
+                    sessionName={headerProps.title}
+                    visible={organizerOpen}
+                />
+            ) : null}
         </>
     );
 
@@ -1078,10 +1310,14 @@ function SessionViewLoaded({
     sessionId,
     session,
     composerHandleRef,
+    onManageTags,
+    tags,
 }: {
     sessionId: string;
     session: Session;
     composerHandleRef: React.RefObject<ChatComposerHandle | null>;
+    onManageTags: () => void;
+    tags: readonly SidebarTag[];
 }) {
     const { theme } = useUnistyles();
     const router = useRouter();
@@ -1404,6 +1640,22 @@ function SessionViewLoaded({
     const input = (
         <>
             {inactiveHint}
+            <CenteredInputWidth horizontalPadding={sessionInputHorizontalPadding}>
+                <View style={sessionCanvasTagStyles.row} testID="session-canvas-tags">
+                    {tags.length > 0 ? (
+                        <>
+                        {tags.map((tag) => (
+                            <Pressable accessibilityLabel={`${t('sidebarLists.organizeSession')}: #${tag.name}`} accessibilityRole="button" key={tag.id} onPress={onManageTags} style={({ pressed }) => [sessionCanvasTagStyles.tag, pressed && sessionCanvasTagStyles.tagPressed]} testID={`session-canvas-tag-${tag.id}`}>
+                                <Text numberOfLines={1} style={sessionCanvasTagStyles.tagText}>#{tag.name}</Text>
+                            </Pressable>
+                        ))}
+                        </>
+                    ) : null}
+                    <Pressable accessibilityLabel={t('sidebarLists.organizeSession')} accessibilityRole="button" onPress={onManageTags} style={({ pressed }) => [sessionCanvasTagStyles.add, pressed && sessionCanvasTagStyles.tagPressed]} testID="session-canvas-add-tag">
+                        <Ionicons color={theme.colors.textLink} name="add" size={18} />
+                    </Pressable>
+                </View>
+            </CenteredInputWidth>
             {composer}
         </>
     );
@@ -1721,6 +1973,48 @@ const sessionHeaderTitleStyles = StyleSheet.create((theme) => ({
         fontWeight: '600',
         ...Platform.select({ web: { outlineStyle: 'none' } as any, default: {} }),
     },
+    tagResults: {
+        backgroundColor: theme.colors.surface,
+        borderColor: theme.colors.divider,
+        borderRadius: 10,
+        borderWidth: StyleSheet.hairlineWidth,
+        left: 0,
+        maxHeight: 280,
+        minWidth: 220,
+        overflow: 'hidden',
+        position: 'absolute',
+        top: 38,
+        width: '100%',
+        zIndex: 1200,
+        shadowColor: theme.colors.shadow.color,
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: theme.colors.shadow.opacity,
+        shadowRadius: 18,
+    },
+    tagResult: {
+        alignItems: 'center',
+        flexDirection: 'row',
+        gap: 8,
+        minHeight: 40,
+        paddingHorizontal: 12,
+    },
+    tagResultActive: { backgroundColor: theme.colors.surfaceSelected },
+    tagResultDisabled: { opacity: 0.45 },
+    tagResultText: { color: theme.colors.text, flex: 1, fontSize: 13, fontWeight: '600' },
+    tagEmpty: { color: theme.colors.textSecondary, fontSize: 12, paddingHorizontal: 12, paddingVertical: 12 },
+    headerTagsButton: {
+        alignItems: 'center',
+        borderRadius: 12,
+        flexShrink: 1,
+        justifyContent: 'center',
+        maxWidth: 180,
+        minHeight: 28,
+        minWidth: 28,
+        paddingHorizontal: 8,
+    },
+    headerTagsButtonSelected: { backgroundColor: theme.colors.surfaceSelected },
+    headerTagsButtonPressed: { backgroundColor: theme.colors.surfacePressed },
+    headerTagsText: { color: theme.colors.header.tint, flexShrink: 1, fontSize: 11, fontWeight: '600' },
     headerRunStatus: {
         maxWidth: 122,
         minWidth: 0,
@@ -1739,6 +2033,37 @@ const sessionHeaderTitleStyles = StyleSheet.create((theme) => ({
         flexShrink: 1,
         fontSize: 11,
         fontWeight: '600',
+    },
+}));
+
+const sessionCanvasTagStyles = StyleSheet.create((theme) => ({
+    row: {
+        alignItems: 'center',
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 8,
+        paddingBottom: 8,
+        paddingHorizontal: 6,
+        paddingTop: 4,
+    },
+    tag: {
+        backgroundColor: theme.colors.surfaceSelected,
+        borderRadius: 14,
+        justifyContent: 'center',
+        minHeight: 28,
+        maxWidth: 180,
+        paddingHorizontal: 11,
+    },
+    tagPressed: { opacity: 0.72 },
+    tagText: { color: theme.colors.text, fontSize: 12, fontWeight: '600' },
+    add: {
+        alignItems: 'center',
+        borderColor: theme.colors.textLink,
+        borderRadius: 14,
+        borderWidth: 1,
+        height: 28,
+        justifyContent: 'center',
+        width: 38,
     },
 }));
 

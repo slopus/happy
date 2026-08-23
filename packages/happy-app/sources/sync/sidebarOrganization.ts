@@ -92,6 +92,10 @@ export function createSidebarOrganizationId(prefix: 'list' | 'tag'): string {
     return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+export function normalizeSidebarTagName(value: string): string {
+    return value.trim().replace(/^#+\s*/, '').trim().slice(0, SIDEBAR_LIST_NAME_MAX_LENGTH);
+}
+
 export function normalizeSidebarOrganization(value: SidebarOrganization): SidebarOrganization {
     const listIds = new Set(value.lists.map((list) => list.id));
     const tagIds = new Set(value.tags.map((tag) => tag.id));
@@ -118,6 +122,37 @@ export function organizeSession(
             ...value.sessions,
             [sessionId]: assignment,
         },
+    });
+}
+
+export function organizeSessionWithCreatedTags(
+    value: SidebarOrganization,
+    sessionId: string,
+    assignment: SidebarSessionOrganization,
+    createdTags: readonly SidebarTag[],
+): SidebarOrganization {
+    const tags = [...value.tags];
+    const remappedTagIds = new Map<string, string>();
+
+    for (const draftTag of createdTags) {
+        if (!assignment.tagIds.includes(draftTag.id)) continue;
+        const name = normalizeSidebarTagName(draftTag.name);
+        if (!name) continue;
+
+        const existing = tags.find((tag) => tag.name.toLocaleLowerCase() === name.toLocaleLowerCase());
+        if (existing) {
+            remappedTagIds.set(draftTag.id, existing.id);
+            continue;
+        }
+        if (tags.length >= SIDEBAR_TAG_MAX_COUNT) continue;
+
+        tags.push({ ...draftTag, name });
+        remappedTagIds.set(draftTag.id, draftTag.id);
+    }
+
+    return organizeSession({ ...value, tags }, sessionId, {
+        ...assignment,
+        tagIds: assignment.tagIds.map((tagId) => remappedTagIds.get(tagId) ?? tagId),
     });
 }
 

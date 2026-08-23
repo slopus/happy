@@ -31,6 +31,12 @@ const mocks = vi.hoisted(() => ({
     desktopRightPanelCollapsed: false,
     globalRightSidebarShortcut: undefined as (() => void) | undefined,
     setDesktopRightPanelCollapsed: vi.fn(),
+    updateSidebarOrganization: vi.fn(),
+    sidebarOrganization: {
+        lists: [],
+        tags: [{ id: 'product', name: 'product', color: 'green', createdAt: 1 }],
+        sessions: { 'session-1': { listId: null, tagIds: ['product'] } },
+    } as any,
     spaceAgent: null as AgentLauncher | null,
     useSpaceAgentForSession: vi.fn(),
     enterSpace: vi.fn(),
@@ -193,6 +199,7 @@ vi.mock('@/components/ChatHeaderView', async () => {
 });
 vi.mock('@/components/SessionHeaderChip', () => ({ SessionHeaderChip: 'SessionHeaderChip' }));
 vi.mock('@/components/SessionInfoDropdown', () => ({ SessionInfoDropdown: 'SessionInfoDropdown' }));
+vi.mock('@/components/SessionOrganizerDialog', () => ({ SessionOrganizerDialog: 'SessionOrganizerDialog' }));
 vi.mock('@/components/ChatList', async () => {
     const ReactModule = await import('react');
     const { useSubagentInspector } = await import('@/components/subagent/SubagentInspectorContext');
@@ -315,6 +322,7 @@ vi.mock('@/sync/storage', () => ({
     useLocalSetting: (key: string) => {
         if (key === 'acknowledgedCliVersions') return {};
         if (key === 'desktopRightPanelCollapsed') return mocks.desktopRightPanelCollapsed;
+        if (key === 'sidebarOrganization') return mocks.sidebarOrganization;
         return false;
     },
     useLocalSettingMutable: (key: string) => {
@@ -323,6 +331,7 @@ vi.mock('@/sync/storage', () => ({
         }
         return [false, vi.fn()];
     },
+    useLocalSettingUpdater: () => mocks.updateSidebarOrganization,
     useMachine: () => null,
     useSession: () => mocks.sessionAvailable ? mocks.session : null,
     useSessionMessages: () => ({ messages: mocks.sessionMessages, isLoaded: true }),
@@ -406,6 +415,11 @@ describe('SessionView Agent-space boundary', () => {
         mocks.isTablet = false;
         mocks.platformOS = 'android';
         mocks.desktopRightPanelCollapsed = false;
+        mocks.sidebarOrganization = {
+            lists: [],
+            tags: [{ id: 'product', name: 'product', color: 'green', createdAt: 1 }],
+            sessions: { 'session-1': { listId: null, tagIds: ['product'] } },
+        };
         mocks.suspendFileViewPanel = false;
         mocks.fileViewPanelSuspender = null;
         mocks.sessionMessages = [];
@@ -1117,10 +1131,23 @@ describe('SessionView Agent-space boundary', () => {
         expect(title.props.onFocus).toBeUndefined();
         expect(title.props.onHoverIn).toBeUndefined();
         expect(renderer.root.findAllByProps({ testID: 'session-header-title-tooltip' })).toHaveLength(0);
+        const tagsButton = renderer.root.findByProps({ testID: 'session-header-tags-button' });
+        expect(tagsButton.findByType('Text').props.children).toBe('#');
+        act(() => tagsButton.props.onPress());
+        const tagInput = renderer.root.findByProps({ testID: 'session-header-title-input' });
+        expect(tagInput.props.value).toBe('Health session #');
+        expect(renderer.root.findByProps({ testID: 'session-title-tag-results' }).props.role).toBe('listbox');
+        expect(renderer.root.findByProps({ testID: 'session-title-tag-result-product' }).props.role).toBe('option');
+        act(() => tagInput.props.onSubmitEditing());
+        expect(renderer.root.findByProps({ testID: 'session-header-title-input' }).props.value).toBe('Health session');
+        expect(mocks.updateSidebarOrganization).toHaveBeenCalledTimes(1);
 
-        act(() => title.props.onPress());
+        act(() => renderer.root.findByProps({ testID: 'session-header-title-input' }).props.onSubmitEditing());
+        expect(mocks.renameSessionToTitle).toHaveBeenCalledWith('Health session');
+        expect(renderer.root.findByProps({ testID: 'session-canvas-tag-product' }).findByType('Text').props.children.join('')).toBe('#product');
+
+        act(() => renderer.root.findByProps({ testID: 'session-header-title' }).props.onPress());
         const titleInput = renderer.root.findByProps({ testID: 'session-header-title-input' });
-        expect(titleInput.props.selectTextOnFocus).toBe(true);
         act(() => titleInput.props.onChangeText('Renamed inline'));
         act(() => titleInput.props.onSubmitEditing());
         expect(mocks.renameSessionToTitle).toHaveBeenCalledWith('Renamed inline');
@@ -1130,7 +1157,24 @@ describe('SessionView Agent-space boundary', () => {
         const cancelledTitleInput = renderer.root.findByProps({ testID: 'session-header-title-input' });
         act(() => cancelledTitleInput.props.onChangeText('Cancelled rename'));
         act(() => cancelledTitleInput.props.onKeyPress({ nativeEvent: { key: 'Escape' } }));
-        expect(mocks.renameSessionToTitle).toHaveBeenCalledTimes(1);
+        expect(mocks.renameSessionToTitle).toHaveBeenCalledTimes(2);
+
+        act(() => renderer.root.findByProps({ testID: 'session-header-title' }).props.onPress());
+        const createInput = renderer.root.findByProps({ testID: 'session-header-title-input' });
+        act(() => createInput.props.onChangeText('Health session #fresh'));
+        expect(renderer.root.findByProps({ testID: 'session-title-create-tag' }).props.role).toBe('option');
+        act(() => renderer.root.findByProps({ testID: 'session-header-title-input' }).props.onSubmitEditing());
+        expect(renderer.root.findByProps({ testID: 'session-header-title-input' }).props.value).toBe('Health session');
+        const updater = mocks.updateSidebarOrganization.mock.calls.at(-1)?.[0];
+        const updatedOrganization = updater({
+            lists: [],
+            tags: [{ id: 'product', name: 'product', color: 'green', createdAt: 1 }],
+            sessions: { 'session-1': { listId: null, tagIds: ['product'] } },
+        });
+        expect(updatedOrganization.tags.map((tag: { name: string }) => tag.name)).toContain('fresh');
+
+        act(() => renderer.root.findByProps({ testID: 'session-canvas-add-tag' }).props.onPress());
+        expect(renderer.root.findByType('SessionOrganizerDialog').props.visible).toBe(true);
 
         const more = renderer.root.findByProps({ testID: 'session-header-more-button' });
         expect(more.props.accessibilityLabel).toBe('sessionInfo.viewDetails');
@@ -1139,6 +1183,41 @@ describe('SessionView Agent-space boundary', () => {
         act(() => more.props.onPress());
         expect(renderer.root.findAllByType('SessionInfoDropdown')).toHaveLength(1);
 
+        act(() => renderer.unmount());
+    });
+
+    it('keeps unselected title Tag options disabled when the session reaches its limit', () => {
+        mocks.isDataReady = true;
+        mocks.windowWidth = 1400;
+        mocks.isTablet = true;
+        mocks.platformOS = 'web';
+        const tags = Array.from({ length: 101 }, (_, index) => ({
+            id: `tag-${index}`,
+            name: `tag-${index}`,
+            color: 'green',
+            createdAt: index,
+        }));
+        mocks.sidebarOrganization = {
+            lists: [],
+            tags,
+            sessions: { 'session-1': { listId: null, tagIds: tags.slice(0, 100).map((tag) => tag.id) } },
+        };
+        let renderer: any;
+
+        act(() => {
+            renderer = TestRenderer.create(<SessionView id="session-1" />);
+        });
+        act(() => renderer.root.findByProps({ testID: 'session-header-tags-button' }).props.onPress());
+        const input = renderer.root.findByProps({ testID: 'session-header-title-input' });
+        act(() => input.props.onChangeText('Health session #tag-100'));
+        const blockedOption = renderer.root.findByProps({ testID: 'session-title-tag-result-tag-100' });
+        expect(blockedOption.props.disabled).toBe(true);
+        expect(blockedOption.props['aria-disabled']).toBe(true);
+        act(() => renderer.root.findByProps({ testID: 'session-header-title-input' }).props.onSubmitEditing());
+        expect(renderer.root.findByProps({ testID: 'session-header-title-input' }).props.value).toBe('Health session #tag-100');
+
+        act(() => input.props.onChangeText('Health session #missing'));
+        expect(renderer.root.findAllByType('Text').some((node: any) => node.props.children === 'sidebarLists.tagLimitReached')).toBe(true);
         act(() => renderer.unmount());
     });
 
