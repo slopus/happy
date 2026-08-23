@@ -6,7 +6,11 @@ import { Session, Machine, GitStatus, SessionAgentModesPatch } from "./storageTy
 import type { GitStatusFiles } from "./gitStatusFiles";
 import type { ProjectFilesList } from "./projectFiles";
 import { buildPathProjectGroups, buildProjectGroups, isProjectSession, type ProjectGroupData } from "./projectGroups";
-import { selectPendingCommunications, type PendingAgentCommunication } from "./agentCommunications";
+import {
+    selectAgentFormCommunication,
+    selectPendingCommunications,
+    type PendingAgentCommunication,
+} from "./agentCommunications";
 import { createReducer, reducer, ReducerState } from "./reducer/reducer";
 import { Message } from "./typesMessage";
 import { NormalizedMessage } from "./typesRaw";
@@ -1641,6 +1645,12 @@ export function useSocketStatus() {
 export function useSessionPendingCommunications(sessionId: string): PendingAgentCommunication[] {
     return storage(useDeepEqual((state) =>
         selectPendingCommunications(state.sessions[sessionId]?.agentState ?? null)));
+}
+
+/** Agent form joined to one transcript tool call, pending or completed. */
+export function useSessionAgentFormCommunication(sessionId: string, toolUseId: string) {
+    return storage(useShallow((state) =>
+        selectAgentFormCommunication(state.sessions[sessionId]?.agentState ?? null, toolUseId)));
 }
 
 export function useSessionGitStatus(sessionId: string): GitStatus | null {

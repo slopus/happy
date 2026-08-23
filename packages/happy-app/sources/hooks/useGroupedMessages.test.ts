@@ -323,6 +323,59 @@ describe('useGroupedMessages', () => {
         expect(items[0]).toMatchObject({ type: 'message', id: 'tool-only' });
     });
 
+    it('keeps interactive questions expanded and out of tool groups', () => {
+        const messages: Message[] = [
+            toolMessage('tool-latest', 4),
+            namedToolMessage('question', 'request_user_input', 3),
+            toolMessage('tool-earliest', 2),
+            {
+                kind: 'user-text',
+                id: 'user',
+                localId: null,
+                createdAt: 1,
+                text: 'run tools',
+            },
+        ];
+
+        const items = groupToolCallsForDisplay(messages, true, { groupSingleToolCalls: true });
+
+        expect(items.map(item => item.id)).toEqual([
+            'group-tool-latest',
+            'question',
+            'group-tool-earliest',
+            'user',
+        ]);
+        expect(items[1]).toMatchObject({ type: 'message', id: 'question' });
+    });
+
+    it('keeps an answered interactive question out of collapsed agent work', () => {
+        const messages: Message[] = [
+            {
+                kind: 'agent-text',
+                id: 'agent-final',
+                localId: null,
+                createdAt: 5,
+                text: 'done',
+            },
+            toolMessage('tool-latest', 4),
+            namedToolMessage('question', 'request_user_input', 3),
+            toolMessage('tool-earliest', 2),
+            {
+                kind: 'user-text',
+                id: 'user',
+                localId: null,
+                createdAt: 1,
+                text: 'run tools',
+            },
+        ];
+
+        const items = groupMessagesForDisplay(messages, true);
+
+        expect(items.some(item => item.id === 'question' && item.type === 'message')).toBe(true);
+        const workGroup = items.find(item => item.type === 'agent-work-group');
+        expect(workGroup?.messages.some(message => message.id === 'question')).toBe(false);
+    });
+
     it('hides Claude Skill tool calls from the display list', () => {
         const messages: Message[] = [
             {

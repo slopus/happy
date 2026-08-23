@@ -100,6 +100,8 @@ type SendMessageOptions = {
     source?: MessageSentSource;
     /** Optional image attachments to send before the text message. */
     attachments?: AttachmentPreview[];
+    /** Wait until the outbox reaches the server before resolving. */
+    awaitDelivery?: boolean;
 };
 
 class Sync {
@@ -610,7 +612,7 @@ class Sync {
         }
 
         const modeMeta = resolveMessageModeMeta(session, storage.getState().settings);
-        const { displayText, source = 'chat', attachments } = options ?? {};
+        const { displayText, source = 'chat', attachments, awaitDelivery = false } = options ?? {};
 
         const flavor = session.metadata?.flavor;
         const rigAttachmentPolicy = isRigMetadataV1(session.metadata)
@@ -767,7 +769,11 @@ class Sync {
         // up on user action only — not on background agent output.
         storage.getState().markSessionMessageSent(sessionId);
 
-        this.getSendSync(sessionId).invalidate();
+        if (awaitDelivery) {
+            await this.getSendSync(sessionId).invalidateAndAwait();
+        } else {
+            this.getSendSync(sessionId).invalidate();
+        }
         this.maybeStartBackgroundSendWatchdog();
     }
 

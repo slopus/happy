@@ -84,6 +84,11 @@ const TASK_TOOL_NAMES = new Set([
     'workflow_status',
 ]);
 
+const INTERACTIVE_QUESTION_TOOL_NAMES = new Set([
+    'AskUserQuestion',
+    'request_user_input',
+]);
+
 export type ToolSummaryCategory = 'terminal' | 'edit' | 'read' | 'search' | 'web' | 'task' | 'other';
 
 /** Formats `mcp__linear__create_issue` as `MCP: Linear Create Issue`. */
@@ -110,7 +115,7 @@ export function shouldUseCompactToolRow(
     tool: Pick<ToolCall, 'name' | 'permission'>,
     compactMode: boolean,
 ): boolean {
-    if (!compactMode || tool.name === 'file' || tool.name === 'AskUserQuestion') {
+    if (!compactMode || tool.name === 'file' || isInteractiveQuestionToolName(tool.name)) {
         return false;
     }
 
@@ -120,6 +125,10 @@ export function shouldUseCompactToolRow(
     }
 
     return true;
+}
+
+export function isInteractiveQuestionToolName(name: string): boolean {
+    return INTERACTIVE_QUESTION_TOOL_NAMES.has(name);
 }
 
 export function getToolSummaryCategory(toolName: string): ToolSummaryCategory {

@@ -5,6 +5,8 @@ import {
     canSubmit,
     describeAnswer,
     isQuestionAnswered,
+    canRenderAgentFormInline,
+    selectAgentFormCommunication,
     selectPendingCommunications,
     toggleOption,
 } from './agentCommunications';
@@ -34,6 +36,18 @@ describe('selectPendingCommunications', () => {
         expect(pending[0].id).toBe('call-1');
         expect(pending[0]).toMatchObject({ kind: 'form' });
         expect((pending[0] as { questions: AgentQuestion[] }).questions[0].header).toBe('Storage');
+    });
+
+    it('preserves the provider tool id used to join the form to its transcript card', () => {
+        const pending = selectPendingCommunications(state({
+            'communication-1': {
+                kind: 'form',
+                toolUseId: 'tool-call-1',
+                form: { questions: [question()] },
+            },
+        }));
+
+        expect(pending[0].toolUseId).toBe('tool-call-1');
     });
 
     it('surfaces a kind this build does not implement instead of dropping it', () => {
@@ -93,6 +107,75 @@ describe('selectPendingCommunications', () => {
 
     it('returns nothing when there is no agent state', () => {
         expect(selectPendingCommunications(null)).toEqual([]);
+    });
+});
+
+describe('selectAgentFormCommunication', () => {
+    it('joins a pending communication by provider tool id', () => {
+        const communication = selectAgentFormCommunication(state({
+            'communication-1': {
+                kind: 'form',
+                toolUseId: 'tool-call-1',
+                form: { questions: [question()] },
+            },
+        }), 'tool-call-1');
+
+        expect(communication).toMatchObject({
+            id: 'communication-1',
+            toolUseId: 'tool-call-1',
+            kind: 'form',
+            status: 'pending',
+        });
+    });
+
+    it('uses the communication id as the join key for older snapshots', () => {
+        expect(selectAgentFormCommunication(state({
+            'tool-call-1': { kind: 'form', form: { questions: [question()] } },
+        }), 'tool-call-1')).toMatchObject({ id: 'tool-call-1', status: 'pending' });
+    });
+
+    it('prefers the completed answer over the stale pending snapshot', () => {
+        const communication = selectAgentFormCommunication(state(
+            {
+                'communication-1': {
+                    kind: 'form',
+                    toolUseId: 'tool-call-1',
+                    form: { questions: [question()] },
+                },
+            },
+            {
+                'communication-1': {
+                    kind: 'form',
+                    toolUseId: 'tool-call-1',
+                    form: { questions: [question()] },
+                    status: 'answered',
+                    answers: { q1: { options: ['Settings'] } },
+                },
+            },
+        ), 'tool-call-1');
+
+        expect(communication).toMatchObject({
+            status: 'answered',
+            answers: { q1: { options: ['Settings'] } },
+        });
+    });
+});
+
+describe('canRenderAgentFormInline', () => {
+    it('accepts choice forms and keeps text-only forms on the modal fallback', () => {
+        expect(canRenderAgentFormInline({
+            id: 'choice',
+            createdAt: 0,
+            kind: 'form',
+            questions: [question()],
+        })).toBe(true);
+
+        expect(canRenderAgentFormInline({
+            id: 'text',
+            createdAt: 0,
+            kind: 'form',
+            questions: [question({ options: [], allowCustom: true })],
+        })).toBe(false);
     });
 });
 

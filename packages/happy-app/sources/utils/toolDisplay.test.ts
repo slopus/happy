@@ -138,6 +138,7 @@ describe('terminal tool display helpers', () => {
         expect(shouldUseCompactToolRow(tool('brand_new_rig_tool', {}), false)).toBe(false);
         expect(shouldUseCompactToolRow(tool('file', {}), true)).toBe(false);
         expect(shouldUseCompactToolRow(tool('AskUserQuestion', {}), true)).toBe(false);
+        expect(shouldUseCompactToolRow(tool('request_user_input', {}), true)).toBe(false);
 
         const pendingPlan = tool('ExitPlanMode', {});
         pendingPlan.permission = {

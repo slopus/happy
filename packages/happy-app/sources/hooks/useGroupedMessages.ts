@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { Message } from '@/sync/typesMessage';
 import { knownTools } from '@/components/tools/knownTools';
-import { getToolSummaryCategory } from '@/utils/toolDisplay';
+import { getToolSummaryCategory, isInteractiveQuestionToolName } from '@/utils/toolDisplay';
 import { t } from '@/text';
 
 // Display item types for the grouped message list
@@ -80,7 +80,7 @@ export function groupMessagesForDisplay(
         if (!collapseCurrentTurn && turnOf[index] === 0) return false;
         if (hiddenWorkIndexes.has(index)) return false;
         if (isInvisibleMessage(msg) || isUserAttachment(msg)) return false;
-        return msg.kind === 'tool-call';
+        return msg.kind === 'tool-call' && !isInteractiveQuestionToolName(msg.tool.name);
     };
 
     const toolRuns = collectToolRuns(messages, visibleForToolGrouping);
@@ -148,7 +148,7 @@ export function groupToolCallsForDisplay(
 
     const groupSingleToolCalls = options.groupSingleToolCalls ?? false;
     const toolRuns = collectToolRuns(messages, (msg) => {
-        if (msg.kind !== 'tool-call') return false;
+        if (msg.kind !== 'tool-call' || isInteractiveQuestionToolName(msg.tool.name)) return false;
         if (isInvisibleMessage(msg) || isUserAttachment(msg)) return false;
         return true;
     });
@@ -274,6 +274,7 @@ function collectAgentWorkGroups(messages: Message[], turnOf: number[], collapseC
             const msg = messages[index];
             if (msg.kind === 'user-text') return false;
             if (isInvisibleMessage(msg) || isUserAttachment(msg)) return false;
+            if (msg.kind === 'tool-call' && isInteractiveQuestionToolName(msg.tool.name)) return false;
             return true;
         });
 

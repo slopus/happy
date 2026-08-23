@@ -492,6 +492,7 @@ describe('reducer', () => {
             expect(result.messages).toHaveLength(1);
             expect(result.messages[0].kind).toBe('tool-call');
             if (result.messages[0].kind === 'tool-call') {
+                expect(result.messages[0].tool.callId).toBe('tool-1');
                 expect(result.messages[0].tool.name).toBe('Bash');
                 expect(result.messages[0].tool.state).toBe('running');
                 expect(result.messages[0].tool.permission).toEqual({
@@ -586,6 +587,7 @@ describe('reducer', () => {
             // So we should get an update to the existing message, not a new one
             expect(result2.messages).toHaveLength(1);
             if (result2.messages[0].kind === 'tool-call') {
+                expect(result2.messages[0].tool.callId).toBe('tool-1');
                 expect(result2.messages[0].tool.permission?.status).toBe('approved');
                 expect(result2.messages[0].tool.state).toBe('running');
                 expect(result2.messages[0].tool.name).toBe('Bash');

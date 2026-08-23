@@ -6,27 +6,35 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Text } from '@/components/StyledText';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
-import { useSessionPendingCommunications } from '@/sync/storage';
-import type { PendingAgentCommunication } from '@/sync/agentCommunications';
+import { useSessionMessages, useSessionPendingCommunications } from '@/sync/storage';
+import {
+    canRenderAgentFormInline,
+    type PendingAgentCommunication,
+} from '@/sync/agentCommunications';
+import type { Message } from '@/sync/typesMessage';
 import { sessionCancelCommunication } from '@/sync/ops';
 import { AgentQuestionModal } from './AgentQuestionModal';
 
 /**
- * Sits above the composer whenever the agent is waiting on the user. It stays
- * pinned rather than living in the transcript so a request cannot scroll out of
- * sight while the agent is blocked on it.
+ * Fallback UI above the composer when a request cannot render in the transcript
+ * (for example, a text-only form or a communication kind this build does not
+ * understand).
  *
  * A form opens the full-screen answer sheet. A communication of a kind this
  * build does not implement says so and offers to dismiss it, so the session is
  * never stuck on something this client cannot render.
  */
 export function AgentQuestionBanner({ sessionId }: { sessionId: string }) {
-    const styles = stylesheet;
-    const { theme } = useUnistyles();
     const pendingCommunications = useSessionPendingCommunications(sessionId);
+    const { messages } = useSessionMessages(sessionId);
     const [openId, setOpenId] = React.useState<string | null>(null);
 
-    const pending = pendingCommunications[0];
+    // A choice form with a matching request_user_input tool call is rendered
+    // directly in the transcript. Keep this banner/modal as the fallback for
+    // text-only forms, unsupported kinds, and sessions missing the tool event.
+    const pending = pendingCommunications.find(communication => (
+        !isCommunicationRenderedInline(communication, messages)
+    ));
     const open = pending?.kind === 'form' && openId === pending.id;
 
     // Drop the modal as soon as its request is gone, so an answer from another
@@ -67,6 +75,24 @@ export function AgentQuestionBanner({ sessionId }: { sessionId: string }) {
             />
         </>
     );
+}
+
+function isCommunicationRenderedInline(
+    communication: PendingAgentCommunication,
+    messages: Message[],
+): boolean {
+    if (!canRenderAgentFormInline(communication)) return false;
+    const joinId = communication.toolUseId ?? communication.id;
+
+    const containsMatchingTool = (message: Message): boolean => {
+        if (message.kind !== 'tool-call') return false;
+        if (message.tool.name === 'request_user_input' && message.tool.callId === joinId) {
+            return true;
+        }
+        return message.children.some(containsMatchingTool);
+    };
+
+    return messages.some(containsMatchingTool);
 }
 
 /**

@@ -28,8 +28,8 @@ import { Modal } from '@/modal';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { getCurrentVoiceConversationId, getCurrentVoiceSessionDurationSeconds, startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSession';
 import { gitStatusSync } from '@/sync/gitStatusSync';
-import { sessionAbort, sessionGoalAction, sessionSetAgentModes, spawnSideChat, sessionKill, sessionArchive } from '@/sync/ops';
-import { storage, useIsDataReady, useLocalSetting, useRealtimeStatus, useSessionGitStatus, useSessionMessages, useSessionUsage, useSetting, useSideChatSessions } from '@/sync/storage';
+import { sessionAbort, sessionCancelCommunication, sessionGoalAction, sessionSetAgentModes, spawnSideChat, sessionKill, sessionArchive } from '@/sync/ops';
+import { storage, useIsDataReady, useLocalSetting, useRealtimeStatus, useSessionGitStatus, useSessionMessages, useSessionPendingCommunications, useSessionUsage, useSetting, useSideChatSessions } from '@/sync/storage';
 import { useSession } from '@/sync/storage';
 import { getSessionForkSource } from '@/utils/sessionFork';
 import { useHappyAction } from '@/hooks/useHappyAction';
@@ -689,6 +689,7 @@ export function SessionViewLoaded({
 
     const realtimeStatus = useRealtimeStatus();
     const { messages, isLoaded } = useSessionMessages(sessionId);
+    const pendingCommunications = useSessionPendingCommunications(sessionId);
     const acknowledgedCliVersions = useLocalSetting('acknowledgedCliVersions');
     const zenMode = useLocalSetting('zenMode');
     const sessionInputHorizontalPadding = Platform.OS === 'web' || isRunningOnMac() || isTablet ? 12 : 8;
@@ -829,11 +830,35 @@ export function SessionViewLoaded({
         const liveMessage = composerHandleRef.current?.getMessage() ?? '';
         if (liveMessage.trim() || (expImageUpload && selectedImages.length > 0)) {
             const attachments = expImageUpload ? selectedImages : undefined;
+            const communicationsToDismiss = [...pendingCommunications];
             composerHandleRef.current?.clearMessage();
             if (expImageUpload) clearImages();
-            sync.sendMessage(sessionId, liveMessage, { source: 'chat', attachments });
+
+            void (async () => {
+                try {
+                    // Deliver the user's message while the question tool is still
+                    // blocked, then dismiss the forms. This keeps the regular text
+                    // available as the user's custom response before the agent is
+                    // allowed to continue its turn.
+                    await sync.sendMessage(sessionId, liveMessage, {
+                        source: 'chat',
+                        attachments,
+                        awaitDelivery: communicationsToDismiss.length > 0,
+                    });
+                    const dismissals = await Promise.allSettled(communicationsToDismiss.map(communication => (
+                        sessionCancelCommunication(sessionId, communication.id, communication.kind)
+                    )));
+                    for (const dismissal of dismissals) {
+                        if (dismissal.status === 'rejected') {
+                            console.error('Failed to dismiss an agent question:', dismissal.reason);
+                        }
+                    }
+                } catch (error) {
+                    console.error('Failed to send message while dismissing agent questions:', error);
+                }
+            })();
         }
-    }, [sessionId, expImageUpload, selectedImages, clearImages]);
+    }, [sessionId, expImageUpload, selectedImages, clearImages, pendingCommunications]);
 
     const handleAbort = React.useCallback(() => {
         // Mode picks live in synced metadata — clear them there, otherwise the

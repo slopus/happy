@@ -8,6 +8,7 @@ import type {
 interface PendingBase {
     id: string;
     createdAt: number;
+    toolUseId?: string | null;
 }
 
 /** A communication this build knows how to render and answer. */
@@ -30,6 +31,12 @@ export interface PendingUnsupportedCommunication extends PendingBase {
 
 export type PendingAgentCommunication = PendingAgentForm | PendingUnsupportedCommunication;
 
+/** A form joined to its transcript tool call, including completed answers. */
+export interface AgentFormCommunication extends PendingAgentForm {
+    status: 'pending' | 'answered' | 'cancelled';
+    answers?: Record<string, AgentQuestionAnswer>;
+}
+
 /** A draft answer while the user is filling the form in. */
 export interface AgentQuestionDraft {
     options: string[];
@@ -51,7 +58,11 @@ export function selectPendingCommunications(state: AgentState | null): PendingAg
     const pending: PendingAgentCommunication[] = [];
     for (const [id, communication] of Object.entries(state.communications)) {
         if (state.completedCommunications?.[id]) continue;
-        const base = { id, createdAt: communication.createdAt ?? 0 };
+        const base: PendingBase = {
+            id,
+            createdAt: communication.createdAt ?? 0,
+            ...(communication.toolUseId ? { toolUseId: communication.toolUseId } : {}),
+        };
 
         if (communication.kind !== 'form') {
             pending.push({
@@ -68,6 +79,56 @@ export function selectPendingCommunications(state: AgentState | null): PendingAg
         pending.push({ ...base, kind: 'form', questions });
     }
     return pending.sort((a, b) => a.createdAt - b.createdAt);
+}
+
+/**
+ * Finds the form associated with one provider tool call. Completed forms win
+ * over pending snapshots so the transcript can immediately render the answer.
+ */
+export function selectAgentFormCommunication(
+    state: AgentState | null,
+    toolUseId: string,
+): AgentFormCommunication | null {
+    if (!state || !toolUseId) return null;
+
+    for (const [id, communication] of Object.entries(state.completedCommunications ?? {})) {
+        if ((communication.toolUseId ?? id) !== toolUseId || communication.kind !== 'form') continue;
+        const questions = readQuestions(communication);
+        if (questions.length === 0) return null;
+        return {
+            id,
+            createdAt: communication.createdAt ?? 0,
+            ...(communication.toolUseId ? { toolUseId: communication.toolUseId } : {}),
+            kind: 'form',
+            questions,
+            status: communication.status,
+            ...(communication.answers ? { answers: communication.answers } : {}),
+        };
+    }
+
+    for (const [id, communication] of Object.entries(state.communications ?? {})) {
+        if (state.completedCommunications?.[id]) continue;
+        if ((communication.toolUseId ?? id) !== toolUseId || communication.kind !== 'form') continue;
+        const questions = readQuestions(communication);
+        if (questions.length === 0) return null;
+        return {
+            id,
+            createdAt: communication.createdAt ?? 0,
+            ...(communication.toolUseId ? { toolUseId: communication.toolUseId } : {}),
+            kind: 'form',
+            questions,
+            status: 'pending',
+        };
+    }
+
+    return null;
+}
+
+/** Choice forms can live directly in chat; text-only forms keep the modal fallback. */
+export function canRenderAgentFormInline(communication: PendingAgentCommunication): boolean {
+    return communication.kind === 'form'
+        && communication.questions.length > 0
+        && communication.questions.every(question => question.options.length > 0);
 }
 
 /** A question is answerable if it offers options or accepts written text. */
