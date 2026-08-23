@@ -16,6 +16,7 @@ import { HappyError } from '@/utils/errors';
 import { sessionKill } from '@/sync/ops';
 import { type SessionState, formatLastSeen, vibingMessages } from '@/utils/sessionUtils';
 import type { FlatSessionRowData } from '@/utils/flatSessionList';
+import { formatSessionListTimestamp } from '@/utils/sessionListTimestamp';
 import type { Theme } from '@/theme';
 import { t } from '@/text';
 import { RigGitLineChanges } from './RigGitLineChanges';
@@ -87,6 +88,13 @@ export const FlatSessionRow = React.memo(({ row, selected, showBorder, archived 
         vibingMessages[Math.floor(Math.random() * vibingMessages.length)].toLowerCase() + '…'
     ), [session.state]);
 
+    // The same `lastActivityAt` the flat list sorts on, so the stamps run in
+    // the order the rows do.
+    const timestamp = React.useMemo(
+        () => formatSessionListTimestamp(session.lastActivityAt),
+        [session.lastActivityAt],
+    );
+
     const lastSeenText = session.activeAt
         ? t('status.lastSeen', { time: formatLastSeen(session.activeAt, false) })
         : t('status.offline');
@@ -156,11 +164,6 @@ export const FlatSessionRow = React.memo(({ row, selected, showBorder, archived 
                     flavor={session.flavor}
                     clientId={session.clientId}
                 />
-                {session.hasDraft && (
-                    <View style={styles.draftBadge}>
-                        <Ionicons name="create-outline" size={12} color={theme.colors.textSecondary} />
-                    </View>
-                )}
             </View>
 
             <View style={[styles.content, faded && styles.contentFaded]}>
@@ -175,6 +178,9 @@ export const FlatSessionRow = React.memo(({ row, selected, showBorder, archived 
                         {session.name}
                     </Text>
                     <SessionShortcutHintBadge sessionId={session.id} style={styles.shortcutBadge} />
+                    <Text style={styles.timestamp} numberOfLines={1}>
+                        {timestamp}
+                    </Text>
                 </View>
 
                 {/*
@@ -214,14 +220,29 @@ export const FlatSessionRow = React.memo(({ row, selected, showBorder, archived 
                             </Text>
                         </>
                     )}
-                    {session.gitChangedFiles !== null && (
-                        <RigGitLineChanges
-                            changedFiles={session.gitChangedFiles}
-                            countsExact={session.gitCountsExact}
-                            deletions={session.gitDeletions ?? 0}
-                            insertions={session.gitInsertions ?? 0}
-                        />
-                    )}
+                    {/*
+                      * The right end of the status line, where an unsent draft
+                      * sits directly ahead of the line counts. On the avatar it
+                      * only collided with the artwork, and this is where the
+                      * eye already goes for what the session has to report.
+                      */}
+                    <View style={styles.statusMeta}>
+                        {session.hasDraft && (
+                            <Ionicons
+                                name="create-outline"
+                                size={13}
+                                color={theme.colors.textSecondary}
+                            />
+                        )}
+                        {session.gitChangedFiles !== null && (
+                            <RigGitLineChanges
+                                changedFiles={session.gitChangedFiles}
+                                countsExact={session.gitCountsExact}
+                                deletions={session.gitDeletions ?? 0}
+                                insertions={session.gitInsertions ?? 0}
+                            />
+                        )}
+                    </View>
                 </View>
             </View>
 
@@ -283,7 +304,6 @@ const stylesheet = StyleSheet.create((theme) => ({
         width: AVATAR_SIZE,
         height: AVATAR_SIZE,
         marginRight: AVATAR_GAP,
-        position: 'relative',
     },
     // Faded rows keep the exact geometry of live ones and differ only by being
     // pulled back, so the list stays one column rather than two designs.
@@ -292,15 +312,6 @@ const stylesheet = StyleSheet.create((theme) => ({
     },
     contentFaded: {
         opacity: 0.6,
-    },
-    draftBadge: {
-        position: 'absolute',
-        bottom: -2,
-        right: -2,
-        width: 18,
-        height: 18,
-        alignItems: 'center',
-        justifyContent: 'center',
     },
     content: {
         flex: 1,
@@ -326,6 +337,16 @@ const stylesheet = StyleSheet.create((theme) => ({
         flexShrink: 0,
         marginLeft: 8,
     },
+    // Never squeezed: the title gives way first, the way a chat list keeps the
+    // time legible and truncates the name instead.
+    timestamp: {
+        flexShrink: 0,
+        marginLeft: 8,
+        fontSize: 13,
+        lineHeight: 22,
+        color: theme.colors.textSecondary,
+        ...Typography.default('regular'),
+    },
     location: {
         fontSize: LOCATION_FONT_SIZE,
         lineHeight: 20,
@@ -339,6 +360,14 @@ const stylesheet = StyleSheet.create((theme) => ({
         marginTop: 1,
         // Holds the line open when a quiet session has no status to show.
         minHeight: 18,
+    },
+    // Pushed to the right edge on its own, so the draft mark still lands there
+    // on a quiet row that prints no status text to push it.
+    statusMeta: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        flexShrink: 0,
+        marginLeft: 'auto',
     },
     statusText: {
         flex: 1,
