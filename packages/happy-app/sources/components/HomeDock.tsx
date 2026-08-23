@@ -511,6 +511,7 @@ export const HomeDock = React.memo(({
     const modelMode = useNewSessionDraft((state) => state.modelMode);
     const effortLevel = useNewSessionDraft((state) => state.effortLevel);
     const setMachineId = useNewSessionDraft((state) => state.setMachineId);
+    const renameMachineId = useNewSessionDraft((state) => state.renameMachineId);
     const setAgentType = useNewSessionDraft((state) => state.setAgentType);
     const setPath = useNewSessionDraft((state) => state.setPath);
     const setSessionType = useNewSessionDraft((state) => state.setSessionType);
@@ -551,9 +552,9 @@ export const HomeDock = React.memo(({
 
     React.useEffect(() => {
         if (resolvedMachineId !== selectedMachineId) {
-            setMachineId(resolvedMachineId);
+            renameMachineId(resolvedMachineId);
         }
-    }, [resolvedMachineId, selectedMachineId, setMachineId]);
+    }, [resolvedMachineId, selectedMachineId, renameMachineId]);
 
     // The places on this computer belong to the pair rather than to whichever daemon opened them
     // first, so both machines are read for directories and for the catalogs they publish.

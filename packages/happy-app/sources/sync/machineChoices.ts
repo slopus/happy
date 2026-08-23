@@ -55,6 +55,34 @@ function getComputerName(choice: { happyMachine: Machine | null; rigMachine: Mac
 }
 
 /**
+ * Every machine reachable from this one by following the pairing pointer, in either direction.
+ *
+ * Pairing has to be followed all the way out rather than one hop, because the daemons of one
+ * computer are only ever connected through the machine they have in common: two Happy Agent
+ * registrations naming the same Happy CLI are the same laptop, but neither names the other. Asking
+ * one hop from whichever machine was seen first splits that laptop in two and puts the Happy CLI
+ * machine in both halves — and since machines arrive newest first, the agents really are seen
+ * before the computer they point at.
+ */
+function connectedMachineIds(
+    start: Machine,
+    machines: readonly Machine[],
+    byId: ReadonlyMap<string, Machine>,
+): string[] {
+    const found = new Set<string>([start.id]);
+    const pending = [start];
+    for (let machine = pending.pop(); machine !== undefined; machine = pending.pop()) {
+        for (const id of pairedMachineIds(machine, machines)) {
+            const paired = byId.get(id);
+            if (paired === undefined || found.has(id)) continue;
+            found.add(id);
+            pending.push(paired);
+        }
+    }
+    return [...found];
+}
+
+/**
  * The computers behind the machines, each offered once.
  *
  * A pairing is only ever the pointer Happy Agent publishes, read in both directions. Two daemons
@@ -68,7 +96,7 @@ export function collectMachineChoices(machines: readonly Machine[]): MachineChoi
 
     for (const machine of machines) {
         if (grouped.has(machine.id)) continue;
-        const ids = pairedMachineIds(machine, machines).filter((id) => byId.has(id));
+        const ids = connectedMachineIds(machine, machines, byId);
         for (const id of ids) grouped.add(id);
         const group = ids.map((id) => byId.get(id)!);
         // One computer can accumulate several Happy Agent registrations — a daemon started from a

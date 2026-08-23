@@ -29,6 +29,14 @@ interface NewSessionDraftState {
     setInput: (input: string) => void;
     setAttachments: (attachments: AttachmentPreview[]) => void;
     setMachineId: (id: string | null) => void;
+    /**
+     * Renames the machine this draft already points at, keeping everything chosen on it.
+     *
+     * Picking a different computer throws the directory away, because a path on one laptop means
+     * nothing on another. Discovering that two machine ids were one computer all along is the
+     * opposite: the same folder, under the name it should have had.
+     */
+    renameMachineId: (id: string | null) => void;
     setPath: (path: string | null) => void;
     setAgentType: (agent: NewSessionAgentType) => void;
     setPermissionMode: (mode: PermissionModeKey) => void;
@@ -72,6 +80,7 @@ export const useNewSessionDraft = create<NewSessionDraftState>()((set, get) => (
     setInput: (input) => { set({ input }); persist(get()); },
     setAttachments: (attachments) => { set({ attachments }); },
     setMachineId: (id) => { set({ selectedMachineId: id, selectedPath: null, worktreeKey: null }); persist(get()); },
+    renameMachineId: (id) => { set({ selectedMachineId: id }); persist(get()); },
     setPath: (path) => { set({ selectedPath: path, worktreeKey: null }); persist(get()); },
     setAgentType: (agent) => { set({ agentType: agent }); persist(get()); },
     setPermissionMode: (mode) => { set({ permissionMode: mode }); persist(get()); },

@@ -92,6 +92,26 @@ describe('choosing between several Happy Agent registrations on one computer', (
         const choice = collectMachineChoices([cli(), stale, recent])[0];
         expect(choice.rigMachine?.id).toBe('recent-rig');
     });
+
+    // Machines arrive newest first, and a Happy Agent registration is younger than the Happy CLI
+    // it points at, so in practice every agent is seen before the computer they have in common.
+    it('is one computer even when the agents are seen before what they point at', () => {
+        const choices = collectMachineChoices([recent, stale, cli()]);
+
+        expect(choices).toHaveLength(1);
+        expect(choices[0].machineIds).toHaveLength(3);
+        expect(choices[0].happyMachine?.id).toBe(CLI);
+    });
+
+    it('never lets one machine belong to two computers', () => {
+        const seen = new Set<string>();
+        for (const choice of collectMachineChoices([recent, stale, cli()])) {
+            for (const id of choice.machineIds) {
+                expect(seen.has(id)).toBe(false);
+                seen.add(id);
+            }
+        }
+    });
 });
 
 describe('what a computer can actually run', () => {
