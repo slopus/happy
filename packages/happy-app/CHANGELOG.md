@@ -1,3 +1,13 @@
+# August 22 — New home screen
+
+Sessions grouped by project and worktree, with the composer right where you start one.
+
+- Home groups your sessions by machine, project, and git worktree.
+- A project's new-session button opens the composer prefilled for that checkout.
+- Archived sessions moved out of the project cards into a list below, one tap away.
+- Light theme and the Android model, effort, and permission pickers are readable again.
+- Community Credits: [@chphch](https://github.com/chphch)
+
 # August 7 — Gemini 3.6 Flash, Rig sessions
 
 A new Gemini model, Rig as a first-class agent, and web scrolling fixes.
