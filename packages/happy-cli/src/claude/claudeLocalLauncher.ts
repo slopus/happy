@@ -120,6 +120,7 @@ export async function claudeLocalLauncher(session: Session): Promise<LauncherRes
                     claudeArgs: session.claudeArgs,
                     mcpServers: session.mcpServers,
                     allowedTools: session.allowedTools,
+                    permissionMode: session.permissionMode,
                     hookSettingsPath: session.hookSettingsPath,
                     sandboxConfig: session.sandboxConfig,
                 });

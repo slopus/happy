@@ -11,6 +11,8 @@ import { getProjectPath } from "./utils/path";
 import { projectPath } from "@/projectPath";
 import { systemPrompt } from "./utils/systemPrompt";
 import type { SandboxConfig } from "@/persistence";
+import type { PermissionMode } from "@/api/types";
+import { resolveLocalPermissionModeArgs } from "./utils/permissionMode";
 import { initializeSandbox, wrapCommand } from "@/sandbox/manager";
 
 /**
@@ -44,6 +46,9 @@ export async function claudeLocal(opts: {
     claudeEnvVars?: Record<string, string>,
     claudeArgs?: string[],
     allowedTools?: string[],
+    /** Resolved permission mode for this session (default = yolo/bypass). Mirrors the
+     * remote/SDK path so the local interactive spawn actually enters that mode. */
+    permissionMode?: PermissionMode,
     /** Path to temporary settings file with SessionStart hook (optional - for session tracking) */
     hookSettingsPath?: string,
     sandboxConfig?: SandboxConfig,
@@ -243,6 +248,10 @@ export async function claudeLocal(opts: {
             if (opts.claudeArgs) {
                 args.push(...opts.claudeArgs)
             }
+
+            // Mirror the resolved permission mode into a Claude CLI flag so the local
+            // spawn enters the same mode the remote/SDK path already applies.
+            args.push(...resolveLocalPermissionModeArgs(opts.permissionMode, args));
 
             // Add hook settings for session tracking (when available)
             if (opts.hookSettingsPath) {

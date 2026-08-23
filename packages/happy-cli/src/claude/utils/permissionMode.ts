@@ -100,6 +100,41 @@ export function resolveInitialClaudePermissionMode(
 }
 
 /**
+ * Whether the user already supplied an explicit permission flag on the CLI.
+ * Any explicit flag (even an invalid `--permission-mode` value) means the user
+ * override wins and Happy must not inject its own.
+ */
+function hasExplicitClaudePermissionFlag(claudeArgs: string[]): boolean {
+    return claudeArgs.includes('--permission-mode') ||
+        claudeArgs.some((arg) => arg.startsWith('--permission-mode=')) ||
+        claudeArgs.includes('--dangerously-skip-permissions');
+}
+
+/**
+ * Build the Claude CLI permission flag for a locally spawned `claude` process,
+ * mirroring the SDK's `permissionMode` option on the remote path. Without it a
+ * session Happy resolved to bypass/plan/acceptEdits would silently run in Claude's
+ * default mode. Bypass maps to `--dangerously-skip-permissions` to match the
+ * sandbox branch; an explicit flag already in `claudeArgs` wins.
+ */
+export function resolveLocalPermissionModeArgs(
+    mode: PermissionMode | undefined,
+    claudeArgs: string[],
+): string[] {
+    if (!mode || hasExplicitClaudePermissionFlag(claudeArgs)) {
+        return [];
+    }
+    const claudeMode = mapToClaudeMode(mode);
+    if (claudeMode === 'bypassPermissions') {
+        return ['--dangerously-skip-permissions'];
+    }
+    if (claudeMode === 'default') {
+        return [];
+    }
+    return ['--permission-mode', claudeMode];
+}
+
+/**
  * Enforce sandbox permission policy for Claude.
  * When sandbox is enabled, we always force bypass permissions.
  */

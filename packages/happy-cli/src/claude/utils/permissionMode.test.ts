@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { applySandboxPermissionPolicy, extractPermissionModeFromClaudeArgs, mapToClaudeMode, resolveInitialClaudePermissionMode, resolveRemoteClaudePermissionMode } from './permissionMode';
+import { applySandboxPermissionPolicy, extractPermissionModeFromClaudeArgs, mapToClaudeMode, resolveInitialClaudePermissionMode, resolveLocalPermissionModeArgs, resolveRemoteClaudePermissionMode } from './permissionMode';
 import type { PermissionMode } from '@/api/types';
 
 describe('mapToClaudeMode', () => {
@@ -106,6 +106,34 @@ describe('resolveInitialClaudePermissionMode', () => {
 
     it('falls back to option mode when claude args have no mode', () => {
         expect(resolveInitialClaudePermissionMode('bypassPermissions', ['--foo'])).toBe('bypassPermissions');
+    });
+});
+
+describe('resolveLocalPermissionModeArgs', () => {
+    it('injects --dangerously-skip-permissions for bypass-equivalent modes', () => {
+        expect(resolveLocalPermissionModeArgs('yolo', [])).toEqual(['--dangerously-skip-permissions']);
+        expect(resolveLocalPermissionModeArgs('bypassPermissions', [])).toEqual(['--dangerously-skip-permissions']);
+    });
+
+    it('injects --permission-mode for plan and acceptEdits', () => {
+        expect(resolveLocalPermissionModeArgs('plan', [])).toEqual(['--permission-mode', 'plan']);
+        expect(resolveLocalPermissionModeArgs('acceptEdits', [])).toEqual(['--permission-mode', 'acceptEdits']);
+    });
+
+    it('adds nothing for modes that map to Claude default', () => {
+        expect(resolveLocalPermissionModeArgs('default', [])).toEqual([]);
+        expect(resolveLocalPermissionModeArgs('safe-yolo', [])).toEqual([]);
+        expect(resolveLocalPermissionModeArgs('read-only', [])).toEqual([]);
+    });
+
+    it('adds nothing when no mode is resolved', () => {
+        expect(resolveLocalPermissionModeArgs(undefined, [])).toEqual([]);
+    });
+
+    it('does not override an explicit permission flag already in claudeArgs', () => {
+        expect(resolveLocalPermissionModeArgs('yolo', ['--permission-mode', 'plan'])).toEqual([]);
+        expect(resolveLocalPermissionModeArgs('yolo', ['--permission-mode=plan'])).toEqual([]);
+        expect(resolveLocalPermissionModeArgs('plan', ['--dangerously-skip-permissions'])).toEqual([]);
     });
 });
 
