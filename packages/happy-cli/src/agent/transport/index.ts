@@ -19,7 +19,7 @@ export type {
 export { DefaultTransport, defaultTransport } from './DefaultTransport';
 
 // Agent-specific handlers
-export { GeminiTransport, geminiTransport } from './handlers';
+export { GeminiTransport, geminiTransport, HermesTransport, hermesTransport } from './handlers';
 
 // Future handlers will be exported from ./handlers:
 // export { CodexTransport, codexTransport } from './handlers';

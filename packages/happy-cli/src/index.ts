@@ -45,6 +45,12 @@ import { sanitizeSessionEnvironment } from './daemon/sessionEnvironment'
     logger.debug('Starting happy CLI with args: ', process.argv)
   }
 
+  // Hermes is a known ACP agent; route `happy hermes` through the generic ACP runner
+  if (args[0] === 'hermes') {
+    args[0] = 'acp'
+    args.splice(1, 0, 'hermes')
+  }
+
   // Check if first argument is a subcommand
   const subcommand = args[0]
   
@@ -369,6 +375,12 @@ Conversation history is preserved on the server, but in-flight tool calls are in
       for (let i = 1; i < args.length; i++) {
         if (!customCommandMode && args[i] === '--started-by') {
           startedBy = args[++i] as 'daemon' | 'terminal';
+          continue;
+        }
+        if (!customCommandMode && args[i] === '--happy-starting-mode') {
+          // Happy-internal flag appended by the daemon when spawning remote
+          // sessions; consume it so it never reaches the agent subprocess
+          i++;
           continue;
         }
         if (!customCommandMode && args[i] === '--verbose') {

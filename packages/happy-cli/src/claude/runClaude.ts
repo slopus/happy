@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { ApiClient } from '@/api/api';
 import { logger } from '@/ui/logger';
 import { loop } from '@/claude/loop';
-import { AgentGoalStatus, AgentState, Metadata } from '@/api/types';
+import { AgentGoalStatus, AgentState, Metadata, isPermissionMode } from '@/api/types';
 import packageJson from '../../package.json';
 import { Credentials, readSettings } from '@/persistence';
 import { EnhancedMode, PermissionMode } from './loop';
@@ -658,17 +658,23 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
 
         // Resolve permission mode from meta - pass through as-is, mapping happens at SDK boundary
         let messagePermissionMode: PermissionMode | undefined = currentPermissionMode;
-        if (message.meta?.permissionMode) {
+        // Claude understands only the well-known modes; ACP agent mode ids
+        // (e.g. Hermes' accept_edits) are ignored here
+        const requestedMode = message.meta?.permissionMode;
+        const incomingMode = requestedMode !== undefined && isPermissionMode(requestedMode)
+            ? requestedMode
+            : undefined;
+        if (requestedMode !== undefined) {
             const previousPermissionMode = currentPermissionMode;
             messagePermissionMode = resolveRemoteClaudePermissionMode(
                 currentPermissionMode,
-                message.meta.permissionMode,
+                incomingMode,
                 sandboxEnabled,
             );
             currentPermissionMode = messagePermissionMode;
             const ignoredDefaultDowngrade =
                 (previousPermissionMode === 'bypassPermissions' || previousPermissionMode === 'yolo')
-                && message.meta.permissionMode === 'default'
+                && requestedMode === 'default'
                 && currentPermissionMode === previousPermissionMode;
             if (ignoredDefaultDowngrade) {
                 logger.debug(`[loop] Ignoring permission mode downgrade from ${previousPermissionMode} to default`);

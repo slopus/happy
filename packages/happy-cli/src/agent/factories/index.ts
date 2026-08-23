@@ -15,6 +15,13 @@ export {
   type GeminiBackendResult,
 } from './gemini';
 
+// Hermes factory
+export {
+  createHermesBackend,
+  registerHermesAgent,
+  type HermesBackendOptions,
+} from './hermes';
+
 // Future factories:
 // export { createCodexBackend, registerCodexAgent, type CodexBackendOptions } from './codex';
 // export { createClaudeBackend, registerClaudeAgent, type ClaudeBackendOptions } from './claude';
