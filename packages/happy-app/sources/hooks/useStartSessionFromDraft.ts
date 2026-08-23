@@ -15,7 +15,12 @@ import {
 } from '@/components/modelModeOptions';
 import { Modal } from '@/modal';
 import { t } from '@/text';
-import { resolveMachineAgent } from '@/utils/newSessionAgentSelection';
+import {
+    collectMachineChoices,
+    findMachineChoice,
+    resolveAgentMachine,
+    resolveChoiceAgent,
+} from '@/sync/machineChoices';
 import { delay } from '@/utils/time';
 import {
     buildRigSpawnConfiguration,
@@ -57,24 +62,34 @@ export function useStartSessionFromDraft() {
         if (isStartingRef.current) return false;
 
         const draft = useNewSessionDraft.getState();
-        const machine = machines.find((candidate) => candidate.id === draft.selectedMachineId);
-        if (!machine) {
+        // The draft names a computer, which may run both Happy CLI and Happy Agent. Which daemon
+        // receives the request follows from the agent, so it is settled here rather than by
+        // whichever machine id the draft happened to store.
+        const choice = findMachineChoice(collectMachineChoices(machines), draft.selectedMachineId);
+        if (!choice) {
             Modal.alert(t('common.error'), 'Please select a machine');
+            return false;
+        }
+
+        // The draft survives machine changes and app upgrades. Resolve it again
+        // at launch time so a stale Claude selection cannot spawn Claude while
+        // the selected computer only reports Codex (the Android 1.7.0 regression).
+        const agentType = resolveChoiceAgent(choice, draft.agentType);
+        const agentChanged = agentType !== draft.agentType;
+        const machine = resolveAgentMachine(choice, agentType);
+        if (!machine) {
+            Modal.alert(
+                t('common.error'),
+                agentType === 'rig'
+                    ? 'Happy Agent is not running on this computer'
+                    : 'This computer has no Happy CLI daemon to start that agent',
+            );
             return false;
         }
         if (!isMachineOnline(machine)) {
             Modal.alert(t('common.error'), 'Machine is offline');
             return false;
         }
-
-        // The draft survives machine changes and app upgrades. Resolve it again
-        // at launch time so a stale Claude selection cannot spawn Claude while
-        // the selected machine only reports Codex (the Android 1.7.0 regression).
-        const agentType = resolveMachineAgent(
-            draft.agentType,
-            machine.metadata?.cliAvailability,
-        );
-        const agentChanged = agentType !== draft.agentType;
         const rigCreation = agentType === 'rig'
             ? getRigMachineSessionCreation(machine.metadata)
             : null;

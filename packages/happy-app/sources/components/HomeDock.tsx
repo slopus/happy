@@ -29,8 +29,14 @@ import { formatLastSeen, formatPathRelativeToHome } from '@/utils/sessionUtils';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { resolveAbsolutePath } from '@/utils/pathUtils';
 import { listWorktrees } from '@/utils/worktree';
-import { collectSessionPlaces, collectSessionWorkspaces, pairedMachineIds } from '@/sync/agentSessionPlaces';
-import type { Machine, Session } from '@/sync/storageTypes';
+import { collectSessionPlaces, collectSessionWorkspaces } from '@/sync/agentSessionPlaces';
+import {
+    collectMachineChoices,
+    findMachineChoice,
+    machineChoiceAgentAvailable,
+    resolveChoiceAgent,
+} from '@/sync/machineChoices';
+import type { Session } from '@/sync/storageTypes';
 import {
     getEffortLevelsForModel,
     getHardcodedModelModes,
@@ -52,10 +58,9 @@ import {
     shouldUseNativeHomeDockMenus,
 } from './homeDockInteraction';
 import { registerHomeDockFocusListener, useHomeDockFocusStore } from './homeDockFocus';
-import { resolveMachineAgent } from '@/utils/newSessionAgentSelection';
-import { getHarnessName, listAvailableHarnesses } from '@/utils/harnessCatalog';
+import { HARNESS_ORDER, getHarnessName } from '@/utils/harnessCatalog';
 import { getPermissionModeMenuLabel, getPermissionModeShortLabel } from '@/utils/permissionModeLabels';
-import { findConnectedRigMachine, getRigMachineSessionCreation } from '@/sync/rigSessionCreation';
+import { getRigMachineSessionCreation } from '@/sync/rigSessionCreation';
 import {
     MobileHeaderScrim,
     MOBILE_HOME_SCRIM_OVERLAY_OPACITY,
@@ -434,10 +439,6 @@ function resolveOption(options: ModeOption[], preferred: Array<string | null | u
     return options[0] ?? null;
 }
 
-function getMachineName(machine: Machine): string {
-    return machine.metadata?.displayName || machine.metadata?.host || 'Unknown machine';
-}
-
 function FocusConfigRevealRow({
     progress,
     index,
@@ -520,26 +521,33 @@ export const HomeDock = React.memo(({
     const defaultOverrides = useSetting('agentDefaultOverrides');
     const machines = useAllMachines({ includeOffline: true });
     const sessions = useSessions();
-    const selectedMachine = React.useMemo(
-        () => machines.find((machine) => machine.id === selectedMachineId) ?? null,
-        [machines, selectedMachineId],
+    // A person picks a computer, not a daemon. Happy CLI and Happy Agent each register a machine
+    // for the same laptop, so the pair is offered once and the agent settles which one runs.
+    const machineChoices = React.useMemo(() => collectMachineChoices(machines), [machines]);
+    const selectedChoice = React.useMemo(
+        () => findMachineChoice(machineChoices, selectedMachineId),
+        [machineChoices, selectedMachineId],
     );
     const machineOptions = React.useMemo<ModeOption[]>(() => (
-        [...machines]
-            .sort((left, right) => Number(isMachineOnline(right)) - Number(isMachineOnline(left)))
-            .map((machine) => ({
-                key: machine.id,
-                name: getMachineName(machine),
-                description: isMachineOnline(machine)
+        [...machineChoices]
+            .sort((left, right) => Number(right.online) - Number(left.online))
+            .map((choice) => ({
+                key: choice.id,
+                name: choice.name,
+                description: choice.online
                     ? t('status.online')
-                    : t('status.lastSeen', { time: formatLastSeen(machine.activeAt, false) }),
+                    : t('status.lastSeen', { time: formatLastSeen(choice.activeAt, false) }),
             }))
-    ), [machines]);
-    const currentMachine = resolveOption(machineOptions, [selectedMachineId]);
+    ), [machineChoices]);
+    const currentMachine = resolveOption(machineOptions, [selectedChoice?.id]);
+    // A draft made before the pair was coalesced may still name Happy Agent's own machine, so the
+    // selection is rewritten to the computer it belongs to rather than reset to the first one.
     const resolvedMachineId = resolveHomeDockMachineSelection(
-        selectedMachineId,
+        selectedChoice?.id ?? selectedMachineId,
         machineOptions.map((machine) => machine.key),
     );
+    const selectedHomeDir = selectedChoice?.happyMachine?.metadata?.homeDir
+        ?? selectedChoice?.rigMachine?.metadata?.homeDir;
 
     React.useEffect(() => {
         if (resolvedMachineId !== selectedMachineId) {
@@ -547,11 +555,11 @@ export const HomeDock = React.memo(({
         }
     }, [resolvedMachineId, selectedMachineId, setMachineId]);
 
-    // Happy Agent registers its own machine beside Happy CLI's, so the places on this computer
-    // belong to the pair rather than to whichever daemon opened them first.
+    // The places on this computer belong to the pair rather than to whichever daemon opened them
+    // first, so both machines are read for directories and for the catalogs they publish.
     const placeMachineIds = React.useMemo(
-        () => pairedMachineIds(selectedMachine, machines),
-        [machines, selectedMachine],
+        () => selectedChoice?.machineIds ?? [],
+        [selectedChoice],
     );
     const sessionList = React.useMemo<Session[]>(
         () => (sessions ?? []).filter((item): item is Session => typeof item !== 'string'),
@@ -566,7 +574,7 @@ export const HomeDock = React.memo(({
         [placeMachineIds, selectedPath, sessionList],
     );
     const projectOptions = React.useMemo<ModeOption[]>(() => {
-        const homeDir = selectedMachine?.metadata?.homeDir;
+        const homeDir = selectedHomeDir;
         return places.map((place) => {
             const relative = formatPathRelativeToHome(place.path, homeDir);
             // A project names itself; a bare directory is named by where it is.
@@ -577,31 +585,22 @@ export const HomeDock = React.memo(({
                 description: name === place.path ? undefined : relative,
             };
         });
-    }, [places, selectedMachine]);
+    }, [places, selectedHomeDir]);
     const selectedProjectId = React.useMemo(
         () => places.find((place) => place.path === selectedPath)?.projectId ?? null,
         [places, selectedPath],
     );
     const currentProject = resolveOption(projectOptions, [selectedPath, '~']);
-    const selectedRigCreation = React.useMemo(
-        () => getRigMachineSessionCreation(selectedMachine?.metadata),
-        [selectedMachine?.metadata],
+    // Happy Agent's half of this computer, and only this computer's: a session asked for here is
+    // never handed to a daemon somewhere else because that one happened to be reachable.
+    const rigSelectionMachine = selectedChoice?.rigMachine ?? null;
+    const rigSelectionCreation = React.useMemo(
+        () => getRigMachineSessionCreation(rigSelectionMachine?.metadata),
+        [rigSelectionMachine],
     );
-    const connectedRigMachine = React.useMemo(
-        () => findConnectedRigMachine(machines),
-        [machines],
-    );
-    const selectedRigIsConnected = selectedRigCreation !== null
-        && selectedMachine !== null
-        && isMachineOnline(selectedMachine);
-    const rigSelectionMachine = selectedRigIsConnected ? selectedMachine : connectedRigMachine;
-    const rigSelectionCreation = selectedRigIsConnected
-        ? selectedRigCreation
-        : getRigMachineSessionCreation(connectedRigMachine?.metadata);
     const rigCreation = agentType === 'rig' ? rigSelectionCreation : null;
-    const supportsWorktree = selectedMachine?.metadata?.rigOnly === true
-        ? selectedRigCreation?.supportsWorktrees ?? false
-        : rigCreation?.supportsWorktrees ?? getSupportsWorktree(agentType);
+    const supportsWorktree = rigCreation?.supportsWorktrees
+        ?? (agentType === 'rig' ? false : getSupportsWorktree(agentType));
     const selectedWorktreeKey = sessionType === 'worktree'
         ? worktreeKey ?? '__new__'
         : '__none__';
@@ -616,7 +615,7 @@ export const HomeDock = React.memo(({
     );
 
     React.useEffect(() => {
-        const path = resolveAbsolutePath(selectedPath ?? '~', selectedMachine?.metadata?.homeDir);
+        const path = resolveAbsolutePath(selectedPath ?? '~', selectedHomeDir);
 
         // A Happy Agent project keeps its own workspaces, each with a name somebody chose. Those
         // are better than the branches git reports, so git is only asked when nothing knows better.
@@ -631,13 +630,16 @@ export const HomeDock = React.memo(({
             return;
         }
 
-        if (!supportsWorktree || !selectedMachineId || !selectedMachine || !isMachineOnline(selectedMachine) || !path) {
+        // Only Happy CLI's daemon answers the worktree RPC, so it is asked directly rather than
+        // through whichever machine the draft happens to name.
+        const happyMachine = selectedChoice?.happyMachine ?? null;
+        if (!supportsWorktree || !happyMachine || !isMachineOnline(happyMachine) || !path) {
             setExistingWorktrees([]);
             return;
         }
 
         let cancelled = false;
-        listWorktrees(selectedMachineId, path).then((worktrees) => {
+        listWorktrees(happyMachine.id, path).then((worktrees) => {
             if (cancelled) return;
             setExistingWorktrees(worktrees.map((worktree) => ({
                 key: worktree.path,
@@ -648,7 +650,7 @@ export const HomeDock = React.memo(({
         return () => {
             cancelled = true;
         };
-    }, [agentWorkspaces, selectedMachine, selectedMachineId, selectedPath, selectedProjectId, supportsWorktree]);
+    }, [agentWorkspaces, selectedChoice, selectedHomeDir, selectedPath, selectedProjectId, supportsWorktree]);
 
     // Happy Agent calls these workspaces, and names them; git calls them worktrees.
     const picksWorkspaces = selectedProjectId !== null;
@@ -685,17 +687,29 @@ export const HomeDock = React.memo(({
         return options;
     }, [agentType, existingWorktrees, picksWorkspaces, supportsWorktree, worktreeKey]);
     const currentWorktree = resolveOption(worktreeOptions, [selectedWorktreeKey]);
-    // Only the harnesses this machine can actually run, in pick order.
-    const availableAgents = React.useMemo<ModeOption[]>(() => listAvailableHarnesses({
-        availability: selectedMachine?.metadata?.cliAvailability,
-        happyAgentAvailable: rigSelectionMachine !== null,
-        selected: agentType,
-    }), [agentType, rigSelectionMachine, selectedMachine]);
-    const resolvedAgentType = agentType === 'rig'
-        ? rigSelectionMachine
-            ? agentType
-            : (availableAgents.find((agent) => agent.key !== 'rig')?.key as NewSessionAgentType | undefined) ?? agentType
-        : resolveMachineAgent(agentType, selectedMachine?.metadata?.cliAvailability);
+    // Every harness stays listed so the picker reads as a choice. The ones this
+    // computer cannot run are disabled rather than hidden, which otherwise
+    // leaves a single checked row that looks like it does nothing. Retired
+    // harnesses remain available when a stale draft still names one, matching
+    // the catalog's existing-session compatibility behavior.
+    const harnessKeys = React.useMemo<NewSessionAgentType[]>(() => (
+        HARNESS_ORDER.includes(agentType) ? [...HARNESS_ORDER] : [agentType, ...HARNESS_ORDER]
+    ), [agentType]);
+    const availableAgents = React.useMemo<ModeOption[]>(() => (
+        harnessKeys.map((key) => {
+            const agent = { key, name: getHarnessName(key) };
+            return machineChoiceAgentAvailable(selectedChoice, key)
+                ? agent
+                : {
+                    ...agent,
+                    disabled: true,
+                    description: key === 'rig'
+                        ? 'Happy Agent is not running on this computer'
+                        : 'Not installed on this machine',
+                };
+        })
+    ), [harnessKeys, selectedChoice]);
+    const resolvedAgentType = resolveChoiceAgent(selectedChoice, agentType);
     const defaults = React.useMemo(() => rigCreation
         ? {
             permissionMode: rigCreation.defaultPermissionMode ?? '',
@@ -916,20 +930,13 @@ export const HomeDock = React.memo(({
                 effortLevel: nextRigCreation.defaultEffortForModel(nextRigCreation.defaultModelKey),
             }
             : resolveAgentDefaultConfig(defaultOverrides, agent);
-        if (agent === 'rig' && rigSelectionMachine && rigSelectionMachine.id !== selectedMachineId) {
-            setMachineId(rigSelectionMachine.id);
-        }
+        // Choosing Happy Agent no longer moves the machine selection: the computer already covers
+        // both daemons, and switching it under the person was what made the picker show two.
         setAgentType(agent);
         setPermissionMode(nextDefaults.permissionMode);
         setModelMode(nextDefaults.modelMode);
         if (nextDefaults.effortLevel) setEffortLevel(nextDefaults.effortLevel);
-    }, [defaultOverrides, rigSelectionCreation, rigSelectionMachine, selectedMachineId, setAgentType, setEffortLevel, setMachineId, setModelMode, setPermissionMode]);
-
-    React.useEffect(() => {
-        if (agentType === 'rig' && rigSelectionMachine && rigSelectionMachine.id !== selectedMachineId) {
-            setMachineId(rigSelectionMachine.id);
-        }
-    }, [agentType, rigSelectionMachine, selectedMachineId, setMachineId]);
+    }, [defaultOverrides, rigSelectionCreation, setAgentType, setEffortLevel, setModelMode, setPermissionMode]);
 
     React.useEffect(() => {
         if (resolvedAgentType !== agentType) {

@@ -27,7 +27,14 @@ export interface SessionWorkspace {
     projectId?: string;
 }
 
-/** Whether this session has been put away, and so should not suggest anywhere to work. */
+/**
+ * Whether this session has been put away.
+ *
+ * This is the only reason a session stops suggesting somewhere to work. Whether its machine is
+ * reachable right now is a different question and deliberately not asked: a laptop that is asleep
+ * still has the same projects on it, and hiding them means the picker empties itself every time a
+ * daemon restarts.
+ */
 function isArchived(session: Session): boolean {
     return session.metadata?.lifecycleState === 'archived';
 }
@@ -72,8 +79,9 @@ export function collectSessionPlaces(options: {
         if (isArchived(session)) continue;
 
         const project = metadata?.project;
-        // A workspace is a checkout inside a project, offered separately rather than as a project
-        // of its own: its directory would otherwise look like somewhere unrelated to work.
+        // A session running in a workspace reports the workspace's directory, and a project
+        // publishes no path of its own, so such a session can say nothing about where its project
+        // lives. Offering the checkout here instead would put a worktree in the project list.
         if (metadata?.workspace !== undefined) continue;
         if (project !== undefined && project.id.length > 0) {
             remember(
