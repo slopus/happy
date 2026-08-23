@@ -585,6 +585,7 @@ const STATUS_CONFIG: Record<SessionState, { color: string; dotColor: string; isP
     thinking: { color: '#007AFF', dotColor: '#007AFF', isPulsing: true, isConnected: true },
     waiting: { color: '#34C759', dotColor: '#34C759', isPulsing: false, isConnected: true },
     permission_required: { color: '#FF9500', dotColor: '#FF9500', isPulsing: true, isConnected: true },
+    input_required: { color: '#FF9500', dotColor: '#FF9500', isPulsing: true, isConnected: true },
 };
 
 const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }: {
@@ -598,8 +599,9 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
     const navigateToSession = useNavigateToSession();
     const [actionsAnchor, setActionsAnchor] = React.useState<SessionActionsAnchor | null>(null);
     const baseStatus = STATUS_CONFIG[session.state];
-    // Override to solid blue when session has unread results
-    const status = session.hasUnread
+    const needsUserAction = session.state === 'permission_required' || session.state === 'input_required';
+    // User action stays orange and pulsing even when the request also marked the session unread.
+    const status = session.hasUnread && !needsUserAction
         ? { ...baseStatus, color: '#007AFF', dotColor: '#007AFF', isPulsing: false, isConnected: baseStatus.isConnected }
         : baseStatus;
 
@@ -607,15 +609,17 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
         return vibingMessages[Math.floor(Math.random() * vibingMessages.length)].toLowerCase() + '…';
     }, [session.state]);
 
-    const statusText = session.hasUnread
-        ? t('status.unread')
-        : session.state === 'thinking'
-            ? vibingMessage
-            : session.state === 'disconnected'
-                ? t('status.lastSeen', { time: formatLastSeen(session.activeAt!, false) })
-                : session.state === 'permission_required'
-                    ? t('status.permissionRequired')
-                    : t('status.online');
+    const statusText = session.state === 'input_required'
+        ? t('status.inputRequired')
+        : session.state === 'permission_required'
+            ? t('status.permissionRequired')
+            : session.hasUnread
+                ? t('status.unread')
+                : session.state === 'thinking'
+                    ? vibingMessage
+                    : session.state === 'disconnected'
+                        ? t('status.lastSeen', { time: formatLastSeen(session.activeAt!, false) })
+                        : t('status.online');
 
     const handlePress = React.useCallback(() => {
         navigateToSession(session.id);

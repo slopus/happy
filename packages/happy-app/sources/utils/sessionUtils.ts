@@ -1,9 +1,11 @@
 import * as React from 'react';
 import { Session } from '@/sync/storageTypes';
+import { resolveSessionState } from '@/sync/sessionState';
+import type { SessionState } from '@/sync/sessionState';
 import { t } from '@/text';
 import { buildResumeCommand, buildResumeCommandBlock, ResumeCommandBlock } from './resumeCommand';
 
-export type SessionState = 'disconnected' | 'thinking' | 'waiting' | 'permission_required';
+export type { SessionState } from '@/sync/sessionState';
 
 export interface SessionStatus {
     state: SessionState;
@@ -21,15 +23,19 @@ export interface SessionStatus {
  */
 export function useSessionStatus(session: Session): SessionStatus {
     const isOnline = session.presence === "online";
-    const hasPermissions = (session.agentState?.requests && Object.keys(session.agentState.requests).length > 0 ? true : false);
+    const state = resolveSessionState({
+        agentState: session.agentState,
+        thinking: session.thinking,
+        isOnline,
+    });
 
     const vibingMessage = React.useMemo(() => {
         return vibingMessages[Math.floor(Math.random() * vibingMessages.length)].toLowerCase() + '…';
-    }, [isOnline, hasPermissions, session.thinking]);
+    }, [state]);
 
-    if (!isOnline) {
+    if (state === 'disconnected') {
         return {
-            state: 'disconnected',
+            state,
             isConnected: false,
             statusText: t('status.lastSeen', { time: formatLastSeen(session.activeAt, false) }),
             shouldShowStatus: true,
@@ -38,10 +44,9 @@ export function useSessionStatus(session: Session): SessionStatus {
         };
     }
 
-    // Check if permission is required
-    if (hasPermissions) {
+    if (state === 'permission_required') {
         return {
-            state: 'permission_required',
+            state,
             isConnected: true,
             statusText: t('status.permissionRequired'),
             shouldShowStatus: true,
@@ -51,9 +56,21 @@ export function useSessionStatus(session: Session): SessionStatus {
         };
     }
 
-    if (session.thinking === true) {
+    if (state === 'input_required') {
         return {
-            state: 'thinking',
+            state,
+            isConnected: true,
+            statusText: t('status.inputRequired'),
+            shouldShowStatus: true,
+            statusColor: '#FF9500',
+            statusDotColor: '#FF9500',
+            isPulsing: true,
+        };
+    }
+
+    if (state === 'thinking') {
+        return {
+            state,
             isConnected: true,
             statusText: vibingMessage,
             shouldShowStatus: true,
@@ -64,7 +81,7 @@ export function useSessionStatus(session: Session): SessionStatus {
     }
 
     return {
-        state: 'waiting',
+        state,
         isConnected: true,
         statusText: t('status.online'),
         shouldShowStatus: false,

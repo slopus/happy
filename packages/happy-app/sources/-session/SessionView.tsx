@@ -1059,11 +1059,11 @@ export function SessionViewLoaded({
             onAbort={isDisconnected || !rigCanAbort(session.metadata) ? undefined : handleAbort}
             showAbortButton={rigCanAbort(session.metadata) && (
                 sessionStatus.state === 'thinking'
-                // A pending selection (AskUserQuestion / permission request) parks the
-                // session in 'permission_required', where the agent is blocked inside the
-                // tool call — aborting is the only way to ignore the choices and keep
-                // typing, so Stop has to stay reachable on every platform.
+                // A pending selection or permission request parks the agent inside
+                // a tool call. Keep Stop reachable on every platform while either
+                // kind of user action is outstanding.
                 || sessionStatus.state === 'permission_required'
+                || sessionStatus.state === 'input_required'
                 || (Platform.OS === 'web' && sessionStatus.state === 'waiting')
             )}
             onFileViewerPress={experiments && !isTablet && rigCanBrowseFiles(session.metadata) && rigCanReadFiles(session.metadata) ? handleFileViewerPress : undefined}

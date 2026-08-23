@@ -6,6 +6,7 @@ import {
     describeAnswer,
     isQuestionAnswered,
     canRenderAgentFormInline,
+    shouldUseAgentQuestionFallback,
     selectAgentFormCommunication,
     selectPendingCommunications,
     toggleOption,
@@ -176,6 +177,22 @@ describe('canRenderAgentFormInline', () => {
             kind: 'form',
             questions: [question({ options: [], allowCustom: true })],
         })).toBe(false);
+    });
+
+    it('assigns choice forms to the transcript before their tool message arrives', () => {
+        expect(shouldUseAgentQuestionFallback({
+            id: 'choice',
+            createdAt: 0,
+            kind: 'form',
+            questions: [question()],
+        })).toBe(false);
+
+        expect(shouldUseAgentQuestionFallback({
+            id: 'text',
+            createdAt: 0,
+            kind: 'form',
+            questions: [question({ options: [], allowCustom: true })],
+        })).toBe(true);
     });
 });
 

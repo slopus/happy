@@ -131,6 +131,15 @@ export function canRenderAgentFormInline(communication: PendingAgentCommunicatio
         && communication.questions.every(question => question.options.length > 0);
 }
 
+/**
+ * The legacy banner/modal owns only requests the transcript card cannot show.
+ * This decision deliberately does not depend on whether the matching tool
+ * message has arrived yet, so the two render paths cannot race each other.
+ */
+export function shouldUseAgentQuestionFallback(communication: PendingAgentCommunication): boolean {
+    return !canRenderAgentFormInline(communication);
+}
+
 /** A question is answerable if it offers options or accepts written text. */
 function readQuestions(communication: AgentCommunication): AgentQuestion[] {
     return (communication.form?.questions ?? []).filter(

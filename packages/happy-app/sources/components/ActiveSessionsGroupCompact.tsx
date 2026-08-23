@@ -30,6 +30,7 @@ const STATUS_CONFIG: Record<SessionState, { color: string; dotColor: string; isP
     thinking: { color: '#007AFF', dotColor: '#007AFF', isPulsing: true, isConnected: true },
     waiting: { color: '#34C759', dotColor: '#34C759', isPulsing: false, isConnected: true },
     permission_required: { color: '#FF9500', dotColor: '#FF9500', isPulsing: true, isConnected: true },
+    input_required: { color: '#FF9500', dotColor: '#FF9500', isPulsing: true, isConnected: true },
 };
 
 interface ActiveSessionsGroupProps {
@@ -227,8 +228,9 @@ export const CompactSessionRow = React.memo(({ session, selected, showBorder }: 
     const styles = stylesheet;
     const { theme } = useUnistyles();
     const baseStatus = STATUS_CONFIG[session.state];
-    // Override to solid blue when session has unread results
-    const status = session.hasUnread
+    const needsUserAction = session.state === 'permission_required' || session.state === 'input_required';
+    // User action stays orange and pulsing even when the request also marked the session unread.
+    const status = session.hasUnread && !needsUserAction
         ? { ...baseStatus, color: '#007AFF', dotColor: '#007AFF', isPulsing: false, isConnected: baseStatus.isConnected }
         : baseStatus;
     const navigateToSession = useNavigateToSession();
@@ -272,7 +274,9 @@ export const CompactSessionRow = React.memo(({ session, selected, showBorder }: 
     const renderLeadingIndicator = () => {
         let indicator: React.ReactNode = null;
 
-        if (session.hasUnread) {
+        if (needsUserAction) {
+            indicator = <StatusDot color={status.dotColor} isPulsing={status.isPulsing} />;
+        } else if (session.hasUnread) {
             indicator = <StatusDot color={status.dotColor} isPulsing={false} />;
         } else if (session.state === 'waiting' && session.hasDraft) {
             indicator = (
@@ -282,7 +286,7 @@ export const CompactSessionRow = React.memo(({ session, selected, showBorder }: 
                     color={theme.colors.textSecondary}
                 />
             );
-        } else if (session.state === 'permission_required' || session.state === 'thinking') {
+        } else if (session.state === 'thinking') {
             indicator = <StatusDot color={status.dotColor} isPulsing={status.isPulsing} />;
         } else if (session.state === 'waiting') {
             indicator = <StatusDot color={theme.colors.textSecondary} isPulsing={false} />;

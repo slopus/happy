@@ -6,12 +6,11 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Text } from '@/components/StyledText';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
-import { useSessionMessages, useSessionPendingCommunications } from '@/sync/storage';
+import { useSessionPendingCommunications } from '@/sync/storage';
 import {
-    canRenderAgentFormInline,
+    shouldUseAgentQuestionFallback,
     type PendingAgentCommunication,
 } from '@/sync/agentCommunications';
-import type { Message } from '@/sync/typesMessage';
 import { sessionCancelCommunication } from '@/sync/ops';
 import { AgentQuestionModal } from './AgentQuestionModal';
 
@@ -26,14 +25,15 @@ import { AgentQuestionModal } from './AgentQuestionModal';
  */
 export function AgentQuestionBanner({ sessionId }: { sessionId: string }) {
     const pendingCommunications = useSessionPendingCommunications(sessionId);
-    const { messages } = useSessionMessages(sessionId);
     const [openId, setOpenId] = React.useState<string | null>(null);
 
-    // A choice form with a matching request_user_input tool call is rendered
-    // directly in the transcript. Keep this banner/modal as the fallback for
-    // text-only forms, unsupported kinds, and sessions missing the tool event.
+    // Choice forms belong exclusively to the transcript renderer. Communication
+    // state can arrive one render before its request_user_input tool message; if
+    // the fallback also claimed that intermediate frame, the legacy form flashed
+    // before being replaced by the inline card. Keep the banner/modal solely for
+    // forms the inline renderer cannot display and unsupported communication kinds.
     const pending = pendingCommunications.find(communication => (
-        !isCommunicationRenderedInline(communication, messages)
+        shouldUseAgentQuestionFallback(communication)
     ));
     const open = pending?.kind === 'form' && openId === pending.id;
 
@@ -75,24 +75,6 @@ export function AgentQuestionBanner({ sessionId }: { sessionId: string }) {
             />
         </>
     );
-}
-
-function isCommunicationRenderedInline(
-    communication: PendingAgentCommunication,
-    messages: Message[],
-): boolean {
-    if (!canRenderAgentFormInline(communication)) return false;
-    const joinId = communication.toolUseId ?? communication.id;
-
-    const containsMatchingTool = (message: Message): boolean => {
-        if (message.kind !== 'tool-call') return false;
-        if (message.tool.name === 'request_user_input' && message.tool.callId === joinId) {
-            return true;
-        }
-        return message.children.some(containsMatchingTool);
-    };
-
-    return messages.some(containsMatchingTool);
 }
 
 /**
