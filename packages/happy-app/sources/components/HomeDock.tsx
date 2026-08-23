@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { ActivityIndicator, Keyboard, LayoutChangeEvent, Modal as RNModal, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useReanimatedKeyboardAnimation } from 'react-native-keyboard-controller';
@@ -90,20 +91,23 @@ const MOBILE_ACTION_ROW_GEOMETRY = resolveMobileComposerActionRowGeometry();
 const MOBILE_ICON_ACTION_GEOMETRY = resolveMobileComposerActionGeometry('icon');
 const MOBILE_PRIMARY_ACTION_GEOMETRY = resolveMobileComposerActionGeometry('primary');
 const MOBILE_COLLAPSED_COMPOSER_GEOMETRY = resolveMobileCollapsedComposerGeometry();
+const MOBILE_HOME_DOCK_TOP_PADDING = 8;
 
 const styles = StyleSheet.create((theme) => ({
     keyboardFollower: {
         width: '100%',
     },
-    // Reaches above the dock so the scrim's ramp lands on content rather than
-    // on the composer itself.
+    // Keep the content clear until the composer's midpoint. From there the
+    // bottom scrim begins feathering over content that scrolls beneath it;
+    // above that point the composer shadow provides the only separation.
     bottomBackdrop: {
         ...StyleSheet.absoluteFillObject,
-        top: -26,
+        top: MOBILE_HOME_DOCK_TOP_PADDING
+            + MOBILE_COLLAPSED_COMPOSER_GEOMETRY.shellHeight / 2,
     },
     safeArea: {
         paddingHorizontal: 16,
-        paddingTop: 8,
+        paddingTop: MOBILE_HOME_DOCK_TOP_PADDING,
     },
     // The focused composer replaces the resting one rather than covering it:
     // the modal sits a safe-area inset higher, so leaving this on screen showed
@@ -296,7 +300,7 @@ const styles = StyleSheet.create((theme) => ({
         right: 0,
         bottom: 0,
     },
-    focusBackdrop: {
+    focusBackdropDim: {
         backgroundColor: theme.dark ? 'rgba(0, 0, 0, 0.88)' : 'rgba(255, 255, 255, 0.88)',
     },
     focusDock: {
@@ -1586,8 +1590,20 @@ export const HomeDock = React.memo(({
                 <View style={styles.modalRoot}>
                     <Animated.View
                         pointerEvents="box-none"
-                        style={[styles.modalBackdrop, styles.focusBackdrop, focusBackdropStyle]}
+                        style={[styles.modalBackdrop, focusBackdropStyle]}
                     >
+                        <BlurView
+                            blurMethod={Platform.OS === 'android' ? 'dimezisBlurViewSdk31Plus' : undefined}
+                            blurReductionFactor={2}
+                            intensity={8}
+                            pointerEvents="none"
+                            tint={theme.dark ? 'systemUltraThinMaterialDark' : 'systemUltraThinMaterialLight'}
+                            style={styles.modalBackdrop}
+                        />
+                        <View
+                            pointerEvents="none"
+                            style={[styles.modalBackdrop, styles.focusBackdropDim]}
+                        />
                         <Pressable
                             style={styles.modalBackdrop}
                             onPress={handleFocusBackdropPress}
