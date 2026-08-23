@@ -5,7 +5,7 @@ import type { PermissionMode } from '@/api/types';
 export type ClaudeSdkPermissionMode = NonNullable<QueryOptions['permissionMode']>;
 
 /**
- * Map any PermissionMode (7 modes) to a Claude-compatible mode (4 modes)
+ * Map any PermissionMode (8 modes) to a Claude-compatible mode (5 modes)
  * This is the ONLY place where Codex modes are mapped to Claude equivalents.
  *
  * Mapping:
@@ -14,9 +14,20 @@ export type ClaudeSdkPermissionMode = NonNullable<QueryOptions['permissionMode']
  * - read-only → default (Claude doesn't support read-only)
  *
  * Claude modes pass through unchanged:
- * - default, acceptEdits, bypassPermissions, plan
+ * - auto, default, acceptEdits, bypassPermissions, plan
+ *
+ * `auto` is a first-class mode in the Agent SDK's own PermissionMode union,
+ * so it passes straight through rather than being mapped onto `default`.
  */
-export function mapToClaudeMode(mode: PermissionMode): ClaudeSdkPermissionMode {
+export function mapToClaudeMode(mode: undefined): undefined;
+export function mapToClaudeMode(mode: PermissionMode): ClaudeSdkPermissionMode;
+export function mapToClaudeMode(mode: PermissionMode | undefined): ClaudeSdkPermissionMode | undefined;
+export function mapToClaudeMode(mode: PermissionMode | undefined): ClaudeSdkPermissionMode | undefined {
+    // Undefined is a meaningful value, not a missing one: it is how "Default"
+    // reaches the SDK, which then applies Claude's own configuration.
+    if (mode === undefined) {
+        return undefined;
+    }
     const codexToClaudeMap: Record<string, ClaudeSdkPermissionMode> = {
         'yolo': 'bypassPermissions',
         'safe-yolo': 'default',
@@ -26,6 +37,7 @@ export function mapToClaudeMode(mode: PermissionMode): ClaudeSdkPermissionMode {
 }
 
 const VALID_PERMISSION_MODES: readonly PermissionMode[] = [
+    'auto',
     'default',
     'acceptEdits',
     'bypassPermissions',

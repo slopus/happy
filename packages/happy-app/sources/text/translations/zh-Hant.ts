@@ -456,6 +456,7 @@ export const zhHant: TranslationStructure = {
     agentInput: {
         permissionMode: {
             title: '權限模式',
+            auto: '自行判斷，不確定時詢問',
             default: '預設',
             agyDefault: 'agy 沙箱，不詢問',
             openclawInert: 'openclaw 不使用此設定',
@@ -487,6 +488,7 @@ export const zhHant: TranslationStructure = {
             safeYolo: '安全 YOLO',
             yolo: 'YOLO',
             defaultDescription: '不受信任的命令前詢問',
+            autoDescription: '自行判斷，不確定時詢問',
             readOnlyDescription: '禁止寫入',
             safeYoloDescription: '無需確認，工作區沙盒',
             yoloDescription: '無需確認，完全存取',

@@ -69,19 +69,19 @@ export function mapMetadataOptions(options?: MetadataOption[] | null): ModeOptio
 // Mode names are deliberately untranslated single words, because the composer
 // chip that shows the current mode has room for one word — see
 // permissionModeLabels.ts. They are Happy's own vocabulary, not a quote of each
-// CLI's: Claude's UI calls our `default` "Manual", and Codex uses "Auto" for a
-// preset we do not expose. Every list below is ordered by that file's ranking so
-// the modes line up across harnesses, with one documented exception at agy.
+// CLI's: Claude's UI calls our `default` "Manual". Every list below is ordered
+// by that file's ranking so the modes line up across harnesses, with one
+// documented exception at agy.
 
-// No harness we ship a catalog for offers Auto. Upstream Claude Code does have
-// a real `auto` that reviews each call, but Happy cannot reach it: our own SDK
-// adapter stops at four modes (happy-cli/src/claude/sdk/types.ts) and the wire
-// enum in MessageMetaSchema does not accept the word. Sending it would not just
-// lose the mode — UserMessageSchema.safeParse fails and apiSession drops the
-// whole prompt. That is why `dontAsk` is absent too. Auto reaches this picker
-// only from Happy's agent, which publishes it in its own catalog.
+// Auto leads because it is the everyday mode: the harness reviews its own calls
+// and stops only when it actually wants a human. Claude ships it in the Agent
+// SDK's PermissionMode union, and it is carried end to end — the CLI's
+// PermissionMode type, MessageMetaSchema, and the SDK adapter's QueryOptions.
+// `dontAsk` stays absent: that one really is missing from MessageMetaSchema, so
+// sending it fails UserMessageSchema.safeParse and drops the whole prompt.
 export function getClaudePermissionModes(translate: Translate): PermissionMode[] {
     return [
+        { key: 'auto', name: 'Auto', description: translate('agentInput.permissionMode.auto') },
         { key: 'acceptEdits', name: 'Edits', description: translate('agentInput.permissionMode.acceptEdits') },
         { key: 'plan', name: 'Plan', description: translate('agentInput.permissionMode.plan') },
         { key: 'bypassPermissions', name: 'Yolo', description: translate('agentInput.permissionMode.bypassPermissions') },
@@ -89,16 +89,15 @@ export function getClaudePermissionModes(translate: Translate): PermissionMode[]
     ];
 }
 
-// `default` here is Happy's own baseline, not Codex's. Codex's default preset
-// is "Auto" (on-request + workspace-write); resolveCodexExecutionPolicy sends
-// our `default` through as `untrusted` + workspace-write, which is stricter —
-// it stops for anything off the trusted list. It is named Default because it is
-// the mode you land on when you pick nothing, and it is emphatically not Auto:
-// Codex spells auto-review separately as `--approve-for-me`, which Happy does
-// not wire up. `safe-yolo` is the one that keeps the workspace sandbox and
-// stops asking, so it is the one named for the sandbox.
+// Auto is Codex's own everyday preset, spelled `on-request` + workspace-write
+// by resolveCodexExecutionPolicy: Codex runs what it can and asks when it wants
+// more. `default` is Happy's stricter baseline — `untrusted` + workspace-write,
+// which stops for anything off the trusted list — and is named Default because
+// it is where you land having picked nothing. `safe-yolo` keeps the workspace
+// sandbox but stops asking, so it is the one named for the sandbox.
 export function getCodexPermissionModes(translate: Translate): PermissionMode[] {
     return [
+        { key: 'auto', name: 'Auto', description: translate('agentInput.codexPermissionMode.autoDescription') },
         { key: 'safe-yolo', name: 'Workspace', description: translate('agentInput.codexPermissionMode.safeYoloDescription') },
         { key: 'read-only', name: 'Read', description: translate('agentInput.codexPermissionMode.readOnlyDescription') },
         { key: 'yolo', name: 'Yolo', description: translate('agentInput.codexPermissionMode.yoloDescription') },

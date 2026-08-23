@@ -455,6 +455,7 @@ export const pt: TranslationStructure = {
     agentInput: {
         permissionMode: {
             title: 'MODO DE PERMISSÃO',
+            auto: 'decide sozinho, pergunta na dúvida',
             default: 'Padrão',
             agyDefault: 'sandbox do agy, sem perguntas',
             openclawInert: 'não aplicado pelo openclaw',
@@ -486,6 +487,7 @@ export const pt: TranslationStructure = {
             safeYolo: 'Safe YOLO',
             yolo: 'YOLO',
             defaultDescription: 'perguntar antes de comandos não confiáveis',
+            autoDescription: 'decide sozinho, pergunta na dúvida',
             readOnlyDescription: 'sem escrita',
             safeYoloDescription: 'sem perguntas, sandbox do espaço de trabalho',
             yoloDescription: 'sem perguntas, acesso total',

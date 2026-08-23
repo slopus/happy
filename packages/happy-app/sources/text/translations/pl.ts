@@ -472,6 +472,7 @@ export const pl: TranslationStructure = {
     agentInput: {
         permissionMode: {
             title: 'TRYB UPRAWNIEŃ',
+            auto: 'decyduje samodzielnie, pyta w razie wątpliwości',
             default: 'Domyślny',
             agyDefault: 'piaskownica agy, bez pytań',
             openclawInert: 'nieużywane przez openclaw',
@@ -503,6 +504,7 @@ export const pl: TranslationStructure = {
             safeYolo: 'Safe YOLO',
             yolo: 'YOLO',
             defaultDescription: 'pytaj przed niezaufanymi poleceniami',
+            autoDescription: 'decyduje samodzielnie, pyta w razie wątpliwości',
             readOnlyDescription: 'bez zapisu',
             safeYoloDescription: 'bez pytań, piaskownica obszaru roboczego',
             yoloDescription: 'bez pytań, pełny dostęp',

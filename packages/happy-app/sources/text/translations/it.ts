@@ -454,6 +454,7 @@ export const it: TranslationStructure = {
     agentInput: {
         permissionMode: {
             title: 'MODALITÀ PERMESSI',
+            auto: 'decide da sé, chiede in caso di dubbio',
             default: 'Predefinito',
             agyDefault: 'sandbox di agy, nessuna richiesta',
             openclawInert: 'non applicato da openclaw',
@@ -485,6 +486,7 @@ export const it: TranslationStructure = {
             safeYolo: 'YOLO sicuro',
             yolo: 'YOLO',
             defaultDescription: 'chiedi prima dei comandi non attendibili',
+            autoDescription: 'decide da sé, chiede in caso di dubbio',
             readOnlyDescription: 'nessuna scrittura',
             safeYoloDescription: "nessuna richiesta, sandbox dell'area di lavoro",
             yoloDescription: 'nessuna richiesta, accesso completo',

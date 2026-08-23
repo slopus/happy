@@ -185,7 +185,10 @@ describe('useStartSessionFromDraft', () => {
             directory: '/absolute/project',
             approvedNewDirectoryCreation: false,
             agent: 'codex',
-            permissionMode: 'default',
+            // Default is the absence of an override, for codex as much as for
+            // claude: sending it would replace the harness's own configured
+            // mode with one specific mode.
+            permissionMode: undefined,
             modelMode: undefined,
             effortLevel: 'medium',
         });

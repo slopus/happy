@@ -57,7 +57,10 @@ export interface StartOptions {
     jsRuntime?: JsRuntime
 }
 
-const DEFAULT_CLAUDE_PERMISSION_MODE: PermissionMode = 'yolo';
+// No default permission mode. "Default" in the picker means "whatever this
+// harness is already configured to do", so the mode is left unset and Claude
+// applies its own settings. Substituting a value here — this used to be
+// 'yolo' — silently overrode every user's Claude config with full access.
 const DEFAULT_CLAUDE_MODEL = 'opus';
 const DEFAULT_CLAUDE_EFFORT: 'low' | 'medium' | 'high' | 'xhigh' | 'max' = 'medium';
 type ClaudeGoalCommand = NonNullable<ReturnType<typeof parseClaudeGoalActionParams>>;
@@ -99,7 +102,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     const sandboxConfig = options.noSandbox ? undefined : settings?.sandboxConfig;
     const sandboxEnabled = Boolean(sandboxConfig?.enabled);
     const initialPermissionMode = applySandboxPermissionPolicy(
-        resolveInitialClaudePermissionMode(options.permissionMode ?? DEFAULT_CLAUDE_PERMISSION_MODE, options.claudeArgs),
+        resolveInitialClaudePermissionMode(options.permissionMode, options.claudeArgs),
         sandboxEnabled,
     );
     const dangerouslySkipPermissions =
@@ -549,7 +552,10 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         logger.debug('[loop] Reset current mode defaults after abort');
     };
     const currentEnhancedMode = (): EnhancedMode => ({
-        permissionMode: currentPermissionMode || 'default',
+        // Deliberately not coerced to 'default': undefined means "no override",
+        // which the SDK reads as "use Claude's own configuration". Coercing it
+        // would pin every unset session to prompting mode.
+        permissionMode: currentPermissionMode,
         model: currentModel,
         fallbackModel: currentFallbackModel,
         customSystemPrompt: currentCustomSystemPrompt,

@@ -57,14 +57,24 @@ export class PermissionHandler {
         this.onPermissionRequestCallback = callback;
     }
 
-    handleModeChange(mode: PermissionMode) {
+    handleModeChange(mode: PermissionMode | undefined) {
         const previousMode = this.permissionMode;
-        this.permissionMode = mode;
+        // An unset mode means "use Claude's own configuration", which this
+        // handler cannot read. It is treated as 'default' for Happy's own
+        // auto-approval decisions so an unknown mode can only make us ask more,
+        // never less; the SDK still applies the real configured mode.
+        this.permissionMode = mode ?? 'default';
 
         // The message-queue hash excludes permissionMode, so a default -> yolo
         // switch never restarts the SDK query. Push the mapped mode into the
         // live query so the SDK stops consulting canUseTool on its own.
-        if (this.setPermissionModeCallback && mapToClaudeMode(previousMode) !== mapToClaudeMode(mode)) {
+        //
+        // Only a concrete mode is pushed: setPermissionMode has no way to say
+        // "go back to inheriting", so switching to Default leaves the running
+        // query where it is and takes effect on the next one.
+        if (mode !== undefined
+            && this.setPermissionModeCallback
+            && mapToClaudeMode(previousMode) !== mapToClaudeMode(mode)) {
             this.setPermissionModeCallback(mapToClaudeMode(mode)).catch((err) => {
                 logger.debug('Failed to sync permission mode via SDK:', err);
             });

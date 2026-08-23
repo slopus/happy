@@ -457,6 +457,7 @@ export const ja: TranslationStructure = {
     agentInput: {
         permissionMode: {
             title: '権限モード',
+            auto: '自分で判断し、迷ったら確認します',
             default: 'デフォルト',
             agyDefault: 'agy サンドボックス、確認なし',
             openclawInert: 'openclaw では適用されません',
@@ -488,6 +489,7 @@ export const ja: TranslationStructure = {
             safeYolo: 'セーフYOLO',
             yolo: 'YOLO',
             defaultDescription: '信頼されていないコマンドの前に確認',
+            autoDescription: '自分で判断し、迷ったら確認します',
             readOnlyDescription: '書き込みなし',
             safeYoloDescription: '確認なし、ワークスペースサンドボックス',
             yoloDescription: '確認なし、フルアクセス',

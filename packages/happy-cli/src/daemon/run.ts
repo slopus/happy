@@ -44,13 +44,11 @@ function appendDaemonSpawnModeArgs(args: string[], options: SpawnSessionOptions,
   if (agent !== 'claude' && agent !== 'codex') {
     return;
   }
-  // For claude, 'default' is the app's ambient "no override" value — forwarding
-  // it would pin the session to prompting mode and lose the CLI's own default
-  // (e.g. a --yolo setup where sessions must bypass permissions). For codex,
-  // 'default' IS a concrete ask-first mode (untrusted + workspace-write)
-  // distinct from the codex launch default ('yolo'), so it must be forwarded
-  // or the user's explicit ask-first pick silently yields a yolo session.
-  if (options.permissionMode && (agent === 'codex' || options.permissionMode !== 'default')) {
+  // 'default' is the app's "no override" value for every agent: it means run
+  // the harness the way it is already configured. Forwarding it would replace
+  // that configuration with one specific mode, which is the opposite of what
+  // the word promises. Each runner supplies its own launch default instead.
+  if (options.permissionMode && options.permissionMode !== 'default') {
     args.push('--permission-mode', options.permissionMode);
   }
   if (options.modelMode && options.modelMode !== 'default') {
@@ -740,10 +738,9 @@ export async function startDaemon(): Promise<void> {
         if (options?.model) {
           launch.args.push('--model', options.model);
         }
-        // Same as spawnSession: for claude, ambient 'default' must not
-        // override the CLI default; for codex, 'default' is a concrete
-        // ask-first mode and must be forwarded.
-        if (options?.permissionMode && (metadata.flavor === 'codex' || options.permissionMode !== 'default')) {
+        // Same as spawnSession: ambient 'default' must not override whatever
+        // the harness is already configured to do.
+        if (options?.permissionMode && options.permissionMode !== 'default') {
           launch.args.push('--permission-mode', options.permissionMode);
         }
 

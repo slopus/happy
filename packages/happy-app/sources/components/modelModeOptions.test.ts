@@ -35,18 +35,27 @@ describe('modelModeOptions', () => {
     it('names claude permission modes with one word each, most-used first', () => {
         const modes = getClaudePermissionModes(translate);
         expect(modes.map((mode) => [mode.key, mode.name])).toEqual([
+            ['auto', 'Auto'],
             ['acceptEdits', 'Edits'],
             ['plan', 'Plan'],
             ['bypassPermissions', 'Yolo'],
             ['default', 'Default'],
         ]);
-        expect(modes[0].description).toBe('tr:agentInput.permissionMode.acceptEdits');
+        expect(modes[0].description).toBe('tr:agentInput.permissionMode.auto');
     });
 
-    it('drops dontAsk and auto, which the CLI rejects as permission modes', () => {
+    // auto belongs to the Agent SDK's own PermissionMode union and is carried
+    // by MessageMetaSchema. dontAsk is in neither, so sending it fails
+    // UserMessageSchema.safeParse and drops the whole prompt.
+    it('offers auto and still drops dontAsk, which the CLI rejects', () => {
         const keys = getClaudePermissionModes(translate).map((mode) => mode.key);
+        expect(keys).toContain('auto');
         expect(keys).not.toContain('dontAsk');
-        expect(keys).not.toContain('auto');
+    });
+
+    it('leads both shipped harnesses with Auto', () => {
+        expect(getClaudePermissionModes(translate)[0].key).toBe('auto');
+        expect(getCodexPermissionModes(translate)[0].key).toBe('auto');
     });
 
     it('never calls a harness default Auto, which is a reviewed mode and not a default', () => {
@@ -163,6 +172,7 @@ describe('modelModeOptions', () => {
         } as any, translate);
 
         expect(modes.map((mode) => [mode.key, mode.name])).toEqual([
+            ['auto', 'Auto'],
             ['safe-yolo', 'Workspace'],
             ['read-only', 'Read'],
             ['yolo', 'Yolo'],
@@ -253,7 +263,7 @@ describe('modelModeOptions', () => {
 
         expect(getAvailableModels('codex', metadata, translate)).toEqual(getCodexModelModes());
         expect(getAvailablePermissionModes('codex', metadata, translate).map((mode) => mode.key)).toEqual([
-            'safe-yolo', 'read-only', 'yolo', 'default',
+            'auto', 'safe-yolo', 'read-only', 'yolo', 'default',
         ]);
     });
 });

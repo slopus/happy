@@ -15,6 +15,7 @@ import {
     tint,
 } from '@expo/ui/swift-ui/modifiers';
 import type { NativeSettingsMenuProps } from './NativeSettingsMenu';
+import { orderNativeMenuItems } from './nativeMenuOrder';
 
 const systemImage = (name: string) => (
     name as React.ComponentProps<typeof Button>['systemImage']
@@ -139,17 +140,20 @@ export function NativeSettingsMenu({
                         </HStack>
                     )}
                 >
-                    {flat ? groups.flatMap((group) => (
-                        group.options.map((option) => (
-                            <Button
-                                key={`${group.key}:${option.key}`}
-                                label={option.label}
-                                systemImage={option.key === group.selectedKey ? systemImage('checkmark') : undefined}
-                                modifiers={[disabled(option.disabled === true)]}
-                                onPress={() => group.onSelect(option.key)}
-                            />
-                        ))
-                    )) : groups.map((group) => (
+                    {/* Reversed because this menu opens upward from the
+                        composer and iOS lays such a menu out bottom-up; see
+                        nativeMenuOrder.ts. */}
+                    {flat ? orderNativeMenuItems(groups.flatMap((group) => (
+                        group.options.map((option) => ({ group, option }))
+                    )), 'ios').map(({ group, option }) => (
+                        <Button
+                            key={`${group.key}:${option.key}`}
+                            label={option.label}
+                            systemImage={option.key === group.selectedKey ? systemImage('checkmark') : undefined}
+                            modifiers={[disabled(option.disabled === true)]}
+                            onPress={() => group.onSelect(option.key)}
+                        />
+                    )) : orderNativeMenuItems(groups, 'ios').map((group) => (
                         <Section
                             key={group.key}
                             header={(
@@ -163,7 +167,7 @@ export function NativeSettingsMenu({
                                 </HStack>
                             )}
                         >
-                            {group.options.map((option) => (
+                            {orderNativeMenuItems(group.options, 'ios').map((option) => (
                                 <Button
                                     key={option.key}
                                     label={option.label}

@@ -170,7 +170,10 @@ export function useStartSessionFromDraft() {
                         directory: spawnDirectory,
                         approvedNewDirectoryCreation,
                         agent: agentType,
-                        permissionMode: agentType === 'codex' || permission.key !== 'default'
+                        // 'default' means "leave the harness on the mode it is
+                        // already configured with", so it is deliberately not
+                        // sent for any agent.
+                        permissionMode: permission.key !== 'default'
                             ? permission.key
                             : undefined,
                         modelMode: model.key !== 'default' ? model.key : undefined,

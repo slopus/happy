@@ -35,20 +35,49 @@ describe('mapToClaudeMode', () => {
         });
     });
 
-    describe('all 7 PermissionMode values are handled', () => {
+    describe('all 8 PermissionMode values are handled', () => {
         const allModes: PermissionMode[] = [
-            'default', 'acceptEdits', 'bypassPermissions', 'plan',  // Claude modes
+            'auto', 'default', 'acceptEdits', 'bypassPermissions', 'plan',  // Claude modes
             'read-only', 'safe-yolo', 'yolo'  // Codex modes
         ];
 
         it('returns a valid Claude mode for every PermissionMode', () => {
-            const validClaudeModes = ['default', 'acceptEdits', 'bypassPermissions', 'plan'];
+            const validClaudeModes = ['auto', 'default', 'acceptEdits', 'bypassPermissions', 'plan'];
 
             allModes.forEach(mode => {
                 const result = mapToClaudeMode(mode);
                 expect(validClaudeModes).toContain(result);
             });
         });
+
+        // auto is Claude's own mode, not a Codex one, so it must not be
+        // rewritten on the way to the SDK.
+        it('passes through auto', () => {
+            expect(mapToClaudeMode('auto')).toBe('auto');
+        });
+    });
+
+    // "Default" in the picker sends no mode at all. Coercing undefined to
+    // 'default' here would pin an unset session to prompting mode instead of
+    // letting Claude apply its own configuration.
+    it('keeps an unset mode unset rather than inventing one', () => {
+        expect(mapToClaudeMode(undefined)).toBeUndefined();
+    });
+});
+
+describe('resolveInitialClaudePermissionMode with no override', () => {
+    // Regression: this used to fall back to a hardcoded 'yolo', so choosing
+    // Default — the safest-sounding option — started Claude with full access
+    // and ignored the user's own configuration.
+    it('stays unset when nothing is picked and no args force a mode', () => {
+        expect(resolveInitialClaudePermissionMode(undefined, [])).toBeUndefined();
+        expect(resolveInitialClaudePermissionMode(undefined, undefined)).toBeUndefined();
+    });
+
+    it('still honours an explicit mode and the skip-permissions flag', () => {
+        expect(resolveInitialClaudePermissionMode('plan', [])).toBe('plan');
+        expect(resolveInitialClaudePermissionMode(undefined, ['--dangerously-skip-permissions']))
+            .toBe('bypassPermissions');
     });
 });
 

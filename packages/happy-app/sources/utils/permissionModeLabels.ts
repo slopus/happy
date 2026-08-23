@@ -44,16 +44,22 @@ export function getPermissionModeShortLabel(mode: { name: string } | null | unde
 }
 
 /**
- * The fuller text shown on a row of the permission menu. Only the chip is
- * short on space, and one word is not enough to tell Auto from Default; the
- * iOS menu draws option labels alone, with no room for a separate description,
- * so the description is folded into the label here.
+ * The text shown on a row of the permission menu. The iOS menu draws option
+ * labels alone, with no room for a separate description, so a description has
+ * to be folded into the label to appear at all.
+ *
+ * Only a one-word name gets one. Our own names are single words that cannot
+ * stand alone — Auto and Default say nothing by themselves — while a harness
+ * publishing its own catalog names modes in full ("Workspace write", "Read
+ * only"), where appending a sentence only pushed the row onto a second line
+ * and truncated it mid-word.
  */
 export function getPermissionModeMenuLabel(
     mode: { name: string; description?: string | null },
 ): string {
     const description = mode.description?.trim();
-    return description ? `${mode.name} — ${description}` : mode.name;
+    const isOneWord = mode.name.trim().split(/\s+/).length === 1;
+    return description && isOneWord ? `${mode.name} · ${description}` : mode.name;
 }
 
 export function getPermissionModeRank(mode: { name: string }): number {

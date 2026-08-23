@@ -19,19 +19,27 @@ describe('permission mode labels', () => {
         expect(getPermissionModeShortLabel({ name: '   ' })).toBeNull();
     });
 
-    it('spells the mode out on a menu row, keeping the full published name', () => {
+    it('describes a one-word mode, since the word alone says nothing', () => {
         // Auto and Default both shorten to one word on the chip, and the words
-        // alone do not say which is which — hence the description on the row.
+        // alone do not say which is which, hence the description on the row.
         expect(getPermissionModeMenuLabel({
             name: 'Auto',
             description: 'reviews its own calls',
-        })).toBe('Auto — reviews its own calls');
-        // The chip shortens this to "Workspace"; the menu keeps both words.
+        })).toBe('Auto · reviews its own calls');
+        expect(getPermissionModeMenuLabel({ name: 'Yolo' })).toBe('Yolo');
+    });
+
+    // A harness that names its modes in full already says what they do, and
+    // appending a sentence wrapped the row and truncated it mid-word.
+    it('leaves a multi-word published name to speak for itself', () => {
         expect(getPermissionModeMenuLabel({
             name: 'Workspace write',
-            description: null,
+            description: 'Allows workspace changes without asking',
         })).toBe('Workspace write');
-        expect(getPermissionModeMenuLabel({ name: 'Yolo' })).toBe('Yolo');
+        expect(getPermissionModeMenuLabel({
+            name: 'Read only',
+            description: null,
+        })).toBe('Read only');
     });
 
     it('orders a published catalog by pick priority', () => {

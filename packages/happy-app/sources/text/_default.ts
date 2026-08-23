@@ -472,15 +472,18 @@ export const en = {
             // Modes are named with one untranslated word so they fit the
             // composer chip; these strings describe them under that name.
             title: 'PERMISSION MODE',
-            // Not "every tool": Claude runs reads without asking, and only
-            // stops for edits and commands.
-            default: 'ask before edits & commands',
-            agyDefault: 'agy sandbox, no prompts',
-            openclawInert: 'not applied by openclaw',
-            acceptEdits: 'accept file edits',
-            plan: 'read only, plan first',
+            // Not "never asks": auto still stops for a human, it just decides
+            // for itself when that is warranted.
+            auto: 'asks when unsure',
+            // Default sends no mode at all, so naming a behaviour here would be
+            // a guess about someone else's config.
+            default: 'harness setting',
+            agyDefault: 'agy sandbox',
+            openclawInert: 'not applied',
+            acceptEdits: 'edits, no asking',
+            plan: 'plan first',
             dontAsk: "don't ask",
-            bypassPermissions: 'never ask, full access',
+            bypassPermissions: 'never asks',
             badgeAcceptAllEdits: 'accept all edits',
             badgeBypassAllPermissions: 'yolo',
             badgePlanMode: 'plan mode',
@@ -504,12 +507,15 @@ export const en = {
             readOnly: 'read-only',
             safeYolo: 'safe yolo',
             yolo: 'yolo',
-            defaultDescription: 'ask before untrusted commands',
+            defaultDescription: 'codex setting',
+            // Codex's own Auto preset: on-request approvals inside the
+            // workspace sandbox.
+            autoDescription: 'asks when unsure',
             readOnlyDescription: 'no writes',
             // Not "no prompts": shouldAutoApproveCodexApproval deliberately
             // skips safe-yolo, so a sandbox escalation still reaches you.
-            safeYoloDescription: 'workspace sandbox, asks to escalate',
-            yoloDescription: 'no prompts, full access',
+            safeYoloDescription: 'sandboxed, can escalate',
+            yoloDescription: 'full access',
             badgeReadOnly: 'read-only',
             badgeSafeYolo: 'safe yolo',
             badgeYolo: 'yolo',
