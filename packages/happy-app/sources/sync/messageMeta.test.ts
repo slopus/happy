@@ -44,14 +44,14 @@ describe('resolveMessageModeMeta', () => {
     it('sends explicit per-session overrides', () => {
         const meta = resolveMessageModeMeta({
             permissionMode: 'read-only',
-            modelMode: 'gpt-5.4',
+            modelMode: 'gpt-5.6-terra',
             effortLevel: 'high',
             metadata: { flavor: 'codex' },
         } as any);
 
         expect(meta).toEqual({
             permissionMode: 'read-only',
-            model: 'gpt-5.4',
+            model: 'gpt-5.6-terra',
             effort: 'high',
         });
     });
@@ -82,14 +82,14 @@ describe('resolveMessageModeMeta', () => {
     it('lets session overrides beat settings-level overrides', () => {
         const meta = resolveMessageModeMeta({
             permissionMode: 'default',
-            modelMode: 'gpt-5.4',
+            modelMode: 'gpt-5.6-terra',
             effortLevel: 'xhigh',
             metadata: { flavor: 'codex' },
         } as any, {
             agentDefaultOverrides: {
                 codex: {
                     permissionMode: 'yolo',
-                    modelMode: 'gpt-5.5',
+                    modelMode: 'gpt-5.6-luna',
                     effortLevel: 'medium',
                 },
             },
@@ -97,12 +97,38 @@ describe('resolveMessageModeMeta', () => {
 
         expect(meta).toEqual({
             permissionMode: 'default',
-            model: 'gpt-5.4',
+            model: 'gpt-5.6-terra',
             effort: 'xhigh',
         });
     });
 
-    it('treats an explicit default model as a reset override', () => {
+    it('passes a custom codex model through unchanged', () => {
+        const meta = resolveMessageModeMeta({
+            permissionMode: null,
+            modelMode: 'my-workspace-model',
+            effortLevel: null,
+            metadata: { flavor: 'codex' },
+        } as any);
+
+        expect(meta).toEqual({ model: 'my-workspace-model' });
+    });
+
+    it('uses a custom codex model saved in agent settings', () => {
+        const meta = resolveMessageModeMeta({
+            permissionMode: null,
+            modelMode: null,
+            effortLevel: null,
+            metadata: { flavor: 'codex' },
+        } as any, {
+            agentDefaultOverrides: {
+                codex: { modelMode: 'my-workspace-model' },
+            },
+        } as any);
+
+        expect(meta).toEqual({ model: 'my-workspace-model' });
+    });
+
+    it('treats an explicit claude default model as a reset override', () => {
         const meta = resolveMessageModeMeta({
             permissionMode: null,
             modelMode: 'default',

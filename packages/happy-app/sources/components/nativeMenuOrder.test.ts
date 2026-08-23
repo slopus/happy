@@ -4,10 +4,10 @@ import { orderNativeMenuItems } from './nativeMenuOrder';
 describe('orderNativeMenuItems', () => {
     // The bug this exists for: iOS printed the harness picker upside down.
     it('reverses on iOS so an upward menu reads in the given order', () => {
-        const harnesses = ['Claude Code', 'Codex', 'Happy', 'Antigravity'];
+        const harnesses = ['Claude Code', 'Codex', 'Antigravity', 'Happy'];
         expect(orderNativeMenuItems(harnesses, 'ios')).toEqual([
-            'Antigravity',
             'Happy',
+            'Antigravity',
             'Codex',
             'Claude Code',
         ]);

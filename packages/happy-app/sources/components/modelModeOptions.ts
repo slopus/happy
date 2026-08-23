@@ -134,17 +134,32 @@ export function getClaudeModelModes(): ModelMode[] {
 
 export function getCodexModelModes(): ModelMode[] {
     return [
-        { key: 'default', name: 'default model', description: null },
         { key: 'gpt-5.6-sol', name: 'gpt-5.6 sol', description: null },
         { key: 'gpt-5.6-terra', name: 'gpt-5.6 terra', description: null },
         { key: 'gpt-5.6-luna', name: 'gpt-5.6 luna', description: null },
-        { key: 'gpt-5.5', name: 'gpt-5.5', description: null },
-        { key: 'gpt-5.4', name: 'gpt-5.4', description: null },
-        { key: 'gpt-5.3-codex', name: 'gpt-5.3-codex', description: null },
-        { key: 'gpt-5.2-codex', name: 'gpt-5.2-codex', description: null },
-        { key: 'gpt-5.1-codex-max', name: 'gpt-5.1-codex-max', description: null },
-        { key: 'gpt-5.2', name: 'gpt-5.2', description: null },
-        { key: 'gpt-5.1-codex-mini', name: 'gpt-5.1-codex-mini', description: null },
+    ];
+}
+
+export function includeConfiguredModel(
+    flavor: AgentFlavor,
+    models: ModelMode[],
+    configuredModelKey: string | null | undefined,
+): ModelMode[] {
+    if (
+        flavor !== 'codex'
+        || !configuredModelKey
+        || configuredModelKey === 'default'
+        || models.some((model) => model.key === configuredModelKey)
+    ) {
+        return models;
+    }
+    return [
+        ...models,
+        {
+            key: configuredModelKey,
+            name: configuredModelKey,
+            description: 'custom model',
+        },
     ];
 }
 
@@ -297,7 +312,11 @@ export function getAvailableModels(
         }
         return metadataModels;
     }
-    return getHardcodedModelModes(flavor, translate);
+    return includeConfiguredModel(
+        flavor,
+        getHardcodedModelModes(flavor, translate),
+        selectedKey,
+    );
 }
 
 export function getAvailablePermissionModes(

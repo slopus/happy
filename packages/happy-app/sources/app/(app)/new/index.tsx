@@ -60,6 +60,7 @@ import {
     getHardcodedModelModes,
     getEffortLevelsForModel,
     getSupportsWorktree,
+    includeConfiguredModel,
     type PermissionMode,
     type ModelMode,
     type EffortLevel,
@@ -112,8 +113,8 @@ type AgentKey = NewSessionAgentType;
 const ALL_AGENTS: { key: AgentKey; label: string }[] = [
     { key: 'claude', label: 'claude code' },
     { key: 'codex', label: 'codex' },
-    { key: 'rig', label: 'happy' },
     { key: 'agy', label: 'antigravity' },
+    { key: 'rig', label: 'happy' },
 ];
 
 type PickerItem = { key: string; label: string; subtitle?: string; dimmed?: boolean };
@@ -1016,9 +1017,20 @@ function NewSessionScreen() {
         () => rigCreation?.permissionModes ?? getHardcodedPermissionModes(selectedAgent, t),
         [selectedAgent, rigCreation],
     );
+    const effectiveAgentDefaults = React.useMemo(() => rigCreation
+        ? {
+            permissionMode: rigCreation.defaultPermissionMode ?? '',
+            modelMode: rigCreation.defaultModelKey ?? '',
+            effortLevel: rigCreation.defaultEffortForModel(rigCreation.defaultModelKey),
+        }
+        : resolveAgentDefaultConfig(agentDefaultOverrides, selectedAgent), [agentDefaultOverrides, selectedAgent, rigCreation]);
     const modelModes = React.useMemo<ModelMode[]>(
-        () => rigCreation?.models ?? getHardcodedModelModes(selectedAgent, t),
-        [selectedAgent, rigCreation],
+        () => rigCreation?.models ?? includeConfiguredModel(
+            selectedAgent,
+            getHardcodedModelModes(selectedAgent, t),
+            effectiveAgentDefaults.modelMode,
+        ),
+        [selectedAgent, effectiveAgentDefaults.modelMode, rigCreation],
     );
 
     const currentModel = resolveSelectedOption(modelModes, modelIndex);
@@ -1030,13 +1042,6 @@ function NewSessionScreen() {
             : getEffortLevelsForModel(selectedAgent, currentModelKey),
         [selectedAgent, currentModelKey, rigCreation],
     );
-    const effectiveAgentDefaults = React.useMemo(() => rigCreation
-        ? {
-            permissionMode: rigCreation.defaultPermissionMode ?? '',
-            modelMode: rigCreation.defaultModelKey ?? '',
-            effortLevel: rigCreation.defaultEffortForModel(rigCreation.defaultModelKey),
-        }
-        : resolveAgentDefaultConfig(agentDefaultOverrides, selectedAgent), [agentDefaultOverrides, selectedAgent, rigCreation]);
     const effectiveEffortDefault = rigCreation?.defaultEffortForModel(currentModelKey)
         ?? effectiveAgentDefaults.effortLevel;
     const showModel = modelModes.length > 1;

@@ -93,7 +93,7 @@ describe('hashCodexEnhancedMode', () => {
     it('separates queued Codex messages with different append system prompts', () => {
         const baseMode: CodexEnhancedMode = {
             permissionMode: 'default',
-            model: 'gpt-5.5',
+            model: 'gpt-5.6-sol',
             effort: 'medium',
         };
 

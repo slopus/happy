@@ -705,16 +705,21 @@ export function SessionViewLoaded({
     const shouldShowCliWarning = isCliOutdated && !isAcknowledged;
     const flavor = session.metadata?.flavor;
     const isRig = isRigMetadata(session.metadata);
-    const availableModels = React.useMemo(() => (
-        getAvailableModels(flavor, session.metadata, t, session.modelMode)
-    ), [flavor, session.metadata, session.modelMode]);
-    const availableModes = React.useMemo(() => (
-        getAvailablePermissionModes(flavor, session.metadata, t, session.permissionMode)
-    ), [flavor, session.metadata, session.permissionMode]);
     const agentDefaultOverrides = useSetting('agentDefaultOverrides');
     const effectiveAgentDefaults = React.useMemo(() => (
         resolveAgentDefaultConfig(agentDefaultOverrides, flavor)
     ), [agentDefaultOverrides, flavor]);
+    const availableModels = React.useMemo(() => (
+        getAvailableModels(
+            flavor,
+            session.metadata,
+            t,
+            session.modelMode ?? (isRig ? null : effectiveAgentDefaults.modelMode),
+        )
+    ), [flavor, session.metadata, session.modelMode, effectiveAgentDefaults.modelMode, isRig]);
+    const availableModes = React.useMemo(() => (
+        getAvailablePermissionModes(flavor, session.metadata, t, session.permissionMode)
+    ), [flavor, session.metadata, session.permissionMode]);
 
     const permissionMode = React.useMemo<PermissionMode | null>(() => (
         resolveCurrentOption(availableModes, [

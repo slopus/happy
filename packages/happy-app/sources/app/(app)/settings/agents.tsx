@@ -23,6 +23,7 @@ import {
 } from '@/sync/agentDefaults';
 import { getHarnessName, isRetiredHarness } from '@/utils/harnessCatalog';
 import { t } from '@/text';
+import { Modal } from '@/modal';
 
 type ExpandedField = {
     agent: AgentKey;
@@ -68,6 +69,22 @@ export default function AgentDefaultsSettingsScreen() {
         setAgentDefaultOverrides(setAgentDefaultOverride(agentDefaultOverrides, agent, field, value));
     }, [agentDefaultOverrides, setAgentDefaultOverrides]);
 
+    const editCustomCodexModel = React.useCallback(async (currentValue?: string) => {
+        const value = await Modal.prompt(
+            'Custom Codex model',
+            'Enter an exact model ID. Availability depends on your Codex account or API configuration.',
+            {
+                defaultValue: currentValue ?? '',
+                placeholder: 'model-id',
+                confirmText: 'Save',
+            },
+        );
+        const model = value?.trim();
+        if (model) {
+            updateOverride('codex', 'modelMode', model);
+        }
+    }, [updateOverride]);
+
     const renderOption = (
         agent: AgentKey,
         field: AgentDefaultField,
@@ -98,6 +115,10 @@ export default function AgentDefaultsSettingsScreen() {
             ? optionName(config.options, overrideValue)
             : `Default (${optionName(config.options, effectiveValue)})`;
         const codeDefaultLabel = optionName(config.options, config.codeDefaultKey);
+        const isCustomCodexModel = agent === 'codex'
+            && config.field === 'modelMode'
+            && Boolean(overrideValue)
+            && !config.options.some((option) => option.key === overrideValue);
 
         return (
             <React.Fragment key={`${agent}-${config.field}`}>
@@ -125,6 +146,17 @@ export default function AgentDefaultsSettingsScreen() {
                             hasOverride && overrideValue === option.key,
                             option.key,
                         ))}
+                        {agent === 'codex' && config.field === 'modelMode' && (
+                            <Item
+                                title="Custom model…"
+                                subtitle={isCustomCodexModel ? overrideValue : 'Enter an exact model ID'}
+                                onPress={() => editCustomCodexModel(isCustomCodexModel ? overrideValue : undefined)}
+                                showChevron={false}
+                                rightElement={isCustomCodexModel ? (
+                                    <Ionicons name="checkmark" size={20} color={theme.colors.header.tint} />
+                                ) : undefined}
+                            />
+                        )}
                     </>
                 )}
             </React.Fragment>

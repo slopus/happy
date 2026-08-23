@@ -12,6 +12,7 @@ import {
     getDefaultEffortKey,
     getDefaultModelKey,
     getDefaultPermissionModeKey,
+    includeConfiguredModel,
     getOpenClawPermissionModes,
     mapMetadataOptions,
     resolveCurrentOption,
@@ -96,23 +97,28 @@ describe('modelModeOptions', () => {
         expect(keys).not.toContain('plan');
     });
 
-    it('builds codex model fallbacks', () => {
+    it('only offers the curated codex harness models', () => {
         const models = getCodexModelModes();
         expect(models.map((model) => model.key)).toEqual([
-            'default',
             'gpt-5.6-sol',
             'gpt-5.6-terra',
             'gpt-5.6-luna',
-            'gpt-5.5',
-            'gpt-5.4',
-            'gpt-5.3-codex',
-            'gpt-5.2-codex',
-            'gpt-5.1-codex-max',
-            'gpt-5.2',
-            'gpt-5.1-codex-mini',
         ]);
-        expect(models[0].name).toBe('default model');
-        expect(models[1].name).toBe('gpt-5.6 sol');
+        expect(models[0].name).toBe('gpt-5.6 sol');
+    });
+
+    it('adds a configured custom codex model without expanding the shared catalog', () => {
+        const models = getCodexModelModes();
+        const withCustom = includeConfiguredModel('codex', models, 'my-workspace-model');
+
+        expect(withCustom.map((model) => model.key)).toEqual([
+            'gpt-5.6-sol',
+            'gpt-5.6-terra',
+            'gpt-5.6-luna',
+            'my-workspace-model',
+        ]);
+        expect(models).toHaveLength(3);
+        expect(includeConfiguredModel('claude', models, 'my-workspace-model')).toBe(models);
     });
 
     it('builds claude model fallbacks with fable 5', () => {
@@ -137,7 +143,7 @@ describe('modelModeOptions', () => {
         expect(getDefaultModelKey('claude')).toBe('opus');
         expect(getDefaultEffortKey('claude')).toBe('medium');
         expect(getDefaultPermissionModeKey('codex')).toBe('yolo');
-        expect(getDefaultModelKey('codex')).toBe('gpt-5.5');
+        expect(getDefaultModelKey('codex')).toBe('gpt-5.6-sol');
         expect(getDefaultEffortKey('codex')).toBe('medium');
     });
 

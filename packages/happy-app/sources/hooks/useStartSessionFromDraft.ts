@@ -12,6 +12,7 @@ import {
     getEffortLevelsForModel,
     getHardcodedModelModes,
     getHardcodedPermissionModes,
+    includeConfiguredModel,
 } from '@/components/modelModeOptions';
 import { Modal } from '@/modal';
 import { t } from '@/text';
@@ -111,7 +112,11 @@ export function useStartSessionFromDraft() {
                 : [draft.permissionMode, defaults.permissionMode],
         );
         const model = resolveOption<{ key: string }>(
-            rigCreation?.models ?? getHardcodedModelModes(agentType, t),
+            rigCreation?.models ?? includeConfiguredModel(
+                agentType,
+                getHardcodedModelModes(agentType, t),
+                defaults.modelMode,
+            ),
             agentChanged
                 ? [defaults.modelMode]
                 : [draft.modelMode, defaults.modelMode],

@@ -80,7 +80,7 @@ function hasCodexSubagentReference(message: Record<string, unknown>): boolean {
     return false;
 }
 
-const DEFAULT_CODEX_MODEL = 'gpt-5.5';
+const DEFAULT_CODEX_MODEL = 'gpt-5.6-sol';
 const DEFAULT_CODEX_EFFORT: ReasoningEffort = 'medium';
 // Codex's app-server protocol requires a concrete approval policy and sandbox
 // on every turn, so unlike Claude there is no "send nothing" here. This is the

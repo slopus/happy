@@ -95,6 +95,16 @@ vi.mock('@/components/modelModeOptions', () => ({
     getEffortLevelsForModel: () => [
         { key: 'medium', name: 'Medium' },
     ],
+    includeConfiguredModel: (
+        flavor: string,
+        models: Array<{ key: string; name: string }>,
+        configuredModelKey?: string | null,
+    ) => flavor === 'codex'
+        && configuredModelKey
+        && configuredModelKey !== 'default'
+        && !models.some((model) => model.key === configuredModelKey)
+        ? [...models, { key: configuredModelKey, name: configuredModelKey }]
+        : models,
 }));
 
 vi.mock('@/modal', () => ({
@@ -203,6 +213,24 @@ describe('useStartSessionFromDraft', () => {
         );
         expect(mocks.navigateToSession.mock.invocationCallOrder[0])
             .toBeLessThan(mocks.sendMessage.mock.invocationCallOrder[0]);
+    });
+
+    it('starts codex with a custom model saved in agent settings', async () => {
+        mocks.defaultOverrides = {
+            codex: {
+                permissionMode: 'default',
+                modelMode: 'my-workspace-model',
+                effortLevel: 'medium',
+            },
+        };
+
+        const { startSession } = useStartSessionFromDraft();
+
+        await expect(startSession()).resolves.toBe(true);
+        expect(mocks.machineSpawnNewSession).toHaveBeenCalledWith(expect.objectContaining({
+            agent: 'codex',
+            modelMode: 'my-workspace-model',
+        }));
     });
 
     it('does not spawn a stale Claude draft when the machine only has Codex', async () => {

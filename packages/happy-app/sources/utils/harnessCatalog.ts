@@ -32,8 +32,8 @@ export const RETIRED_HARNESSES: ReadonlySet<NewSessionAgentType> = new Set([
 export const HARNESS_ORDER: readonly NewSessionAgentType[] = [
     'claude',
     'codex',
-    'rig',
     'agy',
+    'rig',
 ];
 
 export function isRetiredHarness(key: NewSessionAgentType | string): boolean {

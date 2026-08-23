@@ -43,6 +43,7 @@ import {
     getHardcodedModelModes,
     getHardcodedPermissionModes,
     getSupportsWorktree,
+    includeConfiguredModel,
     type ModeOption,
 } from './modelModeOptions';
 import type { NewSessionAgentType } from '@/sync/persistence';
@@ -727,8 +728,12 @@ export const HomeDock = React.memo(({
         [agentType, rigCreation],
     );
     const modelOptions = React.useMemo(
-        () => rigCreation?.models ?? getHardcodedModelModes(agentType, t),
-        [agentType, rigCreation],
+        () => rigCreation?.models ?? includeConfiguredModel(
+            agentType,
+            getHardcodedModelModes(agentType, t),
+            defaults.modelMode,
+        ),
+        [agentType, defaults.modelMode, rigCreation],
     );
     const currentPermission = resolveOption(permissionOptions, [permissionMode, defaults.permissionMode]);
     const currentModel = resolveOption(modelOptions, [modelMode, defaults.modelMode]);
