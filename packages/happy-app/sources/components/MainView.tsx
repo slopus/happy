@@ -32,6 +32,7 @@ import { trackFriendsSearch } from '@/track';
 import { MOBILE_GLASS_HEADER_HEIGHT } from './navigation/headerMetrics';
 import { useNewSessionDraft } from '@/hooks/useNewSessionDraft';
 import { useStartSessionFromDraft } from '@/hooks/useStartSessionFromDraft';
+import { shouldShowHomeConnectionStatus } from './homeConnectionStatus';
 
 interface MainViewProps {
     variant: 'phone' | 'sidebar';
@@ -206,7 +207,7 @@ const HeaderTitle = React.memo(({ activeTab }: { activeTab: ActiveTabType }) => 
             <Text style={styles.titleText}>
                 {t(TAB_TITLES[activeTab])}
             </Text>
-            {connectionStatus.text && (
+            {shouldShowHomeConnectionStatus(socketStatus.status) && connectionStatus.text && (
                 <View style={styles.statusContainer}>
                     <StatusDot
                         color={connectionStatus.color}

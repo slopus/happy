@@ -11,6 +11,7 @@ import { Image } from 'expo-image';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
 import { ShortcutHintBadge, useShortcutHints } from './ShortcutHints';
+import { shouldShowHomeConnectionStatus } from './homeConnectionStatus';
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({
     headerButton: {
@@ -229,7 +230,8 @@ function HeaderTitleWithSubtitle({ subtitle }: { subtitle?: string }) {
 
     const hasCustomSubtitle = !!subtitle;
     const connectionStatus = getConnectionStatus();
-    const showConnectionStatus = !hasCustomSubtitle && connectionStatus.text;
+    const showConnectionStatus = shouldShowHomeConnectionStatus(socketStatus.status, hasCustomSubtitle)
+        && connectionStatus.text;
 
     return (
         <View style={styles.titleContainer}>

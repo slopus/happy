@@ -65,7 +65,6 @@ import { resolveAgentDefaultConfig } from '@/sync/agentDefaults';
 import { performAgentGoalAction } from './agentGoalActionHandler';
 import { MOBILE_GLASS_HEADER_HEIGHT } from '@/components/navigation/headerMetrics';
 import {
-    getRigIdentity,
     getRigReasoningSelection,
     isRigMetadata,
     isRigModelSelectionEnabled,
@@ -341,23 +340,19 @@ export const SessionView = React.memo((props: { id: string }) => {
     // Compute header props based on session state
     const headerProps = useMemo(() => {
         if (!isDataReady) {
-            return { title: '', folderName: undefined, isConnected: false, identityLine: undefined };
+            return { title: '', folderName: undefined, isConnected: false };
         }
         if (!session) {
-            return { title: t('errors.sessionDeleted'), folderName: undefined, isConnected: false, identityLine: undefined };
+            return { title: t('errors.sessionDeleted'), folderName: undefined, isConnected: false };
         }
         const isConnected = session.presence === 'online';
         const pathSegments = session.metadata?.path?.split(/[/\\]/).filter(Boolean);
         const folderName = pathSegments?.[pathSegments.length - 1];
         const sessionName = getSessionName(session);
-        const rigIdentity = getRigIdentity(session.metadata);
         return {
             title: sessionName,
             folderName,
             isConnected,
-            identityLine: rigIdentity
-                ? `${rigIdentity.clientName} · ${rigIdentity.providerName}${rigIdentity.modelName ? ` — ${rigIdentity.modelName}` : ''}`
-                : undefined,
         };
     }, [session, isDataReady]);
     const headerRight = session && deviceType === 'phone' && Platform.OS !== 'web'
@@ -372,6 +367,7 @@ export const SessionView = React.memo((props: { id: string }) => {
                     monochrome={!headerProps.isConnected}
                     flavor={session.metadata?.flavor}
                     clientId={session.metadata?.client?.id}
+                    badgeLocation="sessionHeader"
                 />
             </Pressable>
         )
@@ -448,7 +444,6 @@ export const SessionView = React.memo((props: { id: string }) => {
                         folderName={headerProps.folderName}
                         isConnected={headerProps.isConnected}
                         backdropVisible={headerBackdropVisible}
-                        identityLine={headerProps.identityLine}
                         extraPathSegment={fileViewPath ?? undefined}
                         rightSlot={(diffViewOpen || !!fileViewPath) ? headerRightSlot : headerRight}
                         onTitlePress={session ? () => router.push(`/session/${sessionId}/info`) : undefined}

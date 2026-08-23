@@ -1,7 +1,11 @@
 import * as React from 'react';
 // @ts-expect-error react-test-renderer has no declarations in this workspace.
 import { act, create } from 'react-test-renderer';
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+
+const socketStatus = vi.hoisted(() => ({
+    status: 'disconnected' as 'disconnected' | 'connecting' | 'connected' | 'error',
+}));
 
 vi.mock('react-native', async () => {
     const ReactModule = await import('react');
@@ -20,7 +24,7 @@ vi.mock('./navigation/Header', async () => {
 });
 
 vi.mock('@/sync/storage', () => ({
-    useSocketStatus: () => ({ status: 'disconnected' }),
+    useSocketStatus: () => socketStatus,
 }));
 
 vi.mock('expo-router', () => ({
@@ -79,7 +83,7 @@ vi.mock('./ShortcutHints', () => ({
 }));
 vi.mock('./StatusDot', () => ({ StatusDot: () => null }));
 
-import { HomeHeaderNotAuth } from './HomeHeader';
+import { HomeHeader, HomeHeaderNotAuth } from './HomeHeader';
 
 const originalConsoleError = console.error;
 
@@ -92,6 +96,23 @@ beforeAll(() => {
 });
 
 afterAll(() => vi.restoreAllMocks());
+afterEach(() => {
+    socketStatus.status = 'disconnected';
+});
+
+function renderHomeHeaderTitle(component: React.ReactElement) {
+    let renderer: ReturnType<typeof create>;
+    act(() => {
+        renderer = create(component);
+    });
+
+    const header = renderer!.root.findByType('Header' as any);
+    let titleRenderer: ReturnType<typeof create>;
+    act(() => {
+        titleRenderer = create(header.props.title);
+    });
+    return titleRenderer!;
+}
 
 describe('HomeHeaderNotAuth', () => {
     it('uses the standard plain mobile title instead of the glass title pill', () => {
@@ -102,5 +123,35 @@ describe('HomeHeaderNotAuth', () => {
 
         const header = renderer!.root.findByType('Header' as any);
         expect(header.props.mobileTitleSurface).toBe('plain');
+    });
+});
+
+describe('home header connection status', () => {
+    it('omits the connected status line without leaving subtitle spacing', () => {
+        socketStatus.status = 'connected';
+
+        const title = renderHomeHeaderTitle(React.createElement(HomeHeader));
+
+        expect(title.root.findAllByType('View' as any)).toHaveLength(1);
+        expect(title.root.findAllByType('Text' as any)).toHaveLength(1);
+    });
+
+    it.each(['connecting', 'disconnected', 'error'] as const)('shows the %s status line', (status) => {
+        socketStatus.status = status;
+
+        const title = renderHomeHeaderTitle(React.createElement(HomeHeader));
+
+        expect(title.root.findAllByType('View' as any)).toHaveLength(2);
+        expect(title.root.findAllByType('Text' as any)).toHaveLength(2);
+    });
+
+    it('preserves a custom subtitle when the socket is connected', () => {
+        socketStatus.status = 'connected';
+
+        const title = renderHomeHeaderTitle(React.createElement(HomeHeaderNotAuth));
+        const texts = title.root.findAllByType('Text' as any);
+
+        expect(texts).toHaveLength(2);
+        expect(texts[1].props.children).toBe('192.168.0.108:3005');
     });
 });

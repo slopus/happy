@@ -213,8 +213,10 @@ export const ja: TranslationStructure = {
             gradient: 'グラデーション',
             brutalist: 'ブルータリスト',
         },
-        showFlavorIcons: 'AIプロバイダーアイコンを表示',
-        showFlavorIconsDescription: 'セッションアバターにAIプロバイダーアイコンを表示',
+        showHarnessIconInSessionHeader: 'セッションヘッダーにハーネスアイコンを表示',
+        showHarnessIconInSessionHeaderDescription: 'セッションヘッダーにハーネスアイコンを表示',
+        showHarnessIconsInSessionList: 'セッションリストにハーネスアイコンを表示',
+        showHarnessIconsInSessionListDescription: 'セッションリストのアバターにハーネスアイコンを表示',
     },
 
     settingsFeatures: {

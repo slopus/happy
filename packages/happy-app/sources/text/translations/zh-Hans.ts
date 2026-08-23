@@ -213,8 +213,10 @@ export const zhHans: TranslationStructure = {
             gradient: '渐变',
             brutalist: '粗糙风格',
         },
-        showFlavorIcons: '显示 AI 提供商图标',
-        showFlavorIconsDescription: '在会话头像上显示 AI 提供商图标',
+        showHarnessIconInSessionHeader: '在会话标题中显示 harness 图标',
+        showHarnessIconInSessionHeaderDescription: '在会话标题中显示 harness 图标',
+        showHarnessIconsInSessionList: '在会话列表中显示 harness 图标',
+        showHarnessIconsInSessionListDescription: '在会话列表的头像上显示 harness 图标',
     },
 
     settingsFeatures: {

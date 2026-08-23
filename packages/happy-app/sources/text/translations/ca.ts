@@ -212,8 +212,10 @@ export const ca: TranslationStructure = {
             gradient: 'Gradient',
             brutalist: 'Brutalista',
         },
-        showFlavorIcons: "Mostrar icones de proveïdors d'IA",
-        showFlavorIconsDescription: "Mostrar icones del proveïdor d'IA als avatars de sessió",
+        showHarnessIconInSessionHeader: 'Mostrar la icona de l\'arnès a la capçalera de la sessió',
+        showHarnessIconInSessionHeaderDescription: 'Mostra la icona de l\'arnès a la capçalera de la sessió',
+        showHarnessIconsInSessionList: 'Mostrar les icones d\'arnès a la llista de sessions',
+        showHarnessIconsInSessionListDescription: 'Mostra les icones d\'arnès als avatars de la llista de sessions',
     },
 
     settingsFeatures: {

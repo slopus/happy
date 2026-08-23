@@ -214,6 +214,7 @@ export default function AppearanceSettingsScreen() {
     const [alwaysShowContextSize, setAlwaysShowContextSize] = useSettingMutable('alwaysShowContextSize');
     const [avatarStyle, setAvatarStyle] = useSettingMutable('avatarStyle');
     const [showFlavorIcons, setShowFlavorIcons] = useSettingMutable('showFlavorIcons');
+    const [showHarnessIconInSessionHeader, setShowHarnessIconInSessionHeader] = useSettingMutable('showHarnessIconInSessionHeader');
     const [compactToolCalls, setCompactToolCalls] = useSettingMutable('compactToolCalls');
     const [userMessageBubbleColor, setUserMessageBubbleColor] = useSettingMutable('userMessageBubbleColor');
     const [sessionStatusBarDisplay, setSessionStatusBarDisplay] = useSettingMutable('sessionStatusBarDisplay');
@@ -495,8 +496,19 @@ export default function AppearanceSettingsScreen() {
                     }}
                 />
                 <Item
-                    title={t('settingsAppearance.showFlavorIcons')}
-                    subtitle={t('settingsAppearance.showFlavorIconsDescription')}
+                    title={t('settingsAppearance.showHarnessIconInSessionHeader')}
+                    subtitle={t('settingsAppearance.showHarnessIconInSessionHeaderDescription')}
+                    icon={<Ionicons name="apps-outline" size={29} color="#5856D6" />}
+                    rightElement={
+                        <Switch
+                            value={showHarnessIconInSessionHeader}
+                            onValueChange={setShowHarnessIconInSessionHeader}
+                        />
+                    }
+                />
+                <Item
+                    title={t('settingsAppearance.showHarnessIconsInSessionList')}
+                    subtitle={t('settingsAppearance.showHarnessIconsInSessionListDescription')}
                     icon={<Ionicons name="apps-outline" size={29} color="#5856D6" />}
                     rightElement={
                         <Switch

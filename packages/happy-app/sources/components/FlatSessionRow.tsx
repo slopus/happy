@@ -168,6 +168,7 @@ export const FlatSessionRow = React.memo(({ row, selected, showBorder, archived 
                     monochrome={faded}
                     flavor={session.flavor}
                     clientId={session.clientId}
+                    badgeLocation="sessionList"
                 />
             </View>
 

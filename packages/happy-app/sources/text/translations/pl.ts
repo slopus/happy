@@ -229,8 +229,10 @@ export const pl: TranslationStructure = {
             gradient: 'Gradientowy',
             brutalist: 'Brutalistyczny',
         },
-        showFlavorIcons: 'Pokaż ikony dostawcy AI',
-        showFlavorIconsDescription: 'Wyświetlaj ikony dostawcy AI na awatarach sesji',
+        showHarnessIconInSessionHeader: 'Pokaż ikonę harnessu w nagłówku sesji',
+        showHarnessIconInSessionHeaderDescription: 'Wyświetlaj ikonę harnessu w nagłówku sesji',
+        showHarnessIconsInSessionList: 'Pokaż ikony harnessów na liście sesji',
+        showHarnessIconsInSessionListDescription: 'Wyświetlaj ikony harnessów na awatarach listy sesji',
     },
 
     settingsFeatures: {
