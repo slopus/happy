@@ -23,6 +23,7 @@ import { useRouter } from 'expo-router';
 import { SessionShortcutHintBadge } from './ShortcutHints';
 import { buildActiveSessionDisplayGroups } from '@/utils/sessionDisplayOrder';
 import { ProviderIcon } from './ProviderIcon';
+import { RigGitLineChanges } from './RigGitLineChanges';
 
 const STATUS_CONFIG: Record<SessionState, { color: string; dotColor: string; isPulsing: boolean; isConnected: boolean }> = {
     disconnected: { color: '#999', dotColor: '#999', isPulsing: false, isConnected: false },
@@ -322,12 +323,24 @@ export const CompactSessionRow = React.memo(({ session, selected, showBorder }: 
                         style={styles.sessionShortcutBadge}
                     />
                 </View>
-                {session.identityLine && (
+                {(session.identityLine || session.gitChangedFiles !== null) && (
                     <View style={styles.sessionIdentityRow}>
-                        <ProviderIcon kind={session.providerKind} size={11} />
-                        <Text style={styles.sessionIdentity} numberOfLines={1}>
-                            {session.identityLine}{session.modelName ? ` · ${session.modelName}` : ''}{session.activitySummary ? ` · ${session.activitySummary}` : ''}
-                        </Text>
+                        {session.identityLine && (
+                            <>
+                                <ProviderIcon kind={session.providerKind} size={11} />
+                                <Text style={styles.sessionIdentity} numberOfLines={1}>
+                                    {session.identityLine}{session.modelName ? ` · ${session.modelName}` : ''}{session.activitySummary ? ` · ${session.activitySummary}` : ''}
+                                </Text>
+                            </>
+                        )}
+                        {session.gitChangedFiles !== null && (
+                            <RigGitLineChanges
+                                changedFiles={session.gitChangedFiles}
+                                countsExact={session.gitCountsExact}
+                                deletions={session.gitDeletions ?? 0}
+                                insertions={session.gitInsertions ?? 0}
+                            />
+                        )}
                     </View>
                 )}
             </View>
@@ -516,6 +529,8 @@ const stylesheet = StyleSheet.create((theme) => ({
         fontSize: 11,
         color: theme.colors.textSecondary,
         ...Typography.default('regular'),
+        flex: 1,
+        minWidth: 0,
         flexShrink: 1,
     },
     sessionIdentityRow: {

@@ -18,6 +18,7 @@ import { type SessionState, formatLastSeen, vibingMessages } from '@/utils/sessi
 import type { FlatSessionRowData } from '@/utils/flatSessionList';
 import type { Theme } from '@/theme';
 import { t } from '@/text';
+import { RigGitLineChanges } from './RigGitLineChanges';
 
 // Roughly three quarters of the row, the proportion a chat list uses: the row
 // is 10 + 61 + 10, so 60 leaves an even 10 either side of the avatar.
@@ -212,6 +213,14 @@ export const FlatSessionRow = React.memo(({ row, selected, showBorder, archived 
                                 {statusLine}
                             </Text>
                         </>
+                    )}
+                    {session.gitChangedFiles !== null && (
+                        <RigGitLineChanges
+                            changedFiles={session.gitChangedFiles}
+                            countsExact={session.gitCountsExact}
+                            deletions={session.gitDeletions ?? 0}
+                            insertions={session.gitInsertions ?? 0}
+                        />
                     )}
                 </View>
             </View>

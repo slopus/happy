@@ -4,6 +4,7 @@ import { rigMetadataFixture } from './__testdata__/rigMetadata';
 import {
     getProviderIconKind,
     getRigActivityIndicators,
+    getRigGitSummary,
     getRigIdentity,
     getRigModels,
     getRigReasoningLevels,
@@ -86,6 +87,23 @@ describe('Rig metadata', () => {
         expect(getRigActivityIndicators(parsed).map((item) => item.key)).toEqual([
             'subagents', 'workflows', 'processes', 'tasks',
         ]);
+    });
+
+    it('reads Git counts only from Rig metadata', () => {
+        const git = {
+            changedFiles: 7,
+            insertions: 123,
+            deletions: 45,
+            countsExact: true,
+        };
+        const parsed = MetadataSchema.parse({ ...rigMetadataFixture, git });
+
+        expect(getRigGitSummary(parsed)).toEqual(git);
+        expect(getRigGitSummary({
+            path: '/tmp/legacy',
+            host: 'legacy',
+            git,
+        })).toBeNull();
     });
 
     it('retains legacy metadata behavior when the Rig extension is absent', () => {

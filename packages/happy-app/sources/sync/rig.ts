@@ -22,6 +22,13 @@ export type RigActivityIndicator = {
     queued?: number;
 };
 
+export type RigGitSummary = {
+    changedFiles: number;
+    countsExact: boolean;
+    deletions: number;
+    insertions: number;
+};
+
 export function isRigMetadata(metadata: Metadata | null | undefined): boolean {
     return metadata?.client?.id === 'rig';
 }
@@ -196,6 +203,17 @@ export function getRigActivityIndicators(metadata: Metadata | null | undefined):
         indicators.push({ key: 'tasks', count: activity.tasks.inProgress, queued: activity.tasks.pending });
     }
     return indicators;
+}
+
+/** Git counts published by Happy Agent itself; legacy Happy metadata never participates. */
+export function getRigGitSummary(metadata: Metadata | null | undefined): RigGitSummary | null {
+    if (!isRigMetadata(metadata) || !metadata?.git) return null;
+    return {
+        changedFiles: metadata.git.changedFiles,
+        countsExact: metadata.git.countsExact,
+        deletions: metadata.git.deletions,
+        insertions: metadata.git.insertions,
+    };
 }
 
 export function getRigReasoningLevels(metadata: Metadata | null | undefined, modelKey: string | null | undefined): string[] {

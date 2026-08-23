@@ -35,7 +35,7 @@ import { getCurrentRealtimeSessionId, getVoiceSession } from '@/realtime/Realtim
 import { isMutableTool } from "@/components/tools/knownTools";
 import { DecryptedArtifact } from "./artifactTypes";
 import { FeedItem } from "./feedTypes";
-import { getRigActivityIndicators, getRigIdentity, isRigMetadata } from './rig';
+import { getRigActivityIndicators, getRigGitSummary, getRigIdentity, isRigMetadata } from './rig';
 import { indexSessionsById } from './sessionIdentity';
 import { t } from '@/text';
 
@@ -119,6 +119,10 @@ export interface SessionRowData {
     providerKind: string | null;
     modelName: string | null;
     activitySummary: string | null;
+    gitChangedFiles: number | null;
+    gitCountsExact: boolean;
+    gitDeletions: number | null;
+    gitInsertions: number | null;
     state: SessionState;
     // Only present on inactive sessions — active sessions never show "last seen"
     // and activeAt updates on every heartbeat, causing needless deep-equal diffs
@@ -173,6 +177,7 @@ function buildSessionRowData(
 
     const rigIdentity = getRigIdentity(session.metadata);
     const rigActivity = getRigActivityIndicators(session.metadata);
+    const rigGit = getRigGitSummary(session.metadata);
     const machineId = session.metadata?.machineId ?? null;
     const machine = machineId ? machines?.[machineId] : undefined;
     return {
@@ -188,6 +193,10 @@ function buildSessionRowData(
         activitySummary: rigActivity.length > 0
             ? rigActivity.map((item) => `${item.count}${item.queued ? `+${item.queued}` : ''} ${item.key}`).join(' · ')
             : null,
+        gitChangedFiles: rigGit?.changedFiles ?? null,
+        gitCountsExact: rigGit?.countsExact ?? true,
+        gitDeletions: rigGit?.deletions ?? null,
+        gitInsertions: rigGit?.insertions ?? null,
         state,
         createdAt: session.createdAt,
         lastActivityAt: getSessionActivityAt(session),

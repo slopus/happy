@@ -128,6 +128,13 @@ export const MetadataSchema = z.object({
      * `Session.lastMessageSentAt`, which only knows what this device sent.
      */
     lastMeaningfulMessageAt: z.number().optional(),
+    /** Rig's branch/worktree comparison against its merge base with origin/main. */
+    git: z.object({
+        changedFiles: z.number().int().nonnegative(),
+        countsExact: z.boolean(),
+        deletions: z.number().int().nonnegative(),
+        insertions: z.number().int().nonnegative(),
+    }).passthrough().optional(),
     machineId: z.string().optional(),
     claudeSessionId: z.string().optional(), // Claude Code session ID
     codexThreadId: z.string().optional(), // Codex app-server thread ID
