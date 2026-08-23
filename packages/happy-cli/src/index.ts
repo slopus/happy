@@ -45,6 +45,12 @@ import { sanitizeSessionEnvironment } from './daemon/sessionEnvironment'
     logger.debug('Starting happy CLI with args: ', process.argv)
   }
 
+  // Hermes is a known ACP agent; route `happy hermes` through the generic ACP runner
+  if (args[0] === 'hermes') {
+    args[0] = 'acp'
+    args.splice(1, 0, 'hermes')
+  }
+
   // Check if first argument is a subcommand
   const subcommand = args[0]
   
@@ -371,6 +377,12 @@ Conversation history is preserved on the server, but in-flight tool calls are in
           startedBy = args[++i] as 'daemon' | 'terminal';
           continue;
         }
+        if (!customCommandMode && args[i] === '--happy-starting-mode') {
+          // Happy-internal flag appended by the daemon when spawning remote
+          // sessions; consume it so it never reaches the agent subprocess
+          i++;
+          continue;
+        }
         if (!customCommandMode && args[i] === '--verbose') {
           verbose = true;
           continue;
@@ -392,6 +404,44 @@ Conversation history is preserved on the server, but in-flight tool calls are in
         agentName: resolved.agentName,
         command: resolved.command,
         args: resolved.args,
+      });
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
+      if (process.env.DEBUG) {
+        console.error(error)
+      }
+      process.exit(1)
+    }
+    return;
+  } else if (subcommand === 'crush') {
+    try {
+      const { runAcp } = await import('@/agent/acp/runAcp');
+      const { createCrushBackend } = await import('@/agent/crush');
+
+      let startedBy: 'daemon' | 'terminal' | undefined = undefined;
+      let verbose = false;
+      for (let i = 1; i < args.length; i++) {
+        if (args[i] === '--started-by') {
+          startedBy = args[++i] as 'daemon' | 'terminal';
+        } else if (args[i] === '--verbose') {
+          verbose = true;
+        }
+      }
+
+      const { credentials } = await authAndSetupMachineIfNeeded();
+      await ensureDaemonRunning()
+
+      await runAcp({
+        credentials,
+        startedBy,
+        verbose,
+        agentName: 'crush',
+        createBackend: (context) =>
+          createCrushBackend({
+            cwd: process.cwd(),
+            mcpServers: context.mcpServers,
+          }),
+        externalPermissions: true,
       });
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')

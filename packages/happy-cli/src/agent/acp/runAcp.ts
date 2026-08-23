@@ -2,9 +2,9 @@ import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { ApiClient } from '@/api/api';
 import type { ApiSessionClient } from '@/api/apiSession';
-import type { AgentMessage } from '@/agent/core';
+import type { AgentBackend, AgentMessage, McpServerConfig } from '@/agent/core';
 import { AcpBackend, type AcpPermissionHandler } from './AcpBackend';
-import { DefaultTransport } from '@/agent/transport';
+import { DefaultTransport, hermesTransport } from '@/agent/transport';
 import { AcpSessionManager } from './AcpSessionManager';
 import type { SessionEnvelope } from '@slopus/happy-wire';
 import { logger } from '@/ui/logger';
@@ -428,6 +428,25 @@ class GenericAcpPermissionHandler extends BasePermissionHandler implements AcpPe
       logger.debug(`${this.logPrefix} Permission request sent for tool: ${toolName} (${toolCallId})`);
     });
   }
+
+  /**
+   * Surface an externally-raised permission request (pushed as an
+   * AgentMessage by non-ACP backends) to the mobile app and resolve once
+   * the user responds. Resolves true for any approval decision, false for
+   * denial or abort.
+   */
+  requestUserApproval(requestId: string, toolName: string, input: unknown): Promise<boolean> {
+    return new Promise<boolean>((resolve) => {
+      this.pendingRequests.set(requestId, {
+        resolve: (result) => resolve(result.decision === 'approved' || result.decision === 'approved_for_session'),
+        reject: () => resolve(false),
+        toolName,
+        input,
+      });
+      this.addPendingRequestToState(requestId, toolName, input);
+      logger.debug(`${this.logPrefix} Permission request surfaced for tool: ${toolName} (${requestId})`);
+    });
+  }
 }
 
 type PendingTurn = {
@@ -436,24 +455,61 @@ type PendingTurn = {
   timeout: NodeJS.Timeout;
 };
 
-function resolveSessionFlavor(agentName: string): 'gemini' | 'opencode' | 'acp' {
+function resolveSessionFlavor(agentName: string): 'gemini' | 'opencode' | 'hermes' | 'crush' | 'acp' {
   if (agentName === 'gemini') {
     return 'gemini';
   }
   if (agentName === 'opencode') {
     return 'opencode';
   }
+  if (agentName === 'hermes') {
+    return 'hermes';
+  }
+  if (agentName === 'crush') {
+    return 'crush';
+  }
   return 'acp';
 }
 
-export async function runAcp(opts: {
+/**
+ * A backend driven by the runner: the AgentBackend contract plus the
+ * optional ACP session-config methods. Non-ACP backends simply omit the
+ * ACP-specific setters (mode/model switching is then a no-op).
+ */
+type RunnerBackend = AgentBackend & Partial<Pick<AcpBackend, 'setSessionConfigOption' | 'setSessionMode' | 'setSessionModel'>>;
+
+/**
+ * Options for runAcp.
+ *
+ * Either provide `command`/`args` to spawn an ACP agent, or provide
+ * `createBackend` to drive a custom AgentBackend implementation through
+ * the same runner pipeline.
+ */
+export interface RunAcpOptions {
   credentials: Credentials;
   agentName: string;
-  command: string;
-  args: string[];
+  /** Command for the ACP agent subprocess (required unless createBackend is given) */
+  command?: string;
+  /** Args for the ACP agent subprocess */
+  args?: string[];
+  /** Factory for a custom backend; receives the MCP servers and permission handler the runner set up */
+  createBackend?: (context: { mcpServers: Record<string, McpServerConfig>; permissionHandler: GenericAcpPermissionHandler }) => RunnerBackend;
+  /**
+   * Set true for backends that surface permission requests as
+   * 'permission-request' AgentMessages instead of resolving them through
+   * the ACP requestPermission RPC. The runner then bridges those messages
+   * to the mobile app and forwards the response via
+   * backend.respondToPermission.
+   */
+  externalPermissions?: boolean;
   startedBy?: 'daemon' | 'terminal';
   verbose?: boolean;
-}): Promise<void> {
+}
+
+export async function runAcp(opts: RunAcpOptions): Promise<void> {
+  if (!opts.createBackend && !opts.command) {
+    throw new Error('runAcp requires either createBackend or command/args');
+  }
   const verbose = opts.verbose === true;
   const sessionTag = randomUUID();
   connectionState.setBackend(opts.agentName);
@@ -536,16 +592,20 @@ export async function runAcp(opts: {
     },
   };
 
-  const backend = new AcpBackend({
-    agentName: opts.agentName,
-    cwd: process.cwd(),
-    command: opts.command,
-    args: opts.args,
-    mcpServers,
-    permissionHandler,
-    transportHandler: new DefaultTransport(opts.agentName),
-    verbose,
-  });
+  const backend: RunnerBackend = opts.createBackend
+    ? opts.createBackend({ mcpServers, permissionHandler })
+    : new AcpBackend({
+        agentName: opts.agentName,
+        cwd: process.cwd(),
+        command: opts.command!,
+        args: opts.args,
+        mcpServers,
+        permissionHandler,
+        // Known agents with custom tool-name quirks get their dedicated transport;
+        // everything else rides the defaults
+        transportHandler: opts.agentName === 'hermes' ? hermesTransport : new DefaultTransport(opts.agentName),
+        verbose,
+      });
 
   let thinking = false;
   let acpSessionId: string | null = null;
@@ -603,7 +663,7 @@ export async function runAcp(opts: {
       return;
     }
 
-    if (modeSelector) {
+    if (modeSelector && backend.setSessionConfigOption) {
       const resolved = resolveRequestedCode(modeSelector.options, requestedMode);
       if (!resolved) {
         logger.debug(`[${opts.agentName}] Ignoring unknown ACP permission mode request: ${requestedMode}`);
@@ -631,6 +691,9 @@ export async function runAcp(opts: {
     if (resolvedLegacyMode === legacyModes.currentModeId) {
       return;
     }
+    if (!backend.setSessionMode) {
+      return;
+    }
 
     const switched = await backend.setSessionMode(resolvedLegacyMode);
     if (switched) {
@@ -646,7 +709,7 @@ export async function runAcp(opts: {
       return;
     }
 
-    if (modelSelector) {
+    if (modelSelector && backend.setSessionConfigOption) {
       const resolved = resolveRequestedCode(modelSelector.options, requestedModel);
       if (!resolved) {
         logger.debug(`[${opts.agentName}] Ignoring unknown ACP model request: ${requestedModel}`);
@@ -672,6 +735,9 @@ export async function runAcp(opts: {
       return;
     }
     if (resolvedLegacyModel === legacyModels.currentModelId) {
+      return;
+    }
+    if (!backend.setSessionModel) {
       return;
     }
 
@@ -818,6 +884,20 @@ export async function runAcp(opts: {
       if (msg.status === 'error' || msg.status === 'stopped') {
         stopRunnerFromBackendStatus(msg.status, msg.detail);
       }
+    }
+
+    // Backends with externalPermissions push permission requests as
+    // messages; bridge them to the mobile app and forward the response
+    // to the backend. ACP backends resolve permissions internally and
+    // never take this path.
+    if (msg.type === 'permission-request' && opts.externalPermissions === true) {
+      void (async () => {
+        const approved = await permissionHandler.requestUserApproval(msg.id, msg.reason, msg.payload);
+        await backend.respondToPermission?.(msg.id, approved);
+        if (verbose) {
+          logAcp('muted', `Permission response forwarded to ${opts.agentName}: id=${msg.id} approved=${approved}`);
+        }
+      })();
     }
 
     const frontendMessage = formatAcpMessageForFrontend(opts.agentName, msg, verbose);

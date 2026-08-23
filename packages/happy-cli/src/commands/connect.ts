@@ -39,6 +39,14 @@ export async function handleConnectCommand(args: string[]): Promise<void> {
         case 'status':
             await handleConnectStatus();
             break;
+        case 'hermes':
+            console.log(chalk.bold('Hermes manages its own authentication.'));
+            console.log('Use the Hermes CLI native login command (hermes login) — no Happy cloud key is needed.');
+            break;
+        case 'crush':
+            console.log(chalk.bold('Crush manages its own authentication.'));
+            console.log('Use the Crush CLI native login command — no Happy cloud key is needed.');
+            break;
         default:
             console.error(chalk.red(`Unknown connect target: ${subcommand}`));
             showConnectHelp();

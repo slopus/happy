@@ -34,6 +34,18 @@ export type {
  */
 export type PermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'read-only' | 'safe-yolo' | 'yolo'
 
+const PERMISSION_MODES: readonly PermissionMode[] = ['default', 'acceptEdits', 'bypassPermissions', 'plan', 'read-only', 'safe-yolo', 'yolo'];
+
+/**
+ * Type guard for the well-known Claude/Codex permission modes.
+ * ACP agents may report their own dynamic mode ids (e.g. Hermes:
+ * accept_edits), which are not PermissionMode values; backends that
+ * only understand the well-known modes should ignore those.
+ */
+export function isPermissionMode(value: string): value is PermissionMode {
+  return (PERMISSION_MODES as readonly string[]).includes(value);
+}
+
 /**
  * Usage data type from Claude
  */
@@ -139,6 +151,9 @@ export const MachineMetadataSchema = z.object({
     codex: z.boolean(),
     gemini: z.boolean(),
     openclaw: z.boolean(),
+    agy: z.boolean().optional(),
+    hermes: z.boolean().optional(),
+    crush: z.boolean().optional(),
     detectedAt: z.number(),
   }).optional(),
   resumeSupport: z.object({
@@ -188,7 +203,12 @@ export type Machine = {
  */
 export const MessageMetaSchema = z.object({
   sentFrom: z.string().optional(), // Source identifier
-  permissionMode: z.enum(['default', 'acceptEdits', 'bypassPermissions', 'plan', 'read-only', 'safe-yolo', 'yolo']).optional(), // Permission mode for this message
+  // Permission mode for this message. Claude/Codex use the well-known keys
+  // (acceptEdits, bypassPermissions, ...); ACP agents report their own
+  // dynamic mode ids (e.g. Hermes: accept_edits, dont_ask) via session
+  // config events, so unknown values are accepted here and resolved (or
+  // ignored) per-agent by the backend runner.
+  permissionMode: z.string().optional(),
   model: z.string().nullable().optional(), // Model name for this message (null = reset)
   fallbackModel: z.string().nullable().optional(), // Fallback model for this message (null = reset)
   customSystemPrompt: z.string().nullable().optional(), // Custom system prompt for this message (null = reset)

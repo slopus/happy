@@ -1,6 +1,6 @@
 import * as z from 'zod';
 
-export const agentKeys = ['claude', 'codex', 'gemini', 'openclaw', 'agy'] as const;
+export const agentKeys = ['claude', 'codex', 'gemini', 'openclaw', 'agy', 'hermes', 'crush'] as const;
 export type AgentKey = typeof agentKeys[number];
 
 export const AgentDefaultOverrideSchema = z.object({
@@ -15,6 +15,8 @@ export const AgentDefaultOverridesSchema = z.object({
     gemini: AgentDefaultOverrideSchema.optional(),
     openclaw: AgentDefaultOverrideSchema.optional(),
     agy: AgentDefaultOverrideSchema.optional(),
+    hermes: AgentDefaultOverrideSchema.optional(),
+    crush: AgentDefaultOverrideSchema.optional(),
 }).passthrough().default({});
 
 export type AgentDefaultOverride = z.infer<typeof AgentDefaultOverrideSchema>;
@@ -35,10 +37,15 @@ const codeAgentDefaults: Record<AgentKey, AgentDefaultConfig> = {
     gemini: { permissionMode: 'default', modelMode: 'gemini-2.5-pro', effortLevel: null },
     openclaw: { permissionMode: 'default', modelMode: 'default', effortLevel: null },
     agy: { permissionMode: 'default', modelMode: 'Gemini 3.1 Pro (High)', effortLevel: null },
+    // Hermes and Crush expose their model/permission options dynamically via
+    // ACP session config / server events; until those arrive there is no
+    // meaningful hardcoded default beyond "ask".
+    hermes: { permissionMode: 'default', modelMode: 'default', effortLevel: null },
+    crush: { permissionMode: 'default', modelMode: 'default', effortLevel: null },
 };
 
 export function normalizeAgentKey(flavor: string | null | undefined): AgentKey {
-    if (flavor === 'codex' || flavor === 'gemini' || flavor === 'openclaw' || flavor === 'agy') {
+    if (flavor === 'codex' || flavor === 'gemini' || flavor === 'openclaw' || flavor === 'agy' || flavor === 'hermes' || flavor === 'crush') {
         return flavor;
     }
     return 'claude';
