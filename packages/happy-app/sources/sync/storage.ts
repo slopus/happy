@@ -122,7 +122,11 @@ export interface SessionRowData {
     // Only present on inactive sessions — active sessions never show "last seen"
     // and activeAt updates on every heartbeat, causing needless deep-equal diffs
     activeAt?: number;
-    createdAt?: number;
+    createdAt: number;
+    // Last time the user sent a message, falling back to creation. Grouping the
+    // list by project loses the global ordering the sessions were sorted into,
+    // so the flat list re-sorts on these two immutable-enough keys instead.
+    lastActivityAt: number;
     hasDraft: boolean;
     active: boolean;
     archived: boolean;
@@ -172,7 +176,9 @@ function buildSessionRowData(session: Session, unreadSessionIds?: Set<string>): 
             ? rigActivity.map((item) => `${item.count}${item.queued ? `+${item.queued}` : ''} ${item.key}`).join(' · ')
             : null,
         state,
-        ...(!session.active && { activeAt: session.activeAt, createdAt: session.createdAt }),
+        createdAt: session.createdAt,
+        lastActivityAt: session.lastMessageSentAt ?? session.createdAt,
+        ...(!session.active && { activeAt: session.activeAt }),
         hasDraft: !!session.draft,
         active: session.active,
         archived: isSessionArchived(session),

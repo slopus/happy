@@ -25,6 +25,7 @@ function session(
         activitySummary: null,
         state: 'waiting',
         createdAt,
+        lastActivityAt: createdAt,
         hasDraft: false,
         active: true,
         archived: false,

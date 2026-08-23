@@ -2,12 +2,14 @@ import React from 'react';
 import { View, Pressable, FlatList, NativeScrollEvent, NativeSyntheticEvent, Platform } from 'react-native';
 import { Text } from '@/components/StyledText';
 import { usePathname, useRouter } from 'expo-router';
-import { SessionListViewItem, SessionRowData, useAllMachines, useSettingMutable } from '@/sync/storage';
+import { SessionListViewItem, SessionRowData, useAllMachines, useLocalSetting, useSetting, useSettingMutable } from '@/sync/storage';
 import { Ionicons } from '@expo/vector-icons';
 import { type SessionState, formatLastSeen, vibingMessages } from '@/utils/sessionUtils';
 import { Avatar } from './Avatar';
 import { ActiveSessionsGroupCompact } from './ActiveSessionsGroupCompact';
 import { ProjectGroup } from './ProjectGroup';
+import { FlatSessionRow, flatListBackgroundColor } from './FlatSessionRow';
+import { buildFlatSessionRows, toFlatSessionRow, type FlatSessionRowData } from '@/utils/flatSessionList';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useHasArchivedSessions, useVisibleSessionListViewData } from '@/hooks/useVisibleSessionListViewData';
 import { Typography } from '@/constants/Typography';
@@ -33,6 +35,13 @@ type SessionListDisplayItem = SessionListViewItem | {
 } | {
     type: 'archive-toggle';
     hidden: boolean;
+    /** Sits inside the grey heading band rather than floating on the page. */
+    banded?: boolean;
+} | {
+    type: 'flat-session';
+    row: FlatSessionRowData;
+    last: boolean;
+    archived?: boolean;
 };
 
 const stylesheet = StyleSheet.create((theme) => ({
@@ -42,6 +51,11 @@ const stylesheet = StyleSheet.create((theme) => ({
         justifyContent: 'center',
         alignItems: 'stretch',
         backgroundColor: theme.colors.groupped.background,
+    },
+    // The flat variant removes the card/backdrop split entirely, so the page
+    // takes the same colour the rows do.
+    containerFlat: {
+        backgroundColor: flatListBackgroundColor(theme),
     },
     contentContainer: {
         flex: 1,
@@ -53,6 +67,12 @@ const stylesheet = StyleSheet.create((theme) => ({
         paddingTop: 20,
         paddingBottom: 8,
     },
+    // A date heading in the flat list is just a label sitting between rows, so
+    // it drops the grey band and keeps the one background the variant uses.
+    headerSectionFlat: {
+        backgroundColor: flatListBackgroundColor(theme),
+        paddingHorizontal: 16,
+    },
     archiveToggle: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -60,6 +80,14 @@ const stylesheet = StyleSheet.create((theme) => ({
         paddingHorizontal: 24,
         paddingTop: 20,
         paddingBottom: 12,
+    },
+    // In the flat list the toggle heads the archive rather than dividing the
+    // page. It sits between the rows on the same background they use — the
+    // variant has no grey band anywhere.
+    archiveToggleBanded: {
+        backgroundColor: flatListBackgroundColor(theme),
+        paddingTop: 24,
+        paddingBottom: 8,
     },
     archiveTogglePressed: {
         opacity: 0.5,
@@ -291,6 +319,10 @@ export function SessionsList({
     // Stored under its original `hideInactiveSessions` key — synced settings
     // have no rename migration — but it hides archived sessions only.
     const [hideArchivedSessions, setHideArchivedSessions] = useSettingMutable('hideInactiveSessions');
+    // The flat variant replaces the machine → project → worktree hierarchy with
+    // one full-width chronological column. Both shapes read the same data.
+    const flatSessionList = useLocalSetting('flatSessionList');
+    const sortSessionsByActivity = useSetting('sortSessionsByActivity');
     const machines = useAllMachines();
     const pathname = usePathname();
     const isTablet = useIsTablet();
@@ -327,6 +359,36 @@ export function SessionsList({
             ? [{ type: 'archive-toggle', hidden: hideArchivedSessions }]
             : [];
 
+        if (flatSessionList) {
+            const flatRows = buildFlatSessionRows(groupedRows, {
+                sortByActivity: sortSessionsByActivity,
+            });
+            const flatItems = flatRows.map<SessionListDisplayItem>((row, index) => ({
+                type: 'flat-session',
+                row,
+                last: index === flatRows.length - 1,
+            }));
+            // The archive is the same column, only retired: its rows get the
+            // flat row too rather than reverting to inset cards. The toggle
+            // joins the date headings in their grey band, so opening the
+            // archive extends that band instead of adding a second divider
+            // style above it.
+            const flatArchived = archivedRows.map<SessionListDisplayItem>((item, index) => (
+                item.type === 'session'
+                    ? {
+                        type: 'flat-session',
+                        row: toFlatSessionRow(item.session),
+                        last: index === archivedRows.length - 1,
+                        archived: true,
+                    }
+                    : item
+            ));
+            const flatToggle = archiveToggle.map<SessionListDisplayItem>((item) => (
+                item.type === 'archive-toggle' ? { ...item, banded: true } : item
+            ));
+            return [...flatItems, ...flatToggle, ...flatArchived];
+        }
+
         const machineGroups = buildSessionProjectDisplayGroups(
             groupedRows,
             machines,
@@ -348,12 +410,12 @@ export function SessionsList({
             item.type !== 'project' && item.type !== 'projects-header'
         ));
         return [...hierarchy, ...legacyItems, ...archiveToggle, ...archivedRows];
-    }, [hasArchivedSessions, hideArchivedSessions, machines, sourceData]);
+    }, [flatSessionList, hasArchivedSessions, hideArchivedSessions, machines, sortSessionsByActivity, sourceData]);
 
     // Early return if no data yet
     if (!data) {
         return (
-            <View style={styles.container} />
+            <View style={[styles.container, flatSessionList && styles.containerFlat]} />
         );
     }
 
@@ -361,6 +423,7 @@ export function SessionsList({
         switch (item.type) {
             case 'machine-header': return `machine-header-${JSON.stringify(item.machineId)}`;
             case 'archive-toggle': return 'archive-toggle';
+            case 'flat-session': return `flat-session-${item.row.session.id}`;
             case 'header': return `header-${item.title}-${index}`;
             case 'active-sessions': return 'active-sessions';
             case 'project-group': return `project-group-${item.machine.id}-${item.displayPath}-${index}`;
@@ -380,13 +443,27 @@ export function SessionsList({
                     />
                 );
 
+            case 'flat-session':
+                return (
+                    <FlatSessionRow
+                        row={item.row}
+                        selected={item.row.session.id === selectedSessionId}
+                        showBorder={!item.last}
+                        archived={item.archived}
+                    />
+                );
+
             case 'archive-toggle':
                 return (
                     <Pressable
                         onPress={() => setHideArchivedSessions(!item.hidden)}
                         accessibilityRole="button"
                         accessibilityState={{ selected: !item.hidden }}
-                        style={({ pressed }) => [styles.archiveToggle, pressed && styles.archiveTogglePressed]}
+                        style={({ pressed }) => [
+                            styles.archiveToggle,
+                            item.banded && styles.archiveToggleBanded,
+                            pressed && styles.archiveTogglePressed,
+                        ]}
                     >
                         <View style={styles.archiveToggleLine} />
                         <Text style={styles.archiveToggleText}>
@@ -398,7 +475,7 @@ export function SessionsList({
 
             case 'header':
                 return (
-                    <View style={styles.headerSection}>
+                    <View style={[styles.headerSection, flatSessionList && styles.headerSectionFlat]}>
                         <Text style={styles.headerText}>
                             {item.title}
                         </Text>
@@ -462,7 +539,7 @@ export function SessionsList({
                     />
                 );
         }
-    }, [selectedSessionId, data]);
+    }, [selectedSessionId, data, flatSessionList]);
 
 
     // Remove this section as we'll use FlatList for all items now
@@ -477,7 +554,7 @@ export function SessionsList({
     // Footer removed - all sessions now shown inline
 
     return (
-        <View style={styles.container}>
+        <View style={[styles.container, flatSessionList && styles.containerFlat]}>
             <View style={styles.contentContainer}>
                 <FlatList
                     data={data}
