@@ -1,14 +1,7 @@
 import { create } from "zustand";
 import { useShallow } from 'zustand/react/shallow'
 import equal from 'fast-deep-equal'
-
-function useDeepEqual<T>(selector: (state: StorageState) => T): (state: StorageState) => T {
-    const prev = React.useRef<T>(undefined);
-    return (state: StorageState) => {
-        const next = selector(state);
-        return equal(prev.current, next) ? prev.current! : (prev.current = next);
-    };
-}
+import { useDeepEqual } from './storeSelectors';
 import { Session, Machine, GitStatus, SessionAgentModesPatch } from "./storageTypes";
 import type { GitStatusFiles } from "./gitStatusFiles";
 import type { ProjectFilesList } from "./projectFiles";
@@ -1634,9 +1627,19 @@ export function useSocketStatus() {
     })));
 }
 
-/** Agent-to-user communications this session is currently waiting on. */
+/**
+ * Agent-to-user communications this session is currently waiting on.
+ *
+ * Deep-equal, not shallow: this selector mints a fresh object per pending
+ * communication on every call, and shallow compares those elements by identity.
+ * Under `useShallow` a session with even one pending request therefore reports a
+ * changed snapshot on every read, which re-renders, which reads again — the
+ * render loop that used to crash any session holding a question. An empty list
+ * shallow-compares equal, which is why only sessions with a live request fell
+ * over.
+ */
 export function useSessionPendingCommunications(sessionId: string): PendingAgentCommunication[] {
-    return storage(useShallow((state) =>
+    return storage(useDeepEqual((state) =>
         selectPendingCommunications(state.sessions[sessionId]?.agentState ?? null)));
 }
 
