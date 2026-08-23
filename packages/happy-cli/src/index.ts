@@ -473,6 +473,67 @@ Conversation history is preserved on the server, but in-flight tool calls are in
       process.exit(1)
     }
     return;
+  } else if (subcommand === 'hermes') {
+    // Hermes is an ACP agent — route through the generic ACP runner
+    try {
+      const { runAcp } = await import('@/agent/acp');
+
+      let startedBy: 'daemon' | 'terminal' | undefined = undefined;
+      let verbose = false;
+      for (let i = 1; i < args.length; i++) {
+        if (args[i] === '--started-by') {
+          startedBy = args[++i] as 'daemon' | 'terminal';
+        } else if (args[i] === '--verbose') {
+          verbose = true;
+        }
+      }
+
+      const { credentials } = await authAndSetupMachineIfNeeded();
+      await ensureDaemonRunning();
+
+      await runAcp({
+        credentials,
+        startedBy,
+        verbose,
+        agentName: 'hermes',
+        command: 'hermes',
+        args: ['acp'],
+      });
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
+      if (process.env.DEBUG) {
+        console.error(error)
+      }
+      process.exit(1)
+    }
+    return;
+  } else if (subcommand === 'crush') {
+    // Crush uses an HTTP server API (not ACP)
+    try {
+      const { runCrush } = await import('@/crush/runCrush');
+
+      let startedBy: 'daemon' | 'terminal' | undefined = undefined;
+      let verbose = false;
+      for (let i = 1; i < args.length; i++) {
+        if (args[i] === '--started-by') {
+          startedBy = args[++i] as 'daemon' | 'terminal';
+        } else if (args[i] === '--verbose') {
+          verbose = true;
+        }
+      }
+
+      const { credentials } = await authAndSetupMachineIfNeeded();
+      await ensureDaemonRunning();
+
+      await runCrush({ credentials, startedBy, verbose });
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
+      if (process.env.DEBUG) {
+        console.error(error)
+      }
+      process.exit(1)
+    }
+    return;
   } else if (subcommand === 'logout') {
     // Keep for backward compatibility - redirect to auth logout
     console.log(chalk.yellow('Note: "happy logout" is deprecated. Use "happy auth logout" instead.\n'));

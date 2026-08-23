@@ -143,6 +143,18 @@ export function getAgyPermissionModes(translate: Translate): PermissionMode[] {
     ];
 }
 
+// Hermes and Crush are ACP-based agents that expose the standard ACP session-mode
+// surface: default / accept_edits / dont_ask (snake_case ids, as reported by the
+// agents' ACP adapters). Runtime metadata.operatingModes overrides this fallback
+// once the agent advertises its live mode catalog.
+export function getAcpStandardPermissionModes(translate: Translate): PermissionMode[] {
+    return [
+        { key: 'default', name: translate('agentInput.permissionMode.default'), description: null },
+        { key: 'accept_edits', name: translate('agentInput.permissionMode.acceptEdits'), description: null },
+        { key: 'dont_ask', name: translate('agentInput.permissionMode.dontAsk'), description: null },
+    ];
+}
+
 export function getHardcodedPermissionModes(flavor: AgentFlavor, translate: Translate): PermissionMode[] {
     if (flavor === 'codex') {
         return getCodexPermissionModes(translate);
@@ -155,6 +167,9 @@ export function getHardcodedPermissionModes(flavor: AgentFlavor, translate: Tran
     }
     if (flavor === 'agy') {
         return getAgyPermissionModes(translate);
+    }
+    if (flavor === 'hermes' || flavor === 'crush') {
+        return getAcpStandardPermissionModes(translate);
     }
     return getClaudePermissionModes(translate);
 }
@@ -400,5 +415,7 @@ export function getDefaultEffortKeyForModel(flavor: AgentFlavor, modelKey: strin
 
 export function getSupportsWorktree(flavor: AgentFlavor): boolean {
     if (flavor === 'openclaw') return false;
+    if (flavor === 'hermes') return false;
+    if (flavor === 'crush') return false;
     return true;
 }
