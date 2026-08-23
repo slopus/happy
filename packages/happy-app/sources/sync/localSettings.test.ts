@@ -67,6 +67,61 @@ describe('localSettings session list layout', () => {
     });
 });
 
+describe('localSettings desktop Lists and Tags', () => {
+    it('keeps Projects as the default desktop sidebar mode', () => {
+        expect(localSettingsDefaults.desktopSidebarMode).toBe('projects');
+        expect(localSettingsParse({}).desktopSidebarMode).toBe('projects');
+        expect(localSettingsParse({ desktopSidebarMode: 'lists' }).desktopSidebarMode).toBe('lists');
+    });
+
+    it('persists one List and multiple Tags for a session', () => {
+        const sidebarOrganization = {
+            lists: [{
+                id: 'happy', name: 'Happy', kind: 'workspace' as const, color: 'blue' as const,
+                machineId: 'mac-mini', path: '~/happy', defaultAgent: 'codex' as const, createdAt: 1,
+            }],
+            tags: [
+                { id: 'product', name: 'product', color: 'green' as const, createdAt: 1 },
+                { id: 'code', name: 'code', color: 'purple' as const, createdAt: 2 },
+            ],
+            sessions: { 'session-1': { listId: 'happy', tagIds: ['product', 'code'] } },
+        };
+
+        expect(localSettingsParse({ sidebarOrganization }).sidebarOrganization).toEqual(sidebarOrganization);
+    });
+
+    it('strips workspace presets and legacy prompts from Agent Lists', () => {
+        const parsed = localSettingsParse({
+            sidebarOrganization: {
+                lists: [{
+                    id: 'advisor', name: 'Advisor', kind: 'agent', color: 'pink', prompt: 'legacy prompt', createdAt: 1,
+                    machineId: 'must-not-survive', path: '/must-not-survive',
+                }],
+                tags: [],
+                sessions: {},
+            },
+        });
+
+        expect(parsed.sidebarOrganization.lists[0]).toEqual({
+            id: 'advisor', name: 'Advisor', kind: 'agent', color: 'pink', createdAt: 1,
+        });
+    });
+
+    it('drops only invalid organization data instead of resetting unrelated local settings', () => {
+        const parsed = localSettingsParse({
+            themePreference: 'dark',
+            sidebarOrganization: {
+                lists: [{ id: 'bad', name: 'x'.repeat(81), kind: 'agent', color: 'pink', createdAt: 1 }],
+                tags: [],
+                sessions: {},
+            },
+        });
+
+        expect(parsed.themePreference).toBe('dark');
+        expect(parsed.sidebarOrganization).toEqual({ lists: [], tags: [], sessions: {} });
+    });
+});
+
 describe('localSettings ask API config', () => {
     it('defaults to an unconfigured ask API', () => {
         expect(localSettingsDefaults.askApi).toEqual({

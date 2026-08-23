@@ -428,8 +428,12 @@ export async function startEnvironmentWeb(name: string, options?: { warmBundle?:
         // A listening Metro socket does not mean the first Web bundle is
         // ready. Production-like evidence runs clear the cache, so warm the
         // document before Playwright starts its per-test five-second waits.
+        const configuredWebTimeout = Number.parseInt(process.env.HAPPY_E2E_WEB_START_TIMEOUT_MS ?? "300000", 10);
+        const webTimeout = Number.isFinite(configuredWebTimeout) && configuredWebTimeout > 0
+            ? configuredWebTimeout
+            : 300_000;
         const waitForWeb = options?.warmBundle === true || process.env.HAPPY_E2E_WEB_NO_DEV === "1"
-            ? () => waitForWebBundle(`http://localhost:${config.expoPort}/`, 300_000)
+            ? () => waitForWebBundle(`http://localhost:${config.expoPort}/`, webTimeout)
             : () => waitFor(() => isPortInUse(config.expoPort), 120_000, "web");
         // Metro 首次构建依赖较多，冷启动在开发机上可能超过 30 秒。
         await waitForWeb();

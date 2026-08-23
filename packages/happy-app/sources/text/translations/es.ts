@@ -866,6 +866,11 @@ export const es: TranslationStructure = {
         emptySessionsOfflineDescription: 'Abre un nuevo terminal en tu computadora para iniciar una sesión.',
 
         searchSessions: 'Gestionar sesiones',
+        projectsTab: 'Projects',
+        listsTab: 'Lists',
+    },
+    sidebarLists: {
+        lists: 'Lists', tags: 'Tags', newList: 'New list', newTag: 'New tag', tagNamePlaceholder: 'Tag name', noTaggedSessions: 'No sessions use this tag yet.', noTags: 'No tags yet', agentList: 'Agent list', workspaceList: 'Workspace list', newSessionInList: 'New session in this list', emptyList: 'No sessions in this list yet.', unassigned: 'Unassigned', unassignedDescription: 'Sessions not in a list', organizeSession: 'Organize session', listName: 'List name', listNamePlaceholder: 'For example: Happy', duplicateListName: 'A list with this name already exists.', listType: 'List type', color: 'Color', defaultMachine: 'Default machine', defaultDirectory: 'Default directory', directoryPlaceholder: '~/projects/happy', defaultAgent: 'Default Agent', noPreset: 'No preset', agentPrompt: 'Agent prompt', agentPromptPlaceholder: 'Prompt applied when starting from this Agent list', belongsToList: 'List', tagsMultiSelect: 'Tags (select multiple)', close: 'Close', editList: 'Editar lista', deleteList: 'Eliminar lista', deleteListConfirm: ({ name }: { name: string }) => `Al eliminar la lista «${name}», sus sesiones volverán a Sin asignar. Las etiquetas no se verán afectadas.`, colors: { blue: 'Blue', green: 'Green', purple: 'Purple', orange: 'Orange', pink: 'Pink' },
     },
     sessionSearch: {
         title: 'Gestión de sesiones',

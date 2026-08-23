@@ -7,7 +7,15 @@ import { Fredoka_600SemiBold, Fredoka_700Bold } from '@expo-google-fonts/fredoka
 import * as Notifications from 'expo-notifications';
 import * as Application from 'expo-application';
 import * as Updates from 'expo-updates';
-import { FontAwesome } from '@expo/vector-icons';
+import {
+    Feather,
+    FontAwesome,
+    FontAwesome5,
+    Ionicons,
+    MaterialCommunityIcons,
+    MaterialIcons,
+    Octicons,
+} from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { AuthCredentials, TokenStorage } from '@/auth/tokenStorage';
 import { AuthProvider } from '@/auth/AuthContext';
@@ -115,6 +123,15 @@ function HorizontalSafeAreaWrapper({ children }: { children: React.ReactNode }) 
 
 let lock = new AsyncLock();
 let loaded = false;
+const vectorIconFonts = {
+    ...Feather.font,
+    ...FontAwesome.font,
+    ...FontAwesome5.font,
+    ...Ionicons.font,
+    ...MaterialCommunityIcons.font,
+    ...MaterialIcons.font,
+    ...Octicons.font,
+};
 
 function stringifyNotificationPayload(value: unknown): string {
     try {
@@ -159,7 +176,7 @@ async function loadFonts() {
                 'Fredoka-SemiBold': Fredoka_600SemiBold,
                 'Fredoka-Bold': Fredoka_700Bold,
 
-                ...FontAwesome.font,
+                ...vectorIconFonts,
             });
         } else {
             // For Tauri, skip Font Face Observer as fonts are loaded via CSS
@@ -187,7 +204,7 @@ async function loadFonts() {
                         'Fredoka-SemiBold': Fredoka_600SemiBold,
                         'Fredoka-Bold': Fredoka_700Bold,
 
-                        ...FontAwesome.font,
+                        ...vectorIconFonts,
                     });
                 } catch (e) {
                     // Ignore
@@ -267,7 +284,12 @@ export default function RootLayout() {
     React.useEffect(() => {
         (async () => {
             try {
-                await loadFonts();
+                try {
+                    await loadFonts();
+                } catch (error) {
+                    if (Platform.OS !== 'web') throw error;
+                    console.log('[fonts] Loading timed out; continuing with fallback fonts.', error);
+                }
                 await sodium.ready;
 
                 let credentials = await TokenStorage.getCredentials();

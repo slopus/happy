@@ -10,6 +10,7 @@ import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import type { Machine } from '@/sync/storageTypes';
 import type { NewSessionAgentType } from '@/sync/persistence';
 import type { AttachmentPreview } from '@/sync/attachmentTypes';
+import { organizeSession } from '@/sync/sidebarOrganization';
 
 export interface SpawnSessionArgs {
     machineId: string;
@@ -30,6 +31,8 @@ export interface SpawnSessionArgs {
     images?: AttachmentPreview[];
     /** Extra environment passed to daemon-spawned agent process. */
     environmentVariables?: Record<string, string>;
+    /** Optional sidebar List that should own the newly created session. */
+    sidebarListId?: string | null;
 }
 
 export type SpawnSessionCoreResult =
@@ -108,6 +111,15 @@ export function useSpawnSession() {
                         }
                         if (fastMode !== undefined) {
                             sessionStorage.updateSessionFastMode(result.sessionId, fastMode);
+                        }
+                        if (args.sidebarListId) {
+                            sessionStorage.updateLocalSettings((settings) => ({
+                                sidebarOrganization: organizeSession(
+                                    settings.sidebarOrganization,
+                                    result.sessionId,
+                                    { listId: args.sidebarListId!, tagIds: [] },
+                                ),
+                            }));
                         }
                         return { type: 'success', sessionId: result.sessionId };
                     }

@@ -172,7 +172,7 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
 
     // 当从「我的 Agent」启动器进入时，路由带 ?agentId=<id>。据此查出对应 Agent，
     // 用于显示个性化问候 + 预设提示词；查不到（或无该参数）时一切退化为默认行为。
-    const { agentId, mode } = useLocalSearchParams<{ agentId?: string; mode?: string }>();
+    const { agentId, mode, sidebarListId } = useLocalSearchParams<{ agentId?: string; mode?: string; sidebarListId?: string }>();
     const agents = useLocalSetting('agents');
     const [customImageStyles, setCustomImageStyles] = useSettingMutable('customImageStyles');
     const [pendingCustomImageStyleReferences, setPendingCustomImageStyleReferences] = useSettingMutable('pendingCustomImageStyleReferences');
@@ -711,6 +711,7 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
             prompt,
             images,
             environmentVariables: spawnAgent === 'ask' ? buildAskApiEnvironment(askApi) : undefined,
+            sidebarListId,
         }).then((ok) => {
             if (ok) {
                 composerInputRef.current?.setTextAndSelection('', { start: 0, end: 0 });
@@ -721,7 +722,7 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
                 clearImages();
             }
         });
-    }, [activeImageAgent, effectiveImageAgent, activeImageStyles.length, agentDefaultOverrides, text, sending, machines, spawn, hasImages, selectedImages, setPendingCustomImageStyleReferences, clearImages, askApi, customImageStyles, selectedCustomReferenceImages]);
+    }, [activeImageAgent, effectiveImageAgent, activeImageStyles.length, agentDefaultOverrides, text, sending, machines, spawn, hasImages, selectedImages, setPendingCustomImageStyleReferences, clearImages, askApi, customImageStyles, selectedCustomReferenceImages, sidebarListId]);
 
     // The send target must be reachable: an online machine and no fresh-worktree
     // request. When it isn't, MessageComposer's send button greys out (via

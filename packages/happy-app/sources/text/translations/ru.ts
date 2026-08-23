@@ -882,6 +882,11 @@ export const ru: TranslationStructure = {
         emptySessionsOfflineDescription: 'Откройте новый терминал на компьютере, чтобы начать сессию.',
 
         searchSessions: 'Управление сессиями',
+        projectsTab: 'Projects',
+        listsTab: 'Lists',
+    },
+    sidebarLists: {
+        lists: 'Lists', tags: 'Tags', newList: 'New list', newTag: 'New tag', tagNamePlaceholder: 'Tag name', noTaggedSessions: 'No sessions use this tag yet.', noTags: 'No tags yet', agentList: 'Agent list', workspaceList: 'Workspace list', newSessionInList: 'New session in this list', emptyList: 'No sessions in this list yet.', unassigned: 'Unassigned', unassignedDescription: 'Sessions not in a list', organizeSession: 'Organize session', listName: 'List name', listNamePlaceholder: 'For example: Happy', duplicateListName: 'A list with this name already exists.', listType: 'List type', color: 'Color', defaultMachine: 'Default machine', defaultDirectory: 'Default directory', directoryPlaceholder: '~/projects/happy', defaultAgent: 'Default Agent', noPreset: 'No preset', agentPrompt: 'Agent prompt', agentPromptPlaceholder: 'Prompt applied when starting from this Agent list', belongsToList: 'List', tagsMultiSelect: 'Tags (select multiple)', close: 'Close', editList: 'Изменить список', deleteList: 'Удалить список', deleteListConfirm: ({ name }: { name: string }) => `После удаления списка «${name}» его сессии вернутся в «Без списка». Теги не изменятся.`, colors: { blue: 'Blue', green: 'Green', purple: 'Purple', orange: 'Orange', pink: 'Pink' },
     },
     sessionSearch: {
         title: 'Управление сессиями',

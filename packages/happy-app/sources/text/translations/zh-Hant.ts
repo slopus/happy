@@ -866,6 +866,19 @@ export const zhHant: TranslationStructure = {
         emptySessionsOfflineDescription: '在電腦上開啟新的終端機以開始工作階段。',
 
         searchSessions: '會話管理',
+        projectsTab: '專案',
+        listsTab: '清單',
+    },
+    sidebarLists: {
+        lists: '清單', tags: 'Tag', newList: '新增清單', newTag: '新增 Tag', tagNamePlaceholder: 'Tag 名稱',
+        noTaggedSessions: '還沒有會話使用這個 Tag。', noTags: '還沒有 Tag', agentList: 'Agent 清單', workspaceList: '工作區清單',
+        newSessionInList: '在此清單新增會話', emptyList: '這個清單還沒有會話。', unassigned: '未分類', unassignedDescription: '尚未加入清單的會話',
+        organizeSession: '整理會話', listName: '清單名稱', listNamePlaceholder: '例如：Happy', duplicateListName: '已有同名清單。',
+        listType: '清單類型', color: '標識顏色', defaultMachine: '預設執行機器', defaultDirectory: '預設工作目錄', directoryPlaceholder: '~/projects/happy',
+        defaultAgent: '預設 Agent', noPreset: '不預設', agentPrompt: 'Agent Prompt', agentPromptPlaceholder: '從此 Agent 清單啟動時帶入的 Prompt',
+        belongsToList: '所屬清單', tagsMultiSelect: 'Tag（可多選）', close: '關閉', editList: '編輯清單', deleteList: '刪除清單',
+        deleteListConfirm: ({ name }: { name: string }) => `刪除清單「${name}」後，其中的會話會回到未分類，Tag 不受影響。`,
+        colors: { blue: '藍色', green: '綠色', purple: '紫色', orange: '橙色', pink: '粉色' },
     },
     sessionSearch: {
         title: '會話管理',

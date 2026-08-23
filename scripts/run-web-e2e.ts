@@ -67,7 +67,12 @@ async function main(): Promise<void> {
         environmentName = await createEnvironment({ noSwitch: true });
         setEnvironmentTemplate(environmentName, 'authenticated-empty');
 
-        if (process.env.HAPPY_E2E_SKIP_CLI_BUILD !== '1') {
+        const builtCliEntry = path.join(repoRoot, 'packages', 'happy-cli', 'dist', 'index.mjs');
+        const reuseBuiltCli = process.env.HAPPY_E2E_SKIP_CLI_BUILD === '1'
+            && fs.statSync(builtCliEntry, { throwIfNoEntry: false })?.isFile();
+        if (reuseBuiltCli) {
+            console.log('复用当前 worktree 已构建的本地测试 CLI。');
+        } else {
             console.log('构建本地测试 CLI...');
             run('pnpm', ['--filter', '@wangjs-jacky/paws', 'build']);
         }

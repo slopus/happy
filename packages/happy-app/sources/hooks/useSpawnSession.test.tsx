@@ -20,6 +20,7 @@ const mocks = vi.hoisted(() => ({
     updatePermission: vi.fn(),
     updateModel: vi.fn(),
     updateEffort: vi.fn(),
+    updateLocalSettings: vi.fn(),
     alert: vi.fn(),
     confirm: vi.fn(),
 }));
@@ -40,6 +41,7 @@ vi.mock('@/sync/storage', () => ({
             updateSessionPermissionMode: mocks.updatePermission,
             updateSessionModelMode: mocks.updateModel,
             updateSessionEffortLevel: mocks.updateEffort,
+            updateLocalSettings: mocks.updateLocalSettings,
         }),
     },
 }));
@@ -176,6 +178,26 @@ describe('useSpawnSession', () => {
         });
         expect(mocks.navigateToSession).toHaveBeenCalledTimes(1);
         expect(mocks.navigateToSession).toHaveBeenCalledWith('session-1');
+        hook.unmount();
+    });
+
+    it('assigns a spawned session to the List supplied by the new-session route', async () => {
+        const hook = renderHook();
+
+        await act(async () => {
+            await hook.current().spawnSession({ ...args, sidebarListId: 'happy-list' });
+        });
+
+        expect(mocks.updateLocalSettings).toHaveBeenCalledOnce();
+        const updater = mocks.updateLocalSettings.mock.calls[0]?.[0];
+        const list = { id: 'happy-list', name: 'Happy', kind: 'workspace', color: 'blue', machineId: 'machine-1', path: '~/work', defaultAgent: 'codex', createdAt: 1 };
+        expect(updater({ sidebarOrganization: { lists: [list], tags: [], sessions: {} } })).toEqual({
+            sidebarOrganization: {
+                lists: [list],
+                tags: [],
+                sessions: { 'session-1': { listId: 'happy-list', tagIds: [] } },
+            },
+        });
         hook.unmount();
     });
 

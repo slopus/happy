@@ -6,7 +6,6 @@ import { DrawerActions } from '@react-navigation/native';
 import { VoiceAssistantStatusBar } from './VoiceAssistantStatusBar';
 import { useRealtimeStatus, useFriendRequests, useProfile, useLocalSetting } from '@/sync/storage';
 import { getDisplayName } from '@/sync/profile';
-import { MainView } from './MainView';
 import { StyleSheet } from 'react-native-unistyles';
 import { t } from '@/text';
 import { Ionicons } from '@expo/vector-icons';
@@ -20,6 +19,7 @@ import { SidebarHelpMenu } from './SidebarHelpMenu';
 import { useCommandPaletteLauncher } from './CommandPalette/CommandPaletteProvider';
 import { RelationshipAdvisorSidebarHistory } from './relationship-advisor/RelationshipAdvisorSidebarHistory';
 import { useDesktopSettingsModal } from './DesktopSettingsModal';
+import { DesktopSidebarSessionsNavigation } from './DesktopSidebarSessionsNavigation';
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
@@ -418,8 +418,9 @@ export const SidebarView = React.memo(({
                 <VoiceAssistantStatusBar variant="sidebar" />
             )}
 
-            {/* Sessions list */}
-            <MainView variant="sidebar" />
+            {/* Projects preserves the existing session list; Lists adds the same
+                organization layer in both desktop and mobile sidebars. */}
+            <DesktopSidebarSessionsNavigation />
 
             {/* Low-frequency account and system actions stay anchored below the work list. */}
             <View

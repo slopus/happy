@@ -867,6 +867,19 @@ export const zhHans: TranslationStructure = {
         emptySessionsOfflineDescription: '在电脑上打开新的终端以开始会话。',
 
         searchSessions: '会话管理',
+        projectsTab: '项目',
+        listsTab: '清单',
+    },
+    sidebarLists: {
+        lists: '清单', tags: 'Tag', newList: '新建清单', newTag: '新建 Tag', tagNamePlaceholder: 'Tag 名称',
+        noTaggedSessions: '还没有会话使用这个 Tag。', noTags: '还没有 Tag', agentList: 'Agent 清单', workspaceList: '工作区清单',
+        newSessionInList: '在此清单中新建会话', emptyList: '这个清单还没有会话。', unassigned: '未归类', unassignedDescription: '尚未加入清单的会话',
+        organizeSession: '整理会话', listName: '清单名称', listNamePlaceholder: '例如：Happy', duplicateListName: '已有同名清单。',
+        listType: '清单类型', color: '标识颜色', defaultMachine: '默认运行机器', defaultDirectory: '默认工作目录', directoryPlaceholder: '~/projects/happy',
+        defaultAgent: '默认 Agent', noPreset: '不预设', agentPrompt: 'Agent Prompt', agentPromptPlaceholder: '从此 Agent 清单启动时带入的 Prompt',
+        belongsToList: '所属清单', tagsMultiSelect: 'Tag（可多选）', close: '关闭', editList: '编辑清单', deleteList: '删除清单',
+        deleteListConfirm: ({ name }: { name: string }) => `删除清单“${name}”后，其中的会话会回到未归类，Tag 不受影响。`,
+        colors: { blue: '蓝色', green: '绿色', purple: '紫色', orange: '橙色', pink: '粉色' },
     },
     sessionSearch: {
         title: '会话管理',

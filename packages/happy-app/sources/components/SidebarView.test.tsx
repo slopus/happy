@@ -149,6 +149,9 @@ vi.mock('./CommandPalette/CommandPaletteProvider', () => ({
 vi.mock('./relationship-advisor/RelationshipAdvisorSidebarHistory', () => ({
     RelationshipAdvisorSidebarHistory: 'RelationshipAdvisorSidebarHistory',
 }));
+vi.mock('./DesktopSidebarSessionsNavigation', () => ({
+    DesktopSidebarSessionsNavigation: 'DesktopSidebarSessionsNavigation',
+}));
 
 describe('SidebarView Agent space exit', () => {
     const originalConsoleError = console.error;
@@ -237,14 +240,15 @@ describe('SidebarView Agent space exit', () => {
             expect.objectContaining({ flex: 1 }),
         );
         expect(renderer.root.findAllByProps({ testID: 'sidebar-user-card' })).toHaveLength(0);
-        expect(renderer.root.findAllByType('MainView')).toHaveLength(1);
+        expect(renderer.root.findAllByType('MainView')).toHaveLength(0);
+        expect(renderer.root.findAllByType('DesktopSidebarSessionsNavigation')).toHaveLength(1);
         expect(renderer.root.findAllByType('RelationshipAdvisorSidebarHistory')).toHaveLength(1);
         expect(renderer.root.findAllByType('Text').some((node: any) => node.props.children === 'agents.empty')).toBe(false);
 
         act(() => renderer.unmount());
     });
 
-    it('keeps the roomier mobile sidebar layout unchanged', () => {
+    it('keeps the roomier mobile sidebar layout and exposes Projects / Lists organization', () => {
         mocks.spaceAgent = null;
         let renderer: any;
 
@@ -258,6 +262,8 @@ describe('SidebarView Agent space exit', () => {
         expect(renderer.root.findByType('SidebarAccountMenu').props.desktopDensity).toBe(false);
         expect(renderer.root.findAllByType('SidebarHelpMenu')).toHaveLength(0);
         expect(renderer.root.findAllByProps({ testID: 'sidebar-user-card' })).toHaveLength(0);
+        expect(renderer.root.findAllByType('MainView')).toHaveLength(0);
+        expect(renderer.root.findAllByType('DesktopSidebarSessionsNavigation')).toHaveLength(1);
         expect(renderer.root.findAllByType('Text').some(
             (node: any) => node.props.children === 'agents.empty',
         )).toBe(true);

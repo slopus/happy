@@ -867,6 +867,11 @@ export const ja: TranslationStructure = {
         emptySessionsOfflineDescription: 'コンピューターで新しいターミナルを開き、セッションを開始してください。',
 
         searchSessions: 'セッション管理',
+        projectsTab: 'Projects',
+        listsTab: 'Lists',
+    },
+    sidebarLists: {
+        lists: 'Lists', tags: 'Tags', newList: 'New list', newTag: 'New tag', tagNamePlaceholder: 'Tag name', noTaggedSessions: 'No sessions use this tag yet.', noTags: 'No tags yet', agentList: 'Agent list', workspaceList: 'Workspace list', newSessionInList: 'New session in this list', emptyList: 'No sessions in this list yet.', unassigned: 'Unassigned', unassignedDescription: 'Sessions not in a list', organizeSession: 'Organize session', listName: 'List name', listNamePlaceholder: 'For example: Happy', duplicateListName: 'A list with this name already exists.', listType: 'List type', color: 'Color', defaultMachine: 'Default machine', defaultDirectory: 'Default directory', directoryPlaceholder: '~/projects/happy', defaultAgent: 'Default Agent', noPreset: 'No preset', agentPrompt: 'Agent prompt', agentPromptPlaceholder: 'Prompt applied when starting from this Agent list', belongsToList: 'List', tagsMultiSelect: 'Tags (select multiple)', close: 'Close', editList: 'リストを編集', deleteList: 'リストを削除', deleteListConfirm: ({ name }: { name: string }) => `リスト「${name}」を削除すると、そのセッションは未分類に戻ります。タグには影響しません。`, colors: { blue: 'Blue', green: 'Green', purple: 'Purple', orange: 'Orange', pink: 'Pink' },
     },
     sessionSearch: {
         title: 'セッション管理',
