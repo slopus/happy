@@ -120,11 +120,14 @@ export function useStartSessionFromDraft() {
         const attachments = draft.attachments;
         const selectedPath = draft.selectedPath?.trim() || '~';
         const absolutePath = resolveAbsolutePath(selectedPath, machine.metadata?.homeDir);
-        const worktreeSelection = rigCreation?.supportsWorktrees === false
+        const requestedWorktree = draft.sessionType === 'worktree'
+            ? draft.worktreeKey ?? '__new__'
+            : '__none__';
+        // A workspace that already exists is only a directory to start in, so it stands whatever
+        // the machine says about making new ones. Making one is what the capability governs.
+        const worktreeSelection = rigCreation?.supportsWorktrees === false && requestedWorktree === '__new__'
             ? '__none__'
-            : draft.sessionType === 'worktree'
-                ? draft.worktreeKey ?? '__new__'
-                : '__none__';
+            : requestedWorktree;
         // Reused across every retry of this exact request so a second press of
         // Start is deduped by Rig instead of spawning a second session.
         const clientRequestId = resolveSpawnRequestId(buildSpawnRequestSignature({

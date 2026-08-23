@@ -29,6 +29,7 @@ import { formatLastSeen, formatPathRelativeToHome } from '@/utils/sessionUtils';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { resolveAbsolutePath } from '@/utils/pathUtils';
 import { listWorktrees } from '@/utils/worktree';
+import { collectSessionPlaces, collectSessionWorkspaces, pairedMachineIds } from '@/sync/agentSessionPlaces';
 import type { Machine, Session } from '@/sync/storageTypes';
 import {
     getEffortLevelsForModel,
@@ -546,30 +547,41 @@ export const HomeDock = React.memo(({
         }
     }, [resolvedMachineId, selectedMachineId, setMachineId]);
 
+    // Happy Agent registers its own machine beside Happy CLI's, so the places on this computer
+    // belong to the pair rather than to whichever daemon opened them first.
+    const placeMachineIds = React.useMemo(
+        () => pairedMachineIds(selectedMachine, machines),
+        [machines, selectedMachine],
+    );
+    const sessionList = React.useMemo<Session[]>(
+        () => (sessions ?? []).filter((item): item is Session => typeof item !== 'string'),
+        [sessions],
+    );
+    const places = React.useMemo(
+        () => collectSessionPlaces({
+            machineIds: placeMachineIds,
+            selectedPath: selectedPath ?? '~',
+            sessions: sessionList,
+        }),
+        [placeMachineIds, selectedPath, sessionList],
+    );
     const projectOptions = React.useMemo<ModeOption[]>(() => {
-        const paths = new Set<string>();
-        paths.add(selectedPath ?? '~');
-
-        if (selectedMachineId && sessions) {
-            for (const item of sessions) {
-                if (typeof item === 'string') continue;
-                const session = item as Session;
-                if (session.metadata?.machineId === selectedMachineId && session.metadata.path) {
-                    paths.add(session.metadata.path);
-                }
-            }
-        }
-
         const homeDir = selectedMachine?.metadata?.homeDir;
-        return Array.from(paths).map((path) => {
-            const name = formatPathRelativeToHome(path, homeDir);
+        return places.map((place) => {
+            const relative = formatPathRelativeToHome(place.path, homeDir);
+            // A project names itself; a bare directory is named by where it is.
+            const name = place.projectId ? place.name : relative;
             return {
-                key: path,
+                key: place.key,
                 name,
-                description: name === path ? undefined : path,
+                description: name === place.path ? undefined : relative,
             };
         });
-    }, [selectedMachine, selectedMachineId, selectedPath, sessions]);
+    }, [places, selectedMachine]);
+    const selectedProjectId = React.useMemo(
+        () => places.find((place) => place.path === selectedPath)?.projectId ?? null,
+        [places, selectedPath],
+    );
     const currentProject = resolveOption(projectOptions, [selectedPath, '~']);
     const selectedRigCreation = React.useMemo(
         () => getRigMachineSessionCreation(selectedMachine?.metadata),
@@ -594,9 +606,31 @@ export const HomeDock = React.memo(({
         ? worktreeKey ?? '__new__'
         : '__none__';
     const [existingWorktrees, setExistingWorktrees] = React.useState<ModeOption[]>([]);
+    const agentWorkspaces = React.useMemo(
+        () => collectSessionWorkspaces({
+            machineIds: placeMachineIds,
+            projectId: selectedProjectId,
+            sessions: sessionList,
+        }),
+        [placeMachineIds, selectedProjectId, sessionList],
+    );
 
     React.useEffect(() => {
         const path = resolveAbsolutePath(selectedPath ?? '~', selectedMachine?.metadata?.homeDir);
+
+        // A Happy Agent project keeps its own workspaces, each with a name somebody chose. Those
+        // are better than the branches git reports, so git is only asked when nothing knows better.
+        // Starting in one only needs its directory, so this does not wait on the worktree
+        // capability the daemon advertises for making new ones.
+        if (selectedProjectId) {
+            setExistingWorktrees(agentWorkspaces.map((workspace) => ({
+                key: workspace.key,
+                name: workspace.name,
+                description: workspace.path,
+            })));
+            return;
+        }
+
         if (!supportsWorktree || !selectedMachineId || !selectedMachine || !isMachineOnline(selectedMachine) || !path) {
             setExistingWorktrees([]);
             return;
@@ -614,17 +648,20 @@ export const HomeDock = React.memo(({
         return () => {
             cancelled = true;
         };
-    }, [selectedMachine, selectedMachineId, selectedPath, supportsWorktree]);
+    }, [agentWorkspaces, selectedMachine, selectedMachineId, selectedPath, selectedProjectId, supportsWorktree]);
+
+    // Happy Agent calls these workspaces, and names them; git calls them worktrees.
+    const picksWorkspaces = selectedProjectId !== null;
 
     React.useEffect(() => {
-        if (!supportsWorktree && sessionType === 'worktree') {
+        if (!supportsWorktree && !picksWorkspaces && sessionType === 'worktree') {
             setSessionType('simple');
             setWorktreeKey(null);
         }
-    }, [sessionType, setSessionType, setWorktreeKey, supportsWorktree]);
+    }, [picksWorkspaces, sessionType, setSessionType, setWorktreeKey, supportsWorktree]);
 
     const worktreeOptions = React.useMemo<ModeOption[]>(() => {
-        if (!supportsWorktree) {
+        if (!supportsWorktree && !picksWorkspaces) {
             return [{
                 key: '__none__',
                 name: 'No worktree',
@@ -632,8 +669,11 @@ export const HomeDock = React.memo(({
             }];
         }
         const options: ModeOption[] = [
-            { key: '__none__', name: 'No worktree' },
-            { key: '__new__', name: 'Create new worktree' },
+            { key: '__none__', name: picksWorkspaces ? 'No workspace' : 'No worktree' },
+            // Making one is a separate ability from starting in one that already exists.
+            ...(supportsWorktree
+                ? [{ key: '__new__', name: picksWorkspaces ? 'Create new workspace' : 'Create new worktree' }]
+                : []),
             ...existingWorktrees,
         ];
         if (
@@ -643,7 +683,7 @@ export const HomeDock = React.memo(({
             options.push({ key: worktreeKey, name: worktreeKey });
         }
         return options;
-    }, [agentType, existingWorktrees, supportsWorktree, worktreeKey]);
+    }, [agentType, existingWorktrees, picksWorkspaces, supportsWorktree, worktreeKey]);
     const currentWorktree = resolveOption(worktreeOptions, [selectedWorktreeKey]);
     // Only the harnesses this machine can actually run, in pick order.
     const availableAgents = React.useMemo<ModeOption[]>(() => listAvailableHarnesses({
@@ -910,7 +950,12 @@ export const HomeDock = React.memo(({
     const environmentRows: SettingsRow[] = [
         { page: 'machine', label: 'MACHINE', value: currentMachine?.name ?? 'Select machine', icon: 'desktop-outline' },
         { page: 'project', label: 'PROJECT', value: currentProject?.name ?? '~', icon: 'folder-outline' },
-        { page: 'worktree', label: 'WORKTREE', value: currentWorktree?.name ?? 'No worktree', icon: 'git-branch-outline' },
+        {
+            page: 'worktree',
+            label: picksWorkspaces ? 'WORKSPACE' : 'WORKTREE',
+            value: currentWorktree?.name ?? (picksWorkspaces ? 'No workspace' : 'No worktree'),
+            icon: 'git-branch-outline',
+        },
         { page: 'agent', label: 'HARNESS', value: currentAgent.name, icon: 'hardware-chip-outline' },
     ];
     const agentRows: SettingsRow[] = [
@@ -973,7 +1018,7 @@ export const HomeDock = React.memo(({
             };
         }
         return {
-            title: 'Worktree',
+            title: picksWorkspaces ? 'Workspace' : 'Worktree',
             options: worktreeOptions,
             selectedKey: selectedWorktreeKey,
             onSelect: (key) => {
