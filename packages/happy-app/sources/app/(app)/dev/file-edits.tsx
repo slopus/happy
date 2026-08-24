@@ -32,7 +32,7 @@ const closingMessage: Message = {
     id: 'file-edit-preview-complete',
     localId: null,
     createdAt: PREVIEW_TIME + 10,
-    text: 'Both paths end in the shared highlighted diff renderer. Expand the Codex edited-file row to inspect its diff.',
+    text: 'Both paths stay open in the shared highlighted diff renderer. Codex keeps only a lightweight file ribbon above the diff.',
 };
 
 export default function FileEditToolsPreviewScreen() {

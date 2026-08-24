@@ -56,10 +56,10 @@ describe('terminal tool display helpers', () => {
         ))).toBe('rm tmp.txt');
     });
 
-    it('hides Codex patch card headers on web only', () => {
+    it('uses the minimal inline Codex patch presentation on every platform', () => {
         expect(shouldRenderToolCardHeader('CodexPatch', 'web')).toBe(false);
-        expect(shouldRenderToolCardHeader('CodexPatch', 'ios')).toBe(true);
-        expect(shouldRenderToolCardHeader('CodexPatch', 'android')).toBe(true);
+        expect(shouldRenderToolCardHeader('CodexPatch', 'ios')).toBe(false);
+        expect(shouldRenderToolCardHeader('CodexPatch', 'android')).toBe(false);
         expect(shouldRenderToolCardHeader('CodexBash', 'web')).toBe(true);
     });
 

@@ -114,7 +114,7 @@ export function isTerminalToolName(name: string): boolean {
 }
 
 export function shouldRenderToolCardHeader(toolName: string, platformOS: string): boolean {
-    return !(platformOS === 'web' && toolName === 'CodexPatch');
+    return toolName !== 'CodexPatch';
 }
 
 /**

@@ -1,7 +1,7 @@
 import * as React from 'react';
-import { Pressable, View, Text } from 'react-native';
+import { View, Text } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
-import { Ionicons, Octicons } from '@expo/vector-icons';
+import { Octicons } from '@expo/vector-icons';
 import { ToolCall } from '@/sync/typesMessage';
 import { ToolSectionView } from '../ToolSectionView';
 import { Metadata } from '@/sync/storageTypes';
@@ -9,7 +9,6 @@ import { resolvePath } from '@/utils/pathUtils';
 import { ToolDiffView } from '@/components/tools/ToolDiffView';
 import { getDiffStats, getPatchDiffStats } from '@/components/diff/calculateDiff';
 import { materializeUnifiedDiffPatch } from '@/utils/codexUnifiedDiff';
-import { t } from '@/text';
 
 interface CodexPatchViewProps {
     tool: ToolCall;
@@ -199,7 +198,6 @@ const CodexPatchFileView = React.memo(function CodexPatchFileView(props: {
 }) {
     const { file, change, metadata, permissionFooter } = props;
     const { theme } = useUnistyles();
-    const [expanded, setExpanded] = React.useState(false);
 
     const filePath = resolvePath(file, metadata);
     const diffInput = getPatchInput(change);
@@ -219,52 +217,32 @@ const CodexPatchFileView = React.memo(function CodexPatchFileView(props: {
     return (
         <ToolSectionView fullWidth>
             <View style={styles.editedFileGroup}>
-                <Pressable
-                    onPress={() => setExpanded((value) => !value)}
-                    style={({ pressed }) => [
-                        styles.editToggle,
-                        pressed && styles.editTogglePressed,
-                    ]}
-                >
-                    <Text style={styles.editToggleText} numberOfLines={1}>
-                        {t('toolGroup.editedFile')}
-                    </Text>
-                    <Ionicons
-                        name={expanded ? 'chevron-down' : 'chevron-forward'}
-                        size={14}
-                        color={theme.colors.textSecondary}
+                <View style={styles.fileHeader}>
+                    <View style={styles.fileHeaderMain}>
+                        <Octicons name="file-diff" size={16} color={theme.colors.textSecondary} />
+                        <Text style={styles.filePath} numberOfLines={1}>{filePath}</Text>
+                        {kindLabel ? <Text style={styles.kindLabel}>{kindLabel}</Text> : null}
+                        {stats && (stats.additions > 0 || stats.deletions > 0) ? (
+                            <View style={styles.stats}>
+                                {stats.additions > 0 ? <Text style={styles.added}>+{stats.additions}</Text> : null}
+                                {stats.deletions > 0 ? <Text style={styles.removed}>-{stats.deletions}</Text> : null}
+                            </View>
+                        ) : null}
+                    </View>
+                    {movePath ? <Text style={styles.movePath}>{movePath}</Text> : null}
+                </View>
+                {displayPatch ? (
+                    <ToolDiffView patch={displayPatch} fileName={fileName} />
+                ) : diffInput?.kind === 'pair' && (diffInput.oldText.length > 0 || diffInput.newText.length > 0) ? (
+                    <ToolDiffView
+                        oldText={diffInput.oldText}
+                        newText={diffInput.newText}
+                        fileName={fileName}
                     />
-                </Pressable>
-                {expanded ? (
-                    <View style={styles.patchContainer}>
-                        <View style={styles.fileHeader}>
-                            <View style={styles.fileHeaderMain}>
-                                <Octicons name="file-diff" size={16} color={theme.colors.textSecondary} />
-                                <Text style={styles.filePath}>{filePath}</Text>
-                                {kindLabel ? <Text style={styles.kindLabel}>{kindLabel}</Text> : null}
-                                {stats && (stats.additions > 0 || stats.deletions > 0) ? (
-                                    <View style={styles.stats}>
-                                        {stats.additions > 0 ? <Text style={styles.added}>+{stats.additions}</Text> : null}
-                                        {stats.deletions > 0 ? <Text style={styles.removed}>-{stats.deletions}</Text> : null}
-                                    </View>
-                                ) : null}
-                            </View>
-                            {movePath ? <Text style={styles.movePath}>{movePath}</Text> : null}
-                        </View>
-                        {displayPatch ? (
-                            <ToolDiffView patch={displayPatch} fileName={fileName} />
-                        ) : diffInput?.kind === 'pair' && (diffInput.oldText.length > 0 || diffInput.newText.length > 0) ? (
-                            <ToolDiffView
-                                oldText={diffInput.oldText}
-                                newText={diffInput.newText}
-                                fileName={fileName}
-                            />
-                        ) : null}
-                        {permissionFooter ? (
-                            <View style={styles.permissionFooterContainer}>
-                                {permissionFooter}
-                            </View>
-                        ) : null}
+                ) : null}
+                {permissionFooter ? (
+                    <View style={styles.permissionFooterContainer}>
+                        {permissionFooter}
                     </View>
                 ) : null}
             </View>
@@ -274,33 +252,8 @@ const CodexPatchFileView = React.memo(function CodexPatchFileView(props: {
 
 const styles = StyleSheet.create((theme) => ({
     editedFileGroup: {
-        gap: 6,
-    },
-    editToggle: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        alignSelf: 'flex-start',
-        gap: 4,
-        maxWidth: '100%',
-        paddingHorizontal: 14,
-        paddingTop: 2,
-        paddingBottom: 4,
-    },
-    editTogglePressed: {
-        opacity: 0.6,
-    },
-    editToggleText: {
-        flexShrink: 1,
-        fontSize: 14,
-        color: theme.colors.textSecondary,
-    },
-    patchContainer: {
         backgroundColor: theme.colors.surface,
         overflow: 'hidden',
-        marginHorizontal: 14,
-        borderRadius: 8,
-        borderWidth: 1,
-        borderColor: theme.colors.divider,
     },
     permissionFooterContainer: {
         paddingHorizontal: 12,

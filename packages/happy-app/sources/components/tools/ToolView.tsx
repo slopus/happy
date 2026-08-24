@@ -181,7 +181,7 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
         || minimal
         || isCompactTerminalTool;
     const activityLabel = getToolActivityLabel(tool);
-    const isInlineCodexPatch = Platform.OS === 'web' && tool.name === 'CodexPatch';
+    const isInlineCodexPatch = tool.name === 'CodexPatch';
     const isInlineQuestionTool = isInteractiveQuestionToolName(tool.name);
     if (isInlineQuestionTool) {
         hideDefaultError = true;
