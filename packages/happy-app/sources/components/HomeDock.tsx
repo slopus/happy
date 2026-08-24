@@ -38,7 +38,7 @@ import {
     findMachineChoice,
     machineChoiceAgentAvailable,
     machineChoiceAgentVisible,
-    resolveChoiceAgent,
+    resolveNewSessionAgent,
 } from '@/sync/machineChoices';
 import type { Session } from '@/sync/storageTypes';
 import {
@@ -666,6 +666,7 @@ export const HomeDock = React.memo(({
     const useNativeMenus = shouldUseNativeHomeDockMenus(Platform.OS);
     const [sheetPage, setSheetPage] = React.useState<PickerPage | null>(null);
     const expImageUpload = useSetting('expImageUpload');
+    const experiments = useSetting('experiments');
     const { selectedImages, pickImages, removeImage, clearImages } = useImagePicker();
     const agentType = useNewSessionDraft((state) => state.agentType);
     const selectedMachineId = useNewSessionDraft((state) => state.selectedMachineId);
@@ -860,8 +861,9 @@ export const HomeDock = React.memo(({
     // until this computer explicitly reports it installed.
     const harnessKeys = React.useMemo<NewSessionAgentType[]>(() => (
         (HARNESS_ORDER.includes(agentType) ? [...HARNESS_ORDER] : [agentType, ...HARNESS_ORDER])
+            .filter((key) => experiments || key !== 'rig')
             .filter((key) => machineChoiceAgentVisible(selectedChoice, key))
-    ), [agentType, selectedChoice]);
+    ), [agentType, experiments, selectedChoice]);
     const availableAgents = React.useMemo<ModeOption[]>(() => (
         harnessKeys.map((key) => {
             const agent = { key, name: getHarnessName(key) };
@@ -876,7 +878,7 @@ export const HomeDock = React.memo(({
                 };
         })
     ), [harnessKeys, selectedChoice]);
-    const resolvedAgentType = resolveChoiceAgent(selectedChoice, agentType);
+    const resolvedAgentType = resolveNewSessionAgent(selectedChoice, agentType, experiments);
     const defaults = React.useMemo(() => rigCreation
         ? {
             permissionMode: rigCreation.defaultPermissionMode ?? '',

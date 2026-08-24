@@ -27,7 +27,7 @@ import {
     collectMachineChoices,
     findMachineChoice,
     resolveAgentMachine,
-    resolveChoiceAgent,
+    resolveNewSessionAgent,
 } from '@/sync/machineChoices';
 import { delay } from '@/utils/time';
 import {
@@ -94,6 +94,7 @@ function resolveOption<T extends { key: string }>(
 export function useStartSessionFromDraft() {
     const machines = useAllMachines({ includeOffline: true });
     const defaultOverrides = useSetting('agentDefaultOverrides');
+    const experiments = useSetting('experiments');
     const navigateToSession = useNavigateToSession();
     // The composer stays on screen for the whole flow, so what it is waiting on
     // is state rather than a bare boolean: creating a worktree, asking the
@@ -148,7 +149,7 @@ export function useStartSessionFromDraft() {
         // The draft survives machine changes and app upgrades. Resolve it again
         // at launch time so a stale Claude selection cannot spawn Claude while
         // the selected computer only reports Codex (the Android 1.7.0 regression).
-        const agentType = resolveChoiceAgent(choice, draft.agentType);
+        const agentType = resolveNewSessionAgent(choice, draft.agentType, experiments);
         const agentChanged = agentType !== draft.agentType;
         const machine = resolveAgentMachine(choice, agentType);
         if (!machine) {
@@ -418,7 +419,7 @@ export function useStartSessionFromDraft() {
                 if (isMountedRef.current) setPhase(null);
             }
         }
-    }, [defaultOverrides, machines, navigateToSession]);
+    }, [defaultOverrides, experiments, machines, navigateToSession]);
 
     return { isStarting: phase !== null, phase, startSession, cancelStart };
 }

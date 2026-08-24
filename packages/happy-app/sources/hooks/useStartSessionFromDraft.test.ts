@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
         metadata?: any;
     }>,
     defaultOverrides: {},
+    experiments: true,
     draft: null as any,
     navigateToSession: vi.fn(),
     machineSpawnNewSession: vi.fn(),
@@ -35,7 +36,7 @@ vi.mock('react', () => ({
 
 vi.mock('@/sync/storage', () => ({
     useAllMachines: () => mocks.machines,
-    useSetting: () => mocks.defaultOverrides,
+    useSetting: (key: string) => key === 'experiments' ? mocks.experiments : mocks.defaultOverrides,
 }));
 
 vi.mock('@/sync/agentDefaults', () => ({
@@ -183,6 +184,7 @@ describe('useStartSessionFromDraft', () => {
         mocks.uuidCount = 0;
         completeSpawnRequest();
         mocks.defaultOverrides = {};
+        mocks.experiments = true;
         mocks.machines = [{ id: 'machine-1', online: true, metadata: { homeDir: '/Users/dev' } }];
         mocks.draft = createDraft();
         mocks.machineSpawnNewSession.mockResolvedValue({ type: 'success', sessionId: 'session-1' });
@@ -428,6 +430,21 @@ describe('useStartSessionFromDraft', () => {
             'The selected agent configuration is unavailable',
         );
         expect(mocks.machineSpawnNewSession).not.toHaveBeenCalled();
+    });
+
+    it('does not start a Happy harness session while experiments are disabled', async () => {
+        mocks.experiments = false;
+        mocks.machines = [createRigMachine()];
+        mocks.draft = createDraft({ agentType: 'rig' });
+
+        const { startSession } = useStartSessionFromDraft();
+
+        await expect(startSession()).resolves.toBe(false);
+        expect(mocks.machineSpawnNewSession).not.toHaveBeenCalled();
+        expect(mocks.alert).toHaveBeenCalledWith(
+            'common.error',
+            'This computer has no Happy CLI daemon to start that agent',
+        );
     });
 
     it('reuses the idempotency key when the user retries the same spawn', async () => {

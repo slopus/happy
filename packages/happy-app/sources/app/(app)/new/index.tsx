@@ -53,7 +53,7 @@ import {
     findMachineChoice,
     machineChoiceAgentAvailable,
     resolveAgentMachine,
-    resolveChoiceAgent,
+    resolveNewSessionAgent,
 } from '@/sync/machineChoices';
 import {
     getHardcodedPermissionModes,
@@ -735,6 +735,7 @@ function NewSessionScreen() {
     const sessions = useSessions();
     const agentInputEnterToSend = useSetting('agentInputEnterToSend');
     const agentDefaultOverrides = useSetting('agentDefaultOverrides');
+    const experiments = useSetting('experiments');
     const fileDiffsSidebarEnabled = useSetting('fileDiffsSidebar');
     const zenMode = useLocalSetting('zenMode');
     const { width: windowWidth, height: windowHeight } = useWindowDimensions();
@@ -811,7 +812,7 @@ function NewSessionScreen() {
         () => findMachineChoice(machineChoices, selectedMachineId),
         [machineChoices, selectedMachineId],
     );
-    const selectedAgent = resolveChoiceAgent(selectedChoice, draftAgent);
+    const selectedAgent = resolveNewSessionAgent(selectedChoice, draftAgent, experiments);
     const selectedMachine = React.useMemo(
         () => resolveAgentMachine(selectedChoice, selectedAgent),
         [selectedAgent, selectedChoice],
@@ -1002,8 +1003,11 @@ function NewSessionScreen() {
     // Filter available agents based on the daemon that actually runs each harness on this
     // computer, rather than the machine id that happened to be stored in the draft.
     const availableAgents = React.useMemo(() => {
-        return ALL_AGENTS.filter((agent) => machineChoiceAgentAvailable(selectedChoice, agent.key));
-    }, [selectedChoice]);
+        return ALL_AGENTS.filter((agent) => (
+            (experiments || agent.key !== 'rig')
+            && machineChoiceAgentAvailable(selectedChoice, agent.key)
+        ));
+    }, [experiments, selectedChoice]);
 
     // If current agent not available on this machine, switch to first available
     React.useEffect(() => {
@@ -1367,7 +1371,7 @@ function NewSessionScreen() {
         }
         // Resolve again at the moment of use: the draft can outlive a daemon restart, a machine
         // pairing update, or a change in the CLI catalog.
-        const agentType = resolveChoiceAgent(choice, selectedAgent);
+        const agentType = resolveNewSessionAgent(choice, selectedAgent, experiments);
         const machine = resolveAgentMachine(choice, agentType);
         if (!machine) {
             Modal.alert(
@@ -1549,7 +1553,7 @@ function NewSessionScreen() {
         } finally {
             if (isMountedRef.current) setIsSpawning(false);
         }
-    }, [allMachines, canPickWorktree, currentEffort?.key, currentModelKey, currentPermission?.key, effectiveAgentDefaults.effortLevel, effectiveAgentDefaults.modelMode, effectiveAgentDefaults.permissionMode, navigateToSession, router, selectedAgent, selectedMachineId, selectedPath, worktreeKey]);
+    }, [allMachines, canPickWorktree, currentEffort?.key, currentModelKey, currentPermission?.key, effectiveAgentDefaults.effortLevel, effectiveAgentDefaults.modelMode, effectiveAgentDefaults.permissionMode, experiments, navigateToSession, router, selectedAgent, selectedMachineId, selectedPath, worktreeKey]);
 
     const canSend = selectedMachineId && selectedMachine && isMachineOnline(selectedMachine) && !isSpawning;
     React.useEffect(() => {

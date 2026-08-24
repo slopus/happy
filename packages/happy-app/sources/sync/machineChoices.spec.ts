@@ -6,6 +6,7 @@ import {
     machineChoiceAgentVisible,
     resolveAgentMachine,
     resolveChoiceAgent,
+    resolveNewSessionAgent,
 } from './machineChoices';
 import type { Machine } from './storageTypes';
 
@@ -155,6 +156,17 @@ describe('what a computer can actually run', () => {
         const cliOnly = collectMachineChoices([cli()])[0];
         expect(resolveChoiceAgent(cliOnly, 'rig')).toBe('claude');
         expect(resolveChoiceAgent(cliOnly, 'gemini')).toBe('claude');
+    });
+
+    it('offers Happy for new sessions only when experiments are enabled', () => {
+        const paired = collectMachineChoices([cli(), rig()])[0];
+        expect(resolveNewSessionAgent(paired, 'rig', true)).toBe('rig');
+        expect(resolveNewSessionAgent(paired, 'rig', false)).toBe('claude');
+    });
+
+    it('never resolves a new session to Happy from a stale draft when experiments are off', () => {
+        const rigOnly = collectMachineChoices([rig(RIG, 'missing-sibling')])[0];
+        expect(resolveNewSessionAgent(rigOnly, 'rig', false)).toBe('claude');
     });
 
     it('sends each agent to the daemon that runs it', () => {
