@@ -278,6 +278,12 @@ export default function RootLayout() {
                 }}
             />
             <Stack.Screen
+                name="dev/agent-question"
+                options={{
+                    headerTitle: 'Inline Questions',
+                }}
+            />
+            <Stack.Screen
                 name="dev/file-edits"
                 options={{
                     headerTitle: 'File Edit Preview',

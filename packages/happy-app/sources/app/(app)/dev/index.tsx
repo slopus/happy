@@ -250,6 +250,12 @@ export default function DevScreen() {
                     onPress={() => router.push('/dev/tools2')}
                 />
                 <Item
+                    title="Inline Questions"
+                    subtitle="Pending, answered, and superseded questions in chat"
+                    icon={<Ionicons name="help-circle-outline" size={28} color="#007AFF" />}
+                    onPress={() => router.push('/dev/agent-question')}
+                />
+                <Item
                     title="File Edit Preview"
                     subtitle="Highlighted Claude and Codex edits in chat"
                     icon={<Ionicons name="git-compare-outline" size={28} color="#007AFF" />}

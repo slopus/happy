@@ -15,9 +15,9 @@ export const RequestUserInputView = React.memo<ToolViewProps>(({ tool, sessionId
     const communication = useSessionAgentFormCommunication(sessionId ?? '', tool.callId ?? '');
 
     const submittedAnswers = React.useMemo<InlineQuestionAnswers | null>(() => {
-        if (!communication || communication.status !== 'answered' || !communication.answers) return null;
+        if (!communication || communication.status !== 'answered') return null;
         const answers: InlineQuestionAnswers = {};
-        for (const [questionId, answer] of Object.entries(communication.answers)) {
+        for (const [questionId, answer] of Object.entries(communication.answers ?? {})) {
             answers[questionId] = {
                 options: answer.options,
                 ...(answer.custom ? { custom: answer.custom } : {}),
