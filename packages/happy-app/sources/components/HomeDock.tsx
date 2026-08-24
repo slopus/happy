@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { ActivityIndicator, Keyboard, LayoutChangeEvent, Modal as RNModal, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, Octicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
@@ -9,9 +9,11 @@ import Animated, {
     Easing,
     Extrapolation,
     interpolate,
+    interpolateColor,
     runOnJS,
     useAnimatedStyle,
     useSharedValue,
+    withSequence,
     withTiming,
     type SharedValue,
 } from 'react-native-reanimated';
@@ -60,6 +62,14 @@ import {
     shouldUseNativeHomeDockMenus,
 } from './homeDockInteraction';
 import { registerHomeDockFocusListener, useHomeDockFocusStore } from './homeDockFocus';
+import {
+    resolveNewSessionPrimaryAction,
+    resolveNewSessionProgressLabel,
+    type NewSessionStartPhase,
+} from './newSessionProgress';
+import { StatusDot } from './StatusDot';
+import { Shaker, type ShakeInstance } from './Shaker';
+import { hapticsError } from './haptics';
 import { HARNESS_ORDER, getHarnessName } from '@/utils/harnessCatalog';
 import { getPermissionModeMenuLabel, getPermissionModeShortLabel } from '@/utils/permissionModeLabels';
 import { getRigMachineSessionCreation } from '@/sync/rigSessionCreation';
@@ -93,6 +103,12 @@ const MOBILE_ICON_ACTION_GEOMETRY = resolveMobileComposerActionGeometry('icon');
 const MOBILE_PRIMARY_ACTION_GEOMETRY = resolveMobileComposerActionGeometry('primary');
 const MOBILE_COLLAPSED_COMPOSER_GEOMETRY = resolveMobileCollapsedComposerGeometry();
 const MOBILE_HOME_DOCK_TOP_PADDING = 8;
+// Sits in the gap the focused dock already leaves above the composer, so it
+// costs no layout: showing it must not move the pickers or the composer.
+const START_PROGRESS_ROW_HEIGHT = 18;
+// Matches Shaker's own keyframes so a refused picker reads the same as every
+// other refusal in the app.
+const SHAKE_KEYFRAMES = [3, -3, 3, -3, 0];
 
 const styles = StyleSheet.create((theme) => ({
     keyboardFollower: {
@@ -291,6 +307,11 @@ const styles = StyleSheet.create((theme) => ({
     sendButtonActive: {
         backgroundColor: theme.dark ? '#F5F5F5' : theme.colors.button.primary.background,
     },
+    primaryActionFlash: {
+        ...StyleSheet.absoluteFillObject,
+        borderRadius: MOBILE_PRIMARY_ACTION_GEOMETRY.borderRadius,
+        backgroundColor: theme.dark ? '#4A4A4E' : '#FFFFFF',
+    },
     modalRoot: {
         flex: 1,
     },
@@ -315,7 +336,9 @@ const styles = StyleSheet.create((theme) => ({
         maxWidth: layout.maxWidth,
         alignSelf: 'center',
         paddingHorizontal: 24,
-        paddingBottom: 10,
+        // Clears the status line that sits below it, which is placed out of
+        // layout: the pickers hold this gap open whether or not it is filled.
+        paddingBottom: START_PROGRESS_ROW_HEIGHT + 4,
         gap: 8,
     },
     focusConfigGroup: {
@@ -335,9 +358,16 @@ const styles = StyleSheet.create((theme) => ({
         paddingHorizontal: 6,
         borderRadius: 12,
     },
+    // One fixed square per icon, with the glyph centred inside it. The square is
+    // what the row lays out against, so the label after it starts at the same x
+    // on every row no matter which glyph is in the box or how wide it draws.
     focusConfigIcon: {
         width: 24,
+        height: 24,
         alignItems: 'center',
+        justifyContent: 'center',
+        flexGrow: 0,
+        flexShrink: 0,
     },
     focusConfigValue: {
         flex: 1,
@@ -349,6 +379,62 @@ const styles = StyleSheet.create((theme) => ({
     focusComposerArea: {
         paddingHorizontal: 16,
         paddingBottom: 8,
+    },
+    // A plain sheet of glass over the controls that are settled for this
+    // session. It blocks the touch — including the SwiftUI hosts the native
+    // menus mount, which nothing in React Native can disable — without tinting
+    // what is underneath, and turns the press into a shake.
+    pressBlocker: {
+        ...StyleSheet.absoluteFillObject,
+    },
+    composerPressBlocker: {
+        position: 'absolute',
+        left: 0,
+        right: 0,
+        top: 0,
+        // Stops at the action row's top edge so the row's own blocker can leave
+        // the send button, which is now Stop, reachable. Absolute children
+        // measure from the padding box, so the shell's bottom padding counts.
+        bottom: MOBILE_COMPOSER_METRICS.actionRowHeight + MOBILE_COMPOSER_METRICS.shellPaddingBottom,
+    },
+    // Reads like the session status row above the chat composer: one pulsing
+    // dot and one line saying what is happening now. Absolutely placed in the
+    // gap above the composer so that showing it moves nothing on the screen.
+    // Absolute children measure from the padding box, so the inset the composer
+    // gets from `focusComposerArea` is restated here to reach the same bounds.
+    startProgressRow: {
+        position: 'absolute',
+        left: 16,
+        right: 16,
+        top: -START_PROGRESS_ROW_HEIGHT,
+        height: START_PROGRESS_ROW_HEIGHT,
+        alignItems: 'center',
+    },
+    // Sits inside the composer's own width, then insets by the same 16 the
+    // session status bar uses inside its composer, so both screens hold their
+    // status line the same distance from the shell on either side.
+    startProgressContent: {
+        width: '100%',
+        maxWidth: layout.maxWidth,
+        height: '100%',
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        paddingHorizontal: 16,
+    },
+    startProgressText: {
+        flexShrink: 1,
+        minWidth: 0,
+        color: theme.colors.textSecondary,
+        fontSize: 11,
+        ...Typography.default(),
+    },
+    startProgressHint: {
+        flexShrink: 0,
+        marginLeft: 'auto',
+        color: theme.colors.textSecondary,
+        fontSize: 11,
+        ...Typography.default(),
     },
     settingsPosition: {
         position: 'absolute',
@@ -444,15 +530,70 @@ function resolveOption(options: ModeOption[], preferred: Array<string | null | u
     return options[0] ?? null;
 }
 
+function shakeOnce(value: SharedValue<number>) {
+    value.value = withSequence(
+        ...SHAKE_KEYFRAMES.map((offset) => withTiming(offset, { duration: 50 })),
+    );
+}
+
+/**
+ * One control that refuses its own presses while a session is being created.
+ *
+ * The refusal is per control rather than per region so only the thing actually
+ * touched shakes: the answer is about what was pressed. The blocker is a plain
+ * transparent sheet because a native menu mounts a SwiftUI host that no React
+ * Native `disabled` prop can reach, and it is a later sibling so it paints and
+ * hits over the control it covers.
+ */
+function RefusableControl({
+    refusing,
+    onRefuse,
+    children,
+}: {
+    refusing: boolean;
+    onRefuse: () => void;
+    children: React.ReactNode;
+}) {
+    const shake = useSharedValue(0);
+    const shakeStyle = useAnimatedStyle(() => ({
+        transform: [{ translateX: shake.value }],
+    }));
+    return (
+        <Animated.View style={shakeStyle}>
+            {children}
+            {refusing && (
+                <Pressable
+                    style={styles.pressBlocker}
+                    onPress={() => {
+                        shakeOnce(shake);
+                        onRefuse();
+                    }}
+                />
+            )}
+        </Animated.View>
+    );
+}
+
+/**
+ * One picker row, which also does its own refusing while a session is starting.
+ *
+ * The refusal reuses the row's own animated view rather than wrapping it, so
+ * nothing is added to the tree and the row's layout is untouched either way.
+ */
 function FocusConfigRevealRow({
     progress,
     index,
+    refusing,
+    onRefuse,
     children,
 }: {
     progress: SharedValue<number>;
     index: number;
+    refusing?: boolean;
+    onRefuse?: () => void;
     children: React.ReactNode;
 }) {
+    const shake = useSharedValue(0);
     const revealStyle = useAnimatedStyle(() => {
         const start = 0.18 + index * 0.09;
         const end = start + 0.28;
@@ -464,13 +605,25 @@ function FocusConfigRevealRow({
         );
         return {
             opacity: reveal,
-            transform: [{ translateY: 10 * (1 - reveal) }],
+            transform: [
+                { translateY: 10 * (1 - reveal) },
+                { translateX: shake.value },
+            ],
         };
     }, [index]);
 
     return (
         <Animated.View style={[styles.focusConfigRevealRow, revealStyle]}>
             {children}
+            {refusing && (
+                <Pressable
+                    style={styles.pressBlocker}
+                    onPress={() => {
+                        shakeOnce(shake);
+                        onRefuse?.();
+                    }}
+                />
+            )}
         </Animated.View>
     );
 }
@@ -480,12 +633,18 @@ export const HomeDock = React.memo(({
     onPromptChange,
     onSubmit,
     isSubmitting,
+    submitPhase,
+    onSubmitCancel,
     showBottomBackdrop = true,
 }: {
     prompt: string;
     onPromptChange: (prompt: string) => void;
     onSubmit: () => Promise<boolean>;
     isSubmitting: boolean;
+    /** Which step of session creation is running, shown above the composer. */
+    submitPhase?: NewSessionStartPhase | null;
+    /** Stops session creation, the way the session composer stops the agent. */
+    onSubmitCancel?: () => void;
     showBottomBackdrop?: boolean;
 }) => {
     const { theme } = useUnistyles();
@@ -677,10 +836,12 @@ export const HomeDock = React.memo(({
             }];
         }
         const options: ModeOption[] = [
-            { key: '__none__', name: picksWorkspaces ? 'No workspace' : 'No worktree' },
+            // Starting in no workspace means starting in the project's own
+            // checkout, which is a place with a name rather than an absence.
+            { key: '__none__', name: picksWorkspaces ? 'Main' : 'No worktree' },
             // Making one is a separate ability from starting in one that already exists.
             ...(supportsWorktree
-                ? [{ key: '__new__', name: picksWorkspaces ? 'Create new workspace' : 'Create new worktree' }]
+                ? [{ key: '__new__', name: picksWorkspaces ? 'Create New' : 'Create new worktree' }]
                 : []),
             ...existingWorktrees,
         ];
@@ -754,6 +915,55 @@ export const HomeDock = React.memo(({
     const canSubmit = !isSubmitting && (
         prompt.trim().length > 0 || (expImageUpload && selectedImages.length > 0)
     );
+    const startPhase = isSubmitting ? submitPhase ?? 'spawning' : null;
+    const startProgressLabel = resolveNewSessionProgressLabel({
+        phase: startPhase,
+        agentName: currentAgent.name,
+        picksWorkspaces,
+    });
+    const primaryAction = resolveNewSessionPrimaryAction({
+        canSubmit,
+        phase: startPhase,
+        canCancel: !!onSubmitCancel,
+    });
+    const primaryActionFilled = primaryAction === 'send' || primaryAction === 'stop';
+    const primaryActionIconColor = theme.dark ? '#111111' : theme.colors.button.primary.tint;
+    const composerShakerRef = React.useRef<ShakeInstance>(null);
+    // Anything refused points at the way out: the hint and the Stop button both
+    // flash, so the answer to "this is blocked" is "here is the thing that
+    // isn't". Two beats rather than one — a single fade is easy to miss on a
+    // button that is already solid black.
+    const refusalFlash = useSharedValue(0);
+    const refuse = React.useCallback(() => {
+        hapticsError();
+        refusalFlash.value = withSequence(
+            withTiming(1, { duration: 90 }),
+            withTiming(0, { duration: 130 }),
+            withTiming(1, { duration: 90 }),
+            withTiming(0, { duration: 340 }),
+        );
+    }, [refusalFlash]);
+    const refuseWithShake = React.useCallback((shaker: React.RefObject<ShakeInstance | null>) => {
+        refuse();
+        shaker.current?.shake();
+    }, [refuse]);
+    const startProgressHintStyle = useAnimatedStyle(() => ({
+        color: interpolateColor(
+            refusalFlash.value,
+            [0, 1],
+            [theme.colors.textSecondary, theme.colors.text],
+        ),
+    }));
+    const primaryActionFlashStyle = useAnimatedStyle(() => ({
+        transform: [{ scale: 1 + refusalFlash.value * 0.1 }],
+    }));
+    // The button is already the darkest thing on screen, so its flash is the
+    // inverse of the hint's: a lighter wash over the fill, drawn under the glyph
+    // so the glyph stays readable through it. Painting over the fill rather than
+    // animating it keeps BubblePressable's own press scale untouched.
+    const primaryActionFlashOverlayStyle = useAnimatedStyle(() => ({
+        opacity: refusalFlash.value * 0.55,
+    }));
     const focusedInputLayout = resolveMultiTextInputLayout({
         contentHeight: focusedInputContentHeight,
         hasText: prompt.length > 0,
@@ -923,13 +1133,20 @@ export const HomeDock = React.memo(({
     }, []);
 
     const handleFocusModeRequestClose = React.useCallback(() => {
-        const action = resolveHomeDockPickerBackAction({ hasPage: sheetPage !== null });
+        const action = resolveHomeDockPickerBackAction({
+            hasPage: sheetPage !== null,
+            starting: isSubmitting,
+        });
+        if (action === 'refuse') {
+            refuse();
+            return;
+        }
         if (action === 'close-picker') {
             closePicker();
             return;
         }
         closeFocusMode();
-    }, [closeFocusMode, closePicker, sheetPage]);
+    }, [closeFocusMode, closePicker, isSubmitting, refuse, sheetPage]);
 
     const selectAgent = React.useCallback((agent: NewSessionAgentType) => {
         const nextRigCreation = agent === 'rig' ? rigSelectionCreation : null;
@@ -970,7 +1187,7 @@ export const HomeDock = React.memo(({
         {
             page: 'worktree',
             label: picksWorkspaces ? 'WORKSPACE' : 'WORKTREE',
-            value: currentWorktree?.name ?? (picksWorkspaces ? 'No workspace' : 'No worktree'),
+            value: currentWorktree?.name ?? (picksWorkspaces ? 'Main' : 'No worktree'),
             icon: 'git-branch-outline',
         },
         { page: 'agent', label: 'HARNESS', value: currentAgent.name, icon: 'hardware-chip-outline' },
@@ -1098,9 +1315,14 @@ export const HomeDock = React.memo(({
         const action = resolveHomeDockBackdropPressAction({
             nativeMenuOpen: useNativeMenus && nativeMenuOpenRef.current,
             pickerVisible: sheetVisible,
+            starting: isSubmitting,
         });
         nativeMenuOpenRef.current = false;
         if (action === 'dismiss-menu') {
+            return;
+        }
+        if (action === 'refuse') {
+            refuse();
             return;
         }
         if (action === 'close-picker') {
@@ -1108,7 +1330,15 @@ export const HomeDock = React.memo(({
             return;
         }
         closeFocusMode();
-    }, [closeFocusMode, closePicker, sheetVisible, useNativeMenus]);
+    }, [closeFocusMode, closePicker, isSubmitting, refuse, sheetVisible, useNativeMenus]);
+
+    // Stop is about this screen, not about the machine. It gives the composer
+    // back immediately and lets the kill run unwatched, because a Stop that
+    // waits on the thing that is already not answering is not a way out.
+    const handleStopPress = React.useCallback(() => {
+        onSubmitCancel?.();
+        closeFocusMode();
+    }, [closeFocusMode, onSubmitCancel]);
 
     const renderPickerRowContent = (row: SettingsRow, compact: boolean) => (
         <View style={compact ? styles.focusConfigRow : styles.option}>
@@ -1176,6 +1406,8 @@ export const HomeDock = React.memo(({
             key={row.page}
             progress={focusPresentation}
             index={index}
+            refusing={isSubmitting}
+            onRefuse={refuse}
         >
             {renderPickerRow(row, getPickerConfig(row.page as PickerPage), true)}
         </FocusConfigRevealRow>
@@ -1201,9 +1433,9 @@ export const HomeDock = React.memo(({
         triggerLabel?: NativeSettingsMenuProps['triggerLabel'];
         triggerAlignment?: NativeSettingsMenuProps['triggerAlignment'];
         children: React.ReactNode;
-    }) => {
-        if (!useNativeMenus) {
-            return (
+    }) => (
+        <RefusableControl refusing={isSubmitting} onRefuse={refuse}>
+            {!useNativeMenus ? (
                 <Pressable
                     onPress={() => setSheetPage(page)}
                     style={style}
@@ -1212,29 +1444,28 @@ export const HomeDock = React.memo(({
                 >
                     {children}
                 </Pressable>
-            );
-        }
-        return (
-            <NativeSettingsMenu
-                accessibilityLabel={accessibilityLabel}
-                groups={groups.map((group) => ({
-                    ...group,
-                    onSelect: (key) => {
-                        nativeMenuOpenRef.current = false;
-                        group.onSelect(key);
-                    },
-                }))}
-                onMenuOpen={markNativeMenuOpen}
-                flat={flat}
-                style={style}
-                triggerSystemImage={triggerSystemImage}
-                triggerLabel={triggerLabel}
-                triggerAlignment={triggerAlignment}
-            >
-                {children}
-            </NativeSettingsMenu>
-        );
-    };
+            ) : (
+                <NativeSettingsMenu
+                    accessibilityLabel={accessibilityLabel}
+                    groups={groups.map((group) => ({
+                        ...group,
+                        onSelect: (key) => {
+                            nativeMenuOpenRef.current = false;
+                            group.onSelect(key);
+                        },
+                    }))}
+                    onMenuOpen={markNativeMenuOpen}
+                    flat={flat}
+                    style={style}
+                    triggerSystemImage={triggerSystemImage}
+                    triggerLabel={triggerLabel}
+                    triggerAlignment={triggerAlignment}
+                >
+                    {children}
+                </NativeSettingsMenu>
+            )}
+        </RefusableControl>
+    );
 
     // Only reached with a page selected: `sheetVisible` gates the whole sheet.
     const renderSettingsSheet = (page: PickerPage) => {
@@ -1381,16 +1612,20 @@ export const HomeDock = React.memo(({
         return started;
     };
 
+    // The dock, the keyboard, and the scrim all stay put until the session
+    // exists. Closing first left the session list with a spinner nowhere near
+    // the composer, and a failure landed on a screen that had already moved on.
     const submitFromFocusMode = () => {
         if (!canSubmit) return;
-        setFocusModeVisible(false);
-        setIsFocused(false);
         closePicker();
-        void submit();
+        void (async () => {
+            const started = await submit();
+            if (started) closeFocusMode();
+        })();
     };
 
     const renderFocusedComposer = () => (
-        <View style={styles.focusedComposerShadow}>
+        <Shaker ref={composerShakerRef} style={styles.focusedComposerShadow}>
             <Animated.View style={[styles.focusedComposerAnimationShell, focusedComposerAnimationStyle]}>
                 <MobileGlassSurface
                     nativeEffect
@@ -1424,7 +1659,18 @@ export const HomeDock = React.memo(({
                         <TextInput
                             ref={focusedInputRef}
                             value={prompt}
-                            onChangeText={onPromptChange}
+                            // `editable={false}` would take the keyboard down
+                            // with it, and the keyboard is the thing this whole
+                            // flow keeps up. The input is controlled, so
+                            // refusing the change is what locks it: the value
+                            // never moves off the prompt being sent.
+                            onChangeText={(next) => {
+                                if (isSubmitting) {
+                                    refuseWithShake(composerShakerRef);
+                                    return;
+                                }
+                                onPromptChange(next);
+                            }}
                             onFocus={() => setIsFocused(true)}
                             placeholder={focusedPromptPlaceholder}
                             placeholderTextColor={theme.colors.textSecondary}
@@ -1435,20 +1681,31 @@ export const HomeDock = React.memo(({
                             style={[styles.focusedInput, { height: focusedInputLayout.height }]}
                         />
                     </Animated.View>
+                    {/* Painted over the attachments and the input, and stopping
+                        short of the action row. The controls keep their normal
+                        appearance; only the touch is refused. */}
+                    {isSubmitting && (
+                        <Pressable
+                            style={styles.composerPressBlocker}
+                            onPress={() => refuseWithShake(composerShakerRef)}
+                        />
+                    )}
                     <Animated.View style={[styles.focusedComposerActions, focusedActionsRevealStyle]}>
                         {expImageUpload && (
-                            <BubblePressable
-                                onPress={() => void pickImages()}
-                                style={styles.sideButton}
-                                accessibilityRole="button"
-                                accessibilityLabel="Add image"
-                            >
-                                <Ionicons
-                                    name="add"
-                                    size={MOBILE_COMPOSER_METRICS.addIconSize}
-                                    color={theme.colors.text}
-                                />
-                            </BubblePressable>
+                            <RefusableControl refusing={isSubmitting} onRefuse={refuse}>
+                                <BubblePressable
+                                    onPress={() => void pickImages()}
+                                    style={styles.sideButton}
+                                    accessibilityRole="button"
+                                    accessibilityLabel="Add image"
+                                >
+                                    <Ionicons
+                                        name="add"
+                                        size={MOBILE_COMPOSER_METRICS.addIconSize}
+                                        color={theme.colors.text}
+                                    />
+                                </BubblePressable>
+                            </RefusableControl>
                         )}
                         {/* The permission mode reads out in words instead of
                             hiding behind a gear: it is the one setting here that
@@ -1525,30 +1782,47 @@ export const HomeDock = React.memo(({
                                 </View>
                             ),
                         })}
-                        <BubblePressable
-                            onPress={submitFromFocusMode}
-                            disabled={!canSubmit}
-                            style={[styles.sendButton, canSubmit && styles.sendButtonActive]}
-                            accessibilityRole="button"
-                            accessibilityLabel="Send"
-                        >
-                        {isSubmitting ? (
-                            <ActivityIndicator size="small" color={theme.colors.textSecondary} />
-                        ) : (
-                            <Ionicons
-                                name="arrow-up"
-                                size={16}
-                                color={canSubmit
-                                    ? theme.dark ? '#111111' : theme.colors.button.primary.tint
-                                    : theme.colors.textSecondary}
-                            />
-                        )}
-                        </BubblePressable>
+                        {/* Nothing covers this row as a whole: each control
+                            beside Stop refuses its own presses, which leaves
+                            Stop itself reachable without having to be painted
+                            over a blocker. */}
+                        {/* One button, read the same way as the session
+                            composer's: it sends, and while the session is being
+                            created it stops. */}
+                        <Animated.View style={primaryActionFlashStyle}>
+                            <BubblePressable
+                                onPress={primaryAction === 'stop' ? handleStopPress : submitFromFocusMode}
+                                disabled={primaryAction !== 'send' && primaryAction !== 'stop'}
+                                style={[styles.sendButton, primaryActionFilled && styles.sendButtonActive]}
+                                accessibilityRole="button"
+                                accessibilityLabel={primaryAction === 'stop' ? 'Stop' : 'Send'}
+                            >
+                                {primaryAction === 'stop' && (
+                                    <Animated.View
+                                        pointerEvents="none"
+                                        style={[styles.primaryActionFlash, primaryActionFlashOverlayStyle]}
+                                    />
+                                )}
+                                {primaryAction === 'busy' ? (
+                                    <ActivityIndicator size="small" color={theme.colors.textSecondary} />
+                                ) : primaryAction === 'stop' ? (
+                                    <Octicons name="stop" size={16} color={primaryActionIconColor} />
+                                ) : (
+                                    <Ionicons
+                                        name="arrow-up"
+                                        size={16}
+                                        color={primaryAction === 'send'
+                                            ? primaryActionIconColor
+                                            : theme.colors.textSecondary}
+                                    />
+                                )}
+                            </BubblePressable>
+                        </Animated.View>
                     </Animated.View>
                 </View>
                 </MobileGlassSurface>
             </Animated.View>
-        </View>
+        </Shaker>
     );
 
     return (
@@ -1625,11 +1899,36 @@ export const HomeDock = React.memo(({
                                     {renderEnvironmentPickers()}
                                 </View>
                             )}
+                            {/* The sheet is a single surface rather than a row
+                                of controls, so its refusal is the whole sheet. */}
+                            {isSubmitting && sheetVisible && sheetPage && (
+                                <Pressable style={styles.pressBlocker} onPress={refuse} />
+                            )}
                         </View>
                         <View style={[
                             styles.focusComposerArea,
                             { paddingBottom: safeArea.bottom + 8 },
                         ]}>
+                            {/* Absolutely placed in the gap the dock already
+                                leaves, so it appears without moving anything. */}
+                            {startProgressLabel && (
+                                <View pointerEvents="none" style={styles.startProgressRow}>
+                                    <View style={styles.startProgressContent}>
+                                        <StatusDot color={theme.colors.status.connecting} isPulsing size={6} />
+                                        <Text style={styles.startProgressText} numberOfLines={1}>
+                                            {startProgressLabel}
+                                        </Text>
+                                        {primaryAction === 'stop' && (
+                                            <Animated.Text
+                                                style={[styles.startProgressHint, startProgressHintStyle]}
+                                                numberOfLines={1}
+                                            >
+                                                To interrupt press stop
+                                            </Animated.Text>
+                                        )}
+                                    </View>
+                                </View>
+                            )}
                             {renderFocusedComposer()}
                         </View>
                     </Animated.View>

@@ -14,6 +14,9 @@ const mocks = vi.hoisted(() => ({
     refreshSessions: vi.fn(),
     sendMessage: vi.fn(),
     createWorktree: vi.fn(),
+    machineStopSession: vi.fn(),
+    sessionKill: vi.fn(),
+    sessionArchive: vi.fn(),
     alert: vi.fn(),
     confirm: vi.fn(),
     delay: vi.fn(),
@@ -49,6 +52,9 @@ vi.mock('@/sync/agentDefaults', () => ({
 vi.mock('@/sync/ops', () => ({
     machineSpawnNewSession: mocks.machineSpawnNewSession,
     sessionSetAgentModes: mocks.sessionSetAgentModes,
+    machineStopSession: mocks.machineStopSession,
+    sessionKill: mocks.sessionKill,
+    sessionArchive: mocks.sessionArchive,
 }));
 
 vi.mock('@/sync/sync', () => ({
@@ -183,6 +189,9 @@ describe('useStartSessionFromDraft', () => {
         mocks.refreshSessions.mockResolvedValue(undefined);
         mocks.sendMessage.mockResolvedValue(undefined);
         mocks.confirm.mockResolvedValue(false);
+        mocks.machineStopSession.mockResolvedValue({ success: true });
+        mocks.sessionKill.mockResolvedValue({ success: true });
+        mocks.sessionArchive.mockResolvedValue({ success: true });
     });
 
     it('creates and opens the session directly from the home draft', async () => {
@@ -444,6 +453,171 @@ describe('useStartSessionFromDraft', () => {
         expect(mocks.machineSpawnNewSession).toHaveBeenLastCalledWith(expect.objectContaining({
             clientRequestId: 'rig-request-2',
         }));
+    });
+
+    // A machine that has gone quiet never answers, and the composer cannot be
+    // held hostage by it: Stop has to be the end of the wait, not a request to
+    // be considered once the machine gets around to replying.
+    it('gives the composer back the moment Stop is pressed, even mid-worktree', async () => {
+        mocks.draft = createDraft({ sessionType: 'worktree', worktreeKey: '__new__' });
+        mocks.createWorktree.mockReturnValue(new Promise(() => { }));
+
+        const { startSession, cancelStart } = useStartSessionFromDraft();
+
+        const starting = startSession();
+        cancelStart();
+
+        await expect(starting).resolves.toBe(false);
+        expect(mocks.machineSpawnNewSession).not.toHaveBeenCalled();
+        expect(mocks.navigateToSession).not.toHaveBeenCalled();
+        expect(mocks.draft.setInput).not.toHaveBeenCalled();
+    });
+
+    it('stops the session that lands after Stop was already pressed', async () => {
+        let landSpawn!: (result: unknown) => void;
+        mocks.machineSpawnNewSession.mockReturnValue(new Promise((resolve) => {
+            landSpawn = resolve;
+        }));
+
+        const { startSession, cancelStart } = useStartSessionFromDraft();
+
+        const starting = startSession();
+        cancelStart();
+        await expect(starting).resolves.toBe(false);
+        expect(mocks.navigateToSession).not.toHaveBeenCalled();
+        expect(mocks.sendMessage).not.toHaveBeenCalled();
+
+        // The machine was already spawning when Stop landed; nobody is on the
+        // screen any more, so the session is put down without them.
+        landSpawn({ type: 'success', sessionId: 'session-late' });
+        await vi.waitFor(() => {
+            expect(mocks.machineStopSession).toHaveBeenCalledWith('machine-1', 'session-late');
+        });
+        expect(mocks.navigateToSession).not.toHaveBeenCalled();
+    });
+
+    it('archives an abandoned session the daemon and the session both refuse', async () => {
+        mocks.machineStopSession.mockResolvedValue({ success: false });
+        mocks.sessionKill.mockResolvedValue({ success: false });
+        let landSpawn!: (result: unknown) => void;
+        mocks.machineSpawnNewSession.mockReturnValue(new Promise((resolve) => {
+            landSpawn = resolve;
+        }));
+
+        const { startSession, cancelStart } = useStartSessionFromDraft();
+
+        const starting = startSession();
+        cancelStart();
+        await expect(starting).resolves.toBe(false);
+
+        landSpawn({ type: 'success', sessionId: 'session-late' });
+        await vi.waitFor(() => {
+            expect(mocks.sessionArchive).toHaveBeenCalledWith('session-late');
+        });
+    });
+
+    // The failure this guards against: an await that never returns held the
+    // flow open, so the composer stayed stuck and every later Start was
+    // refused as "already starting". Stop must let go of the flow itself, not
+    // ask the flow to notice and let go on its way past.
+    it('frees the composer for a new Start even while the old one never settles', async () => {
+        mocks.draft = createDraft({ sessionType: 'worktree', worktreeKey: '__new__' });
+        mocks.createWorktree.mockReturnValueOnce(new Promise(() => { }));
+
+        const { startSession, cancelStart } = useStartSessionFromDraft();
+
+        const abandoned = startSession();
+        cancelStart();
+        await expect(abandoned).resolves.toBe(false);
+
+        // Nothing ever answered the first attempt — it is still sitting on that
+        // promise — and the next Start still goes through.
+        mocks.createWorktree.mockResolvedValue({
+            success: true, worktreePath: '/absolute/project/.dev/worktree/w', branchName: 'w',
+        });
+        await expect(startSession()).resolves.toBe(true);
+        expect(mocks.navigateToSession).toHaveBeenCalledWith('session-1');
+    });
+
+    // A step of the abandoned attempt finishing late must not raise a spinner
+    // over a composer that has already been handed back.
+    it('lets a late step of a canceled attempt touch nothing', async () => {
+        let finishWorktree!: (result: unknown) => void;
+        mocks.draft = createDraft({ sessionType: 'worktree', worktreeKey: '__new__' });
+        mocks.createWorktree.mockReturnValueOnce(new Promise((resolve) => {
+            finishWorktree = resolve;
+        }));
+
+        const { startSession, cancelStart } = useStartSessionFromDraft();
+
+        const abandoned = startSession();
+        cancelStart();
+        await expect(abandoned).resolves.toBe(false);
+
+        finishWorktree({
+            success: true, worktreePath: '/absolute/project/.dev/worktree/late', branchName: 'late',
+        });
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(mocks.machineSpawnNewSession).not.toHaveBeenCalled();
+        expect(mocks.navigateToSession).not.toHaveBeenCalled();
+    });
+
+    it('gives the next Start a fresh key after a Stop', async () => {
+        mocks.machines = [createRigMachine()];
+        mocks.draft = createDraft({ agentType: 'rig' });
+        mocks.machineSpawnNewSession.mockReturnValue(new Promise(() => { }));
+
+        const { startSession, cancelStart } = useStartSessionFromDraft();
+
+        const starting = startSession();
+        cancelStart();
+        await expect(starting).resolves.toBe(false);
+
+        // The stopped session's key is spent — reusing it would dedupe the
+        // retry straight back onto the session just killed.
+        mocks.machineSpawnNewSession.mockResolvedValue({ type: 'success', sessionId: 'rig-session-2' });
+        await expect(startSession()).resolves.toBe(true);
+        expect(mocks.machineSpawnNewSession).toHaveBeenLastCalledWith(expect.objectContaining({
+            clientRequestId: 'rig-request-2',
+        }));
+    });
+
+    // Stop hands the composer back synchronously, so a retry can be pressed
+    // before the canceled attempt has resumed even once. If the key were still
+    // pending at that moment the machine would dedupe the retry straight onto
+    // the session the cancel is busy killing.
+    it('does not hand the canceled key to a Start pressed on the same tick', async () => {
+        mocks.machines = [createRigMachine()];
+        mocks.draft = createDraft({ agentType: 'rig' });
+        let landFirstSpawn!: (result: unknown) => void;
+        mocks.machineSpawnNewSession.mockReturnValueOnce(new Promise((resolve) => {
+            landFirstSpawn = resolve;
+        }));
+
+        const { startSession, cancelStart } = useStartSessionFromDraft();
+
+        const abandoned = startSession();
+        cancelStart();
+
+        // No await in between: the canceled attempt has not resumed yet.
+        mocks.machineSpawnNewSession.mockResolvedValue({ type: 'success', sessionId: 'rig-session-2' });
+        const retry = startSession();
+
+        await expect(abandoned).resolves.toBe(false);
+        await expect(retry).resolves.toBe(true);
+        expect(mocks.machineSpawnNewSession).toHaveBeenLastCalledWith(expect.objectContaining({
+            clientRequestId: 'rig-request-2',
+        }));
+
+        // The first attempt's session still gets put down, and the retry's is
+        // left alone.
+        landFirstSpawn({ type: 'success', sessionId: 'rig-session-1' });
+        await vi.waitFor(() => {
+            expect(mocks.machineStopSession).toHaveBeenCalledWith('machine-1', 'rig-session-1');
+        });
+        expect(mocks.machineStopSession).not.toHaveBeenCalledWith('machine-1', 'rig-session-2');
     });
 
     it('backs off with the published delay when a pending result omits one', async () => {

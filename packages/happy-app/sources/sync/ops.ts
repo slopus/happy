@@ -502,6 +502,36 @@ export async function machineDelete(machineId: string): Promise<{ success: boole
 }
 
 /**
+ * Ask the daemon that started a session to stop it, by SIGTERM to the process
+ * it is tracking.
+ *
+ * This is the only stop that reaches a session which has only just been
+ * spawned. `sessionKill` talks to the session's own RPC handler, which does not
+ * exist until that process is up and has registered it, and it needs the
+ * session's encryption key, which arrives with the sessions list — so for the
+ * first seconds of a session's life it fails on both counts. The daemon's
+ * socket, by contrast, is the one we just spawned through.
+ */
+export async function machineStopSession(
+    machineId: string,
+    sessionId: string,
+): Promise<{ success: boolean; message?: string }> {
+    try {
+        const result = await apiSocket.machineRPC<{ message: string }, { sessionId: string }>(
+            machineId,
+            'stop-session',
+            { sessionId },
+        );
+        return { success: true, message: result?.message };
+    } catch (error) {
+        return {
+            success: false,
+            message: error instanceof Error ? error.message : 'Failed to stop session',
+        };
+    }
+}
+
+/**
  * Stop the daemon on a specific machine
  */
 export async function machineStopDaemon(machineId: string): Promise<{ message: string }> {

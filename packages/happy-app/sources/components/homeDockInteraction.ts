@@ -9,17 +9,25 @@ export function resolveCustomProjectPathSelection(
     return trimmedPath || null;
 }
 
-export type HomeDockPickerBackAction = 'close-picker' | 'close-focus';
+export type HomeDockPickerBackAction = 'refuse' | 'close-picker' | 'close-focus';
 
 /**
  * Every picker is now opened straight from the control it belongs to, so there
  * is no settings root to unwind to: Back closes the picker, then the dock.
+ * While a session is being created the dock is the only report of that work, so
+ * Back is refused the same way a tap outside is — and refused visibly, pointing
+ * at Stop, which is the way out.
  */
 export function resolveHomeDockPickerBackAction({
     hasPage,
+    starting = false,
 }: {
     hasPage: boolean;
+    starting?: boolean;
 }): HomeDockPickerBackAction {
+    if (starting) {
+        return 'refuse';
+    }
     return hasPage ? 'close-picker' : 'close-focus';
 }
 
@@ -55,17 +63,25 @@ export function resolveHomeDockPromptPlaceholder(agentKey: string, agentName: st
     return `Ask ${agentName}`;
 }
 
-export type HomeDockBackdropPressAction = 'dismiss-menu' | 'close-picker' | 'close-focus';
+export type HomeDockBackdropPressAction = 'refuse' | 'dismiss-menu' | 'close-picker' | 'close-focus';
 
 export function resolveHomeDockBackdropPressAction({
     nativeMenuOpen,
     pickerVisible,
+    starting = false,
 }: {
     nativeMenuOpen: boolean;
     pickerVisible: boolean;
+    starting?: boolean;
 }): HomeDockBackdropPressAction {
     if (nativeMenuOpen) {
         return 'dismiss-menu';
+    }
+    // A tap outside is the usual way out of the composer, and while a session
+    // is being created it is not one — Stop is. Refusing says so; swallowing
+    // the tap silently leaves the screen looking broken.
+    if (starting) {
+        return 'refuse';
     }
     if (pickerVisible) {
         return 'close-picker';
