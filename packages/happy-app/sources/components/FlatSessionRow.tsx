@@ -28,6 +28,7 @@ const AVATAR_SIZE = 60;
 const ROW_PADDING_LEFT = 16;
 const AVATAR_GAP = 12;
 const TOP_RIGHT_DOT_SIZE = 20;
+const TOP_RIGHT_SLOT_WIDTH = 56;
 const UNREAD_DOT_CLEAR_GRACE_MS = 350;
 
 /**
@@ -204,14 +205,14 @@ export const FlatSessionRow = React.memo(({ row, selected, showBorder, archived 
                     <View style={styles.workspaceLocation}>
                         {workspaceName && (
                             <>
+                                <Text style={styles.workspace} numberOfLines={1}>
+                                    {workspaceName}
+                                </Text>
                                 <Ionicons
                                     name="git-branch-outline"
                                     size={13}
                                     color={theme.colors.textSecondary}
                                 />
-                                <Text style={styles.workspace} numberOfLines={1}>
-                                    {workspaceName}
-                                </Text>
                             </>
                         )}
                     </View>
@@ -330,9 +331,11 @@ const stylesheet = StyleSheet.create((theme) => ({
         marginLeft: 8,
     },
     // The dot and time share a Telegram-like right column, so changing status
-    // never makes the title jump horizontally.
+    // never makes the title jump horizontally. It is only as wide as the
+    // longest timestamp; the dot occupies that same slot instead of reserving
+    // a second lane.
     topRightStatus: {
-        width: 68,
+        width: TOP_RIGHT_SLOT_WIDTH,
         height: 22,
         flexShrink: 0,
         marginLeft: 8,
@@ -343,6 +346,8 @@ const stylesheet = StyleSheet.create((theme) => ({
         fontSize: 13,
         lineHeight: 22,
         color: theme.colors.textSecondary,
+        fontVariant: ['tabular-nums'],
+        textAlign: 'right',
         ...Typography.default('regular'),
     },
     project: {
@@ -365,7 +370,7 @@ const stylesheet = StyleSheet.create((theme) => ({
         gap: 4,
     },
     workspace: {
-        flex: 1,
+        flexShrink: 1,
         fontSize: 13,
         lineHeight: 18,
         color: theme.colors.textSecondary,
