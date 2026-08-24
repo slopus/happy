@@ -215,6 +215,7 @@ export class AgyBackend implements AgentBackend {
       await this.ensureChildRunning();
 
       let lastResult: AgyResult | null = null;
+      let hasProducedOutput = false;
       const turnPromise = new Promise<void>((resolve, reject) => {
         this.activeTurnResolve = resolve;
         this.activeTurnReject = reject;
@@ -231,7 +232,22 @@ export class AgyBackend implements AgentBackend {
           if (event.result.conversation_id) {
             this.setConversationId(event.result.conversation_id);
           }
-          if (event.result.status === 'SUCCESS') {
+          // agy CLI stream-json emits a result event when turn execution finishes.
+          // Note: agy CLI sets result.status = 'ERROR' and result.error = '<tool error>'
+          // whenever ANY step in the conversation trajectory (such as a past tool failure)
+          // had an error. If the turn produced an agent response (either streamed via
+          // model-output or in result.response), the turn completed successfully and the
+          // historical error must NOT fail this or subsequent turns.
+          const hasResponse = Boolean(
+            event.result.response && event.result.response.trim().length > 0,
+          );
+          if (event.result.status === 'SUCCESS' || hasProducedOutput || hasResponse) {
+            if (event.result.status !== 'SUCCESS' && event.result.error) {
+              this.log(
+                `Result event had status "${event.result.status}" with error "${event.result.error}", ` +
+                  `but turn produced output — resolving successfully`,
+              );
+            }
             this.activeTurnResolve?.();
           } else {
             const err = new Error(event.result.error || event.result.response || 'Turn failed');
@@ -239,6 +255,9 @@ export class AgyBackend implements AgentBackend {
           }
         },
         onMessage: (msg) => {
+          if (msg.type === 'model-output' && msg.textDelta) {
+            hasProducedOutput = true;
+          }
           this.emit(msg);
         },
         log: this.log,

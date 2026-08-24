@@ -280,6 +280,169 @@ describe('AgyBackend persistent single-process', () => {
     expect(messages.some((m) => m.type === 'model-output' && m.textDelta === 'all good')).toBe(true);
   });
 
+  it('resolves turn successfully when agy returns result with response even if status is ERROR from past tool error', async () => {
+    const { child, stdout } = makeFakeChild();
+    const spawnFn = vi.fn(() => child) as unknown as SpawnFn;
+
+    const backend = new AgyBackend({
+      cwd: '/work',
+      permissionMode: 'default',
+      spawnFn,
+    });
+
+    const messages: AgentMessage[] = [];
+    backend.onMessage((m) => messages.push(m));
+
+    const startPromise = backend.startSession();
+    stdout.emit(
+      'data',
+      '{"event":"init","conversation_id":"c-tool-err","init":{"cwd":"/work"}}\n'
+    );
+    await startPromise;
+
+    const turn = backend.sendPrompt('/work', 'search files');
+    await new Promise((r) => setTimeout(r, 10));
+
+    // agy streams a tool error step, but model generates text response
+    stdout.emit(
+      'data',
+      JSON.stringify({
+        event: 'step_update',
+        step_update: {
+          conversation_id: 'c-tool-err',
+          step_index: 1,
+          state: 'ERROR',
+          step_type: 'tool',
+          tool_name: 'find_by_name',
+          tool_info: { error: { message: "invalid arguments:\n- missing property 'Pattern'" } },
+        },
+      }) + '\n'
+    );
+    stdout.emit(
+      'data',
+      JSON.stringify({
+        event: 'step_update',
+        step_update: {
+          conversation_id: 'c-tool-err',
+          step_index: 2,
+          state: 'DONE',
+          step_type: 'agent_response',
+          text_delta: 'I found the files.\n',
+        },
+      }) + '\n'
+    );
+    // agy result event includes the historical tool error in result.error and status: ERROR
+    stdout.emit(
+      'data',
+      JSON.stringify({
+        event: 'result',
+        result: {
+          conversation_id: 'c-tool-err',
+          status: 'ERROR',
+          response: 'I found the files.\n',
+          error: "invalid arguments:\n- missing property 'Pattern'",
+        },
+      }) + '\n'
+    );
+
+    await expect(turn).resolves.toBeUndefined();
+
+    // No error status should be emitted because the turn produced a response
+    const errorStatuses = messages.filter((m) => m.type === 'status' && m.status === 'error');
+    expect(errorStatuses).toHaveLength(0);
+    expect(messages.some((m) => m.type === 'model-output' && m.textDelta === 'I found the files.\n')).toBe(true);
+    expect(child.kill).not.toHaveBeenCalled();
+  });
+
+  it('handles subsequent turns where agy repeats historical tool error in result without failing turn', async () => {
+    const { child, stdout } = makeFakeChild();
+    const spawnFn = vi.fn(() => child) as unknown as SpawnFn;
+
+    const backend = new AgyBackend({
+      cwd: '/work',
+      permissionMode: 'default',
+      spawnFn,
+    });
+
+    const messages: AgentMessage[] = [];
+    backend.onMessage((m) => messages.push(m));
+
+    const startPromise = backend.startSession();
+    stdout.emit(
+      'data',
+      '{"event":"init","conversation_id":"c-tool-err-multi","init":{"cwd":"/work"}}\n'
+    );
+    await startPromise;
+
+    // Turn 1: tool error + model response
+    const turn1 = backend.sendPrompt('/work', 'prompt 1');
+    await new Promise((r) => setTimeout(r, 10));
+
+    stdout.emit(
+      'data',
+      JSON.stringify({
+        event: 'step_update',
+        step_update: {
+          conversation_id: 'c-tool-err-multi',
+          step_index: 1,
+          state: 'DONE',
+          step_type: 'agent_response',
+          text_delta: 'turn 1 response',
+        },
+      }) + '\n'
+    );
+    stdout.emit(
+      'data',
+      JSON.stringify({
+        event: 'result',
+        result: {
+          conversation_id: 'c-tool-err-multi',
+          status: 'ERROR',
+          response: 'turn 1 response',
+          error: "invalid arguments:\n- missing property 'Pattern'",
+        },
+      }) + '\n'
+    );
+    await expect(turn1).resolves.toBeUndefined();
+
+    // Turn 2: regular prompt, agy still outputs the old error in result event
+    messages.length = 0;
+    const turn2 = backend.sendPrompt('/work', 'prompt 2');
+    await new Promise((r) => setTimeout(r, 10));
+
+    stdout.emit(
+      'data',
+      JSON.stringify({
+        event: 'step_update',
+        step_update: {
+          conversation_id: 'c-tool-err-multi',
+          step_index: 2,
+          state: 'DONE',
+          step_type: 'agent_response',
+          text_delta: 'turn 2 response',
+        },
+      }) + '\n'
+    );
+    stdout.emit(
+      'data',
+      JSON.stringify({
+        event: 'result',
+        result: {
+          conversation_id: 'c-tool-err-multi',
+          status: 'ERROR',
+          response: 'turn 2 response',
+          error: "invalid arguments:\n- missing property 'Pattern'",
+        },
+      }) + '\n'
+    );
+    await expect(turn2).resolves.toBeUndefined();
+
+    const turn2Errors = messages.filter((m) => m.type === 'status' && m.status === 'error');
+    expect(turn2Errors).toHaveLength(0);
+    expect(messages.some((m) => m.type === 'model-output' && m.textDelta === 'turn 2 response')).toBe(true);
+    expect(child.kill).not.toHaveBeenCalled();
+  });
+
   it('emits an error status when the process exits mid-turn', async () => {
     const { child, stdout } = makeFakeChild();
     const spawnFn = vi.fn(() => child) as unknown as SpawnFn;
