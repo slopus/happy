@@ -37,6 +37,7 @@ import {
     collectMachineChoices,
     findMachineChoice,
     machineChoiceAgentAvailable,
+    machineChoiceAgentVisible,
     resolveChoiceAgent,
 } from '@/sync/machineChoices';
 import type { Session } from '@/sync/storageTypes';
@@ -854,14 +855,13 @@ export const HomeDock = React.memo(({
         return options;
     }, [agentType, existingWorktrees, picksWorkspaces, supportsWorktree, worktreeKey]);
     const currentWorktree = resolveOption(worktreeOptions, [selectedWorktreeKey]);
-    // Every harness stays listed so the picker reads as a choice. The ones this
-    // computer cannot run are disabled rather than hidden, which otherwise
-    // leaves a single checked row that looks like it does nothing. Retired
-    // harnesses remain available when a stale draft still names one, matching
-    // the catalog's existing-session compatibility behavior.
+    // Common harnesses stay listed but disabled when unavailable, so the picker
+    // still reads as a choice. Antigravity is niche and stays entirely absent
+    // until this computer explicitly reports it installed.
     const harnessKeys = React.useMemo<NewSessionAgentType[]>(() => (
-        HARNESS_ORDER.includes(agentType) ? [...HARNESS_ORDER] : [agentType, ...HARNESS_ORDER]
-    ), [agentType]);
+        (HARNESS_ORDER.includes(agentType) ? [...HARNESS_ORDER] : [agentType, ...HARNESS_ORDER])
+            .filter((key) => machineChoiceAgentVisible(selectedChoice, key))
+    ), [agentType, selectedChoice]);
     const availableAgents = React.useMemo<ModeOption[]>(() => (
         harnessKeys.map((key) => {
             const agent = { key, name: getHarnessName(key) };

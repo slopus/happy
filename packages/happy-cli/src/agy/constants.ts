@@ -16,7 +16,7 @@ import { execSync } from 'node:child_process';
 export const AGY_BIN = 'agy';
 
 /**
- * Resolve the agy executable to a spawnable command.
+ * Find the installed agy executable.
  *
  * agy installs to `~/.local/bin`, which is frequently absent from a daemon's
  * PATH (launchd, or `happy daemon start` from a non-login shell), so spawning
@@ -25,10 +25,8 @@ export const AGY_BIN = 'agy';
  *   2. `agy` already resolvable on PATH (then spawn the bare name).
  *   3. `~/.local/bin/agy` — the Antigravity CLI installer's default location.
  *
- * Falls back to the bare command name when nothing matches, so the caller still
- * spawns and surfaces a clear ENOENT instead of silently doing nothing.
  */
-export function resolveAgyBin(): string {
+export function findAgyBin(): string | undefined {
   const override = process.env.HAPPY_AGY_PATH;
   if (override && existsSync(override)) {
     return override;
@@ -50,7 +48,17 @@ export function resolveAgyBin(): string {
     return localBin;
   }
 
-  return AGY_BIN;
+  return undefined;
+}
+
+/**
+ * Resolve the agy executable to a spawnable command.
+ *
+ * Falls back to the bare command name when nothing matches, so the caller still
+ * spawns and surfaces a clear ENOENT instead of silently doing nothing.
+ */
+export function resolveAgyBin(): string {
+  return findAgyBin() ?? AGY_BIN;
 }
 
 /**

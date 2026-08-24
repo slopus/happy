@@ -3,6 +3,7 @@ import {
     collectMachineChoices,
     findMachineChoice,
     machineChoiceAgentAvailable,
+    machineChoiceAgentVisible,
     resolveAgentMachine,
     resolveChoiceAgent,
 } from './machineChoices';
@@ -131,7 +132,21 @@ describe('what a computer can actually run', () => {
     it('believes a CLI that reports nothing, rather than assuming it has everything', () => {
         const choice = collectMachineChoices([machine('bare', { host: 'old.local' })])[0];
         expect(machineChoiceAgentAvailable(choice, 'claude')).toBe(true);
+        expect(machineChoiceAgentAvailable(choice, 'agy')).toBe(false);
         expect(machineChoiceAgentAvailable(choice, 'rig')).toBe(false);
+    });
+
+    it('only shows Antigravity after the machine explicitly reports it installed', () => {
+        const absent = collectMachineChoices([cli()])[0];
+        const installed = collectMachineChoices([machine('agy-machine', {
+            host: 'laptop.local',
+            cliAvailability: { claude: true, agy: true },
+        })])[0];
+
+        expect(machineChoiceAgentVisible(absent, 'agy')).toBe(false);
+        expect(machineChoiceAgentVisible(installed, 'agy')).toBe(true);
+        expect(machineChoiceAgentVisible(absent, 'claude')).toBe(true);
+        expect(machineChoiceAgentVisible(absent, 'rig')).toBe(true);
     });
 
     it('keeps a stale draft from starting an agent this computer cannot run', () => {

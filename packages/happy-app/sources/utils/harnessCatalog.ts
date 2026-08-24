@@ -51,16 +51,34 @@ export function getHarnessName(key: NewSessionAgentType | string): string {
     return HARNESS_NAMES[key as NewSessionAgentType] ?? key;
 }
 
+/** Whether this machine has given the app enough evidence to offer a harness. */
+export function isHarnessAvailable({
+    availability,
+    happyAgentAvailable,
+    key,
+}: {
+    availability?: HarnessAvailability | null;
+    happyAgentAvailable: boolean;
+    key: NewSessionAgentType;
+}): boolean {
+    if (key === 'rig') return happyAgentAvailable;
+    // Antigravity is niche enough that an old or incomplete capability report
+    // must not advertise it speculatively. Its daemon has to say it is installed.
+    if (key === 'agy') return availability?.agy === true;
+    return !availability || availability[key] === true;
+}
+
 /**
  * The harnesses a machine actually has set up, in pick order.
  *
  * A harness with no CLI on the machine is left out rather than shown disabled:
  * a greyed-out row reads as something you can turn on from here, and you
  * cannot. Two things keep the list from ever being empty — the current
- * selection is always included, and a machine that reports no capabilities at
- * all (an older daemon, or none selected yet) falls back to the whole catalog.
- * A retired harness is exempt from the first of those: keeping it listed is
- * what would strand someone on it.
+ * selection is usually included, and a machine that reports no capabilities at
+ * all (an older daemon, or none selected yet) falls back to the familiar
+ * catalog. Antigravity is the exception to both fallbacks: it is only listed
+ * after an explicit installation report. A retired harness is also exempt from
+ * the first rule, because keeping it listed would strand someone on it.
  */
 export function listAvailableHarnesses({
     availability,
@@ -71,13 +89,12 @@ export function listAvailableHarnesses({
     happyAgentAvailable: boolean;
     selected?: NewSessionAgentType | null;
 }): HarnessOption[] {
-    const isAvailable = (key: NewSessionAgentType) => (
-        // Happy's own agent runs on a machine of its own, so its availability
-        // is resolved from the machine catalog rather than this machine's CLIs.
-        key === 'rig' ? happyAgentAvailable : !availability || availability[key] === true
-    );
-    const keys = HARNESS_ORDER.filter((key) => key === selected || isAvailable(key));
-    return (keys.length > 0 ? keys : HARNESS_ORDER).map((key) => ({
+    const keys = HARNESS_ORDER.filter((key) => (
+        (key === selected && key !== 'agy')
+        || isHarnessAvailable({ availability, happyAgentAvailable, key })
+    ));
+    const fallback = HARNESS_ORDER.filter((key) => key !== 'agy');
+    return (keys.length > 0 ? keys : fallback).map((key) => ({
         key,
         name: HARNESS_NAMES[key],
     }));

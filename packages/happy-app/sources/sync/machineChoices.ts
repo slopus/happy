@@ -3,6 +3,7 @@ import type { Machine } from './storageTypes';
 import { isRigMachine } from './rigSessionCreation';
 import { pairedMachineIds } from './agentSessionPlaces';
 import { isMachineOnline } from '@/utils/machineUtils';
+import { isHarnessAvailable } from '@/utils/harnessCatalog';
 import { NEW_SESSION_AGENT_ORDER, resolveMachineAgent } from '@/utils/newSessionAgentSelection';
 
 /**
@@ -141,11 +142,34 @@ export function machineChoiceAgentAvailable(
     agent: NewSessionAgentType,
 ): boolean {
     if (!choice) return false;
-    if (agent === 'rig') return choice.rigMachine !== null;
+    if (agent === 'rig') {
+        return isHarnessAvailable({
+            availability: choice.happyMachine?.metadata?.cliAvailability,
+            happyAgentAvailable: choice.rigMachine !== null,
+            key: agent,
+        });
+    }
     const happy = choice.happyMachine;
     if (!happy) return false;
-    const availability = happy.metadata?.cliAvailability;
-    return !availability || availability[agent] === true;
+    return isHarnessAvailable({
+        availability: happy.metadata?.cliAvailability,
+        happyAgentAvailable: choice.rigMachine !== null,
+        key: agent,
+    });
+}
+
+/**
+ * Whether the Home picker should contain this harness at all.
+ *
+ * Common harnesses stay visible but disabled when unavailable. Antigravity is
+ * only useful to the small set of people who installed it, so it stays absent
+ * until its machine positively reports it.
+ */
+export function machineChoiceAgentVisible(
+    choice: MachineChoice | null,
+    agent: NewSessionAgentType,
+): boolean {
+    return agent !== 'agy' || machineChoiceAgentAvailable(choice, agent);
 }
 
 /**
@@ -161,8 +185,8 @@ export function resolveChoiceAgent(
 ): NewSessionAgentType {
     if (!choice) return agent;
     if (machineChoiceAgentAvailable(choice, agent)) {
-        // Happy CLI machines that predate capability reporting say nothing, and are taken at their
-        // word rather than second-guessed.
+        // Older Happy CLI machines are trusted for common harnesses. Antigravity
+        // never reaches this branch without an explicit installation report.
         return agent === 'rig' || !choice.happyMachine?.metadata?.cliAvailability
             ? agent
             : resolveMachineAgent(agent, choice.happyMachine.metadata.cliAvailability);
