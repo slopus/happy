@@ -1,13 +1,8 @@
 import * as React from 'react';
-import { View, Text } from 'react-native';
-import { StyleSheet, useUnistyles } from 'react-native-unistyles';
-import { Octicons } from '@expo/vector-icons';
 import { ToolCall } from '@/sync/typesMessage';
-import { ToolSectionView } from '../ToolSectionView';
+import { InlineFileEditBlock } from '@/components/tools/InlineFileEditBlock';
 import { Metadata } from '@/sync/storageTypes';
 import { resolvePath } from '@/utils/pathUtils';
-import { ToolDiffView } from '@/components/tools/ToolDiffView';
-import { getDiffStats, getPatchDiffStats } from '@/components/diff/calculateDiff';
 import { materializeUnifiedDiffPatch } from '@/utils/codexUnifiedDiff';
 
 interface CodexPatchViewProps {
@@ -197,7 +192,6 @@ const CodexPatchFileView = React.memo(function CodexPatchFileView(props: {
     permissionFooter?: React.ReactNode;
 }) {
     const { file, change, metadata, permissionFooter } = props;
-    const { theme } = useUnistyles();
 
     const filePath = resolvePath(file, metadata);
     const diffInput = getPatchInput(change);
@@ -208,100 +202,17 @@ const CodexPatchFileView = React.memo(function CodexPatchFileView(props: {
     const displayPatch = diffInput?.kind === 'patch'
         ? materializeUnifiedDiffPatch(diffInput.patch, file, getPatchKindType(change))
         : null;
-    const stats = !diffInput
-        ? null
-        : diffInput.kind === 'patch'
-            ? getPatchDiffStats(displayPatch ?? diffInput.patch)
-            : getDiffStats(diffInput.oldText, diffInput.newText);
 
     return (
-        <ToolSectionView fullWidth>
-            <View style={styles.editedFileGroup}>
-                <View style={styles.fileHeader}>
-                    <View style={styles.fileHeaderMain}>
-                        <Octicons name="file-diff" size={16} color={theme.colors.textSecondary} />
-                        <Text style={styles.filePath} numberOfLines={1}>{filePath}</Text>
-                        {kindLabel ? <Text style={styles.kindLabel}>{kindLabel}</Text> : null}
-                        {stats && (stats.additions > 0 || stats.deletions > 0) ? (
-                            <View style={styles.stats}>
-                                {stats.additions > 0 ? <Text style={styles.added}>+{stats.additions}</Text> : null}
-                                {stats.deletions > 0 ? <Text style={styles.removed}>-{stats.deletions}</Text> : null}
-                            </View>
-                        ) : null}
-                    </View>
-                    {movePath ? <Text style={styles.movePath}>{movePath}</Text> : null}
-                </View>
-                {displayPatch ? (
-                    <ToolDiffView patch={displayPatch} fileName={fileName} />
-                ) : diffInput?.kind === 'pair' && (diffInput.oldText.length > 0 || diffInput.newText.length > 0) ? (
-                    <ToolDiffView
-                        oldText={diffInput.oldText}
-                        newText={diffInput.newText}
-                        fileName={fileName}
-                    />
-                ) : null}
-                {permissionFooter ? (
-                    <View style={styles.permissionFooterContainer}>
-                        {permissionFooter}
-                    </View>
-                ) : null}
-            </View>
-        </ToolSectionView>
+        <InlineFileEditBlock
+            filePath={filePath}
+            fileName={fileName}
+            kindLabel={kindLabel}
+            movePath={movePath}
+            patch={displayPatch ?? undefined}
+            oldText={diffInput?.kind === 'pair' ? diffInput.oldText : undefined}
+            newText={diffInput?.kind === 'pair' ? diffInput.newText : undefined}
+            permissionFooter={permissionFooter}
+        />
     );
 });
-
-const styles = StyleSheet.create((theme) => ({
-    editedFileGroup: {
-        backgroundColor: theme.colors.surface,
-        borderRadius: 8,
-        overflow: 'hidden',
-    },
-    permissionFooterContainer: {
-        paddingHorizontal: 12,
-        paddingTop: 8,
-    },
-    fileHeader: {
-        paddingHorizontal: 16,
-        paddingVertical: 10,
-        backgroundColor: theme.colors.surfaceHigh,
-        borderBottomWidth: 1,
-        borderBottomColor: theme.colors.divider,
-        gap: 4,
-    },
-    fileHeaderMain: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 8,
-    },
-    filePath: {
-        fontSize: 13,
-        color: theme.colors.text,
-        fontFamily: 'monospace',
-        flex: 1,
-    },
-    kindLabel: {
-        fontSize: 11,
-        color: theme.colors.textSecondary,
-        textTransform: 'uppercase',
-        letterSpacing: 0.6,
-    },
-    movePath: {
-        fontSize: 12,
-        color: theme.colors.textSecondary,
-        fontFamily: 'monospace',
-    },
-    stats: {
-        flexDirection: 'row',
-        gap: 8,
-    },
-    added: {
-        fontSize: 12,
-        fontFamily: 'monospace',
-        color: '#34C759',
-    },
-    removed: {
-        fontSize: 12,
-        fontFamily: 'monospace',
-        color: '#FF3B30',
-    },
-}));

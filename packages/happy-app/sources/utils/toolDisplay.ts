@@ -89,6 +89,11 @@ const INTERACTIVE_QUESTION_TOOL_NAMES = new Set([
     'request_user_input',
 ]);
 
+const INLINE_FILE_EDIT_TOOL_NAMES = new Set([
+    'Edit',
+    'CodexPatch',
+]);
+
 // These tools own purpose-built inline diff views. Compacting them would hide
 // the primary content of the tool call instead of merely shortening its chrome.
 const RICH_INLINE_EDIT_TOOL_NAMES = new Set([
@@ -113,8 +118,12 @@ export function isTerminalToolName(name: string): boolean {
     return TERMINAL_TOOL_NAMES.has(name);
 }
 
-export function shouldRenderToolCardHeader(toolName: string, platformOS: string): boolean {
-    return toolName !== 'CodexPatch';
+export function isInlineFileEditToolName(name: string): boolean {
+    return INLINE_FILE_EDIT_TOOL_NAMES.has(name);
+}
+
+export function shouldRenderToolCardHeader(toolName: string, _platformOS: string): boolean {
+    return !isInlineFileEditToolName(toolName);
 }
 
 /**

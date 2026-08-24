@@ -18,6 +18,7 @@ import {
     formatMCPTitle,
     getToolActivityLabel,
     getTerminalToolCommand,
+    isInlineFileEditToolName,
     isInteractiveQuestionToolName,
     isTerminalToolName,
     shouldRenderToolCardHeader,
@@ -181,7 +182,7 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
         || minimal
         || isCompactTerminalTool;
     const activityLabel = getToolActivityLabel(tool);
-    const isInlineCodexPatch = tool.name === 'CodexPatch';
+    const isInlineFileEdit = isInlineFileEditToolName(tool.name);
     const isInlineQuestionTool = isInteractiveQuestionToolName(tool.name);
     if (isInlineQuestionTool) {
         hideDefaultError = true;
@@ -238,7 +239,7 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
     };
 
     return (
-        <View style={isCompactActivityTool ? styles.compactContainer : (isInlineCodexPatch || isInlineQuestionTool) ? styles.inlineContainer : styles.container}>
+        <View style={isCompactActivityTool ? styles.compactContainer : (isInlineFileEdit || isInlineQuestionTool) ? styles.inlineContainer : styles.container}>
             {renderCardHeader ? (
                 isPressable ? (
                     <TouchableOpacity style={isCompactActivityTool ? styles.compactHeader : styles.header} onPress={handlePress} activeOpacity={0.8}>
@@ -268,7 +269,7 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
                                 metadata={props.metadata}
                                 messages={props.messages ?? []}
                                 sessionId={sessionId}
-                                permissionFooter={isInlineCodexPatch ? renderPermissionFooter() : undefined}
+                                permissionFooter={isInlineFileEdit ? renderPermissionFooter() : undefined}
                             />
                             {tool.state === 'error' && tool.result &&
                                 !(tool.permission && (tool.permission.status === 'denied' || tool.permission.status === 'canceled')) &&
@@ -311,7 +312,7 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
                 );
             })()}
 
-            {!isInlineCodexPatch ? renderPermissionFooter() : null}
+            {!isInlineFileEdit ? renderPermissionFooter() : null}
         </View>
     );
 });

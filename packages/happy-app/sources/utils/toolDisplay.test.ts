@@ -56,10 +56,13 @@ describe('terminal tool display helpers', () => {
         ))).toBe('rm tmp.txt');
     });
 
-    it('uses the minimal inline Codex patch presentation on every platform', () => {
+    it('uses the same minimal inline presentation for Claude and Codex edits', () => {
         expect(shouldRenderToolCardHeader('CodexPatch', 'web')).toBe(false);
         expect(shouldRenderToolCardHeader('CodexPatch', 'ios')).toBe(false);
         expect(shouldRenderToolCardHeader('CodexPatch', 'android')).toBe(false);
+        expect(shouldRenderToolCardHeader('Edit', 'web')).toBe(false);
+        expect(shouldRenderToolCardHeader('Edit', 'ios')).toBe(false);
+        expect(shouldRenderToolCardHeader('Edit', 'android')).toBe(false);
         expect(shouldRenderToolCardHeader('CodexBash', 'web')).toBe(true);
     });
 

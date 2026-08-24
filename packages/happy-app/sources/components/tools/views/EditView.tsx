@@ -1,38 +1,33 @@
 import * as React from 'react';
-import { ToolSectionView } from '../../tools/ToolSectionView';
 import { ToolViewProps } from './_all';
-import { ToolDiffView } from '@/components/tools/ToolDiffView';
+import { InlineFileEditBlock } from '@/components/tools/InlineFileEditBlock';
 import { knownTools } from '../../tools/knownTools';
-import { trimIdent } from '@/utils/trimIdent';
-import { useSetting } from '@/sync/storage';
+import { resolvePath } from '@/utils/pathUtils';
 
 
-export const EditView = React.memo<ToolViewProps>(({ tool }) => {
-    const showLineNumbersInToolViews = useSetting('showLineNumbersInToolViews');
-    
+export const EditView = React.memo<ToolViewProps>(({ tool, metadata, permissionFooter }) => {
     let oldString = '';
     let newString = '';
+    let filePath = 'file.txt';
     let fileName = 'file.txt';
     const parsed = knownTools.Edit.input.safeParse(tool.input);
     if (parsed.success) {
-        oldString = trimIdent(parsed.data.old_string || '');
-        newString = trimIdent(parsed.data.new_string || '');
+        oldString = parsed.data.old_string || '';
+        newString = parsed.data.new_string || '';
         if (parsed.data.file_path) {
+            filePath = resolvePath(parsed.data.file_path, metadata);
             fileName = parsed.data.file_path.split(/[\\/]/).pop() || parsed.data.file_path;
         }
     }
 
     return (
-        <>
-            <ToolSectionView fullWidth>
-                <ToolDiffView 
-                    oldText={oldString} 
-                    newText={newString} 
-                    fileName={fileName}
-                    showLineNumbers={showLineNumbersInToolViews}
-                    showPlusMinusSymbols={showLineNumbersInToolViews}
-                />
-            </ToolSectionView>
-        </>
+        <InlineFileEditBlock
+            filePath={filePath}
+            fileName={fileName}
+            kindLabel="edit"
+            oldText={oldString}
+            newText={newString}
+            permissionFooter={permissionFooter}
+        />
     );
 });
