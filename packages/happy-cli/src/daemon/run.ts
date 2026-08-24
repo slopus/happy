@@ -35,6 +35,7 @@ import {
 } from './sessionEnvironment';
 import { startHappyTerminalDaemon } from './happyTerminalBoot';
 import { appendDaemonSpawnModeArgs, shouldForwardDaemonPermissionMode } from './spawnModeArgs';
+import { classifyResumeConflict, isPidAlive, machineBootTimeMs, resolveLiveOwnerPid, type SessionPresence } from './sessionLiveness';
 
 /** Shell-escape a string for safe interpolation into tmux commands. */
 function shellescape(s: string): string {
@@ -173,6 +174,10 @@ export async function startDaemon(): Promise<void> {
 
     // Setup state - key by PID
     const pidToTrackedSession = new Map<number, TrackedSession>();
+
+    // Fixed for the daemon's lifetime: used to reject PIDs recorded before the
+    // machine's current boot, which name whatever reused the number since.
+    const bootTimeMs = machineBootTimeMs(os.uptime(), Date.now());
 
     // Retain session data after process exits so resume can still find it.
     // Pre-populate from disk so sessions survive daemon restarts.
@@ -668,24 +673,131 @@ export async function startDaemon(): Promise<void> {
       return sessionIdToFinishedSession.get(happySessionId);
     };
 
-    const fetchServerSessionMetadata = async (sessionId: string, encryptionKey: Uint8Array, encryptionVariant: 'legacy' | 'dataKey'): Promise<Metadata | null> => {
+    type ServerSessionRow = { id: string; metadata: string; active?: boolean };
+
+    /**
+     * The server's row for one session, or a reason we could not get it. The two
+     * failures are kept apart because they are not interchangeable to a caller
+     * deciding whether to kill a process.
+     */
+    const fetchServerSession = async (sessionId: string): Promise<{ ok: true; row: ServerSessionRow } | { ok: false; reason: 'unreachable' | 'unknown-session' }> => {
       try {
         const response = await axios.get(`${configuration.serverUrl}/v1/sessions`, {
           headers: { Authorization: `Bearer ${credentials.token}` },
           timeout: 10_000,
         });
-        const sessions = (response.data as { sessions: { id: string; metadata: string }[] }).sessions;
+        const sessions = (response.data as { sessions: ServerSessionRow[] }).sessions;
         const matched = sessions.find(s => s.id === sessionId);
-        if (!matched) return null;
-        const decrypted = decrypt(encryptionKey, encryptionVariant, decodeBase64(matched.metadata));
+        if (!matched) return { ok: false, reason: 'unknown-session' };
+        return { ok: true, row: matched };
+      } catch (error) {
+        logger.debug(`[DAEMON RUN] Failed to fetch session from server: ${error instanceof Error ? error.message : error}`);
+        return { ok: false, reason: 'unreachable' };
+      }
+    };
+
+    const fetchServerSessionMetadata = async (sessionId: string, encryptionKey: Uint8Array, encryptionVariant: 'legacy' | 'dataKey'): Promise<Metadata | null> => {
+      const fetched = await fetchServerSession(sessionId);
+      if (!fetched.ok) return null;
+      try {
+        const decrypted = decrypt(encryptionKey, encryptionVariant, decodeBase64(fetched.row.metadata));
         return decrypted as Metadata | null;
       } catch (error) {
-        logger.debug(`[DAEMON RUN] Failed to fetch session metadata from server: ${error instanceof Error ? error.message : error}`);
+        logger.debug(`[DAEMON RUN] Failed to decrypt session metadata from server: ${error instanceof Error ? error.message : error}`);
         return null;
       }
     };
 
-    const resumeSession = async (happySessionId: string, options?: { model?: string; permissionMode?: string }): Promise<SpawnSessionResult> => {
+    const fetchSessionPresence = async (sessionId: string): Promise<SessionPresence> => {
+      const fetched = await fetchServerSession(sessionId);
+      if (!fetched.ok) return { ok: false, reason: fetched.reason };
+      return { ok: true, active: Boolean(fetched.row.active) };
+    };
+
+    /** Every PID currently tracked for a session — see `ResolveLiveOwnerInput.trackedPids`. */
+    const findTrackedPidsBySessionId = (happySessionId: string): number[] => {
+      const pids: number[] = [];
+      for (const [pid, session] of pidToTrackedSession.entries()) {
+        if (session.happySessionId === happySessionId) pids.push(pid);
+      }
+      return pids;
+    };
+
+    /**
+     * Stop the process that owns a session, and confirm it is gone.
+     *
+     * Confirming is the whole job. The only caller wants to spawn a replacement,
+     * and spawning while the old process is still up is exactly the two-owner
+     * state this path exists to prevent — so "the signal was sent" is not an
+     * answer, and a process that will not die has to be reported rather than
+     * quietly stepped over.
+     */
+    const terminateSessionOwner = async (happySessionId: string, pid: number): Promise<boolean> => {
+      // Signal the whole process group, not just the Happy CLI parent: the
+      // harness runs its backend as a grandchild (see stopSession below), which a
+      // bare SIGTERM to the parent never reaches. Daemon-spawned sessions are
+      // `detached`, so the parent leads a group of exactly its own descendants.
+      // A session started from a terminal is not a group leader, and then no
+      // group carries this ID at all — a group's ID is its leader's PID, and that
+      // PID belongs to the process we are aiming at — so the negative signal can
+      // only ESRCH, never reach a bystander. The direct signal below covers it.
+      const signal = (sig: NodeJS.Signals) => {
+        if (process.platform !== 'win32') {
+          try {
+            process.kill(-pid, sig);
+            return;
+          } catch { /* not a group leader, or already gone */ }
+        }
+        try {
+          process.kill(pid, sig);
+        } catch { /* already gone */ }
+      };
+
+      const waitForExit = async (timeoutMs: number): Promise<boolean> => {
+        const deadline = Date.now() + timeoutMs;
+        while (Date.now() < deadline) {
+          if (!isPidAlive(pid)) return true;
+          await new Promise<void>((resolve) => setTimeout(resolve, 100));
+        }
+        return !isPidAlive(pid);
+      };
+
+      logger.debug(`[DAEMON RUN] Stopping unresponsive owner PID ${pid} of session ${happySessionId}`);
+      signal('SIGTERM');
+      if (await waitForExit(5_000)) return true;
+
+      logger.debug(`[DAEMON RUN] PID ${pid} ignored SIGTERM, escalating to SIGKILL`);
+      signal('SIGKILL');
+      return waitForExit(2_000);
+    };
+
+    /**
+     * Resume requests for one session, collapsed onto a single attempt while it
+     * runs.
+     *
+     * The owner check below reads state that the spawn it guards is about to
+     * change, and a spawned process takes a second or two to report itself. Two
+     * requests arriving inside that window — a double tap, or two clients acting
+     * on the same stale view — would both look at a session with no owner and
+     * both spawn one. Sharing the in-flight attempt closes that window without a
+     * lock, and makes a repeated request idempotent rather than additive.
+     */
+    const resumesInFlight = new Map<string, Promise<SpawnSessionResult>>();
+
+    const resumeSession = (happySessionId: string, options?: { model?: string; permissionMode?: string }): Promise<SpawnSessionResult> => {
+      const inFlight = resumesInFlight.get(happySessionId);
+      if (inFlight) {
+        logger.debug(`[DAEMON RUN] Resume of session ${happySessionId} is already in progress — joining it instead of starting a second one`);
+        return inFlight;
+      }
+      const attempt = resumeSessionAttempt(happySessionId, options).finally(() => {
+        resumesInFlight.delete(happySessionId);
+      });
+      resumesInFlight.set(happySessionId, attempt);
+      return attempt;
+    };
+
+    const resumeSessionAttempt = async (happySessionId: string, options?: { model?: string; permissionMode?: string }): Promise<SpawnSessionResult> => {
       try {
         const tracked = findTrackedSessionById(happySessionId);
         if (!tracked) {
@@ -696,6 +808,43 @@ export async function startDaemon(): Promise<void> {
         }
         if (!tracked.encryption) {
           return { type: 'error', errorMessage: `Session ${happySessionId} has no stored encryption data. It was likely started before this feature was available. Restart the daemon and start a new session to enable resume.` };
+        }
+
+        // A session has exactly one runtime. Its message stream, metadata version
+        // and agent-state version are counters that one process advances, so a
+        // second process spawned for the same session gives the server two
+        // writers on all three: the user's next message is delivered to both, and
+        // both act on it. Nothing downstream de-duplicates that.
+        //
+        // Resume has no guard against it today, and the request can legitimately
+        // arrive while a process is still running — the caller decides from its
+        // own view of the session, and a second device (or a client that has not
+        // yet seen the reconnect) shows it as stopped for as long as its state is
+        // behind. So check for an owner here rather than trusting the caller.
+        //
+        // See sessionLiveness.ts for why `active === false` on a live process
+        // means wedged rather than merely disconnected, and why an unanswerable
+        // server is treated as "still running".
+        const liveOwnerPid = resolveLiveOwnerPid({
+          trackedPids: findTrackedPidsBySessionId(happySessionId),
+          // Read from disk rather than the startup snapshot: a session that
+          // registered after this daemon booted is only on disk.
+          persisted: readPersistedSessions()[happySessionId],
+          bootTimeMs,
+        });
+        if (liveOwnerPid !== undefined) {
+          const presence = await fetchSessionPresence(happySessionId);
+          const conflict = classifyResumeConflict(liveOwnerPid, presence);
+          if (conflict === 'already-running') {
+            logger.debug(`[DAEMON RUN] Session ${happySessionId} is still owned by live PID ${liveOwnerPid} (server presence: ${presence.ok ? `active=${presence.active}` : presence.reason}) — returning the running session instead of spawning a second process`);
+            return { type: 'success', sessionId: happySessionId };
+          }
+          logger.debug(`[DAEMON RUN] Session ${happySessionId} is owned by PID ${liveOwnerPid} but the server reports no runtime attached — replacing it`);
+          if (!await terminateSessionOwner(happySessionId, liveOwnerPid)) {
+            // Refusing is the safe direction: the old process is still alive, so
+            // spawning now would produce the duplicate this check exists to stop.
+            return { type: 'error', errorMessage: `Session ${happySessionId} is held by process ${liveOwnerPid}, which did not exit. Stop it manually and try again.` };
+          }
         }
 
         // Webhook metadata may be stale (missing claudeSessionId/codexThreadId set after startup).
@@ -908,11 +1057,7 @@ export async function startDaemon(): Promise<void> {
 
       // Prune stale sessions
       for (const [pid, _] of pidToTrackedSession.entries()) {
-        try {
-          // Check if process is still alive (signal 0 doesn't kill, just checks)
-          process.kill(pid, 0);
-        } catch (error) {
-          // Process is dead, remove from tracking
+        if (!isPidAlive(pid)) {
           logger.debug(`[DAEMON RUN] Removing stale session with PID ${pid} (process no longer exists)`);
           pidToTrackedSession.delete(pid);
         }
