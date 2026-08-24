@@ -253,6 +253,7 @@ const CodexPatchFileView = React.memo(function CodexPatchFileView(props: {
 const styles = StyleSheet.create((theme) => ({
     editedFileGroup: {
         backgroundColor: theme.colors.surface,
+        borderRadius: 8,
         overflow: 'hidden',
     },
     permissionFooterContainer: {
