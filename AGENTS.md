@@ -1,5 +1,7 @@
 # Agent Workflow
 
+This repo is the Happy mobile app; Happy Agent is its backend and Happy Desktop its desktop sibling.
+
 ## Sync To Main
 
 When the user says `sync to main` or `synt to main`, they mean:
