@@ -101,8 +101,19 @@ export function NativeOptionsPicker({
                                 accessibilityLabel(`${title}: ${triggerLabel}`),
                             ]}
                         >
+                            {/* SF Symbols are not a fixed-width set: `folder` is
+                                far wider than `arrow.triangle.branch`, so laying
+                                them out at their intrinsic size starts each
+                                row's label at a different x and the column of
+                                icons reads as ragged. A fixed square per symbol,
+                                centred, makes the icons share one axis and the
+                                labels share one left edge. */}
                             {triggerSystemImage ? (
-                                <Image systemName={systemImage(triggerSystemImage)} size={18} />
+                                <Image
+                                    systemName={systemImage(triggerSystemImage)}
+                                    size={18}
+                                    modifiers={[frame({ width: 24, height: 24, alignment: 'center' })]}
+                                />
                             ) : null}
                             <Text>{triggerLabel}</Text>
                             <Spacer minLength={8} />
