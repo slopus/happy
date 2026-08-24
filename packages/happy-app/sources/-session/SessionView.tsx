@@ -777,6 +777,16 @@ const SessionViewContent = React.memo((props: { id: string }) => {
             }, current.tags.some((currentTag) => currentTag.id === tag.id) ? [] : [tag]);
         });
     }, [sessionId, updateSidebarOrganization]);
+    const removeSessionTag = React.useCallback((tagId: string) => {
+        updateSidebarOrganization((current) => {
+            const currentAssignment = current.sessions[sessionId] ?? { listId: null, tagIds: [] };
+            if (!currentAssignment.tagIds.includes(tagId)) return current;
+            return organizeSessionWithCreatedTags(current, sessionId, {
+                ...currentAssignment,
+                tagIds: currentAssignment.tagIds.filter((currentTagId) => currentTagId !== tagId),
+            }, []);
+        });
+    }, [sessionId, updateSidebarOrganization]);
     const constrainedDrawerHeader = compactSessionHeader && compactRightDrawerAvailable && rightDrawerOpen;
     // 会话内「进入空间/退出空间」：进入 = 设 agentSpaceId + 拉出工作台抽屉；退出 = 清空间并回首页。
     const { enter: enterSpace, exit: exitSpace } = useAgentSpace();
@@ -1005,6 +1015,7 @@ const SessionViewContent = React.memo((props: { id: string }) => {
                         key={sessionId}
                         composerHandleRef={sessionComposerHandleRef}
                         onManageTags={() => setOrganizerOpen(true)}
+                        onRemoveTag={removeSessionTag}
                         sessionId={sessionId}
                         session={session}
                         tags={sessionTags}
@@ -1311,12 +1322,14 @@ function SessionViewLoaded({
     session,
     composerHandleRef,
     onManageTags,
+    onRemoveTag,
     tags,
 }: {
     sessionId: string;
     session: Session;
     composerHandleRef: React.RefObject<ChatComposerHandle | null>;
     onManageTags: () => void;
+    onRemoveTag: (tagId: string) => void;
     tags: readonly SidebarTag[];
 }) {
     const { theme } = useUnistyles();
@@ -1645,9 +1658,12 @@ function SessionViewLoaded({
                     {tags.length > 0 ? (
                         <>
                         {tags.map((tag) => (
-                            <Pressable accessibilityLabel={`${t('sidebarLists.organizeSession')}: #${tag.name}`} accessibilityRole="button" key={tag.id} onPress={onManageTags} style={({ pressed }) => [sessionCanvasTagStyles.tag, pressed && sessionCanvasTagStyles.tagPressed]} testID={`session-canvas-tag-${tag.id}`}>
-                                <Text numberOfLines={1} style={sessionCanvasTagStyles.tagText}>#{tag.name}</Text>
-                            </Pressable>
+                            <SessionCanvasTag
+                                key={tag.id}
+                                onManageTags={onManageTags}
+                                onRemove={() => onRemoveTag(tag.id)}
+                                tag={tag}
+                            />
                         ))}
                         </>
                     ) : null}
@@ -1753,6 +1769,60 @@ function SessionViewLoaded({
             />
         </>
     )
+}
+
+function SessionCanvasTag({
+    onManageTags,
+    onRemove,
+    tag,
+}: {
+    onManageTags: () => void;
+    onRemove: () => void;
+    tag: SidebarTag;
+}) {
+    const { theme } = useUnistyles();
+    const removable = Platform.OS === 'web';
+    const [hovered, setHovered] = React.useState(false);
+    const [removeFocused, setRemoveFocused] = React.useState(false);
+    const showRemove = removable && (hovered || removeFocused);
+
+    return (
+        <View style={sessionCanvasTagStyles.tag}>
+            <Pressable
+                accessibilityLabel={`${t('sidebarLists.organizeSession')}: #${tag.name}`}
+                accessibilityRole="button"
+                onHoverIn={removable ? () => setHovered(true) : undefined}
+                onHoverOut={removable ? () => setHovered(false) : undefined}
+                onPress={onManageTags}
+                style={({ pressed }) => [
+                    sessionCanvasTagStyles.tagLabel,
+                    pressed && sessionCanvasTagStyles.tagPressed,
+                ]}
+                testID={`session-canvas-tag-${tag.id}`}
+            >
+                <Text numberOfLines={1} style={sessionCanvasTagStyles.tagText}>#{tag.name}</Text>
+            </Pressable>
+            {removable ? (
+                <Pressable
+                    accessibilityLabel={`${t('common.delete')} #${tag.name}`}
+                    accessibilityRole="button"
+                    onBlur={() => setRemoveFocused(false)}
+                    onFocus={() => setRemoveFocused(true)}
+                    onHoverIn={() => setHovered(true)}
+                    onHoverOut={() => setHovered(false)}
+                    onPress={onRemove}
+                    style={({ pressed }) => [
+                        sessionCanvasTagStyles.remove,
+                        showRemove ? sessionCanvasTagStyles.removeVisible : sessionCanvasTagStyles.removeHidden,
+                        pressed && sessionCanvasTagStyles.removePressed,
+                    ]}
+                    testID={`session-canvas-remove-tag-${tag.id}`}
+                >
+                    <Ionicons color={theme.colors.textSecondary} name="close" size={13} />
+                </Pressable>
+            ) : null}
+        </View>
+    );
 }
 
 function InactiveArchivedHint(props: {
@@ -2047,15 +2117,39 @@ const sessionCanvasTagStyles = StyleSheet.create((theme) => ({
         paddingTop: 4,
     },
     tag: {
+        alignItems: 'center',
         backgroundColor: theme.colors.surfaceSelected,
         borderRadius: 14,
+        flexDirection: 'row',
+        minHeight: 28,
+        maxWidth: 204,
+        overflow: 'hidden',
+    },
+    tagLabel: {
+        flexShrink: 1,
         justifyContent: 'center',
         minHeight: 28,
-        maxWidth: 180,
+        minWidth: 0,
         paddingHorizontal: 11,
     },
     tagPressed: { opacity: 0.72 },
     tagText: { color: theme.colors.text, fontSize: 12, fontWeight: '600' },
+    remove: {
+        alignItems: 'center',
+        alignSelf: 'stretch',
+        justifyContent: 'center',
+        overflow: 'hidden',
+    },
+    removeHidden: {
+        opacity: 0,
+        width: 0,
+    },
+    removeVisible: {
+        opacity: 1,
+        paddingRight: 7,
+        width: 22,
+    },
+    removePressed: { backgroundColor: theme.colors.surfacePressed },
     add: {
         alignItems: 'center',
         borderColor: theme.colors.textLink,

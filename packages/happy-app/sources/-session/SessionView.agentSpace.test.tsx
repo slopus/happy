@@ -1186,6 +1186,61 @@ describe('SessionView Agent-space boundary', () => {
         act(() => renderer.unmount());
     });
 
+    it('reveals a desktop canvas Tag remove button on hover and only unassigns it from the session', () => {
+        mocks.isDataReady = true;
+        mocks.windowWidth = 1400;
+        mocks.isTablet = true;
+        mocks.platformOS = 'web';
+        let renderer: any;
+
+        act(() => {
+            renderer = TestRenderer.create(<SessionView id="session-1" />);
+        });
+
+        const tag = renderer.root.findByProps({ testID: 'session-canvas-tag-product' });
+        const remove = renderer.root.findByProps({ testID: 'session-canvas-remove-tag-product' });
+        expect(remove.props.accessibilityLabel).toBe('common.delete #product');
+        expect(remove.props.style({ pressed: false })).toContainEqual(expect.objectContaining({ opacity: 0, width: 0 }));
+
+        act(() => tag.props.onHoverIn());
+        const hoveredRemove = renderer.root.findByProps({ testID: 'session-canvas-remove-tag-product' });
+        expect(hoveredRemove.props.style({ pressed: false })).toContainEqual(expect.objectContaining({ opacity: 1, width: 22 }));
+
+        act(() => {
+            tag.props.onHoverOut();
+            hoveredRemove.props.onFocus();
+        });
+        const focusedRemove = renderer.root.findByProps({ testID: 'session-canvas-remove-tag-product' });
+        expect(focusedRemove.props.style({ pressed: false })).toContainEqual(expect.objectContaining({ opacity: 1, width: 22 }));
+
+        act(() => focusedRemove.props.onPress());
+        expect(renderer.root.findByType('SessionOrganizerDialog').props.visible).toBe(false);
+        expect(mocks.updateSidebarOrganization).toHaveBeenCalledTimes(1);
+        const updater = mocks.updateSidebarOrganization.mock.calls[0]?.[0];
+        const current = {
+            lists: [{
+                id: 'list-1',
+                name: 'Happy',
+                kind: 'agent',
+                color: 'green',
+                createdAt: 1,
+            }],
+            tags: [
+                { id: 'product', name: 'product', color: 'green', createdAt: 1 },
+                { id: 'research', name: 'research', color: 'blue', createdAt: 2 },
+            ],
+            sessions: { 'session-1': { listId: 'list-1', tagIds: ['product', 'research'] } },
+        } as any;
+        const updated = updater(current);
+        expect(updated.tags).toEqual(current.tags);
+        expect(updated.sessions['session-1']).toEqual({ listId: 'list-1', tagIds: ['research'] });
+
+        act(() => tag.props.onPress());
+        expect(renderer.root.findByType('SessionOrganizerDialog').props.visible).toBe(true);
+
+        act(() => renderer.unmount());
+    });
+
     it('keeps unselected title Tag options disabled when the session reaches its limit', () => {
         mocks.isDataReady = true;
         mocks.windowWidth = 1400;

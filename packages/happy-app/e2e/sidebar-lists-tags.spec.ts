@@ -441,6 +441,29 @@ test('[SESSION-TAG-COMBOBOX] title hash creates, searches, and syncs tags outsid
         await expect(headerTags).toHaveText('#');
         await expect(page.getByTestId('session-canvas-tags')).toContainText('#product');
         await expect(page.getByTestId('session-canvas-tags')).toContainText('#research');
+
+        const productCanvasTag = page.getByRole('button', { name: 'Organize session: #product', exact: true });
+        const removeProduct = page.getByRole('button', { name: 'Delete #product', exact: true });
+        await expect(removeProduct).toHaveCSS('opacity', '0');
+        await page.screenshot({ path: tagComboboxEvidencePath(testInfo, '06-rest-tag.png'), fullPage: true });
+        await productCanvasTag.hover();
+        await expect(removeProduct).toHaveCSS('opacity', '1');
+        await page.screenshot({ path: tagComboboxEvidencePath(testInfo, '07-hover-remove-tag.png'), fullPage: true });
+        await captureEvidenceFrame(page, testInfo, 'tag-combobox-06-hover-remove-tag');
+        await removeProduct.click();
+        await expect(page.getByTestId('session-canvas-tags')).not.toContainText('#product');
+        await expect(page.getByTestId('session-canvas-tags')).toContainText('#research');
+        await page.screenshot({ path: tagComboboxEvidencePath(testInfo, '08-tag-removed.png'), fullPage: true });
+
+        await headerTags.click();
+        const reassignInput = page.getByTestId('session-header-title-input');
+        await reassignInput.fill('Tag from the title #pro');
+        const existingProduct = page.getByRole('option').filter({ hasText: '#product' });
+        await expect(existingProduct).toBeVisible();
+        await existingProduct.click();
+        await reassignInput.press('Enter');
+        await expect(page.getByTestId('session-canvas-tags')).toContainText('#product');
+
         await page.reload({ timeout: 180_000 });
         await expect(page.locator('[data-testid="session-header-title"]:visible')).toHaveText('Tag from the title', { timeout: 120_000 });
         await expect(page.locator('[data-testid="session-header-tags-button"]:visible')).toHaveText('#');
