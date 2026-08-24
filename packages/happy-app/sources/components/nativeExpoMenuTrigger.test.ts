@@ -149,10 +149,11 @@ describe('iOS Expo-native menu triggers', () => {
         expect(icons[0].props.systemName).toBe('desktopcomputer');
     });
 
-    // The menu tint, not foregroundColor, is what paints a SwiftUI label. Once
-    // the label became the visible chip a fixed white turned every trigger
-    // invisible in light mode, so the tint has to track the theme.
-    it('paints both native triggers with the theme text color, not a fixed white', () => {
+    // The menu tint, not foregroundColor, is what paints a SwiftUI label.
+    // NativeOptionsPicker sits over the dark focus overlay (focusBackdrop) and
+    // uses a white tint to stay legible in both light and dark modes, while
+    // NativeSettingsMenu sits over the composer chip and tracks theme text color.
+    it('paints native picker trigger with white and settings trigger with theme text color', () => {
         const picker = render(React.createElement(NativeOptionsPicker, {
             title: 'Machine',
             triggerLabel: 'Mac',
@@ -162,7 +163,7 @@ describe('iOS Expo-native menu triggers', () => {
             children: React.createElement('Trigger'),
         }));
         expect(picker.root.findByType('ExpoMenu' as any).props.modifiers)
-            .toContainEqual({ type: 'tint', value: THEME_TEXT_COLOR });
+            .toContainEqual({ type: 'tint', value: '#FFFFFF' });
 
         const settings = render(React.createElement(NativeSettingsMenu, {
             accessibilityLabel: 'Model',

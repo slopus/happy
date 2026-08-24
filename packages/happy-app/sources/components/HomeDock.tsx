@@ -298,7 +298,7 @@ const styles = StyleSheet.create((theme) => ({
     focusConfigValue: {
         flex: 1,
         minWidth: 0,
-        color: theme.colors.text,
+        color: '#FFFFFF',
         fontSize: 17,
         ...Typography.default(),
     },
@@ -979,7 +979,7 @@ export const HomeDock = React.memo(({
                     <Ionicons
                         name={row.icon}
                         size={compact ? 21 : 18}
-                        color={theme.colors.text}
+                        color={compact ? '#FFFFFF' : theme.colors.text}
                     />
                 </View>
                 {compact ? (
