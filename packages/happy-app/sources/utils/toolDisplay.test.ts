@@ -31,6 +31,8 @@ describe('terminal tool display helpers', () => {
         expect(isTerminalToolName('Bash')).toBe(true);
         expect(isTerminalToolName('CodexBash')).toBe(true);
         expect(isTerminalToolName('GeminiBash')).toBe(true);
+        expect(isTerminalToolName('exec_command')).toBe(true);
+        expect(isTerminalToolName('run_terminal_command')).toBe(true);
         expect(isTerminalToolName('execute')).toBe(true);
         expect(isTerminalToolName('Read')).toBe(false);
     });

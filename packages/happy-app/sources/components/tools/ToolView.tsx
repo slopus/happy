@@ -18,6 +18,7 @@ import {
     formatMCPTitle,
     getToolActivityLabel,
     getTerminalToolCommand,
+    isTerminalToolName,
     shouldRenderToolCardHeader,
     shouldUseCompactToolRow,
 } from '@/utils/toolDisplay';
@@ -67,7 +68,9 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
     let description: string | null = null;
     let status: string | null = null;
     let minimal = false;
-    let icon = <Ionicons name="construct-outline" size={18} color={theme.colors.textSecondary} />;
+    let icon = isTerminalToolName(tool.name)
+        ? <Octicons name="terminal" size={18} color={theme.colors.text} />
+        : <Ionicons name="construct-outline" size={18} color={theme.colors.textSecondary} />;
     let noStatus = false;
     let hideDefaultError = false;
     
