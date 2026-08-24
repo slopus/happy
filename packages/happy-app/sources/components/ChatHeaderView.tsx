@@ -56,7 +56,7 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
     const isTablet = useIsTablet();
     const showBackButton = !isTablet && !!onBackPress;
     const hasExtra = !!extraPathSegment;
-    const glassEnabled = !isTablet && Platform.OS !== 'web' && !isRunningOnMac();
+    const glassEnabled = !isTablet && Platform.OS === 'ios' && !isRunningOnMac();
     const contentHeight = glassEnabled ? Math.max(headerHeight, MOBILE_GLASS_HEADER_HEIGHT) : headerHeight;
     const showFolderSubtitle = !!folderName && folderName !== title;
     const folderNameColor = glassEnabled
@@ -220,10 +220,10 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
             style={styles.mobileTitlePill}
             onPress={onTitlePress}
             disabled={!onTitlePress}
-            bubbleScale={1.012}
+            scaleFeedback={false}
         >
             <MobileGlassSurface
-                interactive
+                nativeEffect
                 material="static"
                 intensity={76}
                 style={styles.mobileTitlePillGlass}
@@ -248,7 +248,11 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
                 styles.container,
                 {
                     paddingTop: insets.top,
-                    backgroundColor: glassEnabled ? 'transparent' : theme.colors.header.background,
+                    backgroundColor: glassEnabled
+                        ? 'transparent'
+                        : Platform.OS === 'android' && backdropVisible
+                            ? theme.colors.surfaceHigh
+                            : theme.colors.header.background,
                 },
             ]}
         >
@@ -327,7 +331,7 @@ const styles = StyleSheet.create((theme) => ({
         position: 'absolute',
         top: 0,
         right: 0,
-        bottom: -36,
+        bottom: -8,
         left: 0,
     },
     contentWrapper: {
@@ -338,7 +342,7 @@ const styles = StyleSheet.create((theme) => ({
         flexDirection: 'row',
         alignItems: 'center',
         gap: 8,
-        paddingHorizontal: 12,
+        paddingHorizontal: 16,
         width: '100%',
         maxWidth: layout.headerMaxWidth,
     },
@@ -378,7 +382,7 @@ const styles = StyleSheet.create((theme) => ({
         borderRadius: MOBILE_GLASS_CONTROL_RADIUS,
     },
     // Deliberately identical to backButtonGlass but for the horizontal padding:
-    // same material, same hairline, same shadow, same height. The capsule is
+    // same material, same rim, same shadow, same height. The capsule is
     // only wider because its content is.
     mobileTitlePillGlass: {
         width: '100%',
@@ -394,13 +398,13 @@ const styles = StyleSheet.create((theme) => ({
             android: theme.colors.glass.backgroundStrong,
             default: 'transparent',
         }),
-        borderWidth: Platform.select({ web: 0, default: StyleSheet.hairlineWidth }),
-        borderColor: theme.colors.glass.border,
-        shadowColor: theme.colors.glass.shadow,
-        shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: Platform.select({ web: 0, default: 1 }),
-        shadowRadius: 18,
-        elevation: Platform.select({ android: 8, default: 0 }),
+        borderWidth: Platform.select({ ios: 1, default: 0 }),
+        borderColor: theme.dark ? 'rgba(255, 255, 255, 0.18)' : '#FFFFFF',
+        shadowColor: '#000000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: Platform.select({ ios: theme.dark ? 0.24 : 0.06, default: 0 }),
+        shadowRadius: 20,
+        elevation: 0,
     },
     // No text shadow inside the capsule: the glass is the contrast now, and the
     // shadow only existed to hold text legible against bare content.
@@ -495,8 +499,8 @@ const styles = StyleSheet.create((theme) => ({
         flexShrink: 1,
     },
     rightControlGlass: {
-        minWidth: Platform.select({ web: 0, default: MOBILE_GLASS_CONTROL_SIZE }),
-        minHeight: Platform.select({ web: 0, default: MOBILE_GLASS_CONTROL_SIZE }),
+        minWidth: Platform.select({ web: 0, android: 48, default: MOBILE_GLASS_CONTROL_SIZE }),
+        minHeight: Platform.select({ web: 0, android: 48, default: MOBILE_GLASS_CONTROL_SIZE }),
         borderRadius: MOBILE_GLASS_CONTROL_RADIUS,
         alignItems: 'center',
         justifyContent: 'center',
@@ -504,20 +508,20 @@ const styles = StyleSheet.create((theme) => ({
         backgroundColor: Platform.select({
             web: 'transparent',
             ios: 'transparent',
-            android: theme.colors.glass.backgroundStrong,
+            android: 'transparent',
             default: 'transparent',
         }),
-        borderWidth: Platform.select({ web: 0, default: StyleSheet.hairlineWidth }),
-        borderColor: theme.colors.glass.border,
-        shadowColor: theme.colors.glass.shadow,
-        shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: Platform.select({ web: 0, default: 1 }),
-        shadowRadius: 18,
-        elevation: Platform.select({ android: 8, default: 0 }),
+        borderWidth: Platform.select({ ios: 1, default: 0 }),
+        borderColor: theme.dark ? 'rgba(255, 255, 255, 0.18)' : '#FFFFFF',
+        shadowColor: '#000000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: Platform.select({ ios: theme.dark ? 0.24 : 0.06, default: 0 }),
+        shadowRadius: 20,
+        elevation: 0,
         zIndex: 1,
     },
     rightSlot: {
-        minHeight: Platform.select({ web: 0, default: MOBILE_GLASS_CONTROL_SIZE }),
+        minHeight: Platform.select({ web: 0, android: 48, default: MOBILE_GLASS_CONTROL_SIZE }),
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
@@ -526,8 +530,8 @@ const styles = StyleSheet.create((theme) => ({
         flexShrink: 0,
     },
     backButton: {
-        width: Platform.select({ web: 36, default: MOBILE_GLASS_CONTROL_SIZE }),
-        height: Platform.select({ web: 36, default: MOBILE_GLASS_CONTROL_SIZE }),
+        width: Platform.select({ web: 36, android: 48, default: MOBILE_GLASS_CONTROL_SIZE }),
+        height: Platform.select({ web: 36, android: 48, default: MOBILE_GLASS_CONTROL_SIZE }),
         borderRadius: MOBILE_GLASS_CONTROL_RADIUS,
         zIndex: 1,
     },
@@ -541,16 +545,16 @@ const styles = StyleSheet.create((theme) => ({
         backgroundColor: Platform.select({
             web: 'transparent',
             ios: 'transparent',
-            android: theme.colors.glass.backgroundStrong,
+            android: 'transparent',
             default: 'transparent',
         }),
-        borderWidth: Platform.select({ web: 0, default: StyleSheet.hairlineWidth }),
-        borderColor: theme.colors.glass.border,
-        shadowColor: theme.colors.glass.shadow,
-        shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: Platform.select({ web: 0, default: 1 }),
-        shadowRadius: 18,
-        elevation: Platform.select({ android: 8, default: 0 }),
+        borderWidth: Platform.select({ ios: 1, default: 0 }),
+        borderColor: theme.dark ? 'rgba(255, 255, 255, 0.18)' : '#FFFFFF',
+        shadowColor: '#000000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: Platform.select({ ios: theme.dark ? 0.24 : 0.06, default: 0 }),
+        shadowRadius: 20,
+        elevation: 0,
     },
     controlPressed: {
         opacity: 0.68,

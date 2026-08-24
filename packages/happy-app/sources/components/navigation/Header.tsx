@@ -40,6 +40,7 @@ interface HeaderProps {
     headerBackdropAlwaysVisible?: boolean;
     headerBackdropVariant?: MobileHeaderScrimVariant;
     mobileTitleSurface?: 'glass' | 'plain';
+    mobileTitleAlignment?: 'start' | 'center';
     safeAreaEnabled?: boolean;
 }
 
@@ -64,6 +65,7 @@ export const Header = React.memo((props: HeaderProps) => {
         headerBackdropAlwaysVisible = false,
         headerBackdropVariant = 'subtle',
         mobileTitleSurface = 'glass',
+        mobileTitleAlignment = 'start',
         safeAreaEnabled = true,
     } = props;
 
@@ -72,17 +74,20 @@ export const Header = React.memo((props: HeaderProps) => {
     const headerHeight = useHeaderHeight();
     const isTablet = useIsTablet();
     const isDesktop = Platform.OS === 'web' || isRunningOnMac();
-    const floatingControlsEnabled = !isDesktop && !isTablet;
-    const headerLeftUsesGlass = headerLeftGlass && !isDesktop;
-    const headerRightUsesGlass = headerRightGlass && !isDesktop;
-    const contentHeight = floatingControlsEnabled ? Math.max(headerHeight, MOBILE_GLASS_HEADER_HEIGHT) : headerHeight;
+    const isNativePhone = !isDesktop && !isTablet;
+    const glassControlsEnabled = isNativePhone && Platform.OS === 'ios';
+    const isAndroidHeader = isNativePhone && Platform.OS === 'android';
+    const headerLeftUsesGlass = headerLeftGlass && glassControlsEnabled;
+    const headerRightUsesGlass = headerRightGlass && glassControlsEnabled;
+    const contentHeight = glassControlsEnabled ? Math.max(headerHeight, MOBILE_GLASS_HEADER_HEIGHT) : headerHeight;
+    const centerMobileTitle = isNativePhone && mobileTitleAlignment === 'center';
     const homeBackdrop = headerBackdropVariant === 'home';
     const strongBackdrop = headerBackdropVariant !== 'subtle';
     // Mount/unmount fade only - it must land on exactly 1, because a
     // translucent ancestor kills the native blur underneath it. How heavy the
     // scrim reads is carried by backdropStrength, which the scrim applies to
     // its dim gradient alone.
-    const backdropShouldBeVisible = floatingControlsEnabled && (
+    const backdropShouldBeVisible = glassControlsEnabled && (
         headerBackdropAlwaysVisible || (!homeBackdrop && headerBackdropVisible)
     );
     const backdropStrengthTarget = homeBackdrop
@@ -97,7 +102,7 @@ export const Header = React.memo((props: HeaderProps) => {
     const [backdropMounted, setBackdropMounted] = React.useState(backdropShouldBeVisible);
 
     React.useEffect(() => {
-        if (!floatingControlsEnabled) {
+        if (!glassControlsEnabled) {
             setBackdropMounted(false);
             return;
         }
@@ -119,18 +124,20 @@ export const Header = React.memo((props: HeaderProps) => {
                 setBackdropMounted(false);
             }
         });
-    }, [backdropOpacity, backdropShouldBeVisible, backdropStrength, backdropStrengthTarget, floatingControlsEnabled]);
+    }, [backdropOpacity, backdropShouldBeVisible, backdropStrength, backdropStrengthTarget, glassControlsEnabled]);
 
     const containerStyle = [
         styles.container,
-        headerTransparent && styles.containerTransparent,
-        !headerTransparent && styles.containerNormal,
+        headerTransparent && !isAndroidHeader && styles.containerTransparent,
+        (!headerTransparent || isAndroidHeader) && styles.containerNormal,
+        isAndroidHeader && headerBackdropVisible && styles.containerAndroidScrolled,
         {
             paddingTop,
         },
         headerShadowVisible && styles.shadow,
         headerStyle,
-        !isDesktop && styles.containerTransparent,
+        isAndroidHeader && (headerBackdropVisible ? styles.containerAndroidScrolled : styles.containerNormal),
+        glassControlsEnabled && styles.containerTransparent,
     ];
 
     const subtitleStyle = [
@@ -147,7 +154,7 @@ export const Header = React.memo((props: HeaderProps) => {
 
     return (
         <View style={containerStyle}>
-            {floatingControlsEnabled && backdropMounted && (
+            {glassControlsEnabled && backdropMounted && (
                 <Animated.View
                     pointerEvents="none"
                     style={[
@@ -168,12 +175,13 @@ export const Header = React.memo((props: HeaderProps) => {
                 <View style={[
                     styles.content,
                     isDesktop && styles.desktopContent,
+                    centerMobileTitle && styles.mobileCenteredContent,
                     { height: contentHeight },
                 ]}>
                     <View style={styles.leftContainer}>
                         {headerLeft && headerLeftUsesGlass && (
                             <MobileGlassSurface
-                                enabled={floatingControlsEnabled}
+                                enabled={glassControlsEnabled}
                                 interactive
                                 material="static"
                                 intensity={76}
@@ -184,13 +192,21 @@ export const Header = React.memo((props: HeaderProps) => {
                                 </View>
                             </MobileGlassSurface>
                         )}
-                        {headerLeft && !headerLeftUsesGlass && headerLeft()}
+                        {headerLeft && !headerLeftUsesGlass && (
+                            isAndroidHeader
+                                ? <View style={styles.androidControlSlot}>{headerLeft()}</View>
+                                : headerLeft()
+                        )}
                     </View>
 
-                    <View style={[styles.centerContainer, isDesktop && styles.desktopCenterContainer]}>
-                        {floatingControlsEnabled && mobileTitleSurface === 'glass' ? (
+                    <View style={[
+                        styles.centerContainer,
+                        isDesktop && styles.desktopCenterContainer,
+                        centerMobileTitle && styles.mobileCenteredTitleContainer,
+                    ]}>
+                        {glassControlsEnabled && mobileTitleSurface === 'glass' ? (
                             <MobileGlassSurface
-                                enabled={floatingControlsEnabled}
+                                enabled={glassControlsEnabled}
                                 nativeEffect
                                 material="static"
                                 intensity={76}
@@ -207,7 +223,7 @@ export const Header = React.memo((props: HeaderProps) => {
                             // the exact same surface path as the left control,
                             // press feedback included.
                             <MobileGlassSurface
-                                enabled={floatingControlsEnabled}
+                                enabled={glassControlsEnabled}
                                 interactive
                                 material="static"
                                 intensity={76}
@@ -218,7 +234,11 @@ export const Header = React.memo((props: HeaderProps) => {
                                 </View>
                             </MobileGlassSurface>
                         )}
-                        {headerRight && !headerRightUsesGlass && headerRight()}
+                        {headerRight && !headerRightUsesGlass && (
+                            isAndroidHeader
+                                ? <View style={styles.androidControlSlot}>{headerRight()}</View>
+                                : headerRight()
+                        )}
                     </View>
                 </View>
             </View>
@@ -239,6 +259,18 @@ const DefaultBackButton: React.FC<{ tintColor?: string; onPress: () => void }> =
         return (
             <Pressable onPress={onPress} hitSlop={15}>
                 <Ionicons name={Platform.OS === 'ios' ? 'chevron-back' : 'arrow-back'} size={24} color={tintColor} />
+            </Pressable>
+        );
+    }
+
+    if (Platform.OS === 'android') {
+        return (
+            <Pressable
+                onPress={onPress}
+                hitSlop={8}
+                style={({ pressed }) => [styles.androidBackButton, pressed && styles.controlPressed]}
+            >
+                <Ionicons name="arrow-back" size={24} color={tintColor} />
             </Pressable>
         );
     }
@@ -266,7 +298,11 @@ const DefaultBackButton: React.FC<{ tintColor?: string; onPress: () => void }> =
 };
 
 // Component wrapper for navigation header
-const NavigationHeaderComponent: React.FC<NativeStackHeaderProps> = React.memo((props) => {
+type NavigationHeaderComponentProps = NativeStackHeaderProps & {
+    mobileTitleSurfaceOverride?: HeaderProps['mobileTitleSurface'];
+};
+
+const NavigationHeaderComponent: React.FC<NavigationHeaderComponentProps> = React.memo((props) => {
     const { options, route, back, navigation } = props;
     const extendedOptions = options as ExtendedNavigationOptions;
     const isTablet = useIsTablet();
@@ -280,16 +316,22 @@ const NavigationHeaderComponent: React.FC<NativeStackHeaderProps> = React.memo((
     if (options.headerTitle) {
         if (typeof options.headerTitle === 'string') {
             title = (
-                <Text style={[
-                    {
-                        fontSize: isDesktop ? 17 : 16,
-                        fontWeight: '600',
-                        textAlign: isDesktop && Platform.OS === 'ios' ? 'center' : 'left',
-                        color: options.headerTintColor || '#000',
-                    },
-                    Typography.default('semiBold'),
-                    options.headerTitleStyle
-                ]}>
+                <Text
+                    numberOfLines={1}
+                    ellipsizeMode="tail"
+                    style={[
+                        {
+                            fontSize: isDesktop ? 17 : 16,
+                            fontWeight: '600',
+                            textAlign: Platform.OS === 'ios' ? 'center' : 'left',
+                            color: options.headerTintColor || '#000',
+                            maxWidth: '100%',
+                            flexShrink: 1,
+                        },
+                        Typography.default('semiBold'),
+                        options.headerTitleStyle
+                    ]}
+                >
                     {options.headerTitle}
                 </Text>
             );
@@ -299,11 +341,15 @@ const NavigationHeaderComponent: React.FC<NativeStackHeaderProps> = React.memo((
         }
     } else if (typeof options.title === 'string') {
         title = (
-            <Text style={[
-                { fontSize: 17, fontWeight: '600', textAlign: Platform.OS === 'ios' ? 'center' : 'left', color: options.headerTintColor || '#000' },
-                Typography.default('semiBold'),
-                options.headerTitleStyle
-            ]}>
+            <Text
+                numberOfLines={1}
+                ellipsizeMode="tail"
+                style={[
+                    { fontSize: 17, fontWeight: '600', textAlign: Platform.OS === 'ios' ? 'center' : 'left', color: options.headerTintColor || '#000', maxWidth: '100%', flexShrink: 1 },
+                    Typography.default('semiBold'),
+                    options.headerTitleStyle
+                ]}
+            >
                 {options.title}
             </Text>
         );
@@ -339,6 +385,10 @@ const NavigationHeaderComponent: React.FC<NativeStackHeaderProps> = React.memo((
             headerSubtitleStyle={extendedOptions.headerSubtitleStyle}
             headerShadowVisible={options.headerShadowVisible}
             headerTransparent={options.headerTransparent}
+            headerBackdropAlwaysVisible={Platform.OS === 'ios'}
+            headerBackdropVariant="strong"
+            mobileTitleSurface={props.mobileTitleSurfaceOverride}
+            mobileTitleAlignment={Platform.OS === 'ios' ? 'center' : 'start'}
         />
     );
 });
@@ -349,6 +399,15 @@ export const createHeader = (props: NativeStackHeaderProps) => {
         return null;
     }
     return <NavigationHeaderComponent {...props} />;
+};
+
+// Detail screens keep the same centered geometry as Home, but the title is
+// ordinary text rather than another control.
+export const createPlainHeader = (props: NativeStackHeaderProps) => {
+    if (props.options.headerShown === false) {
+        return null;
+    }
+    return <NavigationHeaderComponent {...props} mobileTitleSurfaceOverride="plain" />;
 };
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({
@@ -362,6 +421,9 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     containerNormal: {
         backgroundColor: theme.colors.header.background,
     },
+    containerAndroidScrolled: {
+        backgroundColor: theme.colors.surfaceHigh,
+    },
     // Backdrops are material layers behind floating controls. The Home variant
     // stays stable while content scrolls; other headers may still opt into a
     // stronger underlap state.
@@ -369,10 +431,10 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         ...StyleSheet.absoluteFillObject,
     },
     headerBackdropStrong: {
-        bottom: -36,
+        bottom: -8,
     },
     headerBackdropHome: {
-        bottom: -18,
+        bottom: -8,
     },
     contentWrapper: {
         width: '100%',
@@ -382,9 +444,12 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         flexDirection: 'row',
         alignItems: 'center',
         gap: Platform.OS === 'web' ? 0 : 8,
-        paddingHorizontal: Platform.OS === 'web' ? 16 : 12,
+        paddingHorizontal: 16,
         width: '100%',
         maxWidth: layout.headerMaxWidth,
+    },
+    mobileCenteredContent: {
+        justifyContent: 'space-between',
     },
     desktopContent: {
         gap: 0,
@@ -405,6 +470,15 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         paddingHorizontal: Platform.OS === 'web' ? 12 : 0,
         minWidth: Platform.OS === 'web' ? undefined : 0,
     },
+    mobileCenteredTitleContainer: {
+        position: 'absolute',
+        top: 0,
+        bottom: 0,
+        left: 64,
+        right: 64,
+        alignItems: 'center',
+        paddingHorizontal: 0,
+    },
     desktopCenterContainer: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -413,15 +487,20 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         minWidth: undefined,
     },
     mobileTitlePill: {
-        width: '100%',
-        height: '100%',
+        maxWidth: '100%',
+        height: MOBILE_GLASS_CONTROL_SIZE,
         minWidth: 0,
+        alignItems: 'center',
         justifyContent: 'center',
-        paddingHorizontal: 12,
-        borderRadius: MOBILE_GLASS_HEADER_HEIGHT / 2,
+        paddingHorizontal: 14,
+        borderRadius: MOBILE_GLASS_CONTROL_RADIUS,
         overflow: 'hidden',
-        borderWidth: StyleSheet.hairlineWidth,
-        borderColor: theme.dark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(24, 23, 28, 0.09)',
+        borderWidth: 1,
+        borderColor: theme.dark ? 'rgba(255, 255, 255, 0.18)' : '#FFFFFF',
+        shadowColor: '#000000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: theme.dark ? 0.24 : 0.06,
+        shadowRadius: 20,
     },
     rightContainer: {
         flexGrow: 0,
@@ -441,13 +520,13 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
             android: theme.colors.glass.backgroundStrong,
             default: 'transparent',
         }),
-        borderWidth: Platform.select({ web: 0, default: StyleSheet.hairlineWidth }),
-        borderColor: theme.colors.glass.border,
-        shadowColor: theme.colors.glass.shadow,
-        shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: Platform.select({ web: 0, default: 1 }),
-        shadowRadius: 18,
-        elevation: Platform.select({ android: 8, default: 0 }),
+        borderWidth: Platform.select({ ios: 1, default: 0 }),
+        borderColor: theme.dark ? 'rgba(255, 255, 255, 0.18)' : '#FFFFFF',
+        shadowColor: '#000000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: Platform.select({ ios: theme.dark ? 0.24 : 0.06, default: 0 }),
+        shadowRadius: 20,
+        elevation: 0,
     },
     leftControlGlass: {
         width: Platform.select({ web: 36, default: MOBILE_GLASS_CONTROL_SIZE }),
@@ -462,13 +541,13 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
             android: theme.colors.glass.backgroundStrong,
             default: 'transparent',
         }),
-        borderWidth: Platform.select({ web: 0, default: StyleSheet.hairlineWidth }),
-        borderColor: theme.colors.glass.border,
-        shadowColor: theme.colors.glass.shadow,
-        shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: Platform.select({ web: 0, default: 1 }),
-        shadowRadius: 18,
-        elevation: Platform.select({ android: 8, default: 0 }),
+        borderWidth: Platform.select({ ios: 1, default: 0 }),
+        borderColor: theme.dark ? 'rgba(255, 255, 255, 0.18)' : '#FFFFFF',
+        shadowColor: '#000000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: Platform.select({ ios: theme.dark ? 0.24 : 0.06, default: 0 }),
+        shadowRadius: 20,
+        elevation: 0,
     },
     leftControlContent: {
         width: '100%',
@@ -481,7 +560,13 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        paddingHorizontal: Platform.select({ web: 0, default: 4 }),
+        paddingHorizontal: 0,
+    },
+    androidControlSlot: {
+        minWidth: 48,
+        height: 48,
+        alignItems: 'center',
+        justifyContent: 'center',
     },
     title: {
         fontSize: Platform.OS === 'web' ? 17 : 16,
@@ -516,6 +601,12 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         height: Platform.select({ web: 36, default: MOBILE_GLASS_CONTROL_SIZE }),
         borderRadius: MOBILE_GLASS_CONTROL_RADIUS,
     },
+    androidBackButton: {
+        width: 48,
+        height: 48,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
     backButtonGlass: {
         width: '100%',
         height: '100%',
@@ -529,13 +620,13 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
             android: theme.colors.glass.backgroundStrong,
             default: 'transparent',
         }),
-        borderWidth: Platform.select({ web: 0, default: StyleSheet.hairlineWidth }),
-        borderColor: theme.colors.glass.border,
-        shadowColor: theme.colors.glass.shadow,
-        shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: Platform.select({ web: 0, default: 1 }),
-        shadowRadius: 18,
-        elevation: Platform.select({ android: 8, default: 0 }),
+        borderWidth: Platform.select({ ios: 1, default: 0 }),
+        borderColor: theme.dark ? 'rgba(255, 255, 255, 0.18)' : '#FFFFFF',
+        shadowColor: '#000000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: Platform.select({ ios: theme.dark ? 0.24 : 0.06, default: 0 }),
+        shadowRadius: 20,
+        elevation: 0,
     },
     controlPressed: {
         opacity: 0.68,

@@ -20,7 +20,7 @@ export const zhHans: TranslationStructure = {
     tabs: {
         // Tab navigation labels
         inbox: '收件箱',
-        sessions: '终端',
+        sessions: '会话',
         settings: '设置',
     },
 

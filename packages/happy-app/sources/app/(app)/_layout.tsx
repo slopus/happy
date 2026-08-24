@@ -2,7 +2,7 @@ import { Stack } from 'expo-router';
 import 'react-native-reanimated';
 import * as React from 'react';
 import { Typography } from '@/constants/Typography';
-import { createHeader } from '@/components/navigation/Header';
+import { createHeader, createPlainHeader } from '@/components/navigation/Header';
 import { Platform, TouchableOpacity, Text, View } from 'react-native';
 import { isRunningOnMac } from '@/utils/platform';
 import { useUnistyles } from 'react-native-unistyles';
@@ -14,8 +14,8 @@ export const unstable_settings = {
 };
 
 export default function RootLayout() {
-    // Keep UIKit in charge of iPhone/iPad headers. A custom React header makes
-    // native-stack animate every blur/glass subview during each push and pop.
+    // Keep UIKit in charge of most iPhone/iPad headers. Screens that belong to
+    // the floating-glass family opt into createHeader below.
     const shouldUseCustomHeader = Platform.OS === 'android' || isRunningOnMac() || Platform.OS === 'web';
     const isDesktop = Platform.OS === 'web' || isRunningOnMac();
     const { theme } = useUnistyles();
@@ -72,8 +72,13 @@ export default function RootLayout() {
                 name="settings/index"
                 options={{
                     headerShown: true,
+                    header: createPlainHeader,
                     headerTitle: t('settings.title'),
-                    headerBackTitle: t('common.home')
+                    headerBackTitle: t('common.home'),
+                    headerTransparent: Platform.OS === 'ios',
+                    headerStyle: {
+                        backgroundColor: theme.colors.groupped.background,
+                    },
                 }}
             />
             <Stack.Screen
@@ -94,8 +99,26 @@ export default function RootLayout() {
                 name="session/[id]/info"
                 options={{
                     headerShown: true,
+                    header: createPlainHeader,
                     headerTitle: '',
                     headerBackTitle: t('common.back'),
+                    headerTransparent: Platform.OS === 'ios',
+                    headerStyle: {
+                        backgroundColor: theme.colors.groupped.background,
+                    },
+                }}
+            />
+            <Stack.Screen
+                name="machine/[id]"
+                options={{
+                    headerShown: true,
+                    header: createPlainHeader,
+                    headerTitle: '',
+                    headerBackTitle: t('machine.back'),
+                    headerTransparent: Platform.OS === 'ios',
+                    headerStyle: {
+                        backgroundColor: theme.colors.groupped.background,
+                    },
                 }}
             />
             <Stack.Screen

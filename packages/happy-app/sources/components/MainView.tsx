@@ -110,7 +110,7 @@ const styles = StyleSheet.create((theme) => ({
     },
     titleContainer: {
         flex: 1,
-        alignItems: Platform.OS === 'web' ? 'center' : 'flex-start',
+        alignItems: 'center',
         justifyContent: Platform.OS === 'web' ? 'flex-start' : 'center',
     },
     titleText: {
@@ -408,6 +408,7 @@ export const MainView = React.memo(({ variant }: MainViewProps) => {
                 headerShadowVisible={false}
                 headerTransparent={true}
                 mobileTitleSurface="plain"
+                mobileTitleAlignment="center"
             />
             {realtimeStatus !== 'disconnected' && (
                 <VoiceAssistantStatusBar variant="full" />

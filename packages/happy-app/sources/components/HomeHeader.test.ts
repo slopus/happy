@@ -123,6 +123,20 @@ describe('HomeHeaderNotAuth', () => {
 
         const header = renderer!.root.findByType('Header' as any);
         expect(header.props.mobileTitleSurface).toBe('plain');
+        expect(header.props.mobileTitleAlignment).toBe('center');
+    });
+});
+
+describe('HomeHeader', () => {
+    it('uses a centred, non-interactive plain title on mobile', () => {
+        let renderer: ReturnType<typeof create>;
+        act(() => {
+            renderer = create(React.createElement(HomeHeader));
+        });
+
+        const header = renderer!.root.findByType('Header' as any);
+        expect(header.props.mobileTitleSurface).toBe('plain');
+        expect(header.props.mobileTitleAlignment).toBe('center');
     });
 });
 

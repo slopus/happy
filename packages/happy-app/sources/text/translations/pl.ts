@@ -29,7 +29,7 @@ export const pl: TranslationStructure = {
     tabs: {
         // Tab navigation labels
         inbox: 'Skrzynka',
-        sessions: 'Terminale',
+        sessions: 'Sesje',
         settings: 'Ustawienia',
     },
 

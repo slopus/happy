@@ -21,7 +21,7 @@ export const ja: TranslationStructure = {
     tabs: {
         // Tab navigation labels
         inbox: '受信トレイ',
-        sessions: 'ターミナル',
+        sessions: 'セッション',
         settings: '設定',
     },
 
