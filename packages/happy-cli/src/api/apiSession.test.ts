@@ -238,7 +238,8 @@ describe('ApiSessionClient v3 messages API migration', () => {
         expect(payload.messages).toHaveLength(1);
         expect(typeof payload.messages[0].localId).toBe('string');
         expect((client as any).pendingOutbox).toHaveLength(0);
-        expect((client as any).lastSeq).toBe(1);
+        // Sending must not move the receive cursor: that seq is ours.
+        expect((client as any).lastReceivedSeq).toBe(0);
 
         const decrypted = decrypt(
             session.encryptionKey,
@@ -302,7 +303,7 @@ describe('ApiSessionClient v3 messages API migration', () => {
         const secondPayload = mockAxiosPost.mock.calls[1][1];
         expect(secondPayload.messages).toHaveLength(2);
         expect((client as any).pendingOutbox).toHaveLength(0);
-        expect((client as any).lastSeq).toBe(3);
+        expect((client as any).lastReceivedSeq).toBe(0);
     });
 
     it('retries failed POST and succeeds without dropping queued messages', async () => {
@@ -328,7 +329,7 @@ describe('ApiSessionClient v3 messages API migration', () => {
         const secondPayload = mockAxiosPost.mock.calls[1][1];
         expect(secondPayload).toEqual(firstPayload);
         expect((client as any).pendingOutbox).toHaveLength(0);
-        expect((client as any).lastSeq).toBe(1);
+        expect((client as any).lastReceivedSeq).toBe(0);
     });
 
     it('sends claude user text as modern session envelope', async () => {
@@ -772,7 +773,7 @@ describe('ApiSessionClient v3 messages API migration', () => {
             limit: 100
         });
         expect(onUserMessage).toHaveBeenCalledWith(userMessage);
-        expect((client as any).lastSeq).toBe(1);
+        expect((client as any).lastReceivedSeq).toBe(1);
     });
 
     it('fetchMessages uses incremental cursor and paginates while hasMore is true', async () => {
@@ -780,7 +781,7 @@ describe('ApiSessionClient v3 messages API migration', () => {
         const onUserMessage = vi.fn();
         client.onUserMessage(onUserMessage);
 
-        (client as any).lastSeq = 2;
+        (client as any).lastReceivedSeq = 2;
 
         const message3 = {
             role: 'user',
@@ -829,12 +830,12 @@ describe('ApiSessionClient v3 messages API migration', () => {
         expect(mockAxiosGet.mock.calls[0][1].params.after_seq).toBe(2);
         expect(mockAxiosGet.mock.calls[1][1].params.after_seq).toBe(3);
         expect(onUserMessage).toHaveBeenCalledTimes(2);
-        expect((client as any).lastSeq).toBe(4);
+        expect((client as any).lastReceivedSeq).toBe(4);
     });
 
     it('fetchMessages stops pagination when hasMore is true but seq cursor does not advance', async () => {
         const client = new ApiSessionClient('fake-token', session);
-        (client as any).lastSeq = 2;
+        (client as any).lastReceivedSeq = 2;
 
         mockAxiosGet
             .mockResolvedValueOnce({
@@ -849,7 +850,7 @@ describe('ApiSessionClient v3 messages API migration', () => {
 
         expect(mockAxiosGet).toHaveBeenCalledTimes(1);
         expect(mockAxiosGet.mock.calls[0][1].params.after_seq).toBe(2);
-        expect((client as any).lastSeq).toBe(2);
+        expect((client as any).lastReceivedSeq).toBe(2);
     });
 
     it('routes non-user fetched messages through EventEmitter message event', async () => {
@@ -961,7 +962,7 @@ describe('ApiSessionClient v3 messages API migration', () => {
         const sensitiveRef = 'sessions/test-session-id/attachments/socket-secret-ref.enc?signature=socket-secret';
         client.onFileEvent(onFileEvent);
 
-        (client as any).lastSeq = 1;
+        (client as any).lastReceivedSeq = 1;
         const fileMessage = {
             role: 'session',
             content: {
@@ -984,7 +985,7 @@ describe('ApiSessionClient v3 messages API migration', () => {
         emitSocketEvent('update', createNewMessageUpdate(2, encryptContent(session, fileMessage)));
 
         expect(onFileEvent).toHaveBeenCalledWith(fileMessage);
-        expect((client as any).lastSeq).toBe(2);
+        expect((client as any).lastReceivedSeq).toBe(2);
         const debugOutput = JSON.stringify([
             ...vi.mocked(logger.debug).mock.calls,
             ...vi.mocked(logger.debugLargeJson).mock.calls,
@@ -999,7 +1000,7 @@ describe('ApiSessionClient v3 messages API migration', () => {
         const onUserMessage = vi.fn();
         client.onUserMessage(onUserMessage);
 
-        (client as any).lastSeq = 1;
+        (client as any).lastReceivedSeq = 1;
         const userMessage = {
             role: 'user',
             content: { type: 'text', text: 'fast-path' }
@@ -1009,13 +1010,13 @@ describe('ApiSessionClient v3 messages API migration', () => {
 
         expect(onUserMessage).toHaveBeenCalledTimes(1);
         expect(onUserMessage).toHaveBeenCalledWith(userMessage);
-        expect((client as any).lastSeq).toBe(2);
+        expect((client as any).lastReceivedSeq).toBe(2);
         expect(mockAxiosGet).not.toHaveBeenCalled();
     });
 
     it('invalidates receive sync and fetches on seq gap', async () => {
         const client = new ApiSessionClient('fake-token', session);
-        (client as any).lastSeq = 1;
+        (client as any).lastReceivedSeq = 1;
 
         mockAxiosGet.mockResolvedValueOnce({
             data: {
@@ -1035,7 +1036,7 @@ describe('ApiSessionClient v3 messages API migration', () => {
         expect(mockAxiosGet.mock.calls[0][1].params.after_seq).toBe(1);
     });
 
-    it('applies first live new-message update directly when lastSeq is 0', async () => {
+    it('applies first live new-message update directly when lastReceivedSeq is 0', async () => {
         const client = new ApiSessionClient('fake-token', session);
         const onUserMessage = vi.fn();
         client.onUserMessage(onUserMessage);
@@ -1056,7 +1057,7 @@ describe('ApiSessionClient v3 messages API migration', () => {
 
             expect(onUserMessage).toHaveBeenCalledTimes(1);
             expect(onUserMessage).toHaveBeenCalledWith(firstMessage);
-            expect((client as any).lastSeq).toBe(1);
+            expect((client as any).lastReceivedSeq).toBe(1);
             expect(mockAxiosGet).not.toHaveBeenCalled();
         } finally {
             await client.close();
@@ -1065,7 +1066,7 @@ describe('ApiSessionClient v3 messages API migration', () => {
 
     it('invalidates receive sync for duplicate and stale seq values', async () => {
         const client = new ApiSessionClient('fake-token', session);
-        (client as any).lastSeq = 5;
+        (client as any).lastReceivedSeq = 5;
 
         mockAxiosGet.mockResolvedValue({
             data: {
@@ -1090,21 +1091,12 @@ describe('ApiSessionClient v3 messages API migration', () => {
         expect(mockAxiosGet.mock.calls[1][1].params.after_seq).toBe(5);
     });
 
-    it('updates lastSeq after successful outbox flush and never moves it backward', async () => {
+    it('never moves the receive cursor from its own outbox flush', async () => {
+        // The session's seq counter is shared, so a seq in our own POST
+        // response says nothing about what we have consumed. Advancing the
+        // receive cursor onto it steps over anything the app wrote in between.
         const client = new ApiSessionClient('fake-token', session);
-        (client as any).lastSeq = 10;
-
-        mockAxiosPost.mockResolvedValueOnce({
-            data: {
-                messages: [{ id: 'msg-9', seq: 9, localId: 'l9', createdAt: 9, updatedAt: 9 }]
-            }
-        });
-
-        client.sendCodexMessage({ type: 'older' });
-        await waitForCheck(() => {
-            expect(mockAxiosPost).toHaveBeenCalledTimes(1);
-        });
-        expect((client as any).lastSeq).toBe(10);
+        (client as any).lastReceivedSeq = 10;
 
         mockAxiosPost.mockResolvedValueOnce({
             data: {
@@ -1114,14 +1106,58 @@ describe('ApiSessionClient v3 messages API migration', () => {
 
         client.sendCodexMessage({ type: 'newer' });
         await waitForCheck(() => {
-            expect(mockAxiosPost).toHaveBeenCalledTimes(2);
+            expect(mockAxiosPost).toHaveBeenCalledTimes(1);
         });
-        expect((client as any).lastSeq).toBe(11);
+        expect((client as any).lastReceivedSeq).toBe(10);
     });
 
-    it('flushOutbox tolerates missing response.data.messages and keeps lastSeq unchanged', async () => {
+    it('routes an app message whose seq lost the race to our own send', async () => {
+        // The app posts a prompt and takes seq 1; our own startup event takes
+        // seq 2 and its POST response comes back first. Seq 1 must still be
+        // delivered — this is the new-session first-prompt loss.
         const client = new ApiSessionClient('fake-token', session);
-        (client as any).lastSeq = 7;
+        const onUserMessage = vi.fn();
+        client.onUserMessage(onUserMessage);
+
+        mockAxiosPost.mockResolvedValueOnce({
+            data: {
+                messages: [{ id: 'msg-2', seq: 2, localId: 'l2', createdAt: 2, updatedAt: 2 }]
+            }
+        });
+
+        client.sendSessionEvent({ type: 'ready' }, 'event-1');
+        await waitForCheck(() => {
+            expect(mockAxiosPost).toHaveBeenCalledTimes(1);
+        });
+
+        const prompt = { role: 'user', content: { type: 'text', text: 'first prompt' } };
+        mockAxiosGet.mockResolvedValueOnce({
+            data: {
+                messages: [
+                    {
+                        id: 'msg-1',
+                        seq: 1,
+                        content: { t: 'encrypted', c: encryptContent(session, prompt) },
+                        localId: null,
+                        createdAt: 1000,
+                        updatedAt: 1000
+                    }
+                ],
+                hasMore: false
+            }
+        });
+
+        await (client as any).fetchMessages();
+
+        // The catch-up has to start from what we have actually seen, not from
+        // the seq our own send happened to be given.
+        expect(mockAxiosGet.mock.calls[0][1].params.after_seq).toBe(0);
+        expect(onUserMessage).toHaveBeenCalledWith(prompt);
+    });
+
+    it('flushOutbox tolerates missing response.data.messages and keeps the cursor unchanged', async () => {
+        const client = new ApiSessionClient('fake-token', session);
+        (client as any).lastReceivedSeq = 7;
 
         mockAxiosPost.mockResolvedValueOnce({
             data: {}
@@ -1132,7 +1168,7 @@ describe('ApiSessionClient v3 messages API migration', () => {
             expect(mockAxiosPost).toHaveBeenCalledTimes(1);
         });
 
-        expect((client as any).lastSeq).toBe(7);
+        expect((client as any).lastReceivedSeq).toBe(7);
         expect((client as any).pendingOutbox).toHaveLength(0);
     });
 
