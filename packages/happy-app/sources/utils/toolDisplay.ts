@@ -117,7 +117,12 @@ export function shouldUseCompactToolRow(
     tool: Pick<ToolCall, 'name' | 'permission'>,
     compactMode: boolean,
 ): boolean {
-    if (!compactMode || tool.name === 'file' || isInteractiveQuestionToolName(tool.name)) {
+    if (
+        !compactMode
+        || tool.name === 'file'
+        || tool.name === 'CodexPatch'
+        || isInteractiveQuestionToolName(tool.name)
+    ) {
         return false;
     }
 

@@ -151,6 +151,7 @@ describe('terminal tool display helpers', () => {
     it('uses compact rows for current and future non-interactive tools', () => {
         expect(shouldUseCompactToolRow(tool('exec_command', {}), true)).toBe(true);
         expect(shouldUseCompactToolRow(tool('brand_new_rig_tool', {}), true)).toBe(true);
+        expect(shouldUseCompactToolRow(tool('CodexPatch', {}), true)).toBe(false);
         expect(shouldUseCompactToolRow(tool('brand_new_rig_tool', {}), false)).toBe(false);
         expect(shouldUseCompactToolRow(tool('file', {}), true)).toBe(false);
         expect(shouldUseCompactToolRow(tool('AskUserQuestion', {}), true)).toBe(false);
