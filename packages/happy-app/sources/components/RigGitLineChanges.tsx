@@ -5,7 +5,7 @@ import { StyleSheet } from 'react-native-unistyles';
 import { Text } from '@/components/StyledText';
 import { Typography } from '@/constants/Typography';
 import type { RigGitSummary } from '@/sync/rig';
-import { visibleRigGitLineChanges } from '@/utils/rigGitLineChanges';
+import { compactCount, visibleRigGitLineChanges } from '@/utils/rigGitLineChanges';
 
 /** Compact line counts sourced exclusively from Happy Agent's encrypted session metadata. */
 export const RigGitLineChanges = React.memo((summary: RigGitSummary) => {
@@ -16,10 +16,10 @@ export const RigGitLineChanges = React.memo((summary: RigGitSummary) => {
         <View style={styles.container}>
             {visible.approximate && <Text style={styles.approximate}>≈</Text>}
             {visible.insertions > 0 && (
-                <Text style={styles.added}>+{visible.insertions}</Text>
+                <Text style={styles.added}>+{compactCount(visible.insertions)}</Text>
             )}
             {visible.deletions > 0 && (
-                <Text style={styles.removed}>-{visible.deletions}</Text>
+                <Text style={styles.removed}>-{compactCount(visible.deletions)}</Text>
             )}
         </View>
     );
