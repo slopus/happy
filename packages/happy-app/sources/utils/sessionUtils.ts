@@ -3,7 +3,6 @@ import { Session } from '@/sync/storageTypes';
 import { resolveSessionState } from '@/sync/sessionState';
 import type { SessionState } from '@/sync/sessionState';
 import { t } from '@/text';
-import { APP_ACCENT_BLUE } from '@/theme';
 import { buildResumeCommand, buildResumeCommandBlock, ResumeCommandBlock } from './resumeCommand';
 
 export type { SessionState } from '@/sync/sessionState';
@@ -75,8 +74,8 @@ export function useSessionStatus(session: Session): SessionStatus {
             isConnected: true,
             statusText: vibingMessage,
             shouldShowStatus: true,
-            statusColor: APP_ACCENT_BLUE,
-            statusDotColor: APP_ACCENT_BLUE,
+            statusColor: '#007AFF',
+            statusDotColor: '#007AFF',
             isPulsing: true
         };
     }

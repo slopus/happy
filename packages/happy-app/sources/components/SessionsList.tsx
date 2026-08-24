@@ -27,7 +27,6 @@ import { t } from '@/text';
 import { SessionShortcutHintBadge } from './ShortcutHints';
 import { ProviderIcon } from './ProviderIcon';
 import { buildSessionProjectDisplayGroups } from '@/utils/sessionDisplayOrder';
-import { APP_ACCENT_BLUE } from '@/theme';
 
 type SessionListDisplayItem = SessionListViewItem | {
     type: 'machine-header';
@@ -597,7 +596,7 @@ export function SessionsList({
 
 const STATUS_CONFIG: Record<SessionState, { color: string; dotColor: string; isPulsing: boolean; isConnected: boolean }> = {
     disconnected: { color: '#999', dotColor: '#999', isPulsing: false, isConnected: false },
-    thinking: { color: APP_ACCENT_BLUE, dotColor: APP_ACCENT_BLUE, isPulsing: true, isConnected: true },
+    thinking: { color: '#007AFF', dotColor: '#007AFF', isPulsing: true, isConnected: true },
     waiting: { color: '#34C759', dotColor: '#34C759', isPulsing: false, isConnected: true },
     permission_required: { color: '#FF9500', dotColor: '#FF9500', isPulsing: true, isConnected: true },
     input_required: { color: '#FF9500', dotColor: '#FF9500', isPulsing: true, isConnected: true },
@@ -617,7 +616,7 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
     const needsUserAction = session.state === 'permission_required' || session.state === 'input_required';
     // User action stays orange and pulsing even when the request also marked the session unread.
     const status = session.hasUnread && !needsUserAction
-        ? { ...baseStatus, color: APP_ACCENT_BLUE, dotColor: APP_ACCENT_BLUE, isPulsing: false, isConnected: baseStatus.isConnected }
+        ? { ...baseStatus, color: '#007AFF', dotColor: '#007AFF', isPulsing: false, isConnected: baseStatus.isConnected }
         : baseStatus;
 
     const vibingMessage = React.useMemo(() => {

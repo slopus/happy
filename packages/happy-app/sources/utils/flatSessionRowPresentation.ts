@@ -1,11 +1,10 @@
 import type { SessionState } from '@/sync/sessionState';
-import { APP_ACCENT_BLUE } from '@/theme';
 
-export const SESSION_READY_DOT_COLOR = APP_ACCENT_BLUE;
+export const SESSION_READY_DOT_COLOR = '#007AFF';
 export const SESSION_BLOCKED_DOT_COLOR = '#FF9500';
 
 export type FlatSessionRowTopRight =
-    | { type: 'dot'; color: string }
+    | { type: 'dot'; color: typeof SESSION_READY_DOT_COLOR | typeof SESSION_BLOCKED_DOT_COLOR }
     | { type: 'timestamp' };
 
 /**
@@ -17,12 +16,10 @@ export function resolveFlatSessionRowPresentation({
     state,
     hasUnread,
     faded,
-    unreadDotColor = SESSION_READY_DOT_COLOR,
 }: {
     state: SessionState;
     hasUnread: boolean;
     faded: boolean;
-    unreadDotColor?: string;
 }): {
     shimmerTitle: boolean;
     topRight: FlatSessionRowTopRight;
@@ -45,7 +42,7 @@ export function resolveFlatSessionRowPresentation({
     if (hasUnread) {
         return {
             shimmerTitle: false,
-            topRight: { type: 'dot', color: unreadDotColor },
+            topRight: { type: 'dot', color: SESSION_READY_DOT_COLOR },
         };
     }
 
