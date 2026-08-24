@@ -547,6 +547,9 @@ export const pt: TranslationStructure = {
         unsupportedDescription: ({ kind }: { kind: string }) => `Esta versão do Happy não pode exibir uma solicitação «${kind}». Atualize o app para responder.`,
         moreQuestions: ({ count }: { count: number }) =>
             count === 1 ? "mais 1 pergunta" : `${count} perguntas a mais`,
+        answered: "Respondida",
+        waiting: "Aguardando…",
+        superseded: "Substituída",
     },
 
     sidebar: {

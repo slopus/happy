@@ -18,6 +18,7 @@ import {
     formatMCPTitle,
     getToolActivityLabel,
     getTerminalToolCommand,
+    isInteractiveQuestionToolName,
     isTerminalToolName,
     shouldRenderToolCardHeader,
     shouldUseCompactToolRow,
@@ -181,9 +182,14 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
         || isCompactTerminalTool;
     const activityLabel = getToolActivityLabel(tool);
     const isInlineCodexPatch = Platform.OS === 'web' && tool.name === 'CodexPatch';
-    const renderCardHeader = isCompactActivityTool || shouldRenderToolCardHeader(tool.name, Platform.OS);
+    const isInlineQuestionTool = isInteractiveQuestionToolName(tool.name);
+    if (isInlineQuestionTool) {
+        hideDefaultError = true;
+    }
+    const renderCardHeader = isCompactActivityTool
+        || (shouldRenderToolCardHeader(tool.name, Platform.OS) && !isInlineQuestionTool);
     const renderPermissionFooter = () => (
-        tool.permission && sessionId && tool.name !== 'AskUserQuestion'
+        tool.permission && sessionId && !isInlineQuestionTool
             ? <PermissionFooter permission={tool.permission} sessionId={sessionId} toolName={tool.name} toolInput={tool.input} metadata={props.metadata} />
             : null
     );
@@ -232,7 +238,7 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
     };
 
     return (
-        <View style={isCompactActivityTool ? styles.compactContainer : isInlineCodexPatch ? styles.inlineContainer : styles.container}>
+        <View style={isCompactActivityTool ? styles.compactContainer : (isInlineCodexPatch || isInlineQuestionTool) ? styles.inlineContainer : styles.container}>
             {renderCardHeader ? (
                 isPressable ? (
                     <TouchableOpacity style={isCompactActivityTool ? styles.compactHeader : styles.header} onPress={handlePress} activeOpacity={0.8}>
@@ -305,8 +311,6 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
                 );
             })()}
 
-            {/* Permission footer - always renders when permission exists to maintain consistent height */}
-            {/* AskUserQuestion has its own Submit button UI - no permission footer needed */}
             {!isInlineCodexPatch ? renderPermissionFooter() : null}
         </View>
     );

@@ -8,19 +8,20 @@ import {
     InlineQuestionForm,
     type InlineQuestionAnswers,
 } from './InlineQuestionForm';
+import { parseRawRequestUserInputQuestions } from './parseRawRequestUserInputQuestions';
 
 /** Inline renderer for Happy/Codex request_user_input communications. */
 export const RequestUserInputView = React.memo<ToolViewProps>(({ tool, sessionId }) => {
     const communication = useSessionAgentFormCommunication(sessionId ?? '', tool.callId ?? '');
 
     const submittedAnswers = React.useMemo<InlineQuestionAnswers | null>(() => {
-        if (!communication || communication.status === 'pending') return null;
-        if (communication.status === 'cancelled' || !communication.answers) return {};
+        if (!communication || communication.status !== 'answered' || !communication.answers) return null;
         const answers: InlineQuestionAnswers = {};
         for (const [questionId, answer] of Object.entries(communication.answers)) {
-            const values = [...answer.options];
-            if (answer.custom) values.push(answer.custom);
-            answers[questionId] = values;
+            answers[questionId] = {
+                options: answer.options,
+                ...(answer.custom ? { custom: answer.custom } : {}),
+            };
         }
         return answers;
     }, [communication]);
@@ -30,27 +31,48 @@ export const RequestUserInputView = React.memo<ToolViewProps>(({ tool, sessionId
 
         const communicationAnswers: Record<string, AgentQuestionAnswer> = {};
         for (const question of communication.questions) {
-            const selected = answers[question.id];
-            if (!selected?.length) continue;
+            const answer = answers[question.id];
+            const options = answer
+                ? (question.multiSelect ? answer.options : answer.options.slice(0, 1))
+                : [];
+            if (options.length === 0 && !answer?.custom) continue;
             communicationAnswers[question.id] = {
-                options: question.multiSelect
-                    ? selected
-                    : selected.slice(0, 1),
+                options,
+                ...(answer?.custom ? { custom: answer.custom } : {}),
             };
         }
         await sessionAnswerQuestion(sessionId, communication.id, communicationAnswers, communication.kind);
     }, [communication, sessionId]);
 
-    if (!communication || communication.questions.some(question => question.options.length === 0)) {
+    const rawQuestions = React.useMemo(
+        () => (communication ? [] : parseRawRequestUserInputQuestions(tool.input)),
+        [communication, tool.input],
+    );
+
+    if (communication) {
+        return (
+            <InlineQuestionForm
+                questions={communication.questions}
+                canInteract={tool.state === 'running' && communication.status === 'pending'}
+                submittedAnswers={submittedAnswers}
+                disabledStatus={communication.status === 'cancelled' ? 'superseded' : undefined}
+                onSubmit={handleSubmit}
+            />
+        );
+    }
+
+    if (rawQuestions.length === 0) {
         return null;
     }
 
+    const isTerminated = tool.state === 'error' || tool.state === 'completed';
+
     return (
         <InlineQuestionForm
-            questions={communication.questions}
-            canInteract={tool.state === 'running' && communication.status === 'pending'}
-            submittedAnswers={submittedAnswers}
-            onSubmit={handleSubmit}
+            questions={rawQuestions}
+            canInteract={false}
+            disabledStatus={isTerminated ? 'superseded' : 'waiting'}
+            onSubmit={async () => {}}
         />
     );
 });

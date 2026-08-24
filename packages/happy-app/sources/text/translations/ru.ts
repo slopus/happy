@@ -564,6 +564,9 @@ export const ru: TranslationStructure = {
         unsupportedDescription: ({ kind }: { kind: string }) => `Эта версия Happy не может показать запрос «${kind}». Обновите приложение, чтобы ответить.`,
         moreQuestions: ({ count }: { count: number }) =>
             count === 1 ? "ещё 1 вопрос" : `${count} вопросов ещё`,
+        answered: "Отвечено",
+        waiting: "Ожидание…",
+        superseded: "Заменено",
     },
 
     sidebar: {

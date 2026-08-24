@@ -549,6 +549,9 @@ export const zhHans: TranslationStructure = {
         unsupportedDescription: ({ kind }: { kind: string }) => `此版本的 Happy 无法显示「${kind}」请求。请更新应用后回复。`,
         moreQuestions: ({ count }: { count: number }) =>
             count === 1 ? "还有 1 个问题" : `${count} 个问题`,
+        answered: "已回答",
+        waiting: "等待中…",
+        superseded: "已被替代",
     },
 
     sidebar: {

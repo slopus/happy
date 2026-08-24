@@ -163,7 +163,7 @@ describe('selectAgentFormCommunication', () => {
 });
 
 describe('canRenderAgentFormInline', () => {
-    it('accepts choice forms and keeps text-only forms on the modal fallback', () => {
+    it('accepts choice forms, text-only forms, and mixed forms alike', () => {
         expect(canRenderAgentFormInline({
             id: 'choice',
             createdAt: 0,
@@ -176,10 +176,10 @@ describe('canRenderAgentFormInline', () => {
             createdAt: 0,
             kind: 'form',
             questions: [question({ options: [], allowCustom: true })],
-        })).toBe(false);
+        })).toBe(true);
     });
 
-    it('assigns choice forms to the transcript before their tool message arrives', () => {
+    it('leaves only an unsupported kind to the fallback banner', () => {
         expect(shouldUseAgentQuestionFallback({
             id: 'choice',
             createdAt: 0,
@@ -192,6 +192,14 @@ describe('canRenderAgentFormInline', () => {
             createdAt: 0,
             kind: 'form',
             questions: [question({ options: [], allowCustom: true })],
+        })).toBe(false);
+
+        expect(shouldUseAgentQuestionFallback({
+            id: 'unsupported',
+            createdAt: 0,
+            kind: 'unsupported',
+            rawKind: 'file_pick',
+            title: null,
         })).toBe(true);
     });
 });

@@ -124,18 +124,10 @@ export function selectAgentFormCommunication(
     return null;
 }
 
-/** Choice forms can live directly in chat; text-only forms keep the modal fallback. */
 export function canRenderAgentFormInline(communication: PendingAgentCommunication): boolean {
-    return communication.kind === 'form'
-        && communication.questions.length > 0
-        && communication.questions.every(question => question.options.length > 0);
+    return communication.kind === 'form' && communication.questions.length > 0;
 }
 
-/**
- * The legacy banner/modal owns only requests the transcript card cannot show.
- * This decision deliberately does not depend on whether the matching tool
- * message has arrived yet, so the two render paths cannot race each other.
- */
 export function shouldUseAgentQuestionFallback(communication: PendingAgentCommunication): boolean {
     return !canRenderAgentFormInline(communication);
 }

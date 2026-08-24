@@ -549,6 +549,9 @@ export const ja: TranslationStructure = {
         unsupportedDescription: ({ kind }: { kind: string }) => `このバージョンの Happy は「${kind}」リクエストを表示できません。アプリを更新してください。`,
         moreQuestions: ({ count }: { count: number }) =>
             count === 1 ? "他に1件の質問" : `${count} 件の質問`,
+        answered: "回答済み",
+        waiting: "待機中…",
+        superseded: "無効になりました",
     },
 
     sidebar: {

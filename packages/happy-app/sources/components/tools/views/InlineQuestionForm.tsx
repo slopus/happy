@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { ActivityIndicator, Platform, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Platform, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 
@@ -18,39 +18,49 @@ export interface InlineQuestion {
     options: InlineQuestionOption[];
     multiSelect?: boolean | null;
     required?: boolean | null;
+    allowCustom?: boolean | null;
 }
 
-export type InlineQuestionAnswers = Record<string, string[]>;
+export interface InlineQuestionAnswer {
+    options: string[];
+    custom?: string;
+}
+
+export type InlineQuestionAnswers = Record<string, InlineQuestionAnswer>;
+
+export type InlineQuestionDisabledStatus = 'waiting' | 'superseded';
 
 interface InlineQuestionFormProps {
     questions: InlineQuestion[];
     canInteract: boolean;
     submittedAnswers?: InlineQuestionAnswers | null;
+    disabledStatus?: InlineQuestionDisabledStatus | null;
     onSubmit: (answers: InlineQuestionAnswers) => Promise<void>;
 }
 
-// This is the shared choice form used by both Claude's AskUserQuestion tool and
-// agent communications such as Codex/Happy request_user_input. Transport and
-// answer payload differences stay in the small wrappers around this view.
 export const InlineQuestionForm = React.memo<InlineQuestionFormProps>((props) => {
-    const { questions, onSubmit } = props;
+    const { questions, onSubmit, disabledStatus } = props;
     const { theme } = useUnistyles();
     const [selections, setSelections] = React.useState<Map<string, Set<number>>>(new Map());
+    const [customTexts, setCustomTexts] = React.useState<Map<string, string>>(new Map());
     const [isSubmitting, setIsSubmitting] = React.useState(false);
     const [locallySubmittedAnswers, setLocallySubmittedAnswers] = React.useState<InlineQuestionAnswers | null>(null);
     const questionKey = questions.map(question => question.id).join('\u0000');
 
     React.useEffect(() => {
         setSelections(new Map());
+        setCustomTexts(new Map());
         setLocallySubmittedAnswers(null);
         setIsSubmitting(false);
     }, [questionKey]);
 
     const submittedAnswers = props.submittedAnswers ?? locallySubmittedAnswers;
-    const canInteract = props.canInteract && submittedAnswers === null;
+    const canInteract = props.canInteract && submittedAnswers === null && !disabledStatus;
     const allQuestionsAnswered = questions.every((question) => {
         if (question.required === false) return true;
-        return (selections.get(question.id)?.size ?? 0) > 0;
+        const hasSelection = (selections.get(question.id)?.size ?? 0) > 0;
+        const hasCustomText = (customTexts.get(question.id) ?? '').trim().length > 0;
+        return hasSelection || hasCustomText;
     });
 
     const handleOptionToggle = React.useCallback((question: InlineQuestion, optionIndex: number) => {
@@ -74,16 +84,31 @@ export const InlineQuestionForm = React.memo<InlineQuestionFormProps>((props) =>
         });
     }, [canInteract]);
 
+    const handleCustomTextChange = React.useCallback((questionId: string, text: string) => {
+        setCustomTexts(previous => {
+            const next = new Map(previous);
+            next.set(questionId, text);
+            return next;
+        });
+    }, []);
+
     const handleSubmit = React.useCallback(async () => {
         if (!allQuestionsAnswered || isSubmitting) return;
 
         const answers: InlineQuestionAnswers = {};
         for (const question of questions) {
             const selected = selections.get(question.id);
-            if (!selected || selected.size === 0) continue;
-            answers[question.id] = Array.from(selected)
-                .map(optionIndex => question.options[optionIndex]?.label)
-                .filter((label): label is string => Boolean(label));
+            const optionLabels = selected
+                ? Array.from(selected)
+                    .map(optionIndex => question.options[optionIndex]?.label)
+                    .filter((label): label is string => Boolean(label))
+                : [];
+            const custom = (customTexts.get(question.id) ?? '').trim();
+            if (optionLabels.length === 0 && custom.length === 0) continue;
+            answers[question.id] = {
+                options: question.multiSelect ? optionLabels : optionLabels.slice(0, 1),
+                ...(custom.length > 0 ? { custom } : {}),
+            };
         }
 
         setIsSubmitting(true);
@@ -96,82 +121,90 @@ export const InlineQuestionForm = React.memo<InlineQuestionFormProps>((props) =>
         } finally {
             setIsSubmitting(false);
         }
-    }, [allQuestionsAnswered, isSubmitting, onSubmit, questions, selections]);
-
-    if (submittedAnswers) {
-        return (
-            <ToolSectionView>
-                <View style={styles.submittedContainer}>
-                    {questions.map(question => (
-                        <View key={question.id} style={styles.submittedItem}>
-                            <Text style={styles.submittedHeader}>{question.header}:</Text>
-                            <Text style={styles.submittedValue}>
-                                {submittedAnswers[question.id]?.join(', ') || '—'}
-                            </Text>
-                        </View>
-                    ))}
-                </View>
-            </ToolSectionView>
-        );
-    }
+    }, [allQuestionsAnswered, customTexts, isSubmitting, onSubmit, questions, selections]);
 
     return (
-        <ToolSectionView>
+        <ToolSectionView fullWidth>
             <View style={styles.container}>
                 {questions.map(question => {
-                    const selectedOptions = selections.get(question.id) ?? new Set<number>();
+                    const answer = submittedAnswers?.[question.id];
+                    const selectedLabels = answer ? new Set(answer.options) : null;
+                    const selectedIndexes = selections.get(question.id) ?? new Set<number>();
+                    const customValue = answer ? (answer.custom ?? '') : (customTexts.get(question.id) ?? '');
+                    const showCustomInput = question.allowCustom !== false
+                        && (question.options.length === 0 || question.allowCustom === true || !!answer?.custom);
                     return (
                         <View key={question.id} style={styles.questionSection}>
                             <View style={styles.headerChip}>
                                 <Text style={styles.headerText}>{question.header}</Text>
                             </View>
                             <Text style={styles.questionText}>{question.question}</Text>
-                            <View style={styles.optionsContainer}>
-                                {question.options.map((option, optionIndex) => {
-                                    const isSelected = selectedOptions.has(optionIndex);
-                                    return (
-                                        <TouchableOpacity
-                                            key={`${question.id}:${optionIndex}`}
-                                            style={[
-                                                styles.optionButton,
-                                                isSelected && styles.optionButtonSelected,
-                                                !canInteract && styles.optionButtonDisabled,
-                                            ]}
-                                            onPress={() => handleOptionToggle(question, optionIndex)}
-                                            disabled={!canInteract}
-                                            activeOpacity={0.7}
-                                        >
-                                            {question.multiSelect ? (
-                                                <View style={[
-                                                    styles.checkboxOuter,
-                                                    isSelected && styles.checkboxOuterSelected,
-                                                ]}>
-                                                    {isSelected && <Ionicons name="checkmark" size={14} color="#fff" />}
+                            {question.options.length > 0 && (
+                                <View style={styles.optionsContainer}>
+                                    {question.options.map((option, optionIndex) => {
+                                        const isSelected = selectedLabels
+                                            ? selectedLabels.has(option.label)
+                                            : selectedIndexes.has(optionIndex);
+                                        return (
+                                            <TouchableOpacity
+                                                key={`${question.id}:${optionIndex}`}
+                                                style={[
+                                                    styles.optionButton,
+                                                    isSelected && styles.optionButtonSelected,
+                                                    !canInteract && styles.optionButtonDisabled,
+                                                ]}
+                                                onPress={() => handleOptionToggle(question, optionIndex)}
+                                                disabled={!canInteract}
+                                                activeOpacity={0.7}
+                                            >
+                                                {question.multiSelect ? (
+                                                    <View style={[
+                                                        styles.checkboxOuter,
+                                                        isSelected && styles.checkboxOuterSelected,
+                                                    ]}>
+                                                        {isSelected && <Ionicons name="checkmark" size={14} color="#fff" />}
+                                                    </View>
+                                                ) : (
+                                                    <View style={[
+                                                        styles.radioOuter,
+                                                        isSelected && styles.radioOuterSelected,
+                                                    ]}>
+                                                        {isSelected && <View style={styles.radioInner} />}
+                                                    </View>
+                                                )}
+                                                <View style={styles.optionContent}>
+                                                    <Text style={styles.optionLabel}>{option.label}</Text>
+                                                    {option.description ? (
+                                                        <Text style={styles.optionDescription}>{option.description}</Text>
+                                                    ) : null}
                                                 </View>
-                                            ) : (
-                                                <View style={[
-                                                    styles.radioOuter,
-                                                    isSelected && styles.radioOuterSelected,
-                                                ]}>
-                                                    {isSelected && <View style={styles.radioInner} />}
-                                                </View>
-                                            )}
-                                            <View style={styles.optionContent}>
-                                                <Text style={styles.optionLabel}>{option.label}</Text>
-                                                {option.description ? (
-                                                    <Text style={styles.optionDescription}>{option.description}</Text>
-                                                ) : null}
-                                            </View>
-                                        </TouchableOpacity>
-                                    );
-                                })}
-                            </View>
+                                            </TouchableOpacity>
+                                        );
+                                    })}
+                                </View>
+                            )}
+                            {showCustomInput && (
+                                <View style={styles.customBlock}>
+                                    {question.options.length > 0 && (
+                                        <Text style={styles.customLabel}>{t('agentQuestion.ownAnswer')}</Text>
+                                    )}
+                                    <TextInput
+                                        style={[styles.customInput, !canInteract && styles.optionButtonDisabled]}
+                                        value={customValue}
+                                        onChangeText={(text) => handleCustomTextChange(question.id, text)}
+                                        placeholder={t('agentQuestion.ownAnswerPlaceholder')}
+                                        placeholderTextColor={theme.colors.textSecondary}
+                                        multiline
+                                        editable={canInteract}
+                                    />
+                                </View>
+                            )}
                         </View>
                     );
                 })}
 
-                {canInteract && (
-                    <View style={styles.actionsContainer}>
+                <View style={styles.actionsContainer}>
+                    {canInteract ? (
                         <TouchableOpacity
                             style={[
                                 styles.submitButton,
@@ -191,14 +224,30 @@ export const InlineQuestionForm = React.memo<InlineQuestionFormProps>((props) =>
                                 <Text style={styles.submitButtonText}>{t('tools.askUserQuestion.submit')}</Text>
                             )}
                         </TouchableOpacity>
-                    </View>
-                )}
+                    ) : (
+                        <View style={styles.statusPill}>
+                            {submittedAnswers ? (
+                                <Ionicons name="checkmark-circle-outline" size={14} color={theme.colors.textSecondary} />
+                            ) : disabledStatus === 'waiting' ? (
+                                <ActivityIndicator size="small" color={theme.colors.textSecondary} />
+                            ) : (
+                                <Ionicons name="close-circle-outline" size={14} color={theme.colors.textSecondary} />
+                            )}
+                            <Text style={styles.statusPillText}>
+                                {submittedAnswers
+                                    ? t('agentQuestion.answered')
+                                    : disabledStatus === 'waiting'
+                                        ? t('agentQuestion.waiting')
+                                        : t('agentQuestion.superseded')}
+                            </Text>
+                        </View>
+                    )}
+                </View>
             </View>
         </ToolSectionView>
     );
 });
 
-// Kept visually identical to the existing AskUserQuestion experience.
 const styles = StyleSheet.create((theme) => ({
     container: {
         gap: 16,
@@ -324,21 +373,36 @@ const styles = StyleSheet.create((theme) => ({
         fontSize: 14,
         fontWeight: '600',
     },
-    submittedContainer: {
-        gap: 8,
+    customBlock: {
+        gap: 6,
     },
-    submittedItem: {
-        flexDirection: 'row',
-        gap: 8,
-    },
-    submittedHeader: {
-        fontSize: 13,
+    customLabel: {
+        fontSize: 12,
         fontWeight: '600',
         color: theme.colors.textSecondary,
+        textTransform: 'uppercase',
     },
-    submittedValue: {
-        fontSize: 13,
+    customInput: {
+        minHeight: 44,
+        borderRadius: 8,
+        backgroundColor: Platform.select({ web: 'transparent', default: theme.colors.surface }),
+        borderWidth: 1,
+        borderColor: theme.colors.divider,
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+        fontSize: 14,
         color: theme.colors.text,
-        flex: 1,
+        textAlignVertical: 'top',
+    },
+    statusPill: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        paddingHorizontal: 4,
+        minHeight: 44,
+    },
+    statusPillText: {
+        fontSize: 13,
+        color: theme.colors.textSecondary,
     },
 }));

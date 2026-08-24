@@ -1,129 +1,150 @@
-import React from 'react';
-import { Pressable, ScrollView, View } from 'react-native';
-import { Stack, useLocalSearchParams } from 'expo-router';
+import * as React from 'react';
+import { Platform, ScrollView, View } from 'react-native';
+import { Stack } from 'expo-router';
 import { StyleSheet } from 'react-native-unistyles';
 
-import { Text } from '@/components/StyledText';
-import { ItemGroup } from '@/components/ItemGroup';
-import { Typography } from '@/constants/Typography';
-import { AgentQuestionBannerView } from '@/components/AgentQuestionBanner';
-import { AgentQuestionModal } from '@/components/AgentQuestionModal';
-import type { PendingAgentForm, PendingUnsupportedCommunication } from '@/sync/agentCommunications';
+import { MessageView } from '@/components/MessageView';
+import type { Message, ToolCall } from '@/sync/typesMessage';
 
-const formCommunication: PendingAgentForm = {
-    id: 'demo-form',
-    createdAt: 0,
-    kind: 'form',
-    questions: [
-        {
-            id: 'q1',
-            header: 'Storage',
-            question: 'Where should the project order live?',
-            multiSelect: false,
-            options: [
-                { label: 'In settings', description: 'Synced to every device you sign in from' },
-                { label: 'On this device', description: 'Stays local, never leaves the phone' },
-            ],
-        },
-        {
-            id: 'q2',
-            header: 'Scope',
-            question: 'Which surfaces should it apply to?',
-            multiSelect: true,
-            options: [
-                { label: 'Mobile', description: 'The phone session list' },
-                { label: 'Tablet sidebar', description: 'The split-view sidebar' },
-                { label: 'Desktop', description: 'The Tauri app' },
-            ],
-        },
-    ],
-};
+const PREVIEW_TIME = 1_750_000_000_000;
+const QUESTION = 'Where should the migration plan live?';
 
-const unsupportedCommunication: PendingUnsupportedCommunication = {
-    id: 'demo-unsupported',
-    createdAt: 0,
-    kind: 'unsupported',
-    rawKind: 'file_pick',
-    title: 'Choose a file to review',
-};
+function toolMessage(id: string, tool: ToolCall, offset: number): Message {
+    return {
+        kind: 'tool-call',
+        id,
+        localId: null,
+        createdAt: PREVIEW_TIME + offset,
+        tool,
+        children: [],
+    };
+}
+
+const messages: Message[] = [
+    {
+        kind: 'agent-text',
+        id: 'question-preview-intro',
+        localId: null,
+        createdAt: PREVIEW_TIME,
+        text: 'This question is live. Pick an answer and submit it; the block should stay exactly where it is.',
+    },
+    toolMessage('question-preview-pending', {
+        callId: 'question-preview-pending-call',
+        name: 'AskUserQuestion',
+        state: 'running',
+        input: {
+            questions: [{
+                header: 'Migration gate plan',
+                question: QUESTION,
+                options: [
+                    { label: 'In this chat', description: 'Keep the plan beside the discussion' },
+                    { label: 'In a plan file', description: 'Save it for future sessions' },
+                ],
+                multiSelect: false,
+            }],
+        },
+        createdAt: PREVIEW_TIME + 1,
+        startedAt: PREVIEW_TIME + 1,
+        completedAt: null,
+        description: null,
+        permission: { id: 'question-preview-permission', status: 'pending' },
+    }, 1),
+    {
+        kind: 'agent-text',
+        id: 'question-preview-history-label',
+        localId: null,
+        createdAt: PREVIEW_TIME + 2,
+        text: 'Older questions remain in the transcript with their final state:',
+    },
+    toolMessage('question-preview-superseded', {
+        callId: 'question-preview-superseded-call',
+        name: 'request_user_input',
+        state: 'error',
+        input: {
+            questions: [{
+                header: 'Migration gate plan',
+                question: 'Approve this scoped plan?',
+                options: [{
+                    choices: [
+                        { label: 'Approve', description: 'Proceed with this scope' },
+                        { label: 'Revise', description: 'Change the scope first' },
+                    ],
+                    multiSelect: false,
+                }],
+            }],
+        },
+        createdAt: PREVIEW_TIME + 3,
+        startedAt: PREVIEW_TIME + 3,
+        completedAt: PREVIEW_TIME + 4,
+        description: null,
+        result: 'The arguments did not match the tool schema.',
+    }, 3),
+    toolMessage('question-preview-answered', {
+        callId: 'question-preview-answered-call',
+        name: 'AskUserQuestion',
+        state: 'completed',
+        input: {
+            questions: [{
+                header: 'Storage',
+                question: QUESTION,
+                options: [
+                    { label: 'In this chat', description: 'Keep the plan beside the discussion' },
+                    { label: 'In a plan file', description: 'Save it for future sessions' },
+                ],
+                multiSelect: false,
+            }],
+            answers: { [QUESTION]: 'In this chat' },
+        },
+        createdAt: PREVIEW_TIME + 5,
+        startedAt: PREVIEW_TIME + 5,
+        completedAt: PREVIEW_TIME + 6,
+        description: null,
+        result: JSON.stringify({ answers: ['In this chat'] }),
+    }, 5),
+];
 
 export default function AgentQuestionDemoScreen() {
-    const styles = stylesheet;
-    // ?open=1 opens the sheet straight away, so it can be linked to and captured directly.
-    const params = useLocalSearchParams<{ open?: string }>();
-    const [open, setOpen] = React.useState(params.open === '1');
-
     return (
-        <>
-            <Stack.Screen options={{ headerTitle: 'Agent Questions' }} />
-            <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-                <Text style={styles.description}>
-                    Agent-to-user communications. A form opens the full-screen answer sheet; a kind
-                    this build does not implement says so and offers to dismiss it.
-                </Text>
-
-                <ItemGroup title="Banner — form">
-                    <View style={styles.preview}>
-                        <AgentQuestionBannerView
-                            pending={formCommunication}
-                            onPress={() => setOpen(true)}
+        <View style={styles.screen}>
+            <Stack.Screen options={{ headerTitle: 'Inline Questions' }} />
+            <ScrollView
+                style={styles.scrollView}
+                contentContainerStyle={styles.content}
+                showsVerticalScrollIndicator={false}
+            >
+                <View style={styles.transcript} testID="agent-question-transcript">
+                    {messages.map(message => (
+                        <MessageView
+                            key={message.id}
+                            message={message}
+                            metadata={null}
+                            sessionId=""
                         />
-                    </View>
-                </ItemGroup>
-
-                <ItemGroup title="Banner — unsupported kind">
-                    <View style={styles.preview}>
-                        <AgentQuestionBannerView pending={unsupportedCommunication} />
-                    </View>
-                </ItemGroup>
-
-                <ItemGroup title="Full-screen form">
-                    <Pressable style={styles.button} onPress={() => setOpen(true)}>
-                        <Text style={styles.buttonText}>Open the answer sheet</Text>
-                    </Pressable>
-                </ItemGroup>
+                    ))}
+                </View>
             </ScrollView>
-
-            <AgentQuestionModal
-                pending={formCommunication}
-                sessionId="demo-session"
-                visible={open}
-                onClose={() => setOpen(false)}
-            />
-        </>
+        </View>
     );
 }
 
-const stylesheet = StyleSheet.create((theme) => ({
-    container: {
+const styles = StyleSheet.create((theme) => ({
+    screen: {
         flex: 1,
-        backgroundColor: theme.colors.groupped.background,
+        backgroundColor: Platform.select({
+            web: theme.colors.surface,
+            default: theme.colors.groupped.background,
+        }),
+    },
+    scrollView: {
+        flex: 1,
     },
     content: {
-        paddingVertical: 16,
-        gap: 8,
+        paddingTop: 20,
+        paddingBottom: 48,
     },
-    description: {
-        paddingHorizontal: 20,
-        paddingBottom: 8,
-        fontSize: 14,
-        color: theme.colors.textSecondary,
-        ...Typography.default(),
-    },
-    preview: {
-        paddingVertical: 8,
-    },
-    button: {
-        margin: 12,
-        height: 48,
-        borderRadius: 12,
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: theme.colors.textLink,
-    },
-    buttonText: {
-        fontSize: 16,
-        color: '#fff',
-        ...Typography.default('semiBold'),
+    transcript: {
+        width: '100%',
+        maxWidth: 760,
+        alignSelf: 'center',
     },
 }));

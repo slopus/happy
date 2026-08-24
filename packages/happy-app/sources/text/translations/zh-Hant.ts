@@ -548,6 +548,9 @@ export const zhHant: TranslationStructure = {
         unsupportedDescription: ({ kind }: { kind: string }) => `此版本的 Happy 無法顯示「${kind}」請求。請更新應用程式後回覆。`,
         moreQuestions: ({ count }: { count: number }) =>
             count === 1 ? "還有 1 個問題" : `${count} 個問題`,
+        answered: "已回答",
+        waiting: "等待中…",
+        superseded: "已被取代",
     },
 
     sidebar: {

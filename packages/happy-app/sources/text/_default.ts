@@ -573,6 +573,9 @@ export const en = {
             `This version of Happy cannot show a "${kind}" request. Update the app to respond.`,
         moreQuestions: ({ count }: { count: number }) =>
             count === 1 ? '1 more question' : `${count} more questions`,
+        answered: 'Answered',
+        waiting: 'Waiting…',
+        superseded: 'Superseded',
     },
 
     sidebar: {
