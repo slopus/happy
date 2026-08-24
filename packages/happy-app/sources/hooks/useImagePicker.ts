@@ -22,6 +22,11 @@ export const MAX_IMAGES_PER_MESSAGE = 20;
 export const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 const IOS_ATTACHMENT_JPEG_QUALITY = 0.92;
 
+/** Accepted media library permission statuses. 'limited' = iOS 14+ user-selected photos; PHPickerViewController still works. */
+export function isPermissionAccepted(status: string): boolean {
+    return status === 'granted' || status === 'limited';
+}
+
 export type { AttachmentPreview };
 
 type UseImagePickerResult = {
@@ -83,7 +88,7 @@ export function useImagePicker(): UseImagePickerResult {
         if (Platform.OS === 'web') return true;
 
         const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (status !== 'granted') {
+        if (!isPermissionAccepted(status)) {
             Modal.alert(
                 t('imageUpload.permissionTitle'),
                 t('imageUpload.permissionMessage'),
