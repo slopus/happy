@@ -67,21 +67,10 @@ The deployment config expects:
 
 ## Production deployment order
 
-The `Lab_HappyServer` TeamCity build must keep this order:
-
-```bash
-# Build and push docker.korshakov.com/handy-server:<version>
-packages/happy-server/deploy/migrate-production.sh <version> <namespace>
-# Existing Deploy recipe applies handy.yaml
-packages/happy-server/deploy/verify-production-rollout.sh <version> <namespace>
-```
-
-The two scripts use `HAPPY_SERVER_KUBECONFIG_BASE64`, stored as a masked
-TeamCity parameter. The migration script runs `prisma migrate deploy` in a
-one-off Kubernetes Job using the new image and `handy-secrets`. A failed or
-timed-out migration exits nonzero, so the default-mode Deploy step is skipped.
-The final script verifies the Deployment references the expected image before
-waiting for the rollout to finish.
+The `Lab_HappyServer` TeamCity build runs Build, Push, and its private Deploy
+recipe in order. The recipe runs `prisma migrate deploy` in a one-off
+Kubernetes Job using the new image and `handy-secrets`, then applies
+`handy.yaml` and waits for the rollout. A failed migration exits before apply.
 
 GitHub CI continues to apply migrations to its disposable Postgres database.
 Production migrations run before the rolling update, so they must remain
