@@ -18,14 +18,19 @@ import { usesControlledSessionUi } from '@/sync/rig';
 import { buildAgentTurnCopyTextByMessageId } from '@/utils/agentTurnCopy';
 
 const SCROLL_THRESHOLD = 300;
-const SCROLL_BUTTON_DOCK_GAP = 6;
+const DOCK_DETAILS_SHOW_OFFSET = 16;
+const DOCK_DETAILS_HIDE_OFFSET = 48;
+const SCROLL_BUTTON_DOCK_GAP = 8;
 
 export const ChatList = React.memo((props: {
     session: Session;
     topContentInset?: number;
     bottomContentInset?: number;
+    /** Distance from the screen bottom to the composer. Independent of status-chrome fade. */
+    scrollButtonInset?: number;
     headerOverlayHeight?: number;
     onHeaderBackdropVisibilityChange?: (visible: boolean) => void;
+    onBottomDockVisibilityChange?: (visible: boolean) => void;
 }) => {
     const { messages, hasMoreOlder, isLoadingOlder } = useSessionMessages(props.session.id);
     return (
@@ -37,8 +42,10 @@ export const ChatList = React.memo((props: {
             isLoadingOlder={isLoadingOlder}
             topContentInset={props.topContentInset}
             bottomContentInset={props.bottomContentInset}
+            scrollButtonInset={props.scrollButtonInset}
             headerOverlayHeight={props.headerOverlayHeight}
             onHeaderBackdropVisibilityChange={props.onHeaderBackdropVisibilityChange}
+            onBottomDockVisibilityChange={props.onBottomDockVisibilityChange}
         />
     )
 });
@@ -83,8 +90,10 @@ const ChatListInternal = React.memo((props: {
     isLoadingOlder: boolean,
     topContentInset?: number,
     bottomContentInset?: number,
+    scrollButtonInset?: number,
     headerOverlayHeight?: number,
     onHeaderBackdropVisibilityChange?: (visible: boolean) => void,
+    onBottomDockVisibilityChange?: (visible: boolean) => void,
 }) => {
     const { theme } = useUnistyles();
     const flatListRef = React.useRef<FlatList>(null);
@@ -96,6 +105,10 @@ const ChatListInternal = React.memo((props: {
     // parent re-renders on every wheel tick.
     const showScrollButtonRef = React.useRef(false);
     const headerBackdropVisibleRef = React.useRef(false);
+    const bottomDockVisibleRef = React.useRef(true);
+    // Native auto-stick-to-bottom also emits scroll events. Only a drag that
+    // began with the user may change the auxiliary dock's visibility.
+    const isUserScrollingRef = React.useRef(false);
     const scrollMetricsRef = React.useRef({
         offsetY: 0,
         contentHeight: 0,
@@ -273,11 +286,37 @@ const ChatListInternal = React.memo((props: {
         props.onHeaderBackdropVisibilityChange(nextVisible);
     }, [props.bottomContentInset, props.headerOverlayHeight, props.onHeaderBackdropVisibilityChange, props.topContentInset]);
 
+    const setBottomDockVisibility = useCallback((visible: boolean) => {
+        if (!props.onBottomDockVisibilityChange) {
+            return;
+        }
+        if (visible === bottomDockVisibleRef.current) {
+            return;
+        }
+        bottomDockVisibleRef.current = visible;
+        props.onBottomDockVisibilityChange(visible);
+    }, [props.onBottomDockVisibilityChange]);
+
+    const updateBottomDockVisibility = useCallback((offsetY: number) => {
+        // Treat this as a user-scroll state. Hysteresis avoids toggling while
+        // the list is resting or bouncing very near the newest message.
+        const nextVisible = bottomDockVisibleRef.current
+            ? offsetY <= DOCK_DETAILS_HIDE_OFFSET
+            : offsetY <= DOCK_DETAILS_SHOW_OFFSET;
+        setBottomDockVisibility(nextVisible);
+    }, [setBottomDockVisibility]);
+
+    React.useEffect(() => {
+        isUserScrollingRef.current = false;
+        setBottomDockVisibility(true);
+    }, [props.sessionId, setBottomDockVisibility]);
+
     React.useEffect(() => () => {
         if (headerBackdropVisibleRef.current) {
             props.onHeaderBackdropVisibilityChange?.(false);
         }
-    }, [props.onHeaderBackdropVisibilityChange]);
+        setBottomDockVisibility(true);
+    }, [props.onHeaderBackdropVisibilityChange, setBottomDockVisibility]);
 
     const renderItem = useCallback(({ item }: { item: DisplayItem }) => {
         if (item.type === 'tool-group') {
@@ -322,16 +361,44 @@ const ChatListInternal = React.memo((props: {
         const offsetY = e.nativeEvent.contentOffset.y;
         scrollMetricsRef.current.offsetY = offsetY;
         updateHeaderBackdropVisibility();
+        if (isUserScrollingRef.current) {
+            updateBottomDockVisibility(offsetY);
+        }
         const next = offsetY > SCROLL_THRESHOLD;
         if (next !== showScrollButtonRef.current) {
             showScrollButtonRef.current = next;
             setShowScrollButton(next);
         }
-    }, [updateHeaderBackdropVisibility]);
+    }, [updateBottomDockVisibility, updateHeaderBackdropVisibility]);
+
+    const handleScrollBeginDrag = useCallback(() => {
+        isUserScrollingRef.current = true;
+    }, []);
+
+    const handleScrollEndDrag = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
+        if (!isUserScrollingRef.current) {
+            return;
+        }
+        updateBottomDockVisibility(e.nativeEvent.contentOffset.y);
+        if (Math.abs(e.nativeEvent.velocity?.y ?? 0) < 0.1) {
+            isUserScrollingRef.current = false;
+        }
+    }, [updateBottomDockVisibility]);
+
+    const handleMomentumScrollEnd = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
+        if (!isUserScrollingRef.current) {
+            return;
+        }
+        updateBottomDockVisibility(e.nativeEvent.contentOffset.y);
+        isUserScrollingRef.current = false;
+    }, [updateBottomDockVisibility]);
 
     const scrollToBottom = useCallback(() => {
+        // This is an explicit "go to latest" action, so its animated native
+        // scroll should restore the dock even though it is not a drag.
+        setBottomDockVisibility(true);
         flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
-    }, []);
+    }, [setBottomDockVisibility]);
 
     // In an inverted FlatList, `onEndReached` fires when the user scrolls
     // past the visual top — i.e. when they want to see older history.
@@ -390,6 +457,9 @@ const ChatListInternal = React.memo((props: {
                 contentContainerStyle={{ paddingTop: 8 + (props.bottomContentInset ?? 0) }}
                 renderItem={renderItem}
                 onScroll={handleScroll}
+                onScrollBeginDrag={handleScrollBeginDrag}
+                onScrollEndDrag={handleScrollEndDrag}
+                onMomentumScrollEnd={handleMomentumScrollEnd}
                 scrollEventThrottle={16}
                 onLayout={(event) => {
                     scrollMetricsRef.current.viewportHeight = event.nativeEvent.layout.height;
@@ -412,7 +482,7 @@ const ChatListInternal = React.memo((props: {
             {showScrollButton && (
                 <View style={[
                     styles.scrollButtonContainer,
-                    { bottom: SCROLL_BUTTON_DOCK_GAP + (props.bottomContentInset ?? 0) },
+                    { bottom: SCROLL_BUTTON_DOCK_GAP + (props.scrollButtonInset ?? props.bottomContentInset ?? 0) },
                 ]}>
                     <Pressable
                         style={({ pressed }) => [

@@ -10,6 +10,9 @@ import Animated, {
     FadeOutUp,
     LinearTransition,
     ReduceMotion,
+    useAnimatedStyle,
+    useSharedValue,
+    withTiming,
 } from 'react-native-reanimated';
 import { useUnistyles } from 'react-native-unistyles';
 
@@ -241,6 +244,35 @@ export function AnimatedCollapsible({
             exiting={collapsibleExiting}
             layout={collapsibleLayout}
             style={style}
+        >
+            {children}
+        </Animated.View>
+    );
+}
+
+/** Opacity-only. Stays in layout so nothing around it jumps. */
+export function AnimatedFade({
+    visible,
+    children,
+    style,
+}: {
+    visible: boolean;
+    children: React.ReactNode;
+    style?: StyleProp<ViewStyle>;
+}) {
+    const opacity = useSharedValue(visible ? 1 : 0);
+    React.useEffect(() => {
+        opacity.value = withTiming(visible ? 1 : 0, {
+            duration: visible ? 180 : 140,
+            easing: visible ? enterEasing : exitEasing,
+            reduceMotion: ReduceMotion.System,
+        });
+    }, [opacity, visible]);
+    const animatedStyle = useAnimatedStyle(() => ({ opacity: opacity.value }));
+    return (
+        <Animated.View
+            pointerEvents={visible ? 'auto' : 'none'}
+            style={[animatedStyle, style]}
         >
             {children}
         </Animated.View>

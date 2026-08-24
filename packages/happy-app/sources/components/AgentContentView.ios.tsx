@@ -119,6 +119,7 @@ export const AgentContentView: React.FC<AgentContentViewProps> = React.memo(({
                 )}
                 <Animated.View
                     onLayout={handleDockLayout}
+                    pointerEvents="box-none"
                     style={[
                         {
                             position: 'absolute',

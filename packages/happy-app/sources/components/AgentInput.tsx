@@ -30,7 +30,7 @@ import { t } from '@/text';
 import { Metadata } from '@/sync/storageTypes';
 import { isRunningOnMac } from '@/utils/platform';
 import { MobileGlassSurface } from './MobileGlass';
-import { AnimatedClickAwayBackdrop } from './AnimatedOverlay';
+import { AnimatedClickAwayBackdrop, AnimatedFade } from './AnimatedOverlay';
 import { BubblePressable } from './BubblePressable';
 import { resolveAgentInputPrimaryAction } from './agentInputPrimaryAction';
 import { NativeSettingsMenu, type NativeSettingsMenuGroup } from './NativeSettingsMenu';
@@ -94,6 +94,8 @@ interface AgentInputProps {
     };
     alwaysShowContextSize?: boolean;
     showSessionStatusInfoInSettings?: boolean;
+    /** Hide the auxiliary connection/mode row while reading older messages. */
+    showStatusDetails?: boolean;
     sessionStatusGitBranch?: string | null;
     sessionStatusModelLabel?: string | null;
     sessionStatusEffortLabel?: string | null;
@@ -1930,23 +1932,25 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                     </>
                 )}
 
-                <AgentInputStatusRow
-                    connectionStatus={props.connectionStatus}
-                    contextWarning={contextWarning}
-                    displayPermissionMode={displayPermissionMode}
-                    permissionModeKey={permissionModeKey}
-                    permissionSemanticKind={displayPermissionMode?.semanticKind}
-                    isSandboxedYoloMode={isSandboxedYoloMode}
-                    permissionLabel={displayPermissionMode ? withSandboxSuffix(displayPermissionMode.name, permissionModeKey) : null}
-                    zenMode={props.zenMode}
-                />
+                <AnimatedFade visible={props.showStatusDetails !== false}>
+                    <AgentInputStatusRow
+                        connectionStatus={props.connectionStatus}
+                        contextWarning={contextWarning}
+                        displayPermissionMode={displayPermissionMode}
+                        permissionModeKey={permissionModeKey}
+                        permissionSemanticKind={displayPermissionMode?.semanticKind}
+                        isSandboxedYoloMode={isSandboxedYoloMode}
+                        permissionLabel={displayPermissionMode ? withSandboxSuffix(displayPermissionMode.name, permissionModeKey) : null}
+                        zenMode={props.zenMode}
+                    />
 
-                <AgentInputContextChips
-                    machineName={props.machineName}
-                    onMachineClick={props.onMachineClick}
-                    currentPath={props.currentPath}
-                    onPathClick={props.onPathClick}
-                />
+                    <AgentInputContextChips
+                        machineName={props.machineName}
+                        onMachineClick={props.onMachineClick}
+                        currentPath={props.currentPath}
+                        onPathClick={props.onPathClick}
+                    />
+                </AnimatedFade>
 
                 {/* Box 2: Action Area (Input + Send) */}
                 <Shaker ref={sendBlockShakerRef}>
