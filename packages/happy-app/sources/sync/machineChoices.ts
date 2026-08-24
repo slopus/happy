@@ -161,15 +161,14 @@ export function machineChoiceAgentAvailable(
 /**
  * Whether the Home picker should contain this harness at all.
  *
- * Common harnesses stay visible but disabled when unavailable. Antigravity is
- * only useful to the small set of people who installed it, so it stays absent
- * until its machine positively reports it.
+ * Common harnesses stay visible but disabled when unavailable. Antigravity and
+ * Happy Agent stay absent until this computer reports them available.
  */
 export function machineChoiceAgentVisible(
     choice: MachineChoice | null,
     agent: NewSessionAgentType,
 ): boolean {
-    return agent !== 'agy' || machineChoiceAgentAvailable(choice, agent);
+    return (agent !== 'agy' && agent !== 'rig') || machineChoiceAgentAvailable(choice, agent);
 }
 
 /**

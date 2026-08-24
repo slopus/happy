@@ -136,7 +136,7 @@ describe('what a computer can actually run', () => {
         expect(machineChoiceAgentAvailable(choice, 'rig')).toBe(false);
     });
 
-    it('only shows Antigravity after the machine explicitly reports it installed', () => {
+    it('only shows Antigravity and Happy Agent when available on the machine', () => {
         const absent = collectMachineChoices([cli()])[0];
         const installed = collectMachineChoices([machine('agy-machine', {
             host: 'laptop.local',
@@ -146,7 +146,7 @@ describe('what a computer can actually run', () => {
         expect(machineChoiceAgentVisible(absent, 'agy')).toBe(false);
         expect(machineChoiceAgentVisible(installed, 'agy')).toBe(true);
         expect(machineChoiceAgentVisible(absent, 'claude')).toBe(true);
-        expect(machineChoiceAgentVisible(absent, 'rig')).toBe(true);
+        expect(machineChoiceAgentVisible(absent, 'rig')).toBe(false);
     });
 
     it('keeps a stale draft from starting an agent this computer cannot run', () => {
