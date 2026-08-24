@@ -89,6 +89,17 @@ const INTERACTIVE_QUESTION_TOOL_NAMES = new Set([
     'request_user_input',
 ]);
 
+// These tools own purpose-built inline diff views. Compacting them would hide
+// the primary content of the tool call instead of merely shortening its chrome.
+const RICH_INLINE_EDIT_TOOL_NAMES = new Set([
+    'Edit',
+    'MultiEdit',
+    'Write',
+    'CodexPatch',
+    'CodexDiff',
+    'edit',
+]);
+
 export type ToolSummaryCategory = 'terminal' | 'edit' | 'read' | 'search' | 'web' | 'task' | 'other';
 
 /** Formats `mcp__linear__create_issue` as `MCP: Linear Create Issue`. */
@@ -108,8 +119,8 @@ export function shouldRenderToolCardHeader(toolName: string, platformOS: string)
 
 /**
  * Compact mode is deliberately name-agnostic so newly introduced provider
- * tools do not fall back to a half-screen raw JSON card. User attachments and
- * controls that require inline context stay expanded.
+ * tools do not fall back to a half-screen raw JSON card. User attachments,
+ * controls that require inline context, and purpose-built edit diffs stay expanded.
  */
 export function shouldUseCompactToolRow(
     tool: Pick<ToolCall, 'name' | 'permission'>,
@@ -118,7 +129,7 @@ export function shouldUseCompactToolRow(
     if (
         !compactMode
         || tool.name === 'file'
-        || tool.name === 'CodexPatch'
+        || RICH_INLINE_EDIT_TOOL_NAMES.has(tool.name)
         || isInteractiveQuestionToolName(tool.name)
     ) {
         return false;
