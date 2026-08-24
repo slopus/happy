@@ -49,6 +49,10 @@ export interface SyncSocketState {
 
 export type SyncSocketListener = (state: SyncSocketState) => void;
 
+// Comfortably past the server's worst honest case: a 15s wait for a
+// reconnecting daemon to rejoin the room, then a 30s call.
+const RPC_ACK_TIMEOUT_MS = 50_000;
+
 //
 // Main Class
 //
@@ -147,6 +151,30 @@ class ApiSocket {
     }
 
     /**
+     * The server answers every rpc-call it hears, but an emit made while the
+     * socket is down is buffered by socket.io and its ack never arrives, so a
+     * bare emitWithAck waits for the rest of the app's life. The server's own
+     * budget is a 15s grace window for a reconnecting daemon plus a 30s call,
+     * so past that the call is not slow — it is gone, and the caller deserves
+     * to hear so.
+     */
+    private async rpcCall(method: string, params: unknown): Promise<any> {
+        // disconnect() nulls the socket, so this is a state a caller can really
+        // reach. Read it once and say what happened, rather than letting a
+        // property access on null surface as a TypeError.
+        const socket = this.socket;
+        if (!socket) {
+            throw new Error('Not connected to the server');
+        }
+        return await socket
+            .timeout(RPC_ACK_TIMEOUT_MS)
+            .emitWithAck('rpc-call', { method, params })
+            .catch(() => {
+                throw new Error('The computer did not respond');
+            });
+    }
+
+    /**
      * RPC call for sessions - uses session-specific encryption
      */
     async sessionRPC<R, A>(sessionId: string, method: string, params: A): Promise<R> {
@@ -154,16 +182,16 @@ class ApiSocket {
         if (!sessionEncryption) {
             throw new Error(`Session encryption not found for ${sessionId}`);
         }
-        
-        const result = await this.socket!.emitWithAck('rpc-call', {
-            method: `${sessionId}:${method}`,
-            params: await sessionEncryption.encryptRaw(params)
-        });
-        
+
+        const result = await this.rpcCall(
+            `${sessionId}:${method}`,
+            await sessionEncryption.encryptRaw(params),
+        );
+
         if (result.ok) {
             return await sessionEncryption.decryptRaw(result.result) as R;
         }
-        throw new Error('RPC call failed');
+        throw new Error(result.error || 'RPC call failed');
     }
 
     /**
@@ -175,10 +203,10 @@ class ApiSocket {
             throw new Error(`Machine encryption not found for ${machineId}`);
         }
 
-        const result = await this.socket!.emitWithAck('rpc-call', {
-            method: `${machineId}:${method}`,
-            params: await machineEncryption.encryptRaw(params)
-        });
+        const result = await this.rpcCall(
+            `${machineId}:${method}`,
+            await machineEncryption.encryptRaw(params),
+        );
 
         if (result.ok) {
             return await machineEncryption.decryptRaw(result.result) as R;
