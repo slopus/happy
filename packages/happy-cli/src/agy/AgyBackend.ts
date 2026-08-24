@@ -260,12 +260,22 @@ export class AgyBackend implements AgentBackend {
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
       this.emit({ type: 'status', status: 'error', detail: errorMsg });
+      // When a turn fails with an error (e.g. tool failure or unhandled exception in agy),
+      // recycle the child process so it does not retain corrupted state or re-emit stale errors
+      // across turns. On the next turn, ensureChildRunning will cleanly respawn agy with
+      // --conversation <id> to resume the conversation state.
+      if (this.child && !this.child.killed) {
+        this.log('Turn failed — recycling child process to ensure clean state for next turn');
+        this.child.kill('SIGTERM');
+        this.child = null;
+      }
       throw err;
     } finally {
       this.isTurnRunning = false;
       this.activeTurnResolve = null;
       this.activeTurnReject = null;
       this.currentTurnParser = null;
+      this.activeTurnStderr = '';
       if (this.pendingModelRestart) {
         this.pendingModelRestart = false;
         this.restartChildForModelChange();

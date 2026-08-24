@@ -80,6 +80,8 @@ export class AcpSessionManager {
 
     this.currentTurnId = createId();
     this.acpCallToSessionCall.clear();
+    this.pendingText = '';
+    this.pendingType = null;
     return [
       createEnvelope('agent', { t: 'turn-start' }, { turn: this.currentTurnId, time: this.nextTime() }),
     ];
@@ -94,6 +96,8 @@ export class AcpSessionManager {
     const turnId = this.currentTurnId;
     this.currentTurnId = null;
     this.acpCallToSessionCall.clear();
+    this.pendingText = '';
+    this.pendingType = null;
     return [
       ...flushed,
       createEnvelope('agent', { t: 'turn-end', status }, { turn: turnId, time: this.nextTime() }),

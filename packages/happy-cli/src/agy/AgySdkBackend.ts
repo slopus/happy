@@ -299,6 +299,17 @@ export class AgySdkBackend implements AgentBackend {
           const detail = event.error || 'SDK turn failed';
           this.emit({ type: 'status', status: 'error', detail });
           this.pendingTurn?.reject(new Error(detail));
+          // Reset/recycle the bridge process on turn error so subsequent turns don't get stuck in the error state
+          if (this.child) {
+            try {
+              this.child.kill('SIGTERM');
+            } catch {
+              // ignore
+            }
+            this.child = null;
+            this.isReady = false;
+            this.readyPromise = null;
+          }
         }
         this.pendingTurn = null;
         break;

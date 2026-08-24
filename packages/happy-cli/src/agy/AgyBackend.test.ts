@@ -211,6 +211,75 @@ describe('AgyBackend persistent single-process', () => {
     ]);
   });
 
+  it('recycles child process after an error turn so subsequent turns spawn cleanly without repeating old errors', async () => {
+    const { child: child1, stdout: stdout1 } = makeFakeChild();
+    const { child: child2, stdin: stdin2, stdout: stdout2 } = makeFakeChild();
+    let spawnCount = 0;
+    const spawnFn = vi.fn(() => {
+      spawnCount++;
+      return spawnCount === 1 ? child1 : child2;
+    }) as unknown as SpawnFn;
+
+    const backend = new AgyBackend({
+      cwd: '/work',
+      permissionMode: 'default',
+      spawnFn,
+    });
+
+    const messages: AgentMessage[] = [];
+    backend.onMessage((m) => messages.push(m));
+
+    const startPromise = backend.startSession();
+    stdout1.emit(
+      'data',
+      '{"event":"init","conversation_id":"c-recover-123","init":{"cwd":"/work"}}\n'
+    );
+    await startPromise;
+
+    // Turn 1: Fails with a tool execution error
+    const turn1 = backend.sendPrompt('/work', 'run bad tool');
+    await new Promise((r) => setTimeout(r, 10));
+
+    stdout1.emit(
+      'data',
+      '{"event":"result","result":{"conversation_id":"c-recover-123","status":"ERROR","error":"Error executing tool quant_get_factor_research: Either batch_id or experiment_ids must be provided."}}\n'
+    );
+
+    await expect(turn1).rejects.toThrow('quant_get_factor_research');
+    expect(child1.kill).toHaveBeenCalled();
+
+    // Turn 2: Starts with clean respawned child process preserving conversation ID
+    messages.length = 0;
+    const turn2 = backend.sendPrompt('/work', 'next prompt');
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(spawnFn).toHaveBeenCalledTimes(2);
+
+    // Initial handshake for child2
+    stdout2.emit(
+      'data',
+      '{"event":"init","conversation_id":"c-recover-123","init":{"cwd":"/work"}}\n'
+    );
+    await new Promise((r) => setTimeout(r, 10));
+
+    // child2 outputs success for turn 2
+    stdout2.emit(
+      'data',
+      '{"event":"step_update","step_update":{"conversation_id":"c-recover-123","step_index":1,"state":"DONE","step_type":"agent_response","text_delta":"all good"}}\n'
+    );
+    stdout2.emit(
+      'data',
+      '{"event":"result","result":{"conversation_id":"c-recover-123","status":"SUCCESS"}}\n'
+    );
+
+    await expect(turn2).resolves.toBeUndefined();
+
+    // Turn 2 only has text and idle status, no old error messages repeated
+    const turn2ErrorStatuses = messages.filter((m) => m.type === 'status' && m.status === 'error');
+    expect(turn2ErrorStatuses).toHaveLength(0);
+    expect(messages.some((m) => m.type === 'model-output' && m.textDelta === 'all good')).toBe(true);
+  });
+
   it('emits an error status when the process exits mid-turn', async () => {
     const { child, stdout } = makeFakeChild();
     const spawnFn = vi.fn(() => child) as unknown as SpawnFn;
