@@ -250,6 +250,12 @@ export default function DevScreen() {
                     onPress={() => router.push('/dev/tools2')}
                 />
                 <Item
+                    title="File Edit Preview"
+                    subtitle="Highlighted Claude and Codex edits in chat"
+                    icon={<Ionicons name="git-compare-outline" size={28} color="#007AFF" />}
+                    onPress={() => router.push('/dev/file-edits')}
+                />
+                <Item
                     title="Shimmer View"
                     subtitle="Shimmer loading effects with masks"
                     icon={<Ionicons name="sparkles-outline" size={28} color="#007AFF" />}

@@ -278,6 +278,12 @@ export default function RootLayout() {
                 }}
             />
             <Stack.Screen
+                name="dev/file-edits"
+                options={{
+                    headerTitle: 'File Edit Preview',
+                }}
+            />
+            <Stack.Screen
                 name="dev/masked-progress"
                 options={{
                     headerTitle: 'Masked Progress',
