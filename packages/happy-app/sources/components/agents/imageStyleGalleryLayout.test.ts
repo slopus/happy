@@ -11,8 +11,8 @@ import { IMAGE_STYLE_PREVIEW_MANIFEST } from './imageStylePreviewManifest';
 
 describe('imageStyleGalleryLayout', () => {
     it('keeps preview tiles proportional so portrait styles are not forced into row-height cards', () => {
-        const landscape = IMAGE_STYLE_PREVIEW_MANIFEST['scenes-and-illustrations/concept-scene/1'];
-        const portrait = IMAGE_STYLE_PREVIEW_MANIFEST['scenes-and-illustrations/concept-scene/2'];
+        const landscape = IMAGE_STYLE_PREVIEW_MANIFEST['image-effects/banner-hero@1.0.0'];
+        const portrait = IMAGE_STYLE_PREVIEW_MANIFEST['image-effects/anime-key-visual@1.0.0'];
         const cardWidth = 180;
 
         expect(getImageStyleGalleryItemType(landscape)).toBe('landscape');
@@ -24,10 +24,10 @@ describe('imageStyleGalleryLayout', () => {
 
     it('splits styles into masonry columns without dropping or duplicating entries', () => {
         const styles = [
-            { id: 'scenes-and-illustrations/concept-scene/1' },
-            { id: 'scenes-and-illustrations/concept-scene/2' },
-            { id: 'product-visuals/white-background-product/1' },
-            { id: 'avatars-and-profile/style-transfer-selfie/1' },
+            { id: 'image-effects/concept-scene@1.0.0' },
+            { id: 'image-effects/anime-key-visual@1.0.0' },
+            { id: 'image-effects/white-background-product@1.0.0' },
+            { id: 'image-effects/style-transfer-selfie@1.0.0' },
         ];
 
         const columns = createImageStyleGalleryColumns(

@@ -2,17 +2,17 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { IMAGE_EFFECTS_CATALOG_SNAPSHOT } from './imageEffectsCatalogAdapter';
 import { IMAGE_AGENT_STYLE_PRESETS } from './imageAgentPrompt';
 import { IMAGE_STYLE_PREVIEW_MANIFEST } from './imageStylePreviewManifest';
 
 const currentDir = dirname(fileURLToPath(import.meta.url));
-const previewAssetDir = resolve(currentDir, '../../assets/images/gpt-image-2/skill-examples');
-const referencePreviewAssetDir = resolve(currentDir, '../../assets/images/gpt-image-2/reference-examples');
-const IMAGE_STYLE_COUNT = 180;
-const IMAGE_STYLE_CATEGORY_COUNT = 21;
-const GARDEN_CASE_COUNT = 162;
-const REFERENCE_CASE_COUNT = 9;
-const GITHUB_SKILL_CASE_COUNT = 9;
+const previewAssetDir = resolve(currentDir, '../../../assets/images/image-effects');
+const previewAssetModulePath = resolve(currentDir, 'imageStylePreviewAssets.ts');
+const IMAGE_STYLE_COUNT = IMAGE_EFFECTS_CATALOG_SNAPSHOT.effects.length;
+const IMAGE_STYLE_CATEGORY_COUNT = new Set(
+    IMAGE_EFFECTS_CATALOG_SNAPSHOT.effects.map((effect) => effect.category),
+).size;
 
 function decodeImageDimensions(bytes: Buffer): { width: number; height: number } {
     if (bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) {
@@ -34,7 +34,19 @@ function decodeImageDimensions(bytes: Buffer): { width: number; height: number }
 }
 
 describe('imageStylePreviewManifest', () => {
-    it('defines one real preview asset for every GPT Image 2 case style', () => {
+    it('uses Metro-resolvable relative paths for every bundled preview', () => {
+        const source = readFileSync(previewAssetModulePath, 'utf8');
+        const assetSpecifiers = [...source.matchAll(/require\('([^']+)'\)/g)]
+            .map((match) => match[1]);
+
+        expect(assetSpecifiers).toHaveLength(IMAGE_STYLE_COUNT);
+        for (const specifier of assetSpecifiers) {
+            expect(specifier.startsWith('../../../assets/images/image-effects/')).toBe(true);
+            expect(existsSync(resolve(currentDir, specifier))).toBe(true);
+        }
+    });
+
+    it('defines one bundled preview asset for every canonical image effect', () => {
         expect(IMAGE_AGENT_STYLE_PRESETS).toHaveLength(IMAGE_STYLE_COUNT);
 
         const styleIds = IMAGE_AGENT_STYLE_PRESETS.map((style) => style.id).sort();
@@ -47,39 +59,28 @@ describe('imageStylePreviewManifest', () => {
 
         expect(previewStyleIds).toEqual(styleIds);
         expect(categoryIds.size).toBe(IMAGE_STYLE_CATEGORY_COUNT);
-        expect(sourceSets['gpt-image-2-101']).toBe(GARDEN_CASE_COUNT);
-        expect(sourceSets['curated-reference-examples']).toBe(REFERENCE_CASE_COUNT);
-        expect(sourceSets['github-skill']).toBe(GITHUB_SKILL_CASE_COUNT);
+        expect(sourceSets).toEqual({ 'image-effects-snapshot': IMAGE_STYLE_COUNT });
 
         const sourceCaseIds = Object.values(IMAGE_STYLE_PREVIEW_MANIFEST).map((preview) => preview.sourceCaseId);
         expect(new Set(sourceCaseIds).size).toBe(sourceCaseIds.length);
-        const githubSourceIndices = Object.values(IMAGE_STYLE_PREVIEW_MANIFEST)
-            .filter((preview) => preview.sourceSet === 'github-skill')
-            .map((preview) => preview.sourceIndex);
-        expect(new Set(githubSourceIndices).size).toBe(githubSourceIndices.length);
+        const sourceIndices = Object.values(IMAGE_STYLE_PREVIEW_MANIFEST).map((preview) => preview.sourceIndex);
+        expect(new Set(sourceIndices).size).toBe(sourceIndices.length);
 
         for (const style of IMAGE_AGENT_STYLE_PRESETS) {
             const preview = IMAGE_STYLE_PREVIEW_MANIFEST[style.id];
-            const sourceDir = preview.sourceSet === 'gpt-image-2-101'
-                ? previewAssetDir
-                : referencePreviewAssetDir;
-
             expect(style.promptContent.length).toBeGreaterThan(200);
             expect(style.title.length).toBeGreaterThan(0);
-            expect(style.templateRef).toMatch(/^.+\.md$/);
+            expect(style.templateRef).toMatch(/^image-effects\/.+@\d+\.\d+\.\d+$/);
             expect(preview.width).toBeGreaterThan(0);
             expect(preview.height).toBeGreaterThan(0);
-            const previewPath = resolve(sourceDir, preview.fileName);
+            const previewPath = resolve(previewAssetDir, preview.fileName);
             expect(existsSync(previewPath)).toBe(true);
             const bytes = readFileSync(previewPath);
             expect(decodeImageDimensions(bytes)).toEqual({ width: preview.width, height: preview.height });
-            if (preview.sourceSet === 'github-skill') {
-                expect(bytes.includes(Buffer.from('Exif\0\0'))).toBe(false);
-                expect(bytes.includes(Buffer.from('http://ns.adobe.com/xap/1.0/'))).toBe(false);
-                for (const marker of ['eXIf', 'iTXt', 'tEXt', 'zTXt']) {
-                    expect(bytes.includes(Buffer.from(marker))).toBe(false);
-                }
-                expect(bytes.includes(Buffer.from([0xff, 0xed]))).toBe(false);
+            expect(bytes.includes(Buffer.from('Exif\0\0'))).toBe(false);
+            expect(bytes.includes(Buffer.from('http://ns.adobe.com/xap/1.0/'))).toBe(false);
+            for (const marker of ['eXIf', 'iTXt', 'tEXt', 'zTXt']) {
+                expect(bytes.includes(Buffer.from(marker))).toBe(false);
             }
         }
     });

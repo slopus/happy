@@ -31,7 +31,7 @@ export function isImageStyleComposeMode(routeMode: unknown): boolean {
 export function createBuiltinImageStyleAgent(): AgentLauncher {
     return {
         id: BUILTIN_IMAGE_STYLE_AGENT_ID,
-        name: 'GPT Image 2 Styles',
+        name: 'Image Effects',
         glyph: 'P',
         color: '#8A5A2B',
         machineId: '',
@@ -88,15 +88,15 @@ export function toggleImageAgentStyle(agent: AgentLauncher, styleId: string): Ag
 
 export function createImageStyleSelectionPrompt(style: ImageAgentStylePreset): string {
     return [
-        '使用 $gpt-image-2 skill 生成或编辑图片，并以下面选中的 Garden 案例作为目标风格。',
+        '使用 $gpt-image-2 skill 生成或编辑图片，并以下面选中的 Image Effects 效果作为目标风格。',
         '',
-        `已选择的 Garden 案例：${style.id}`,
-        `案例标题：${getImageAgentStyleLabel(style)}`,
+        `已选择的 Image Effects 效果：${style.id}`,
+        `效果标题：${getImageAgentStyleLabel(style)}`,
         `模板：${style.templateRef}`,
         `分类：${getImageAgentStyleCategoryLabel(style)}`,
         `风格说明：${getImageAgentStylePromptHint(style)}`,
         '',
         '除非我明确要求改变，否则请保留上传主体的身份特征、关键几何结构、重要文字，以及用户提供的所有约束。',
-        '请把上面的案例风格转写成中文图像生成 prompt 后执行，不要在最终 prompt 中保留英文 JSON 字段名。',
+        '请把上面的效果规则转写成中文图像生成 prompt 后执行，不要在最终 prompt 中保留英文 JSON 字段名。',
     ].join('\n');
 }

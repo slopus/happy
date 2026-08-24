@@ -30,7 +30,7 @@ describe('imageAgentMode', () => {
         expect(IMAGE_STYLE_COMPOSE_ROUTE).toBe('/new?mode=image-styles');
     });
 
-    it('creates a built-in image style agent with every GPT Image 2 preset selected', () => {
+    it('creates a built-in image style agent with every canonical effect selected', () => {
         const agent = createBuiltinImageStyleAgent();
 
         expect(agent.kind).toBe('image-styles');
@@ -64,16 +64,16 @@ describe('imageAgentMode', () => {
     });
 
     it('toggles multiple styles for the current image generation batch', () => {
-        const first = selectImageAgentStyle(createBuiltinImageStyleAgent(), 'product-visuals/white-background-product/1');
-        const second = toggleImageAgentStyle(first, 'avatars-and-profile/character-grid-portrait/1');
-        const third = toggleImageAgentStyle(second, 'product-visuals/white-background-product/1');
+        const first = selectImageAgentStyle(createBuiltinImageStyleAgent(), 'image-effects/white-background-product@1.0.0');
+        const second = toggleImageAgentStyle(first, 'image-effects/character-grid-portrait@1.0.0');
+        const third = toggleImageAgentStyle(second, 'image-effects/white-background-product@1.0.0');
 
-        expect(first.imageStyleIds).toEqual(['product-visuals/white-background-product/1']);
+        expect(first.imageStyleIds).toEqual(['image-effects/white-background-product@1.0.0']);
         expect(second.imageStyleIds).toEqual([
-            'product-visuals/white-background-product/1',
-            'avatars-and-profile/character-grid-portrait/1',
+            'image-effects/white-background-product@1.0.0',
+            'image-effects/character-grid-portrait@1.0.0',
         ]);
-        expect(third.imageStyleIds).toEqual(['avatars-and-profile/character-grid-portrait/1']);
+        expect(third.imageStyleIds).toEqual(['image-effects/character-grid-portrait@1.0.0']);
         expect(third.imageVariantsPerStyle).toBe(1);
     });
 
@@ -86,12 +86,12 @@ describe('imageAgentMode', () => {
     });
 
     it('builds a style prompt that can be inserted into the composer', () => {
-        const style = IMAGE_AGENT_STYLE_PRESETS.find((preset) => preset.id === 'product-visuals/white-background-product/1');
+        const style = IMAGE_AGENT_STYLE_PRESETS.find((preset) => preset.id === 'image-effects/white-background-product@1.0.0');
         expect(style).toBeTruthy();
 
         const prompt = createImageStyleSelectionPrompt(style!);
 
-        expect(prompt).toContain('product-visuals/white-background-product/1');
+        expect(prompt).toContain('image-effects/white-background-product@1.0.0');
         expect(prompt).toContain(`风格说明：${style!.promptHint}`);
         expect(prompt).not.toContain(style!.promptContent.slice(0, 120));
         expect(prompt).toContain('保留上传主体的身份特征');

@@ -1,14 +1,9 @@
 import type { AgentLauncher } from './launchAgent';
 import {
-    IMAGE_AGENT_STYLE_CATEGORIES as BASE_IMAGE_AGENT_STYLE_CATEGORIES,
-    IMAGE_AGENT_STYLE_PRESETS as BASE_IMAGE_AGENT_STYLE_PRESETS,
-    LEGACY_IMAGE_STYLE_ID_ALIASES,
-} from './imageStyleCatalog';
-import {
-    EXTRA_IMAGE_AGENT_STYLE_CATEGORIES,
-    EXTRA_LEGACY_IMAGE_STYLE_ID_ALIASES,
-    EXTRA_IMAGE_AGENT_STYLE_PRESETS,
-} from './imageStyleCatalogExtras';
+    IMAGE_EFFECTS_STYLE_CATEGORIES,
+    IMAGE_EFFECTS_STYLE_PRESETS,
+    resolveImageEffectsStyleId,
+} from './imageEffectsCatalogAdapter';
 import type {
     ImageAgentStyleCategory,
     ImageAgentStyleLabelKey,
@@ -20,24 +15,12 @@ export type { ImageAgentStyleCategory, ImageAgentStyleLabelKey, ImageAgentStyleP
 
 export const USER_IMAGE_STYLE_ID_PREFIX = 'user-reference/';
 
-export const IMAGE_AGENT_STYLE_PRESETS: ImageAgentStylePreset[] = [
-    ...EXTRA_IMAGE_AGENT_STYLE_PRESETS,
-    ...BASE_IMAGE_AGENT_STYLE_PRESETS,
-];
-
-const STYLE_COUNT_BY_CATEGORY = IMAGE_AGENT_STYLE_PRESETS.reduce((counts, style) => {
-    counts.set(style.categoryId, (counts.get(style.categoryId) ?? 0) + 1);
-    return counts;
-}, new Map<string, number>());
+export const IMAGE_AGENT_STYLE_PRESETS: ImageAgentStylePreset[] = IMAGE_EFFECTS_STYLE_PRESETS;
 
 export const IMAGE_AGENT_STYLE_CATEGORIES: ImageAgentStyleCategory[] = [
     { id: 'user-reference', label: '自定义风格', accent: '#2F7D6B', count: 0 },
-    ...EXTRA_IMAGE_AGENT_STYLE_CATEGORIES,
-    ...BASE_IMAGE_AGENT_STYLE_CATEGORIES,
-].map((category) => ({
-    ...category,
-    count: STYLE_COUNT_BY_CATEGORY.get(category.id) ?? category.count,
-}));
+    ...IMAGE_EFFECTS_STYLE_CATEGORIES,
+];
 
 const STYLE_BY_ID = new Map(IMAGE_AGENT_STYLE_PRESETS.map((style) => [style.id, style]));
 const MAX_RECOMMENDED_CONTINUATION_STYLES = 10;
@@ -128,9 +111,8 @@ function resolveImageAgentStyle(styleId: string, customStyles: UserImageStyle[] 
     const custom = getUserStylePresets(customStyles).find((style) => style.id === styleId);
     if (custom) return custom;
     const normalizedStyleId = normalizeLegacyReferenceStyleId(styleId);
-    const aliasedStyleId = EXTRA_LEGACY_IMAGE_STYLE_ID_ALIASES[normalizedStyleId]
-        ?? LEGACY_IMAGE_STYLE_ID_ALIASES[normalizedStyleId];
-    return STYLE_BY_ID.get(normalizedStyleId) ?? STYLE_BY_ID.get(aliasedStyleId);
+    const canonicalStyleId = resolveImageEffectsStyleId(normalizedStyleId);
+    return canonicalStyleId ? STYLE_BY_ID.get(canonicalStyleId) : undefined;
 }
 
 function resolveUniqueImageAgentStyles(styleIds: readonly string[], customStyles: UserImageStyle[] = []): ImageAgentStylePreset[] {

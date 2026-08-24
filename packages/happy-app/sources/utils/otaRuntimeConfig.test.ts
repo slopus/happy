@@ -128,6 +128,7 @@ describe('OTA native runtime isolation', () => {
 
         expect(previewWorkflow).not.toContain('github.event.inputs.channel');
         expect(previewWorkflow).toContain('--variant preview --channel preview');
+        expect(previewWorkflow).toContain("github.head_ref != 'automation/sync-image-effects'");
         expect(productionWorkflow).not.toContain('github.event.inputs.channel');
         expect(productionWorkflow).toContain('--variant production --channel production');
         expect(packageJson.scripts['ota:selfhost:preview']).toContain('--variant preview --channel preview');

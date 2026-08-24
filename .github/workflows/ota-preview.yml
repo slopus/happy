@@ -88,11 +88,13 @@ jobs:
         needs: classify-ota-compatibility
         runs-on: ubuntu-latest
         timeout-minutes: 30
-        # fork PR（head 仓库 != 本仓库）没有 secret，跳过；手动触发恒运行
+        # fork PR（head 仓库 != 本仓库）没有 secret，跳过；自动目录同步直接进入生产发布，
+        # 不重复生成一次无人验收的 preview OTA；手动触发恒运行。
         if: >-
             needs.classify-ota-compatibility.outputs.ota-compatible == 'true' &&
             (github.event_name == 'workflow_dispatch' ||
-            github.event.pull_request.head.repo.full_name == github.repository)
+            (github.event.pull_request.head.repo.full_name == github.repository &&
+            github.head_ref != 'automation/sync-image-effects'))
         env:
             # aliyun CLI 统一凭证链识别的环境变量（无需再写 ~/.aliyun/config.json）
             ALIBABA_CLOUD_ACCESS_KEY_ID: ${{ secrets.ALIYUN_OSS_ACCESS_KEY_ID }}
