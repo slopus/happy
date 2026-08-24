@@ -74,9 +74,6 @@ describe('terminal tool display helpers', () => {
         expect(getToolSummaryCategory('list_workspaces')).toBe('search');
         expect(getToolSummaryCategory('WebFetch')).toBe('web');
         expect(getToolSummaryCategory('spawn_agent')).toBe('task');
-        expect(getToolSummaryCategory('run_workflow')).toBe('task');
-        expect(getToolSummaryCategory('send_agent_message')).toBe('task');
-        expect(getToolSummaryCategory('interrupt_agent')).toBe('task');
     });
 
     it('extracts compact transcript row details', () => {
@@ -102,19 +99,6 @@ describe('terminal tool display helpers', () => {
         expect(getToolSummaryDetail(tool('read_file', {
             target_file: '/repo/src/app.tsx',
         }))).toBe('/repo/src/app.tsx');
-
-        expect(getToolSummaryDetail(tool('run_workflow', {
-            input: { name: 'Security review', script: "{'ok': True}" },
-        }))).toBe('Security review');
-
-        expect(getToolSummaryDetail(tool('send_agent_message', {
-            toAgentId: 'agent42',
-            text: 'Check the authentication path.',
-        }))).toBe('agent42');
-
-        expect(getToolSummaryDetail(tool('interrupt_agent', {
-            targetAgentId: 'agent42',
-        }))).toBe('agent42');
     });
 
     it('builds one human-readable label for compact activity rows', () => {

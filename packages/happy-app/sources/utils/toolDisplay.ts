@@ -70,9 +70,7 @@ const TASK_TOOL_NAMES = new Set([
     'delegate_to_workspace',
     'followup_task',
     'interrupt_agent',
-    'run_workflow',
     'schedule_message',
-    'send_agent_message',
     'send_message',
     'agent_me',
     'agent_send',
@@ -164,25 +162,6 @@ export function getToolSummaryDetail(tool: Pick<ToolCall, 'name' | 'input' | 'de
     const terminalCommand = getTerminalToolCommand(tool);
     if (terminalCommand) {
         return terminalCommand;
-    }
-
-    if (tool.name === 'run_workflow') {
-        const workflowInput = tool.input?.input;
-        if (workflowInput && typeof workflowInput === 'object' && !Array.isArray(workflowInput)) {
-            for (const key of ['name', 'description', 'scriptPath']) {
-                const value = (workflowInput as Record<string, unknown>)[key];
-                if (typeof value === 'string' && value.trim().length > 0) {
-                    return value.trim();
-                }
-            }
-        }
-    }
-
-    if (tool.name === 'send_agent_message' || tool.name === 'interrupt_agent') {
-        const targetAgentId = tool.input?.toAgentId ?? tool.input?.targetAgentId;
-        if (typeof targetAgentId === 'string' && targetAgentId.trim().length > 0) {
-            return targetAgentId.trim();
-        }
     }
 
     const filePath = tool.input?.file_path ?? tool.input?.target_file;
