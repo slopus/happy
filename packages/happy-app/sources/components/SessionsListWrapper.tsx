@@ -37,10 +37,12 @@ const stylesheet = StyleSheet.create((theme) => ({
 
 export const SessionsListWrapper = React.memo(({
     topContentInset = 0,
+    scrollIndicatorTopInset = 0,
     bottomContentInset = 128,
     onScroll,
 }: {
     topContentInset?: number;
+    scrollIndicatorTopInset?: number;
     bottomContentInset?: number;
     onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
 }) => {
@@ -76,6 +78,7 @@ export const SessionsListWrapper = React.memo(({
         <View style={styles.container}>
             <SessionsList
                 topContentInset={topContentInset}
+                scrollIndicatorTopInset={scrollIndicatorTopInset}
                 bottomContentInset={bottomContentInset}
                 onScroll={onScroll}
             />

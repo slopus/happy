@@ -264,6 +264,9 @@ const stylesheet = StyleSheet.create((theme) => ({
         paddingBottom: 12,
         backgroundColor: Platform.select({ web: theme.colors.groupped.background, default: 'transparent' }),
     },
+    phoneUpdateBanner: {
+        paddingBottom: 32,
+    },
 }));
 
 const MachineHeader = React.memo(({ machineId, machineName }: {
@@ -305,10 +308,12 @@ const MachineHeader = React.memo(({ machineId, machineName }: {
 
 export function SessionsList({
     topContentInset = 0,
+    scrollIndicatorTopInset = 0,
     bottomContentInset = 128,
     onScroll,
 }: {
     topContentInset?: number;
+    scrollIndicatorTopInset?: number;
     bottomContentInset?: number;
     onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
 } = {}) {
@@ -547,9 +552,9 @@ export function SessionsList({
 
     const HeaderComponent = React.useCallback(() => {
         return (
-            <UpdateBanner />
+            <UpdateBanner style={topContentInset > 0 ? styles.phoneUpdateBanner : undefined} />
         );
-    }, []);
+    }, [styles.phoneUpdateBanner, topContentInset]);
 
     // Footer removed - all sessions now shown inline
 
@@ -567,6 +572,10 @@ export function SessionsList({
                         maxWidth: layout.maxWidth,
                     }}
                     ListHeaderComponent={HeaderComponent}
+                    automaticallyAdjustsScrollIndicatorInsets={scrollIndicatorTopInset === 0}
+                    scrollIndicatorInsets={scrollIndicatorTopInset > 0
+                        ? { top: scrollIndicatorTopInset }
+                        : undefined}
                     windowSize={5}
                     maxToRenderPerBatch={8}
                     initialNumToRender={12}
