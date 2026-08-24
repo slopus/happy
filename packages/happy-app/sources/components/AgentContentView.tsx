@@ -39,8 +39,8 @@ export const AgentContentView: React.FC<AgentContentViewProps> = React.memo(({
     }, []);
 
     React.useEffect(() => {
-        onDockInsetChange?.(floatingDock ? dockHeight + keyboardInset : 0);
-    }, [dockHeight, floatingDock, keyboardInset, onDockInsetChange]);
+        onDockInsetChange?.(floatingDock ? dockHeight + keyboardInset + safeArea.bottom : 0);
+    }, [dockHeight, floatingDock, keyboardInset, onDockInsetChange, safeArea.bottom]);
 
     if (floatingDock) {
         return (
@@ -57,7 +57,7 @@ export const AgentContentView: React.FC<AgentContentViewProps> = React.memo(({
                             top: safeArea.top + headerHeight,
                             left: 0,
                             right: 0,
-                            bottom: dockHeight + keyboardInset,
+                            bottom: dockHeight + keyboardInset + safeArea.bottom,
                         }}
                         contentContainerStyle={{ alignItems: 'center', justifyContent: 'center', flex: 1 }}
                         keyboardShouldPersistTaps="handled"
@@ -74,7 +74,7 @@ export const AgentContentView: React.FC<AgentContentViewProps> = React.memo(({
                             left: 0,
                             right: 0,
                             bottom: keyboardInset,
-                            height: dockHeight + 28,
+                            height: dockHeight + safeArea.bottom + 28,
                             zIndex: 1,
                         }}
                     >
@@ -95,7 +95,7 @@ export const AgentContentView: React.FC<AgentContentViewProps> = React.memo(({
                         position: 'absolute',
                         left: 0,
                         right: 0,
-                        bottom: keyboardInset,
+                        bottom: keyboardInset + safeArea.bottom,
                         zIndex: 2,
                     }}
                 >
