@@ -18,6 +18,7 @@ import { ApiEphemeralUpdateSchema, ApiMessage, ApiUpdateContainerSchema } from '
 import type { ApiEphemeralActivityUpdate } from './apiTypes';
 import { Session, Machine } from './storageTypes';
 import { InvalidateSync } from '@/utils/sync';
+import { delay } from '@/utils/time';
 import { ActivityUpdateAccumulator } from './reducer/activityUpdateAccumulator';
 import { randomUUID } from 'expo-crypto';
 import * as Notifications from 'expo-notifications';
@@ -588,27 +589,34 @@ class Sync {
 
     async sendMessage(sessionId: string, text: string, options?: SendMessageOptions) {
 
-        // Get encryption — may not be ready yet if sessions are still syncing
+        // The session and its encryption key both come from the sessions list.
+        // A session spawned seconds ago can still be missing from the last
+        // fetch, and awaitQueue() returns at once when no sync is in flight —
+        // so waiting on it dropped the first message of a new session without a
+        // word. Force real refetches instead, then say so if it is still absent.
         let encryption = this.encryption.getSessionEncryption(sessionId);
-        if (!encryption) {
-            // Wait for sessions sync to complete (initializes encryption keys)
-            await this.sessionsSync.awaitQueue();
-            encryption = this.encryption.getSessionEncryption(sessionId);
-            if (!encryption) {
-                console.error(`Session ${sessionId} not found after sync`);
-                return;
-            }
-        }
-
-        // Get session data from storage
         let session = storage.getState().sessions[sessionId];
-        if (!session) {
-            await this.sessionsSync.awaitQueue();
-            session = storage.getState().sessions[sessionId];
-            if (!session) {
-                console.error(`Session ${sessionId} not found in storage after sync`);
-                return;
+        for (let attempt = 0; (!encryption || !session) && attempt < 3; attempt++) {
+            if (attempt > 0) {
+                await delay(300 * attempt);
             }
+            // The sessions sync retries a failed fetch forever, so each wait is
+            // bounded: a message that cannot be placed has to say so rather
+            // than leave the send hanging on a network that is not coming back.
+            await Promise.race([this.sessionsSync.invalidateAndAwait(), delay(4000)]);
+            encryption = this.encryption.getSessionEncryption(sessionId);
+            session = storage.getState().sessions[sessionId];
+        }
+        if (!encryption || !session) {
+            console.error(`Session ${sessionId} not found after sync`, {
+                hasEncryption: !!encryption,
+                hasSession: !!session,
+            });
+            Modal.alert(
+                t('common.error'),
+                'The message was not sent: this session has not finished syncing. Please try again.',
+            );
+            return;
         }
 
         const modeMeta = resolveMessageModeMeta(session, storage.getState().settings);
