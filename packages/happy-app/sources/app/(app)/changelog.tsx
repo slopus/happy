@@ -1,16 +1,19 @@
 import React, { useEffect } from 'react';
-import { Platform, ScrollView, View, Text } from 'react-native';
-import { StyleSheet } from 'react-native-unistyles';
+import { Platform, View, Text } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { StyleSheet } from 'react-native-unistyles';
 import { MarkdownView } from '@/components/markdown/MarkdownView';
+import { ItemList } from '@/components/ItemList';
+import { ItemGroup } from '@/components/ItemGroup';
+import { MOBILE_GLASS_HEADER_HEIGHT } from '@/components/navigation/headerMetrics';
 import { getChangelogEntries, getLatestTitle, setLastViewedTitle } from '@/changelog';
 import { Typography } from '@/constants/Typography';
-import { layout } from '@/components/layout';
 import { t } from '@/text';
 
 export default function ChangelogScreen() {
-    const insets = useSafeAreaInsets();
     const entries = getChangelogEntries();
+    const safeArea = useSafeAreaInsets();
+    const indicatorTopInset = safeArea.top + MOBILE_GLASS_HEADER_HEIGHT;
 
     useEffect(() => {
         const latestTitle = getLatestTitle();
@@ -21,37 +24,25 @@ export default function ChangelogScreen() {
 
     if (entries.length === 0) {
         return (
-            <View style={styles.container}>
-                <View style={styles.emptyState}>
-                    <Text style={styles.emptyText}>
-                        {t('changelog.noEntriesAvailable')}
-                    </Text>
-                </View>
+            <View style={styles.emptyState}>
+                <Text style={styles.emptyText}>
+                    {t('changelog.noEntriesAvailable')}
+                </Text>
             </View>
         );
     }
 
     return (
-        <View style={styles.container}>
-            <ScrollView
-                style={styles.container}
-                contentContainerStyle={[
-                    styles.content,
-                    {
-                        paddingBottom: insets.bottom + 40,
-                        maxWidth: layout.maxWidth,
-                        alignSelf: 'center',
-                        width: '100%'
-                    }
-                ]}
-                showsVerticalScrollIndicator={false}
-            >
-                {entries.map((entry, index) => (
-                    <View key={entry.title} style={styles.entryContainer}>
-                        {index > 0 ? <View style={styles.entryDivider} /> : null}
-                        <Text style={styles.titleText}>
-                            {entry.title}
-                        </Text>
+        <ItemList
+            containerStyle={{
+                paddingTop: Platform.OS === 'ios' ? MOBILE_GLASS_HEADER_HEIGHT : 0,
+            }}
+            automaticallyAdjustsScrollIndicatorInsets={Platform.OS !== 'ios'}
+            scrollIndicatorInsets={Platform.OS === 'ios' ? { top: indicatorTopInset } : undefined}
+        >
+            {entries.map((entry) => (
+                <ItemGroup key={entry.title} title={entry.title} titleStyle={styles.titleText}>
+                    <View style={styles.cardContent}>
                         {entry.summary ? (
                             <Text style={styles.summaryText}>
                                 {entry.summary}
@@ -61,54 +52,44 @@ export default function ChangelogScreen() {
                             <MarkdownView markdown={entry.markdown} />
                         ) : null}
                     </View>
-                ))}
-            </ScrollView>
-        </View>
+                </ItemGroup>
+            ))}
+        </ItemList>
     );
 }
 
 const styles = StyleSheet.create((theme) => ({
-    container: {
-        flex: 1,
-        backgroundColor: Platform.select({ web: theme.colors.surface, default: 'transparent' }),
-    },
-    content: {
-        paddingHorizontal: 16,
-        paddingTop: 16,
-    },
-    entryContainer: {
-        marginBottom: 32,
-    },
-    entryDivider: {
-        height: StyleSheet.hairlineWidth,
-        backgroundColor: theme.colors.divider,
-        marginBottom: 32,
-    },
     titleText: {
         ...Typography.default('semiBold'),
         fontSize: 20,
         lineHeight: 28,
         color: theme.colors.text,
-        marginBottom: 8,
+        textTransform: 'none',
+        letterSpacing: 0,
+    },
+    cardContent: {
+        paddingHorizontal: 16,
+        paddingTop: 14,
+        paddingBottom: 6,
     },
     summaryText: {
         ...Typography.default('regular'),
-        fontSize: 15,
-        lineHeight: 22,
-        color: theme.colors.textSecondary,
-        marginBottom: 16,
+        fontSize: 16,
+        lineHeight: 23,
+        color: theme.colors.text,
+        marginBottom: 12,
     },
     emptyState: {
         flex: 1,
         alignItems: 'center',
         justifyContent: 'center',
         padding: 40,
+        backgroundColor: theme.colors.groupped.background,
     },
     emptyText: {
         ...Typography.default('regular'),
         fontSize: 16,
         lineHeight: 24,
         color: theme.colors.textSecondary,
-        textAlign: 'center',
     }
 }));

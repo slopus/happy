@@ -193,8 +193,13 @@ export default function RootLayout() {
                 name="changelog"
                 options={{
                     headerShown: true,
+                    header: createPlainHeader,
                     headerTitle: t('navigation.whatsNew'),
                     headerBackTitle: t('common.back'),
+                    headerTransparent: Platform.OS === 'ios',
+                    headerStyle: {
+                        backgroundColor: theme.colors.groupped.background,
+                    },
                 }}
             />
             <Stack.Screen
