@@ -642,7 +642,6 @@ export function SessionViewLoaded({
     const [bottomDockInset, setBottomDockInset] = React.useState(0);
     const [composerY, setComposerY] = React.useState(0);
     const [isChatAtBottom, setIsChatAtBottom] = React.useState(true);
-    const chatAtBottomRef = React.useRef(true);
     const showBottomDockDetails = !usesFloatingMobileDock || isChatAtBottom;
     const scrollButtonInset = Math.max(0, bottomDockInset - composerY);
 
@@ -658,12 +657,8 @@ export function SessionViewLoaded({
         ));
     }, []);
     const handleChatBottomVisibilityChange = React.useCallback((visible: boolean) => {
-        if (!usesFloatingMobileDock || chatAtBottomRef.current === visible) {
-            return;
-        }
-        chatAtBottomRef.current = visible;
         setIsChatAtBottom(visible);
-    }, [usesFloatingMobileDock]);
+    }, []);
 
     React.useEffect(() => {
         if (!usesFloatingMobileDock) {
@@ -673,7 +668,6 @@ export function SessionViewLoaded({
     }, [usesFloatingMobileDock]);
 
     React.useEffect(() => {
-        chatAtBottomRef.current = true;
         setIsChatAtBottom(true);
     }, [sessionId, usesFloatingMobileDock]);
 
@@ -1034,50 +1028,50 @@ export function SessionViewLoaded({
     const composer = (
         <View onLayout={usesFloatingMobileDock ? handleComposerLayout : undefined}>
             <ChatComposer
-            composerHandleRef={composerHandleRef}
-            placeholder={t('session.inputPlaceholder')}
-            sessionId={sessionId}
-            permissionMode={permissionMode}
-            onPermissionModeChange={isRigPermissionSelectionEnabled(session.metadata) ? updatePermissionMode : undefined}
-            availableModes={availableModes}
-            modelMode={modelMode}
-            availableModels={availableModels}
-            onModelModeChange={isRigModelSelectionEnabled(session.metadata) ? updateModelMode : undefined}
-            effortLevel={effortLevel}
-            availableEffortLevels={availableEffortLevels}
-            onEffortLevelChange={isRigReasoningSelectionEnabled(session.metadata) ? updateEffortLevel : undefined}
-            metadata={session.metadata}
-            connectionStatus={connectionStatus}
-            blockSend={isRig && session.thinking && session.metadata?.capabilities?.steering !== true}
-            onSend={handleSend}
-            onMicPress={(embedded || isDisconnected) ? undefined : micButtonState.onMicPress}
-            isMicActive={(embedded || isDisconnected) ? false : micButtonState.isMicActive}
-            onAbort={isDisconnected || !rigCanAbort(session.metadata) ? undefined : handleAbort}
-            showAbortButton={rigCanAbort(session.metadata) && (
-                sessionStatus.state === 'thinking'
-                // A pending selection or permission request parks the agent inside
-                // a tool call. Keep Stop reachable on every platform while either
-                // kind of user action is outstanding.
-                || sessionStatus.state === 'permission_required'
-                || sessionStatus.state === 'input_required'
-                || (Platform.OS === 'web' && sessionStatus.state === 'waiting')
-            )}
-            onFileViewerPress={experiments && !isTablet && rigCanBrowseFiles(session.metadata) && rigCanReadFiles(session.metadata) ? handleFileViewerPress : undefined}
-            selectedImages={expImageUpload && canUseAttachments ? selectedImages : undefined}
-            onPickImages={expImageUpload && canUseAttachments ? pickImages : undefined}
-            onRemoveImage={expImageUpload && canUseAttachments ? removeImage : undefined}
-            onAddImages={expImageUpload && canUseAttachments ? addImages : undefined}
-            autocompletePrefixes={AGENT_INPUT_AUTOCOMPLETE_PREFIXES}
-            autocompleteSuggestions={handleAutocompleteSuggestions}
-            usageData={usageData}
-            alwaysShowContextSize={alwaysShowContextSize}
-            zenMode={zenMode}
-            showSessionStatusInfoInSettings={false}
-            showStatusDetails={!usesFloatingMobileDock || isChatAtBottom}
-            sessionStatusGitBranch={statusBarGitBranch}
-            sessionStatusModelLabel={statusBarModelLabel}
-            sessionStatusEffortLabel={statusBarEffortLabel}
-        />
+                composerHandleRef={composerHandleRef}
+                placeholder={t('session.inputPlaceholder')}
+                sessionId={sessionId}
+                permissionMode={permissionMode}
+                onPermissionModeChange={isRigPermissionSelectionEnabled(session.metadata) ? updatePermissionMode : undefined}
+                availableModes={availableModes}
+                modelMode={modelMode}
+                availableModels={availableModels}
+                onModelModeChange={isRigModelSelectionEnabled(session.metadata) ? updateModelMode : undefined}
+                effortLevel={effortLevel}
+                availableEffortLevels={availableEffortLevels}
+                onEffortLevelChange={isRigReasoningSelectionEnabled(session.metadata) ? updateEffortLevel : undefined}
+                metadata={session.metadata}
+                connectionStatus={connectionStatus}
+                blockSend={isRig && session.thinking && session.metadata?.capabilities?.steering !== true}
+                onSend={handleSend}
+                onMicPress={(embedded || isDisconnected) ? undefined : micButtonState.onMicPress}
+                isMicActive={(embedded || isDisconnected) ? false : micButtonState.isMicActive}
+                onAbort={isDisconnected || !rigCanAbort(session.metadata) ? undefined : handleAbort}
+                showAbortButton={rigCanAbort(session.metadata) && (
+                    sessionStatus.state === 'thinking'
+                    // A pending selection or permission request parks the agent inside
+                    // a tool call. Keep Stop reachable on every platform while either
+                    // kind of user action is outstanding.
+                    || sessionStatus.state === 'permission_required'
+                    || sessionStatus.state === 'input_required'
+                    || (Platform.OS === 'web' && sessionStatus.state === 'waiting')
+                )}
+                onFileViewerPress={experiments && !isTablet && rigCanBrowseFiles(session.metadata) && rigCanReadFiles(session.metadata) ? handleFileViewerPress : undefined}
+                selectedImages={expImageUpload && canUseAttachments ? selectedImages : undefined}
+                onPickImages={expImageUpload && canUseAttachments ? pickImages : undefined}
+                onRemoveImage={expImageUpload && canUseAttachments ? removeImage : undefined}
+                onAddImages={expImageUpload && canUseAttachments ? addImages : undefined}
+                autocompletePrefixes={AGENT_INPUT_AUTOCOMPLETE_PREFIXES}
+                autocompleteSuggestions={handleAutocompleteSuggestions}
+                usageData={usageData}
+                alwaysShowContextSize={alwaysShowContextSize}
+                zenMode={zenMode}
+                showSessionStatusInfoInSettings={false}
+                showStatusDetails={showBottomDockDetails}
+                sessionStatusGitBranch={statusBarGitBranch}
+                sessionStatusModelLabel={statusBarModelLabel}
+                sessionStatusEffortLabel={statusBarEffortLabel}
+            />
         </View>
     );
 
@@ -1138,9 +1132,11 @@ export function SessionViewLoaded({
                     </CenteredInputWidth>
                 </AnimatedFade>
             )}
-            <CenteredInputWidth horizontalPadding={sessionInputHorizontalPadding}>
-                <AgentQuestionBanner sessionId={sessionId} />
-            </CenteredInputWidth>
+            <AnimatedFade visible={showBottomDockDetails}>
+                <CenteredInputWidth horizontalPadding={sessionInputHorizontalPadding}>
+                    <AgentQuestionBanner sessionId={sessionId} />
+                </CenteredInputWidth>
+            </AnimatedFade>
             {sessionStatusBarPosition === 'above' ? sessionStatusBar : null}
             <AnimatedFade visible={showBottomDockDetails}>
                 <RigActivityBar metadata={session.metadata} />
