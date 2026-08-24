@@ -266,7 +266,11 @@ export type ReviewDecision =
 
 export type ApprovalPolicy = "untrusted" | "on-failure" | "on-request" | "never";
 export type SandboxMode = "read-only" | "workspace-write" | "danger-full-access";
-export type ReasoningEffort = "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
+// Mirrors codex-rs `protocol/src/openai_models.rs` ReasoningEffort. `max` and
+// `ultra` are on the wire and in the model registry — gpt-5.6 sol/terra list
+// both, luna lists max — so stopping this union at `xhigh` silently dropped
+// every effort above it.
+export type ReasoningEffort = "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max" | "ultra";
 export type ReasoningSummary = "auto" | "concise" | "detailed" | "none";
 export type TurnAbortReason = "interrupted" | "replaced" | "review_ended";
 

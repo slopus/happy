@@ -314,7 +314,7 @@ export async function runCodex(opts: {
     ];
 
     const VALID_REMOTE_EFFORTS: readonly ReasoningEffort[] = [
-        'none', 'minimal', 'low', 'medium', 'high', 'xhigh',
+        'none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra',
     ];
 
     const handleUserMessage = createSerialAsyncHandler<UserMessage>(async (message) => {
