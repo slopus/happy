@@ -11,6 +11,7 @@ import {
     getGeminiPermissionModes,
     getDefaultEffortKey,
     getDefaultModelKey,
+    getEffortLevelsForModel,
     getDefaultPermissionModeKey,
     includeConfiguredModel,
     getOpenClawPermissionModes,
@@ -121,26 +122,55 @@ describe('modelModeOptions', () => {
         expect(includeConfiguredModel('claude', models, 'my-workspace-model')).toBe(models);
     });
 
-    it('builds claude model fallbacks with fable 5', () => {
+    it('only offers the current-generation claude models', () => {
         const models = getClaudeModelModes();
         expect(models.map((model) => model.key)).toEqual([
-            'default',
+            'claude-fable-5',
             'claude-opus-5',
-            'opus',
-            'fable',
-            'sonnet',
-            'haiku',
+            'claude-sonnet-5',
         ]);
-        expect(models.find((model) => model.key === 'fable')).toEqual({
-            key: 'fable',
-            name: 'fable 5',
-            description: null,
-        });
+        expect(models.map((model) => model.name)).toEqual([
+            'fable 5',
+            'opus 5',
+            'sonnet 5',
+        ]);
+        // No `default model` row, and no alias keys: an alias would silently
+        // resolve to an older model than the row claims.
+        expect(models.some((model) => model.key === 'default')).toBe(false);
+        expect(models.some((model) => ['opus', 'sonnet', 'fable', 'haiku'].includes(model.key))).toBe(false);
+    });
+
+    it('offers every codex model the levels its own registry publishes', () => {
+        // Straight from codex-rs/models-manager/models.json: sol and terra
+        // publish ultra, luna does not. The difference is the whole point of
+        // asking per model rather than per flavor.
+        expect(getEffortLevelsForModel('codex', 'gpt-5.6-sol').map((level) => level.key))
+            .toEqual(['low', 'medium', 'high', 'xhigh', 'max', 'ultra']);
+        expect(getEffortLevelsForModel('codex', 'gpt-5.6-terra').map((level) => level.key))
+            .toEqual(['low', 'medium', 'high', 'xhigh', 'max', 'ultra']);
+        expect(getEffortLevelsForModel('codex', 'gpt-5.6-luna').map((level) => level.key))
+            .toEqual(['low', 'medium', 'high', 'xhigh', 'max']);
+    });
+
+    it('falls back to the conservative codex range for an unknown model', () => {
+        const keys = getEffortLevelsForModel('codex', 'my-workspace-model').map((level) => level.key);
+        expect(keys).toEqual(['low', 'medium', 'high', 'xhigh']);
+    });
+
+    it('offers claude the SDK effort union for every model', () => {
+        // Claude's scale belongs to the SDK, not the model: an unreachable level
+        // is silently downgraded, so all three models get the same list.
+        for (const model of ['claude-fable-5', 'claude-opus-5', 'claude-sonnet-5']) {
+            const keys = getEffortLevelsForModel('claude', model).map((level) => level.key);
+            expect(keys).toEqual(['low', 'medium', 'high', 'xhigh', 'max']);
+            // Claude's floor is `low`; there is no off.
+            expect(keys).not.toContain('off');
+        }
     });
 
     it('uses code defaults for agent defaults', () => {
         expect(getDefaultPermissionModeKey('claude')).toBe('bypassPermissions');
-        expect(getDefaultModelKey('claude')).toBe('opus');
+        expect(getDefaultModelKey('claude')).toBe('claude-opus-5');
         expect(getDefaultEffortKey('claude')).toBe('medium');
         expect(getDefaultPermissionModeKey('codex')).toBe('yolo');
         expect(getDefaultModelKey('codex')).toBe('gpt-5.6-sol');
