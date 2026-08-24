@@ -19,7 +19,7 @@ import { BubblePressable } from './BubblePressable';
 export interface ItemProps {
     title: string;
     subtitle?: string;
-    subtitleLines?: number; // set 0 or undefined for auto/multiline
+    subtitleLines?: number; // defaults to 2; set 0 for unlimited
     detail?: string;
     icon?: React.ReactNode;
     leftElement?: React.ReactNode;
@@ -223,10 +223,12 @@ export const Item = React.memo<ItemProps>((props) => {
                         {title}
                     </Text>
                     {subtitle && (() => {
-                        // Allow multiline when requested or when content contains line breaks
+                        // Settings descriptions frequently need a second line, especially in
+                        // translated copy. The row already sizes to its content, so keep short
+                        // subtitles compact and allow longer ones to grow by one line.
                         const effectiveLines = subtitleLines !== undefined
                             ? (subtitleLines <= 0 ? undefined : subtitleLines)
-                            : (typeof subtitle === 'string' && subtitle.indexOf('\n') !== -1 ? undefined : 1);
+                            : (typeof subtitle === 'string' && subtitle.indexOf('\n') !== -1 ? undefined : 2);
                         return (
                             <Text
                                 style={[styles.subtitle, subtitleStyle]}

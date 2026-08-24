@@ -15,6 +15,7 @@ import { Octicons } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { resolveControlMode } from '@/sync/controlHandoff';
 import { usesControlledSessionUi } from '@/sync/rig';
+import { buildAgentTurnCopyTextByMessageId } from '@/utils/agentTurnCopy';
 
 const SCROLL_THRESHOLD = 300;
 const SCROLL_BUTTON_DOCK_GAP = 6;
@@ -131,6 +132,10 @@ const ChatListInternal = React.memo((props: {
         [collapseCurrentTurn],
     );
     const displayItems = useGroupedMessages(props.messages, groupToolCalls, groupingOptions);
+    const agentCopyTextByMessageId = React.useMemo(
+        () => buildAgentTurnCopyTextByMessageId(props.messages, { currentTurnComplete: collapseCurrentTurn }),
+        [collapseCurrentTurn, props.messages],
+    );
 
     // Tracks which groups are explicitly collapsed. Groups start collapsed;
     // pending approval groups are the only ones we auto-expand.
@@ -302,9 +307,10 @@ const ChatListInternal = React.memo((props: {
                 message={item.message}
                 metadata={props.metadata}
                 sessionId={props.sessionId}
+                copyText={agentCopyTextByMessageId.get(item.message.id)}
             />
         );
-    }, [props.metadata, props.sessionId, collapsedGroups, handleToggleGroup]);
+    }, [agentCopyTextByMessageId, props.metadata, props.sessionId, collapsedGroups, handleToggleGroup]);
 
     // In inverted FlatList, offset 0 = latest messages (visual bottom).
     // Offset increases as user scrolls up to see older messages.

@@ -18,18 +18,18 @@ export const SettingsSchema = z.object({
     // Schema version for compatibility detection
     schemaVersion: z.number().default(SUPPORTED_SCHEMA_VERSION).describe('Settings schema version for compatibility checks'),
 
-    viewInline: z.boolean().describe('Whether to view inline tool calls'),
+    viewInline: z.boolean().describe('Legacy inline tool-call preference (no longer used)'),
     inferenceOpenAIKey: z.string().nullish().describe('OpenAI API key for inference'),
-    expandTodos: z.boolean().describe('Whether to expand todo lists'),
-    showLineNumbers: z.boolean().describe('Whether to show line numbers in diffs'),
+    expandTodos: z.boolean().describe('Legacy todo expansion preference (no longer used)'),
+    showLineNumbers: z.boolean().describe('Legacy diff line-number preference (no longer used)'),
     showLineNumbersInToolViews: z.boolean().describe('Whether to show line numbers in tool view diffs'),
-    wrapLinesInDiffs: z.boolean().describe('Whether to wrap long lines in diff views'),
+    wrapLinesInDiffs: z.boolean().describe('Legacy diff line-wrapping preference (no longer used)'),
     diffStyle: z.enum(['unified', 'split']).describe('Diff view style (split is web-only)'),
     analyticsOptOut: z.boolean().describe('Whether to opt out of anonymous analytics'),
     experiments: z.boolean().describe('Whether to enable experimental features'),
     alwaysShowContextSize: z.boolean().describe('Always show context size in agent input'),
     agentInputEnterToSend: z.boolean().describe('Whether pressing Enter submits/sends in the agent input (web)'),
-    avatarStyle: z.string().describe('Avatar display style'),
+    avatarStyle: z.string().describe('Legacy avatar display style (no longer used)'),
     // Keep the legacy key for synced settings compatibility. It controls the
     // harness badges in the session list.
     showFlavorIcons: z.boolean().describe('Whether to show harness icons in the session list'),
@@ -43,8 +43,10 @@ export const SettingsSchema = z.object({
     // settings sync between devices and app versions field by field, with no
     // rename migration to carry an old key across.
     hideInactiveSessions: z.boolean().describe('Hide archived sessions in the main list'),
-    sortSessionsByActivity: z.boolean().describe('Sort the session list by last activity instead of creation date'),
-    expResumeSession: z.boolean().describe('Enable experimental session resume feature'),
+    sortSessionsByActivity: z.boolean().describe('Legacy session sort preference (no longer used)'),
+    // Resume is capability-driven; this legacy rollout key still protects the
+    // newer fork/duplicate RPC on older daemons.
+    expResumeSession: z.boolean().describe('Enable session fork and duplicate actions'),
     fileDiffsSidebar: z.boolean().describe('Show the file diffs sidebar next to the chat on desktop'),
     groupToolCalls: z.boolean().describe('Collapse consecutive tool calls into grouped containers in chat'),
     compactToolCalls: z.boolean().describe('Render non-interactive tool calls as compact one-line rows'),
@@ -122,8 +124,8 @@ export const settingsDefaults: Settings = {
     usageLimitShowRemaining: false,
 
     hideInactiveSessions: false,
-    sortSessionsByActivity: false,
-    expResumeSession: false,
+    sortSessionsByActivity: true,
+    expResumeSession: true,
     fileDiffsSidebar: false,
     groupToolCalls: false,
     compactToolCalls: true,

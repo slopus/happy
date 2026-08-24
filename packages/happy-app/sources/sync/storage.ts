@@ -350,13 +350,11 @@ function buildSessionListViewData(
         }
     });
 
-    // Sort by last activity or creation date (newest first), per user setting — matches applySessions behavior
-    // Activity sort keys off the last meaningful message, not updatedAt: updatedAt
+    // Chat lists always sort by last activity. Activity keys off the last
+    // meaningful message, not updatedAt: updatedAt
     // bumps on every background agent update, which would make the list jump while
     // several sessions stream at once.
-    const sortKey = storage.getState().settings.sortSessionsByActivity
-        ? getSessionActivityAt
-        : (s: Session) => s.createdAt;
+    const sortKey = getSessionActivityAt;
     const sortProjectSessions = (items: Session[]) => items.sort((a, b) => {
         const activeDelta = Number(isSessionActive(b)) - Number(isSessionActive(a));
         return activeDelta !== 0 ? activeDelta : sortKey(b) - sortKey(a);
@@ -546,10 +544,8 @@ export const storage = create<StorageState>()((set, get) => {
                 }
             });
 
-            // Sort both arrays by last activity or creation date (newest first), per user setting
-            const sortKey = get().settings.sortSessionsByActivity
-                ? getSessionActivityAt
-                : (s: Session) => s.createdAt;
+            // Keep both sections in canonical chat-list order: newest activity first.
+            const sortKey = getSessionActivityAt;
             activeSessions.sort((a, b) => sortKey(b) - sortKey(a));
             inactiveSessions.sort((a, b) => sortKey(b) - sortKey(a));
 

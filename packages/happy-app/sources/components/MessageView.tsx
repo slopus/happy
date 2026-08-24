@@ -1,7 +1,8 @@
 import * as React from "react";
-import { View, Text, Platform } from "react-native";
+import { Platform, Pressable, Text, View, type StyleProp, type ViewStyle } from "react-native";
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Ionicons } from '@expo/vector-icons';
+import * as Clipboard from 'expo-clipboard';
 import { MarkdownView } from "./markdown/MarkdownView";
 import { t } from '@/text';
 import { Message, UserTextMessage, AgentTextMessage, ToolCallMessage } from "@/sync/typesMessage";
@@ -21,6 +22,7 @@ export const MessageView = React.memo((props: {
   metadata: Metadata | null;
   sessionId: string;
   getMessageById?: (id: string) => Message | null;
+  copyText?: string;
 }) => {
   return (
     <View
@@ -33,6 +35,7 @@ export const MessageView = React.memo((props: {
           metadata={props.metadata}
           sessionId={props.sessionId}
           getMessageById={props.getMessageById}
+          copyText={props.copyText}
         />
       </View>
     </View>
@@ -45,6 +48,7 @@ function RenderBlock(props: {
   metadata: Metadata | null;
   sessionId: string;
   getMessageById?: (id: string) => Message | null;
+  copyText?: string;
 }): React.ReactElement {
   switch (props.message.kind) {
     case 'user-text':
@@ -57,7 +61,7 @@ function RenderBlock(props: {
       );
 
     case 'agent-text':
-      return <AgentTextBlock message={props.message} sessionId={props.sessionId} />;
+      return <AgentTextBlock message={props.message} sessionId={props.sessionId} copyText={props.copyText} />;
 
     case 'tool-call':
       return <ToolCallBlock
@@ -128,6 +132,7 @@ function UserTextBlock(props: {
           <Ionicons name="locate-outline" size={16} color={styles.goalSentText.color} />
           <Text style={styles.goalSentText}>{t('message.sentAsGoal')}</Text>
         </View>
+        <MessageCopyButton text={parsed.goal} style={styles.userCopyAction} />
       </View>
     );
   }
@@ -142,6 +147,10 @@ function UserTextBlock(props: {
         <View style={[styles.commandChip, styles.userMessageBubbleSolid, bubbleStyle]}>
           <Text style={styles.commandChipText}>/{parsed.commandName}</Text>
         </View>
+        <MessageCopyButton
+          text={parsed.args ? `/${parsed.commandName} ${parsed.args}` : `/${parsed.commandName}`}
+          style={styles.userCopyAction}
+        />
       </View>
     );
   }
@@ -153,6 +162,7 @@ function UserTextBlock(props: {
       <View style={[styles.userMessageBubble, styles.userMessageBubbleSolid, bubbleStyle]}>
         <MarkdownView markdown={parsed.text} onOptionPress={handleOptionPress} sessionId={props.sessionId} />
       </View>
+      <MessageCopyButton text={parsed.text} style={styles.userCopyAction} />
     </View>
   );
 }
@@ -160,6 +170,7 @@ function UserTextBlock(props: {
 function AgentTextBlock(props: {
   message: AgentTextMessage;
   sessionId: string;
+  copyText?: string;
 }) {
   const handleOptionPress = React.useCallback((option: Option) => {
     sync.sendMessage(props.sessionId, option.title, { source: 'option' });
@@ -173,7 +184,53 @@ function AgentTextBlock(props: {
   return (
     <View style={styles.agentMessageContainer}>
       <MarkdownView markdown={props.message.text} onOptionPress={handleOptionPress} sessionId={props.sessionId} />
+      {props.copyText ? <MessageCopyButton text={props.copyText} style={styles.agentCopyAction} /> : null}
     </View>
+  );
+}
+
+function MessageCopyButton(props: { text: string; style?: StyleProp<ViewStyle> }) {
+  const { theme } = useUnistyles();
+  const [copied, setCopied] = React.useState(false);
+  const resetTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  React.useEffect(() => () => {
+    if (resetTimerRef.current) {
+      clearTimeout(resetTimerRef.current);
+    }
+  }, []);
+
+  const handleCopy = React.useCallback(async () => {
+    try {
+      await Clipboard.setStringAsync(props.text);
+      setCopied(true);
+      if (resetTimerRef.current) {
+        clearTimeout(resetTimerRef.current);
+      }
+      resetTimerRef.current = setTimeout(() => setCopied(false), 1500);
+    } catch (error) {
+      console.error('Failed to copy message:', error);
+    }
+  }, [props.text]);
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={copied ? t('common.copied') : t('common.copy')}
+      hitSlop={8}
+      onPress={handleCopy}
+      style={({ pressed }) => [
+        styles.copyAction,
+        props.style,
+        pressed && styles.copyActionPressed,
+      ]}
+    >
+      <Ionicons
+        name={copied ? 'checkmark' : 'copy-outline'}
+        size={copied ? 16 : 15}
+        color={theme.colors.textSecondary}
+      />
+    </Pressable>
   );
 }
 
@@ -267,7 +324,7 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: 12,
     paddingVertical: 4,
     borderRadius: 12,
-    marginBottom: 12,
+    marginBottom: 4,
     maxWidth: '100%',
   },
   userMessageBubbleSolid: {
@@ -284,7 +341,7 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    marginBottom: 12,
+    marginBottom: 4,
     maxWidth: '100%',
     opacity: 0.72,
   },
@@ -299,7 +356,7 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: 10,
     paddingVertical: 2,
     borderRadius: 10,
-    marginBottom: 12,
+    marginBottom: 4,
     maxWidth: '100%',
     opacity: 0.65,
   },
@@ -314,6 +371,23 @@ const styles = StyleSheet.create((theme) => ({
     marginBottom: 16,
     borderRadius: 16,
     maxWidth: '100%',
+  },
+  copyAction: {
+    width: 28,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    opacity: 0.62,
+  },
+  copyActionPressed: {
+    opacity: 1,
+  },
+  userCopyAction: {
+    marginBottom: 12,
+  },
+  agentCopyAction: {
+    alignSelf: 'flex-start',
+    marginTop: 4,
   },
   agentEventContainer: {
     marginHorizontal: 8,

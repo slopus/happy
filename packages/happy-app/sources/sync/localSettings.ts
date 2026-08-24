@@ -15,7 +15,6 @@ export const LocalSettingsSchema = z.object({
     consoleLoggingEnabled: z.boolean().describe('Enable console output in production builds'),
     verboseLogging: z.boolean().describe('Log all network requests and responses'),
     zenMode: z.boolean().describe('Hide all sidebars and non-essential UI for focused work'),
-    flatSessionList: z.boolean().describe('Show the home list as one full-width chronological list instead of project cards'),
     // Right file sidebar: which panels the user has opened and which is active.
     // Persisted so the layout survives reloads and long absences.
     sidebarPanelsOpen: z.array(z.enum(['changes', 'allFiles', 'sideChat'])).describe('Open right-sidebar panels, in tab order'),
@@ -49,7 +48,6 @@ export const localSettingsDefaults: LocalSettings = {
     consoleLoggingEnabled: false,
     verboseLogging: false,
     zenMode: false,
-    flatSessionList: true,
     sidebarPanelsOpen: [],
     sidebarPanelActive: null,
     acknowledgedCliVersions: {},

@@ -52,7 +52,9 @@ const styles = StyleSheet.create((theme) => ({
 
 export const Avatar = React.memo((props: AvatarProps) => {
     const { flavor, clientId, badgeLocation = 'none', size = 48, imageUrl, thumbhash, ...avatarProps } = props;
-    const avatarStyle = useSetting('avatarStyle');
+    // Brutalist is the product default now. Keep the renderer branches below
+    // so another style can be restored without rebuilding the avatar variants.
+    const avatarStyle: string = 'brutalist';
     const showFlavorIcons = useSetting('showFlavorIcons');
     const showHarnessIconInSessionHeader = useSetting('showHarnessIconInSessionHeader');
     const { theme } = useUnistyles();

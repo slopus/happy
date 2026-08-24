@@ -733,7 +733,6 @@ export function SessionViewLoaded({
     const alwaysShowContextSize = useSetting('alwaysShowContextSize');
     const sessionStatusBarDisplay = useSetting('sessionStatusBarDisplay');
     const experiments = useSetting('experiments');
-    const expResumeSession = useSetting('expResumeSession');
     const { canResume, resumeSession, resumingSession } = useSessionQuickActions(session);
     const isDisconnected = !sessionStatus.isConnected;
     const resumeCommandBlock = getResumeCommandBlock(session);
@@ -1057,12 +1056,12 @@ export function SessionViewLoaded({
     // Ctrl-C in terminal — lifecycleState stays 'running', server flips
     // active=false). InactiveArchivedHint handles both cases: shows the
     // Resume button when canResume is true, falls back to the
-    // copy-this-command hint when the experiments toggle is off or the
-    // machine isn't reachable.
+    // copy-this-command hint when the daemon is incompatible or the machine
+    // isn't reachable.
     const inactiveHint = isDisconnected && !isRig ? (
         <CenteredInputWidth horizontalPadding={sessionInputHorizontalPadding}>
             <InactiveArchivedHint
-                resumeCommandBlock={expResumeSession ? resumeCommandBlock : null}
+                resumeCommandBlock={resumeCommandBlock}
                 canResume={canResume}
                 resuming={resumingSession}
                 onResume={resumeSession}

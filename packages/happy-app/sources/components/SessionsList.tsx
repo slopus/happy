@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Pressable, FlatList, NativeScrollEvent, NativeSyntheticEvent, Platform } from 'react-native';
 import { Text } from '@/components/StyledText';
 import { usePathname, useRouter } from 'expo-router';
-import { SessionListViewItem, SessionRowData, useAllMachines, useLocalSetting, useSettingMutable } from '@/sync/storage';
+import { SessionListViewItem, SessionRowData, useAllMachines, useSettingMutable } from '@/sync/storage';
 import { Ionicons } from '@expo/vector-icons';
 import { type SessionState, formatLastSeen, vibingMessages } from '@/utils/sessionUtils';
 import { Avatar } from './Avatar';
@@ -319,9 +319,10 @@ export function SessionsList({
     // Stored under its original `hideInactiveSessions` key — synced settings
     // have no rename migration — but it hides archived sessions only.
     const [hideArchivedSessions, setHideArchivedSessions] = useSettingMutable('hideInactiveSessions');
-    // The flat variant replaces the machine → project → worktree hierarchy with
-    // one full-width chronological column. Both shapes read the same data.
-    const flatSessionList = useLocalSetting('flatSessionList');
+    // The home screen has one canonical, activity-sorted chat list. Keep the
+    // legacy project-card implementation below for now while the old synced
+    // setting ages out, but do not expose a layout fork to users.
+    const flatSessionList = true;
     const machines = useAllMachines();
     const pathname = usePathname();
     const isTablet = useIsTablet();
@@ -359,11 +360,8 @@ export function SessionsList({
             : [];
 
         if (flatSessionList) {
-            // Always by activity, regardless of `sortSessionsByActivity`. That
-            // setting exists for the project cards, where a card is a place and
-            // creation order is a reasonable way to list places. This is a chat
-            // list: a chat list that does not float the thing you just replied
-            // to is simply broken, and creation order would freeze it forever.
+            // A chat list should always float the thing the user just replied
+            // to, so the canonical layout is ordered by recent activity.
             const flatRows = buildFlatSessionRows(groupedRows, { sortByActivity: true });
             const flatItems = flatRows.map<SessionListDisplayItem>((row, index) => ({
                 type: 'flat-session',
