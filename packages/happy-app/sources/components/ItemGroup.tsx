@@ -112,7 +112,7 @@ export const ItemGroup = React.memo<ItemGroupProps>((props) => {
                     </View>
                 ) : (
                     // Add top margin when there's no title
-                    <View style={styles.headerNoTitle} />
+                    <View style={[styles.headerNoTitle, headerStyle]} />
                 )}
 
                 {/* Content Container */}

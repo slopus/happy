@@ -11,7 +11,13 @@ import { Platform, type StyleProp, type ViewStyle } from 'react-native';
 import { openExternalUrl } from '@/utils/openExternalUrl';
 import { t } from '@/text';
 
-export const UpdateBanner = React.memo(({ style }: { style?: StyleProp<ViewStyle> }) => {
+export const UpdateBanner = React.memo(({
+    style,
+    headerStyle,
+}: {
+    style?: StyleProp<ViewStyle>;
+    headerStyle?: StyleProp<ViewStyle>;
+}) => {
     const { theme } = useUnistyles();
     const { updateAvailable, reloadApp } = useUpdates();
     const { hasUnread, markAsRead } = useChangelog();
@@ -23,7 +29,7 @@ export const UpdateBanner = React.memo(({ style }: { style?: StyleProp<ViewStyle
         const handleOpenStore = () => openExternalUrl(updateUrl);
 
         return (
-            <ItemGroup style={style}>
+            <ItemGroup style={style} headerStyle={headerStyle}>
                 <Item
                     title={t('updateBanner.nativeUpdateAvailable')}
                     subtitle={Platform.OS === 'ios' ? t('updateBanner.tapToUpdateAppStore') : t('updateBanner.tapToUpdatePlayStore')}
@@ -38,7 +44,7 @@ export const UpdateBanner = React.memo(({ style }: { style?: StyleProp<ViewStyle
     // Show OTA update banner if available (second priority)
     if (updateAvailable) {
         return (
-            <ItemGroup style={style}>
+            <ItemGroup style={style} headerStyle={headerStyle}>
                 <Item
                     title={t('updateBanner.updateAvailable')}
                     subtitle={t('updateBanner.pressToApply')}
@@ -53,7 +59,7 @@ export const UpdateBanner = React.memo(({ style }: { style?: StyleProp<ViewStyle
     // Show changelog banner if there are unread changelog entries (lowest priority)
     if (hasUnread) {
         return (
-            <ItemGroup style={style}>
+            <ItemGroup style={style} headerStyle={headerStyle}>
                 <Item
                     title={t('updateBanner.whatsNew')}
                     subtitle={t('updateBanner.seeLatest')}

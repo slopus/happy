@@ -265,7 +265,10 @@ const stylesheet = StyleSheet.create((theme) => ({
         backgroundColor: Platform.select({ web: theme.colors.groupped.background, default: 'transparent' }),
     },
     phoneUpdateBanner: {
-        paddingBottom: 32,
+        paddingBottom: 16,
+    },
+    phoneUpdateBannerHeader: {
+        paddingTop: 4,
     },
 }));
 
@@ -551,10 +554,14 @@ export function SessionsList({
 
 
     const HeaderComponent = React.useCallback(() => {
+        const isPhoneLayout = topContentInset > 0;
         return (
-            <UpdateBanner style={topContentInset > 0 ? styles.phoneUpdateBanner : undefined} />
+            <UpdateBanner
+                style={isPhoneLayout ? styles.phoneUpdateBanner : undefined}
+                headerStyle={isPhoneLayout ? styles.phoneUpdateBannerHeader : undefined}
+            />
         );
-    }, [styles.phoneUpdateBanner, topContentInset]);
+    }, [styles.phoneUpdateBanner, styles.phoneUpdateBannerHeader, topContentInset]);
 
     // Footer removed - all sessions now shown inline
 
