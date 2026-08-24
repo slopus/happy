@@ -44,6 +44,7 @@ model Account {
     AccountAuthRequest  AccountAuthRequest[]
     UsageReport         UsageReport[]
     Machine             Machine[]
+    Project             Project[]
     UploadedFile        UploadedFile[]
     ServiceAccountToken ServiceAccountToken[]
     RelationshipsFrom   UserRelationship[]    @relation("RelationshipsFrom")
@@ -96,6 +97,8 @@ model Session {
     tag               String
     accountId         String
     account           Account          @relation(fields: [accountId], references: [id])
+    projectId         String?
+    project           Project?         @relation(fields: [projectId], references: [id], onDelete: SetNull)
     metadata          String
     metadataVersion   Int              @default(0)
     agentState        String?
@@ -111,6 +114,31 @@ model Session {
     accessKeys        AccessKey[]
 
     @@unique([accountId, tag])
+    @@index([accountId, updatedAt(sort: Desc)])
+    @@index([projectId])
+}
+
+//
+// Projects
+//
+
+model Project {
+    id                 String      @id @default(cuid())
+    accountId          String
+    account            Account     @relation(fields: [accountId], references: [id], onDelete: Cascade)
+    externalId         String
+    metadata           String
+    metadataVersion    Int         @default(1)
+    dataEncryptionKey  Bytes?
+    avatarRef          String?
+    avatarPreview      String?
+    avatarVersion      Int         @default(0)
+    seq                Int         @default(0)
+    createdAt          DateTime    @default(now())
+    updatedAt          DateTime    @updatedAt
+    sessions           Session[]
+
+    @@unique([accountId, externalId])
     @@index([accountId, updatedAt(sort: Desc)])
 }
 
