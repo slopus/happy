@@ -22,6 +22,7 @@ describe('session protocol schemas', () => {
         args: { command: 'ls -la' },
       },
       { t: 'tool-call-end', call: 'call-1' },
+      { t: 'tool-call-end', call: 'call-2', result: 'Permission denied', isError: true },
       { t: 'file', ref: 'upload-1', name: 'report.txt', size: 1024, mimeType: 'text/plain' },
       {
         t: 'file',
@@ -44,6 +45,7 @@ describe('session protocol schemas', () => {
 
   it('rejects malformed events', () => {
     expect(sessionEventSchema.safeParse({ t: 'tool-call-start', call: '1' }).success).toBe(false);
+    expect(sessionEventSchema.safeParse({ t: 'tool-call-end', call: '1', isError: 'yes' }).success).toBe(false);
     expect(sessionEventSchema.safeParse({ t: 'file', ref: 'x', name: 'x' }).success).toBe(false);
     expect(sessionEventSchema.safeParse({ t: 'file', ref: 'x', name: 'x', size: 1, image: { width: 10, height: 10 } }).success).toBe(false);
     expect(sessionEventSchema.safeParse({ t: 'turn-end' }).success).toBe(false);

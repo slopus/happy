@@ -1814,6 +1814,34 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
                     is_error: false
                 });
             }
+
+            const failedEnd = normalizeRawMessage('db-5', null, 1, {
+                ...base,
+                content: {
+                    type: 'session',
+                    data: {
+                        id: 'env-5',
+                        time: 1,
+                        role: 'agent',
+                        turn: 'turn-1',
+                        ev: {
+                            t: 'tool-call-end',
+                            call: 'call-2',
+                            result: 'The collaborator could not be interrupted.',
+                            isError: true
+                        }
+                    }
+                }
+            });
+            expect(failedEnd).toBeTruthy();
+            if (failedEnd && failedEnd.role === 'agent') {
+                expect(failedEnd.content[0]).toMatchObject({
+                    type: 'tool-result',
+                    tool_use_id: 'call-2',
+                    content: 'The collaborator could not be interrupted.',
+                    is_error: true
+                });
+            }
         });
 
         it('maps turn-end to ready event and drops turn-start', () => {
