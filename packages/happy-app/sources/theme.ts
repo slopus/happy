@@ -1,5 +1,7 @@
 import { Platform } from 'react-native';
 
+export const APP_ACCENT_BLUE = '#0A84FF';
+
 // Shared spacing, sizing constants (DRY - used by both themes)
 const sharedSpacing = {
     // Spacing scale (based on actual usage patterns in codebase)
@@ -39,6 +41,7 @@ export const lightTheme = {
         //
 
         text: '#000000',
+        accent: APP_ACCENT_BLUE,
         textDestructive: Platform.select({ ios: '#FF3B30', default: '#F44336' }),
         textSecondary: Platform.select({ ios: '#8E8E93', default: '#49454F' }),
         textLink: '#2BACCC',
@@ -105,9 +108,9 @@ export const lightTheme = {
             icon: '#FFFFFF',
         },
         radio: {
-            active: '#007AFF',
+            active: APP_ACCENT_BLUE,
             inactive: '#C0C0C0',
-            dot: '#007AFF',
+            dot: APP_ACCENT_BLUE,
         },
         modal: {
             border: 'rgba(0, 0, 0, 0.1)'
@@ -146,7 +149,7 @@ export const lightTheme = {
 
         status: {
             connected: '#34C759',
-            connecting: '#007AFF',
+            connecting: APP_ACCENT_BLUE,
             disconnected: '#999999',
             error: '#FF3B30',
             default: '#8E8E93',
@@ -155,7 +158,7 @@ export const lightTheme = {
         // Permission mode colors
         permission: {
             default: '#8E8E93',
-            acceptEdits: '#007AFF',
+            acceptEdits: APP_ACCENT_BLUE,
             bypass: '#FF9500',
             plan: '#34C759',
             readOnly: '#8B8B8D',
@@ -174,7 +177,7 @@ export const lightTheme = {
                 text: '#FFFFFF',
             },
             allowAll: {
-                background: '#007AFF',
+                background: APP_ACCENT_BLUE,
                 text: '#FFFFFF',
             },
             inactive: {
@@ -265,6 +268,7 @@ export const darkTheme = {
         //
 
         text: '#ffffff',
+        accent: APP_ACCENT_BLUE,
         textDestructive: Platform.select({ ios: '#FF453A', default: '#F48FB1' }),
         textSecondary: Platform.select({ ios: '#8E8E93', default: '#CAC4D0' }),
         textLink: '#2BACCC',
@@ -331,9 +335,9 @@ export const darkTheme = {
             icon: '#000000',
         },
         radio: {
-            active: '#0A84FF',
+            active: APP_ACCENT_BLUE,
             inactive: '#48484A',
-            dot: '#0A84FF',
+            dot: APP_ACCENT_BLUE,
         },
         modal: {
             border: 'rgba(255, 255, 255, 0.1)'
@@ -381,7 +385,7 @@ export const darkTheme = {
         // Permission mode colors
         permission: {
             default: '#8E8E93',
-            acceptEdits: '#0A84FF',
+            acceptEdits: APP_ACCENT_BLUE,
             bypass: '#FF9F0A',
             plan: '#32D74B',
             readOnly: '#98989D',
@@ -400,7 +404,7 @@ export const darkTheme = {
                 text: '#FFFFFF',
             },
             allowAll: {
-                background: '#0A84FF',
+                background: APP_ACCENT_BLUE,
                 text: '#FFFFFF',
             },
             inactive: {

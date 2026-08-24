@@ -89,6 +89,7 @@ export const FlatSessionRow = React.memo(({ row, selected, showBorder, archived 
         state: session.state,
         hasUnread: showUnreadDot,
         faded,
+        unreadDotColor: theme.colors.accent,
     });
     const topRightAccessibilityLabel = presentation.topRight.type === 'dot'
         ? session.state === 'input_required'
