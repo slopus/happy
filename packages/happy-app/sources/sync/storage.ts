@@ -630,24 +630,39 @@ export const storage = create<StorageState>()((set, get) => {
                     const reducerResult = reducer(existingSessionMessages.reducerState, [], newSession.agentState);
                     const processedMessages = reducerResult.messages;
 
-                    // Always update the session messages, even if no new messages were created
-                    // This ensures the reducer state is updated with the new AgentState
-                    const mergedMessagesMap = { ...existingSessionMessages.messagesMap };
-                    processedMessages.forEach(message => {
-                        mergedMessagesMap[message.id] = message;
-                    });
+                    // Only rebuild when the reducer actually produced something.
+                    //
+                    // An agentState bump carries no new messages most of the
+                    // time — a heartbeat, a thinking flag, a permission answer.
+                    // Rebuilding the array anyway handed `messages` a fresh
+                    // identity on every such tick, and `useSessionMessages`
+                    // compares it by identity: that re-rendered ChatList, which
+                    // re-derived displayItems and the copy-text map, which gave
+                    // `renderItem` a new identity, which defeated every row's
+                    // memo and re-rendered the whole window. Measured at 475
+                    // renderItem calls/sec and a 525ms frame while streaming.
+                    //
+                    // reducerState is mutated in place and is already stored by
+                    // reference, so leaving the entry untouched still carries
+                    // the new agentState forward.
+                    if (processedMessages.length > 0) {
+                        const mergedMessagesMap = { ...existingSessionMessages.messagesMap };
+                        processedMessages.forEach(message => {
+                            mergedMessagesMap[message.id] = message;
+                        });
 
-                    const messagesArray = Object.values(mergedMessagesMap)
-                        .sort((a, b) => b.createdAt - a.createdAt);
+                        const messagesArray = Object.values(mergedMessagesMap)
+                            .sort((a, b) => b.createdAt - a.createdAt);
 
-                    updatedSessionMessages[session.id] = {
-                        messages: messagesArray,
-                        messagesMap: mergedMessagesMap,
-                        reducerState: existingSessionMessages.reducerState, // The reducer modifies state in-place, so this has the updates
-                        isLoaded: existingSessionMessages.isLoaded,
-                        hasMoreOlder: existingSessionMessages.hasMoreOlder,
-                        isLoadingOlder: existingSessionMessages.isLoadingOlder
-                    };
+                        updatedSessionMessages[session.id] = {
+                            messages: messagesArray,
+                            messagesMap: mergedMessagesMap,
+                            reducerState: existingSessionMessages.reducerState, // The reducer modifies state in-place, so this has the updates
+                            isLoaded: existingSessionMessages.isLoaded,
+                            hasMoreOlder: existingSessionMessages.hasMoreOlder,
+                            isLoadingOlder: existingSessionMessages.isLoadingOlder
+                        };
+                    }
 
                     // IMPORTANT: Copy latestUsage from reducerState to Session for immediate availability
                     if (existingSessionMessages.reducerState.latestUsage) {
