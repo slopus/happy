@@ -12,6 +12,8 @@ import { projectPath } from "@/projectPath";
 import { systemPrompt } from "./utils/systemPrompt";
 import type { SandboxConfig } from "@/persistence";
 import { initializeSandbox, wrapCommand } from "@/sandbox/manager";
+import { normalizeLocalClaudePermissionArgs } from "./utils/permissionMode";
+import type { PermissionMode } from "@/api/types";
 
 /**
  * Error thrown when the Claude process exits with a non-zero exit code.
@@ -47,6 +49,7 @@ export async function claudeLocal(opts: {
     /** Path to temporary settings file with SessionStart hook (optional - for session tracking) */
     hookSettingsPath?: string,
     sandboxConfig?: SandboxConfig,
+    permissionMode?: PermissionMode,
 }) {
 
     // Ensure project directory exists
@@ -239,10 +242,15 @@ export async function claudeLocal(opts: {
                 args.push('--allowedTools', opts.allowedTools.join(','));
             }
 
-            // Add custom Claude arguments
-            if (opts.claudeArgs) {
-                args.push(...opts.claudeArgs)
-            }
+            // Local Claude manages permissions itself. Forward the resolved mode
+            // as the single source of truth, replacing any raw permission-mode
+            // argument and avoiding a redundant flag when sandbox/bypass already
+            // enforces the policy at the process boundary.
+            args.push(...normalizeLocalClaudePermissionArgs(
+                opts.claudeArgs,
+                opts.permissionMode,
+                Boolean(opts.sandboxConfig?.enabled),
+            ));
 
             // Add hook settings for session tracking (when available)
             if (opts.hookSettingsPath) {

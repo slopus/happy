@@ -4,6 +4,7 @@ import { EnhancedMode } from "./loop";
 import { logger } from "@/ui/logger";
 import type { JsRuntime } from "./runClaude";
 import type { SandboxConfig } from "@/persistence";
+import type { PermissionMode } from "@/api/types";
 
 export class Session {
     readonly path: string;
@@ -16,6 +17,8 @@ export class Session {
     readonly mcpServers: Record<string, any>;
     readonly allowedTools?: string[];
     readonly sandboxConfig?: SandboxConfig;
+    /** Resolved permission mode forwarded to Claude in local mode (see claudeLocal) */
+    readonly permissionMode?: PermissionMode;
     readonly _onModeChange: (mode: 'local' | 'remote') => void;
     readonly _onAbort?: () => void;
     /** Path to temporary settings file with SessionStart hook (required for session tracking) */
@@ -47,6 +50,7 @@ export class Session {
         onAbort?: () => void,
         allowedTools?: string[],
         sandboxConfig?: SandboxConfig,
+        permissionMode?: PermissionMode,
         /** Path to temporary settings file with SessionStart hook (required for session tracking) */
         hookSettingsPath: string,
         /** JavaScript runtime to use for spawning Claude Code (default: 'node') */
@@ -63,6 +67,7 @@ export class Session {
         this.mcpServers = opts.mcpServers;
         this.allowedTools = opts.allowedTools;
         this.sandboxConfig = opts.sandboxConfig;
+        this.permissionMode = opts.permissionMode;
         this._onModeChange = opts.onModeChange;
         this._onAbort = opts.onAbort;
         this.hookSettingsPath = opts.hookSettingsPath;

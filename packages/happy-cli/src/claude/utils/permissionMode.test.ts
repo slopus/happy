@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { applySandboxPermissionPolicy, extractPermissionModeFromClaudeArgs, mapToClaudeMode, resolveInitialClaudePermissionMode, resolveRemoteClaudePermissionMode } from './permissionMode';
+import { applySandboxPermissionPolicy, extractPermissionModeFromClaudeArgs, mapToClaudeMode, normalizeLocalClaudePermissionArgs, resolveInitialClaudePermissionMode, resolveRemoteClaudePermissionMode } from './permissionMode';
 import type { PermissionMode } from '@/api/types';
 
 describe('mapToClaudeMode', () => {
@@ -92,6 +92,48 @@ describe('extractPermissionModeFromClaudeArgs', () => {
 
     it('returns undefined for invalid mode', () => {
         expect(extractPermissionModeFromClaudeArgs(['--permission-mode', 'invalid'])).toBeUndefined();
+    });
+});
+
+describe('normalizeLocalClaudePermissionArgs', () => {
+    it('forwards a resolved Claude mode', () => {
+        expect(normalizeLocalClaudePermissionArgs(['--verbose'], 'plan', false)).toEqual([
+            '--verbose',
+            '--permission-mode',
+            'plan',
+        ]);
+    });
+
+    it('maps yolo and replaces both raw permission-mode forms', () => {
+        expect(normalizeLocalClaudePermissionArgs([
+            '--permission-mode',
+            'plan',
+            '--permission-mode=acceptEdits',
+            '--verbose',
+        ], 'yolo', false)).toEqual([
+            '--verbose',
+            '--permission-mode',
+            'bypassPermissions',
+        ]);
+    });
+
+    it('does not add a flag for modes that map to default', () => {
+        expect(normalizeLocalClaudePermissionArgs(['--verbose'], 'safe-yolo', false)).toEqual(['--verbose']);
+    });
+
+    it('does not duplicate an existing dangerous bypass flag', () => {
+        expect(normalizeLocalClaudePermissionArgs([
+            '--dangerously-skip-permissions',
+            '--permission-mode',
+            'plan',
+        ], 'bypassPermissions', false)).toEqual(['--dangerously-skip-permissions']);
+    });
+
+    it('leaves permission enforcement to the sandbox boundary', () => {
+        expect(normalizeLocalClaudePermissionArgs([
+            '--permission-mode=plan',
+            '--verbose',
+        ], 'bypassPermissions', true)).toEqual(['--verbose']);
     });
 });
 

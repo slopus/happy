@@ -103,6 +103,7 @@ describe('claudeLocalLauncher', () => {
             allowedTools: [],
             hookSettingsPath: '/tmp/hook-settings.json',
             sandboxConfig: undefined,
+            permissionMode: 'plan',
         };
 
         const launcher = claudeLocalLauncher(session as any);
@@ -111,6 +112,9 @@ describe('claudeLocalLauncher', () => {
             expect(observed.localAbortSignal).toBeDefined();
             expect(observed.queueHandler).toBeDefined();
         });
+        expect(mockClaudeLocal).toHaveBeenCalledWith(expect.objectContaining({
+            permissionMode: 'plan',
+        }));
 
         queuedMessages = 1;
         const handler = observed.queueHandler;

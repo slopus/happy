@@ -36,6 +36,49 @@ export function mapToClaudeMode(mode: PermissionMode | undefined): ClaudeSdkPerm
     return codexToClaudeMap[mode] ?? (mode as ClaudeSdkPermissionMode);
 }
 
+/**
+ * Build the user-supplied Claude arguments for local mode with one canonical
+ * permission policy. The resolved mode is the source of truth, so raw
+ * --permission-mode flags must not be forwarded alongside it.
+ *
+ * Sandbox mode and --dangerously-skip-permissions already enforce bypass at
+ * the process boundary; adding --permission-mode as well would be redundant.
+ */
+export function normalizeLocalClaudePermissionArgs(
+    claudeArgs: string[] | undefined,
+    permissionMode: PermissionMode | undefined,
+    sandboxEnabled: boolean,
+): string[] {
+    const normalized: string[] = [];
+
+    for (let i = 0; i < (claudeArgs?.length ?? 0); i++) {
+        const arg = claudeArgs![i];
+        if (arg === '--permission-mode') {
+            i += 1;
+            continue;
+        }
+        if (arg.startsWith('--permission-mode=')) {
+            continue;
+        }
+        normalized.push(arg);
+    }
+
+    if (
+        sandboxEnabled ||
+        normalized.includes('--dangerously-skip-permissions') ||
+        !permissionMode
+    ) {
+        return normalized;
+    }
+
+    const claudeMode = mapToClaudeMode(permissionMode);
+    if (claudeMode !== 'default') {
+        normalized.push('--permission-mode', claudeMode);
+    }
+
+    return normalized;
+}
+
 const VALID_PERMISSION_MODES: readonly PermissionMode[] = [
     'auto',
     'default',
