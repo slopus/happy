@@ -231,7 +231,7 @@ function MessageCopyButton(props: { text: string }) {
     >
       <Ionicons
         name={copied ? 'checkmark' : 'copy-outline'}
-        size={copied ? 14 : 13}
+        size={16}
         color={theme.colors.text}
       />
     </Pressable>
@@ -382,9 +382,8 @@ const styles = StyleSheet.create((theme) => ({
     alignSelf: 'flex-start',
     height: 20,
     justifyContent: 'center',
-    // Pulls the icon up through the trailing margin of the last markdown block,
-    // roughly one line of text closer to the response.
-    marginTop: -10,
+    // Pull the icon partway into the trailing margin of the last markdown block.
+    marginTop: -6,
   },
   copyActionPressed: {
     opacity: 0.5,
