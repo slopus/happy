@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Platform, Pressable, Text, View, type StyleProp, type ViewStyle } from "react-native";
+import { Platform, Pressable, Text, View } from "react-native";
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
@@ -15,6 +15,7 @@ import { Option } from './markdown/MarkdownView';
 import { layout } from "./layout";
 import { parseLocalCommandMessage, isUserSlashCommandEcho } from './parseLocalCommandMessage';
 import { resolveUserMessageBubbleColor } from '@/utils/userMessageBubbleColor';
+import { LongPressCopyable } from './LongPressCopyable';
 
 
 export const MessageView = React.memo((props: {
@@ -125,44 +126,45 @@ function UserTextBlock(props: {
   if (parsed.kind === 'goal-run') {
     return (
       <View style={styles.userMessageContainer}>
-        <View style={[styles.userMessageBubble, styles.userMessageBubbleSolid, bubbleStyle, styles.goalMessageBubble]}>
-          <MarkdownView markdown={parsed.goal} onOptionPress={handleOptionPress} sessionId={props.sessionId} />
-        </View>
-        <View style={styles.goalSentRow}>
-          <Ionicons name="locate-outline" size={16} color={styles.goalSentText.color} />
-          <Text style={styles.goalSentText}>{t('message.sentAsGoal')}</Text>
-        </View>
-        <MessageCopyButton text={parsed.goal} style={styles.userCopyAction} />
+        <LongPressCopyable style={styles.userCopyTarget} text={parsed.goal}>
+          <View style={[styles.userMessageBubble, styles.userMessageBubbleSolid, bubbleStyle, styles.goalMessageBubble]}>
+            <MarkdownView externalCopyHandler markdown={parsed.goal} onOptionPress={handleOptionPress} sessionId={props.sessionId} />
+          </View>
+          <View style={styles.goalSentRow}>
+            <Ionicons name="locate-outline" size={16} color={styles.goalSentText.color} />
+            <Text style={styles.goalSentText}>{t('message.sentAsGoal')}</Text>
+          </View>
+        </LongPressCopyable>
       </View>
     );
   }
   if (parsed.kind === 'command-run') {
+    const commandText = parsed.args ? `/${parsed.commandName} ${parsed.args}` : `/${parsed.commandName}`;
     return (
       <View style={styles.userMessageContainer}>
-        {parsed.args ? (
-          <View style={[styles.userMessageBubble, styles.userMessageBubbleSolid, bubbleStyle, styles.commandMessageBubble]}>
-            <MarkdownView markdown={parsed.args} onOptionPress={handleOptionPress} sessionId={props.sessionId} />
+        <LongPressCopyable style={styles.userCopyTarget} text={commandText}>
+          {parsed.args ? (
+            <View style={[styles.userMessageBubble, styles.userMessageBubbleSolid, bubbleStyle, styles.commandMessageBubble]}>
+              <MarkdownView externalCopyHandler markdown={parsed.args} onOptionPress={handleOptionPress} sessionId={props.sessionId} />
+            </View>
+          ) : null}
+          <View style={[styles.commandChip, styles.userMessageBubbleSolid, bubbleStyle]}>
+            <Text style={styles.commandChipText}>/{parsed.commandName}</Text>
           </View>
-        ) : null}
-        <View style={[styles.commandChip, styles.userMessageBubbleSolid, bubbleStyle]}>
-          <Text style={styles.commandChipText}>/{parsed.commandName}</Text>
-        </View>
-        <MessageCopyButton
-          text={parsed.args ? `/${parsed.commandName} ${parsed.args}` : `/${parsed.commandName}`}
-          style={styles.userCopyAction}
-        />
+        </LongPressCopyable>
       </View>
     );
   }
 
   return (
     <View style={styles.userMessageContainer}>
-      {/* Text owns long-press so native selection / Markdown Copy v2 can work
-          without also opening the rewind picker. Rewind remains in session actions. */}
-      <View style={[styles.userMessageBubble, styles.userMessageBubbleSolid, bubbleStyle]}>
-        <MarkdownView markdown={parsed.text} onOptionPress={handleOptionPress} sessionId={props.sessionId} />
-      </View>
-      <MessageCopyButton text={parsed.text} style={styles.userCopyAction} />
+      {/* Long-press copies the whole message through our own menu rather than the
+          OS selection callout. Rewind remains in session actions. */}
+      <LongPressCopyable style={styles.userCopyTarget} text={parsed.text}>
+        <View style={[styles.userMessageBubble, styles.userMessageBubbleSolid, bubbleStyle]}>
+          <MarkdownView externalCopyHandler markdown={parsed.text} onOptionPress={handleOptionPress} sessionId={props.sessionId} />
+        </View>
+      </LongPressCopyable>
     </View>
   );
 }
@@ -184,12 +186,15 @@ function AgentTextBlock(props: {
   return (
     <View style={styles.agentMessageContainer}>
       <MarkdownView markdown={props.message.text} onOptionPress={handleOptionPress} sessionId={props.sessionId} />
-      {props.copyText ? <MessageCopyButton text={props.copyText} style={styles.agentCopyAction} /> : null}
+      {props.copyText ? <MessageCopyButton text={props.copyText} /> : null}
     </View>
   );
 }
 
-function MessageCopyButton(props: { text: string; style?: StyleProp<ViewStyle> }) {
+// The glyph is deliberately small, so widen the touch target well past it.
+const COPY_HIT_SLOP = { top: 14, bottom: 14, left: 14, right: 20 };
+
+function MessageCopyButton(props: { text: string }) {
   const { theme } = useUnistyles();
   const [copied, setCopied] = React.useState(false);
   const resetTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -217,18 +222,17 @@ function MessageCopyButton(props: { text: string; style?: StyleProp<ViewStyle> }
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={copied ? t('common.copied') : t('common.copy')}
-      hitSlop={8}
+      hitSlop={COPY_HIT_SLOP}
       onPress={handleCopy}
       style={({ pressed }) => [
         styles.copyAction,
-        props.style,
         pressed && styles.copyActionPressed,
       ]}
     >
       <Ionicons
         name={copied ? 'checkmark' : 'copy-outline'}
-        size={copied ? 16 : 15}
-        color={theme.colors.textSecondary}
+        size={copied ? 13 : 12}
+        color={theme.colors.text}
       />
     </Pressable>
   );
@@ -373,21 +377,21 @@ const styles = StyleSheet.create((theme) => ({
     maxWidth: '100%',
   },
   copyAction: {
-    width: 28,
-    height: 24,
-    alignItems: 'center',
+    // No width, so the box shrink-wraps the glyph and its left edge lands on the
+    // same x as the markdown text above it. hitSlop carries the touch target.
+    alignSelf: 'flex-start',
+    height: 20,
     justifyContent: 'center',
-    opacity: 0.62,
+    // Pulls the icon up through the trailing margin of the last markdown block,
+    // roughly one line of text closer to the response.
+    marginTop: -14,
   },
   copyActionPressed: {
-    opacity: 1,
+    opacity: 0.5,
   },
-  userCopyAction: {
-    marginBottom: 12,
-  },
-  agentCopyAction: {
-    alignSelf: 'flex-start',
-    marginTop: 4,
+  userCopyTarget: {
+    alignItems: 'flex-end',
+    maxWidth: '100%',
   },
   agentEventContainer: {
     marginHorizontal: 8,
