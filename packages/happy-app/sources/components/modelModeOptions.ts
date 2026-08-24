@@ -141,6 +141,7 @@ export function getCodexModelModes(): ModelMode[] {
         { key: 'gpt-5.5', name: 'gpt-5.5', description: null },
         { key: 'gpt-5.4', name: 'gpt-5.4', description: null },
         { key: 'gpt-5.3-codex', name: 'gpt-5.3-codex', description: null },
+        { key: 'gpt-5.3-codex-spark', name: 'gpt-5.3-codex spark', description: null },
         { key: 'gpt-5.2-codex', name: 'gpt-5.2-codex', description: null },
         { key: 'gpt-5.1-codex-max', name: 'gpt-5.1-codex-max', description: null },
         { key: 'gpt-5.2', name: 'gpt-5.2', description: null },
