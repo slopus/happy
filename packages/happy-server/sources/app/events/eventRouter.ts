@@ -68,10 +68,20 @@ export type UpdateEvent = {
     agentState: string | null;
     agentStateVersion: number;
     dataEncryptionKey: string | null;
+    projectId: string | null;
     active: boolean;
     activeAt: number;
     createdAt: number;
     updatedAt: number;
+} | {
+    type: 'new-project';
+    projectId: string;
+} | {
+    type: 'update-project';
+    projectId: string;
+} | {
+    type: 'delete-project';
+    projectId: string;
 } | {
     type: 'update-session';
     sessionId: string;
@@ -361,6 +371,7 @@ export function buildNewSessionUpdate(session: {
     agentState: string | null;
     agentStateVersion: number;
     dataEncryptionKey: Uint8Array | null;
+    projectId: string | null;
     active: boolean;
     lastActiveAt: Date;
     createdAt: Date;
@@ -378,10 +389,47 @@ export function buildNewSessionUpdate(session: {
             agentState: session.agentState,
             agentStateVersion: session.agentStateVersion,
             dataEncryptionKey: session.dataEncryptionKey ? Buffer.from(session.dataEncryptionKey).toString('base64') : null,
+            projectId: session.projectId,
             active: session.active,
             activeAt: session.lastActiveAt.getTime(),
             createdAt: session.createdAt.getTime(),
             updatedAt: session.updatedAt.getTime()
+        },
+        createdAt: Date.now()
+    };
+}
+
+export function buildNewProjectUpdate(project: { id: string }, updateSeq: number, updateId: string): UpdatePayload {
+    return {
+        id: updateId,
+        seq: updateSeq,
+        body: {
+            t: 'new-project',
+            projectId: project.id,
+        },
+        createdAt: Date.now()
+    };
+}
+
+export function buildUpdateProjectUpdate(project: { id: string }, updateSeq: number, updateId: string): UpdatePayload {
+    return {
+        id: updateId,
+        seq: updateSeq,
+        body: {
+            t: 'update-project',
+            projectId: project.id,
+        },
+        createdAt: Date.now()
+    };
+}
+
+export function buildDeleteProjectUpdate(projectId: string, updateSeq: number, updateId: string): UpdatePayload {
+    return {
+        id: updateId,
+        seq: updateSeq,
+        body: {
+            t: 'delete-project',
+            projectId
         },
         createdAt: Date.now()
     };
@@ -414,7 +462,7 @@ export function buildNewMessageUpdate(message: {
     };
 }
 
-export function buildUpdateSessionUpdate(sessionId: string, updateSeq: number, updateId: string, metadata?: { value: string; version: number }, agentState?: { value: string; version: number }): UpdatePayload {
+export function buildUpdateSessionUpdate(sessionId: string, updateSeq: number, updateId: string, metadata?: { value: string; version: number }, agentState?: { value: string; version: number }, projectId?: string | null): UpdatePayload {
     return {
         id: updateId,
         seq: updateSeq,
@@ -422,7 +470,8 @@ export function buildUpdateSessionUpdate(sessionId: string, updateSeq: number, u
             t: 'update-session',
             id: sessionId,
             metadata,
-            agentState
+            agentState,
+            ...(projectId !== undefined ? { projectId } : {})
         },
         createdAt: Date.now()
     };
