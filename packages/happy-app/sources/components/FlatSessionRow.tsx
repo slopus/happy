@@ -151,6 +151,8 @@ export const FlatSessionRow = React.memo(({ row, selected, showBorder, archived 
                     monochrome={faded}
                     flavor={session.flavor}
                     clientId={session.clientId}
+                    imageUrl={session.projectAvatarUri}
+                    thumbhash={session.projectAvatarThumbhash}
                     badgeLocation="sessionList"
                 />
             </View>

@@ -71,6 +71,7 @@ export const Avatar = React.memo((props: AvatarProps) => {
             <Image
                 source={{ uri: imageUrl, thumbhash: thumbhash || undefined }}
                 placeholder={thumbhash ? { thumbhash: thumbhash } : undefined}
+                cachePolicy={imageUrl.startsWith('data:') ? 'memory' : 'disk'}
                 contentFit="cover"
                 style={{
                     width: size,

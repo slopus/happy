@@ -14,6 +14,21 @@ export function getServerUrl(): string {
            DEFAULT_SERVER_URL;
 }
 
+export function rewriteLoopbackHost(url: string): string {
+    try {
+        const target = new URL(url);
+        if (target.hostname !== 'localhost' && target.hostname !== '127.0.0.1' && target.hostname !== '::1') {
+            return url;
+        }
+        const reachable = new URL(getServerUrl());
+        target.protocol = reachable.protocol;
+        target.host = reachable.host;
+        return target.toString();
+    } catch {
+        return url;
+    }
+}
+
 export function setServerUrl(url: string | null): void {
     if (url && url.trim()) {
         serverConfigStorage.set(SERVER_KEY, url.trim());

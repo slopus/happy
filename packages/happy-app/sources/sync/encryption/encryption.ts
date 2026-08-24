@@ -126,6 +126,13 @@ export class Encryption {
         return this.sessionBlobKeys.get(sessionId) ?? null;
     }
 
+    /** Return the domain-separated blob key used by project avatar blobs. */
+    async getProjectBlobKey(dataKey: Uint8Array | null): Promise<Uint8Array> {
+        return dataKey
+            ? deriveKey(dataKey, 'Happy Blobs', ['session'])
+            : this.masterBlobKey;
+    }
+
     //
     // Machine operations
     //

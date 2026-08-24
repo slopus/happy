@@ -84,7 +84,7 @@ const WorkspaceSection = React.memo(({ project, workspace, selectedSessionId }: 
         <View style={styles.section}>
             <View style={styles.header}>
                 {firstSession && (
-                    <Avatar id={firstSession.avatarId} size={24} flavor={null} />
+                    <Avatar id={firstSession.avatarId} size={24} flavor={null} imageUrl={firstSession.projectAvatarUri} thumbhash={firstSession.projectAvatarThumbhash} />
                 )}
                 <View style={styles.headerText}>
                     <Text style={styles.title} numberOfLines={1}>

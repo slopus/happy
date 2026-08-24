@@ -15,6 +15,7 @@ const { appendFormFile, cleanupFormFile } = vi.hoisted(() => ({
 
 vi.mock('./serverConfig', () => ({
     getServerUrl: () => 'https://api.cluster-fluster.com',
+    rewriteLoopbackHost: (url: string) => url,
 }));
 
 vi.mock('./uploadFormFile', () => ({

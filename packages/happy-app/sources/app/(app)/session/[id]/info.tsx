@@ -7,7 +7,7 @@ import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
 import { Avatar } from '@/components/Avatar';
-import { useSession, useIsDataReady } from '@/sync/storage';
+import { useSession, useIsDataReady, useSessionProjectAvatar } from '@/sync/storage';
 import { getSessionName, useSessionStatus, formatOSPlatform, formatPathRelativeToHome, getSessionAvatarId, getResumeCommand } from '@/utils/sessionUtils';
 import * as Clipboard from 'expo-clipboard';
 import { Modal } from '@/modal';
@@ -129,6 +129,7 @@ function formatDangerouslySkipPermissionsMetadata(
 function SessionInfoContent({ session }: { session: Session }) {
     const { theme } = useUnistyles();
     const router = useRouter();
+    const projectAvatar = useSessionProjectAvatar(session.id);
     const devModeEnabled = __DEV__;
     const sessionName = getSessionName(session);
     const sessionStatus = useSessionStatus(session);
@@ -264,7 +265,7 @@ function SessionInfoContent({ session }: { session: Session }) {
                             shadowRadius: 24,
                         }}
                     >
-                        <Avatar id={getSessionAvatarId(session)} size={80} monochrome={!sessionStatus.isConnected} flavor={session.metadata?.flavor} clientId={session.metadata?.client?.id} />
+                        <Avatar id={getSessionAvatarId(session)} size={80} monochrome={!sessionStatus.isConnected} flavor={session.metadata?.flavor} clientId={session.metadata?.client?.id} imageUrl={projectAvatar?.uri} thumbhash={projectAvatar?.thumbhash} />
                         <Text style={{
                             fontSize: 20,
                             fontWeight: '600',

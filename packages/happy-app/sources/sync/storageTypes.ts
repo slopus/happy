@@ -386,6 +386,8 @@ export interface Session {
     updatedAt: number,
     active: boolean,
     activeAt: number,
+    /** Account-scoped Project linkage supplied beside the encrypted session. */
+    projectId?: string | null,
     metadata: Metadata | null,
     metadataVersion: number,
     agentState: AgentState | null,
