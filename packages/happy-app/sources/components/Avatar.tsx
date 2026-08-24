@@ -86,7 +86,9 @@ export const Avatar = React.memo((props: AvatarProps) => {
                 ? Math.round(size * 0.25)
                 : effectiveHarness === 'claude'
                     ? Math.round(size * 0.28)
-                    : Math.round(size * 0.35);
+                    : effectiveHarness === 'rig'
+                        ? Math.round(size * 0.29)
+                        : Math.round(size * 0.35);
 
             return (
                 <View style={[styles.container, { width: size, height: size }]}>
@@ -131,7 +133,9 @@ export const Avatar = React.memo((props: AvatarProps) => {
         ? Math.round(size * 0.25)
         : effectiveHarness === 'claude'
             ? Math.round(size * 0.28)
-            : Math.round(size * 0.35);
+            : effectiveHarness === 'rig'
+                ? Math.round(size * 0.29)
+                : Math.round(size * 0.35);
 
     // Only wrap in a container when this caller explicitly opts into a badge
     // location and the session has an identifiable harness.
