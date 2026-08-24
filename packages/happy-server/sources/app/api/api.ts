@@ -23,7 +23,6 @@ import { feedRoutes } from "./routes/feedRoutes";
 import { kvRoutes } from "./routes/kvRoutes";
 import { v3SessionRoutes } from "./routes/v3SessionRoutes";
 import { attachmentRoutes } from "./routes/attachmentRoutes";
-import { projectRoutes } from "./routes/projectRoutes";
 import { isLocalStorage, getLocalFilesDir } from "@/storage/files";
 import * as path from "path";
 import * as fs from "fs";
@@ -49,7 +48,7 @@ export async function startApi(opts: StartApiOptions = {}) {
     app.register(import('@fastify/cors'), {
         origin: '*',
         allowedHeaders: '*',
-        methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']
+        methods: ['GET', 'POST', 'PUT', 'DELETE']
     });
 
     // Required for local-mode attachment uploads (PUT /v1/sessions/:id/attachments/:file).
@@ -114,7 +113,6 @@ export async function startApi(opts: StartApiOptions = {}) {
     kvRoutes(typed);
     v3SessionRoutes(typed);
     attachmentRoutes(typed);
-    projectRoutes(typed);
 
     // Static webapp (self-host mode)
     if (opts.staticDir) {
