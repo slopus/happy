@@ -1,4 +1,4 @@
-import { eventRouter, buildNewSessionUpdate, buildSessionActivityEphemeral } from "@/app/events/eventRouter";
+import { eventRouter, buildNewSessionUpdate, buildUpdateSessionUpdate, buildSessionActivityEphemeral } from "@/app/events/eventRouter";
 import { type Fastify } from "../types";
 import { db } from "@/storage/db";
 import { z } from "zod";
@@ -31,6 +31,7 @@ export function sessionRoutes(app: Fastify) {
                 agentState: true,
                 agentStateVersion: true,
                 dataEncryptionKey: true,
+                projectId: true,
                 active: true,
                 lastActiveAt: true,
                 // messages: {
@@ -65,6 +66,7 @@ export function sessionRoutes(app: Fastify) {
                     agentState: v.agentState,
                     agentStateVersion: v.agentStateVersion,
                     dataEncryptionKey: v.dataEncryptionKey ? Buffer.from(v.dataEncryptionKey).toString('base64') : null,
+                    projectId: v.projectId,
                     lastMessage: null
                 };
             })
@@ -101,6 +103,7 @@ export function sessionRoutes(app: Fastify) {
                 agentState: true,
                 agentStateVersion: true,
                 dataEncryptionKey: true,
+                projectId: true,
                 active: true,
                 lastActiveAt: true,
             }
@@ -119,6 +122,7 @@ export function sessionRoutes(app: Fastify) {
                 agentState: v.agentState,
                 agentStateVersion: v.agentStateVersion,
                 dataEncryptionKey: v.dataEncryptionKey ? Buffer.from(v.dataEncryptionKey).toString('base64') : null,
+                projectId: v.projectId,
             }))
         });
     });
@@ -181,6 +185,7 @@ export function sessionRoutes(app: Fastify) {
                 agentState: true,
                 agentStateVersion: true,
                 dataEncryptionKey: true,
+                projectId: true,
                 active: true,
                 lastActiveAt: true,
             }
@@ -210,6 +215,7 @@ export function sessionRoutes(app: Fastify) {
                 agentState: v.agentState,
                 agentStateVersion: v.agentStateVersion,
                 dataEncryptionKey: v.dataEncryptionKey ? Buffer.from(v.dataEncryptionKey).toString('base64') : null,
+                projectId: v.projectId,
             })),
             nextCursor,
             hasNext
@@ -223,13 +229,22 @@ export function sessionRoutes(app: Fastify) {
                 tag: z.string(),
                 metadata: z.string(),
                 agentState: z.string().nullish(),
-                dataEncryptionKey: z.string().nullish()
+                dataEncryptionKey: z.string().nullish(),
+                projectId: z.string().nullish()
             })
         },
         preHandler: app.authenticate
     }, async (request, reply) => {
         const userId = request.userId;
-        const { tag, metadata, dataEncryptionKey } = request.body;
+        const { tag, metadata, dataEncryptionKey, projectId } = request.body;
+
+        if (projectId !== undefined && projectId !== null) {
+            const project = await db.project.findFirst({
+                where: { id: projectId, accountId: userId },
+                select: { id: true }
+            });
+            if (!project) return reply.code(404).send({ error: 'Project not found' });
+        }
 
         const session = await db.session.findFirst({
             where: {
@@ -240,22 +255,37 @@ export function sessionRoutes(app: Fastify) {
         if (session) {
             log({ module: 'session-create', sessionId: session.id, userId, tag }, `Found existing session: ${session.id} for tag ${tag}`);
 
+            let sessionForResponse = session;
+            if (projectId !== undefined && projectId !== session.projectId) {
+                sessionForResponse = await db.session.update({
+                    where: { id: session.id },
+                    data: { projectId }
+                });
+                const updateSeq = await allocateUserSeq(userId);
+                eventRouter.emitUpdate({
+                    userId,
+                    payload: buildUpdateSessionUpdate(session.id, updateSeq, randomKeyNaked(12), undefined, undefined, projectId),
+                    recipientFilter: { type: 'user-scoped-only' }
+                });
+            }
+
             // Session is starting back up - stop ignoring its heartbeats if it was stopped
             activityCache.resumeSessionUpdates(session.id);
 
             return reply.send({
                 session: {
-                    id: session.id,
-                    seq: session.seq,
-                    metadata: session.metadata,
-                    metadataVersion: session.metadataVersion,
-                    agentState: session.agentState,
-                    agentStateVersion: session.agentStateVersion,
-                    dataEncryptionKey: session.dataEncryptionKey ? Buffer.from(session.dataEncryptionKey).toString('base64') : null,
-                    active: session.active,
-                    activeAt: session.lastActiveAt.getTime(),
-                    createdAt: session.createdAt.getTime(),
-                    updatedAt: session.updatedAt.getTime(),
+                    id: sessionForResponse.id,
+                    seq: sessionForResponse.seq,
+                    metadata: sessionForResponse.metadata,
+                    metadataVersion: sessionForResponse.metadataVersion,
+                    agentState: sessionForResponse.agentState,
+                    agentStateVersion: sessionForResponse.agentStateVersion,
+                    dataEncryptionKey: sessionForResponse.dataEncryptionKey ? Buffer.from(sessionForResponse.dataEncryptionKey).toString('base64') : null,
+                    projectId: sessionForResponse.projectId,
+                    active: sessionForResponse.active,
+                    activeAt: sessionForResponse.lastActiveAt.getTime(),
+                    createdAt: sessionForResponse.createdAt.getTime(),
+                    updatedAt: sessionForResponse.updatedAt.getTime(),
                     lastMessage: null
                 }
             });
@@ -271,7 +301,8 @@ export function sessionRoutes(app: Fastify) {
                     accountId: userId,
                     tag: tag,
                     metadata: metadata,
-                    dataEncryptionKey: dataEncryptionKey ? new Uint8Array(Buffer.from(dataEncryptionKey, 'base64')) : undefined
+                    dataEncryptionKey: dataEncryptionKey ? new Uint8Array(Buffer.from(dataEncryptionKey, 'base64')) : undefined,
+                    projectId: projectId ?? null
                 }
             });
             log({ module: 'session-create', sessionId: session.id, userId }, `Session created: ${session.id}`);
@@ -300,6 +331,7 @@ export function sessionRoutes(app: Fastify) {
                     agentState: session.agentState,
                     agentStateVersion: session.agentStateVersion,
                     dataEncryptionKey: session.dataEncryptionKey ? Buffer.from(session.dataEncryptionKey).toString('base64') : null,
+                    projectId: session.projectId,
                     active: session.active,
                     activeAt: session.lastActiveAt.getTime(),
                     createdAt: session.createdAt.getTime(),
