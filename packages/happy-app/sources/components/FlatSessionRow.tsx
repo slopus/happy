@@ -14,22 +14,21 @@ import { useSessionActionAlert } from '@/hooks/useSessionQuickActions';
 import { useHappyAction } from '@/hooks/useHappyAction';
 import { HappyError } from '@/utils/errors';
 import { sessionKill } from '@/sync/ops';
-import { type SessionState, formatLastSeen, vibingMessages } from '@/utils/sessionUtils';
 import type { FlatSessionRowData } from '@/utils/flatSessionList';
 import { formatSessionListTimestamp } from '@/utils/sessionListTimestamp';
 import type { Theme } from '@/theme';
 import { t } from '@/text';
 import { RigGitLineChanges } from './RigGitLineChanges';
+import { ShimmerText } from './ShimmerText';
+import { resolveFlatSessionRowPresentation } from '@/utils/flatSessionRowPresentation';
 
 // Roughly three quarters of the row, the proportion a chat list uses: the row
 // is 10 + 61 + 10, so 60 leaves an even 10 either side of the avatar.
 const AVATAR_SIZE = 60;
 const ROW_PADDING_LEFT = 16;
 const AVATAR_GAP = 12;
-
-/** The project / worktree line, and a branch mark matched to its cap height. */
-const LOCATION_FONT_SIZE = 15;
-const LOCATION_ICON_SIZE = LOCATION_FONT_SIZE - 1;
+const TOP_RIGHT_DOT_SIZE = 20;
+const UNREAD_DOT_CLEAR_GRACE_MS = 350;
 
 /**
  * The single colour the flat list paints, rows and page alike, so nothing reads
@@ -40,14 +39,6 @@ const LOCATION_ICON_SIZE = LOCATION_FONT_SIZE - 1;
 export function flatListBackgroundColor(theme: Theme): string {
     return theme.dark ? theme.colors.groupped.background : '#FFFFFF';
 }
-
-const STATUS_CONFIG: Record<SessionState, { color: string; dotColor: string; isPulsing: boolean; isConnected: boolean }> = {
-    disconnected: { color: '#999', dotColor: '#999', isPulsing: false, isConnected: false },
-    thinking: { color: '#007AFF', dotColor: '#007AFF', isPulsing: true, isConnected: true },
-    waiting: { color: '#34C759', dotColor: '#34C759', isPulsing: false, isConnected: true },
-    permission_required: { color: '#FF9500', dotColor: '#FF9500', isPulsing: true, isConnected: true },
-    input_required: { color: '#FF9500', dotColor: '#FF9500', isPulsing: true, isConnected: true },
-};
 
 /**
  * One session in the flat home list: avatar, title, the project and worktree it
@@ -77,19 +68,34 @@ export const FlatSessionRow = React.memo(({ row, selected, showBorder, archived 
     // fades.
     const faded = !!archived || session.machineOffline;
 
-    // Archived work reads as retired whatever its connection says, so it never
-    // pulses or shows a live colour. A request that is blocking on the user
-    // outranks the ordinary unread-result badge; otherwise unread is blue and
-    // steady, like an unread chat.
-    const baseStatus = faded ? STATUS_CONFIG.disconnected : STATUS_CONFIG[session.state];
-    const needsUserAction = session.state === 'permission_required' || session.state === 'input_required';
-    const status = session.hasUnread && !faded && !needsUserAction
-        ? { ...baseStatus, color: '#007AFF', dotColor: '#007AFF', isPulsing: false }
-        : baseStatus;
+    // SessionView clears the real unread state as soon as the destination
+    // mounts. Keep only the row's visual badge around long enough for the
+    // navigation transition to cover it, instead of briefly exposing the
+    // timestamp underneath. Read semantics remain immediate.
+    const [showUnreadDot, setShowUnreadDot] = React.useState(session.hasUnread);
+    React.useEffect(() => {
+        if (session.hasUnread) {
+            setShowUnreadDot(true);
+            return;
+        }
+        if (!showUnreadDot) return;
 
-    const vibingMessage = React.useMemo(() => (
-        vibingMessages[Math.floor(Math.random() * vibingMessages.length)].toLowerCase() + '…'
-    ), [session.state]);
+        const timeout = setTimeout(() => setShowUnreadDot(false), UNREAD_DOT_CLEAR_GRACE_MS);
+        return () => clearTimeout(timeout);
+    }, [session.hasUnread, showUnreadDot]);
+
+    const presentation = resolveFlatSessionRowPresentation({
+        state: session.state,
+        hasUnread: showUnreadDot,
+        faded,
+    });
+    const topRightAccessibilityLabel = presentation.topRight.type === 'dot'
+        ? session.state === 'input_required'
+            ? t('status.inputRequired')
+            : session.state === 'permission_required'
+                ? t('status.permissionRequired')
+                : t('status.unread')
+        : undefined;
 
     // The same `lastActivityAt` the flat list sorts on, so the stamps run in
     // the order the rows do.
@@ -97,30 +103,6 @@ export const FlatSessionRow = React.memo(({ row, selected, showBorder, archived 
         () => formatSessionListTimestamp(session.lastActivityAt),
         [session.lastActivityAt],
     );
-
-    const lastSeenText = session.activeAt
-        ? t('status.lastSeen', { time: formatLastSeen(session.activeAt, false) })
-        : t('status.offline');
-
-    // A session that is merely connected and idle has nothing worth saying: the
-    // row already gives its name and where it runs, and "online" on every line
-    // just repeats itself down the list. Only a state worth acting on — working,
-    // waiting on you, or on a machine that is gone — earns the third line. A
-    // session whose own socket dropped while its machine stayed up says nothing,
-    // exactly like an idle one.
-    const statusText = faded
-        ? lastSeenText
-        : session.state === 'input_required'
-            ? t('status.inputRequired')
-            : session.state === 'permission_required'
-                ? t('status.permissionRequired')
-                : session.hasUnread
-                    ? t('status.unread')
-                    : session.state === 'thinking'
-                        ? vibingMessage
-                        : null;
-
-    const statusLine = [statusText, session.activitySummary].filter(Boolean).join(' · ');
 
     const [archiving, performArchive] = useHappyAction(async () => {
         const result = await sessionKill(session.id);
@@ -174,65 +156,66 @@ export const FlatSessionRow = React.memo(({ row, selected, showBorder, archived 
 
             <View style={[styles.content, faded && styles.contentFaded]}>
                 <View style={styles.titleRow}>
-                    <Text
-                        style={[
-                            styles.title,
-                            faded ? styles.titleDisconnected : styles.titleConnected,
-                        ]}
-                        numberOfLines={1}
-                    >
-                        {session.name}
-                    </Text>
+                    <View style={styles.titleContainer}>
+                        {presentation.shimmerTitle ? (
+                            <ShimmerText
+                                text={session.name}
+                                style={styles.title}
+                                baseColor={theme.colors.textSecondary}
+                                highlightColor={theme.colors.text}
+                            />
+                        ) : (
+                            <Text
+                                style={[
+                                    styles.title,
+                                    faded ? styles.titleDisconnected : styles.titleConnected,
+                                ]}
+                                numberOfLines={1}
+                            >
+                                {session.name}
+                            </Text>
+                        )}
+                    </View>
                     <SessionShortcutHintBadge sessionId={session.id} style={styles.shortcutBadge} />
-                    <Text style={styles.timestamp} numberOfLines={1}>
-                        {timestamp}
-                    </Text>
+                    <View
+                        style={styles.topRightStatus}
+                        accessible={topRightAccessibilityLabel !== undefined}
+                        accessibilityRole={topRightAccessibilityLabel ? 'text' : undefined}
+                        accessibilityLabel={topRightAccessibilityLabel}
+                    >
+                        {presentation.topRight.type === 'dot' ? (
+                            <StatusDot
+                                color={presentation.topRight.color}
+                                size={TOP_RIGHT_DOT_SIZE}
+                            />
+                        ) : (
+                            <Text style={styles.timestamp} numberOfLines={1}>
+                                {timestamp}
+                            </Text>
+                        )}
+                    </View>
                 </View>
 
-                {/*
-                  * The branch mark does the separating: the same icon the
-                  * worktree picker uses, so the name after it reads as a
-                  * worktree rather than as more path. Nested in the Text so it
-                  * sits on the line's baseline and truncates with it.
-                  */}
-                <Text style={styles.location} numberOfLines={1}>
+                <Text style={styles.project} numberOfLines={1}>
                     {projectName}
-                    {workspaceName ? (
-                        <Text>
-                            {'  '}
-                            <Ionicons
-                                name="git-branch-outline"
-                                size={LOCATION_ICON_SIZE}
-                                color={theme.colors.textSecondary}
-                            />
-                            {' '}
-                        </Text>
-                    ) : null}
-                    {workspaceName ?? ''}
                 </Text>
 
-                {/*
-                  * Always occupied, even when an idle session has nothing to
-                  * say: every row is the same height, so the list keeps an even
-                  * rhythm instead of shrinking around whichever sessions happen
-                  * to be quiet.
-                  */}
-                <View style={styles.statusRow}>
-                    {statusLine !== '' && (
-                        <>
-                            <StatusDot color={status.dotColor} isPulsing={status.isPulsing} />
-                            <Text style={[styles.statusText, { color: status.color }]} numberOfLines={1}>
-                                {statusLine}
-                            </Text>
-                        </>
-                    )}
-                    {/*
-                      * The right end of the status line, where an unsent draft
-                      * sits directly ahead of the line counts. On the avatar it
-                      * only collided with the artwork, and this is where the
-                      * eye already goes for what the session has to report.
-                      */}
-                    <View style={styles.statusMeta}>
+                <View style={styles.workspaceRow}>
+                    <View style={styles.workspaceLocation}>
+                        {workspaceName && (
+                            <>
+                                <Ionicons
+                                    name="git-branch-outline"
+                                    size={13}
+                                    color={theme.colors.textSecondary}
+                                />
+                                <Text style={styles.workspace} numberOfLines={1}>
+                                    {workspaceName}
+                                </Text>
+                            </>
+                        )}
+                    </View>
+                    <View style={styles.workspaceMeta}>
                         {session.hasDraft && (
                             <Ionicons
                                 name="create-outline"
@@ -327,8 +310,11 @@ const stylesheet = StyleSheet.create((theme) => ({
         flexDirection: 'row',
         alignItems: 'center',
     },
-    title: {
+    titleContainer: {
         flex: 1,
+        minWidth: 0,
+    },
+    title: {
         fontSize: 17,
         lineHeight: 22,
         ...Typography.default('semiBold'),
@@ -343,43 +329,53 @@ const stylesheet = StyleSheet.create((theme) => ({
         flexShrink: 0,
         marginLeft: 8,
     },
-    // Never squeezed: the title gives way first, the way a chat list keeps the
-    // time legible and truncates the name instead.
-    timestamp: {
+    // The dot and time share a Telegram-like right column, so changing status
+    // never makes the title jump horizontally.
+    topRightStatus: {
+        width: 68,
+        height: 22,
         flexShrink: 0,
         marginLeft: 8,
+        alignItems: 'flex-end',
+        justifyContent: 'center',
+    },
+    timestamp: {
         fontSize: 13,
         lineHeight: 22,
         color: theme.colors.textSecondary,
         ...Typography.default('regular'),
     },
-    location: {
-        fontSize: LOCATION_FONT_SIZE,
+    project: {
+        fontSize: 15,
         lineHeight: 20,
         color: theme.colors.textSecondary,
         ...Typography.default('regular'),
     },
-    statusRow: {
+    workspaceRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 6,
         marginTop: 1,
-        // Holds the line open when a quiet session has no status to show.
         minHeight: 18,
     },
-    // Pushed to the right edge on its own, so the draft mark still lands there
-    // on a quiet row that prints no status text to push it.
-    statusMeta: {
+    workspaceLocation: {
+        flex: 1,
+        minWidth: 0,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+    },
+    workspace: {
+        flex: 1,
+        fontSize: 13,
+        lineHeight: 18,
+        color: theme.colors.textSecondary,
+        ...Typography.default('regular'),
+    },
+    workspaceMeta: {
         flexDirection: 'row',
         alignItems: 'center',
         flexShrink: 0,
         marginLeft: 'auto',
-    },
-    statusText: {
-        flex: 1,
-        fontSize: 13,
-        lineHeight: 18,
-        ...Typography.default('regular'),
     },
     // Sits on the row itself rather than the text column, so centring the
     // avatar cannot drag it up off the row's bottom edge. Starts where the text

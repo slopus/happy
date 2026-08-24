@@ -5,18 +5,26 @@ import { formatSessionListTimestamp } from './sessionListTimestamp';
 const now = new Date(2026, 7, 23, 14, 30).getTime(); // Sunday 23 Aug 2026
 
 describe('formatSessionListTimestamp', () => {
-    it('shows the clock for anything dated today', () => {
+    it('shows the clock for anything less than 24 hours old', () => {
         const morning = new Date(2026, 7, 23, 9, 5).getTime();
         expect(formatSessionListTimestamp(morning, now)).toBe(
             new Date(morning).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }),
         );
+
+        // Crossing midnight should not turn a minutes-old clock into "Sun".
+        const monday = new Date(2026, 7, 24, 0, 5).getTime();
+        const sundayNight = new Date(2026, 7, 23, 23, 58).getTime();
+        expect(formatSessionListTimestamp(sundayNight, monday)).toBe(
+            new Date(sundayNight).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }),
+        );
+
         expect(formatSessionListTimestamp(now + 60_000, now)).toMatch(/\d/);
     });
 
-    it('shows the weekday for the six days behind today', () => {
-        const lastNight = new Date(2026, 7, 22, 23, 50).getTime();
-        expect(formatSessionListTimestamp(lastNight, now)).toBe(
-            new Date(lastNight).toLocaleDateString(undefined, { weekday: 'short' }),
+    it('shows the weekday from 24 hours through the following week', () => {
+        const yesterdayMorning = new Date(2026, 7, 22, 9, 5).getTime();
+        expect(formatSessionListTimestamp(yesterdayMorning, now)).toBe(
+            new Date(yesterdayMorning).toLocaleDateString(undefined, { weekday: 'short' }),
         );
         const sixDaysAgo = new Date(2026, 7, 17, 8, 0).getTime();
         expect(formatSessionListTimestamp(sixDaysAgo, now)).toBe(
