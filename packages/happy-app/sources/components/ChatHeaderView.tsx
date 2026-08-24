@@ -13,6 +13,7 @@ import {
     MOBILE_GLASS_CONTROL_RADIUS,
     MOBILE_GLASS_CONTROL_SIZE,
     MOBILE_GLASS_HEADER_HEIGHT,
+    resolveTitlePillInset,
 } from './navigation/headerMetrics';
 import {
     MobileHeaderScrim,
@@ -36,8 +37,9 @@ interface ChatHeaderViewProps {
     backdropVisible?: boolean;
 }
 
-// The title belongs to the header scrim, not its own glass capsule. Keep a
-// dense native blur at rest and let it feather past the controls into content.
+// The title is a control like the two beside it: same capsule, same height,
+// sized to its own text. The scrim stays underneath them all, feathering past
+// the controls into content.
 export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
     title,
     folderName,
@@ -60,6 +62,13 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
     const folderNameColor = glassEnabled
         ? theme.dark ? 'rgba(255, 255, 255, 0.78)' : 'rgba(24, 23, 28, 0.72)'
         : theme.colors.textSecondary;
+    // The right control's width follows whatever it is carrying, so it is
+    // measured rather than assumed; the left one is a fixed-size button.
+    const [rightSlotWidth, setRightSlotWidth] = React.useState(0);
+    const titlePillInset = resolveTitlePillInset({
+        leftControlWidth: showBackButton ? MOBILE_GLASS_CONTROL_SIZE : 0,
+        rightControlWidth: rightSlot ? Math.max(rightSlotWidth, MOBILE_GLASS_CONTROL_SIZE) : 0,
+    });
     // Drives the scrim's dim layer only. The backdrop container itself stays
     // fully opaque so the native blur keeps sampling live content.
     const backdropStrength = React.useRef(new Animated.Value(
@@ -154,13 +163,8 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
         );
     }
 
-    const nativeTitle = (
-        <BubblePressable
-            style={[styles.titleContainer, glassEnabled && styles.mobileTitleContainer]}
-            onPress={onTitlePress}
-            disabled={!onTitlePress}
-            bubbleScale={1.012}
-        >
+    const titleBody = (
+        <>
             <Text
                 numberOfLines={1}
                 ellipsizeMode="tail"
@@ -178,7 +182,11 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
                         <Text
                             numberOfLines={1}
                             ellipsizeMode="tail"
-                            style={[styles.folderName, { color: folderNameColor, ...Typography.default() }]}
+                            style={[
+                                styles.folderName,
+                                glassEnabled && styles.mobileFolderName,
+                                { color: folderNameColor, ...Typography.default() },
+                            ]}
                         >
                             {folderName}
                         </Text>
@@ -190,13 +198,47 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
                         <Text
                             numberOfLines={1}
                             ellipsizeMode="middle"
-                            style={[styles.extraPath, { color: theme.colors.textSecondary, ...Typography.mono() }]}
+                            style={[
+                                styles.extraPath,
+                                glassEnabled && styles.mobileExtraPath,
+                                { color: theme.colors.textSecondary, ...Typography.mono() },
+                            ]}
                         >
                             {extraPathSegment}
                         </Text>
                     )}
                 </View>
             )}
+        </>
+    );
+
+    // Built the way the back button is: a wrapper that owns the size, and the
+    // glass inside it owning the material. maxWidth is what makes the capsule
+    // hug its text — it grows with the title and stops at the inset.
+    const nativeTitle = glassEnabled ? (
+        <BubblePressable
+            style={styles.mobileTitlePill}
+            onPress={onTitlePress}
+            disabled={!onTitlePress}
+            bubbleScale={1.012}
+        >
+            <MobileGlassSurface
+                interactive
+                material="static"
+                intensity={76}
+                style={styles.mobileTitlePillGlass}
+            >
+                {titleBody}
+            </MobileGlassSurface>
+        </BubblePressable>
+    ) : (
+        <BubblePressable
+            style={styles.titleContainer}
+            onPress={onTitlePress}
+            disabled={!onTitlePress}
+            bubbleScale={1.012}
+        >
+            {titleBody}
         </BubblePressable>
     );
 
@@ -241,7 +283,13 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
                     {glassEnabled ? (
                         <>
                             <View pointerEvents="none" style={styles.mobileTitleSpacer} />
-                            <View pointerEvents="box-none" style={styles.mobileTitleOverlay}>
+                            <View
+                                pointerEvents="box-none"
+                                style={[
+                                    styles.mobileTitleOverlay,
+                                    { left: titlePillInset, right: titlePillInset },
+                                ]}
+                            >
                                 {nativeTitle}
                             </View>
                         </>
@@ -257,6 +305,7 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
                             material="static"
                             intensity={76}
                             style={styles.rightControlGlass}
+                            onLayout={(event) => setRightSlotWidth(event.nativeEvent.layout.width)}
                         >
                             <View style={styles.rightSlot}>
                                 {rightSlot}
@@ -315,30 +364,67 @@ const styles = StyleSheet.create((theme) => ({
         flex: 1,
         minWidth: 0,
     },
+    // Left and right are set at render time from the measured controls.
     mobileTitleOverlay: {
         position: 'absolute',
         top: 0,
         bottom: 0,
-        left: MOBILE_GLASS_CONTROL_SIZE + 8,
-        right: MOBILE_GLASS_CONTROL_SIZE + 8,
         alignItems: 'center',
         justifyContent: 'center',
     },
-    mobileTitleContainer: {
+    mobileTitlePill: {
+        maxWidth: '100%',
+        height: MOBILE_GLASS_CONTROL_SIZE,
+        borderRadius: MOBILE_GLASS_CONTROL_RADIUS,
+    },
+    // Deliberately identical to backButtonGlass but for the horizontal padding:
+    // same material, same hairline, same shadow, same height. The capsule is
+    // only wider because its content is.
+    mobileTitlePillGlass: {
         width: '100%',
-        flex: 0,
+        height: '100%',
+        borderRadius: MOBILE_GLASS_CONTROL_RADIUS,
+        paddingHorizontal: 14,
         alignItems: 'center',
         justifyContent: 'center',
-        paddingHorizontal: 8,
+        overflow: 'hidden',
+        backgroundColor: Platform.select({
+            web: 'transparent',
+            ios: 'transparent',
+            android: theme.colors.glass.backgroundStrong,
+            default: 'transparent',
+        }),
+        borderWidth: Platform.select({ web: 0, default: StyleSheet.hairlineWidth }),
+        borderColor: theme.colors.glass.border,
+        shadowColor: theme.colors.glass.shadow,
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: Platform.select({ web: 0, default: 1 }),
+        shadowRadius: 18,
+        elevation: Platform.select({ android: 8, default: 0 }),
     },
+    // No text shadow inside the capsule: the glass is the contrast now, and the
+    // shadow only existed to hold text legible against bare content.
     mobileTitleText: {
+        width: 'auto',
+        maxWidth: '100%',
         textAlign: 'center',
-        textShadowColor: theme.dark ? 'rgba(0, 0, 0, 0.30)' : 'rgba(255, 255, 255, 0.30)',
-        textShadowOffset: { width: 0, height: 1 },
-        textShadowRadius: 2,
     },
     mobileSubtitleRow: {
+        width: 'auto',
+        maxWidth: '100%',
         justifyContent: 'center',
+    },
+    // Two lines have to sit inside a 44pt capsule, so they are drawn a little
+    // closer than they were when they floated free.
+    mobileFolderName: {
+        lineHeight: 14,
+    },
+    // The capsule is sized by its content, and a row whose width comes from its
+    // content has no free space to hand a `flex: 1` child — it would measure at
+    // zero and the path would vanish. It shrinks instead.
+    mobileExtraPath: {
+        flex: 0,
+        lineHeight: 14,
     },
     webTitleRow: {
         flexDirection: 'row',
