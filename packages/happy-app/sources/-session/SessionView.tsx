@@ -641,9 +641,13 @@ export function SessionViewLoaded({
         && !isLandscape;
     const [bottomDockInset, setBottomDockInset] = React.useState(0);
     const [composerY, setComposerY] = React.useState(0);
+    // Offset of the composer card inside AgentInput — the faded status rows
+    // above it keep their space, so anchoring to the dock top floats the
+    // scroll button over a visually empty band.
+    const [composerCardOffset, setComposerCardOffset] = React.useState(0);
     const [isChatAtBottom, setIsChatAtBottom] = React.useState(true);
     const showBottomDockDetails = !usesFloatingMobileDock || isChatAtBottom;
-    const scrollButtonInset = Math.max(0, bottomDockInset - composerY);
+    const scrollButtonInset = Math.max(0, bottomDockInset - composerY - composerCardOffset);
 
     const handleBottomDockInsetChange = React.useCallback((nextInset: number) => {
         setBottomDockInset((currentInset) => (
@@ -654,6 +658,12 @@ export function SessionViewLoaded({
         const nextY = Math.ceil(event.nativeEvent.layout.y);
         setComposerY((currentY) => (
             Math.abs(currentY - nextY) < 1 ? currentY : nextY
+        ));
+    }, []);
+    const handleComposerCardOffsetChange = React.useCallback((offset: number) => {
+        const nextOffset = Math.ceil(offset);
+        setComposerCardOffset((currentOffset) => (
+            Math.abs(currentOffset - nextOffset) < 1 ? currentOffset : nextOffset
         ));
     }, []);
     const handleChatBottomVisibilityChange = React.useCallback((visible: boolean) => {
@@ -1068,6 +1078,7 @@ export function SessionViewLoaded({
                 sessionStatusGitBranch={statusBarGitBranch}
                 sessionStatusModelLabel={statusBarModelLabel}
                 sessionStatusEffortLabel={statusBarEffortLabel}
+                onActionAreaOffsetChange={usesFloatingMobileDock ? handleComposerCardOffsetChange : undefined}
             />
         </View>
     );

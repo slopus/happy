@@ -1,6 +1,6 @@
 import { Ionicons, Octicons } from '@expo/vector-icons';
 import * as React from 'react';
-import { Keyboard, View, Platform, useWindowDimensions, Text, ActivityIndicator, Pressable, TouchableWithoutFeedback } from 'react-native';
+import { Keyboard, View, Platform, useWindowDimensions, Text, ActivityIndicator, Pressable, TouchableWithoutFeedback, LayoutChangeEvent } from 'react-native';
 import { Image } from 'expo-image';
 import { AgentInputAttachmentStrip } from './AgentInputAttachmentStrip';
 import type { AttachmentPreview } from '@/sync/attachmentTypes';
@@ -96,6 +96,12 @@ interface AgentInputProps {
     showSessionStatusInfoInSettings?: boolean;
     /** Hide the auxiliary connection/mode row while reading older messages. */
     showStatusDetails?: boolean;
+    /**
+     * Reports the composer card's top offset from AgentInput's own top edge.
+     * The status/chips rows above the card keep their layout space when faded
+     * out, so callers anchoring to AgentInput would float above empty space.
+     */
+    onActionAreaOffsetChange?: (offset: number) => void;
     sessionStatusGitBranch?: string | null;
     sessionStatusModelLabel?: string | null;
     sessionStatusEffortLabel?: string | null;
@@ -132,11 +138,16 @@ const MOBILE_ACTION_ROW_GEOMETRY = resolveMobileComposerActionRowGeometry();
 const MOBILE_ICON_ACTION_GEOMETRY = resolveMobileComposerActionGeometry('icon');
 const MOBILE_PRIMARY_ACTION_GEOMETRY = resolveMobileComposerActionGeometry('primary');
 
+// Shared with the action-area offset reported to onActionAreaOffsetChange —
+// the Shaker's layout.y is relative to innerContainer, which sits this far
+// below AgentInput's top edge.
+const CONTAINER_TOP_PADDING = 8;
+
 const stylesheet = StyleSheet.create((theme, runtime) => ({
     container: {
         alignItems: 'center',
         paddingBottom: 8,
-        paddingTop: 8,
+        paddingTop: CONTAINER_TOP_PADDING,
     },
     innerContainer: {
         width: '100%',
@@ -899,6 +910,11 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         text: props.initialValue,
         selection: { start: props.initialValue.length, end: props.initialValue.length }
     }));
+
+    const onActionAreaOffsetChange = props.onActionAreaOffsetChange;
+    const handleActionAreaLayout = React.useCallback((event: LayoutChangeEvent) => {
+        onActionAreaOffsetChange?.(CONTAINER_TOP_PADDING + event.nativeEvent.layout.y);
+    }, [onActionAreaOffsetChange]);
 
     const onChangeTextProp = props.onChangeText;
     const handleTextChange = React.useCallback((text: string) => {
@@ -1953,7 +1969,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                 </AnimatedFade>
 
                 {/* Box 2: Action Area (Input + Send) */}
-                <Shaker ref={sendBlockShakerRef}>
+                <Shaker ref={sendBlockShakerRef} onLayout={handleActionAreaLayout}>
                     <View style={[
                         compactMobileComposer && styles.unifiedPanelShadow,
                         compactMobileComposer && styles.mobileUnifiedPanelShadow,
