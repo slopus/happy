@@ -8,7 +8,8 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
-import { useFriendRequests, useSocketStatus, useRealtimeStatus } from '@/sync/storage';
+import { useFriendRequests, useSocketStatus, useRealtimeStatus, useSettingMutable } from '@/sync/storage';
+import { NativeSettingsMenu, type NativeSettingsMenuGroup } from './NativeSettingsMenu';
 import { useVisibleSessionListViewData } from '@/hooks/useVisibleSessionListViewData';
 import { useIsTablet } from '@/utils/responsive';
 import { useRouter } from 'expo-router';
@@ -148,6 +149,13 @@ const styles = StyleSheet.create((theme) => ({
         flexDirection: 'row',
         alignItems: 'center',
     },
+    // The seam between the two actions sharing the header pill. Shorter than
+    // the pill so it reads as a divider inside one control, not two controls.
+    headerActionDivider: {
+        width: StyleSheet.hairlineWidth,
+        height: 22,
+        backgroundColor: theme.colors.divider,
+    },
 }));
 
 // Tab header configuration
@@ -228,18 +236,57 @@ const HeaderRight = React.memo(({ activeTab }: { activeTab: ActiveTabType }) => 
     const router = useRouter();
     const { theme } = useUnistyles();
     const isCustomServer = isUsingCustomServer();
+    const [sessionListGrouping, setSessionListGrouping] = useSettingMutable('sessionListGrouping');
 
     if (activeTab === 'sessions') {
         if (Platform.OS !== 'web') {
+            const viewMenuGroups: NativeSettingsMenuGroup[] = [
+                {
+                    key: 'grouping',
+                    label: t('sessionsFilter.groupingTitle'),
+                    title: t('sessionsFilter.groupingTitle'),
+                    systemImage: 'rectangle.grid.1x2',
+                    options: [
+                        { key: 'flat', label: t('sessionsFilter.flatList') },
+                        { key: 'project', label: t('sessionsFilter.groupByProject') },
+                    ],
+                    selectedKey: sessionListGrouping === 'project' ? 'project' : 'flat',
+                    onSelect: (key) => setSessionListGrouping(key === 'project' ? 'project' : 'flat'),
+                },
+                // A plain row, not a choice: it leaves this screen for the
+                // appearance settings, where the avatar options now live.
+                {
+                    key: 'appearance',
+                    label: '',
+                    title: '',
+                    options: [{
+                        key: 'open',
+                        label: t('sessionsFilter.appearanceSettings'),
+                        systemImage: 'paintpalette',
+                    }],
+                    selectedKey: null,
+                    onSelect: () => router.push('/settings/appearance'),
+                },
+            ];
             return (
                 <View style={styles.headerActions}>
+                    <NativeSettingsMenu
+                        groups={viewMenuGroups}
+                        anchor="top"
+                        accessibilityLabel={t('sessionsFilter.title')}
+                    >
+                        <View style={styles.headerActionButton}>
+                            <Ionicons name="filter" size={22} color={theme.colors.header.tint} />
+                        </View>
+                    </NativeSettingsMenu>
+                    <View style={styles.headerActionDivider} />
                     <Pressable
                         onPress={() => router.push('/settings')}
                         accessibilityLabel={t('settings.title')}
                         accessibilityRole="button"
                         style={styles.headerActionButton}
                     >
-                        <Ionicons name="settings-outline" size={21} color={theme.colors.header.tint} />
+                        <Ionicons name="settings-outline" size={22} color={theme.colors.header.tint} />
                     </Pressable>
                 </View>
             );

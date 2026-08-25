@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { resolveCodexExecutionPolicy, shouldAutoApproveCodexApproval } from '../executionPolicy';
+import {
+    isRemoteCodexPermissionMode,
+    resolveCodexExecutionPolicy,
+    shouldAutoApproveCodexApproval,
+} from '../executionPolicy';
 
 describe('resolveCodexExecutionPolicy', () => {
     it('forces never + danger-full-access when sandbox is managed by Happy', () => {
@@ -18,6 +22,21 @@ describe('resolveCodexExecutionPolicy', () => {
             approvalPolicy: 'untrusted',
             sandbox: 'workspace-write',
         });
+    });
+
+    it('accepts Auto from app messages and maps it to on-request + workspace-write', () => {
+        expect(isRemoteCodexPermissionMode('auto')).toBe(true);
+        expect(resolveCodexExecutionPolicy('auto', false)).toEqual({
+            approvalPolicy: 'on-request',
+            sandbox: 'workspace-write',
+        });
+    });
+
+    it('rejects non-Codex and crafted remote permission modes', () => {
+        expect(isRemoteCodexPermissionMode('bypassPermissions')).toBe(false);
+        expect(isRemoteCodexPermissionMode('plan')).toBe(false);
+        expect(isRemoteCodexPermissionMode('totally_unsafe')).toBe(false);
+        expect(isRemoteCodexPermissionMode(null)).toBe(false);
     });
 
     it('maps read-only mode to never + read-only without managed sandbox', () => {

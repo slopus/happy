@@ -22,6 +22,10 @@ import {
 import * as React from 'react';
 import { MobileGlassSurface } from '@/components/MobileGlass';
 import { AnimatedCollapsible } from '@/components/AnimatedOverlay';
+import { AvatarBrutalist } from '@/components/AvatarBrutalist';
+import { AvatarSkia } from '@/components/AvatarSkia';
+import { AvatarGradient } from '@/components/AvatarGradient';
+import { AVATAR_STYLES, normalizeAvatarStyle, type AvatarStyle } from '@/utils/avatarStyle';
 
 const getUserMessageBubbleColorLabel = (color: UserMessageBubbleColor): string => {
     switch (color) {
@@ -39,6 +43,87 @@ const getUserMessageBubbleColorLabel = (color: UserMessageBubbleColor): string =
             return t('settingsAppearance.userMessageBubbleColorOptions.gray');
     }
 };
+
+const getAvatarStyleLabel = (style: AvatarStyle): string => {
+    switch (style) {
+        case 'brutalist':
+            return t('settingsAppearance.avatarStyleOptions.brutalist');
+        case 'pixelated':
+            return t('settingsAppearance.avatarStyleOptions.pixelated');
+        case 'gradient':
+            return t('settingsAppearance.avatarStyleOptions.gradient');
+    }
+};
+
+// One fixed id so the three previews stay comparable: same seed, different
+// renderer.
+const AVATAR_PREVIEW_ID = 'avatar-style-preview';
+
+function AvatarStylePreview({ style, monochrome }: { style: AvatarStyle; monochrome: boolean }) {
+    const size = 28;
+    switch (style) {
+        case 'brutalist':
+            return <AvatarBrutalist id={AVATAR_PREVIEW_ID} size={size} monochrome={monochrome} />;
+        case 'pixelated':
+            return <AvatarSkia id={AVATAR_PREVIEW_ID} size={size} monochrome={monochrome} />;
+        case 'gradient':
+            return <AvatarGradient id={AVATAR_PREVIEW_ID} size={size} monochrome={monochrome} />;
+    }
+}
+
+function AvatarStyleDropdownValue(props: {
+    style: AvatarStyle;
+    monochrome: boolean;
+    expanded: boolean;
+}) {
+    const { theme } = useUnistyles();
+    const styles = stylesheet;
+
+    return (
+        <View style={styles.dropdownValue}>
+            <AvatarStylePreview style={props.style} monochrome={props.monochrome} />
+            <Text style={styles.dropdownValueText} numberOfLines={1}>
+                {getAvatarStyleLabel(props.style)}
+            </Text>
+            <Ionicons
+                name={props.expanded ? 'chevron-up' : 'chevron-down'}
+                size={18}
+                color={theme.colors.groupped.chevron}
+            />
+        </View>
+    );
+}
+
+function AvatarStyleOption(props: {
+    style: AvatarStyle;
+    monochrome: boolean;
+    selected: boolean;
+    onPress: () => void;
+}) {
+    const { theme } = useUnistyles();
+    const styles = stylesheet;
+
+    return (
+        <Pressable
+            onPress={props.onPress}
+            style={({ pressed }) => [
+                styles.statusPlacementOption,
+                props.selected && styles.statusPlacementOptionSelected,
+                pressed && styles.statusPlacementOptionPressed,
+            ]}
+        >
+            <AvatarStylePreview style={props.style} monochrome={props.monochrome} />
+            <Text style={styles.statusPlacementOptionText} numberOfLines={1}>
+                {getAvatarStyleLabel(props.style)}
+            </Text>
+            {props.selected ? (
+                <Ionicons name="checkmark-circle" size={20} color={theme.colors.status.connecting} />
+            ) : (
+                <View style={styles.bubbleColorOptionCheckPlaceholder} />
+            )}
+        </Pressable>
+    );
+}
 
 const getSessionStatusDisplayLabel = (mode: SessionStatusBarDisplay): string => {
     switch (mode) {
@@ -208,9 +293,13 @@ export default function AppearanceSettingsScreen() {
     const [usageLimitShowRemaining, setUsageLimitShowRemaining] = useSettingMutable('usageLimitShowRemaining');
     const [themePreference, setThemePreference] = useLocalSettingMutable('themePreference');
     const [preferredLanguage] = useSettingMutable('preferredLanguage');
+    const [avatarStyleSetting, setAvatarStyle] = useSettingMutable('avatarStyle');
+    const [avatarMonochrome, setAvatarMonochrome] = useSettingMutable('avatarMonochrome');
     const [statusPlacementDropdownOpen, setStatusPlacementDropdownOpen] = React.useState(false);
     const [bubbleColorDropdownOpen, setBubbleColorDropdownOpen] = React.useState(false);
-    
+    const [avatarStyleDropdownOpen, setAvatarStyleDropdownOpen] = React.useState(false);
+
+    const avatarStyle = normalizeAvatarStyle(avatarStyleSetting);
     const displayBubbleColor = normalizeUserMessageBubbleColor(userMessageBubbleColor);
     const displayBubblePalette = resolveUserMessageBubbleColor(displayBubbleColor, theme.dark);
     const displayBubbleColorLabel = getUserMessageBubbleColorLabel(displayBubbleColor);
@@ -301,6 +390,7 @@ export default function AppearanceSettingsScreen() {
                     }
                     onPress={() => {
                         setBubbleColorDropdownOpen(false);
+                        setAvatarStyleDropdownOpen(false);
                         setStatusPlacementDropdownOpen((open) => !open);
                     }}
                     showDivider={statusPlacementDropdownOpen}
@@ -341,6 +431,7 @@ export default function AppearanceSettingsScreen() {
                     }
                     onPress={() => {
                         setStatusPlacementDropdownOpen(false);
+                        setAvatarStyleDropdownOpen(false);
                         setBubbleColorDropdownOpen((open) => !open);
                     }}
                     showDivider={bubbleColorDropdownOpen}
@@ -360,6 +451,54 @@ export default function AppearanceSettingsScreen() {
                         ))}
                     </AnimatedCollapsible>
                 )}
+            </ItemGroup>
+
+            {/* Avatar Settings */}
+            <ItemGroup title={t('settingsAppearance.avatars')} footer={t('settingsAppearance.avatarsDescription')}>
+                <Item
+                    title={t('settingsAppearance.avatarStyle')}
+                    icon={<Ionicons name="person-circle-outline" size={29} color={theme.colors.status.connecting} />}
+                    rightElement={
+                        <AvatarStyleDropdownValue
+                            style={avatarStyle}
+                            monochrome={avatarMonochrome}
+                            expanded={avatarStyleDropdownOpen}
+                        />
+                    }
+                    onPress={() => {
+                        setStatusPlacementDropdownOpen(false);
+                        setBubbleColorDropdownOpen(false);
+                        setAvatarStyleDropdownOpen((open) => !open);
+                    }}
+                    showDivider={avatarStyleDropdownOpen}
+                />
+                {avatarStyleDropdownOpen && (
+                    <AnimatedCollapsible style={stylesheet.statusPlacementDropdown}>
+                        {AVATAR_STYLES.map((style) => (
+                            <AvatarStyleOption
+                                key={style}
+                                style={style}
+                                monochrome={avatarMonochrome}
+                                selected={style === avatarStyle}
+                                onPress={() => {
+                                    setAvatarStyle(style);
+                                    setAvatarStyleDropdownOpen(false);
+                                }}
+                            />
+                        ))}
+                    </AnimatedCollapsible>
+                )}
+                <Item
+                    title={t('settingsAppearance.avatarMonochrome')}
+                    subtitle={t('settingsAppearance.avatarMonochromeDescription')}
+                    icon={<Ionicons name="contrast-outline" size={29} color={theme.colors.status.connecting} />}
+                    rightElement={
+                        <Switch
+                            value={avatarMonochrome}
+                            onValueChange={setAvatarMonochrome}
+                        />
+                    }
+                />
             </ItemGroup>
 
             {/* Text Settings */}

@@ -1,6 +1,7 @@
 import type { Session } from './storageTypes';
 import type { Settings } from './settings';
-import { getAgentDefaultOverride, retirePermissionMode } from './agentDefaults';
+import { getAgentDefaultOverride, resolveAgentDefaultConfig, retirePermissionMode } from './agentDefaults';
+import { resolveSupportedPermissionMode } from '@/components/modelModeOptions';
 import type { PermissionModeKey } from '@/components/PermissionModeSelector';
 import {
     getRigCurrentModel,
@@ -51,15 +52,41 @@ export function resolveMessageModeMeta(
         return meta;
     }
 
-    const agentOverrides = getAgentDefaultOverride(settings?.agentDefaultOverrides, session.metadata?.flavor);
+    const flavor = session.metadata?.flavor;
+    const agentOverrides = getAgentDefaultOverride(settings?.agentDefaultOverrides, flavor);
     const meta: MessageModeMeta = {};
+    // The happy-cli version running this session. A mode key saved before the
+    // session's CLI learned it (an old session's `auto`, or a global default of
+    // `auto` applied to an old CLI) must not reach the wire: the old CLI's
+    // schema rejects it and drops the whole message.
+    const cliVersion = session.metadata?.version;
+    const supported = (mode: PermissionModeKey | undefined) =>
+        resolveSupportedPermissionMode(flavor, mode, cliVersion);
+
+    // Codex app-server turns always run with a concrete permission, model, and
+    // effort. Send the same effective defaults the composer displays instead
+    // of omitting them: the CLI resets permission to its launch mode during an
+    // abort safety window, and legacy/unset session fields previously made a
+    // visible app fallback silently execute as a different mode or effort.
+    // Keep this Codex-only so fixing that app-server invariant does not change
+    // the established default semantics of other harnesses.
+    if (flavor === 'codex') {
+        const defaults = resolveAgentDefaultConfig(settings?.agentDefaultOverrides, flavor);
+        meta.permissionMode = supported(retirePermissionMode(session.permissionMode ?? defaults.permissionMode));
+
+        const modelMode = session.modelMode ?? defaults.modelMode;
+        meta.model = modelMode === 'default' ? null : modelMode;
+
+        meta.effort = session.effortLevel ?? defaults.effortLevel;
+        return meta;
+    }
 
     if (session.permissionMode !== null && session.permissionMode !== undefined) {
         // A session picked before a mode was retired still carries the old key,
         // and the CLI rejects the whole message envelope on an unknown one.
-        meta.permissionMode = retirePermissionMode(session.permissionMode);
+        meta.permissionMode = supported(retirePermissionMode(session.permissionMode));
     } else if (agentOverrides.permissionMode !== undefined) {
-        meta.permissionMode = agentOverrides.permissionMode;
+        meta.permissionMode = supported(agentOverrides.permissionMode);
     }
 
     const modelMode = session.modelMode ?? agentOverrides.modelMode;

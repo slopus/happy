@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Pressable, FlatList, NativeScrollEvent, NativeSyntheticEvent, Platform } from 'react-native';
 import { Text } from '@/components/StyledText';
 import { usePathname, useRouter } from 'expo-router';
-import { SessionListViewItem, SessionRowData, useAllMachines, useSettingMutable } from '@/sync/storage';
+import { SessionListViewItem, SessionRowData, useAllMachines, useSetting, useSettingMutable } from '@/sync/storage';
 import { Ionicons } from '@expo/vector-icons';
 import { type SessionState, formatLastSeen, vibingMessages } from '@/utils/sessionUtils';
 import { Avatar } from './Avatar';
@@ -327,10 +327,10 @@ export function SessionsList({
     // Stored under its original `hideInactiveSessions` key — synced settings
     // have no rename migration — but it hides archived sessions only.
     const [hideArchivedSessions, setHideArchivedSessions] = useSettingMutable('hideInactiveSessions');
-    // The home screen has one canonical, activity-sorted chat list. Keep the
-    // legacy project-card implementation below for now while the old synced
-    // setting ages out, but do not expose a layout fork to users.
-    const flatSessionList = true;
+    // The activity-sorted chat list is the default; the project-card hierarchy
+    // is offered back through the home filter menu for people who organized
+    // around it.
+    const flatSessionList = useSetting('sessionListGrouping') !== 'project';
     const machines = useAllMachines();
     const pathname = usePathname();
     const isTablet = useIsTablet();

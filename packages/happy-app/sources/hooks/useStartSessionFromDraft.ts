@@ -1,13 +1,12 @@
 import * as React from 'react';
 import { useAllMachines, useSetting } from '@/sync/storage';
-import { resolveAgentDefaultConfig } from '@/sync/agentDefaults';
+import { getCodeAgentDefaults, resolveAgentDefaultConfig } from '@/sync/agentDefaults';
 import {
     machineSpawnNewSession,
     machineStopSession,
     sessionArchive,
     sessionKill,
     sessionSetAgentModes,
-    type SessionAgentModesPatch,
 } from '@/sync/ops';
 import { sync } from '@/sync/sync';
 import { useNewSessionDraft } from '@/hooks/useNewSessionDraft';
@@ -19,6 +18,7 @@ import {
     getEffortLevelsForModel,
     getHardcodedModelModes,
     getHardcodedPermissionModes,
+    filterPermissionModesForCli,
     includeConfiguredModel,
 } from '@/components/modelModeOptions';
 import { Modal } from '@/modal';
@@ -27,7 +27,7 @@ import {
     collectMachineChoices,
     findMachineChoice,
     resolveAgentMachine,
-    resolveNewSessionAgent,
+    resolveChoiceAgent,
 } from '@/sync/machineChoices';
 import { delay } from '@/utils/time';
 import {
@@ -94,7 +94,6 @@ function resolveOption<T extends { key: string }>(
 export function useStartSessionFromDraft() {
     const machines = useAllMachines({ includeOffline: true });
     const defaultOverrides = useSetting('agentDefaultOverrides');
-    const experiments = useSetting('experiments');
     const navigateToSession = useNavigateToSession();
     // The composer stays on screen for the whole flow, so what it is waiting on
     // is state rather than a bare boolean: creating a worktree, asking the
@@ -149,7 +148,7 @@ export function useStartSessionFromDraft() {
         // The draft survives machine changes and app upgrades. Resolve it again
         // at launch time so a stale Claude selection cannot spawn Claude while
         // the selected computer only reports Codex (the Android 1.7.0 regression).
-        const agentType = resolveNewSessionAgent(choice, draft.agentType, experiments);
+        const agentType = resolveChoiceAgent(choice, draft.agentType);
         const agentChanged = agentType !== draft.agentType;
         const machine = resolveAgentMachine(choice, agentType);
         if (!machine) {
@@ -180,10 +179,18 @@ export function useStartSessionFromDraft() {
             }
             : resolveAgentDefaultConfig(defaultOverrides, agentType);
         const permission = resolveOption<{ key: string }>(
-            rigCreation?.permissionModes ?? getHardcodedPermissionModes(agentType, t),
+            // The daemon machine's CLI is what will parse the mode; older CLIs
+            // drop the whole prompt on modes they do not know (e.g. `auto`).
+            rigCreation?.permissionModes ?? filterPermissionModesForCli(
+                getHardcodedPermissionModes(agentType, t),
+                machine.metadata?.happyCliVersion,
+            ),
+            // The code default last: when the saved and configured modes were
+            // both filtered out for an old CLI, land there rather than on
+            // whichever mode happens to lead the list.
             agentChanged
-                ? [defaults.permissionMode]
-                : [draft.permissionMode, defaults.permissionMode],
+                ? [defaults.permissionMode, rigCreation ? null : getCodeAgentDefaults(agentType).permissionMode]
+                : [draft.permissionMode, defaults.permissionMode, rigCreation ? null : getCodeAgentDefaults(agentType).permissionMode],
         );
         const model = resolveOption<{ key: string }>(
             rigCreation?.models ?? includeConfiguredModel(
@@ -299,10 +306,9 @@ export function useStartSessionFromDraft() {
                         directory: spawnDirectory,
                         approvedNewDirectoryCreation,
                         agent: agentType,
-                        // 'default' means "leave the harness on the mode it is
-                        // already configured with", so it is deliberately not
-                        // sent for any agent.
-                        permissionMode: permission.key !== 'default'
+                        // Codex Default is a concrete ask-first policy, not an
+                        // ambient absence of an override.
+                        permissionMode: agentType === 'codex' || permission.key !== 'default'
                             ? permission.key
                             : undefined,
                         modelMode: model.key !== 'default' ? model.key : undefined,
@@ -369,13 +375,14 @@ export function useStartSessionFromDraft() {
             }
 
             if (!rigCreation) {
-                const modesPatch: SessionAgentModesPatch = {};
-                if (permission.key !== defaults.permissionMode) modesPatch.permissionMode = permission.key;
-                if (model.key !== defaults.modelMode) modesPatch.modelMode = model.key;
-                if ((effort?.key ?? null) !== defaults.effortLevel) modesPatch.effortLevel = effort?.key ?? null;
-                if (Object.keys(modesPatch).length > 0) {
-                    sessionSetAgentModes(sessionId, modesPatch);
-                }
+                // Pin the actual launch selection to this session. Keeping
+                // defaults as null lets a later settings change rewrite an
+                // existing session's displayed and transmitted mode/model.
+                sessionSetAgentModes(sessionId, {
+                    permissionMode: permission.key,
+                    modelMode: model.key,
+                    effortLevel: effort?.key ?? null,
+                });
             }
 
             // Last look before anything becomes irreversible. Past this line the
@@ -419,7 +426,7 @@ export function useStartSessionFromDraft() {
                 if (isMountedRef.current) setPhase(null);
             }
         }
-    }, [defaultOverrides, experiments, machines, navigateToSession]);
+    }, [defaultOverrides, machines, navigateToSession]);
 
     return { isStarting: phase !== null, phase, startSession, cancelStart };
 }

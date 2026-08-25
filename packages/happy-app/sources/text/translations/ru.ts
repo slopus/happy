@@ -180,6 +180,25 @@ export const ru: TranslationStructure = {
         showHarnessIconInSessionHeaderDescription: 'Отображать значок harness в заголовке сессии',
         showHarnessIconsInSessionList: 'Показывать значки harness в списке сессий',
         showHarnessIconsInSessionListDescription: 'Отображать значки harness на аватарах в списке сессий',
+        avatars: 'Аватары',
+        avatarsDescription: 'Выберите, как выглядят генерируемые аватары сессий',
+        avatarStyle: 'Стиль аватаров',
+        avatarStyleOptions: {
+            brutalist: 'Брутализм',
+            pixelated: 'Пиксельный',
+            gradient: 'Градиент',
+        },
+        avatarMonochrome: 'Чёрно-белые аватары',
+        avatarMonochromeDescription: 'Отображать аватары без цвета',
+    },
+
+    sessionsFilter: {
+        // Filter menu on the home sessions list header
+        title: 'Фильтр',
+        groupingTitle: 'Группировка',
+        flatList: 'Общий список',
+        groupByProject: 'Группировать по проектам',
+        appearanceSettings: 'Настройки внешнего вида',
     },
 
     settingsFeatures: {

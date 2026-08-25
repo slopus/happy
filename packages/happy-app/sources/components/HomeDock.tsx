@@ -27,7 +27,7 @@ import { layout } from './layout';
 import { t } from '@/text';
 import { useNewSessionDraft } from '@/hooks/useNewSessionDraft';
 import { useAllMachines, useSessions, useSetting } from '@/sync/storage';
-import { resolveAgentDefaultConfig } from '@/sync/agentDefaults';
+import { getCodeAgentDefaults, resolveAgentDefaultConfig } from '@/sync/agentDefaults';
 import { formatLastSeen, formatPathRelativeToHome } from '@/utils/sessionUtils';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { resolveAbsolutePath } from '@/utils/pathUtils';
@@ -38,13 +38,14 @@ import {
     findMachineChoice,
     machineChoiceAgentAvailable,
     machineChoiceAgentVisible,
-    resolveNewSessionAgent,
+    resolveChoiceAgent,
 } from '@/sync/machineChoices';
 import type { Session } from '@/sync/storageTypes';
 import {
     getEffortLevelsForModel,
     getHardcodedModelModes,
     getHardcodedPermissionModes,
+    filterPermissionModesForCli,
     getSupportsWorktree,
     includeConfiguredModel,
     type ModeOption,
@@ -666,7 +667,6 @@ export const HomeDock = React.memo(({
     const useNativeMenus = shouldUseNativeHomeDockMenus(Platform.OS);
     const [sheetPage, setSheetPage] = React.useState<PickerPage | null>(null);
     const expImageUpload = useSetting('expImageUpload');
-    const experiments = useSetting('experiments');
     const { selectedImages, pickImages, removeImage, clearImages } = useImagePicker();
     const agentType = useNewSessionDraft((state) => state.agentType);
     const selectedMachineId = useNewSessionDraft((state) => state.selectedMachineId);
@@ -861,9 +861,8 @@ export const HomeDock = React.memo(({
     // until this computer explicitly reports it installed.
     const harnessKeys = React.useMemo<NewSessionAgentType[]>(() => (
         (HARNESS_ORDER.includes(agentType) ? [...HARNESS_ORDER] : [agentType, ...HARNESS_ORDER])
-            .filter((key) => experiments || key !== 'rig')
             .filter((key) => machineChoiceAgentVisible(selectedChoice, key))
-    ), [agentType, experiments, selectedChoice]);
+    ), [agentType, selectedChoice]);
     const availableAgents = React.useMemo<ModeOption[]>(() => (
         harnessKeys.map((key) => {
             const agent = { key, name: getHarnessName(key) };
@@ -878,7 +877,7 @@ export const HomeDock = React.memo(({
                 };
         })
     ), [harnessKeys, selectedChoice]);
-    const resolvedAgentType = resolveNewSessionAgent(selectedChoice, agentType, experiments);
+    const resolvedAgentType = resolveChoiceAgent(selectedChoice, agentType);
     const defaults = React.useMemo(() => rigCreation
         ? {
             permissionMode: rigCreation.defaultPermissionMode ?? '',
@@ -887,8 +886,13 @@ export const HomeDock = React.memo(({
         }
         : resolveAgentDefaultConfig(defaultOverrides, agentType), [agentType, defaultOverrides, rigCreation]);
     const permissionOptions = React.useMemo(
-        () => rigCreation?.permissionModes ?? getHardcodedPermissionModes(agentType, t),
-        [agentType, rigCreation],
+        // The CLI daemon on the picked computer is what will parse the mode;
+        // older CLIs drop the whole prompt on modes they do not know (`auto`).
+        () => rigCreation?.permissionModes ?? filterPermissionModesForCli(
+            getHardcodedPermissionModes(agentType, t),
+            selectedChoice?.happyMachine?.metadata?.happyCliVersion,
+        ),
+        [agentType, rigCreation, selectedChoice],
     );
     const modelOptions = React.useMemo(
         () => rigCreation?.models ?? includeConfiguredModel(
@@ -898,7 +902,14 @@ export const HomeDock = React.memo(({
         ),
         [agentType, defaults.modelMode, rigCreation],
     );
-    const currentPermission = resolveOption(permissionOptions, [permissionMode, defaults.permissionMode]);
+    // The code default last: when the saved and configured modes were both
+    // filtered out for an old CLI, land there rather than on whichever mode
+    // happens to lead the list.
+    const currentPermission = resolveOption(permissionOptions, [
+        permissionMode,
+        defaults.permissionMode,
+        rigCreation ? null : getCodeAgentDefaults(agentType).permissionMode,
+    ]);
     const currentModel = resolveOption(modelOptions, [modelMode, defaults.modelMode]);
     const effortOptions = React.useMemo(
         () => rigCreation

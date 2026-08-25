@@ -7,7 +7,6 @@ const mocks = vi.hoisted(() => ({
         metadata?: any;
     }>,
     defaultOverrides: {},
-    experiments: true,
     draft: null as any,
     navigateToSession: vi.fn(),
     machineSpawnNewSession: vi.fn(),
@@ -36,10 +35,15 @@ vi.mock('react', () => ({
 
 vi.mock('@/sync/storage', () => ({
     useAllMachines: () => mocks.machines,
-    useSetting: (key: string) => key === 'experiments' ? mocks.experiments : mocks.defaultOverrides,
+    useSetting: () => mocks.defaultOverrides,
 }));
 
 vi.mock('@/sync/agentDefaults', () => ({
+    getCodeAgentDefaults: () => ({
+        permissionMode: 'yolo',
+        modelMode: 'default',
+        effortLevel: null,
+    }),
     resolveAgentDefaultConfig: (
         overrides: Record<string, unknown>,
         agentType: string,
@@ -90,6 +94,7 @@ vi.mock('@/utils/worktree', () => ({
 vi.mock('@/utils/time', () => ({ delay: mocks.delay }));
 
 vi.mock('@/components/modelModeOptions', () => ({
+    filterPermissionModesForCli: (modes: any[]) => modes,
     getHardcodedPermissionModes: () => [
         { key: 'default', name: 'Default' },
         { key: 'safe-yolo', name: 'Safe YOLO' },
@@ -184,7 +189,6 @@ describe('useStartSessionFromDraft', () => {
         mocks.uuidCount = 0;
         completeSpawnRequest();
         mocks.defaultOverrides = {};
-        mocks.experiments = true;
         mocks.machines = [{ id: 'machine-1', online: true, metadata: { homeDir: '/Users/dev' } }];
         mocks.draft = createDraft();
         mocks.machineSpawnNewSession.mockResolvedValue({ type: 'success', sessionId: 'session-1' });
@@ -206,11 +210,13 @@ describe('useStartSessionFromDraft', () => {
             directory: '/absolute/project',
             approvedNewDirectoryCreation: false,
             agent: 'codex',
-            // Default is the absence of an override, for codex as much as for
-            // claude: sending it would replace the harness's own configured
-            // mode with one specific mode.
-            permissionMode: undefined,
+            permissionMode: 'default',
             modelMode: undefined,
+            effortLevel: 'medium',
+        });
+        expect(mocks.sessionSetAgentModes).toHaveBeenCalledWith('session-1', {
+            permissionMode: 'default',
+            modelMode: 'default',
             effortLevel: 'medium',
         });
         expect(mocks.refreshSessions).toHaveBeenCalledOnce();
@@ -242,6 +248,11 @@ describe('useStartSessionFromDraft', () => {
             agent: 'codex',
             modelMode: 'my-workspace-model',
         }));
+        expect(mocks.sessionSetAgentModes).toHaveBeenCalledWith('session-1', {
+            permissionMode: 'default',
+            modelMode: 'my-workspace-model',
+            effortLevel: 'medium',
+        });
     });
 
     it('does not spawn a stale Claude draft when the machine only has Codex', async () => {
@@ -430,21 +441,6 @@ describe('useStartSessionFromDraft', () => {
             'The selected agent configuration is unavailable',
         );
         expect(mocks.machineSpawnNewSession).not.toHaveBeenCalled();
-    });
-
-    it('does not start a Happy harness session while experiments are disabled', async () => {
-        mocks.experiments = false;
-        mocks.machines = [createRigMachine()];
-        mocks.draft = createDraft({ agentType: 'rig' });
-
-        const { startSession } = useStartSessionFromDraft();
-
-        await expect(startSession()).resolves.toBe(false);
-        expect(mocks.machineSpawnNewSession).not.toHaveBeenCalled();
-        expect(mocks.alert).toHaveBeenCalledWith(
-            'common.error',
-            'This computer has no Happy CLI daemon to start that agent',
-        );
     });
 
     it('reuses the idempotency key when the user retries the same spawn', async () => {

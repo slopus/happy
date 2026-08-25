@@ -21,7 +21,7 @@ export function NativeSettingsMenu({ groups, children, style, flat = false }: Na
                                 native `text` prop instead. */}
                             <DropdownMenuItem.Text>
                                 <ComposeText>
-                                    {`${flat ? '' : `${group.label}: `}${option.key === group.selectedKey ? '✓ ' : ''}${option.label}`}
+                                    {`${flat || !group.label ? '' : `${group.label}: `}${option.key === group.selectedKey ? '✓ ' : ''}${option.label}`}
                                 </ComposeText>
                             </DropdownMenuItem.Text>
                         </DropdownMenuItem>

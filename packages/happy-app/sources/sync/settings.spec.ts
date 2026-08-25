@@ -187,6 +187,8 @@ describe('settings', () => {
                 alwaysShowContextSize: false,
                 agentInputEnterToSend: true,
                 avatarStyle: 'brutalist',
+                avatarMonochrome: false,
+                sessionListGrouping: 'flat',
                 showFlavorIcons: false,
                 showHarnessIconInSessionHeader: true,
                 userMessageBubbleColor: 'gray',

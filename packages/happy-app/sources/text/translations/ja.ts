@@ -196,6 +196,25 @@ export const ja: TranslationStructure = {
         showHarnessIconInSessionHeaderDescription: 'セッションヘッダーにハーネスアイコンを表示',
         showHarnessIconsInSessionList: 'セッションリストにハーネスアイコンを表示',
         showHarnessIconsInSessionListDescription: 'セッションリストのアバターにハーネスアイコンを表示',
+        avatars: 'アバター',
+        avatarsDescription: '生成されるセッションアバターの見た目を選択',
+        avatarStyle: 'アバターのスタイル',
+        avatarStyleOptions: {
+            brutalist: 'ブルータリズム',
+            pixelated: 'ピクセル',
+            gradient: 'グラデーション',
+        },
+        avatarMonochrome: '白黒アバター',
+        avatarMonochromeDescription: 'アバターを色なしで表示',
+    },
+
+    sessionsFilter: {
+        // Filter menu on the home sessions list header
+        title: 'フィルター',
+        groupingTitle: 'グループ化',
+        flatList: 'フラットリスト',
+        groupByProject: 'プロジェクト別にグループ化',
+        appearanceSettings: '外観設定',
     },
 
     settingsFeatures: {

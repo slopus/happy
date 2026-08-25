@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { applySandboxPermissionPolicy, extractPermissionModeFromClaudeArgs, mapToClaudeMode, resolveInitialClaudePermissionMode, resolveRemoteClaudePermissionMode } from './permissionMode';
-import type { PermissionMode } from '@/api/types';
+import { applySandboxPermissionPolicy, extractPermissionModeFromClaudeArgs, mapToClaudeMode, normalizeRemotePermissionMode, resolveInitialClaudePermissionMode, resolveRemoteClaudePermissionMode } from './permissionMode';
+import { MessageMetaSchema, type PermissionMode } from '@/api/types';
 
 describe('mapToClaudeMode', () => {
     describe('Codex modes are mapped to Claude equivalents', () => {
@@ -139,5 +139,34 @@ describe('resolveRemoteClaudePermissionMode', () => {
 
     it('applies sandbox policy to incoming modes', () => {
         expect(resolveRemoteClaudePermissionMode('default', 'plan', true)).toBe('bypassPermissions');
+    });
+});
+
+// The wire schema accepts any string so a newer app can name a mode this CLI
+// does not know yet; the unknown value is dropped here rather than the message.
+describe('normalizeRemotePermissionMode', () => {
+    it('passes through every known mode', () => {
+        const allModes: PermissionMode[] = [
+            'auto', 'default', 'acceptEdits', 'bypassPermissions', 'plan',
+            'read-only', 'safe-yolo', 'yolo',
+        ];
+        allModes.forEach(mode => {
+            expect(normalizeRemotePermissionMode(mode)).toBe(mode);
+        });
+    });
+
+    it('drops an unknown mode instead of the whole message', () => {
+        expect(normalizeRemotePermissionMode('mode-from-the-future')).toBeUndefined();
+    });
+
+    it('leaves an absent mode absent', () => {
+        expect(normalizeRemotePermissionMode(undefined)).toBeUndefined();
+    });
+});
+
+describe('MessageMetaSchema permission mode', () => {
+    it('accepts a mode this CLI does not know without failing the message', () => {
+        const parsed = MessageMetaSchema.safeParse({ permissionMode: 'mode-from-the-future' });
+        expect(parsed.success).toBe(true);
     });
 });

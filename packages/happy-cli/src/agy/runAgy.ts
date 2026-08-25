@@ -30,7 +30,7 @@ import { connectionState } from '@/utils/serverConnectionErrors';
 import { MessageBuffer } from '@/ui/ink/messageBuffer';
 import { AgyDisplay } from '@/ui/ink/AgyDisplay';
 import type { AgentMessage } from '@/agent/core';
-import type { PermissionMode } from '@/api/types';
+import { normalizeRemotePermissionMode } from '@/claude/utils/permissionMode';
 import { AgyBackend } from './AgyBackend';
 import { DEFAULT_AGY_MODEL } from './constants';
 
@@ -179,7 +179,10 @@ export async function runAgy(opts: RunAgyOptions): Promise<void> {
     if (!message.content.text) return;
 
     if (message.meta?.permissionMode) {
-      backend.setPermissionMode(message.meta.permissionMode as PermissionMode);
+      const mode = normalizeRemotePermissionMode(message.meta.permissionMode);
+      if (mode) {
+        backend.setPermissionMode(mode);
+      }
     }
     if (message.meta?.hasOwnProperty('model') && message.meta.model) {
       backend.setModel(message.meta.model);

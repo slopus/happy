@@ -47,6 +47,7 @@ import {
     type CodexEnhancedMode,
 } from './codexPrompt';
 import { discoverCodexSkillCommands } from './codexSkills';
+import { CodexRemoteModeState } from './remoteModeState';
 import {
     codexGoalActionCapabilities,
     mapCodexGoalEventToAgentGoalStatus,
@@ -271,15 +272,11 @@ export async function runCodex(opts: {
 
     // Track current overrides to apply per message
     // Use shared PermissionMode type from api/types for cross-agent compatibility
-    let currentPermissionMode: PermissionMode | undefined = initialPermissionMode;
-    // True only while currentPermissionMode reflects an explicit user pick
-    // (message meta), not the launch default or an abort-reset. The approval
-    // handler's latest-mode check trusts only explicit picks — the launch
-    // default for plain codex is yolo, and it must not wave through a
-    // straggler approval after an abort.
-    let currentPermissionModeExplicitlySet = false;
-    let currentModel: string | undefined = opts.model ?? DEFAULT_CODEX_MODEL;
-    let currentEffort: ReasoningEffort | undefined = opts.effort ?? DEFAULT_CODEX_EFFORT;
+    const remoteModeState = new CodexRemoteModeState({
+        permissionMode: initialPermissionMode,
+        model: opts.model ?? DEFAULT_CODEX_MODEL,
+        effort: opts.effort ?? DEFAULT_CODEX_EFFORT,
+    });
     let currentAppendSystemPrompt: string | undefined = undefined;
 
     const resetCurrentModeDefaults = () => {
@@ -288,83 +285,37 @@ export async function runCodex(opts: {
         // a safety guarantee by itself — for plain `happy codex` the launch
         // mode IS yolo; the post-abort grace window is protected by the
         // approval handler only trusting explicitly-picked modes.
-        // Model and effort are deliberately NOT reset here. The app sends them
-        // only when the user changes the picker, so resetting them on abort
-        // silently desyncs the picker from what the next turn actually runs.
-        currentPermissionMode = initialPermissionMode;
-        currentPermissionModeExplicitlySet = false;
+        // Model and effort deliberately remain sticky. Current apps also
+        // reassert all three visible values on the next message.
+        remoteModeState.resetAfterAbort();
         currentAppendSystemPrompt = undefined;
         logger.debug('[Codex] Reset current mode defaults after abort');
     };
 
-    // Valid Codex permission modes from remote messages. Matches the modes
-    // the mobile UI exposes for Codex sessions (see modelModeOptions.ts:
-    // getCodexPermissionModes) and mirrors the Gemini validation pattern at
-    // runGemini.ts:222. Anything outside this set is silently ignored — the
-    // previous code blindly cast `message.meta.permissionMode as PermissionMode`
-    // at runtime, meaning a crafted value like `'totally_unsafe'` would be
-    // accepted and then fall through to the `default` branch in
-    // resolveCodexExecutionPolicy() — or worse, an attacker-chosen valid value
-    // could escalate sandbox scope (issue #1092).
-    const VALID_REMOTE_PERMISSION_MODES: readonly PermissionMode[] = [
-        'default',
-        'read-only',
-        'safe-yolo',
-        'yolo',
-    ];
-
-    const VALID_REMOTE_EFFORTS: readonly ReasoningEffort[] = [
-        'none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra',
-    ];
-
     const handleUserMessage = createSerialAsyncHandler<UserMessage>(async (message) => {
         const attachmentsForThisMessage = await session.drainAttachmentsForUserMessage();
 
-        // Resolve permission mode (validate against Codex-native modes)
-        let messagePermissionMode = currentPermissionMode;
-        if (message.meta?.permissionMode) {
-            const incoming = message.meta.permissionMode as PermissionMode;
-            if (VALID_REMOTE_PERMISSION_MODES.includes(incoming)) {
-                messagePermissionMode = incoming;
-                currentPermissionMode = messagePermissionMode;
-                currentPermissionModeExplicitlySet = true;
-                logger.debug(`[Codex] Permission mode updated from user message to: ${currentPermissionMode}`);
-            } else {
-                logger.debug(`[Codex] Ignoring invalid permission mode from user message: ${String(message.meta.permissionMode)}`);
-            }
+        const modeResolution = remoteModeState.resolve(message.meta);
+        if (modeResolution.permission.kind === 'updated') {
+            logger.debug(`[Codex] Permission mode updated from user message to: ${modeResolution.permissionMode}`);
+        } else if (modeResolution.permission.kind === 'ignored') {
+            logger.debug(`[Codex] Ignoring invalid permission mode from user message: ${String(modeResolution.permission.incoming)}`);
         } else {
-            logger.debug(`[Codex] User message received with no permission mode override, using current: ${currentPermissionMode ?? 'default (effective)'}`);
+            logger.debug(`[Codex] User message received with no permission mode override, using current: ${modeResolution.permissionMode}`);
         }
-
-        // Resolve model; explicit null resets to default (undefined)
-        let messageModel = currentModel;
-        if (message.meta?.hasOwnProperty('model')) {
-            messageModel = message.meta.model || undefined;
-            currentModel = messageModel;
-            logger.debug(`[Codex] Model updated from user message: ${messageModel || 'reset to default'}`);
+        if (modeResolution.modelResolution.kind === 'updated') {
+            logger.debug(`[Codex] Model updated from user message: ${modeResolution.model || 'reset to default'}`);
         } else {
-            logger.debug(`[Codex] User message received with no model override, using current: ${currentModel || 'default'}`);
+            logger.debug(`[Codex] User message received with no model override, using current: ${modeResolution.model || 'default'}`);
         }
-
-        // Resolve effort — passed straight to sendTurnAndWait. Validate the
-        // incoming value against ReasoningEffort so a stale/garbage entry on
-        // the wire doesn't poison the per-turn options.
-        let messageEffort = currentEffort;
-        if (message.meta?.hasOwnProperty('effort')) {
-            const incoming = (message.meta as Record<string, unknown>).effort;
-            if (incoming === null || incoming === undefined) {
-                messageEffort = undefined;
-                currentEffort = undefined;
-                logger.debug(`[Codex] Effort reset to default`);
-            } else if (typeof incoming === 'string' && (VALID_REMOTE_EFFORTS as readonly string[]).includes(incoming)) {
-                messageEffort = incoming as ReasoningEffort;
-                currentEffort = messageEffort;
-                logger.debug(`[Codex] Effort updated from user message: ${messageEffort}`);
-            } else {
-                logger.debug(`[Codex] Ignoring invalid effort from user message: ${String(incoming)}`);
-            }
+        if (modeResolution.effortResolution.kind === 'updated') {
+            logger.debug(modeResolution.effort
+                ? `[Codex] Effort updated from user message: ${modeResolution.effort}`
+                : '[Codex] Effort reset to default');
+        } else if (modeResolution.effortResolution.kind === 'ignored') {
+            logger.debug(`[Codex] Ignoring invalid effort from user message: ${String(modeResolution.effortResolution.incoming)}`);
         } else {
-            logger.debug(`[Codex] User message received with no effort override, using current: ${currentEffort ?? 'default'}`);
+            logger.debug(`[Codex] User message received with no effort override, using current: ${modeResolution.effort ?? 'default'}`);
         }
 
         let messageAppendSystemPrompt = currentAppendSystemPrompt;
@@ -377,10 +328,10 @@ export async function runCodex(opts: {
         }
 
         const enhancedMode: EnhancedMode = {
-            permissionMode: messagePermissionMode || 'default',
-            model: messageModel,
+            permissionMode: modeResolution.permissionMode,
+            model: modeResolution.model,
             appendSystemPrompt: messageAppendSystemPrompt,
-            effort: messageEffort,
+            effort: modeResolution.effort,
         };
         const enqueueResult = enqueueCodexUserText({
             text: message.content.text,
@@ -700,7 +651,7 @@ export async function runCodex(opts: {
             : params.type === 'patch'
                 ? { changes: params.fileChanges }
                 : (params.input ?? {});
-        const activePermissionMode = activeTurnPermissionMode ?? currentPermissionMode ?? DEFAULT_CODEX_PERMISSION_MODE;
+        const activePermissionMode = activeTurnPermissionMode ?? remoteModeState.currentPermissionMode;
         // Check the latest session mode too: a turn pinned under an untrusted
         // policy keeps prompting after the user flips to yolo mid-turn
         // otherwise. Only when the mode was EXPLICITLY picked by the user —
@@ -708,8 +659,8 @@ export async function runCodex(opts: {
         // and a straggler approval from the dying turn (the ~3s abort grace
         // window, when the pinned turn mode is still set) must not be waved
         // through by that reset value.
-        const latestPermissionMode = currentPermissionModeExplicitlySet
-            ? currentPermissionMode ?? DEFAULT_CODEX_PERMISSION_MODE
+        const latestPermissionMode = remoteModeState.currentPermissionModeExplicitlySet
+            ? remoteModeState.currentPermissionMode
             : undefined;
 
         if (shouldAutoApproveCodexApproval(activePermissionMode, client.sandboxEnabled)

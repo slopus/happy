@@ -382,8 +382,9 @@ const styles = StyleSheet.create((theme) => ({
     alignSelf: 'flex-start',
     height: 20,
     justifyContent: 'center',
-    // Pull the icon partway into the trailing margin of the last markdown block.
-    marginTop: -6,
+    // Sits fully below the last markdown block's trailing margin, clear of the
+    // reply text.
+    marginTop: 0,
   },
   copyActionPressed: {
     opacity: 0.5,

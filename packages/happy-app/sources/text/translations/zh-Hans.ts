@@ -196,6 +196,25 @@ export const zhHans: TranslationStructure = {
         showHarnessIconInSessionHeaderDescription: '在会话标题中显示 harness 图标',
         showHarnessIconsInSessionList: '在会话列表中显示 harness 图标',
         showHarnessIconsInSessionListDescription: '在会话列表的头像上显示 harness 图标',
+        avatars: '头像',
+        avatarsDescription: '选择生成的会话头像外观',
+        avatarStyle: '头像样式',
+        avatarStyleOptions: {
+            brutalist: '粗野主义',
+            pixelated: '像素',
+            gradient: '渐变',
+        },
+        avatarMonochrome: '黑白头像',
+        avatarMonochromeDescription: '不带颜色显示头像',
+    },
+
+    sessionsFilter: {
+        // Filter menu on the home sessions list header
+        title: '筛选',
+        groupingTitle: '分组',
+        flatList: '平铺列表',
+        groupByProject: '按项目分组',
+        appearanceSettings: '外观设置',
     },
 
     settingsFeatures: {

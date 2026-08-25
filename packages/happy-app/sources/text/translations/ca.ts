@@ -195,6 +195,25 @@ export const ca: TranslationStructure = {
         showHarnessIconInSessionHeaderDescription: 'Mostra la icona de l\'arnès a la capçalera de la sessió',
         showHarnessIconsInSessionList: 'Mostrar les icones d\'arnès a la llista de sessions',
         showHarnessIconsInSessionListDescription: 'Mostra les icones d\'arnès als avatars de la llista de sessions',
+        avatars: 'Avatars',
+        avatarsDescription: 'Tria l\'aspecte dels avatars de sessió generats',
+        avatarStyle: 'Estil d\'avatar',
+        avatarStyleOptions: {
+            brutalist: 'Brutalista',
+            pixelated: 'Pixelat',
+            gradient: 'Degradat',
+        },
+        avatarMonochrome: 'Avatars en blanc i negre',
+        avatarMonochromeDescription: 'Mostra els avatars sense color',
+    },
+
+    sessionsFilter: {
+        // Filter menu on the home sessions list header
+        title: 'Filtre',
+        groupingTitle: 'Agrupació',
+        flatList: 'Llista plana',
+        groupByProject: 'Agrupa per projecte',
+        appearanceSettings: 'Configuració d\'aparença',
     },
 
     settingsFeatures: {

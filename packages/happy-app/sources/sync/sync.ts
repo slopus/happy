@@ -1,4 +1,5 @@
 import Constants from 'expo-constants';
+import * as Device from 'expo-device';
 import { apiSocket, getCurrentAppState, getHappyClientId } from '@/sync/apiSocket';
 import { notifyUnreadMessage } from '@/sync/webTabTitle';
 import { AuthCredentials } from '@/auth/tokenStorage';
@@ -2002,8 +2003,12 @@ class Sync {
                 console.log('RevenueCat initialized successfully');
             }
 
-            // Sync purchases
-            await RevenueCat.syncPurchases();
+            // Sync purchases. Skip on iOS simulator: syncPurchases posts the App
+            // Store receipt, and a missing receipt triggers SKReceiptRefreshRequest,
+            // which opens the Apple Account sign-in sheet on every app foreground.
+            if (!(Platform.OS === 'ios' && !Device.isDevice)) {
+                await RevenueCat.syncPurchases();
+            }
 
             // Fetch customer info
             const customerInfo = await RevenueCat.getCustomerInfo();

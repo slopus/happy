@@ -53,9 +53,15 @@ export function NativeSettingsMenu({
     triggerLabel,
     triggerSystemImage,
     triggerAlignment = 'center',
+    anchor = 'bottom',
 }: NativeSettingsMenuProps) {
     const { theme } = useUnistyles();
     const nativeTrigger = triggerLabel !== undefined || triggerSystemImage !== undefined;
+    // A top-anchored menu opens downward, which iOS already lays out top-down;
+    // only the upward, bottom-up case needs the pre-reversal.
+    const orderItems = <T,>(items: readonly T[]): T[] => (
+        anchor === 'bottom' ? orderNativeMenuItems(items, 'ios') : [...items]
+    );
     return (
         <View
             style={[styles.container, style]}
@@ -140,23 +146,22 @@ export function NativeSettingsMenu({
                         </HStack>
                     )}
                 >
-                    {/* Reversed because this menu opens upward from the
-                        composer and iOS lays such a menu out bottom-up; see
-                        nativeMenuOrder.ts. */}
-                    {flat ? orderNativeMenuItems(groups.flatMap((group) => (
+                    {flat ? orderItems(groups.flatMap((group) => (
                         group.options.map((option) => ({ group, option }))
-                    )), 'ios').map(({ group, option }) => (
+                    ))).map(({ group, option }) => (
                         <Button
                             key={`${group.key}:${option.key}`}
                             label={option.label}
-                            systemImage={option.key === group.selectedKey ? systemImage('checkmark') : undefined}
+                            systemImage={option.key === group.selectedKey
+                                ? systemImage('checkmark')
+                                : option.systemImage ? systemImage(option.systemImage) : undefined}
                             modifiers={[disabled(option.disabled === true)]}
                             onPress={() => group.onSelect(option.key)}
                         />
-                    )) : orderNativeMenuItems(groups, 'ios').map((group) => (
+                    )) : orderItems(groups).map((group) => (
                         <Section
                             key={group.key}
-                            header={(
+                            header={(group.title ?? group.label) ? (
                                 <HStack spacing={6}>
                                     {group.systemImage ? (
                                         <Image systemName={sectionSystemImage(group.systemImage)} size={14} />
@@ -165,13 +170,15 @@ export function NativeSettingsMenu({
                                         the current value, which the chip already shows. */}
                                     <Text>{group.title ?? group.label}</Text>
                                 </HStack>
-                            )}
+                            ) : undefined}
                         >
-                            {orderNativeMenuItems(group.options, 'ios').map((option) => (
+                            {orderItems(group.options).map((option) => (
                                 <Button
                                     key={option.key}
                                     label={option.label}
-                                    systemImage={option.key === group.selectedKey ? systemImage('checkmark') : undefined}
+                                    systemImage={option.key === group.selectedKey
+                                        ? systemImage('checkmark')
+                                        : option.systemImage ? systemImage(option.systemImage) : undefined}
                                     modifiers={[disabled(option.disabled === true)]}
                                     onPress={() => group.onSelect(option.key)}
                                 />

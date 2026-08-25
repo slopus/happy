@@ -34,29 +34,11 @@ import {
   wrapTmuxCommandWithSessionEnvironmentSanitizer,
 } from './sessionEnvironment';
 import { startHappyTerminalDaemon } from './happyTerminalBoot';
+import { appendDaemonSpawnModeArgs, shouldForwardDaemonPermissionMode } from './spawnModeArgs';
 
 /** Shell-escape a string for safe interpolation into tmux commands. */
 function shellescape(s: string): string {
     return "'" + s.replace(/'/g, "'\\''") + "'";
-}
-
-function appendDaemonSpawnModeArgs(args: string[], options: SpawnSessionOptions, agent: string): void {
-  if (agent !== 'claude' && agent !== 'codex') {
-    return;
-  }
-  // 'default' is the app's "no override" value for every agent: it means run
-  // the harness the way it is already configured. Forwarding it would replace
-  // that configuration with one specific mode, which is the opposite of what
-  // the word promises. Each runner supplies its own launch default instead.
-  if (options.permissionMode && options.permissionMode !== 'default') {
-    args.push('--permission-mode', options.permissionMode);
-  }
-  if (options.modelMode && options.modelMode !== 'default') {
-    args.push('--model', options.modelMode);
-  }
-  if (options.effortLevel) {
-    args.push('--effort', options.effortLevel);
-  }
 }
 
 // Prepare initial metadata
@@ -738,10 +720,9 @@ export async function startDaemon(): Promise<void> {
         if (options?.model) {
           launch.args.push('--model', options.model);
         }
-        // Same as spawnSession: ambient 'default' must not override whatever
-        // the harness is already configured to do.
-        if (options?.permissionMode && options.permissionMode !== 'default') {
-          launch.args.push('--permission-mode', options.permissionMode);
+        const resumePermissionMode = options?.permissionMode;
+        if (shouldForwardDaemonPermissionMode(metadata.flavor ?? 'claude', resumePermissionMode)) {
+          launch.args.push('--permission-mode', resumePermissionMode);
         }
 
         await fs.access(launch.cwd);

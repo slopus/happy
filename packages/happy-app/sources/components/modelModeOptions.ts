@@ -1,6 +1,7 @@
 import type { Metadata } from '@/sync/storageTypes';
 import { hackModes } from '@/sync/modeHacks';
 import { sortPermissionModes } from '@/utils/permissionModeLabels';
+import { compareVersionsWithPrerelease, isWellFormedVersion } from '@/utils/versionUtils';
 import { getCodeAgentDefaults } from '@/sync/agentDefaults';
 import {
     getRigCurrentModel,
@@ -16,6 +17,10 @@ export type ModeOption = {
     description?: string | null;
     semanticKind?: string | null;
     disabled?: boolean;
+    // The happy-cli version that first parses this mode. Untagged modes are
+    // offered to every CLI; tagged ones are hidden from CLIs known to be older
+    // (see filterPermissionModesForCli).
+    sinceCliVersion?: string;
 };
 
 export type PermissionMode = ModeOption;
@@ -81,7 +86,7 @@ export function mapMetadataOptions(options?: MetadataOption[] | null): ModeOptio
 // sending it fails UserMessageSchema.safeParse and drops the whole prompt.
 export function getClaudePermissionModes(translate: Translate): PermissionMode[] {
     return [
-        { key: 'auto', name: 'Auto', description: translate('agentInput.permissionMode.auto') },
+        { key: 'auto', name: 'Auto', description: translate('agentInput.permissionMode.auto'), sinceCliVersion: CLI_VERSION_WITH_AUTO },
         { key: 'acceptEdits', name: 'Edits', description: translate('agentInput.permissionMode.acceptEdits') },
         { key: 'plan', name: 'Plan', description: translate('agentInput.permissionMode.plan') },
         { key: 'bypassPermissions', name: 'Yolo', description: translate('agentInput.permissionMode.bypassPermissions') },
@@ -97,7 +102,7 @@ export function getClaudePermissionModes(translate: Translate): PermissionMode[]
 // sandbox but stops asking, so it is the one named for the sandbox.
 export function getCodexPermissionModes(translate: Translate): PermissionMode[] {
     return [
-        { key: 'auto', name: 'Auto', description: translate('agentInput.codexPermissionMode.autoDescription') },
+        { key: 'auto', name: 'Auto', description: translate('agentInput.codexPermissionMode.autoDescription'), sinceCliVersion: CLI_VERSION_WITH_AUTO },
         { key: 'safe-yolo', name: 'Workspace', description: translate('agentInput.codexPermissionMode.safeYoloDescription') },
         { key: 'read-only', name: 'Read', description: translate('agentInput.codexPermissionMode.readOnlyDescription') },
         { key: 'yolo', name: 'Yolo', description: translate('agentInput.codexPermissionMode.yoloDescription') },
@@ -196,6 +201,75 @@ export function getAgyPermissionModes(translate: Translate): PermissionMode[] {
         { key: 'default', name: 'Default', description: translate('agentInput.permissionMode.agyDefault') },
         { key: 'bypassPermissions', name: 'Yolo', description: translate('agentInput.permissionMode.bypassPermissions') },
     ];
+}
+
+// `auto` first shipped in happy-cli 1.2.1-beta.2, for Claude and Codex alike.
+// Before that the CLI's MessageMetaSchema rejected it, and before the schema
+// was loosened to accept any string (same release cycle) a rejected mode
+// dropped the whole prompt — the same failure mode `dontAsk` had.
+export const CLI_VERSION_WITH_AUTO = '1.2.1-beta.2';
+
+/**
+ * True when the CLI at `cliVersion` parses this mode. An untagged mode is
+ * supported everywhere. An absent version stays permissive: every happy-cli
+ * reports its version in both session and machine metadata, so no version
+ * means the client is not happy-cli (e.g. a pre-catalog Rig session). A
+ * version that is present but unparseable hides tagged modes instead — a
+ * mangled happy-cli version is more likely old than new.
+ */
+export function modeSupportedByCli(
+    mode: Pick<ModeOption, 'sinceCliVersion'>,
+    cliVersion: string | null | undefined,
+): boolean {
+    if (!mode.sinceCliVersion || !cliVersion) {
+        return true;
+    }
+    if (!isWellFormedVersion(cliVersion)) {
+        return false;
+    }
+    return compareVersionsWithPrerelease(cliVersion, mode.sinceCliVersion) >= 0;
+}
+
+// The version tags by mode key, for callers that hold a bare key rather than
+// a ModeOption — the option lists below and the outbound-message path both
+// read from here so the two can never disagree.
+const PERMISSION_MODE_SINCE_CLI_VERSION: Record<string, string> = {
+    auto: CLI_VERSION_WITH_AUTO,
+};
+
+/**
+ * Maps a permission mode key about to be sent to a session onto one its CLI
+ * can parse. Picker filtering alone does not cover this: an existing session
+ * or a saved agent default can carry a mode the session's older CLI never
+ * offered. An unsupported key falls back to the flavor's code default, which
+ * is untagged and parseable by every CLI.
+ */
+export function resolveSupportedPermissionMode<T extends string | null | undefined>(
+    flavor: AgentFlavor,
+    modeKey: T,
+    cliVersion: string | null | undefined,
+): T | string {
+    if (!modeKey) {
+        return modeKey;
+    }
+    const sinceCliVersion = PERMISSION_MODE_SINCE_CLI_VERSION[modeKey];
+    if (modeSupportedByCli({ sinceCliVersion }, cliVersion)) {
+        return modeKey;
+    }
+    return getCodeAgentDefaults(flavor).permissionMode;
+}
+
+/**
+ * Drops modes the CLI on the receiving machine cannot parse, going by each
+ * mode's own sinceCliVersion tag. Applies to the hardcoded flavor lists only —
+ * a harness that publishes its own catalog (rig metadata) owns its codes and
+ * already matches its own version.
+ */
+export function filterPermissionModesForCli<T extends ModeOption>(
+    modes: T[],
+    cliVersion: string | null | undefined,
+): T[] {
+    return modes.filter((mode) => modeSupportedByCli(mode, cliVersion));
 }
 
 export function getHardcodedPermissionModes(flavor: AgentFlavor, translate: Translate): PermissionMode[] {
@@ -351,7 +425,12 @@ export function getAvailablePermissionModes(
         return modes;
     }
     if (flavor === 'claude' || flavor === 'codex' || flavor === 'openclaw' || flavor === 'agy') {
-        return hackModes(getHardcodedPermissionModes(flavor, translate));
+        // metadata.version is the happy-cli version running this session
+        // (createSessionMetadata.ts), which is what has to parse the mode.
+        return hackModes(filterPermissionModesForCli(
+            getHardcodedPermissionModes(flavor, translate),
+            metadata?.version,
+        ));
     }
 
     const metadataModes = mapMetadataOptions(metadata?.operatingModes);

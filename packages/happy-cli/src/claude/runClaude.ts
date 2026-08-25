@@ -32,7 +32,7 @@ import {
     type ClaudeGoalStatusTranscriptEvent,
 } from '@/claude/claudeGoalStatus';
 import { Session } from './session';
-import { applySandboxPermissionPolicy, resolveInitialClaudePermissionMode, resolveRemoteClaudePermissionMode } from './utils/permissionMode';
+import { applySandboxPermissionPolicy, normalizeRemotePermissionMode, resolveInitialClaudePermissionMode, resolveRemoteClaudePermissionMode } from './utils/permissionMode';
 import { decodeBase64, encodeBase64 } from '@/api/encryption';
 import type { Session as ApiSession } from '@/api/types';
 import { getProjectPath } from './utils/path';
@@ -668,7 +668,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             const previousPermissionMode = currentPermissionMode;
             messagePermissionMode = resolveRemoteClaudePermissionMode(
                 currentPermissionMode,
-                message.meta.permissionMode,
+                normalizeRemotePermissionMode(message.meta.permissionMode),
                 sandboxEnabled,
             );
             currentPermissionMode = messagePermissionMode;

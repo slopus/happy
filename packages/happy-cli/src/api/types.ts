@@ -22,7 +22,8 @@ export type {
 
 /**
  * Permission mode type - includes both Claude and Codex modes
- * Must match MessageMetaSchema.permissionMode enum values
+ * The wire schema (MessageMetaSchema.permissionMode) deliberately accepts any
+ * string; each harness narrows to this union itself and ignores the rest.
  *
  * Shared: auto — the harness reviews each call itself
  * Claude modes: default, acceptEdits, bypassPermissions, plan
@@ -196,7 +197,10 @@ export type Machine = {
  */
 export const MessageMetaSchema = z.object({
   sentFrom: z.string().optional(), // Source identifier
-  permissionMode: z.enum(['auto', 'default', 'acceptEdits', 'bypassPermissions', 'plan', 'read-only', 'safe-yolo', 'yolo']).optional(), // Permission mode for this message
+  // Any string is accepted so a newer app can name a mode this CLI does not
+  // know yet without the whole message failing safeParse and being dropped.
+  // Each harness validates the value itself and falls back with a warning.
+  permissionMode: z.string().optional(), // Permission mode for this message
   model: z.string().nullable().optional(), // Model name for this message (null = reset)
   fallbackModel: z.string().nullable().optional(), // Fallback model for this message (null = reset)
   customSystemPrompt: z.string().nullable().optional(), // Custom system prompt for this message (null = reset)

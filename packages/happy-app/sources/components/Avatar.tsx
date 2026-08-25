@@ -7,6 +7,7 @@ import { AvatarBrutalist } from "./AvatarBrutalist";
 import { useSetting } from '@/sync/storage';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { resolveAvatarHarness, type AvatarHarnessIcon } from '@/utils/avatarHarness';
+import { normalizeAvatarStyle } from '@/utils/avatarStyle';
 
 export type AvatarBadgeLocation = 'sessionHeader' | 'sessionList' | 'none';
 
@@ -52,9 +53,13 @@ const styles = StyleSheet.create((theme) => ({
 
 export const Avatar = React.memo((props: AvatarProps) => {
     const { flavor, clientId, badgeLocation = 'none', size = 48, imageUrl, thumbhash, ...avatarProps } = props;
-    // Brutalist is the product default now. Keep the renderer branches below
-    // so another style can be restored without rebuilding the avatar variants.
-    const avatarStyle: string = 'brutalist';
+    const avatarStyle = normalizeAvatarStyle(useSetting('avatarStyle'));
+    // The black-and-white preference applies to every generated style; a
+    // caller passing monochrome explicitly (e.g. offline rows) still wins.
+    const monochromeSetting = useSetting('avatarMonochrome');
+    if (monochromeSetting) {
+        avatarProps.monochrome = true;
+    }
     const showFlavorIcons = useSetting('showFlavorIcons');
     const showHarnessIconInSessionHeader = useSetting('showHarnessIconInSessionHeader');
     const { theme } = useUnistyles();

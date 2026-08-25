@@ -849,13 +849,10 @@ export function SessionViewLoaded({
     }, [sessionId, expImageUpload, selectedImages, clearImages, pendingCommunications]);
 
     const handleAbort = React.useCallback(() => {
-        // Mode picks live in synced metadata — clear them there, otherwise the
-        // next inbound metadata update resurrects them (#1492)
-        if (!isRig) {
-            sessionSetAgentModes(sessionId, { permissionMode: null, modelMode: null, effortLevel: null });
-        }
+        // Stop cancels only the active turn. Permission, model, and effort are
+        // session choices and must remain sticky for the next message.
         sessionAbort(sessionId);
-    }, [sessionId, isRig]);
+    }, [sessionId]);
 
     const handleFileViewerPress = React.useCallback(() => {
         router.push(`/session/${sessionId}/files`);

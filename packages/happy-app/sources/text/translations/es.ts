@@ -195,6 +195,25 @@ export const es: TranslationStructure = {
         showHarnessIconInSessionHeaderDescription: 'Mostrar el icono del harness en el encabezado de la sesión',
         showHarnessIconsInSessionList: 'Mostrar iconos de harness en la lista de sesiones',
         showHarnessIconsInSessionListDescription: 'Mostrar iconos de harness en los avatares de la lista de sesiones',
+        avatars: 'Avatares',
+        avatarsDescription: 'Elige cómo se ven los avatares de sesión generados',
+        avatarStyle: 'Estilo de avatar',
+        avatarStyleOptions: {
+            brutalist: 'Brutalista',
+            pixelated: 'Pixelado',
+            gradient: 'Degradado',
+        },
+        avatarMonochrome: 'Avatares en blanco y negro',
+        avatarMonochromeDescription: 'Mostrar los avatares sin color',
+    },
+
+    sessionsFilter: {
+        // Filter menu on the home sessions list header
+        title: 'Filtro',
+        groupingTitle: 'Agrupación',
+        flatList: 'Lista plana',
+        groupByProject: 'Agrupar por proyecto',
+        appearanceSettings: 'Configuración de apariencia',
     },
 
     settingsFeatures: {

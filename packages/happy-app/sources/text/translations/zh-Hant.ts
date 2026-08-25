@@ -195,6 +195,25 @@ export const zhHant: TranslationStructure = {
         showHarnessIconInSessionHeaderDescription: '在工作階段標題中顯示 harness 圖示',
         showHarnessIconsInSessionList: '在工作階段列表中顯示 harness 圖示',
         showHarnessIconsInSessionListDescription: '在工作階段列表的頭像上顯示 harness 圖示',
+        avatars: '頭像',
+        avatarsDescription: '選擇生成的工作階段頭像外觀',
+        avatarStyle: '頭像樣式',
+        avatarStyleOptions: {
+            brutalist: '粗獷主義',
+            pixelated: '像素',
+            gradient: '漸層',
+        },
+        avatarMonochrome: '黑白頭像',
+        avatarMonochromeDescription: '不帶顏色顯示頭像',
+    },
+
+    sessionsFilter: {
+        // Filter menu on the home sessions list header
+        title: '篩選',
+        groupingTitle: '分組',
+        flatList: '平鋪列表',
+        groupByProject: '按專案分組',
+        appearanceSettings: '外觀設定',
     },
 
     settingsFeatures: {

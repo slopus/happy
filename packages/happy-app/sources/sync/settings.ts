@@ -14,6 +14,11 @@ export const SUPPORTED_SCHEMA_VERSION = 2;
 export const SESSION_STATUS_BAR_DISPLAY_MODES = ['hidden', 'above', 'below'] as const;
 export type SessionStatusBarDisplay = typeof SESSION_STATUS_BAR_DISPLAY_MODES[number];
 
+// How the home session list lays out: one activity-sorted flat list, or the
+// project-card hierarchy grouped by machine and repository.
+export const SESSION_LIST_GROUPING_MODES = ['flat', 'project'] as const;
+export type SessionListGrouping = typeof SESSION_LIST_GROUPING_MODES[number];
+
 export const SettingsSchema = z.object({
     // Schema version for compatibility detection
     schemaVersion: z.number().default(SUPPORTED_SCHEMA_VERSION).describe('Settings schema version for compatibility checks'),
@@ -29,7 +34,11 @@ export const SettingsSchema = z.object({
     experiments: z.boolean().describe('Whether to enable experimental features'),
     alwaysShowContextSize: z.boolean().describe('Always show context size in agent input'),
     agentInputEnterToSend: z.boolean().describe('Whether pressing Enter submits/sends in the agent input (web)'),
-    avatarStyle: z.string().describe('Legacy avatar display style (no longer used)'),
+    // Kept as a free string for cross-version sync; normalized on read by
+    // normalizeAvatarStyle so unknown values fall back to brutalist.
+    avatarStyle: z.string().describe('Generated avatar style: brutalist, pixelated, or gradient'),
+    avatarMonochrome: z.boolean().describe('Render generated avatars in black and white'),
+    sessionListGrouping: z.enum(SESSION_LIST_GROUPING_MODES).describe('Home session list layout: flat activity list or grouped by project'),
     // Keep the legacy key for synced settings compatibility. It controls the
     // harness badges in the session list.
     showFlavorIcons: z.boolean().describe('Whether to show harness icons in the session list'),
@@ -115,6 +124,8 @@ export const settingsDefaults: Settings = {
     alwaysShowContextSize: false,
     agentInputEnterToSend: true,
     avatarStyle: 'brutalist',
+    avatarMonochrome: false,
+    sessionListGrouping: 'flat',
     showFlavorIcons: false,
     showHarnessIconInSessionHeader: true,
     userMessageBubbleColor: DEFAULT_USER_MESSAGE_BUBBLE_COLOR,

@@ -3,7 +3,7 @@ import { resolveMessageModeMeta } from './messageMeta';
 import { rigMetadataFixture } from './__testdata__/rigMetadata';
 
 describe('resolveMessageModeMeta', () => {
-    it('omits agent mode metadata when nothing was explicitly overridden', () => {
+    it('reasserts the displayed codex defaults after abort clears session overrides', () => {
         const meta = resolveMessageModeMeta({
             permissionMode: null,
             modelMode: null,
@@ -11,7 +11,11 @@ describe('resolveMessageModeMeta', () => {
             metadata: { flavor: 'codex' },
         } as any);
 
-        expect(meta).toEqual({});
+        expect(meta).toEqual({
+            permissionMode: 'yolo',
+            model: 'gpt-5.6-sol',
+            effort: 'medium',
+        });
     });
 
     // The composer resolves a saved `dontAsk` to Auto because the key is gone
@@ -39,6 +43,69 @@ describe('resolveMessageModeMeta', () => {
         } as any);
 
         expect(meta.permissionMode).toBe('acceptEdits');
+    });
+
+    // A session on an old CLI can still carry `auto` — saved before the gate
+    // existed, or applied from a global default — and CLIs before 1.2.1-beta.2
+    // reject the whole message envelope on it. The wire falls back to the
+    // flavor's code default, which every CLI parses.
+    it('downgrades a saved auto for a claude session on an old CLI', () => {
+        const meta = resolveMessageModeMeta({
+            permissionMode: 'auto',
+            modelMode: null,
+            effortLevel: null,
+            metadata: { flavor: 'claude', version: '1.2.1-beta.1' },
+        } as any);
+
+        expect(meta.permissionMode).toBe('bypassPermissions');
+    });
+
+    it('downgrades an auto default override for a codex session on an old CLI', () => {
+        const meta = resolveMessageModeMeta({
+            permissionMode: null,
+            modelMode: null,
+            effortLevel: null,
+            metadata: { flavor: 'codex', version: '1.2.0' },
+        } as any, {
+            agentDefaultOverrides: { codex: { permissionMode: 'auto' } },
+        } as any);
+
+        expect(meta.permissionMode).toBe('yolo');
+    });
+
+    it('downgrades an auto default override for a claude session on an old CLI', () => {
+        const meta = resolveMessageModeMeta({
+            permissionMode: null,
+            modelMode: null,
+            effortLevel: null,
+            metadata: { flavor: 'claude', version: '1.2.0' },
+        } as any, {
+            agentDefaultOverrides: { claude: { permissionMode: 'auto' } },
+        } as any);
+
+        expect(meta.permissionMode).toBe('bypassPermissions');
+    });
+
+    it('sends auto untouched when the session CLI is new enough', () => {
+        const meta = resolveMessageModeMeta({
+            permissionMode: 'auto',
+            modelMode: null,
+            effortLevel: null,
+            metadata: { flavor: 'claude', version: '1.2.1-beta.2' },
+        } as any);
+
+        expect(meta.permissionMode).toBe('auto');
+    });
+
+    it('sends auto when the session reports no CLI version at all', () => {
+        const meta = resolveMessageModeMeta({
+            permissionMode: 'auto',
+            modelMode: null,
+            effortLevel: null,
+            metadata: { flavor: 'claude' },
+        } as any);
+
+        expect(meta.permissionMode).toBe('auto');
     });
 
     it('sends explicit per-session overrides', () => {
@@ -110,7 +177,11 @@ describe('resolveMessageModeMeta', () => {
             metadata: { flavor: 'codex' },
         } as any);
 
-        expect(meta).toEqual({ model: 'my-workspace-model' });
+        expect(meta).toEqual({
+            permissionMode: 'yolo',
+            model: 'my-workspace-model',
+            effort: 'medium',
+        });
     });
 
     it('uses a custom codex model saved in agent settings', () => {
@@ -125,7 +196,34 @@ describe('resolveMessageModeMeta', () => {
             },
         } as any);
 
-        expect(meta).toEqual({ model: 'my-workspace-model' });
+        expect(meta).toEqual({
+            permissionMode: 'yolo',
+            model: 'my-workspace-model',
+            effort: 'medium',
+        });
+    });
+
+    it('fills unset codex fields from settings while preserving session picks', () => {
+        const meta = resolveMessageModeMeta({
+            permissionMode: 'read-only',
+            modelMode: null,
+            effortLevel: null,
+            metadata: { flavor: 'codex' },
+        } as any, {
+            agentDefaultOverrides: {
+                codex: {
+                    permissionMode: 'auto',
+                    modelMode: 'gpt-5.6-terra',
+                    effortLevel: 'high',
+                },
+            },
+        } as any);
+
+        expect(meta).toEqual({
+            permissionMode: 'read-only',
+            model: 'gpt-5.6-terra',
+            effort: 'high',
+        });
     });
 
     it('treats an explicit claude default model as a reset override', () => {
