@@ -199,9 +199,12 @@ const stylesheet = StyleSheet.create((theme) => ({
     },
     sessionTitle: {
         fontSize: 15,
-        fontWeight: '500',
         flex: 1,
-        ...Typography.default('semiBold'),
+    },
+    // Lighter title weight for read (non-unread) rows, so unread rows stand out
+    // by contrast.
+    sessionTitleWeightRegular: {
+        ...Typography.default('regular'),
     },
     sessionShortcutBadge: {
         flexShrink: 0,
@@ -212,6 +215,13 @@ const stylesheet = StyleSheet.create((theme) => ({
     },
     sessionTitleDisconnected: {
         color: theme.colors.textSecondary,
+    },
+    sessionTitleUnread: {
+        // Bold via the SemiBold face, not fontWeight: web sets
+        // `font-synthesis: none` and bundles no Bold(700) face, so a numeric
+        // fontWeight would render identically to the regular title.
+        ...Typography.default('semiBold'),
+        color: theme.colors.text,
     },
     sessionSubtitleRow: {
         flexDirection: 'row',
@@ -612,12 +622,11 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
     const styles = stylesheet;
     const navigateToSession = useNavigateToSession();
     const [actionsAnchor, setActionsAnchor] = React.useState<SessionActionsAnchor | null>(null);
-    const baseStatus = STATUS_CONFIG[session.state];
-    const needsUserAction = session.state === 'permission_required' || session.state === 'input_required';
-    // User action stays orange and pulsing even when the request also marked the session unread.
-    const status = session.hasUnread && !needsUserAction
-        ? { ...baseStatus, color: '#007AFF', dotColor: '#007AFF', isPulsing: false, isConnected: baseStatus.isConnected }
-        : baseStatus;
+    const status = STATUS_CONFIG[session.state];
+    // Unread is shown as a bold title only once the agent has stopped — never
+    // while it's still running (thinking), so a re-activated session doesn't
+    // read as unread mid-turn.
+    const showUnreadTitle = session.hasUnread && session.state !== 'thinking';
 
     const vibingMessage = React.useMemo(() => {
         return vibingMessages[Math.floor(Math.random() * vibingMessages.length)].toLowerCase() + '…';
@@ -627,13 +636,11 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
         ? t('status.inputRequired')
         : session.state === 'permission_required'
             ? t('status.permissionRequired')
-            : session.hasUnread
-                ? t('status.unread')
-                : session.state === 'thinking'
-                    ? vibingMessage
-                    : session.state === 'disconnected'
-                        ? t('status.lastSeen', { time: formatLastSeen(session.activeAt!, false) })
-                        : t('status.online');
+            : session.state === 'thinking'
+                ? vibingMessage
+                : session.state === 'disconnected'
+                    ? t('status.lastSeen', { time: formatLastSeen(session.activeAt!, false) })
+                    : t('status.online');
 
     const handlePress = React.useCallback(() => {
         navigateToSession(session.id);
@@ -690,7 +697,8 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
                 <View style={styles.sessionTitleRow}>
                     <Text style={[
                         styles.sessionTitle,
-                        status.isConnected ? styles.sessionTitleConnected : styles.sessionTitleDisconnected
+                        status.isConnected ? styles.sessionTitleConnected : styles.sessionTitleDisconnected,
+                        showUnreadTitle ? styles.sessionTitleUnread : styles.sessionTitleWeightRegular,
                     ]} numberOfLines={1}>
                         {session.name}
                     </Text>
