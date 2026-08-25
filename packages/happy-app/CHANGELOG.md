@@ -1,55 +1,66 @@
-# August 24 — Back to basics
+# August 25 - Your list, your way ![](images/mouse-on-the-phone.webp)
 
-Your sessions in one flat, colorful list — plus polish everywhere.
+Pick how your sessions look - flat or grouped by project. We heard you.
 
-- **One list** — every session in a single colorful column, active ones on top, project and worktree on each row. Archive is a tap away.
-- **Android** — model, effort, and permission pickers are readable again.
-- **Composer** — pick your agent and permission mode right where you type. Modes are one clear word, Auto first.
-- **Copy** — tap the icon next to an agent reply to copy it; long-press your own message.
-- **Gemini 3.6 Flash** — new in the Antigravity model picker.
+- **Your layout** - the new filter button on the sessions screen switches between Flat List and Group by Project. Flat stays the default, and your pick syncs across devices.
+- **Project view, rebuilt** - project avatar, branch with live +/- changes, and clean rows with a status dot.
+- **Avatar styles are back** - Brutalist, Pixelated, or Gradient, plus Black & White for any of them.
+- **Tools open by default** - edits and outputs show inline in chat. Prefer one-liners? Compact Tool Calls lives in Settings → Appearance.
+- **"Don't ask again" sticks** - granting a tool permission is now remembered and shows the right selection.
+- Thank you [@qqshDA](https://github.com/qqshDA) and [@theflysurfer](https://github.com/theflysurfer) for speaking up for layout choice - we are listening 📣
+
+# August 24 - Back to basics
+
+Your sessions in one flat, colorful list - plus polish everywhere.
+
+- **One list** - every session in a single colorful column, active ones on top, project and worktree on each row. Archive is a tap away.
+- **Android** - model, effort, and permission pickers are readable again.
+- **Composer** - pick your agent and permission mode right where you type. Modes are one clear word, Auto first.
+- **Copy** - tap the icon next to an agent reply to copy it; long-press your own message.
+- **Gemini 3.6 Flash** - new in the Antigravity model picker.
 - Thank you to the community who merged fixes and improvements for this update: [@chphch](https://github.com/chphch), [@abhisheksoni27](https://github.com/abhisheksoni27), [@charliezong18](https://github.com/charliezong18)
 
-# August 3 — Composer and tool calls
+# August 3 - Composer and tool calls
 
 Shorter tool output and a composer that behaves again.
 
-- Tool calls show as one-line rows you can open for details — turn it off with Compact Tool Calls in Settings → Appearance.
-- The mic is back in the send button — voice when the composer is empty, send once you've typed, stop while the agent works.
+- Tool calls show as one-line rows you can open for details - turn it off with Compact Tool Calls in Settings → Appearance.
+- The mic is back in the send button - voice when the composer is empty, send once you've typed, stop while the agent works.
 - Model and effort sit together next to the send button, and no longer get cut off when you switch.
 - Model, effort, and permission pickers are legible again on iOS 26.
 - The send button is visible again on the light theme.
 - Composer pickers stay tappable while the keyboard is open.
 
-# July 28 — Liquid glass, Opus 5
+# July 28 - Liquid glass, Opus 5
 
 A full mobile refresh and a new top model.
 
-- Liquid-glass mobile UI — glass surfaces across navigation, headers, modals, and session lists.
+- Liquid-glass mobile UI - glass surfaces across navigation, headers, modals, and session lists.
 - Opus 5 in the Claude model picker.
-- Side chats — fork a parallel conversation right next to your session.
-- Redesigned new-session screen — prompt, attachments, voice, model, effort, and permissions in one place. Drafts are preserved.
+- Side chats - fork a parallel conversation right next to your session.
+- Redesigned new-session screen - prompt, attachments, voice, model, effort, and permissions in one place. Drafts are preserved.
 - Pick your own sidebar panels, with keyboard shortcuts.
 - Session launch and resume are more reliable.
 
-# July 11 — GPT-5.6, Antigravity, bugfixes
+# July 11 - GPT-5.6, Antigravity, bugfixes
 
 New models, a new agent, and live subagent rendering.
 
 - GPT-5.6 Sol, Terra, and Luna in the Codex model picker.
-- New agent: Antigravity (agy) — Google's CLI (update the CLI first: `npm i -g happy`).
+- New agent: Antigravity (agy) - Google's CLI (update the CLI first: `npm i -g happy`).
 - Claude and Codex subagents render live in chat.
 - Codex yolo actually stops asking for permissions.
-- New status bar — branch, model, effort, context. Tap to switch model or effort.
+- New status bar - branch, model, effort, context. Tap to switch model or effort.
 - Your first machine appears immediately during onboarding.
 - Resuming phone-created sessions works reliably.
 - Message bubble colors in Settings → Appearance.
-- Model/permission/effort picks reset once — they now sync across devices.
+- Model/permission/effort picks reset once - they now sync across devices.
 
-# July 2 — Fable in Claude Code
+# July 2 - Fable in Claude Code
 
 Fable is available from the Claude Code model picker.
 
-# June 22 — Goals and cleaner commands
+# June 22 - Goals and cleaner commands
 
 Agent goals and slash commands are easier to follow, with steadier remote sessions.
 
@@ -58,26 +69,26 @@ Agent goals and slash commands are easier to follow, with steadier remote sessio
 - Codex skills now appear in the slash-command menu.
 - Remote sessions handle first messages and resumed transcripts more reliably.
 
-# May 15 — Cleaner, steadier chat
+# May 15 - Cleaner, steadier chat
 
 Less clutter in the conversation, fewer stuck states, smoother scrolling.
 
-- Slash commands render as a clean chip — no more raw command markup or duplicated text.
+- Slash commands render as a clean chip - no more raw command markup or duplicated text.
 - Skill runs no longer dump a wall of raw instructions into the chat.
 - Chats pick up their real title instead of staying stuck on "New chat".
-- The view stays put while the agent streams — no more scroll jumps when you've scrolled up to read.
+- The view stays put while the agent streams - no more scroll jumps when you've scrolled up to read.
 - "Permission required" prompts clear properly after a session is interrupted.
 - Resumed sessions no longer replay your whole history as duplicate messages.
 - Slash-command and file autocomplete shows more results and keeps the highlighted item in view.
 
-# May 13 — Faster long chats
+# May 13 - Faster long chats
 
 Long sessions open instantly. Messages load latest-first with older history streaming in on scroll.
 
-- Parallel decryption — no more freezing on sessions with thousands of messages.
-- Backward pagination — scroll up to load history on demand.
+- Parallel decryption - no more freezing on sessions with thousands of messages.
+- Backward pagination - scroll up to load history on demand.
 
-# May 7 — Session retention, new sidebar, code editor, session branching
+# May 7 - Session retention, new sidebar, code editor, session branching
 
 Desktop got a full refresh with a file browser, built-in editor, and zen mode. Sessions can now be branched or rewound.
 
@@ -86,7 +97,7 @@ Desktop got a full refresh with a file browser, built-in editor, and zen mode. S
 ## Features and fixes
 
 - Thinking effort selection bug fixed.
-- Smarter push notifications — suppressed when you're already in the app.
+- Smarter push notifications - suppressed when you're already in the app.
 - Unread dots persist on sessions until you open them.
 - Redesigned sidebar with file browser, code editor, and zen mode.
 - Fixed stale sessions refusing to load, blank screen on launch, dual cursors in remote mode, `claude --resume` not finding Happy sessions.
@@ -95,10 +106,10 @@ Desktop got a full refresh with a file browser, built-in editor, and zen mode. S
 
 Enable in Settings → Features:
 
-- File diffs sidebar — see git changes next to chat on desktop.
-- Session fork & rewind — branch off any session or roll back to any message.
+- File diffs sidebar - see git changes next to chat on desktop.
+- Session fork & rewind - branch off any session or roll back to any message.
 
-# April 26 — Voice fixes, diffs, scroll
+# April 26 - Voice fixes, diffs, scroll
 
 Voice actually works reliably now, plus better content rendering.
 
@@ -111,45 +122,45 @@ Voice actually works reliably now, plus better content rendering.
 - Scroll-to-bottom button in chat.
 - Delete machines from settings.
 
-# April 8 — Gemini models, voice onboarding, CLI fixes
+# April 8 - Gemini models, voice onboarding, CLI fixes
 
 New models, smoother onboarding, fewer CLI hangs.
 
 - Latest Gemini models in the picker.
-- Better voice onboarding — clearer first-run prompts.
+- Better voice onboarding - clearer first-run prompts.
 - CLI plan approval buttons actually show up now.
 - CLI background tasks and Codex turns no longer hang.
 
-# March 19 — New session screen, git worktrees, more agents
+# March 19 - New session screen, git worktrees, more agents
 
 Completely new way to start sessions, plus worktree support and more agents.
 
-- New session composer — pick machine, worktree, draft persists.
+- New session composer - pick machine, worktree, draft persists.
 - Git worktree management from the app. Auto-cleanup on delete.
 - Auto plan mode when your agent enters planning.
 - OpenClaw as a selectable agent.
 - Session quick actions, resume, delete from info screen.
 - "Bypass" renamed to "yolo".
 
-# December 22 — Agent updates, voice changes, tables
+# December 22 - Agent updates, voice changes, tables
 
 Agent config changes and voice pricing heads-up.
 
 - Gemini support coming via ACP.
-- Model config removed from app — use CLI defaults.
+- Model config removed from app - use CLI defaults.
 - Voice going subscription after 3 free trials.
 - Markdown tables render properly now.
 
-# September 12 — Codex, daemon mode, one-tap launch
+# September 12 - Codex, daemon mode, one-tap launch
 
 Sessions start instantly now. No more manual CLI startup.
 
 - Codex support for code completion and generation.
-- Daemon mode — sessions start instantly without manual CLI startup.
+- Daemon mode - sessions start instantly without manual CLI startup.
 - One-tap launch from mobile.
 - Connect Anthropic and GPT accounts.
 
-# August 29 — GitHub integration
+# August 29 - GitHub integration
 
 Your GitHub identity in Happy.
 
@@ -157,7 +168,7 @@ Your GitHub identity in Happy.
 - Avatar, name, and bio sync to the app.
 - Encrypted token storage.
 
-# June 26 — QR login, dark mode, voice
+# June 26 - QR login, dark mode, voice
 
 Link devices instantly, look good doing it.
 
@@ -167,7 +178,7 @@ Link devices instantly, look good doing it.
 - Modified file indicators in session list.
 - 15+ languages for voice.
 
-# May 12 — Hello world
+# May 12 - Hello world
 
 First release. Everything is new.
 

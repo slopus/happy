@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { Platform, View, Text } from 'react-native';
+import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StyleSheet } from 'react-native-unistyles';
 import { MarkdownView } from '@/components/markdown/MarkdownView';
@@ -9,6 +10,11 @@ import { MOBILE_GLASS_HEADER_HEIGHT } from '@/components/navigation/headerMetric
 import { getChangelogEntries, getLatestTitle, setLastViewedTitle } from '@/changelog';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
+
+// Title images must be bundled, so each path used in CHANGELOG.md needs an entry here
+const TITLE_IMAGES: Record<string, number> = {
+    'images/mouse-on-the-phone.webp': require('@/changelog/images/mouse-on-the-phone.webp'),
+};
 
 export default function ChangelogScreen() {
     const entries = getChangelogEntries();
@@ -40,8 +46,20 @@ export default function ChangelogScreen() {
             automaticallyAdjustsScrollIndicatorInsets={Platform.OS !== 'ios'}
             scrollIndicatorInsets={Platform.OS === 'ios' ? { top: indicatorTopInset } : undefined}
         >
-            {entries.map((entry) => (
-                <ItemGroup key={entry.title} title={entry.title} titleStyle={styles.titleText}>
+            {entries.map((entry) => {
+                const titleImage = entry.titleImage ? TITLE_IMAGES[entry.titleImage] : undefined;
+                const title = titleImage ? (
+                    <View style={styles.titleRow}>
+                        <Text style={styles.titleText}>{entry.title}</Text>
+                        <Image
+                            source={titleImage}
+                            style={{ width: 28, height: 28 }}
+                            contentFit="contain"
+                        />
+                    </View>
+                ) : entry.title;
+                return (
+                <ItemGroup key={entry.title} title={title} titleStyle={styles.titleText}>
                     <View style={styles.cardContent}>
                         {entry.summary ? (
                             <Text style={styles.summaryText}>
@@ -53,7 +71,8 @@ export default function ChangelogScreen() {
                         ) : null}
                     </View>
                 </ItemGroup>
-            ))}
+                );
+            })}
         </ItemList>
     );
 }
@@ -66,6 +85,11 @@ const styles = StyleSheet.create((theme) => ({
         color: theme.colors.text,
         textTransform: 'none',
         letterSpacing: 0,
+    },
+    titleRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
     },
     cardContent: {
         paddingHorizontal: 16,

@@ -7,6 +7,7 @@ interface ChangelogEntry {
     title: string;
     summary: string;
     markdown: string;
+    titleImage?: string;
 }
 
 interface ChangelogData {
@@ -32,8 +33,16 @@ function parseChangelog(): ChangelogData {
         const newlineIndex = section.indexOf('\n');
         if (newlineIndex === -1) continue;
 
-        const title = section.slice(0, newlineIndex).trim();
+        let title = section.slice(0, newlineIndex).trim();
         const body = section.slice(newlineIndex + 1).trim();
+
+        // A trailing ![alt](path) on the title line becomes the entry's title image
+        let titleImage: string | undefined;
+        const titleImageMatch = title.match(/!\[[^\]]*\]\(([^)]+)\)\s*$/);
+        if (titleImageMatch) {
+            titleImage = titleImageMatch[1];
+            title = title.slice(0, titleImageMatch.index).trim();
+        }
         if (!body) continue;
 
         // First non-empty line is the summary, rest is markdown
@@ -55,7 +64,7 @@ function parseChangelog(): ChangelogData {
         }
 
         const markdown = lines.slice(markdownStart).join('\n').trim();
-        entries.push({ title, summary, markdown });
+        entries.push({ title, summary, markdown, ...(titleImage ? { titleImage } : {}) });
     }
 
     const latestTitle = entries.length > 0 ? entries[0].title : '';
