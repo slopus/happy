@@ -33,15 +33,19 @@ const harnessIcons: Record<AvatarHarnessIcon, number> = {
 };
 
 // One badge geometry for every place an avatar carries a harness icon. The
-// glyph ratios keep clear air between glyph and circle edge — the Happy "H"
-// gets the same breathing room as the GPT mark, which needs the most.
+// glyph ratios keep clear air between glyph and circle edge. The Happy "H"
+// is a square mark, so its corners reach √2 further than its width — at
+// 0.30 in a 0.42 circle the diagonal touched the rim exactly; 0.26 leaves a
+// real margin.
 function harnessBadgeSizes(size: number, harness: AvatarHarnessIcon) {
     const circleSize = Math.round(size * 0.42);
-    const iconSize = harness === 'codex' || harness === 'rig'
-        ? Math.round(size * 0.3)
-        : harness === 'claude'
-            ? Math.round(size * 0.34)
-            : Math.round(size * 0.42);
+    const iconSize = harness === 'rig'
+        ? Math.round(size * 0.26)
+        : harness === 'codex'
+            ? Math.round(size * 0.3)
+            : harness === 'claude'
+                ? Math.round(size * 0.34)
+                : Math.round(size * 0.42);
     return { circleSize, iconSize };
 }
 
