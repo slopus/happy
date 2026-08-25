@@ -1,6 +1,6 @@
 # August 25 - Your list, your way
 
-Thank you [@qqshDA](https://github.com/qqshDA) and [@theflysurfer](https://github.com/theflysurfer) for speaking up for layout choice - we are listening ![](images/mouse-on-the-phone.webp) Issues? Crazy ideas? Find us on Twitter - [@bra1n_dump](https://x.com/bra1n_dump) or [@Ex3NDR](https://x.com/Ex3NDR). [GitHub issues](https://github.com/slopus/happy/issues) and [Discord](https://discord.gg/fX9WBAhyfD) work too.
+Thank you [@qqshDA](https://github.com/qqshDA) and [@theflysurfer](https://github.com/theflysurfer) for speaking up for layout choice - we are listening.
 
 - **Your layout** - filter button on the sessions screen: Flat List or Group by Project. Syncs across devices.
 - **Project view, rebuilt** - avatar, live +/- branch changes, status dots.
@@ -8,6 +8,8 @@ Thank you [@qqshDA](https://github.com/qqshDA) and [@theflysurfer](https://githu
 - **Tools open by default** - edits and outputs inline in chat. Prefer one-liners? Settings → Appearance.
 - **"Don't ask again" sticks** - permission grants are finally remembered.
 - **On a Mac?** Native desktop app - [Happy Desktop](https://github.com/slopus/happy-desktop).
+
+Issues? Crazy ideas? Find us on Twitter - [@bra1n_dump](https://x.com/bra1n_dump) or [@Ex3NDR](https://x.com/Ex3NDR). [GitHub issues](https://github.com/slopus/happy/issues) and [Discord](https://discord.gg/fX9WBAhyfD) work too.
 
 # August 24 - Back to basics
 

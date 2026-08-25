@@ -153,12 +153,15 @@ const styles = StyleSheet.create((theme) => ({
         paddingTop: 14,
         paddingBottom: 6,
     },
+    // 16 matches MarkdownView's gap between the bullet list and the paragraph
+    // after it (list marginBottom 8 + text marginTop 8), so the space above and
+    // below the list reads the same.
     summaryText: {
         ...Typography.default('regular'),
         fontSize: 16,
         lineHeight: 23,
         color: theme.colors.text,
-        marginBottom: 12,
+        marginBottom: 16,
     },
     summaryLink: {
         textDecorationLine: 'underline',

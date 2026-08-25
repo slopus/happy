@@ -131,11 +131,15 @@ export function getGeminiPermissionModes(translate: Translate): PermissionMode[]
 // do not all mean what the row says. `sonnet` still resolves to Sonnet 4.6 in
 // the CLI's alias table, and `opus-5` is not in that table at all (`claude
 // --model opus-5` errors on 2.1.199). Full IDs pass straight through to the
-// API, so they say exactly which model is meant.
+// API, so they say exactly which model is meant. The `[1m]` suffix is part of
+// the model ID Claude Code accepts (`claude --model 'claude-opus-5[1m]'`) and
+// selects the 1M-context variant; unknown bracket models are rejected, so the
+// suffix is honored rather than silently dropped (#1721).
 export function getClaudeModelModes(): ModelMode[] {
     return [
         { key: 'claude-fable-5', name: 'Fable 5', description: null },
         { key: 'claude-opus-5', name: 'Opus 5', description: null },
+        { key: 'claude-opus-5[1m]', name: 'Opus 5 [1M]', description: '1M context' },
         { key: 'claude-sonnet-5', name: 'Sonnet 5', description: null },
     ];
 }
