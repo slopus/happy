@@ -1,13 +1,13 @@
-# August 25 - Your list, your way ![](images/mouse-on-the-phone.webp)
+# August 25 - Your list, your way
 
-Pick how your sessions look - flat or grouped by project. We heard you.
+Thank you [@qqshDA](https://github.com/qqshDA) and [@theflysurfer](https://github.com/theflysurfer) for speaking up for layout choice - we are listening ![](images/mouse-on-the-phone.webp) Issues? Crazy ideas? Find us on Twitter - [@bra1n_dump](https://x.com/bra1n_dump) or [@Ex3NDR](https://x.com/Ex3NDR). [GitHub issues](https://github.com/slopus/happy/issues) and [Discord](https://discord.gg/fX9WBAhyfD) work too.
 
-- **Your layout** - the new filter button on the sessions screen switches between Flat List and Group by Project. Flat stays the default, and your pick syncs across devices.
-- **Project view, rebuilt** - project avatar, branch with live +/- changes, and clean rows with a status dot.
-- **Avatar styles are back** - Brutalist, Pixelated, or Gradient, plus Black & White for any of them.
-- **Tools open by default** - edits and outputs show inline in chat. Prefer one-liners? Compact Tool Calls lives in Settings → Appearance.
-- **"Don't ask again" sticks** - granting a tool permission is now remembered and shows the right selection.
-- Thank you [@qqshDA](https://github.com/qqshDA) and [@theflysurfer](https://github.com/theflysurfer) for speaking up for layout choice - we are listening 📣
+- **Your layout** - filter button on the sessions screen: Flat List or Group by Project. Syncs across devices.
+- **Project view, rebuilt** - avatar, live +/- branch changes, status dots.
+- **Avatar styles are back** - Brutalist, Pixelated, Gradient - plus Black & White.
+- **Tools open by default** - edits and outputs inline in chat. Prefer one-liners? Settings → Appearance.
+- **"Don't ask again" sticks** - permission grants are finally remembered.
+- **On a Mac?** Native desktop app - [Happy Desktop](https://github.com/slopus/happy-desktop).
 
 # August 24 - Back to basics
 
