@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { resolveMessageModeMeta } from './messageMeta';
+import { resolveMessageModeMeta, UnsupportedPermissionModeError } from './messageMeta';
 import { rigMetadataFixture } from './__testdata__/rigMetadata';
 
 describe('resolveMessageModeMeta', () => {
@@ -47,43 +47,54 @@ describe('resolveMessageModeMeta', () => {
 
     // A session on an old CLI can still carry `auto` — saved before the gate
     // existed, or applied from a global default — and CLIs before 1.2.1-beta.2
-    // reject the whole message envelope on it. The wire falls back to the
-    // flavor's code default, which every CLI parses.
-    it('downgrades a saved auto for a claude session on an old CLI', () => {
-        const meta = resolveMessageModeMeta({
+    // reject the whole message envelope on it. The resolver refuses loudly:
+    // substituting the code default would silently change permissions (for
+    // Claude it would escalate reviewed Auto into yolo).
+    it('refuses a saved auto for a claude session on an old CLI', () => {
+        expect(() => resolveMessageModeMeta({
             permissionMode: 'auto',
             modelMode: null,
             effortLevel: null,
             metadata: { flavor: 'claude', version: '1.2.1-beta.1' },
-        } as any);
-
-        expect(meta.permissionMode).toBe('bypassPermissions');
+        } as any)).toThrow(UnsupportedPermissionModeError);
     });
 
-    it('downgrades an auto default override for a codex session on an old CLI', () => {
-        const meta = resolveMessageModeMeta({
+    it('refuses an auto default override for a codex session on an old CLI', () => {
+        expect(() => resolveMessageModeMeta({
             permissionMode: null,
             modelMode: null,
             effortLevel: null,
             metadata: { flavor: 'codex', version: '1.2.0' },
         } as any, {
             agentDefaultOverrides: { codex: { permissionMode: 'auto' } },
-        } as any);
-
-        expect(meta.permissionMode).toBe('yolo');
+        } as any)).toThrow(UnsupportedPermissionModeError);
     });
 
-    it('downgrades an auto default override for a claude session on an old CLI', () => {
-        const meta = resolveMessageModeMeta({
+    it('refuses an auto default override for a claude session on an old CLI', () => {
+        expect(() => resolveMessageModeMeta({
             permissionMode: null,
             modelMode: null,
             effortLevel: null,
             metadata: { flavor: 'claude', version: '1.2.0' },
         } as any, {
             agentDefaultOverrides: { claude: { permissionMode: 'auto' } },
-        } as any);
+        } as any)).toThrow(UnsupportedPermissionModeError);
+    });
 
-        expect(meta.permissionMode).toBe('bypassPermissions');
+    it('names the mode and CLI version in the refusal', () => {
+        try {
+            resolveMessageModeMeta({
+                permissionMode: 'auto',
+                modelMode: null,
+                effortLevel: null,
+                metadata: { flavor: 'claude', version: '1.2.0' },
+            } as any);
+            expect.unreachable('should have thrown');
+        } catch (error) {
+            expect(error).toBeInstanceOf(UnsupportedPermissionModeError);
+            expect((error as Error).message).toContain("'auto'");
+            expect((error as Error).message).toContain('1.2.0');
+        }
     });
 
     it('sends auto untouched when the session CLI is new enough', () => {

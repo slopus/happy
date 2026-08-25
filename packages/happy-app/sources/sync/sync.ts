@@ -61,7 +61,7 @@ import { fetchFeed } from './apiFeed';
 import { FeedItem } from './feedTypes';
 import { UserProfile } from './friendTypes';
 import { resolveControlHandoffDirection } from './controlHandoff';
-import { resolveMessageModeMeta } from './messageMeta';
+import { resolveMessageModeMeta, UnsupportedPermissionModeError } from './messageMeta';
 import type { AttachmentPreview, UploadedAttachment } from './attachmentTypes';
 import { requestAttachmentUpload, uploadEncryptedBlob } from './apiAttachments';
 import { encryptBlob } from '@/encryption/blob';
@@ -646,7 +646,18 @@ class Sync {
             return;
         }
 
-        const modeMeta = resolveMessageModeMeta(session, storage.getState().settings);
+        let modeMeta: ReturnType<typeof resolveMessageModeMeta>;
+        try {
+            modeMeta = resolveMessageModeMeta(session, storage.getState().settings);
+        } catch (error) {
+            if (error instanceof UnsupportedPermissionModeError) {
+                // Refuse loudly instead of substituting a mode: swapping in a
+                // default would silently change what the agent may do.
+                Modal.alert(t('common.error'), error.message);
+                return;
+            }
+            throw error;
+        }
         const { displayText, source = 'chat', attachments, awaitDelivery = false } = options ?? {};
 
         const flavor = session.metadata?.flavor;

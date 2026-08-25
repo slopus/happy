@@ -238,25 +238,24 @@ const PERMISSION_MODE_SINCE_CLI_VERSION: Record<string, string> = {
 };
 
 /**
- * Maps a permission mode key about to be sent to a session onto one its CLI
- * can parse. Picker filtering alone does not cover this: an existing session
+ * True when the CLI at `cliVersion` parses this mode key. The bare-key twin of
+ * modeSupportedByCli, for callers that hold a saved key rather than a
+ * ModeOption. Picker filtering alone does not cover those: an existing session
  * or a saved agent default can carry a mode the session's older CLI never
- * offered. An unsupported key falls back to the flavor's code default, which
- * is untagged and parseable by every CLI.
+ * offered, and the send path must refuse it loudly rather than substitute a
+ * different mode behind the user's back.
  */
-export function resolveSupportedPermissionMode<T extends string | null | undefined>(
-    flavor: AgentFlavor,
-    modeKey: T,
+export function permissionModeSupportedByCli(
+    modeKey: string | null | undefined,
     cliVersion: string | null | undefined,
-): T | string {
+): boolean {
     if (!modeKey) {
-        return modeKey;
+        return true;
     }
-    const sinceCliVersion = PERMISSION_MODE_SINCE_CLI_VERSION[modeKey];
-    if (modeSupportedByCli({ sinceCliVersion }, cliVersion)) {
-        return modeKey;
-    }
-    return getCodeAgentDefaults(flavor).permissionMode;
+    return modeSupportedByCli(
+        { sinceCliVersion: PERMISSION_MODE_SINCE_CLI_VERSION[modeKey] },
+        cliVersion,
+    );
 }
 
 /**

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
     filterPermissionModesForCli,
     modeSupportedByCli,
-    resolveSupportedPermissionMode,
+    permissionModeSupportedByCli,
     getAgyModelModes,
     getAgyPermissionModes,
     getAvailableModels,
@@ -329,16 +329,17 @@ describe('modelModeOptions', () => {
         expect(modeSupportedByCli({}, 'not-a-version')).toBe(true);
     });
 
-    // The outbound-message side of the same gate: a saved key an old CLI
-    // cannot parse falls back to the flavor's code default.
-    it('resolves a saved mode onto one the session CLI can parse', () => {
-        expect(resolveSupportedPermissionMode('claude', 'auto', '1.2.1-beta.1')).toBe('bypassPermissions');
-        expect(resolveSupportedPermissionMode('codex', 'auto', '1.2.0')).toBe('yolo');
-        expect(resolveSupportedPermissionMode('claude', 'auto', '1.2.1-beta.2')).toBe('auto');
-        expect(resolveSupportedPermissionMode('claude', 'auto', undefined)).toBe('auto');
-        expect(resolveSupportedPermissionMode('claude', 'plan', '1.2.0')).toBe('plan');
-        expect(resolveSupportedPermissionMode('claude', undefined, '1.2.0')).toBeUndefined();
-        expect(resolveSupportedPermissionMode('claude', null, '1.2.0')).toBeNull();
+    // The outbound-message side of the same gate: the send path asks this
+    // before serializing a saved key, and refuses loudly on false rather than
+    // substituting a different mode.
+    it('answers whether the session CLI can parse a saved mode key', () => {
+        expect(permissionModeSupportedByCli('auto', '1.2.1-beta.1')).toBe(false);
+        expect(permissionModeSupportedByCli('auto', '1.2.0')).toBe(false);
+        expect(permissionModeSupportedByCli('auto', '1.2.1-beta.2')).toBe(true);
+        expect(permissionModeSupportedByCli('auto', undefined)).toBe(true);
+        expect(permissionModeSupportedByCli('plan', '1.2.0')).toBe(true);
+        expect(permissionModeSupportedByCli(undefined, '1.2.0')).toBe(true);
+        expect(permissionModeSupportedByCli(null, '1.2.0')).toBe(true);
     });
 
     it('hides auto from session pickers when the session CLI is too old', () => {

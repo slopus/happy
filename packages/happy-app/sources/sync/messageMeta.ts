@@ -1,7 +1,7 @@
 import type { Session } from './storageTypes';
 import type { Settings } from './settings';
 import { getAgentDefaultOverride, resolveAgentDefaultConfig, retirePermissionMode } from './agentDefaults';
-import { resolveSupportedPermissionMode } from '@/components/modelModeOptions';
+import { permissionModeSupportedByCli } from '@/components/modelModeOptions';
 import type { PermissionModeKey } from '@/components/PermissionModeSelector';
 import {
     getRigCurrentModel,
@@ -18,6 +18,29 @@ export type MessageModeMeta = {
     modelProviderId?: string;
     effort?: string | null;
 };
+
+/**
+ * The session or a saved default carries a permission mode the session's CLI
+ * cannot parse. Thrown instead of substituting another mode: swapping in the
+ * code default would silently change what the agent is allowed to do — for
+ * Claude it would escalate a user who chose reviewed Auto into yolo. Callers
+ * surface the message and do not send.
+ */
+export class UnsupportedPermissionModeError extends Error {
+    readonly mode: string;
+    readonly cliVersion: string;
+
+    constructor(mode: string, cliVersion: string) {
+        super(
+            `This session's Happy CLI (v${cliVersion}) does not support the '${mode}' permission mode. `
+            + 'Pick a different mode for this session, or update the Happy CLI on that machine.',
+        );
+        this.name = 'UnsupportedPermissionModeError';
+        this.mode = mode;
+        this.cliVersion = cliVersion;
+        Object.setPrototypeOf(this, UnsupportedPermissionModeError.prototype);
+    }
+}
 
 export function resolveMessageModeMeta(
     session: Pick<Session, 'permissionMode' | 'modelMode' | 'metadata' | 'effortLevel'>,
@@ -58,10 +81,15 @@ export function resolveMessageModeMeta(
     // The happy-cli version running this session. A mode key saved before the
     // session's CLI learned it (an old session's `auto`, or a global default of
     // `auto` applied to an old CLI) must not reach the wire: the old CLI's
-    // schema rejects it and drops the whole message.
+    // schema rejects it and drops the whole message. It is refused here, not
+    // mapped: substituting a mode would silently change permissions.
     const cliVersion = session.metadata?.version;
-    const supported = (mode: PermissionModeKey | undefined) =>
-        resolveSupportedPermissionMode(flavor, mode, cliVersion);
+    const supported = (mode: PermissionModeKey | undefined) => {
+        if (mode !== undefined && !permissionModeSupportedByCli(mode, cliVersion)) {
+            throw new UnsupportedPermissionModeError(mode, cliVersion ?? 'unknown');
+        }
+        return mode;
+    };
 
     // Codex app-server turns always run with a concrete permission, model, and
     // effort. Send the same effective defaults the composer displays instead
