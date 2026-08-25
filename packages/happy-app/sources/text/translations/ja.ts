@@ -355,7 +355,12 @@ export const ja: TranslationStructure = {
         failedToConnectToServer: 'サーバーへの接続に失敗しました',
         currentlyUsingCustomServer: '現在カスタムサーバーを使用中',
         customServerUrlLabel: 'カスタムサーバーURL',
-        advancedFeatureFooter: "これは高度な機能です。何をしているか理解している場合のみサーバーを変更してください。サーバー変更後は再度ログインが必要です。"
+        advancedFeatureFooter: "これは高度な機能です。何をしているか理解している場合のみサーバーを変更してください。サーバー変更後は再度ログインが必要です。",
+        services: 'サービス',
+        useCustomServerForVoice: '音声にカスタムサーバーを使用',
+        customServerVoiceEnabled: '音声認証情報と使用量はカスタムサーバーを使用します',
+        customServerVoiceDisabled: '音声は Happy Cloud と Happy サブスクリプションを使用します',
+        customServerVoiceFooter: 'オフの場合、音声の開始時に Happy Cloud と ElevenLabs へ接続します。カスタムサーバーで音声が設定済みの場合のみオンにしてください。',
     },
 
     sessionInfo: {

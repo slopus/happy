@@ -368,7 +368,12 @@ export const en = {
         failedToConnectToServer: 'Failed to connect to server',
         currentlyUsingCustomServer: 'Currently using custom server',
         customServerUrlLabel: 'Custom Server URL',
-        advancedFeatureFooter: "This is an advanced feature. Only change the server if you know what you're doing. You will need to log out and log in again after changing servers."
+        advancedFeatureFooter: "This is an advanced feature. Only change the server if you know what you're doing. You will need to log out and log in again after changing servers.",
+        services: 'Services',
+        useCustomServerForVoice: 'Use Custom Server for Voice',
+        customServerVoiceEnabled: 'Voice credentials and usage use your custom server',
+        customServerVoiceDisabled: 'Voice uses Happy Cloud and your Happy subscription',
+        customServerVoiceFooter: 'When off, starting voice contacts Happy Cloud and ElevenLabs. Turn this on only if your custom server is configured for voice.',
     },
 
     sessionInfo: {

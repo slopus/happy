@@ -354,7 +354,12 @@ export const ca: TranslationStructure = {
         failedToConnectToServer: 'Ha fallat la connexió amb el servidor',
         currentlyUsingCustomServer: 'Actualment utilitzant un servidor personalitzat',
         customServerUrlLabel: 'URL del servidor personalitzat',
-        advancedFeatureFooter: 'Aquesta és una funció avançada. Només canvia el servidor si saps el que fas. Hauràs de tancar la sessió i tornar-la a iniciar després de canviar els servidors.'
+        advancedFeatureFooter: 'Aquesta és una funció avançada. Només canvia el servidor si saps el que fas. Hauràs de tancar la sessió i tornar-la a iniciar després de canviar els servidors.',
+        services: 'Serveis',
+        useCustomServerForVoice: 'Utilitza el servidor personalitzat per a la veu',
+        customServerVoiceEnabled: 'Les credencials i l’ús de veu utilitzen el teu servidor personalitzat',
+        customServerVoiceDisabled: 'La veu utilitza Happy Cloud i la teva subscripció de Happy',
+        customServerVoiceFooter: 'Quan està desactivat, iniciar la veu contacta amb Happy Cloud i ElevenLabs. Activa-ho només si el teu servidor personalitzat està configurat per a veu.',
     },
 
     sessionInfo: {

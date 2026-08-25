@@ -354,7 +354,12 @@ export const zhHant: TranslationStructure = {
         failedToConnectToServer: '連線伺服器失敗',
         currentlyUsingCustomServer: '目前使用自訂伺服器',
         customServerUrlLabel: '自訂伺服器 URL',
-        advancedFeatureFooter: "這是一個進階功能。只有在您知道自己在做什麼時才更改伺服器。更改伺服器後您需要重新登入。"
+        advancedFeatureFooter: "這是一個進階功能。只有在您知道自己在做什麼時才更改伺服器。更改伺服器後您需要重新登入。",
+        services: '服務',
+        useCustomServerForVoice: '使用自訂伺服器處理語音',
+        customServerVoiceEnabled: '語音憑證和用量由您的自訂伺服器處理',
+        customServerVoiceDisabled: '語音使用 Happy Cloud 和您的 Happy 訂閱',
+        customServerVoiceFooter: '關閉時，啟動語音會連線至 Happy Cloud 和 ElevenLabs。僅當您的自訂伺服器已設定語音功能時才啟用。',
     },
 
     sessionInfo: {

@@ -353,7 +353,12 @@ export const pt: TranslationStructure = {
         failedToConnectToServer: 'Falha ao conectar com o servidor',
         currentlyUsingCustomServer: 'Atualmente usando servidor personalizado',
         customServerUrlLabel: 'URL do servidor personalizado',
-        advancedFeatureFooter: 'Este é um recurso avançado. Altere o servidor apenas se souber o que está fazendo. Você precisará sair e entrar novamente após alterar servidores.'
+        advancedFeatureFooter: 'Este é um recurso avançado. Altere o servidor apenas se souber o que está fazendo. Você precisará sair e entrar novamente após alterar servidores.',
+        services: 'Serviços',
+        useCustomServerForVoice: 'Usar servidor personalizado para voz',
+        customServerVoiceEnabled: 'As credenciais e o uso de voz utilizam seu servidor personalizado',
+        customServerVoiceDisabled: 'A voz utiliza a Happy Cloud e sua assinatura Happy',
+        customServerVoiceFooter: 'Quando desativado, iniciar a voz contata a Happy Cloud e a ElevenLabs. Ative somente se seu servidor personalizado estiver configurado para voz.',
     },
 
     sessionInfo: {

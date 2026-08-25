@@ -5,17 +5,30 @@ import {
     type VoiceUsageResponse,
 } from '@slopus/happy-wire';
 import { AuthCredentials } from '@/auth/tokenStorage';
-import { getServerUrl } from './serverConfig';
+import { getServerUrl, getVoiceServerUrl } from './serverConfig';
 import { getHappyClientId } from './apiSocket';
 import { config } from '@/config';
+import { authGetToken } from '@/auth/authGetToken';
+import { decodeBase64 } from '@/encryption/base64';
 
 export type { VoiceConversationResponse, VoiceUsageResponse };
+
+async function getVoiceEndpoint(credentials: AuthCredentials): Promise<{ serverUrl: string; token: string }> {
+    const serverUrl = getVoiceServerUrl();
+    if (serverUrl === getServerUrl()) {
+        return { serverUrl, token: credentials.token };
+    }
+
+    const secret = decodeBase64(credentials.secret, 'base64url');
+    const token = await authGetToken(secret, serverUrl);
+    return { serverUrl, token };
+}
 
 export async function fetchVoiceCredentials(
     credentials: AuthCredentials,
     sessionId: string
 ): Promise<VoiceConversationResponse> {
-    const serverUrl = getServerUrl();
+    const { serverUrl, token } = await getVoiceEndpoint(credentials);
 
     const agentId = config.elevenLabsAgentId;
 
@@ -26,7 +39,7 @@ export async function fetchVoiceCredentials(
     const response = await fetch(`${serverUrl}/v1/voice/conversations`, {
         method: 'POST',
         headers: {
-            'Authorization': `Bearer ${credentials.token}`,
+            'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json',
             'X-Happy-Client': getHappyClientId(),
         },
@@ -45,12 +58,12 @@ export async function fetchVoiceCredentials(
 export async function fetchVoiceUsage(
     credentials: AuthCredentials
 ): Promise<VoiceUsageResponse> {
-    const serverUrl = getServerUrl();
+    const { serverUrl, token } = await getVoiceEndpoint(credentials);
 
     const response = await fetch(`${serverUrl}/v1/voice/usage`, {
         method: 'GET',
         headers: {
-            'Authorization': `Bearer ${credentials.token}`,
+            'Authorization': `Bearer ${token}`,
             'X-Happy-Client': getHappyClientId(),
         },
     });
