@@ -158,6 +158,88 @@ async function clickVisibleCenter(page: Page, locator: Locator): Promise<void> {
     await page.mouse.click(box!.x + box!.width / 2, box!.y + box!.height / 2);
 }
 
+async function dragSessionToList(
+    page: Page,
+    source: Locator,
+    target: Locator,
+    onTargetHover?: () => Promise<void>,
+): Promise<void> {
+    await source.scrollIntoViewIfNeeded();
+    await target.scrollIntoViewIfNeeded();
+    await expect(source).toHaveAttribute('draggable', 'true');
+    const sourceBox = await source.boundingBox();
+    const targetBox = await target.boundingBox();
+    expect(sourceBox).not.toBeNull();
+    expect(targetBox).not.toBeNull();
+    const restingBackground = await target.evaluate((element) => window.getComputedStyle(element).backgroundColor);
+    const targetY = targetBox!.y + targetBox!.height / 2;
+
+    await page.mouse.move(sourceBox!.x + sourceBox!.width / 2, sourceBox!.y + sourceBox!.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(sourceBox!.x + sourceBox!.width / 2 + 8, sourceBox!.y + sourceBox!.height / 2, { steps: 4 });
+    await page.mouse.move(targetBox!.x + targetBox!.width / 2, targetBox!.y + targetBox!.height / 2, { steps: 12 });
+    await page.mouse.move(targetBox!.x + targetBox!.width / 2 + 1, targetBox!.y + targetBox!.height / 2, { steps: 2 });
+    await expect.poll(() => target.evaluate((element) => window.getComputedStyle(element).backgroundColor)).not.toBe(restingBackground);
+    if (onTargetHover) await onTargetHover();
+    await page.mouse.move(targetBox!.x + targetBox!.width + 80, targetY, { steps: 6 });
+    await expect.poll(() => target.evaluate((element) => window.getComputedStyle(element).backgroundColor)).toBe(restingBackground);
+    await page.mouse.move(targetBox!.x + targetBox!.width / 2, targetY, { steps: 6 });
+    await page.mouse.move(targetBox!.x + targetBox!.width / 2 + 1, targetY, { steps: 2 });
+    await expect.poll(() => target.evaluate((element) => window.getComputedStyle(element).backgroundColor)).not.toBe(restingBackground);
+    await pauseForReview(page, 900);
+    await page.mouse.up();
+}
+
+async function dragListToList(
+    page: Page,
+    source: Locator,
+    target: Locator,
+    position: 'before' | 'after',
+    onTargetHover?: () => Promise<void>,
+): Promise<void> {
+    await source.scrollIntoViewIfNeeded();
+    await target.scrollIntoViewIfNeeded();
+    await expect(source).toHaveAttribute('draggable', 'true');
+    const sourceBox = await source.boundingBox();
+    const targetBox = await target.boundingBox();
+    expect(sourceBox).not.toBeNull();
+    expect(targetBox).not.toBeNull();
+    const restingBackground = await target.evaluate((element) => window.getComputedStyle(element).backgroundColor);
+    const targetY = targetBox!.y + targetBox!.height * (position === 'before' ? 0.25 : 0.75);
+
+    await page.mouse.move(sourceBox!.x + sourceBox!.width / 2, sourceBox!.y + sourceBox!.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(sourceBox!.x + sourceBox!.width / 2 + 8, sourceBox!.y + sourceBox!.height / 2, { steps: 4 });
+    await page.mouse.move(targetBox!.x + targetBox!.width / 2, targetY, { steps: 12 });
+    await page.mouse.move(targetBox!.x + targetBox!.width / 2 + 1, targetY, { steps: 2 });
+    await expect.poll(() => target.evaluate((element) => window.getComputedStyle(element).backgroundColor)).not.toBe(restingBackground);
+    if (onTargetHover) await onTargetHover();
+    await page.mouse.move(targetBox!.x + targetBox!.width + 80, targetY, { steps: 6 });
+    await expect.poll(() => target.evaluate((element) => window.getComputedStyle(element).backgroundColor)).toBe(restingBackground);
+    await page.mouse.move(targetBox!.x + targetBox!.width / 2, targetY, { steps: 6 });
+    await page.mouse.move(targetBox!.x + targetBox!.width / 2 + 1, targetY, { steps: 2 });
+    await expect.poll(() => target.evaluate((element) => window.getComputedStyle(element).backgroundColor)).not.toBe(restingBackground);
+    await pauseForReview(page, 900);
+    await page.mouse.up();
+}
+
+async function expectListBefore(first: Locator, second: Locator): Promise<void> {
+    await expect.poll(async () => {
+        const [firstBox, secondBox] = await Promise.all([first.boundingBox(), second.boundingBox()]);
+        return !!firstBox && !!secondBox && firstBox.y < secondBox.y;
+    }).toBe(true);
+}
+
+async function expectPersistedListBefore(page: Page, firstId: string, secondId: string): Promise<void> {
+    await expect.poll(() => page.evaluate(({ firstId: expectedFirstId, secondId: expectedSecondId }) => {
+        const stored = window.localStorage.getItem('mmkv.default\\local-settings');
+        if (!stored) return false;
+        const parsed = JSON.parse(stored) as { sidebarOrganization?: { lists?: Array<{ id: string }> } };
+        const ids = parsed.sidebarOrganization?.lists?.map((list) => list.id) ?? [];
+        return ids.indexOf(expectedFirstId) >= 0 && ids.indexOf(expectedFirstId) < ids.indexOf(expectedSecondId);
+    }, { firstId, secondId })).toBe(true);
+}
+
 async function createList(
     page: Page,
     options: { name: string; kind: 'workspace' | 'agent'; machineName?: string; directoryName?: string },
@@ -233,7 +315,13 @@ test('[SIDEBAR-LISTS-TAGS] desktop Lists and Tags organize sessions without repl
         });
         createdSessionIds.push(betaId);
 
+        await page.emulateMedia({ colorScheme: 'dark' });
         await page.setViewportSize({ width: 1440, height: 900 });
+        await page.goto(authenticatedRoute('/settings/appearance'));
+        await page.getByText('Gingham', { exact: true }).click();
+        await expect.poll(() => page.locator('body').evaluate((element) => (
+            window.getComputedStyle(element).backgroundColor
+        ))).toBe('rgb(18, 24, 33)');
         await page.goto(authenticatedRoute(`/session/${alphaId}`));
         page.setDefaultTimeout(15_000);
         expect(await page.evaluate(() => window.devicePixelRatio)).toBe(1);
@@ -303,6 +391,54 @@ test('[SIDEBAR-LISTS-TAGS] desktop Lists and Tags organize sessions without repl
         await page.screenshot({ path: testInfo.outputPath('01-lists-organized.png'), fullPage: true });
         await captureEvidenceFrame(page, testInfo, '07-alpha-organized');
 
+        const remoteDropTarget = page.getByTestId(`sidebar-drop-list-${remoteId}`);
+        const advisorDropTarget = page.getByTestId(`sidebar-drop-list-${advisorId}`);
+        const unassignedDropTarget = page.getByTestId('sidebar-drop-list-unassigned');
+        await expect(remoteDropTarget.getByText('1', { exact: true })).toBeVisible();
+        await expect(advisorDropTarget.getByText('0', { exact: true })).toBeVisible();
+        await expect(unassignedDropTarget.getByText('1', { exact: true })).toBeVisible();
+
+        await dragListToList(page, remoteDropTarget, advisorDropTarget, 'after', async () => {
+            await page.screenshot({ path: testInfo.outputPath('04-list-drag-target-highlight.png'), fullPage: true });
+        });
+        await expectListBefore(advisorDropTarget, remoteDropTarget);
+        await expectPersistedListBefore(page, advisorId, remoteId);
+        await captureEvidenceFrame(page, testInfo, '08-lists-reordered');
+
+        await page.reload({ timeout: 180_000 });
+        await expect(page.getByTestId('desktop-sidebar-tab-lists')).toHaveAttribute('aria-selected', 'true', { timeout: 120_000 });
+        await expectListBefore(advisorDropTarget, remoteDropTarget);
+        await expect(page).toHaveURL(alphaUrl);
+        await expect(page.getByTestId(`organized-session-tags-${alphaId}`)).toContainText('#product');
+        await captureEvidenceFrame(page, testInfo, '09-list-order-reloaded');
+
+        await dragListToList(page, remoteDropTarget, advisorDropTarget, 'before');
+        await expectListBefore(remoteDropTarget, advisorDropTarget);
+        await dragListToList(page, remoteDropTarget, advisorDropTarget, 'after');
+        await expectListBefore(advisorDropTarget, remoteDropTarget);
+
+        await dragSessionToList(
+            page,
+            page.getByTestId(`sidebar-drag-session-${alphaId}`),
+            advisorDropTarget,
+            async () => {
+                await page.screenshot({ path: testInfo.outputPath('05-session-drag-target-highlight.png'), fullPage: true });
+            },
+        );
+        await expect(remoteDropTarget.getByText('0', { exact: true })).toBeVisible();
+        await expect(advisorDropTarget.getByText('1', { exact: true })).toBeVisible();
+        await expect(page.getByTestId(`organized-session-tags-${alphaId}`)).toContainText('#product');
+        await expect(page).toHaveURL(alphaUrl);
+        await captureEvidenceFrame(page, testInfo, '08-alpha-dragged-to-advisor');
+
+        await dragSessionToList(page, page.getByTestId(`sidebar-drag-session-${alphaId}`), unassignedDropTarget);
+        await expect(advisorDropTarget.getByText('0', { exact: true })).toBeVisible();
+        await expect(unassignedDropTarget.getByText('2', { exact: true })).toBeVisible();
+        await expect(page.getByTestId(`organized-session-tags-${alphaId}`)).toContainText('#product');
+        await expect(page).toHaveURL(alphaUrl);
+        await page.screenshot({ path: testInfo.outputPath('06-dragged-to-unassigned.png'), fullPage: true });
+        await captureEvidenceFrame(page, testInfo, '09-alpha-dragged-to-unassigned');
+
         await page.getByTestId(`organized-session-${betaId}`).click();
         await expect(page).toHaveURL((url) => url.pathname === `/session/${betaId}`);
         await expect(page.locator('[data-testid="session-header-title"]:visible')).toHaveText('E2E Beta conversation');
@@ -338,6 +474,8 @@ test('[SIDEBAR-LISTS-TAGS] desktop Lists and Tags organize sessions without repl
         await expect(page.getByText('Remote Happy renamed', { exact: true })).toBeVisible();
         await expect(page.getByText('Advisor', { exact: true })).toHaveCount(0);
         await expect(page.getByRole('button', { name: /^product 2$/ })).toBeVisible({ timeout: 120_000 });
+        await expect(page.getByTestId('sidebar-drop-list-unassigned').getByText('2', { exact: true })).toBeVisible();
+        await expect(page.getByTestId(`organized-session-tags-${alphaId}`)).toContainText('#product');
         await page.getByTestId(`sidebar-edit-list-${remoteId}`).click();
         await expect(page.getByText('Edit list', { exact: true })).toBeVisible();
         await expect(page.getByRole('radio', { name: /Sidebar E2E Mac/ })).toHaveAttribute('aria-checked', 'true');

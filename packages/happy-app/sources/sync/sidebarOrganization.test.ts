@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
     buildSidebarSessionIndex,
+    moveSidebarSessionToList,
     normalizeSidebarTagName,
     normalizeSidebarOrganization,
     organizeSession,
     organizeSessionWithCreatedTags,
+    reorderSidebarList,
     removeSidebarList,
     removeSidebarTag,
     type SidebarOrganization,
@@ -38,6 +40,45 @@ describe('sidebar organization model', () => {
             listId: 'workspace',
             tagIds: ['product', 'research'],
         });
+    });
+
+    it('moves a session between Lists without changing its Tags', () => {
+        const assigned = organizeSession(organization, 'session-1', {
+            listId: 'workspace',
+            tagIds: ['product', 'research'],
+        });
+
+        expect(moveSidebarSessionToList(assigned, 'session-1', 'advisor').sessions['session-1']).toEqual({
+            listId: 'advisor',
+            tagIds: ['product', 'research'],
+        });
+    });
+
+    it('moves a session back to Unassigned without changing its Tags', () => {
+        const assigned = organizeSession(organization, 'session-1', {
+            listId: 'workspace',
+            tagIds: ['product'],
+        });
+
+        expect(moveSidebarSessionToList(assigned, 'session-1', null).sessions['session-1']).toEqual({
+            listId: null,
+            tagIds: ['product'],
+        });
+    });
+
+    it('reorders Lists before or after a drop target without changing assignments', () => {
+        const assigned = organizeSession(organization, 'session-1', {
+            listId: 'workspace',
+            tagIds: ['product'],
+        });
+
+        const movedBefore = reorderSidebarList(assigned, 'advisor', 'workspace', 'before');
+        expect(movedBefore.lists.map((list) => list.id)).toEqual(['advisor', 'workspace']);
+        expect(movedBefore.sessions['session-1']).toEqual({ listId: 'workspace', tagIds: ['product'] });
+
+        const movedAfter = reorderSidebarList(movedBefore, 'advisor', 'workspace', 'after');
+        expect(movedAfter.lists.map((list) => list.id)).toEqual(['workspace', 'advisor']);
+        expect(movedAfter.sessions['session-1']).toEqual({ listId: 'workspace', tagIds: ['product'] });
     });
 
     it('creates and assigns draft Tags atomically while reusing case-insensitive matches', () => {

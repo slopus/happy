@@ -32,7 +32,9 @@ import {
     buildSidebarSessionIndex,
     createSidebarOrganizationId,
     normalizeSidebarTagName,
+    moveSidebarSessionToList,
     organizeSessionWithCreatedTags,
+    reorderSidebarList,
     removeSidebarList,
     SIDEBAR_LIST_COLORS,
     SIDEBAR_LIST_MAX_COUNT,
@@ -151,6 +153,7 @@ const stylesheet = StyleSheet.create((theme) => ({
         minWidth: 0,
     },
     listRowPressed: { backgroundColor: theme.colors.surfacePressed },
+    listDropTarget: { backgroundColor: theme.colors.surfaceSelected },
     listGlyph: { alignItems: 'center', borderRadius: 7, height: 30, justifyContent: 'center', width: 30 },
     listCopy: { flex: 1, minWidth: 0 },
     listName: { color: theme.colors.text, fontSize: 14, ...Typography.default('semiBold') },
@@ -171,6 +174,7 @@ const stylesheet = StyleSheet.create((theme) => ({
     },
     sessionRowSelected: { backgroundColor: theme.colors.surfaceSelected },
     sessionRowPressed: { backgroundColor: theme.colors.surfacePressed },
+    sessionRowDragging: { opacity: 0.55 },
     sessionMain: { flex: 1, minWidth: 0, paddingVertical: 6 },
     sessionTitle: { color: theme.colors.text, fontSize: 13, ...Typography.default() },
     sessionMeta: { color: theme.colors.textSecondary, fontSize: 11, marginTop: 2, ...Typography.default() },
@@ -372,6 +376,68 @@ type SidebarVirtualRow =
     | { key: string; type: 'filtered-header'; tagName: string }
     | { key: string; type: 'tags' };
 
+type SidebarWebDragEvent = {
+    clientY?: number;
+    currentTarget?: EventTarget | null;
+    dataTransfer?: DataTransfer | null;
+    preventDefault?: () => void;
+    relatedTarget?: EventTarget | null;
+};
+
+const SIDEBAR_SESSION_DRAG_TYPE = 'application/x-paws-sidebar-session';
+const SIDEBAR_LIST_DRAG_TYPE = 'application/x-paws-sidebar-list';
+
+function WebDropTarget({ active, children, draggableId, onDragEnd, onDragLeave, onDragOver, onDragStart, onDrop, style, targetId, testID }: {
+    active: boolean;
+    children: React.ReactNode;
+    draggableId?: string;
+    onDragEnd?: () => void;
+    onDragLeave?: (targetId: string, event: SidebarWebDragEvent) => void;
+    onDragOver: (targetId: string, event: SidebarWebDragEvent) => void;
+    onDragStart?: (sourceId: string, event: SidebarWebDragEvent) => void;
+    onDrop: (targetId: string, event: SidebarWebDragEvent) => void;
+    style?: React.ComponentProps<typeof View>['style'];
+    targetId: string;
+    testID: string;
+}) {
+    const ref = React.useRef<View>(null);
+
+    React.useEffect(() => {
+        if (Platform.OS !== 'web') return;
+        const element = ref.current as unknown as HTMLElement | null;
+        if (!element) return;
+        const handleDragStart = (event: DragEvent) => {
+            if (draggableId) onDragStart?.(draggableId, event);
+        };
+        const handleDragLeave = (event: DragEvent) => {
+            const nextTarget = event.relatedTarget;
+            const ownerWindow = element.ownerDocument.defaultView;
+            if (nextTarget && ownerWindow && nextTarget instanceof ownerWindow.Node && element.contains(nextTarget)) return;
+            onDragLeave?.(targetId, event);
+        };
+        const handleDragOver = (event: DragEvent) => onDragOver(targetId, event);
+        const handleDrop = (event: DragEvent) => onDrop(targetId, event);
+        if (draggableId) {
+            element.draggable = true;
+            element.addEventListener('dragstart', handleDragStart);
+            if (onDragEnd) element.addEventListener('dragend', onDragEnd);
+        }
+        element.addEventListener('dragleave', handleDragLeave);
+        element.addEventListener('dragover', handleDragOver);
+        element.addEventListener('drop', handleDrop);
+        return () => {
+            element.draggable = false;
+            element.removeEventListener('dragstart', handleDragStart);
+            if (onDragEnd) element.removeEventListener('dragend', onDragEnd);
+            element.removeEventListener('dragleave', handleDragLeave);
+            element.removeEventListener('dragover', handleDragOver);
+            element.removeEventListener('drop', handleDrop);
+        };
+    }, [draggableId, onDragEnd, onDragLeave, onDragOver, onDragStart, onDrop, targetId]);
+
+    return <View ref={ref} style={[style, active && stylesheet.listDropTarget]} testID={testID}>{children}</View>;
+}
+
 function SidebarListsView() {
     const styles = stylesheet;
     const { theme } = useUnistyles();
@@ -387,6 +453,9 @@ function SidebarListsView() {
     const [editorVisible, setEditorVisible] = React.useState(false);
     const [editingList, setEditingList] = React.useState<SidebarList | null>(null);
     const [organizingSession, setOrganizingSession] = React.useState<SessionRowData | null>(null);
+    const [draggedSessionId, setDraggedSessionId] = React.useState<string | null>(null);
+    const [draggedListId, setDraggedListId] = React.useState<string | null>(null);
+    const [dragOverListId, setDragOverListId] = React.useState<string | null>(null);
     const selectedSessionId = pathname.startsWith('/session/') ? pathname.split('/')[2] : null;
     const sessions = React.useMemo(() => {
         if (!data) return [];
@@ -467,6 +536,57 @@ function SidebarListsView() {
     const closeEditor = React.useCallback(() => setEditorVisible(false), []);
     const openSession = React.useCallback((session: SessionRowData) => navigateToSession(session.id), [navigateToSession]);
     const openOrganizer = React.useCallback((session: SessionRowData) => setOrganizingSession(session), []);
+    const startSessionDrag = React.useCallback((sessionId: string, event: SidebarWebDragEvent) => {
+        if (Platform.OS !== 'web') return;
+        event.dataTransfer?.setData(SIDEBAR_SESSION_DRAG_TYPE, sessionId);
+        if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
+        setDraggedSessionId(sessionId);
+    }, []);
+    const startListDrag = React.useCallback((listId: string, event: SidebarWebDragEvent) => {
+        if (Platform.OS !== 'web') return;
+        event.dataTransfer?.setData(SIDEBAR_LIST_DRAG_TYPE, listId);
+        if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
+        setDraggedListId(listId);
+    }, []);
+    const finishSidebarDrag = React.useCallback(() => {
+        setDraggedSessionId(null);
+        setDraggedListId(null);
+        setDragOverListId(null);
+    }, []);
+    const dragOverList = React.useCallback((listId: string, event: SidebarWebDragEvent) => {
+        if (Platform.OS !== 'web') return;
+        if (draggedListId && (listId === 'unassigned' || listId === draggedListId)) return;
+        if (!draggedListId && !draggedSessionId) return;
+        event.preventDefault?.();
+        if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+        setDragOverListId(listId);
+    }, [draggedListId, draggedSessionId]);
+    const leaveList = React.useCallback((listId: string) => {
+        setDragOverListId((current) => current === listId ? null : current);
+    }, []);
+    const dropOntoList = React.useCallback((listId: string, event: SidebarWebDragEvent) => {
+        if (Platform.OS !== 'web') return;
+        event.preventDefault?.();
+        const sourceListId = event.dataTransfer?.getData(SIDEBAR_LIST_DRAG_TYPE) || draggedListId;
+        if (sourceListId) {
+            if (listId !== 'unassigned' && listId !== sourceListId) {
+                const element = event.currentTarget as HTMLElement | null;
+                const bounds = element?.getBoundingClientRect();
+                const position = bounds && typeof event.clientY === 'number' && event.clientY >= bounds.top + bounds.height / 2
+                    ? 'after'
+                    : 'before';
+                updateOrganization((current) => reorderSidebarList(current, sourceListId, listId, position));
+            }
+            finishSidebarDrag();
+            return;
+        }
+        const sessionId = event.dataTransfer?.getData(SIDEBAR_SESSION_DRAG_TYPE) || draggedSessionId;
+        if (!sessionId) return;
+        const nextListId = listId === 'unassigned' ? null : listId;
+        updateOrganization((current) => moveSidebarSessionToList(current, sessionId, nextListId));
+        setExpanded((current) => new Set(current).add(listId));
+        finishSidebarDrag();
+    }, [draggedListId, draggedSessionId, finishSidebarDrag, updateOrganization]);
     const deleteList = React.useCallback(async (list: SidebarList) => {
         const confirmed = await Modal.confirm(
             t('sidebarLists.deleteList'),
@@ -547,7 +667,18 @@ function SidebarListsView() {
                 ? `${t('sidebarLists.agentList')} · ${t('newSession.askMode')}`
                 : [list.machineId, list.path].filter(Boolean).join(' · ') || t('sidebarLists.workspaceList');
             return (
-                <View style={styles.listBlock}>
+                <WebDropTarget
+                    active={dragOverListId === list.id}
+                    draggableId={list.id}
+                    onDragEnd={finishSidebarDrag}
+                    onDragLeave={leaveList}
+                    onDragOver={dragOverList}
+                    onDragStart={startListDrag}
+                    onDrop={dropOntoList}
+                    style={[styles.listBlock, draggedListId === list.id && styles.sessionRowDragging]}
+                    targetId={list.id}
+                    testID={`sidebar-drop-list-${list.id}`}
+                >
                     <View style={styles.listRow}>
                         <Pressable accessibilityRole="button" accessibilityState={{ expanded: isExpanded }} onPress={() => toggleExpanded(list.id)} style={({ pressed }) => [styles.listRowMain, pressed && styles.listRowPressed]} testID={`sidebar-list-${list.id}`}>
                             <Feather color={theme.colors.textSecondary} name={isExpanded ? 'chevron-down' : 'chevron-right'} size={15} />
@@ -567,18 +698,33 @@ function SidebarListsView() {
                             <Feather color={theme.colors.deleteAction} name="trash-2" size={14} />
                         </Pressable>
                     </View>
-                </View>
+                </WebDropTarget>
             );
         }
         if (item.type === 'unassigned') {
             const isExpanded = expanded.has('unassigned');
             return (
-                <Pressable accessibilityRole="button" accessibilityState={{ expanded: isExpanded }} onPress={() => toggleExpanded('unassigned')} style={({ pressed }) => [styles.listRow, pressed && styles.listRowPressed]} testID="sidebar-list-unassigned">
-                    <Feather color={theme.colors.textSecondary} name={isExpanded ? 'chevron-down' : 'chevron-right'} size={15} />
-                    <View style={[styles.listGlyph, { backgroundColor: theme.colors.surfaceHigh }]}><Feather color={theme.colors.textSecondary} name="inbox" size={16} /></View>
-                    <View style={styles.listCopy}><Text style={styles.listName}>{t('sidebarLists.unassigned')}</Text><Text style={styles.listMeta}>{t('sidebarLists.unassignedDescription')}</Text></View>
-                    <Text style={styles.count}>{sessionIndex.unassigned.length}</Text>
-                </Pressable>
+                <WebDropTarget
+                    active={dragOverListId === 'unassigned'}
+                    onDragLeave={leaveList}
+                    onDragOver={dragOverList}
+                    onDrop={dropOntoList}
+                    targetId="unassigned"
+                    testID="sidebar-drop-list-unassigned"
+                >
+                    <Pressable
+                        accessibilityRole="button"
+                        accessibilityState={{ expanded: isExpanded }}
+                        onPress={() => toggleExpanded('unassigned')}
+                        style={({ pressed }) => [styles.listRow, pressed && styles.listRowPressed]}
+                        testID="sidebar-list-unassigned"
+                    >
+                        <Feather color={theme.colors.textSecondary} name={isExpanded ? 'chevron-down' : 'chevron-right'} size={15} />
+                        <View style={[styles.listGlyph, { backgroundColor: theme.colors.surfaceHigh }]}><Feather color={theme.colors.textSecondary} name="inbox" size={16} /></View>
+                        <View style={styles.listCopy}><Text style={styles.listName}>{t('sidebarLists.unassigned')}</Text><Text style={styles.listMeta}>{t('sidebarLists.unassignedDescription')}</Text></View>
+                        <Text style={styles.count}>{sessionIndex.unassigned.length}</Text>
+                    </Pressable>
+                </WebDropTarget>
             );
         }
         if (item.type === 'new-session') {
@@ -593,7 +739,7 @@ function SidebarListsView() {
             const sessionTags = (organization.sessions[item.session.id]?.tagIds ?? [])
                 .map((tagId) => organization.tags.find((tag) => tag.id === tagId))
                 .filter((tag) => !!tag);
-            return <OrganizedSessionRow nested={item.nested} onOpen={openSession} onOrganize={openOrganizer} selected={selectedSessionId === item.session.id} session={item.session} tags={sessionTags} />;
+            return <OrganizedSessionRow dragging={draggedSessionId === item.session.id} nested={item.nested} onDragEnd={finishSidebarDrag} onDragStart={startSessionDrag} onOpen={openSession} onOrganize={openOrganizer} selected={selectedSessionId === item.session.id} session={item.session} tags={sessionTags} />;
         }
         if (item.type === 'empty') {
             return <Text style={[styles.empty, item.nested && styles.sessionRowNested]}>{item.label}</Text>;
@@ -613,7 +759,7 @@ function SidebarListsView() {
                 {organization.tags.length === 0 ? <Text style={styles.empty}>{t('sidebarLists.noTags')}</Text> : null}
             </View>
         );
-    }, [addTag, createSession, deleteList, expanded, listColors, openCreate, openEdit, openOrganizer, openSession, organization.lists.length, organization.sessions, organization.tags, selectedSessionId, selectedTagId, sessionIndex, styles, theme.colors]);
+    }, [addTag, createSession, deleteList, dragOverList, dragOverListId, draggedListId, draggedSessionId, dropOntoList, expanded, finishSidebarDrag, leaveList, listColors, openCreate, openEdit, openOrganizer, openSession, organization.lists.length, organization.sessions, organization.tags, selectedSessionId, selectedTagId, sessionIndex, startListDrag, startSessionDrag, styles, theme.colors]);
 
     return (
         <View style={styles.container} testID="sidebar-lists-view">
@@ -657,11 +803,32 @@ function SidebarListsView() {
     );
 }
 
-const OrganizedSessionRow = React.memo(function OrganizedSessionRow({ nested, onOpen, onOrganize, selected, session, tags }: { nested: boolean; onOpen: (session: SessionRowData) => void; onOrganize: (session: SessionRowData) => void; selected: boolean; session: SessionRowData; tags: SidebarTag[] }) {
+const OrganizedSessionRow = React.memo(function OrganizedSessionRow({ dragging, nested, onDragEnd, onDragStart, onOpen, onOrganize, selected, session, tags }: { dragging: boolean; nested: boolean; onDragEnd: () => void; onDragStart: (sessionId: string, event: SidebarWebDragEvent) => void; onOpen: (session: SessionRowData) => void; onOrganize: (session: SessionRowData) => void; selected: boolean; session: SessionRowData; tags: SidebarTag[] }) {
     const styles = stylesheet;
     const { theme } = useUnistyles();
+    const ref = React.useRef<View>(null);
+
+    React.useEffect(() => {
+        if (Platform.OS !== 'web') return;
+        const element = ref.current as unknown as HTMLElement | null;
+        if (!element) return;
+        element.draggable = true;
+        const handleDragStart = (event: DragEvent) => onDragStart(session.id, event);
+        element.addEventListener('dragstart', handleDragStart);
+        element.addEventListener('dragend', onDragEnd);
+        return () => {
+            element.draggable = false;
+            element.removeEventListener('dragstart', handleDragStart);
+            element.removeEventListener('dragend', onDragEnd);
+        };
+    }, [onDragEnd, onDragStart, session.id]);
+
     return (
-        <View style={[styles.sessionRow, nested && styles.sessionRowNested, selected && styles.sessionRowSelected]}>
+        <View
+            ref={ref}
+            style={[styles.sessionRow, nested && styles.sessionRowNested, selected && styles.sessionRowSelected, dragging && styles.sessionRowDragging]}
+            testID={`sidebar-drag-session-${session.id}`}
+        >
             <Pressable aria-selected={selected} accessibilityRole="button" accessibilityState={{ selected }} onPress={() => onOpen(session)} style={({ pressed }) => [styles.sessionMain, pressed && styles.sessionRowPressed]} testID={`organized-session-${session.id}`}>
                 <Text numberOfLines={1} style={styles.sessionTitle}>{session.name}</Text>
                 <Text numberOfLines={1} style={styles.sessionMeta}>{session.subtitle}</Text>

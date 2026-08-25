@@ -313,4 +313,5 @@ describe('DesktopSidebarSessionsNavigation', () => {
         });
         act(() => renderer.unmount());
     });
+
 });

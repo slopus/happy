@@ -125,6 +125,33 @@ export function organizeSession(
     });
 }
 
+export function moveSidebarSessionToList(
+    value: SidebarOrganization,
+    sessionId: string,
+    listId: string | null,
+): SidebarOrganization {
+    const assignment = value.sessions[sessionId] ?? { listId: null, tagIds: [] };
+    if (assignment.listId === listId) return value;
+    return organizeSession(value, sessionId, { ...assignment, listId });
+}
+
+export function reorderSidebarList(
+    value: SidebarOrganization,
+    sourceListId: string,
+    targetListId: string,
+    position: 'before' | 'after',
+): SidebarOrganization {
+    if (sourceListId === targetListId) return value;
+    const source = value.lists.find((list) => list.id === sourceListId);
+    if (!source || !value.lists.some((list) => list.id === targetListId)) return value;
+
+    const lists = value.lists.filter((list) => list.id !== sourceListId);
+    const targetIndex = lists.findIndex((list) => list.id === targetListId);
+    lists.splice(targetIndex + (position === 'after' ? 1 : 0), 0, source);
+    if (lists.every((list, index) => list === value.lists[index])) return value;
+    return { ...value, lists };
+}
+
 export function organizeSessionWithCreatedTags(
     value: SidebarOrganization,
     sessionId: string,
