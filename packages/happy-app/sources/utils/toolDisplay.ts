@@ -102,8 +102,14 @@ export function isTerminalToolName(name: string): boolean {
     return TERMINAL_TOOL_NAMES.has(name);
 }
 
-export function shouldRenderToolCardHeader(toolName: string, platformOS: string): boolean {
-    return !(platformOS === 'web' && toolName === 'CodexPatch');
+/**
+ * Patch tools draw a header per changed file, naming the file and its stats.
+ * A card header above that would only repeat the same name, so it is dropped.
+ */
+const SELF_HEADING_TOOL_NAMES = new Set(['CodexPatch', 'GeminiPatch']);
+
+export function shouldRenderToolCardHeader(toolName: string, _platformOS: string): boolean {
+    return !SELF_HEADING_TOOL_NAMES.has(toolName);
 }
 
 /**

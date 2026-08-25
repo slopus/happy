@@ -54,11 +54,14 @@ describe('terminal tool display helpers', () => {
         ))).toBe('rm tmp.txt');
     });
 
-    it('hides Codex patch card headers on web only', () => {
-        expect(shouldRenderToolCardHeader('CodexPatch', 'web')).toBe(false);
-        expect(shouldRenderToolCardHeader('CodexPatch', 'ios')).toBe(true);
-        expect(shouldRenderToolCardHeader('CodexPatch', 'android')).toBe(true);
+    it('hides card headers for tools that already name each changed file', () => {
+        for (const platform of ['web', 'ios', 'android']) {
+            expect(shouldRenderToolCardHeader('CodexPatch', platform)).toBe(false);
+            expect(shouldRenderToolCardHeader('GeminiPatch', platform)).toBe(false);
+        }
+        // Everything else still needs a header to say what it was.
         expect(shouldRenderToolCardHeader('CodexBash', 'web')).toBe(true);
+        expect(shouldRenderToolCardHeader('CodexDiff', 'ios')).toBe(true);
     });
 
     it('classifies tools for compact transcript rows', () => {
