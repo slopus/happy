@@ -30,6 +30,13 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
  * - New translation keys must be added to ALL language files
  */
 export const en: TranslationStructure = {
+    voiceStatusBar: {
+        tapToEnd: 'tap to end',
+        connecting: 'Connecting…',
+        error: 'Connection error',
+        active: 'Voice assistant active',
+    },
+
     tabs: {
         // Tab navigation labels
         inbox: 'Inbox',

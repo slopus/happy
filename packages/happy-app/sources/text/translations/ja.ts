@@ -18,6 +18,13 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 }
 
 export const ja: TranslationStructure = {
+    voiceStatusBar: {
+        tapToEnd: 'タップして終了',
+        connecting: '接続中…',
+        error: '接続エラー',
+        active: '音声アシスタント作動中',
+    },
+
     tabs: {
         // Tab navigation labels
         inbox: '受信トレイ',

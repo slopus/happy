@@ -17,6 +17,13 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 }
 
 export const zhHans: TranslationStructure = {
+    voiceStatusBar: {
+        tapToEnd: '点按结束',
+        connecting: '连接中…',
+        error: '连接错误',
+        active: '语音助手运行中',
+    },
+
     tabs: {
         // Tab navigation labels
         inbox: '收件箱',

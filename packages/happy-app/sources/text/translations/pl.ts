@@ -26,6 +26,13 @@ function plural({ count, one, few, many }: { count: number; one: string; few: st
  * Must match the exact structure of the English translations
  */
 export const pl: TranslationStructure = {
+    voiceStatusBar: {
+        tapToEnd: 'dotknij, aby zakończyć',
+        connecting: 'Łączenie…',
+        error: 'Błąd połączenia',
+        active: 'Asystent głosowy aktywny',
+    },
+
     tabs: {
         // Tab navigation labels
         inbox: 'Skrzynka',

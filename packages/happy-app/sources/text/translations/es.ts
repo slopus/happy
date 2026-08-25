@@ -15,6 +15,13 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
  * Must match the exact structure of the English translations
  */
 export const es: TranslationStructure = {
+    voiceStatusBar: {
+        tapToEnd: 'toca para finalizar',
+        connecting: 'Conectando…',
+        error: 'Error de conexión',
+        active: 'Asistente de voz activo',
+    },
+
     tabs: {
         // Tab navigation labels
         inbox: 'Bandeja',

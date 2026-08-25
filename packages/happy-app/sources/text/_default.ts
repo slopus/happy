@@ -15,6 +15,13 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 }
 
 export const en = {
+    voiceStatusBar: {
+        tapToEnd: 'tap to end',
+        connecting: 'Connecting…',
+        error: 'Connection error',
+        active: 'Voice assistant active',
+    },
+
     tabs: {
         // Tab navigation labels
         inbox: 'Inbox',
