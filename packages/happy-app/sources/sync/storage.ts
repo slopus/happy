@@ -157,6 +157,13 @@ export interface SessionRowData {
     // Private project art is already materialized as a local/data URI by sync.
     projectAvatarUri?: string | null;
     projectAvatarThumbhash?: string | null;
+    // Fork lineage: the Happy session this one was forked from (null if not a
+    // fork), and its nesting depth within the group it renders in (0 = root /
+    // not nested). forkDepth is stamped at render time — after the archive and
+    // search filters have run — so a child is never indented under a parent the
+    // filter removed.
+    parentSessionId: string | null;
+    forkDepth: number;
 }
 
 function buildSessionRowData(
@@ -218,6 +225,8 @@ function buildSessionRowData(
         workspaceName: session.metadata?.workspace?.name ?? null,
         projectAvatarUri: projectAvatar?.uri || null,
         projectAvatarThumbhash: projectAvatar?.thumbhash || null,
+        parentSessionId: session.metadata?.parentSessionId ?? null,
+        forkDepth: 0,
     };
 }
 

@@ -1,4 +1,5 @@
 import type { SessionListViewItem, SessionRowData } from '@/sync/storage';
+import { orderSessionRowsByForkLineage } from '@/utils/forkLineage';
 
 type SessionProjectListItem = Extract<SessionListViewItem, { type: 'project' }>;
 
@@ -78,6 +79,8 @@ export function buildActiveSessionDisplayGroups(
     byMachine.forEach((machineGroup) => {
         machineGroup.projects.forEach((projectGroup) => {
             projectGroup.sessions.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+            // Nest forked children under their parent within this project group.
+            projectGroup.sessions = orderSessionRowsByForkLineage(projectGroup.sessions);
         });
     });
 
@@ -142,7 +145,8 @@ export function getSessionShortcutIdsInDisplayOrder(
     projectGroups.forEach((machineGroup) => {
         machineGroup.projects.forEach((item) => {
             item.project.workspaces.forEach((workspace) => {
-                workspace.sessions.forEach((session) => sessionIds.push(session.id));
+                orderSessionRowsByForkLineage(workspace.sessions)
+                    .forEach((session) => sessionIds.push(session.id));
             });
         });
     });
