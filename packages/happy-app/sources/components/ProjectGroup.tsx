@@ -17,10 +17,10 @@ import { getRepoPath, isWorktreePath } from '@/utils/worktreePaths';
 
 // Tall enough to span the name and branch lines together.
 const HEADER_AVATAR_SIZE = 30;
-// The same target and glyph the composer's attachment "+" uses, so the two
-// read as the same control.
-const ADD_BUTTON_SIZE = 42;
-const ADD_ICON_SIZE = 26;
+// Roughly 70% of the composer attachment "+": same feel, less presence in a
+// list header. hitSlop keeps the touch target comfortable.
+const ADD_BUTTON_SIZE = 30;
+const ADD_ICON_SIZE = 18;
 
 interface ProjectGroupProps {
     project: ProjectGroupData;
@@ -137,12 +137,12 @@ const WorkspaceSection = React.memo(({ project, workspace, selectedSessionId }: 
                 </View>
                 <Pressable
                     onPress={handleNewSession}
-                    hitSlop={8}
+                    hitSlop={12}
                     accessibilityRole="button"
                     accessibilityLabel={t('sidebar.newSession')}
                     style={({ pressed }) => [styles.addButton, pressed && styles.addButtonPressed]}
                 >
-                    <Ionicons name="add" size={ADD_ICON_SIZE} color={theme.colors.textSecondary} />
+                    <Ionicons name="add" size={ADD_ICON_SIZE} color={theme.colors.text} />
                 </Pressable>
             </View>
 
@@ -170,13 +170,15 @@ const stylesheet = StyleSheet.create((theme) => ({
     },
     // Pulled toward the screen edges: the "+" sits so its center shares an x
     // with the status dot inside the card rows below (see
-    // trailingIndicatorSlot in ActiveSessionsGroupCompact).
+    // trailingIndicatorSlot in ActiveSessionsGroupCompact). The right inset
+    // compensates for the button being narrower than it once was.
     header: {
         flexDirection: 'row',
         alignItems: 'center',
         paddingTop: 12,
         paddingBottom: Platform.select({ ios: 6, default: 8 }),
-        paddingHorizontal: Platform.select({ ios: 20, default: 16 }),
+        paddingLeft: Platform.select({ ios: 20, default: 16 }),
+        paddingRight: Platform.select({ ios: 26, default: 22 }),
         gap: 8,
     },
     headerText: {
@@ -224,9 +226,13 @@ const stylesheet = StyleSheet.create((theme) => ({
         fontWeight: '600',
         color: theme.colors.gitRemovedText,
     },
+    // Filled like the composer's resting send button so it reads as a control,
+    // not an ornament.
     addButton: {
         width: ADD_BUTTON_SIZE,
         height: ADD_BUTTON_SIZE,
+        borderRadius: ADD_BUTTON_SIZE / 2,
+        backgroundColor: theme.colors.surfaceHighest,
         alignItems: 'center',
         justifyContent: 'center',
     },

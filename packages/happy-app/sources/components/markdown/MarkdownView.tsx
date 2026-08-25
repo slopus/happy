@@ -242,16 +242,16 @@ function RenderOptionsBlock(props: {
             {props.items.map((item, index) => {
                 if (props.onOptionPress) {
                     return (
-                        <Pressable 
-                            key={index} 
+                        <Pressable
+                            key={index}
                             style={({ pressed }) => [
                                 style.optionPressable,
-                                style.optionItem,
-                                pressed && style.optionItemPressed
+                                style.optionButton,
+                                pressed && style.optionButtonPressed
                             ]}
                             onPress={() => props.onOptionPress?.({ title: item })}
                         >
-                            <Text selectable={props.selectable} style={style.optionText}>{item}</Text>
+                            <Text selectable={props.selectable} style={style.optionButtonText}>{item}</Text>
                         </Pressable>
                     );
                 } else {
@@ -616,6 +616,24 @@ const style = StyleSheet.create((theme) => ({
         opacity: Platform.select({ web: 0.7, default: 1 }),
     },
     optionText: {
+        ...Typography.default(),
+        fontSize: 16,
+        lineHeight: 24,
+        color: theme.colors.text,
+    },
+    // Tapping an option sends it as your message. Full-width rows in the
+    // composer send button's resting grey — flat, no border.
+    optionButton: {
+        backgroundColor: theme.colors.surfaceHighest,
+        borderRadius: 12,
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        overflow: 'hidden',
+    },
+    optionButtonPressed: {
+        opacity: 0.7,
+    },
+    optionButtonText: {
         ...Typography.default(),
         fontSize: 16,
         lineHeight: 24,
