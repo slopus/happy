@@ -18,8 +18,6 @@ import { isUsingCustomServer } from '@/sync/serverConfig';
 import { trackPaywallButtonClicked, trackWhatsNewClicked } from '@/track';
 import { Modal } from '@/modal';
 import { useMultiClick } from '@/hooks/useMultiClick';
-import { useAllMachines } from '@/sync/storage';
-import { isMachineOnline } from '@/utils/machineUtils';
 import { useUnistyles } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
 import { useHappyAction } from '@/hooks/useHappyAction';
@@ -96,18 +94,6 @@ export const SettingsView = React.memo(function SettingsView({
     const isPro = __DEV__ || useEntitlement('pro');
     const experiments = useSetting('experiments');
     const isCustomServer = isUsingCustomServer();
-    const [showOfflineMachines, setShowOfflineMachines] = React.useState(false);
-    const allMachinesWithOffline = useAllMachines({ includeOffline: true });
-    const offlineMachineCount = React.useMemo(
-        () => allMachinesWithOffline.filter(m => !isMachineOnline(m)).length,
-        [allMachinesWithOffline]
-    );
-    const visibleMachines = React.useMemo(
-        () => showOfflineMachines
-            ? allMachinesWithOffline
-            : allMachinesWithOffline.filter(isMachineOnline),
-        [allMachinesWithOffline, showOfflineMachines]
-    );
     const profile = useProfile();
     const displayName = getDisplayName(profile);
     const avatarUrl = getAvatarUrl(profile);
@@ -331,60 +317,6 @@ export const SettingsView = React.memo(function SettingsView({
                 />
             </ItemGroup> */}
 
-            {/* Machines (sorted: online first, then last seen desc) */}
-            {allMachinesWithOffline.length > 0 && (
-                <ItemGroup title={t('settings.machines')}>
-                    {visibleMachines.map((machine) => {
-                        const isOnline = isMachineOnline(machine);
-                        const host = machine.metadata?.host || 'Unknown';
-                        const displayName = machine.metadata?.displayName;
-                        const platform = machine.metadata?.platform || '';
-
-                        // Use displayName if available, otherwise use host
-                        const title = displayName || host;
-
-                        // Build subtitle: show hostname if different from title, plus platform and status
-                        let subtitle = '';
-                        if (displayName && displayName !== host) {
-                            subtitle = host;
-                        }
-                        if (platform) {
-                            subtitle = subtitle ? `${subtitle} • ${platform}` : platform;
-                        }
-                        subtitle = subtitle ? `${subtitle} • ${isOnline ? t('status.online') : t('status.offline')}` : (isOnline ? t('status.online') : t('status.offline'));
-
-                        return (
-                            <Item
-                                key={machine.id}
-                                title={title}
-                                subtitle={subtitle}
-                                icon={
-                                    <Ionicons
-                                        name="desktop-outline"
-                                        size={29}
-                                        color={isOnline ? theme.colors.status.connected : theme.colors.status.disconnected}
-                                    />
-                                }
-                                onPress={() => router.push(`/machine/${machine.id}`)}
-                            />
-                        );
-                    })}
-                    {offlineMachineCount > 0 && (
-                        <Item
-                            title={showOfflineMachines
-                                ? t('settings.hideOfflineMachines')
-                                : t('settings.showOfflineMachines', { count: offlineMachineCount })}
-                            onPress={() => setShowOfflineMachines(v => !v)}
-                            showChevron={false}
-                            titleStyle={{
-                                textAlign: 'center',
-                                color: theme.colors.textLink,
-                            }}
-                        />
-                    )}
-                </ItemGroup>
-            )}
-
             {/* Features */}
             <ItemGroup title={t('settings.features')}>
                 <Item
@@ -406,16 +338,10 @@ export const SettingsView = React.memo(function SettingsView({
                     onPress={() => router.push('/settings/voice')}
                 />
                 <Item
-                    title="Agent Defaults"
-                    subtitle="Default model, effort, and permissions"
+                    title="Agents"
+                    subtitle="Connected machines and agent defaults"
                     icon={<Ionicons name="options-outline" size={29} color="#5AC8FA" />}
                     onPress={() => router.push('/settings/agents' as any)}
-                />
-                <Item
-                    title={t('settings.featuresTitle')}
-                    subtitle={t('settings.featuresSubtitle')}
-                    icon={<Ionicons name="flask-outline" size={29} color="#FF9500" />}
-                    onPress={() => router.push('/settings/features')}
                 />
                 {experiments && (
                     <Item
@@ -485,6 +411,16 @@ export const SettingsView = React.memo(function SettingsView({
                     icon={<Ionicons name="information-circle-outline" size={29} color={theme.colors.textSecondary} />}
                     onPress={handleVersionClick}
                     showChevron={false}
+                />
+            </ItemGroup>
+
+            {/* Experimental enrollment stays literally last on the main settings page. */}
+            <ItemGroup>
+                <Item
+                    title={t('settingsFeatures.experiments')}
+                    subtitle="Preview features still in development"
+                    icon={<Ionicons name="flask-outline" size={29} color="#FF9500" />}
+                    onPress={() => router.push('/settings/features')}
                 />
             </ItemGroup>
 

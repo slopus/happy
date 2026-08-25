@@ -227,6 +227,10 @@ export default function AppearanceSettingsScreen() {
     const [avatarStyleSetting, setAvatarStyle] = useSettingMutable('avatarStyle');
     const [avatarMonochrome, setAvatarMonochrome] = useSettingMutable('avatarMonochrome');
     const [sessionListGrouping, setSessionListGrouping] = useSettingMutable('sessionListGrouping');
+    const [agentInputEnterToSend, setAgentInputEnterToSend] = useSettingMutable('agentInputEnterToSend');
+    const [commandPaletteEnabled, setCommandPaletteEnabled] = useLocalSettingMutable('commandPaletteEnabled');
+    const [fileDiffsSidebar, setFileDiffsSidebar] = useSettingMutable('fileDiffsSidebar');
+    const [groupToolCalls, setGroupToolCalls] = useSettingMutable('groupToolCalls');
     const [bubbleColorDropdownOpen, setBubbleColorDropdownOpen] = React.useState(false);
     const [avatarStyleDropdownOpen, setAvatarStyleDropdownOpen] = React.useState(false);
 
@@ -430,6 +434,38 @@ export default function AppearanceSettingsScreen() {
                         />
                     }
                 />
+                {Platform.OS === 'web' && (
+                    <>
+                        <Item
+                            title={t('settingsFeatures.enterToSend')}
+                            subtitle={agentInputEnterToSend
+                                ? t('settingsFeatures.enterToSendEnabled')
+                                : t('settingsFeatures.enterToSendDisabled')}
+                            icon={<Ionicons name="return-down-forward-outline" size={29} color="#007AFF" />}
+                            rightElement={
+                                <Switch
+                                    value={agentInputEnterToSend}
+                                    onValueChange={setAgentInputEnterToSend}
+                                />
+                            }
+                            showChevron={false}
+                        />
+                        <Item
+                            title={t('settingsFeatures.commandPalette')}
+                            subtitle={commandPaletteEnabled
+                                ? t('settingsFeatures.commandPaletteEnabled')
+                                : t('settingsFeatures.commandPaletteDisabled')}
+                            icon={<Ionicons name="keypad-outline" size={29} color="#007AFF" />}
+                            rightElement={
+                                <Switch
+                                    value={commandPaletteEnabled}
+                                    onValueChange={setCommandPaletteEnabled}
+                                />
+                            }
+                            showChevron={false}
+                        />
+                    </>
+                )}
             </ItemGroup>
 
             <ItemGroup title={t('settingsAppearance.display')} footer={t('settingsAppearance.displayDescription')}>
@@ -453,6 +489,30 @@ export default function AppearanceSettingsScreen() {
                             onValueChange={setCompactToolCalls}
                         />
                     }
+                />
+                <Item
+                    title="File Diffs Sidebar"
+                    subtitle="Show git changes next to the chat on desktop"
+                    icon={<Ionicons name="git-branch-outline" size={29} color="#5AC8FA" />}
+                    rightElement={
+                        <Switch
+                            value={fileDiffsSidebar}
+                            onValueChange={setFileDiffsSidebar}
+                        />
+                    }
+                    showChevron={false}
+                />
+                <Item
+                    title={t('settingsFeatures.groupToolCalls')}
+                    subtitle={t('settingsFeatures.groupToolCallsSubtitle')}
+                    icon={<Ionicons name="layers-outline" size={29} color="#AF52DE" />}
+                    rightElement={
+                        <Switch
+                            value={groupToolCalls}
+                            onValueChange={setGroupToolCalls}
+                        />
+                    }
+                    showChevron={false}
                 />
                 <Item
                     title={t('settingsAppearance.showLineNumbersInToolViews')}

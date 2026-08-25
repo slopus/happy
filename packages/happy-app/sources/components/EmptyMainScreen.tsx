@@ -7,6 +7,10 @@ import { useConnectTerminal } from '@/hooks/useConnectTerminal';
 import { Modal } from '@/modal';
 import { t } from '@/text';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import { useAllMachines } from '@/sync/storage';
+import { collectMachineChoices } from '@/sync/machineChoices';
+import { useOfflineMachineTroubleshooting } from '@/hooks/useOfflineMachineTroubleshooting';
+import { useRouter } from 'expo-router';
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
@@ -21,6 +25,26 @@ const stylesheet = StyleSheet.create((theme) => ({
         fontSize: 24,
         color: theme.colors.text,
         ...Typography.default('semiBold'),
+    },
+    stateIcon: {
+        marginBottom: 20,
+    },
+    stateTitle: {
+        marginBottom: 8,
+        paddingHorizontal: 24,
+        textAlign: 'center',
+        fontSize: 24,
+        color: theme.colors.text,
+        ...Typography.default('semiBold'),
+    },
+    stateDescription: {
+        maxWidth: 360,
+        marginBottom: 24,
+        paddingHorizontal: 24,
+        textAlign: 'center',
+        fontSize: 16,
+        color: theme.colors.textSecondary,
+        ...Typography.default(),
     },
     terminalBlock: {
         backgroundColor: Platform.select({ web: theme.colors.surfaceHighest, default: theme.colors.surfaceHigh }),
@@ -100,12 +124,51 @@ const stylesheet = StyleSheet.create((theme) => ({
         color: theme.colors.textSecondary,
         ...Typography.default('semiBold'),
     },
+    secondaryAction: {
+        minHeight: 40,
+        marginTop: 4,
+        paddingHorizontal: 14,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderRadius: 20,
+    },
+    secondaryActionPressed: {
+        backgroundColor: theme.colors.surfacePressedOverlay,
+    },
+    secondaryActionText: {
+        fontSize: 15,
+        color: theme.colors.textSecondary,
+        ...Typography.default('semiBold'),
+    },
 }));
 
-export function EmptyMainScreen() {
+export function EmptyMainScreen({
+    hasArchivedSessions = false,
+    onShowArchived,
+}: {
+    hasArchivedSessions?: boolean;
+    onShowArchived?: () => void;
+}) {
     const { connectTerminal, connectWithUrl, isLoading } = useConnectTerminal();
     const { theme } = useUnistyles();
     const styles = stylesheet;
+    const router = useRouter();
+    const machines = useAllMachines({ includeOffline: true });
+    const machineChoices = React.useMemo(() => collectMachineChoices(machines), [machines]);
+    const hasOnlineMachines = machineChoices.some((machine) => machine.online);
+    const troubleshoot = useOfflineMachineTroubleshooting(machineChoices);
+    const showArchivedAction = hasArchivedSessions && onShowArchived ? (
+        <Pressable
+            onPress={onShowArchived}
+            accessibilityRole="button"
+            style={({ pressed }) => [
+                styles.secondaryAction,
+                pressed && styles.secondaryActionPressed,
+            ]}
+        >
+            <Text style={styles.secondaryActionText}>{t('sidebar.showArchived')}</Text>
+        </Pressable>
+    ) : null;
     const enterUrlManually = React.useCallback(async () => {
         const url = await Modal.prompt(
             t('modals.authenticateTerminal'),
@@ -121,6 +184,33 @@ export function EmptyMainScreen() {
             connectWithUrl(url.trim());
         }
     }, [connectWithUrl]);
+
+    if (machineChoices.length > 0) {
+        if (hasOnlineMachines) {
+            return (
+                <View style={styles.container}>
+                    <Ionicons name="terminal-outline" size={56} color={theme.colors.textSecondary} style={styles.stateIcon} />
+                    <Text style={styles.stateTitle}>No sessions yet</Text>
+                    <Text style={styles.stateDescription}>Start one on a connected machine.</Text>
+                    <RoundButton title="Start New Session" size="large" onPress={() => router.navigate('/new')} />
+                    {showArchivedAction}
+                </View>
+            );
+        }
+
+        const title = machineChoices.length === 1
+            ? `${machineChoices[0].name} is unreachable`
+            : 'No machines are reachable';
+        return (
+            <View style={styles.container}>
+                <Ionicons name="cloud-offline-outline" size={56} color={theme.colors.textSecondary} style={styles.stateIcon} />
+                <Text style={styles.stateTitle}>{title}</Text>
+                <Text style={styles.stateDescription}>Bring a machine online to start a session.</Text>
+                <RoundButton title="Troubleshoot" size="large" onPress={troubleshoot} />
+                {showArchivedAction}
+            </View>
+        );
+    }
 
     return (
         <View style={styles.container}>
@@ -190,6 +280,7 @@ export function EmptyMainScreen() {
                     </View>
                 </>
             )}
+            {showArchivedAction}
         </View>
     );
 }

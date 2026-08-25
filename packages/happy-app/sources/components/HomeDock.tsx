@@ -666,7 +666,6 @@ export const HomeDock = React.memo(({
     // and use an in-modal React Native picker only on Android.
     const useNativeMenus = shouldUseNativeHomeDockMenus(Platform.OS);
     const [sheetPage, setSheetPage] = React.useState<PickerPage | null>(null);
-    const expImageUpload = useSetting('expImageUpload');
     const { selectedImages, pickImages, removeImage, clearImages } = useImagePicker();
     const agentType = useNewSessionDraft((state) => state.agentType);
     const selectedMachineId = useNewSessionDraft((state) => state.selectedMachineId);
@@ -926,7 +925,7 @@ export const HomeDock = React.memo(({
     const permissionLabel = getPermissionModeShortLabel(currentPermission);
     const focusedPromptPlaceholder = resolveHomeDockPromptPlaceholder(currentAgent.key, currentAgent.name);
     const canSubmit = !isSubmitting && (
-        prompt.trim().length > 0 || (expImageUpload && selectedImages.length > 0)
+        prompt.trim().length > 0 || selectedImages.length > 0
     );
     const startPhase = isSubmitting ? submitPhase ?? 'spawning' : null;
     const startProgressLabel = resolveNewSessionProgressLabel({
@@ -1079,13 +1078,6 @@ export const HomeDock = React.memo(({
             }
         };
     }, []);
-
-    React.useEffect(() => {
-        if (!expImageUpload && selectedImages.length > 0) {
-            clearImages();
-            useNewSessionDraft.getState().setAttachments([]);
-        }
-    }, [clearImages, expImageUpload, selectedImages.length]);
 
     const openFocusMode = React.useCallback(() => {
         if (focusAnimationTimerRef.current) {
@@ -1619,7 +1611,7 @@ export const HomeDock = React.memo(({
 
     const submit = async () => {
         if (!canSubmit) return false;
-        useNewSessionDraft.getState().setAttachments(expImageUpload ? selectedImages : []);
+        useNewSessionDraft.getState().setAttachments(selectedImages);
         const started = await onSubmit();
         if (started) clearImages();
         return started;
@@ -1651,7 +1643,7 @@ export const HomeDock = React.memo(({
                     ]}
                 >
                 <View style={styles.focusedComposerContent}>
-                    {expImageUpload && selectedImages.length > 0 && (
+                    {selectedImages.length > 0 && (
                         <Animated.View style={focusedInputRevealStyle}>
                             <AgentInputAttachmentStrip images={selectedImages} onRemove={removeImage} />
                         </Animated.View>
@@ -1704,22 +1696,20 @@ export const HomeDock = React.memo(({
                         />
                     )}
                     <Animated.View style={[styles.focusedComposerActions, focusedActionsRevealStyle]}>
-                        {expImageUpload && (
-                            <RefusableControl refusing={isSubmitting} onRefuse={refuse}>
-                                <BubblePressable
-                                    onPress={() => void pickImages()}
-                                    style={styles.sideButton}
-                                    accessibilityRole="button"
-                                    accessibilityLabel="Add image"
-                                >
-                                    <Ionicons
-                                        name="add"
-                                        size={MOBILE_COMPOSER_METRICS.addIconSize}
-                                        color={theme.colors.text}
-                                    />
-                                </BubblePressable>
-                            </RefusableControl>
-                        )}
+                        <RefusableControl refusing={isSubmitting} onRefuse={refuse}>
+                            <BubblePressable
+                                onPress={() => void pickImages()}
+                                style={styles.sideButton}
+                                accessibilityRole="button"
+                                accessibilityLabel="Add image"
+                            >
+                                <Ionicons
+                                    name="add"
+                                    size={MOBILE_COMPOSER_METRICS.addIconSize}
+                                    color={theme.colors.text}
+                                />
+                            </BubblePressable>
+                        </RefusableControl>
                         {/* The permission mode reads out in words instead of
                             hiding behind a gear: it is the one setting here that
                             changes what the agent is allowed to do to your

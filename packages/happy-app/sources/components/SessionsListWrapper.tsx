@@ -3,7 +3,9 @@ import { View, ActivityIndicator, NativeScrollEvent, NativeSyntheticEvent } from
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { SessionsList } from './SessionsList';
 import { EmptyMainScreen } from './EmptyMainScreen';
-import { useVisibleSessionListViewData } from '@/hooks/useVisibleSessionListViewData';
+import { useHasArchivedSessions, useVisibleSessionListViewData } from '@/hooks/useVisibleSessionListViewData';
+import { useAllMachines, useSettingMutable } from '@/sync/storage';
+import { collectMachineChoices } from '@/sync/machineChoices';
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
@@ -48,6 +50,11 @@ export const SessionsListWrapper = React.memo(({
 }) => {
     const { theme } = useUnistyles();
     const sessionListViewData = useVisibleSessionListViewData();
+    const hasArchivedSessions = useHasArchivedSessions();
+    const machines = useAllMachines({ includeOffline: true });
+    const machineChoices = React.useMemo(() => collectMachineChoices(machines), [machines]);
+    const hasOnlineMachines = machineChoices.some((machine) => machine.online);
+    const [, setHideArchivedSessions] = useSettingMutable('hideInactiveSessions');
     const styles = stylesheet;
 
     if (sessionListViewData === null) {
@@ -62,12 +69,18 @@ export const SessionsListWrapper = React.memo(({
         );
     }
 
-    if (sessionListViewData.length === 0) {
+    // With an online machine, an archive-only account renders SessionsList's inline archive
+    // control. With no reachable machine, the connection problem is the useful primary state and
+    // the archive remains available as its secondary action.
+    if (sessionListViewData.length === 0 && (!hasArchivedSessions || !hasOnlineMachines)) {
         return (
             <View style={styles.container}>
                 <View style={styles.emptyStateContainer}>
                     <View style={[styles.emptyStateContentContainer, { paddingTop: topContentInset }]}>
-                        <EmptyMainScreen />
+                        <EmptyMainScreen
+                            hasArchivedSessions={hasArchivedSessions}
+                            onShowArchived={() => setHideArchivedSessions(false)}
+                        />
                     </View>
                 </View>
             </View>

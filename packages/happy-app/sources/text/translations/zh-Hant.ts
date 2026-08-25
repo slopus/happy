@@ -235,12 +235,8 @@ export const zhHant: TranslationStructure = {
         commandPaletteDisabled: '快速命令存取已停用',
         markdownCopyV2: 'Markdown 複製 v2',
         markdownCopyV2Subtitle: '長按開啟複製強制回應視窗',
-        hideInactiveSessions: '隱藏非活躍工作階段',
-        hideInactiveSessionsSubtitle: '僅在清單中顯示活躍的聊天',
         groupToolCalls: '分組工具呼叫',
         groupToolCallsSubtitle: '將連續的工具呼叫摺疊到單一容器中',
-        imageUpload: '圖片上傳',
-        imageUploadSubtitle: '將圖片附加到訊息中，讓支援的代理分析',
     },
 
     errors: {

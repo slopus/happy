@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { settingsParse, applySettings, settingsDefaults, settingsToSyncPayload, type Settings } from './settings';
+import { SettingsSchema, settingsParse, applySettings, settingsDefaults, settingsToSyncPayload, type Settings } from './settings';
 
 describe('settings', () => {
     describe('settingsParse', () => {
@@ -172,6 +172,11 @@ describe('settings', () => {
     });
 
     describe('settingsDefaults', () => {
+        it('documents the features controlled by experimental enrollment', () => {
+            expect(SettingsSchema.shape.experiments.description).toContain('Rig session file browser');
+            expect(SettingsSchema.shape.experiments.description).toContain('Usage settings page');
+        });
+
         it('should have correct default values', () => {
             expect(settingsDefaults).toEqual({
                 schemaVersion: 2,
@@ -193,13 +198,12 @@ describe('settings', () => {
                 showHarnessIconInSessionHeader: true,
                 userMessageBubbleColor: 'gray',
                 usageLimitShowRemaining: false,
-                hideInactiveSessions: false,
+                hideInactiveSessions: true,
                 sortSessionsByActivity: true,
                 expResumeSession: true,
                 fileDiffsSidebar: false,
                 groupToolCalls: false,
                 compactToolCalls: false,
-                expImageUpload: false,
                 reviewPromptAnswered: false,
                 reviewPromptLikedApp: null,
                 voiceAssistantLanguage: null,
