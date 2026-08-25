@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { View } from 'react-native';
-import { PierreDiffView } from '@/components/diff/PierreDiffView';
+import { DiffChunk } from '@/components/diff/DiffChunk';
 import { useSetting } from '@/sync/storage';
 
 interface ToolDiffViewProps {
@@ -12,9 +12,8 @@ interface ToolDiffViewProps {
     /** File name — used for language detection in syntax highlighting. */
     fileName?: string;
     style?: any;
-    /** No-op in the new renderer (pierre/diffs always draws line numbers via gutter). Kept for source compat. */
     showLineNumbers?: boolean;
-    /** No-op in the new renderer; pierre/diffs uses classic indicators. */
+    /** No longer used: the marker column is always drawn in the pinned gutter. */
     showPlusMinusSymbols?: boolean;
 }
 
@@ -26,33 +25,18 @@ export const ToolDiffView = React.memo<ToolDiffViewProps>(({
     style,
     showLineNumbers,
 }) => {
+    const wrapLines = useSetting('wrapLinesInDiffs');
     const showLineNumbersInToolViews = useSetting('showLineNumbersInToolViews');
-
-    const effectiveFileName = fileName ?? 'file.txt';
-
-    // Chat tool diffs are always inline unified — the split view lives on the
-    // dedicated InlineFileDiff pane (controlled via the diffStyle setting).
-    const common = {
-        overflow: 'wrap' as const,
-        disableLineNumbers: !(showLineNumbers ?? showLineNumbersInToolViews),
-        disableFileHeader: true,
-        diffStyle: 'unified' as const,
-    };
-
-    if (patch) {
-        return (
-            <View style={[{ flex: 1 }, style]}>
-                <PierreDiffView patch={patch} {...common} />
-            </View>
-        );
-    }
 
     return (
         <View style={[{ flex: 1 }, style]}>
-            <PierreDiffView
-                oldFile={{ name: effectiveFileName, contents: oldText ?? '' }}
-                newFile={{ name: effectiveFileName, contents: newText ?? '' }}
-                {...common}
+            <DiffChunk
+                patch={patch}
+                oldText={patch ? undefined : oldText ?? ''}
+                newText={patch ? undefined : newText ?? ''}
+                fileName={fileName ?? 'file.txt'}
+                wrap={wrapLines}
+                showLineNumbers={showLineNumbers ?? showLineNumbersInToolViews}
             />
         </View>
     );
