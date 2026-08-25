@@ -512,7 +512,7 @@ export const pt: TranslationStructure = {
         usagePopup: {
             session: 'Sessão',
             week: 'Semana',
-            resets: ({ time }: { time: string }) => `redefine ${time}`,
+            resets: ({ time }: { time: string }) => `Redefine ${time}`,
         },
         suggestion: {
             fileLabel: 'ARQUIVO',

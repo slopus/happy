@@ -513,7 +513,7 @@ export const ca: TranslationStructure = {
         usagePopup: {
             session: 'Sessió',
             week: 'Setmana',
-            resets: ({ time }: { time: string }) => `es restableix ${time}`,
+            resets: ({ time }: { time: string }) => `Es restableix ${time}`,
         },
         suggestion: {
             fileLabel: 'FITXER',

@@ -511,7 +511,7 @@ export const it: TranslationStructure = {
         usagePopup: {
             session: 'Sessione',
             week: 'Settimana',
-            resets: ({ time }: { time: string }) => `si azzera ${time}`,
+            resets: ({ time }: { time: string }) => `Si azzera ${time}`,
         },
         suggestion: {
             fileLabel: 'FILE',

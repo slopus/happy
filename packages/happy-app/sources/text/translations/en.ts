@@ -527,7 +527,7 @@ export const en: TranslationStructure = {
         usagePopup: {
             session: 'Session',
             week: 'Week',
-            resets: ({ time }: { time: string }) => `resets ${time}`,
+            resets: ({ time }: { time: string }) => `Resets ${time}`,
         },
         suggestion: {
             fileLabel: 'FILE',

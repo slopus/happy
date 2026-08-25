@@ -911,8 +911,9 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         const push = (key: string, label: string, row: { utilization: number | null; resetsAt: number | null } | null) => {
             if (!row || row.utilization == null) return;
             const percent = getUsageLimitDisplayPercentage(row.utilization, usageLimitShowRemaining);
+            // The newline renders as a second line inside the native menu row.
             const reset = row.resetsAt != null
-                ? ` · ${t('agentInput.usagePopup.resets', { time: formatUsageLimitResetTime(row.resetsAt) })}`
+                ? `\n${t('agentInput.usagePopup.resets', { time: formatUsageLimitResetTime(row.resetsAt) })}`
                 : '';
             options.push({ key, label: `${label} · ${Math.round(percent)}%${reset}` });
         };

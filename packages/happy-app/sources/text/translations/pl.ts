@@ -529,7 +529,7 @@ export const pl: TranslationStructure = {
         usagePopup: {
             session: 'Sesja',
             week: 'Tydzień',
-            resets: ({ time }: { time: string }) => `reset ${time}`,
+            resets: ({ time }: { time: string }) => `Reset ${time}`,
         },
         suggestion: {
             fileLabel: 'PLIK',

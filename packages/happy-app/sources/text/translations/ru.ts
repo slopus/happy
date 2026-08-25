@@ -529,7 +529,7 @@ export const ru: TranslationStructure = {
         usagePopup: {
             session: 'Сессия',
             week: 'Неделя',
-            resets: ({ time }: { time: string }) => `сброс ${time}`,
+            resets: ({ time }: { time: string }) => `Сброс ${time}`,
         },
         suggestion: {
             fileLabel: 'ФАЙЛ',

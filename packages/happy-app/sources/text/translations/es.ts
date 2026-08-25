@@ -513,7 +513,7 @@ export const es: TranslationStructure = {
         usagePopup: {
             session: 'Sesión',
             week: 'Semana',
-            resets: ({ time }: { time: string }) => `se restablece ${time}`,
+            resets: ({ time }: { time: string }) => `Se restablece ${time}`,
         },
         suggestion: {
             fileLabel: 'ARCHIVO',
