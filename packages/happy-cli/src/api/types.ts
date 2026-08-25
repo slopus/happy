@@ -426,7 +426,11 @@ export type AgentState = {
       reason?: string,
       mode?: PermissionMode,
       decision?: 'approved' | 'approved_for_session' | 'denied' | 'abort',
+      // Historical field name from the RPC payload; the app reads
+      // `allowedTools`. Both are written until every app build folds the
+      // old key.
       allowTools?: string[],
+      allowedTools?: string[],
       toolUseId?: string
     }
   }

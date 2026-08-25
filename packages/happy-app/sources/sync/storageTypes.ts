@@ -350,6 +350,11 @@ export const AgentStateSchema = z.object({
         reason: z.string().nullish(),
         mode: z.string().nullish(),
         allowedTools: z.array(z.string()).nullish(),
+        // The CLI completes a request by echoing the RPC's own field name,
+        // `allowTools`, so every deployed CLI reports the "don't ask again"
+        // grant under this key. Declared here so parsing keeps it; the
+        // reducer folds it into `allowedTools` when reading.
+        allowTools: z.array(z.string()).nullish(),
         decision: z.enum(['approved', 'approved_for_session', 'denied', 'abort']).nullish(),
         toolUseId: z.string().nullish()
     })).nullish(),
