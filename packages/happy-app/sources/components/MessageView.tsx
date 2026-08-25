@@ -370,9 +370,10 @@ const styles = StyleSheet.create((theme) => ({
     fontFamily: 'monospace',
   },
   agentMessageContainer: {
+    // Symmetric, so a tool row reads the same distance from the text whether
+    // it lands above or below it. Total rhythm matches the old 4 + 16.
     marginHorizontal: 16,
-    marginTop: 4,
-    marginBottom: 16,
+    marginVertical: 10,
     borderRadius: 16,
     maxWidth: '100%',
   },
