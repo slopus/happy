@@ -456,8 +456,8 @@ export const pl: TranslationStructure = {
         },
         sessionStatusBar: {
             contextUsage: ({ used, total, percent }: { used: string; total: string; percent: number }) => `Kontekst ${used} z ${total} tokenów, ${percent}%`,
-            limitFiveHour: 'Limit 5-godzinny',
-            limitSevenDay: 'Limit 7-dniowy',
+            limitSession: 'sesja',
+            limitWeek: 'tydzień',
             limitResets: ({ time }: { time: string }) => `reset ${time}`,
             limitAsOf: ({ age }: { age: string }) => `sprzed ${age}`,
             limitRemaining: ({ percent }: { percent: number }) => `pozostało ${percent}%`,
@@ -528,7 +528,9 @@ export const pl: TranslationStructure = {
             badgePlan: 'Planowanie',
         },
         context: {
-            remaining: ({ percent }: { percent: number }) => `Pozostało ${percent}%`,
+            detailUsed: ({ used, total }: { used: string; total: string }) => `Użyto ${used} / ${total}`,
+            percentContext: ({ percent }: { percent: number }) => `${percent}% kontekstu`,
+            percentWeek: ({ percent }: { percent: number }) => `${percent}% tygodnia`,
         },
         suggestion: {
             fileLabel: 'PLIK',

@@ -441,8 +441,8 @@ export const zhHans: TranslationStructure = {
         },
         sessionStatusBar: {
             contextUsage: ({ used, total, percent }: { used: string; total: string; percent: number }) => `上下文 ${used}/${total} 个令牌，${percent}%`,
-            limitFiveHour: '5 小时额度',
-            limitSevenDay: '7 天额度',
+            limitSession: '会话',
+            limitWeek: '周',
             limitResets: ({ time }: { time: string }) => `${time} 重置`,
             limitAsOf: ({ age }: { age: string }) => `数据为 ${age} 前`,
             limitRemaining: ({ percent }: { percent: number }) => `剩余 ${percent}%`,
@@ -513,7 +513,9 @@ export const zhHans: TranslationStructure = {
             badgePlan: '计划',
         },
         context: {
-            remaining: ({ percent }: { percent: number }) => `剩余 ${percent}%`,
+            detailUsed: ({ used, total }: { used: string; total: string }) => `已用 ${used} / ${total}`,
+            percentContext: ({ percent }: { percent: number }) => `上下文 ${percent}%`,
+            percentWeek: ({ percent }: { percent: number }) => `本周 ${percent}%`,
         },
         suggestion: {
             fileLabel: '文件',

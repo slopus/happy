@@ -1,4 +1,5 @@
 import { Ionicons, Octicons } from '@expo/vector-icons';
+import Svg, { Circle } from 'react-native-svg';
 import * as React from 'react';
 import { Keyboard, View, Platform, useWindowDimensions, Text, ActivityIndicator, Pressable, TouchableWithoutFeedback, LayoutChangeEvent } from 'react-native';
 import { Image } from 'expo-image';
@@ -25,6 +26,8 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useSetting } from '@/sync/storage';
 import { hackMode, hackModes } from '@/sync/modeHacks';
 import { getPermissionModeMenuLabel, getPermissionModeShortLabel } from '@/utils/permissionModeLabels';
+import { getUsageLimitDisplayPercentage } from '@/utils/sessionStatusBar';
+import { compactCount } from '@/utils/rigGitLineChanges';
 import { Theme } from '@/theme';
 import { t } from '@/text';
 import { Metadata } from '@/sync/storageTypes';
@@ -103,6 +106,10 @@ interface AgentInputProps {
      */
     onActionAreaOffsetChange?: (offset: number) => void;
     sessionStatusGitBranch?: string | null;
+    /** Unstaged line changes for the checkout, matching the session list. */
+    sessionStatusGitChanges?: { insertions: number; deletions: number; approximate: boolean } | null;
+    /** Seven-day plan window utilization, percent used (0-100). */
+    sessionStatusWeekPercent?: number | null;
     sessionStatusModelLabel?: string | null;
     sessionStatusEffortLabel?: string | null;
     onFileViewerPress?: () => void;
@@ -451,26 +458,46 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     },
 }));
 
-const getContextWarning = (contextSize: number, alwaysShow: boolean = false, theme: Theme, contextWindow?: number) => {
+const formatTokenCount = (tokens: number): string => {
+    if (tokens < 1000) {
+        return `${Math.max(0, Math.round(tokens))}`;
+    }
+    if (tokens < 999500) {
+        return `${Math.round(tokens / 1000)}k`;
+    }
+    const millions = tokens / 1000000;
+    return `${millions >= 10 ? Math.round(millions) : Math.round(millions * 10) / 10}M`;
+};
+
+const getContextStatus = (contextSize: number, alwaysShow: boolean = false, theme: Theme, contextWindow: number | undefined) => {
     // Until the session reports its window there is no honest denominator, so
     // nothing is shown rather than dividing by a guess — a percentage that
     // later corrects itself upward reads as the context refilling.
     if (typeof contextWindow !== 'number' || !Number.isFinite(contextWindow) || contextWindow <= 0) {
         return null;
     }
-    const maxContextSize = contextWindow;
-    const percentageUsed = (contextSize / maxContextSize) * 100;
-    const percentageRemaining = Math.max(0, Math.min(100, 100 - percentageUsed));
+    const percentageUsed = Math.max(0, Math.min(100, (contextSize / contextWindow) * 100));
+    const percentageRemaining = 100 - percentageUsed;
 
+    let color: string;
     if (percentageRemaining <= 5) {
-        return { text: t('agentInput.context.remaining', { percent: Math.round(percentageRemaining) }), color: theme.colors.warningCritical };
+        color = theme.colors.warningCritical;
     } else if (percentageRemaining <= 10) {
-        return { text: t('agentInput.context.remaining', { percent: Math.round(percentageRemaining) }), color: theme.colors.warning };
+        color = theme.colors.warning;
     } else if (alwaysShow) {
-        // Show context remaining in neutral color when not near limit
-        return { text: t('agentInput.context.remaining', { percent: Math.round(percentageRemaining) }), color: theme.colors.warning };
+        color = theme.colors.textSecondary;
+    } else {
+        return null; // No display needed
     }
-    return null; // No display needed
+
+    return {
+        percent: Math.round(percentageUsed),
+        detailText: t('agentInput.context.detailUsed', {
+            used: formatTokenCount(contextSize),
+            total: formatTokenCount(contextWindow),
+        }),
+        color,
+    };
 };
 
 // Stable sub-trees extracted from AgentInput so they don't reconcile when
@@ -480,22 +507,13 @@ const getContextWarning = (contextSize: number, alwaysShow: boolean = false, the
 
 type StatusRowProps = {
     connectionStatus?: AgentInputProps['connectionStatus'];
-    contextWarning: { text: string; color: string } | null;
-    displayPermissionMode: ReturnType<typeof hackMode> | null;
-    permissionModeKey: string;
-    permissionSemanticKind?: string | null;
-    isSandboxedYoloMode: boolean;
-    permissionLabel: string | null;
-    zenMode?: boolean;
+    gitBranch: string | null;
+    gitChanges: { insertions: number; deletions: number; approximate: boolean } | null;
 };
 
 const AgentInputStatusRow = React.memo(function AgentInputStatusRow(p: StatusRowProps) {
     const { theme } = useUnistyles();
-    const showPermissionBadge = !!p.displayPermissionMode
-        && p.permissionModeKey !== 'default'
-        && !p.zenMode
-        && !!p.permissionLabel;
-    if (!p.connectionStatus && !p.contextWarning && !showPermissionBadge) {
+    if (!p.connectionStatus && !p.gitBranch) {
         return null;
     }
     return (
@@ -580,43 +598,113 @@ const AgentInputStatusRow = React.memo(function AgentInputStatusRow(p: StatusRow
                         )}
                     </>
                 )}
-                {p.contextWarning && (
-                    <Text style={{
-                        fontSize: 11,
-                        color: p.contextWarning.color,
-                        marginLeft: p.connectionStatus ? 8 : 0,
-                        ...Typography.default()
-                    }}>
-                        {p.connectionStatus ? '• ' : ''}{p.contextWarning.text}
+            </View>
+            {p.gitBranch && (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, flexShrink: 1 }}>
+                    <Text style={{ fontSize: 11, color: theme.colors.textSecondary, flexShrink: 1, ...Typography.default() }} numberOfLines={1}>
+                        {p.gitBranch}
+                    </Text>
+                    {p.gitChanges?.approximate && (
+                        <Text style={{ fontSize: 11, color: theme.colors.textSecondary, ...Typography.default() }}>≈</Text>
+                    )}
+                    {p.gitChanges && p.gitChanges.insertions > 0 && (
+                        <Text style={{ fontSize: 11, fontWeight: '600', color: theme.colors.gitAddedText, ...Typography.default() }}>
+                            +{compactCount(p.gitChanges.insertions)}
+                        </Text>
+                    )}
+                    {p.gitChanges && p.gitChanges.deletions > 0 && (
+                        <Text style={{ fontSize: 11, fontWeight: '600', color: theme.colors.gitRemovedText, ...Typography.default() }}>
+                            -{compactCount(p.gitChanges.deletions)}
+                        </Text>
+                    )}
+                </View>
+            )}
+        </View>
+    );
+});
+
+// Grayscale ring that fills and darkens with context usage — reads at a
+// glance without color, sized to sit beside the 11pt status text.
+function ContextGaugeIcon(props: { percent: number }) {
+    const { theme } = useUnistyles();
+    const size = 16;
+    const strokeWidth = 2.5;
+    const radius = (size - strokeWidth) / 2;
+    const circumference = 2 * Math.PI * radius;
+    const progress = Math.min(100, Math.max(0, props.percent));
+    const intensity = 0.35 + 0.65 * (progress / 100);
+    const color = theme.dark
+        ? `rgba(255, 255, 255, ${intensity})`
+        : `rgba(0, 0, 0, ${intensity})`;
+    return (
+        <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+            <Circle
+                cx={size / 2}
+                cy={size / 2}
+                r={radius}
+                stroke={theme.colors.divider}
+                strokeWidth={strokeWidth}
+                fill="none"
+            />
+            <Circle
+                cx={size / 2}
+                cy={size / 2}
+                r={radius}
+                stroke={color}
+                strokeWidth={strokeWidth}
+                strokeLinecap="round"
+                fill="none"
+                strokeDasharray={`${circumference} ${circumference}`}
+                strokeDashoffset={circumference * (1 - progress / 100)}
+                rotation="-90"
+                originX={size / 2}
+                originY={size / 2}
+            />
+        </Svg>
+    );
+}
+
+type UsageRowProps = {
+    contextStatus: { percent: number; detailText: string; color: string } | null;
+    weekPercent: number | null;
+};
+
+// Sits under the composer card: token usage on the left, week quota and the
+// context gauge on the right.
+const AgentInputUsageRow = React.memo(function AgentInputUsageRow(p: UsageRowProps) {
+    const { theme } = useUnistyles();
+    if (!p.contextStatus && p.weekPercent == null) {
+        return null;
+    }
+    return (
+        <View style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            // 18 = 10pt shell inset + 8pt action inset: lines the text up with
+            // the permission chip label and the gauge with the effort label.
+            paddingHorizontal: 18,
+            paddingTop: 6,
+            minHeight: 18,
+        }}>
+            <Text style={{ fontSize: 11, color: p.contextStatus?.color ?? theme.colors.textSecondary, ...Typography.default() }}>
+                {p.contextStatus?.detailText ?? ''}
+            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                {p.weekPercent != null && (
+                    <Text style={{ fontSize: 11, color: theme.colors.textSecondary, ...Typography.default() }}>
+                        {t('agentInput.context.percentWeek', { percent: Math.round(p.weekPercent) })}
                     </Text>
                 )}
-            </View>
-            {showPermissionBadge && (() => {
-                const presentationKind = p.permissionSemanticKind ?? p.permissionModeKey;
-                const permColor = p.isSandboxedYoloMode ? '#4169E1' :
-                    presentationKind === 'acceptEdits' ? theme.colors.permission.acceptEdits :
-                        presentationKind === 'bypassPermissions' ? theme.colors.permission.bypass :
-                            presentationKind === 'plan' ? theme.colors.permission.plan :
-                                presentationKind === 'read-only' ? theme.colors.permission.readOnly :
-                                    presentationKind === 'safe-yolo' ? theme.colors.permission.safeYolo :
-                                        presentationKind === 'yolo' ? theme.colors.permission.yolo :
-                                            theme.colors.textSecondary;
-                const permIcon: 'play-forward' | 'pause' =
-                    presentationKind === 'plan' || presentationKind === 'read-only'
-                        ? 'pause' : 'play-forward';
-                return (
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                        <Ionicons name={permIcon} size={11} color={permColor} />
-                        <Text style={{
-                            fontSize: 11,
-                            color: permColor,
-                            ...Typography.default()
-                        }}>
-                            {p.permissionLabel}
+                {p.contextStatus && (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                        <Text style={{ fontSize: 11, color: p.contextStatus.color, ...Typography.default() }}>
+                            {t('agentInput.context.percentContext', { percent: p.contextStatus.percent })}
                         </Text>
+                        <ContextGaugeIcon percent={p.contextStatus.percent} />
                     </View>
-                );
-            })()}
+                )}
+            </View>
         </View>
     );
 });
@@ -776,9 +864,13 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         return label;
     }, [isSandboxEnabled]);
 
-    // Calculate context warning
-    const contextWarning = props.usageData?.contextSize
-        ? getContextWarning(props.usageData.contextSize, props.alwaysShowContextSize ?? false, theme, props.usageData.contextWindow)
+    // Usage row under the card: context tokens + week quota + gauge
+    const usageLimitShowRemaining = useSetting('usageLimitShowRemaining');
+    const contextStatus = props.usageData?.contextSize
+        ? getContextStatus(props.usageData.contextSize, props.alwaysShowContextSize ?? false, theme, props.usageData.contextWindow)
+        : null;
+    const weekPercent = props.sessionStatusWeekPercent != null && (props.alwaysShowContextSize || contextStatus != null)
+        ? getUsageLimitDisplayPercentage(props.sessionStatusWeekPercent, usageLimitShowRemaining)
         : null;
 
     const agentInputEnterToSend = useSetting('agentInputEnterToSend');
@@ -1951,13 +2043,8 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                 <AnimatedFade visible={props.showStatusDetails !== false}>
                     <AgentInputStatusRow
                         connectionStatus={props.connectionStatus}
-                        contextWarning={contextWarning}
-                        displayPermissionMode={displayPermissionMode}
-                        permissionModeKey={permissionModeKey}
-                        permissionSemanticKind={displayPermissionMode?.semanticKind}
-                        isSandboxedYoloMode={isSandboxedYoloMode}
-                        permissionLabel={displayPermissionMode ? withSandboxSuffix(displayPermissionMode.name, permissionModeKey) : null}
-                        zenMode={props.zenMode}
+                        gitBranch={props.sessionStatusGitBranch ?? null}
+                        gitChanges={props.sessionStatusGitChanges ?? null}
                     />
 
                     <AgentInputContextChips
@@ -2254,6 +2341,13 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                         </MobileGlassSurface>
                     </View>
                 </Shaker>
+
+                <AnimatedFade visible={props.showStatusDetails !== false}>
+                    <AgentInputUsageRow
+                        contextStatus={contextStatus}
+                        weekPercent={weekPercent}
+                    />
+                </AnimatedFade>
             </View>
         </View>
     );

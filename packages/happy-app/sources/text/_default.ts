@@ -454,8 +454,8 @@ export const en = {
         },
         sessionStatusBar: {
             contextUsage: ({ used, total, percent }: { used: string; total: string; percent: number }) => `Context ${used} of ${total} tokens, ${percent}%`,
-            limitFiveHour: '5-hour limit',
-            limitSevenDay: '7-day limit',
+            limitSession: 'session',
+            limitWeek: 'week',
             limitResets: ({ time }: { time: string }) => `resets ${time}`,
             limitAsOf: ({ age }: { age: string }) => `as of ${age} ago`,
             limitRemaining: ({ percent }: { percent: number }) => `${percent}% left`,
@@ -536,7 +536,9 @@ export const en = {
             badgePlan: 'plan',
         },
         context: {
-            remaining: ({ percent }: { percent: number }) => `${percent}% left`,
+            detailUsed: ({ used, total }: { used: string; total: string }) => `${used} / ${total} used`,
+            percentContext: ({ percent }: { percent: number }) => `${percent}% context`,
+            percentWeek: ({ percent }: { percent: number }) => `${percent}% week`,
         },
         suggestion: {
             fileLabel: 'FILE',

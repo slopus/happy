@@ -42,6 +42,7 @@ import { getVoiceMessageCount, getVoiceOnboardingPromptLoadCount } from '@/sync/
 import { isRunningOnMac } from '@/utils/platform';
 import { useDeviceType, useHeaderHeight, useIsLandscape, useIsTablet } from '@/utils/responsive';
 import { resolveStatusBarGitBranch } from '@/utils/sessionStatusBar';
+import { visibleRigGitLineChanges } from '@/utils/rigGitLineChanges';
 import { FilesSidebar, SidebarMode } from '@/components/FilesSidebar';
 import { AllFilesDiffView } from '@/components/AllFilesDiffView';
 import { FileViewPanel } from '@/components/FileViewPanel';
@@ -65,6 +66,7 @@ import { resolveAgentDefaultConfig } from '@/sync/agentDefaults';
 import { performAgentGoalAction } from './agentGoalActionHandler';
 import { MOBILE_GLASS_HEADER_HEIGHT } from '@/components/navigation/headerMetrics';
 import {
+    getRigGitSummary,
     getRigReasoningSelection,
     isRigMetadata,
     isRigModelSelectionEnabled,
@@ -896,6 +898,30 @@ export function SessionViewLoaded({
         return typeof gitBranch === 'string' && gitBranch.trim() ? gitBranch.trim() : null;
     }, [session.metadata]);
     const statusBarGitBranch = resolveStatusBarGitBranch(gitStatus?.branch, metadataGitBranch);
+    // Same source and fallback chain as the session list rows.
+    const statusBarGitChanges = React.useMemo(() => {
+        const liveInsertions = gitStatus?.unstagedLinesAdded ?? 0;
+        const liveDeletions = gitStatus?.unstagedLinesRemoved ?? 0;
+        if (liveInsertions > 0 || liveDeletions > 0) {
+            return { approximate: false, insertions: liveInsertions, deletions: liveDeletions };
+        }
+        const rigGit = getRigGitSummary(session.metadata);
+        if (rigGit && rigGit.changedFiles !== null) {
+            return visibleRigGitLineChanges({
+                changedFiles: rigGit.changedFiles,
+                countsExact: rigGit.countsExact ?? true,
+                deletions: rigGit.deletions ?? 0,
+                insertions: rigGit.insertions ?? 0,
+            });
+        }
+        return null;
+    }, [gitStatus?.unstagedLinesAdded, gitStatus?.unstagedLinesRemoved, session.metadata]);
+    const statusBarWeekPercent = React.useMemo(() => {
+        const windows = session.agentState?.usageLimits?.windows;
+        if (!Array.isArray(windows)) return null;
+        const week = windows.find((w) => w?.id === 'seven_day');
+        return typeof week?.utilization === 'number' ? week.utilization : null;
+    }, [session.agentState?.usageLimits]);
     const statusBarModelLabel = modelMode?.name ?? session.metadata?.currentModelCode ?? session.modelMode ?? null;
     const statusBarEffortLabel = effortLevel?.name
         ? effortLevel.name.charAt(0).toUpperCase() + effortLevel.name.slice(1)
@@ -1075,7 +1101,9 @@ export function SessionViewLoaded({
                 zenMode={zenMode}
                 showSessionStatusInfoInSettings={false}
                 showStatusDetails={showBottomDockDetails}
-                sessionStatusGitBranch={statusBarGitBranch}
+                sessionStatusGitBranch={statusBarGitBranch ?? 'main'}
+                sessionStatusGitChanges={statusBarGitChanges}
+                sessionStatusWeekPercent={statusBarWeekPercent}
                 sessionStatusModelLabel={statusBarModelLabel}
                 sessionStatusEffortLabel={statusBarEffortLabel}
                 onActionAreaOffsetChange={usesFloatingMobileDock ? handleComposerCardOffsetChange : undefined}

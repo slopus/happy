@@ -234,8 +234,8 @@ function UsageLimitMenu(props: {
     const { theme } = useUnistyles();
     const rows = getUsageLimitRows(props.usageLimits);
     const knownLabels: Record<string, string> = {
-        five_hour: t('components.sessionStatusBar.limitFiveHour'),
-        seven_day: t('components.sessionStatusBar.limitSevenDay'),
+        five_hour: t('components.sessionStatusBar.limitSession'),
+        seven_day: t('components.sessionStatusBar.limitWeek'),
     };
 
     return (

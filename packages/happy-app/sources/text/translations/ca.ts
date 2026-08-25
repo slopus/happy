@@ -440,8 +440,8 @@ export const ca: TranslationStructure = {
         },
         sessionStatusBar: {
             contextUsage: ({ used, total, percent }: { used: string; total: string; percent: number }) => `Context ${used} de ${total} tokens, ${percent}%`,
-            limitFiveHour: 'Límit de 5 hores',
-            limitSevenDay: 'Límit de 7 dies',
+            limitSession: 'sessió',
+            limitWeek: 'setmana',
             limitResets: ({ time }: { time: string }) => `es restableix ${time}`,
             limitAsOf: ({ age }: { age: string }) => `fa ${age}`,
             limitRemaining: ({ percent }: { percent: number }) => `${percent}% restant`,
@@ -512,7 +512,9 @@ export const ca: TranslationStructure = {
             badgePlan: 'Planificació',
         },
         context: {
-            remaining: ({ percent }: { percent: number }) => `${percent}% restant`,
+            detailUsed: ({ used, total }: { used: string; total: string }) => `${used} / ${total} utilitzat`,
+            percentContext: ({ percent }: { percent: number }) => `${percent}% context`,
+            percentWeek: ({ percent }: { percent: number }) => `${percent}% setmana`,
         },
         suggestion: {
             fileLabel: 'FITXER',

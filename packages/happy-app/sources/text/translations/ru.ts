@@ -394,8 +394,8 @@ export const ru: TranslationStructure = {
         },
         sessionStatusBar: {
             contextUsage: ({ used, total, percent }: { used: string; total: string; percent: number }) => `Контекст ${used} из ${total} токенов, ${percent}%`,
-            limitFiveHour: 'Лимит 5 часов',
-            limitSevenDay: 'Лимит 7 дней',
+            limitSession: 'сессия',
+            limitWeek: 'неделя',
             limitResets: ({ time }: { time: string }) => `сброс ${time}`,
             limitAsOf: ({ age }: { age: string }) => `данные ${age} назад`,
             limitRemaining: ({ percent }: { percent: number }) => `осталось ${percent}%`,
@@ -528,7 +528,9 @@ export const ru: TranslationStructure = {
             badgePlan: 'Планирование',
         },
         context: {
-            remaining: ({ percent }: { percent: number }) => `Осталось ${percent}%`,
+            detailUsed: ({ used, total }: { used: string; total: string }) => `Использовано ${used} / ${total}`,
+            percentContext: ({ percent }: { percent: number }) => `${percent}% контекста`,
+            percentWeek: ({ percent }: { percent: number }) => `${percent}% за неделю`,
         },
         suggestion: {
             fileLabel: 'ФАЙЛ',
