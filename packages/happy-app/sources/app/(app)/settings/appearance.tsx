@@ -10,7 +10,7 @@ import { Switch } from '@/components/Switch';
 import { Appearance, Platform, Pressable, Text, View } from 'react-native';
 import * as SystemUI from 'expo-system-ui';
 import { darkTheme, lightTheme } from '@/theme';
-import { SESSION_STATUS_BAR_DISPLAY_MODES, type SessionStatusBarDisplay } from '@/sync/settings';
+import { SESSION_STATUS_BAR_DISPLAY_MODES, type SessionListGrouping, type SessionStatusBarDisplay } from '@/sync/settings';
 import { t, getLanguageNativeName, SUPPORTED_LANGUAGES } from '@/text';
 import {
     normalizeUserMessageBubbleColor,
@@ -124,6 +124,15 @@ function AvatarStyleOption(props: {
         </Pressable>
     );
 }
+
+const getSessionListGroupingLabel = (mode: SessionListGrouping): string => {
+    switch (mode) {
+        case 'flat':
+            return t('sessionsFilter.flatList');
+        case 'project':
+            return t('sessionsFilter.groupByProject');
+    }
+};
 
 const getSessionStatusDisplayLabel = (mode: SessionStatusBarDisplay): string => {
     switch (mode) {
@@ -295,6 +304,7 @@ export default function AppearanceSettingsScreen() {
     const [preferredLanguage] = useSettingMutable('preferredLanguage');
     const [avatarStyleSetting, setAvatarStyle] = useSettingMutable('avatarStyle');
     const [avatarMonochrome, setAvatarMonochrome] = useSettingMutable('avatarMonochrome');
+    const [sessionListGrouping, setSessionListGrouping] = useSettingMutable('sessionListGrouping');
     const [statusPlacementDropdownOpen, setStatusPlacementDropdownOpen] = React.useState(false);
     const [bubbleColorDropdownOpen, setBubbleColorDropdownOpen] = React.useState(false);
     const [avatarStyleDropdownOpen, setAvatarStyleDropdownOpen] = React.useState(false);
@@ -523,6 +533,16 @@ export default function AppearanceSettingsScreen() {
 
             {/* Display Settings */}
             <ItemGroup title={t('settingsAppearance.display')} footer={t('settingsAppearance.displayDescription')}>
+                {/* Same setting the home filter menu drives; two values, so a
+                    tap flips between them like the theme row does. */}
+                <Item
+                    title={t('sessionsFilter.groupingTitle')}
+                    icon={<Ionicons name="list-outline" size={29} color="#5856D6" />}
+                    detail={getSessionListGroupingLabel(sessionListGrouping === 'project' ? 'project' : 'flat')}
+                    onPress={() => {
+                        setSessionListGrouping(sessionListGrouping === 'project' ? 'flat' : 'project');
+                    }}
+                />
                 <Item
                     title={t('settingsAppearance.compactToolCalls')}
                     subtitle={t('settingsAppearance.compactToolCallsDescription')}
