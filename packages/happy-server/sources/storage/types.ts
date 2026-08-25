@@ -39,6 +39,7 @@ declare global {
             agentState: string | null;
             agentStateVersion: number;
             dataEncryptionKey: string | null;
+            projectId: string | null;
             active: boolean;
             activeAt: number;
             createdAt: number;
@@ -54,6 +55,7 @@ declare global {
                 value: string | null;
                 version: number;
             } | null | undefined
+            projectId?: string | null;
         } | {
             t: 'update-account';
             id: string;
@@ -75,6 +77,15 @@ declare global {
             activeAt: number;
             createdAt: number;
             updatedAt: number;
+        } | {
+            t: 'new-project';
+            projectId: string;
+        } | {
+            t: 'update-project';
+            projectId: string;
+        } | {
+            t: 'delete-project';
+            projectId: string;
         } | {
             t: 'update-machine';
             machineId: string;

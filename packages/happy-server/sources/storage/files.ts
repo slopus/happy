@@ -90,6 +90,34 @@ export async function deleteSessionAttachments(sessionId: string): Promise<void>
     }
 }
 
+/**
+ * Delete all avatar blobs for a project. Avatar refs are deliberately kept
+ * outside the database: the encrypted bytes are opaque and the active ref is
+ * stored on Project, while this prefix cleanup handles old replacements too.
+ */
+export async function deleteProjectAvatars(projectId: string): Promise<void> {
+    const prefix = `projects/${projectId}/avatar`;
+    if (useLocalStorage) {
+        const dir = path.join(localFilesDir, prefix);
+        if (fs.existsSync(dir)) {
+            fs.rmSync(dir, { recursive: true, force: true });
+        }
+        return;
+    }
+
+    const stream = s3client.listObjects(s3bucket, prefix + '/', true);
+    const keys: string[] = await new Promise((resolve, reject) => {
+        const collected: string[] = [];
+        stream.on('data', (obj: { name: string }) => { if (obj.name) collected.push(obj.name); });
+        stream.on('end', () => resolve(collected));
+        stream.on('error', reject);
+    });
+
+    if (keys.length > 0) {
+        await s3client.removeObjects(s3bucket, keys);
+    }
+}
+
 export type ImageRef = {
     width: number;
     height: number;
