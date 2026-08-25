@@ -17,6 +17,10 @@ interface VoiceAssistantStatusBarProps {
     style?: any;
 }
 
+// Total vertical space the full-variant pill takes below the header —
+// layouts that inset content past the header add this while a call runs.
+export const VOICE_PILL_TOTAL_HEIGHT = MOBILE_GLASS_CONTROL_SIZE + 6;
+
 function formatCallDuration(totalSeconds: number): string {
     const hours = Math.floor(totalSeconds / 3600);
     const minutes = Math.floor((totalSeconds % 3600) / 60);
@@ -77,42 +81,45 @@ export const VoiceAssistantStatusBar = React.memo(({ variant = 'full', style }: 
                 : duration ?? '0:00';
         return (
             <View style={styles.pillWrapper}>
-                <MobileGlassSurface
-                    enabled={Platform.OS === 'ios'}
-                    nativeEffect
-                    material="static"
-                    intensity={76}
-                    style={[
-                        styles.pillGlass,
-                        Platform.OS !== 'ios' && { backgroundColor: theme.colors.surfaceHighest },
-                        theme.dark
-                            ? { borderColor: 'rgba(255, 255, 255, 0.18)' }
-                            : { borderColor: '#FFFFFF' },
-                    ]}
-                >
-                    <View style={styles.pillContent}>
-                        <View style={styles.micSlot}>
-                            <ShimmerView
-                                shimmerColors={['rgba(255, 255, 255, 0.45)', '#FFFFFF', 'rgba(255, 255, 255, 0.45)']}
-                                duration={1800}
-                            >
-                                <Ionicons name="mic" size={24} color="#FFFFFF" />
-                            </ShimmerView>
-                        </View>
+                {/* The whole pill ends the call; "tap to end" is just the hint. */}
+                <Pressable onPress={handleEnd} style={({ pressed }) => pressed ? { opacity: 0.7 } : undefined}>
+                    <MobileGlassSurface
+                        enabled={Platform.OS === 'ios'}
+                        nativeEffect
+                        material="static"
+                        intensity={76}
+                        style={[
+                            styles.pillGlass,
+                            Platform.OS !== 'ios' && { backgroundColor: theme.colors.surfaceHighest },
+                            theme.dark
+                                ? { borderColor: 'rgba(255, 255, 255, 0.18)' }
+                                : { borderColor: '#FFFFFF' },
+                        ]}
+                    >
+                        <View style={styles.pillContent}>
+                            <View style={styles.micSlot}>
+                                <ShimmerView
+                                    shimmerColors={['rgba(255, 255, 255, 0.45)', '#FFFFFF', 'rgba(255, 255, 255, 0.45)']}
+                                    duration={1800}
+                                >
+                                    <Ionicons name="mic" size={24} color="#FFFFFF" />
+                                </ShimmerView>
+                            </View>
 
-                        <View pointerEvents="none" style={styles.centerOverlay}>
-                            <Text style={[styles.durationText, { color: theme.colors.header.tint }]}>
-                                {centerText}
-                            </Text>
-                        </View>
+                            <View pointerEvents="none" style={styles.centerOverlay}>
+                                <Text style={[styles.durationText, { color: theme.colors.header.tint }]}>
+                                    {centerText}
+                                </Text>
+                            </View>
 
-                        <Pressable onPress={handleEnd} hitSlop={12} style={styles.endControl}>
-                            <Text style={[styles.tapToEndText, { color: theme.colors.textSecondary }]}>
-                                {t('voiceStatusBar.tapToEnd')}
-                            </Text>
-                        </Pressable>
-                    </View>
-                </MobileGlassSurface>
+                            <View style={styles.endControl}>
+                                <Text style={[styles.tapToEndText, { color: theme.colors.textSecondary }]}>
+                                    {t('voiceStatusBar.tapToEnd')}
+                                </Text>
+                            </View>
+                        </View>
+                    </MobileGlassSurface>
+                </Pressable>
             </View>
         );
     }
