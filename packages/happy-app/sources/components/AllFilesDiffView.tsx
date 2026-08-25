@@ -3,6 +3,7 @@ import { View, ActivityIndicator, Pressable, Platform } from 'react-native';
 import { Text } from '@/components/StyledText';
 import { Typography } from '@/constants/Typography';
 import { DiffFilesList, type DiffFileItem } from '@/components/diff/DiffFilesList';
+import { countPatchStats } from '@/components/diff/engine/stats';
 import { sessionBash, sessionReadFile } from '@/sync/ops';
 import { storage, useSessionGitStatusFiles, useSettingMutable } from '@/sync/storage';
 import { resolveSessionFilePath } from '@/utils/sessionFileLinks';
@@ -21,6 +22,12 @@ interface AllFilesDiffViewProps {
 type DiffContent =
     | { kind: 'patch'; patch: string }
     | { kind: 'newFile'; contents: string };
+
+/** Lines in a blob, not counting the terminator after the last one. */
+function countLines(text: string): number {
+    if (text === '') return 0;
+    return text.endsWith('\n') ? text.split('\n').length - 1 : text.split('\n').length;
+}
 
 type FileDiffResult = {
     file: GitFileStatus;
@@ -189,16 +196,24 @@ export const AllFilesDiffView = React.memo(function AllFilesDiffView({
     // Initial-mount spinner: only show until results have ever been populated.
     const loading = !hasLoadedOnce && resultsMap.size === 0 && files.length > 0;
 
-    // Items for the unified renderer. Stats come from git status, so a file that
-    // hasn't been fetched (or is collapsed) still shows a correct header.
+    // Items for the unified renderer. Stats start from git status so a file that
+    // hasn't been fetched (or is collapsed) still shows a header, then get
+    // recounted from the content once it arrives: `git status` reports no line
+    // counts at all for untracked files, which left every new file claiming
+    // zero changed lines.
     const diffItems = React.useMemo<DiffFileItem[]>(() => files.map((file) => {
         const result = resultsMap.get(file.fullPath);
         const content = result?.content ?? null;
+        const stats = !content
+            ? { additions: file.linesAdded, deletions: file.linesRemoved }
+            : content.kind === 'patch'
+                ? countPatchStats(content.patch)
+                : { additions: countLines(content.contents), deletions: 0 };
         return {
             path: file.fullPath,
             kind: file.status === 'untracked' ? 'added' : file.status === 'deleted' ? 'deleted' : 'modified',
-            additions: file.linesAdded,
-            deletions: file.linesRemoved,
+            additions: stats.additions,
+            deletions: stats.deletions,
             error: result?.error ?? null,
             source: !content ? null
                 : content.kind === 'patch'
