@@ -592,7 +592,9 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                         if (ENABLE_LOGGING) {
                             console.log(`[REDUCER] Storing permission ${permId} for incoming tool`);
                         }
-                        // Store permission for when tool arrives in Phase 2
+                        // Store permission for when tool arrives in Phase 2. Keep
+                        // mode/allowedTools/decision — dropping them made the footer
+                        // forget which button granted the permission after a reload.
                         state.permissions.set(joinId, {
                             id: permId,
                             tool: completed.tool,
@@ -600,7 +602,10 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                             createdAt: completed.createdAt || Date.now(),
                             completedAt: completed.completedAt || undefined,
                             status: completed.status,
-                            reason: completed.reason || undefined
+                            reason: completed.reason || undefined,
+                            mode: completed.mode || undefined,
+                            allowedTools: completedAllowedTools || undefined,
+                            decision: completed.decision || undefined
                         });
                         continue;
                     }
