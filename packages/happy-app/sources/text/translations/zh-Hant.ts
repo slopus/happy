@@ -682,6 +682,9 @@ export const zhHant: TranslationStructure = {
     diff: {
         showMoreLines: ({ count }: { count: number }) => `再顯示 ${count} 行`,
         tapToExpand: ({ count }: { count: number }) => `${count} 行變更 — 點按展開`,
+        ignoreWhitespace: '忽略空白',
+        imageBefore: '修改前',
+        imageAfter: '修改後',
         unchangedLines: ({ count }: { count: number }) => `${count} 行未變更`,
         noChanges: '沒有變更',
         binaryFile: '不顯示二進位檔案',

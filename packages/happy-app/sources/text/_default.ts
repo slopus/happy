@@ -707,6 +707,9 @@ export const en = {
     diff: {
         showMoreLines: ({ count }: { count: number }) => `Show ${count} more lines`,
         tapToExpand: ({ count }: { count: number }) => `${count} changed lines — tap to expand`,
+        ignoreWhitespace: 'Ignore whitespace',
+        imageBefore: 'Before',
+        imageAfter: 'After',
         unchangedLines: ({ count }: { count: number }) => `${count} unchanged`,
         noChanges: 'No changes',
         binaryFile: 'Binary file not shown',

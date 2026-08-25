@@ -56,6 +56,12 @@ export interface DiffFileViewProps {
     collapseAfter?: number;
     /** Long-press to select text. Off by default — selectable rows cost measurably more. */
     selectable?: boolean;
+    /**
+     * Called when the reader taps a "N unchanged lines" separator. A patch does
+     * not contain the lines it skipped, so only callers that can ask their
+     * source for a wider diff pass this; without it the separators are inert.
+     */
+    onExpandContext?: () => void;
     /** Extra rows of breathing room above and below the code. */
     paddingVertical?: number;
     onLineLongPress?: (row: Extract<DiffRow, { kind: 'line' }>) => void;
@@ -72,6 +78,7 @@ export const DiffFileView = React.memo(function DiffFileView({
     selectable = false,
     paddingVertical = 4,
     onLineLongPress,
+    onExpandContext,
 }: DiffFileViewProps) {
     const palette = useDiffPalette();
     const metrics = useDiffMetrics(fontSize);
@@ -101,6 +108,7 @@ export const DiffFileView = React.memo(function DiffFileView({
             selectable={selectable}
             paddingVertical={paddingVertical}
             onLineLongPress={onLineLongPress}
+            onExpandContext={onExpandContext}
         />
     ) : wrap ? (
         <View style={{ paddingVertical }}>
@@ -114,6 +122,7 @@ export const DiffFileView = React.memo(function DiffFileView({
                     showLineNumbers={showLineNumbers}
                     selectable={selectable}
                     onLongPress={onLineLongPress}
+                    onExpandContext={onExpandContext}
                 />
             ))}
         </View>
@@ -129,6 +138,7 @@ export const DiffFileView = React.memo(function DiffFileView({
             selectable={selectable}
             paddingVertical={paddingVertical}
             onLineLongPress={onLineLongPress}
+            onExpandContext={onExpandContext}
         />
     );
 
@@ -171,6 +181,7 @@ const ScrollBody = React.memo(function ScrollBody({
     selectable,
     paddingVertical,
     onLineLongPress,
+    onExpandContext,
 }: {
     rows: DiffRow[];
     file: DiffFile;
@@ -182,6 +193,7 @@ const ScrollBody = React.memo(function ScrollBody({
     selectable: boolean;
     paddingVertical: number;
     onLineLongPress?: (row: Extract<DiffRow, { kind: 'line' }>) => void;
+    onExpandContext?: () => void;
 }) {
     // A couple of columns of slack keeps the last glyph off the right edge.
     const codeWidth = Math.ceil((file.maxColumns + 2) * metrics.charWidth) + 8;
@@ -207,6 +219,7 @@ const ScrollBody = React.memo(function ScrollBody({
                             metrics={metrics}
                             selectable={selectable}
                             onLongPress={onLineLongPress}
+                            onExpandContext={onExpandContext}
                         />
                     ))}
                 </View>
@@ -250,6 +263,7 @@ const SplitBody = React.memo(function SplitBody({
     selectable,
     paddingVertical,
     onLineLongPress,
+    onExpandContext,
 }: {
     rows: DiffRow[];
     palette: DiffPalette;
@@ -259,6 +273,7 @@ const SplitBody = React.memo(function SplitBody({
     selectable: boolean;
     paddingVertical: number;
     onLineLongPress?: (row: DiffLineRow) => void;
+    onExpandContext?: () => void;
 }) {
     const splitRows = React.useMemo(() => buildSplitRows(rows), [rows]);
 
@@ -274,6 +289,7 @@ const SplitBody = React.memo(function SplitBody({
                     showLineNumbers={showLineNumbers}
                     selectable={selectable}
                     onLongPress={onLineLongPress}
+                    onExpandContext={onExpandContext}
                 />
             ))}
         </View>
@@ -288,6 +304,7 @@ const DiffSplitRow = React.memo(function DiffSplitRow({
     showLineNumbers,
     selectable,
     onLongPress,
+    onExpandContext,
 }: {
     row: SplitRow;
     palette: DiffPalette;
@@ -296,10 +313,11 @@ const DiffSplitRow = React.memo(function DiffSplitRow({
     showLineNumbers: boolean;
     selectable: boolean;
     onLongPress?: (row: DiffLineRow) => void;
+    onExpandContext?: () => void;
 }) {
     if (row.kind === 'full') {
         if (row.row.kind === 'hunk') {
-            return <HunkBar row={row.row} palette={palette} metrics={metrics} />;
+            return <HunkBar row={row.row} palette={palette} metrics={metrics} onExpandContext={onExpandContext} />;
         }
         return (
             <View style={{ paddingVertical: 12, alignItems: 'center' }}>
@@ -437,29 +455,36 @@ const DiffRowCode = React.memo(function DiffRowCode({
     metrics,
     selectable,
     onLongPress,
+    onExpandContext,
 }: {
     row: DiffRow;
     palette: DiffPalette;
     metrics: DiffMetrics;
     selectable: boolean;
     onLongPress?: (row: Extract<DiffRow, { kind: 'line' }>) => void;
+    onExpandContext?: () => void;
 }) {
     if (row.kind === 'hunk') {
+        const canExpand = Boolean(onExpandContext && row.hidden);
         return (
-            <Text
-                numberOfLines={1}
-                style={{
-                    ...Typography.mono(),
-                    fontSize: metrics.fontSize - 1,
-                    lineHeight: metrics.lineHeight,
-                    height: metrics.lineHeight,
-                    backgroundColor: palette.hunkBg,
-                    color: palette.hunkText,
-                }}
-            >
-                {row.hidden ? `⋯ ${t('diff.unchangedLines', { count: row.hidden })}` : row.text}
-                {row.section ? <Text style={{ color: palette.sectionText }}>{`   ${row.section}`}</Text> : null}
-            </Text>
+            <Pressable onPress={canExpand ? onExpandContext : undefined} disabled={!canExpand}>
+                <Text
+                    numberOfLines={1}
+                    style={{
+                        ...Typography.mono(),
+                        fontSize: metrics.fontSize - 1,
+                        lineHeight: metrics.lineHeight,
+                        height: metrics.lineHeight,
+                        backgroundColor: palette.hunkBg,
+                        color: palette.hunkText,
+                    }}
+                >
+                    {row.hidden
+                        ? `${canExpand ? '⤢' : '⋯'} ${t('diff.unchangedLines', { count: row.hidden })}`
+                        : row.text}
+                    {row.section ? <Text style={{ color: palette.sectionText }}>{`   ${row.section}`}</Text> : null}
+                </Text>
+            </Pressable>
         );
     }
     if (row.kind === 'message') {
@@ -585,6 +610,7 @@ const DiffRowInline = React.memo(function DiffRowInline({
     showLineNumbers,
     selectable,
     onLongPress,
+    onExpandContext,
 }: {
     row: DiffRow;
     palette: DiffPalette;
@@ -593,9 +619,10 @@ const DiffRowInline = React.memo(function DiffRowInline({
     showLineNumbers: boolean;
     selectable: boolean;
     onLongPress?: (row: Extract<DiffRow, { kind: 'line' }>) => void;
+    onExpandContext?: () => void;
 }) {
     if (row.kind === 'hunk') {
-        return <HunkBar row={row} palette={palette} metrics={metrics} />;
+        return <HunkBar row={row} palette={palette} metrics={metrics} onExpandContext={onExpandContext} />;
     }
     if (row.kind === 'message') {
         return (
@@ -667,13 +694,18 @@ const HunkBar = React.memo(function HunkBar({
     row,
     palette,
     metrics,
+    onExpandContext,
 }: {
     row: Extract<DiffRow, { kind: 'hunk' }>;
     palette: DiffPalette;
     metrics: DiffMetrics;
+    onExpandContext?: () => void;
 }) {
+    const canExpand = Boolean(onExpandContext && row.hidden);
     return (
-        <View
+        <Pressable
+            onPress={canExpand ? onExpandContext : undefined}
+            disabled={!canExpand}
             style={{
                 height: metrics.lineHeight,
                 flexDirection: 'row',
@@ -684,7 +716,9 @@ const HunkBar = React.memo(function HunkBar({
             }}
         >
             <Text numberOfLines={1} style={{ ...Typography.mono(), fontSize: metrics.fontSize - 1, color: palette.hunkText }}>
-                {row.hidden ? `⋯ ${t('diff.unchangedLines', { count: row.hidden })}` : row.text}
+                {row.hidden
+                    ? `${canExpand ? '⤢' : '⋯'} ${t('diff.unchangedLines', { count: row.hidden })}`
+                    : row.text}
             </Text>
             {row.section ? (
                 <Text
@@ -694,7 +728,7 @@ const HunkBar = React.memo(function HunkBar({
                     {row.section}
                 </Text>
             ) : null}
-        </View>
+        </Pressable>
     );
 });
 

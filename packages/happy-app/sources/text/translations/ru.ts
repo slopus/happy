@@ -700,6 +700,9 @@ export const ru: TranslationStructure = {
             `Показать ещё ${count} ${plural({ count, one: 'строку', few: 'строки', many: 'строк' })}`,
         tapToExpand: ({ count }: { count: number }) =>
             `${count} ${plural({ count, one: 'изменённая строка', few: 'изменённые строки', many: 'изменённых строк' })} — нажмите, чтобы развернуть`,
+        ignoreWhitespace: 'Игнорировать пробелы',
+        imageBefore: 'Было',
+        imageAfter: 'Стало',
         unchangedLines: ({ count }: { count: number }) => `${count} без изменений`,
         noChanges: 'Нет изменений',
         binaryFile: 'Бинарный файл не показан',

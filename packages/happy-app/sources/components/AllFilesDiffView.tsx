@@ -4,6 +4,8 @@ import { Text } from '@/components/StyledText';
 import { Typography } from '@/constants/Typography';
 import { DiffFilesList, type DiffFileItem } from '@/components/diff/DiffFilesList';
 import { countPatchStats } from '@/components/diff/engine/stats';
+import { buildGitDiffCommand, buildGitShowBase64Command, FULL_FILE_CONTEXT } from '@/utils/gitDiffCommand';
+import { imageDataUri, isImagePath } from '@/utils/imageFiles';
 import { sessionBash, sessionReadFile } from '@/sync/ops';
 import { storage, useSessionGitStatusFiles, useSettingMutable } from '@/sync/storage';
 import { resolveSessionFilePath } from '@/utils/sessionFileLinks';
@@ -21,7 +23,8 @@ interface AllFilesDiffViewProps {
 
 type DiffContent =
     | { kind: 'patch'; patch: string }
-    | { kind: 'newFile'; contents: string };
+    | { kind: 'newFile'; contents: string }
+    | { kind: 'image'; before: string | null; after: string | null };
 
 /** Lines in a blob, not counting the terminator after the last one. */
 function countLines(text: string): number {
@@ -47,6 +50,20 @@ export const AllFilesDiffView = React.memo(function AllFilesDiffView({
     const { theme } = useUnistyles();
     const gitStatusFiles = useSessionGitStatusFiles(sessionId);
     const [diffStyle, setDiffStyle] = useSettingMutable('diffStyle');
+    // Files the reader asked to see in full, and whether whitespace-only
+    // changes are folded away. Both change the git command, so both take part
+    // in the fetch signature below.
+    const [expandedPaths, setExpandedPaths] = React.useState<Set<string>>(() => new Set());
+    const [ignoreWhitespace, setIgnoreWhitespace] = React.useState(false);
+
+    const expandContext = React.useCallback((path: string) => {
+        setExpandedPaths((prev) => {
+            if (prev.has(path)) return prev;
+            const next = new Set(prev);
+            next.add(path);
+            return next;
+        });
+    }, []);
 
     // Flatten and deduplicate files
     const files = React.useMemo(() => {
@@ -76,7 +93,8 @@ export const AllFilesDiffView = React.memo(function AllFilesDiffView({
     const [hasLoadedOnce, setHasLoadedOnce] = React.useState(false);
 
     const fileSignature = (f: GitFileStatus) =>
-        `${f.status}|${f.isStaged ? 1 : 0}|${f.linesAdded}|${f.linesRemoved}`;
+        `${f.status}|${f.isStaged ? 1 : 0}|${f.linesAdded}|${f.linesRemoved}`
+        + `|${expandedPaths.has(f.fullPath) ? 'full' : 'near'}|${ignoreWhitespace ? 'w' : ''}`;
 
     React.useEffect(() => {
         if (files.length === 0) {
@@ -137,6 +155,34 @@ export const AllFilesDiffView = React.memo(function AllFilesDiffView({
                     }
 
                     try {
+                        // Images diff as pictures, not as text — read both sides
+                        // rather than asking git for a patch it can't produce.
+                        if (isImagePath(file.fullPath)) {
+                            const [head, working] = await Promise.all([
+                                file.status === 'untracked'
+                                    ? Promise.resolve(null)
+                                    : sessionBash(sessionId, {
+                                        command: buildGitShowBase64Command(gitDiffPath),
+                                        cwd: sessionPath,
+                                        timeout: 8000,
+                                    }).then((r) => (r.success ? r.stdout ?? null : null)).catch(() => null),
+                                file.status === 'deleted'
+                                    ? Promise.resolve(null)
+                                    : sessionReadFile(sessionId, resolved.absolutePath)
+                                        .then((r) => (r.success ? r.content ?? null : null))
+                                        .catch(() => null),
+                            ]);
+                            return {
+                                file,
+                                content: {
+                                    kind: 'image',
+                                    before: head ? imageDataUri(file.fullPath, head) : null,
+                                    after: working ? imageDataUri(file.fullPath, working) : null,
+                                },
+                                error: null,
+                            };
+                        }
+
                         if (file.status === 'untracked') {
                             // Use the native sessionReadFile RPC instead of `cat`
                             // — `cat` doesn't behave the same on Windows
@@ -160,7 +206,10 @@ export const AllFilesDiffView = React.memo(function AllFilesDiffView({
                         }
 
                         const res = await sessionBash(sessionId, {
-                            command: `git -c core.quotepath=false diff HEAD --no-ext-diff -- "${gitDiffPath}"`,
+                            command: buildGitDiffCommand(gitDiffPath, {
+                                contextLines: expandedPaths.has(file.fullPath) ? FULL_FILE_CONTEXT : undefined,
+                                ignoreWhitespace,
+                            }),
                             cwd: sessionPath,
                             timeout: 5000,
                         });
@@ -191,7 +240,7 @@ export const AllFilesDiffView = React.memo(function AllFilesDiffView({
 
         return () => { cancelled = true; };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [sessionId, files]);
+    }, [sessionId, files, expandedPaths, ignoreWhitespace]);
 
     // Initial-mount spinner: only show until results have ever been populated.
     const loading = !hasLoadedOnce && resultsMap.size === 0 && files.length > 0;
@@ -204,7 +253,7 @@ export const AllFilesDiffView = React.memo(function AllFilesDiffView({
     const diffItems = React.useMemo<DiffFileItem[]>(() => files.map((file) => {
         const result = resultsMap.get(file.fullPath);
         const content = result?.content ?? null;
-        const stats = !content
+        const stats = !content || content.kind === 'image'
             ? { additions: file.linesAdded, deletions: file.linesRemoved }
             : content.kind === 'patch'
                 ? countPatchStats(content.patch)
@@ -215,7 +264,10 @@ export const AllFilesDiffView = React.memo(function AllFilesDiffView({
             additions: stats.additions,
             deletions: stats.deletions,
             error: result?.error ?? null,
-            source: !content ? null
+            image: content?.kind === 'image'
+                ? { before: content.before, after: content.after }
+                : undefined,
+            source: !content || content.kind === 'image' ? null
                 : content.kind === 'patch'
                     ? { kind: 'patch', patch: content.patch }
                     : { kind: 'contents', path: file.fullPath, oldText: '', newText: content.contents },
@@ -229,10 +281,12 @@ export const AllFilesDiffView = React.memo(function AllFilesDiffView({
                 fileCount={files.length}
                 diffStyle={diffStyle}
                 onDiffStyleChange={setDiffStyle}
+                ignoreWhitespace={ignoreWhitespace}
+                onIgnoreWhitespaceChange={setIgnoreWhitespace}
             />
         );
         return () => onHeaderRightSlotChange(null);
-    }, [files.length, diffStyle, setDiffStyle, onHeaderRightSlotChange]);
+    }, [files.length, diffStyle, setDiffStyle, ignoreWhitespace, onHeaderRightSlotChange]);
 
     if (files.length === 0 && !loading) {
         return (
@@ -258,6 +312,7 @@ export const AllFilesDiffView = React.memo(function AllFilesDiffView({
                     scrollToPath={scrollToFile ?? null}
                     split={Platform.OS === 'web' && diffStyle === 'split'}
                     emptyText={t('files.noChanges')}
+                    onExpandContext={expandContext}
                 />
             )}
         </View>
@@ -269,14 +324,38 @@ const DiffHeaderRight = React.memo(function DiffHeaderRight({
     fileCount,
     diffStyle,
     onDiffStyleChange,
+    ignoreWhitespace,
+    onIgnoreWhitespaceChange,
 }: {
     fileCount: number;
     diffStyle: 'unified' | 'split';
     onDiffStyleChange: (v: 'unified' | 'split') => void;
+    ignoreWhitespace: boolean;
+    onIgnoreWhitespaceChange: (v: boolean) => void;
 }) {
     const { theme } = useUnistyles();
     return (
         <>
+            <Pressable
+                onPress={() => onIgnoreWhitespaceChange(!ignoreWhitespace)}
+                hitSlop={8}
+                accessibilityLabel={t('diff.ignoreWhitespace')}
+                style={({ pressed }) => [
+                    styles.whitespaceToggle,
+                    {
+                        backgroundColor: ignoreWhitespace ? theme.colors.surfaceHigh : 'transparent',
+                        borderColor: theme.colors.divider,
+                        opacity: pressed ? 0.6 : 1,
+                    },
+                ]}
+            >
+                <Text style={[
+                    styles.whitespaceToggleText,
+                    { color: ignoreWhitespace ? theme.colors.text : theme.colors.textSecondary },
+                ]}>
+                    {'\u00B7\u2192'}
+                </Text>
+            </Pressable>
             <Text style={[styles.headerRightCount, { color: theme.colors.textSecondary }]}>
                 {t('files.changedFiles', { count: fileCount })}
             </Text>
@@ -329,6 +408,16 @@ const styles = StyleSheet.create({
     headerRightCount: {
         fontSize: 13,
         ...Typography.default(),
+    },
+    whitespaceToggle: {
+        paddingHorizontal: 8,
+        paddingVertical: 3,
+        borderRadius: 6,
+        borderWidth: StyleSheet.hairlineWidth,
+    },
+    whitespaceToggleText: {
+        fontSize: 13,
+        ...Typography.mono(),
     },
     centered: {
         flex: 1,
