@@ -139,7 +139,8 @@ export const settingsDefaults: Settings = {
     expResumeSession: true,
     fileDiffsSidebar: false,
     groupToolCalls: false,
-    compactToolCalls: true,
+    // Full tool views by default: edit diffs render inline in the chat.
+    compactToolCalls: false,
     expImageUpload: false,
     reviewPromptAnswered: false,
     reviewPromptLikedApp: null,
