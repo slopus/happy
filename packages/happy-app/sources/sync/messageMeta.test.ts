@@ -12,10 +12,45 @@ describe('resolveMessageModeMeta', () => {
         } as any);
 
         expect(meta).toEqual({
-            permissionMode: 'yolo',
+            permissionMode: 'auto',
             model: 'gpt-5.6-sol',
             effort: 'medium',
         });
+    });
+
+    it('uses Default for an unset Codex code default on an old CLI', () => {
+        const meta = resolveMessageModeMeta({
+            permissionMode: null,
+            modelMode: null,
+            effortLevel: null,
+            metadata: { flavor: 'codex', version: '1.2.0' },
+        } as any);
+
+        expect(meta.permissionMode).toBe('default');
+    });
+
+    it('uses Auto for an unset Codex code default on a new CLI', () => {
+        const meta = resolveMessageModeMeta({
+            permissionMode: null,
+            modelMode: null,
+            effortLevel: null,
+            metadata: { flavor: 'codex', version: '1.2.1-beta.2' },
+        } as any);
+
+        expect(meta.permissionMode).toBe('auto');
+    });
+
+    it('keeps an explicit Codex YOLO override on an old CLI', () => {
+        const meta = resolveMessageModeMeta({
+            permissionMode: null,
+            modelMode: null,
+            effortLevel: null,
+            metadata: { flavor: 'codex', version: '1.2.0' },
+        } as any, {
+            agentDefaultOverrides: { codex: { permissionMode: 'yolo' } },
+        } as any);
+
+        expect(meta.permissionMode).toBe('yolo');
     });
 
     // The composer resolves a saved `dontAsk` to Auto because the key is gone
@@ -46,10 +81,10 @@ describe('resolveMessageModeMeta', () => {
     });
 
     // A session on an old CLI can still carry `auto` — saved before the gate
-    // existed, or applied from a global default — and CLIs before 1.2.1-beta.2
+    // existed, or persisted as an explicit default — and CLIs before 1.2.1-beta.2
     // reject the whole message envelope on it. The resolver refuses loudly:
     // substituting the code default would silently change permissions (for
-    // Claude it would escalate reviewed Auto into yolo).
+    // Claude it could change a previously selected mode without consent.
     it('refuses a saved auto for a claude session on an old CLI', () => {
         expect(() => resolveMessageModeMeta({
             permissionMode: 'auto',
@@ -189,7 +224,7 @@ describe('resolveMessageModeMeta', () => {
         } as any);
 
         expect(meta).toEqual({
-            permissionMode: 'yolo',
+            permissionMode: 'auto',
             model: 'my-workspace-model',
             effort: 'medium',
         });
@@ -208,7 +243,7 @@ describe('resolveMessageModeMeta', () => {
         } as any);
 
         expect(meta).toEqual({
-            permissionMode: 'yolo',
+            permissionMode: 'auto',
             model: 'my-workspace-model',
             effort: 'medium',
         });

@@ -39,16 +39,17 @@ vi.mock('@/sync/storage', () => ({
 }));
 
 vi.mock('@/sync/agentDefaults', () => ({
-    getCodeAgentDefaults: () => ({
-        permissionMode: 'yolo',
+    getCodeAgentDefaults: (_agentType: string, cliVersion?: string) => ({
+        permissionMode: cliVersion === '1.2.0' || cliVersion === '1.2.1-beta.1' ? 'default' : 'auto',
         modelMode: 'default',
         effortLevel: null,
     }),
     resolveAgentDefaultConfig: (
         overrides: Record<string, unknown>,
         agentType: string,
+        cliVersion?: string,
     ) => overrides[agentType] ?? ({
-        permissionMode: 'default',
+        permissionMode: cliVersion === '1.2.0' || cliVersion === '1.2.1-beta.1' ? 'default' : 'auto',
         modelMode: 'default',
         effortLevel: null,
     }),
@@ -94,11 +95,17 @@ vi.mock('@/utils/worktree', () => ({
 vi.mock('@/utils/time', () => ({ delay: mocks.delay }));
 
 vi.mock('@/components/modelModeOptions', () => ({
-    filterPermissionModesForCli: (modes: any[]) => modes,
+    filterPermissionModesForCli: (modes: any[], cliVersion?: string) => (
+        cliVersion === '1.2.0' || cliVersion === '1.2.1-beta.1'
+            ? modes.filter((mode) => mode.key !== 'auto')
+            : modes
+    ),
     getHardcodedPermissionModes: () => [
+        { key: 'auto', name: 'Auto' },
         { key: 'default', name: 'Default' },
         { key: 'safe-yolo', name: 'Safe YOLO' },
         { key: 'yolo', name: 'YOLO' },
+        { key: 'bypassPermissions', name: 'YOLO' },
     ],
     getHardcodedModelModes: () => [
         { key: 'default', name: 'Default' },
@@ -210,12 +217,12 @@ describe('useStartSessionFromDraft', () => {
             directory: '/absolute/project',
             approvedNewDirectoryCreation: false,
             agent: 'codex',
-            permissionMode: 'default',
+            permissionMode: 'auto',
             modelMode: undefined,
             effortLevel: 'medium',
         });
         expect(mocks.sessionSetAgentModes).toHaveBeenCalledWith('session-1', {
-            permissionMode: 'default',
+            permissionMode: 'auto',
             modelMode: 'default',
             effortLevel: 'medium',
         });
@@ -230,6 +237,70 @@ describe('useStartSessionFromDraft', () => {
         );
         expect(mocks.navigateToSession.mock.invocationCallOrder[0])
             .toBeLessThan(mocks.sendMessage.mock.invocationCallOrder[0]);
+    });
+
+    it('uses Default as the code default when the selected CLI is too old for Auto', async () => {
+        mocks.machines = [{
+            id: 'machine-1',
+            online: true,
+            metadata: { homeDir: '/Users/dev', happyCliVersion: '1.2.0' },
+        }];
+        mocks.draft = createDraft({ agentType: 'claude' });
+
+        const { startSession } = useStartSessionFromDraft();
+
+        await expect(startSession()).resolves.toBe(true);
+
+        // Claude Default is expressed as no override on the wire: the old
+        // CLI runs its own configured mode instead of receiving `auto`.
+        expect(mocks.machineSpawnNewSession).toHaveBeenCalledWith(expect.objectContaining({
+            agent: 'claude',
+            permissionMode: undefined,
+        }));
+    });
+
+    it('sends Default explicitly for codex when the CLI is too old for Auto', async () => {
+        mocks.machines = [{
+            id: 'machine-1',
+            online: true,
+            metadata: { homeDir: '/Users/dev', happyCliVersion: '1.2.0' },
+        }];
+        mocks.draft = createDraft({ agentType: 'codex' });
+
+        const { startSession } = useStartSessionFromDraft();
+
+        await expect(startSession()).resolves.toBe(true);
+
+        // Codex Default is a concrete ask-first policy, so it rides the wire.
+        expect(mocks.machineSpawnNewSession).toHaveBeenCalledWith(expect.objectContaining({
+            agent: 'codex',
+            permissionMode: 'default',
+        }));
+    });
+
+    it('keeps a user-selected YOLO override on an old CLI', async () => {
+        mocks.machines = [{
+            id: 'machine-1',
+            online: true,
+            metadata: { homeDir: '/Users/dev', happyCliVersion: '1.2.0' },
+        }];
+        mocks.defaultOverrides = {
+            claude: {
+                permissionMode: 'bypassPermissions',
+                modelMode: 'default',
+                effortLevel: null,
+            },
+        };
+        mocks.draft = createDraft({ agentType: 'claude' });
+
+        const { startSession } = useStartSessionFromDraft();
+
+        await expect(startSession()).resolves.toBe(true);
+
+        expect(mocks.machineSpawnNewSession).toHaveBeenCalledWith(expect.objectContaining({
+            agent: 'claude',
+            permissionMode: 'bypassPermissions',
+        }));
     });
 
     it('starts codex with a custom model saved in agent settings', async () => {

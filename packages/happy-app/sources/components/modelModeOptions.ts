@@ -2,7 +2,8 @@ import type { Metadata } from '@/sync/storageTypes';
 import { hackModes } from '@/sync/modeHacks';
 import { sortPermissionModes } from '@/utils/permissionModeLabels';
 import { compareVersionsWithPrerelease, isWellFormedVersion } from '@/utils/versionUtils';
-import { getCodeAgentDefaults } from '@/sync/agentDefaults';
+import { CLI_VERSION_WITH_AUTO, getCodeAgentDefaults } from '@/sync/agentDefaults';
+export { CLI_VERSION_WITH_AUTO } from '@/sync/agentDefaults';
 import {
     getRigCurrentModel,
     getRigModels,
@@ -207,11 +208,9 @@ export function getAgyPermissionModes(translate: Translate): PermissionMode[] {
     ];
 }
 
-// `auto` first shipped in happy-cli 1.2.1-beta.2, for Claude and Codex alike.
-// Before that the CLI's MessageMetaSchema rejected it, and before the schema
-// was loosened to accept any string (same release cycle) a rejected mode
-// dropped the whole prompt — the same failure mode `dontAsk` had.
-export const CLI_VERSION_WITH_AUTO = '1.2.1-beta.2';
+// Before the release tagged above the CLI's MessageMetaSchema rejected `auto`,
+// and a rejected mode dropped the whole prompt — the same failure mode
+// `dontAsk` had.
 
 /**
  * True when the CLI at `cliVersion` parses this mode. An untagged mode is

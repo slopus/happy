@@ -709,8 +709,8 @@ export function SessionViewLoaded({
     const isRig = isRigMetadata(session.metadata);
     const agentDefaultOverrides = useSetting('agentDefaultOverrides');
     const effectiveAgentDefaults = React.useMemo(() => (
-        resolveAgentDefaultConfig(agentDefaultOverrides, flavor)
-    ), [agentDefaultOverrides, flavor]);
+        resolveAgentDefaultConfig(agentDefaultOverrides, flavor, cliVersion)
+    ), [agentDefaultOverrides, cliVersion, flavor]);
     const availableModels = React.useMemo(() => (
         getAvailableModels(
             flavor,

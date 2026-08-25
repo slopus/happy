@@ -177,7 +177,7 @@ export function useStartSessionFromDraft() {
                 modelMode: rigCreation.defaultModelKey ?? '',
                 effortLevel: rigCreation.defaultEffortForModel(rigCreation.defaultModelKey),
             }
-            : resolveAgentDefaultConfig(defaultOverrides, agentType);
+            : resolveAgentDefaultConfig(defaultOverrides, agentType, machine.metadata?.happyCliVersion);
         const permission = resolveOption<{ key: string }>(
             // The daemon machine's CLI is what will parse the mode; older CLIs
             // drop the whole prompt on modes they do not know (e.g. `auto`).
@@ -189,8 +189,8 @@ export function useStartSessionFromDraft() {
             // both filtered out for an old CLI, land there rather than on
             // whichever mode happens to lead the list.
             agentChanged
-                ? [defaults.permissionMode, rigCreation ? null : getCodeAgentDefaults(agentType).permissionMode]
-                : [draft.permissionMode, defaults.permissionMode, rigCreation ? null : getCodeAgentDefaults(agentType).permissionMode],
+                ? [defaults.permissionMode, rigCreation ? null : getCodeAgentDefaults(agentType, machine.metadata?.happyCliVersion).permissionMode]
+                : [draft.permissionMode, defaults.permissionMode, rigCreation ? null : getCodeAgentDefaults(agentType, machine.metadata?.happyCliVersion).permissionMode],
         );
         const model = resolveOption<{ key: string }>(
             rigCreation?.models ?? includeConfiguredModel(

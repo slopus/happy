@@ -849,6 +849,7 @@ function NewSessionScreen() {
         [selectedRigMachine],
     );
     const rigCreation = selectedAgent === 'rig' ? selectedRigCreation : null;
+    const happyCliVersion = selectedChoice?.happyMachine?.metadata?.happyCliVersion;
     const supportsWorktree = rigCreation?.supportsWorktrees
         ?? (selectedAgent === 'rig' ? false : getSupportsWorktree(selectedAgent));
     const selectedHomeDir = selectedChoice?.happyMachine?.metadata?.homeDir
@@ -1019,9 +1020,9 @@ function NewSessionScreen() {
     const permissionModes = React.useMemo<PermissionMode[]>(
         () => rigCreation?.permissionModes ?? filterPermissionModesForCli(
             getHardcodedPermissionModes(selectedAgent, t),
-            selectedChoice?.happyMachine?.metadata?.happyCliVersion,
+            happyCliVersion,
         ),
-        [selectedAgent, rigCreation, selectedChoice],
+        [happyCliVersion, selectedAgent, rigCreation],
     );
     const effectiveAgentDefaults = React.useMemo(() => rigCreation
         ? {
@@ -1029,7 +1030,7 @@ function NewSessionScreen() {
             modelMode: rigCreation.defaultModelKey ?? '',
             effortLevel: rigCreation.defaultEffortForModel(rigCreation.defaultModelKey),
         }
-        : resolveAgentDefaultConfig(agentDefaultOverrides, selectedAgent), [agentDefaultOverrides, selectedAgent, rigCreation]);
+        : resolveAgentDefaultConfig(agentDefaultOverrides, selectedAgent, happyCliVersion), [agentDefaultOverrides, happyCliVersion, selectedAgent, rigCreation]);
     const modelModes = React.useMemo<ModelMode[]>(
         () => rigCreation?.models ?? includeConfiguredModel(
             selectedAgent,
@@ -1062,7 +1063,7 @@ function NewSessionScreen() {
             // When the saved and default modes were both filtered out for an
             // old CLI, land on the flavor's code default rather than whichever
             // mode happens to lead the list.
-            rigCreation ? null : getCodeAgentDefaults(selectedAgent).permissionMode,
+            rigCreation ? null : getCodeAgentDefaults(selectedAgent, happyCliVersion).permissionMode,
         ]));
 
         setModelIndex(findPreferredModeIndex(modelModes, [
@@ -1081,6 +1082,7 @@ function NewSessionScreen() {
         effectiveAgentDefaults.permissionMode,
         effectiveAgentDefaults.modelMode,
         rigCreation,
+        happyCliVersion,
         selectedAgent,
     ]);
 

@@ -99,7 +99,7 @@ export function resolveMessageModeMeta(
     // Keep this Codex-only so fixing that app-server invariant does not change
     // the established default semantics of other harnesses.
     if (flavor === 'codex') {
-        const defaults = resolveAgentDefaultConfig(settings?.agentDefaultOverrides, flavor);
+        const defaults = resolveAgentDefaultConfig(settings?.agentDefaultOverrides, flavor, cliVersion);
         meta.permissionMode = supported(retirePermissionMode(session.permissionMode ?? defaults.permissionMode));
 
         const modelMode = session.modelMode ?? defaults.modelMode;

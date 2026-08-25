@@ -1,4 +1,5 @@
 import * as z from 'zod';
+import { compareVersionsWithPrerelease, isWellFormedVersion } from '@/utils/versionUtils';
 
 export const agentKeys = ['claude', 'codex', 'gemini', 'openclaw', 'agy'] as const;
 export type AgentKey = typeof agentKeys[number];
@@ -28,14 +29,35 @@ export type AgentDefaultConfig = {
 };
 
 const codeAgentDefaults: Record<AgentKey, AgentDefaultConfig> = {
-    // The Claude UI key for YOLO is `bypassPermissions`; the CLI also accepts
-    // `yolo` and maps it to the Claude SDK's bypass mode.
-    claude: { permissionMode: 'bypassPermissions', modelMode: 'claude-opus-5', effortLevel: 'medium' },
-    codex: { permissionMode: 'yolo', modelMode: 'gpt-5.6-sol', effortLevel: 'medium' },
+    // Auto is the reviewed everyday mode for both shipped code agents. The
+    // old CLI fallback is applied only when a machine version is known below;
+    // a user override is kept separate and is never rewritten here.
+    claude: { permissionMode: 'auto', modelMode: 'claude-opus-5', effortLevel: 'medium' },
+    codex: { permissionMode: 'auto', modelMode: 'gpt-5.6-sol', effortLevel: 'medium' },
     gemini: { permissionMode: 'default', modelMode: 'gemini-2.5-pro', effortLevel: null },
     openclaw: { permissionMode: 'default', modelMode: 'default', effortLevel: null },
     agy: { permissionMode: 'default', modelMode: 'Gemini 3.1 Pro (High)', effortLevel: null },
 };
+
+// `auto` first shipped in happy-cli 1.2.1-beta.2, for Claude and Codex alike.
+// Keep this with the code-default resolver so every spawn/send consumer uses
+// the same compatibility boundary as the picker catalog.
+export const CLI_VERSION_WITH_AUTO = '1.2.1-beta.2';
+
+function resolveCodeDefaultPermissionMode(
+    permissionMode: string,
+    cliVersion: string | null | undefined,
+): string {
+    if (permissionMode !== 'auto' || !cliVersion) {
+        return permissionMode;
+    }
+    if (!isWellFormedVersion(cliVersion)) {
+        return 'default';
+    }
+    return compareVersionsWithPrerelease(cliVersion, CLI_VERSION_WITH_AUTO) >= 0
+        ? permissionMode
+        : 'default';
+}
 
 export function normalizeAgentKey(flavor: string | null | undefined): AgentKey {
     if (flavor === 'codex' || flavor === 'gemini' || flavor === 'openclaw' || flavor === 'agy') {
@@ -44,8 +66,15 @@ export function normalizeAgentKey(flavor: string | null | undefined): AgentKey {
     return 'claude';
 }
 
-export function getCodeAgentDefaults(flavor: string | null | undefined): AgentDefaultConfig {
-    return codeAgentDefaults[normalizeAgentKey(flavor)];
+export function getCodeAgentDefaults(
+    flavor: string | null | undefined,
+    cliVersion?: string | null,
+): AgentDefaultConfig {
+    const defaults = codeAgentDefaults[normalizeAgentKey(flavor)];
+    const permissionMode = resolveCodeDefaultPermissionMode(defaults.permissionMode, cliVersion);
+    return permissionMode === defaults.permissionMode
+        ? defaults
+        : { ...defaults, permissionMode };
 }
 
 /**
@@ -81,8 +110,9 @@ export function getAgentDefaultOverride(
 export function resolveAgentDefaultConfig(
     overrides: AgentDefaultOverrides | null | undefined,
     flavor: string | null | undefined,
+    cliVersion?: string | null,
 ): AgentDefaultConfig {
-    const codeDefaults = getCodeAgentDefaults(flavor);
+    const codeDefaults = getCodeAgentDefaults(flavor, cliVersion);
     const userOverride = getAgentDefaultOverride(overrides, flavor);
     return {
         permissionMode: userOverride.permissionMode ?? codeDefaults.permissionMode,

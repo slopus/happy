@@ -765,6 +765,7 @@ export const HomeDock = React.memo(({
         [rigSelectionMachine],
     );
     const rigCreation = agentType === 'rig' ? rigSelectionCreation : null;
+    const happyCliVersion = selectedChoice?.happyMachine?.metadata?.happyCliVersion;
     const supportsWorktree = rigCreation?.supportsWorktrees
         ?? (agentType === 'rig' ? false : getSupportsWorktree(agentType));
     const selectedWorktreeKey = sessionType === 'worktree'
@@ -883,15 +884,15 @@ export const HomeDock = React.memo(({
             modelMode: rigCreation.defaultModelKey ?? '',
             effortLevel: rigCreation.defaultEffortForModel(rigCreation.defaultModelKey),
         }
-        : resolveAgentDefaultConfig(defaultOverrides, agentType), [agentType, defaultOverrides, rigCreation]);
+        : resolveAgentDefaultConfig(defaultOverrides, agentType, happyCliVersion), [agentType, defaultOverrides, happyCliVersion, rigCreation]);
     const permissionOptions = React.useMemo(
         // The CLI daemon on the picked computer is what will parse the mode;
         // older CLIs drop the whole prompt on modes they do not know (`auto`).
         () => rigCreation?.permissionModes ?? filterPermissionModesForCli(
             getHardcodedPermissionModes(agentType, t),
-            selectedChoice?.happyMachine?.metadata?.happyCliVersion,
+            happyCliVersion,
         ),
-        [agentType, rigCreation, selectedChoice],
+        [agentType, happyCliVersion, rigCreation],
     );
     const modelOptions = React.useMemo(
         () => rigCreation?.models ?? includeConfiguredModel(
@@ -907,7 +908,7 @@ export const HomeDock = React.memo(({
     const currentPermission = resolveOption(permissionOptions, [
         permissionMode,
         defaults.permissionMode,
-        rigCreation ? null : getCodeAgentDefaults(agentType).permissionMode,
+        rigCreation ? null : getCodeAgentDefaults(agentType, happyCliVersion).permissionMode,
     ]);
     const currentModel = resolveOption(modelOptions, [modelMode, defaults.modelMode]);
     const effortOptions = React.useMemo(
@@ -1161,14 +1162,14 @@ export const HomeDock = React.memo(({
                 modelMode: nextRigCreation.defaultModelKey ?? '',
                 effortLevel: nextRigCreation.defaultEffortForModel(nextRigCreation.defaultModelKey),
             }
-            : resolveAgentDefaultConfig(defaultOverrides, agent);
+            : resolveAgentDefaultConfig(defaultOverrides, agent, happyCliVersion);
         // Choosing Happy Agent no longer moves the machine selection: the computer already covers
         // both daemons, and switching it under the person was what made the picker show two.
         setAgentType(agent);
         setPermissionMode(nextDefaults.permissionMode);
         setModelMode(nextDefaults.modelMode);
         if (nextDefaults.effortLevel) setEffortLevel(nextDefaults.effortLevel);
-    }, [defaultOverrides, rigSelectionCreation, setAgentType, setEffortLevel, setModelMode, setPermissionMode]);
+    }, [defaultOverrides, happyCliVersion, rigSelectionCreation, setAgentType, setEffortLevel, setModelMode, setPermissionMode]);
 
     React.useEffect(() => {
         if (resolvedAgentType !== agentType) {
