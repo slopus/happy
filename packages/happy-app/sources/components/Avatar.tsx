@@ -32,6 +32,19 @@ const harnessIcons: Record<AvatarHarnessIcon, number> = {
     rig: require('@/assets/images/logo-black.png'),
 };
 
+// One badge geometry for every place an avatar carries a harness icon. The
+// glyph ratios keep clear air between glyph and circle edge — the Happy "H"
+// gets the same breathing room as the GPT mark, which needs the most.
+function harnessBadgeSizes(size: number, harness: AvatarHarnessIcon) {
+    const circleSize = Math.round(size * 0.42);
+    const iconSize = harness === 'codex' || harness === 'rig'
+        ? Math.round(size * 0.3)
+        : harness === 'claude'
+            ? Math.round(size * 0.34)
+            : Math.round(size * 0.42);
+    return { circleSize, iconSize };
+}
+
 const styles = StyleSheet.create((theme) => ({
     container: {
         position: 'relative',
@@ -89,14 +102,7 @@ export const Avatar = React.memo((props: AvatarProps) => {
         // Add harness icon overlay if enabled
         if (showHarnessIcon && effectiveHarness) {
             const harnessIcon = harnessIcons[effectiveHarness];
-            const circleSize = Math.round(size * 0.35);
-            const iconSize = effectiveHarness === 'codex'
-                ? Math.round(size * 0.25)
-                : effectiveHarness === 'claude'
-                    ? Math.round(size * 0.28)
-                    : effectiveHarness === 'rig'
-                        ? Math.round(size * 0.29)
-                        : Math.round(size * 0.35);
+            const { circleSize, iconSize } = harnessBadgeSizes(size, effectiveHarness);
 
             return (
                 <View style={[styles.container, { width: size, height: size }]}>
@@ -134,16 +140,9 @@ export const Avatar = React.memo((props: AvatarProps) => {
 
     // Determine harness icon for generated avatars
     const harnessIcon = effectiveHarness ? harnessIcons[effectiveHarness] : null;
-    // Make icons smaller while keeping same circle size
-    // Claude slightly bigger than codex
-    const circleSize = Math.round(size * 0.35);
-    const iconSize = effectiveHarness === 'codex'
-        ? Math.round(size * 0.25)
-        : effectiveHarness === 'claude'
-            ? Math.round(size * 0.28)
-            : effectiveHarness === 'rig'
-                ? Math.round(size * 0.29)
-                : Math.round(size * 0.35);
+    const { circleSize, iconSize } = effectiveHarness
+        ? harnessBadgeSizes(size, effectiveHarness)
+        : { circleSize: 0, iconSize: 0 };
 
     // Only wrap in a container when this caller explicitly opts into a badge
     // location and the session has an identifiable harness.
