@@ -474,7 +474,11 @@ const stylesheet = StyleSheet.create((theme) => ({
         flexDirection: 'row',
         alignItems: 'center',
         paddingHorizontal: 16,
-        backgroundColor: 'transparent',
+        // Solid, and the same color the card behind it paints: the row is the
+        // thing that slides during the archive swipe, so it must cover the red
+        // action underneath the way the flat list's rows do — a transparent
+        // row lets the red show through the moment the drag starts.
+        backgroundColor: theme.colors.surface,
     },
     sessionRowWithBorder: {
         borderBottomWidth: StyleSheet.hairlineWidth,
