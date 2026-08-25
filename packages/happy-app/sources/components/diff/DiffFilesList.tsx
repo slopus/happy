@@ -23,12 +23,15 @@ import { DiffFileHeader, type DiffFileSummary } from './DiffFileHeader';
 import { DiffFileView } from './DiffFileView';
 import { useDiffPalette } from './DiffPalette';
 import { useDiffDocument, type DiffSource } from './useDiffDocument';
+import { DiffImageView } from './DiffImageView';
 
 export interface DiffFileItem extends DiffFileSummary {
     /** Stable identity; defaults to `path` when omitted. */
     key?: string;
     /** Null while the patch is still being fetched. */
     source: DiffSource | null;
+    /** Set instead of `source` for files that are pictures rather than text. */
+    image?: { before: string | null; after: string | null };
     error?: string | null;
 }
 
@@ -46,6 +49,11 @@ export interface DiffFilesListProps {
     autoCollapseAbove?: number;
     /** Overrides the default "no changes" copy. */
     emptyText?: string;
+    /**
+     * Called when the reader taps an "N unchanged lines" separator, with the
+     * file it belongs to. Callers that can re-fetch a wider diff pass this.
+     */
+    onExpandContext?: (path: string) => void;
 }
 
 export const DiffFilesList = React.memo(function DiffFilesList({
@@ -58,6 +66,7 @@ export const DiffFilesList = React.memo(function DiffFilesList({
     header,
     autoCollapseAbove = 2000,
     emptyText,
+    onExpandContext,
 }: DiffFilesListProps) {
     const palette = useDiffPalette();
     const listRef = React.useRef<FlashListRef<DiffFileItem>>(null);
@@ -89,9 +98,10 @@ export const DiffFilesList = React.memo(function DiffFilesList({
                 split={split}
                 fontSize={fontSize}
                 highlighted={scrollToPath === item.path}
+                onExpandContext={onExpandContext}
             />
         );
-    }, [overrides, autoCollapseAbove, toggle, showLineNumbers, wrap, split, fontSize, scrollToPath]);
+    }, [overrides, autoCollapseAbove, toggle, showLineNumbers, wrap, split, fontSize, scrollToPath, onExpandContext]);
 
     return (
         <View style={{ flex: 1, backgroundColor: palette.surface }}>
@@ -122,6 +132,7 @@ const FileSection = React.memo(function FileSection({
     split,
     fontSize,
     highlighted,
+    onExpandContext,
 }: {
     item: DiffFileItem;
     collapsed: boolean;
@@ -131,6 +142,7 @@ const FileSection = React.memo(function FileSection({
     split: boolean;
     fontSize?: number;
     highlighted: boolean;
+    onExpandContext?: (path: string) => void;
 }) {
     const palette = useDiffPalette();
     // Building only happens for expanded sections FlashList decided to mount.
@@ -156,6 +168,8 @@ const FileSection = React.memo(function FileSection({
                 </Pressable>
             ) : item.error ? (
                 <Message text={item.error} />
+            ) : item.image ? (
+                <DiffImageView before={item.image.before} after={item.image.after} />
             ) : !item.source ? (
                 <View style={{ paddingVertical: 16, alignItems: 'center' }}>
                     <ActivityIndicator size="small" color={palette.textSecondary} />
@@ -173,6 +187,7 @@ const FileSection = React.memo(function FileSection({
                         fontSize={fontSize}
                         collapseAfter={600}
                         selectable={Platform.OS !== 'android'}
+                        onExpandContext={onExpandContext ? () => onExpandContext(item.path) : undefined}
                     />
                 ))
             )}

@@ -682,6 +682,9 @@ export const ca: TranslationStructure = {
     diff: {
         showMoreLines: ({ count }: { count: number }) => `Mostra ${count} línies més`,
         tapToExpand: ({ count }: { count: number }) => `${count} línies modificades — toca per ampliar`,
+        ignoreWhitespace: 'Ignora els espais en blanc',
+        imageBefore: 'Abans',
+        imageAfter: 'Després',
         unchangedLines: ({ count }: { count: number }) => `${count} sense canvis`,
         noChanges: 'Sense canvis',
         binaryFile: 'Fitxer binari no mostrat',

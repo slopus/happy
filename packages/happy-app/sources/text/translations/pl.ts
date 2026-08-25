@@ -698,6 +698,9 @@ export const pl: TranslationStructure = {
     diff: {
         showMoreLines: ({ count }: { count: number }) => `Pokaż jeszcze ${count} wierszy`,
         tapToExpand: ({ count }: { count: number }) => `${count} zmienionych wierszy — dotknij, aby rozwinąć`,
+        ignoreWhitespace: 'Ignoruj białe znaki',
+        imageBefore: 'Przed',
+        imageAfter: 'Po',
         unchangedLines: ({ count }: { count: number }) => `${count} bez zmian`,
         noChanges: 'Brak zmian',
         binaryFile: 'Plik binarny nie jest wyświetlany',

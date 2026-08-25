@@ -683,6 +683,9 @@ export const ja: TranslationStructure = {
     diff: {
         showMoreLines: ({ count }: { count: number }) => `さらに${count}行を表示`,
         tapToExpand: ({ count }: { count: number }) => `${count}行の変更 — タップして展開`,
+        ignoreWhitespace: '空白を無視',
+        imageBefore: '変更前',
+        imageAfter: '変更後',
         unchangedLines: ({ count }: { count: number }) => `${count}行は変更なし`,
         noChanges: '変更なし',
         binaryFile: 'バイナリファイルは表示されません',

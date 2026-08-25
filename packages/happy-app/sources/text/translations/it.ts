@@ -680,6 +680,9 @@ export const it: TranslationStructure = {
     diff: {
         showMoreLines: ({ count }: { count: number }) => `Mostra altre ${count} righe`,
         tapToExpand: ({ count }: { count: number }) => `${count} righe modificate — tocca per espandere`,
+        ignoreWhitespace: 'Ignora gli spazi',
+        imageBefore: 'Prima',
+        imageAfter: 'Dopo',
         unchangedLines: ({ count }: { count: number }) => `${count} invariate`,
         noChanges: 'Nessuna modifica',
         binaryFile: 'File binario non visualizzato',
