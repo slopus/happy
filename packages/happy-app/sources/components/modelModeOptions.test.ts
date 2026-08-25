@@ -130,11 +130,13 @@ describe('modelModeOptions', () => {
         expect(models.map((model) => model.key)).toEqual([
             'claude-fable-5',
             'claude-opus-5',
+            'claude-opus-5[1m]',
             'claude-sonnet-5',
         ]);
         expect(models.map((model) => model.name)).toEqual([
             'Fable 5',
             'Opus 5',
+            'Opus 5 [1M]',
             'Sonnet 5',
         ]);
         // No `default model` row, and no alias keys: an alias would silently
