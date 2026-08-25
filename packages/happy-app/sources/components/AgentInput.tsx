@@ -709,14 +709,18 @@ const AgentInputUsageRow = React.memo(function AgentInputUsageRow(p: UsageRowPro
                             onSelect: () => { },
                         }]}
                     >
-                        {weekText}
+                        {/* Native menu triggers hit only their own bounds, so
+                            pad the target out and pull the layout back in. */}
+                        <View style={{ padding: 10, margin: -10 }}>
+                            {weekText}
+                        </View>
                     </NativeSettingsMenu>
                 ) : weekText
             )}
             {p.contextStatus && (
                 <Pressable
                     onPress={() => setShowPreciseContext((current) => !current)}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    hitSlop={{ top: 12, bottom: 14, left: 10, right: 14 }}
                     style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}
                 >
                     <Text style={{ fontSize: 11, color: p.contextStatus.color, ...Typography.default() }}>

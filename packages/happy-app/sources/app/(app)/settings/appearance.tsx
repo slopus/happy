@@ -418,6 +418,20 @@ export default function AppearanceSettingsScreen() {
             </ItemGroup> */}
 
             {/* Display Settings */}
+            <ItemGroup title={t('settingsAppearance.input')} footer={t('settingsAppearance.inputDescription')}>
+                <Item
+                    title={t('settingsAppearance.alwaysShowContextSize')}
+                    subtitle={t('settingsAppearance.alwaysShowContextSizeDescription')}
+                    icon={<Ionicons name="analytics-outline" size={29} color="#5856D6" />}
+                    rightElement={
+                        <Switch
+                            value={alwaysShowContextSize}
+                            onValueChange={setAlwaysShowContextSize}
+                        />
+                    }
+                />
+            </ItemGroup>
+
             <ItemGroup title={t('settingsAppearance.display')} footer={t('settingsAppearance.displayDescription')}>
                 {/* Same setting the home filter menu drives; two values, so a
                     tap flips between them like the theme row does. */}
@@ -448,17 +462,6 @@ export default function AppearanceSettingsScreen() {
                         <Switch
                             value={showLineNumbersInToolViews}
                             onValueChange={setShowLineNumbersInToolViews}
-                        />
-                    }
-                />
-                <Item
-                    title={t('settingsAppearance.alwaysShowContextSize')}
-                    subtitle={t('settingsAppearance.alwaysShowContextSizeDescription')}
-                    icon={<Ionicons name="analytics-outline" size={29} color="#5856D6" />}
-                    rightElement={
-                        <Switch
-                            value={alwaysShowContextSize}
-                            onValueChange={setAlwaysShowContextSize}
                         />
                     }
                 />
