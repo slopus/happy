@@ -1,16 +1,12 @@
 import * as React from 'react';
-import { View, ScrollView, ActivityIndicator, Pressable, Platform } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { View, ActivityIndicator, Pressable, Platform } from 'react-native';
 import { Text } from '@/components/StyledText';
 import { Typography } from '@/constants/Typography';
-import { FileIcon } from '@/components/FileIcon';
-import { PierreDiffView } from '@/components/diff/PierreDiffView';
-import { getPatchDiffStats } from '@/components/diff/calculateDiff';
+import { DiffFilesList, type DiffFileItem } from '@/components/diff/DiffFilesList';
 import { sessionBash, sessionReadFile } from '@/sync/ops';
 import { storage, useSessionGitStatusFiles, useSettingMutable } from '@/sync/storage';
 import { resolveSessionFilePath } from '@/utils/sessionFileLinks';
 import { GitFileStatus } from '@/sync/gitStatusFiles';
-import { layout } from '@/components/layout';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
 
@@ -44,8 +40,6 @@ export const AllFilesDiffView = React.memo(function AllFilesDiffView({
     const { theme } = useUnistyles();
     const gitStatusFiles = useSessionGitStatusFiles(sessionId);
     const [diffStyle, setDiffStyle] = useSettingMutable('diffStyle');
-    const scrollRef = React.useRef<ScrollView>(null);
-    const fileOffsets = React.useRef<Map<string, number>>(new Map());
 
     // Flatten and deduplicate files
     const files = React.useMemo(() => {
@@ -192,61 +186,26 @@ export const AllFilesDiffView = React.memo(function AllFilesDiffView({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [sessionId, files]);
 
-    // Render in deterministic file order (same sort as `files`).
-    const results = React.useMemo<FileDiffResult[]>(() => {
-        const out: FileDiffResult[] = [];
-        for (const f of files) {
-            const r = resultsMap.get(f.fullPath);
-            if (r) out.push(r);
-        }
-        return out;
-    }, [files, resultsMap]);
-
     // Initial-mount spinner: only show until results have ever been populated.
-    const loading = !hasLoadedOnce && results.length === 0 && files.length > 0;
+    const loading = !hasLoadedOnce && resultsMap.size === 0 && files.length > 0;
 
-    // Whenever the file list changes (new file silently appears, an existing
-    // file disappears, a sort order shifts), all cached Y offsets are
-    // potentially stale: insertions push every section below them downward.
-    // Drop the cache so the scroll-to-file effect waits for fresh onLayout
-    // values rather than scrolling to a position the file no longer occupies.
-    React.useEffect(() => {
-        fileOffsets.current.clear();
-    }, [results]);
-
-    // Scroll to the target file after content renders.
-    //
-    // Two race conditions to defeat:
-    //   1. Initial mount — diffs are still fetching, sections aren't laid out yet,
-    //      so the offset map is empty.
-    //   2. Re-renders triggered by back / forward navigation — the prop changes
-    //      while sections are already mounted; we want the scroll to happen on
-    //      the next frame, not after a fixed delay.
-    //
-    // Strategy: try on the next animation frame; if the offset isn't recorded
-    // yet, retry up to a few times.
-    React.useEffect(() => {
-        if (loading || !scrollToFile) return;
-        let cancelled = false;
-        let rafId = 0;
-        let attempt = 0;
-        const tryScroll = () => {
-            if (cancelled) return;
-            const offset = fileOffsets.current.get(scrollToFile);
-            if (offset !== undefined && scrollRef.current) {
-                scrollRef.current.scrollTo({ y: offset, animated: true });
-                return;
-            }
-            if (attempt++ < 8) {
-                rafId = requestAnimationFrame(tryScroll);
-            }
+    // Items for the unified renderer. Stats come from git status, so a file that
+    // hasn't been fetched (or is collapsed) still shows a correct header.
+    const diffItems = React.useMemo<DiffFileItem[]>(() => files.map((file) => {
+        const result = resultsMap.get(file.fullPath);
+        const content = result?.content ?? null;
+        return {
+            path: file.fullPath,
+            kind: file.status === 'untracked' ? 'added' : file.status === 'deleted' ? 'deleted' : 'modified',
+            additions: file.linesAdded,
+            deletions: file.linesRemoved,
+            error: result?.error ?? null,
+            source: !content ? null
+                : content.kind === 'patch'
+                    ? { kind: 'patch', patch: content.patch }
+                    : { kind: 'contents', path: file.fullPath, oldText: '', newText: content.contents },
         };
-        rafId = requestAnimationFrame(tryScroll);
-        return () => {
-            cancelled = true;
-            cancelAnimationFrame(rafId);
-        };
-    }, [scrollToFile, loading]);
+    }), [files, resultsMap]);
 
     // Publish header right-slot controls (file count + diff style toggle) into the chat header.
     React.useEffect(() => {
@@ -279,21 +238,12 @@ export const AllFilesDiffView = React.memo(function AllFilesDiffView({
                     <ActivityIndicator size="small" color={theme.colors.textSecondary} />
                 </View>
             ) : (
-                <ScrollView
-                    ref={scrollRef}
-                    style={{ flex: 1 }}
-                    contentContainerStyle={{ maxWidth: layout.maxWidth, alignSelf: 'center', width: '100%' }}
-                >
-                    {results.map((result) => (
-                        <FileDiffSection
-                            key={result.file.fullPath}
-                            result={result}
-                            diffStyle={diffStyle}
-                            isHighlighted={scrollToFile === result.file.fullPath}
-                            onLayout={(y) => fileOffsets.current.set(result.file.fullPath, y)}
-                        />
-                    ))}
-                </ScrollView>
+                <DiffFilesList
+                    items={diffItems}
+                    scrollToPath={scrollToFile ?? null}
+                    split={Platform.OS === 'web' && diffStyle === 'split'}
+                    emptyText={t('files.noChanges')}
+                />
             )}
         </View>
     );
@@ -319,107 +269,6 @@ const DiffHeaderRight = React.memo(function DiffHeaderRight({
                 <DiffStyleToggle value={diffStyle} onChange={onDiffStyleChange} />
             )}
         </>
-    );
-});
-
-/** Single file section: header + pre-loaded diff content */
-const FileDiffSection = React.memo(function FileDiffSection({
-    result,
-    diffStyle,
-    isHighlighted,
-    onLayout,
-}: {
-    result: FileDiffResult;
-    diffStyle: 'unified' | 'split';
-    isHighlighted: boolean;
-    onLayout: (y: number) => void;
-}) {
-    const { theme } = useUnistyles();
-    const { file, content, error } = result;
-    const [collapsed, setCollapsed] = React.useState(false);
-
-    const fileName = file.fullPath.split('/').pop() || file.fullPath;
-    const isEmpty =
-        content === null ? false :
-        content.kind === 'patch' ? content.patch.trim() === '' :
-        content.contents === '';
-
-    const stats = React.useMemo(() => {
-        if (!content) return null;
-        if (content.kind === 'patch') return getPatchDiffStats(content.patch);
-        const lineCount = content.contents === '' ? 0 : content.contents.split('\n').length;
-        return { additions: lineCount, deletions: 0 };
-    }, [content]);
-
-    return (
-        <View
-            style={[
-                styles.fileSection,
-                { borderBottomColor: theme.colors.divider },
-                isHighlighted && { backgroundColor: theme.colors.surfaceHigh },
-            ]}
-            onLayout={(e) => onLayout(e.nativeEvent.layout.y)}
-        >
-            {/* File header */}
-            <Pressable
-                style={[styles.fileHeader, { backgroundColor: theme.colors.surfaceHigh, borderBottomColor: theme.colors.divider }]}
-                onPress={() => setCollapsed((c) => !c)}
-            >
-                <Ionicons
-                    name={collapsed ? 'chevron-forward' : 'chevron-down'}
-                    size={14}
-                    color={theme.colors.textSecondary}
-                />
-                <FileIcon fileName={fileName} size={18} />
-                <Text
-                    numberOfLines={1}
-                    ellipsizeMode="middle"
-                    style={[styles.headerPath, { color: theme.colors.textSecondary }]}
-                >
-                    {file.fullPath}
-                </Text>
-                {file.status === 'deleted' && (
-                    <Text style={[styles.statusBadge, { color: '#FF3B30' }]}>deleted</Text>
-                )}
-                {file.status === 'untracked' && (
-                    <Text style={[styles.statusBadge, { color: '#34C759' }]}>new</Text>
-                )}
-                {stats && (stats.additions > 0 || stats.deletions > 0) && (
-                    <View style={styles.stats}>
-                        {stats.additions > 0 && <Text style={styles.added}>+{stats.additions}</Text>}
-                        {stats.deletions > 0 && <Text style={styles.removed}>-{stats.deletions}</Text>}
-                    </View>
-                )}
-            </Pressable>
-
-            {/* Diff content */}
-            {!collapsed && (
-                error ? (
-                    <View style={styles.sectionMessage}>
-                        <Text style={{ color: theme.colors.textSecondary, ...Typography.default() }}>{error}</Text>
-                    </View>
-                ) : !content || isEmpty ? (
-                    <View style={styles.sectionMessage}>
-                        <Text style={{ color: theme.colors.textSecondary, ...Typography.default() }}>{t('files.noChanges')}</Text>
-                    </View>
-                ) : content.kind === 'patch' ? (
-                    <PierreDiffView
-                        key={diffStyle}
-                        patch={content.patch}
-                        diffStyle={diffStyle}
-                        disableFileHeader
-                    />
-                ) : (
-                    <PierreDiffView
-                        key={diffStyle}
-                        oldFile={{ name: fileName, contents: '' }}
-                        newFile={{ name: fileName, contents: content.contents }}
-                        diffStyle={diffStyle}
-                        disableFileHeader
-                    />
-                )
-            )}
-        </View>
     );
 });
 
@@ -471,45 +320,5 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
         padding: 20,
-    },
-    fileSection: {
-        borderBottomWidth: 1,
-    },
-    fileHeader: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 8,
-        paddingHorizontal: 16,
-        paddingVertical: 10,
-        borderBottomWidth: 1,
-    },
-    headerPath: {
-        flex: 1,
-        fontSize: 13,
-        ...Typography.mono(),
-    },
-    statusBadge: {
-        fontSize: 11,
-        ...Typography.mono(),
-        fontWeight: '600',
-    },
-    stats: {
-        flexDirection: 'row',
-        gap: 6,
-    },
-    added: {
-        fontSize: 12,
-        color: '#34C759',
-        ...Typography.mono(),
-    },
-    removed: {
-        fontSize: 12,
-        color: '#FF3B30',
-        ...Typography.mono(),
-    },
-    sectionMessage: {
-        paddingVertical: 24,
-        alignItems: 'center',
-        justifyContent: 'center',
     },
 });

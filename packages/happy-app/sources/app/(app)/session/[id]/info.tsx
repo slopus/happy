@@ -1,13 +1,13 @@
 import React, { useCallback } from 'react';
 import { View, Text, Animated, Platform } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, Octicons } from '@expo/vector-icons';
 import { Typography } from '@/constants/Typography';
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
 import { Avatar } from '@/components/Avatar';
-import { useSession, useIsDataReady, useSessionProjectAvatar } from '@/sync/storage';
+import { useSession, useIsDataReady, useSessionProjectAvatar, useSessionGitStatusFiles } from '@/sync/storage';
 import { getSessionName, useSessionStatus, formatOSPlatform, formatPathRelativeToHome, getSessionAvatarId, getResumeCommand } from '@/utils/sessionUtils';
 import * as Clipboard from 'expo-clipboard';
 import { Modal } from '@/modal';
@@ -142,6 +142,21 @@ function SessionInfoContent({ session }: { session: Session }) {
         resumeSession,
         resumeSessionSubtitle,
     } = useSessionQuickActions(session);
+
+    // Changed-file count for the diff entry; git already knows it, so the
+    // subtitle costs nothing and tells the user whether it's worth opening.
+    const gitStatusFiles = useSessionGitStatusFiles(session.id);
+    const changedFileCount = React.useMemo(() => {
+        if (!gitStatusFiles) return 0;
+        const paths = new Set<string>();
+        for (const f of [...gitStatusFiles.stagedFiles, ...gitStatusFiles.unstagedFiles]) {
+            paths.add(f.fullPath);
+        }
+        return paths.size;
+    }, [gitStatusFiles]);
+    const changedFilesSubtitle = changedFileCount > 0
+        ? t('files.changedFiles', { count: changedFileCount })
+        : t('sessionInfo.viewChangesSubtitle');
 
     // Check if CLI version is outdated
     const isCliOutdated = session.metadata?.version && !isVersionSupported(session.metadata.version, MINIMUM_CLI_VERSION);
@@ -379,6 +394,12 @@ function SessionInfoContent({ session }: { session: Session }) {
 
                 {/* Quick Actions */}
                 <ItemGroup title={t('sessionInfo.quickActions')}>
+                    <Item
+                        title={t('sessionInfo.viewChanges')}
+                        subtitle={changedFilesSubtitle}
+                        icon={<Octicons name="file-diff" size={26} color="#007AFF" />}
+                        onPress={() => router.push(`/session/${session.id}/changes`)}
+                    />
                     {session.metadata?.machineId && (
                         <Item
                             title={t('sessionInfo.viewMachine')}

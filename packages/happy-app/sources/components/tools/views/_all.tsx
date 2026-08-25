@@ -12,8 +12,8 @@ import { BashViewFull } from './BashViewFull';
 import { EditViewFull } from './EditViewFull';
 import { MultiEditViewFull } from './MultiEditViewFull';
 import { CodexBashView } from './CodexBashView';
-import { CodexPatchView } from './CodexPatchView';
-import { CodexDiffView } from './CodexDiffView';
+import { CodexPatchView, CodexPatchViewFull } from './CodexPatchView';
+import { CodexDiffView, CodexDiffViewFull } from './CodexDiffView';
 import { AskUserQuestionView } from './AskUserQuestionView';
 import { RequestUserInputView } from './RequestUserInputView';
 import { GeminiEditView } from './GeminiEditView';
@@ -25,6 +25,8 @@ export type ToolViewProps = {
     metadata: Metadata | null;
     messages: Message[];
     sessionId?: string;
+    messageId?: string;
+    focusFile?: string;
     permissionFooter?: React.ReactNode;
 }
 
@@ -50,6 +52,10 @@ export const toolViewRegistry: Record<string, ToolViewComponent> = {
     // Gemini tools (lowercase)
     edit: GeminiEditView,
     execute: GeminiExecuteView,
+    // Gemini emits the same payloads as Codex — `unified_diff` for diffs and an
+    // add/modify/delete change map for patches — so the Codex views handle both.
+    GeminiDiff: CodexDiffView,
+    GeminiPatch: CodexPatchView,
     // File attachment events
     file: FileView,
 };
@@ -57,6 +63,10 @@ export const toolViewRegistry: Record<string, ToolViewComponent> = {
 export const toolFullViewRegistry: Record<string, ToolViewComponent> = {
     Bash: BashViewFull,
     CodexBash: CodexBashView,
+    CodexPatch: CodexPatchViewFull,
+    CodexDiff: CodexDiffViewFull,
+    GeminiPatch: CodexPatchViewFull,
+    GeminiDiff: CodexDiffViewFull,
     Edit: EditViewFull,
     MultiEdit: MultiEditViewFull,
     Task: TaskView,

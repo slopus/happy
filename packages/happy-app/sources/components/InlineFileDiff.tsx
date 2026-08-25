@@ -4,8 +4,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { Text } from '@/components/StyledText';
 import { Typography } from '@/constants/Typography';
 import { FileIcon } from '@/components/FileIcon';
-import { PierreDiffView } from '@/components/diff/PierreDiffView';
-import { getPatchDiffStats } from '@/components/diff/calculateDiff';
+import { DiffChunk } from '@/components/diff/DiffChunk';
+import { countPatchStats } from '@/components/diff/engine/stats';
 import { sessionBash } from '@/sync/ops';
 import { storage, useSettingMutable } from '@/sync/storage';
 import { resolveSessionFilePath } from '@/utils/sessionFileLinks';
@@ -97,7 +97,7 @@ export const InlineFileDiff = React.memo(function InlineFileDiff({ sessionId, fu
 
     const stats = React.useMemo(() => {
         if (!content) return null;
-        if (content.kind === 'patch') return getPatchDiffStats(content.patch);
+        if (content.kind === 'patch') return countPatchStats(content.patch);
         const lineCount = content.contents === '' ? 0 : content.contents.split('\n').length;
         return { additions: lineCount, deletions: 0 };
     }, [content]);
@@ -128,22 +128,16 @@ export const InlineFileDiff = React.memo(function InlineFileDiff({ sessionId, fu
                     </View>
                 ) : (
                     <ScrollView style={{ flex: 1 }}>
-                        {content.kind === 'patch' ? (
-                            <PierreDiffView
-                                key={diffStyle}
-                                patch={content.patch}
-                                diffStyle={diffStyle}
-                                disableFileHeader
-                            />
-                        ) : (
-                            <PierreDiffView
-                                key={diffStyle}
-                                oldFile={{ name: fileName, contents: '' }}
-                                newFile={{ name: fileName, contents: content.contents }}
-                                diffStyle={diffStyle}
-                                disableFileHeader
-                            />
-                        )}
+                        {/* Split is offered on web only — two columns are
+                            unreadable at phone widths. */}
+                        <DiffChunk
+                            patch={content.kind === 'patch' ? content.patch : undefined}
+                            oldText={content.kind === 'newFile' ? '' : undefined}
+                            newText={content.kind === 'newFile' ? content.contents : undefined}
+                            fileName={fullPath}
+                            split={Platform.OS === 'web' && diffStyle === 'split'}
+                            collapseAfter={600}
+                        />
                     </ScrollView>
                 )}
             </View>
