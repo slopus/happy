@@ -180,6 +180,7 @@ async function dragSessionToList(
     await page.mouse.move(targetBox!.x + targetBox!.width / 2, targetBox!.y + targetBox!.height / 2, { steps: 12 });
     await page.mouse.move(targetBox!.x + targetBox!.width / 2 + 1, targetBox!.y + targetBox!.height / 2, { steps: 2 });
     await expect.poll(() => target.evaluate((element) => window.getComputedStyle(element).backgroundColor)).not.toBe(restingBackground);
+    await expect(target.locator('[data-testid^="sidebar-list-drop-indicator-"]')).toHaveCount(0);
     if (onTargetHover) await onTargetHover();
     await page.mouse.move(targetBox!.x + targetBox!.width + 80, targetY, { steps: 6 });
     await expect.poll(() => target.evaluate((element) => window.getComputedStyle(element).backgroundColor)).toBe(restingBackground);
@@ -206,19 +207,26 @@ async function dragListToList(
     expect(targetBox).not.toBeNull();
     const restingBackground = await target.evaluate((element) => window.getComputedStyle(element).backgroundColor);
     const targetY = targetBox!.y + targetBox!.height * (position === 'before' ? 0.25 : 0.75);
+    const indicator = target.getByTestId(`sidebar-list-drop-indicator-${position}`);
 
     await page.mouse.move(sourceBox!.x + sourceBox!.width / 2, sourceBox!.y + sourceBox!.height / 2);
     await page.mouse.down();
     await page.mouse.move(sourceBox!.x + sourceBox!.width / 2 + 8, sourceBox!.y + sourceBox!.height / 2, { steps: 4 });
     await page.mouse.move(targetBox!.x + targetBox!.width / 2, targetY, { steps: 12 });
     await page.mouse.move(targetBox!.x + targetBox!.width / 2 + 1, targetY, { steps: 2 });
-    await expect.poll(() => target.evaluate((element) => window.getComputedStyle(element).backgroundColor)).not.toBe(restingBackground);
+    await expect(indicator).toBeVisible();
+    await expect.poll(() => target.evaluate((element) => window.getComputedStyle(element).backgroundColor)).toBe(restingBackground);
+    const indicatorBox = await indicator.boundingBox();
+    expect(indicatorBox).not.toBeNull();
+    expect(indicatorBox!.width).toBeGreaterThan(targetBox!.width * 0.75);
+    const expectedIndicatorY = position === 'before' ? targetBox!.y : targetBox!.y + targetBox!.height;
+    expect(Math.abs(indicatorBox!.y + indicatorBox!.height / 2 - expectedIndicatorY)).toBeLessThanOrEqual(3);
     if (onTargetHover) await onTargetHover();
     await page.mouse.move(targetBox!.x + targetBox!.width + 80, targetY, { steps: 6 });
-    await expect.poll(() => target.evaluate((element) => window.getComputedStyle(element).backgroundColor)).toBe(restingBackground);
+    await expect(indicator).toHaveCount(0);
     await page.mouse.move(targetBox!.x + targetBox!.width / 2, targetY, { steps: 6 });
     await page.mouse.move(targetBox!.x + targetBox!.width / 2 + 1, targetY, { steps: 2 });
-    await expect.poll(() => target.evaluate((element) => window.getComputedStyle(element).backgroundColor)).not.toBe(restingBackground);
+    await expect(indicator).toBeVisible();
     await pauseForReview(page, 900);
     await page.mouse.up();
 }

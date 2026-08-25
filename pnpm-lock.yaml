@@ -386,6 +386,12 @@ importers:
 
   packages/happy-app:
     dependencies:
+      '@atlaskit/pragmatic-drag-and-drop':
+        specifier: ^3.0.0
+        version: 3.0.0
+      '@atlaskit/pragmatic-drag-and-drop-hitbox':
+        specifier: ^2.1.0
+        version: 2.1.0
       '@codemirror/lang-cpp':
         specifier: ^6.0.3
         version: 6.0.3
@@ -1427,6 +1433,12 @@ packages:
 
   '@asamuzakjp/css-color@3.2.0':
     resolution: {integrity: sha512-K1A6z8tS3XsmCMM86xoWdn7Fkdn9m6RSVtocUrJYIwZnFVkng/PvkEoWtOWmP+Scc6saYWHWZYbndEEXxl24jw==}
+
+  '@atlaskit/pragmatic-drag-and-drop-hitbox@2.1.0':
+    resolution: {integrity: sha512-88krJVd1OcPHy0EFcJx0CjT1AOTB/1AneVvDWOhU4FH6NYDgTNF69euj8GUE07r0KK3L+9V77MKQhaOtwq2mXA==}
+
+  '@atlaskit/pragmatic-drag-and-drop@3.0.0':
+    resolution: {integrity: sha512-EEKBELv757wrvhMHBAoFcXjfzGZ4Y2FJ2xnSsWovsOKywkN1Q4IWRH52hQpPmJnATLcmO9viVhoXWSXFBLKSLQ==}
 
   '@babel/code-frame@7.29.0':
     resolution: {integrity: sha512-9NhCeYjq9+3uxgdtp20LSiJXJvN0FeCtNGpJxuMFZ1Kv3cWUNb6DOhJwUvcVCzKGR66cw4njwM6hrJLqgOwbcw==}
@@ -6216,6 +6228,9 @@ packages:
     resolution: {integrity: sha512-Ceh+7ox5qe7LJuLHoY0feh3pHuUDHAcRUeyL2VYghZwfpkNIy/+8Ocg0a3UuSoYzavmylwuLWQOf3hl0jjMMIw==}
     engines: {node: '>=8'}
 
+  bind-event-listener@3.0.0:
+    resolution: {integrity: sha512-PJvH288AWQhKs2v9zyfYdPzlPqf5bXbGMmhmUIY9x4dAUGIWgomO771oBQNwJnMQSnUIXhKu6sgzpBRXTlvb8Q==}
+
   bindings@1.5.0:
     resolution: {integrity: sha512-p2q/t/mhvuOj/UeLlV6566GD/guowlr0hHxClI0W9m7MWYkL1F0hLo+0Aexs9HSPCtR1SXQ0TD3MMKrXZajbiQ==}
 
@@ -10688,6 +10703,9 @@ packages:
     resolution: {integrity: sha512-WuyALRjWPDGtt/wzJiadO5AXY+8hZ80hVpe6MyivgraREW751X3SbhRvG3eLKOYN+8VEvqLcf3wdnt44Z4S4SA==}
     engines: {node: '>=10'}
 
+  raf-schd@4.0.3:
+    resolution: {integrity: sha512-tQkJl2GRWh83ui2DiPTJz9wEiMN20syf+5oKfB03yYP7ioZcJwsIK8FjrtLwH1m7C7e+Tt2yYBlrOpdT+dyeIQ==}
+
   range-parser@1.2.1:
     resolution: {integrity: sha512-Hrgsx+orqoygnmhFbKaHE6c296J+HTAQXoxEF6gNupROmmGJRoyzfG3ccAveqCBrwr/2yxQ5BVd/GTl5agOwSg==}
     engines: {node: '>= 0.6'}
@@ -12996,6 +13014,17 @@ snapshots:
       '@csstools/css-parser-algorithms': 3.0.5(@csstools/css-tokenizer@3.0.4)
       '@csstools/css-tokenizer': 3.0.4
       lru-cache: 10.4.3
+
+  '@atlaskit/pragmatic-drag-and-drop-hitbox@2.1.0':
+    dependencies:
+      '@atlaskit/pragmatic-drag-and-drop': 3.0.0
+      '@babel/runtime': 7.29.2
+
+  '@atlaskit/pragmatic-drag-and-drop@3.0.0':
+    dependencies:
+      '@babel/runtime': 7.29.2
+      bind-event-listener: 3.0.0
+      raf-schd: 4.0.3
 
   '@babel/code-frame@7.29.0':
     dependencies:
@@ -18456,6 +18485,8 @@ snapshots:
 
   binary-extensions@2.3.0: {}
 
+  bind-event-listener@3.0.0: {}
+
   bindings@1.5.0:
     dependencies:
       file-uri-to-path: 1.0.0
@@ -23839,6 +23870,8 @@ snapshots:
   quick-format-unescaped@4.0.4: {}
 
   quick-lru@5.1.1: {}
+
+  raf-schd@4.0.3: {}
 
   range-parser@1.2.1: {}
 
