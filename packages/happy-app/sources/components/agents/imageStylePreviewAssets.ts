@@ -39,6 +39,7 @@ const IMAGE_STYLE_PREVIEW_ASSETS: Record<string, ImageSourcePropType> = {
     'image-effects/healing-anime-scribble-v3@1.0.0': require('../../../assets/images/image-effects/healing-anime-scribble-v3.jpg'),
     'image-effects/healing-scene@1.0.0': require('../../../assets/images/image-effects/healing-scene.jpg'),
     'image-effects/illustrated-city-map@1.0.0': require('../../../assets/images/image-effects/illustrated-city-map.jpg'),
+    'image-effects/kinetic-graphite-character-study@1.0.0': require('../../../assets/images/image-effects/kinetic-graphite-character-study.jpg'),
     'image-effects/kpi-dashboard-infographic@1.0.0': require('../../../assets/images/image-effects/kpi-dashboard-infographic.jpg'),
     'image-effects/legend-heavy-infographic@1.0.0': require('../../../assets/images/image-effects/legend-heavy-infographic.jpg'),
     'image-effects/lifestyle-product-scene@1.0.0': require('../../../assets/images/image-effects/lifestyle-product-scene.jpg'),
