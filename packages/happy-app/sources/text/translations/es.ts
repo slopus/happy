@@ -171,13 +171,6 @@ export const es: TranslationStructure = {
         },
         chat: 'Chat',
         chatDescription: 'Personaliza la apariencia de los mensajes del chat',
-        sessionStatusBar: 'Información de estado de la sesión',
-        sessionStatusBarDescription: 'Elige dónde aparecen la rama, el modelo, el esfuerzo y el contexto',
-        sessionStatusDisplayOptions: {
-            hidden: 'Oculto',
-            above: 'Sobre el compositor',
-            below: 'Bajo el compositor',
-        },
         usageLimitShowRemaining: 'Mostrar cuota restante',
         usageLimitShowRemainingDescription: 'Los indicadores de límite cuentan hacia atrás en vez de hacia adelante',
         userMessageBubbleColor: 'Color de tus mensajes',
@@ -445,14 +438,6 @@ export const es: TranslationStructure = {
             stopGoal: 'Detener objetivo',
             editGoal: 'Editar objetivo',
         },
-        sessionStatusBar: {
-            contextUsage: ({ used, total, percent }: { used: string; total: string; percent: number }) => `Contexto ${used} de ${total} tokens, ${percent}%`,
-            limitSession: 'sesión',
-            limitWeek: 'semana',
-            limitResets: ({ time }: { time: string }) => `se restablece ${time}`,
-            limitAsOf: ({ age }: { age: string }) => `hace ${age}`,
-            limitRemaining: ({ percent }: { percent: number }) => `${percent}% restante`,
-        },
     },
 
     agentInput: {
@@ -519,9 +504,14 @@ export const es: TranslationStructure = {
             badgePlan: 'Planificación',
         },
         context: {
-            detailUsed: ({ used, total }: { used: string; total: string }) => `${used} / ${total} usado`,
+            detailContext: ({ used, total }: { used: string; total: string }) => `${used} / ${total} de contexto`,
             percentContext: ({ percent }: { percent: number }) => `${percent}% contexto`,
             percentWeek: ({ percent }: { percent: number }) => `${percent}% semana`,
+        },
+        usagePopup: {
+            session: 'Sesión',
+            week: 'Semana',
+            resets: ({ time }: { time: string }) => `se restablece ${time}`,
         },
         suggestion: {
             fileLabel: 'ARCHIVO',

@@ -19,7 +19,6 @@ import { ChatHeaderView } from '@/components/ChatHeaderView';
 import { ChatList } from '@/components/ChatList';
 import { Deferred } from '@/components/Deferred';
 import { EmptyMessages } from '@/components/EmptyMessages';
-import { SessionStatusBar } from '@/components/SessionStatusBar';
 import { Avatar } from '@/components/Avatar';
 import { VoiceAssistantStatusBar } from '@/components/VoiceAssistantStatusBar';
 import { useDraft } from '@/hooks/useDraft';
@@ -760,7 +759,6 @@ export function SessionViewLoaded({
     const sessionUsage = useSessionUsage(sessionId);
     const gitStatus = useSessionGitStatus(sessionId);
     const alwaysShowContextSize = useSetting('alwaysShowContextSize');
-    const sessionStatusBarDisplay = useSetting('sessionStatusBarDisplay');
     const experiments = useSetting('experiments');
     const { canResume, resumeSession, resumingSession } = useSessionQuickActions(session);
     const isDisconnected = !sessionStatus.isConnected;
@@ -916,16 +914,6 @@ export function SessionViewLoaded({
         }
         return null;
     }, [gitStatus?.unstagedLinesAdded, gitStatus?.unstagedLinesRemoved, session.metadata]);
-    const statusBarWeekPercent = React.useMemo(() => {
-        const windows = session.agentState?.usageLimits?.windows;
-        if (!Array.isArray(windows)) return null;
-        const week = windows.find((w) => w?.id === 'seven_day');
-        return typeof week?.utilization === 'number' ? week.utilization : null;
-    }, [session.agentState?.usageLimits]);
-    const statusBarModelLabel = modelMode?.name ?? session.metadata?.currentModelCode ?? session.modelMode ?? null;
-    const statusBarEffortLabel = effortLevel?.name
-        ? effortLevel.name.charAt(0).toUpperCase() + effortLevel.name.slice(1)
-        : null;
 
     const visibleAgentGoal = React.useMemo(() => (
         resolveVisibleAgentGoalStatus(session)
@@ -1099,13 +1087,10 @@ export function SessionViewLoaded({
                 usageData={usageData}
                 alwaysShowContextSize={alwaysShowContextSize}
                 zenMode={zenMode}
-                showSessionStatusInfoInSettings={false}
                 showStatusDetails={showBottomDockDetails}
                 sessionStatusGitBranch={statusBarGitBranch ?? 'main'}
                 sessionStatusGitChanges={statusBarGitChanges}
-                sessionStatusWeekPercent={statusBarWeekPercent}
-                sessionStatusModelLabel={statusBarModelLabel}
-                sessionStatusEffortLabel={statusBarEffortLabel}
+                sessionStatusUsageLimits={session.agentState?.usageLimits ?? null}
                 onActionAreaOffsetChange={usesFloatingMobileDock ? handleComposerCardOffsetChange : undefined}
             />
         </View>
@@ -1131,29 +1116,6 @@ export function SessionViewLoaded({
         </AnimatedFade>
     ) : null;
 
-    const showSessionStatusBar = sessionStatusBarDisplay === 'above' || sessionStatusBarDisplay === 'below';
-    const sessionStatusBarPosition = sessionStatusBarDisplay === 'above' ? 'above' : 'below';
-    const sessionStatusBar = showSessionStatusBar ? (
-        <AnimatedFade visible={showBottomDockDetails}>
-            <CenteredInputWidth horizontalPadding={sessionInputHorizontalPadding}>
-                <SessionStatusBar
-                    gitBranch={statusBarGitBranch}
-                    modelLabel={statusBarModelLabel}
-                    modelMode={modelMode}
-                    availableModels={availableModels}
-                    onModelModeChange={isRigModelSelectionEnabled(session.metadata) ? updateModelMode : undefined}
-                    effortLabel={statusBarEffortLabel}
-                    effortLevel={effortLevel}
-                    availableEffortLevels={availableEffortLevels}
-                    onEffortLevelChange={isRigReasoningSelectionEnabled(session.metadata) ? updateEffortLevel : undefined}
-                    contextSize={usageData?.contextSize}
-                    contextWindow={usageData?.contextWindow}
-                    usageLimits={session.agentState?.usageLimits}
-                />
-            </CenteredInputWidth>
-        </AnimatedFade>
-    ) : null;
-
     const input = (
         <>
             {inactiveHint}
@@ -1173,12 +1135,10 @@ export function SessionViewLoaded({
                     <AgentQuestionBanner sessionId={sessionId} />
                 </CenteredInputWidth>
             </AnimatedFade>
-            {sessionStatusBarPosition === 'above' ? sessionStatusBar : null}
             <AnimatedFade visible={showBottomDockDetails}>
                 <RigActivityBar metadata={session.metadata} />
             </AnimatedFade>
             {composer}
-            {sessionStatusBarPosition === 'below' ? sessionStatusBar : null}
         </>
     );
 

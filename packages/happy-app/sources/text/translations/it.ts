@@ -169,13 +169,6 @@ export const it: TranslationStructure = {
         },
         chat: 'Chat',
         chatDescription: 'Personalizza l\'aspetto dei messaggi della chat',
-        sessionStatusBar: 'Informazioni sullo stato della sessione',
-        sessionStatusBarDescription: 'Scegli dove mostrare branch, modello, impegno e contesto',
-        sessionStatusDisplayOptions: {
-            hidden: 'Nascosto',
-            above: 'Sopra il compositore',
-            below: 'Sotto il compositore',
-        },
         usageLimitShowRemaining: 'Mostra la quota rimanente',
         usageLimitShowRemainingDescription: 'Gli indicatori di limite contano alla rovescia invece che in avanti',
         userMessageBubbleColor: 'Colore dei tuoi messaggi',
@@ -443,14 +436,6 @@ export const it: TranslationStructure = {
             stopGoal: 'Ferma obiettivo',
             editGoal: 'Modifica obiettivo',
         },
-        sessionStatusBar: {
-            contextUsage: ({ used, total, percent }: { used: string; total: string; percent: number }) => `Contesto ${used} di ${total} token, ${percent}%`,
-            limitSession: 'sessione',
-            limitWeek: 'settimana',
-            limitResets: ({ time }: { time: string }) => `si azzera ${time}`,
-            limitAsOf: ({ age }: { age: string }) => `${age} fa`,
-            limitRemaining: ({ percent }: { percent: number }) => `${percent}% rimanente`,
-        },
     },
 
     agentInput: {
@@ -517,9 +502,14 @@ export const it: TranslationStructure = {
             badgePlan: 'Pianificazione',
         },
         context: {
-            detailUsed: ({ used, total }: { used: string; total: string }) => `${used} / ${total} usato`,
+            detailContext: ({ used, total }: { used: string; total: string }) => `${used} / ${total} di contesto`,
             percentContext: ({ percent }: { percent: number }) => `${percent}% contesto`,
             percentWeek: ({ percent }: { percent: number }) => `${percent}% settimana`,
+        },
+        usagePopup: {
+            session: 'Sessione',
+            week: 'Settimana',
+            resets: ({ time }: { time: string }) => `si azzera ${time}`,
         },
         suggestion: {
             fileLabel: 'FILE',

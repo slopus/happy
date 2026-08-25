@@ -173,6 +173,15 @@ export function getUsageLimitDisplayPercentage(utilization: number, showRemainin
     return showRemaining ? 100 - utilization : utilization;
 }
 
+/** Short reset moment: a clock time within a day, a date beyond that. */
+export function formatUsageLimitResetTime(ms: number): string {
+    const d = new Date(ms);
+    if (ms - Date.now() < 22 * 3600_000) {
+        return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+    return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+}
+
 /** Compact age like "3m" / "2h" for the "as of" footer. */
 export function formatUsageLimitAge(capturedAt: number, now: number): string {
     const deltaMin = Math.max(0, Math.floor((now - capturedAt) / 60000));

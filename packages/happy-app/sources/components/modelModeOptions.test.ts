@@ -108,7 +108,7 @@ describe('modelModeOptions', () => {
             'gpt-5.6-terra',
             'gpt-5.6-luna',
         ]);
-        expect(models[0].name).toBe('gpt-5.6 sol');
+        expect(models[0].name).toBe('GPT-5.6 Sol');
     });
 
     it('adds a configured custom codex model without expanding the shared catalog', () => {
@@ -133,9 +133,9 @@ describe('modelModeOptions', () => {
             'claude-sonnet-5',
         ]);
         expect(models.map((model) => model.name)).toEqual([
-            'fable 5',
-            'opus 5',
-            'sonnet 5',
+            'Fable 5',
+            'Opus 5',
+            'Sonnet 5',
         ]);
         // No `default model` row, and no alias keys: an alias would silently
         // resolve to an older model than the row claims.

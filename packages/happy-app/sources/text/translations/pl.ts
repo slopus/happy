@@ -188,13 +188,6 @@ export const pl: TranslationStructure = {
         },
         chat: 'Czat',
         chatDescription: 'Dostosuj wygląd wiadomości czatu',
-        sessionStatusBar: 'Informacje o stanie sesji',
-        sessionStatusBarDescription: 'Wybierz, gdzie wyświetlać gałąź, model, wysiłek i kontekst',
-        sessionStatusDisplayOptions: {
-            hidden: 'Ukryte',
-            above: 'Nad polem wprowadzania',
-            below: 'Pod polem wprowadzania',
-        },
         usageLimitShowRemaining: 'Pokaż pozostały limit',
         usageLimitShowRemainingDescription: 'Wskaźniki limitu odliczają w dół zamiast w górę',
         userMessageBubbleColor: 'Kolor Twoich wiadomości',
@@ -461,14 +454,6 @@ export const pl: TranslationStructure = {
             stopGoal: 'Zatrzymaj cel',
             editGoal: 'Edytuj cel',
         },
-        sessionStatusBar: {
-            contextUsage: ({ used, total, percent }: { used: string; total: string; percent: number }) => `Kontekst ${used} z ${total} tokenów, ${percent}%`,
-            limitSession: 'sesja',
-            limitWeek: 'tydzień',
-            limitResets: ({ time }: { time: string }) => `reset ${time}`,
-            limitAsOf: ({ age }: { age: string }) => `sprzed ${age}`,
-            limitRemaining: ({ percent }: { percent: number }) => `pozostało ${percent}%`,
-        },
     },
 
     agentInput: {
@@ -535,9 +520,14 @@ export const pl: TranslationStructure = {
             badgePlan: 'Planowanie',
         },
         context: {
-            detailUsed: ({ used, total }: { used: string; total: string }) => `Użyto ${used} / ${total}`,
+            detailContext: ({ used, total }: { used: string; total: string }) => `Kontekst ${used} / ${total}`,
             percentContext: ({ percent }: { percent: number }) => `${percent}% kontekstu`,
             percentWeek: ({ percent }: { percent: number }) => `${percent}% tygodnia`,
+        },
+        usagePopup: {
+            session: 'Sesja',
+            week: 'Tydzień',
+            resets: ({ time }: { time: string }) => `reset ${time}`,
         },
         suggestion: {
             fileLabel: 'PLIK',

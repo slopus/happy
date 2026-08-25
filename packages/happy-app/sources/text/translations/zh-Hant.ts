@@ -171,13 +171,6 @@ export const zhHant: TranslationStructure = {
         },
         chat: '聊天',
         chatDescription: '自訂聊天訊息外觀',
-        sessionStatusBar: '工作階段狀態資訊',
-        sessionStatusBarDescription: '選擇分支、模型、工作量和上下文的顯示位置',
-        sessionStatusDisplayOptions: {
-            hidden: '隱藏',
-            above: '輸入框上方',
-            below: '輸入框下方',
-        },
         usageLimitShowRemaining: '顯示剩餘額度',
         usageLimitShowRemainingDescription: '額度指示器顯示剩餘量，而非已用量',
         userMessageBubbleColor: '使用者氣泡顏色',
@@ -445,14 +438,6 @@ export const zhHant: TranslationStructure = {
             stopGoal: '停止目標',
             editGoal: '編輯目標',
         },
-        sessionStatusBar: {
-            contextUsage: ({ used, total, percent }: { used: string; total: string; percent: number }) => `上下文 ${used}/${total} 個權杖，${percent}%`,
-            limitSession: '會話',
-            limitWeek: '週',
-            limitResets: ({ time }: { time: string }) => `${time} 重置`,
-            limitAsOf: ({ age }: { age: string }) => `數據為 ${age} 前`,
-            limitRemaining: ({ percent }: { percent: number }) => `剩餘 ${percent}%`,
-        },
     },
 
     agentInput: {
@@ -519,9 +504,14 @@ export const zhHant: TranslationStructure = {
             badgePlan: '計畫',
         },
         context: {
-            detailUsed: ({ used, total }: { used: string; total: string }) => `已用 ${used} / ${total}`,
+            detailContext: ({ used, total }: { used: string; total: string }) => `上下文 ${used} / ${total}`,
             percentContext: ({ percent }: { percent: number }) => `上下文 ${percent}%`,
             percentWeek: ({ percent }: { percent: number }) => `本週 ${percent}%`,
+        },
+        usagePopup: {
+            session: '會話',
+            week: '週',
+            resets: ({ time }: { time: string }) => `重置於 ${time}`,
         },
         suggestion: {
             fileLabel: '檔案',

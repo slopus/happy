@@ -51,12 +51,12 @@ type MetadataOption = {
 };
 
 const GEMINI_MODEL_FALLBACKS: ModelMode[] = [
-    { key: 'gemini-3.1-pro-preview', name: 'gemini 3.1 pro', description: 'latest & most capable' },
-    { key: 'gemini-3-flash-preview', name: 'gemini 3 flash', description: 'latest & fast' },
-    { key: 'gemini-3.1-flash-lite-preview', name: 'gemini 3.1 flash lite', description: 'latest & fastest' },
-    { key: 'gemini-2.5-pro', name: 'gemini 2.5 pro', description: 'most capable' },
-    { key: 'gemini-2.5-flash', name: 'gemini 2.5 flash', description: 'fast & efficient' },
-    { key: 'gemini-2.5-flash-lite', name: 'gemini 2.5 flash lite', description: 'fastest' },
+    { key: 'gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro', description: 'latest & most capable' },
+    { key: 'gemini-3-flash-preview', name: 'Gemini 3 Flash', description: 'latest & fast' },
+    { key: 'gemini-3.1-flash-lite-preview', name: 'Gemini 3.1 Flash Lite', description: 'latest & fastest' },
+    { key: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', description: 'most capable' },
+    { key: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', description: 'fast & efficient' },
+    { key: 'gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash Lite', description: 'fastest' },
 ];
 
 export function mapMetadataOptions(options?: MetadataOption[] | null): ModeOption[] {
@@ -134,17 +134,17 @@ export function getGeminiPermissionModes(translate: Translate): PermissionMode[]
 // API, so they say exactly which model is meant.
 export function getClaudeModelModes(): ModelMode[] {
     return [
-        { key: 'claude-fable-5', name: 'fable 5', description: null },
-        { key: 'claude-opus-5', name: 'opus 5', description: null },
-        { key: 'claude-sonnet-5', name: 'sonnet 5', description: null },
+        { key: 'claude-fable-5', name: 'Fable 5', description: null },
+        { key: 'claude-opus-5', name: 'Opus 5', description: null },
+        { key: 'claude-sonnet-5', name: 'Sonnet 5', description: null },
     ];
 }
 
 export function getCodexModelModes(): ModelMode[] {
     return [
-        { key: 'gpt-5.6-sol', name: 'gpt-5.6 sol', description: null },
-        { key: 'gpt-5.6-terra', name: 'gpt-5.6 terra', description: null },
-        { key: 'gpt-5.6-luna', name: 'gpt-5.6 luna', description: null },
+        { key: 'gpt-5.6-sol', name: 'GPT-5.6 Sol', description: null },
+        { key: 'gpt-5.6-terra', name: 'GPT-5.6 Terra', description: null },
+        { key: 'gpt-5.6-luna', name: 'GPT-5.6 Luna', description: null },
     ];
 }
 
@@ -289,24 +289,24 @@ export function getHardcodedPermissionModes(flavor: AgentFlavor, translate: Tran
 
 export function getOpenClawModelModes(): ModelMode[] {
     return [
-        { key: 'default', name: 'default model', description: null },
+        { key: 'default', name: 'Default model', description: null },
     ];
 }
 
 // Keys are the exact display names `agy --model` accepts (as printed by `agy models`).
 export function getAgyModelModes(): ModelMode[] {
     return [
-        { key: 'Gemini 3.6 Flash (High)', name: 'gemini 3.6 flash (high)', description: null },
-        { key: 'Gemini 3.6 Flash (Medium)', name: 'gemini 3.6 flash (medium)', description: null },
-        { key: 'Gemini 3.6 Flash (Low)', name: 'gemini 3.6 flash (low)', description: null },
-        { key: 'Gemini 3.1 Pro (High)', name: 'gemini 3.1 pro (high)', description: null },
-        { key: 'Gemini 3.1 Pro (Low)', name: 'gemini 3.1 pro (low)', description: null },
-        { key: 'Gemini 3.5 Flash (High)', name: 'gemini 3.5 flash (high)', description: null },
-        { key: 'Gemini 3.5 Flash (Medium)', name: 'gemini 3.5 flash (medium)', description: null },
-        { key: 'Gemini 3.5 Flash (Low)', name: 'gemini 3.5 flash (low)', description: null },
-        { key: 'Claude Opus 4.6 (Thinking)', name: 'claude opus 4.6 (thinking)', description: null },
-        { key: 'Claude Sonnet 4.6 (Thinking)', name: 'claude sonnet 4.6 (thinking)', description: null },
-        { key: 'GPT-OSS 120B (Medium)', name: 'gpt-oss 120b (medium)', description: null },
+        { key: 'Gemini 3.6 Flash (High)', name: 'Gemini 3.6 Flash (High)', description: null },
+        { key: 'Gemini 3.6 Flash (Medium)', name: 'Gemini 3.6 Flash (Medium)', description: null },
+        { key: 'Gemini 3.6 Flash (Low)', name: 'Gemini 3.6 Flash (Low)', description: null },
+        { key: 'Gemini 3.1 Pro (High)', name: 'Gemini 3.1 Pro (High)', description: null },
+        { key: 'Gemini 3.1 Pro (Low)', name: 'Gemini 3.1 Pro (Low)', description: null },
+        { key: 'Gemini 3.5 Flash (High)', name: 'Gemini 3.5 Flash (High)', description: null },
+        { key: 'Gemini 3.5 Flash (Medium)', name: 'Gemini 3.5 Flash (Medium)', description: null },
+        { key: 'Gemini 3.5 Flash (Low)', name: 'Gemini 3.5 Flash (Low)', description: null },
+        { key: 'Claude Opus 4.6 (Thinking)', name: 'Claude Opus 4.6 (Thinking)', description: null },
+        { key: 'Claude Sonnet 4.6 (Thinking)', name: 'Claude Sonnet 4.6 (Thinking)', description: null },
+        { key: 'GPT-OSS 120B (Medium)', name: 'GPT-OSS 120B (Medium)', description: null },
     ];
 }
 
@@ -470,8 +470,18 @@ export function getDefaultPermissionModeKey(flavor: AgentFlavor): string {
 
 // Effort levels per agent type
 
+// Display capitalization only — the key is what the wire protocol accepts.
+// `xhigh` keeps its camel-cased brand spelling instead of plain title case.
+const EFFORT_DISPLAY_NAMES: Record<string, string> = {
+    xhigh: 'xHigh',
+};
+
+export function effortDisplayName(key: string): string {
+    return EFFORT_DISPLAY_NAMES[key] ?? (key.charAt(0).toUpperCase() + key.slice(1));
+}
+
 function effortLevels(keys: readonly string[]): EffortLevel[] {
-    return keys.map((key) => ({ key, name: key }));
+    return keys.map((key) => ({ key, name: effortDisplayName(key) }));
 }
 
 // The Claude Agent SDK's own EffortLevel union, in order
@@ -526,7 +536,7 @@ export function getEffortLevelsForModel(
     if (isRigMetadataV1(metadata)) {
         return getRigReasoningLevels(metadata, modelKey).map((level) => ({
             key: level,
-            name: level,
+            name: effortDisplayName(level),
         }));
     }
     // Claude's effort scale is a property of the SDK rather than of the model:

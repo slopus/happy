@@ -156,13 +156,6 @@ export const ru: TranslationStructure = {
         },
         chat: 'Чат',
         chatDescription: 'Настройте внешний вид сообщений в чате',
-        sessionStatusBar: 'Информация о сессии',
-        sessionStatusBarDescription: 'Выберите, где показывать ветку, модель, усилия и контекст',
-        sessionStatusDisplayOptions: {
-            hidden: 'Скрыто',
-            above: 'Над полем ввода',
-            below: 'Под полем ввода',
-        },
         usageLimitShowRemaining: 'Показывать остаток',
         usageLimitShowRemainingDescription: 'Индикаторы лимита отсчитывают остаток, а не использование',
         userMessageBubbleColor: 'Цвет ваших сообщений',
@@ -399,14 +392,6 @@ export const ru: TranslationStructure = {
             stopGoal: 'Остановить цель',
             editGoal: 'Изменить цель',
         },
-        sessionStatusBar: {
-            contextUsage: ({ used, total, percent }: { used: string; total: string; percent: number }) => `Контекст ${used} из ${total} токенов, ${percent}%`,
-            limitSession: 'сессия',
-            limitWeek: 'неделя',
-            limitResets: ({ time }: { time: string }) => `сброс ${time}`,
-            limitAsOf: ({ age }: { age: string }) => `данные ${age} назад`,
-            limitRemaining: ({ percent }: { percent: number }) => `осталось ${percent}%`,
-        },
     },
 
     profile: {
@@ -535,9 +520,14 @@ export const ru: TranslationStructure = {
             badgePlan: 'Планирование',
         },
         context: {
-            detailUsed: ({ used, total }: { used: string; total: string }) => `Использовано ${used} / ${total}`,
+            detailContext: ({ used, total }: { used: string; total: string }) => `Контекст ${used} / ${total}`,
             percentContext: ({ percent }: { percent: number }) => `${percent}% контекста`,
             percentWeek: ({ percent }: { percent: number }) => `${percent}% за неделю`,
+        },
+        usagePopup: {
+            session: 'Сессия',
+            week: 'Неделя',
+            resets: ({ time }: { time: string }) => `сброс ${time}`,
         },
         suggestion: {
             fileLabel: 'ФАЙЛ',

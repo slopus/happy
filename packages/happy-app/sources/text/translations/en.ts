@@ -185,13 +185,6 @@ export const en: TranslationStructure = {
         },
         chat: 'Chat',
         chatDescription: 'Customize chat message appearance',
-        sessionStatusBar: 'Session Status Info',
-        sessionStatusBarDescription: 'Choose where branch, model, effort, and context appear',
-        sessionStatusDisplayOptions: {
-            hidden: 'Hidden',
-            above: 'Above composer',
-            below: 'Below composer',
-        },
         usageLimitShowRemaining: 'Show Quota Remaining',
         usageLimitShowRemainingDescription: 'Count plan limits down from full instead of up from empty',
         userMessageBubbleColor: 'User Bubble Color',
@@ -459,14 +452,6 @@ export const en: TranslationStructure = {
             stopGoal: 'Stop goal',
             editGoal: 'Edit goal',
         },
-        sessionStatusBar: {
-            contextUsage: ({ used, total, percent }: { used: string; total: string; percent: number }) => `Context ${used} of ${total} tokens, ${percent}%`,
-            limitSession: 'session',
-            limitWeek: 'week',
-            limitResets: ({ time }: { time: string }) => `resets ${time}`,
-            limitAsOf: ({ age }: { age: string }) => `as of ${age} ago`,
-            limitRemaining: ({ percent }: { percent: number }) => `${percent}% left`,
-        },
     },
 
     agentInput: {
@@ -533,9 +518,14 @@ export const en: TranslationStructure = {
             badgePlan: 'plan',
         },
         context: {
-            detailUsed: ({ used, total }: { used: string; total: string }) => `${used} / ${total} used`,
+            detailContext: ({ used, total }: { used: string; total: string }) => `${used} / ${total} context`,
             percentContext: ({ percent }: { percent: number }) => `${percent}% context`,
             percentWeek: ({ percent }: { percent: number }) => `${percent}% week`,
+        },
+        usagePopup: {
+            session: 'Session',
+            week: 'Week',
+            resets: ({ time }: { time: string }) => `resets ${time}`,
         },
         suggestion: {
             fileLabel: 'FILE',

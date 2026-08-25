@@ -170,13 +170,6 @@ export const pt: TranslationStructure = {
         },
         chat: 'Chat',
         chatDescription: 'Personalize a aparência das mensagens do chat',
-        sessionStatusBar: 'Informações de status da sessão',
-        sessionStatusBarDescription: 'Escolha onde a branch, o modelo, o esforço e o contexto aparecem',
-        sessionStatusDisplayOptions: {
-            hidden: 'Oculto',
-            above: 'Acima do compositor',
-            below: 'Abaixo do compositor',
-        },
         usageLimitShowRemaining: 'Mostrar cota restante',
         usageLimitShowRemainingDescription: 'Os indicadores de limite contam para baixo em vez de para cima',
         userMessageBubbleColor: 'Cor das suas mensagens',
@@ -444,14 +437,6 @@ export const pt: TranslationStructure = {
             stopGoal: 'Parar objetivo',
             editGoal: 'Editar objetivo',
         },
-        sessionStatusBar: {
-            contextUsage: ({ used, total, percent }: { used: string; total: string; percent: number }) => `Contexto ${used} de ${total} tokens, ${percent}%`,
-            limitSession: 'sessão',
-            limitWeek: 'semana',
-            limitResets: ({ time }: { time: string }) => `redefine ${time}`,
-            limitAsOf: ({ age }: { age: string }) => `há ${age}`,
-            limitRemaining: ({ percent }: { percent: number }) => `${percent}% restante`,
-        },
     },
 
     agentInput: {
@@ -518,9 +503,14 @@ export const pt: TranslationStructure = {
             badgePlan: 'Planejamento',
         },
         context: {
-            detailUsed: ({ used, total }: { used: string; total: string }) => `${used} / ${total} usado`,
+            detailContext: ({ used, total }: { used: string; total: string }) => `${used} / ${total} de contexto`,
             percentContext: ({ percent }: { percent: number }) => `${percent}% contexto`,
             percentWeek: ({ percent }: { percent: number }) => `${percent}% semana`,
+        },
+        usagePopup: {
+            session: 'Sessão',
+            week: 'Semana',
+            resets: ({ time }: { time: string }) => `redefine ${time}`,
         },
         suggestion: {
             fileLabel: 'ARQUIVO',

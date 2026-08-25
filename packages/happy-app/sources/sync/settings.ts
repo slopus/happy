@@ -9,10 +9,6 @@ import { DEFAULT_USER_MESSAGE_BUBBLE_COLOR } from '../utils/userMessageBubbleCol
 // Current schema version for backward compatibility
 export const SUPPORTED_SCHEMA_VERSION = 2;
 
-// Where (and whether) the branch/model/effort/context status bar renders
-// around the composer.
-export const SESSION_STATUS_BAR_DISPLAY_MODES = ['hidden', 'above', 'below'] as const;
-export type SessionStatusBarDisplay = typeof SESSION_STATUS_BAR_DISPLAY_MODES[number];
 
 // How the home session list lays out: one activity-sorted flat list, or the
 // project-card hierarchy grouped by machine and repository.
@@ -44,7 +40,6 @@ export const SettingsSchema = z.object({
     showFlavorIcons: z.boolean().describe('Whether to show harness icons in the session list'),
     showHarnessIconInSessionHeader: z.boolean().describe('Whether to show the harness icon in the session header'),
     userMessageBubbleColor: z.string().describe('User message bubble color preset'),
-    sessionStatusBarDisplay: z.enum(SESSION_STATUS_BAR_DISPLAY_MODES).describe('Whether/where to show the branch, model, effort, and context status bar'),
     usageLimitShowRemaining: z.boolean().describe('Show plan rate limits as quota remaining instead of quota used'),
 
     // Drives the archive-visibility toggle: it hides archived sessions, not
@@ -129,9 +124,6 @@ export const settingsDefaults: Settings = {
     showFlavorIcons: false,
     showHarnessIconInSessionHeader: true,
     userMessageBubbleColor: DEFAULT_USER_MESSAGE_BUBBLE_COLOR,
-    // Hidden everywhere by default — the context usage indicator is still too
-    // raw to roll out; users can opt back in from appearance settings.
-    sessionStatusBarDisplay: 'hidden',
     usageLimitShowRemaining: false,
 
     hideInactiveSessions: false,

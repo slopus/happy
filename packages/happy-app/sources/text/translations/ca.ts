@@ -171,13 +171,6 @@ export const ca: TranslationStructure = {
         },
         chat: 'Xat',
         chatDescription: 'Personalitza l\'aspecte dels missatges del xat',
-        sessionStatusBar: 'Informació d\'estat de la sessió',
-        sessionStatusBarDescription: 'Tria on es mostren la branca, el model, l\'esforç i el context',
-        sessionStatusDisplayOptions: {
-            hidden: 'Ocult',
-            above: 'Sobre el compositor',
-            below: 'Sota el compositor',
-        },
         usageLimitShowRemaining: 'Mostra la quota restant',
         usageLimitShowRemainingDescription: 'Els indicadors de límit compten enrere en lloc d\'endavant',
         userMessageBubbleColor: 'Color dels teus missatges',
@@ -445,14 +438,6 @@ export const ca: TranslationStructure = {
             stopGoal: 'Atura objectiu',
             editGoal: 'Edita objectiu',
         },
-        sessionStatusBar: {
-            contextUsage: ({ used, total, percent }: { used: string; total: string; percent: number }) => `Context ${used} de ${total} tokens, ${percent}%`,
-            limitSession: 'sessió',
-            limitWeek: 'setmana',
-            limitResets: ({ time }: { time: string }) => `es restableix ${time}`,
-            limitAsOf: ({ age }: { age: string }) => `fa ${age}`,
-            limitRemaining: ({ percent }: { percent: number }) => `${percent}% restant`,
-        },
     },
 
     agentInput: {
@@ -519,9 +504,14 @@ export const ca: TranslationStructure = {
             badgePlan: 'Planificació',
         },
         context: {
-            detailUsed: ({ used, total }: { used: string; total: string }) => `${used} / ${total} utilitzat`,
+            detailContext: ({ used, total }: { used: string; total: string }) => `${used} / ${total} de context`,
             percentContext: ({ percent }: { percent: number }) => `${percent}% context`,
             percentWeek: ({ percent }: { percent: number }) => `${percent}% setmana`,
+        },
+        usagePopup: {
+            session: 'Sessió',
+            week: 'Setmana',
+            resets: ({ time }: { time: string }) => `es restableix ${time}`,
         },
         suggestion: {
             fileLabel: 'FITXER',

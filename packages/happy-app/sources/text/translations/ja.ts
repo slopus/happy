@@ -172,13 +172,6 @@ export const ja: TranslationStructure = {
         },
         chat: 'チャット',
         chatDescription: 'チャットメッセージの見た目をカスタマイズ',
-        sessionStatusBar: 'セッションステータス情報',
-        sessionStatusBarDescription: 'ブランチ、モデル、エフォート、コンテキストの表示場所を選択',
-        sessionStatusDisplayOptions: {
-            hidden: '非表示',
-            above: '入力欄の上',
-            below: '入力欄の下',
-        },
         usageLimitShowRemaining: '残量を表示',
         usageLimitShowRemainingDescription: '上限を使用量ではなく残量で表示します',
         userMessageBubbleColor: 'ユーザーバブルの色',
@@ -446,14 +439,6 @@ export const ja: TranslationStructure = {
             stopGoal: '目標を停止',
             editGoal: '目標を編集',
         },
-        sessionStatusBar: {
-            contextUsage: ({ used, total, percent }: { used: string; total: string; percent: number }) => `コンテキスト ${total}トークン中${used}、${percent}%`,
-            limitSession: 'セッション',
-            limitWeek: '週',
-            limitResets: ({ time }: { time: string }) => `${time} リセット`,
-            limitAsOf: ({ age }: { age: string }) => `${age}前のデータ`,
-            limitRemaining: ({ percent }: { percent: number }) => `残り ${percent}%`,
-        },
     },
 
     agentInput: {
@@ -520,9 +505,14 @@ export const ja: TranslationStructure = {
             badgePlan: 'プラン',
         },
         context: {
-            detailUsed: ({ used, total }: { used: string; total: string }) => `使用済み ${used} / ${total}`,
+            detailContext: ({ used, total }: { used: string; total: string }) => `コンテキスト ${used} / ${total}`,
             percentContext: ({ percent }: { percent: number }) => `コンテキスト ${percent}%`,
             percentWeek: ({ percent }: { percent: number }) => `週 ${percent}%`,
+        },
+        usagePopup: {
+            session: 'セッション',
+            week: '週',
+            resets: ({ time }: { time: string }) => `リセット ${time}`,
         },
         suggestion: {
             fileLabel: 'ファイル',
