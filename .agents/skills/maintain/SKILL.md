@@ -57,7 +57,17 @@ resolves into a clear, unambiguous directive. Specifically:
 
 ## Comment voice
 
-- Casual, lowercase, factual. Like texting a busy coworker.
+- Dry, matter-of-fact, factual. Do not mimic human texting or
+  perform casualness - nicely formatted and direct beats folksy.
+- Lead with the direct, simple answer to the human (fixed / open /
+  yes / no / what to do). Details and postmortem come second.
+- First person singular: "I", never "we have in mind" or royal "we".
+- Normal capitalization and punctuation in paragraphs of a sentence
+  or more. Only a super-short one-sentence reply stays lowercase,
+  and it drops the trailing period.
+- Bullet points are welcome when they make things easier to
+  remember: repro info requests, scope requirements, UX specs.
+- Terse. Cut anything the reader doesn't need to act.
 - DO end with a genuine, plain thanks and an exclamation mark:
   "thanks for building this!", "thank you for contributing!",
   "thanks @user!". Warmth is good - a dry period-ended reply reads

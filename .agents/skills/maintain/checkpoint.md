@@ -1,11 +1,52 @@
 # Triage Checkpoint
 
-## Last triage: 2026-04-14
+## Last triage: 2026-08-25 (post CLI 1.2.1 / production OTA b16b23c5)
 
-### Counts
-- Open issues: 394
-- Open PRs: 156
-- Closed this session: ~110 (77 dupes + 33 stale)
+### This session
+- Closed as fixed with comments: #1706, #1646, #1444, #1546, #1375,
+  #1721, #1492, #1450 (partial: per-project defaults not built),
+  #648, #375
+- Closed PR without merging: #1447 (superseded by merged #1562)
+- Commented, kept open pending reporter verification: #1716 (P0,
+  labeled bug), #1695, #1679
+- Commented, kept open as tracked work: #1707 (pinning UX, mobile
+  first), #1631 (OpenCode first-class), #145 (Copilot)
+- All claims verified against source, the cli-1.2.1 tag, and the
+  production Expo OTA (buildCommitSha b16b23c5) before posting
+
+### Pending follow-ups
+- #1716: waiting on reporter after 07732a97; root cause only
+  partially explained (auto-mode drop explains a vanished prompt,
+  not one routed to the latest session). If they confirm, close;
+  if not, reproduce with their platform/version answers.
+- #1695, #1679: close once reporters confirm.
+- #1450: per-project defaults intentionally not built; reporter was
+  asked to file a separate issue if wanted.
+- #1707: waiting on contributor screen recordings (two variants)
+  before any pinning implementation review.
+- Project board Priority/Size fields could NOT be set: gh token
+  lacks read:project. Wanted: #1716 P0/S, #1707 P1/M, #1631 P1/M,
+  #145 P1/L.
+- Product note: do not ask contributors to target Happy Desktop yet
+  (too raw); frame scope as native mobile, web deprioritized, and do
+  not mention desktop in public comments.
+- Local-only code change awaiting release: auto is the new code
+  default permission mode (c7090622 on local main, f64a36be on
+  worktree/triage-pinning-reordering); old CLIs degrade to
+  `default`, user overrides untouched. Once shipped, the story is
+  "Auto is the default, YOLO is explicit opt-in".
+
+### Contributor context
+- @qqshDA: issues only (#1706 closed, #1707 open), no code merged;
+  credited in Aug 25 in-app release notes. Do not say we merged
+  their code.
+- @Scoteezy: merged #1562 (env sanitizer), #1463 (per-session
+  encrypted sync), #1598 (Android HomeDock controls).
+- @chphch: merged #1674 (effort schema), #1599 (mobile submit).
+- @kevin1sMe: #995 closed not merged; fix applied in cf645f7f.
+- @snvtac: PR #1447 closed unmerged, superseded by #1562.
+- #145 contenders: #822 (@andrewschmidt-a, inactive draft) vs
+  #1034 (@MauroDruwel, pure ACP); asked them to coordinate.
 
 ## Milestones (priority order)
 
@@ -31,50 +72,22 @@ Not milestones (tracked, not focus areas):
 ## Canonical Issues (by priority)
 
 ### P0 — blocks daily use
-- #613 — terminal garbled after mode switch (PR #430)
-- #682 — CLAUDECODE env poisons daemon sessions (PR #736)
-- #528 — --settings clobbers user settings (no PR)
-- #106 — auth expiry shows raw 401 JSON (no PR)
-- #837 — codex first mobile message parse error (no PR)
-- #685 — session resume from mobile (no PR, needs design)
-- #102 — cross-device sync broken (no PR)
-- #652 — context limit dead-end, no compact button (partial)
+- #1716 — new-session prompt lands in latest session (fix likely in
+  07732a97, awaiting reporter)
 
 ### P1 — important, workaround exists
-- #648 — YOLO not persisted mid-session (PR #689)
-- #966 — session rename (PRs #1049, #937, #908)
-- #165 — co-authored-by: wrong email + no UI (partial)
-- #36 — QR scanner needs google play (no PR)
-- #156 — mandarin TTS mapped to cantonese (ElevenLabs limit)
-- #145 — copilot CLI via ACP (PR #1034)
-- #248 — cursor CLI (no code yet, acp fallback works)
-- #358 — codex TUI non-interactive (by design, needs docs)
-- #25 — android APK release (PR #278)
+- #1707 — project pinning + reorder within pinned (UX spec posted)
+- #1631 — OpenCode first-class in app picker/spawn
+- #145 — copilot CLI (two open PRs, asked authors to coordinate)
 
-### P2 — nice to have
-- #505 — bulk session delete (no PR)
-- #719 — native binary install (homebrew tap closed)
-
-## Resolved this session
-- #824 — todos.filter crash (fixed via SessionRowData refactor)
-- #265 — opencode support (shipped via ACP)
-- #619 — MCP SDK 500 (fixed, per-request transport rewrite)
-- ~77 duplicate issues closed with custom comments
-- ~33 stale issues closed (old, no body, no follow-up)
-
-## Quick-win PRs ready to review
-- PR #736 → #682 (strip CLAUDECODE env, 5 spawn paths)
-- PR #689 → #648 (one-liner: sync.applySettings on perm change)
-- PR #1034 → #145 (copilot CLI via ACP, follows gemini pattern)
-
-## Needs my response (remaining)
-- #882 — Copilot CLI compat (Apr 4) — closed as dupe of #145
-- #375 — askUserQuestion — likely fixed on main, verify (Feb 28)
-- #54 — Voice on self-hosted (Sep '25)
+### Stale entries from April session
+The April P0/P1/P2 lists predate CLI 1.2.1 and the v1.7+ apps; most
+are fixed or obsolete. Re-verify before acting on any of: #613,
+#682, #528, #106, #837, #685, #102, #652, #966, #165, #36, #156,
+#248, #358, #25, #505, #719.
 
 ## Notes
 - npm `happy` package donated by @franciscop (issue #880)
-- PR #803 is NOT needed for mobile askUserQuestion flow
 - ACP agent detection is hardcoded per-agent (6-7 touch points)
-- v1.7.0 native shipped ~2 weeks ago, multiple OTAs since
-- GPT 5.2 is a real model (corrected)
+- Production app == Expo OTA buildCommitSha; verify via u.expo.dev
+  with expo-channel-name=production before claiming "shipped"
