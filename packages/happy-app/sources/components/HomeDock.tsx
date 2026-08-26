@@ -39,6 +39,7 @@ import {
     machineChoiceAgentAvailable,
     machineChoiceAgentVisible,
     resolveChoiceAgent,
+    resolveWorktreeCreationMachine,
 } from '@/sync/machineChoices';
 import type { Session } from '@/sync/storageTypes';
 import {
@@ -821,6 +822,14 @@ export const HomeDock = React.memo(({
 
     // Happy Agent calls these workspaces, and names them; git calls them worktrees.
     const picksWorkspaces = selectedProjectId !== null;
+    const worktreeCreationMachine = React.useMemo(
+        () => resolveWorktreeCreationMachine(selectedChoice, agentType, supportsWorktree),
+        [agentType, selectedChoice, supportsWorktree],
+    );
+    // Happy Agent can ask its paired Happy CLI daemon to create the checkout
+    // even when its own machine metadata does not advertise worktrees.
+    const canCreateWorktree = supportsWorktree
+        || (picksWorkspaces && worktreeCreationMachine !== null);
 
     React.useEffect(() => {
         if (!supportsWorktree && !picksWorkspaces && sessionType === 'worktree') {
@@ -842,7 +851,7 @@ export const HomeDock = React.memo(({
             // checkout, which is a place with a name rather than an absence.
             { key: '__none__', name: picksWorkspaces ? 'Main' : 'No worktree' },
             // Making one is a separate ability from starting in one that already exists.
-            ...(supportsWorktree
+            ...(canCreateWorktree
                 ? [{ key: '__new__', name: picksWorkspaces ? 'Create New' : 'Create new worktree' }]
                 : []),
             ...existingWorktrees,
@@ -854,7 +863,7 @@ export const HomeDock = React.memo(({
             options.push({ key: worktreeKey, name: worktreeKey });
         }
         return options;
-    }, [agentType, existingWorktrees, picksWorkspaces, supportsWorktree, worktreeKey]);
+    }, [agentType, canCreateWorktree, existingWorktrees, picksWorkspaces, supportsWorktree, worktreeKey]);
     const currentWorktree = resolveOption(worktreeOptions, [selectedWorktreeKey]);
     // Common harnesses stay listed but disabled when unavailable, so the picker
     // still reads as a choice. Antigravity is niche and stays entirely absent

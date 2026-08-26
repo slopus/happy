@@ -114,6 +114,7 @@ vi.mock('@/components/modelModeOptions', () => ({
     getEffortLevelsForModel: () => [
         { key: 'medium', name: 'Medium' },
     ],
+    getSupportsWorktree: (agentType: string) => agentType !== 'openclaw',
     includeConfiguredModel: (
         flavor: string,
         models: Array<{ key: string; name: string }>,
@@ -452,6 +453,49 @@ describe('useStartSessionFromDraft', () => {
         expect(mocks.createWorktree).not.toHaveBeenCalled();
         expect(mocks.sessionSetAgentModes).not.toHaveBeenCalled();
         expect(mocks.navigateToSession).toHaveBeenCalledWith('rig-session-1');
+    });
+
+    it('creates a Happy Agent workspace through its paired Happy CLI machine', async () => {
+        const rigMachine = createRigMachine({ siblingMachineId: 'cli-machine' });
+        rigMachine.id = 'rig-machine';
+        mocks.machines = [
+            {
+                id: 'cli-machine',
+                online: true,
+                metadata: {
+                    homeDir: '/Users/dev',
+                    cliAvailability: {
+                        claude: true,
+                        codex: true,
+                        gemini: false,
+                        openclaw: false,
+                    },
+                },
+            },
+            rigMachine,
+        ];
+        mocks.draft = createDraft({
+            selectedMachineId: 'cli-machine',
+            agentType: 'rig',
+            sessionType: 'worktree',
+            worktreeKey: null,
+        });
+        mocks.createWorktree.mockResolvedValue({
+            success: true,
+            worktreePath: '/absolute/project/.dev/worktree/happy-river',
+            branchName: 'happy-river',
+        });
+
+        const { startSession } = useStartSessionFromDraft();
+
+        await expect(startSession()).resolves.toBe(true);
+
+        expect(mocks.createWorktree).toHaveBeenCalledWith('cli-machine', '/absolute/project');
+        expect(mocks.machineSpawnNewSession).toHaveBeenCalledWith(expect.objectContaining({
+            machineId: 'rig-machine',
+            agent: 'rig',
+            directory: '/absolute/project/.dev/worktree/happy-river',
+        }));
     });
 
     it('stops polling when a created Rig session remains pending', async () => {

@@ -6,6 +6,7 @@ import {
     machineChoiceAgentVisible,
     resolveAgentMachine,
     resolveChoiceAgent,
+    resolveWorktreeCreationMachine,
 } from './machineChoices';
 import type { Machine } from './storageTypes';
 
@@ -168,6 +169,35 @@ describe('what a computer can actually run', () => {
     it('reports no daemon rather than handing the request to the wrong one', () => {
         const rigOnly = collectMachineChoices([rig(RIG, 'missing-sibling')])[0];
         expect(resolveAgentMachine(rigOnly, 'claude')).toBeNull();
+    });
+});
+
+describe('choosing where to create a worktree', () => {
+    it('uses Happy CLI for a Happy Agent workspace when the pair is online', () => {
+        const choice = collectMachineChoices([cli(), rig()])[0];
+
+        expect(resolveWorktreeCreationMachine(choice, 'rig', false)?.id).toBe(CLI);
+    });
+
+    it('uses Happy Agent directly when it supports worktrees and has no CLI pair', () => {
+        const choice = collectMachineChoices([rig(RIG, 'missing-sibling')])[0];
+
+        expect(resolveWorktreeCreationMachine(choice, 'rig', true)?.id).toBe(RIG);
+    });
+
+    it('does not bypass another harness worktree limitation', () => {
+        const choice = collectMachineChoices([cli(), rig()])[0];
+
+        expect(resolveWorktreeCreationMachine(choice, 'openclaw', false)).toBeNull();
+    });
+
+    it('does not offer an offline CLI as Happy Agent worktree support', () => {
+        const choice = collectMachineChoices([
+            cli(CLI, { active: false }),
+            rig(RIG, CLI, { active: true }),
+        ])[0];
+
+        expect(resolveWorktreeCreationMachine(choice, 'rig', false)).toBeNull();
     });
 });
 

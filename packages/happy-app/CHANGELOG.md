@@ -1,3 +1,8 @@
+# August 25.5 - Quick fixes
+
+- **Auto by default** — new Claude and Codex sessions start in Auto permission mode.
+- **Better backwards compatibility** — older CLIs work better, but for the best experience we recommend running `npm i -g happy` on your machines.
+
 # August 25 - Your list, your way
 
 Thank you [@qqshDA](https://github.com/qqshDA) and [@theflysurfer](https://github.com/theflysurfer) for speaking up for layout choice - we are listening.

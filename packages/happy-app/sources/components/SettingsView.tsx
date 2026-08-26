@@ -414,16 +414,6 @@ export const SettingsView = React.memo(function SettingsView({
                 />
             </ItemGroup>
 
-            {/* Experimental enrollment stays literally last on the main settings page. */}
-            <ItemGroup>
-                <Item
-                    title={t('settingsFeatures.experiments')}
-                    subtitle="Preview features still in development"
-                    icon={<Ionicons name="flask-outline" size={29} color="#FF9500" />}
-                    onPress={() => router.push('/settings/features')}
-                />
-            </ItemGroup>
-
         </ItemList>
     );
 });

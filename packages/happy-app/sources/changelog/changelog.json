@@ -1,6 +1,11 @@
 {
   "entries": [
     {
+      "title": "August 25.5 - Quick fixes",
+      "summary": "",
+      "markdown": "- **Auto by default** — new Claude and Codex sessions start in Auto permission mode.\n- **Better backwards compatibility** — older CLIs work better, but for the best experience we recommend running `npm i -g happy` on your machines."
+    },
+    {
       "title": "August 25 - Your list, your way",
       "summary": "Thank you [@qqshDA](https://github.com/qqshDA) and [@theflysurfer](https://github.com/theflysurfer) for speaking up for layout choice - we are listening.",
       "markdown": "- **Your layout** - filter button on the sessions screen: Flat List or Group by Project. Syncs across devices.\n- **Project view, rebuilt** - avatar, live +/- branch changes, status dots.\n- **Avatar styles are back** - Brutalist, Pixelated, Gradient - plus Black & White.\n- **Tools open by default** - edits and outputs inline in chat. Prefer one-liners? Settings → Appearance.\n- **\"Don't ask again\" sticks** - permission grants are finally remembered.\n- **On a Mac?** Native desktop app - [Happy Desktop](https://github.com/slopus/happy-desktop).\n\nIssues? Crazy ideas? Find us on Twitter - [@bra1n_dump](https://x.com/bra1n_dump) or [@Ex3NDR](https://x.com/Ex3NDR). [GitHub issues](https://github.com/slopus/happy/issues) and [Discord](https://discord.gg/fX9WBAhyfD) work too."
@@ -91,5 +96,5 @@
       "markdown": "- E2E encrypted sessions.\n- Voice assistant.\n- File manager with syntax highlighting.\n- Real-time sync across devices."
     }
   ],
-  "latestTitle": "August 25 - Your list, your way"
+  "latestTitle": "August 25.5 - Quick fixes"
 }

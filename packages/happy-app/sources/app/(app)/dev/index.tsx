@@ -7,19 +7,24 @@ import { ItemList } from '@/components/ItemList';
 import { useRouter } from 'expo-router';
 import Constants from 'expo-constants';
 import * as Application from 'expo-application';
-import { useLocalSettingMutable, useSocketStatus } from '@/sync/storage';
+import { storage, useLocalSettingMutable, useSettingMutable, useSocketStatus } from '@/sync/storage';
 import { Modal } from '@/modal';
 import { sync } from '@/sync/sync';
+import { settingsDefaults } from '@/sync/settings';
+import { localSettingsDefaults } from '@/sync/localSettings';
 import { getServerUrl, setServerUrl, validateServerUrl, getLogServerUrl, setLogServerUrl } from '@/sync/serverConfig';
 import { Switch } from '@/components/Switch';
 import { useUnistyles } from 'react-native-unistyles';
 import { setLastViewedTitle } from '@/changelog';
+import { t } from '@/text';
 
 export default function DevScreen() {
     const router = useRouter();
     const [debugMode, setDebugMode] = useLocalSettingMutable('debugMode');
     const [verboseLogging, setVerboseLogging] = useLocalSettingMutable('verboseLogging');
     const [consoleLoggingEnabled, setConsoleLoggingEnabled] = useLocalSettingMutable('consoleLoggingEnabled');
+    const [experiments, setExperiments] = useSettingMutable('experiments');
+    const [markdownCopyV2, setMarkdownCopyV2] = useLocalSettingMutable('markdownCopyV2');
     const socketStatus = useSocketStatus();
     const anonymousId = sync.encryption!.anonID;
     const { theme } = useUnistyles();
@@ -85,6 +90,19 @@ export default function DevScreen() {
             console.log('Cache cleared');
             Modal.alert('Success', 'Cache has been cleared');
         }
+    };
+
+    const handleResetSettings = async () => {
+        const confirmed = await Modal.confirm(
+            'Reset to Stock Defaults',
+            'Restore all synced and device-only preferences to their stock defaults? Developer Mode will be turned off. Sessions, machines, account data, and server selection will not be deleted.',
+            { confirmText: 'Reset', destructive: true }
+        );
+        if (!confirmed) return;
+
+        sync.applySettings({ ...settingsDefaults });
+        storage.getState().applyLocalSettings({ ...localSettingsDefaults });
+        Modal.alert('Settings Reset', 'All app preferences were restored to their stock defaults.');
     };
 
     // Helper function to format time ago
@@ -202,6 +220,36 @@ export default function DevScreen() {
                     title="View Logs"
                     icon={<Ionicons name="document-text-outline" size={28} color="#007AFF" />}
                     onPress={() => router.push('/dev/logs')}
+                />
+            </ItemGroup>
+
+            <ItemGroup
+                title={t('settingsFeatures.experiments')}
+                footer={t('settingsFeatures.experimentsDescription')}
+            >
+                <Item
+                    title={t('settingsFeatures.experimentalFeatures')}
+                    subtitle="Rig file browser and Usage page"
+                    icon={<Ionicons name="flask-outline" size={28} color="#5856D6" />}
+                    rightElement={
+                        <Switch
+                            value={experiments}
+                            onValueChange={setExperiments}
+                        />
+                    }
+                    showChevron={false}
+                />
+                <Item
+                    title={t('settingsFeatures.markdownCopyV2')}
+                    subtitle={t('settingsFeatures.markdownCopyV2Subtitle')}
+                    icon={<Ionicons name="text-outline" size={28} color="#34C759" />}
+                    rightElement={
+                        <Switch
+                            value={markdownCopyV2}
+                            onValueChange={setMarkdownCopyV2}
+                        />
+                    }
+                    showChevron={false}
                 />
             </ItemGroup>
 
@@ -345,20 +393,11 @@ export default function DevScreen() {
                     }}
                 />
                 <Item
-                    title="Reset App State"
-                    subtitle="Clear all user data and preferences"
+                    title="Reset to Stock Defaults"
+                    subtitle="Restore app preferences without deleting your data"
                     destructive={true}
                     icon={<Ionicons name="refresh-outline" size={28} color="#FF3B30" />}
-                    onPress={async () => {
-                        const confirmed = await Modal.confirm(
-                            'Reset App',
-                            'This will delete all data. Are you sure?',
-                            { confirmText: 'Reset', destructive: true }
-                        );
-                        if (confirmed) {
-                            console.log('App state reset');
-                        }
-                    }}
+                    onPress={handleResetSettings}
                 />
             </ItemGroup>
 

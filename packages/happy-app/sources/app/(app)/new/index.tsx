@@ -54,6 +54,7 @@ import {
     machineChoiceAgentAvailable,
     resolveAgentMachine,
     resolveChoiceAgent,
+    resolveWorktreeCreationMachine,
 } from '@/sync/machineChoices';
 import {
     filterPermissionModesForCli,
@@ -946,6 +947,12 @@ function NewSessionScreen() {
     const picksWorkspaces = selectedProjectId !== null;
     const worktreeMachine = selectedChoice?.happyMachine ?? selectedMachine;
     const canPickWorktree = supportsWorktree || picksWorkspaces;
+    const worktreeCreationMachine = React.useMemo(
+        () => resolveWorktreeCreationMachine(selectedChoice, selectedAgent, supportsWorktree),
+        [selectedAgent, selectedChoice, supportsWorktree],
+    );
+    const canCreateWorktree = supportsWorktree
+        || (picksWorkspaces && worktreeCreationMachine !== null);
 
     // Fetch existing worktrees/workspaces from the selected computer/path
     const [worktreeItems, setWorktreeItems] = React.useState<PickerItem[]>([]);
@@ -996,10 +1003,10 @@ function NewSessionScreen() {
 
     const worktreeFixedItems = React.useMemo<PickerItem[]>(() => [
         { key: '__none__', label: picksWorkspaces ? 'no workspace' : 'no worktree' },
-        ...(supportsWorktree
+        ...(canCreateWorktree
             ? [{ key: '__new__', label: picksWorkspaces ? 'new workspace' : 'new worktree' }]
             : []),
-    ], [picksWorkspaces, supportsWorktree]);
+    ], [canCreateWorktree, picksWorkspaces]);
 
     // Filter available agents based on the daemon that actually runs each harness on this
     // computer, rather than the machine id that happened to be stored in the draft.
@@ -1405,8 +1412,15 @@ function NewSessionScreen() {
         }
         const agentSupportsWorktree = spawnRigCreation?.supportsWorktrees
             ?? (agentType === 'rig' ? false : getSupportsWorktree(agentType));
+        const creationMachine = resolveWorktreeCreationMachine(
+            choice,
+            agentType,
+            agentSupportsWorktree,
+        );
+        const canCreateSelectedWorktree = agentSupportsWorktree
+            || (picksWorkspaces && creationMachine !== null);
         const requestedWorktree = canPickWorktree ? worktreeKey : '__none__';
-        const worktreeSelection = !agentSupportsWorktree && requestedWorktree === '__new__'
+        const worktreeSelection = !canCreateSelectedWorktree && requestedWorktree === '__new__'
             ? '__none__'
             : requestedWorktree;
 
@@ -1432,9 +1446,14 @@ function NewSessionScreen() {
 
             // Handle worktree selection
             let spawnDirectory = absolutePath;
-            const worktreeMachine = choice.happyMachine ?? machine;
             if (worktreeSelection === '__new__') {
-                const worktreeResult = await createWorktree(worktreeMachine.id, absolutePath);
+                if (!creationMachine) {
+                    Modal.alert(t('common.error'), picksWorkspaces
+                        ? 'This computer cannot create a new workspace'
+                        : 'This computer cannot create a new worktree');
+                    return;
+                }
+                const worktreeResult = await createWorktree(creationMachine.id, absolutePath);
                 if (!worktreeResult.success) {
                     Modal.alert(t('common.error'), worktreeResult.error || 'Failed to create worktree');
                     return;
@@ -1550,7 +1569,7 @@ function NewSessionScreen() {
         } finally {
             if (isMountedRef.current) setIsSpawning(false);
         }
-    }, [allMachines, canPickWorktree, currentEffort?.key, currentModelKey, currentPermission?.key, effectiveAgentDefaults.effortLevel, effectiveAgentDefaults.modelMode, effectiveAgentDefaults.permissionMode, navigateToSession, router, selectedAgent, selectedMachineId, selectedPath, worktreeKey]);
+    }, [allMachines, canPickWorktree, currentEffort?.key, currentModelKey, currentPermission?.key, effectiveAgentDefaults.effortLevel, effectiveAgentDefaults.modelMode, effectiveAgentDefaults.permissionMode, navigateToSession, picksWorkspaces, router, selectedAgent, selectedMachineId, selectedPath, worktreeKey]);
 
     const canSend = selectedMachineId && selectedMachine && isMachineOnline(selectedMachine) && !isSpawning;
     React.useEffect(() => {

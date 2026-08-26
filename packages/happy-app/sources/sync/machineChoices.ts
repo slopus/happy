@@ -207,3 +207,30 @@ export function resolveAgentMachine(
     if (!choice) return null;
     return agent === 'rig' ? choice.rigMachine : choice.happyMachine;
 }
+
+/**
+ * The daemon that can create a git worktree for a new session.
+ *
+ * Happy Agent may publish `worktrees: false` while the Happy CLI daemon paired
+ * with it still exposes the machine-level git RPC. In that case the CLI daemon
+ * creates the checkout and Happy Agent starts the session inside the resulting
+ * directory. Other harnesses keep respecting their own worktree capability.
+ */
+export function resolveWorktreeCreationMachine(
+    choice: MachineChoice | null,
+    agent: NewSessionAgentType,
+    agentSupportsWorktrees: boolean,
+): Machine | null {
+    if (!choice) return null;
+
+    if (agent === 'rig') {
+        const happyMachine = choice.happyMachine;
+        if (happyMachine && isMachineOnline(happyMachine)) {
+            return happyMachine;
+        }
+    }
+
+    if (!agentSupportsWorktrees) return null;
+    const agentMachine = resolveAgentMachine(choice, agent);
+    return agentMachine && isMachineOnline(agentMachine) ? agentMachine : null;
+}

@@ -19,6 +19,7 @@ import {
     getHardcodedModelModes,
     getHardcodedPermissionModes,
     filterPermissionModesForCli,
+    getSupportsWorktree,
     includeConfiguredModel,
 } from '@/components/modelModeOptions';
 import { Modal } from '@/modal';
@@ -28,6 +29,7 @@ import {
     findMachineChoice,
     resolveAgentMachine,
     resolveChoiceAgent,
+    resolveWorktreeCreationMachine,
 } from '@/sync/machineChoices';
 import { delay } from '@/utils/time';
 import {
@@ -224,9 +226,16 @@ export function useStartSessionFromDraft() {
         const requestedWorktree = draft.sessionType === 'worktree'
             ? draft.worktreeKey ?? '__new__'
             : '__none__';
+        const worktreeCreationMachine = resolveWorktreeCreationMachine(
+            choice,
+            agentType,
+            rigCreation?.supportsWorktrees
+                ?? (agentType === 'rig' ? false : getSupportsWorktree(agentType)),
+        );
         // A workspace that already exists is only a directory to start in, so it stands whatever
-        // the machine says about making new ones. Making one is what the capability governs.
-        const worktreeSelection = rigCreation?.supportsWorktrees === false && requestedWorktree === '__new__'
+        // the machine says about making new ones. A paired Happy CLI daemon can make one on Happy
+        // Agent's behalf; without either route, a stale draft safely falls back to the main tree.
+        const worktreeSelection = !worktreeCreationMachine && requestedWorktree === '__new__'
             ? '__none__'
             : requestedWorktree;
         // Reused across every retry of this exact request so a second press of
@@ -274,7 +283,9 @@ export function useStartSessionFromDraft() {
         try {
             let spawnDirectory = absolutePath;
             if (worktreeSelection === '__new__') {
-                const worktreeResult = await untilCanceled(createWorktree(machine.id, absolutePath));
+                // `worktreeSelection` can only remain `__new__` when a creation
+                // machine was resolved above.
+                const worktreeResult = await untilCanceled(createWorktree(worktreeCreationMachine!.id, absolutePath));
                 // The worktree itself is left wherever git got to: it is a
                 // directory, not a running agent, and the next start offers it.
                 if (worktreeResult === CANCELED) return false;
