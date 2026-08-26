@@ -47,6 +47,11 @@ export interface DiffFilesListProps {
     header?: React.ReactNode;
     /** Files with more changed lines than this start collapsed. */
     autoCollapseAbove?: number;
+    /**
+     * Start every file collapsed, so the screen opens as a list of what
+     * changed rather than a wall of code to scroll past.
+     */
+    defaultCollapsed?: boolean;
     /** Overrides the default "no changes" copy. */
     emptyText?: string;
     /**
@@ -65,6 +70,7 @@ export const DiffFilesList = React.memo(function DiffFilesList({
     fontSize,
     header,
     autoCollapseAbove = 2000,
+    defaultCollapsed = false,
     emptyText,
     onExpandContext,
 }: DiffFilesListProps) {
@@ -87,11 +93,16 @@ export const DiffFilesList = React.memo(function DiffFilesList({
     }, [scrollToPath, items]);
 
     const renderItem = React.useCallback(({ item }: { item: DiffFileItem }) => {
-        const collapsed = overrides[item.path] ?? (item.additions + item.deletions > autoCollapseAbove);
+        const tooBig = item.additions + item.deletions > autoCollapseAbove;
+        const collapsed = overrides[item.path] ?? (defaultCollapsed || tooBig);
         return (
             <FileSection
                 item={item}
                 collapsed={collapsed}
+                // The "N changed lines" line explains why a file is closed when
+                // its size forced it. When everything starts closed it explains
+                // nothing and doubles the height of the list, so it is dropped.
+                showSizeHint={collapsed && tooBig}
                 onToggle={() => toggle(item.path, collapsed)}
                 showLineNumbers={showLineNumbers}
                 wrap={wrap}
@@ -101,7 +112,7 @@ export const DiffFilesList = React.memo(function DiffFilesList({
                 onExpandContext={onExpandContext}
             />
         );
-    }, [overrides, autoCollapseAbove, toggle, showLineNumbers, wrap, split, fontSize, scrollToPath, onExpandContext]);
+    }, [overrides, autoCollapseAbove, defaultCollapsed, toggle, showLineNumbers, wrap, split, fontSize, scrollToPath, onExpandContext]);
 
     return (
         <View style={{ flex: 1, backgroundColor: palette.surface }}>
@@ -126,6 +137,7 @@ export const DiffFilesList = React.memo(function DiffFilesList({
 const FileSection = React.memo(function FileSection({
     item,
     collapsed,
+    showSizeHint,
     onToggle,
     showLineNumbers,
     wrap,
@@ -136,6 +148,7 @@ const FileSection = React.memo(function FileSection({
 }: {
     item: DiffFileItem;
     collapsed: boolean;
+    showSizeHint: boolean;
     onToggle: () => void;
     showLineNumbers: boolean;
     wrap: boolean;
@@ -161,11 +174,13 @@ const FileSection = React.memo(function FileSection({
         >
             <DiffFileHeader file={item} collapsed={collapsed} onToggle={onToggle} />
             {collapsed ? (
-                <Pressable onPress={onToggle} style={{ paddingVertical: 12, alignItems: 'center' }}>
-                    <Text style={{ ...Typography.default(), fontSize: 13, color: palette.textSecondary }}>
-                        {t('diff.tapToExpand', { count: item.additions + item.deletions })}
-                    </Text>
-                </Pressable>
+                showSizeHint ? (
+                    <Pressable onPress={onToggle} style={{ paddingVertical: 12, alignItems: 'center' }}>
+                        <Text style={{ ...Typography.default(), fontSize: 13, color: palette.textSecondary }}>
+                            {t('diff.tapToExpand', { count: item.additions + item.deletions })}
+                        </Text>
+                    </Pressable>
+                ) : null
             ) : item.error ? (
                 <Message text={item.error} />
             ) : item.image ? (

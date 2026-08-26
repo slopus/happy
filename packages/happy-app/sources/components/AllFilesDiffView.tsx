@@ -313,6 +313,7 @@ export const AllFilesDiffView = React.memo(function AllFilesDiffView({
                     split={Platform.OS === 'web' && diffStyle === 'split'}
                     emptyText={t('files.noChanges')}
                     onExpandContext={expandContext}
+                    defaultCollapsed
                 />
             )}
         </View>
