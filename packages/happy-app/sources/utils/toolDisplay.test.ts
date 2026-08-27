@@ -96,10 +96,17 @@ describe('terminal tool display helpers', () => {
     });
 
     it('builds one human-readable label for compact activity rows', () => {
+        // Terminal rows are the bare command; the icon already says "terminal".
         expect(getToolActivityLabel(tool('CodexBash', {
             command: ['/usr/bin/zsh', '-lc', 'git status --short'],
             parsed_cmd: [{ type: 'bash', cmd: 'git status --short' }],
-        }))).toBe('toolGroup.ranCommands:1: git status --short');
+        }))).toBe('git status --short');
+
+        expect(getToolActivityLabel(tool('Bash', { command: 'pnpm test' }))).toBe('pnpm test');
+
+        // A terminal tool with no extractable command still gets the action label.
+        expect(getToolActivityLabel(tool('write_stdin', {})))
+            .toBe('toolGroup.ranCommands:1');
 
         expect(getToolActivityLabel(tool('Read', {
             file_path: '/repo/src/app.tsx',
@@ -116,8 +123,7 @@ describe('terminal tool display helpers', () => {
 
         const rigCommand = tool('exec_command', { cmd: 'git status --short' });
         rigCommand.description = 'Running Exec Command';
-        expect(getToolActivityLabel(rigCommand))
-            .toBe('toolGroup.ranCommands:1: git status --short');
+        expect(getToolActivityLabel(rigCommand)).toBe('git status --short');
 
         const rigCoordination = tool('spawn_agent', {});
         rigCoordination.description = 'Running Spawn Agent';

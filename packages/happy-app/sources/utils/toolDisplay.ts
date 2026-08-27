@@ -213,6 +213,13 @@ export function getToolSummaryDetail(tool: Pick<ToolCall, 'name' | 'input' | 'de
  * command/path, then fall back to a localized action and its detail.
  */
 export function getToolActivityLabel(tool: Pick<ToolCall, 'name' | 'input' | 'description'>): string {
+    // A terminal row is the command itself — "Ran 1 command: git status" is
+    // noise next to the terminal icon already on the row.
+    const terminalCommand = getTerminalToolCommand(tool);
+    if (terminalCommand) {
+        return terminalCommand;
+    }
+
     const summaryDetail = getToolSummaryDetail(tool);
     const detail = isGenericToolDescription(tool.name, summaryDetail) ? null : summaryDetail;
     const providerDescription = getProviderActivityDescription(tool, detail);
