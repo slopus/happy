@@ -68,6 +68,7 @@ export function startHappyTerminalDaemon(): ChildProcess | null {
       cwd: process.cwd(),
       env: process.env,
       stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
     });
   } catch (error) {
     logger.debug('[HAPPY AGENT BOOT] Spawn failed; continuing without Happy Agent:', error);

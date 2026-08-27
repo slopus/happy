@@ -37,7 +37,7 @@ export function findAgyBin(): string | undefined {
     const probe = process.platform === 'win32'
       ? `where ${AGY_BIN}`
       : `command -v ${AGY_BIN}`;
-    execSync(probe, { stdio: 'ignore' });
+    execSync(probe, { stdio: 'ignore', windowsHide: true });
     return AGY_BIN;
   } catch {
     // not on PATH — fall through to the known install location
