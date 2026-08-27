@@ -32,6 +32,7 @@ import { sessionAbort, sessionCancelCommunication, sessionGoalAction, sessionSet
 import { storage, useIsDataReady, useLocalSetting, useRealtimeStatus, useSessionGitStatus, useSessionMessages, useSessionPendingCommunications, useSessionUsage, useSetting, useSideChatSessions } from '@/sync/storage';
 import { useSession } from '@/sync/storage';
 import { getSessionForkSource } from '@/utils/sessionFork';
+import { isInteractiveQuestionToolName } from '@/utils/toolDisplay';
 import { useHappyAction } from '@/hooks/useHappyAction';
 import { HappyError } from '@/utils/errors';
 import { Session } from '@/sync/storageTypes';
@@ -685,6 +686,20 @@ export function SessionViewLoaded({
     const realtimeStatus = useRealtimeStatus();
     const { messages, isLoaded } = useSessionMessages(sessionId);
     const pendingCommunications = useSessionPendingCommunications(sessionId);
+    // Question tool calls the transcript is already rendering. The fallback
+    // banner claims only pending forms missing from this set, so a question
+    // whose tool message never arrived still gets an inline form.
+    const transcriptQuestionToolIds = React.useMemo(() => {
+        const ids = new Set<string>();
+        for (const message of messages) {
+            if (message.kind === 'tool-call'
+                && isInteractiveQuestionToolName(message.tool.name)
+                && message.tool.callId) {
+                ids.add(message.tool.callId);
+            }
+        }
+        return ids;
+    }, [messages]);
     const acknowledgedCliVersions = useLocalSetting('acknowledgedCliVersions');
     const zenMode = useLocalSetting('zenMode');
     const sessionInputHorizontalPadding = Platform.OS === 'web' || isRunningOnMac() || isTablet ? 12 : 8;
@@ -1131,7 +1146,10 @@ export function SessionViewLoaded({
                 </CenteredInputWidth>
             )}
             <CenteredInputWidth horizontalPadding={sessionInputHorizontalPadding}>
-                <AgentQuestionBanner sessionId={sessionId} />
+                <AgentQuestionBanner
+                    sessionId={sessionId}
+                    transcriptQuestionToolIds={transcriptQuestionToolIds}
+                />
             </CenteredInputWidth>
             {sessionStatusBarPosition === 'above' ? sessionStatusBar : null}
             {showBottomDockDetails && <RigActivityBar metadata={session.metadata} />}

@@ -5,6 +5,7 @@ import {
     getTerminalToolCommand,
     getToolSummaryCategory,
     getToolSummaryDetail,
+    hasRenderableQuestionContent,
     isTerminalToolName,
     shouldRenderToolCardHeader,
     shouldUseCompactToolRow,
@@ -154,5 +155,17 @@ describe('terminal tool display helpers', () => {
         expect(shouldUseCompactToolRow(pendingPlan, true)).toBe(false);
         pendingPlan.permission.status = 'approved';
         expect(shouldUseCompactToolRow(pendingPlan, true)).toBe(true);
+    });
+
+    it('detects question content the inline form can render', () => {
+        expect(hasRenderableQuestionContent({ questions: [{ question: 'Where?' }] })).toBe(true);
+        expect(hasRenderableQuestionContent({ question: 'Where?' })).toBe(true);
+        expect(hasRenderableQuestionContent({ input: { questions: [{ question: 'Where?' }] } })).toBe(true);
+        // Malformed input falls back to the ordinary tool card so the
+        // permission footer stays reachable.
+        expect(hasRenderableQuestionContent({ questions: [] })).toBe(false);
+        expect(hasRenderableQuestionContent({})).toBe(false);
+        expect(hasRenderableQuestionContent(undefined)).toBe(false);
+        expect(hasRenderableQuestionContent('AskUserQuestion')).toBe(false);
     });
 });

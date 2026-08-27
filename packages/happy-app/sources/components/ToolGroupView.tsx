@@ -16,7 +16,7 @@ import { layout } from './layout';
 import { useElapsedTime } from '@/hooks/useElapsedTime';
 import { t } from '@/text';
 import { Message, ToolCallMessage } from '@/sync/typesMessage';
-import { getToolActivityLabel, getToolSummaryCategory, ToolSummaryCategory } from '@/utils/toolDisplay';
+import { getToolActivityLabel, getToolSummaryCategory, isInteractiveQuestionToolName, ToolSummaryCategory } from '@/utils/toolDisplay';
 import { useRouter } from 'expo-router';
 
 interface ToolGroupViewProps {
@@ -288,8 +288,7 @@ function ToolGroupMessageRow(props: {
     }
 
     const shouldRenderFullTool = props.message.tool.permission?.status === 'pending'
-        || props.message.tool.name === 'AskUserQuestion'
-        || props.message.tool.name === 'request_user_input';
+        || isInteractiveQuestionToolName(props.message.tool.name);
     if (shouldRenderFullTool) {
         return (
             <MessageView

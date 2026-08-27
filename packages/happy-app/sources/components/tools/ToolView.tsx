@@ -19,6 +19,7 @@ import {
     getToolActivityLabel,
     getTerminalToolCommand,
     isInlineFileEditToolName,
+    hasRenderableQuestionContent,
     isInteractiveQuestionToolName,
     isTerminalToolName,
     shouldRenderToolCardHeader,
@@ -175,7 +176,8 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
         || isCompactTerminalTool;
     const activityLabel = getToolActivityLabel(tool);
     const isInlineFileEdit = isInlineFileEditToolName(tool.name);
-    const isInlineQuestionTool = isInteractiveQuestionToolName(tool.name);
+    const isInlineQuestionTool = isInteractiveQuestionToolName(tool.name)
+        && hasRenderableQuestionContent(tool.input);
     if (isInlineQuestionTool) {
         hideDefaultError = true;
     }

@@ -2,10 +2,10 @@ import * as React from 'react';
 
 import { sessionAnswerQuestion } from '@/sync/ops';
 import { useSessionAgentFormCommunication } from '@/sync/storage';
-import type { AgentQuestionAnswer } from '@/sync/storageTypes';
 import { ToolViewProps } from './_all';
 import {
     InlineQuestionForm,
+    toCommunicationAnswers,
     type InlineQuestionAnswers,
 } from './InlineQuestionForm';
 import { parseRawRequestUserInputQuestions } from './parseRawRequestUserInputQuestions';
@@ -28,20 +28,13 @@ export const RequestUserInputView = React.memo<ToolViewProps>(({ tool, sessionId
 
     const handleSubmit = React.useCallback(async (answers: InlineQuestionAnswers) => {
         if (!sessionId || !communication || communication.status !== 'pending') return;
-
-        const communicationAnswers: Record<string, AgentQuestionAnswer> = {};
-        for (const question of communication.questions) {
-            const answer = answers[question.id];
-            const options = answer
-                ? (question.multiSelect ? answer.options : answer.options.slice(0, 1))
-                : [];
-            if (options.length === 0 && !answer?.custom) continue;
-            communicationAnswers[question.id] = {
-                options,
-                ...(answer?.custom ? { custom: answer.custom } : {}),
-            };
-        }
-        await sessionAnswerQuestion(sessionId, communication.id, communicationAnswers, communication.kind);
+        // The form already clamps single-select answers and drops empty ones.
+        await sessionAnswerQuestion(
+            sessionId,
+            communication.id,
+            toCommunicationAnswers(answers),
+            communication.kind,
+        );
     }, [communication, sessionId]);
 
     const rawQuestions = React.useMemo(

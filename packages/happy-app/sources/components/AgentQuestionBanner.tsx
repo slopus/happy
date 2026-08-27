@@ -7,45 +7,29 @@ import { Text } from '@/components/StyledText';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
 import { useSessionPendingCommunications } from '@/sync/storage';
+import { type PendingAgentCommunication } from '@/sync/agentCommunications';
+import { sessionAnswerQuestion, sessionCancelCommunication } from '@/sync/ops';
 import {
-    shouldUseAgentQuestionFallback,
-    type PendingAgentCommunication,
-} from '@/sync/agentCommunications';
-import { sessionCancelCommunication } from '@/sync/ops';
-import { AgentQuestionModal } from './AgentQuestionModal';
+    InlineQuestionForm,
+    toCommunicationAnswers,
+    type InlineQuestionAnswers,
+} from '@/components/tools/views/InlineQuestionForm';
 
 /**
- * Fallback UI above the composer when a request cannot render in the transcript
- * (for example, a text-only form or a communication kind this build does not
- * understand).
- *
- * A form opens the full-screen answer sheet. A communication of a kind this
- * build does not implement says so and offers to dismiss it, so the session is
- * never stuck on something this client cannot render.
+ * Last-resort surface above the composer for requests the transcript is not
+ * showing. A pending form whose tool message never arrived (older CLI, trimmed
+ * history) renders as the same inline form used in the transcript, so every
+ * question stays answerable in place. A form with no questions, or a
+ * communication kind this build does not implement, gets a dismissible notice
+ * so the session is never silently stuck.
  */
-export function AgentQuestionBanner({ sessionId }: { sessionId: string }) {
+export function AgentQuestionBanner({ sessionId, transcriptQuestionToolIds }: {
+    sessionId: string;
+    transcriptQuestionToolIds?: ReadonlySet<string>;
+}) {
     const pendingCommunications = useSessionPendingCommunications(sessionId);
-    const [openId, setOpenId] = React.useState<string | null>(null);
 
-    // Choice forms belong exclusively to the transcript renderer. Communication
-    // state can arrive one render before its request_user_input tool message; if
-    // the fallback also claimed that intermediate frame, the legacy form flashed
-    // before being replaced by the inline card. Keep the banner/modal solely for
-    // forms the inline renderer cannot display and unsupported communication kinds.
-    const pending = pendingCommunications.find(communication => (
-        shouldUseAgentQuestionFallback(communication)
-    ));
-    const open = pending?.kind === 'form' && openId === pending.id;
-
-    // Drop the modal as soon as its request is gone, so an answer from another
-    // device closes the form here too.
-    React.useEffect(() => {
-        if (openId !== null && !pendingCommunications.some(item => item.id === openId)) {
-            setOpenId(null);
-        }
-    }, [openId, pendingCommunications]);
-
-    const handleDismissUnsupported = React.useCallback(async (id: string, rawKind: string) => {
+    const handleDismiss = React.useCallback(async (id: string, rawKind: string) => {
         try {
             await sessionCancelCommunication(sessionId, id, rawKind);
         } catch {
@@ -53,87 +37,92 @@ export function AgentQuestionBanner({ sessionId }: { sessionId: string }) {
         }
     }, [sessionId]);
 
-    if (!pending) return null;
+    // The transcript owns any form whose tool call it renders.
+    const unclaimed = pendingCommunications.filter(communication => {
+        const joinId = communication.toolUseId ?? communication.id;
+        return !transcriptQuestionToolIds?.has(joinId);
+    });
 
-    if (pending.kind === 'unsupported') {
-        return (
-            <AgentQuestionBannerView
-                pending={pending}
-                onDismiss={() => handleDismissUnsupported(pending.id, pending.rawKind)}
-            />
-        );
-    }
+    if (unclaimed.length === 0) return null;
 
     return (
         <>
-            <AgentQuestionBannerView pending={pending} onPress={() => setOpenId(pending.id)} />
-            <AgentQuestionModal
-                pending={pending}
-                sessionId={sessionId}
-                visible={open}
-                onClose={() => setOpenId(null)}
-            />
+            {unclaimed.map(pending => {
+                if (pending.kind === 'form' && pending.questions.length > 0) {
+                    return (
+                        <View key={pending.id} style={stylesheet.inlineFormContainer}>
+                            <InlineQuestionForm
+                                questions={pending.questions}
+                                canInteract
+                                onSubmit={async (answers: InlineQuestionAnswers) => {
+                                    await sessionAnswerQuestion(
+                                        sessionId,
+                                        pending.id,
+                                        toCommunicationAnswers(answers),
+                                        'form',
+                                    );
+                                }}
+                            />
+                        </View>
+                    );
+                }
+                const rawKind = pending.kind === 'unsupported' ? pending.rawKind : 'form';
+                return (
+                    <AgentQuestionBannerView
+                        key={pending.id}
+                        pending={pending}
+                        onDismiss={() => handleDismiss(pending.id, rawKind)}
+                    />
+                );
+            })}
         </>
     );
 }
 
 /**
- * The banner itself, with no store or network of its own, so it can be rendered
- * from the dev previews as well as from a live session.
+ * The dismissible notice, with no store or network of its own, so it can be
+ * rendered from the dev previews as well as from a live session.
  */
-export function AgentQuestionBannerView({ pending, onPress, onDismiss }: {
+export function AgentQuestionBannerView({ pending, onDismiss }: {
     pending: PendingAgentCommunication;
-    onPress?: () => void;
     onDismiss?: () => void;
 }) {
     const styles = stylesheet;
     const { theme } = useUnistyles();
 
-    if (pending.kind === 'unsupported') {
-        return (
-            <View style={[styles.container, styles.containerUnsupported]}>
-                <View style={styles.icon}>
-                    <Ionicons name="alert-circle-outline" size={20} color={theme.colors.textSecondary} />
-                </View>
-                <View style={styles.body}>
-                    <Text style={styles.title} numberOfLines={1}>
-                        {pending.title ?? t('agentQuestion.unsupportedTitle')}
-                    </Text>
-                    <Text style={styles.subtitle} numberOfLines={2}>
-                        {t('agentQuestion.unsupportedDescription', { kind: pending.rawKind })}
-                    </Text>
-                </View>
-                <Pressable onPress={onDismiss} hitSlop={10}>
-                    <Text style={styles.dismiss}>{t('agentQuestion.dismiss')}</Text>
-                </Pressable>
-            </View>
-        );
-    }
-
-    const first = pending.questions[0];
-    const remaining = pending.questions.length - 1;
+    const kindLabel = pending.kind === 'unsupported' ? pending.rawKind : 'form';
+    const title = (pending.kind === 'unsupported' ? pending.title : null)
+        ?? t('agentQuestion.unsupportedTitle');
 
     return (
-        <Pressable style={styles.container} onPress={onPress}>
+        <View style={[styles.container, styles.containerUnsupported]}>
             <View style={styles.icon}>
-                <Ionicons name="help-circle-outline" size={20} color={theme.colors.textLink} />
+                <Ionicons name="alert-circle-outline" size={20} color={theme.colors.textSecondary} />
             </View>
             <View style={styles.body}>
-                <Text style={styles.title} numberOfLines={1}>
-                    {first?.header ?? t('agentQuestion.title')}
-                </Text>
+                <Text style={styles.title} numberOfLines={1}>{title}</Text>
                 <Text style={styles.subtitle} numberOfLines={2}>
-                    {remaining > 0
-                        ? t('agentQuestion.moreQuestions', { count: remaining })
-                        : (first?.question ?? '')}
+                    {t('agentQuestion.unsupportedDescription', { kind: kindLabel })}
                 </Text>
             </View>
-            <Ionicons name="chevron-forward" size={18} color={theme.colors.textSecondary} />
-        </Pressable>
+            <Pressable onPress={onDismiss} hitSlop={10}>
+                <Text style={styles.dismiss}>{t('agentQuestion.dismiss')}</Text>
+            </Pressable>
+        </View>
     );
 }
 
 const stylesheet = StyleSheet.create((theme) => ({
+    inlineFormContainer: {
+        marginHorizontal: 12,
+        marginBottom: 8,
+        paddingHorizontal: 12,
+        paddingVertical: 12,
+        borderRadius: 14,
+        backgroundColor: theme.colors.surface,
+        borderWidth: 1,
+        borderColor: theme.colors.textLink,
+    },
     container: {
         flexDirection: 'row',
         alignItems: 'center',

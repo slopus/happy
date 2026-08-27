@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 
 import { t } from '@/text';
+import { shouldOfferCustomAnswer } from '@/sync/agentCommunications';
 import { ToolSectionView } from '../ToolSectionView';
 
 export interface InlineQuestionOption {
@@ -27,6 +28,20 @@ export interface InlineQuestionAnswer {
 }
 
 export type InlineQuestionAnswers = Record<string, InlineQuestionAnswer>;
+
+/** The communication reply payload for `sessionAnswerQuestion`. */
+export function toCommunicationAnswers(
+    answers: InlineQuestionAnswers,
+): Record<string, { options: string[]; custom?: string }> {
+    const result: Record<string, { options: string[]; custom?: string }> = {};
+    for (const [id, answer] of Object.entries(answers)) {
+        result[id] = {
+            options: [...answer.options],
+            ...(answer.custom ? { custom: answer.custom } : {}),
+        };
+    }
+    return result;
+}
 
 export type InlineQuestionDisabledStatus = 'waiting' | 'superseded';
 
@@ -131,8 +146,7 @@ export const InlineQuestionForm = React.memo<InlineQuestionFormProps>((props) =>
                     const selectedLabels = answer ? new Set(answer.options) : null;
                     const selectedIndexes = selections.get(question.id) ?? new Set<number>();
                     const customValue = answer ? (answer.custom ?? '') : (customTexts.get(question.id) ?? '');
-                    const showCustomInput = question.allowCustom !== false
-                        && (question.options.length === 0 || question.allowCustom === true || !!answer?.custom);
+                    const showCustomInput = shouldOfferCustomAnswer(question, !!answer?.custom);
                     return (
                         <View key={question.id} style={styles.questionSection}>
                             <View style={styles.headerChip}>

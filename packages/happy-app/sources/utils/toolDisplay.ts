@@ -145,6 +145,20 @@ export function isInteractiveQuestionToolName(name: string): boolean {
     return INTERACTIVE_QUESTION_TOOL_NAMES.has(name);
 }
 
+/**
+ * Whether a question tool call carries content the inline form can show.
+ * When it does not (malformed or empty input), the tool falls back to the
+ * ordinary card so its permission footer stays reachable — a question that
+ * rendered nothing would otherwise leave the agent blocked with no way to
+ * respond.
+ */
+export function hasRenderableQuestionContent(input: unknown): boolean {
+    const raw = (input as { input?: unknown })?.input ?? input;
+    const record = raw as { questions?: unknown; question?: unknown } | null | undefined;
+    if (Array.isArray(record?.questions) && record.questions.length > 0) return true;
+    return typeof record?.question === 'string' && record.question.length > 0;
+}
+
 export function getToolSummaryCategory(toolName: string): ToolSummaryCategory {
     if (TERMINAL_TOOL_NAMES.has(toolName)) {
         return 'terminal';

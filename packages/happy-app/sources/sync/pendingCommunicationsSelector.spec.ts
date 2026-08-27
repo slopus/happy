@@ -68,14 +68,15 @@ describe('pending communications through the store', () => {
     });
 
     it('settles the form joined to a transcript tool call too', () => {
-        // Same trap, second selector: the returned object is fresh, and its
-        // `questions` comes from a .filter() that allocates every call, so
-        // shallow — which compares those values by identity — never agrees.
+        // The returned object is fresh each call. Its `questions` is now the
+        // array straight out of state, so shallow happens to agree today —
+        // but the deep-equal memo is what the hook relies on, and it must
+        // return the identical snapshot for an unchanged state.
         const state = { agentState: agentState() };
         const a = selectAgentFormCommunication(state.agentState, 'call-1');
         const b = selectAgentFormCommunication(state.agentState, 'call-1');
         expect(a).toEqual(b);
-        expect(shallow(a, b)).toBe(false);
+        expect(a).not.toBe(b);
 
         const read = memoizeDeepEqual(
             (s: State) => selectAgentFormCommunication(s.agentState, 'call-1'),
