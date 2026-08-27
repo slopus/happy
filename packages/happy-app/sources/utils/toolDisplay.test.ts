@@ -30,10 +30,8 @@ describe('terminal tool display helpers', () => {
     it('detects command-like terminal tools', () => {
         expect(isTerminalToolName('Bash')).toBe(true);
         expect(isTerminalToolName('CodexBash')).toBe(true);
-        expect(isTerminalToolName('GeminiBash')).toBe(true);
         expect(isTerminalToolName('exec_command')).toBe(true);
         expect(isTerminalToolName('run_terminal_command')).toBe(true);
-        expect(isTerminalToolName('execute')).toBe(true);
         expect(isTerminalToolName('Read')).toBe(false);
     });
 
@@ -47,13 +45,6 @@ describe('terminal tool display helpers', () => {
                 parsed_cmd: [{ type: 'bash', cmd: 'git status --short' }],
             },
         ))).toBe('git status --short');
-    });
-
-    it('extracts Gemini execute titles without cwd metadata', () => {
-        expect(getTerminalToolCommand(tool(
-            'execute',
-            { toolCall: { title: 'rm tmp.txt [current working directory /repo] (cleanup)' } },
-        ))).toBe('rm tmp.txt');
     });
 
     it('uses the same minimal inline presentation for Claude and Codex edits', () => {
@@ -140,7 +131,7 @@ describe('terminal tool display helpers', () => {
     it('uses compact rows for current and future non-interactive tools', () => {
         expect(shouldUseCompactToolRow(tool('exec_command', {}), true)).toBe(true);
         expect(shouldUseCompactToolRow(tool('brand_new_rig_tool', {}), true)).toBe(true);
-        for (const richEditTool of ['Edit', 'Write', 'MultiEdit', 'CodexPatch', 'CodexDiff', 'edit']) {
+        for (const richEditTool of ['Edit', 'Write', 'MultiEdit', 'CodexPatch', 'CodexDiff']) {
             expect(shouldUseCompactToolRow(tool(richEditTool, {}), true)).toBe(false);
         }
         expect(shouldUseCompactToolRow(tool('apply_patch', {}), true)).toBe(true);

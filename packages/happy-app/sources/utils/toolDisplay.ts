@@ -5,9 +5,6 @@ import { stringifyToolCommand } from './toolCommand';
 const TERMINAL_TOOL_NAMES = new Set([
     'Bash',
     'CodexBash',
-    'GeminiBash',
-    'shell',
-    'execute',
     'exec_command',
     'run_terminal_command',
     'write_stdin',
@@ -18,8 +15,6 @@ const EDIT_TOOL_NAMES = new Set([
     'MultiEdit',
     'Write',
     'CodexPatch',
-    'GeminiPatch',
-    'edit',
     'NotebookEdit',
     'apply_patch',
     'search_replace',
@@ -27,7 +22,6 @@ const EDIT_TOOL_NAMES = new Set([
 
 const READ_TOOL_NAMES = new Set([
     'Read',
-    'read',
     'NotebookRead',
     'LS',
     'read_file',
@@ -42,7 +36,6 @@ const SEARCH_TOOL_NAMES = new Set([
     'Grep',
     'Glob',
     'grep',
-    'search',
     'WebSearch',
     'list_dir',
     'list_agents',
@@ -102,7 +95,6 @@ const RICH_INLINE_EDIT_TOOL_NAMES = new Set([
     'Write',
     'CodexPatch',
     'CodexDiff',
-    'edit',
 ]);
 
 export type ToolSummaryCategory = 'terminal' | 'edit' | 'read' | 'search' | 'web' | 'task' | 'other';
@@ -251,16 +243,6 @@ export function getTerminalToolCommand(tool: Pick<ToolCall, 'name' | 'input'>): 
     const directCommand = stringifyToolCommand(tool.input?.command ?? tool.input?.cmd);
     if (directCommand) {
         return directCommand;
-    }
-
-    const title = tool.input?.toolCall?.title;
-    if (typeof title === 'string') {
-        const bracketIdx = title.indexOf(' [');
-        const command = bracketIdx > 0 ? title.substring(0, bracketIdx) : title;
-        const trimmed = command.trim();
-        if (trimmed.length > 0) {
-            return trimmed;
-        }
     }
 
     return null;

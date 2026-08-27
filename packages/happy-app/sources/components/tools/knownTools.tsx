@@ -192,11 +192,6 @@ export const knownTools = {
                 const path = resolvePath(opts.tool.input.file_path, opts.metadata);
                 return path;
             }
-            // Gemini uses 'locations' array with 'path' field
-            if (opts.tool.input.locations && Array.isArray(opts.tool.input.locations) && opts.tool.input.locations[0]?.path) {
-                const path = resolvePath(opts.tool.input.locations[0].path, opts.metadata);
-                return path;
-            }
             return t('tools.names.readFile');
         },
         minimal: true,
@@ -204,10 +199,7 @@ export const knownTools = {
         input: z.object({
             file_path: z.string().describe('The absolute path to the file to read'),
             limit: z.number().optional().describe('The number of lines to read'),
-            offset: z.number().optional().describe('The line number to start reading from'),
-            // Gemini format
-            items: z.array(z.any()).optional(),
-            locations: z.array(z.object({ path: z.string() }).passthrough()).optional()
+            offset: z.number().optional().describe('The line number to start reading from')
         }).partial().passthrough(),
         result: z.object({
             file: z.object({
@@ -217,28 +209,6 @@ export const knownTools = {
                 startLine: z.number().describe('The line number to start reading from'),
                 totalLines: z.number().describe('The total number of lines in the file')
             }).passthrough().optional()
-        }).partial().passthrough()
-    },
-    // Gemini uses lowercase 'read'
-    'read': {
-        title: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
-            // Gemini uses 'locations' array with 'path' field
-            if (opts.tool.input.locations && Array.isArray(opts.tool.input.locations) && opts.tool.input.locations[0]?.path) {
-                const path = resolvePath(opts.tool.input.locations[0].path, opts.metadata);
-                return path;
-            }
-            if (typeof opts.tool.input.file_path === 'string') {
-                const path = resolvePath(opts.tool.input.file_path, opts.metadata);
-                return path;
-            }
-            return t('tools.names.readFile');
-        },
-        minimal: true,
-        icon: ICON_READ,
-        input: z.object({
-            items: z.array(z.any()).optional(),
-            locations: z.array(z.object({ path: z.string() }).passthrough()).optional(),
-            file_path: z.string().optional()
         }).partial().passthrough()
     },
     'Edit': {
@@ -528,30 +498,6 @@ export const knownTools = {
             return t('tools.names.reasoning');
         }
     },
-    'GeminiReasoning': {
-        title: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
-            if (opts.tool.input?.title && typeof opts.tool.input.title === 'string') {
-                return opts.tool.input.title;
-            }
-            return t('tools.names.reasoning');
-        },
-        icon: ICON_REASONING,
-        hidden: true,
-        minimal: true,
-        input: z.object({
-            title: z.string().describe('The title of the reasoning')
-        }).partial().passthrough(),
-        result: z.object({
-            content: z.string().describe('The reasoning content'),
-            status: z.enum(['completed', 'in_progress', 'canceled']).optional().describe('The status of the reasoning')
-        }).partial().passthrough(),
-        extractDescription: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
-            if (opts.tool.input?.title && typeof opts.tool.input.title === 'string') {
-                return opts.tool.input.title;
-            }
-            return t('tools.names.reasoning');
-        }
-    },
     'think': {
         title: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
             if (opts.tool.input?.title && typeof opts.tool.input.title === 'string') {
@@ -589,107 +535,6 @@ export const knownTools = {
             title: z.string().optional().describe('New session title')
         }).partial().passthrough(),
         result: z.object({}).partial().passthrough()
-    },
-    // Gemini internal tools - should be hidden (minimal)
-    'search': {
-        title: t('tools.names.search'),
-        icon: ICON_SEARCH,
-        minimal: true,
-        input: z.object({
-            items: z.array(z.any()).optional(),
-            locations: z.array(z.any()).optional()
-        }).partial().passthrough()
-    },
-    'edit': {
-        title: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
-            // Gemini sends data in nested structure, try multiple locations
-            let filePath: string | undefined;
-            
-            // 1. Check toolCall.content[0].path
-            if (opts.tool.input?.toolCall?.content?.[0]?.path) {
-                filePath = opts.tool.input.toolCall.content[0].path;
-            }
-            // 2. Check toolCall.title (has nice "Writing to ..." format)
-            else if (opts.tool.input?.toolCall?.title) {
-                return opts.tool.input.toolCall.title;
-            }
-            // 3. Check input[0].path (array format)
-            else if (Array.isArray(opts.tool.input?.input) && opts.tool.input.input[0]?.path) {
-                filePath = opts.tool.input.input[0].path;
-            }
-            // 4. Check direct path field
-            else if (typeof opts.tool.input?.path === 'string') {
-                filePath = opts.tool.input.path;
-            }
-            
-            if (filePath) {
-                return resolvePath(filePath, opts.metadata);
-            }
-            return t('tools.names.editFile');
-        },
-        icon: ICON_EDIT,
-        isMutable: true,
-        input: z.object({
-            path: z.string().describe('The file path to edit'),
-            oldText: z.string().describe('The text to replace'),
-            newText: z.string().describe('The new text'),
-            type: z.string().optional().describe('Type of edit (diff)')
-        }).partial().passthrough()
-    },
-    'shell': {
-        title: t('tools.names.terminal'),
-        icon: ICON_TERMINAL,
-        minimal: true,
-        isMutable: true,
-        input: z.object({}).partial().passthrough()
-    },
-    'execute': {
-        title: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
-            // Gemini sends nice title in toolCall.title
-            if (opts.tool.input?.toolCall?.title) {
-                // Title is like "rm file.txt [cwd /path] (description)"
-                // Extract just the command part before [
-                const fullTitle = opts.tool.input.toolCall.title;
-                const bracketIdx = fullTitle.indexOf(' [');
-                if (bracketIdx > 0) {
-                    return fullTitle.substring(0, bracketIdx);
-                }
-                return fullTitle;
-            }
-            return t('tools.names.terminal');
-        },
-        icon: ICON_TERMINAL,
-        isMutable: true,
-        minimal: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
-            const input = opts.tool.input;
-            const title = input?.toolCall?.title;
-            if (typeof title === 'string' && title.trim().length > 0) {
-                return false;
-            }
-
-            const command = input?.command;
-            if (typeof command === 'string' && command.trim().length > 0) {
-                return false;
-            }
-            if (Array.isArray(command) && command.some((part) => typeof part === 'string' && part.trim().length > 0)) {
-                return false;
-            }
-
-            // No command arguments available: keep terminal tool in compact form.
-            return true;
-        },
-        input: z.object({}).partial().passthrough(),
-        extractSubtitle: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
-            // Extract description from parentheses at the end
-            if (opts.tool.input?.toolCall?.title) {
-                const title = opts.tool.input.toolCall.title;
-                const parenMatch = title.match(/\(([^)]+)\)$/);
-                if (parenMatch) {
-                    return parenMatch[1];
-                }
-            }
-            return null;
-        }
     },
     'CodexPatch': {
         title: t('tools.names.applyChanges'),
@@ -746,75 +591,6 @@ export const knownTools = {
             return t('tools.names.applyChanges');
         }
     },
-    'GeminiBash': {
-        title: t('tools.names.terminal'),
-        icon: ICON_TERMINAL,
-        minimal: true,
-        hideDefaultError: true,
-        isMutable: true,
-        input: z.object({
-            command: z.union([z.string(), z.array(z.string())]).describe('The command to execute'),
-            cwd: z.string().optional().describe('Current working directory')
-        }).partial().passthrough(),
-        extractSubtitle: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
-            return stringifyToolCommand(opts.tool.input?.command);
-        }
-    },
-    'GeminiPatch': {
-        title: t('tools.names.applyChanges'),
-        icon: ICON_EDIT,
-        minimal: true,
-        hideDefaultError: true,
-        isMutable: true,
-        input: z.object({
-            auto_approved: z.boolean().optional().describe('Whether changes were auto-approved'),
-            changes: z.record(z.string(), z.object({
-                add: z.object({
-                    content: z.string()
-                }).optional(),
-                modify: z.object({
-                    old_content: z.string(),
-                    new_content: z.string()
-                }).optional(),
-                delete: z.object({
-                    content: z.string()
-                }).optional()
-            }).passthrough()).describe('File changes to apply')
-        }).partial().passthrough(),
-        extractSubtitle: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
-            // Show the first file being modified
-            if (opts.tool.input?.changes && typeof opts.tool.input.changes === 'object') {
-                const files = Object.keys(opts.tool.input.changes);
-                if (files.length > 0) {
-                    const path = resolvePath(files[0], opts.metadata);
-                    const fileName = path.split('/').pop() || path;
-                    if (files.length > 1) {
-                        return t('tools.desc.modifyingMultipleFiles', { 
-                            file: fileName, 
-                            count: files.length - 1 
-                        });
-                    }
-                    return fileName;
-                }
-            }
-            return null;
-        },
-        extractDescription: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
-            // Show the number of files being modified
-            if (opts.tool.input?.changes && typeof opts.tool.input.changes === 'object') {
-                const files = Object.keys(opts.tool.input.changes);
-                const fileCount = files.length;
-                if (fileCount === 1) {
-                    const path = resolvePath(files[0], opts.metadata);
-                    const fileName = path.split('/').pop() || path;
-                    return t('tools.desc.modifyingFile', { file: fileName });
-                } else if (fileCount > 1) {
-                    return t('tools.desc.modifyingFiles', { count: fileCount });
-                }
-            }
-            return t('tools.names.applyChanges');
-        }
-    },
     'CodexDiff': {
         title: t('tools.names.viewDiff'),
         icon: ICON_EDIT,
@@ -829,43 +605,6 @@ export const knownTools = {
         }).partial().passthrough(),
         extractSubtitle: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
             // Try to extract filename from unified diff
-            if (opts.tool.input?.unified_diff && typeof opts.tool.input.unified_diff === 'string') {
-                const diffLines = opts.tool.input.unified_diff.split('\n');
-                for (const line of diffLines) {
-                    if (line.startsWith('+++ b/') || line.startsWith('+++ ')) {
-                        const fileName = line.replace(/^\+\+\+ (b\/)?/, '');
-                        const basename = fileName.split('/').pop() || fileName;
-                        return basename;
-                    }
-                }
-            }
-            return null;
-        },
-        extractDescription: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
-            return t('tools.desc.showingDiff');
-        }
-    },
-    'GeminiDiff': {
-        title: t('tools.names.viewDiff'),
-        icon: ICON_EDIT,
-        minimal: false,  // Show full diff view
-        hideDefaultError: true,
-        noStatus: true,  // Always successful, stateless like Task
-        input: z.object({
-            unified_diff: z.string().optional().describe('Unified diff content'),
-            filePath: z.string().optional().describe('File path'),
-            description: z.string().optional().describe('Edit description')
-        }).partial().passthrough(),
-        result: z.object({
-            status: z.literal('completed').describe('Always completed')
-        }).partial().passthrough(),
-        extractSubtitle: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
-            // Try to extract filename from filePath first
-            if (opts.tool.input?.filePath && typeof opts.tool.input.filePath === 'string') {
-                const basename = opts.tool.input.filePath.split('/').pop() || opts.tool.input.filePath;
-                return basename;
-            }
-            // Fall back to extracting from unified diff
             if (opts.tool.input?.unified_diff && typeof opts.tool.input.unified_diff === 'string') {
                 const diffLines = opts.tool.input.unified_diff.split('\n');
                 for (const line of diffLines) {

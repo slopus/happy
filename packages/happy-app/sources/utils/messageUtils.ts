@@ -54,7 +54,6 @@ function getToolSummary(tools: ToolCall[]): string {
       case 'Bash':
       case 'RunCommand':
       case 'CodexBash':
-      case 'GeminiBash':
         const command = stringifyToolCommand(tool.input?.command);
         if (command) {
           return `Ran: ${command.length > 20 ? command.substring(0, 20) + '...' : command}`;
