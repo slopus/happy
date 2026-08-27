@@ -194,10 +194,26 @@ Report results. If failures, ask the user whether to proceed or abort.
 
 ### Step 7: Publish
 
+#### Mandatory human handoff for npm authentication
+
+The agent MUST NOT run the actual npm publish command. npm authentication is
+interactive for this package: the maintainer must authenticate first and may be
+asked to authenticate again in the browser or provide an OTP during publish.
+After the version bump, build, bundle checks, tests, and final confirmation are
+complete, stop and hand the maintainer these exact commands to run in their own
+terminal:
+
 ```bash
 cd packages/happy-cli
+npm login
 pnpm publish --tag {channel} --no-git-checks
 ```
+
+Never ask the maintainer to paste an npm password, token, browser link, or OTP
+into chat. Wait for them to report that the command completed, then independently
+verify the registry in Step 8 before committing/tagging the release. If a publish
+was started by the agent before the handoff requirement became known, stop it and
+check `npm view happy@{version} version` before doing anything else.
 
 - `--no-git-checks`: allows dirty working tree (we already verified state)
 
@@ -238,11 +254,12 @@ npm error ... ssl3_read_bytes:ssl/tls alert bad record mac ...
 
 This is network-layer corruption of a single TLS record on the long upload, **not**
 a code, auth, or version problem. A single bad record kills the whole stream, so
-each fresh attempt has an independent chance to complete. Just re-run the exact
-same `pnpm publish` command — it typically succeeds within 2–3 attempts (it took
-3 on the 1.1.10-beta.4 release). Before each retry, confirm it did NOT actually
-land (see Step 8); npm rejects re-publishing an already-published version, which
-would be a misleading error. A clean success prints `+ happy@X.Y.Z`.
+each fresh attempt has an independent chance to complete. Verify that the version
+did NOT land (see Step 8), then ask the maintainer to re-run the same `pnpm publish`
+command in their terminal; it typically succeeds within 2–3 attempts (it took 3
+on the 1.1.10-beta.4 release). npm rejects re-publishing an already-published
+version, which would be a misleading error. A clean success prints
+`+ happy@X.Y.Z`.
 
 ### Step 8: Verify
 
@@ -456,6 +473,7 @@ Separate repo, not part of this monorepo. Guide the user to push to that repo.
 - **Release notes: investigate with subagents, exclude default-off, ask when unsure** — see "Writing release notes" above.
 - **Always present options** — never assume which component, channel, or version.
 - **Always verify before publishing** — show the user what will be published and get confirmation.
+- **The maintainer runs npm login and pnpm publish interactively** — the agent prepares and verifies the release but never runs the publish command or handles npm credentials/OTP.
 - **Do not bundle self-host server/webapp into `happy`** — self-host runtime and the bundled webapp ship through `happy-server-self-host`, not the main CLI package.
 - **Unit tests are the gate, not integration tests** — integration tests are slow and have flaky abort/interrupt tests.
 - **Use pnpm publish, not npm publish** — avoids workspace protocol issues.
