@@ -1,11 +1,10 @@
 ---
 name: maintain
 description: >
-  Maintain the slopus/happy open source project. Triage issues, manage the
-  GitHub project board, draft closing comments, find duplicates, check if
-  bugs are fixed on main, and engage with community contributors. NEVER
-  posts comments or closes issues without showing exact text and getting
-  approval first.
+  Maintain the slopus/happy open source project. Triage issues, draft
+  closing comments, find duplicates, check if bugs are fixed on main,
+  and engage with community contributors. NEVER posts comments or
+  closes issues without showing exact text and getting approval first.
 ---
 
 # /maintain - Open Source Project Maintenance
@@ -15,10 +14,13 @@ is a relationship with a user. Every close is a chance to build trust.
 
 ## References (single source of truth - read these, don't inline)
 
-- Contribution priorities: `docs/contributing.md`
+- Contribution priorities: `docs/CONTRIBUTING.md`
 - Roadmap themes: `docs/roadmap.md`
-- Triage checkpoint (last session state, pending items): `checkpoint.md`
-- GitHub Project board: https://github.com/orgs/slopus/projects/1
+- Triage checkpoint (last session state, pending items, current
+  focus themes): `checkpoint.md`
+
+We do NOT use GitHub Projects, milestones, or priority/size fields.
+Priorities and themes live in `checkpoint.md`.
 
 ## Golden rule
 
@@ -90,22 +92,11 @@ resolves into a clear, unambiguous directive. Specifically:
 - Only mention `npm i -g happy` when the fix is in the CLI package.
 - Keep it short: 3 sentences for dupes, 5 max for canonicals.
 
-## Milestones = Themes
+## Themes
 
-Milestones on the GitHub project are broad themes, not specific bugs.
-Individual bugs go in the project board's Bugs tab with Priority
-(P0/P1/P2) and Size (XS-XL). Only assign a milestone when a bug is
-clearly part of a larger theme.
-
-When creating or suggesting milestones, align with `docs/roadmap.md`
-sections. Examples of good themes:
-
-- "table stakes" - parity with conductor, daily driver quality
-- "multi-agent" - opencode, copilot, cursor, ACP
-- "self-hosting" - docker, docs, standalone deployment
-- "workspaces" - cross-machine project management
-
-Bad milestone: "fix redis streams" (too specific, that's just a bug)
+Themes are broad focus areas, not specific bugs. The current priority
+list lives in `checkpoint.md`; align with `docs/roadmap.md`. A theme
+is "table stakes", not "fix redis streams" (too specific, just a bug).
 
 ## Workflow
 
@@ -131,13 +122,15 @@ summary of what the person is waiting on.
 
 ### Phase 1: Fetch and cluster
 
-1. Pull all open issues from the project board
+1. Pull all open issues from the repo
 2. Group by rough topic
 3. Present cluster summary with counts
 
 ### Phase 2: Deep dive per cluster
 
-For each cluster, spawn a subagent (opus) that:
+For each cluster, spawn a subagent. Use the cheapest good model that
+will take its time (currently GPT-5.6 Luna, `openai/gpt-5.6-luna`).
+Each subagent:
 
 1. Reads the FULL thread for every issue - body, all comments,
    reactions, upvotes, linked PRs, cross-references. Not just
@@ -164,7 +157,7 @@ For each issue, draft ONE of:
 - **CLOSE_FIXED** - cite the fix, ask reporter to verify
 - **CLOSE_DUPE** - link canonical, explain the connection
 - **CLOSE_SPAM** - close with NO comment, zero engagement
-- **KEEP_OPEN** - assign to project board with priority/size
+- **KEEP_OPEN** - record priority and theme in `checkpoint.md`
 - **NEEDS_INFO** - draft a question for the reporter
 
 ### Phase 5: Present for review
@@ -176,10 +169,10 @@ Show the maintainer a table per cluster:
 Include who opened each issue and any notable context about them.
 WAIT for approval before executing anything.
 
-### Phase 6: Project board updates
+### Phase 6: Update checkpoint
 
-For issues that stay open, suggest:
-- Priority (P0/P1/P2)
-- Size (XS/S/M/L/XL)
-- Milestone (theme) if applicable
-- Status (Backlog/Ready/In progress)
+Before ending the session, update `checkpoint.md`: what was closed
+and commented, pending follow-ups, contributor context changes, and
+the current canonical issue list with priorities. Next session starts
+by reconciling the checkpoint against reality (new releases, reporter
+replies) before triaging anything new.

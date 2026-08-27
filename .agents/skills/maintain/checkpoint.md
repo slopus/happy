@@ -1,20 +1,11 @@
 # Triage Checkpoint
 
-## Last triage: 2026-08-25 (post CLI 1.2.1 / production OTA b16b23c5)
+Last session: 2026-08-27 (CLI 1.2.2 released: Windows daemon
+subprocess fix, auto permission mode is now the default - story is
+"Auto is the default, YOLO is explicit opt-in"; old CLIs degrade to
+`default`, user overrides untouched). Full triage: 2026-08-25.
 
-### This session
-- Closed as fixed with comments: #1706, #1646, #1444, #1546, #1375,
-  #1721, #1492, #1450 (partial: per-project defaults not built),
-  #648, #375
-- Closed PR without merging: #1447 (superseded by merged #1562)
-- Commented, kept open pending reporter verification: #1716 (P0,
-  labeled bug), #1695, #1679
-- Commented, kept open as tracked work: #1707 (pinning UX, mobile
-  first), #1631 (OpenCode first-class), #145 (Copilot)
-- All claims verified against source, the cli-1.2.1 tag, and the
-  production Expo OTA (buildCommitSha b16b23c5) before posting
-
-### Pending follow-ups
+## Pending follow-ups
 - #1716: waiting on reporter after 07732a97; root cause only
   partially explained (auto-mode drop explains a vanished prompt,
   not one routed to the latest session). If they confirm, close;
@@ -24,19 +15,10 @@
   asked to file a separate issue if wanted.
 - #1707: waiting on contributor screen recordings (two variants)
   before any pinning implementation review.
-- Project board Priority/Size fields could NOT be set: gh token
-  lacks read:project. Wanted: #1716 P0/S, #1707 P1/M, #1631 P1/M,
-  #145 P1/L.
-- Product note: do not ask contributors to target Happy Desktop yet
-  (too raw); frame scope as native mobile, web deprioritized, and do
-  not mention desktop in public comments.
-- Local-only code change awaiting release: auto is the new code
-  default permission mode (c7090622 on local main, f64a36be on
-  worktree/triage-pinning-reordering); old CLIs degrade to
-  `default`, user overrides untouched. Once shipped, the story is
-  "Auto is the default, YOLO is explicit opt-in".
+- #1725 / #1729: close once Windows reporters confirm 1.2.2 fixed
+  the flashing CMD windows.
 
-### Contributor context
+## Contributor context
 - @qqshDA: issues only (#1706 closed, #1707 open), no code merged;
   credited in Aug 25 in-app release notes. Do not say we merged
   their code.
@@ -48,13 +30,24 @@
 - #145 contenders: #822 (@andrewschmidt-a, inactive draft) vs
   #1034 (@MauroDruwel, pure ACP); asked them to coordinate.
 
-## Milestones (priority order)
+## Standing product guidance
+
+- Product split: happy-agent is the primary harness, happy-desktop
+  is the primary UI, and this repo is the mobile app (happy-mobile
+  for now).
+- Core for the app: keep supporting direct codex / claude / other
+  harness spawning, and work FLAWLESSLY with happy-agent.
+- The underlying backend/APIs are expected to change, but the UX
+  can be polished now. Goals: UX + performance + bug-free.
+- Web is deprioritized: point people to happy-desktop.
+
+## Themes (priority order)
 
 1. **table stakes** — devs use it daily and don't want to kill
    themselves. critical bugs, UX blockers, polish.
 2. **growth** — viral features, community, social, engagement.
    anything that makes happy spread. may spin off per-feature
-   milestones later.
+   themes later.
 3. **devx** — how hard is it to build a new feature? env setup,
    e2e testing, docs/skills hygiene, reducing friction for
    contributors. increases throughput on everything above.
@@ -64,7 +57,7 @@
 6. **agent-integrations** — new agent CLIs (copilot, cursor, etc),
    SDK updates, making agents spawnable from mobile/web.
 
-Not milestones (tracked, not focus areas):
+Not themes (tracked, not focus areas):
 - voice — voice assistant reliability, TTS, BYOA config
 - self-hosting — community-driven, stashed
 - distribution — APK, homebrew, native binary
@@ -79,12 +72,6 @@ Not milestones (tracked, not focus areas):
 - #1707 — project pinning + reorder within pinned (UX spec posted)
 - #1631 — OpenCode first-class in app picker/spawn
 - #145 — copilot CLI (two open PRs, asked authors to coordinate)
-
-### Stale entries from April session
-The April P0/P1/P2 lists predate CLI 1.2.1 and the v1.7+ apps; most
-are fixed or obsolete. Re-verify before acting on any of: #613,
-#682, #528, #106, #837, #685, #102, #652, #966, #165, #36, #156,
-#248, #358, #25, #505, #719.
 
 ## Notes
 - npm `happy` package donated by @franciscop (issue #880)
