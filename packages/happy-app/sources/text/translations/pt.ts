@@ -582,6 +582,9 @@ export const pt: TranslationStructure = {
     },
 
     tools: {
+        fileEdit: {
+            showAllLines: ({ count }: { count: number }) => `Mostrar todas as ${count} linhas alteradas`,
+        },
         fullView: {
             description: 'Descrição',
             inputParams: 'Parâmetros de entrada',

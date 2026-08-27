@@ -584,6 +584,9 @@ export const zhHans: TranslationStructure = {
     },
 
     tools: {
+        fileEdit: {
+            showAllLines: ({ count }: { count: number }) => `显示全部 ${count} 行更改`,
+        },
         fullView: {
             description: '描述',
             inputParams: '输入参数',

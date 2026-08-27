@@ -47,13 +47,12 @@ describe('terminal tool display helpers', () => {
         ))).toBe('git status --short');
     });
 
-    it('uses the same minimal inline presentation for Claude and Codex edits', () => {
-        expect(shouldRenderToolCardHeader('CodexPatch', 'web')).toBe(false);
-        expect(shouldRenderToolCardHeader('CodexPatch', 'ios')).toBe(false);
-        expect(shouldRenderToolCardHeader('CodexPatch', 'android')).toBe(false);
-        expect(shouldRenderToolCardHeader('Edit', 'web')).toBe(false);
-        expect(shouldRenderToolCardHeader('Edit', 'ios')).toBe(false);
-        expect(shouldRenderToolCardHeader('Edit', 'android')).toBe(false);
+    it('renders every edit-shaped tool as a headerless inline ribbon', () => {
+        for (const editTool of ['Edit', 'MultiEdit', 'Write', 'NotebookEdit', 'CodexPatch', 'CodexDiff']) {
+            for (const platform of ['web', 'ios', 'android']) {
+                expect(shouldRenderToolCardHeader(editTool, platform)).toBe(false);
+            }
+        }
         expect(shouldRenderToolCardHeader('CodexBash', 'web')).toBe(true);
     });
 
@@ -137,7 +136,7 @@ describe('terminal tool display helpers', () => {
     it('uses compact rows for current and future non-interactive tools', () => {
         expect(shouldUseCompactToolRow(tool('exec_command', {}), true)).toBe(true);
         expect(shouldUseCompactToolRow(tool('brand_new_rig_tool', {}), true)).toBe(true);
-        for (const richEditTool of ['Edit', 'Write', 'MultiEdit', 'CodexPatch', 'CodexDiff']) {
+        for (const richEditTool of ['Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'CodexPatch', 'CodexDiff']) {
             expect(shouldUseCompactToolRow(tool(richEditTool, {}), true)).toBe(false);
         }
         expect(shouldUseCompactToolRow(tool('apply_patch', {}), true)).toBe(true);

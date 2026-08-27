@@ -583,6 +583,9 @@ export const ca: TranslationStructure = {
     },
 
     tools: {
+        fileEdit: {
+            showAllLines: ({ count }: { count: number }) => `Mostra les ${count} línies canviades`,
+        },
         fullView: {
             description: 'Descripció',
             inputParams: 'Paràmetres d\'entrada',

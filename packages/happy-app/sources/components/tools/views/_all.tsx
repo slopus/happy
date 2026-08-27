@@ -7,6 +7,7 @@ import { WriteView } from './WriteView';
 import { TodoView } from './TodoView';
 import { ExitPlanToolView } from './ExitPlanToolView';
 import { MultiEditView } from './MultiEditView';
+import { NotebookEditView } from './NotebookEditView';
 import { TaskView } from './TaskView';
 import { BashViewFull } from './BashViewFull';
 import { EditViewFull } from './EditViewFull';
@@ -41,6 +42,7 @@ export const toolViewRegistry: Record<string, ToolViewComponent> = {
     ExitPlanMode: ExitPlanToolView,
     exit_plan_mode: ExitPlanToolView,
     MultiEdit: MultiEditView,
+    NotebookEdit: NotebookEditView,
     Task: TaskView,
     Agent: TaskView,
     AskUserQuestion: AskUserQuestionView,

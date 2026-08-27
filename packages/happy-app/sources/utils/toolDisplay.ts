@@ -82,17 +82,14 @@ const INTERACTIVE_QUESTION_TOOL_NAMES = new Set([
     'request_user_input',
 ]);
 
+// Edit-shaped tools render as a full-width ribbon — file header plus an
+// expanded diff — with no generic card chrome, and are never compacted:
+// collapsing them would hide the primary content of the call.
 const INLINE_FILE_EDIT_TOOL_NAMES = new Set([
-    'Edit',
-    'CodexPatch',
-]);
-
-// These tools own purpose-built inline diff views. Compacting them would hide
-// the primary content of the tool call instead of merely shortening its chrome.
-const RICH_INLINE_EDIT_TOOL_NAMES = new Set([
     'Edit',
     'MultiEdit',
     'Write',
+    'NotebookEdit',
     'CodexPatch',
     'CodexDiff',
 ]);
@@ -130,7 +127,7 @@ export function shouldUseCompactToolRow(
     if (
         !compactMode
         || tool.name === 'file'
-        || RICH_INLINE_EDIT_TOOL_NAMES.has(tool.name)
+        || INLINE_FILE_EDIT_TOOL_NAMES.has(tool.name)
         || isInteractiveQuestionToolName(tool.name)
     ) {
         return false;

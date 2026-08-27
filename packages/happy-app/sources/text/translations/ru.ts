@@ -599,6 +599,9 @@ export const ru: TranslationStructure = {
     },
 
     tools: {
+        fileEdit: {
+            showAllLines: ({ count }: { count: number }) => `Показать все изменённые строки (${count})`,
+        },
         fullView: {
             description: 'Описание',
             inputParams: 'Входные параметры',

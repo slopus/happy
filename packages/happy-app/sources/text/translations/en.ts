@@ -643,6 +643,9 @@ export const en: TranslationStructure = {
             otherDescription: 'Type your own answer',
             otherPlaceholder: 'Type your answer...',
         },
+        fileEdit: {
+            showAllLines: ({ count }: { count: number }) => `Show all ${count} changed lines`,
+        },
         desc: {
             terminalCmd: ({ cmd }: { cmd: string }) => `Terminal(cmd: ${cmd})`,
             searchPattern: ({ pattern }: { pattern: string }) => `Search(pattern: ${pattern})`,

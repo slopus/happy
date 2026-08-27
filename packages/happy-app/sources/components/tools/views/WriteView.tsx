@@ -1,29 +1,32 @@
 import * as React from 'react';
 import { ToolViewProps } from './_all';
-import { ToolSectionView } from '../../tools/ToolSectionView';
+import { InlineFileEditBlock } from '@/components/tools/InlineFileEditBlock';
 import { knownTools } from '@/components/tools/knownTools';
-import { ToolDiffView } from '@/components/tools/ToolDiffView';
-import { useSetting } from '@/sync/storage';
+import { resolvePath } from '@/utils/pathUtils';
 
-export const WriteView = React.memo<ToolViewProps>(({ tool }) => {
-    const showLineNumbersInToolViews = useSetting('showLineNumbersInToolViews');
-
-    let contents: string = '<no contents>';
+export const WriteView = React.memo<ToolViewProps>(({ tool, metadata, permissionFooter }) => {
+    let contents = '';
+    let filePath = 'file.txt';
+    let fileName = 'file.txt';
     const parsed = knownTools.Write.input.safeParse(tool.input);
-    if (parsed.success && typeof parsed.data.content === 'string') {
-        contents = parsed.data.content;
+    if (parsed.success) {
+        if (typeof parsed.data.content === 'string') {
+            contents = parsed.data.content;
+        }
+        if (parsed.data.file_path) {
+            filePath = resolvePath(parsed.data.file_path, metadata);
+            fileName = parsed.data.file_path.split(/[\\/]/).pop() || parsed.data.file_path;
+        }
     }
 
     return (
-        <>
-            <ToolSectionView fullWidth>
-                <ToolDiffView 
-                    oldText={''} 
-                    newText={contents} 
-                    showLineNumbers={showLineNumbersInToolViews}
-                    showPlusMinusSymbols={showLineNumbersInToolViews}
-                />
-            </ToolSectionView>
-        </>
+        <InlineFileEditBlock
+            filePath={filePath}
+            fileName={fileName}
+            kindLabel="new"
+            oldText=""
+            newText={contents}
+            permissionFooter={permissionFooter}
+        />
     );
 });

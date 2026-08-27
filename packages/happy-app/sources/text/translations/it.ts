@@ -602,6 +602,9 @@ export const it: TranslationStructure = {
             otherDescription: 'Scrivi la tua risposta',
             otherPlaceholder: 'Scrivi la tua risposta...',
         },
+        fileEdit: {
+            showAllLines: ({ count }: { count: number }) => `Mostra tutte le ${count} righe modificate`,
+        },
         multiEdit: {
             editNumber: ({ index, total }: { index: number; total: number }) => `Modifica ${index} di ${total}`,
             replaceAll: 'Sostituisci tutto',

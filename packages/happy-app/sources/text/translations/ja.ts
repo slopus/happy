@@ -605,6 +605,9 @@ export const ja: TranslationStructure = {
             otherDescription: '自分の回答を入力',
             otherPlaceholder: '回答を入力...',
         },
+        fileEdit: {
+            showAllLines: ({ count }: { count: number }) => `変更された${count}行をすべて表示`,
+        },
         multiEdit: {
             editNumber: ({ index, total }: { index: number; total: number }) => `編集 ${index}/${total}`,
             replaceAll: 'すべて置換',

@@ -629,6 +629,9 @@ export const zhHant: TranslationStructure = {
             otherDescription: '輸入您自己的答案',
             otherPlaceholder: '輸入您的答案...',
         },
+        fileEdit: {
+            showAllLines: ({ count }: { count: number }) => `顯示全部 ${count} 行更改`,
+        },
         desc: {
             terminalCmd: ({ cmd }: { cmd: string }) => `終端機(命令: ${cmd})`,
             searchPattern: ({ pattern }: { pattern: string }) => `搜尋(模式: ${pattern})`,
