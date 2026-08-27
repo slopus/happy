@@ -71,11 +71,14 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
     let noStatus = false;
     let hideDefaultError = false;
     
-    // For Gemini: unknown tools should be rendered as minimal (hidden)
-    // This prevents showing raw INPUT/OUTPUT for internal Gemini tools
-    // that we haven't explicitly added to knownTools
-    const isGemini = props.metadata?.flavor === 'gemini';
-    if (!knownTool && isGemini) {
+    // Unknown tools render as a compact activity row instead of a raw
+    // INPUT/OUTPUT card: providers keep adding tools we have not described in
+    // knownTools, and a half-screen JSON dump for each of them is noise.
+    // Errors still expand, since that payload is the only thing explaining them.
+    const isUnhandledError = tool.state === 'error'
+        && !!tool.result
+        && !(tool.permission && (tool.permission.status === 'denied' || tool.permission.status === 'canceled'));
+    if (!knownTool && !getToolViewComponent(tool.name) && !isUnhandledError) {
         minimal = true;
     }
 

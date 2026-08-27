@@ -49,11 +49,16 @@ const SEARCH_TOOL_NAMES = new Set([
     'list_projects',
     'list_workspaces',
     'list_workspace_sessions',
+    'list_agents',
+    'list_bots',
+    'list_secrets',
+    'web_search',
     'TaskList',
 ]);
 
 const WEB_TOOL_NAMES = new Set([
     'WebFetch',
+    'web_fetch',
 ]);
 
 const TASK_TOOL_NAMES = new Set([
@@ -82,6 +87,8 @@ const TASK_TOOL_NAMES = new Set([
     'wait_for_workflow',
     'workflow',
     'workflow_status',
+    'create_agent',
+    'create_bot',
 ]);
 
 const INTERACTIVE_QUESTION_TOOL_NAMES = new Set([
@@ -191,6 +198,15 @@ export function getToolSummaryDetail(tool: Pick<ToolCall, 'name' | 'input' | 'de
     const url = tool.input?.url;
     if (typeof url === 'string' && url.trim().length > 0) {
         return url.trim();
+    }
+
+    // Agent SDK tools describe their work in a short subject-like field rather
+    // than a path or a command.
+    for (const key of ['subject', 'title', 'query', 'name']) {
+        const value = tool.input?.[key];
+        if (typeof value === 'string' && value.trim().length > 0) {
+            return value.trim();
+        }
     }
 
     return tool.description?.trim() || null;

@@ -54,6 +54,14 @@ const taskLikeTool = {
     }).partial().passthrough()
 };
 
+/**
+ * Happy Agent SDK tools carry no file changes and no output worth a card —
+ * `getToolActivityLabel` already names the action and its subject.
+ */
+function happyTool(icon: (size: number, color: string) => React.ReactNode) {
+    return { icon, minimal: true } as const;
+}
+
 export const knownTools = {
     'Task': taskLikeTool,
     'Agent': taskLikeTool,
@@ -954,7 +962,48 @@ export const knownTools = {
     'ToolSearch': {
         icon: ICON_SEARCH,
         hidden: true,
-    }
+    },
+    // Happy Agent SDK tools. They never touch the working tree and their input
+    // is already summarized in the activity row, so they render as one-liners.
+    'TaskCreate': happyTool(ICON_TASK),
+    'TaskUpdate': happyTool(ICON_TASK),
+    'TaskOutput': happyTool(ICON_TASK),
+    'TaskStop': happyTool(ICON_TASK),
+    'TaskList': happyTool(ICON_SEARCH),
+    'Workflow': happyTool(ICON_TASK),
+    'workflow': happyTool(ICON_TASK),
+    'workflow_status': happyTool(ICON_TASK),
+    'stop_workflow': happyTool(ICON_TASK),
+    'wait_for_workflow': happyTool(ICON_TASK),
+    'create_agent': happyTool(ICON_TASK),
+    'spawn_agent': happyTool(ICON_TASK),
+    'agent_send': happyTool(ICON_TASK),
+    'agent_me': happyTool(ICON_READ),
+    'agent_info': happyTool(ICON_READ),
+    'wait_agent': happyTool(ICON_TASK),
+    'interrupt_agent': happyTool(ICON_TASK),
+    'list_agents': happyTool(ICON_SEARCH),
+    'followup_task': happyTool(ICON_TASK),
+    'send_message': happyTool(ICON_TASK),
+    'schedule_message': happyTool(ICON_TASK),
+    'delegate_to_workspace': happyTool(ICON_TASK),
+    'create_workspace': happyTool(ICON_TASK),
+    'archive_workspace': happyTool(ICON_TASK),
+    'list_workspaces': happyTool(ICON_SEARCH),
+    'list_workspace_sessions': happyTool(ICON_SEARCH),
+    'list_projects': happyTool(ICON_SEARCH),
+    'create_goal': happyTool(ICON_TODO),
+    'update_goal': happyTool(ICON_TODO),
+    'get_goal': happyTool(ICON_READ),
+    'update_plan': happyTool(ICON_TODO),
+    'read_agent_history': happyTool(ICON_READ),
+    'read_user_input': happyTool(ICON_READ),
+    'get_provider_usage': happyTool(ICON_READ),
+    'list_bots': happyTool(ICON_SEARCH),
+    'create_bot': happyTool(ICON_TASK),
+    'list_secrets': happyTool(ICON_SEARCH),
+    'web_fetch': happyTool(ICON_WEB),
+    'web_search': happyTool(ICON_SEARCH),
 } satisfies Record<string, {
     title?: string | ((opts: { metadata: Metadata | null, tool: ToolCall }) => string);
     icon: (size: number, color: string) => React.ReactNode;
