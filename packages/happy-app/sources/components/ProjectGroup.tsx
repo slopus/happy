@@ -7,6 +7,7 @@ import { Text } from '@/components/StyledText';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
 import { ProjectGroupData, ProjectWorkspaceGroup, useSessionGitStatus } from '@/sync/storage';
+import { getGitStatusLineChanges } from '@/utils/gitStatusLineChanges';
 import { CompactSessionRow } from './ActiveSessionsGroupCompact';
 import { Avatar } from './Avatar';
 import { requestHomeDockFocus } from './homeDockFocus';
@@ -68,8 +69,7 @@ const WorkspaceSection = React.memo(({ project, workspace, selectedSessionId }: 
     const branchName = worktreeName
         ?? gitStatus?.branch
         ?? 'main';
-    const liveInsertions = gitStatus?.unstagedLinesAdded ?? 0;
-    const liveDeletions = gitStatus?.unstagedLinesRemoved ?? 0;
+    const { insertions: liveInsertions, deletions: liveDeletions } = getGitStatusLineChanges(gitStatus);
     const changes = liveInsertions > 0 || liveDeletions > 0
         ? { approximate: false, insertions: liveInsertions, deletions: liveDeletions }
         : firstSession && firstSession.gitChangedFiles !== null
