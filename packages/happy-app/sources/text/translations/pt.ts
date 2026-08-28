@@ -37,6 +37,8 @@ export const pt: TranslationStructure = {
     },
 
     common: {
+        star: 'Marcar com estrela',
+        unstar: 'Remover estrela',
         // Simple string constants
         cancel: 'Cancelar',
         authenticate: 'Autenticar',

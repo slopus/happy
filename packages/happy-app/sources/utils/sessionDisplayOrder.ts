@@ -1,4 +1,5 @@
 import type { SessionListViewItem, SessionRowData } from '@/sync/storage';
+import { projectGroupStarKey } from '@/sync/projectGroups';
 
 type SessionProjectListItem = Extract<SessionListViewItem, { type: 'project' }>;
 
@@ -87,14 +88,24 @@ export function buildActiveSessionDisplayGroups(
     ));
 }
 
+const NO_STARRED_PROJECTS: ReadonlySet<string> = new Set();
+
 /**
  * Restores the home list's original top-level hierarchy: machine first, then
  * projects, with worktrees and sessions kept inside each project.
+ *
+ * `starred` holds the project keys the user pinned. Ordering has to happen
+ * here rather than on the list data upstream of it: this is the last pass over
+ * the project cards, and its own name sort would otherwise undo any order it
+ * was handed. A card the machine hierarchy is built from keeps its machine —
+ * a star lifts a project within its machine group, never above another one's
+ * header.
  */
 export function buildSessionProjectDisplayGroups(
     data: readonly SessionListViewItem[],
     machines: readonly SessionDisplayMachine[],
     unknownText: string,
+    starred: ReadonlySet<string> = NO_STARRED_PROJECTS,
 ): SessionProjectDisplayMachineGroup[] {
     const machinesMap = new Map(machines.map((machine) => [machine.id, machine]));
     const byMachine = new Map<string | null, SessionProjectDisplayMachineGroup>();
@@ -115,9 +126,16 @@ export function buildSessionProjectDisplayGroups(
         group.projects.push(item);
     });
 
+    const isStarred = (item: SessionProjectListItem): boolean => {
+        if (starred.size === 0) return false;
+        const key = projectGroupStarKey(item.project);
+        return !!key && starred.has(key);
+    };
+
     byMachine.forEach((group) => {
         group.projects.sort((a, b) => (
-            a.project.name.localeCompare(b.project.name)
+            Number(isStarred(b)) - Number(isStarred(a))
+            || a.project.name.localeCompare(b.project.name)
             || a.project.id.localeCompare(b.project.id)
         ));
     });
@@ -132,13 +150,14 @@ export function getSessionShortcutIdsInDisplayOrder(
     data: readonly SessionListViewItem[] | null,
     machines: readonly SessionDisplayMachine[],
     unknownText: string,
+    starred: ReadonlySet<string> = NO_STARRED_PROJECTS,
 ): string[] {
     if (!data) {
         return [];
     }
 
     const sessionIds: string[] = [];
-    const projectGroups = buildSessionProjectDisplayGroups(data, machines, unknownText);
+    const projectGroups = buildSessionProjectDisplayGroups(data, machines, unknownText, starred);
     projectGroups.forEach((machineGroup) => {
         machineGroup.projects.forEach((item) => {
             item.project.workspaces.forEach((workspace) => {

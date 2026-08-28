@@ -37,6 +37,8 @@ export const en = {
     },
 
     common: {
+        star: 'Star',
+        unstar: 'Unstar',
         // Simple string constants
         cancel: 'Cancel',
         authenticate: 'Authenticate',

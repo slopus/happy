@@ -37,6 +37,8 @@ export const ca: TranslationStructure = {
     },
 
     common: {
+        star: 'Destaca',
+        unstar: 'Treu el destacat',
         // Simple string constants
         cancel: 'Cancel·la',
         authenticate: 'Autentica',

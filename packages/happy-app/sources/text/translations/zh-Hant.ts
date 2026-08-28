@@ -39,6 +39,8 @@ export const zhHant: TranslationStructure = {
     },
 
     common: {
+        star: '加星號',
+        unstar: '取消星號',
         // Simple string constants
         cancel: '取消',
         authenticate: '驗證',

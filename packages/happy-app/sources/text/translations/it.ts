@@ -37,6 +37,8 @@ export const it: TranslationStructure = {
     },
 
     common: {
+        star: 'Aggiungi ai preferiti',
+        unstar: 'Rimuovi dai preferiti',
         // Simple string constants
         cancel: 'Annulla',
         authenticate: 'Autentica',
