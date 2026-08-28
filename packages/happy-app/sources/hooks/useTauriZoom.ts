@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { Platform } from 'react-native';
 import { isTauri } from '@/utils/isTauri';
 
-export const DEFAULT_APP_ZOOM = 1.0;
+export const DEFAULT_APP_ZOOM = 0.75;
 export const BROWSER_APP_ZOOM = 1.0;
 
 const MIN_APP_ZOOM = 0.5;
@@ -13,6 +13,15 @@ const clampZoom = (zoom: number) => Math.max(MIN_APP_ZOOM, Math.min(MAX_APP_ZOOM
 
 export function getBrowserAppZoomValue(): string {
     return String(BROWSER_APP_ZOOM);
+}
+
+export function applyBrowserZoom(root: Pick<HTMLElement, 'style' | 'classList'>): () => void {
+    root.style.setProperty('--happy-app-zoom', getBrowserAppZoomValue());
+    root.classList.add(WEB_ZOOM_CLASS);
+    return () => {
+        root.classList.remove(WEB_ZOOM_CLASS);
+        root.style.removeProperty('--happy-app-zoom');
+    };
 }
 
 // Cmd/Ctrl+=, Cmd/Ctrl+-, Cmd/Ctrl+0 zoom shortcuts for the Tauri desktop app.
@@ -27,12 +36,7 @@ export function useTauriZoom() {
         const root = document.documentElement;
 
         if (!inTauri) {
-            root.style.setProperty('--happy-app-zoom', getBrowserAppZoomValue());
-            root.classList.add(WEB_ZOOM_CLASS);
-            return () => {
-                root.classList.remove(WEB_ZOOM_CLASS);
-                root.style.removeProperty('--happy-app-zoom');
-            };
+            return applyBrowserZoom(root);
         }
 
         root.classList.remove(WEB_ZOOM_CLASS);
