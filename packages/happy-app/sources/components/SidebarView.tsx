@@ -320,12 +320,6 @@ export const SidebarView = React.memo(({
         setPluginMarketplaceOpen(true);
     }, []);
 
-    const openPlugin = React.useCallback((pluginId: string) => {
-        setSheetOpen(false);
-        setInitialPluginId(pluginId);
-        setPluginMarketplaceOpen(true);
-    }, []);
-
     const closePluginMarketplace = React.useCallback(() => {
         setPluginMarketplaceOpen(false);
         setInitialPluginId(null);
@@ -535,7 +529,6 @@ export const SidebarView = React.memo(({
             <AgentSheet
                 visible={sheetOpen}
                 onClose={() => setSheetOpen(false)}
-                onOpenPlugin={openPlugin}
             />
             <PluginMarketplaceModal
                 initialPluginId={initialPluginId}

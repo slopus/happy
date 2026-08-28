@@ -7,6 +7,7 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
+import { SecureTextInput } from '@/components/SecureTextInput';
 import { Typography } from '@/constants/Typography';
 import { useHappyAction } from '@/hooks/useHappyAction';
 import { installPlugin, uninstallPlugin } from '@/sync/plugins';
@@ -70,6 +71,7 @@ export const DynamicPluginConfiguration = React.memo(function DynamicPluginConfi
                         : undefined}
                 >
                     {manifest.configuration.fields.map((field) => {
+                        const label = resolvePluginText(field.label);
                         const secretHint = status.installed ? status.secretHints[field.key] : undefined;
                         const placeholder = secretHint
                             ? `•••• ${secretHint}`
@@ -78,28 +80,44 @@ export const DynamicPluginConfiguration = React.memo(function DynamicPluginConfi
                                 : undefined;
                         return (
                             <View key={field.key} style={styles.fieldRow}>
-                                <Text style={styles.fieldLabel}>{resolvePluginText(field.label)}</Text>
-                                <TextInput
-                                    accessibilityLabel={resolvePluginText(field.label)}
-                                    autoCapitalize="none"
-                                    autoCorrect={false}
-                                    keyboardType={field.type === 'url' ? 'url' : 'default'}
-                                    onChangeText={(value) => setValues((current) => ({
-                                        ...current,
-                                        [field.key]: value,
-                                    }))}
-                                    placeholder={placeholder}
-                                    placeholderTextColor={theme.colors.textSecondary}
-                                    secureTextEntry={field.type === 'secret'}
-                                    style={styles.textInput}
-                                    testID={fieldTestId(manifest.id, field.key)}
-                                    textContentType={field.type === 'secret'
-                                        ? 'password'
-                                        : field.type === 'url'
-                                            ? 'URL'
-                                            : 'none'}
-                                    value={values[field.key] ?? ''}
-                                />
+                                <Text style={styles.fieldLabel}>{label}</Text>
+                                {field.type === 'secret' ? (
+                                    <SecureTextInput
+                                        accessibilityLabel={label}
+                                        autoCapitalize="none"
+                                        autoCorrect={false}
+                                        emptyValueAccessibilityLabel={`${label} · ${t('relationshipAdvisorPlugin.encryptionNotice')}`}
+                                        hideValueAccessibilityLabel={`${label} · ${t('settingsAccount.tapToHide')}`}
+                                        onChangeText={(value) => setValues((current) => ({
+                                            ...current,
+                                            [field.key]: value,
+                                        }))}
+                                        placeholder={placeholder}
+                                        placeholderTextColor={theme.colors.textSecondary}
+                                        showValueAccessibilityLabel={`${label} · ${t('settingsAccount.tapToReveal')}`}
+                                        testID={fieldTestId(manifest.id, field.key)}
+                                        textContentType="password"
+                                        value={values[field.key] ?? ''}
+                                        visibilityButtonTestID={`${fieldTestId(manifest.id, field.key)}-visibility-toggle`}
+                                    />
+                                ) : (
+                                    <TextInput
+                                        accessibilityLabel={label}
+                                        autoCapitalize="none"
+                                        autoCorrect={false}
+                                        keyboardType={field.type === 'url' ? 'url' : 'default'}
+                                        onChangeText={(value) => setValues((current) => ({
+                                            ...current,
+                                            [field.key]: value,
+                                        }))}
+                                        placeholder={placeholder}
+                                        placeholderTextColor={theme.colors.textSecondary}
+                                        style={styles.textInput}
+                                        testID={fieldTestId(manifest.id, field.key)}
+                                        textContentType={field.type === 'url' ? 'URL' : 'none'}
+                                        value={values[field.key] ?? ''}
+                                    />
+                                )}
                             </View>
                         );
                     })}

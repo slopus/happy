@@ -266,23 +266,16 @@ describe('AgentSheet', () => {
         act(() => renderer.unmount());
     });
 
-    it('opens plugin installation instead of launching an uninstalled relationship advisor', async () => {
+    it('hides an uninstalled relationship advisor from My Agents', () => {
         mocks.agents = [];
         mocks.machines = [];
         mocks.relationshipPluginStatus = { installed: false };
-        const onClose = vi.fn();
-        const onOpenPlugin = vi.fn();
         let renderer: any;
         act(() => {
-            renderer = TestRenderer.create(
-                <AgentSheet visible onClose={onClose} onOpenPlugin={onOpenPlugin} />,
-            );
+            renderer = TestRenderer.create(<AgentSheet visible onClose={vi.fn()} />);
         });
 
-        await act(async () => findPressableByText(renderer.root, cloudRelationshipAgent.name).props.onPress());
-
-        expect(onOpenPlugin).toHaveBeenCalledWith('relationship-advisor');
-        expect(mocks.routerNavigate).not.toHaveBeenCalledWith('/settings/relationship-advisor');
+        expect(findPressableByText(renderer.root, cloudRelationshipAgent.name)).toBeUndefined();
         expect(mocks.launchAgent).not.toHaveBeenCalled();
         act(() => renderer.unmount());
     });

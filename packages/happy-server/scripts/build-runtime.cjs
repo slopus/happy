@@ -26,6 +26,10 @@ const bundledDependencies = new Set([
   // The published 0.1.0 package does not include the newest voice schemas yet.
   // Keep the server release unblocked by bundling the workspace copy.
   '@slopus/happy-wire',
+  // Plugin definitions are part of the standalone server contract. Bundling
+  // them keeps source-overlay deployments self-contained even when the base
+  // image predates the external plugin package.
+  '@paws/plugins',
 ]);
 
 for (const dependency of Object.keys(pkg.dependencies ?? {})) {

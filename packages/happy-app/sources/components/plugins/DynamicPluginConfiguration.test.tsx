@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import TestRenderer from 'react-test-renderer';
 
 const mocks = vi.hoisted(() => ({ install: vi.fn(), uninstall: vi.fn() }));
-vi.mock('react-native', () => ({ Text: 'Text', TextInput: 'TextInput', View: 'View' }));
+vi.mock('react-native', () => ({ Pressable: 'Pressable', Text: 'Text', TextInput: 'TextInput', View: 'View' }));
 vi.mock('@expo/vector-icons', () => ({ Ionicons: 'Ionicons' }));
 vi.mock('react-native-unistyles', () => ({
     StyleSheet: { hairlineWidth: 1, create: (factory: any) => factory({ colors: {
@@ -116,9 +116,69 @@ describe('DynamicPluginConfiguration', () => {
             }} />);
         });
 
-        const token = renderer.root.findByProps({ testID: 'server-plugin-plugin-token' });
+        const token = renderer.root.findAllByType('TextInput')[0];
         expect(token.props.value).toBe('');
         expect(token.props.placeholder).toContain('1234');
+        act(() => renderer.unmount());
+    });
+
+    it('lets the user reveal and conceal only the newly entered secret', async () => {
+        const installedStatus = {
+            installed: true as const,
+            version: '2.3.0',
+            configuration: { endpoint: 'https://example.com/v1' },
+            secretHints: { token: '1234' },
+        };
+        let renderer: any;
+        await act(async () => {
+            renderer = TestRenderer.create(<DynamicPluginConfiguration plugin={{
+                manifest,
+                status: installedStatus,
+            }} />);
+        });
+
+        const token = renderer.root.findAllByType('TextInput')[0];
+        let visibilityToggle = renderer.root.findByProps({
+            testID: 'server-plugin-plugin-token-visibility-toggle',
+        });
+        expect(token.props.secureTextEntry).toBe(true);
+        expect(token.props.value).toBe('');
+        expect(visibilityToggle.props.disabled).toBe(true);
+        expect(visibilityToggle.props.accessibilityState).toEqual({ disabled: true });
+        expect(visibilityToggle.props.accessibilityLabel)
+            .toContain('relationshipAdvisorPlugin.encryptionNotice');
+
+        act(() => token.props.onChangeText('replacement-secret'));
+        expect(renderer.root.findAllByType('TextInput')[0].props.value)
+            .toBe('replacement-secret');
+        visibilityToggle = renderer.root.findByProps({
+            testID: 'server-plugin-plugin-token-visibility-toggle',
+        });
+        expect(visibilityToggle.props.disabled).toBe(false);
+
+        act(() => visibilityToggle.props.onPress());
+        expect(renderer.root.findAllByType('TextInput')[0].props.secureTextEntry)
+            .toBe(false);
+        expect(renderer.root.findByProps({ testID: 'server-plugin-plugin-token-visibility-toggle' })
+            .props.accessibilityLabel).toContain('settingsAccount.tapToHide');
+
+        await act(async () => {
+            renderer.update(<DynamicPluginConfiguration plugin={{
+                manifest,
+                status: { ...installedStatus },
+            }} />);
+        });
+        const refreshedToken = renderer.root.findAllByType('TextInput')[0];
+        const refreshedToggle = renderer.root.findByProps({
+            testID: 'server-plugin-plugin-token-visibility-toggle',
+        });
+        expect(refreshedToken.props.value).toBe('');
+        expect(refreshedToken.props.secureTextEntry).toBe(true);
+        expect(refreshedToggle.props.disabled).toBe(true);
+
+        act(() => refreshedToken.props.onChangeText('another-replacement'));
+        expect(renderer.root.findAllByType('TextInput')[0].props.secureTextEntry)
+            .toBe(true);
         act(() => renderer.unmount());
     });
 });
