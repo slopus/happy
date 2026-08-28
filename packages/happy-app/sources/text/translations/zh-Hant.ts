@@ -1523,6 +1523,8 @@ export const zhHant: TranslationStructure = {
         codeCopied: '程式碼已複製',
         copyFailed: '複製失敗',
         mermaidRenderFailed: '渲染 mermaid 圖表失敗',
+        mermaidOpenFullscreen: '以全螢幕開啟圖表',
+        mermaidCloseFullscreen: '關閉全螢幕圖表',
     },
 
     artifacts: {

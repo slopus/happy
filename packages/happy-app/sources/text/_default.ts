@@ -2074,6 +2074,8 @@ export const en = {
         codeCopied: 'Code copied',
         copyFailed: 'Copy failed',
         mermaidRenderFailed: 'Failed to render mermaid diagram',
+        mermaidOpenFullscreen: 'Open diagram in full screen',
+        mermaidCloseFullscreen: 'Close full-screen diagram',
     },
 
     artifacts: {

@@ -1415,6 +1415,8 @@ export const ja: TranslationStructure = {
         codeCopied: 'コードをコピーしました',
         copyFailed: 'コピーに失敗しました',
         mermaidRenderFailed: 'Mermaidダイアグラムのレンダリングに失敗しました',
+        mermaidOpenFullscreen: 'ダイアグラムを全画面で開く',
+        mermaidCloseFullscreen: '全画面表示のダイアグラムを閉じる',
     },
 
     artifacts: {

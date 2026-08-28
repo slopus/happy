@@ -1,213 +1,490 @@
+import { Feather } from '@expo/vector-icons';
+import type { PanzoomObject } from '@panzoom/panzoom';
 import * as React from 'react';
-import { View, Platform, Text } from 'react-native';
+import { Modal, Platform, Pressable, Text, View } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
+import {
+    createMermaidThemeConfig,
+    executeDiagramCommand,
+    serializeForInlineScript,
+    type DiagramCommand,
+    type MermaidThemeConfig,
+} from './mermaidRendererModel';
 
-// Style for Web platform
-const webStyle: any = {
-    backgroundColor: '#1a1a1a',
-    borderRadius: 8,
-    padding: 16,
-    overflow: 'auto',
+type DiagramCanvasHandle = {
+    execute: (command: DiagramCommand) => void;
 };
 
-// Mermaid render component that works on all platforms
-export const MermaidRenderer = React.memo((props: {
+type DiagramCanvasProps = {
+    config: MermaidThemeConfig;
     content: string;
-}) => {
-    const { theme } = useUnistyles();
-    const [dimensions, setDimensions] = React.useState({ width: 0, height: 200 });
+    fullscreen?: boolean;
+};
+
+let nextDiagramId = 0;
+
+function DiagramError(props: { content: string }) {
+    return (
+        <View style={[styles.canvas, styles.errorContainer]}>
+            <View style={styles.errorContent}>
+                <Text style={styles.errorText}>{t('markdown.mermaidRenderFailed')}</Text>
+                <View style={styles.codeBlock}>
+                    <Text style={styles.codeText}>{props.content}</Text>
+                </View>
+            </View>
+        </View>
+    );
+}
+
+const WebDiagramCanvas = React.forwardRef<DiagramCanvasHandle, DiagramCanvasProps>((props, ref) => {
+    const containerRef = React.useRef<HTMLDivElement | null>(null);
+    const panzoomRef = React.useRef<PanzoomObject | null>(null);
+    const [hasError, setHasError] = React.useState(false);
     const [svgContent, setSvgContent] = React.useState<string | null>(null);
 
-    const onLayout = React.useCallback((event: any) => {
-        const { width } = event.nativeEvent.layout;
-        setDimensions(prev => ({ ...prev, width }));
-    }, []);
+    React.useImperativeHandle(ref, () => ({
+        execute: (command) => {
+            const panzoom = panzoomRef.current;
+            if (!panzoom) return;
+            executeDiagramCommand(panzoom, command);
+        },
+    }), []);
 
-    // Web platform uses direct SVG rendering for better performance and native DOM integration
-    if (Platform.OS === 'web') {
-        const [hasError, setHasError] = React.useState(false);
+    React.useEffect(() => {
+        let cancelled = false;
+        setHasError(false);
+        setSvgContent(null);
 
-        React.useEffect(() => {
-            let isMounted = true;
-            setHasError(false);
-
-            const renderMermaid = async () => {
-                try {
-                    const mermaidModule: any = await import('mermaid');
-                    const mermaid = mermaidModule.default || mermaidModule;
-
-                    if (mermaid.initialize) {
-                        mermaid.initialize({
-                            startOnLoad: false,
-                            theme: 'dark'
-                        });
-                    }
-
-                    if (mermaid.render) {
-                        const { svg } = await mermaid.render(
-                            `mermaid-${Date.now()}`,
-                            props.content
-                        );
-
-                        if (isMounted) {
-                            setSvgContent(svg);
-                        }
-                    }
-                } catch (error) {
-                    if (isMounted) {
-                        console.warn(`[Mermaid] ${t('markdown.mermaidRenderFailed')}: ${error instanceof Error ? error.message : String(error)}`);
-                        setHasError(true);
-                    }
+        void (async () => {
+            try {
+                const mermaidModule: any = await import('mermaid');
+                const mermaid = mermaidModule.default || mermaidModule;
+                mermaid.initialize(props.config);
+                const id = `mermaid-${Date.now()}-${nextDiagramId++}`;
+                const { svg } = await mermaid.render(id, props.content);
+                if (!cancelled) setSvgContent(svg);
+            } catch (error) {
+                if (!cancelled) {
+                    console.warn(`[Mermaid] ${t('markdown.mermaidRenderFailed')}: ${error instanceof Error ? error.message : String(error)}`);
+                    setHasError(true);
                 }
-            };
+            }
+        })();
 
-            renderMermaid();
+        return () => {
+            cancelled = true;
+        };
+    }, [props.config, props.content]);
 
-            return () => {
-                isMounted = false;
-            };
-        }, [props.content]);
+    React.useEffect(() => {
+        const host = containerRef.current;
+        const svg = host?.querySelector('svg');
+        if (!host || !svg) return;
 
-        if (hasError) {
-            return (
-                <View style={[style.container, style.errorContainer]}>
-                    <View style={style.errorContent}>
-                        <Text style={style.errorText}>Mermaid diagram syntax error</Text>
-                        <View style={style.codeBlock}>
-                            <Text style={style.codeText}>{props.content}</Text>
-                        </View>
-                    </View>
-                </View>
-            );
-        }
+        svg.style.display = 'block';
+        svg.style.height = props.fullscreen ? '100%' : 'auto';
+        svg.style.maxHeight = '100%';
+        svg.style.maxWidth = '100%';
+        svg.style.width = '100%';
+        svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
 
-        if (!svgContent) {
-            return (
-                <View style={[style.container, style.loadingContainer]}>
-                    <View style={style.loadingPlaceholder} />
-                </View>
-            );
-        }
+        let disposed = false;
+        let wheelTarget: HTMLElement | SVGElement | null = null;
+        let wheelHandler: ((event: WheelEvent) => void) | null = null;
 
-        return (
-            <View style={style.container}>
-                {/* @ts-ignore - Web only */}
-                <div
-                    style={webStyle}
-                    dangerouslySetInnerHTML={{ __html: svgContent }}
-                />
-            </View>
-        );
-    }
+        void import('@panzoom/panzoom').then((module) => {
+            if (disposed) return;
+            const Panzoom = module.default;
+            const panzoom = Panzoom(host, {
+                canvas: true,
+                contain: 'outside',
+                maxScale: 5,
+                minScale: 0.5,
+                step: 0.25,
+            });
+            panzoomRef.current = panzoom;
+            wheelTarget = host.parentElement;
+            wheelHandler = panzoom.zoomWithWheel ? (event) => panzoom.zoomWithWheel?.(event) : null;
+            if (wheelTarget && wheelHandler) {
+                wheelTarget.addEventListener('wheel', wheelHandler as EventListener, { passive: false });
+            }
+        });
 
-    // For iOS/Android, use WebView
-    // Pass mermaid content via JSON to prevent XSS from HTML interpolation
-    const mermaidContent = JSON.stringify(props.content);
-    const html = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="utf-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
-            <style>
-                body {
-                    margin: 0;
-                    padding: 16px;
-                    background-color: ${theme.colors.surfaceHighest};
-                }
-                #mermaid-container {
-                    display: flex;
-                    justify-content: center;
-                    align-items: center;
-                    width: 100%;
-                }
-                #mermaid-container svg {
-                    max-width: 100%;
-                    height: auto;
-                }
-                .error {
-                    color: #ff6b6b;
-                    font-family: monospace;
-                    white-space: pre-wrap;
-                }
-            </style>
-        </head>
-        <body>
-            <div id="mermaid-container"></div>
-            <script>
-                (async function() {
-                    const content = ${mermaidContent};
-                    const container = document.getElementById('mermaid-container');
-                    
-                    try {
-                        mermaid.initialize({
-                            startOnLoad: false,
-                            theme: 'dark'
-                        });
-                        
-                        const { svg } = await mermaid.render('mermaid-diagram', content);
-                        container.innerHTML = svg;
-                    } catch (error) {
-                        container.innerHTML = '<div class="error">Diagram error: ' + 
-                            (error.message || String(error)).replace(/</g, '&lt;').replace(/>/g, '&gt;') + 
-                            '</div>';
-                    }
-                })();
-            </script>
-        </body>
-        </html>
-    `;
+        return () => {
+            disposed = true;
+            if (wheelTarget && wheelHandler) wheelTarget.removeEventListener('wheel', wheelHandler as EventListener);
+            panzoomRef.current?.destroy();
+            panzoomRef.current = null;
+        };
+    }, [props.fullscreen, svgContent]);
+
+    if (hasError) return <DiagramError content={props.content} />;
 
     return (
-        <View style={style.container} onLayout={onLayout}>
-            <View style={[style.innerContainer, { height: dimensions.height }]}>
-                <WebView
-                    source={{ html }}
-                    style={{ flex: 1 }}
-                    scrollEnabled={false}
-                    onMessage={(event) => {
-                        const data = JSON.parse(event.nativeEvent.data);
-                        if (data.type === 'dimensions') {
-                            setDimensions(prev => ({
-                                ...prev,
-                                height: Math.max(prev.height, data.height)
-                            }));
-                        }
+        <View style={[styles.canvas, props.fullscreen && styles.canvasFullscreen]}>
+            {svgContent ? (
+                // The SVG is generated by Mermaid from the fenced code block.
+                // @ts-ignore React Native Web intentionally hosts this DOM viewport.
+                <div
+                    style={{
+                        alignItems: 'center',
+                        cursor: 'grab',
+                        display: 'flex',
+                        height: props.fullscreen ? '100%' : 'auto',
+                        justifyContent: 'center',
+                        minHeight: props.fullscreen ? 0 : 220,
+                        overflow: 'hidden',
+                        touchAction: 'none',
+                        width: '100%',
                     }}
-                />
-            </View>
+                >
+                    {/* @ts-ignore React Native Web intentionally hosts this DOM scene. */}
+                    <div
+                        ref={containerRef}
+                        style={{
+                            alignItems: 'center',
+                            display: 'flex',
+                            height: props.fullscreen ? '100%' : 'auto',
+                            justifyContent: 'center',
+                            width: '100%',
+                        }}
+                        dangerouslySetInnerHTML={{ __html: svgContent }}
+                    />
+                </div>
+            ) : (
+                <View style={styles.loadingContainer}>
+                    <View style={styles.loadingPlaceholder} />
+                </View>
+            )}
         </View>
     );
 });
 
-const style = StyleSheet.create((theme) => ({
+WebDiagramCanvas.displayName = 'WebDiagramCanvas';
+
+function buildNativeDocument(content: string, config: MermaidThemeConfig): string {
+    const serializedContent = serializeForInlineScript(content);
+    const serializedConfig = serializeForInlineScript(config);
+    const background = config.themeVariables.background;
+    const errorColor = config.themeVariables.primaryTextColor;
+
+    return `<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@11.12.2/dist/mermaid.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@panzoom/panzoom@4.6.2/dist/panzoom.min.js"></script>
+    <style>
+        html, body { height: 100%; margin: 0; overflow: hidden; background: ${background}; }
+        body { padding: 16px; box-sizing: border-box; }
+        #viewport { align-items: center; display: flex; height: 100%; justify-content: center; overflow: hidden; touch-action: none; width: 100%; }
+        #viewport svg { height: auto; max-height: 100%; max-width: 100%; width: auto; }
+        #error { color: ${errorColor}; font-family: monospace; white-space: pre-wrap; }
+    </style>
+</head>
+<body>
+    <div id="viewport"></div>
+    <script>
+        (async function() {
+            const content = ${serializedContent};
+            const config = ${serializedConfig};
+            const viewport = document.getElementById('viewport');
+            const post = function(payload) {
+                if (window.ReactNativeWebView) window.ReactNativeWebView.postMessage(JSON.stringify(payload));
+            };
+            try {
+                mermaid.initialize(config);
+                const result = await mermaid.render('mermaid-diagram', content);
+                viewport.innerHTML = result.svg;
+                const svg = viewport.querySelector('svg');
+                const controller = Panzoom(svg, { canvas: true, contain: 'outside', maxScale: 5, minScale: 0.5, step: 0.25 });
+                viewport.addEventListener('wheel', controller.zoomWithWheel, { passive: false });
+                window.__pawsMermaid = {
+                    reset: function() { controller.reset({ animate: true }); },
+                    zoomIn: function() { controller.zoomIn({ animate: true }); },
+                    zoomOut: function() { controller.zoomOut({ animate: true }); }
+                };
+                requestAnimationFrame(function() {
+                    post({ type: 'dimensions', height: Math.ceil(svg.getBoundingClientRect().height + 32) });
+                });
+            } catch (error) {
+                const errorNode = document.createElement('div');
+                errorNode.id = 'error';
+                errorNode.textContent = error && error.message ? error.message : String(error);
+                viewport.replaceChildren(errorNode);
+                post({ type: 'error' });
+            }
+        })();
+    </script>
+</body>
+</html>`;
+}
+
+const NativeDiagramCanvas = React.forwardRef<DiagramCanvasHandle, DiagramCanvasProps>((props, ref) => {
+    const webViewRef = React.useRef<WebView>(null);
+    const [height, setHeight] = React.useState(220);
+    const [hasError, setHasError] = React.useState(false);
+    const html = React.useMemo(() => buildNativeDocument(props.content, props.config), [props.config, props.content]);
+
+    React.useImperativeHandle(ref, () => ({
+        execute: (command) => {
+            webViewRef.current?.injectJavaScript(`window.__pawsMermaid?.${command}(); true;`);
+        },
+    }), []);
+
+    if (hasError) return <DiagramError content={props.content} />;
+
+    return (
+        <View style={[styles.canvas, props.fullscreen && styles.canvasFullscreen, !props.fullscreen && { height }]}>
+            <WebView
+                ref={webViewRef}
+                source={{ html }}
+                style={styles.webView}
+                scrollEnabled={false}
+                showsHorizontalScrollIndicator={false}
+                showsVerticalScrollIndicator={false}
+                onMessage={(event) => {
+                    try {
+                        const data = JSON.parse(event.nativeEvent.data);
+                        if (data.type === 'dimensions' && Number.isFinite(data.height)) {
+                            setHeight(Math.max(220, data.height));
+                        } else if (data.type === 'error') {
+                            setHasError(true);
+                        }
+                    } catch {
+                        // Ignore messages that are not part of the diagram protocol.
+                    }
+                }}
+            />
+        </View>
+    );
+});
+
+NativeDiagramCanvas.displayName = 'NativeDiagramCanvas';
+
+const DiagramCanvas = Platform.OS === 'web' ? WebDiagramCanvas : NativeDiagramCanvas;
+
+function DiagramToolbar(props: {
+    closeFullscreen?: () => void;
+    execute: (command: DiagramCommand) => void;
+    openFullscreen?: () => void;
+}) {
+    return (
+        <View style={styles.toolbar}>
+            <DiagramButton
+                accessibilityLabel={t('keyboardShortcuts.zoomIn')}
+                icon="zoom-in"
+                onPress={() => props.execute('zoomIn')}
+                testID="mermaid-zoom-in"
+            />
+            <DiagramButton
+                accessibilityLabel={t('keyboardShortcuts.zoomOut')}
+                icon="zoom-out"
+                onPress={() => props.execute('zoomOut')}
+                testID="mermaid-zoom-out"
+            />
+            <DiagramButton
+                accessibilityLabel={t('keyboardShortcuts.resetZoom')}
+                icon="refresh-cw"
+                onPress={() => props.execute('reset')}
+                testID="mermaid-zoom-reset"
+            />
+            {props.openFullscreen ? (
+                <DiagramButton
+                    accessibilityLabel={t('markdown.mermaidOpenFullscreen')}
+                    icon="maximize-2"
+                    onPress={props.openFullscreen}
+                    testID="mermaid-fullscreen-open"
+                />
+            ) : null}
+            {props.closeFullscreen ? (
+                <DiagramButton
+                    accessibilityLabel={t('markdown.mermaidCloseFullscreen')}
+                    icon="x"
+                    onPress={props.closeFullscreen}
+                    testID="mermaid-fullscreen-close"
+                />
+            ) : null}
+        </View>
+    );
+}
+
+function DiagramButton(props: {
+    accessibilityLabel: string;
+    icon: React.ComponentProps<typeof Feather>['name'];
+    onPress: () => void;
+    testID: string;
+}) {
+    const { theme } = useUnistyles();
+    const [hovered, setHovered] = React.useState(false);
+    return (
+        <Pressable
+            accessibilityLabel={props.accessibilityLabel}
+            accessibilityRole="button"
+            hitSlop={6}
+            onHoverIn={() => setHovered(true)}
+            onHoverOut={() => setHovered(false)}
+            onPress={props.onPress}
+            style={({ pressed }) => [styles.toolbarButton, (hovered || pressed) && styles.toolbarButtonPressed]}
+            testID={props.testID}
+        >
+            <Feather color={theme.colors.textSecondary} name={props.icon} size={16} />
+        </Pressable>
+    );
+}
+
+function DiagramSurface(props: {
+    canvasRef: React.RefObject<DiagramCanvasHandle | null>;
+    config: MermaidThemeConfig;
+    content: string;
+    fullscreen?: boolean;
+    onCloseFullscreen?: () => void;
+    onOpenFullscreen?: () => void;
+}) {
+    const execute = React.useCallback((command: DiagramCommand) => {
+        props.canvasRef.current?.execute(command);
+    }, [props.canvasRef]);
+
+    return (
+        <View
+            style={[styles.surface, props.fullscreen && styles.surfaceFullscreen]}
+            testID={props.fullscreen ? 'mermaid-fullscreen-surface' : 'mermaid-inline-surface'}
+        >
+            <DiagramToolbar
+                closeFullscreen={props.onCloseFullscreen}
+                execute={execute}
+                openFullscreen={props.onOpenFullscreen}
+            />
+            <DiagramCanvas
+                ref={props.canvasRef}
+                config={props.config}
+                content={props.content}
+                fullscreen={props.fullscreen}
+            />
+        </View>
+    );
+}
+
+export const MermaidRenderer = React.memo((props: { content: string }) => {
+    const { theme } = useUnistyles();
+    const [fullscreen, setFullscreen] = React.useState(false);
+    const inlineCanvasRef = React.useRef<DiagramCanvasHandle>(null);
+    const fullscreenCanvasRef = React.useRef<DiagramCanvasHandle>(null);
+    const config = React.useMemo(() => createMermaidThemeConfig(theme), [theme]);
+    const closeFullscreen = React.useCallback(() => setFullscreen(false), []);
+    const openFullscreen = React.useCallback(() => setFullscreen(true), []);
+
+    return (
+        <View style={styles.container}>
+            <DiagramSurface
+                canvasRef={inlineCanvasRef}
+                config={config}
+                content={props.content}
+                onOpenFullscreen={openFullscreen}
+            />
+            <Modal
+                animationType="fade"
+                onRequestClose={closeFullscreen}
+                statusBarTranslucent
+                transparent
+                visible={fullscreen}
+            >
+                {fullscreen ? (
+                    <View style={styles.fullscreenBackdrop}>
+                        <DiagramSurface
+                            canvasRef={fullscreenCanvasRef}
+                            config={config}
+                            content={props.content}
+                            fullscreen
+                            onCloseFullscreen={closeFullscreen}
+                        />
+                    </View>
+                ) : null}
+            </Modal>
+        </View>
+    );
+});
+
+const styles = StyleSheet.create((theme) => ({
     container: {
         marginVertical: 8,
         width: '100%',
     },
-    innerContainer: {
-        width: '100%',
+    surface: {
         backgroundColor: theme.colors.surfaceHighest,
-        borderRadius: 8,
+        borderColor: theme.colors.divider,
+        borderRadius: 10,
+        borderWidth: StyleSheet.hairlineWidth,
+        overflow: 'hidden',
+        width: '100%',
+    },
+    surfaceFullscreen: {
+        borderRadius: 12,
+        flex: 1,
+        width: '100%',
+    },
+    fullscreenBackdrop: {
+        alignItems: 'center',
+        backgroundColor: theme.colors.surface,
+        flex: 1,
+        padding: 16,
+    },
+    toolbar: {
+        alignItems: 'center',
+        alignSelf: 'flex-end',
+        backgroundColor: theme.colors.surfaceHigh,
+        borderBottomColor: theme.colors.divider,
+        borderBottomLeftRadius: 10,
+        borderLeftColor: theme.colors.divider,
+        borderLeftWidth: StyleSheet.hairlineWidth,
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        flexDirection: 'row',
+        gap: 2,
+        padding: 4,
+        zIndex: 1,
+    },
+    toolbarButton: {
+        alignItems: 'center',
+        backgroundColor: theme.colors.surface,
+        borderRadius: 6,
+        height: 30,
+        justifyContent: 'center',
+        width: 30,
+    },
+    toolbarButtonPressed: {
+        backgroundColor: theme.colors.surfacePressed,
+    },
+    canvas: {
+        backgroundColor: theme.colors.surfaceHighest,
+        minHeight: 220,
+        overflow: 'hidden',
+        width: '100%',
+    },
+    canvasFullscreen: {
+        flex: 1,
+        minHeight: 0,
+    },
+    webView: {
+        backgroundColor: theme.colors.surfaceHighest,
+        flex: 1,
     },
     loadingContainer: {
-        justifyContent: 'center',
         alignItems: 'center',
-        height: 100,
+        flex: 1,
+        justifyContent: 'center',
+        minHeight: 220,
     },
     loadingPlaceholder: {
-        width: 200,
-        height: 20,
         backgroundColor: theme.colors.divider,
         borderRadius: 4,
+        height: 20,
+        width: 200,
     },
     errorContainer: {
-        backgroundColor: theme.colors.surfaceHighest,
-        borderRadius: 8,
         padding: 16,
     },
     errorContent: {

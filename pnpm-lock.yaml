@@ -470,6 +470,9 @@ importers:
       '@more-tech/react-native-libsodium':
         specifier: ^1.5.5
         version: 1.5.6(react-native@0.83.1(@babel/core@7.28.6)(@types/react@19.1.17)(react@19.2.0))(react@19.2.0)
+      '@panzoom/panzoom':
+        specifier: ^4.6.2
+        version: 4.6.2
       '@paralleldrive/cuid2':
         specifier: ^2.3.1
         version: 2.3.1
@@ -3999,6 +4002,9 @@ packages:
 
   '@oxc-project/types@0.126.0':
     resolution: {integrity: sha512-oGfVtjAgwQVVpfBrbtk4e1XDyWHRFta6BS3GWVzrF8xYBT2VGQAk39yJS/wFSMrZqoiCU4oghT3Ch0HaHGIHcQ==}
+
+  '@panzoom/panzoom@4.6.2':
+    resolution: {integrity: sha512-Zn3B5/hwa6eYIPRSKX0xf2clv8nviTX8AnAU5kU/EugiTDhG41ya2wlBqYrZJYCWQROr/5XkWObZhIkepi89qw==}
 
   '@paralleldrive/cuid2@2.3.1':
     resolution: {integrity: sha512-XO7cAxhnTZl0Yggq6jOgjiOHhbgcO4NqFqwSmQpjK3b6TEE6Uj/jfSk6wzYyemh3+I0sHirKSetjQwn5cZktFw==}
@@ -15938,6 +15944,8 @@ snapshots:
   '@opentelemetry/api@1.9.0': {}
 
   '@oxc-project/types@0.126.0': {}
+
+  '@panzoom/panzoom@4.6.2': {}
 
   '@paralleldrive/cuid2@2.3.1':
     dependencies:

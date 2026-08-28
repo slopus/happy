@@ -1414,6 +1414,8 @@ export const ca: TranslationStructure = {
         codeCopied: 'Codi copiat',
         copyFailed: 'Error al copiar',
         mermaidRenderFailed: 'Error al renderitzar el diagrama mermaid',
+        mermaidOpenFullscreen: 'Obre el diagrama a pantalla completa',
+        mermaidCloseFullscreen: 'Tanca el diagrama a pantalla completa',
     },
 
     artifacts: {

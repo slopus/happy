@@ -12,11 +12,20 @@ import { normalizeRawMessage, NormalizedMessage } from '@/sync/typesRaw';
 import { createReducer, reducer } from '@/sync/reducer/reducer';
 import { DisplayItem, groupMessagesForDisplay } from '@/hooks/useGroupedMessages';
 import { AgentWorkGroupView, ToolGroupView } from '@/components/ToolGroupView';
+import { MermaidRenderer } from '@/components/markdown/MermaidRenderer';
+
+const MERMAID_INTERACTION_DEMO = `flowchart LR
+    source[Source] --> plan[Plan]
+    plan --> build[Build]
+    plan --> test[Test]
+    build --> release[Release]
+    test --> release`;
 
 export default React.memo(function MessagesDemoScreen() {
     const { demo } = useLocalSearchParams<{ demo?: string }>();
     const isActivityStatusDemo = demo === 'activity-status';
     const isGeneratedBatchDemo = demo === 'generated-batch';
+    const isMermaidDemo = demo === 'mermaid';
     const [generatedCount, setGeneratedCount] = React.useState(1);
     const activityMessages = React.useMemo(() => {
         if (!isActivityStatusDemo) {
@@ -141,6 +150,14 @@ export default React.memo(function MessagesDemoScreen() {
         );
     }
 
+    if (isMermaidDemo) {
+        return (
+            <View testID="dev-mermaid-demo" style={[styles.container, styles.mermaidDemo]}>
+                <MermaidRenderer content={MERMAID_INTERACTION_DEMO} />
+            </View>
+        );
+    }
+
     return (
         <View style={styles.container}>
             {allMessages.length > 0 && (
@@ -182,6 +199,10 @@ const styles = StyleSheet.create((theme) => ({
     },
     galleryHost: {
         width: '100%',
+    },
+    mermaidDemo: {
+        justifyContent: 'center',
+        padding: 24,
     },
     batchControls: {
         minHeight: 76,

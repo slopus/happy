@@ -1430,6 +1430,8 @@ export const pl: TranslationStructure = {
         codeCopied: 'Kod skopiowany',
         copyFailed: 'Błąd kopiowania',
         mermaidRenderFailed: 'Nie udało się wyświetlić diagramu mermaid',
+        mermaidOpenFullscreen: 'Otwórz diagram na pełnym ekranie',
+        mermaidCloseFullscreen: 'Zamknij diagram pełnoekranowy',
     },
 
     artifacts: {
