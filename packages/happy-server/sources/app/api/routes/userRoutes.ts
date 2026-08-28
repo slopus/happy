@@ -10,55 +10,16 @@ import { buildUserProfile } from "@/app/social/type";
 
 export async function userRoutes(app: Fastify) {
 
-    // Get user profile
-    app.get('/v1/user/:id', {
-        schema: {
-            params: z.object({
-                id: z.string()
-            }),
-            response: {
-                200: z.object({
-                    user: UserProfileSchema
-                }),
-                404: z.object({
-                    error: z.literal('User not found')
-                })
-            }
-        },
-        preHandler: app.authenticate
-    }, async (request, reply) => {
-        const { id } = request.params;
-
-        // Fetch user
-        const user = await db.account.findUnique({
-            where: {
-                id: id
-            },
-            include: {
-                githubUser: true
-            }
-        });
-
-        if (!user) {
-            return reply.code(404).send({ error: 'User not found' });
-        }
-
-        // Resolve relationship status
-        const relationship = await db.userRelationship.findFirst({
-            where: {
-                fromUserId: request.userId,
-                toUserId: id
-            }
-        });
-        const status: RelationshipStatus = relationship?.status || RelationshipStatus.none;
-
-        // Build user profile
-        return reply.send({
-            user: buildUserProfile(user, status)
-        });
-    });
-
-    // Search for users
+    // IMPORTANT: register the static `/v1/user/search` route BEFORE the
+    // parameterised `/v1/user/:id` route. Fastify matches in registration
+    // order, so if `:id` is registered first, a request to
+    // `/v1/user/search?query=alice` is matched as `:id="search"` and Prisma
+    // does `findUnique({where:{id:"search"}})` — search silently returns
+    // 404 / a single bogus user, and any logged-in user can enumerate any
+    // account by id (IDOR). This file's previous order had exactly that
+    // bug. Keep static literals strictly above the `:id` parameter route.
+    //
+    // Search for users (must be declared before `/v1/user/:id`)
     app.get('/v1/user/search', {
         schema: {
             querystring: z.object({
@@ -105,6 +66,54 @@ export async function userRoutes(app: Fastify) {
 
         return reply.send({
             users: userProfiles
+        });
+    });
+
+    // Get user profile
+    app.get('/v1/user/:id', {
+        schema: {
+            params: z.object({
+                id: z.string()
+            }),
+            response: {
+                200: z.object({
+                    user: UserProfileSchema
+                }),
+                404: z.object({
+                    error: z.literal('User not found')
+                })
+            }
+        },
+        preHandler: app.authenticate
+    }, async (request, reply) => {
+        const { id } = request.params;
+
+        // Fetch user
+        const user = await db.account.findUnique({
+            where: {
+                id: id
+            },
+            include: {
+                githubUser: true
+            }
+        });
+
+        if (!user) {
+            return reply.code(404).send({ error: 'User not found' });
+        }
+
+        // Resolve relationship status
+        const relationship = await db.userRelationship.findFirst({
+            where: {
+                fromUserId: request.userId,
+                toUserId: id
+            }
+        });
+        const status: RelationshipStatus = relationship?.status || RelationshipStatus.none;
+
+        // Build user profile
+        return reply.send({
+            user: buildUserProfile(user, status)
         });
     });
 
