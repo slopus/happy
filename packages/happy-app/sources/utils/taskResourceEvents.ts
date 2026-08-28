@@ -216,6 +216,9 @@ function fileAttachmentCandidate(message: ToolCallMessage): Candidate | null {
     if (!ref) return null;
     const name = nonEmptyString(message.tool.input.name) ?? 'Image';
     const source = message.tool.input.source;
+    // Browser operation frames have their own, chronological visual surface.
+    // Keep them out of the generic task-resource/image galleries.
+    if (source === 'browser_step') return null;
     const image = isRecord(message.tool.input.image) ? message.tool.input.image : null;
     const explicitKind = nonEmptyString(message.tool.input.kind)?.toLowerCase();
     const mimeType = nonEmptyString(message.tool.input.mimeType);

@@ -1900,6 +1900,45 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
             }
         });
 
+        it('preserves browser-step metadata for the dedicated visual timeline', () => {
+            const browserStep = normalizeRawMessage('db-browser-step-1', null, 1, {
+                ...base,
+                content: {
+                    type: 'session',
+                    data: {
+                        id: 'env-browser-step-1',
+                        time: 1,
+                        role: 'agent',
+                        turn: 'turn-browser-step-1',
+                        ev: {
+                            t: 'file',
+                            ref: 'upload-browser-step-1',
+                            name: 'step-001.jpg',
+                            size: 4567,
+                            mimeType: 'image/jpeg',
+                            source: 'browser_step',
+                            browserStep: { label: '打开订单详情' },
+                            image: { width: 1280, height: 720, thumbhash: '' },
+                        },
+                    },
+                },
+            });
+
+            expect(browserStep).toBeTruthy();
+            if (browserStep && browserStep.role === 'agent') {
+                expect(browserStep.content[0]).toMatchObject({
+                    type: 'tool-call',
+                    name: 'file',
+                    input: {
+                        ref: 'upload-browser-step-1',
+                        source: 'browser_step',
+                        browserStep: { label: '打开订单详情' },
+                    },
+                    description: 'Browser step: 打开订单详情',
+                });
+            }
+        });
+
         it('preserves encrypted user and plaintext generated video metadata', () => {
             for (const [id, source, encrypted] of [
                 ['user-video', undefined, undefined],

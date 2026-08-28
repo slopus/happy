@@ -26,6 +26,7 @@ type HappyMcpHandlers = {
     changeTitle: (title: string) => Promise<{ success: boolean; error?: string }>;
     sendImage: (input: SendImageInput) => Promise<{ success: boolean; error?: string }>;
     sendFile: (input: SendFileInput) => Promise<{ success: boolean; error?: string }>;
+    reportBrowserStep: (input: BrowserStepInput) => Promise<{ success: boolean; error?: string }>;
     archiveSession: (reason?: string) => Promise<{ success: boolean; error?: string }>;
     financeChart: (input: {
         query: string;
@@ -43,6 +44,11 @@ type SendImageInput = {
 type SendFileInput = {
     path: string;
     mimeType?: string;
+};
+
+type BrowserStepInput = {
+    path: string;
+    label: string;
 };
 
 /** 带外图库三工具的依赖注入接口（便于纯函数单测，且给 Task 2.2/3.1 留注入点） */
@@ -181,6 +187,27 @@ function createMcpServer(handlers: HappyMcpHandlers, screenshotTools: ReturnType
             }
             : {
                 content: [{ type: 'text', text: `Failed to send file: ${response.error || 'Unknown error'}` }],
+                isError: true,
+            };
+    });
+
+    mcp.registerTool('report_browser_step', {
+        description: 'Report one completed browser automation operation with a screenshot. The frame appears in the dedicated browser-steps panel and does not render as a normal chat image.',
+        title: 'Report Browser Step',
+        inputSchema: {
+            path: z.string().describe('Absolute path to the browser screenshot (PNG/JPEG)'),
+            label: z.string().trim().min(1).describe('Short description of the operation that just completed'),
+        },
+    }, async (args) => {
+        const response = await handlers.reportBrowserStep({ path: args.path, label: args.label });
+        logger.debug('[happyMCP] Response:', response);
+        return response.success
+            ? {
+                content: [{ type: 'text', text: `Reported browser step: ${args.label}` }],
+                isError: false,
+            }
+            : {
+                content: [{ type: 'text', text: `Failed to report browser step: ${response.error || 'Unknown error'}` }],
                 isError: true,
             };
     });
@@ -361,6 +388,19 @@ export async function startHappyServer(
                 return { success: false, error: String(error) };
             }
         },
+        reportBrowserStep: async (input: BrowserStepInput) => {
+            logger.debug('[happyMCP] Reporting browser step:', input.label, input.path);
+            try {
+                const uploaded = await client.uploadImageAttachment(input.path);
+                client.sendFileEvent(uploaded.ref, uploaded.name, uploaded.size, uploaded.dims, {
+                    source: 'browser_step',
+                    browserStep: { label: input.label.trim() },
+                });
+                return { success: true };
+            } catch (error) {
+                return { success: false, error: String(error) };
+            }
+        },
         archiveSession: async (reason?: string) => {
             logger.debug('[happyMCP] Archiving current session:', reason);
             if (!options?.archiveSession) {
@@ -439,6 +479,7 @@ export async function startHappyServer(
             'change_title',
             'send_image',
             'send_file',
+            'report_browser_step',
             'take_screenshot',
             'get_screenshot',
             'list_screenshots',

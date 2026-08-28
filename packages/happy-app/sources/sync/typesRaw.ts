@@ -72,7 +72,10 @@ const sessionFileEventSchema = z.object({
     kind: z.enum(['image', 'audio', 'video', 'file']).optional(),
     mimeType: z.string().optional(),
     encrypted: z.boolean().optional(),
-    source: z.enum(['user', 'generated']).optional(),
+    source: z.enum(['user', 'generated', 'browser_step']).optional(),
+    browserStep: z.object({
+        label: z.string().min(1),
+    }).optional(),
     prompt: z.string().optional(),
     batchId: z.string().optional(),
     localPath: z.string().optional(),
@@ -763,13 +766,16 @@ function normalizeSessionEnvelope(
                         ...(envelope.ev.mimeType ? { mimeType: envelope.ev.mimeType } : {}),
                         ...(envelope.ev.encrypted !== undefined ? { encrypted: envelope.ev.encrypted } : {}),
                         ...(envelope.ev.source ? { source: envelope.ev.source } : {}),
+                        ...(envelope.ev.browserStep ? { browserStep: envelope.ev.browserStep } : {}),
                         ...(envelope.ev.prompt ? { prompt: envelope.ev.prompt } : {}),
                         ...(envelope.ev.batchId ? { batchId: envelope.ev.batchId } : {}),
                         ...(envelope.ev.localPath ? { localPath: envelope.ev.localPath } : {}),
                         ...(envelope.ev.motionPhoto ? { motionPhoto: envelope.ev.motionPhoto } : {}),
                         ...maybeImageMetadata
                     },
-                    description: envelope.ev.kind === 'audio' || envelope.ev.kind === 'video'
+                    description: envelope.ev.source === 'browser_step'
+                        ? `Browser step: ${envelope.ev.browserStep?.label ?? envelope.ev.name}`
+                        : envelope.ev.kind === 'audio' || envelope.ev.kind === 'video'
                         ? `Attached ${envelope.ev.kind}: ${envelope.ev.name}`
                         : envelope.ev.image
                             ? `${envelope.ev.source === 'generated' ? 'Generated image' : 'Attached image'}: ${envelope.ev.name} (${envelope.ev.image.width}x${envelope.ev.image.height})`

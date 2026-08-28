@@ -6,6 +6,7 @@ import {
     buildSessionCapabilityHubModel,
     getCapabilityDetailItems,
 } from './sessionCapabilityHubModel';
+import { getBrowserSteps } from './browserStepsModel';
 
 function createSession(overrides: Partial<Session> = {}): Session {
     return {
@@ -143,6 +144,35 @@ describe('sessionCapabilityHubModel', () => {
             title: 'second.png',
             ref: 'blob://2',
         });
+    });
+
+    it('keeps browser step frames out of the ordinary image gallery', () => {
+        const session = createSession();
+        const messages: Message[] = [
+            createToolMessage('browser-step-1', 1000, 'file', {
+                ref: 'blob://browser-step-1',
+                name: 'browser-step-001.jpg',
+                source: 'browser_step',
+                browserStep: { label: '打开订单中心' },
+                image: { width: 1280, height: 720 },
+            }),
+            createToolMessage('generated-image-1', 2000, 'file', {
+                ref: 'blob://generated-image-1',
+                name: 'generated.png',
+                source: 'generated',
+                image: { width: 1024, height: 1024 },
+            }),
+        ];
+
+        const model = buildSessionCapabilityHubModel({ session, messages, artifacts: [] });
+        const browserSteps = getBrowserSteps(messages);
+
+        expect(browserSteps).toHaveLength(1);
+        expect(browserSteps?.[0]).toMatchObject({
+            label: '打开订单中心',
+            ref: 'blob://browser-step-1',
+        });
+        expect(model.details.images.map((item) => item.ref)).toEqual(['blob://generated-image-1']);
     });
 
     it('preserves generated image source metadata for the gallery entry', () => {

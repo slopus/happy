@@ -56,7 +56,12 @@ export const sessionFileEventSchema = z.object({
   // 附件是否 E2E 加密。缺省视为 true（兼容历史图片走整块加密路径）；
   // 音视频走明文流式直传 OSS，发 false，终端据此跳过解密、走流式落盘。
   encrypted: z.boolean().optional(),
-  source: z.enum(['user', 'generated']).optional(),
+  source: z.enum(['user', 'generated', 'browser_step']).optional(),
+  // Browser automation frames are delivered through the same encrypted
+  // attachment transport, but routed to the dedicated right-side timeline.
+  browserStep: z.object({
+    label: z.string().min(1),
+  }).optional(),
   prompt: z.string().optional(),
   batchId: z.string().optional(),
   localPath: z.string().optional(),

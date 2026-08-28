@@ -49,6 +49,8 @@ export class CodexPermissionHandler extends BasePermissionHandler {
         'mcp__happy__send_image',
         'send_file',
         'mcp__happy__send_file',
+        'report_browser_step',
+        'mcp__happy__report_browser_step',
     ]);
 
     // Tool-call IDs that should auto-approve when they exactly match one of
@@ -60,6 +62,7 @@ export class CodexPermissionHandler extends BasePermissionHandler {
         'archive_session',
         'send_image',
         'send_file',
+        'report_browser_step',
     ];
 
     constructor(

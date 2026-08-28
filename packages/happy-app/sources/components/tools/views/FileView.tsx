@@ -34,7 +34,7 @@ const fileInputSchema = z.object({
     kind: z.enum(['image', 'audio', 'video', 'file']).optional(),
     mimeType: z.string().optional(),
     encrypted: z.boolean().optional(),
-    source: z.enum(['user', 'generated']).optional(),
+    source: z.enum(['user', 'generated', 'browser_step']).optional(),
     motionPhoto: z.object({
         videoOffset: z.number().int().nonnegative(),
         videoLength: z.number().int().positive(),
@@ -117,7 +117,7 @@ function DocumentFileCard({ ref_, sessionId, name, size, mimeType, encrypted, so
     size?: number;
     mimeType?: string;
     encrypted?: boolean;
-    source?: 'user' | 'generated';
+    source?: 'user' | 'generated' | 'browser_step';
 }) {
     const { theme } = useUnistyles();
     const [loading, setLoading] = React.useState(false);
@@ -193,7 +193,7 @@ function InlineVideoFile({ ref_, sessionId, name, mimeType, encrypted, source: a
     name: string;
     mimeType?: string;
     encrypted?: boolean;
-    source?: 'user' | 'generated';
+    source?: 'user' | 'generated' | 'browser_step';
 }) {
     const { theme } = useUnistyles();
     const [source, setSource] = React.useState<MediaPlaybackSource | null>(null);
@@ -263,7 +263,7 @@ function MediaFileCard({ ref_, sessionId, name, kind, size, mimeType, encrypted,
     size?: number;
     mimeType?: string;
     encrypted?: boolean;
-    source?: 'user' | 'generated';
+    source?: 'user' | 'generated' | 'browser_step';
 }) {
     const { theme } = useUnistyles();
     const sizeLabel = humanSize(size);

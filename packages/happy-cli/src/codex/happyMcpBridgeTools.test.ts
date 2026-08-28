@@ -101,6 +101,33 @@ describe('registerHappyBridgeTools', () => {
         });
     });
 
+    it('forwards browser step screenshots without using the chat image tool', async () => {
+        const { server, registrations } = createServerMock();
+        const callTool = vi.fn(async (params: { name: string; arguments?: Record<string, unknown> }) => ({
+            content: [{ type: 'text' as const, text: `ok ${params.name}` }],
+            isError: false,
+        }));
+        registerHappyBridgeTools(server, async () => ({ callTool }) as unknown as Client);
+
+        expect(HAPPY_MCP_BRIDGE_TOOL_NAMES).toContain('report_browser_step');
+        const reportBrowserStep = registrations.find((registration) => registration.name === 'report_browser_step');
+        expect(reportBrowserStep).toBeDefined();
+
+        const result = await reportBrowserStep?.handler({
+            path: '/tmp/ego-step.png',
+            label: '已打开订单详情',
+        });
+
+        expect(callTool).toHaveBeenCalledWith({
+            name: 'report_browser_step',
+            arguments: { path: '/tmp/ego-step.png', label: '已打开订单详情' },
+        });
+        expect(result).toMatchObject({
+            content: [{ type: 'text', text: 'ok report_browser_step' }],
+            isError: false,
+        });
+    });
+
     it('forwards finance_chart calls to the HTTP MCP client', async () => {
         const { server, registrations } = createServerMock();
         const callTool = vi.fn(async (params: { name: string; arguments?: Record<string, unknown> }) => ({

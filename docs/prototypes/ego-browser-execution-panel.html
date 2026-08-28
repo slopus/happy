@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Happy · Ego Lite 浏览器步骤回放</title>
+  <style>
+    :root {
+      --canvas: #f6f3ee;
+      --surface: #fffdf9;
+      --raised: #ffffff;
+      --quiet-surface: #f3eee7;
+      --line: #e6ded3;
+      --line-strong: #d9d0c4;
+      --ink: #302b25;
+      --muted: #81786d;
+      --quiet: #aaa096;
+      --accent: #d77b46;
+      --accent-soft: #fff0e8;
+      --green: #56835d;
+      --green-soft: #edf5e9;
+      --blue: #315e96;
+      --shadow: 0 18px 48px rgba(55,46,36,.11);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body { min-width: 960px; margin: 0; color: var(--ink); background: var(--canvas); }
+    button { font: inherit; }
+    .app { min-height: 100vh; display: grid; grid-template-columns: 248px minmax(510px, 1fr) 410px; }
+
+    .side-nav { display: flex; flex-direction: column; gap: 21px; padding: 22px 14px; border-right: 1px solid var(--line); background: rgba(255,253,249,.82); }
+    .brand { display: flex; align-items: center; gap: 10px; padding: 0 8px; font-size: 19px; font-weight: 750; letter-spacing: -.045em; }
+    .brand-mark { width: 30px; height: 30px; border-radius: 10px 10px 10px 4px; background: linear-gradient(145deg,#f2a366,#cf6940); box-shadow: inset 0 1px rgba(255,255,255,.45); }
+    .new { height: 40px; border: 1px solid var(--line-strong); border-radius: 11px; background: var(--raised); color: var(--ink); font-size: 13px; font-weight: 670; }
+    .nav-label { padding: 0 10px; color: var(--quiet); font-size: 10px; font-weight: 760; letter-spacing: .12em; }
+    .session { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px; border: 0; border-radius: 11px; background: transparent; color: var(--muted); text-align: left; font-size: 13px; }
+    .session.active { background: var(--quiet-surface); color: var(--ink); font-weight: 700; }
+    .session-dot { width: 7px; height: 7px; border-radius: 50%; background: #b7afa6; }
+    .session.active .session-dot { background: var(--accent); box-shadow: 0 0 0 3px rgba(215,123,70,.12); }
+    .account { display: flex; align-items: center; gap: 9px; margin-top: auto; padding: 10px; color: var(--muted); font-size: 12px; }
+    .avatar { width: 27px; height: 27px; display: grid; place-items: center; border-radius: 9px; background: #ded6ca; color: #675f55; font-size: 11px; font-weight: 750; }
+
+    .chat { display: flex; flex-direction: column; min-width: 0; background: var(--surface); }
+    .chat-head { height: 70px; display: flex; align-items: center; justify-content: space-between; padding: 0 28px; border-bottom: 1px solid var(--line); }
+    .chat-title { font-size: 14px; font-weight: 750; }
+    .chat-subtitle { margin-top: 3px; color: var(--muted); font-size: 11px; }
+    .head-buttons { display: flex; gap: 8px; }
+    .head-button { width: 32px; height: 32px; border: 1px solid var(--line); border-radius: 9px; background: var(--raised); color: var(--muted); }
+    .messages { flex: 1; padding: 42px clamp(30px,7vw,86px); overflow: auto; }
+    .message { max-width: 620px; margin-bottom: 26px; }
+    .message.user { margin-left: auto; }
+    .label { margin-bottom: 8px; color: var(--muted); font-size: 11px; font-weight: 700; }
+    .message.user .label { text-align: right; }
+    .bubble { padding: 14px 16px; border: 1px solid var(--line); border-radius: 16px 16px 16px 5px; background: var(--raised); font-size: 14px; line-height: 1.65; box-shadow: 0 5px 18px rgba(54,47,39,.035); }
+    .message.user .bubble { border-color: #f1d3c1; border-radius: 16px 16px 5px 16px; background: var(--accent-soft); }
+    .result-card { display: flex; align-items: flex-start; gap: 10px; margin-top: 12px; padding: 12px; border: 1px solid #d3e5c9; border-radius: 12px; background: var(--green-soft); }
+    .result-check { width: 20px; height: 20px; display: grid; flex: 0 0 auto; place-items: center; border-radius: 50%; background: var(--green); color: white; font-size: 11px; }
+    .result-title { color: #416f49; font-size: 12px; font-weight: 760; }
+    .result-copy { margin-top: 3px; color: #668069; font-size: 11px; line-height: 1.45; }
+    .composer { padding: 16px 28px 20px; border-top: 1px solid var(--line); }
+    .composer-box { display: flex; align-items: center; min-height: 48px; gap: 12px; padding: 8px 9px 8px 15px; border: 1px solid var(--line-strong); border-radius: 14px; color: var(--quiet); font-size: 13px; }
+    .send { width: 31px; height: 31px; margin-left: auto; border: 0; border-radius: 9px; background: var(--ink); color: white; }
+
+    .replay { display: flex; flex-direction: column; min-width: 0; border-left: 1px solid var(--line); background: #fbfaf7; }
+    .replay-head { min-height: 70px; display: flex; align-items: center; justify-content: space-between; padding: 0 18px; border-bottom: 1px solid var(--line); }
+    .replay-mark { display: flex; align-items: center; gap: 10px; }
+    .ego { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 9px; background: #282e35; color: white; font-size: 13px; font-weight: 760; }
+    .replay-title { font-size: 13px; font-weight: 760; }
+    .replay-meta { margin-top: 2px; color: var(--muted); font-size: 10px; }
+    .close { width: 28px; height: 28px; border: 0; border-radius: 8px; background: transparent; color: var(--muted); font-size: 17px; }
+    .replay-scroll { flex: 1; padding: 16px; overflow: auto; }
+    .summary { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; padding: 11px 12px; border: 1px solid #d3e5c9; border-radius: 13px; background: var(--green-soft); color: #517558; font-size: 11px; font-weight: 650; }
+    .summary-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); }
+
+    .frame { position: relative; overflow: hidden; height: 218px; border: 1px solid var(--line-strong); border-radius: 14px; background: #f8f9fa; box-shadow: 0 9px 22px rgba(55,46,36,.06); }
+    .chrome { height: 31px; display: flex; align-items: center; gap: 5px; padding: 0 9px; border-bottom: 1px solid #e5e6e8; background: #f1f2f4; }
+    .dot { width: 6px; height: 6px; border-radius: 50%; background: #d2d5da; }
+    .address { flex: 1; height: 16px; margin-left: 4px; padding: 2px 7px; border-radius: 5px; background: white; color: #969ca5; font-size: 7px; }
+    .site { position: relative; height: calc(100% - 31px); padding: 14px; overflow: hidden; background: linear-gradient(135deg, #fff 0 69%, #f1f8f6 69%); }
+    .site-brand { color: #293d57; font-size: 10px; font-weight: 800; letter-spacing: -.03em; }
+    .site-nav { position: absolute; top: 15px; right: 14px; display: flex; gap: 9px; color: #9aa1ac; font-size: 7px; }
+    .site-heading { width: 62%; margin-top: 20px; color: #263a55; font-size: 17px; font-weight: 800; letter-spacing: -.055em; }
+    .site-copy { width: 68%; margin-top: 6px; color: #7f8995; font-size: 8px; line-height: 1.55; }
+    .site-card { position: absolute; right: 14px; bottom: 14px; width: 123px; padding: 10px; border: 1px solid #dde2e8; border-radius: 8px; background: white; box-shadow: 0 8px 16px rgba(36,50,73,.08); }
+    .card-title { margin-bottom: 5px; color: #2c405b; font-size: 8px; font-weight: 760; }
+    .card-row { display: flex; justify-content: space-between; margin-bottom: 7px; color: #778494; font-size: 7px; }
+    .site-action { display: grid; place-items: center; height: 20px; border-radius: 5px; background: var(--blue); color: white; font-size: 7px; font-weight: 700; }
+    .highlight { position: absolute; right: 10px; bottom: 9px; width: 131px; height: 51px; border: 2px solid var(--accent); border-radius: 9px; box-shadow: 0 0 0 4px rgba(215,123,70,.12); }
+    .highlight-label { position: absolute; right: 11px; bottom: 64px; padding: 4px 6px; border-radius: 5px; background: var(--accent); color: white; font-size: 8px; font-weight: 700; }
+    .frame[data-frame="0"] .highlight { right: 132px; top: 7px; width: 35px; height: 19px; bottom: auto; }
+    .frame[data-frame="0"] .highlight-label { right: 128px; top: 29px; bottom: auto; }
+    .frame[data-frame="1"] .site-heading::after { content: "订单 AE-2081"; display: block; width: 136px; margin-top: 11px; padding: 9px; border: 1px solid #d7dde5; border-radius: 7px; color: #315e96; font-size: 9px; letter-spacing: 0; }
+    .frame[data-frame="1"] .highlight { left: 14px; right: auto; bottom: 41px; width: 146px; height: 39px; }
+    .frame[data-frame="1"] .highlight-label { left: 14px; right: auto; bottom: 85px; }
+    .frame[data-frame="2"] .site-heading { font-size: 14px; }
+    .frame[data-frame="2"] .site-copy { width: 78%; }
+    .frame[data-frame="2"] .site-card { left: 14px; right: auto; width: 174px; }
+    .frame[data-frame="2"] .highlight { left: 10px; right: auto; width: 183px; }
+    .frame[data-frame="2"] .highlight-label { left: 11px; right: auto; }
+    .frame[data-frame="3"] .site-card { border-color: #bcd7bf; background: #f8fff6; }
+    .frame[data-frame="3"] .site-action { background: var(--green); }
+    .frame[data-frame="3"] .highlight { border-color: var(--green); box-shadow: 0 0 0 4px rgba(86,131,93,.12); }
+    .frame[data-frame="3"] .highlight-label { background: var(--green); }
+    .frame-caption { display: flex; align-items: flex-start; gap: 9px; padding: 11px 2px 17px; }
+    .frame-index { display: grid; place-items: center; width: 20px; height: 20px; border-radius: 6px; background: var(--accent-soft); color: var(--accent); font-size: 10px; font-weight: 800; }
+    .frame-name { font-size: 12px; font-weight: 760; }
+    .frame-description { margin-top: 3px; color: var(--muted); font-size: 10px; line-height: 1.4; }
+    .section-label { margin: 1px 1px 9px; color: var(--muted); font-size: 10px; font-weight: 760; letter-spacing: .09em; }
+    .steps { display: grid; gap: 7px; }
+    .step { display: grid; grid-template-columns: 52px 1fr 16px; align-items: center; gap: 10px; min-height: 58px; padding: 6px; border: 1px solid transparent; border-radius: 11px; background: transparent; color: var(--ink); text-align: left; cursor: pointer; }
+    .step:hover { background: var(--quiet-surface); }
+    .step.active { border-color: #efc6b0; background: var(--accent-soft); }
+    .thumb { position: relative; height: 44px; overflow: hidden; border: 1px solid #d9dde2; border-radius: 7px; background: linear-gradient(135deg,#fff 0 68%,#f0f8f5 68%); }
+    .thumb::before { content: ""; position: absolute; top: 5px; left: 5px; right: 5px; height: 5px; border-radius: 2px; background: #edf0f2; }
+    .thumb::after { content: ""; position: absolute; right: 6px; bottom: 6px; width: 20px; height: 10px; border-radius: 3px; background: var(--blue); }
+    .step[data-index="0"] .thumb::after { top: 6px; right: 8px; bottom: auto; width: 12px; height: 5px; }
+    .step[data-index="1"] .thumb::after { left: 6px; right: auto; bottom: 7px; width: 25px; height: 10px; }
+    .step[data-index="3"] .thumb::after { background: var(--green); }
+    .step-copy { min-width: 0; }
+    .step-title { font-size: 11px; font-weight: 720; }
+    .step-time { margin-top: 3px; color: var(--muted); font-size: 9px; }
+    .step.active .step-title, .step.active .step-time { color: var(--accent); }
+    .step-indicator { width: 15px; height: 15px; display: grid; place-items: center; border-radius: 50%; color: var(--quiet); font-size: 9px; }
+    .step.active .step-indicator { background: var(--accent); color: white; }
+    .privacy { display: flex; gap: 7px; align-items: center; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); color: var(--quiet); font-size: 9px; line-height: 1.35; }
+    .privacy-mark { width: 16px; height: 16px; display: grid; place-items: center; border-radius: 5px; background: var(--quiet-surface); color: var(--muted); font-size: 10px; }
+    @media (max-width: 1100px) { .app { grid-template-columns: 190px minmax(420px,1fr) 385px; } .messages { padding-inline: 38px; } }
+  </style>
+</head>
+<body>
+  <main class="app" aria-label="Happy 浏览器步骤可视化交互稿">
+    <aside class="side-nav" aria-label="会话列表">
+      <div class="brand"><span class="brand-mark"></span><span>Happy</span></div>
+      <button class="new">＋ 新建对话</button>
+      <div><div class="nav-label">今天</div><button class="session active"><span class="session-dot"></span><span>查询订单状态</span></button><button class="session"><span class="session-dot"></span><span>整理本周会议</span></button><button class="session"><span class="session-dot"></span><span>产品调研笔记</span></button></div>
+      <div class="account"><span class="avatar">J</span><span>Jacky 的空间</span></div>
+    </aside>
+
+    <section class="chat" aria-label="对话内容">
+      <header class="chat-head"><div><div class="chat-title">查询订单状态</div><div class="chat-subtitle">Ego Lite 已连接 · 4 个浏览器关键画面</div></div><div class="head-buttons"><button class="head-button" aria-label="更多">···</button><button class="head-button" aria-label="分享">↗</button></div></header>
+      <div class="messages">
+        <article class="message user"><div class="label">你</div><div class="bubble">帮我查看订单 #AE-2081 的物流状态。只查询，不要进行任何修改。</div></article>
+        <article class="message"><div class="label">Happy</div><div class="bubble">我已在浏览器中完成查询，并保留了 4 个关键步骤供你回看。</div><div class="result-card"><span class="result-check">✓</span><div><div class="result-title">订单已发货</div><div class="result-copy">预计 6 月 18 日送达。整个过程没有进行修改或提交。</div></div></div></article>
+      </div>
+      <footer class="composer"><div class="composer-box"><span>继续告诉 Happy 你想做什么…</span><button class="send" aria-label="发送">↑</button></div></footer>
+    </section>
+
+    <aside class="replay" aria-label="浏览器步骤回放">
+      <header class="replay-head"><div class="replay-mark"><span class="ego">e</span><div><div class="replay-title">浏览器步骤</div><div class="replay-meta">Ego Lite · 仅关键画面</div></div></div><button class="close" aria-label="关闭面板">×</button></header>
+      <div class="replay-scroll">
+        <div class="summary"><span class="summary-dot"></span><span>任务已完成 · 共记录 4 个关键画面</span></div>
+        <section class="frame" id="frame" data-frame="3" aria-label="选中的浏览器关键画面">
+          <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><div class="address" id="address">shop.example.com/orders/AE-2081</div></div>
+          <div class="site"><div class="site-brand">paper &amp; parcel</div><div class="site-nav"><span>订单</span><span>帮助</span><span>账户</span></div><div class="site-heading" id="site-heading">订单 #AE-2081</div><div class="site-copy" id="site-copy">订单详情已经打开，可以看到状态与最新配送信息。</div><div class="site-card"><div class="card-title" id="card-title">物流状态</div><div class="card-row"><span id="card-status">已发货</span><span id="card-meta">预计 6 月 18 日</span></div><div class="site-action" id="site-action">查看物流详情</div></div><div class="highlight"></div><div class="highlight-label" id="highlight-label">已读取物流状态</div></div>
+        </section>
+        <div class="frame-caption"><span class="frame-index" id="frame-index">04</span><div><div class="frame-name" id="frame-name">读取物流状态</div><div class="frame-description" id="frame-description">已确认订单处于“已发货”状态，预计 6 月 18 日送达。</div></div></div>
+        <div class="section-label">关键步骤</div>
+        <section class="steps" id="steps" aria-label="浏览器关键步骤"></section>
+        <div class="privacy"><span class="privacy-mark">◉</span><span>只保留关键画面；密码、验证码与支付信息会自动遮蔽。</span></div>
+      </div>
+    </aside>
+  </main>
+  <script>
+    const frames = [
+      { title: '打开订单中心', time: '10:42:01', address: 'shop.example.com', heading: '你好，Jacky', copy: '订单会在这里显示最新状态与配送信息。', cardTitle: '订单', cardStatus: '订单中心', cardMeta: '', action: '查看全部订单', label: '进入订单中心', name: '打开订单中心', desc: '已进入账户的订单中心页面。' },
+      { title: '找到订单 AE-2081', time: '10:42:04', address: 'shop.example.com/orders', heading: '我的订单', copy: '已在订单列表中定位到对应订单。', cardTitle: '订单 #AE-2081', cardStatus: '处理中', cardMeta: '¥ 238', action: '查看订单详情', label: '定位到目标订单', name: '找到订单 AE-2081', desc: '已在订单列表中找到唯一匹配的订单。' },
+      { title: '打开订单详情', time: '10:42:07', address: 'shop.example.com/orders/AE-2081', heading: '订单 #AE-2081', copy: '订单详情已经打开，可以看到状态与最新配送信息。', cardTitle: '订单 #AE-2081', cardStatus: '处理中', cardMeta: '¥ 238', action: '查看物流状态', label: '打开订单详情', name: '打开订单详情', desc: '进入订单详情页，准备读取物流信息。' },
+      { title: '读取物流状态', time: '10:42:10', address: 'shop.example.com/orders/AE-2081', heading: '订单 #AE-2081', copy: '订单详情已经打开，可以看到状态与最新配送信息。', cardTitle: '物流状态', cardStatus: '已发货', cardMeta: '预计 6 月 18 日', action: '查看物流详情', label: '已读取物流状态', name: '读取物流状态', desc: '已确认订单处于“已发货”状态，预计 6 月 18 日送达。' }
+    ];
+    const elements = { frame: document.getElementById('frame'), address: document.getElementById('address'), heading: document.getElementById('site-heading'), copy: document.getElementById('site-copy'), cardTitle: document.getElementById('card-title'), cardStatus: document.getElementById('card-status'), cardMeta: document.getElementById('card-meta'), action: document.getElementById('site-action'), label: document.getElementById('highlight-label'), index: document.getElementById('frame-index'), name: document.getElementById('frame-name'), description: document.getElementById('frame-description'), steps: document.getElementById('steps') };
+    function render(index) {
+      const current = frames[index];
+      elements.frame.dataset.frame = index;
+      elements.address.textContent = current.address;
+      elements.heading.textContent = current.heading;
+      elements.copy.textContent = current.copy;
+      elements.cardTitle.textContent = current.cardTitle;
+      elements.cardStatus.textContent = current.cardStatus;
+      elements.cardMeta.textContent = current.cardMeta;
+      elements.action.textContent = current.action;
+      elements.label.textContent = current.label;
+      elements.index.textContent = String(index + 1).padStart(2, '0');
+      elements.name.textContent = current.name;
+      elements.description.textContent = current.desc;
+      elements.steps.innerHTML = frames.map((step, itemIndex) => `<button class="step ${itemIndex === index ? 'active' : ''}" data-index="${itemIndex}" aria-pressed="${itemIndex === index}"><span class="thumb"></span><span class="step-copy"><span class="step-title">${String(itemIndex + 1).padStart(2, '0')} · ${step.title}</span><span class="step-time">${step.time}</span></span><span class="step-indicator">${itemIndex === index ? '›' : '·'}</span></button>`).join('');
+      elements.steps.querySelectorAll('.step').forEach(button => button.addEventListener('click', () => render(Number(button.dataset.index))));
+    }
+    render(3);
+  </script>
+</body>
+</html>

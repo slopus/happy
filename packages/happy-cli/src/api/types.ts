@@ -307,7 +307,10 @@ export const FileEventMessageSchema = z.object({
         // 是否 E2E 加密；缺省视为 true。音视频走明文流式直传 OSS 发 false，
         // 终端据此跳过解密、走 streamAttachmentToDisk 流式落盘。
         encrypted: z.boolean().optional(),
-        source: z.enum(['user', 'generated']).optional(),
+        source: z.enum(['user', 'generated', 'browser_step']).optional(),
+        browserStep: z.object({
+          label: z.string().min(1),
+        }).optional(),
         prompt: z.string().optional(),
         batchId: z.string().optional(),
         localPath: z.string().optional(),
