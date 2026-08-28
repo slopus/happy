@@ -105,6 +105,7 @@ export async function runAgy(opts: RunAgyOptions): Promise<void> {
   let shouldExit = false;
   let abortController = new AbortController();
   let thinking = false;
+  let sessionTitleSet = false;
 
   let displayedModel = DEFAULT_AGY_MODEL;
 
@@ -239,6 +240,25 @@ export async function runAgy(opts: RunAgyOptions): Promise<void> {
       try {
         await backend.sendPrompt(process.cwd(), batch.message);
         sendEnvelopes(sessionManager.endTurn('completed'));
+        if (!sessionTitleSet) {
+          const userMessages = messageBuffer.getMessages().filter((m) => m.type === 'user');
+          if (userMessages.length > 0) {
+            const firstPrompt = userMessages[0].content;
+            let title = firstPrompt.trim().split('\n')[0];
+            if (title.length > 35) {
+              title = title.substring(0, 32) + '...';
+            }
+            if (title) {
+              log(`Setting session title from first prompt: "${title}"`);
+              session.sendClaudeSessionMessage({
+                type: 'summary',
+                summary: title,
+                leafUuid: randomUUID(),
+              });
+              sessionTitleSet = true;
+            }
+          }
+        }
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
         log(`Turn ended: ${msg}`);
