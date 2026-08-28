@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { streamRelationshipAdvisor } from './relationshipAdvisorClient';
+import { streamRelationshipAdvisor } from '@/modules/relationship-advisor/relationshipAdvisorClient';
 
 function streamResponse(chunks: string[]): Response {
     const encoder = new TextEncoder();
@@ -19,6 +19,7 @@ describe('streamRelationshipAdvisor', () => {
             '\ndata: {"choices":[{"delta":{"content":"事实"}}]}\n\n',
             'data: [DONE]\n\n',
         ]));
+        const validateBaseUrl = vi.fn(async (value: string) => value);
 
         const deltas: string[] = [];
         for await (const delta of streamRelationshipAdvisor({
@@ -32,17 +33,20 @@ describe('streamRelationshipAdvisor', () => {
             baseUrl: 'https://model.test/v1',
             model: 'fast-vision-model',
             fetchImpl: fetchImpl as typeof fetch,
+            validateBaseUrl,
         })) {
             deltas.push(delta.text);
         }
 
         expect(deltas).toEqual(['先看', '事实']);
         expect(fetchImpl).toHaveBeenCalledTimes(1);
+        expect(validateBaseUrl).toHaveBeenCalledWith('https://model.test/v1');
         const [url, init] = fetchImpl.mock.calls[0];
         expect(url).toBe('https://model.test/v1/chat/completions');
         expect(init?.headers).toEqual(expect.objectContaining({
             Authorization: 'Bearer server-only-key',
         }));
+        expect(init?.redirect).toBe('error');
         const body = JSON.parse(String(init?.body));
         expect(body).toEqual(expect.objectContaining({
             model: 'fast-vision-model',
@@ -56,5 +60,27 @@ describe('streamRelationshipAdvisor', () => {
                 { type: 'image_url', image_url: { url: 'https://oss.test/advisor/image.jpg?signature=short-lived' } },
             ],
         });
+    });
+
+    it('does not send the API key when provider URL validation fails', async () => {
+        const fetchImpl = vi.fn();
+
+        const consume = async () => {
+            for await (const _delta of streamRelationshipAdvisor({
+                messages: [{ role: 'user', text: 'hello' }],
+                imageUrls: [],
+            }, {
+                apiKey: 'must-not-leak',
+                baseUrl: 'https://internal.example/v1',
+                model: 'private-model',
+                fetchImpl: fetchImpl as typeof fetch,
+                validateBaseUrl: vi.fn(async () => { throw new Error('unsafe'); }),
+            })) {
+                // No deltas are expected.
+            }
+        };
+
+        await expect(consume()).rejects.toThrow('unsafe');
+        expect(fetchImpl).not.toHaveBeenCalled();
     });
 });

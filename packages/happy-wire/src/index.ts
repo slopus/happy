@@ -4,3 +4,4 @@ export * from './sessionProtocol';
 export * from './voice';
 export * from './screenshot';
 export * from './motionPhoto';
+export * from './plugins';

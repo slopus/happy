@@ -10,6 +10,7 @@ Internal package names and compatibility identifiers still use `happy-*` in many
 - `selfhost-web-deploy.md`: English manual for building, securing, deploying, updating, and rolling back the Web App.
 - `selfhost-web-deploy.zh-CN.md`: Chinese manual for building, securing, deploying, updating, and rolling back the Web App.
 - `CONTRIBUTING.md`: Paws repository workflow, worktrees, checks, and pull requests.
+- `plugin-development.md`: Dynamic plugin architecture, manifest contract, encrypted configuration, lifecycle, security, and contribution gates.
 - `roadmap.md`: Current shipped foundations and prioritized work.
 - protocol.md: Wire protocol (WebSocket), payload formats, sequencing, and concurrency rules.
 - realtime-sync-and-rpc.md: High-level overview of realtime socket management and RPC control flow.

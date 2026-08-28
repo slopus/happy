@@ -71,14 +71,6 @@ export function getSettingsFeatureEntries(args: { experiments: boolean }): Setti
             route: '/settings/my-agent-edit?kind=image-styles',
         },
         {
-            key: 'generated-images',
-            titleKey: 'generatedImages.title',
-            subtitleKey: 'generatedImages.entrySubtitle',
-            icon: 'albums-outline',
-            color: '#0A84FF',
-            route: '/generated-images',
-        },
-        {
             key: 'my-agents',
             titleKey: 'agents.title',
             subtitleKey: 'agents.entrySubtitle',

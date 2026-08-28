@@ -133,6 +133,7 @@ vi.mock('./SidebarHelpMenu', async () => {
     };
 });
 vi.mock('./agents/AgentSheet', () => ({ AgentSheet: 'AgentSheet' }));
+vi.mock('./plugins/PluginMarketplaceModal', () => ({ PluginMarketplaceModal: 'PluginMarketplaceModal' }));
 vi.mock('@/hooks/useAgentSpace', () => ({
     useAgentSpace: () => ({
         agent: mocks.spaceAgent,
@@ -146,8 +147,8 @@ vi.mock('./CommandPalette/CommandPaletteProvider', () => ({
         open: mocks.openCommandPalette,
     }),
 }));
-vi.mock('./relationship-advisor/RelationshipAdvisorSidebarHistory', () => ({
-    RelationshipAdvisorSidebarHistory: 'RelationshipAdvisorSidebarHistory',
+vi.mock('./plugins/PluginLeftSidebarSlot', () => ({
+    PluginLeftSidebarSlot: 'PluginLeftSidebarSlot',
 }));
 vi.mock('./DesktopSidebarSessionsNavigation', () => ({
     DesktopSidebarSessionsNavigation: 'DesktopSidebarSessionsNavigation',
@@ -242,7 +243,7 @@ describe('SidebarView Agent space exit', () => {
         expect(renderer.root.findAllByProps({ testID: 'sidebar-user-card' })).toHaveLength(0);
         expect(renderer.root.findAllByType('MainView')).toHaveLength(0);
         expect(renderer.root.findAllByType('DesktopSidebarSessionsNavigation')).toHaveLength(1);
-        expect(renderer.root.findAllByType('RelationshipAdvisorSidebarHistory')).toHaveLength(1);
+        expect(renderer.root.findAllByType('PluginLeftSidebarSlot')).toHaveLength(1);
         expect(renderer.root.findAllByType('Text').some((node: any) => node.props.children === 'agents.empty')).toBe(false);
 
         act(() => renderer.unmount());
@@ -279,6 +280,11 @@ describe('SidebarView Agent space exit', () => {
         act(() => secondary.findByProps({ testID: 'sidebar-my-agents-button' }).props.onPress());
         expect(renderer.root.findByType('AgentSheet').props.visible).toBe(true);
         expect(mocks.navigate).not.toHaveBeenCalledWith('/settings/my-agents');
+
+        const pluginsButton = renderer.root.findByProps({ testID: 'sidebar-plugins-button' });
+        act(() => pluginsButton.props.onPress());
+        expect(renderer.root.findByType('PluginMarketplaceModal').props.visible).toBe(true);
+        expect(renderer.root.findByType('PluginMarketplaceModal').props.initialPluginId).toBeNull();
 
         act(() => renderer.unmount());
     });
@@ -393,7 +399,7 @@ describe('SidebarView Agent space exit', () => {
         act(() => renderer.unmount());
     });
 
-    it('keeps primary work destinations contiguous and Agents secondary', () => {
+    it('keeps primary work and plugin destinations contiguous and Agents secondary', () => {
         mocks.spaceAgent = null;
         let renderer: any;
 
@@ -408,6 +414,7 @@ describe('SidebarView Agent space exit', () => {
             'sidebar-new-session-button',
             'sidebar-inbox-button',
             'sidebar-command-palette-button',
+            'sidebar-plugins-button',
         ]);
         expect(primary.findAllByProps({ testID: 'sidebar-my-agents-button' })).toHaveLength(0);
 

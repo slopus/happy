@@ -40,6 +40,7 @@ const SETTINGS_TITLES: Record<string, () => string> = {
     '/settings/my-agents': () => t('agents.title'),
     '/settings/profile': () => t('settingsAccount.editProfile'),
     '/settings/public-image-gateway': () => t('settings.publicImageGateway'),
+    '/settings/relationship-advisor': () => t('relationshipAdvisor.title'),
     '/settings/skill': () => t('settingsSkills.detailTitle'),
     '/settings/skills': () => t('settingsSkills.title'),
     '/settings/usage': () => t('settings.usage'),
@@ -59,6 +60,7 @@ const SettingsMyAgentEditScreen = React.lazy(() => import('@/app/(app)/settings/
 const SettingsMyAgentsScreen = React.lazy(() => import('@/app/(app)/settings/my-agents'));
 const SettingsProfileScreen = React.lazy(() => import('@/app/(app)/settings/profile'));
 const SettingsPublicImageGatewayScreen = React.lazy(() => import('@/app/(app)/settings/public-image-gateway'));
+const SettingsRelationshipAdvisorScreen = React.lazy(() => import('@/app/(app)/settings/relationship-advisor'));
 const SettingsSkillScreen = React.lazy(() => import('@/app/(app)/settings/skill'));
 const SettingsSkillsScreen = React.lazy(() => import('@/app/(app)/settings/skills'));
 const SettingsUsageScreen = React.lazy(() => import('@/app/(app)/settings/usage'));
@@ -79,6 +81,7 @@ const SETTINGS_SCREENS: Record<string, React.ComponentType> = {
     '/settings/my-agents': SettingsMyAgentsScreen,
     '/settings/profile': SettingsProfileScreen,
     '/settings/public-image-gateway': SettingsPublicImageGatewayScreen,
+    '/settings/relationship-advisor': SettingsRelationshipAdvisorScreen,
     '/settings/skill': SettingsSkillScreen,
     '/settings/skills': SettingsSkillsScreen,
     '/settings/usage': SettingsUsageScreen,

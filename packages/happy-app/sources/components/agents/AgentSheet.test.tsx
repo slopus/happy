@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => ({
     routerNavigate: vi.fn(),
     builtinAgent: null as AgentLauncher | null,
     relationshipAgent: null as AgentLauncher | null,
+    relationshipPluginStatus: { installed: true } as { installed: boolean } | null,
     platform: 'web',
     windowWidth: 1280,
 }));
@@ -64,6 +65,13 @@ vi.mock('@/hooks/useNewSessionDraft', () => ({ useNewSessionDraft: () => ({}) })
 vi.mock('@/hooks/useAgentSpace', () => ({ useAgentSpace: () => ({ enter: mocks.oldEnterSpace }) }));
 vi.mock('@/hooks/useEnterAgentSpace', () => ({
     useEnterAgentSpace: () => ({ entering: mocks.entering, enter: mocks.enter }),
+}));
+vi.mock('@/hooks/useRelationshipAdvisorPlugin', () => ({
+    useRelationshipAdvisorPlugin: () => ({
+        loading: false,
+        status: mocks.relationshipPluginStatus,
+        refresh: vi.fn(),
+    }),
 }));
 vi.mock('@/constants/Typography', () => ({
     Typography: { default: () => ({}), mono: () => ({}) },
@@ -138,6 +146,7 @@ describe('AgentSheet', () => {
         mocks.entering = false;
         mocks.builtinAgent = null;
         mocks.relationshipAgent = cloudRelationshipAgent;
+        mocks.relationshipPluginStatus = { installed: true };
         mocks.platform = 'web';
         mocks.windowWidth = 1280;
         mocks.enter.mockResolvedValue({ type: 'success', sessionId: 'session-1' });
@@ -254,6 +263,27 @@ describe('AgentSheet', () => {
 
         expect(onClose).toHaveBeenCalledTimes(1);
         expect(mocks.launchAgent).toHaveBeenCalledWith(cloudRelationshipAgent, expect.anything(), expect.any(Function));
+        act(() => renderer.unmount());
+    });
+
+    it('opens plugin installation instead of launching an uninstalled relationship advisor', async () => {
+        mocks.agents = [];
+        mocks.machines = [];
+        mocks.relationshipPluginStatus = { installed: false };
+        const onClose = vi.fn();
+        const onOpenPlugin = vi.fn();
+        let renderer: any;
+        act(() => {
+            renderer = TestRenderer.create(
+                <AgentSheet visible onClose={onClose} onOpenPlugin={onOpenPlugin} />,
+            );
+        });
+
+        await act(async () => findPressableByText(renderer.root, cloudRelationshipAgent.name).props.onPress());
+
+        expect(onOpenPlugin).toHaveBeenCalledWith('relationship-advisor');
+        expect(mocks.routerNavigate).not.toHaveBeenCalledWith('/settings/relationship-advisor');
+        expect(mocks.launchAgent).not.toHaveBeenCalled();
         act(() => renderer.unmount());
     });
 

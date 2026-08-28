@@ -115,3 +115,5 @@ Treat `packages/happy-app/ota-runtime-versions.json` as the runtime source of tr
 - Update English and Chinese onboarding together when installation or distribution changes.
 
 For architecture and setup, start with [`docs/README.md`](README.md) and [`docs/getting-started.md`](getting-started.md).
+
+For plugin manifests, encrypted configuration, trusted adapters, lifecycle, and release requirements, follow [`docs/plugin-development.md`](plugin-development.md).

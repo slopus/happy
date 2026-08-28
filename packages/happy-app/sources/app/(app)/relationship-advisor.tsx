@@ -21,6 +21,7 @@ import type { MultiTextInputHandle } from '@/components/MultiTextInput';
 import { Typography } from '@/constants/Typography';
 import { useImagePicker } from '@/hooks/useImagePicker';
 import { useRelationshipAdvisorChat } from '@/hooks/useRelationshipAdvisorChat';
+import { useRelationshipAdvisorPlugin } from '@/hooks/useRelationshipAdvisorPlugin';
 import { Modal } from '@/modal';
 import { shouldShowRelationshipAdvisorEmptyState } from '@/components/relationship-advisor/relationshipAdvisorChatModel';
 import { StreamingMarkdownView } from '@/components/relationship-advisor/StreamingMarkdownView';
@@ -34,6 +35,7 @@ import {
 
 function RelationshipAdvisorScreen() {
     const router = useRouter();
+    const { status: pluginStatus } = useRelationshipAdvisorPlugin();
     const params = useLocalSearchParams<{ conversationId?: string | string[] }>();
     const conversations = useLocalSetting('relationshipAdvisorConversations');
     const updateConversations = useLocalSettingUpdater('relationshipAdvisorConversations');
@@ -41,6 +43,7 @@ function RelationshipAdvisorScreen() {
     const conversation = conversations.find(({ id }) => id === requestedConversationId) ?? conversations[0];
 
     React.useEffect(() => {
+        if (pluginStatus?.installed !== true) return;
         if (conversation && requestedConversationId === conversation.id) return;
         const target = conversation ?? createRelationshipAdvisorConversation(
             randomUUID(),
@@ -48,9 +51,15 @@ function RelationshipAdvisorScreen() {
         );
         if (!conversation) updateConversations((current) => saveRelationshipAdvisorConversation(current, target));
         router.setParams({ conversationId: target.id });
-    }, [conversation, requestedConversationId, router, updateConversations]);
+    }, [conversation, pluginStatus, requestedConversationId, router, updateConversations]);
 
-    if (!conversation) {
+    React.useEffect(() => {
+        if (pluginStatus?.installed === false) {
+            router.replace('/settings/relationship-advisor' as any);
+        }
+    }, [pluginStatus, router]);
+
+    if (pluginStatus?.installed !== true || !conversation) {
         return <View style={styles.root} />;
     }
 

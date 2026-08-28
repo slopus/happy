@@ -8,7 +8,8 @@ import TestRenderer from 'react-test-renderer';
 import RelationshipAdvisorScreen from './relationship-advisor';
 
 const mocks = vi.hoisted(() => ({
-    router: { setParams: vi.fn() },
+    router: { setParams: vi.fn(), replace: vi.fn() },
+    pluginStatus: { installed: true } as { installed: boolean } | null,
     conversations: [{
         id: 'conversation-1',
         title: 'Conversation',
@@ -84,6 +85,13 @@ vi.mock('@/hooks/useRelationshipAdvisorChat', () => ({
         retry: vi.fn(),
     }),
 }));
+vi.mock('@/hooks/useRelationshipAdvisorPlugin', () => ({
+    useRelationshipAdvisorPlugin: () => ({
+        loading: false,
+        status: mocks.pluginStatus,
+        refresh: vi.fn(),
+    }),
+}));
 vi.mock('@/components/relationship-advisor/relationshipAdvisorChatModel', () => ({
     shouldShowRelationshipAdvisorEmptyState: () => true,
 }));
@@ -104,6 +112,7 @@ describe('RelationshipAdvisorScreen', () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
+        mocks.pluginStatus = { installed: true };
         vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
             callback(0);
             return 1;
@@ -131,6 +140,18 @@ describe('RelationshipAdvisorScreen', () => {
         expect(avoidingView.props.behavior).toBe('padding');
         expect(avoidingView.props.keyboardVerticalOffset).toBe(0);
 
+        act(() => renderer.unmount());
+    });
+
+    it('redirects direct access to plugin installation when the advisor is not installed', () => {
+        mocks.pluginStatus = { installed: false };
+        let renderer: any;
+        act(() => {
+            renderer = TestRenderer.create(<RelationshipAdvisorScreen />);
+        });
+
+        expect(mocks.router.replace).toHaveBeenCalledWith('/settings/relationship-advisor');
+        expect(renderer.root.findAllByProps({ testID: 'relationship-advisor-screen' })).toHaveLength(0);
         act(() => renderer.unmount());
     });
 });

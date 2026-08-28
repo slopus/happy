@@ -17,9 +17,10 @@ import { AgentSpaceWorkbench } from './agents/AgentSpaceWorkbench';
 import { SidebarAccountMenu } from './SidebarAccountMenu';
 import { SidebarHelpMenu } from './SidebarHelpMenu';
 import { useCommandPaletteLauncher } from './CommandPalette/CommandPaletteProvider';
-import { RelationshipAdvisorSidebarHistory } from './relationship-advisor/RelationshipAdvisorSidebarHistory';
 import { useDesktopSettingsModal } from './DesktopSettingsModal';
 import { DesktopSidebarSessionsNavigation } from './DesktopSidebarSessionsNavigation';
+import { PluginMarketplaceModal } from './plugins/PluginMarketplaceModal';
+import { PluginLeftSidebarSlot } from './plugins/PluginLeftSidebarSlot';
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
@@ -178,6 +179,36 @@ const stylesheet = StyleSheet.create((theme) => ({
         color: theme.colors.textSecondary,
         ...Typography.default(),
     },
+    pluginsButton: {
+        alignItems: 'center',
+        backgroundColor: theme.colors.surface,
+        borderColor: theme.colors.divider,
+        borderRadius: 12,
+        borderWidth: StyleSheet.hairlineWidth,
+        flexDirection: 'row',
+        gap: 8,
+        marginBottom: 6,
+        marginHorizontal: 16,
+        paddingHorizontal: 14,
+        paddingVertical: 10,
+    },
+    pluginsButtonDesktop: {
+        borderRadius: 10,
+        marginBottom: 1,
+        marginHorizontal: 10,
+        marginTop: 3,
+        paddingHorizontal: 10,
+        paddingVertical: 7,
+    },
+    pluginsText: {
+        ...Typography.default('semiBold'),
+        color: theme.colors.text,
+        flex: 1,
+        fontSize: 14,
+    },
+    pluginsChevron: {
+        color: theme.colors.textSecondary,
+    },
     footerMenuDismissLayer: {
         position: 'absolute',
         top: 0,
@@ -232,6 +263,8 @@ export const SidebarView = React.memo(({
     const profile = useProfile();
     const agents = useLocalSetting('agents');
     const [sheetOpen, setSheetOpen] = React.useState(false);
+    const [pluginMarketplaceOpen, setPluginMarketplaceOpen] = React.useState(false);
+    const [initialPluginId, setInitialPluginId] = React.useState<string | null>(null);
     const [footerMenu, setFooterMenu] = React.useState<FooterMenu>(null);
     const { agent: spaceAgent, exit: exitSpace } = useAgentSpace();
     const commandPaletteLauncher = useCommandPaletteLauncher();
@@ -279,6 +312,23 @@ export const SidebarView = React.memo(({
 
     const setHelpMenuOpen = React.useCallback((open: boolean) => {
         setFooterMenu(open ? 'help' : null);
+    }, []);
+
+    const openPluginMarketplace = React.useCallback(() => {
+        setSheetOpen(false);
+        setInitialPluginId(null);
+        setPluginMarketplaceOpen(true);
+    }, []);
+
+    const openPlugin = React.useCallback((pluginId: string) => {
+        setSheetOpen(false);
+        setInitialPluginId(pluginId);
+        setPluginMarketplaceOpen(true);
+    }, []);
+
+    const closePluginMarketplace = React.useCallback(() => {
+        setPluginMarketplaceOpen(false);
+        setInitialPluginId(null);
     }, []);
 
     // 「Agent 空间模式」：进入某个 Agent 后，整个侧栏收敛为该 Agent 的专属工作台，
@@ -361,6 +411,21 @@ export const SidebarView = React.memo(({
                     <Ionicons name="search-outline" size={16} color={stylesheet.newSessionText.color} />
                     <Text style={styles.newSessionText}>{t('sidebar.searchSessions')}</Text>
                 </Pressable>
+
+                <Pressable
+                    accessibilityRole="button"
+                    onPress={openPluginMarketplace}
+                    testID="sidebar-plugins-button"
+                    style={({ pressed }) => [
+                        styles.pluginsButton,
+                        desktopDensity && styles.pluginsButtonDesktop,
+                        pressed && styles.agentsCardPressed,
+                    ]}
+                >
+                    <Ionicons name="extension-puzzle-outline" size={16} color={stylesheet.pluginsText.color} />
+                    <Text style={styles.pluginsText}>{t('relationshipAdvisorPlugin.marketTitle')}</Text>
+                    <Ionicons name="chevron-forward" size={15} color={stylesheet.pluginsChevron.color} />
+                </Pressable>
             </View>
 
             <View style={styles.secondaryNavigation} testID="sidebar-secondary-navigation">
@@ -409,7 +474,7 @@ export const SidebarView = React.memo(({
                 </Pressable>
             </View>
 
-            <RelationshipAdvisorSidebarHistory
+            <PluginLeftSidebarSlot
                 desktopDensity={desktopDensity}
                 onNavigate={go}
             />
@@ -467,7 +532,16 @@ export const SidebarView = React.memo(({
             </View>
 
             {/* Bottom drawer listing the user's agents (RN Modal — placement in tree is irrelevant) */}
-            <AgentSheet visible={sheetOpen} onClose={() => setSheetOpen(false)} />
+            <AgentSheet
+                visible={sheetOpen}
+                onClose={() => setSheetOpen(false)}
+                onOpenPlugin={openPlugin}
+            />
+            <PluginMarketplaceModal
+                initialPluginId={initialPluginId}
+                onClose={closePluginMarketplace}
+                visible={pluginMarketplaceOpen}
+            />
         </View>
     );
 });

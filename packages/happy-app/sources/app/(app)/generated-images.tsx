@@ -1,8 +1,10 @@
 import * as React from 'react';
-import { FlatList, Text, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, FlatList, Text, View, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useGeneratedImages, type GeneratedImageEntry } from '@/hooks/useGeneratedImages';
+import { useGeneratedImagesPlugin } from '@/hooks/useGeneratedImagesPlugin';
 import { t } from '@/text';
 import { layout } from '@/components/layout';
 import { GeneratedImageCard } from '@/components/GeneratedImageCard';
@@ -10,7 +12,7 @@ import { GeneratedImageCard } from '@/components/GeneratedImageCard';
 const CARD_GAP = 10;
 const MIN_CARD_WIDTH = 154;
 
-export default React.memo(function GeneratedImagesScreen() {
+function GeneratedImagesContent() {
     const { theme } = useUnistyles();
     const dimensions = useWindowDimensions();
     const images = useGeneratedImages();
@@ -64,6 +66,29 @@ export default React.memo(function GeneratedImagesScreen() {
             )}
         />
     );
+}
+
+export default React.memo(function GeneratedImagesScreen() {
+    const { theme } = useUnistyles();
+    const router = useRouter();
+    const { status } = useGeneratedImagesPlugin();
+
+    React.useEffect(() => {
+        if (status?.installed === false) router.replace('/');
+    }, [router, status]);
+
+    if (status?.installed !== true) {
+        return (
+            <View
+                style={[styles.guard, { backgroundColor: theme.colors.groupped.background }]}
+                testID="generated-images-plugin-guard"
+            >
+                <ActivityIndicator color={theme.colors.accent} />
+            </View>
+        );
+    }
+
+    return <GeneratedImagesContent />;
 });
 
 const styles = StyleSheet.create(() => ({
@@ -107,5 +132,10 @@ const styles = StyleSheet.create(() => ({
         lineHeight: 20,
         marginTop: 8,
         textAlign: 'center',
+    },
+    guard: {
+        alignItems: 'center',
+        flex: 1,
+        justifyContent: 'center',
     },
 }));

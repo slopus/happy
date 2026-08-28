@@ -4,6 +4,7 @@ import { auth } from "@/app/auth/auth";
 import { log } from "@/utils/log";
 import { eventRouter } from "@/app/events/eventRouter";
 import { decryptString, encryptString } from "@/modules/encrypt";
+import { listInferenceTokens } from "@/modules/inference-tokens/listInferenceTokens";
 import { githubConnect } from "@/app/github/githubConnect";
 import { githubDisconnect } from "@/app/github/githubDisconnect";
 import { Context } from "@/context";
@@ -323,12 +324,10 @@ export function connectRoutes(app: Fastify) {
         }
     }, async (request, reply) => {
         const userId = request.userId;
-        const tokens = await db.serviceAccountToken.findMany({ where: { accountId: userId } });
-        let decrypted = [];
-        for (const token of tokens) {
-            decrypted.push({ vendor: token.vendor, token: decryptString(['user', userId, 'vendors', token.vendor, 'token'], token.token) });
-        }
-        return reply.send({ tokens: decrypted });
+        const tokens = await listInferenceTokens(userId, {
+            findMany: (args) => db.serviceAccountToken.findMany(args as Parameters<typeof db.serviceAccountToken.findMany>[0])
+        }, decryptString);
+        return reply.send({ tokens });
     });
 
 }

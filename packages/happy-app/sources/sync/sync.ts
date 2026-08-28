@@ -1,4 +1,5 @@
 import Constants from 'expo-constants';
+import type { PluginCatalogItem, PluginCatalogResponse } from '@slopus/happy-wire';
 import { apiSocket, getCurrentAppState, getHappyClientId } from '@/sync/apiSocket';
 import { notifyUnreadMessage } from '@/sync/webTabTitle';
 import { AuthCredentials } from '@/auth/tokenStorage';
@@ -66,6 +67,7 @@ import { Modal } from '@/modal';
 import { t } from '@/text';
 import type { SessionApplyOptions } from './sessionApply';
 import { deriveSessionFallbackTitle, ensureSessionFallbackTitle } from './sessionFallbackTitle';
+import { getPluginCatalog } from './plugins';
 
 type V3GetSessionMessagesResponse = {
     messages: ApiMessage[];
@@ -153,6 +155,9 @@ class Sync {
     private friendsSync: InvalidateSync;
     private friendRequestsSync: InvalidateSync;
     private feedSync: InvalidateSync;
+    private pluginCatalogSync: InvalidateSync;
+    private pluginCatalogSnapshot: readonly PluginCatalogItem[] = [];
+    private pluginCatalogListeners = new Set<() => void>();
     private activityAccumulator: ActivityUpdateAccumulator;
     private pendingSettings: Partial<Settings> = loadPendingSettings();
     private appState: AppStateStatus = AppState.currentState;
@@ -177,6 +182,7 @@ class Sync {
         this.friendsSync = new InvalidateSync(this.fetchFriends);
         this.friendRequestsSync = new InvalidateSync(this.fetchFriendRequests);
         this.feedSync = new InvalidateSync(this.fetchFeed);
+        this.pluginCatalogSync = new InvalidateSync(this.fetchPluginCatalog);
 
         const registerPushToken = async () => {
             await this.registerPushToken();
@@ -219,6 +225,7 @@ class Sync {
                         this.friendsSync,
                         this.friendRequestsSync,
                         this.feedSync,
+                        this.pluginCatalogSync,
                     ],
                     currentViewingSessionId: storage.getState().currentViewingSessionId,
                     onSessionVisible: this.onSessionVisible,
@@ -298,6 +305,7 @@ class Sync {
         this.friendRequestsSync.invalidate();
         this.artifactsSync.invalidate();
         this.feedSync.invalidate();
+        this.pluginCatalogSync.invalidate();
         log.log('🔄 #init: All syncs invalidated, including artifacts');
 
         // Mark UI ready as soon as sessions load. Machines sync may hang
@@ -310,6 +318,24 @@ class Sync {
             // Still mark ready so the UI doesn't stay on a blank screen forever
             storage.getState().applyReady();
         });
+    }
+
+    private fetchPluginCatalog = async () => {
+        const catalog = await getPluginCatalog();
+        this.pluginCatalogSnapshot = catalog.plugins;
+        for (const listener of this.pluginCatalogListeners) listener();
+    }
+
+    getPluginCatalogSnapshot = (): readonly PluginCatalogItem[] => this.pluginCatalogSnapshot;
+
+    subscribePluginCatalog = (listener: () => void): (() => void) => {
+        this.pluginCatalogListeners.add(listener);
+        return () => this.pluginCatalogListeners.delete(listener);
+    }
+
+    refreshPluginCatalog = async (): Promise<PluginCatalogResponse> => {
+        await this.pluginCatalogSync.invalidateAndAwait();
+        return { plugins: [...this.pluginCatalogSnapshot] };
     }
 
 

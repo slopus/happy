@@ -2,7 +2,7 @@ import fastify from 'fastify';
 import { serializerCompiler, validatorCompiler, ZodTypeProvider } from 'fastify-type-provider-zod';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { Fastify } from '../types';
+import type { Fastify } from '@/app/api/types';
 
 const filesMock = vi.hoisted(() => ({
     isLocalStorage: vi.fn(() => true),
@@ -14,13 +14,19 @@ const filesMock = vi.hoisted(() => ({
     },
 }));
 const deleteImagesMock = vi.hoisted(() => vi.fn(async () => undefined));
+const requirePermissionMock = vi.hoisted(() => vi.fn(async () => undefined));
 
 vi.mock('@/storage/files', () => filesMock);
 vi.mock('@/modules/relationship-advisor/relationshipAdvisorImages', () => ({
     deleteRelationshipAdvisorImages: deleteImagesMock,
 }));
+vi.mock('@/modules/plugins/pluginRegistry', () => ({
+    pluginRegistry: {
+        requirePermission: requirePermissionMock,
+    },
+}));
 
-import { relationshipAdvisorRoutes } from './relationshipAdvisorRoutes';
+import { relationshipAdvisorRoutes } from '@/app/api/routes/relationshipAdvisorRoutes';
 
 async function createApp() {
     const app = fastify();
@@ -42,6 +48,7 @@ describe('relationshipAdvisorRoutes', () => {
     let app: Fastify;
     beforeEach(() => {
         filesMock.isLocalStorage.mockReturnValue(true);
+        requirePermissionMock.mockResolvedValue(undefined);
     });
     afterEach(async () => {
         if (app) await app.close();
@@ -67,6 +74,11 @@ describe('relationshipAdvisorRoutes', () => {
             uploadUrl: expect.stringMatching(/^https:\/\/happy\.test\/v1\/relationship-advisor\/images\/[a-f0-9-]+\.jpg$/),
             method: 'PUT',
         });
+        expect(requirePermissionMock).toHaveBeenCalledWith(
+            'user-1',
+            'relationship-advisor',
+            'paws.storage.images.write',
+        );
     });
 
     it('returns a size-limited presigned POST in S3 mode', async () => {
@@ -130,6 +142,11 @@ describe('relationshipAdvisorRoutes', () => {
             expect.stringMatching(/^advisor\/user-1\/[a-f0-9-]+\.png$/),
             Buffer.from([1, 2, 3, 4]),
         );
+        expect(requirePermissionMock).toHaveBeenLastCalledWith(
+            'user-1',
+            'relationship-advisor',
+            'paws.storage.images.write',
+        );
     });
 
     it('discards uploaded image refs through the authenticated owner boundary', async () => {
@@ -146,5 +163,26 @@ describe('relationshipAdvisorRoutes', () => {
         expect(response.statusCode).toBe(200);
         expect(response.json()).toEqual({ ok: true });
         expect(deleteImagesMock).toHaveBeenCalledWith('user-1', refs);
+        expect(requirePermissionMock).toHaveBeenCalledWith(
+            'user-1',
+            'relationship-advisor',
+            'paws.storage.images.write',
+        );
+    });
+
+    it('does not issue or persist image writes when the capability broker denies access', async () => {
+        requirePermissionMock.mockRejectedValue(new Error('plugin not installed'));
+        app = await createApp();
+
+        const response = await app.inject({
+            method: 'POST',
+            url: '/v1/relationship-advisor/images/request-upload',
+            headers: { 'x-user-id': 'user-1' },
+            payload: { mimeType: 'image/png', size: 4 },
+        });
+
+        expect(response.statusCode).toBe(500);
+        expect(filesMock.putLocalFile).not.toHaveBeenCalled();
+        expect(filesMock.s3client.presignedPostPolicy).not.toHaveBeenCalled();
     });
 });
