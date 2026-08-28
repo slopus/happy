@@ -10,6 +10,7 @@ import {
     getCodexModelModes,
     getCodexPermissionModes,
     getClaudeModelModes,
+    getClaudeEffortLevels,
     getClaudePermissionModes,
     getGeminiPermissionModes,
     getDefaultEffortKey,
@@ -180,6 +181,12 @@ describe('modelModeOptions', () => {
         expect(getDefaultPermissionModeKey('codex')).toBe('auto');
         expect(getDefaultModelKey('codex')).toBe('gpt-5.6-sol');
         expect(getDefaultEffortKey('codex')).toBe('medium');
+    });
+
+    it('exposes the auto effort level first for claude', () => {
+        const levels = getClaudeEffortLevels();
+        expect(levels.map((level) => level.key)).toEqual(['auto', 'low', 'medium', 'high', 'xhigh', 'max']);
+        expect(levels[0]).toEqual({ key: 'auto', name: 'auto', description: 'let Claude decide' });
     });
 
     it('prefers metadata models over hardcoded fallbacks', () => {
