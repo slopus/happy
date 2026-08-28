@@ -80,6 +80,8 @@ type AttachmentUploadResult = {
     formFields?: Record<string, string>;
 };
 
+const FALLBACK_SESSION_TITLE_MAX_CHARS = 80;
+
 export type LocalImageAttachment = {
     data: Uint8Array;
     mimeType: string;
@@ -88,6 +90,17 @@ export type LocalImageAttachment = {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null;
+}
+
+export function deriveFallbackSessionTitle(message: string): string | null {
+    const title = message.replace(/\s+/g, ' ').trim();
+    if (title.length === 0) {
+        return null;
+    }
+    if (title.length <= FALLBACK_SESSION_TITLE_MAX_CHARS) {
+        return title;
+    }
+    return `${title.slice(0, FALLBACK_SESSION_TITLE_MAX_CHARS - 3).trimEnd()}...`;
 }
 
 function extensionForImageMime(mimeType: string): string {
@@ -562,6 +575,18 @@ export class ApiSessionClient extends EventEmitter {
     private routeIncomingMessage(message: unknown) {
         const userResult = UserMessageSchema.safeParse(message);
         if (userResult.success) {
+            const title = deriveFallbackSessionTitle(userResult.data.content.text);
+            if (title && !this.metadata?.name?.trim() && !this.metadata?.summary?.text.trim()) {
+                this.updateMetadata((metadata) => {
+                    if (metadata.name?.trim() || metadata.summary?.text.trim()) {
+                        return metadata;
+                    }
+                    return {
+                        ...metadata,
+                        name: title,
+                    };
+                });
+            }
             if (this.pendingMessageCallback) {
                 this.pendingMessageCallback(userResult.data);
             } else {

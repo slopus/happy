@@ -1,8 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ApiSessionClient } from './apiSession';
+import { ApiSessionClient, deriveFallbackSessionTitle } from './apiSession';
 import { decodeBase64, decrypt, decryptBlob, encodeBase64, encrypt } from './encryption';
-import type { Update } from './types';
+import type { Metadata, Update } from './types';
 import { logger } from '@/ui/logger';
+
+const LONG_FIRST_USER_MESSAGE = 'Please inspect the account authentication callback regression and identify the smallest safe fix for mobile users.';
+const TRUNCATED_LONG_FIRST_USER_MESSAGE = 'Please inspect the account authentication callback regression and identify th...';
 
 const {
     mockIo,
@@ -82,17 +85,19 @@ type SocketHandler = (...args: any[]) => void;
 type SocketHandlers = Record<string, SocketHandler[]>;
 
 function makeSession() {
+    const metadata: Metadata = {
+        path: '/tmp',
+        host: 'localhost',
+        homeDir: '/home/user',
+        happyHomeDir: '/home/user/.happy',
+        happyLibDir: '/home/user/.happy/lib',
+        happyToolsDir: '/home/user/.happy/tools'
+    };
+
     return {
         id: 'test-session-id',
         seq: 0,
-        metadata: {
-            path: '/tmp',
-            host: 'localhost',
-            homeDir: '/home/user',
-            happyHomeDir: '/home/user/.happy',
-            happyLibDir: '/home/user/.happy/lib',
-            happyToolsDir: '/home/user/.happy/tools'
-        },
+        metadata,
         metadataVersion: 0,
         agentState: null,
         agentStateVersion: 0,
@@ -126,6 +131,14 @@ function createNewMessageUpdate(seq: number, encryptedContent: string): Update {
             }
         }
     };
+}
+
+function mockSuccessfulMetadataUpdate(socket: { emitWithAck: ReturnType<typeof vi.fn> }) {
+    socket.emitWithAck.mockImplementation(async (_event: string, payload: { metadata: string }) => ({
+        result: 'success',
+        version: 1,
+        metadata: payload.metadata
+    }));
 }
 
 async function waitForCheck(check: () => void, timeoutMs = 2000) {
@@ -1040,6 +1053,7 @@ describe('ApiSessionClient v3 messages API migration', () => {
         const client = new ApiSessionClient('fake-token', session);
         const onUserMessage = vi.fn();
         client.onUserMessage(onUserMessage);
+        mockSuccessfulMetadataUpdate(mockSocket);
         mockAxiosGet.mockResolvedValueOnce({
             data: {
                 messages: [],
@@ -1049,7 +1063,7 @@ describe('ApiSessionClient v3 messages API migration', () => {
 
         const firstMessage = {
             role: 'user',
-            content: { type: 'text', text: 'first' }
+            content: { type: 'text', text: LONG_FIRST_USER_MESSAGE }
         };
 
         try {
@@ -1059,6 +1073,46 @@ describe('ApiSessionClient v3 messages API migration', () => {
             expect(onUserMessage).toHaveBeenCalledWith(firstMessage);
             expect((client as any).lastReceivedSeq).toBe(1);
             expect(mockAxiosGet).not.toHaveBeenCalled();
+            await waitForCheck(() => {
+                expect(mockSocket.emitWithAck).toHaveBeenCalledTimes(1);
+            });
+
+            const metadataPayload = mockSocket.emitWithAck.mock.calls[0][1].metadata;
+            const metadata = decrypt(
+                session.encryptionKey,
+                session.encryptionVariant,
+                decodeBase64(metadataPayload)
+            );
+            expect(metadata).toMatchObject({
+                name: TRUNCATED_LONG_FIRST_USER_MESSAGE
+            });
+        } finally {
+            await client.close();
+        }
+    });
+
+    it('does not attempt to replace an existing explicit summary or metadata name with the first user message', async () => {
+        session.metadata.name = 'Existing fallback';
+        session.metadata.summary = {
+            text: 'Explicit session title',
+            updatedAt: 123,
+        };
+        const client = new ApiSessionClient('fake-token', session);
+        const onUserMessage = vi.fn();
+        client.onUserMessage(onUserMessage);
+        mockSuccessfulMetadataUpdate(mockSocket);
+
+        const userMessage = {
+            role: 'user',
+            content: { type: 'text', text: 'New request that should not rename the session' }
+        };
+
+        try {
+            emitSocketEvent('update', createNewMessageUpdate(1, encryptContent(session, userMessage)));
+
+            expect(onUserMessage).toHaveBeenCalledWith(userMessage);
+            await new Promise((resolve) => setTimeout(resolve, 20));
+            expect(mockSocket.emitWithAck).not.toHaveBeenCalled();
         } finally {
             await client.close();
         }
@@ -1217,5 +1271,16 @@ describe('ApiSessionClient v3 messages API migration', () => {
         expect(mockSocket.close).toHaveBeenCalledTimes(1);
         expect(mockAxiosGet).not.toHaveBeenCalled();
         expect(mockAxiosPost).not.toHaveBeenCalled();
+    });
+});
+
+describe('deriveFallbackSessionTitle', () => {
+    it('normalizes whitespace and truncates long first messages', () => {
+        expect(deriveFallbackSessionTitle(`  ${LONG_FIRST_USER_MESSAGE}\n\nThanks!  `))
+            .toBe(TRUNCATED_LONG_FIRST_USER_MESSAGE);
+    });
+
+    it('returns null for blank messages', () => {
+        expect(deriveFallbackSessionTitle(' \n\t ')).toBeNull();
     });
 });
