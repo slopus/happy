@@ -316,3 +316,78 @@ describe('claudeLocal --continue handling', () => {
         expect(spawnedArgs).not.toContain('--dangerously-skip-permissions');
     });
 });
+
+describe('claudeLocal positional prompt handling', () => {
+    let onSessionFound: any;
+
+    beforeEach(() => {
+        mockSpawn.mockReturnValue({
+            stdio: [null, null, null, null],
+            on: vi.fn((event, callback) => {
+                if (event === 'exit') {
+                    process.nextTick(() => callback(0));
+                }
+            }),
+            addListener: vi.fn(),
+            removeListener: vi.fn(),
+            kill: vi.fn(),
+            stdout: { on: vi.fn() },
+            stderr: { on: vi.fn() },
+            stdin: {
+                on: vi.fn(),
+                end: vi.fn()
+            }
+        });
+
+        onSessionFound = vi.fn();
+        vi.clearAllMocks();
+    });
+
+    it('should place positional prompt after --settings flag', async () => {
+        await claudeLocal({
+            abort: new AbortController().signal,
+            sessionId: null,
+            path: '/tmp',
+            onSessionFound,
+            claudeArgs: ['/review https://github.com/example/repo/pull/123'],
+            hookSettingsPath: '/tmp/settings.json'
+        });
+
+        expect(mockSpawn).toHaveBeenCalled();
+        const spawnArgs = mockSpawn.mock.calls[0][1];
+
+        // Find positions of --settings and the prompt
+        const settingsIndex = spawnArgs.indexOf('--settings');
+        const promptIndex = spawnArgs.indexOf('/review https://github.com/example/repo/pull/123');
+
+        // Prompt should come after --settings and its value
+        expect(settingsIndex).toBeGreaterThan(-1);
+        expect(promptIndex).toBeGreaterThan(-1);
+        expect(promptIndex).toBeGreaterThan(settingsIndex + 1);
+    });
+
+    it('should handle mixed flags and positional prompts correctly', async () => {
+        await claudeLocal({
+            abort: new AbortController().signal,
+            sessionId: null,
+            path: '/tmp',
+            onSessionFound,
+            claudeArgs: ['--verbose', 'fix the bug in main.ts', '--model', 'opus'],
+            hookSettingsPath: '/tmp/settings.json'
+        });
+
+        expect(mockSpawn).toHaveBeenCalled();
+        const spawnArgs = mockSpawn.mock.calls[0][1];
+
+        // Flags should be present
+        expect(spawnArgs).toContain('--verbose');
+        expect(spawnArgs).toContain('--model');
+        expect(spawnArgs).toContain('opus');
+
+        // Prompt should be at the end (after --settings)
+        const settingsIndex = spawnArgs.indexOf('--settings');
+        const promptIndex = spawnArgs.indexOf('fix the bug in main.ts');
+        
+        expect(promptIndex).toBeGreaterThan(settingsIndex + 1);
+    });
+});
