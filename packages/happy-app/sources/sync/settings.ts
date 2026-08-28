@@ -181,6 +181,23 @@ export function settingsParse(settings: unknown): Settings {
     return { ...settingsDefaults, ...parsed.data, ...unknownFields };
 }
 
+/**
+ * Parse a settings blob that came off the wire, refusing anything we failed to decrypt.
+ *
+ * `decryptRaw` swallows every failure and returns null, and `settingsParse(null)`
+ * returns the full defaults — so a single failed decrypt is indistinguishable from
+ * "the server says every setting is at its default". Applying that overwrites the
+ * local copy, and the client then pushes those defaults back up, resetting the
+ * account on every other device. Throw instead, so the caller keeps what it has and
+ * retries on the next sync.
+ */
+export function settingsParseFromServer(decrypted: unknown): Settings {
+    if (decrypted === null || decrypted === undefined || typeof decrypted !== 'object') {
+        throw new Error('Failed to decrypt account settings from server');
+    }
+    return settingsParse(decrypted);
+}
+
 //
 // Applying changes
 // NOTE: May be something more sophisticated here around defaults and merging, but for now this is fine.
