@@ -837,10 +837,12 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     const activeSendIconColor = compactMobileComposer ? theme.colors.text : theme.colors.button.primary.tint;
     const isSendBlocked = props.blockSend ?? false;
 
-    // `hasText` drives only the send-button appearance/enabled state. It's
-    // updated via startTransition from the keystroke handler so a busy reducer
-    // never blocks the next character from landing in the textarea.
+    // `hasText` drives only the send-button appearance/enabled state, and it
+    // only ever changes at the empty/non-empty boundary — so the keystroke
+    // handler compares against this ref and calls setState at most twice per
+    // message, instead of handing React an update per character.
     const [hasText, setHasText] = React.useState(() => props.initialValue.trim().length > 0);
+    const hasTextRef = React.useRef(hasText);
     const hasImages = (props.selectedImages?.length ?? 0) > 0;
     const hasComposerContent = hasText || hasImages;
 
@@ -1059,9 +1061,18 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 
     const onChangeTextProp = props.onChangeText;
     const handleTextChange = React.useCallback((text: string) => {
-        React.startTransition(() => {
-            setHasText(text.trim().length > 0);
-        });
+        // Urgent, not a transition: this decides whether the button renders as
+        // send or as the mic, so a deferred update can leave a composer that
+        // clearly has text showing a mic. The press handlers already read the
+        // live text and send anyway, which makes the stale icon a lie about
+        // what the button will do rather than a brief cosmetic lag — and it
+        // lasts as long as React keeps deprioritising the transition, so a busy
+        // session (one streaming a reply) is exactly when it shows.
+        const next = text.trim().length > 0;
+        if (next !== hasTextRef.current) {
+            hasTextRef.current = next;
+            setHasText(next);
+        }
         onChangeTextProp?.(text);
     }, [onChangeTextProp]);
 
