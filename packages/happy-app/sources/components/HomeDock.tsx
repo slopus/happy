@@ -1252,11 +1252,16 @@ export const HomeDock = React.memo(({
             return {
                 title: 'Project',
                 options: [
-                    ...projectOptions,
+                    // First, not last: projectOptions grows with every distinct
+                    // path the machine has ever run a session in, so appending
+                    // the only way to type a path buries it below a list with no
+                    // bound. The /new screen already puts its path field above
+                    // the same suggestions.
                     {
                         key: CUSTOM_PROJECT_PATH_KEY,
                         name: t('machineLauncher.enterCustomPath'),
                     },
+                    ...projectOptions,
                 ],
                 selectedKey: currentProject?.key,
                 onSelect: (key) => {
