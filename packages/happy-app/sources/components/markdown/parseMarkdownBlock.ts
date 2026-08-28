@@ -65,6 +65,52 @@ function parseTable(lines: string[], startIndex: number): { table: MarkdownBlock
     return { table, nextIndex: index };
 }
 
+// Detect a display (block) math region opened on `lines[openIndex]` with `$$` or `\[`.
+// Handles both single-line (`$$ x $$`) and multi-line (`$$` / equation / `$$`) forms.
+// Returns null when the region never closes (e.g. a mid-stream partial, or a stray
+// `$$`/`\[` that is really prose) so the caller falls through to normal text parsing.
+function tryParseMathBlock(lines: string[], openIndex: number): { content: string; nextIndex: number } | null {
+    const openLine = lines[openIndex].trim();
+    const openTok = openLine.startsWith('$$') ? '$$' : '\\[';
+    const closeTok = openTok === '$$' ? '$$' : '\\]';
+    const afterOpen = openLine.slice(openTok.length);
+
+    // Same-line close: `$$ x $$` or `\[ x \]`
+    const sameLineClose = afterOpen.indexOf(closeTok);
+    if (sameLineClose !== -1) {
+        const content = afterOpen.slice(0, sameLineClose).trim();
+        const trailing = afterOpen.slice(sameLineClose + closeTok.length).trim();
+        if (content.length === 0) return null; // empty `$$$$` / `\[\]` — not math
+        // Trailing text after the close (`$$x$$ and more`) means this isn't a
+        // standalone equation — fall through so the span parser renders it as
+        // inline math and keeps the trailing text.
+        if (trailing.length > 0) return null;
+        return { content, nextIndex: openIndex + 1 };
+    }
+
+    // Multi-line: collect until a line that contains the closing token. A blank
+    // line ends the region (paragraph boundary), so an unclosed opener falls
+    // through to text instead of greedily swallowing across paragraphs into a
+    // later equation's delimiter.
+    const collected: string[] = [afterOpen];
+    let i = openIndex + 1;
+    while (i < lines.length) {
+        if (lines[i].trim() === '') return null;
+        const closeAt = lines[i].indexOf(closeTok);
+        if (closeAt !== -1) {
+            const trailing = lines[i].slice(closeAt + closeTok.length).trim();
+            if (trailing.length > 0) return null; // trailing text after close → not a standalone block
+            collected.push(lines[i].slice(0, closeAt));
+            const content = collected.join('\n').trim();
+            if (content.length === 0) return null;
+            return { content, nextIndex: i + 1 };
+        }
+        collected.push(lines[i]);
+        i++;
+    }
+    return null; // unclosed → let the caller treat the opening line as text
+}
+
 export function parseMarkdownBlock(markdown: string) {
     const blocks: MarkdownBlock[] = [];
     const lines = markdown.split('\n');
@@ -106,6 +152,17 @@ export function parseMarkdownBlock(markdown: string) {
                 blocks.push({ type: 'code-block', language, content: contentString });
             }
             continue;
+        }
+
+        // Display (block) math: `$$ ... $$` or `\[ ... \]`. A stray/unclosed
+        // opener returns null and falls through to normal text handling.
+        if (trimmed.startsWith('$$') || trimmed.startsWith('\\[')) {
+            const math = tryParseMathBlock(lines, index - 1);
+            if (math) {
+                blocks.push({ type: 'math', content: math.content });
+                index = math.nextIndex;
+                continue outer;
+            }
         }
 
         // Horizontal rule
