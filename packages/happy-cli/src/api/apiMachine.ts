@@ -135,6 +135,8 @@ export class ApiMachineClient {
 
         // null = unrestricted: the daemon serves the whole machine, and its
         // process.cwd() is an accident of where it was started, not a workspace.
+        // (This also satisfies new-session directory autocomplete, which needs
+        // to traverse outside the daemon's cwd — see useDirSuggestions.)
         registerCommonHandlers(this.rpcHandlerManager, null);
     }
 
