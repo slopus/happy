@@ -402,6 +402,8 @@ export const pl: TranslationStructure = {
         quickActions: 'Szybkie akcje',
         viewMachine: 'Zobacz maszynę',
         viewMachineSubtitle: 'Zobacz szczegóły maszyny i sesje',
+        viewChanges: 'Zobacz zmiany',
+        viewChangesSubtitle: 'Różnice we wszystkich niezatwierdzonych plikach',
         resumeSession: 'Resume Session',
         resumeSessionSubtitle: 'Resume this session on the same machine',
         resumeSessionSameMachineOnly: 'This session can only be resumed on the same machine it started on.',
@@ -578,7 +580,6 @@ export const pl: TranslationStructure = {
     },
 
     toolGroup: {
-        editedFile: 'Edited file',
         editedFiles: ({ count }: { count: number }) => `${plural({ count, one: 'Edytowano 1 plik', few: `Edytowano ${count} pliki`, many: `Edytowano ${count} plików` })}`,
         readFiles: ({ count }: { count: number }) => `${plural({ count, one: 'Odczytano 1 plik', few: `Odczytano ${count} pliki`, many: `Odczytano ${count} plików` })}`,
         ranCommands: ({ count }: { count: number }) => `${plural({ count, one: 'Wykonano 1 polecenie', few: `Wykonano ${count} polecenia`, many: `Wykonano ${count} poleceń` })}`,
@@ -693,6 +694,16 @@ export const pl: TranslationStructure = {
         fileConflictDescription: 'Ten plik został zmodyfikowany na urządzeniu podczas edycji. Załaduj ponownie aby zobaczyć najnowszą wersję.',
         reload: 'Załaduj ponownie',
         overwrite: 'Nadpisz',
+    },
+    diff: {
+        showMoreLines: ({ count }: { count: number }) => `Pokaż jeszcze ${count} wierszy`,
+        tapToExpand: ({ count }: { count: number }) => `${count} zmienionych wierszy — dotknij, aby rozwinąć`,
+        ignoreWhitespace: 'Ignoruj białe znaki',
+        imageBefore: 'Przed',
+        imageAfter: 'Po',
+        unchangedLines: ({ count }: { count: number }) => `${count} bez zmian`,
+        noChanges: 'Brak zmian',
+        binaryFile: 'Plik binarny nie jest wyświetlany',
     },
     sideChat: {
         panelTitle: 'Czat boczny',

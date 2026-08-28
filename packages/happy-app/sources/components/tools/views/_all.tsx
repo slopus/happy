@@ -12,8 +12,8 @@ import { BashViewFull } from './BashViewFull';
 import { EditViewFull } from './EditViewFull';
 import { MultiEditViewFull } from './MultiEditViewFull';
 import { CodexBashView } from './CodexBashView';
-import { CodexPatchView } from './CodexPatchView';
-import { CodexDiffView } from './CodexDiffView';
+import { CodexPatchView, CodexPatchViewFull } from './CodexPatchView';
+import { CodexDiffView, CodexDiffViewFull } from './CodexDiffView';
 import { AskUserQuestionView } from './AskUserQuestionView';
 import { RequestUserInputView } from './RequestUserInputView';
 import { GeminiEditView } from './GeminiEditView';
@@ -25,6 +25,8 @@ export type ToolViewProps = {
     metadata: Metadata | null;
     messages: Message[];
     sessionId?: string;
+    messageId?: string;
+    focusFile?: string;
     permissionFooter?: React.ReactNode;
 }
 
@@ -45,11 +47,18 @@ export const toolViewRegistry: Record<string, ToolViewComponent> = {
     MultiEdit: MultiEditView,
     Task: TaskView,
     Agent: TaskView,
+    // Codex nests a subagent's transcript under this call the same way Claude
+    // nests a Task, so it gets the same children listing.
+    CodexSubagent: TaskView,
     AskUserQuestion: AskUserQuestionView,
     request_user_input: RequestUserInputView,
     // Gemini tools (lowercase)
     edit: GeminiEditView,
     execute: GeminiExecuteView,
+    // Gemini emits the same payloads as Codex — `unified_diff` for diffs and an
+    // add/modify/delete change map for patches — so the Codex views handle both.
+    GeminiDiff: CodexDiffView,
+    GeminiPatch: CodexPatchView,
     // File attachment events
     file: FileView,
 };
@@ -57,10 +66,15 @@ export const toolViewRegistry: Record<string, ToolViewComponent> = {
 export const toolFullViewRegistry: Record<string, ToolViewComponent> = {
     Bash: BashViewFull,
     CodexBash: CodexBashView,
+    CodexPatch: CodexPatchViewFull,
+    CodexDiff: CodexDiffViewFull,
+    GeminiPatch: CodexPatchViewFull,
+    GeminiDiff: CodexDiffViewFull,
     Edit: EditViewFull,
     MultiEdit: MultiEditViewFull,
     Task: TaskView,
     Agent: TaskView,
+    CodexSubagent: TaskView,
 };
 
 // Helper function to get the appropriate view component for a tool

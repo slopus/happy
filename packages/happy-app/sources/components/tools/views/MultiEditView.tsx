@@ -8,10 +8,14 @@ import { trimIdent } from '@/utils/trimIdent';
 
 export const MultiEditView = React.memo<ToolViewProps>(({ tool }) => {
     let edits: Array<{ old_string: string; new_string: string; replace_all?: boolean }> = [];
+    let filePath: string | undefined;
 
     const parsed = knownTools.MultiEdit.input.safeParse(tool.input);
-    if (parsed.success && parsed.data.edits) {
-        edits = parsed.data.edits;
+    if (parsed.success) {
+        if (parsed.data.edits) {
+            edits = parsed.data.edits;
+        }
+        filePath = parsed.data.file_path;
     }
 
     if (edits.length === 0) {
@@ -25,7 +29,7 @@ export const MultiEditView = React.memo<ToolViewProps>(({ tool }) => {
                 const newString = trimIdent(edit.new_string || '');
                 return (
                     <View key={index}>
-                        <ToolDiffView oldText={oldString} newText={newString} />
+                        <ToolDiffView oldText={oldString} newText={newString} fileName={filePath} />
                         {index < edits.length - 1 && <View style={styles.separator} />}
                     </View>
                 );

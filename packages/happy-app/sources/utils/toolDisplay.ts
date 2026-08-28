@@ -4,6 +4,10 @@ import { stringifyToolCommand } from './toolCommand';
 
 const TERMINAL_TOOL_NAMES = new Set([
     'Bash',
+    'BashOutput',
+    'BashStop',
+    'KillBash',
+    'KillShell',
     'CodexBash',
     'GeminiBash',
     'shell',
@@ -18,7 +22,9 @@ const EDIT_TOOL_NAMES = new Set([
     'MultiEdit',
     'Write',
     'CodexPatch',
+    'CodexDiff',
     'GeminiPatch',
+    'GeminiDiff',
     'edit',
     'NotebookEdit',
     'apply_patch',
@@ -33,6 +39,8 @@ const READ_TOOL_NAMES = new Set([
     'read_file',
     'read_agent_history',
     'view_image',
+    'ListMcpResources',
+    'ReadMcpResource',
     'get_provider_usage',
     'get_goal',
     'agent_info',
@@ -49,17 +57,26 @@ const SEARCH_TOOL_NAMES = new Set([
     'list_projects',
     'list_workspaces',
     'list_workspace_sessions',
+    'list_agents',
+    'list_bots',
+    'list_secrets',
+    'web_search',
     'TaskList',
+    'CronList',
+    'ListAgents',
 ]);
 
 const WEB_TOOL_NAMES = new Set([
     'WebFetch',
+    'web_fetch',
 ]);
 
 const TASK_TOOL_NAMES = new Set([
     'Task',
     'Agent',
+    'CodexSubagent',
     'TaskCreate',
+    'TaskGet',
     'TaskOutput',
     'TaskStop',
     'TaskUpdate',
@@ -82,6 +99,18 @@ const TASK_TOOL_NAMES = new Set([
     'wait_for_workflow',
     'workflow',
     'workflow_status',
+    'create_agent',
+    'create_bot',
+    // Claude Code orchestration and scheduling surface.
+    'CronCreate',
+    'CronDelete',
+    'EnterWorktree',
+    'ExitWorktree',
+    'Monitor',
+    'PushNotification',
+    'RemoteTrigger',
+    'ScheduleWakeup',
+    'SendMessage',
 ]);
 
 const INTERACTIVE_QUESTION_TOOL_NAMES = new Set([
@@ -102,8 +131,14 @@ export function isTerminalToolName(name: string): boolean {
     return TERMINAL_TOOL_NAMES.has(name);
 }
 
-export function shouldRenderToolCardHeader(toolName: string, platformOS: string): boolean {
-    return !(platformOS === 'web' && toolName === 'CodexPatch');
+/**
+ * Patch tools draw a header per changed file, naming the file and its stats.
+ * A card header above that would only repeat the same name, so it is dropped.
+ */
+const SELF_HEADING_TOOL_NAMES = new Set(['CodexPatch', 'GeminiPatch']);
+
+export function shouldRenderToolCardHeader(toolName: string, _platformOS: string): boolean {
+    return !SELF_HEADING_TOOL_NAMES.has(toolName);
 }
 
 /**
@@ -185,6 +220,15 @@ export function getToolSummaryDetail(tool: Pick<ToolCall, 'name' | 'input' | 'de
     const url = tool.input?.url;
     if (typeof url === 'string' && url.trim().length > 0) {
         return url.trim();
+    }
+
+    // Agent SDK tools describe their work in a short subject-like field rather
+    // than a path or a command.
+    for (const key of ['subject', 'title', 'query', 'name']) {
+        const value = tool.input?.[key];
+        if (typeof value === 'string' && value.trim().length > 0) {
+            return value.trim();
+        }
     }
 
     return tool.description?.trim() || null;

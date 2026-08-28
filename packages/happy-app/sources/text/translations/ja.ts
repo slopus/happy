@@ -386,6 +386,8 @@ export const ja: TranslationStructure = {
         quickActions: 'クイックアクション',
         viewMachine: 'マシンを表示',
         viewMachineSubtitle: 'マシンの詳細とセッションを表示',
+        viewChanges: '変更を表示',
+        viewChangesSubtitle: '未コミットのすべてのファイルの差分',
         resumeSession: 'Resume Session',
         resumeSessionSubtitle: 'Resume this session on the same machine',
         resumeSessionSameMachineOnly: 'This session can only be resumed on the same machine it started on.',
@@ -563,7 +565,6 @@ export const ja: TranslationStructure = {
     },
 
     toolGroup: {
-        editedFile: 'Edited file',
         editedFiles: ({ count }: { count: number }) => `${count}個のファイルを編集`,
         readFiles: ({ count }: { count: number }) => `${count}個のファイルを読み取り`,
         ranCommands: ({ count }: { count: number }) => `${count}個のコマンドを実行`,
@@ -678,6 +679,16 @@ export const ja: TranslationStructure = {
         fileConflictDescription: '編集中にデバイス上でファイルが変更されました。最新版を表示するには再読み込みしてください。',
         reload: '再読み込み',
         overwrite: '上書き',
+    },
+    diff: {
+        showMoreLines: ({ count }: { count: number }) => `さらに${count}行を表示`,
+        tapToExpand: ({ count }: { count: number }) => `${count}行の変更 — タップして展開`,
+        ignoreWhitespace: '空白を無視',
+        imageBefore: '変更前',
+        imageAfter: '変更後',
+        unchangedLines: ({ count }: { count: number }) => `${count}行は変更なし`,
+        noChanges: '変更なし',
+        binaryFile: 'バイナリファイルは表示されません',
     },
     sideChat: {
         panelTitle: 'サイドチャット',

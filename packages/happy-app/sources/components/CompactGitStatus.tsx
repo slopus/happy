@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text } from 'react-native';
 import { useSessionGitStatus } from '@/sync/storage';
 import { GitStatus } from '@/sync/storageTypes';
+import { getGitStatusLineChanges, hasGitStatusLineChanges } from '@/utils/gitStatusLineChanges';
 import { StyleSheet } from 'react-native-unistyles';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -49,7 +50,8 @@ export function CompactGitStatus({ sessionId }: CompactGitStatusProps) {
         return null;
     }
 
-    const hasLineChanges = gitStatus.unstagedLinesAdded > 0 || gitStatus.unstagedLinesRemoved > 0;
+    const { insertions, deletions } = getGitStatusLineChanges(gitStatus);
+    const hasLineChanges = insertions > 0 || deletions > 0;
 
     return (
         <View style={styles.container}>
@@ -63,14 +65,14 @@ export function CompactGitStatus({ sessionId }: CompactGitStatusProps) {
             {/* Show line changes in compact format */}
             {hasLineChanges && (
                 <View style={styles.lineChanges}>
-                    {gitStatus.unstagedLinesAdded > 0 && (
+                    {insertions > 0 && (
                         <Text style={styles.addedText}>
-                            +{gitStatus.unstagedLinesAdded}
+                            +{insertions}
                         </Text>
                     )}
-                    {gitStatus.unstagedLinesRemoved > 0 && (
+                    {deletions > 0 && (
                         <Text style={styles.removedText}>
-                            -{gitStatus.unstagedLinesRemoved}
+                            -{deletions}
                         </Text>
                     )}
                 </View>
@@ -81,8 +83,5 @@ export function CompactGitStatus({ sessionId }: CompactGitStatusProps) {
 
 function hasMeaningfulChanges(status: GitStatus): boolean {
     // Only show when there are actual line changes
-    return status.lastUpdatedAt > 0 && status.isDirty && (
-        status.unstagedLinesAdded > 0 ||
-        status.unstagedLinesRemoved > 0
-    );
+    return status.lastUpdatedAt > 0 && status.isDirty && hasGitStatusLineChanges(status);
 }

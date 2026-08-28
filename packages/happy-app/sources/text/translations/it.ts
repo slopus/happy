@@ -383,6 +383,8 @@ export const it: TranslationStructure = {
         quickActions: 'Azioni rapide',
         viewMachine: 'Visualizza macchina',
         viewMachineSubtitle: 'Visualizza dettagli e sessioni della macchina',
+        viewChanges: 'Vedi modifiche',
+        viewChangesSubtitle: 'Differenze di tutti i file non committati',
         resumeSession: 'Resume Session',
         resumeSessionSubtitle: 'Resume this session on the same machine',
         resumeSessionSameMachineOnly: 'This session can only be resumed on the same machine it started on.',
@@ -560,7 +562,6 @@ export const it: TranslationStructure = {
     },
 
     toolGroup: {
-        editedFile: 'Edited file',
         editedFiles: ({ count }: { count: number }) => count === 1 ? 'Modificato 1 file' : `Modificati ${count} file`,
         readFiles: ({ count }: { count: number }) => count === 1 ? 'Letto 1 file' : `Letti ${count} file`,
         ranCommands: ({ count }: { count: number }) => count === 1 ? 'Eseguito 1 comando' : `Eseguiti ${count} comandi`,
@@ -675,6 +676,16 @@ export const it: TranslationStructure = {
         fileConflictDescription: 'Questo file è stato modificato sul dispositivo mentre lo stavi modificando. Ricarica per vedere l\'ultima versione.',
         reload: 'Ricarica',
         overwrite: 'Sovrascrivi',
+    },
+    diff: {
+        showMoreLines: ({ count }: { count: number }) => `Mostra altre ${count} righe`,
+        tapToExpand: ({ count }: { count: number }) => `${count} righe modificate — tocca per espandere`,
+        ignoreWhitespace: 'Ignora gli spazi',
+        imageBefore: 'Prima',
+        imageAfter: 'Dopo',
+        unchangedLines: ({ count }: { count: number }) => `${count} invariate`,
+        noChanges: 'Nessuna modifica',
+        binaryFile: 'File binario non visualizzato',
     },
     sideChat: {
         panelTitle: 'Chat laterale',

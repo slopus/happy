@@ -18,10 +18,12 @@ export const EditViewFull = React.memo<EditViewFullProps>(({ tool, metadata }) =
     // Parse the input
     let oldString = '';
     let newString = '';
+    let filePath: string | undefined;
     const parsed = knownTools.Edit.input.safeParse(input);
     if (parsed.success) {
         oldString = trimIdent(parsed.data.old_string || '');
         newString = trimIdent(parsed.data.new_string || '');
+        filePath = parsed.data.file_path;
     }
 
     return (
@@ -29,6 +31,7 @@ export const EditViewFull = React.memo<EditViewFullProps>(({ tool, metadata }) =
             <ToolDiffView 
                 oldText={oldString} 
                 newText={newString} 
+                fileName={filePath}
                 style={{ width: '100%' }}
                 showLineNumbers={true}
                 showPlusMinusSymbols={true}

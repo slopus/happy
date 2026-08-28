@@ -10,7 +10,7 @@ import { storage } from './storage';
 import { parseStatusSummary, getStatusCounts, isDirty } from './git-parsers/parseStatus';
 import { parseStatusSummaryV2, getStatusCountsV2, isDirtyV2, getCurrentBranchV2, getTrackingInfoV2 } from './git-parsers/parseStatusV2';
 import { parseCurrentBranch } from './git-parsers/parseBranch';
-import { parseNumStat, mergeDiffSummaries } from './git-parsers/parseDiff';
+import { parseNumStat, mergeDiffSummaries, parseUntrackedLineCounts } from './git-parsers/parseDiff';
 
 
 export class GitStatusSync {
@@ -171,11 +171,22 @@ export class GitStatusSync {
                 timeout: 10000
             });
 
+            // Count lines in untracked files: `git diff` ignores them entirely,
+            // so without this every file the agent created reads as zero changes.
+            // The pipeline needs a POSIX shell; on Windows it fails and untracked
+            // lines stay uncounted, which is the behaviour everywhere before this.
+            const untrackedStatResult = await sessionBash(sessionId, {
+                command: 'git -c core.quotepath=false ls-files --others --exclude-standard -z | xargs -0 wc -l',
+                cwd: session.metadata.path,
+                timeout: 10000
+            });
+
             // Parse the git status output with diff statistics
             const gitStatus = this.parseGitStatusV2(
                 statusResult.stdout,
                 diffStatResult.success ? diffStatResult.stdout : '',
-                stagedDiffStatResult.success ? stagedDiffStatResult.stdout : ''
+                stagedDiffStatResult.success ? stagedDiffStatResult.stdout : '',
+                untrackedStatResult.success ? untrackedStatResult.stdout : ''
             );
 
             // Apply to storage keyed by path
@@ -193,7 +204,8 @@ export class GitStatusSync {
     private parseGitStatusV2(
         porcelainV2Output: string,
         diffStatOutput: string = '',
-        stagedDiffStatOutput: string = ''
+        stagedDiffStatOutput: string = '',
+        untrackedStatOutput: string = ''
     ): GitStatus {
         // Parse status using v2 parser
         const statusSummary = parseStatusSummaryV2(porcelainV2Output);
@@ -206,9 +218,13 @@ export class GitStatusSync {
         const unstagedDiff = parseNumStat(diffStatOutput);
         const stagedDiff = parseNumStat(stagedDiffStatOutput);
         const { stagedAdded, stagedRemoved, unstagedAdded, unstagedRemoved } = mergeDiffSummaries(stagedDiff, unstagedDiff);
-        
+
+        // Untracked files are unstaged additions as far as the working tree cares.
+        const untrackedAdded = parseUntrackedLineCounts(untrackedStatOutput);
+        const totalUnstagedAdded = unstagedAdded + untrackedAdded;
+
         // Calculate totals
-        const linesAdded = stagedAdded + unstagedAdded;
+        const linesAdded = stagedAdded + totalUnstagedAdded;
         const linesRemoved = stagedRemoved + unstagedRemoved;
         const linesChanged = linesAdded + linesRemoved;
 
@@ -220,7 +236,7 @@ export class GitStatusSync {
             stagedCount: counts.staged,
             stagedLinesAdded: stagedAdded,
             stagedLinesRemoved: stagedRemoved,
-            unstagedLinesAdded: unstagedAdded,
+            unstagedLinesAdded: totalUnstagedAdded,
             unstagedLinesRemoved: unstagedRemoved,
             linesAdded,
             linesRemoved,

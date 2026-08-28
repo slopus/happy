@@ -1,7 +1,7 @@
 /**
  * File view/edit overlay panel.
  * Shown in the main content area when a file is selected from the "All Files" sidebar tab.
- * Uses Pierre for viewing file content, CodeMirror for editing (web only).
+ * Renders file content with the diff renderer's markdown/plain views, CodeMirror for editing (web only).
  */
 import * as React from 'react';
 import { View, ScrollView, ActivityIndicator, Pressable, Platform } from 'react-native';
@@ -9,7 +9,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Text } from '@/components/StyledText';
 import { Typography } from '@/constants/Typography';
 import { MarkdownView } from '@/components/markdown/MarkdownView';
-import { PierreDiffView } from '@/components/diff/PierreDiffView';
+import { DiffChunk } from '@/components/diff/DiffChunk';
 import { sessionReadFile, sessionWriteFile } from '@/sync/ops';
 import { Modal } from '@/modal';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
@@ -383,11 +383,11 @@ export const FileViewPanel = React.memo(function FileViewPanel({
                         style={{ flex: 1 }}
                         contentContainerStyle={{ maxWidth: layout.maxWidth, alignSelf: 'center', width: '100%' }}
                     >
-                        <PierreDiffView
-                            oldFile={{ name: fileName + ' (your changes)', contents: editContent }}
-                            newFile={{ name: fileName + ' (on device)', contents: externalChange }}
-                            diffStyle="unified"
-                            disableFileHeader={false}
+                        <DiffChunk
+                            fileName={filePath}
+                            oldText={editContent}
+                            newText={externalChange}
+                            collapseAfter={600}
                         />
                     </ScrollView>
                 </View>

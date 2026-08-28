@@ -164,6 +164,46 @@ export function createDiffStatsMap(summary: DiffSummary): Record<string, { added
 }
 
 /**
+ * Sum the line counts of untracked files from `git ls-files -oz | xargs -0 wc -l`.
+ *
+ * `git diff` never reports untracked files, so every freshly created file used
+ * to count as zero changed lines. `wc -l` emits `<count> <path>` per file plus a
+ * `total` line per xargs batch, which is skipped. Binary files are skipped too:
+ * newline counts in them are meaningless noise.
+ */
+export function parseUntrackedLineCounts(wcOutput: string): number {
+    let total = 0;
+    for (const line of wcOutput.split('\n')) {
+        const match = /^\s*(\d+)\s+(.*)$/.exec(line);
+        if (!match) continue;
+
+        const path = match[2].trim();
+        // `wc` prints a batch total; with a single file it prints no path at all.
+        if (path === 'total' || path === '') continue;
+        if (isBinaryLikePath(path)) continue;
+
+        total += parseInt(match[1], 10);
+    }
+    return total;
+}
+
+const BINARY_LIKE_EXTENSIONS = new Set([
+    'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'ico', 'icns', 'svgz',
+    'pdf', 'zip', 'gz', 'tgz', 'bz2', 'xz', '7z', 'rar', 'jar',
+    'mp3', 'mp4', 'mov', 'avi', 'webm', 'wav', 'ogg',
+    'woff', 'woff2', 'ttf', 'otf', 'eot',
+    'so', 'dylib', 'dll', 'exe', 'bin', 'wasm', 'class', 'o', 'a',
+    'db', 'sqlite', 'sqlite3',
+]);
+
+function isBinaryLikePath(path: string): boolean {
+    const name = path.split('/').pop() ?? path;
+    const dotIndex = name.lastIndexOf('.');
+    if (dotIndex <= 0) return false;
+    return BINARY_LIKE_EXTENSIONS.has(name.slice(dotIndex + 1).toLowerCase());
+}
+
+/**
  * Merge two diff summaries (useful for combining staged and unstaged changes)
  */
 export function mergeDiffSummaries(staged: DiffSummary, unstaged: DiffSummary): {

@@ -43,10 +43,10 @@ import { isRunningOnMac } from '@/utils/platform';
 import { useDeviceType, useHeaderHeight, useIsLandscape, useIsTablet } from '@/utils/responsive';
 import { resolveStatusBarGitBranch } from '@/utils/sessionStatusBar';
 import { visibleRigGitLineChanges } from '@/utils/rigGitLineChanges';
+import { getGitStatusLineChanges } from '@/utils/gitStatusLineChanges';
 import { FilesSidebar, SidebarMode } from '@/components/FilesSidebar';
 import { AllFilesDiffView } from '@/components/AllFilesDiffView';
 import { FileViewPanel } from '@/components/FileViewPanel';
-import { prefetchPierreDiff } from '@/components/diff/PierreDiffView';
 import { GitFileStatus } from '@/sync/gitStatusFiles';
 import { useOverlayNav } from '@/-session/sessionOverlayNav';
 import { formatPathRelativeToHome, getResumeCommandBlock, getSessionAvatarId, getSessionName, useSessionStatus } from '@/utils/sessionUtils';
@@ -335,11 +335,6 @@ export const SessionView = React.memo((props: { id: string }) => {
         });
         return () => useOverlayNav.getState().reset();
     }, [canOverlayBack, canOverlayForward]);
-
-    // Warm Pierre's lazy web chunks while the user is still reading chat.
-    React.useEffect(() => {
-        prefetchPierreDiff();
-    }, []);
 
     // Compute header props based on session state
     const headerProps = useMemo(() => {
@@ -901,8 +896,7 @@ export function SessionViewLoaded({
     const statusBarGitBranch = resolveStatusBarGitBranch(gitStatus?.branch, metadataGitBranch);
     // Same source and fallback chain as the session list rows.
     const statusBarGitChanges = React.useMemo(() => {
-        const liveInsertions = gitStatus?.unstagedLinesAdded ?? 0;
-        const liveDeletions = gitStatus?.unstagedLinesRemoved ?? 0;
+        const { insertions: liveInsertions, deletions: liveDeletions } = getGitStatusLineChanges(gitStatus);
         if (liveInsertions > 0 || liveDeletions > 0) {
             return { approximate: false, insertions: liveInsertions, deletions: liveDeletions };
         }
@@ -916,7 +910,7 @@ export function SessionViewLoaded({
             });
         }
         return null;
-    }, [gitStatus?.unstagedLinesAdded, gitStatus?.unstagedLinesRemoved, session.metadata]);
+    }, [gitStatus?.linesAdded, gitStatus?.linesRemoved, session.metadata]);
 
     const visibleAgentGoal = React.useMemo(() => (
         resolveVisibleAgentGoalStatus(session)

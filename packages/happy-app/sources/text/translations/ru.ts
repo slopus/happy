@@ -340,6 +340,8 @@ export const ru: TranslationStructure = {
         quickActions: 'Быстрые действия',
         viewMachine: 'Посмотреть машину',
         viewMachineSubtitle: 'Посмотреть детали машины и сессии',
+        viewChanges: 'Изменения',
+        viewChangesSubtitle: 'Диффы всех незакоммиченных файлов',
         resumeSession: 'Resume Session',
         resumeSessionSubtitle: 'Resume this session on the same machine',
         resumeSessionSameMachineOnly: 'This session can only be resumed on the same machine it started on.',
@@ -578,7 +580,6 @@ export const ru: TranslationStructure = {
     },
 
     toolGroup: {
-        editedFile: 'Отредактированный файл',
         editedFiles: ({ count }: { count: number }) => `${plural({ count, one: 'Отредактирован', few: 'Отредактировано', many: 'Отредактировано' })} ${count} ${plural({ count, one: 'файл', few: 'файла', many: 'файлов' })}`,
         readFiles: ({ count }: { count: number }) => `${plural({ count, one: 'Прочитан', few: 'Прочитано', many: 'Прочитано' })} ${count} ${plural({ count, one: 'файл', few: 'файла', many: 'файлов' })}`,
         ranCommands: ({ count }: { count: number }) => `${plural({ count, one: 'Выполнена', few: 'Выполнено', many: 'Выполнено' })} ${count} ${plural({ count, one: 'команда', few: 'команды', many: 'команд' })}`,
@@ -693,6 +694,18 @@ export const ru: TranslationStructure = {
         fileConflictDescription: 'Файл был изменён на устройстве пока вы его редактировали. Перезагрузите чтобы увидеть актуальную версию.',
         reload: 'Перезагрузить',
         overwrite: 'Перезаписать',
+    },
+    diff: {
+        showMoreLines: ({ count }: { count: number }) =>
+            `Показать ещё ${count} ${plural({ count, one: 'строку', few: 'строки', many: 'строк' })}`,
+        tapToExpand: ({ count }: { count: number }) =>
+            `${count} ${plural({ count, one: 'изменённая строка', few: 'изменённые строки', many: 'изменённых строк' })} — нажмите, чтобы развернуть`,
+        ignoreWhitespace: 'Игнорировать пробелы',
+        imageBefore: 'Было',
+        imageAfter: 'Стало',
+        unchangedLines: ({ count }: { count: number }) => `${count} без изменений`,
+        noChanges: 'Нет изменений',
+        binaryFile: 'Бинарный файл не показан',
     },
     sideChat: {
         panelTitle: 'Боковой чат',

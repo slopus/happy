@@ -3,6 +3,7 @@ import { View, Text } from 'react-native';
 import { Octicons } from '@expo/vector-icons';
 import { useSessionGitStatus } from '@/sync/storage';
 import { GitStatus } from '@/sync/storageTypes';
+import { getGitStatusLineChanges } from '@/utils/gitStatusLineChanges';
 import { StyleSheet } from 'react-native-unistyles';
 
 const stylesheet = StyleSheet.create((theme) => ({
@@ -73,22 +74,23 @@ export function ProjectGitStatus({ sessionId }: ProjectGitStatusProps) {
     }
 
     const fileCount = getTotalChangedFiles(gitStatus);
-    const hasChanges = fileCount > 0 || gitStatus.unstagedLinesAdded > 0 || gitStatus.unstagedLinesRemoved > 0;
-    const hasLineChanges = gitStatus.unstagedLinesAdded > 0 || gitStatus.unstagedLinesRemoved > 0;
+    const { insertions, deletions } = getGitStatusLineChanges(gitStatus);
+    const hasChanges = fileCount > 0 || insertions > 0 || deletions > 0;
+    const hasLineChanges = insertions > 0 || deletions > 0;
 
     return (
         <View style={styles.container}>
             {/* Show line changes only */}
             {hasLineChanges && (
                 <View style={styles.lineChanges}>
-                    {gitStatus.unstagedLinesAdded > 0 && (
+                    {insertions > 0 && (
                         <Text style={styles.addedText}>
-                            +{gitStatus.unstagedLinesAdded}
+                            +{insertions}
                         </Text>
                     )}
-                    {gitStatus.unstagedLinesRemoved > 0 && (
+                    {deletions > 0 && (
                         <Text style={styles.removedText}>
-                            -{gitStatus.unstagedLinesRemoved}
+                            -{deletions}
                         </Text>
                     )}
                 </View>

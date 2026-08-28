@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { Text, View, TouchableOpacity, ActivityIndicator, Platform } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
-import { Ionicons, Octicons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import { getToolViewComponent } from './views/_all';
 import { Message, ToolCall } from '@/sync/typesMessage';
 import { CodeView } from '../CodeView';
@@ -22,6 +22,7 @@ import {
     shouldUseCompactToolRow,
 } from '@/utils/toolDisplay';
 import { useSetting } from '@/sync/storage';
+import { ToolIcon } from './ToolIcon';
 
 interface ToolViewProps {
     metadata: Metadata | null;
@@ -67,15 +68,18 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
     let description: string | null = null;
     let status: string | null = null;
     let minimal = false;
-    let icon = <Ionicons name="construct-outline" size={18} color={theme.colors.textSecondary} />;
+    let icon = <ToolIcon tool={tool} size={18} color={theme.colors.textSecondary} />;
     let noStatus = false;
     let hideDefaultError = false;
     
-    // For Gemini: unknown tools should be rendered as minimal (hidden)
-    // This prevents showing raw INPUT/OUTPUT for internal Gemini tools
-    // that we haven't explicitly added to knownTools
-    const isGemini = props.metadata?.flavor === 'gemini';
-    if (!knownTool && isGemini) {
+    // Unknown tools render as a compact activity row instead of a raw
+    // INPUT/OUTPUT card: providers keep adding tools we have not described in
+    // knownTools, and a half-screen JSON dump for each of them is noise.
+    // Errors still expand, since that payload is the only thing explaining them.
+    const isUnhandledError = tool.state === 'error'
+        && !!tool.result
+        && !(tool.permission && (tool.permission.status === 'denied' || tool.permission.status === 'canceled'));
+    if (!knownTool && !getToolViewComponent(tool.name) && !isUnhandledError) {
         minimal = true;
     }
 
@@ -93,7 +97,6 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
     // Special handling for MCP tools
     if (tool.name.startsWith('mcp__')) {
         toolTitle = formatMCPTitle(tool.name);
-        icon = <Ionicons name="extension-puzzle-outline" size={18} color={theme.colors.textSecondary} />;
         minimal = true;
     } else if (knownTool?.title) {
         if (typeof knownTool.title === 'function') {
@@ -117,20 +120,10 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
         }
     }
     
-    // Special handling for CodexBash to determine icon based on parsed_cmd
-    if (tool.name === 'CodexBash' && tool.input?.parsed_cmd && Array.isArray(tool.input.parsed_cmd) && tool.input.parsed_cmd.length > 0) {
-        const parsedCmd = tool.input.parsed_cmd[0];
-        if (parsedCmd.type === 'read') {
-            icon = <Octicons name="eye" size={18} color={theme.colors.text} />;
-        } else if (parsedCmd.type === 'write') {
-            icon = <Octicons name="file-diff" size={18} color={theme.colors.text} />;
-        } else {
-            icon = <Octicons name="terminal" size={18} color={theme.colors.text} />;
-        }
-    } else if (knownTool && typeof knownTool.icon === 'function') {
-        icon = knownTool.icon(18, theme.colors.text);
+    if (knownTool || tool.name === 'CodexBash') {
+        icon = <ToolIcon tool={tool} size={18} color={theme.colors.text} />;
     }
-    
+
     if (knownTool && typeof knownTool.noStatus === 'boolean') {
         noStatus = knownTool.noStatus;
     }
@@ -259,6 +252,7 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
                                 metadata={props.metadata}
                                 messages={props.messages ?? []}
                                 sessionId={sessionId}
+                                messageId={messageId}
                                 permissionFooter={isInlineCodexPatch ? renderPermissionFooter() : undefined}
                             />
                             {tool.state === 'error' && tool.result &&

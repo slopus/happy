@@ -385,6 +385,8 @@ export const ca: TranslationStructure = {
         quickActions: 'Accions ràpides',
         viewMachine: 'Veure la màquina',
         viewMachineSubtitle: 'Veure detalls de la màquina i sessions',
+        viewChanges: 'Veure canvis',
+        viewChangesSubtitle: 'Diferències de tots els fitxers sense confirmar',
         resumeSession: 'Resume Session',
         resumeSessionSubtitle: 'Resume this session on the same machine',
         resumeSessionSameMachineOnly: 'This session can only be resumed on the same machine it started on.',
@@ -562,7 +564,6 @@ export const ca: TranslationStructure = {
     },
 
     toolGroup: {
-        editedFile: 'Edited file',
         editedFiles: ({ count }: { count: number }) => count === 1 ? 'S\'ha editat 1 fitxer' : `S'han editat ${count} fitxers`,
         readFiles: ({ count }: { count: number }) => count === 1 ? 'S\'ha llegit 1 fitxer' : `S'han llegit ${count} fitxers`,
         ranCommands: ({ count }: { count: number }) => count === 1 ? 'S\'ha executat 1 comanda' : `S'han executat ${count} comandes`,
@@ -677,6 +678,16 @@ export const ca: TranslationStructure = {
         fileConflictDescription: 'Aquest fitxer s\'ha modificat al dispositiu mentre l\'editaves. Recarrega per veure la darrera versió.',
         reload: 'Recarregar',
         overwrite: 'Sobreescriure',
+    },
+    diff: {
+        showMoreLines: ({ count }: { count: number }) => `Mostra ${count} línies més`,
+        tapToExpand: ({ count }: { count: number }) => `${count} línies modificades — toca per ampliar`,
+        ignoreWhitespace: 'Ignora els espais en blanc',
+        imageBefore: 'Abans',
+        imageAfter: 'Després',
+        unchangedLines: ({ count }: { count: number }) => `${count} sense canvis`,
+        noChanges: 'Sense canvis',
+        binaryFile: 'Fitxer binari no mostrat',
     },
     sideChat: {
         panelTitle: 'Xat lateral',

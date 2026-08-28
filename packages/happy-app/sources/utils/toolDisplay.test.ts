@@ -54,11 +54,14 @@ describe('terminal tool display helpers', () => {
         ))).toBe('rm tmp.txt');
     });
 
-    it('hides Codex patch card headers on web only', () => {
-        expect(shouldRenderToolCardHeader('CodexPatch', 'web')).toBe(false);
-        expect(shouldRenderToolCardHeader('CodexPatch', 'ios')).toBe(true);
-        expect(shouldRenderToolCardHeader('CodexPatch', 'android')).toBe(true);
+    it('hides card headers for tools that already name each changed file', () => {
+        for (const platform of ['web', 'ios', 'android']) {
+            expect(shouldRenderToolCardHeader('CodexPatch', platform)).toBe(false);
+            expect(shouldRenderToolCardHeader('GeminiPatch', platform)).toBe(false);
+        }
+        // Everything else still needs a header to say what it was.
         expect(shouldRenderToolCardHeader('CodexBash', 'web')).toBe(true);
+        expect(shouldRenderToolCardHeader('CodexDiff', 'ios')).toBe(true);
     });
 
     it('classifies tools for compact transcript rows', () => {
@@ -97,6 +100,22 @@ describe('terminal tool display helpers', () => {
         expect(getToolSummaryDetail(tool('read_file', {
             target_file: '/repo/src/app.tsx',
         }))).toBe('/repo/src/app.tsx');
+
+        // Agent SDK tools name their work in a subject-like field.
+        expect(getToolSummaryDetail(tool('TaskCreate', {
+            subject: 'Verify everything and update docs',
+            description: 'Run typecheck, lint, unit tests, build.',
+        }))).toBe('Verify everything and update docs');
+
+        expect(getToolSummaryDetail(tool('create_agent', {
+            title: 'Review renderer OOM root cause',
+            text: 'Independently review this crash...',
+        }))).toBe('Review renderer OOM root cause');
+
+        expect(getToolSummaryDetail(tool('web_fetch', {
+            url: 'https://example.com/a.js',
+            maxCharacters: 100000,
+        }))).toBe('https://example.com/a.js');
     });
 
     it('builds one human-readable label for compact activity rows', () => {
@@ -130,6 +149,15 @@ describe('terminal tool display helpers', () => {
         const futureTool = tool('brand_new_rig_tool', {});
         futureTool.description = 'Running Brand New Rig Tool';
         expect(getToolActivityLabel(futureTool)).toBe('Brand New Rig Tool');
+
+        expect(getToolActivityLabel(tool('TaskCreate', {
+            subject: 'Phase 4: AI assistant',
+            activeForm: 'Building AI assistant',
+        }))).toBe('Task Create: Phase 4: AI assistant');
+
+        expect(getToolActivityLabel(tool('web_fetch', {
+            url: 'https://api.github.com/repos/facebook/react/issues/34693',
+        }))).toBe('toolGroup.fetchedUrls:1: https://api.github.com/repos/facebook/react/issues/34693');
     });
 
     it('uses compact rows for current and future non-interactive tools', () => {

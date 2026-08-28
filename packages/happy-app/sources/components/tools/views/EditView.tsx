@@ -12,10 +12,12 @@ export const EditView = React.memo<ToolViewProps>(({ tool }) => {
     
     let oldString = '';
     let newString = '';
+    let filePath: string | undefined;
     const parsed = knownTools.Edit.input.safeParse(tool.input);
     if (parsed.success) {
         oldString = trimIdent(parsed.data.old_string || '');
         newString = trimIdent(parsed.data.new_string || '');
+        filePath = parsed.data.file_path;
     }
 
     return (
@@ -24,6 +26,7 @@ export const EditView = React.memo<ToolViewProps>(({ tool }) => {
                 <ToolDiffView 
                     oldText={oldString} 
                     newText={newString} 
+                    fileName={filePath}
                     showLineNumbers={showLineNumbersInToolViews}
                     showPlusMinusSymbols={showLineNumbersInToolViews}
                 />

@@ -18,6 +18,7 @@ import { SessionActionsAnchor, SessionActionsPopover } from './SessionActionsPop
 import { useSessionActionAlert } from '@/hooks/useSessionQuickActions';
 import { sessionKill } from '@/sync/ops';
 import { isWorktreePath, getRepoPath, getWorktreeName } from '@/utils/worktree';
+import { getGitStatusLineChanges } from '@/utils/gitStatusLineChanges';
 import { useNewSessionDraft } from '@/hooks/useNewSessionDraft';
 import { useRouter } from 'expo-router';
 import { SessionShortcutHintBadge } from './ShortcutHints';
@@ -47,11 +48,12 @@ function useSectionGitInfo(sessionId: string) {
         if (!gitStatus || gitStatus.lastUpdatedAt === 0) {
             return { branch: null, linesAdded: 0, linesRemoved: 0, hasChanges: false };
         }
+        const { insertions, deletions } = getGitStatusLineChanges(gitStatus);
         return {
             branch: gitStatus.branch,
-            linesAdded: gitStatus.unstagedLinesAdded,
-            linesRemoved: gitStatus.unstagedLinesRemoved,
-            hasChanges: gitStatus.unstagedLinesAdded > 0 || gitStatus.unstagedLinesRemoved > 0,
+            linesAdded: insertions,
+            linesRemoved: deletions,
+            hasChanges: insertions > 0 || deletions > 0,
         };
     }, [gitStatus]);
 }

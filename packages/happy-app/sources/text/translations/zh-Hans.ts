@@ -386,6 +386,8 @@ export const zhHans: TranslationStructure = {
         quickActions: '快速操作',
         viewMachine: '查看设备',
         viewMachineSubtitle: '查看设备详情和会话',
+        viewChanges: '查看更改',
+        viewChangesSubtitle: '所有未提交文件的差异',
         resumeSession: 'Resume Session',
         resumeSessionSubtitle: 'Resume this session on the same machine',
         resumeSessionSameMachineOnly: 'This session can only be resumed on the same machine it started on.',
@@ -563,7 +565,6 @@ export const zhHans: TranslationStructure = {
     },
 
     toolGroup: {
-        editedFile: 'Edited file',
         editedFiles: ({ count }: { count: number }) => `编辑了 ${count} 个文件`,
         readFiles: ({ count }: { count: number }) => `读取了 ${count} 个文件`,
         ranCommands: ({ count }: { count: number }) => `执行了 ${count} 个命令`,
@@ -678,6 +679,16 @@ export const zhHans: TranslationStructure = {
         fileConflictDescription: '编辑期间文件已在设备上被修改。重新加载以查看最新版本。',
         reload: '重新加载',
         overwrite: '覆盖',
+    },
+    diff: {
+        showMoreLines: ({ count }: { count: number }) => `再显示 ${count} 行`,
+        tapToExpand: ({ count }: { count: number }) => `${count} 行变更 — 点按展开`,
+        ignoreWhitespace: '忽略空白',
+        imageBefore: '修改前',
+        imageAfter: '修改后',
+        unchangedLines: ({ count }: { count: number }) => `${count} 行未更改`,
+        noChanges: '无更改',
+        binaryFile: '不显示二进制文件',
     },
     sideChat: {
         panelTitle: '侧边聊天',
