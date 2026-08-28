@@ -930,13 +930,13 @@ async function commandSeed(targetName?: string) {
 // Up / Down
 // ============================================================================
 
-async function commandUp(template: Template, opts?: { noSwitch?: boolean }) {
+async function commandUp(template: Template, opts?: { noSwitch?: boolean; startWeb?: boolean }) {
     const envName = await createEnvironment(opts);
     const envDir = getEnvironmentDir(envName);
     const config = readEnvironmentConfig(envName);
 
     setEnvironmentTemplate(envName, template);
-    await startEnvironmentServices(envName);
+    await startEnvironmentServices(envName, { startWeb: opts?.startWeb });
 
     // Seed if template requires it
     if (template === "authenticated-empty") {
@@ -1083,7 +1083,8 @@ async function main(): Promise<void> {
                 process.exit(1);
             }
             const noSwitch = args.includes("--no-switch");
-            await commandUp(template as Template, { noSwitch });
+            const startWeb = !args.includes("--no-web");
+            await commandUp(template as Template, { noSwitch, startWeb });
             break;
         }
         case "down":
@@ -1096,7 +1097,7 @@ async function main(): Promise<void> {
             console.log(`Happy Environment Manager
 
 Usage:
-  pnpm env:up --template <t>  Create + start everything (templates: ${VALID_TEMPLATES.join(", ")})
+  pnpm env:up --template <t>  Create + start everything (templates: ${VALID_TEMPLATES.join(", ")}; pass --no-web for server-only)
   pnpm env:up:authenticated   Create + start everything with the authenticated template
   pnpm env:down               Stop all services for current environment
 

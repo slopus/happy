@@ -112,7 +112,7 @@ keyboard takes it back.
 | [`packages/happy-app`](packages/happy-app) | Mobile + web client (Expo) — ships as the **Paws** app |
 | [`packages/happy-cli`](packages/happy-cli) | The `paws` CLI — wraps Claude Code / Codex, daemon, MCP tools |
 | [`packages/happy-server`](packages/happy-server) | Self-hostable sync server with bundled web app |
-| [`packages/happy-agent`](packages/happy-agent) | CLI for controlling agents remotely (create, send, monitor) |
+| [`packages/paws-agent`](packages/paws-agent) | Browser-safe SDK and CLI for controlling Paws agents remotely |
 | [`packages/happy-wire`](packages/happy-wire) | Shared wire types & Zod schemas |
 
 Related repositories:

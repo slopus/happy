@@ -66,7 +66,7 @@ gh pr create --repo wangjs-jacky/happy --base main --head <topic>
 | `packages/happy-app` | `happy-app` | Expo / React Native Paws App for Android, iOS structure, web, and desktop experiments |
 | `packages/happy-cli` | `@wangjs-jacky/paws` | Paws CLI, daemon, provider runners, MCP bridge, local state, and synchronization |
 | `packages/happy-server` | `happy-server-self-host` | Self-host sync relay, API, realtime transport, PGlite/Postgres, and blob storage |
-| `packages/happy-agent` | `happy-agent` | Remote agent-control CLI |
+| `packages/paws-agent` | `@wangjs-jacky/paws-agent` | Browser-safe remote agent-control SDK and `paws-agent` CLI |
 | `packages/happy-wire` | `@slopus/happy-wire` | Shared schemas and wire types; package name retained for compatibility |
 | `packages/image-gateway` | `happy-image-gateway` | Public/native image-generation gateway logic |
 | `packages/codium` | `codium` | Desktop and experimental client surfaces |

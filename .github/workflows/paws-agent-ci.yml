@@ -1,0 +1,97 @@
+name: Paws Agent CI
+
+on:
+  pull_request:
+    branches: [main]
+    paths: &paths
+      - 'packages/paws-agent/**'
+      - 'packages/happy-wire/**'
+      - 'packages/happy-cli/src/api/**'
+      - 'packages/happy-cli/src/daemon/**'
+      - 'packages/happy-server/sources/app/api/routes/**'
+      - 'environments/**'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/paws-agent-*.yml'
+  push:
+    branches: [main]
+    paths: *paths
+  workflow_dispatch:
+
+concurrency:
+  group: paws-agent-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  workspace:
+    name: workspace suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm -r --if-present typecheck
+      - run: pnpm -r --workspace-concurrency=4 --if-present test -- --run
+
+  unit:
+    strategy:
+      matrix:
+        node: [20, 24]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '${{ matrix.node }}', cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @wangjs-jacky/paws-agent test
+
+  packed:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install chromium
+      - run: pnpm --filter @wangjs-jacky/paws-agent verify:pack
+
+  windows-consumer:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @wangjs-jacky/paws-agent build
+      - shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force "$env:RUNNER_TEMP\paws-consumer" | Out-Null
+          Push-Location packages/paws-agent
+          npm pack --ignore-scripts --pack-destination "$env:RUNNER_TEMP\paws-consumer"
+          Pop-Location
+          Push-Location "$env:RUNNER_TEMP\paws-consumer"
+          npm init -y
+          npm install --ignore-scripts (Get-ChildItem *.tgz | Select-Object -First 1).FullName
+          node -e "import('@wangjs-jacky/paws-agent').then(x => { if (typeof x.PawsAgentClient !== 'function') process.exit(1) })"
+          node -e "const x = require('@wangjs-jacky/paws-agent'); if (typeof x.PawsAgentClient !== 'function') process.exit(1)"
+          .\node_modules\.bin\paws-agent.cmd --version
+
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @wangjs-jacky/paws-agent test:integration

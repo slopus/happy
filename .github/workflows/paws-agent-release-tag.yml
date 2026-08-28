@@ -1,0 +1,71 @@
+name: Paws Agent release PR tag
+
+on:
+  pull_request_target:
+    types: [closed]
+
+permissions:
+  actions: write
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: paws-agent-release-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  tag-and-dispatch:
+    if: >-
+      github.event.pull_request.merged == true &&
+      github.event.pull_request.base.ref == 'main' &&
+      startsWith(github.event.pull_request.head.ref, 'release/paws-agent-v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with: { node-version: 24 }
+      - name: Validate release PR and resolve immutable tag
+        id: release
+        shell: bash
+        env:
+          PAWS_RELEASE_BRANCH: ${{ github.event.pull_request.head.ref }}
+          PAWS_RELEASE_TITLE: ${{ github.event.pull_request.title }}
+          PAWS_MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./packages/paws-agent/package.json').version")"
+          expected_branch="release/paws-agent-v${version}"
+          expected_title="chore(agent): release paws-agent v${version}"
+          test "$PAWS_RELEASE_BRANCH" = "$expected_branch"
+          test "$PAWS_RELEASE_TITLE" = "$expected_title"
+          changed="$(git diff --name-only "${PAWS_MERGE_SHA}^1" "$PAWS_MERGE_SHA")"
+          grep -Fxq 'packages/paws-agent/package.json' <<<"$changed"
+          grep -Fxq 'packages/paws-agent/CHANGELOG.md' <<<"$changed"
+          tag="paws-agent-v${version}"
+          git fetch origin main
+          git merge-base --is-ancestor "$PAWS_MERGE_SHA" origin/main
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+      - name: Create immutable release tag
+        shell: bash
+        env:
+          PAWS_TAG: ${{ steps.release.outputs.tag }}
+          PAWS_MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+        run: |
+          set -euo pipefail
+          git fetch origin main --tags
+          existing="$(git rev-list -n 1 "$PAWS_TAG" 2>/dev/null || true)"
+          if [ -n "$existing" ]; then
+            test "$existing" = "$PAWS_MERGE_SHA"
+          else
+            git tag -a "$PAWS_TAG" "$PAWS_MERGE_SHA" -m "chore(agent): release ${PAWS_TAG}"
+            git push origin "refs/tags/$PAWS_TAG"
+          fi
+      - name: Dispatch tag-gated npm release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PAWS_TAG: ${{ steps.release.outputs.tag }}
+        run: gh workflow run paws-agent-npm-publish.yml --ref main -f tag="$PAWS_TAG"

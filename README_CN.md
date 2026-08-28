@@ -110,7 +110,7 @@ CLI 包裹住 Agent 的终端会话：平时在电脑上照常使用；从手机
 | [`packages/happy-app`](packages/happy-app) | 移动端 + 网页客户端（Expo），即 **Paws** App |
 | [`packages/happy-cli`](packages/happy-cli) | `paws` CLI —— 包裹 Claude Code / Codex，含 daemon 与 MCP 工具 |
 | [`packages/happy-server`](packages/happy-server) | 可自托管的同步服务器，内置网页版 App |
-| [`packages/happy-agent`](packages/happy-agent) | 远程操控 Agent 的 CLI（创建 / 发送 / 监控会话） |
+| [`packages/paws-agent`](packages/paws-agent) | 浏览器安全的 Paws Agent SDK 与远程控制 CLI |
 | [`packages/happy-wire`](packages/happy-wire) | 共享消息类型与 Zod schema |
 
 相关仓库：

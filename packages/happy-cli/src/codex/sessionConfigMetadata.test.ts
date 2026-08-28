@@ -41,8 +41,8 @@ describe('mergeCodexSessionConfigIntoMetadata', () => {
         });
 
         expect(next.models).toEqual([
-            { code: 'gpt-5.5', value: 'gpt-5.5', description: 'Primary' },
-            { code: 'gpt-5.4', value: 'gpt-5.4', description: 'Pinned' },
+            { code: 'gpt-5.5', value: 'gpt-5.5', description: 'Primary', serviceTiers: [] },
+            { code: 'gpt-5.4', value: 'gpt-5.4', description: 'Pinned', serviceTiers: [] },
         ]);
         expect(next.currentModelCode).toBe('gpt-5.4');
         expect(next.thoughtLevels).toEqual([

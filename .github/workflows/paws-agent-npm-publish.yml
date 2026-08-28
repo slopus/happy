@@ -1,0 +1,158 @@
+name: Paws Agent npm publish
+
+on:
+  push:
+    tags: ['paws-agent-v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing immutable paws-agent-v* tag to publish
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  id-token: write
+
+concurrency:
+  group: paws-agent-npm-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.tag || github.ref }}
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+      - run: pnpm install --frozen-lockfile
+      - name: Validate immutable release contract
+        id: contract
+        shell: bash
+        env:
+          PAWS_RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          PAWS_TAG_SHA="$(git rev-list -n 1 "$PAWS_RELEASE_TAG")"
+          test -n "$PAWS_TAG_SHA"
+          git fetch origin main
+          git merge-base --is-ancestor "$PAWS_TAG_SHA" origin/main
+          PAWS_TAG_SHA="$PAWS_TAG_SHA" GITHUB_SHA="$(git rev-parse HEAD)" node packages/paws-agent/scripts/release-contract.mjs
+      - run: pnpm --filter @wangjs-jacky/paws-agent test
+      - run: pnpm --filter @wangjs-jacky/paws-agent test:integration
+      - run: pnpm exec playwright install --with-deps chromium
+      - name: Pack once
+        id: pack
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/paws-agent"
+          cd packages/paws-agent
+          npm pack --ignore-scripts --pack-destination "$RUNNER_TEMP/paws-agent"
+          TARBALL="$(find "$RUNNER_TEMP/paws-agent" -name '*.tgz' -print -quit)"
+          echo "tarball=$TARBALL" >> "$GITHUB_OUTPUT"
+          shasum -a 256 "$TARBALL" | tee "$RUNNER_TEMP/paws-agent/SHA256SUMS"
+      - name: Verify the exact release tarball
+        shell: bash
+        run: PAWS_AGENT_DIST_TAG="${{ steps.contract.outputs.dist_tag }}" node packages/paws-agent/scripts/verify-pack.mjs "${{ steps.pack.outputs.tarball }}"
+      - name: Check exact registry version
+        id: registry
+        shell: bash
+        run: |
+          if npm view "@wangjs-jacky/paws-agent@${{ steps.contract.outputs.version }}" version >/dev/null 2>&1; then
+            echo 'exists=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'exists=false' >> "$GITHUB_OUTPUT"
+          fi
+      - name: Record previous stable dist-tag
+        id: previous
+        shell: bash
+        run: echo "latest=$(npm view '@wangjs-jacky/paws-agent' dist-tags.latest 2>/dev/null || true)" >> "$GITHUB_OUTPUT"
+      - name: Verify an existing version is the exact local tarball
+        if: steps.registry.outputs.exists == 'true'
+        shell: bash
+        run: node packages/paws-agent/scripts/verify-registry-integrity.mjs "${{ steps.pack.outputs.tarball }}" "@wangjs-jacky/paws-agent@${{ steps.contract.outputs.version }}"
+      - name: Publish with npm trusted publishing
+        id: publish
+        if: steps.registry.outputs.exists == 'false'
+        shell: bash
+        run: |
+          set +e
+          npm publish "${{ steps.pack.outputs.tarball }}" --access public --provenance --tag "${{ steps.contract.outputs.dist_tag }}"
+          publish_status=$?
+          set -e
+          if [ "$publish_status" -ne 0 ]; then
+            published_version="$(npm view "@wangjs-jacky/paws-agent@${{ steps.contract.outputs.version }}" version 2>/dev/null || true)"
+            if [ "$published_version" != "${{ steps.contract.outputs.version }}" ]; then
+              exit "$publish_status"
+            fi
+            echo "Publish returned $publish_status, but the immutable version is present; continuing verification."
+          fi
+          echo 'published=true' >> "$GITHUB_OUTPUT"
+      - name: Verify exact registry artifact, consumers, and isolated E2E
+        id: post_publish
+        continue-on-error: true
+        shell: bash
+        env:
+          PAWS_AGENT_INSTALL_SPEC: '@wangjs-jacky/paws-agent@${{ steps.contract.outputs.version }}'
+          PAWS_AGENT_DIST_TAG: '${{ steps.contract.outputs.dist_tag }}'
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 30); do
+            published_version="$(npm view "@wangjs-jacky/paws-agent@${{ steps.contract.outputs.version }}" version 2>/dev/null || true)"
+            if [ "$published_version" = "${{ steps.contract.outputs.version }}" ]; then
+              break
+            fi
+            if [ "$attempt" = 30 ]; then
+              echo "Exact npm version did not become visible within five minutes" >&2
+              exit 1
+            fi
+            sleep 10
+          done
+          node packages/paws-agent/scripts/verify-registry-integrity.mjs "${{ steps.pack.outputs.tarball }}" "$PAWS_AGENT_INSTALL_SPEC"
+          node packages/paws-agent/scripts/verify-pack.mjs "${{ steps.pack.outputs.tarball }}"
+          pnpm --filter @wangjs-jacky/paws-agent test
+          registry_e2e="$RUNNER_TEMP/paws-agent-registry-e2e"
+          mkdir -p "$registry_e2e"
+          npm init -y --prefix "$registry_e2e"
+          npm install --prefix "$registry_e2e" --ignore-scripts "$PAWS_AGENT_INSTALL_SPEC"
+          PAWS_AGENT_CONSUMER_DIR="$registry_e2e" PAWS_AGENT_BIN_PATH="$registry_e2e/node_modules/.bin/paws-agent" pnpm --filter @wangjs-jacky/paws-agent test:integration
+      - name: Roll back a failed stable promotion when credentials permit
+        if: >-
+          steps.post_publish.outcome == 'failure' &&
+          steps.publish.outputs.published == 'true' &&
+          steps.contract.outputs.dist_tag == 'latest'
+        shell: bash
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          PREVIOUS_LATEST: ${{ steps.previous.outputs.latest }}
+          FAILED_VERSION: ${{ steps.contract.outputs.version }}
+        run: |
+          set -euo pipefail
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo 'NPM_TOKEN is unavailable; automatic dist-tag rollback/deprecation could not run.' >&2
+            exit 1
+          fi
+          if [ -n "$PREVIOUS_LATEST" ] && [ "$PREVIOUS_LATEST" != "$FAILED_VERSION" ]; then
+            npm dist-tag add "@wangjs-jacky/paws-agent@$PREVIOUS_LATEST" latest
+          elif [ -z "$PREVIOUS_LATEST" ]; then
+            npm dist-tag rm '@wangjs-jacky/paws-agent' latest
+          fi
+          npm deprecate "@wangjs-jacky/paws-agent@$FAILED_VERSION" "Post-publish validation failed; use the previous latest release."
+      - name: Fail release after post-publish validation
+        if: always() && steps.post_publish.outcome == 'failure'
+        run: exit 1
+      - name: Create immutable GitHub Release evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PAWS_RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+        shell: bash
+        run: |
+          gh release view "$PAWS_RELEASE_TAG" >/dev/null 2>&1 || gh release create "$PAWS_RELEASE_TAG" "${{ steps.pack.outputs.tarball }}" "$RUNNER_TEMP/paws-agent/SHA256SUMS" --verify-tag --generate-notes --title "$PAWS_RELEASE_TAG"

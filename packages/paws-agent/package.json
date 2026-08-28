@@ -1,0 +1,97 @@
+{
+  "name": "@wangjs-jacky/paws-agent",
+  "version": "0.1.0-beta.1",
+  "description": "SDK and CLI for controlling Paws agent sessions remotely",
+  "author": "wangjs-jacky",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "type": "module",
+  "homepage": "https://github.com/wangjs-jacky/happy/tree/main/packages/paws-agent",
+  "bugs": "https://github.com/wangjs-jacky/happy/issues",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/wangjs-jacky/happy",
+    "directory": "packages/paws-agent"
+  },
+  "bin": {
+    "paws-agent": "./bin/paws-agent.mjs"
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.cts",
+  "exports": {
+    ".": {
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      },
+      "import": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      }
+    },
+    "./node": {
+      "require": {
+        "types": "./dist/node.d.cts",
+        "default": "./dist/node.cjs"
+      },
+      "import": {
+        "types": "./dist/node.d.mts",
+        "default": "./dist/node.mjs"
+      }
+    },
+    "./browser": {
+      "require": {
+        "types": "./dist/browser.d.cts",
+        "default": "./dist/browser.cjs"
+      },
+      "import": {
+        "types": "./dist/browser.d.mts",
+        "default": "./dist/browser.mjs"
+      }
+    },
+    "./package.json": "./package.json"
+  },
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "bin",
+    "package.json"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && tsc --noEmit && pkgroll --input dist/cli.mjs",
+    "test": "$npm_execpath run build && vitest run",
+    "test:integration": "$npm_execpath run build && vitest run --config vitest.integration.config.ts",
+    "verify:pack": "node scripts/verify-pack.mjs",
+    "dev": "tsx src/cli.ts",
+    "prepublishOnly": "$npm_execpath run build && $npm_execpath test",
+    "release:prepare": "node scripts/prepare-release.mjs"
+  },
+  "dependencies": {
+    "@noble/ciphers": "^2.0.1",
+    "@noble/hashes": "^1.8.0",
+    "@stablelib/base64": "^2.0.1",
+    "axios": "^1.13.2",
+    "chalk": "^5.6.2",
+    "commander": "^13.1.0",
+    "qrcode-terminal": "^0.12.0",
+    "socket.io-client": "^4.8.1",
+    "tweetnacl": "^1.0.3"
+  },
+  "devDependencies": {
+    "@types/node": ">=20",
+    "@types/qrcode-terminal": "^0.12.2",
+    "pkgroll": "^2.14.2",
+    "tsx": "^4.20.6",
+    "typescript": "5.9.3",
+    "vitest": "^3.2.4"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org",
+    "access": "public"
+  },
+  "packageManager": "pnpm@10.11.0"
+}

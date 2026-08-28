@@ -36,7 +36,7 @@
     "workspaces": {
         "packages": [
             "packages/happy-app",
-            "packages/happy-agent",
+            "packages/paws-agent",
             "packages/happy-cli",
             "packages/happy-server",
             "packages/happy-wire",

@@ -50,7 +50,7 @@ CLI 已发布为 `@wangjs-jacky/paws`。新文档与脚本默认使用 `paws`；
 | `packages/happy-app` | `happy-app` | Expo / React Native App，覆盖 iOS、Android、Web 和桌面实验 |
 | `packages/happy-cli` | `@wangjs-jacky/paws` | `paws` CLI、`happy` 兼容 alias、agent runner、daemon、本地状态、鉴权和同步 |
 | `packages/happy-server` | `happy-server-self-host` | Fastify + Socket.IO 后端，负责加密同步和自托管 |
-| `packages/happy-agent` | `happy-agent` | 纯控制端 CLI，用于列机器、创建会话和发送消息 |
+| `packages/paws-agent` | `@wangjs-jacky/paws-agent` | 浏览器安全的 SDK 与 CLI，用于机器、会话、消息、审批和实时事件 |
 | `packages/happy-wire` | `@slopus/happy-wire` | 共享 wire schema 和协议类型 |
 | `packages/happy-app-logs` | `happy-app-logs` | App 日志开发辅助工具 |
 | `packages/codium` | `codium` | 桌面 / 实验性包 |
@@ -403,7 +403,7 @@ pnpm --filter happy-server-self-host build
 Agent 和 wire 包：
 
 ```bash
-pnpm --filter happy-agent typecheck
+pnpm --filter @wangjs-jacky/paws-agent typecheck
 pnpm --filter @slopus/happy-wire typecheck
 ```
 

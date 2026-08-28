@@ -13,12 +13,12 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
 COPY scripts ./scripts
 COPY patches ./patches
 
-RUN mkdir -p packages/happy-app packages/happy-server packages/happy-cli packages/happy-agent packages/happy-wire
+RUN mkdir -p packages/happy-app packages/happy-server packages/happy-cli packages/paws-agent packages/happy-wire
 
 COPY packages/happy-app/package.json packages/happy-app/
 COPY packages/happy-server/package.json packages/happy-server/
 COPY packages/happy-cli/package.json packages/happy-cli/
-COPY packages/happy-agent/package.json packages/happy-agent/
+COPY packages/paws-agent/package.json packages/paws-agent/
 COPY packages/happy-wire/package.json packages/happy-wire/
 
 # Workspace postinstall requirements

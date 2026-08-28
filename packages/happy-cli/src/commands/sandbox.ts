@@ -88,7 +88,7 @@ export async function handleSandboxConfigure(): Promise<void> {
             type: 'list',
             name: 'workspaceRoot',
             message: 'Pick your workspace root directory',
-            when: (currentAnswers) => currentAnswers.scopeMode === 'workspace',
+            when: (currentAnswers: { scopeMode?: ScopeMode }) => currentAnswers.scopeMode === 'workspace',
             default: workspaceRootDefault,
             choices: workspaceRootSuggestions.map((pathValue) => ({
                 name: `${pathValue}${existsSync(pathValue.replace(/^~(?=\/|$)/, homedir())) ? '' : ' (suggested)'}`,
