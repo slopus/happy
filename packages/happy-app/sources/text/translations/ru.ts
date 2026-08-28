@@ -48,6 +48,8 @@ export const ru: TranslationStructure = {
     },
 
     common: {
+        star: 'Добавить в избранное',
+        unstar: 'Убрать из избранного',
         // Simple string constants
         cancel: 'Отмена',
         authenticate: 'Авторизация',

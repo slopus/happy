@@ -39,6 +39,8 @@ export const zhHans: TranslationStructure = {
     },
 
     common: {
+        star: '加星标',
+        unstar: '取消星标',
         // Simple string constants
         cancel: '取消',
         authenticate: '认证',

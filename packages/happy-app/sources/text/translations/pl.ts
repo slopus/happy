@@ -48,6 +48,8 @@ export const pl: TranslationStructure = {
     },
 
     common: {
+        star: 'Oznacz gwiazdką',
+        unstar: 'Usuń gwiazdkę',
         // Simple string constants
         cancel: 'Anuluj',
         authenticate: 'Uwierzytelnij',

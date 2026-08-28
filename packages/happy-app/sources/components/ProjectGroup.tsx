@@ -6,7 +6,7 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Text } from '@/components/StyledText';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
-import { ProjectGroupData, ProjectWorkspaceGroup, useSessionGitStatus } from '@/sync/storage';
+import { ProjectGroupData, ProjectWorkspaceGroup, useIsProjectStarred, useSessionGitStatus, storage } from '@/sync/storage';
 import { CompactSessionRow } from './ActiveSessionsGroupCompact';
 import { Avatar } from './Avatar';
 import { requestHomeDockFocus } from './homeDockFocus';
@@ -36,24 +36,43 @@ interface ProjectGroupProps {
 export const ProjectGroup = React.memo(({ project, selectedSessionId }: ProjectGroupProps) => {
     const styles = stylesheet;
 
+    // Only path-grouped cards are starrable: the star key is machine-and-path,
+    // and Rig projects have a durable id instead of one working directory.
+    // Star the repo, not the worktree: every worktree of a repo shares its star,
+    // and the store keys stars on the path it is handed verbatim.
+    const starPath = project.path ? getRepoPath(project.path) : null;
+    const canStar = !!project.machineId && !!starPath;
+    const isStarred = useIsProjectStarred(project.machineId, starPath);
+    const handleToggleStar = React.useCallback(() => {
+        if (!project.machineId || !starPath) return;
+        storage.getState().toggleProjectStarred(project.machineId, starPath);
+    }, [project.machineId, starPath]);
+
     return (
         <View style={styles.container}>
-            {project.workspaces.map((workspace) => (
+            {project.workspaces.map((workspace, index) => (
                 <WorkspaceSection
                     key={workspace.id || 'primary'}
                     project={project}
                     workspace={workspace}
                     selectedSessionId={selectedSessionId}
+                    showStar={canStar && index === 0}
+                    isStarred={isStarred}
+                    onToggleStar={handleToggleStar}
                 />
             ))}
         </View>
     );
 });
 
-const WorkspaceSection = React.memo(({ project, workspace, selectedSessionId }: {
+const WorkspaceSection = React.memo(({ project, workspace, selectedSessionId, showStar, isStarred, onToggleStar }: {
     project: ProjectGroupData;
     workspace: ProjectWorkspaceGroup;
     selectedSessionId?: string;
+    // The star belongs to the project, so only the first section renders one.
+    showStar?: boolean;
+    isStarred?: boolean;
+    onToggleStar?: () => void;
 }) => {
     const styles = stylesheet;
     const { theme } = useUnistyles();
@@ -135,6 +154,23 @@ const WorkspaceSection = React.memo(({ project, workspace, selectedSessionId }: 
                         )}
                     </View>
                 </View>
+                {showStar && (
+                    <Pressable
+                        onPress={onToggleStar}
+                        hitSlop={{ top: 15, bottom: 15, left: 8, right: 8 }}
+                        style={styles.starButton}
+                        accessibilityRole="button"
+                        accessibilityLabel={isStarred ? t('common.unstar') : t('common.star')}
+                    >
+                        <Ionicons
+                            name={isStarred ? 'star' : 'star-outline'}
+                            size={14}
+                            // Not theme.colors.warning — that is #8E8E93 (grey), which
+                            // makes a starred project indistinguishable by colour.
+                            color={isStarred ? '#f5a623' : theme.colors.textSecondary}
+                        />
+                    </Pressable>
+                )}
                 <Pressable
                     onPress={handleNewSession}
                     hitSlop={12}
@@ -192,6 +228,9 @@ const stylesheet = StyleSheet.create((theme) => ({
         letterSpacing: Platform.select({ ios: -0.08, default: 0.1 }),
         fontWeight: Platform.select({ ios: 'normal', default: '500' }),
         ...Typography.default('regular'),
+    },
+    starButton: {
+        padding: 4,
     },
     branchLine: {
         flexDirection: 'row',
