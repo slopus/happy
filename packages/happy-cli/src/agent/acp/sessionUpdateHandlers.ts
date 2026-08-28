@@ -65,8 +65,13 @@ export interface HandlerContext {
   toolCallCountSincePrompt: number;
   /** Emit function to send agent messages */
   emit: (msg: AgentMessage) => void;
-  /** Emit idle status helper */
-  emitIdleStatus: () => void;
+  /**
+   * Signal that the session-update stream has settled (no chunks for the
+   * idle window, no active tool calls). The backend decides whether this
+   * means the turn is complete — it must also see the RPC response before
+   * actually emitting an `idle` status. See AcpBackend.maybeCompleteTurn.
+   */
+  markUpdatesSettled: () => void;
   /** Clear idle timeout helper */
   clearIdleTimeout: () => void;
   /** Set idle timeout helper */
@@ -79,8 +84,34 @@ export interface HandlerContext {
 export interface HandlerResult {
   /** Whether the update was handled */
   handled: boolean;
+  /** Whether this update starts or advances turn activity that will later settle */
+  updatesActive?: boolean;
   /** Updated tool call counter */
   toolCallCountSincePrompt?: number;
+}
+
+/**
+ * Schedule a deferred `idle` status emission after the standard idle timeout.
+ *
+ * We don't emit `idle` synchronously when a tool completes because the agent
+ * almost always streams follow-up text right after a tool result. Emitting
+ * `idle` immediately makes downstream UIs flicker (idle → busy → idle) — or
+ * in some clients, get stuck on a stale "idle" view while later chunks
+ * arrive. This mirrors the deferral that `handleAgentMessageChunk` already
+ * does after text chunks, so both event types converge on the same idle
+ * settling rule.
+ */
+export function scheduleDeferredIdle(ctx: HandlerContext, settledLogMessage: string): void {
+  ctx.clearIdleTimeout();
+  const idleTimeoutMs = ctx.transport.getIdleTimeout?.() ?? DEFAULT_IDLE_TIMEOUT_MS;
+  ctx.setIdleTimeout(() => {
+    if (ctx.activeToolCalls.size === 0) {
+      logger.debug(settledLogMessage);
+      ctx.markUpdatesSettled();
+    } else {
+      logger.debug(`[AcpBackend] Deferred idle skipped — ${ctx.activeToolCalls.size} active tool calls`);
+    }
+  }, idleTimeoutMs);
 }
 
 /**
@@ -189,7 +220,7 @@ export function handleAgentMessageChunk(
     ctx.setIdleTimeout(() => {
       if (ctx.activeToolCalls.size === 0) {
         logger.debug('[AcpBackend] No more chunks received, emitting idle status');
-        ctx.emitIdleStatus();
+        ctx.markUpdatesSettled();
       } else {
         logger.debug(`[AcpBackend] Delaying idle status - ${ctx.activeToolCalls.size} active tool calls`);
       }
@@ -277,7 +308,7 @@ export function startToolCall(
 
       if (ctx.activeToolCalls.size === 0) {
         logger.debug('[AcpBackend] No more active tool calls after timeout, emitting idle status');
-        ctx.emitIdleStatus();
+        ctx.markUpdatesSettled();
       }
     }, timeoutMs);
 
@@ -345,11 +376,11 @@ export function completeToolCall(
     callId: toolCallId,
   });
 
-  // If no more active tool calls, emit idle
+  // If no more active tool calls, defer the idle status so a follow-up
+  // text chunk has a chance to re-arm the idle timer first. See
+  // `scheduleDeferredIdle` for the full rationale.
   if (ctx.activeToolCalls.size === 0) {
-    ctx.clearIdleTimeout();
-    logger.debug('[AcpBackend] All tool calls completed, emitting idle status');
-    ctx.emitIdleStatus();
+    scheduleDeferredIdle(ctx, '[AcpBackend] All tool calls completed (deferred), emitting idle status');
   }
 }
 
@@ -423,11 +454,10 @@ export function failToolCall(
     callId: toolCallId,
   });
 
-  // If no more active tool calls, emit idle
+  // If no more active tool calls, defer the idle status so a follow-up
+  // text chunk has a chance to re-arm the idle timer first.
   if (ctx.activeToolCalls.size === 0) {
-    ctx.clearIdleTimeout();
-    logger.debug('[AcpBackend] All tool calls completed/failed, emitting idle status');
-    ctx.emitIdleStatus();
+    scheduleDeferredIdle(ctx, '[AcpBackend] All tool calls completed/failed (deferred), emitting idle status');
   }
 }
 
@@ -448,8 +478,10 @@ export function handleToolCallUpdate(
 
   const toolKind = update.kind || 'unknown';
   let toolCallCountSincePrompt = ctx.toolCallCountSincePrompt;
+  let updatesActive = false;
 
   if (status === 'in_progress' || status === 'pending') {
+    updatesActive = true;
     if (!ctx.activeToolCalls.has(toolCallId)) {
       toolCallCountSincePrompt++;
       startToolCall(toolCallId, toolKind, update, ctx, 'tool_call_update');
@@ -457,12 +489,14 @@ export function handleToolCallUpdate(
       logger.debug(`[AcpBackend] Tool call ${toolCallId} already tracked, status: ${status}`);
     }
   } else if (status === 'completed') {
+    updatesActive = true;
     completeToolCall(toolCallId, toolKind, update.content, ctx);
   } else if (status === 'failed' || status === 'cancelled') {
+    updatesActive = true;
     failToolCall(toolCallId, status, toolKind, update.content, ctx);
   }
 
-  return { handled: true, toolCallCountSincePrompt };
+  return { handled: true, updatesActive, toolCallCountSincePrompt };
 }
 
 /**
