@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useAllMachines, useSetting } from '@/sync/storage';
+import { useAllMachines, useSessions, useSetting } from '@/sync/storage';
 import { getCodeAgentDefaults, resolveAgentDefaultConfig } from '@/sync/agentDefaults';
 import {
     machineSpawnNewSession,
@@ -43,6 +43,9 @@ import {
     resolveSpawnRequestId,
 } from '@/sync/spawnRequestId';
 import type { NewSessionStartPhase } from '@/components/newSessionProgress';
+import type { Session } from '@/sync/storageTypes';
+import { collectSessionPlaces, collectSessionWorkspaces } from '@/sync/agentSessionPlaces';
+import { resolveHappyAgentSpawnTarget } from '@/sync/happyAgentSpawn';
 
 const MAX_RIG_PENDING_RESULTS = 3;
 
@@ -95,6 +98,7 @@ function resolveOption<T extends { key: string }>(
 
 export function useStartSessionFromDraft() {
     const machines = useAllMachines({ includeOffline: true });
+    const sessions = useSessions();
     const defaultOverrides = useSetting('agentDefaultOverrides');
     const navigateToSession = useNavigateToSession();
     // The composer stays on screen for the whole flow, so what it is waiting on
@@ -223,19 +227,51 @@ export function useStartSessionFromDraft() {
         const attachments = draft.attachments;
         const selectedPath = draft.selectedPath?.trim() || '~';
         const absolutePath = resolveAbsolutePath(selectedPath, machine.metadata?.homeDir);
+        const sessionList = (sessions ?? []).filter((item): item is Session => typeof item !== 'string');
+        const places = collectSessionPlaces({
+            machineIds: choice.machineIds,
+            selectedPath,
+            sessions: sessionList,
+        });
+        const selectedProjectId = places.find((place) => place.path === selectedPath)?.projectId ?? null;
+        const projectWorkspaces = collectSessionWorkspaces({
+            machineIds: choice.machineIds,
+            projectId: selectedProjectId,
+            sessions: sessionList,
+        });
         const requestedWorktree = draft.sessionType === 'worktree'
             ? draft.worktreeKey ?? '__new__'
             : '__none__';
-        const worktreeCreationMachine = resolveWorktreeCreationMachine(
-            choice,
-            agentType,
-            rigCreation?.supportsWorktrees
-                ?? (agentType === 'rig' ? false : getSupportsWorktree(agentType)),
-        );
-        // A workspace that already exists is only a directory to start in, so it stands whatever
-        // the machine says about making new ones. A paired Happy CLI daemon can make one on Happy
-        // Agent's behalf; without either route, a stale draft safely falls back to the main tree.
-        const worktreeSelection = !worktreeCreationMachine && requestedWorktree === '__new__'
+        let happyAgentTarget: ReturnType<typeof resolveHappyAgentSpawnTarget>;
+        try {
+            happyAgentTarget = rigCreation
+                ? resolveHappyAgentSpawnTarget({
+                    projectId: selectedProjectId,
+                    workspaceSelection: requestedWorktree,
+                    workspaces: projectWorkspaces,
+                })
+                : null;
+        } catch (error) {
+            Modal.alert(
+                t('common.error'),
+                error instanceof Error ? error.message : 'The selected workspace is unavailable',
+            );
+            return false;
+        }
+        const worktreeCreationMachine = happyAgentTarget
+            ? null
+            : resolveWorktreeCreationMachine(
+                choice,
+                agentType,
+                rigCreation?.supportsWorktrees
+                    ?? (agentType === 'rig' ? false : getSupportsWorktree(agentType)),
+            );
+        // Happy Agent creates and selects catalog workspaces by durable identity. The Git RPC is
+        // only for ordinary code-agent worktrees; without either route, a stale draft safely falls
+        // back to the main tree.
+        const worktreeSelection = !happyAgentTarget
+            && !worktreeCreationMachine
+            && requestedWorktree === '__new__'
             ? '__none__'
             : requestedWorktree;
         // Reused across every retry of this exact request so a second press of
@@ -282,7 +318,7 @@ export function useStartSessionFromDraft() {
         };
         try {
             let spawnDirectory = absolutePath;
-            if (worktreeSelection === '__new__') {
+            if (worktreeSelection === '__new__' && !happyAgentTarget) {
                 // `worktreeSelection` can only remain `__new__` when a creation
                 // machine was resolved above.
                 const worktreeResult = await untilCanceled(createWorktree(worktreeCreationMachine!.id, absolutePath));
@@ -295,7 +331,7 @@ export function useStartSessionFromDraft() {
                 }
                 spawnDirectory = worktreeResult.worktreePath;
                 showPhase('spawning');
-            } else if (worktreeSelection !== '__none__') {
+            } else if (worktreeSelection !== '__none__' && worktreeSelection !== '__new__') {
                 spawnDirectory = worktreeSelection;
             }
 
@@ -311,6 +347,7 @@ export function useStartSessionFromDraft() {
                             permissionMode: permission.key,
                             effort: effort?.key,
                         }),
+                        ...(happyAgentTarget ? { happyAgentTarget } : {}),
                     }
                     : {
                         machineId: machine.id,
@@ -437,7 +474,7 @@ export function useStartSessionFromDraft() {
                 if (isMountedRef.current) setPhase(null);
             }
         }
-    }, [defaultOverrides, machines, navigateToSession]);
+    }, [defaultOverrides, machines, navigateToSession, sessions]);
 
     return { isStarting: phase !== null, phase, startSession, cancelStart };
 }

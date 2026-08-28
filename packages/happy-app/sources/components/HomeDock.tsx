@@ -822,14 +822,17 @@ export const HomeDock = React.memo(({
 
     // Happy Agent calls these workspaces, and names them; git calls them worktrees.
     const picksWorkspaces = selectedProjectId !== null;
+    const createsNativeHappyAgentWorkspace = agentType === 'rig'
+        && picksWorkspaces
+        && rigCreation !== null;
     const worktreeCreationMachine = React.useMemo(
         () => resolveWorktreeCreationMachine(selectedChoice, agentType, supportsWorktree),
         [agentType, selectedChoice, supportsWorktree],
     );
-    // Happy Agent can ask its paired Happy CLI daemon to create the checkout
-    // even when its own machine metadata does not advertise worktrees.
-    const canCreateWorktree = supportsWorktree
-        || (picksWorkspaces && worktreeCreationMachine !== null);
+    // Happy Agent owns workspace creation through its catalog-native spawn.
+    // Happy CLI's Git RPC remains only for the ordinary code-agent worktree flow.
+    const canCreateWorktree = createsNativeHappyAgentWorkspace
+        || (agentType !== 'rig' && worktreeCreationMachine !== null);
 
     React.useEffect(() => {
         if (!supportsWorktree && !picksWorkspaces && sessionType === 'worktree') {
@@ -847,13 +850,12 @@ export const HomeDock = React.memo(({
             }];
         }
         const options: ModeOption[] = [
-            // Starting in no workspace means starting in the project's own
-            // checkout, which is a place with a name rather than an absence.
-            { key: '__none__', name: picksWorkspaces ? 'Main' : 'No worktree' },
-            // Making one is a separate ability from starting in one that already exists.
             ...(canCreateWorktree
                 ? [{ key: '__new__', name: picksWorkspaces ? 'Create New' : 'Create new worktree' }]
                 : []),
+            // Starting in no workspace means starting in the project's own
+            // checkout, which is a place with a name rather than an absence.
+            { key: '__none__', name: picksWorkspaces ? 'Main' : 'No worktree' },
             ...existingWorktrees,
         ];
         if (

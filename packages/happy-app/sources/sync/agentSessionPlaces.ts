@@ -21,6 +21,7 @@ export interface SessionPlace {
  * gave it and the name it carries everywhere else on the phone.
  */
 export interface SessionWorkspace {
+    id: string;
     key: string;
     name: string;
     path: string;
@@ -122,6 +123,7 @@ export function collectSessionWorkspaces(options: {
         if (isArchived(session)) continue;
         if (byId.has(workspace.id)) continue;
         byId.set(workspace.id, {
+            id: workspace.id,
             key: path,
             name: workspace.name,
             path,

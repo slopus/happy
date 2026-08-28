@@ -137,6 +137,7 @@ describe('which workspaces a project offers', () => {
             sessions,
         });
         expect(found.map((w) => w.name)).toEqual(['Retry policy rewrite']);
+        expect(found[0].id).toBe('w1');
         expect(found[0].path).toBe('/home/steve/rig/.worktrees/retry');
     });
 

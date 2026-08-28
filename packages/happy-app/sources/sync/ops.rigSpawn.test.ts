@@ -57,6 +57,44 @@ describe('Rig machine spawn RPC', () => {
         );
     });
 
+    it('asks Happy Agent to create and spawn inside one native workspace', async () => {
+        machineRPC.mockResolvedValue({
+            type: 'pending',
+            clientRequestId: 'request-2',
+            retryAfterMs: 2_000,
+        });
+        const { machineSpawnNewSession } = await import('./ops');
+
+        await machineSpawnNewSession({
+            machineId: 'rig-machine',
+            directory: '/work/project',
+            agent: 'rig',
+            clientRequestId: 'request-2',
+            providerId: 'codex',
+            modelId: 'gpt-5.6-sol',
+            permissionMode: 'auto',
+            effort: 'high',
+            happyAgentTarget: { kind: 'newWorkspace', projectId: 'project-1' },
+        });
+
+        expect(machineRPC).toHaveBeenCalledWith(
+            'rig-machine',
+            'spawn-happy-session',
+            {
+                type: 'happy-agent-spawn',
+                clientRequestId: 'request-2',
+                target: { kind: 'newWorkspace', projectId: 'project-1' },
+                agentConfiguration: {
+                    type: 'happy-agent',
+                    providerId: 'codex',
+                    modelId: 'gpt-5.6-sol',
+                    permissionMode: 'auto',
+                    effort: 'high',
+                },
+            },
+        );
+    });
+
     it('rejects a non-idempotent Rig spawn before calling the machine', async () => {
         const { machineSpawnNewSession } = await import('./ops');
 

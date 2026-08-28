@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
         online: boolean;
         metadata?: any;
     }>,
+    sessions: [] as any[],
     defaultOverrides: {},
     draft: null as any,
     navigateToSession: vi.fn(),
@@ -35,6 +36,7 @@ vi.mock('react', () => ({
 
 vi.mock('@/sync/storage', () => ({
     useAllMachines: () => mocks.machines,
+    useSessions: () => mocks.sessions,
     useSetting: () => mocks.defaultOverrides,
 }));
 
@@ -197,6 +199,7 @@ describe('useStartSessionFromDraft', () => {
         mocks.uuidCount = 0;
         completeSpawnRequest();
         mocks.defaultOverrides = {};
+        mocks.sessions = [];
         mocks.machines = [{ id: 'machine-1', online: true, metadata: { homeDir: '/Users/dev' } }];
         mocks.draft = createDraft();
         mocks.machineSpawnNewSession.mockResolvedValue({ type: 'success', sessionId: 'session-1' });
@@ -455,47 +458,40 @@ describe('useStartSessionFromDraft', () => {
         expect(mocks.navigateToSession).toHaveBeenCalledWith('rig-session-1');
     });
 
-    it('creates a Happy Agent workspace through its paired Happy CLI machine', async () => {
-        const rigMachine = createRigMachine({ siblingMachineId: 'cli-machine' });
-        rigMachine.id = 'rig-machine';
-        mocks.machines = [
-            {
-                id: 'cli-machine',
-                online: true,
-                metadata: {
-                    homeDir: '/Users/dev',
-                    cliAvailability: {
-                        claude: true,
-                        codex: true,
-                        gemini: false,
-                        openclaw: false,
-                    },
-                },
+    it('creates a native Happy Agent workspace and starts the session there', async () => {
+        mocks.machines = [createRigMachine()];
+        mocks.sessions = [{
+            id: 'project-session',
+            metadata: {
+                machineId: 'machine-1',
+                path: '~/project',
+                client: { id: 'rig', name: 'Happy Agent', version: 'test' },
+                project: { id: 'project-1', kind: 'regular', name: 'happy' },
             },
-            rigMachine,
-        ];
+        }];
         mocks.draft = createDraft({
-            selectedMachineId: 'cli-machine',
             agentType: 'rig',
             sessionType: 'worktree',
             worktreeKey: null,
         });
-        mocks.createWorktree.mockResolvedValue({
-            success: true,
-            worktreePath: '/absolute/project/.dev/worktree/happy-river',
-            branchName: 'happy-river',
-        });
+        mocks.machineSpawnNewSession
+            .mockResolvedValueOnce({ type: 'pending', clientRequestId: 'rig-request-1', retryAfterMs: 250 })
+            .mockResolvedValueOnce({ type: 'success', sessionId: 'session-1' });
 
         const { startSession } = useStartSessionFromDraft();
 
         await expect(startSession()).resolves.toBe(true);
 
-        expect(mocks.createWorktree).toHaveBeenCalledWith('cli-machine', '/absolute/project');
-        expect(mocks.machineSpawnNewSession).toHaveBeenCalledWith(expect.objectContaining({
-            machineId: 'rig-machine',
+        expect(mocks.createWorktree).not.toHaveBeenCalled();
+        expect(mocks.machineSpawnNewSession).toHaveBeenCalledTimes(2);
+        const expected = expect.objectContaining({
+            machineId: 'machine-1',
             agent: 'rig',
-            directory: '/absolute/project/.dev/worktree/happy-river',
-        }));
+            directory: '/absolute/project',
+            happyAgentTarget: { kind: 'newWorkspace', projectId: 'project-1' },
+        });
+        expect(mocks.machineSpawnNewSession).toHaveBeenNthCalledWith(1, expected);
+        expect(mocks.machineSpawnNewSession).toHaveBeenNthCalledWith(2, expected);
     });
 
     it('stops polling when a created Rig session remains pending', async () => {
