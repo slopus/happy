@@ -171,6 +171,9 @@ export async function runCodex(opts: {
         ...(forkedFromMessageId ? { forkedFromMessageId } : {}),
         ...(isSideChat ? { isSideChat: true } : {}),
     });
+    if (opts.model) {
+        metadata.currentModelCode = opts.model;
+    }
 
     const skillCommands = await discoverCodexSkillCommands();
     if (skillCommands.length > 0) {

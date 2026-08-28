@@ -19,6 +19,7 @@ import {
     includeConfiguredModel,
     getOpenClawPermissionModes,
     mapMetadataOptions,
+    resolveNonRigModelOption,
     resolveCurrentOption,
 } from './modelModeOptions';
 import { sortPermissionModes } from '@/utils/permissionModeLabels';
@@ -259,6 +260,39 @@ describe('modelModeOptions', () => {
 
         expect(resolveCurrentOption(options, ['missing', 'b', 'a'])).toEqual({ key: 'b', name: 'B' });
         expect(resolveCurrentOption(options, ['missing'])).toBeNull();
+    });
+
+    it('resolves an explicit session model before metadata and configured defaults', () => {
+        const models = getCodexModelModes();
+
+        expect(resolveNonRigModelOption(
+            models,
+            'gpt-5.4',
+            'gpt-5.6-sol',
+            'gpt-5.5',
+        )?.key).toBe('gpt-5.4');
+    });
+
+    it('resolves the metadata current model before the configured default', () => {
+        const models = getCodexModelModes();
+
+        expect(resolveNonRigModelOption(
+            models,
+            undefined,
+            'gpt-5.6-sol',
+            'gpt-5.5',
+        )?.key).toBe('gpt-5.6-sol');
+    });
+
+    it('resolves the configured default when session and metadata models are absent', () => {
+        const models = getCodexModelModes();
+
+        expect(resolveNonRigModelOption(
+            models,
+            undefined,
+            undefined,
+            'gpt-5.5',
+        )?.key).toBe('gpt-5.5');
     });
 
     it('builds the Rig catalog dynamically with provider-qualified keys', () => {

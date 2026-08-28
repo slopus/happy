@@ -463,6 +463,24 @@ export function resolveCurrentOption<T extends ModeOption>(
     return null;
 }
 
+/**
+ * Resolves a non-Rig model from the session pick, agent metadata, then the configured default.
+ *
+ * @param options - Models currently available to the session.
+ * @param sessionModelMode - Explicit model selected for this session.
+ * @param currentModelCode - Model reported by the agent in session metadata.
+ * @param configuredModelMode - User-configured or code-defined fallback model.
+ * @returns The first matching model option, or null when none of the keys is available.
+ */
+export function resolveNonRigModelOption(
+    options: ModelMode[],
+    sessionModelMode: string | null | undefined,
+    currentModelCode: string | null | undefined,
+    configuredModelMode: string | null | undefined,
+): ModelMode | null {
+    return resolveCurrentOption(options, [sessionModelMode, currentModelCode, configuredModelMode]);
+}
+
 export function getDefaultModelKey(flavor: AgentFlavor): string {
     return getCodeAgentDefaults(flavor).modelMode;
 }
