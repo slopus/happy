@@ -1536,6 +1536,20 @@ function NewSessionScreen() {
                     // later settings/default change must not silently rewrite
                     // an existing session's permission, model, or effort.
                     if (!spawnRigCreation) {
+                        // The just-spawned session may not be in local storage the
+                        // instant refreshSessions() resolves (server read-after-write
+                        // + broadcast timing). sessionSetAgentModes would then silently
+                        // no-op (updateSessionAgentModes returns early when the session
+                        // is missing), permanently dropping the picked model/permission/
+                        // effort so the in-session config falls back to the agent
+                        // default (e.g. shows 'opus' for a session spawned as 'fable').
+                        // Wait (bounded) for the session to land, then write the picks.
+                        let spawned = storage.getState().sessions[result.sessionId];
+                        for (let i = 0; i < 10 && !spawned; i++) {
+                            await new Promise(resolve => setTimeout(resolve, 150));
+                            await sync.refreshSessions();
+                            spawned = storage.getState().sessions[result.sessionId];
+                        }
                         sessionSetAgentModes(result.sessionId, {
                             permissionMode: permissionKey,
                             modelMode: currentModelKey,
