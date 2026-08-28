@@ -81,7 +81,10 @@ const ListHeader = React.memo((props: { isLoadingOlder: boolean; topContentInset
 });
 
 const ListFooter = React.memo((props: { sessionId: string }) => {
-    const session = useSession(props.sessionId)!;
+    const session = useSession(props.sessionId);
+    if (!session) {
+        return null;
+    }
     return (
         <ChatFooter controlledByUser={usesControlledSessionUi(session.metadata) && (session.agentState?.controlledByUser || false)} />
     )
