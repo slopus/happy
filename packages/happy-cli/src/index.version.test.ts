@@ -16,7 +16,7 @@ import packageJson from '../package.json';
 const execFileAsync = promisify(execFile);
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
-describe('CLI version command', () => {
+describe('CLI version command', (): void => {
   it.each(['--version', '-v'] as const)('prints only the Paws CLI version for %s and exits without starting authentication', async (versionFlag): Promise<void> => {
     const happyHomeDir = await mkdtemp(join(tmpdir(), 'paws-version-command-'));
     try {
