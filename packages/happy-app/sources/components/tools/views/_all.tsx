@@ -47,6 +47,9 @@ export const toolViewRegistry: Record<string, ToolViewComponent> = {
     MultiEdit: MultiEditView,
     Task: TaskView,
     Agent: TaskView,
+    // Codex nests a subagent's transcript under this call the same way Claude
+    // nests a Task, so it gets the same children listing.
+    CodexSubagent: TaskView,
     AskUserQuestion: AskUserQuestionView,
     request_user_input: RequestUserInputView,
     // Gemini tools (lowercase)
@@ -71,6 +74,7 @@ export const toolFullViewRegistry: Record<string, ToolViewComponent> = {
     MultiEdit: MultiEditViewFull,
     Task: TaskView,
     Agent: TaskView,
+    CodexSubagent: TaskView,
 };
 
 // Helper function to get the appropriate view component for a tool

@@ -17,10 +17,14 @@ export const MultiEditViewFull = React.memo<MultiEditViewFullProps>(({ tool, met
     const { input } = tool;
 
     let edits: Array<{ old_string: string; new_string: string; replace_all?: boolean }> = [];
+    let filePath: string | undefined;
 
     const parsed = knownTools.MultiEdit.input.safeParse(input);
-    if (parsed.success && parsed.data.edits) {
-        edits = parsed.data.edits;
+    if (parsed.success) {
+        if (parsed.data.edits) {
+            edits = parsed.data.edits;
+        }
+        filePath = parsed.data.file_path;
     }
 
     if (edits.length === 0) {
@@ -44,7 +48,7 @@ export const MultiEditViewFull = React.memo<MultiEditViewFullProps>(({ tool, met
                                 </View>
                             )}
                         </View>
-                        <ToolDiffView oldText={oldString} newText={newString} showLineNumbers />
+                        <ToolDiffView oldText={oldString} newText={newString} fileName={filePath} showLineNumbers />
                         {index < edits.length - 1 && <View style={styles.separator} />}
                     </View>
                 );

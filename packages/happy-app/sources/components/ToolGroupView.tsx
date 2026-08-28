@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { View, Text, Pressable, ActivityIndicator } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
-import { Ionicons, Octicons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import {
     AgentWorkGroupItem,
     ToolGroupItem,
@@ -17,6 +17,7 @@ import { useElapsedTime } from '@/hooks/useElapsedTime';
 import { t } from '@/text';
 import { Message, ToolCallMessage } from '@/sync/typesMessage';
 import { getToolActivityLabel, getToolSummaryCategory, ToolSummaryCategory } from '@/utils/toolDisplay';
+import { ToolCategoryIcon, ToolIcon } from './tools/ToolIcon';
 import { useRouter } from 'expo-router';
 
 interface ToolGroupViewProps {
@@ -263,7 +264,7 @@ function CollapseHeader(props: {
         <>
             {props.category ? (
                 <View style={styles.headerIcon}>
-                    <ToolSummaryIcon category={props.category} color={theme.colors.textSecondary} />
+                    <ToolCategoryIcon category={props.category} color={theme.colors.textSecondary} />
                 </View>
             ) : null}
             <Text style={styles.summaryText} numberOfLines={1}>
@@ -374,7 +375,6 @@ function ToolSummaryRow(props: {
     const { theme } = useUnistyles();
     const router = useRouter();
     const { tool } = props.message;
-    const category = getToolSummaryCategory(tool.name);
     const label = getToolActivityLabel(tool);
     const filePath = isFileEditTool(tool.name) && typeof tool.input?.file_path === 'string'
         ? tool.input.file_path
@@ -391,11 +391,10 @@ function ToolSummaryRow(props: {
     const content = (
         <>
             <View style={styles.toolSummaryIcon}>
-                <ToolSummaryIcon
-                    category={category}
+                <ToolIcon
+                    tool={tool}
                     color={theme.colors.textSecondary}
                     size={18}
-                    toolName={tool.name}
                 />
             </View>
             <Text style={styles.toolSummaryLabel} numberOfLines={1}>
@@ -423,34 +422,6 @@ function ToolSummaryRow(props: {
             {content}
         </Pressable>
     );
-}
-
-function ToolSummaryIcon(props: {
-    category: ToolSummaryCategory;
-    color: string;
-    size?: number;
-    toolName?: string;
-}) {
-    const size = props.size ?? 12;
-    if (props.toolName === 'WebSearch') {
-        return <Ionicons name="globe-outline" size={size + 1} color={props.color} />;
-    }
-    switch (props.category) {
-        case 'terminal':
-            return <Octicons name="terminal" size={size} color={props.color} />;
-        case 'edit':
-            return <Octicons name="file-diff" size={size} color={props.color} />;
-        case 'read':
-            return <Octicons name="eye" size={size} color={props.color} />;
-        case 'search':
-            return <Octicons name="search" size={size} color={props.color} />;
-        case 'web':
-            return <Ionicons name="globe-outline" size={size + 1} color={props.color} />;
-        case 'task':
-            return <Octicons name="rocket" size={size} color={props.color} />;
-        default:
-            return <Ionicons name="construct-outline" size={size + 1} color={props.color} />;
-    }
 }
 
 function getGroupSummaryCategory(messages: Message[]): ToolSummaryCategory | null {

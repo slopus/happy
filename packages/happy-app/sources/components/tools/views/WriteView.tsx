@@ -9,9 +9,13 @@ export const WriteView = React.memo<ToolViewProps>(({ tool }) => {
     const showLineNumbersInToolViews = useSetting('showLineNumbersInToolViews');
 
     let contents: string = '<no contents>';
+    let filePath: string | undefined;
     const parsed = knownTools.Write.input.safeParse(tool.input);
-    if (parsed.success && typeof parsed.data.content === 'string') {
-        contents = parsed.data.content;
+    if (parsed.success) {
+        if (typeof parsed.data.content === 'string') {
+            contents = parsed.data.content;
+        }
+        filePath = parsed.data.file_path;
     }
 
     return (
@@ -20,6 +24,7 @@ export const WriteView = React.memo<ToolViewProps>(({ tool }) => {
                 <ToolDiffView 
                     oldText={''} 
                     newText={contents} 
+                    fileName={filePath}
                     showLineNumbers={showLineNumbersInToolViews}
                     showPlusMinusSymbols={showLineNumbersInToolViews}
                 />

@@ -4,6 +4,10 @@ import { stringifyToolCommand } from './toolCommand';
 
 const TERMINAL_TOOL_NAMES = new Set([
     'Bash',
+    'BashOutput',
+    'BashStop',
+    'KillBash',
+    'KillShell',
     'CodexBash',
     'GeminiBash',
     'shell',
@@ -18,7 +22,9 @@ const EDIT_TOOL_NAMES = new Set([
     'MultiEdit',
     'Write',
     'CodexPatch',
+    'CodexDiff',
     'GeminiPatch',
+    'GeminiDiff',
     'edit',
     'NotebookEdit',
     'apply_patch',
@@ -33,6 +39,8 @@ const READ_TOOL_NAMES = new Set([
     'read_file',
     'read_agent_history',
     'view_image',
+    'ListMcpResources',
+    'ReadMcpResource',
     'get_provider_usage',
     'get_goal',
     'agent_info',
@@ -54,6 +62,8 @@ const SEARCH_TOOL_NAMES = new Set([
     'list_secrets',
     'web_search',
     'TaskList',
+    'CronList',
+    'ListAgents',
 ]);
 
 const WEB_TOOL_NAMES = new Set([
@@ -64,7 +74,9 @@ const WEB_TOOL_NAMES = new Set([
 const TASK_TOOL_NAMES = new Set([
     'Task',
     'Agent',
+    'CodexSubagent',
     'TaskCreate',
+    'TaskGet',
     'TaskOutput',
     'TaskStop',
     'TaskUpdate',
@@ -89,6 +101,16 @@ const TASK_TOOL_NAMES = new Set([
     'workflow_status',
     'create_agent',
     'create_bot',
+    // Claude Code orchestration and scheduling surface.
+    'CronCreate',
+    'CronDelete',
+    'EnterWorktree',
+    'ExitWorktree',
+    'Monitor',
+    'PushNotification',
+    'RemoteTrigger',
+    'ScheduleWakeup',
+    'SendMessage',
 ]);
 
 const INTERACTIVE_QUESTION_TOOL_NAMES = new Set([

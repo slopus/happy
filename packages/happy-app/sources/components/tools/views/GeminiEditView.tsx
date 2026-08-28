@@ -55,7 +55,7 @@ function extractEditContent(input: any): { oldText: string; newText: string; pat
 export const GeminiEditView = React.memo<ToolViewProps>(({ tool }) => {
     const showLineNumbersInToolViews = useSetting('showLineNumbersInToolViews');
     
-    const { oldText, newText } = extractEditContent(tool.input);
+    const { oldText, newText, path } = extractEditContent(tool.input);
     const oldString = trimIdent(oldText);
     const newString = trimIdent(newText);
 
@@ -65,6 +65,7 @@ export const GeminiEditView = React.memo<ToolViewProps>(({ tool }) => {
                 <ToolDiffView 
                     oldText={oldString} 
                     newText={newString} 
+                    fileName={path || undefined}
                     showLineNumbers={showLineNumbersInToolViews}
                     showPlusMinusSymbols={showLineNumbersInToolViews}
                 />

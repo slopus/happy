@@ -34,6 +34,10 @@ const taskLikeTool = {
         if (opts.tool.input && opts.tool.input.description && typeof opts.tool.input.description === 'string') {
             return opts.tool.input.description;
         }
+        // Codex names a subagent run in the call's description rather than its input.
+        if (typeof opts.tool.description === 'string' && opts.tool.description.trim()) {
+            return opts.tool.description.trim();
+        }
         return t('tools.names.task');
     },
     icon: ICON_TASK,
@@ -55,11 +59,16 @@ const taskLikeTool = {
 };
 
 /**
- * Happy Agent SDK tools carry no file changes and no output worth a card —
- * `getToolActivityLabel` already names the action and its subject.
+ * Tools whose whole story fits in the activity row: no file changes, no output
+ * worth a card — `getToolActivityLabel` already names the action and its
+ * subject. A failure is the exception, since the error payload is the only
+ * thing that explains it, so those expand.
  */
-function happyTool(icon: (size: number, color: string) => React.ReactNode) {
-    return { icon, minimal: true } as const;
+function compactTool(icon: (size: number, color: string) => React.ReactNode) {
+    return {
+        icon,
+        minimal: (opts: { tool: ToolCall }) => !(opts.tool.state === 'error' && !!opts.tool.result),
+    } as const;
 }
 
 export const knownTools = {
@@ -965,45 +974,86 @@ export const knownTools = {
     },
     // Happy Agent SDK tools. They never touch the working tree and their input
     // is already summarized in the activity row, so they render as one-liners.
-    'TaskCreate': happyTool(ICON_TASK),
-    'TaskUpdate': happyTool(ICON_TASK),
-    'TaskOutput': happyTool(ICON_TASK),
-    'TaskStop': happyTool(ICON_TASK),
-    'TaskList': happyTool(ICON_SEARCH),
-    'Workflow': happyTool(ICON_TASK),
-    'workflow': happyTool(ICON_TASK),
-    'workflow_status': happyTool(ICON_TASK),
-    'stop_workflow': happyTool(ICON_TASK),
-    'wait_for_workflow': happyTool(ICON_TASK),
-    'create_agent': happyTool(ICON_TASK),
-    'spawn_agent': happyTool(ICON_TASK),
-    'agent_send': happyTool(ICON_TASK),
-    'agent_me': happyTool(ICON_READ),
-    'agent_info': happyTool(ICON_READ),
-    'wait_agent': happyTool(ICON_TASK),
-    'interrupt_agent': happyTool(ICON_TASK),
-    'list_agents': happyTool(ICON_SEARCH),
-    'followup_task': happyTool(ICON_TASK),
-    'send_message': happyTool(ICON_TASK),
-    'schedule_message': happyTool(ICON_TASK),
-    'delegate_to_workspace': happyTool(ICON_TASK),
-    'create_workspace': happyTool(ICON_TASK),
-    'archive_workspace': happyTool(ICON_TASK),
-    'list_workspaces': happyTool(ICON_SEARCH),
-    'list_workspace_sessions': happyTool(ICON_SEARCH),
-    'list_projects': happyTool(ICON_SEARCH),
-    'create_goal': happyTool(ICON_TODO),
-    'update_goal': happyTool(ICON_TODO),
-    'get_goal': happyTool(ICON_READ),
-    'update_plan': happyTool(ICON_TODO),
-    'read_agent_history': happyTool(ICON_READ),
-    'read_user_input': happyTool(ICON_READ),
-    'get_provider_usage': happyTool(ICON_READ),
-    'list_bots': happyTool(ICON_SEARCH),
-    'create_bot': happyTool(ICON_TASK),
-    'list_secrets': happyTool(ICON_SEARCH),
-    'web_fetch': happyTool(ICON_WEB),
-    'web_search': happyTool(ICON_SEARCH),
+    'TaskCreate': compactTool(ICON_TASK),
+    'TaskUpdate': compactTool(ICON_TASK),
+    'TaskOutput': compactTool(ICON_TASK),
+    'TaskStop': compactTool(ICON_TASK),
+    'TaskList': compactTool(ICON_SEARCH),
+    'Workflow': compactTool(ICON_TASK),
+    'workflow': compactTool(ICON_TASK),
+    'workflow_status': compactTool(ICON_TASK),
+    'stop_workflow': compactTool(ICON_TASK),
+    'wait_for_workflow': compactTool(ICON_TASK),
+    'create_agent': compactTool(ICON_TASK),
+    'spawn_agent': compactTool(ICON_TASK),
+    'agent_send': compactTool(ICON_TASK),
+    'agent_me': compactTool(ICON_READ),
+    'agent_info': compactTool(ICON_READ),
+    'wait_agent': compactTool(ICON_TASK),
+    'interrupt_agent': compactTool(ICON_TASK),
+    'list_agents': compactTool(ICON_SEARCH),
+    'followup_task': compactTool(ICON_TASK),
+    'send_message': compactTool(ICON_TASK),
+    'schedule_message': compactTool(ICON_TASK),
+    'delegate_to_workspace': compactTool(ICON_TASK),
+    'create_workspace': compactTool(ICON_TASK),
+    'archive_workspace': compactTool(ICON_TASK),
+    'list_workspaces': compactTool(ICON_SEARCH),
+    'list_workspace_sessions': compactTool(ICON_SEARCH),
+    'list_projects': compactTool(ICON_SEARCH),
+    'create_goal': compactTool(ICON_TODO),
+    'update_goal': compactTool(ICON_TODO),
+    'get_goal': compactTool(ICON_READ),
+    'update_plan': compactTool(ICON_TODO),
+    'read_agent_history': compactTool(ICON_READ),
+    'read_user_input': compactTool(ICON_READ),
+    'get_provider_usage': compactTool(ICON_READ),
+    'list_bots': compactTool(ICON_SEARCH),
+    'create_bot': compactTool(ICON_TASK),
+    'list_secrets': compactTool(ICON_SEARCH),
+    'web_fetch': compactTool(ICON_WEB),
+    'web_search': compactTool(ICON_SEARCH),
+    // --- Claude Code shell session controls -------------------------------
+    'BashOutput': compactTool(ICON_TERMINAL),
+    'BashStop': compactTool(ICON_TERMINAL),
+    'KillShell': compactTool(ICON_TERMINAL),
+    'KillBash': compactTool(ICON_TERMINAL),
+    'SlashCommand': compactTool(ICON_TASK),
+    'ListMcpResources': compactTool(ICON_SEARCH),
+    'ReadMcpResource': compactTool(ICON_READ),
+    // --- Claude Code orchestration, scheduling and delivery ---------------
+    'TaskGet': compactTool(ICON_TASK),
+    'ListAgents': compactTool(ICON_SEARCH),
+    'SendMessage': compactTool(ICON_TASK),
+    'Monitor': compactTool(ICON_TASK),
+    'ScheduleWakeup': compactTool(ICON_TASK),
+    'RemoteTrigger': compactTool(ICON_TASK),
+    'PushNotification': compactTool(ICON_TASK),
+    'CronCreate': compactTool(ICON_TASK),
+    'CronDelete': compactTool(ICON_TASK),
+    'CronList': compactTool(ICON_SEARCH),
+    'EnterPlanMode': compactTool(ICON_EXIT),
+    'EnterWorktree': compactTool(ICON_TASK),
+    'ExitWorktree': compactTool(ICON_TASK),
+    'EndConversation': compactTool(ICON_EXIT),
+    'Artifact': compactTool(ICON_WEB),
+    'SendUserFile': compactTool(ICON_READ),
+    'ReportFindings': compactTool(ICON_TODO),
+    'DesignSync': compactTool(ICON_EDIT),
+    // --- Codex subagents ---------------------------------------------------
+    // The CLI nests the subagent's own tool calls under this call, so it shows
+    // the same title-and-children treatment as a Claude `Task`.
+    'CodexSubagent': taskLikeTool,
+    // --- Raw provider shapes we do not parse into a diff yet ----------------
+    // They still deserve the edit/terminal/read icon rather than a wrench.
+    'apply_patch': compactTool(ICON_EDIT),
+    'search_replace': compactTool(ICON_EDIT),
+    'exec_command': compactTool(ICON_TERMINAL),
+    'write_stdin': compactTool(ICON_TERMINAL),
+    'run_terminal_command': compactTool(ICON_TERMINAL),
+    'read_file': compactTool(ICON_READ),
+    'view_image': compactTool(ICON_READ),
+    'list_dir': compactTool(ICON_SEARCH),
 } satisfies Record<string, {
     title?: string | ((opts: { metadata: Metadata | null, tool: ToolCall }) => string);
     icon: (size: number, color: string) => React.ReactNode;
