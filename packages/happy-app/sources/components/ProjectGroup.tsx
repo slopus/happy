@@ -7,6 +7,7 @@ import { Text } from '@/components/StyledText';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
 import { ProjectGroupData, ProjectWorkspaceGroup, useSessionGitStatus } from '@/sync/storage';
+import { orderSessionRowsByForkLineage } from '@/utils/forkLineage';
 import { CompactSessionRow } from './ActiveSessionsGroupCompact';
 import { Avatar } from './Avatar';
 import { requestHomeDockFocus } from './homeDockFocus';
@@ -65,6 +66,15 @@ const WorkspaceSection = React.memo(({ project, workspace, selectedSessionId }: 
     // status the daemon reports, through the workspace's own name, down to the
     // "main" every repo has when nothing better is known.
     const gitStatus = useSessionGitStatus(firstSession?.id ?? '');
+
+    // Nesting runs here, not where the list data is built: the list is filtered
+    // after that (archive toggle, search box), and a depth stamped before the
+    // filter leaves a child indented under a parent that is no longer on screen.
+    // What this section receives is exactly what renders.
+    const sessions = React.useMemo(
+        () => orderSessionRowsByForkLineage(workspace.sessions),
+        [workspace.sessions],
+    );
     const branchName = worktreeName
         ?? gitStatus?.branch
         ?? 'main';
@@ -147,12 +157,12 @@ const WorkspaceSection = React.memo(({ project, workspace, selectedSessionId }: 
             </View>
 
             <View style={styles.workspaceCard}>
-                {workspace.sessions.map((session, index) => (
+                {sessions.map((session, index) => (
                     <CompactSessionRow
                         key={session.id}
                         session={session}
                         selected={session.id === selectedSessionId}
-                        showBorder={index < workspace.sessions.length - 1}
+                        showBorder={index < sessions.length - 1}
                     />
                 ))}
             </View>

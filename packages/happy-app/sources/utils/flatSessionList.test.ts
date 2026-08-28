@@ -34,6 +34,8 @@ function row(overrides: Partial<SessionRowData> & { id: string }): SessionRowDat
         projectName: null,
         workspaceId: null,
         workspaceName: null,
+        parentSessionId: null,
+        forkDepth: 0,
         ...overrides,
     };
 }
