@@ -35,8 +35,11 @@ const mocks = vi.hoisted(() => {
     startSessionMessages: [] as any[],
     startSessionCalls: 0,
     cancelCalls: [] as string[],
+    cancelStatusDetail: undefined as string | undefined,
     disposeCalls: 0,
     constructorArgs: null as any,
+    holdPromptsOpen: false,
+    heldPromptResolvers: [] as Array<() => void>,
   };
 
   return {
@@ -144,6 +147,12 @@ vi.mock('./AcpBackend', () => ({
 
     async sendPrompt(sessionId: string, prompt: string) {
       mocks.backendState.prompts.push({ sessionId, prompt });
+      if (mocks.backendState.holdPromptsOpen) {
+        await new Promise<void>((resolve) => {
+          mocks.backendState.heldPromptResolvers.push(resolve);
+        });
+        return;
+      }
       for (const listener of mocks.backendState.listeners) {
         listener({ type: 'status', status: 'running' });
         listener({ type: 'model-output', textDelta: 'hello' });
@@ -171,7 +180,7 @@ vi.mock('./AcpBackend', () => ({
     async cancel(sessionId: string) {
       mocks.backendState.cancelCalls.push(sessionId);
       for (const listener of mocks.backendState.listeners) {
-        listener({ type: 'status', status: 'stopped' });
+        listener({ type: 'status', status: 'stopped', detail: mocks.backendState.cancelStatusDetail });
       }
     }
 
@@ -203,8 +212,11 @@ describe('runAcp', () => {
     mocks.backendState.startSessionMessages = [];
     mocks.backendState.startSessionCalls = 0;
     mocks.backendState.cancelCalls = [];
+    mocks.backendState.cancelStatusDetail = undefined;
     mocks.backendState.disposeCalls = 0;
     mocks.backendState.constructorArgs = null;
+    mocks.backendState.holdPromptsOpen = false;
+    mocks.backendState.heldPromptResolvers = [];
 
     mocks.mockApiCreate.mockResolvedValue({
       getOrCreateMachine: mocks.mockGetOrCreateMachine,
@@ -285,6 +297,69 @@ describe('runAcp', () => {
     await abortHandler!({});
     await vi.waitFor(() => {
       expect(mocks.backendState.cancelCalls).toEqual(['acp-session-1']);
+    });
+
+    await mocks.getKillHandler()!();
+    await runPromise;
+  });
+
+  it('keeps the ACP message queue usable after OpenCode reports user cancellation', async () => {
+    mocks.backendState.holdPromptsOpen = true;
+    mocks.backendState.cancelStatusDetail = 'Cancelled by user';
+
+    const runPromise = runAcp({
+      credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } },
+      agentName: 'opencode',
+      command: 'opencode',
+      args: ['acp'],
+    });
+
+    await vi.waitFor(() => {
+      expect(mocks.getUserMessageHandler()).toBeTypeOf('function');
+    });
+
+    mocks.getUserMessageHandler()!({
+      role: 'user',
+      content: { type: 'text', text: 'Long running prompt' },
+    });
+
+    await vi.waitFor(() => {
+      expect(mocks.backendState.prompts).toEqual([
+        { sessionId: 'acp-session-1', prompt: 'Long running prompt' },
+      ]);
+    });
+
+    const abortHandler = mocks.sessionHandlers.get('abort');
+    expect(abortHandler).toBeTypeOf('function');
+    await abortHandler!({});
+
+    await vi.waitFor(() => {
+      expect(mocks.backendState.cancelCalls).toEqual(['acp-session-1']);
+    });
+
+    mocks.backendState.holdPromptsOpen = false;
+    for (const resolve of mocks.backendState.heldPromptResolvers) {
+      resolve();
+    }
+
+    await vi.waitFor(() => {
+      const turnEndStatuses = mocks.mockSession.sendSessionProtocolMessage.mock.calls
+        .map(([envelope]) => envelope.ev)
+        .filter((event) => event.t === 'turn-end')
+        .map((event) => event.status);
+      expect(turnEndStatuses).toContain('cancelled');
+    });
+
+    mocks.getUserMessageHandler()!({
+      role: 'user',
+      content: { type: 'text', text: 'Second prompt after abort' },
+    });
+
+    await vi.waitFor(() => {
+      expect(mocks.backendState.prompts).toEqual([
+        { sessionId: 'acp-session-1', prompt: 'Long running prompt' },
+        { sessionId: 'acp-session-1', prompt: 'Second prompt after abort' },
+      ]);
     });
 
     await mocks.getKillHandler()!();
