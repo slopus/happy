@@ -11,6 +11,7 @@ import { Typography } from '@/constants/Typography';
 
 interface MainViewProps {
     variant: 'phone' | 'sidebar';
+    sessionListLayout?: 'projects' | 'time';
 }
 
 const styles = StyleSheet.create((theme) => ({
@@ -80,7 +81,7 @@ const styles = StyleSheet.create((theme) => ({
     },
 }));
 
-export const MainView = React.memo(({ variant }: MainViewProps) => {
+export const MainView = React.memo(({ sessionListLayout = 'projects', variant }: MainViewProps) => {
     const { theme } = useUnistyles();
     const sessionListViewData = useVisibleSessionListViewData();
     const realtimeStatus = useRealtimeStatus();
@@ -112,7 +113,7 @@ export const MainView = React.memo(({ variant }: MainViewProps) => {
         // Sessions list
         return (
             <View style={styles.sidebarContentContainer}>
-                <SessionsList />
+                <SessionsList layoutMode={sessionListLayout} />
             </View>
         );
     }

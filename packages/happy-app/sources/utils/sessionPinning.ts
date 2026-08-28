@@ -23,3 +23,19 @@ export function sortSessionsForList<T extends { id: string; activeAt?: number; a
         return bActivityTime - aActivityTime;
     });
 }
+
+export function partitionSessionsByPinnedOrder<T extends { id: string }>(
+    sessions: T[],
+    pinnedOrder: string[],
+): { pinned: T[]; regular: T[] } {
+    const sessionsById = new Map(sessions.map((session) => [session.id, session]));
+    const pinned = pinnedOrder
+        .map((sessionId) => sessionsById.get(sessionId))
+        .filter((session): session is T => session !== undefined);
+    const pinnedIds = new Set(pinned.map((session) => session.id));
+
+    return {
+        pinned,
+        regular: sessions.filter((session) => !pinnedIds.has(session.id)),
+    };
+}

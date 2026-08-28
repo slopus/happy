@@ -950,6 +950,7 @@ export const en = {
         searchSessions: 'Manage sessions',
         projectsTab: 'Projects',
         listsTab: 'Lists',
+        timelineTab: 'Timeline',
     },
     sidebarLists: {
         lists: 'Lists',

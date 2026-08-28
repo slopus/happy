@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { sortSessionsForList } from './sessionPinning';
+import { partitionSessionsByPinnedOrder, sortSessionsForList } from './sessionPinning';
 
 const session = (id: string, createdAt: number) => ({
     id,
@@ -39,5 +39,19 @@ describe('sortSessionsForList', () => {
         ], []);
 
         expect(sorted.map(item => item.id)).toEqual(['continued-today', 'created-today']);
+    });
+});
+
+describe('partitionSessionsByPinnedOrder', () => {
+    it('creates one ordered pinned queue and removes those sessions from regular content', () => {
+        const partitioned = partitionSessionsByPinnedOrder([
+            session('regular-new', 400),
+            session('pinned-second', 300),
+            session('regular-old', 200),
+            session('pinned-first', 100),
+        ], ['pinned-first', 'missing', 'pinned-second']);
+
+        expect(partitioned.pinned.map((item) => item.id)).toEqual(['pinned-first', 'pinned-second']);
+        expect(partitioned.regular.map((item) => item.id)).toEqual(['regular-new', 'regular-old']);
     });
 });

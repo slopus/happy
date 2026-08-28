@@ -40,7 +40,15 @@ export function buildSessionNavigationTimeGroups(
     const currentDay = getLocalDayIndex(now);
     const grouped = new Map<number, SessionRowData[]>();
 
-    for (const session of [...sessions].sort((a, b) => getSessionRecency(b) - getSessionRecency(a))) {
+    for (const session of [...sessions].sort((a, b) => {
+        const dayDifference = getLocalDayIndex(getSessionRecency(b)) - getLocalDayIndex(getSessionRecency(a));
+        if (dayDifference !== 0) return dayDifference;
+
+        // Activity signals can update many times during a running turn. Once a
+        // session has reached today's bucket, keep its position deterministic
+        // so concurrent sessions do not continually trade places in the UI.
+        return (b.createdAt ?? 0) - (a.createdAt ?? 0) || a.id.localeCompare(b.id);
+    })) {
         const day = getLocalDayIndex(getSessionRecency(session));
         const group = grouped.get(day) ?? [];
         group.push(session);

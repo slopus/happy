@@ -133,7 +133,7 @@ const stylesheet = StyleSheet.create((theme) => ({
     },
 }));
 
-export function SessionsList() {
+export function SessionsList({ layoutMode = 'projects' }: { layoutMode?: 'projects' | 'time' }) {
     const styles = stylesheet;
     const { theme } = useUnistyles();
     const safeArea = useSafeAreaInsets();
@@ -275,6 +275,7 @@ export function SessionsList() {
             case 'active-sessions':
                 return (
                     <ActiveSessionsGroupCompact
+                        layoutMode={layoutMode}
                         sessions={item.sessions}
                         selectedSessionId={selectedSessionId}
                         selectionMode={selectionMode}
@@ -309,7 +310,7 @@ export function SessionsList() {
                     />
                 );
         }
-    }, [selectedSessionId, toggleArchived, selectionMode, selectedIds, startSelection, toggleSelection]);
+    }, [layoutMode, selectedSessionId, toggleArchived, selectionMode, selectedIds, startSelection, toggleSelection]);
 
 
     // Remove this section as we'll use FlatList for all items now

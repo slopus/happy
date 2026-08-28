@@ -64,6 +64,7 @@ describe('localSettings session list layout', () => {
         expect(localSettingsDefaults.sessionListLayout).toBe('projects');
         expect(localSettingsParse({}).sessionListLayout).toBe('projects');
         expect(localSettingsParse({ sessionListLayout: 'time' }).sessionListLayout).toBe('time');
+        expect(localSettingsParse({ sessionListLayout: 'time' }).desktopSidebarMode).toBe('timeline');
     });
 });
 
@@ -72,6 +73,7 @@ describe('localSettings desktop Lists and Tags', () => {
         expect(localSettingsDefaults.desktopSidebarMode).toBe('projects');
         expect(localSettingsParse({}).desktopSidebarMode).toBe('projects');
         expect(localSettingsParse({ desktopSidebarMode: 'lists' }).desktopSidebarMode).toBe('lists');
+        expect(localSettingsParse({ desktopSidebarMode: 'timeline' }).desktopSidebarMode).toBe('timeline');
     });
 
     it('persists one List and multiple Tags for a session', () => {

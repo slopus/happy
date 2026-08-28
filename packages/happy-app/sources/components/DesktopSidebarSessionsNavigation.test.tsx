@@ -14,6 +14,8 @@ const mocks = vi.hoisted(() => ({
     setInput: vi.fn(),
     setMachineId: vi.fn(),
     setPath: vi.fn(),
+    moveToPinned: vi.fn(),
+    pinnedOrder: [] as string[],
     organization: null as any,
 }));
 
@@ -80,6 +82,12 @@ vi.mock('@/hooks/useVisibleSessionListViewData', () => ({
         completedTodosCount: 0, totalTodosCount: 0, hasUnread: false,
     }] }],
 }));
+vi.mock('@/hooks/useSessionManagementPreferences', () => ({
+    useSessionManagementPreferences: () => ({
+        preferences: { pinnedOrder: mocks.pinnedOrder, focusOrder: [] },
+        moveToPinned: mocks.moveToPinned,
+    }),
+}));
 vi.mock('@/modal', () => ({ Modal: { confirm: mocks.confirm, prompt: vi.fn() } }));
 vi.mock('@/sync/storage', async () => {
     const ReactModule = await import('react');
@@ -91,6 +99,7 @@ vi.mock('@/sync/storage', async () => {
 });
 vi.mock('@/text', () => ({ t: (key: string) => key }));
 vi.mock('./MainView', () => ({ MainView: 'MainView' }));
+vi.mock('./ActiveSessionsGroupCompact', () => ({ CompactSessionRow: 'CompactSessionRow' }));
 vi.mock('./SessionConfigPanel', () => ({ PathPickerContent: 'PathPickerContent', PickerContent: 'PickerContent' }));
 vi.mock('@/utils/machineUtils', () => ({ isMachineOnline: () => true }));
 vi.mock('@/utils/sessionUtils', () => ({ formatPathRelativeToHome: (path: string) => path }));
@@ -106,6 +115,7 @@ describe('DesktopSidebarSessionsNavigation', () => {
             tags: [{ id: 'product', name: 'product', color: 'green', createdAt: 1 }],
             sessions: { 'session-1': { listId: 'happy', tagIds: ['product'] } },
         };
+        mocks.pinnedOrder = [];
     });
 
     it('keeps Projects as default and does not navigate for sidebar-only organization actions', () => {
@@ -125,9 +135,35 @@ describe('DesktopSidebarSessionsNavigation', () => {
 
         act(() => renderer.root.findByProps({ testID: 'sidebar-list-happy' }).props.onPress());
         act(() => renderer.root.findByProps({ testID: 'sidebar-tag-product' }).props.onPress());
+        act(() => renderer.root.findByProps({ testID: 'pin-organized-session-session-1' }).props.onPress());
 
+        expect(mocks.moveToPinned).toHaveBeenCalledWith('session-1');
         expect(mocks.navigate).not.toHaveBeenCalled();
         expect(mocks.navigateToSession).not.toHaveBeenCalled();
+        act(() => renderer.unmount());
+    });
+
+    it('exposes Timeline beside Projects and Lists as a top-level view', () => {
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<DesktopSidebarSessionsNavigation />); });
+
+        act(() => renderer.root.findByProps({ testID: 'desktop-sidebar-tab-timeline' }).props.onPress());
+
+        expect(renderer.root.findByProps({ testID: 'desktop-sidebar-tab-timeline' }).props.accessibilityState).toEqual({ selected: true });
+        expect(renderer.root.findByType('MainView').props.sessionListLayout).toBe('time');
+        act(() => renderer.unmount());
+    });
+
+    it('shows pinned conversations in their own Lists section without duplicating them', () => {
+        mocks.pinnedOrder = ['session-1'];
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<DesktopSidebarSessionsNavigation />); });
+        act(() => renderer.root.findByProps({ testID: 'desktop-sidebar-tab-lists' }).props.onPress());
+
+        expect(renderer.root.findByProps({ testID: 'sidebar-pinned-section' })).toBeDefined();
+        expect(renderer.root.findAllByType('CompactSessionRow')).toHaveLength(1);
+        expect(renderer.root.findByType('CompactSessionRow').props.session.id).toBe('session-1');
+        expect(renderer.root.findAllByProps({ testID: 'organized-session-session-1' })).toHaveLength(0);
         act(() => renderer.unmount());
     });
 

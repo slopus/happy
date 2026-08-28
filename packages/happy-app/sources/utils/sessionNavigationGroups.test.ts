@@ -67,9 +67,30 @@ describe('session navigation groups', () => {
         ], now);
 
         expect(groups.map((group) => group.dayOffset)).toEqual([0, 1, 3]);
-        expect(groups[0].sessions.map((item) => item.id)).toEqual(['today-active', 'today-created']);
+        expect(groups[0].sessions.map((item) => item.id)).toEqual(['today-created', 'today-active']);
         expect(groups[1].sessions.map((item) => item.id)).toEqual(['yesterday']);
         expect(groups[2].sessions.map((item) => item.id)).toEqual(['older']);
+    });
+
+    it('keeps a stable creation order inside a day instead of chasing exact activity timestamps', () => {
+        const now = new Date(2026, 7, 6, 12).getTime();
+        const groups = buildSessionNavigationTimeGroups([
+            session({
+                id: 'older-session-with-latest-ping',
+                activityAt: new Date(2026, 7, 6, 11, 59).getTime(),
+                createdAt: new Date(2026, 7, 1, 8).getTime(),
+            }),
+            session({
+                id: 'newer-session',
+                activityAt: new Date(2026, 7, 6, 9).getTime(),
+                createdAt: new Date(2026, 7, 5, 8).getTime(),
+            }),
+        ], now);
+
+        expect(groups[0].sessions.map((item) => item.id)).toEqual([
+            'newer-session',
+            'older-session-with-latest-ping',
+        ]);
     });
 
     it('places a session in the day of its latest activity instead of its creation day', () => {

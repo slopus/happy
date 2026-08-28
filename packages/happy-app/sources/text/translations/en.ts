@@ -917,6 +917,7 @@ export const en: TranslationStructure = {
         searchSessions: 'Manage sessions',
         projectsTab: 'Projects',
         listsTab: 'Lists',
+        timelineTab: 'Timeline',
     },
     sidebarLists: {
         lists: 'Lists', tags: 'Tags', newList: 'New list', newTag: 'New tag', tagNamePlaceholder: 'Tag name',

@@ -904,6 +904,7 @@ export const zhHans: TranslationStructure = {
         searchSessions: '会话管理',
         projectsTab: '项目',
         listsTab: '清单',
+        timelineTab: '时间线',
     },
     sidebarLists: {
         lists: '清单', tags: 'Tag', newList: '新建清单', newTag: '新建 Tag', tagNamePlaceholder: 'Tag 名称',

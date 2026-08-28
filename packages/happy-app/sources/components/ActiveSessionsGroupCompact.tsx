@@ -5,7 +5,7 @@ import { Feather } from '@expo/vector-icons';
 import { type SessionState, getSessionStateLabel } from '@/utils/sessionUtils';
 import { Typography } from '@/constants/Typography';
 import { StatusDot } from './StatusDot';
-import { storage, type SessionRowData, useAllMachines, useLocalSetting, useLocalSettingMutable } from '@/sync/storage';
+import { storage, type SessionRowData, useAllMachines, useLocalSetting } from '@/sync/storage';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
@@ -23,8 +23,8 @@ import { useLocalDayRollover } from '@/hooks/useLocalDayRollover';
 import { buildSessionNavigationGroups, buildSessionNavigationTimeGroups } from '@/utils/sessionNavigationGroups';
 import { sync } from '@/sync/sync';
 import { loadPendingPermissionMessageId } from '@/utils/pendingPermission';
-import { DesktopShortcutTooltip } from './DesktopShortcutTooltip';
 import { ProjectSectionHeader } from './ProjectSectionHeader';
+import { partitionSessionsByPinnedOrder } from '@/utils/sessionPinning';
 
 const STATUS_CONFIG: Record<SessionState, { color: string; dotColor: string; isPulsing: boolean }> = {
     idle: { color: '#6B7280', dotColor: '#9CA3AF', isPulsing: false },
@@ -35,6 +35,7 @@ const STATUS_CONFIG: Record<SessionState, { color: string; dotColor: string; isP
 };
 
 interface ActiveSessionsGroupProps {
+    layoutMode?: 'projects' | 'time';
     sessions: SessionRowData[];
     selectedSessionId?: string;
     selectionMode?: boolean;
@@ -66,6 +67,7 @@ const MachineSeparator = React.memo(({ machineName, machineId }: { machineName: 
 });
 
 export function ActiveSessionsGroupCompact({
+    layoutMode = 'projects',
     sessions,
     selectedSessionId,
     selectionMode = false,
@@ -79,22 +81,24 @@ export function ActiveSessionsGroupCompact({
     const machines = useAllMachines();
     const sessionIds = React.useMemo(() => sessions.map(session => session.id), [sessions]);
     const sessionManagement = useSessionManagementPreferences(sessionIds, { prune: false });
-    const [layoutMode, setLayoutMode] = useLocalSettingMutable('sessionListLayout');
-    const [layoutTooltipVisible, setLayoutTooltipVisible] = React.useState(false);
     const localDayIndex = useLocalDayRollover();
+    const partitionedSessions = React.useMemo(() => partitionSessionsByPinnedOrder(
+        sessions,
+        sessionManagement.preferences.pinnedOrder,
+    ), [sessionManagement.preferences.pinnedOrder, sessions]);
 
     // Machines are an explicit grouping dimension; projects are the compact,
     // collapsible units users scan to find recent sessions.
     const machineGroups = React.useMemo(() => buildSessionNavigationGroups({
         machines,
-        pinnedOrder: sessionManagement.preferences.pinnedOrder,
-        sessions,
+        pinnedOrder: [],
+        sessions: partitionedSessions.regular,
         unknownLabel: t('status.unknown'),
-    }), [machines, sessionManagement.preferences.pinnedOrder, sessions]);
+    }), [machines, partitionedSessions.regular]);
     const hasMultipleMachines = machineGroups.length > 1;
     const timeGroups = React.useMemo(
-        () => buildSessionNavigationTimeGroups(sessions),
-        [localDayIndex, sessions],
+        () => buildSessionNavigationTimeGroups(partitionedSessions.regular),
+        [localDayIndex, partitionedSessions.regular],
     );
     const [collapsedProjects, setCollapsedProjects] = React.useState<Set<string>>(() => new Set());
 
@@ -135,15 +139,6 @@ export function ActiveSessionsGroupCompact({
         });
     }, []);
 
-    const toggleLayoutMode = React.useCallback(() => {
-        setLayoutMode(layoutMode === 'projects' ? 'time' : 'projects');
-    }, [layoutMode, setLayoutMode]);
-
-    const layoutActionLabel = layoutMode === 'projects'
-        ? t('sidebar.sortSessionsByTime')
-        : t('sidebar.groupSessionsByProject');
-    const layoutActionIcon = layoutMode === 'projects' ? 'clock' : 'folder';
-
     const getTimeGroupLabel = React.useCallback((dayOffset: number) => {
         if (dayOffset === 0) return t('sessionHistory.today');
         if (dayOffset === 1) return t('sessionHistory.yesterday');
@@ -152,43 +147,23 @@ export function ActiveSessionsGroupCompact({
 
     return (
         <View style={styles.container}>
-            <View style={styles.layoutHeader}>
-                <Text style={styles.layoutTitle}>
-                    {layoutMode === 'projects' ? t('devTools.projects') : t('sessionSearch.sections.recent')}
-                </Text>
-                <View style={styles.layoutToggleWrapper}>
-                    <Pressable
-                        accessibilityLabel={layoutActionLabel}
-                        accessibilityRole="button"
-                        onBlur={() => setLayoutTooltipVisible(false)}
-                        onFocus={() => setLayoutTooltipVisible(true)}
-                        onHoverIn={() => setLayoutTooltipVisible(true)}
-                        onHoverOut={() => setLayoutTooltipVisible(false)}
-                        onPress={toggleLayoutMode}
-                        style={({ pressed }) => [
-                            styles.layoutToggle,
-                            layoutTooltipVisible && styles.layoutToggleHovered,
-                            pressed && styles.layoutTogglePressed,
-                        ]}
-                        testID="session-list-layout-toggle"
-                    >
-                        <Feather
-                            color={theme.colors.textSecondary}
-                            dataSet={{ iconName: layoutActionIcon }}
-                            name={layoutActionIcon}
-                            size={16}
-                            testID="session-list-layout-toggle-icon"
+            {partitionedSessions.pinned.length > 0 ? (
+                <View style={styles.timeGroup} testID="session-pinned-group">
+                    <Text style={styles.timeGroupLabel}>{t('sessionSearch.sections.pinned')}</Text>
+                    {partitionedSessions.pinned.map((session) => (
+                        <CompactSessionRow
+                            key={session.id}
+                            session={session}
+                            selected={selectedSessionId === session.id}
+                            bulkSelected={selectedIds?.has(session.id) ?? false}
+                            selectionMode={selectionMode}
+                            showLocation
+                            onStartSelection={onStartSelection}
+                            onToggleSelection={onToggleSelection}
                         />
-                    </Pressable>
-                    <DesktopShortcutTooltip
-                        align="right"
-                        compact
-                        label={layoutActionLabel}
-                        testID="session-list-layout-tooltip"
-                        visible={Platform.OS === 'web' && layoutTooltipVisible}
-                    />
+                    ))}
                 </View>
-            </View>
+            ) : null}
             {layoutMode === 'projects' ? machineGroups.map((machineGroup, machineIndex) => {
                 return (
                     <React.Fragment key={machineGroup.machineId}>
@@ -497,41 +472,6 @@ const stylesheet = StyleSheet.create((theme) => ({
         backgroundColor: theme.colors.groupped.background,
         paddingBottom: 12,
         paddingTop: 12,
-    },
-    layoutHeader: {
-        alignItems: 'center',
-        flexDirection: 'row',
-        marginBottom: 8,
-        minHeight: 26,
-        paddingLeft: 16,
-        paddingRight: 10,
-        position: 'relative',
-        zIndex: 120,
-    },
-    layoutTitle: {
-        color: theme.colors.groupped.sectionTitle,
-        flex: 1,
-        fontSize: 13,
-        lineHeight: 18,
-        ...Typography.default('semiBold'),
-    },
-    layoutToggleWrapper: {
-        position: 'relative',
-        zIndex: 120,
-    },
-    layoutToggle: {
-        alignItems: 'center',
-        backgroundColor: theme.colors.surfaceSelected,
-        borderRadius: 15,
-        height: 30,
-        justifyContent: 'center',
-        width: 30,
-    },
-    layoutToggleHovered: {
-        backgroundColor: theme.colors.surfacePressed,
-    },
-    layoutTogglePressed: {
-        opacity: 0.72,
     },
     timeGroup: {
         marginBottom: 10,

@@ -36,6 +36,16 @@ const messageHoverEvidencePhase = process.env.HAPPY_MESSAGE_HOVER_EVIDENCE_PHASE
 const forkTranscriptEvidenceDirectory = process.env.HAPPY_FORK_TRANSCRIPT_EVIDENCE_DIR;
 const motionPhotoEvidenceDirectory = process.env.HAPPY_MOTION_PHOTO_EVIDENCE_DIR;
 const motionPhotoEvidencePhase = process.env.HAPPY_MOTION_PHOTO_EVIDENCE_PHASE === 'before' ? 'before' : 'after';
+const sessionTimelineEvidenceDirectory = process.env.HAPPY_SESSION_TIMELINE_EVIDENCE_DIR;
+
+function sessionTimelineScreenshotPath(
+    testInfo: { outputPath: (filename: string) => string },
+    filename: string,
+): string {
+    if (!sessionTimelineEvidenceDirectory) return testInfo.outputPath(filename);
+    fs.mkdirSync(sessionTimelineEvidenceDirectory, { recursive: true });
+    return path.join(sessionTimelineEvidenceDirectory, filename);
+}
 
 function projectHoverScreenshotPath(testInfo: { outputPath: (filename: string) => string }): string {
     const filename = `case-1-${projectHoverEvidencePhase}.png`;
@@ -328,6 +338,86 @@ async function createE2ESession(
         }
     }
     return sessionId;
+}
+
+async function updateE2ESessionMetadata(
+    request: APIRequestContext,
+    sessionId: string,
+    options: Pick<CreateE2ESessionOptions, 'homeDir' | 'host' | 'machineId' | 'name' | 'path'>,
+): Promise<{ beforeUpdatedAt: number; afterUpdatedAt: number }> {
+    const authUrl = new URL(authenticatedWebUrl);
+    const token = authUrl.searchParams.get('dev_token');
+    const secret = authUrl.searchParams.get('dev_secret');
+    if (!token || !secret || !e2eServerUrl) {
+        throw new Error('缺少更新 E2E 会话所需的本地认证配置。');
+    }
+
+    const headers = {
+        Authorization: `Bearer ${token}`,
+        'X-Happy-Client': 'playwright-e2e',
+    };
+    const sessionsResponse = await request.get(new URL('/v1/sessions', e2eServerUrl).toString(), { headers });
+    expect(sessionsResponse.ok()).toBe(true);
+    const body = await sessionsResponse.json() as { sessions: Array<{ id: string; metadataVersion: number; updatedAt: number }> };
+    const sessionBeforeUpdate = body.sessions.find((session) => session.id === sessionId);
+    if (!sessionBeforeUpdate) throw new Error(`找不到 E2E 会话 ${sessionId} 的 metadataVersion。`);
+
+    const encryptionKey = new Uint8Array(Buffer.from(secret, 'base64url'));
+    const metadata = encodeBase64(encryptLegacy({
+        path: options.path,
+        host: options.host,
+        name: options.name,
+        flavor: 'codex',
+        machineId: options.machineId,
+        homeDir: options.homeDir,
+        lifecycleState: 'running',
+        startedBy: 'terminal',
+    }, encryptionKey));
+    const socket = io(e2eServerUrl, {
+        auth: {
+            token,
+            clientType: 'session-scoped',
+            sessionId,
+            happyClient: 'playwright-session-metadata',
+        },
+        autoConnect: false,
+        path: '/v1/updates',
+        reconnection: false,
+        transports: ['websocket'],
+    });
+    try {
+        await new Promise<void>((resolve, reject) => {
+            const timeout = setTimeout(() => reject(new Error('更新 E2E 会话元数据超时。')), 10_000);
+            socket.once('connect_error', (error: Error) => {
+                clearTimeout(timeout);
+                reject(error);
+            });
+            socket.once('connect', () => {
+                socket.emit('update-metadata', {
+                    sid: sessionId,
+                    metadata,
+                    expectedVersion: sessionBeforeUpdate.metadataVersion,
+                }, (result: { result: string }) => {
+                    clearTimeout(timeout);
+                    if (result.result === 'success') resolve();
+                    else reject(new Error(`更新 E2E 会话元数据失败：${result.result}`));
+                });
+            });
+            socket.connect();
+        });
+    } finally {
+        socket.close();
+    }
+
+    const updatedSessionsResponse = await request.get(new URL('/v1/sessions', e2eServerUrl).toString(), { headers });
+    expect(updatedSessionsResponse.ok()).toBe(true);
+    const updatedBody = await updatedSessionsResponse.json() as { sessions: Array<{ id: string; updatedAt: number }> };
+    const sessionAfterUpdate = updatedBody.sessions.find((session) => session.id === sessionId);
+    if (!sessionAfterUpdate) throw new Error(`更新后找不到 E2E 会话 ${sessionId}。`);
+    return {
+        beforeUpdatedAt: sessionBeforeUpdate.updatedAt,
+        afterUpdatedAt: sessionAfterUpdate.updatedAt,
+    };
 }
 
 async function appendE2ESessionEnvelopes(
@@ -2799,7 +2889,9 @@ test('[R10-04] 高密度导航在搜索、归档和深链刷新后保持稳定',
     }
 });
 
-test('[SESSION-LAYOUT] 左栏在项目分组与时间排序之间切换并记住选择', async ({ page, request }, testInfo) => {
+test('[SESSION-LAYOUT] 项目清单时间线同级、时间线稳定且置顶独立', async ({ page, request }, testInfo) => {
+    test.setTimeout(180_000);
+    page.setDefaultTimeout(30_000);
     const oldestSessionId = await createE2ESession(request, {
         path: '/workspace/atlas',
         host: 'studio-mac',
@@ -2828,24 +2920,25 @@ test('[SESSION-LAYOUT] 左栏在项目分组与时间排序之间切换并记住
     await page.goto(authenticatedRoute(`/session/${newestSessionId}`));
     expect(await page.evaluate(() => window.devicePixelRatio)).toBe(1);
 
-    const layoutToggle = page.getByTestId('session-list-layout-toggle');
-    const layoutIcon = page.getByTestId('session-list-layout-toggle-icon');
-    const projectScreenshot = testInfo.outputPath('session-list-project-layout-1280x900.png');
-    const timeScreenshot = testInfo.outputPath('session-list-time-layout-1280x900.png');
+    const projectsTab = page.getByTestId('desktop-sidebar-tab-projects');
+    const listsTab = page.getByTestId('desktop-sidebar-tab-lists');
+    const timelineTab = page.getByTestId('desktop-sidebar-tab-timeline');
 
-    await expect(layoutToggle).toHaveAccessibleName('Sort sessions by time');
-    await expect(layoutIcon).toHaveAttribute('data-icon-name', 'clock');
+    await expect(page.getByTestId('desktop-sidebar-session-navigation')).toBeVisible({ timeout: 30_000 });
+    await expect(projectsTab).toHaveAttribute('aria-selected', 'true');
+    await expect(listsTab).toHaveAttribute('aria-selected', 'false');
+    await expect(timelineTab).toHaveAttribute('aria-selected', 'false');
+    await expect(page.getByTestId('session-list-layout-toggle')).toHaveCount(0);
     await expect(page.getByTestId('sidebar-project-toggle-studio-machine--%2Fworkspace%2Fatlas')).toBeVisible();
     await expect(page.getByTestId('sidebar-project-toggle-studio-machine--%2Fworkspace%2Fbeta')).toBeVisible();
-    await page.screenshot({ path: projectScreenshot, fullPage: true });
+    await pauseForRecordedReview(page);
+    await page.screenshot({
+        path: sessionTimelineScreenshotPath(testInfo, '01-projects.png'),
+        fullPage: true,
+    });
 
-    await layoutToggle.hover();
-    await expect(page.getByTestId('session-list-layout-tooltip')).toHaveText('Sort sessions by time');
-    await layoutToggle.click();
-
-    await expect(layoutToggle).toHaveAccessibleName('Group sessions by project');
-    await expect(layoutIcon).toHaveAttribute('data-icon-name', 'folder');
-    await expect(page.getByTestId('session-list-layout-tooltip')).toHaveText('Group sessions by project');
+    await timelineTab.click();
+    await expect(timelineTab).toHaveAttribute('aria-selected', 'true');
     await expect(page.getByTestId('session-time-group-0')).toBeVisible();
     await expect(page.getByTestId('sidebar-project-toggle-studio-machine--%2Fworkspace%2Fatlas')).toHaveCount(0);
     await expect(page.getByTestId(`session-row-${newestSessionId}`)).toContainText('~/atlas · studio-machine');
@@ -2859,16 +2952,73 @@ test('[SESSION-LAYOUT] 左栏在项目分组与时间排序之间切换并记住
     expect(recencyOrder[0]).toBeGreaterThan(0);
     expect(recencyOrder[0]).toBeLessThan(recencyOrder[1]);
     expect(recencyOrder[1]).toBeLessThan(recencyOrder[2]);
-    await page.screenshot({ path: timeScreenshot, fullPage: true });
+    await pauseForRecordedReview(page);
+    await page.screenshot({
+        path: sessionTimelineScreenshotPath(testInfo, '02-timeline.png'),
+        fullPage: true,
+    });
 
+    const updateTimestamps = await updateE2ESessionMetadata(request, oldestSessionId, {
+        path: '/workspace/atlas',
+        host: 'studio-mac',
+        machineId: 'studio-machine',
+        homeDir: '/workspace',
+        name: 'Atlas dependency review active update',
+    });
+    expect(updateTimestamps.afterUpdatedAt).toBeGreaterThan(updateTimestamps.beforeUpdatedAt);
     await page.reload();
+    await expect(timelineTab).toHaveAttribute('aria-selected', 'true');
     await expect(page.getByTestId('session-time-group-0')).toBeVisible();
-    await expect(layoutIcon).toHaveAttribute('data-icon-name', 'folder');
-    await layoutToggle.click();
+    const stableOrder = await Promise.all([
+        newestSessionId,
+        middleSessionId,
+        oldestSessionId,
+    ].map(async (sessionId) => (await page.getByTestId(`session-row-${sessionId}`).boundingBox())?.y ?? -1));
+    expect(stableOrder[0]).toBeLessThan(stableOrder[1]);
+    expect(stableOrder[1]).toBeLessThan(stableOrder[2]);
+
+    const middleRow = page.getByTestId(`session-row-${middleSessionId}`);
+    await middleRow.hover();
+    await page.getByTestId(`session-row-actions-${middleSessionId}`).getByTestId('session-row-pin-action').click();
+    await expect(page.getByTestId('session-pinned-group')).toBeVisible();
+    await expect(page.getByTestId('session-pinned-group').getByTestId(`session-row-${middleSessionId}`)).toBeVisible();
+    await expect(page.getByTestId('session-time-group-0').getByTestId(`session-row-${middleSessionId}`)).toHaveCount(0);
+    await pauseForRecordedReview(page);
+    await page.screenshot({
+        path: sessionTimelineScreenshotPath(testInfo, '03-timeline-pinned.png'),
+        fullPage: true,
+    });
+
+    await listsTab.click();
+    await expect(listsTab).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByTestId('session-pinned-group')).toHaveCount(0);
+    await expect(page.getByTestId('sidebar-pinned-section')).toBeVisible();
+    await expect(page.getByTestId(`session-row-${middleSessionId}`)).toHaveCount(1);
+    await page.getByTestId(`session-row-${middleSessionId}`).hover();
+    await page.getByTestId(`session-row-actions-${middleSessionId}`).getByTestId('session-row-pin-action').click();
+    await expect(page.getByTestId('sidebar-pinned-section')).toHaveCount(0);
+    const unassignedList = page.getByTestId('sidebar-list-unassigned');
+    const listPinAction = page.getByTestId(`pin-organized-session-${middleSessionId}`);
+    await expect.poll(async () => {
+        if (await listPinAction.count() > 0) return true;
+        if (await unassignedList.getAttribute('aria-expanded') !== 'true') await unassignedList.click();
+        return false;
+    }, { timeout: 30_000 }).toBe(true);
+    await listPinAction.click();
+    await expect(page.getByTestId('sidebar-pinned-section')).toBeVisible();
+    await expect(page.getByTestId(`session-row-${middleSessionId}`)).toHaveCount(1);
+    await expect(page.getByTestId(`organized-session-${middleSessionId}`)).toHaveCount(0);
+    await pauseForRecordedReview(page);
+    await page.screenshot({
+        path: sessionTimelineScreenshotPath(testInfo, '04-lists-pinned.png'),
+        fullPage: true,
+    });
+
+    await projectsTab.click();
+    await expect(projectsTab).toHaveAttribute('aria-selected', 'true');
     await expect(page.getByTestId('sidebar-project-toggle-studio-machine--%2Fworkspace%2Fatlas')).toBeVisible();
-    await expect(layoutIcon).toHaveAttribute('data-icon-name', 'clock');
-    await page.reload();
-    await expect(page.getByTestId('sidebar-project-toggle-studio-machine--%2Fworkspace%2Fatlas')).toBeVisible();
+    await expect(page.getByTestId('session-pinned-group').getByTestId(`session-row-${middleSessionId}`)).toBeVisible();
+    await expect(page.getByTestId('sidebar-project-sessions-studio-machine--%2Fworkspace%2Fbeta').getByTestId(`session-row-${middleSessionId}`)).toHaveCount(0);
 });
 
 test('[PROJECT-HOVER-ACTIONS] PC 项目行悬浮仅显示新建会话操作', async ({ page, request }, testInfo) => {

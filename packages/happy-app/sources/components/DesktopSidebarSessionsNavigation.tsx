@@ -53,6 +53,9 @@ import {
 } from '@/sync/sidebarOrganization';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { formatPathRelativeToHome } from '@/utils/sessionUtils';
+import { CompactSessionRow } from './ActiveSessionsGroupCompact';
+import { useSessionManagementPreferences } from '@/hooks/useSessionManagementPreferences';
+import { partitionSessionsByPinnedOrder } from '@/utils/sessionPinning';
 
 const AGENT_TYPES = ['codex', 'claude', 'opencode', 'gemini', 'openclaw'] as const satisfies readonly NewSessionAgentType[];
 const AGENT_LABEL_KEYS = {
@@ -361,7 +364,7 @@ export const DesktopSidebarSessionsNavigation = React.memo(() => {
         <View style={styles.container} testID="desktop-sidebar-session-navigation">
             <View accessibilityRole="tablist" style={styles.tabs}>
                 <View pointerEvents="none" style={styles.tabTrack} />
-                {(['projects', 'lists'] as const).map((value) => {
+                {(['projects', 'lists', 'timeline'] as const).map((value) => {
                     const selected = mode === value;
                     return (
                         <Pressable
@@ -376,7 +379,11 @@ export const DesktopSidebarSessionsNavigation = React.memo(() => {
                             {({ pressed }) => (
                                 <View style={[styles.tabVisual, selected && styles.tabSelected, pressed && styles.tabPressed]} testID={`desktop-sidebar-tab-${value}-visual`}>
                                     <Text style={[styles.tabText, selected && styles.tabTextSelected]}>
-                                        {value === 'projects' ? t('sidebar.projectsTab') : t('sidebar.listsTab')}
+                                        {value === 'projects'
+                                            ? t('sidebar.projectsTab')
+                                            : value === 'lists'
+                                                ? t('sidebar.listsTab')
+                                                : t('sidebar.timelineTab')}
                                     </Text>
                                 </View>
                             )}
@@ -384,13 +391,16 @@ export const DesktopSidebarSessionsNavigation = React.memo(() => {
                     );
                 })}
             </View>
-            {mode === 'projects' ? <MainView variant="sidebar" /> : <SidebarListsView />}
+            {mode === 'lists'
+                ? <SidebarListsView />
+                : <MainView sessionListLayout={mode === 'timeline' ? 'time' : 'projects'} variant="sidebar" />}
         </View>
     );
 });
 
 type SidebarVirtualRow =
-    | { key: string; type: 'section'; section: 'lists' | 'tags' }
+    | { key: string; type: 'section'; section: 'lists' | 'pinned' | 'tags' }
+    | { key: string; type: 'pinned-session'; session: SessionRowData }
     | { key: string; type: 'list'; list: SidebarList }
     | { key: string; type: 'unassigned' }
     | { key: string; type: 'new-session'; list: SidebarList }
@@ -483,9 +493,14 @@ function SidebarListsView() {
         });
         return Array.from(byId.values());
     }, [data]);
+    const sessionManagement = useSessionManagementPreferences(sessions.map((session) => session.id), { prune: false });
+    const partitionedSessions = React.useMemo(() => partitionSessionsByPinnedOrder(
+        sessions,
+        sessionManagement.preferences.pinnedOrder,
+    ), [sessionManagement.preferences.pinnedOrder, sessions]);
     const sessionIndex = React.useMemo(
-        () => buildSidebarSessionIndex(sessions, organization.sessions),
-        [organization.sessions, sessions],
+        () => buildSidebarSessionIndex(partitionedSessions.regular, organization.sessions),
+        [organization.sessions, partitionedSessions.regular],
     );
 
     React.useEffect(() => {
@@ -593,6 +608,14 @@ function SidebarListsView() {
 
     const rows = React.useMemo<SidebarVirtualRow[]>(() => {
         const next: SidebarVirtualRow[] = [];
+        if (partitionedSessions.pinned.length > 0) {
+            next.push({ key: 'pinned-section', type: 'section', section: 'pinned' });
+            partitionedSessions.pinned.forEach((session) => next.push({
+                key: `pinned-${session.id}`,
+                type: 'pinned-session',
+                session,
+            }));
+        }
         if (selectedTagId) {
             const tag = organization.tags.find((item) => item.id === selectedTagId);
             next.push({ key: 'filtered-header', type: 'filtered-header', tagName: tag?.name ?? '' });
@@ -623,25 +646,42 @@ function SidebarListsView() {
         next.push({ key: 'tags-section', type: 'section', section: 'tags' });
         next.push({ key: 'tags', type: 'tags' });
         return next;
-    }, [expanded, organization.lists, organization.tags, selectedTagId, sessionIndex]);
+    }, [expanded, organization.lists, organization.tags, partitionedSessions.pinned, selectedTagId, sessionIndex]);
 
     const renderRow = React.useCallback(({ item }: { item: SidebarVirtualRow }) => {
         if (item.type === 'section') {
             const isLists = item.section === 'lists';
+            const isPinned = item.section === 'pinned';
             return (
-                <View style={[styles.sectionHeader, !isLists && styles.tagSection]}>
-                    <Text style={styles.sectionTitle}>{isLists ? t('sidebarLists.lists') : t('sidebarLists.tags')}</Text>
-                    <Pressable
-                        accessibilityLabel={isLists ? t('sidebarLists.newList') : t('sidebarLists.newTag')}
-                        accessibilityState={{ disabled: isLists ? organization.lists.length >= SIDEBAR_LIST_MAX_COUNT : organization.tags.length >= SIDEBAR_TAG_MAX_COUNT }}
-                        disabled={isLists ? organization.lists.length >= SIDEBAR_LIST_MAX_COUNT : organization.tags.length >= SIDEBAR_TAG_MAX_COUNT}
-                        onPress={isLists ? openCreate : addTag}
-                        style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
-                        testID={isLists ? 'sidebar-create-list-button' : 'sidebar-create-tag-button'}
-                    >
-                        <Feather color={theme.colors.textSecondary} name="plus" size={17} />
-                    </Pressable>
+                <View
+                    style={[styles.sectionHeader, !isLists && !isPinned && styles.tagSection]}
+                    testID={isPinned ? 'sidebar-pinned-section' : undefined}
+                >
+                    <Text style={styles.sectionTitle}>
+                        {isPinned ? t('sessionSearch.sections.pinned') : isLists ? t('sidebarLists.lists') : t('sidebarLists.tags')}
+                    </Text>
+                    {!isPinned ? (
+                        <Pressable
+                            accessibilityLabel={isLists ? t('sidebarLists.newList') : t('sidebarLists.newTag')}
+                            accessibilityState={{ disabled: isLists ? organization.lists.length >= SIDEBAR_LIST_MAX_COUNT : organization.tags.length >= SIDEBAR_TAG_MAX_COUNT }}
+                            disabled={isLists ? organization.lists.length >= SIDEBAR_LIST_MAX_COUNT : organization.tags.length >= SIDEBAR_TAG_MAX_COUNT}
+                            onPress={isLists ? openCreate : addTag}
+                            style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
+                            testID={isLists ? 'sidebar-create-list-button' : 'sidebar-create-tag-button'}
+                        >
+                            <Feather color={theme.colors.textSecondary} name="plus" size={17} />
+                        </Pressable>
+                    ) : null}
                 </View>
+            );
+        }
+        if (item.type === 'pinned-session') {
+            return (
+                <CompactSessionRow
+                    session={item.session}
+                    selected={selectedSessionId === item.session.id}
+                    showLocation
+                />
             );
         }
         if (item.type === 'filtered-header') {
@@ -736,7 +776,7 @@ function SidebarListsView() {
             const sessionTags = (organization.sessions[item.session.id]?.tagIds ?? [])
                 .map((tagId) => organization.tags.find((tag) => tag.id === tagId))
                 .filter((tag) => !!tag);
-            return <OrganizedSessionRow dragging={draggedSessionId === item.session.id} nested={item.nested} onDragEnd={finishSidebarDrag} onDragStart={startSessionDrag} onOpen={openSession} onOrganize={openOrganizer} selected={selectedSessionId === item.session.id} session={item.session} tags={sessionTags} />;
+            return <OrganizedSessionRow dragging={draggedSessionId === item.session.id} nested={item.nested} onDragEnd={finishSidebarDrag} onDragStart={startSessionDrag} onOpen={openSession} onOrganize={openOrganizer} onPin={sessionManagement.moveToPinned} selected={selectedSessionId === item.session.id} session={item.session} tags={sessionTags} />;
         }
         if (item.type === 'empty') {
             return <Text style={[styles.empty, item.nested && styles.sessionRowNested]}>{item.label}</Text>;
@@ -756,7 +796,7 @@ function SidebarListsView() {
                 {organization.tags.length === 0 ? <Text style={styles.empty}>{t('sidebarLists.noTags')}</Text> : null}
             </View>
         );
-    }, [addTag, changeDropTarget, createSession, deleteList, draggedListId, draggedSessionId, dropFeedback, dropOntoList, expanded, finishSidebarDrag, leaveDropTarget, listColors, openCreate, openEdit, openOrganizer, openSession, organization.lists.length, organization.sessions, organization.tags, selectedSessionId, selectedTagId, sessionIndex, startListDrag, startSessionDrag, styles, theme.colors]);
+    }, [addTag, changeDropTarget, createSession, deleteList, draggedListId, draggedSessionId, dropFeedback, dropOntoList, expanded, finishSidebarDrag, leaveDropTarget, listColors, openCreate, openEdit, openOrganizer, openSession, organization.lists.length, organization.sessions, organization.tags, selectedSessionId, selectedTagId, sessionIndex, sessionManagement.moveToPinned, startListDrag, startSessionDrag, styles, theme.colors]);
 
     return (
         <View style={styles.container} testID="sidebar-lists-view">
@@ -800,7 +840,7 @@ function SidebarListsView() {
     );
 }
 
-const OrganizedSessionRow = React.memo(function OrganizedSessionRow({ dragging, nested, onDragEnd, onDragStart, onOpen, onOrganize, selected, session, tags }: { dragging: boolean; nested: boolean; onDragEnd: () => void; onDragStart: (data: SidebarDragData) => void; onOpen: (session: SessionRowData) => void; onOrganize: (session: SessionRowData) => void; selected: boolean; session: SessionRowData; tags: SidebarTag[] }) {
+const OrganizedSessionRow = React.memo(function OrganizedSessionRow({ dragging, nested, onDragEnd, onDragStart, onOpen, onOrganize, onPin, selected, session, tags }: { dragging: boolean; nested: boolean; onDragEnd: () => void; onDragStart: (data: SidebarDragData) => void; onOpen: (session: SessionRowData) => void; onOrganize: (session: SessionRowData) => void; onPin: (sessionId: string) => void; selected: boolean; session: SessionRowData; tags: SidebarTag[] }) {
     const styles = stylesheet;
     const { theme } = useUnistyles();
     const ref = React.useRef<View>(null);
@@ -832,6 +872,9 @@ const OrganizedSessionRow = React.memo(function OrganizedSessionRow({ dragging, 
                         {tags.length > 2 ? <Text style={styles.sessionTagMore}>+{tags.length - 2}</Text> : null}
                     </View>
                 ) : null}
+            </Pressable>
+            <Pressable accessibilityLabel={t('sessionInfo.pinSession')} onPress={() => onPin(session.id)} style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]} testID={`pin-organized-session-${session.id}`}>
+                <Feather color={theme.colors.textSecondary} name="bookmark" size={14} />
             </Pressable>
             <Pressable accessibilityLabel={t('sidebarLists.organizeSession')} onPress={() => onOrganize(session)} style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]} testID={`organize-session-${session.id}`}>
                 <Feather color={theme.colors.textSecondary} name="tag" size={14} />

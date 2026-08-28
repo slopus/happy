@@ -91,7 +91,7 @@ export const LocalSettingsSchema = z.object({
     desktopLeftSidebarWidth: z.number().finite().describe('Preferred width of the desktop session sidebar'),
     desktopRightPanelWidth: z.number().finite().describe('Preferred width of the desktop capability panel'),
     sessionListLayout: z.enum(['projects', 'time']).describe('Preferred session sidebar grouping'),
-    desktopSidebarMode: z.enum(['projects', 'lists']).describe('Desktop session sidebar primary mode'),
+    desktopSidebarMode: z.enum(['projects', 'lists', 'timeline']).describe('Desktop session sidebar primary mode'),
     sidebarOrganization: SidebarOrganizationSchema.describe('Device-local session Lists and Tags'),
     // 「Agent 空间模式」：进入某个「我的 Agent」后，左侧侧栏收敛为该 Agent 的专属工作台
     // （仅本空间会话 + 预设快捷指令 + 退出空间）。存 agent id；null 为全局视图。刻意放设备本地、
@@ -249,6 +249,8 @@ export function localSettingsParse(settings: unknown): LocalSettings {
     return {
         ...localSettingsDefaults,
         ...parsed.data,
+        desktopSidebarMode: parsed.data.desktopSidebarMode
+            ?? (parsed.data.sessionListLayout === 'time' ? 'timeline' : localSettingsDefaults.desktopSidebarMode),
         relationshipAdvisorConversations: limitRelationshipAdvisorConversations(
             parsed.data.relationshipAdvisorConversations ?? localSettingsDefaults.relationshipAdvisorConversations,
         ),

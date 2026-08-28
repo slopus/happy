@@ -903,6 +903,7 @@ export const zhHant: TranslationStructure = {
         searchSessions: '會話管理',
         projectsTab: '專案',
         listsTab: '清單',
+        timelineTab: '時間軸',
     },
     sidebarLists: {
         lists: '清單', tags: 'Tag', newList: '新增清單', newTag: '新增 Tag', tagNamePlaceholder: 'Tag 名稱',
