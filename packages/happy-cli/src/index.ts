@@ -644,8 +644,6 @@ ${chalk.bold('To clean up runaway processes:')} Use ${chalk.cyan('happy doctor c
         unknownArgs.push(arg)
       } else if (arg === '-v' || arg === '--version') {
         showVersion = true
-        // Also pass through to claude (will show after our version)
-        unknownArgs.push(arg)
       } else if (arg === '--happy-starting-mode') {
         options.startingMode = z.enum(['local', 'remote']).parse(args[++i])
       } else if (arg === '--yolo') {
@@ -774,7 +772,7 @@ ${chalk.bold.cyan('Claude Code Options (from `claude --help`):')}
     // Show version
     if (showVersion) {
       console.log(`happy version: ${packageJson.version}`)
-      // Don't exit - continue to pass --version to Claude Code
+      return
     }
 
     if (!showVersion) {
