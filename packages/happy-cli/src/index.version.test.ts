@@ -1,3 +1,7 @@
+/**
+ * Bin-level regression coverage for version flags exiting before CLI startup.
+ */
+
 import { execFile } from 'node:child_process';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -13,10 +17,10 @@ const execFileAsync = promisify(execFile);
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 describe('CLI version command', () => {
-  it('prints only the Paws CLI version and exits without starting authentication', async () => {
+  it.each(['--version', '-v'] as const)('prints only the Paws CLI version for %s and exits without starting authentication', async (versionFlag): Promise<void> => {
     const happyHomeDir = await mkdtemp(join(tmpdir(), 'paws-version-command-'));
     try {
-      const result = await execFileAsync(join(packageRoot, 'bin', 'happy.mjs'), ['--version'], {
+      const result = await execFileAsync(join(packageRoot, 'bin', 'happy.mjs'), [versionFlag], {
         cwd: packageRoot,
         env: {
           ...process.env,
