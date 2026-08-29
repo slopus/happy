@@ -36,12 +36,30 @@ image cells; do not count waiver text as screenshot evidence and do not check th
 completion boxes below.
 -->
 
+## E2E acceptance
+
+<!--
+When E2E or mobile video acceptance is requested, add one row per Case.
+The video link must be accessible from the review device; a local absolute path is not evidence.
+State mobile playback as confirmed only after the reviewer can open the same file on mobile.
+Video supplements, but does not replace, the per-Case visual evidence above.
+-->
+
+| Case | Result | Spec / rerun | Mobile video | Report / Trace |
+| --- | --- | --- | --- | --- |
+| N/A | Not requested | N/A | N/A | N/A |
+
+- Environment and side effects: N/A
+- Mobile playback: not requested
+- Known gaps: none
+
 ## Validation
 
 <!-- Tests, typecheck, E2E, independent review, and known gaps. -->
 
 - [ ] The declared visible Case count equals the number of unique before/after screenshot groups embedded above.
 - [ ] Every visual Case uses comparable viewport/DPR/scale evidence and a stable image URL.
+- [ ] Requested E2E videos use a non-local stable URL, map to a Case, and disclose mobile playback status.
 - [ ] An independent reviewer checked the rendered PR body, not only local files or a chat report.
 - [ ] Independent code review passed.
 - [ ] Relevant automated tests passed.
