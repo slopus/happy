@@ -1,4 +1,8 @@
-import type { PluginCatalogItem } from '@slopus/happy-wire';
+import type {
+    PluginCatalogItem,
+    PluginConnectionTestFailureCode,
+    PluginConnectionTestResult,
+} from '@slopus/happy-wire';
 import { Ionicons } from '@expo/vector-icons';
 import * as React from 'react';
 import { Text, TextInput, View } from 'react-native';
@@ -10,7 +14,7 @@ import { ItemList } from '@/components/ItemList';
 import { SecureTextInput } from '@/components/SecureTextInput';
 import { Typography } from '@/constants/Typography';
 import { useHappyAction } from '@/hooks/useHappyAction';
-import { installPlugin, uninstallPlugin } from '@/sync/plugins';
+import { installPlugin, testPluginConnection, uninstallPlugin } from '@/sync/plugins';
 import { t } from '@/text';
 import { resolvePluginText } from './pluginText';
 
@@ -25,6 +29,19 @@ function fieldTestId(pluginId: string, key: string): string {
     return `${pluginId}-plugin-${key.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}`;
 }
 
+function connectionFailureTitle(code: PluginConnectionTestFailureCode): string {
+    const keys = {
+        invalid_configuration: 'relationshipAdvisorPlugin.connectionUnreachable',
+        authentication_failed: 'relationshipAdvisorPlugin.connectionAuthenticationFailed',
+        model_not_found: 'relationshipAdvisorPlugin.connectionModelNotFound',
+        rate_limited: 'relationshipAdvisorPlugin.connectionRateLimited',
+        timed_out: 'relationshipAdvisorPlugin.connectionTimedOut',
+        provider_unreachable: 'relationshipAdvisorPlugin.connectionUnreachable',
+        provider_error: 'relationshipAdvisorPlugin.connectionProviderError',
+    } as const;
+    return t(keys[code]);
+}
+
 export const DynamicPluginConfiguration = React.memo(function DynamicPluginConfiguration({
     plugin,
     onInstalled,
@@ -33,12 +50,19 @@ export const DynamicPluginConfiguration = React.memo(function DynamicPluginConfi
 }: Props) {
     const { theme } = useUnistyles();
     const [values, setValues] = React.useState<Record<string, string>>({});
+    const [connectionResult, setConnectionResult] = React.useState<PluginConnectionTestResult | null>(null);
+    const connectionTestVersion = React.useRef(0);
     const { manifest, status } = plugin;
     const installed = status.installed;
     const currentVersionInstalled = status.installed && status.version === manifest.version;
 
     React.useEffect(() => {
+        connectionTestVersion.current += 1;
         setValues(status.installed ? { ...status.configuration } : {});
+        setConnectionResult(null);
+        return () => {
+            connectionTestVersion.current += 1;
+        };
     }, [manifest.id, status]);
 
     const install = React.useCallback(async () => {
@@ -55,11 +79,27 @@ export const DynamicPluginConfiguration = React.memo(function DynamicPluginConfi
     }, [manifest.id, onStatusChanged]);
     const [uninstalling, performUninstall] = useHappyAction(uninstall);
 
+    const testConnection = React.useCallback(async () => {
+        const requestVersion = connectionTestVersion.current + 1;
+        connectionTestVersion.current = requestVersion;
+        setConnectionResult(null);
+        const result = await testPluginConnection(manifest.id, manifest.version, values);
+        if (connectionTestVersion.current === requestVersion) setConnectionResult(result);
+    }, [manifest.id, manifest.version, values]);
+    const [testingConnection, performConnectionTest] = useHappyAction(testConnection);
+
+    const updateValue = React.useCallback((key: string, value: string) => {
+        connectionTestVersion.current += 1;
+        setConnectionResult(null);
+        setValues((current) => ({ ...current, [key]: value }));
+    }, []);
+
     const canInstall = manifest.configuration.fields.every((field) => {
         if (!field.required) return true;
         if (values[field.key]?.trim()) return true;
         return field.type === 'secret' && status.installed && Boolean(status.secretHints[field.key]);
-    }) && !installing && !uninstalling;
+    }) && !installing && !testingConnection && !uninstalling;
+    const canTestConnection = canInstall && manifest.permissions.includes('paws.ai.provider.invoke');
 
     return (
         <ItemList style={styles.list}>
@@ -88,10 +128,7 @@ export const DynamicPluginConfiguration = React.memo(function DynamicPluginConfi
                                         autoCorrect={false}
                                         emptyValueAccessibilityLabel={`${label} · ${t('relationshipAdvisorPlugin.encryptionNotice')}`}
                                         hideValueAccessibilityLabel={`${label} · ${t('settingsAccount.tapToHide')}`}
-                                        onChangeText={(value) => setValues((current) => ({
-                                            ...current,
-                                            [field.key]: value,
-                                        }))}
+                                        onChangeText={(value) => updateValue(field.key, value)}
                                         placeholder={placeholder}
                                         placeholderTextColor={theme.colors.textSecondary}
                                         showValueAccessibilityLabel={`${label} · ${t('settingsAccount.tapToReveal')}`}
@@ -106,10 +143,7 @@ export const DynamicPluginConfiguration = React.memo(function DynamicPluginConfi
                                         autoCapitalize="none"
                                         autoCorrect={false}
                                         keyboardType={field.type === 'url' ? 'url' : 'default'}
-                                        onChangeText={(value) => setValues((current) => ({
-                                            ...current,
-                                            [field.key]: value,
-                                        }))}
+                                        onChangeText={(value) => updateValue(field.key, value)}
                                         placeholder={placeholder}
                                         placeholderTextColor={theme.colors.textSecondary}
                                         style={styles.textInput}
@@ -139,9 +173,38 @@ export const DynamicPluginConfiguration = React.memo(function DynamicPluginConfi
                         ? t('relationshipAdvisorPlugin.installed')
                         : t('relationshipAdvisorPlugin.notInstalled')}
                 />
+                {manifest.permissions.includes('paws.ai.provider.invoke') ? (
+                    <Item
+                        disabled={!canTestConnection}
+                        icon={<Ionicons color={theme.colors.accent} name="pulse-outline" size={29} />}
+                        loading={testingConnection}
+                        onPress={performConnectionTest}
+                        showChevron={false}
+                        subtitle={t('relationshipAdvisorPlugin.testConnectionSubtitle')}
+                        testID={`${manifest.id}-plugin-test-connection`}
+                        title={t('relationshipAdvisorPlugin.testConnection')}
+                    />
+                ) : null}
+                {connectionResult ? (
+                    <Item
+                        icon={<Ionicons
+                            color={connectionResult.success ? theme.colors.accent : theme.colors.textDestructive}
+                            name={connectionResult.success ? 'checkmark-circle-outline' : 'alert-circle-outline'}
+                            size={29}
+                        />}
+                        showChevron={false}
+                        subtitle={connectionResult.success
+                            ? t('relationshipAdvisorPlugin.connectionSuccessSubtitle')
+                            : undefined}
+                        testID={`${manifest.id}-plugin-test-connection-result`}
+                        title={connectionResult.success
+                            ? t('relationshipAdvisorPlugin.connectionSuccess')
+                            : connectionFailureTitle(connectionResult.code)}
+                    />
+                ) : null}
                 {currentVersionInstalled && manifest.installedAction === 'open' ? (
                     <Item
-                        disabled={installing || uninstalling || !onOpen}
+                        disabled={installing || testingConnection || uninstalling || !onOpen}
                         icon={<Ionicons color={theme.colors.accent} name="open-outline" size={29} />}
                         onPress={onOpen}
                         showChevron={false}
@@ -164,7 +227,7 @@ export const DynamicPluginConfiguration = React.memo(function DynamicPluginConfi
                 {installed ? (
                     <Item
                         destructive
-                        disabled={installing || uninstalling}
+                        disabled={installing || testingConnection || uninstalling}
                         icon={<Ionicons color={theme.colors.textDestructive} name="trash-outline" size={29} />}
                         loading={uninstalling}
                         onPress={performUninstall}

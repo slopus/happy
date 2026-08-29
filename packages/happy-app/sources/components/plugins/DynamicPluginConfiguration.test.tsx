@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // @ts-expect-error react-test-renderer does not publish declarations used by this narrow test.
 import TestRenderer from 'react-test-renderer';
 
-const mocks = vi.hoisted(() => ({ install: vi.fn(), uninstall: vi.fn() }));
+const mocks = vi.hoisted(() => ({ install: vi.fn(), testConnection: vi.fn(), uninstall: vi.fn() }));
 vi.mock('react-native', () => ({ Pressable: 'Pressable', Text: 'Text', TextInput: 'TextInput', View: 'View' }));
 vi.mock('@expo/vector-icons', () => ({ Ionicons: 'Ionicons' }));
 vi.mock('react-native-unistyles', () => ({
@@ -24,7 +24,11 @@ vi.mock('@/constants/Typography', () => ({ Typography: { default: () => ({}) } }
 vi.mock('@/hooks/useHappyAction', () => ({
     useHappyAction: (action: (...args: any[]) => Promise<void>) => [false, action],
 }));
-vi.mock('@/sync/plugins', () => ({ installPlugin: mocks.install, uninstallPlugin: mocks.uninstall }));
+vi.mock('@/sync/plugins', () => ({
+    installPlugin: mocks.install,
+    testPluginConnection: mocks.testConnection,
+    uninstallPlugin: mocks.uninstall,
+}));
 vi.mock('@/text', () => ({ getCurrentLanguage: () => 'zh-Hans', t: (key: string) => key }));
 
 import { DynamicPluginConfiguration } from './DynamicPluginConfiguration';
@@ -179,6 +183,71 @@ describe('DynamicPluginConfiguration', () => {
         act(() => refreshedToken.props.onChangeText('another-replacement'));
         expect(renderer.root.findAllByType('TextInput')[0].props.secureTextEntry)
             .toBe(true);
+        act(() => renderer.unmount());
+    });
+
+    it('validates provider configuration before it is saved', async () => {
+        mocks.testConnection.mockResolvedValue({ success: true, latencyMs: 31 });
+        let renderer: any;
+        await act(async () => {
+            renderer = TestRenderer.create(<DynamicPluginConfiguration plugin={{
+                manifest: { ...manifest, permissions: ['paws.ai.provider.invoke'] },
+                status: { installed: false },
+            }} />);
+        });
+
+        const fields = renderer.root.findAllByType('TextInput');
+        act(() => {
+            fields[0].props.onChangeText('server-secret');
+            fields[1].props.onChangeText('https://example.com/v1');
+        });
+        await act(async () => {
+            await renderer.root.findByProps({ testID: 'server-plugin-plugin-test-connection' }).props.onPress();
+        });
+
+        expect(mocks.testConnection).toHaveBeenCalledWith('server-plugin', '2.3.0', {
+            token: 'server-secret', endpoint: 'https://example.com/v1',
+        });
+        expect(renderer.root.findByProps({ testID: 'server-plugin-plugin-test-connection-result' }).props.title)
+            .toBe('relationshipAdvisorPlugin.connectionSuccess');
+        expect(mocks.install).not.toHaveBeenCalled();
+        act(() => renderer.unmount());
+    });
+
+    it('does not show a stale connection result after configuration changes', async () => {
+        let resolveConnection: ((value: { success: true; latencyMs: number }) => void) | undefined;
+        mocks.testConnection.mockReturnValue(new Promise((resolve) => {
+            resolveConnection = resolve;
+        }));
+        let renderer: any;
+        await act(async () => {
+            renderer = TestRenderer.create(<DynamicPluginConfiguration plugin={{
+                manifest: { ...manifest, permissions: ['paws.ai.provider.invoke'] },
+                status: { installed: false },
+            }} />);
+        });
+
+        let fields = renderer.root.findAllByType('TextInput');
+        act(() => {
+            fields[0].props.onChangeText('server-secret');
+            fields[1].props.onChangeText('https://example.com/v1');
+        });
+        let pendingTest: Promise<void> | undefined;
+        act(() => {
+            pendingTest = renderer.root.findByProps({
+                testID: 'server-plugin-plugin-test-connection',
+            }).props.onPress();
+        });
+        fields = renderer.root.findAllByType('TextInput');
+        act(() => fields[1].props.onChangeText('https://example.com/v2'));
+        await act(async () => {
+            resolveConnection?.({ success: true, latencyMs: 31 });
+            await pendingTest;
+        });
+
+        expect(renderer.root.findAllByProps({
+            testID: 'server-plugin-plugin-test-connection-result',
+        })).toHaveLength(0);
         act(() => renderer.unmount());
     });
 });

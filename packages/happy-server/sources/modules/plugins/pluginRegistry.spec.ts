@@ -75,6 +75,89 @@ describe('createPluginRegistry', () => {
             .resolves.toMatchObject({ apiKey: 'sk-secret-1234', model: 'new-model' });
     });
 
+    it('tests merged configuration without saving it', async () => {
+        const { store } = createMemoryStore();
+        const testConnection = vi.fn(async () => ({ success: true as const, latencyMs: 12 }));
+        const relationshipDefinition = pluginDefinitions.find(({ manifest }) => manifest.id === 'relationship-advisor');
+        if (!relationshipDefinition) throw new Error('relationship-advisor definition missing');
+        const registry = createPluginRegistry([{
+            ...relationshipDefinition,
+            testConnection,
+        }], store);
+        await registry.install('user-1', 'relationship-advisor', {
+            version: '1.1.1',
+            configuration: {
+                apiKey: 'stored-secret',
+                baseUrl: 'https://api.example.com/v1',
+                model: 'old-model',
+            },
+        });
+        store.set.mockClear();
+
+        const registryWithTest = registry as typeof registry & {
+            testConnection?: (
+                accountId: string,
+                pluginId: string,
+                request: { version: string; configuration: Record<string, string> },
+            ) => Promise<{ success: boolean; latencyMs?: number }>;
+        };
+        expect(registryWithTest.testConnection).toBeTypeOf('function');
+        if (!registryWithTest.testConnection) return;
+
+        await expect(registryWithTest.testConnection('user-1', 'relationship-advisor', {
+            version: '1.1.1',
+            configuration: {
+                apiKey: '',
+                baseUrl: 'https://api.example.com/v1',
+                model: 'new-model',
+            },
+        })).resolves.toEqual({ success: true, latencyMs: 12 });
+        expect(testConnection).toHaveBeenCalledWith({
+            apiKey: 'stored-secret',
+            baseUrl: 'https://api.example.com/v1',
+            model: 'new-model',
+        });
+        expect(store.set).not.toHaveBeenCalled();
+    });
+
+    it('requires the secret again when a provider URL changes origin', async () => {
+        const { store } = createMemoryStore();
+        const testConnection = vi.fn(async () => ({ success: true as const, latencyMs: 12 }));
+        const relationshipDefinition = pluginDefinitions.find(({ manifest }) => manifest.id === 'relationship-advisor');
+        if (!relationshipDefinition) throw new Error('relationship-advisor definition missing');
+        const registry = createPluginRegistry([{
+            ...relationshipDefinition,
+            testConnection,
+        }], store);
+        await registry.install('user-1', 'relationship-advisor', {
+            version: '1.1.1',
+            configuration: {
+                apiKey: 'stored-secret',
+                baseUrl: 'https://api.example.com/v1',
+                model: 'old-model',
+            },
+        });
+
+        const changedOrigin = {
+            version: '1.1.1',
+            configuration: {
+                apiKey: '',
+                baseUrl: 'https://attacker.example/v1',
+                model: 'new-model',
+            },
+        };
+        await expect(registry.testConnection('user-1', 'relationship-advisor', changedOrigin))
+            .rejects.toMatchObject({ code: 'invalid_configuration' });
+        await expect(registry.install('user-1', 'relationship-advisor', changedOrigin))
+            .rejects.toMatchObject({ code: 'invalid_configuration' });
+        expect(testConnection).not.toHaveBeenCalled();
+        await expect(registry.requireConfiguration('user-1', 'relationship-advisor')).resolves.toEqual({
+            apiKey: 'stored-secret',
+            baseUrl: 'https://api.example.com/v1',
+            model: 'old-model',
+        });
+    });
+
     it('rejects unknown plugins, stale versions, and arbitrary configuration fields', async () => {
         const { store } = createMemoryStore();
         const registry = createPluginRegistry(pluginDefinitions, store);

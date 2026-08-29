@@ -1146,6 +1146,9 @@ importers:
       tweetnacl:
         specifier: ^1.0.3
         version: 1.0.3
+      undici:
+        specifier: ^6.23.0
+        version: 6.23.0
       uuid:
         specifier: ^9.0.1
         version: 9.0.1

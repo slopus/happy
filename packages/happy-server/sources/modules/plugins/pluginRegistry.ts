@@ -1,6 +1,7 @@
 import type {
     PluginCatalogItem,
     PluginCatalogResponse,
+    PluginConnectionTestResult,
     PluginInstallRequest,
     PluginInstallationStatus,
     PluginPermission,
@@ -22,6 +23,7 @@ export type PluginRegistryErrorCode =
     | 'plugin_not_installed'
     | 'version_mismatch'
     | 'permission_not_declared'
+    | 'connection_test_unsupported'
     | 'invalid_configuration';
 
 export class PluginRegistryError extends Error {
@@ -47,6 +49,24 @@ export function createPluginRegistry(
     definitions: readonly PluginDefinition[],
     store: PluginInstallationStore,
 ) {
+    function canReuseStoredSecrets(
+        definition: PluginDefinition,
+        previous: PluginInstallation | null,
+        requested: Record<string, string>,
+    ): boolean {
+        if (!previous) return false;
+        return definition.manifest.configuration.fields
+            .filter((field) => field.type === 'url')
+            .every((field) => {
+                try {
+                    return new URL(previous.configuration[field.key] ?? '').origin
+                        === new URL(requested[field.key] ?? '').origin;
+                } catch {
+                    return false;
+                }
+            });
+    }
+
     async function get(accountId: string, pluginId: string): Promise<PluginCatalogItem> {
         const definition = findDefinition(definitions, pluginId);
         const installation = await store.get(accountId, pluginId);
@@ -71,6 +91,38 @@ export function createPluginRegistry(
         return { definition, installation };
     }
 
+    async function resolveRequestedConfiguration(
+        accountId: string,
+        definition: PluginDefinition,
+        request: PluginInstallRequest,
+    ): Promise<Record<string, string>> {
+        if (request.version !== definition.manifest.version) {
+            throw new PluginRegistryError(
+                'version_mismatch',
+                `Plugin ${definition.manifest.id} requires version ${definition.manifest.version}`,
+            );
+        }
+        try {
+            const previous = await store.get(accountId, definition.manifest.id);
+            const merged = { ...request.configuration };
+            const reuseStoredSecrets = canReuseStoredSecrets(definition, previous, merged);
+            for (const field of definition.manifest.configuration.fields) {
+                if (field.type !== 'secret') continue;
+                if (merged[field.key]?.trim()) continue;
+                if (reuseStoredSecrets && previous?.configuration[field.key]) {
+                    merged[field.key] = previous.configuration[field.key];
+                }
+            }
+            return definition.normalizeConfiguration(merged);
+        } catch (error) {
+            if (error instanceof PluginRegistryError) throw error;
+            throw new PluginRegistryError(
+                'invalid_configuration',
+                `Invalid configuration for ${definition.manifest.id}`,
+            );
+        }
+    }
+
     return {
         async list(accountId: string): Promise<PluginCatalogResponse> {
             return {
@@ -90,30 +142,26 @@ export function createPluginRegistry(
             request: PluginInstallRequest,
         ): Promise<PluginInstallationStatus> {
             const definition = findDefinition(definitions, pluginId);
-            if (request.version !== definition.manifest.version) {
-                throw new PluginRegistryError(
-                    'version_mismatch',
-                    `Plugin ${pluginId} requires version ${definition.manifest.version}`,
-                );
-            }
-            let configuration: Record<string, string>;
-            try {
-                const previous = await store.get(accountId, pluginId);
-                const merged = { ...request.configuration };
-                for (const field of definition.manifest.configuration.fields) {
-                    if (field.type !== 'secret') continue;
-                    if (merged[field.key]?.trim()) continue;
-                    if (previous?.configuration[field.key]) {
-                        merged[field.key] = previous.configuration[field.key];
-                    }
-                }
-                configuration = definition.normalizeConfiguration(merged);
-            } catch {
-                throw new PluginRegistryError('invalid_configuration', `Invalid configuration for ${pluginId}`);
-            }
+            const configuration = await resolveRequestedConfiguration(accountId, definition, request);
             const installation = { version: definition.manifest.version, configuration };
             await store.set(accountId, pluginId, installation);
             return publicStatus(definition, installation);
+        },
+        async testConnection(
+            accountId: string,
+            pluginId: string,
+            request: PluginInstallRequest,
+        ): Promise<PluginConnectionTestResult> {
+            const definition = findDefinition(definitions, pluginId);
+            if (!definition.testConnection) {
+                throw new PluginRegistryError(
+                    'connection_test_unsupported',
+                    `Plugin ${pluginId} does not support connection testing`,
+                );
+            }
+            return definition.testConnection(
+                await resolveRequestedConfiguration(accountId, definition, request),
+            );
         },
         async uninstall(accountId: string, pluginId: string): Promise<PluginInstallationStatus> {
             findDefinition(definitions, pluginId);

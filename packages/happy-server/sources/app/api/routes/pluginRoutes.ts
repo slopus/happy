@@ -1,12 +1,14 @@
 import {
     PluginCatalogItemSchema,
     PluginCatalogResponseSchema,
+    PluginConnectionTestResultSchema,
     PluginInstallRequestSchema,
     PluginInstallationStatusSchema,
 } from '@slopus/happy-wire';
 import type {
     PluginCatalogItem,
     PluginCatalogResponse,
+    PluginConnectionTestResult,
     PluginInstallationStatus,
 } from '@slopus/happy-wire';
 import { z } from 'zod';
@@ -18,6 +20,7 @@ interface PluginRoutesDependency {
     list: (accountId: string) => Promise<PluginCatalogResponse>;
     get: (accountId: string, pluginId: string) => Promise<PluginCatalogItem>;
     install: (accountId: string, pluginId: string, request: z.infer<typeof PluginInstallRequestSchema>) => Promise<PluginInstallationStatus>;
+    testConnection: (accountId: string, pluginId: string, request: z.infer<typeof PluginInstallRequestSchema>) => Promise<PluginConnectionTestResult>;
     uninstall: (accountId: string, pluginId: string) => Promise<PluginInstallationStatus>;
 }
 
@@ -28,7 +31,7 @@ function errorStatus(error: unknown): 400 | 404 | 409 | 500 {
     const code = (error as { code?: unknown })?.code;
     if (code === 'plugin_not_found') return 404;
     if (code === 'version_mismatch') return 409;
-    if (code === 'invalid_configuration' || code === 'plugin_not_installed') return 400;
+    if (code === 'invalid_configuration' || code === 'plugin_not_installed' || code === 'connection_test_unsupported') return 400;
     return 500;
 }
 
@@ -79,6 +82,31 @@ export function pluginRoutes(
     }, async (request, reply) => {
         try {
             return reply.send(await registry.install(request.userId, request.params.pluginId, request.body));
+        } catch (error) {
+            return sendError(reply, error);
+        }
+    });
+
+    app.post('/v1/plugins/:pluginId/test-connection', {
+        preHandler: app.authenticate,
+        schema: {
+            params: pluginParamsSchema,
+            body: PluginInstallRequestSchema,
+            response: {
+                200: PluginConnectionTestResultSchema,
+                400: errorSchema,
+                404: errorSchema,
+                409: errorSchema,
+                500: errorSchema,
+            },
+        },
+    }, async (request, reply) => {
+        try {
+            return reply.send(await registry.testConnection(
+                request.userId,
+                request.params.pluginId,
+                request.body,
+            ));
         } catch (error) {
             return sendError(reply, error);
         }

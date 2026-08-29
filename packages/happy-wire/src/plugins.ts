@@ -116,6 +116,27 @@ export const PluginInstallRequestSchema = z.object({
   configuration: z.record(PluginFieldKeySchema, z.string().max(4_000)),
 }).strict();
 
+export const PluginConnectionTestFailureCodeSchema = z.enum([
+  'invalid_configuration',
+  'authentication_failed',
+  'model_not_found',
+  'rate_limited',
+  'timed_out',
+  'provider_unreachable',
+  'provider_error',
+]);
+
+export const PluginConnectionTestResultSchema = z.discriminatedUnion('success', [
+  z.object({
+    success: z.literal(true),
+    latencyMs: z.number().int().nonnegative().max(120_000),
+  }).strict(),
+  z.object({
+    success: z.literal(false),
+    code: PluginConnectionTestFailureCodeSchema,
+  }).strict(),
+]);
+
 export type PluginLocalizedText = z.infer<typeof PluginLocalizedTextSchema>;
 export type PluginConfigurationField = z.infer<typeof PluginConfigurationFieldSchema>;
 export type PluginPermission = z.infer<typeof PluginPermissionSchema>;
@@ -126,3 +147,5 @@ export type PluginInstallationStatus = z.infer<typeof PluginInstallationStatusSc
 export type PluginCatalogItem = z.infer<typeof PluginCatalogItemSchema>;
 export type PluginCatalogResponse = z.infer<typeof PluginCatalogResponseSchema>;
 export type PluginInstallRequest = z.infer<typeof PluginInstallRequestSchema>;
+export type PluginConnectionTestFailureCode = z.infer<typeof PluginConnectionTestFailureCodeSchema>;
+export type PluginConnectionTestResult = z.infer<typeof PluginConnectionTestResultSchema>;

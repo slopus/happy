@@ -1,11 +1,13 @@
 import {
     PluginCatalogItemSchema,
     PluginCatalogResponseSchema,
+    PluginConnectionTestResultSchema,
     PluginInstallationStatusSchema,
 } from '@slopus/happy-wire';
 import type {
     PluginCatalogItem,
     PluginCatalogResponse,
+    PluginConnectionTestResult,
     PluginInstallationStatus,
 } from '@slopus/happy-wire';
 
@@ -49,5 +51,20 @@ export async function uninstallPlugin(pluginId: string): Promise<PluginInstallat
     return readResponse(
         await apiSocket.request(`/v1/plugins/${encodeURIComponent(pluginId)}`, { method: 'DELETE' }),
         (value) => PluginInstallationStatusSchema.parse(value),
+    );
+}
+
+export async function testPluginConnection(
+    pluginId: string,
+    version: string,
+    configuration: Record<string, string>,
+): Promise<PluginConnectionTestResult> {
+    return readResponse(
+        await apiSocket.request(`/v1/plugins/${encodeURIComponent(pluginId)}/test-connection`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ version, configuration }),
+        }),
+        (value) => PluginConnectionTestResultSchema.parse(value),
     );
 }

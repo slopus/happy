@@ -6,6 +6,7 @@ vi.mock('./apiSocket', () => ({ apiSocket: { request } }));
 import {
     getPluginCatalog,
     installPlugin,
+    testPluginConnection,
     uninstallPlugin,
 } from './plugins';
 
@@ -57,5 +58,19 @@ describe('dynamic plugin client', () => {
             body: JSON.stringify({ version: '2.1.0', configuration: { token: 'secret' } }),
         });
         expect(request).toHaveBeenNthCalledWith(2, '/v1/plugins/sample-plugin', { method: 'DELETE' });
+    });
+
+    it('tests current configuration without installing it', async () => {
+        request.mockResolvedValue(new Response(JSON.stringify({ success: true, latencyMs: 27 }), { status: 200 }));
+
+        await expect(testPluginConnection('sample-plugin', '2.1.0', {
+            token: 'secret',
+        })).resolves.toEqual({ success: true, latencyMs: 27 });
+
+        expect(request).toHaveBeenCalledWith('/v1/plugins/sample-plugin/test-connection', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ version: '2.1.0', configuration: { token: 'secret' } }),
+        });
     });
 });

@@ -35,6 +35,7 @@ describe('pluginRoutes', () => {
             list,
             get: vi.fn(),
             install: vi.fn(),
+            testConnection: vi.fn(),
             uninstall: vi.fn(),
         });
 
@@ -58,6 +59,7 @@ describe('pluginRoutes', () => {
             list: vi.fn(),
             get: vi.fn(),
             install,
+            testConnection: vi.fn(),
             uninstall: vi.fn(),
         });
 
@@ -83,6 +85,7 @@ describe('pluginRoutes', () => {
                 error.code = 'version_mismatch';
                 throw error;
             }),
+            testConnection: vi.fn(),
             uninstall: vi.fn(),
         });
 
@@ -95,5 +98,41 @@ describe('pluginRoutes', () => {
 
         expect(response.statusCode).toBe(409);
         expect(response.json()).toEqual({ error: 'version_mismatch', message: 'Installed version is stale' });
+    });
+
+    it('tests a plugin configuration without installing it', async () => {
+        const testConnection = vi.fn(async () => ({ success: true as const, latencyMs: 18 }));
+        app = await createApp({
+            list: vi.fn(),
+            get: vi.fn(),
+            install: vi.fn(),
+            testConnection,
+            uninstall: vi.fn(),
+        });
+
+        const response = await app.inject({
+            method: 'POST',
+            url: '/v1/plugins/relationship-advisor/test-connection',
+            headers: { 'x-user-id': 'user-4' },
+            payload: {
+                version: '1.1.1',
+                configuration: {
+                    apiKey: 'secret',
+                    baseUrl: 'https://api.example.com/v1',
+                    model: 'fast-model',
+                },
+            },
+        });
+
+        expect(response.statusCode).toBe(200);
+        expect(response.json()).toEqual({ success: true, latencyMs: 18 });
+        expect(testConnection).toHaveBeenCalledWith('user-4', 'relationship-advisor', {
+            version: '1.1.1',
+            configuration: {
+                apiKey: 'secret',
+                baseUrl: 'https://api.example.com/v1',
+                model: 'fast-model',
+            },
+        });
     });
 });
