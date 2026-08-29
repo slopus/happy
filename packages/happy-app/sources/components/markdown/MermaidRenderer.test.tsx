@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
     reset: vi.fn(),
     zoomIn: vi.fn(),
     zoomOut: vi.fn(),
+    zoomWithWheel: vi.fn(),
 }));
 
 vi.mock('react-native', () => ({
@@ -37,7 +38,7 @@ vi.mock('react-native-unistyles', () => {
     return {
         StyleSheet: {
             absoluteFillObject: { bottom: 0, left: 0, position: 'absolute', right: 0, top: 0 },
-            create: (factory: any) => factory(theme),
+            create: (factory: any) => factory(theme, { insets: { bottom: 0, left: 0, right: 0, top: 0 } }),
         },
         useUnistyles: () => ({ theme }),
     };
@@ -56,6 +57,7 @@ vi.mock('@panzoom/panzoom', () => ({
         reset: mocks.reset,
         zoomIn: mocks.zoomIn,
         zoomOut: mocks.zoomOut,
+        zoomWithWheel: mocks.zoomWithWheel,
     })),
 }));
 
@@ -128,5 +130,42 @@ describe('MermaidRenderer', () => {
         act(() => button.props.onHoverIn());
 
         expect(button.props.style({ pressed: false })).toContainEqual({ backgroundColor: '#303a45' });
+    });
+
+    it('allows default-scale mouse panning without stealing ordinary page scroll', async () => {
+        let wheelHandler: ((event: WheelEvent) => void) | undefined;
+        const viewport = {
+            addEventListener: vi.fn((type: string, handler: (event: WheelEvent) => void) => {
+                if (type === 'wheel') wheelHandler = handler;
+            }),
+            removeEventListener: vi.fn(),
+        };
+        const svg = {
+            setAttribute: vi.fn(),
+            style: {},
+        };
+        const scene = {
+            parentElement: viewport,
+            querySelector: vi.fn(() => svg),
+        };
+
+        await act(async () => {
+            renderer = TestRenderer.create(<MermaidRenderer content="flowchart LR\nA --> B" />, {
+                createNodeMock: (element: { type: string }) => element.type === 'div' ? scene : {},
+            });
+        });
+
+        await vi.waitFor(() => {
+            expect(mocks.panzoom).toHaveBeenCalledWith(scene, expect.not.objectContaining({ contain: expect.anything() }));
+        });
+        expect(wheelHandler).toBeDefined();
+
+        const ordinaryWheel = { ctrlKey: false, metaKey: false } as WheelEvent;
+        wheelHandler!(ordinaryWheel);
+        expect(mocks.zoomWithWheel).not.toHaveBeenCalled();
+
+        const modifiedWheel = { ctrlKey: true, metaKey: false } as WheelEvent;
+        wheelHandler!(modifiedWheel);
+        expect(mocks.zoomWithWheel).toHaveBeenCalledWith(modifiedWheel);
     });
 });

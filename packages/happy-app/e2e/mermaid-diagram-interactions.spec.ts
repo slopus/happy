@@ -82,6 +82,18 @@ test.describe('Mermaid 跨端交互画布', () => {
         await pauseForEvidence(page);
 
         const initialTransform = await sceneTransform(inlineSvg);
+        const inlineSvgBox = await inlineSvg.boundingBox();
+        if (!inlineSvgBox) throw new Error('Mermaid SVG is not visible.');
+        const startX = inlineSvgBox.x + inlineSvgBox.width / 2;
+        const startY = inlineSvgBox.y + inlineSvgBox.height / 2;
+        await page.mouse.move(startX, startY);
+        await page.mouse.down();
+        await page.mouse.move(startX + 90, startY + 45, { steps: 8 });
+        await page.mouse.up();
+        await expect.poll(() => sceneTransform(inlineSvg)).not.toBe(initialTransform);
+
+        await page.getByTestId('mermaid-zoom-reset').click();
+        await expect.poll(() => sceneTransform(inlineSvg)).toBe(initialTransform);
         await page.getByTestId('mermaid-zoom-in').click();
         await expect.poll(() => sceneTransform(inlineSvg)).not.toBe(initialTransform);
 
@@ -93,6 +105,11 @@ test.describe('Mermaid 跨端交互画布', () => {
         if (!viewportBox) throw new Error('Mermaid viewport is not visible.');
         await page.mouse.move(viewportBox.x + viewportBox.width / 2, viewportBox.y + viewportBox.height / 2);
         await page.mouse.wheel(0, -320);
+        await expect.poll(() => sceneTransform(inlineSvg)).toBe(initialTransform);
+
+        await page.keyboard.down('Control');
+        await page.mouse.wheel(0, -320);
+        await page.keyboard.up('Control');
         await expect.poll(() => sceneTransform(inlineSvg)).not.toBe(initialTransform);
 
         await page.getByTestId('mermaid-zoom-reset').click();
@@ -100,13 +117,13 @@ test.describe('Mermaid 跨端交互画布', () => {
         await page.getByTestId('mermaid-zoom-in').click();
         await expect.poll(() => sceneTransform(inlineSvg)).not.toBe(initialTransform);
         const dragStartTransform = await waitForTransformToSettle(inlineSvg);
-        const inlineSvgBox = await inlineSvg.boundingBox();
-        if (!inlineSvgBox) throw new Error('Mermaid SVG is not visible.');
-        const startX = inlineSvgBox.x + inlineSvgBox.width / 2;
-        const startY = inlineSvgBox.y + inlineSvgBox.height / 2;
-        await page.mouse.move(startX, startY);
+        const zoomedSvgBox = await inlineSvg.boundingBox();
+        if (!zoomedSvgBox) throw new Error('Zoomed Mermaid SVG is not visible.');
+        const zoomedStartX = zoomedSvgBox.x + zoomedSvgBox.width / 2;
+        const zoomedStartY = zoomedSvgBox.y + zoomedSvgBox.height / 2;
+        await page.mouse.move(zoomedStartX, zoomedStartY);
         await page.mouse.down();
-        await page.mouse.move(startX + 90, startY + 45, { steps: 8 });
+        await page.mouse.move(zoomedStartX + 90, zoomedStartY + 45, { steps: 8 });
         await page.mouse.up();
         await expect.poll(() => sceneTransform(inlineSvg)).not.toBe(dragStartTransform);
 

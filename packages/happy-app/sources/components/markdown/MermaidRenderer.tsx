@@ -100,14 +100,18 @@ const WebDiagramCanvas = React.forwardRef<DiagramCanvasHandle, DiagramCanvasProp
             const Panzoom = module.default;
             const panzoom = Panzoom(host, {
                 canvas: true,
-                contain: 'outside',
                 maxScale: 5,
                 minScale: 0.5,
                 step: 0.25,
             });
             panzoomRef.current = panzoom;
             wheelTarget = host.parentElement;
-            wheelHandler = panzoom.zoomWithWheel ? (event) => panzoom.zoomWithWheel?.(event) : null;
+            wheelHandler = panzoom.zoomWithWheel
+                ? (event) => {
+                    if (!event.ctrlKey && !event.metaKey) return;
+                    panzoom.zoomWithWheel?.(event);
+                }
+                : null;
             if (wheelTarget && wheelHandler) {
                 wheelTarget.addEventListener('wheel', wheelHandler as EventListener, { passive: false });
             }
@@ -165,7 +169,7 @@ const WebDiagramCanvas = React.forwardRef<DiagramCanvasHandle, DiagramCanvasProp
 
 WebDiagramCanvas.displayName = 'WebDiagramCanvas';
 
-function buildNativeDocument(content: string, config: MermaidThemeConfig): string {
+function buildNativeDocument(content: string, config: MermaidThemeConfig, fullscreen: boolean): string {
     const serializedContent = serializeForInlineScript(content);
     const serializedConfig = serializeForInlineScript(config);
     const background = config.themeVariables.background;
@@ -180,7 +184,7 @@ function buildNativeDocument(content: string, config: MermaidThemeConfig): strin
     <script src="https://cdn.jsdelivr.net/npm/@panzoom/panzoom@4.6.2/dist/panzoom.min.js"></script>
     <style>
         html, body { height: 100%; margin: 0; overflow: hidden; background: ${background}; }
-        body { padding: 16px; box-sizing: border-box; }
+        body { padding: ${fullscreen ? 0 : 16}px; box-sizing: border-box; }
         #viewport { align-items: center; display: flex; height: 100%; justify-content: center; overflow: hidden; touch-action: none; width: 100%; }
         #viewport svg { height: auto; max-height: 100%; max-width: 100%; width: auto; }
         #error { color: ${errorColor}; font-family: monospace; white-space: pre-wrap; }
@@ -201,8 +205,11 @@ function buildNativeDocument(content: string, config: MermaidThemeConfig): strin
                 const result = await mermaid.render('mermaid-diagram', content);
                 viewport.innerHTML = result.svg;
                 const svg = viewport.querySelector('svg');
-                const controller = Panzoom(svg, { canvas: true, contain: 'outside', maxScale: 5, minScale: 0.5, step: 0.25 });
-                viewport.addEventListener('wheel', controller.zoomWithWheel, { passive: false });
+                const controller = Panzoom(svg, { canvas: true, maxScale: 5, minScale: 0.5, step: 0.25 });
+                viewport.addEventListener('wheel', function(event) {
+                    if (!event.ctrlKey && !event.metaKey) return;
+                    controller.zoomWithWheel(event);
+                }, { passive: false });
                 window.__pawsMermaid = {
                     reset: function() { controller.reset({ animate: true }); },
                     zoomIn: function() { controller.zoomIn({ animate: true }); },
@@ -228,7 +235,10 @@ const NativeDiagramCanvas = React.forwardRef<DiagramCanvasHandle, DiagramCanvasP
     const webViewRef = React.useRef<WebView>(null);
     const [height, setHeight] = React.useState(220);
     const [hasError, setHasError] = React.useState(false);
-    const html = React.useMemo(() => buildNativeDocument(props.content, props.config), [props.config, props.content]);
+    const html = React.useMemo(
+        () => buildNativeDocument(props.content, props.config, props.fullscreen === true),
+        [props.config, props.content, props.fullscreen],
+    );
 
     React.useImperativeHandle(ref, () => ({
         execute: (command) => {
@@ -244,7 +254,9 @@ const NativeDiagramCanvas = React.forwardRef<DiagramCanvasHandle, DiagramCanvasP
                 ref={webViewRef}
                 source={{ html }}
                 style={styles.webView}
-                scrollEnabled={false}
+                nestedScrollEnabled
+                overScrollMode="never"
+                scrollEnabled
                 showsHorizontalScrollIndicator={false}
                 showsVerticalScrollIndicator={false}
                 onMessage={(event) => {
@@ -389,12 +401,13 @@ export const MermaidRenderer = React.memo((props: { content: string }) => {
             <Modal
                 animationType="fade"
                 onRequestClose={closeFullscreen}
+                navigationBarTranslucent
                 statusBarTranslucent
                 transparent
                 visible={fullscreen}
             >
                 {fullscreen ? (
-                    <View style={styles.fullscreenBackdrop}>
+                    <View style={styles.fullscreenBackdrop} testID="mermaid-fullscreen-backdrop">
                         <DiagramSurface
                             canvasRef={fullscreenCanvasRef}
                             config={config}
@@ -409,7 +422,7 @@ export const MermaidRenderer = React.memo((props: { content: string }) => {
     );
 });
 
-const styles = StyleSheet.create((theme) => ({
+const styles = StyleSheet.create((theme, runtime) => ({
     container: {
         marginVertical: 8,
         width: '100%',
@@ -423,7 +436,8 @@ const styles = StyleSheet.create((theme) => ({
         width: '100%',
     },
     surfaceFullscreen: {
-        borderRadius: 12,
+        borderRadius: 0,
+        borderWidth: 0,
         flex: 1,
         width: '100%',
     },
@@ -431,7 +445,8 @@ const styles = StyleSheet.create((theme) => ({
         alignItems: 'center',
         backgroundColor: theme.colors.surface,
         flex: 1,
-        padding: 16,
+        paddingBottom: runtime.insets.bottom,
+        paddingTop: runtime.insets.top,
     },
     toolbar: {
         alignItems: 'center',
