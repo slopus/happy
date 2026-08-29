@@ -91,6 +91,31 @@ describe('ApiMachineClient Codex fork RPCs', () => {
         }));
     });
 
+    it('returns spawn failures as a typed RPC result', async () => {
+        const spawnSession = vi.fn().mockResolvedValue({
+            type: 'error',
+            errorMessage: 'Entrypoint does not exist',
+        });
+
+        const { ApiMachineClient } = await import('./apiMachine');
+        const client = new ApiMachineClient('token', machineClient());
+        client.setRPCHandlers({
+            spawnSession,
+            stopSession: vi.fn(),
+            requestShutdown: vi.fn(),
+        });
+
+        const result = await handlersFrom(client).get('machine-1:spawn-happy-session')?.({
+            directory: '/tmp/project',
+            agent: 'codex',
+        });
+
+        expect(result).toEqual({
+            type: 'error',
+            errorMessage: 'Entrypoint does not exist',
+        });
+    });
+
     it('forwards effort through the resume RPC', async () => {
         const resumeSession = vi.fn().mockResolvedValue({ type: 'success', sessionId: 'happy-resumed' });
 

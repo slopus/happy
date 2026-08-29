@@ -171,6 +171,30 @@ export type SpawnSessionResult =
     | { type: 'requestToApproveDirectoryCreation'; directory: string }
     | { type: 'error'; errorMessage: string };
 
+function normalizeSpawnSessionResult(result: unknown): SpawnSessionResult {
+    if (!result || typeof result !== 'object') {
+        return { type: 'error', errorMessage: 'Invalid response while spawning session' };
+    }
+
+    const response = result as Record<string, unknown>;
+    if (response.type === 'success' && typeof response.sessionId === 'string') {
+        return { type: 'success', sessionId: response.sessionId };
+    }
+    if (response.type === 'requestToApproveDirectoryCreation' && typeof response.directory === 'string') {
+        return { type: 'requestToApproveDirectoryCreation', directory: response.directory };
+    }
+    if (response.type === 'error' && typeof response.errorMessage === 'string') {
+        return { type: 'error', errorMessage: response.errorMessage };
+    }
+
+    // Older daemon RPC handlers encrypt thrown errors as { error: string }.
+    if (typeof response.error === 'string') {
+        return { type: 'error', errorMessage: response.error };
+    }
+
+    return { type: 'error', errorMessage: 'Invalid response while spawning session' };
+}
+
 // Options for spawning a session
 export interface SpawnSessionOptions {
     machineId: string;
@@ -274,7 +298,7 @@ export async function machineSpawnNewSession(options: SpawnSessionOptions): Prom
             'spawn-happy-session',
             { type: 'spawn-in-directory', directory, approvedNewDirectoryCreation, token, agent, environmentVariables, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, forkedFromMessageId }
         );
-        return result;
+        return normalizeSpawnSessionResult(result);
     } catch (error) {
         // Handle RPC errors
         return {

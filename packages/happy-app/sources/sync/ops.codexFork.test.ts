@@ -72,6 +72,22 @@ describe('codex fork ops', () => {
         );
     });
 
+    it('normalizes a legacy RPC error envelope when spawning a session', async () => {
+        machineRPC.mockResolvedValue({ error: 'Entrypoint does not exist' });
+
+        const { machineSpawnNewSession } = await import('./ops');
+        const result = await machineSpawnNewSession({
+            machineId: 'machine-1',
+            directory: '/tmp/project',
+            agent: 'codex',
+        });
+
+        expect(result).toEqual({
+            type: 'error',
+            errorMessage: 'Entrypoint does not exist',
+        });
+    });
+
     it('forks a full Codex thread and spawns a Codex session resumed to the new thread', async () => {
         machineRPC.mockImplementation(async (_machineId: string, method: string) => {
             if (method === 'codex-fork-thread') {

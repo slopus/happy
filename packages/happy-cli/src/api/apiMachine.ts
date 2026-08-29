@@ -165,7 +165,7 @@ export class ApiMachineClient {
                     return { type: 'requestToApproveDirectoryCreation', directory: result.directory };
 
                 case 'error':
-                    throw new Error(result.errorMessage);
+                    return { type: 'error', errorMessage: result.errorMessage };
             }
         });
 
