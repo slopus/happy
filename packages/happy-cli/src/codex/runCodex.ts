@@ -1040,6 +1040,7 @@ export async function runCodex(opts: {
     } as const;
     let first = true;
     let appendSystemPromptInjected = false;
+    let browserStepPromptInjected = false;
 
     try {
         logger.debug('[codex]: client.connect begin');
@@ -1271,6 +1272,7 @@ export async function runCodex(opts: {
             reasoningProcessor.abort();
             diffProcessor.reset();
             appendSystemPromptInjected = false;
+            browserStepPromptInjected = false;
             if (opts?.resetFirst) {
                 first = true;
             }
@@ -1366,6 +1368,7 @@ export async function runCodex(opts: {
                     message: opts.prompt,
                     mode: opts.mode,
                     includeAppendSystemPrompt,
+                    includeBrowserStepInstruction: !browserStepPromptInjected,
                     includeTitleInstruction: first,
                 });
 
@@ -1382,6 +1385,7 @@ export async function runCodex(opts: {
                     images: turnPayload.images,
                 });
                 first = false;
+                browserStepPromptInjected = true;
                 if (includeAppendSystemPrompt) {
                     appendSystemPromptInjected = true;
                 }

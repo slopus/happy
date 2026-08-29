@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
 
+import { BROWSER_STEP_TOOL_DESCRIPTION } from '@/browser/browserStepReportingPrompt';
 import {
     HAPPY_MCP_BRIDGE_TOOL_NAMES,
     registerHappyBridgeTools,
@@ -112,6 +113,7 @@ describe('registerHappyBridgeTools', () => {
         expect(HAPPY_MCP_BRIDGE_TOOL_NAMES).toContain('report_browser_step');
         const reportBrowserStep = registrations.find((registration) => registration.name === 'report_browser_step');
         expect(reportBrowserStep).toBeDefined();
+        expect(reportBrowserStep?.config.description).toBe(BROWSER_STEP_TOOL_DESCRIPTION);
 
         const result = await reportBrowserStep?.handler({
             path: '/tmp/ego-step.png',

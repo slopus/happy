@@ -1,7 +1,7 @@
 # Ego Browser Step Reporting Prompt — Technical Design
 
-Date: 2026-08-30  
-Status: ready for written review  
+Date: 2026-08-30
+Status: ready for written review
 Scope: Happy CLI, Codex and Claude sessions
 
 ## 1. Summary
