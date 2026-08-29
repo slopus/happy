@@ -1,12 +1,10 @@
 import * as React from 'react';
 import { Platform } from 'react-native';
-import { useShallow } from 'zustand/react/shallow';
-
 import { useDesktopWorkspaceLayout } from '@/hooks/useDesktopWorkspaceLayout';
 import { useGlobalKeyboard } from '@/hooks/useGlobalKeyboard';
 import { useModal } from '@/modal';
 import type { CustomModalConfig } from '@/modal/types';
-import { storage, useSetting } from '@/sync/storage';
+import { useSetting } from '@/sync/storage';
 import { t } from '@/text';
 import { isTauri } from '@/utils/isTauri';
 
@@ -33,7 +31,6 @@ function getBrowserPlatform(): string {
 export function KeyboardShortcutsProvider({ children }: { children: React.ReactNode }) {
     const { state: modalState, showModal } = useModal();
     const shortcutsOpeningRef = React.useRef(false);
-    const commandPaletteEnabled = storage(useShallow((state) => state.localSettings.commandPaletteEnabled));
     const enterToSend = useSetting('agentInputEnterToSend');
     const { enabled, rightPanelAvailable } = useDesktopWorkspaceLayout();
     const shortcutsAreOpen = modalState.modals.some((modal) => (
@@ -49,7 +46,6 @@ export function KeyboardShortcutsProvider({ children }: { children: React.ReactN
 
         shortcutsOpeningRef.current = true;
         const sections = createShortcutSections({
-            commandPaletteEnabled,
             enterToSend,
             inTauri: isTauri(),
             platform: getBrowserPlatform(),
@@ -61,7 +57,7 @@ export function KeyboardShortcutsProvider({ children }: { children: React.ReactN
             accessibilityLabel: t('keyboardShortcuts.title'),
             props: { sections },
         } as Omit<CustomModalConfig, 'id'>);
-    }, [commandPaletteEnabled, enabled, enterToSend, rightPanelAvailable, showModal]);
+    }, [enabled, enterToSend, rightPanelAvailable, showModal]);
 
     useGlobalKeyboard(undefined, { onOpenKeyboardShortcuts: enabled ? open : undefined });
 

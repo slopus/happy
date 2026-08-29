@@ -173,7 +173,6 @@ export const pl: TranslationStructure = {
         zoomIn: 'Powiększ',
         zoomOut: 'Pomniejsz',
         resetZoom: 'Przywróć domyślne powiększenie',
-        commandPaletteDisabled: 'Włącz skrót palety poleceń w Ustawieniach',
     },
     composeHome: {
         greeting: ({ name }: { name: string }) => `Cześć ${name}, co dziś zrobimy?`,
@@ -522,9 +521,6 @@ export const pl: TranslationStructure = {
         enterToSend: 'Enter aby wysłać',
         enterToSendEnabled: 'Naciśnij Enter, aby wysłać (Shift+Enter dla nowej linii)',
         enterToSendDisabled: 'Enter wstawia nową linię',
-        commandPalette: 'Paleta poleceń',
-        commandPaletteEnabled: 'Naciśnij ⌘P, aby otworzyć',
-        commandPaletteDisabled: 'Szybki dostęp do poleceń wyłączony',
         markdownCopyV2: 'Markdown Copy v2',
         markdownCopyV2Subtitle: 'Długie naciśnięcie otwiera modal kopiowania',
         hideInactiveSessions: 'Ukrywaj zarchiwizowane sesje',

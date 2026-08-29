@@ -162,7 +162,6 @@ export const en = {
         zoomIn: 'Zoom in',
         zoomOut: 'Zoom out',
         resetZoom: 'Reset zoom',
-        commandPaletteDisabled: 'Enable the command palette shortcut in Settings',
     },
     composeHome: {
         greeting: ({ name }: { name: string }) => `Hi ${name}, what should we do today?`,
@@ -503,9 +502,6 @@ export const en = {
         enterToSend: 'Enter to Send',
         enterToSendEnabled: 'Press Enter to send (Shift+Enter for a new line)',
         enterToSendDisabled: 'Enter inserts a new line',
-        commandPalette: 'Command Palette',
-        commandPaletteEnabled: 'Press ⌘P to open',
-        commandPaletteDisabled: 'Quick command access disabled',
         markdownCopyV2: 'Markdown Copy v2',
         markdownCopyV2Subtitle: 'Long press opens copy modal',
         hideInactiveSessions: 'Hide archived sessions',

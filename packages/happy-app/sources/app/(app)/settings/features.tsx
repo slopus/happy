@@ -13,7 +13,6 @@ export default function FeaturesSettingsScreen() {
     const [experiments, setExperiments] = useSettingMutable('experiments');
     const [analyticsOptOut, setAnalyticsOptOut] = useSettingMutable('analyticsOptOut');
     const [agentInputEnterToSend, setAgentInputEnterToSend] = useSettingMutable('agentInputEnterToSend');
-    const [commandPaletteEnabled, setCommandPaletteEnabled] = useLocalSettingMutable('commandPaletteEnabled');
     const [markdownCopyV2, setMarkdownCopyV2] = useLocalSettingMutable('markdownCopyV2');
     const [hideInactiveSessions, setHideInactiveSessions] = useSettingMutable('hideInactiveSessions');
     const [expResumeSession, setExpResumeSession] = useSettingMutable('expResumeSession');
@@ -164,19 +163,6 @@ export default function FeaturesSettingsScreen() {
                                 accessibilityLabel={t('settingsFeatures.enterToSend')}
                                 value={agentInputEnterToSend}
                                 onValueChange={setAgentInputEnterToSend}
-                            />
-                        }
-                        showChevron={false}
-                    />
-                    <Item
-                        title={t('settingsFeatures.commandPalette')}
-                        subtitle={commandPaletteEnabled ? t('settingsFeatures.commandPaletteEnabled') : t('settingsFeatures.commandPaletteDisabled')}
-                        icon={<Ionicons name="keypad-outline" size={29} color={theme.colors.accent} />}
-                        rightElement={
-                            <Switch
-                                accessibilityLabel={t('settingsFeatures.commandPalette')}
-                                value={commandPaletteEnabled}
-                                onValueChange={setCommandPaletteEnabled}
                             />
                         }
                         showChevron={false}

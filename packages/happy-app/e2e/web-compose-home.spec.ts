@@ -2188,12 +2188,6 @@ test('Web 深色命令面板跟随主题并支持完整关闭交互', async ({ p
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto(new URL('/settings/appearance', authenticatedWebUrl).toString());
     await page.getByText('Terminal', { exact: true }).click();
-    await page.goto(new URL('/settings/features', authenticatedWebUrl).toString());
-
-    const featureSwitches = page.getByRole('switch');
-    await expect(featureSwitches).toHaveCount(10);
-    const commandPaletteSwitch = page.getByRole('switch', { name: 'Command Palette' });
-    await expect(commandPaletteSwitch).toBeChecked();
 
     // A focused editor or embedded surface may stop bubbling at document.
     // The application shortcut must already have handled the key in capture.
@@ -2243,11 +2237,6 @@ test('Web 深色命令面板跟随主题并支持完整关闭交互', async ({ p
     await page.mouse.click(10, 10);
     await expect(page.getByTestId('command-palette-input')).toHaveCount(0);
 
-    await page.goto(new URL('/settings/features', authenticatedWebUrl).toString());
-    const reopenedCommandPaletteSwitch = page.getByRole('switch', { name: 'Command Palette' });
-    await reopenedCommandPaletteSwitch.click();
-    await expect(reopenedCommandPaletteSwitch).not.toBeChecked();
-
     await page.goto(new URL('/settings/appearance', authenticatedWebUrl).toString());
     await page.getByText('Caramel', { exact: true }).click();
 });
@@ -2257,10 +2246,6 @@ test.describe('中文 Web 命令面板', () => {
 
     test('静态命令、类别和空结果均完成本地化', async ({ page }, testInfo) => {
         await page.setViewportSize({ width: 2048, height: 982 });
-        await page.goto(new URL('/settings/features', authenticatedWebUrl).toString());
-
-        const commandPaletteSwitch = page.getByRole('switch', { name: '命令面板' });
-        await expect(commandPaletteSwitch).toBeChecked();
         await page.goto(authenticatedWebUrl);
         await page.getByTestId('sidebar-command-palette-button').click();
 
@@ -2334,10 +2319,6 @@ test.describe('中文 Web 命令面板', () => {
 
         await commandInput.press('Escape');
         await expect(palette).toHaveCount(0);
-        await page.goto(new URL('/settings/features', authenticatedWebUrl).toString());
-        const cleanupSwitch = page.getByRole('switch', { name: '命令面板' });
-        await cleanupSwitch.click();
-        await expect(cleanupSwitch).not.toBeChecked();
     });
 });
 
@@ -4594,7 +4575,6 @@ test.describe('中文 Web 功能与账户设置语义', () => {
             '桌面截图',
             '禁用分析',
             '回车发送',
-            '命令面板',
         ];
         await expect(page.getByRole('switch')).toHaveCount(switchNames.length);
         for (const name of switchNames) {

@@ -4,7 +4,6 @@ import { t } from '@/text';
 import { getDesktopPanelShortcutPresentation } from '@/utils/desktopNavigationLayout';
 
 export type ShortcutCatalogContext = {
-    commandPaletteEnabled: boolean;
     enterToSend: boolean;
     inTauri: boolean;
     platform: string;
@@ -67,9 +66,6 @@ export function createShortcutSections(context: ShortcutCatalogContext): Shortcu
             id: 'open-command-palette',
             icon: 'terminal-outline',
             label: t('keyboardShortcuts.openCommandPalette'),
-            detail: context.commandPaletteEnabled
-                ? undefined
-                : t('keyboardShortcuts.commandPaletteDisabled'),
             alternatives: [chord('Meta', 'P')],
         },
         {

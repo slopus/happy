@@ -164,7 +164,6 @@ export const zhHans: TranslationStructure = {
         zoomIn: '放大',
         zoomOut: '缩小',
         resetZoom: '重置缩放',
-        commandPaletteDisabled: '请在“设置”中启用命令面板快捷键',
     },
     composeHome: {
         greeting: ({ name }: { name: string }) => `嗨 ${name}，今天和 Paws 做点什么`,
@@ -506,9 +505,6 @@ export const zhHans: TranslationStructure = {
         enterToSend: '回车发送',
         enterToSendEnabled: '按回车发送（Shift+回车换行）',
         enterToSendDisabled: '回车换行',
-        commandPalette: '命令面板',
-        commandPaletteEnabled: '按 ⌘P 打开',
-        commandPaletteDisabled: '快速命令访问已禁用',
         markdownCopyV2: 'Markdown 复制 v2',
         markdownCopyV2Subtitle: '长按打开复制模态框',
         hideInactiveSessions: '隐藏已归档会话',

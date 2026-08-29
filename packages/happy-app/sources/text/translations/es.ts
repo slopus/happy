@@ -162,7 +162,6 @@ export const es: TranslationStructure = {
         zoomIn: 'Aumentar el zoom',
         zoomOut: 'Reducir el zoom',
         resetZoom: 'Restablecer el zoom',
-        commandPaletteDisabled: 'Activa el atajo de la paleta de comandos en Configuración',
     },
     composeHome: {
         greeting: ({ name }: { name: string }) => `Hola ${name}, ¿qué hacemos hoy?`,
@@ -505,9 +504,6 @@ export const es: TranslationStructure = {
         enterToSend: 'Enter para enviar',
         enterToSendEnabled: 'Presiona Enter para enviar (Shift+Enter para una nueva línea)',
         enterToSendDisabled: 'Enter inserta una nueva línea',
-        commandPalette: 'Paleta de comandos',
-        commandPaletteEnabled: 'Presione ⌘P para abrir',
-        commandPaletteDisabled: 'Acceso rápido a comandos deshabilitado',
         markdownCopyV2: 'Markdown Copy v2',
         markdownCopyV2Subtitle: 'Pulsación larga abre modal de copiado',
         hideInactiveSessions: 'Ocultar sesiones archivadas',

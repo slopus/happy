@@ -55,7 +55,6 @@ describe('FeaturesSettingsScreen 可访问语义', () => {
                 'settingsFeatures.desktopScreenshot',
                 'settingsFeatures.disableAnalytics',
                 'settingsFeatures.enterToSend',
-                'settingsFeatures.commandPalette',
             ]);
 
         act(() => renderer.unmount());

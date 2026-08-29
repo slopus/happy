@@ -63,7 +63,7 @@ const mocks = vi.hoisted(() => ({
             },
         },
         localSettings: {
-            commandPaletteEnabled: true,
+            commandPaletteEnabled: false,
             agents: [{
                 id: 'agent-1',
                 name: 'Release Agent',
@@ -180,7 +180,6 @@ describe('CommandPaletteProvider', () => {
         mocks.navigateToSession.mockReset();
         mocks.router.navigate.mockReset();
         mocks.router.push.mockReset();
-        mocks.state.localSettings.commandPaletteEnabled = true;
         mocks.keyboardHandler = undefined;
         mocks.keyboardOptions = undefined;
         mocks.openSettings.mockReset();
@@ -257,8 +256,7 @@ describe('CommandPaletteProvider', () => {
         expect(mocks.router.push).toHaveBeenCalledWith('/session/abc123456/files?focus=search');
     });
 
-    it('keeps sidebar access available when the optional keyboard shortcut is disabled', () => {
-        mocks.state.localSettings.commandPaletteEnabled = false;
+    it('keeps Command+P available when stale local storage contains the removed opt-out', () => {
         act(() => {
             renderer = TestRenderer.create(
                 <CommandPaletteProvider>
@@ -267,9 +265,9 @@ describe('CommandPaletteProvider', () => {
             );
         });
 
-        expect(mocks.keyboardHandler).toBeUndefined();
+        expect(mocks.keyboardHandler).toBeTypeOf('function');
         expect(latestLauncher?.isAvailable).toBe(true);
-        act(() => latestLauncher?.open());
+        act(() => mocks.keyboardHandler?.());
         expect(mocks.modalShow).toHaveBeenCalledOnce();
     });
 

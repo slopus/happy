@@ -7,7 +7,6 @@ vi.mock('@/text', () => ({
 }));
 
 const baseContext: ShortcutCatalogContext = {
-    commandPaletteEnabled: true,
     enterToSend: true,
     inTauri: false,
     platform: 'MacIntel',
@@ -53,13 +52,6 @@ describe('createShortcutSections', () => {
 
     it('omits the right-panel shortcut when that capability is unavailable', () => {
         expect(getRow({ ...baseContext, rightPanelAvailable: false }, 'toggle-right-panel')).toBeUndefined();
-    });
-
-    it('keeps a disabled command-palette shortcut discoverable with localized guidance', () => {
-        const row = getRow({ ...baseContext, commandPaletteEnabled: false }, 'open-command-palette');
-
-        expect(row?.alternatives).toEqual([['⌘', 'P']]);
-        expect(row?.detail).toBe('keyboardShortcuts.commandPaletteDisabled');
     });
 
     it('matches send and newline rows to the Enter-to-Send preference', () => {

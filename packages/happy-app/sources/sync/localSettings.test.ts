@@ -2,10 +2,14 @@ import { describe, it, expect } from 'vitest';
 import { localSettingsDefaults, localSettingsParse } from './localSettings';
 
 describe('localSettings web command palette', () => {
-    it('is available by default while preserving an explicit opt-out', () => {
-        expect(localSettingsDefaults.commandPaletteEnabled).toBe(true);
-        expect(localSettingsParse({}).commandPaletteEnabled).toBe(true);
-        expect(localSettingsParse({ commandPaletteEnabled: false }).commandPaletteEnabled).toBe(false);
+    it('drops removed command palette flags from stale local settings', () => {
+        const parsed = localSettingsParse({
+            commandPaletteEnabled: false,
+            commandPaletteShortcutMigrated: true,
+        });
+
+        expect(parsed).not.toHaveProperty('commandPaletteEnabled');
+        expect(parsed).not.toHaveProperty('commandPaletteShortcutMigrated');
     });
 });
 

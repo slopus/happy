@@ -20,11 +20,6 @@ const mocks = vi.hoisted(() => ({
     settings: {
         agentInputEnterToSend: false,
     },
-    storageState: {
-        localSettings: {
-            commandPaletteEnabled: false,
-        },
-    },
 }));
 
 vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
@@ -50,12 +45,7 @@ vi.mock('@/hooks/useGlobalKeyboard', () => ({
 }));
 
 vi.mock('@/sync/storage', () => ({
-    storage: (selector: (state: typeof mocks.storageState) => unknown) => selector(mocks.storageState),
     useSetting: (name: keyof typeof mocks.settings) => mocks.settings[name],
-}));
-
-vi.mock('zustand/react/shallow', () => ({
-    useShallow: <T,>(selector: T) => selector,
 }));
 
 vi.mock('@/utils/isTauri', () => ({
@@ -105,7 +95,6 @@ describe('KeyboardShortcutsProvider', () => {
         mocks.modalState.modals = [];
         mocks.platform.OS = 'web';
         mocks.settings.agentInputEnterToSend = false;
-        mocks.storageState.localSettings.commandPaletteEnabled = false;
         latestLauncher = null;
         vi.stubGlobal('navigator', {
             platform: 'MacIntel',
@@ -154,7 +143,6 @@ describe('KeyboardShortcutsProvider', () => {
         });
 
         expect(mocks.createShortcutSections).toHaveBeenCalledWith({
-            commandPaletteEnabled: false,
             enterToSend: false,
             inTauri: true,
             platform: 'macOS',

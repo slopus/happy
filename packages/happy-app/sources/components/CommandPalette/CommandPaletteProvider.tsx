@@ -78,7 +78,6 @@ export function CommandPaletteProvider({ children }: { children: React.ReactNode
     }));
     const machines = storage(useShallow((state) => state.machines));
     const agents = storage(useShallow((state) => state.localSettings.agents));
-    const commandPaletteEnabled = storage(useShallow((state) => state.localSettings.commandPaletteEnabled));
     const currentViewingSessionId = storage(useShallow((state) => state.currentViewingSessionId));
     const navigateToSession = useNavigateToSession();
     const paletteIsOpen = modalState.modals.some((modal) => (
@@ -284,8 +283,7 @@ export function CommandPaletteProvider({ children }: { children: React.ReactNode
         } as any);
     }, [commands, showModal]);
 
-    // The sidebar launcher remains available; this preference only controls the global shortcut.
-    useGlobalKeyboard(commandPaletteEnabled ? showCommandPalette : undefined, { onOpenSettings: openSettings });
+    useGlobalKeyboard(showCommandPalette, { onOpenSettings: openSettings });
 
     const launcher = useMemo((): CommandPaletteLauncher => ({
         isAvailable: Platform.OS === 'web',

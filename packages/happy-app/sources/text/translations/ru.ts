@@ -173,7 +173,6 @@ export const ru: TranslationStructure = {
         zoomIn: 'Увеличить масштаб',
         zoomOut: 'Уменьшить масштаб',
         resetZoom: 'Сбросить масштаб',
-        commandPaletteDisabled: 'Включите сочетание клавиш для палитры команд в настройках',
     },
     composeHome: {
         greeting: ({ name }: { name: string }) => `Привет, ${name}! Чем займёмся сегодня?`,
@@ -485,9 +484,6 @@ export const ru: TranslationStructure = {
         enterToSend: 'Enter для отправки',
         enterToSendEnabled: 'Нажмите Enter для отправки (Shift+Enter для новой строки)',
         enterToSendDisabled: 'Enter вставляет новую строку',
-        commandPalette: 'Command Palette',
-        commandPaletteEnabled: 'Нажмите ⌘P для открытия',
-        commandPaletteDisabled: 'Быстрый доступ к командам отключён',
         markdownCopyV2: 'Markdown Copy v2',
         markdownCopyV2Subtitle: 'Долгое нажатие открывает модальное окно копирования',
         hideInactiveSessions: 'Скрывать архивные сессии',

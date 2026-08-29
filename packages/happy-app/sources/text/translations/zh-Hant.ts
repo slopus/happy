@@ -164,7 +164,6 @@ export const zhHant: TranslationStructure = {
         zoomIn: '放大',
         zoomOut: '縮小',
         resetZoom: '重設縮放',
-        commandPaletteDisabled: '請在「設定」中啟用命令面板快速鍵',
     },
     composeHome: {
         greeting: ({ name }: { name: string }) => `嗨 ${name}，今天和 Paws 做點什麼`,
@@ -505,9 +504,6 @@ export const zhHant: TranslationStructure = {
         enterToSend: 'Enter 鍵傳送',
         enterToSendEnabled: '按 Enter 傳送（Shift+Enter 換行）',
         enterToSendDisabled: 'Enter 鍵插入換行',
-        commandPalette: '命令面板',
-        commandPaletteEnabled: '按 ⌘P 開啟',
-        commandPaletteDisabled: '快速命令存取已停用',
         markdownCopyV2: 'Markdown 複製 v2',
         markdownCopyV2Subtitle: '長按開啟複製強制回應視窗',
         hideInactiveSessions: '隱藏已封存的工作階段',

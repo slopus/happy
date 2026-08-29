@@ -162,7 +162,6 @@ export const ca: TranslationStructure = {
         zoomIn: 'Amplia el zoom',
         zoomOut: 'Redueix el zoom',
         resetZoom: 'Restableix el zoom',
-        commandPaletteDisabled: 'Activa la drecera de la paleta de comandes a Configuració',
     },
     composeHome: {
         greeting: ({ name }: { name: string }) => `Hola ${name}, què fem avui?`,
@@ -505,9 +504,6 @@ export const ca: TranslationStructure = {
         enterToSend: 'Enter per enviar',
         enterToSendEnabled: 'Prem Enter per enviar (Maj+Enter per a una nova línia)',
         enterToSendDisabled: 'Enter insereix una nova línia',
-        commandPalette: 'Paleta de comandes',
-        commandPaletteEnabled: 'Prem ⌘P per obrir',
-        commandPaletteDisabled: 'Accés ràpid a comandes desactivat',
         markdownCopyV2: 'Markdown Copy v2',
         markdownCopyV2Subtitle: 'Pulsació llarga obre modal de còpia',
         hideInactiveSessions: 'Amaga les sessions arxivades',
