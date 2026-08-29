@@ -988,6 +988,8 @@ export const it: TranslationStructure = {
         openSubagentDetails: ({ title }: { title: string }) => `Visualizza i dettagli del subagente: ${title}`,
         subagentPanelLabel: ({ title }: { title: string }) => `i dettagli del subagente «${title}»`,
         subagentNoDetails: 'Non è stato acquisito alcun dettaglio',
+        openSkillDetails: ({ title }: { title: string }) => `Visualizza i dettagli dell'errore della Skill: ${title}`,
+        skillFailureNoDetails: 'Non sono stati acquisiti dettagli diagnostici.',
         subagentStatus: {
             running: 'In corso',
             completed: 'Completato',

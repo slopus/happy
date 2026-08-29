@@ -148,6 +148,11 @@ type PendingToolResult = {
     content: unknown;
     isError: boolean;
     status?: 'completed' | 'failed' | 'cancelled';
+    failure?: {
+        code?: string;
+        summary: string;
+        detail?: string;
+    };
     permissions?: {
         date: number;
         result: 'approved' | 'denied';
@@ -316,6 +321,7 @@ function applyToolResult(
 
     message.tool.state = result.status === 'failed' || result.isError ? 'error' : 'completed';
     message.tool.result = result.content;
+    message.tool.failure = result.failure;
     message.tool.completedAt = result.createdAt;
 
     if (result.status === 'cancelled') {
@@ -922,6 +928,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                         content: c.content,
                         isError: c.is_error,
                         status: c.status,
+                        failure: c.failure,
                         permissions: c.permissions,
                         createdAt: msg.createdAt,
                     };

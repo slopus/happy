@@ -1717,7 +1717,12 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
                         ev: {
                             t: 'tool-call-end',
                             call: 'call-failed',
-                            status: 'failed'
+                            status: 'failed',
+                            error: {
+                                code: 'command_failed',
+                                summary: 'Skill file was not found.',
+                                detail: 'sed: /plugins/gpt-image-2/SKILL.md: No such file or directory',
+                            },
                         }
                     }
                 }
@@ -1727,8 +1732,13 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
                 expect(failedEnd.content[0]).toMatchObject({
                     type: 'tool-result',
                     tool_use_id: 'call-failed',
+                    content: 'sed: /plugins/gpt-image-2/SKILL.md: No such file or directory',
                     is_error: true,
-                    status: 'failed'
+                    status: 'failed',
+                    failure: {
+                        code: 'command_failed',
+                        summary: 'Skill file was not found.',
+                    },
                 });
             }
 

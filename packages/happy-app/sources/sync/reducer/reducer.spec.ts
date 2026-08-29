@@ -3492,6 +3492,62 @@ describe('reducer', () => {
                 expect.objectContaining({ name: 'dev', status: 'cancelled' }),
             ]);
         });
+
+        it('preserves failed Skill diagnostics through normalization and the reducer', () => {
+            const envelopes = [
+                {
+                    id: 'failed-skill-start',
+                    time: 1000,
+                    role: 'agent',
+                    turn: 'failed-skill-turn',
+                    ev: {
+                        t: 'tool-call-start',
+                        call: 'failed-skill-call',
+                        name: 'Skill',
+                        title: 'Use skill `gpt-image-2`',
+                        description: 'Read gpt-image-2 skill',
+                        args: { skillNames: ['gpt-image-2'] },
+                    },
+                },
+                {
+                    id: 'failed-skill-end',
+                    time: 1100,
+                    role: 'agent',
+                    turn: 'failed-skill-turn',
+                    ev: {
+                        t: 'tool-call-end',
+                        call: 'failed-skill-call',
+                        status: 'failed',
+                        error: {
+                            code: 'command_failed',
+                            summary: 'Skill file was not found.',
+                            detail: 'sed: /plugins/gpt-image-2/SKILL.md: No such file or directory',
+                        },
+                    },
+                },
+            ]
+                .map((envelope, index) => normalizeRawMessage(
+                    `failed-skill-db-${index}`,
+                    null,
+                    envelope.time,
+                    { role: 'session', content: envelope } as any,
+                ))
+                .filter((message): message is NormalizedMessage => message !== null);
+
+            const result = reducer(createReducer(), envelopes);
+            expect(result.messages).toMatchObject([{
+                kind: 'tool-call',
+                tool: {
+                    state: 'error',
+                    result: 'sed: /plugins/gpt-image-2/SKILL.md: No such file or directory',
+                    failure: {
+                        code: 'command_failed',
+                        summary: 'Skill file was not found.',
+                        detail: 'sed: /plugins/gpt-image-2/SKILL.md: No such file or directory',
+                    },
+                },
+            }]);
+        });
     });
 
     describe('TodoWrite latestTodos handling', () => {

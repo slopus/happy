@@ -566,6 +566,55 @@ function pickTurnEndStatus(message: Record<string, unknown>, type: unknown): Tur
     return 'completed';
 }
 
+function readFailureText(value: unknown): string | null {
+    if (typeof value === 'string' && value.trim().length > 0) {
+        return value.trim();
+    }
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+        return null;
+    }
+    const record = value as Record<string, unknown>;
+    for (const key of ['message', 'detail', 'stderr', 'output', 'content']) {
+        const text = readFailureText(record[key]);
+        if (text) {
+            return text;
+        }
+    }
+    return null;
+}
+
+function truncateFailureText(text: string, limit: number): string {
+    return text.length <= limit ? text : `${text.slice(0, limit - 3)}...`;
+}
+
+function getToolFailure(message: Record<string, unknown>, status: TurnEndStatus): {
+    code?: string;
+    summary: string;
+    detail?: string;
+} | undefined {
+    if (status !== 'failed') {
+        return undefined;
+    }
+
+    const detail = [message.error, message.stderr, message.output, message.message, message.reason]
+        .map(readFailureText)
+        .find((value): value is string => value !== null);
+    const exitCode = message.exit_code ?? message.exitCode;
+    const fallback = typeof exitCode === 'number'
+        ? `Command exited with code ${exitCode}.`
+        : 'The tool reported a failure.';
+    const summary = detail
+        ? truncateFailureText(detail.split(/\r?\n/, 1)[0].trim() || fallback, 280)
+        : fallback;
+    const truncatedDetail = detail ? truncateFailureText(detail, 4000) : undefined;
+
+    return {
+        ...(typeof exitCode === 'number' ? { code: 'command_failed' } : {}),
+        summary,
+        ...(truncatedDetail && truncatedDetail !== summary ? { detail: truncatedDetail } : {}),
+    };
+}
+
 export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unknown>, state: CodexTurnState): CodexMapperResult {
     const type = message.type;
     const startedSubagents = getStartedSubagents(state);
@@ -824,7 +873,13 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
         const status = pickTurnEndStatus(message, type);
         const envelopes: SessionEnvelope[] = [];
         maybeEmitSubagentStart(subagent, opts, startedSubagents, activeSubagents, providerSubagentToSessionSubagent, envelopes);
-        envelopes.push(createEnvelope('agent', { t: 'tool-call-end', call, status }, opts));
+        const failure = getToolFailure(message, status);
+        envelopes.push(createEnvelope('agent', {
+            t: 'tool-call-end',
+            call,
+            status,
+            ...(failure ? { error: failure } : {}),
+        }, opts));
         return {
             currentTurnId: state.currentTurnId,
             startedSubagents,

@@ -6,6 +6,7 @@ export type SkillConversationActivity = {
     kind: 'skill';
     name: string;
     status: ConversationActivityStatus;
+    failure: ToolCall['failure'] | null;
     updatedAt: number;
     depth: number;
     order: number;
@@ -70,6 +71,22 @@ function toolStatus(tool: ToolCall): ConversationActivityStatus {
         return 'failed';
     }
     return tool.state;
+}
+
+function getToolFailure(tool: ToolCall): ToolCall['failure'] | null {
+    if (tool.failure) {
+        return tool.failure;
+    }
+    if (tool.state !== 'error' || typeof tool.result !== 'string' || tool.result.trim().length === 0) {
+        return null;
+    }
+
+    const detail = tool.result.trim().slice(0, 4000);
+    const summary = detail.split(/\r?\n/, 1)[0].trim().slice(0, 280);
+    return {
+        summary: summary || detail,
+        ...(detail !== summary ? { detail } : {}),
+    };
 }
 
 export function getSkillNamesFromTool(tool: Pick<ToolCall, 'name' | 'input'>): string[] {
@@ -152,6 +169,7 @@ export function collectConversationActivities(
                     kind: 'skill',
                     name,
                     status: toolStatus(message.tool),
+                    failure: getToolFailure(message.tool),
                     updatedAt: message.tool.completedAt ?? message.createdAt,
                     depth,
                     order: sequence,

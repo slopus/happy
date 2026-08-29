@@ -266,6 +266,7 @@ describe('mapCodexMcpMessageToSessionEnvelopes', () => {
             type: 'exec_command_end',
             call_id: 'call-skill-failed',
             exit_code: 1,
+            stderr: 'sed: /plugins/gpt-image-2/SKILL.md: No such file or directory',
         }, { currentTurnId: 'turn-1' });
 
         expect(result.envelopes[0]).toMatchObject({
@@ -273,6 +274,10 @@ describe('mapCodexMcpMessageToSessionEnvelopes', () => {
                 t: 'tool-call-end',
                 call: 'call-skill-failed',
                 status: 'failed',
+                error: {
+                    code: 'command_failed',
+                    summary: 'sed: /plugins/gpt-image-2/SKILL.md: No such file or directory',
+                },
             },
         });
     });

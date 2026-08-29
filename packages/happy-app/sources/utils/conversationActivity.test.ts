@@ -85,6 +85,38 @@ describe('conversation activity model', () => {
         ]);
     });
 
+    it('keeps the diagnostic information for a failed Skill activity', () => {
+        const skill = toolMessage('1', 'Skill', { skillNames: ['gpt-image-2'] }, 'error');
+        skill.tool.failure = {
+            code: 'command_failed',
+            summary: 'Skill file was not found.',
+            detail: 'sed: /plugins/gpt-image-2/SKILL.md: No such file or directory',
+        };
+
+        expect(collectConversationActivities([skill]).skills).toEqual([
+            expect.objectContaining({
+                name: 'gpt-image-2',
+                status: 'failed',
+                failure: skill.tool.failure,
+            }),
+        ]);
+    });
+
+    it('uses a legacy tool result as the failed Skill diagnostic when structured data is absent', () => {
+        const skill = toolMessage('1', 'Skill', { skillNames: ['legacy-skill'] }, 'error');
+        skill.tool.result = 'Cannot read SKILL.md\nPermission denied';
+
+        expect(collectConversationActivities([skill]).skills).toEqual([
+            expect.objectContaining({
+                name: 'legacy-skill',
+                failure: {
+                    summary: 'Cannot read SKILL.md',
+                    detail: 'Cannot read SKILL.md\nPermission denied',
+                },
+            }),
+        ]);
+    });
+
     it('preserves nested subagent ownership depth without flattening', () => {
         const nestedAgent = toolMessage('2', 'Agent', {
             sessionSubagent: 'agent-2',

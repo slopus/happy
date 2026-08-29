@@ -10,6 +10,11 @@ export type ToolCall = {
     completedAt: number | null;
     description: string | null;
     result?: any;
+    failure?: {
+        code?: string;
+        summary: string;
+        detail?: string;
+    };
     permission?: {
         id: string;
         status: 'pending' | 'approved' | 'denied' | 'canceled';
