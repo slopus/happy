@@ -158,6 +158,26 @@ describe('FileView media playback', () => {
         act(() => renderer.unmount());
     });
 
+    it('renders a public MP4 URL through the same player without authenticated resolution', async () => {
+        const tool = videoTool({ encrypted: false });
+        tool.input.ref = 'https://public.test/shared/video';
+        let renderer: any;
+        await act(async () => {
+            renderer = TestRenderer.create(
+                <FileView tool={tool} metadata={null} messages={[]} />,
+            );
+        });
+
+        expect(mocks.resolveSource).not.toHaveBeenCalled();
+        expect(renderer.root.findByType('MediaAttachmentPlayer').props).toMatchObject({
+            uri: 'https://public.test/shared/video',
+            kind: 'video',
+            testID: 'media-attachment-player-user',
+        });
+
+        act(() => renderer.unmount());
+    });
+
     it('opens a motion-photo cover as a still image in the fullscreen viewer', async () => {
         const tool = {
             name: 'file',

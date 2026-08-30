@@ -11,6 +11,8 @@ export type PublicSessionBlockV1 =
         name: string;
         mimeType: string;
         size: number;
+        source?: 'user' | 'generated' | 'browser_step';
+        image?: { width: number; height: number; thumbhash?: string };
     };
 
 export type PublicSessionMessageV1 = {
@@ -24,6 +26,7 @@ export type PublicSessionSnapshotV1 = {
     version: 1;
     title: string;
     sharedAt: number;
+    presentation?: { groupToolCalls: boolean };
     messages: PublicSessionMessageV1[];
 };
 

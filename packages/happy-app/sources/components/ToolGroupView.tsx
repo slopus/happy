@@ -27,7 +27,7 @@ import {
 interface ToolGroupViewProps {
     group: ToolGroupItem;
     metadata: Metadata | null;
-    sessionId: string;
+    sessionId?: string;
     expanded: boolean;
     onToggle: () => void;
     nested?: boolean;
@@ -44,7 +44,7 @@ export const ToolGroupView = React.memo<ToolGroupViewProps>((props) => {
         ? group.messages[0]
         : null;
     const handleSingleToolPress = React.useCallback(() => {
-        if (!singleToolMessage) {
+        if (!singleToolMessage || !sessionId) {
             onToggle();
             return;
         }
@@ -69,6 +69,7 @@ export const ToolGroupView = React.memo<ToolGroupViewProps>((props) => {
     const body = (
         <View style={nested ? styles.nestedInnerContainer : styles.innerContainer}>
             <CollapseHeader
+                testID="conversation-tool-group-toggle"
                 expanded={expanded}
                 hasRunning={group.hasRunning}
                 label={summary}
@@ -102,7 +103,7 @@ export const ToolGroupView = React.memo<ToolGroupViewProps>((props) => {
 interface AgentWorkGroupViewProps {
     group: AgentWorkGroupItem;
     metadata: Metadata | null;
-    sessionId: string;
+    sessionId?: string;
     expanded: boolean;
     onToggle: () => void;
 }
@@ -202,6 +203,7 @@ export const AgentWorkGroupView = React.memo<AgentWorkGroupViewProps>((props) =>
         <View style={styles.outerContainer}>
             <View style={styles.innerContainer}>
                 <CollapseHeader
+                    testID="conversation-agent-work-toggle"
                     expanded={expanded}
                     hasRunning={group.hasRunning}
                     label={label}
@@ -221,6 +223,7 @@ export const AgentWorkGroupView = React.memo<AgentWorkGroupViewProps>((props) =>
 });
 
 function CollapseHeader(props: {
+    testID?: string;
     expanded: boolean;
     hasRunning: boolean;
     label: string;
@@ -260,7 +263,11 @@ function CollapseHeader(props: {
 
     if (props.disabled) {
         return (
-            <View style={styles.header}>
+            <View
+                testID={props.testID}
+                accessibilityState={{ expanded: props.expanded }}
+                style={styles.header}
+            >
                 {content}
             </View>
         );
@@ -268,6 +275,9 @@ function CollapseHeader(props: {
 
     return (
         <Pressable
+            testID={props.testID}
+            accessibilityRole="button"
+            accessibilityState={{ expanded: props.expanded }}
             onPress={props.onPress}
             style={({ pressed }) => [
                 styles.header,
@@ -282,7 +292,7 @@ function CollapseHeader(props: {
 function ToolGroupMessageRow(props: {
     message: Message;
     metadata: Metadata | null;
-    sessionId: string;
+    sessionId?: string;
 }) {
     if (props.message.kind !== 'tool-call') {
         return (
@@ -316,7 +326,7 @@ function ToolGroupMessageRow(props: {
 
 function ToolSummaryRow(props: {
     message: ToolCallMessage;
-    sessionId: string;
+    sessionId?: string;
 }) {
     const { theme } = useUnistyles();
     const router = useRouter();
@@ -329,6 +339,7 @@ function ToolSummaryRow(props: {
         : null;
     const isPressable = Boolean(props.sessionId);
     const handlePress = React.useCallback(() => {
+        if (!props.sessionId) return;
         if (filePath) {
             router.push(`/session/${props.sessionId}/file?path=${btoa(filePath)}`);
             return;

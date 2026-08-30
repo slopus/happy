@@ -101,7 +101,7 @@ function galleryHumanSize(bytes: number | undefined): string | null {
 
 export const AttachmentGalleryView = React.memo<{
     messages: Message[];
-    sessionId: string;
+    sessionId?: string;
     presentation?: AttachmentGalleryPresentation;
     pendingCount?: number;
     pendingStartedAt?: number | null;
@@ -267,7 +267,7 @@ function GeneratedAttachmentGrid({
     onOpen,
 }: {
     images: GalleryImage[];
-    sessionId: string;
+    sessionId?: string;
     pendingCount: number;
     pendingElapsedLabel: string | null;
     containerWidth: number;
@@ -362,7 +362,7 @@ function useClock(enabled: boolean): number {
 
 const GalleryThumbnail = React.memo<{
     image: GalleryImage;
-    sessionId: string;
+    sessionId?: string;
     presentation: AttachmentGalleryPresentation;
     displaySizeOverride?: { width: number; height: number };
     onResolution: (id: string, resolution: GalleryImageResolution) => void;
@@ -394,7 +394,7 @@ function GalleryMediaCard({ image }: { image: GalleryImage }) {
 
 const GalleryImageThumb = React.memo<{
     image: GalleryImage;
-    sessionId: string;
+    sessionId?: string;
     presentation: AttachmentGalleryPresentation;
     displaySizeOverride?: { width: number; height: number };
     onResolution: (id: string, resolution: GalleryImageResolution) => void;
@@ -409,9 +409,11 @@ const GalleryImageThumb = React.memo<{
         return uri ? { uri } : undefined;
     }, [image.thumbhash]);
 
-    const directUri = !sessionId && image.ref.startsWith('data:image/') ? image.ref : null;
+    const directUri = !sessionId && (/^data:image\//i.test(image.ref) || /^https?:\/\//i.test(image.ref))
+        ? image.ref
+        : null;
     const attachmentState = useAttachmentImage(
-        sessionId,
+        sessionId ?? '',
         sessionId ? image.ref : undefined,
         {
             maxDimension: ATTACHMENT_THUMBNAIL_MAX_DIMENSION,

@@ -300,6 +300,25 @@ describe('AttachmentGalleryView generated batches', () => {
         act(() => renderer.unmount());
     });
 
+    it('renders a public image URL without an authenticated session', () => {
+        let renderer: any;
+        act(() => {
+            renderer = TestRenderer.create(
+                <AttachmentGalleryView
+                    messages={[uploadedImageMessage(1, 'https://public.test/shared/image')]}
+                    presentation="compact"
+                />,
+            );
+        });
+
+        expect(renderer.root.findByType('Image').props.source).toEqual({
+            uri: 'https://public.test/shared/image',
+        });
+        expect(renderer.root.findByProps({ testID: 'attachment-gallery-image' }).props.disabled).toBe(false);
+
+        act(() => renderer.unmount());
+    });
+
     it.each(['compact', 'featured'] as const)('renders a batch action for multiple images in %s galleries', (presentation) => {
         attachmentImages.set('ref-uploaded-1', {
             uri: 'blob:uploaded-image-1',

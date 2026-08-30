@@ -48,6 +48,31 @@ function defaultMimeType(kind: PublicSessionAttachmentKind, name: string): strin
     return 'application/octet-stream';
 }
 
+function safeAttachmentSource(value: unknown): 'user' | 'generated' | 'browser_step' | undefined {
+    return value === 'user' || value === 'generated' || value === 'browser_step' ? value : undefined;
+}
+
+function safeImagePresentation(value: unknown): { width: number; height: number; thumbhash?: string } | undefined {
+    if (!value || typeof value !== 'object') return undefined;
+    const candidate = value as { width?: unknown; height?: unknown; thumbhash?: unknown };
+    if (
+        typeof candidate.width !== 'number'
+        || !Number.isFinite(candidate.width)
+        || candidate.width <= 0
+        || typeof candidate.height !== 'number'
+        || !Number.isFinite(candidate.height)
+        || candidate.height <= 0
+    ) return undefined;
+    const thumbhash = typeof candidate.thumbhash === 'string' && candidate.thumbhash.length <= 1_000
+        ? candidate.thumbhash
+        : undefined;
+    return {
+        width: Math.min(100_000, Math.round(candidate.width)),
+        height: Math.min(100_000, Math.round(candidate.height)),
+        ...(thumbhash ? { thumbhash } : {}),
+    };
+}
+
 function mapFileTool(
     message: ToolCallMessage,
     attachmentByRef: Map<string, PublicSessionAttachmentJob>,
@@ -56,6 +81,8 @@ function mapFileTool(
     const input = message.tool.input;
     if (!input || typeof input !== 'object' || typeof input.ref !== 'string' || !input.ref) return null;
     const ref = input.ref;
+    const source = safeAttachmentSource(input.source);
+    const image = attachmentKind(input.kind) === 'image' ? safeImagePresentation(input.image) : undefined;
     const existing = attachmentByRef.get(ref);
     if (existing) {
         return {
@@ -67,6 +94,8 @@ function mapFileTool(
                 name: existing.name,
                 mimeType: existing.mimeType,
                 size: existing.size,
+                ...(source ? { source } : {}),
+                ...(image ? { image } : {}),
             },
         };
     }
@@ -91,6 +120,8 @@ function mapFileTool(
             name: job.name,
             mimeType: job.mimeType,
             size: job.size,
+            ...(source ? { source } : {}),
+            ...(image ? { image } : {}),
         },
     };
 }
@@ -99,6 +130,7 @@ export function buildPublicSessionSnapshot(input: {
     title: string;
     messages: Message[];
     sharedAt: number;
+    groupToolCalls?: boolean;
     createAttachmentId?: () => string;
 }): { snapshot: PublicSessionSnapshotV1; attachments: PublicSessionAttachmentJob[] } {
     const createAttachmentId = input.createAttachmentId ?? uuid;
@@ -158,6 +190,7 @@ export function buildPublicSessionSnapshot(input: {
             version: 1,
             title: input.title.trim() || 'Shared session',
             sharedAt: input.sharedAt,
+            presentation: { groupToolCalls: input.groupToolCalls ?? true },
             messages: publicMessages,
         },
         attachments: Array.from(attachmentByRef.values()),

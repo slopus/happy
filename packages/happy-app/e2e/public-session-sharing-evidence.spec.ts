@@ -100,6 +100,64 @@ async function appendConversation(request: APIRequestContext, sessionId: string)
         {
             role: 'agent',
             content: {
+                type: 'acp',
+                provider: 'codex',
+                data: {
+                    type: 'tool-call',
+                    callId: `public-share-read-${now}`,
+                    id: `public-share-read-${now}`,
+                    input: { file_path: '/workspace/public-session-share-e2e/release-checklist.md' },
+                    name: 'Read',
+                },
+            },
+            meta: { sentFrom: 'cli' },
+        },
+        {
+            role: 'agent',
+            content: {
+                type: 'acp',
+                provider: 'codex',
+                data: {
+                    type: 'tool-result',
+                    callId: `public-share-read-${now}`,
+                    id: `public-share-read-result-${now}`,
+                    output: { success: true },
+                },
+            },
+            meta: { sentFrom: 'cli' },
+        },
+        {
+            role: 'agent',
+            content: {
+                type: 'acp',
+                provider: 'codex',
+                data: {
+                    type: 'tool-call',
+                    callId: `public-share-test-${now}`,
+                    id: `public-share-test-${now}`,
+                    input: { command: 'pnpm test -- --grep public-session-share' },
+                    name: 'Bash',
+                },
+            },
+            meta: { sentFrom: 'cli' },
+        },
+        {
+            role: 'agent',
+            content: {
+                type: 'acp',
+                provider: 'codex',
+                data: {
+                    type: 'tool-result',
+                    callId: `public-share-test-${now}`,
+                    id: `public-share-test-result-${now}`,
+                    output: { success: true },
+                },
+            },
+            meta: { sentFrom: 'cli' },
+        },
+        {
+            role: 'agent',
+            content: {
                 type: 'output',
                 data: {
                     type: 'assistant',
@@ -172,6 +230,66 @@ async function openShareDialog(page: Page): Promise<void> {
     await expect(page.getByTestId('public-session-share-checking')).toHaveCount(0);
 }
 
+async function enableToolGrouping(page: Page): Promise<void> {
+    await page.goto(authenticatedRoute('/settings/features'), { waitUntil: 'domcontentloaded', timeout: 180_000 });
+    const toggle = page.getByRole('switch', { name: 'Group Tool Calls' });
+    await expect(toggle).toBeVisible({ timeout: 180_000 });
+    if (!await toggle.isChecked()) {
+        const saved = page.waitForResponse((response) => (
+            response.request().method() === 'POST'
+            && new URL(response.url()).pathname === '/v1/account/settings'
+        ));
+        await toggle.click();
+        expect((await saved).ok()).toBe(true);
+    }
+    await expect(toggle).toBeChecked();
+}
+
+async function messageStyleSignature(page: Page, testIdPrefix: 'message-user-' | 'message-agent-', text: string) {
+    const message = page.locator(`[data-testid^="${testIdPrefix}"]`).filter({ hasText: text }).first();
+    await expect(message).toBeVisible();
+    return message.evaluate((element) => {
+        const target = element.firstElementChild instanceof HTMLElement ? element.firstElementChild : element;
+        const style = getComputedStyle(target);
+        return {
+            alignItems: style.alignItems,
+            backgroundColor: style.backgroundColor,
+            borderRadius: style.borderRadius,
+            display: style.display,
+            flexDirection: style.flexDirection,
+            maxWidth: style.maxWidth,
+            paddingBottom: style.paddingBottom,
+            paddingLeft: style.paddingLeft,
+            paddingRight: style.paddingRight,
+            paddingTop: style.paddingTop,
+        };
+    });
+}
+
+async function elementStyleSignature(page: Page, testID: string) {
+    const element = page.getByTestId(testID).first();
+    await expect(element).toBeVisible();
+    return element.evaluate((node) => {
+        const style = getComputedStyle(node);
+        const rect = node.getBoundingClientRect();
+        return {
+            backgroundColor: style.backgroundColor,
+            borderBottomLeftRadius: style.borderBottomLeftRadius,
+            borderBottomRightRadius: style.borderBottomRightRadius,
+            borderTopLeftRadius: style.borderTopLeftRadius,
+            borderTopRightRadius: style.borderTopRightRadius,
+            display: style.display,
+            height: Math.round(rect.height),
+            maxWidth: style.maxWidth,
+            paddingBottom: style.paddingBottom,
+            paddingLeft: style.paddingLeft,
+            paddingRight: style.paddingRight,
+            paddingTop: style.paddingTop,
+            width: Math.round(rect.width),
+        };
+    });
+}
+
 test.afterEach(async ({ page }) => {
     await page.close();
 });
@@ -181,9 +299,32 @@ test('PUBLIC-SESSION-SHARE owner publishes a complete snapshot and anonymous vie
     const sessionId = await createSession(request);
     await appendConversation(request, sessionId);
     await page.setViewportSize({ width: 1440, height: 900 });
+    await enableToolGrouping(page);
     await page.goto(authenticatedRoute(`/session/${sessionId}`), { waitUntil: 'domcontentloaded', timeout: 180_000 });
     await expect(page.getByTestId('session-message-input')).toBeVisible({ timeout: 180_000 });
-    await expect(page.getByText('发布演示.mp4', { exact: true })).toBeVisible();
+    await expect(page.getByTestId('conversation-transcript-list')).toBeVisible();
+    await expect(page.getByTestId('media-attachment-player-generated')).toBeVisible();
+    const authenticatedUserStyle = await messageStyleSignature(
+        page,
+        'message-user-',
+        '请确认公开分享页只展示对话正文和全部附件。',
+    );
+    const authenticatedAgentStyle = await messageStyleSignature(
+        page,
+        'message-agent-',
+        '已检查：这是一次不可继续输入、可随时撤销的公开快照。',
+    );
+    const authenticatedVideoStyle = await elementStyleSignature(page, 'media-attachment-player-generated');
+    const authenticatedWorkToggle = page.getByTestId('conversation-agent-work-toggle').first();
+    await expect(authenticatedWorkToggle).toBeVisible();
+    await expect(page.getByTestId('conversation-tool-group-toggle')).toHaveCount(0);
+    const authenticatedWorkStyle = await elementStyleSignature(page, 'conversation-agent-work-toggle');
+    const authenticatedWorkLabel = (await authenticatedWorkToggle.textContent())?.trim();
+    await authenticatedWorkToggle.click();
+    await expect(page.getByTestId('conversation-tool-group-toggle').first()).toBeVisible();
+    await authenticatedWorkToggle.click();
+    await expect(page.getByTestId('conversation-tool-group-toggle')).toHaveCount(0);
+    await page.screenshot({ path: evidencePath(testInfo, 'authenticated-conversation'), fullPage: true });
 
     await openShareDialog(page);
     await expect(page.getByTestId('public-session-share-privacy-message')).toContainText('all attachments');
@@ -214,11 +355,33 @@ test('PUBLIC-SESSION-SHARE owner publishes a complete snapshot and anonymous vie
 
     await page.goto(publicUrl!, { waitUntil: 'domcontentloaded', timeout: 180_000 });
     await expect(page.getByTestId('public-session-transcript')).toBeVisible({ timeout: 180_000 });
+    await expect(page.getByTestId('conversation-transcript-list')).toBeVisible();
     await expect(page.getByText('[PUBLIC-SESSION-SHARE] 产品发布检查清单', { exact: true })).toBeVisible();
     await expect(page.getByText('请确认公开分享页只展示对话正文和全部附件。', { exact: true })).toBeVisible();
     await expect(page.getByText('已检查：这是一次不可继续输入、可随时撤销的公开快照。', { exact: true })).toBeVisible();
     await expect(page.locator('video')).toBeVisible();
-    await expect(page.getByText('发布演示.mp4', { exact: true })).toBeVisible();
+    expect(await messageStyleSignature(
+        page,
+        'message-user-',
+        '请确认公开分享页只展示对话正文和全部附件。',
+    )).toEqual(authenticatedUserStyle);
+    expect(await messageStyleSignature(
+        page,
+        'message-agent-',
+        '已检查：这是一次不可继续输入、可随时撤销的公开快照。',
+    )).toEqual(authenticatedAgentStyle);
+    expect(await elementStyleSignature(page, 'media-attachment-player-generated')).toEqual(authenticatedVideoStyle);
+    const publicWorkToggle = page.getByTestId('conversation-agent-work-toggle').first();
+    await expect(publicWorkToggle).toBeVisible();
+    await expect(page.getByTestId('conversation-tool-group-toggle')).toHaveCount(0);
+    expect((await publicWorkToggle.textContent())?.trim()).toBe(authenticatedWorkLabel);
+    expect(await elementStyleSignature(page, 'conversation-agent-work-toggle')).toEqual(authenticatedWorkStyle);
+    await publicWorkToggle.click();
+    await expect(page.getByTestId('conversation-tool-group-toggle').first()).toBeVisible();
+    await publicWorkToggle.click();
+    await expect(page.getByTestId('conversation-tool-group-toggle')).toHaveCount(0);
+    await expect(page.getByTestId('public-session-compact-header')).toBeVisible();
+    await expect(page.getByRole('heading', { name: '[PUBLIC-SESSION-SHARE] 产品发布检查清单' })).toHaveCSS('font-size', '15px');
     await expect(page.getByTestId('session-message-input')).toHaveCount(0);
     await expect(page.getByTestId('desktop-navigation-sidebar')).toHaveCount(0);
     await expect(page.getByTestId('desktop-right-panel')).toHaveCount(0);

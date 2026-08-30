@@ -23,7 +23,7 @@ import { getUserMessageDisplayText } from './messageDisplayText';
 export const MessageView = React.memo((props: {
   message: Message;
   metadata: Metadata | null;
-  sessionId: string;
+  sessionId?: string;
   getMessageById?: (id: string) => Message | null;
   /**
    * Long-press handler for user-text bubbles. Wired by ChatList from
@@ -74,7 +74,7 @@ export const MessageView = React.memo((props: {
 function RenderBlock(props: {
   message: Message;
   metadata: Metadata | null;
-  sessionId: string;
+  sessionId?: string;
   getMessageById?: (id: string) => Message | null;
   onForkFromMessage?: (
     messageId: string,
@@ -136,7 +136,7 @@ function RenderBlock(props: {
 function UserTextBlock(props: {
   message: UserTextMessage;
   metadata: Metadata | null;
-  sessionId: string;
+  sessionId?: string;
   onForkFromUserMessage?: (
     messageId: string,
     rewindPointId: string | undefined,
@@ -155,7 +155,7 @@ function UserTextBlock(props: {
   const [isCopied, setIsCopied] = React.useState(false);
   const copyFeedbackTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleOptionPress = React.useCallback((option: Option) => {
-    sync.sendMessage(props.sessionId, option.title, { source: 'option' });
+    if (props.sessionId) sync.sendMessage(props.sessionId, option.title, { source: 'option' });
   }, [props.sessionId]);
 
   const rewindPointId = getUserMessageForkRewindPointId(
@@ -324,7 +324,7 @@ function UserTextBlock(props: {
           (modeLabel || showActions) && styles.userContentWithModeMeta,
         ]}
       >
-        <MarkdownView markdown={parsed.text} onOptionPress={handleOptionPress} sessionId={props.sessionId} />
+        <MarkdownView markdown={parsed.text} onOptionPress={props.sessionId ? handleOptionPress : undefined} sessionId={props.sessionId} />
       </Pressable>
       {showActions && (
         <View style={[styles.userMessageActions, modeLabel && styles.userMessageActionsWithMode]}>
@@ -388,7 +388,7 @@ function UserMessageModeLabel(props: { messageId: string; label: string | null }
 
 function AgentTextBlock(props: {
   message: AgentTextMessage;
-  sessionId: string;
+  sessionId?: string;
   forkTarget?: MessageForkTarget;
   onForkFromMessage?: (
     messageId: string,
@@ -406,7 +406,7 @@ function AgentTextBlock(props: {
   const [isCopied, setIsCopied] = React.useState(false);
   const copyFeedbackTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleOptionPress = React.useCallback((option: Option) => {
-    sync.sendMessage(props.sessionId, option.title, { source: 'option' });
+    if (props.sessionId) sync.sendMessage(props.sessionId, option.title, { source: 'option' });
   }, [props.sessionId]);
   const copyMessage = React.useCallback(async () => {
     try {
@@ -467,7 +467,7 @@ function AgentTextBlock(props: {
         onMouseLeave: () => setIsHovered(false),
       } as any) : {})}
     >
-      <MarkdownView markdown={props.message.text} onOptionPress={handleOptionPress} sessionId={props.sessionId} />
+      <MarkdownView markdown={props.message.text} onOptionPress={props.sessionId ? handleOptionPress : undefined} sessionId={props.sessionId} />
       {showActions && (
         <View
           testID={`message-agent-actions-${props.message.id}`}
@@ -546,8 +546,8 @@ function AgentTextBlock(props: {
 function AutoFoldPromptBlock(props: {
   text: string;
   info: NonNullable<ReturnType<typeof getAutoFoldPromptInfo>>;
-  onOptionPress: (option: Option) => void;
-  sessionId: string;
+  onOptionPress?: (option: Option) => void;
+  sessionId?: string;
 }) {
   const { theme } = useUnistyles();
   const [expanded, setExpanded] = React.useState(false);
@@ -650,7 +650,7 @@ function AgentEventBlock(props: {
 function ToolCallBlock(props: {
   message: ToolCallMessage;
   metadata: Metadata | null;
-  sessionId: string;
+  sessionId?: string;
   getMessageById?: (id: string) => Message | null;
 }) {
   if (!props.message.tool) {

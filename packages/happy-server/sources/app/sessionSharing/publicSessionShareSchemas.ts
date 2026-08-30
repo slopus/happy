@@ -27,6 +27,12 @@ const publicAttachmentBlockSchema = z.object({
     name: z.string().min(1).max(255),
     mimeType: z.string().min(1).max(200),
     size: z.number().int().min(0).max(500 * 1024 * 1024),
+    source: z.enum(['user', 'generated', 'browser_step']).optional(),
+    image: z.object({
+        width: z.number().int().positive().max(100_000),
+        height: z.number().int().positive().max(100_000),
+        thumbhash: z.string().max(1_000).optional(),
+    }).strict().optional(),
 }).strict();
 
 export const publicSessionBlockSchema = z.discriminatedUnion('type', [
@@ -40,6 +46,9 @@ export const publicSessionSnapshotSchema = z.object({
     version: z.literal(1),
     title: z.string().min(1).max(500),
     sharedAt: z.number().int().positive(),
+    presentation: z.object({
+        groupToolCalls: z.boolean(),
+    }).strict().optional(),
     messages: z.array(z.object({
         id: z.string().min(1).max(200),
         role: z.enum(['user', 'assistant', 'system']),

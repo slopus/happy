@@ -52,6 +52,10 @@ const MAX_IMAGE_WIDTH = 280;
 const MAX_IMAGE_HEIGHT = 360;
 const DEFAULT_ASPECT = 4 / 3; // when wire-format omits image{} dimensions
 
+function directAttachmentUri(ref: string, sessionId: string | undefined): string | null {
+    return !sessionId && /^https?:\/\//i.test(ref) ? ref : null;
+}
+
 function humanSize(bytes: number | undefined): string | null {
     if (!bytes || bytes <= 0) return null;
     if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
@@ -125,9 +129,11 @@ function DocumentFileCard({ ref_, sessionId, name, size, mimeType, encrypted, so
     const resolvedMimeType = mimeType ?? 'application/pdf';
     const sourceType = source === 'generated' ? 'generated' : 'user';
     const sizeLabel = humanSize(size);
+    const directUri = directAttachmentUri(ref_, sessionId);
+    const canOpen = Boolean(sessionId || directUri);
 
     const handleOpen = React.useCallback(async () => {
-        if (!sessionId || loading) return;
+        if (!canOpen || loading) return;
         setLoading(true);
         setError(false);
         let resolved: MediaPlaybackSource | null = null;
@@ -135,13 +141,15 @@ function DocumentFileCard({ ref_, sessionId, name, size, mimeType, encrypted, so
             if (size !== undefined && size > MAX_PDF_FILE_SIZE) {
                 throw new Error('PDF attachment exceeds the safe open limit');
             }
-            resolved = await resolveMediaAttachmentSource({
-                sessionId,
-                ref: ref_,
-                mimeType: resolvedMimeType,
-                fileName: name,
-                encrypted,
-            });
+            resolved = directUri
+                ? { uri: directUri, headers: {} }
+                : await resolveMediaAttachmentSource({
+                    sessionId: sessionId!,
+                    ref: ref_,
+                    mimeType: resolvedMimeType,
+                    fileName: name,
+                    encrypted,
+                });
             await openDocumentAttachment(resolved.uri, name, resolvedMimeType);
         } catch (cause) {
             console.warn(`[document-attachment] failed to open ${name}`, cause);
@@ -150,7 +158,7 @@ function DocumentFileCard({ ref_, sessionId, name, size, mimeType, encrypted, so
             await resolved?.release?.();
             setLoading(false);
         }
-    }, [encrypted, loading, name, ref_, resolvedMimeType, sessionId, size]);
+    }, [canOpen, directUri, encrypted, loading, name, ref_, resolvedMimeType, sessionId, size]);
 
     return (
         <View style={styles.inlineContainer}>
@@ -158,8 +166,8 @@ function DocumentFileCard({ ref_, sessionId, name, size, mimeType, encrypted, so
                 testID={`document-attachment-card-${sourceType}`}
                 accessibilityRole="button"
                 accessibilityLabel={t('imageUpload.documentOpen', { name })}
-                accessibilityState={{ disabled: !sessionId || loading, busy: loading }}
-                disabled={!sessionId || loading}
+                accessibilityState={{ disabled: !canOpen || loading, busy: loading }}
+                disabled={!canOpen || loading}
                 onPress={handleOpen}
                 style={(press) => [
                     styles.mediaCard,
@@ -200,8 +208,14 @@ function InlineVideoFile({ ref_, sessionId, name, mimeType, encrypted, source: a
     const [error, setError] = React.useState(false);
     const sourceType = attachmentSource === 'generated' ? 'generated' : 'user';
     const resolvedMimeType = mimeType ?? 'video/mp4';
+    const directUri = directAttachmentUri(ref_, sessionId);
 
     React.useEffect(() => {
+        if (directUri) {
+            setError(false);
+            setSource({ uri: directUri, headers: {} });
+            return;
+        }
         if (!sessionId) return;
         let cancelled = false;
         setError(false);
@@ -224,7 +238,7 @@ function InlineVideoFile({ ref_, sessionId, name, mimeType, encrypted, source: a
         return () => {
             cancelled = true;
         };
-    }, [encrypted, name, ref_, resolvedMimeType, sessionId]);
+    }, [directUri, encrypted, name, ref_, resolvedMimeType, sessionId]);
 
     React.useEffect(() => () => {
         void source?.release?.();
@@ -273,7 +287,8 @@ function MediaFileCard({ ref_, sessionId, name, kind, size, mimeType, encrypted,
     const sourceType = attachmentSource === 'generated' ? 'generated' : 'user';
     const playerTestID = `media-attachment-player-${sourceType}`;
     const resolvedMimeType = mimeType ?? (kind === 'video' ? 'video/mp4' : 'audio/mpeg');
-    const playable = !!sessionId;
+    const directUri = directAttachmentUri(ref_, sessionId);
+    const playable = Boolean(sessionId || directUri);
 
     React.useEffect(() => () => {
         void source?.release?.();
@@ -284,23 +299,25 @@ function MediaFileCard({ ref_, sessionId, name, kind, size, mimeType, encrypted,
             setSource(null);
             return;
         }
-        if (!sessionId || loading) return;
+        if (!playable || loading) return;
         setLoading(true);
         setError(false);
         try {
-            setSource(await resolveMediaAttachmentSource({
-                sessionId,
-                ref: ref_,
-                mimeType: resolvedMimeType,
-                encrypted,
-            }));
+            setSource(directUri
+                ? { uri: directUri, headers: {} }
+                : await resolveMediaAttachmentSource({
+                    sessionId: sessionId!,
+                    ref: ref_,
+                    mimeType: resolvedMimeType,
+                    encrypted,
+                }));
         } catch (cause) {
             console.warn(`[media-attachment] failed to open ${name}`, cause);
             setError(true);
         } finally {
             setLoading(false);
         }
-    }, [encrypted, loading, name, ref_, resolvedMimeType, sessionId, source]);
+    }, [directUri, encrypted, loading, name, playable, ref_, resolvedMimeType, sessionId, source]);
 
     const label = source
         ? t('imageUpload.mediaCollapse', { name })
@@ -374,7 +391,11 @@ function ImageFileView({ name, image, ref_, sessionId, motionPhoto }: {
         return uri ? { uri } : undefined;
     }, [image?.thumbhash]);
 
-    const { uri, error, motionPhoto: detectedMotionPhoto } = useAttachmentImage(sessionId ?? '', sessionId ? ref : undefined);
+    const directUri = directAttachmentUri(ref, sessionId);
+    const attachmentState = useAttachmentImage(sessionId ?? '', sessionId ? ref : undefined);
+    const uri = directUri ?? attachmentState.uri;
+    const error = attachmentState.error;
+    const detectedMotionPhoto = attachmentState.motionPhoto;
     const effectiveMotionPhoto = motionPhoto ?? detectedMotionPhoto;
 
     const handleOriginalDownload = React.useCallback(async () => {

@@ -33,6 +33,7 @@ describe('buildPublicSessionSnapshot', () => {
             version: 1,
             title: 'Session title',
             sharedAt: now,
+            presentation: { groupToolCalls: true },
             messages: [
                 { id: 'message-1', role: 'user', createdAt: 1, blocks: [{ type: 'text', markdown: 'Visible question' }] },
                 { id: 'message-2', role: 'assistant', createdAt: 2, blocks: [{ type: 'text', markdown: 'Visible answer' }] },
@@ -52,6 +53,17 @@ describe('buildPublicSessionSnapshot', () => {
         expect(serialized).not.toContain('secret-api-key');
         expect(serialized).not.toContain('secret-token');
         expect(serialized).not.toContain('secret-password');
+    });
+
+    it('freezes the owner tool-grouping preference into the public snapshot', () => {
+        const result = buildPublicSessionSnapshot({
+            title: 'Ungrouped session',
+            messages: [],
+            sharedAt: now,
+            groupToolCalls: false,
+        });
+
+        expect(result.snapshot.presentation).toEqual({ groupToolCalls: false });
     });
 
     it('publishes only the public tool envelope and drops hidden tools and private metadata', () => {
@@ -165,6 +177,40 @@ describe('buildPublicSessionSnapshot', () => {
             { kind: 'video', mimeType: 'video/mp4', encrypted: false },
             { kind: 'file', mimeType: 'application/pdf', encrypted: true },
         ]);
+    });
+
+    it('preserves safe generated-image presentation metadata', () => {
+        const message: Message = {
+            kind: 'tool-call', id: 'generated-image', localId: null, createdAt: 1,
+            tool: {
+                name: 'file', state: 'completed', input: {
+                    ref: 'sessions/private/attachments/generated.enc',
+                    name: 'painting.png',
+                    size: 32,
+                    kind: 'image',
+                    mimeType: 'image/png',
+                    encrypted: true,
+                    source: 'generated',
+                    image: { width: 1536, height: 1024, thumbhash: 'safe-thumbhash' },
+                    localPath: '/Users/private/painting.png',
+                },
+                description: null, createdAt: 1, startedAt: 1, completedAt: 1,
+            },
+            children: [],
+        };
+
+        const result = buildPublicSessionSnapshot({
+            title: 'Generated image', messages: [message], sharedAt: now,
+            createAttachmentId: () => '11111111-1111-4111-8111-111111111111',
+        });
+
+        expect(result.snapshot.messages[0].blocks[0]).toMatchObject({
+            type: 'attachment',
+            source: 'generated',
+            image: { width: 1536, height: 1024, thumbhash: 'safe-thumbhash' },
+        });
+        expect(JSON.stringify(result.snapshot)).not.toContain('/Users/private');
+        expect(JSON.stringify(result.snapshot)).not.toContain('sessions/private');
     });
 
     it('normalizes cross-platform attachment names without Node path APIs', () => {

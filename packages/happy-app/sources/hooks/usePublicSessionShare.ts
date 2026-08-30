@@ -3,7 +3,7 @@ import type { AuthCredentials } from '@/auth/tokenStorage';
 import { decryptBlob } from '@/encryption/blob';
 import { useHappyAction } from './useHappyAction';
 import { HappyError } from '@/utils/errors';
-import { storage } from '@/sync/storage';
+import { storage, useSetting } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import type { PublicSessionAttachmentJob, PublicSessionShareState } from '@/sync/publicSessionShareTypes';
 import { loadCompleteSessionMessages, publishPublicSessionSnapshot } from '@/sync/publicSessionSharePublishing';
@@ -39,6 +39,7 @@ async function loadAttachmentBytes(
 }
 
 export function usePublicSessionShare(sessionId: string, title: string) {
+    const groupToolCalls = useSetting('groupToolCalls');
     const [shareState, setShareState] = React.useState<PublicSessionShareState>({ active: false, publicId: null, publishedAt: null });
     const [progress, setProgress] = React.useState({ completed: 0, total: 0 });
     const [checking, setChecking] = React.useState(true);
@@ -66,7 +67,7 @@ export function usePublicSessionShare(sessionId: string, title: string) {
         if (!credentials) throw new HappyError(t('sessionShare.authenticationUnavailable'), false);
         try {
             const result = await publishPublicSessionSnapshot(
-                { sessionId, title, sharedAt: Date.now() },
+                { sessionId, title, sharedAt: Date.now(), groupToolCalls },
                 {
                     loadMessages: () => loadCompleteSessionMessages(sessionId, {
                         ensureMessagesLoaded: sync.ensureMessagesLoaded,

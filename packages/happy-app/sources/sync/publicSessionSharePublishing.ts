@@ -55,7 +55,7 @@ function replaceAttachmentSize(snapshot: PublicSessionSnapshotV1, attachmentId: 
 }
 
 export async function publishPublicSessionSnapshot(
-    input: { sessionId: string; title: string; sharedAt: number },
+    input: { sessionId: string; title: string; sharedAt: number; groupToolCalls?: boolean },
     deps: PublicSessionPublishDependencies,
 ): Promise<{ publicId: string; publishedAt: number }> {
     const messages = await deps.loadMessages();
@@ -63,6 +63,7 @@ export async function publishPublicSessionSnapshot(
         title: input.title,
         messages,
         sharedAt: input.sharedAt,
+        groupToolCalls: input.groupToolCalls,
         createAttachmentId: deps.createAttachmentId,
     });
     const draft = await deps.createDraft();
