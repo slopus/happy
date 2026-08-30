@@ -60,6 +60,7 @@ const IMAGE_STYLE_PREVIEW_ASSETS: Record<string, ImageSourcePropType> = {
     'image-effects/object-removal@1.0.0': require('../../../assets/images/image-effects/object-removal.jpg'),
     'image-effects/packaging-showcase@1.0.0': require('../../../assets/images/image-effects/packaging-showcase.jpg'),
     'image-effects/photo-illustration-diptych@1.0.0': require('../../../assets/images/image-effects/photo-illustration-diptych.jpg'),
+    'image-effects/photo-illustration-diptych-coastline@1.0.0': require('../../../assets/images/image-effects/photo-illustration-diptych-coastline.jpg'),
     'image-effects/photo-illustration-diptych-lakeside@1.0.0': require('../../../assets/images/image-effects/photo-illustration-diptych-lakeside.jpg'),
     'image-effects/photo-illustration-editorial-echo@1.0.0': require('../../../assets/images/image-effects/photo-illustration-editorial-echo.jpg'),
     'image-effects/picture-book-scene@1.0.0': require('../../../assets/images/image-effects/picture-book-scene.jpg'),
