@@ -1,10 +1,12 @@
 import { z } from 'zod';
+import { PluginPermissionListSchema, type PluginPermission } from '@slopus/happy-wire';
 
 import { decryptString, encryptString } from '@/modules/encrypt';
 import { db } from '@/storage/db';
 
 export interface PluginInstallation {
     version: string;
+    grantedPermissions: PluginPermission[];
     configuration: Record<string, string>;
 }
 
@@ -30,6 +32,7 @@ interface ServiceAccountTokenStore {
 
 const installationSchema = z.object({
     version: z.string().min(1).max(50),
+    grantedPermissions: PluginPermissionListSchema.default([]),
     configuration: z.record(z.string(), z.string()),
 }).strict();
 
@@ -48,10 +51,11 @@ function legacyEncryptionPath(accountId: string, pluginId: string): string[] {
 function parseLegacyInstallation(value: string): PluginInstallation {
     const parsed = z.record(z.string(), z.unknown()).parse(JSON.parse(value));
     if (parsed.version === 1 && Object.keys(parsed).length === 1) {
-        return { version: '1.0.0', configuration: {} };
+        return { version: '1.0.0', grantedPermissions: [], configuration: {} };
     }
     return {
         version: '1.0.0',
+        grantedPermissions: [],
         configuration: z.record(z.string(), z.string()).parse(parsed),
     };
 }

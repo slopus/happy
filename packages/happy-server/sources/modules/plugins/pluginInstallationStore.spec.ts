@@ -18,6 +18,7 @@ describe('createPluginInstallationStore', () => {
 
         await store.set('user-1', 'relationship-advisor', {
             version: '1.0.0',
+            grantedPermissions: ['paws.ai.provider.invoke', 'paws.secrets.use'],
             configuration: { apiKey: 'sk-secret', model: 'chat' },
         });
 
@@ -25,6 +26,7 @@ describe('createPluginInstallationStore', () => {
             ['user', 'user-1', 'plugins', 'relationship-advisor', 'installation'],
             JSON.stringify({
                 version: '1.0.0',
+                grantedPermissions: ['paws.ai.provider.invoke', 'paws.secrets.use'],
                 configuration: { apiKey: 'sk-secret', model: 'chat' },
             }),
         );
@@ -39,6 +41,7 @@ describe('createPluginInstallationStore', () => {
         const encrypted = new Uint8Array([3, 2, 1]);
         const decrypt = vi.fn(() => JSON.stringify({
             version: '1.0.0',
+            grantedPermissions: ['paws.secrets.use'],
             configuration: { apiKey: 'stored-secret' },
         }));
         const store = createPluginInstallationStore({
@@ -53,12 +56,35 @@ describe('createPluginInstallationStore', () => {
 
         await expect(store.get('user-2', 'relationship-advisor')).resolves.toEqual({
             version: '1.0.0',
+            grantedPermissions: ['paws.secrets.use'],
             configuration: { apiKey: 'stored-secret' },
         });
         expect(decrypt).toHaveBeenCalledWith(
             ['user', 'user-2', 'plugins', 'relationship-advisor', 'installation'],
             encrypted,
         );
+    });
+
+    it('fails closed for versioned installations written before permission grants were persisted', async () => {
+        const encrypted = new Uint8Array([9, 9, 9]);
+        const store = createPluginInstallationStore({
+            repository: {
+                find: vi.fn(async () => encrypted),
+                upsert: vi.fn(async () => undefined),
+                delete: vi.fn(async () => undefined),
+            },
+            encrypt: vi.fn(),
+            decrypt: vi.fn(() => JSON.stringify({
+                version: '1.0.0',
+                configuration: { apiKey: 'stored-secret' },
+            })),
+        });
+
+        await expect(store.get('user-before-grants', 'relationship-advisor')).resolves.toEqual({
+            version: '1.0.0',
+            grantedPermissions: [],
+            configuration: { apiKey: 'stored-secret' },
+        });
     });
 
     it('reads records written by the previous secret-vault format during upgrade', async () => {
@@ -82,6 +108,7 @@ describe('createPluginInstallationStore', () => {
 
         await expect(store.get('user-legacy', 'relationship-advisor')).resolves.toEqual({
             version: '1.0.0',
+            grantedPermissions: [],
             configuration: {
                 apiKey: 'legacy-secret',
                 baseUrl: 'https://api.example.com/v1',

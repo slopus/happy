@@ -6,6 +6,9 @@ import {
     CODEX_HAPPY_SYSTEM_PROMPT_END,
     CODEX_HAPPY_SYSTEM_PROMPT_START,
     hashCodexEnhancedMode,
+    markPawsTurnOrigin,
+    readPawsTurnOrigin,
+    stripPawsTurnOrigin,
     type CodexEnhancedMode,
 } from './codexPrompt';
 
@@ -94,6 +97,15 @@ describe('buildCodexTurnPrompt', () => {
             `${CODEX_HAPPY_SYSTEM_PROMPT_END}\n\n` +
             '切换 xhigh 模式',
         );
+    });
+});
+
+describe('Paws turn origin marker', () => {
+    it('round-trips a session id while keeping the visible prompt recoverable', () => {
+        const marked = markPawsTurnOrigin('continue the task', 'session/with spaces');
+
+        expect(readPawsTurnOrigin(marked)).toBe('session/with spaces');
+        expect(stripPawsTurnOrigin(marked).trim()).toBe('continue the task');
     });
 });
 

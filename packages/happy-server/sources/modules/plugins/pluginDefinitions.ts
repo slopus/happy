@@ -11,7 +11,9 @@ import { testRelationshipAdvisorConnection } from '@/modules/relationship-adviso
 export interface PluginDefinition {
     manifest: PluginManifest;
     normalizeConfiguration: (configuration: Record<string, string>) => Record<string, string>;
-    redactConfiguration: (configuration: Record<string, string>) => Extract<PluginInstallationStatus, { installed: true }>;
+    redactConfiguration: (
+        configuration: Record<string, string>,
+    ) => Pick<Extract<PluginInstallationStatus, { installed: true }>, 'configuration' | 'secretHints'>;
     testConnection?: (configuration: Record<string, string>) => Promise<PluginConnectionTestResult>;
 }
 
@@ -29,11 +31,7 @@ export const pluginDefinitions: readonly PluginDefinition[] = pluginPackages.map
         manifest,
         normalizeConfiguration: pluginPackage.normalizeConfiguration,
         redactConfiguration(configuration) {
-            return {
-                installed: true,
-                version: manifest.version,
-                ...pluginPackage.redactConfiguration(configuration),
-            };
+            return pluginPackage.redactConfiguration(configuration);
         },
         testConnection: connectionTesters[manifest.id],
     };

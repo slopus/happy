@@ -59,13 +59,25 @@ function setPlugins(advisorInstalled = false, galleryInstalled = false) {
         {
             manifest: manifest('relationship-advisor', 'configure'),
             status: advisorInstalled
-                ? { installed: true, version: '1.0.0', configuration: {}, secretHints: {} }
+                ? {
+                    installed: true,
+                    version: '1.0.0',
+                    grantedPermissions: ['paws.ai.provider.invoke', 'paws.secrets.use'],
+                    configuration: {},
+                    secretHints: {},
+                }
                 : { installed: false },
         },
         {
             manifest: manifest('generated-images-gallery', 'open'),
             status: galleryInstalled
-                ? { installed: true, version: '1.0.0', configuration: {}, secretHints: {} }
+                ? {
+                    installed: true,
+                    version: '1.0.0',
+                    grantedPermissions: ['paws.conversations.images.read'],
+                    configuration: {},
+                    secretHints: {},
+                }
                 : { installed: false },
         },
     ];
@@ -201,7 +213,13 @@ describe('PluginMarketplaceModal', () => {
     it('falls back to host configuration when an installed plugin has no trusted modal adapter', () => {
         mocks.plugins.push({
             manifest: manifest('server-added-plugin', 'configure'),
-            status: { installed: true, version: '1.0.0', configuration: {}, secretHints: {} },
+            status: {
+                installed: true,
+                version: '1.0.0',
+                grantedPermissions: [],
+                configuration: {},
+                secretHints: {},
+            },
         });
         let renderer: any;
         act(() => {
@@ -240,6 +258,51 @@ describe('PluginMarketplaceModal', () => {
         expect(renderer.root.findAllByType('DynamicPluginConfiguration')).toHaveLength(1);
         expect(renderer.root.findByType('DynamicPluginConfiguration').props.plugin.manifest.id)
             .toBe('generated-images-gallery');
+        act(() => renderer.unmount());
+    });
+
+    it('opens an open-action plugin with the status returned by installation', () => {
+        const onClose = vi.fn();
+        let renderer: any;
+        act(() => {
+            renderer = TestRenderer.create(
+                <PluginMarketplaceModal
+                    initialPluginId="generated-images-gallery"
+                    visible
+                    onClose={onClose}
+                />,
+            );
+        });
+
+        act(() => renderer.root.findByType('DynamicPluginConfiguration').props.onInstalled({
+            installed: true,
+            version: '1.0.0',
+            grantedPermissions: ['paws.conversations.images.read'],
+            configuration: {},
+            secretHints: {},
+        }));
+
+        expect(onClose).toHaveBeenCalledTimes(1);
+        expect(mocks.navigate).toHaveBeenCalledWith('/generated-images');
+        act(() => renderer.unmount());
+    });
+
+    it('offers an update instead of opening when stored grants no longer match the manifest', () => {
+        setPlugins(false, true);
+        mocks.plugins[1].status.grantedPermissions = [];
+        let renderer: any;
+        act(() => {
+            renderer = TestRenderer.create(<PluginMarketplaceModal visible onClose={vi.fn()} />);
+        });
+
+        const row = renderer.root.findByProps({
+            testID: 'plugin-marketplace-plugin-generated-images-gallery',
+        });
+        expect(row.findAllByType('Text').at(-1).props.children)
+            .toBe('relationshipAdvisorPlugin.reviewAndUpdate');
+        expect(renderer.root.findAllByProps({
+            testID: 'plugin-marketplace-installed-generated-images-gallery',
+        })).toHaveLength(0);
         act(() => renderer.unmount());
     });
 });

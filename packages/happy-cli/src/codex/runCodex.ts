@@ -1,7 +1,7 @@
 import { render } from "ink";
 import React from "react";
 import { ApiClient } from '@/api/api';
-import { CodexAppServerClient } from './codexAppServerClient';
+import { CodexAppServerClient, resolveCodexAppServerConnection } from './codexAppServerClient';
 import type {
     GetAccountTokenUsageResponse,
     ListMcpServerStatusResponse,
@@ -50,6 +50,7 @@ import { enqueueCodexUserText } from './codexClearCommand';
 import {
     buildCodexTurnPrompt,
     hashCodexEnhancedMode,
+    markPawsTurnOrigin,
     type CodexEnhancedMode,
 } from './codexPrompt';
 import { mergeCodexSessionConfigIntoMetadata } from './sessionConfigMetadata';
@@ -58,6 +59,7 @@ import type { GoalCommand, UsageCommand } from '@/parsers/specialCommands';
 import { listCodexSkillNames } from './codexSkills';
 import { registerSessionTitleWorker } from '@/title/sessionTitleWorker';
 import { updateQueuedMessageCount } from '@/api/sessionTurnStatus';
+import { mergeReconnectMetadata } from './reconnectMetadata';
 
 /**
  * Extracts a human-readable error from a codex task_complete/turn_aborted event.
@@ -354,7 +356,7 @@ export async function runCodex(opts: {
     const forkedFromSessionId = process.env.HAPPY_FORKED_FROM_SESSION_ID;
     const forkedFromMessageId = process.env.HAPPY_FORKED_FROM_MESSAGE_ID;
 
-    const { state, metadata } = createSessionMetadata({
+    const { state, metadata: localMetadata } = createSessionMetadata({
         flavor: 'codex',
         machineId,
         startedBy: opts.startedBy,
@@ -372,6 +374,25 @@ export async function runCodex(opts: {
     const reconnectSeq = process.env.HAPPY_RECONNECT_SEQ;
     const reconnectMetadataVersion = process.env.HAPPY_RECONNECT_METADATA_VERSION;
     const reconnectAgentStateVersion = process.env.HAPPY_RECONNECT_AGENT_STATE_VERSION;
+    const reconnectServerMetadata = process.env.HAPPY_RECONNECT_METADATA_JSON;
+    // Reconnect credentials and decrypted metadata belong only to this wrapper.
+    // Do not leak them to app-server or commands spawned later in the session.
+    for (const key of Object.keys(process.env)) {
+        if (key.startsWith('HAPPY_RECONNECT_')) {
+            delete process.env[key];
+        }
+    }
+    const importedSessionTitle = process.env.HAPPY_IMPORTED_SESSION_TITLE?.trim();
+    delete process.env.HAPPY_IMPORTED_SESSION_TITLE;
+    const hydratedMetadata = mergeReconnectMetadata(localMetadata, reconnectServerMetadata);
+    let codexPawsOriginToken = hydratedMetadata.codexPawsOriginToken ?? randomUUID();
+    const metadata = {
+        ...hydratedMetadata,
+        codexPawsOriginToken,
+        ...(!hydratedMetadata.summary?.text?.trim() && importedSessionTitle
+            ? { summary: { text: importedSessionTitle, updatedAt: Date.now() } }
+            : {}),
+    };
 
     let response: ApiSession | null;
     if (reconnectSessionId && reconnectKeyBase64 && reconnectVariant) {
@@ -418,17 +439,24 @@ export async function runCodex(opts: {
         }
     });
     session = initialSession;
+    let codexCursorSync: Promise<void> = Promise.resolve();
     void syncQueuedMessageCount(session);
 
     // On reconnect, un-archive the session and skip replaying old messages.
+    // Keep the metadata write awaitable: a version mismatch hydrates the
+    // server's current metadata (including codexSyncCursor) before replay.
+    let reconnectMetadataReady: Promise<void> = Promise.resolve();
     if (reconnectSessionId) {
         session.suppressNextArchiveSignal();
         session.skipExistingMessages();
-        session.updateMetadata((meta) => ({
+        reconnectMetadataReady = session.updateMetadataAndAwait((meta) => ({
             ...meta,
+            codexPawsOriginToken: meta.codexPawsOriginToken ?? codexPawsOriginToken,
             lifecycleState: 'running',
             archivedBy: undefined,
-        }));
+        })).then(() => {
+            codexPawsOriginToken = session.getMetadata()?.codexPawsOriginToken ?? codexPawsOriginToken;
+        });
     }
 
     // Always report to daemon if it exists (skip if offline)
@@ -647,6 +675,7 @@ export async function runCodex(opts: {
     let codexStartedSubagents = new Set<string>();
     let codexActiveSubagents = new Set<string>();
     let codexProviderSubagentToSessionSubagent = new Map<string, string>();
+    let codexTextEnvelopeOccurrences = new Map<string, number>();
     session.keepAlive(thinking, 'remote');
     // Periodic keep-alive; store handle so we can clear on exit
     const keepAliveInterval = setInterval(() => {
@@ -769,6 +798,7 @@ export async function runCodex(opts: {
         try {
             // Update lifecycle state to archived before closing
             if (session) {
+                await codexCursorSync;
                 session.updateMetadata((currentMetadata) => ({
                     ...currentMetadata,
                     lifecycleState: 'archived',
@@ -846,7 +876,7 @@ export async function runCodex(opts: {
     // Start Context 
     //
 
-    client = new CodexAppServerClient(sandboxConfig);
+    client = new CodexAppServerClient(sandboxConfig, resolveCodexAppServerConnection());
 
     permissionHandler = new CodexPermissionHandler(session, (notification) => {
         api.push().sendSessionNotification(notification);
@@ -866,13 +896,19 @@ export async function runCodex(opts: {
         return true;
     });
     reasoningProcessor = new ReasoningProcessor((message) => {
-        const envelopes = mapCodexProcessorMessageToSessionEnvelopes(message, { currentTurnId });
+        const envelopes = mapCodexProcessorMessageToSessionEnvelopes(message, {
+            currentTurnId,
+            textEnvelopeOccurrences: codexTextEnvelopeOccurrences,
+        });
         for (const envelope of envelopes) {
             session.sendSessionProtocolMessage(envelope);
         }
     });
     const diffProcessor = new DiffProcessor((message) => {
-        const envelopes = mapCodexProcessorMessageToSessionEnvelopes(message, { currentTurnId });
+        const envelopes = mapCodexProcessorMessageToSessionEnvelopes(message, {
+            currentTurnId,
+            textEnvelopeOccurrences: codexTextEnvelopeOccurrences,
+        });
         for (const envelope of envelopes) {
             session.sendSessionProtocolMessage(envelope);
         }
@@ -901,8 +937,12 @@ export async function runCodex(opts: {
         }
     });
 
-    // Event handler: same EventMsg types as the legacy MCP server — no changes needed
-    client.setEventHandler((msg) => {
+    // A resumed app-server can emit continuation/completion notifications while
+    // thread/read is still hydrating currentTurnId. Buffer that narrow window;
+    // otherwise those events would be mapped without a Turn and lose stable IDs.
+    let bufferCodexEvents = Boolean(opts.resumeThreadId);
+    const bufferedCodexEvents: any[] = [];
+    const handleCodexEvent = (msg: any) => {
         logger.debug(`[Codex] Event: ${JSON.stringify(msg)}`);
 
         // Add messages to the ink UI buffer based on message type
@@ -1007,6 +1047,7 @@ export async function runCodex(opts: {
                 startedSubagents: codexStartedSubagents,
                 activeSubagents: codexActiveSubagents,
                 providerSubagentToSessionSubagent: codexProviderSubagentToSessionSubagent,
+                textEnvelopeOccurrences: codexTextEnvelopeOccurrences,
             });
             currentTurnId = mapped.currentTurnId;
             codexStartedSubagents = mapped.startedSubagents;
@@ -1016,6 +1057,37 @@ export async function runCodex(opts: {
                 session.sendSessionProtocolMessage(envelope);
             }
         }
+        if (msg.type === 'task_complete') {
+            const completedTurnId = (msg as any).turn_id;
+            if (typeof completedTurnId === 'string' && client?.threadId) {
+                const completedThreadId = client.threadId;
+                const completedSession = session;
+                codexCursorSync = codexCursorSync
+                    .then(async () => {
+                        // Advance only after the server acknowledges the Turn's
+                        // stable envelope IDs. If the process dies first, the old
+                        // cursor causes an idempotent replay on reconnect.
+                        await completedSession.flushOutboxAndAwait();
+                        await completedSession.updateMetadataAndAwait((currentMetadata) => ({
+                            ...currentMetadata,
+                            codexSyncCursor: {
+                                threadId: completedThreadId,
+                                turnId: completedTurnId,
+                            },
+                        }));
+                    })
+                    .catch((error) => {
+                        logger.debug(`[Codex] Failed to persist sync cursor for turn ${completedTurnId}`, error);
+                    });
+            }
+        }
+    };
+    client.setEventHandler((msg) => {
+        if (bufferCodexEvents) {
+            bufferedCodexEvents.push(msg);
+            return;
+        }
+        handleCodexEvent(msg);
     });
 
     // Start Happy MCP server (HTTP) and prepare STDIO bridge config for Codex
@@ -1042,6 +1114,7 @@ export async function runCodex(opts: {
     let appendSystemPromptInjected = false;
 
     try {
+        await reconnectMetadataReady;
         logger.debug('[codex]: client.connect begin');
         await client.connect();
         logger.debug('[codex]: client.connect done');
@@ -1072,7 +1145,16 @@ export async function runCodex(opts: {
                 threadId: opts.resumeThreadId,
                 cwd: process.cwd(),
                 mcpServers,
+                historyMode: reconnectSessionId ? 'after-cursor' : 'full',
             });
+            if (resumedThread.activeTurnId) {
+                currentTurnId = resumedThread.activeTurnId;
+            }
+            bufferCodexEvents = false;
+            const pendingBufferedEvents = bufferedCodexEvents.splice(0);
+            for (const pendingEvent of pendingBufferedEvents) {
+                handleCodexEvent(pendingEvent);
+            }
             if (!opts.model) {
                 baselineModel = resumedThread.model;
                 currentModel = resumedThread.model;
@@ -1090,13 +1172,15 @@ export async function runCodex(opts: {
         }
 
         const forkCodexThreadId = process.env.HAPPY_FORK_CODEX_THREAD_ID;
-        if (!reconnectSessionId && forkCodexThreadId) {
+        if (!reconnectSessionId && forkCodexThreadId && !opts.resumeThreadId) {
             try {
                 const { thread } = await client.readThread({
                     threadId: forkCodexThreadId,
                     includeTurns: true,
                 });
-                const envelopes = mapCodexThreadToSessionEnvelopes(thread);
+                const envelopes = mapCodexThreadToSessionEnvelopes(thread, {
+                    omitPawsUserMessagesFromOriginToken: codexPawsOriginToken,
+                });
                 for (const envelope of envelopes) {
                     session.sendSessionProtocolMessage(envelope);
                 }
@@ -1267,6 +1351,7 @@ export async function runCodex(opts: {
             codexStartedSubagents = new Set<string>();
             codexActiveSubagents = new Set<string>();
             codexProviderSubagentToSessionSubagent = new Map<string, string>();
+            codexTextEnvelopeOccurrences = new Map<string, number>();
             permissionHandler.reset();
             reasoningProcessor.abort();
             diffProcessor.reset();
@@ -1369,7 +1454,10 @@ export async function runCodex(opts: {
                     includeTitleInstruction: first,
                 });
 
-                const turnPayload = buildCodexTurnPayload(turnPrompt, opts.attachments);
+                const turnPayload = buildCodexTurnPayload(
+                    markPawsTurnOrigin(turnPrompt, codexPawsOriginToken),
+                    opts.attachments,
+                );
                 if (turnPayload.images.length > 0) {
                     logger.debug(`[Codex] Attaching ${turnPayload.images.length} image(s) to turn`);
                 }
@@ -1644,6 +1732,7 @@ export async function runCodex(opts: {
 
         try {
             logger.debug('[codex]: sendSessionDeath');
+            await codexCursorSync;
             session.sendSessionDeath();
             logger.debug('[codex]: flush begin');
             await session.flush();

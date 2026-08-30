@@ -14,6 +14,9 @@ function catalogItem(
 ): PluginCatalogItem {
     const relationshipAdvisor = id === 'relationship-advisor';
     const version = '1.0.0';
+    const permissions = relationshipAdvisor
+        ? ['paws.ai.provider.invoke' as const, 'paws.secrets.use' as const]
+        : ['paws.conversations.images.read' as const];
     return {
         manifest: {
             schemaVersion: 2,
@@ -25,9 +28,7 @@ function catalogItem(
             icon: relationshipAdvisor ? 'chatbubbles-outline' : 'albums-outline',
             featured: true,
             installedAction: relationshipAdvisor ? 'configure' : 'open',
-            permissions: relationshipAdvisor
-                ? ['paws.ai.provider.invoke', 'paws.secrets.use']
-                : ['paws.conversations.images.read'],
+            permissions,
             entrypoint: {
                 type: 'view',
                 viewId: relationshipAdvisor
@@ -49,7 +50,7 @@ function catalogItem(
             configuration: { fields: [] },
         },
         status: installed
-            ? { installed: true, version, configuration: {}, secretHints: {} }
+            ? { installed: true, version, grantedPermissions: [...permissions], configuration: {}, secretHints: {} }
             : { installed: false },
     };
 }
@@ -112,6 +113,14 @@ describe('Paws plugin host client adapters', () => {
     it('fails closed when a trusted adapter requires an undeclared capability', () => {
         const gallery = catalogItem('generated-images-gallery');
         gallery.manifest.permissions = [];
+
+        expect(resolveInstalledPluginEntrypoint(gallery)).toBeNull();
+        expect(resolveInstalledPluginSurfaceViews([gallery], 'right-panel')).toEqual([]);
+    });
+
+    it('fails closed when a trusted adapter capability was declared but not granted', () => {
+        const gallery = catalogItem('generated-images-gallery');
+        if (gallery.status.installed) gallery.status.grantedPermissions = [];
 
         expect(resolveInstalledPluginEntrypoint(gallery)).toBeNull();
         expect(resolveInstalledPluginSurfaceViews([gallery], 'right-panel')).toEqual([]);

@@ -1,5 +1,5 @@
 import * as React from 'react';
-import type { PluginCatalogItem } from '@slopus/happy-wire';
+import type { PluginCatalogItem, PluginInstallationStatus } from '@slopus/happy-wire';
 import {
     Modal,
     Platform,
@@ -22,6 +22,7 @@ import { DynamicPluginConfiguration } from './DynamicPluginConfiguration';
 import { PluginModalSlot } from './PluginModalSlot';
 import { resolveInstalledPluginEntrypoint, resolveInstalledPluginView } from './pluginClientAdapters';
 import { resolvePluginText } from './pluginText';
+import { isCurrentPluginInstallation } from './pluginInstallation';
 
 type Props = {
     visible: boolean;
@@ -41,8 +42,7 @@ function PluginRow({
     plugin: PluginCatalogItem;
 }) {
     const { theme } = useUnistyles();
-    const currentVersionInstalled = plugin.status.installed
-        && plugin.status.version === plugin.manifest.version;
+    const currentInstallation = isCurrentPluginInstallation(plugin);
     return (
         <Pressable
             accessibilityRole="button"
@@ -61,8 +61,8 @@ function PluginRow({
             <View style={[styles.actionPill, installed && styles.actionPillInstalled]}>
                 <Text style={[styles.actionText, installed && styles.actionTextInstalled]}>
                     {installed
-                        ? t(!currentVersionInstalled
-                            ? 'relationshipAdvisorPlugin.update'
+                        ? t(!currentInstallation
+                            ? 'relationshipAdvisorPlugin.reviewAndUpdate'
                             : plugin.manifest.installedAction === 'open'
                                 ? 'relationshipAdvisorPlugin.openPlugin'
                                 : 'relationshipAdvisorPlugin.configure')
@@ -113,7 +113,7 @@ export const PluginMarketplaceModal = React.memo(function PluginMarketplaceModal
     const activeInstalledModal = activePlugin && activeModalContribution
         ? resolveInstalledPluginView(activePlugin, activeModalContribution.id, 'modal')
         : null;
-    const installedPlugins = plugins.filter((plugin) => plugin.status.installed);
+    const installedPlugins = plugins.filter(isCurrentPluginInstallation);
 
     const openPlugin = React.useCallback((plugin: PluginCatalogItem) => {
         const entrypoint = resolveInstalledPluginEntrypoint(plugin);
@@ -121,6 +121,10 @@ export const PluginMarketplaceModal = React.memo(function PluginMarketplaceModal
         close();
         router.navigate(entrypoint.path as any);
     }, [close, router]);
+    const openActivePluginAfterInstall = React.useCallback((status: PluginInstallationStatus) => {
+        if (!activePlugin || activePlugin.manifest.installedAction !== 'open') return;
+        openPlugin({ ...activePlugin, status });
+    }, [activePlugin, openPlugin]);
 
     return (
         <Modal
@@ -190,7 +194,7 @@ export const PluginMarketplaceModal = React.memo(function PluginMarketplaceModal
                             {activeInstalledModal?.componentId === 'plugin-configuration' ? (
                                 <PluginModalSlot
                                     onInstalled={activePlugin.manifest.installedAction === 'open'
-                                        ? () => openPlugin(activePlugin)
+                                        ? openActivePluginAfterInstall
                                         : undefined}
                                     onOpen={() => openPlugin(activePlugin)}
                                     onStatusChanged={async () => { await refresh(); }}
@@ -199,7 +203,7 @@ export const PluginMarketplaceModal = React.memo(function PluginMarketplaceModal
                             ) : (
                                 <DynamicPluginConfiguration
                                     onInstalled={activePlugin.manifest.installedAction === 'open'
-                                        ? () => openPlugin(activePlugin)
+                                        ? openActivePluginAfterInstall
                                         : undefined}
                                     onOpen={() => openPlugin(activePlugin)}
                                     onStatusChanged={async () => { await refresh(); }}

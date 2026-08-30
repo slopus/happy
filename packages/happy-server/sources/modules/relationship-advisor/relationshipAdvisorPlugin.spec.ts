@@ -1,62 +1,51 @@
 import { describe, expect, it, vi } from 'vitest';
 
-const registryMock = vi.hoisted(() => ({
-    requirePermission: vi.fn(async () => undefined),
-    requireConfiguration: vi.fn(async () => ({
-        apiKey: 'server-stored-secret',
-        baseUrl: 'https://api.example.com/v1',
-        model: 'example-chat',
-    })),
-}));
+import { createRelationshipAdvisorPluginRuntime } from '@/modules/relationship-advisor/relationshipAdvisorPlugin';
 
-vi.mock('@/modules/plugins/pluginRegistry', () => ({
-    pluginRegistry: registryMock,
-}));
-
-import {
-    createRelationshipAdvisorPluginRuntime,
-    relationshipAdvisorPlugin,
-} from '@/modules/relationship-advisor/relationshipAdvisorPlugin';
+const configuration = {
+    apiKey: 'server-stored-secret',
+    baseUrl: 'https://api.example.com/v1',
+    model: 'example-chat',
+};
 
 describe('createRelationshipAdvisorPluginRuntime', () => {
-    it('brokers provider and secret configuration separately from image reads', async () => {
-        await relationshipAdvisorPlugin.requireConfiguration('user-4');
-        await relationshipAdvisorPlugin.requireImageReadPermission('user-4');
-        await relationshipAdvisorPlugin.requireImageWritePermission('user-4');
+    it('opens one capability context for provider and secret access', async () => {
+        const openRuntime = vi.fn(async () => configuration);
+        const plugin = createRelationshipAdvisorPluginRuntime({ openRuntime });
 
-        expect(registryMock.requirePermission.mock.calls).toEqual([
-            ['user-4', 'relationship-advisor', 'paws.ai.provider.invoke'],
-            ['user-4', 'relationship-advisor', 'paws.secrets.use'],
-            ['user-4', 'relationship-advisor', 'paws.conversations.images.read'],
-            ['user-4', 'relationship-advisor', 'paws.storage.images.write'],
+        await expect(plugin.openRuntime('user-4', { includeImages: false })).resolves.toEqual(configuration);
+
+        expect(openRuntime).toHaveBeenCalledTimes(1);
+        expect(openRuntime).toHaveBeenCalledWith('user-4', 'relationship-advisor', [
+            'paws.ai.provider.invoke',
+            'paws.secrets.use',
         ]);
     });
 
-    it('decrypts the user configuration only when starting the provider stream', async () => {
-        const configuration = {
-            apiKey: 'server-stored-secret',
-            baseUrl: 'https://api.example.com/v1',
-            model: 'example-chat',
-        };
-        const requireConfiguration = vi.fn(async () => configuration);
-        const providerStream = vi.fn(async function* () {
-            yield { text: 'hello' };
-        });
-        const runtime = createRelationshipAdvisorPluginRuntime(
-            { requireConfiguration },
-            providerStream,
-        );
-        const input = {
-            userId: 'user-4',
-            messages: [{ role: 'user' as const, text: 'hi' }],
-            imageUrls: [],
-        };
+    it('adds image capabilities to the same context before image references are resolved', async () => {
+        const openRuntime = vi.fn(async () => configuration);
+        const plugin = createRelationshipAdvisorPluginRuntime({ openRuntime });
 
-        const deltas = [];
-        for await (const delta of runtime.stream(input)) deltas.push(delta);
+        await plugin.openRuntime('user-4', { includeImages: true });
 
-        expect(deltas).toEqual([{ text: 'hello' }]);
-        expect(requireConfiguration).toHaveBeenCalledWith('user-4');
-        expect(providerStream).toHaveBeenCalledWith(input, configuration);
+        expect(openRuntime).toHaveBeenCalledTimes(1);
+        expect(openRuntime).toHaveBeenCalledWith('user-4', 'relationship-advisor', [
+            'paws.ai.provider.invoke',
+            'paws.secrets.use',
+            'paws.conversations.images.read',
+            'paws.storage.images.write',
+        ]);
+    });
+
+    it('opens a one-call image-write context for HTTP upload routes', async () => {
+        const openRuntime = vi.fn(async () => configuration);
+        const plugin = createRelationshipAdvisorPluginRuntime({ openRuntime });
+
+        await plugin.openImageWriteRuntime('user-4');
+
+        expect(openRuntime).toHaveBeenCalledTimes(1);
+        expect(openRuntime).toHaveBeenCalledWith('user-4', 'relationship-advisor', [
+            'paws.storage.images.write',
+        ]);
     });
 });

@@ -5,8 +5,20 @@ import { spawnHappyCLI } from '@/utils/spawnHappyCLI'
 const DAEMON_READY_TIMEOUT_MS = 5000
 const DAEMON_READY_POLL_INTERVAL_MS = 100
 
-export async function ensureDaemonRunning(): Promise<void> {
+export async function ensureDaemonRunning(options?: {
+  startedBy?: 'daemon' | 'terminal'
+}): Promise<void> {
   logger.debug('Ensuring Happy background service is running & matches our version...')
+
+  // A daemon-spawned session already has a live parent daemon waiting for its
+  // /session-started webhook. Re-running daemon discovery here can mistake a
+  // temporarily busy control server for a stale daemon, remove its state/lock,
+  // and start a competing daemon. The child would then report to the competitor
+  // while its real parent waits until timeout.
+  if (options?.startedBy === 'daemon') {
+    logger.debug('Using the parent Happy background service for daemon-spawned session')
+    return
+  }
 
   if (await isDaemonRunningCurrentlyInstalledHappyVersion()) {
     return

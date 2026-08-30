@@ -1,3 +1,4 @@
+import type { PluginPermission } from '@slopus/happy-wire';
 import { z } from 'zod';
 
 import { pluginRegistry } from '@/modules/plugins/pluginRegistry';
@@ -16,52 +17,49 @@ export interface RelationshipAdvisorConfiguration {
     model: string;
 }
 
-export interface RelationshipAdvisorPluginStreamInput {
-    userId: string;
-    messages: Array<{ role: 'user' | 'assistant'; text: string }>;
-    imageUrls: string[];
-    signal?: AbortSignal;
+interface PluginCapabilityBroker {
+    openRuntime: (
+        accountId: string,
+        pluginId: string,
+        requiredPermissions: readonly PluginPermission[],
+    ) => Promise<Record<string, string>>;
 }
 
-export function createRelationshipAdvisorPluginRuntime(
-    plugin: { requireConfiguration: (accountId: string) => Promise<RelationshipAdvisorConfiguration> },
-    providerStream: (
-        input: RelationshipAdvisorPluginStreamInput,
-        configuration: RelationshipAdvisorConfiguration,
-    ) => AsyncIterable<{ text: string }>,
-) {
+const PROVIDER_PERMISSIONS = [
+    'paws.ai.provider.invoke',
+    'paws.secrets.use',
+] as const satisfies readonly PluginPermission[];
+
+const IMAGE_PERMISSIONS = [
+    'paws.conversations.images.read',
+    'paws.storage.images.write',
+] as const satisfies readonly PluginPermission[];
+
+export function createRelationshipAdvisorPluginRuntime(capabilityBroker: PluginCapabilityBroker) {
     return {
-        async *stream(input: RelationshipAdvisorPluginStreamInput): AsyncGenerator<{ text: string }> {
-            const configuration = await plugin.requireConfiguration(input.userId);
-            yield* providerStream(input, configuration);
+        async openRuntime(
+            accountId: string,
+            options: { includeImages: boolean },
+        ): Promise<RelationshipAdvisorConfiguration> {
+            const requiredPermissions = options.includeImages
+                ? [...PROVIDER_PERMISSIONS, ...IMAGE_PERMISSIONS]
+                : [...PROVIDER_PERMISSIONS];
+            return relationshipAdvisorConfigurationSchema.parse(
+                await capabilityBroker.openRuntime(
+                    accountId,
+                    RELATIONSHIP_ADVISOR_PLUGIN_ID,
+                    requiredPermissions,
+                ),
+            );
+        },
+        async openImageWriteRuntime(accountId: string): Promise<void> {
+            await capabilityBroker.openRuntime(
+                accountId,
+                RELATIONSHIP_ADVISOR_PLUGIN_ID,
+                ['paws.storage.images.write'],
+            );
         },
     };
 }
 
-export const relationshipAdvisorPlugin = {
-    async requireImageReadPermission(accountId: string): Promise<void> {
-        await pluginRegistry.requirePermission(
-            accountId,
-            RELATIONSHIP_ADVISOR_PLUGIN_ID,
-            'paws.conversations.images.read',
-        );
-    },
-    async requireImageWritePermission(accountId: string): Promise<void> {
-        await pluginRegistry.requirePermission(
-            accountId,
-            RELATIONSHIP_ADVISOR_PLUGIN_ID,
-            'paws.storage.images.write',
-        );
-    },
-    async requireConfiguration(accountId: string): Promise<RelationshipAdvisorConfiguration> {
-        await pluginRegistry.requirePermission(
-            accountId,
-            RELATIONSHIP_ADVISOR_PLUGIN_ID,
-            'paws.ai.provider.invoke',
-        );
-        await pluginRegistry.requirePermission(accountId, RELATIONSHIP_ADVISOR_PLUGIN_ID, 'paws.secrets.use');
-        return relationshipAdvisorConfigurationSchema.parse(
-            await pluginRegistry.requireConfiguration(accountId, RELATIONSHIP_ADVISOR_PLUGIN_ID),
-        );
-    },
-};
+export const relationshipAdvisorPlugin = createRelationshipAdvisorPluginRuntime(pluginRegistry);

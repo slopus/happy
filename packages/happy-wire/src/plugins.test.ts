@@ -118,6 +118,7 @@ describe('plugin wire contract', () => {
         status: {
           installed: true,
           version: '1.0.0',
+          grantedPermissions: manifest.permissions,
           configuration: {},
           secretHints: { apiKey: '1234' },
         },
@@ -127,19 +128,38 @@ describe('plugin wire contract', () => {
     expect(catalog.plugins[0].status).toEqual({
       installed: true,
       version: '1.0.0',
+      grantedPermissions: manifest.permissions,
       configuration: {},
       secretHints: { apiKey: '1234' },
     });
   });
 
-  it('requires clients to pin the manifest version when installing', () => {
+  it('requires clients to pin the manifest version and grant the requested permissions when installing', () => {
     expect(PluginInstallRequestSchema.parse({
       version: '1.0.0',
+      grantedPermissions: manifest.permissions,
       configuration: { apiKey: 'secret' },
     })).toEqual({
       version: '1.0.0',
+      grantedPermissions: manifest.permissions,
       configuration: { apiKey: 'secret' },
     });
     expect(() => PluginInstallRequestSchema.parse({ version: 'latest', configuration: {} })).toThrow();
+    expect(() => PluginInstallRequestSchema.parse({
+      version: '1.0.0',
+      configuration: {},
+    })).toThrow();
+  });
+
+  it('rejects duplicate permission declarations and grants', () => {
+    expect(() => PluginManifestSchema.parse({
+      ...manifest,
+      permissions: ['paws.secrets.use', 'paws.secrets.use'],
+    })).toThrow();
+    expect(() => PluginInstallRequestSchema.parse({
+      version: '1.0.0',
+      grantedPermissions: ['paws.secrets.use', 'paws.secrets.use'],
+      configuration: {},
+    })).toThrow();
   });
 });

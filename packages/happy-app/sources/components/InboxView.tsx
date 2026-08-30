@@ -16,6 +16,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { FeedItemCard } from './FeedItemCard';
 import { VoiceAssistantStatusBar } from './VoiceAssistantStatusBar';
+import { useCodexAttachCandidateInbox } from '@/hooks/useCodexAttachCandidateInbox';
+import type { MachineCodexAttachCandidate } from '@/sync/codexAttachCandidates';
+import { formatLastSeen } from '@/utils/sessionUtils';
+import { Modal } from '@/modal';
 
 const styles = StyleSheet.create((theme) => ({
     container: {
@@ -53,6 +57,75 @@ const styles = StyleSheet.create((theme) => ({
         paddingTop: 24,
         paddingBottom: 8,
         textTransform: 'uppercase',
+    },
+    candidateIntro: {
+        color: theme.colors.textSecondary,
+        fontSize: 13,
+        lineHeight: 18,
+        paddingHorizontal: 16,
+        paddingBottom: 10,
+        ...Typography.default(),
+    },
+    candidateCard: {
+        backgroundColor: theme.colors.surface,
+        borderBottomColor: theme.colors.divider,
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        paddingHorizontal: 16,
+        paddingVertical: 14,
+    },
+    candidateHeader: {
+        alignItems: 'flex-start',
+        flexDirection: 'row',
+        gap: 10,
+    },
+    candidateIcon: {
+        alignItems: 'center',
+        backgroundColor: theme.colors.surfaceHigh,
+        borderRadius: 9,
+        height: 36,
+        justifyContent: 'center',
+        width: 36,
+    },
+    candidateCopy: { flex: 1, minWidth: 0 },
+    candidateTitle: {
+        color: theme.colors.text,
+        fontSize: 15,
+        lineHeight: 20,
+        ...Typography.default('semiBold'),
+    },
+    candidateMeta: {
+        color: theme.colors.textSecondary,
+        fontSize: 12,
+        lineHeight: 17,
+        marginTop: 3,
+        ...Typography.default(),
+    },
+    candidateActions: {
+        flexDirection: 'row',
+        gap: 8,
+        justifyContent: 'flex-end',
+        marginTop: 12,
+    },
+    candidateButton: {
+        alignItems: 'center',
+        borderRadius: 9,
+        justifyContent: 'center',
+        minHeight: 40,
+        minWidth: 76,
+        paddingHorizontal: 14,
+    },
+    candidateButtonPrimary: { backgroundColor: theme.colors.button.primary.background },
+    candidateButtonSecondary: { backgroundColor: theme.colors.surfaceHigh },
+    candidateButtonPressed: { opacity: 0.72 },
+    candidateButtonText: { color: theme.colors.text, fontSize: 13, ...Typography.default('semiBold') },
+    candidateButtonTextPrimary: { color: theme.colors.button.primary.tint },
+    candidateError: {
+        color: theme.colors.status.error,
+        fontSize: 13,
+        lineHeight: 18,
+        paddingHorizontal: 16,
+        paddingVertical: 12,
+        ...Typography.default(),
     },
 }));
 
@@ -109,9 +182,33 @@ export const InboxView = React.memo(({}: InboxViewProps) => {
     const { theme } = useUnistyles();
     const isTablet = useIsTablet();
     const realtimeStatus = useRealtimeStatus();
+    const candidateInbox = useCodexAttachCandidateInbox();
 
-    const isLoading = !feedLoaded || !friendsLoaded;
-    const isEmpty = !isLoading && friendRequests.length === 0 && requestedFriends.length === 0 && friends.length === 0 && feedItems.length === 0;
+    const isLoading = !feedLoaded || !friendsLoaded || candidateInbox.loading;
+    const isEmpty = !isLoading
+        && !candidateInbox.error
+        && candidateInbox.candidates.length === 0
+        && friendRequests.length === 0
+        && requestedFriends.length === 0
+        && friends.length === 0
+        && feedItems.length === 0;
+
+    const attachCandidate = React.useCallback(async (candidate: MachineCodexAttachCandidate) => {
+        try {
+            const sessionId = await candidateInbox.attach(candidate);
+            router.push(`/session/${sessionId}`);
+        } catch {
+            Modal.alert(t('common.error'), t('inbox.candidateUnavailable'));
+        }
+    }, [candidateInbox.attach, router]);
+
+    const dismissCandidate = React.useCallback(async (candidate: MachineCodexAttachCandidate) => {
+        try {
+            await candidateInbox.dismiss(candidate);
+        } catch {
+            Modal.alert(t('common.error'), t('inbox.candidateUnavailable'));
+        }
+    }, [candidateInbox.dismiss]);
 
     if (isLoading) {
         return (
@@ -192,6 +289,66 @@ export const InboxView = React.memo(({}: InboxViewProps) => {
                 width: '100%'
             }}>
                 <UpdateBanner />
+
+                {(candidateInbox.candidates.length > 0 || candidateInbox.error) && (
+                    <ItemGroup title={t('inbox.codexCandidates')}>
+                        <Text style={styles.candidateIntro}>{t('inbox.codexCandidateDescription')}</Text>
+                        {candidateInbox.error ? (
+                            <Text style={styles.candidateError}>{t('inbox.candidateUnavailable')}</Text>
+                        ) : null}
+                        {candidateInbox.candidates.map((candidate) => {
+                            const busy = candidateInbox.busyThreadId === candidate.threadId;
+                            return (
+                                <View key={`${candidate.machineId}:${candidate.threadId}`} style={styles.candidateCard}>
+                                    <View style={styles.candidateHeader}>
+                                        <View style={styles.candidateIcon}>
+                                            <Ionicons name="desktop-outline" size={20} color={theme.colors.textSecondary} />
+                                        </View>
+                                        <View style={styles.candidateCopy}>
+                                            <Text style={styles.candidateTitle} numberOfLines={2}>{candidate.title}</Text>
+                                            <Text style={styles.candidateMeta} numberOfLines={1}>{candidate.directory}</Text>
+                                            <Text style={styles.candidateMeta} numberOfLines={1}>
+                                                {candidate.machineName} · {formatLastSeen(candidate.updatedAt, false)}
+                                            </Text>
+                                        </View>
+                                    </View>
+                                    <View style={styles.candidateActions}>
+                                        <Pressable
+                                            accessibilityRole="button"
+                                            disabled={busy}
+                                            onPress={() => void dismissCandidate(candidate)}
+                                            style={({ pressed }) => [
+                                                styles.candidateButton,
+                                                styles.candidateButtonSecondary,
+                                                pressed && styles.candidateButtonPressed,
+                                            ]}
+                                        >
+                                            <Text style={styles.candidateButtonText}>{t('inbox.dismissCandidate')}</Text>
+                                        </Pressable>
+                                        <Pressable
+                                            accessibilityRole="button"
+                                            disabled={busy}
+                                            onPress={() => void attachCandidate(candidate)}
+                                            style={({ pressed }) => [
+                                                styles.candidateButton,
+                                                styles.candidateButtonPrimary,
+                                                pressed && styles.candidateButtonPressed,
+                                            ]}
+                                        >
+                                            {busy ? (
+                                                <ActivityIndicator size="small" color={theme.colors.button.primary.tint} />
+                                            ) : (
+                                                <Text style={[styles.candidateButtonText, styles.candidateButtonTextPrimary]}>
+                                                    {t('inbox.attachCandidate')}
+                                                </Text>
+                                            )}
+                                        </Pressable>
+                                    </View>
+                                </View>
+                            );
+                        })}
+                    </ItemGroup>
+                )}
                 
                 {feedItems.length > 0 && (
                     <>

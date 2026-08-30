@@ -124,12 +124,37 @@ describe('handleAttachCommand', () => {
       directory: '/repo',
       agent: 'codex',
       resumeCodexThreadId: 'codex-thread-123',
+      environmentVariables: {
+        HAPPY_CODEX_APP_SERVER_MODE: 'shared',
+        HAPPY_CODEX_APPROVAL_AUTHORITY: 'desktop',
+      },
     });
     expect(logSpy).toHaveBeenCalledWith(JSON.stringify({
       type: 'success',
       sessionId: 'happy-session-123',
       agent: 'codex',
       directory: '/repo',
+    }));
+  });
+
+  it('forwards an explicit shared socket and approval authority to the daemon child', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await handleAttachCommand([], {
+      cwd: '/repo',
+      env: {
+        CODEX_THREAD_ID: 'codex-thread-456',
+        HAPPY_CODEX_APP_SERVER_SOCKET: '/tmp/codex-shared.sock',
+        HAPPY_CODEX_APPROVAL_AUTHORITY: 'paws',
+      },
+    });
+
+    expect(mocks.mockSpawnDaemonSession).toHaveBeenCalledWith(expect.objectContaining({
+      environmentVariables: {
+        HAPPY_CODEX_APP_SERVER_MODE: 'shared',
+        HAPPY_CODEX_APP_SERVER_SOCKET: '/tmp/codex-shared.sock',
+        HAPPY_CODEX_APPROVAL_AUTHORITY: 'paws',
+      },
     }));
   });
 }

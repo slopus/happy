@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
-  "catalogVersion": "2026-08-24.95",
-  "catalogDigest": "718a4e3d8d153ab56f70c68af3b3768ed1abf0782d7d8394397733e2f13cd24c",
+  "catalogVersion": "2026-08-30.96",
+  "catalogDigest": "399278b6cf8e72dbe79d46636e7e2a970bb74e201916a9bae4b12cbb0ff29330",
   "sourceRepository": "wangjs-jacky/image-effects",
-  "sourceCommit": "0a0aba32188907fc3fc855d2103df56c2a78dc7a",
+  "sourceCommit": "42636e50d89f305b5e1340df08d290ee01b21198",
   "canonicalRepository": "wangjs-jacky/jacky-skills",
-  "canonicalCommit": "52d77c6d3842a5973a7fce51de9d36ac06d2cf9c",
+  "canonicalCommit": "8e5248f4fd866f443bd4f29483f1f639558540fc",
   "effects": [
     {
       "ref": "anime-key-visual@1.0.0",
@@ -2500,6 +2500,49 @@
         }
       },
       "promptContent": "## 适用场景\n\nTransform exactly one real-world photo into one calm vertical 3:5 paper poster that expresses the observed scene twice. Keep one truthful photographic anchor above and one materially distinct, composition-matched editorial illustration below. The pairing must read as a single Scene Map, never as a generic before/after filter.\n\n## 输入契约\n\nRequire exactly one JPEG or PNG attached to this request. Never browse for replacement imagery or infer input from history or nearby files. Use the source only for this task, disclose no private path, and do not commit, redistribute, or retain extra copies.\n\nBuild a Scene Map containing primary subject, 1–3 secondary anchors, horizon or ground line, dominant silhouette, subject and landmark counts, left-to-right order, relative scale, viewing direction, movement, native color atmosphere, and minimum identity-bearing detail. Build one normalized Framing Map from the chosen upper crop, including content-space centers, axes, relative scale, horizon, and geometry.\n\n## 视觉编译规则\n\n- Use a 3:5 warm-ivory page with quiet margins. Give roughly 40–47% to a single upper photo and 45–52% to a coherent lower illustration, separated by breathing paper or a subtle handoff.\n- Keep the upper panel photographic and truthful. Preserve subject, landmark count, perspective, spatial order, time-of-day logic, and native character. Use isotropic scaling, a proportional crop, or an inset; never stretch.\n- Reuse the exact crop window and content coordinate map below. Preserve counts, proportions, horizon, dominant silhouette, movement, and spatial order. Keep faces, bodies, glasses, architectural verticals, repeated spacing, and wheel, fan, or pulley circles geometrically sound.\n- Simplify constructed forms by roughly 65–85% and organic or repetitive texture by roughly 80–95%, while preserving semantic geometry.\n- Choose one lower medium from the source. Use fine ink with diluted watercolor for quiet landscapes, coasts, mountains, or architecture; flat cut-paper shapes and restrained outlines for heritage, villages, watermills, trees, or walking groups; geometric blocks for modern skylines; or restrained Art Deco geometry for dramatic night architecture. Do not force one style across all scenes.\n- Use 4–7 source-derived colors plus warm paper and neutral ink, broad value grouping, quiet space, and at most one muted source-derived accent.\n- Typography is opt-in. Reproduce only exact user wording as one short title and at most one subtitle; never invent place names or tourism copy. Omit text if reliable rendering is unavailable.\n\n## 硬性禁止项\n\nReject non-uniform scaling, crop mismatch, proportion drift, ovalized circles, changed subject or landmark counts, scene replacement, photorealistic lower rendering, literal tracing, generic stock vector art, unrelated motifs, arbitrary neon accents, full-scene filtering, UI, before/after labels, collage grids, scrapbook clutter, heavy grain, glossy 3D, anime treatment, malformed people, dense typography, pseudo-text, logos, QR codes, signatures, or watermarks.\n\n## 质量检查\n\nConfirm one input produced one 3:5 poster; panel bounds are level and balanced; the source used isotropic scale; both panels share the exact Framing Map; at least five major forms align; subject and landmark counts and left-to-right order are unchanged; source proportions, circles, and axes survive; the upper remains photographic; the lower is unmistakably illustrated in a subject-appropriate medium; the palette is source-derived; people and optional exact text are valid; and no UI or private path appears.\n\nIf crop, scale, correspondence, anatomy, or geometry fails, regenerate at most once with a correction limited to that defect while preserving the Scene Map and Framing Map.\n\n## 交付要求\n\nDeliver exactly one final poster using the host's native image path and add a short rationale naming key cross-panel correspondences, chosen medium, and palette. Do not reveal private paths or the full prompt unless asked."
+    },
+    {
+      "ref": "photo-illustration-diptych-coastline@1.0.0",
+      "id": "photo-illustration-diptych-coastline",
+      "version": "1.0.0",
+      "title": {
+        "en": "Coastline Watercolor Diptych",
+        "zh": "海岸水彩双联画"
+      },
+      "summary": {
+        "en": "Pair one truthful coastal photograph with a viewpoint-matched ink-and-watercolor study that preserves the shoreline, horizon, landmark order, and wave rhythm.",
+        "zh": "将一张真实海岸照片与同视角墨线水彩习作配对，保留海岸线、地平线、地标顺序与浪带节奏。"
+      },
+      "category": "editorial",
+      "executionKind": "host-image-generation",
+      "input": {
+        "mode": "image",
+        "min": 1,
+        "max": 1,
+        "formats": [
+          "jpeg",
+          "png"
+        ]
+      },
+      "outputCount": 1,
+      "previewFileName": "photo-illustration-diptych-coastline.jpg",
+      "previewWidth": 1448,
+      "previewHeight": 1086,
+      "sourcePreviewSha256": "f4f5feb83d28dd60e310afbfaf1bdf79f9294884baec8f3b1b488b840a38382e",
+      "provenance": {
+        "repository": "wangjs-jacky/happy",
+        "revision": "532e49bb711283cbe2738439039298f9cea1ef7b",
+        "license": {
+          "spdx": "MIT",
+          "url": "https://github.com/wangjs-jacky/happy/blob/532e49bb711283cbe2738439039298f9cea1ef7b/LICENSE"
+        },
+        "preview": {
+          "origin": "Adapted from a project-owned, text-only image generation of a fictional waterside scene; not based on a real person, place, brand, or third-party image.",
+          "author": "wangjs-jacky",
+          "licenseSpdx": "CC-BY-4.0"
+        }
+      },
+      "promptContent": "## 适用场景\n\nTransform exactly one supplied beach, headland, harbor, sea cave, coastal bridge, shoreline-architecture, or open-water photograph into one calm vertical 3:5 warm-ivory diptych. Keep one truthful photographic rectangle above and one smaller, viewpoint-matched ink-and-watercolor study below. The result must read as the same observed coast expressed twice, never as a generic travel poster or before/after filter.\n\n## 输入契约\n\nRequire exactly one JPEG or PNG attached to the current request. Never browse for replacement imagery or infer input from history, prior messages, or nearby files. Keep the source private, disclose no path, and retain no unnecessary copy.\n\nBefore generation, build a Scene Map and one normalized Framing Map. Record the horizon height, coastline direction, headland, cave opening, bridge span or harbor rhythm, landmark count and left-to-right order, building placement, wave-band rhythm, any single boat or human-scale anchor, source aspect ratio, and native color relationships. Apply one isotropic scale factor; use a proportional crop or warm-paper inset rather than stretching.\n\n## 视觉编译规则\n\n- Use a vertical 3:5 warm-ivory paper poster with generous quiet margins. Allocate roughly 42–50% to one clean upper photograph and 28–38% to the lower watercolor study, leaving broad breathing paper between them.\n- Keep the upper photo truthful. Mild tonal harmonization may clarify it, but never replace the place, move a landmark, alter the weather logic, change subject count, or distort proportions.\n- Reuse the same viewpoint and normalized Framing Map below. Preserve horizon height, coastline direction, landmark order, cave, bridge or headland silhouette, wave-band rhythm, building placement, and any single boat or human-scale anchor that identifies the scene.\n- Rebuild the lower scene with fine ink contours, dry-brush edges, granulating watercolor washes, translucent overlaps, and intentional unpainted paper. It must look hand-rendered, not vectorized, filtered, or photorealistic.\n- Use 4–6 source-derived colors plus neutral ink. Keep the native relationships among water, dusk sky, stone, vegetation, lights, and reflections; do not introduce arbitrary neon or a generic travel palette.\n- For a sea cave or rock opening, preserve the dark framing mass and exact opening shape around the bright water view.\n- For a bridge or night harbor, preserve the main arch, tower or pier rhythm and translate light into restrained watercolor blooms and reflections.\n- For an open beach, preserve the headland profile and repeat the visible wave bands rather than inventing decorative waves.\n- Typography is off by default. If the user supplies exact series title, sequence number, location, or date, reproduce only that supplied text as sparse editorial metadata in the lower-left or lower margin, with up to three small source-palette swatches nearby. Never infer a place, year, or issue number.\n\n## 硬性禁止项\n\nNever stretch the source, change the coastline, swap or invent a landmark, alter the cave, bridge, headland, boat, or person count, move the horizon, let watercolor spill into the photo, use a second unrelated scene, add faux travel stamps, map pins, marine icons, scrapbook decoration, gradients, generic tourism copy, phone or viewer chrome, logos, QR codes, signatures, or watermarks.\n\n## 质量检查\n\nVerify that one source produced one 3:5 poster; the source was scaled isotropically; the upper and lower regions share one Framing Map; the horizon, coastline direction, landmark order, defining cave, bridge or headland silhouette, and wave rhythm are immediately pairable; at least five major scene correspondences align; the lower scene reads as fine ink and translucent watercolor with intentional paper; the palette is source-derived; no metadata was invented; and the composition remains calm and legible at thumbnail size.\n\nOn a hard tool or fidelity failure, regenerate at most once with a correction limited to the observed viewpoint, correspondence, crop, proportion, palette, watercolor, or typography defect. Preserve the same maps and user-supplied copy.\n\n## 交付要求\n\nReturn exactly one final image through the host's native delivery path, followed by a concise rationale naming the preserved coastal correspondences, watercolor treatment, and source-derived palette. Mention editorial metadata only when the user supplied it. Do not expose the source path or full prompt unless requested."
     },
     {
       "ref": "photo-illustration-diptych-lakeside@1.0.0",

@@ -14,15 +14,15 @@ const filesMock = vi.hoisted(() => ({
     },
 }));
 const deleteImagesMock = vi.hoisted(() => vi.fn(async () => undefined));
-const requirePermissionMock = vi.hoisted(() => vi.fn(async () => undefined));
+const openImageWriteRuntimeMock = vi.hoisted(() => vi.fn(async () => undefined));
 
 vi.mock('@/storage/files', () => filesMock);
 vi.mock('@/modules/relationship-advisor/relationshipAdvisorImages', () => ({
     deleteRelationshipAdvisorImages: deleteImagesMock,
 }));
-vi.mock('@/modules/plugins/pluginRegistry', () => ({
-    pluginRegistry: {
-        requirePermission: requirePermissionMock,
+vi.mock('@/modules/relationship-advisor/relationshipAdvisorPlugin', () => ({
+    relationshipAdvisorPlugin: {
+        openImageWriteRuntime: openImageWriteRuntimeMock,
     },
 }));
 
@@ -48,7 +48,7 @@ describe('relationshipAdvisorRoutes', () => {
     let app: Fastify;
     beforeEach(() => {
         filesMock.isLocalStorage.mockReturnValue(true);
-        requirePermissionMock.mockResolvedValue(undefined);
+        openImageWriteRuntimeMock.mockResolvedValue(undefined);
     });
     afterEach(async () => {
         if (app) await app.close();
@@ -74,11 +74,7 @@ describe('relationshipAdvisorRoutes', () => {
             uploadUrl: expect.stringMatching(/^https:\/\/happy\.test\/v1\/relationship-advisor\/images\/[a-f0-9-]+\.jpg$/),
             method: 'PUT',
         });
-        expect(requirePermissionMock).toHaveBeenCalledWith(
-            'user-1',
-            'relationship-advisor',
-            'paws.storage.images.write',
-        );
+        expect(openImageWriteRuntimeMock).toHaveBeenCalledWith('user-1');
     });
 
     it('returns a size-limited presigned POST in S3 mode', async () => {
@@ -142,11 +138,7 @@ describe('relationshipAdvisorRoutes', () => {
             expect.stringMatching(/^advisor\/user-1\/[a-f0-9-]+\.png$/),
             Buffer.from([1, 2, 3, 4]),
         );
-        expect(requirePermissionMock).toHaveBeenLastCalledWith(
-            'user-1',
-            'relationship-advisor',
-            'paws.storage.images.write',
-        );
+        expect(openImageWriteRuntimeMock).toHaveBeenLastCalledWith('user-1');
     });
 
     it('discards uploaded image refs through the authenticated owner boundary', async () => {
@@ -163,15 +155,11 @@ describe('relationshipAdvisorRoutes', () => {
         expect(response.statusCode).toBe(200);
         expect(response.json()).toEqual({ ok: true });
         expect(deleteImagesMock).toHaveBeenCalledWith('user-1', refs);
-        expect(requirePermissionMock).toHaveBeenCalledWith(
-            'user-1',
-            'relationship-advisor',
-            'paws.storage.images.write',
-        );
+        expect(openImageWriteRuntimeMock).toHaveBeenCalledWith('user-1');
     });
 
     it('does not issue or persist image writes when the capability broker denies access', async () => {
-        requirePermissionMock.mockRejectedValue(new Error('plugin not installed'));
+        openImageWriteRuntimeMock.mockRejectedValue(new Error('plugin not installed'));
         app = await createApp();
 
         const response = await app.inject({

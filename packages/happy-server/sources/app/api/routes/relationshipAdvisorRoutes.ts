@@ -4,13 +4,11 @@ import { z } from 'zod';
 import type { Fastify } from '@/app/api/types';
 import { isLocalStorage, putLocalFile, s3bucket, s3client } from '@/storage/files';
 import { deleteRelationshipAdvisorImages } from '@/modules/relationship-advisor/relationshipAdvisorImages';
-import { pluginRegistry } from '@/modules/plugins/pluginRegistry';
+import { relationshipAdvisorPlugin } from '@/modules/relationship-advisor/relationshipAdvisorPlugin';
 
 const MAX_ADVISOR_IMAGE_SIZE = 10 * 1024 * 1024;
 const ADVISOR_UPLOAD_TTL_SECONDS = 10 * 60;
 const uploadRateState = new Map<string, { startedAt: number; count: number }>();
-const RELATIONSHIP_ADVISOR_PLUGIN_ID = 'relationship-advisor';
-const IMAGE_WRITE_PERMISSION = 'paws.storage.images.write';
 
 const IMAGE_EXTENSION_BY_MIME = {
     'image/jpeg': '.jpg',
@@ -58,11 +56,7 @@ export function relationshipAdvisorRoutes(app: Fastify) {
         },
         preHandler: app.authenticate,
     }, async (request, reply) => {
-        await pluginRegistry.requirePermission(
-            request.userId,
-            RELATIONSHIP_ADVISOR_PLUGIN_ID,
-            IMAGE_WRITE_PERMISSION,
-        );
+        await relationshipAdvisorPlugin.openImageWriteRuntime(request.userId);
         if (!canRequestAdvisorImageUpload(request.userId)) {
             return reply.code(429).send({ error: 'Too many image uploads' });
         }
@@ -106,11 +100,7 @@ export function relationshipAdvisorRoutes(app: Fastify) {
         },
         preHandler: app.authenticate,
     }, async (request, reply) => {
-        await pluginRegistry.requirePermission(
-            request.userId,
-            RELATIONSHIP_ADVISOR_PLUGIN_ID,
-            IMAGE_WRITE_PERMISSION,
-        );
+        await relationshipAdvisorPlugin.openImageWriteRuntime(request.userId);
         if (!isLocalStorage()) {
             return reply.code(404).send({ error: 'Direct upload is not available' });
         }
@@ -138,11 +128,7 @@ export function relationshipAdvisorRoutes(app: Fastify) {
         },
         preHandler: app.authenticate,
     }, async (request, reply) => {
-        await pluginRegistry.requirePermission(
-            request.userId,
-            RELATIONSHIP_ADVISOR_PLUGIN_ID,
-            IMAGE_WRITE_PERMISSION,
-        );
+        await relationshipAdvisorPlugin.openImageWriteRuntime(request.userId);
         await deleteRelationshipAdvisorImages(request.userId, request.body.refs);
         return reply.send({ ok: true });
     });

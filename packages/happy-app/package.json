@@ -79,7 +79,7 @@
     "@more-tech/react-native-libsodium": "^1.5.5",
     "@panzoom/panzoom": "^4.6.2",
     "@paralleldrive/cuid2": "^2.3.1",
-    "@paws/plugins": "github:wangjs-jacky/paws-plugins#1c77d6aea345000c9b543ff34d680140f234d3c5",
+    "@paws/plugins": "github:wangjs-jacky/paws-plugins#eb24f765b7cb43827701250bb9f1654897fb2c68",
     "@peoplesgrocers/seti-ui-file-icons": "1.11.3",
     "@pierre/diffs": "^1.1.16",
     "@react-native-async-storage/async-storage": "2.2.0",

@@ -42,7 +42,13 @@ function advisor(installed: boolean): PluginCatalogItem {
             configuration: { fields: [] },
         },
         status: installed
-            ? { installed: true, version: '1.0.0', configuration: {}, secretHints: {} }
+            ? {
+                installed: true,
+                version: '1.0.0',
+                grantedPermissions: ['paws.ai.provider.invoke', 'paws.secrets.use'],
+                configuration: {},
+                secretHints: {},
+            }
             : { installed: false },
     };
 }

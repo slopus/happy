@@ -140,6 +140,40 @@ paws connect status
 | `HAPPY_HOME_DIR` | Custom home directory for Paws data (default: `~/.happy`) |
 | `HAPPY_DISABLE_CAFFEINATE` | Disable macOS sleep prevention |
 | `HAPPY_EXPERIMENTAL` | Enable experimental features |
+| `HAPPY_CODEX_APP_SERVER_MODE` | Codex transport: `spawn` (default) or experimental `shared` Unix Socket mode |
+| `HAPPY_CODEX_APP_SERVER_SOCKET` | Absolute path to a shared Codex app-server socket (default: `$CODEX_HOME/app-server-control/app-server-control.sock`) |
+| `HAPPY_CODEX_APPROVAL_AUTHORITY` | Shared-mode approval responder: `desktop` (default) or `paws` |
+
+### Shared Codex Desktop Thread (experimental)
+
+By default, `paws codex` starts its own Codex app-server over stdio. Shared mode
+instead attaches Paws to an already running, protocol-compatible Codex
+app-server over its Unix control socket:
+
+```bash
+HAPPY_CODEX_APP_SERVER_MODE=shared \
+HAPPY_CODEX_APPROVAL_AUTHORITY=desktop \
+paws codex --resume <codex-thread-id>
+```
+
+This lets Codex Desktop and Paws observe and continue the same persisted Codex
+Thread through one writer process. From inside the current Codex Thread, the
+installed `/paws` skill runs `happy attach`; it discovers `CODEX_THREAD_ID` and
+starts the shared Paws bridge in the background, so no Thread ID needs to be
+copied manually. A newly attached Paws Session receives the existing Thread
+history. On reconnect, its saved turn cursor backfills only the Desktop Turns
+created while the bridge was offline. Turns entered in either client are
+mirrored into Paws without echoing a Paws-originated user message twice.
+
+Shared mode does not start, upgrade, or stop the app-server. The socket must
+already exist, and its Codex version must be compatible with the clients. Codex
+Desktop also has to be launched in its local-daemon mode so it uses that same
+server; this is not the Desktop app's default setup.
+
+Only one approval responder should be active. Keep the default `desktop` value
+while Desktop owns approvals; select `paws` only when Paws should answer them.
+The mode is designed for handoff, not simultaneous competing user Turns. Wait
+for the active Turn to finish before continuing from the other client.
 
 ### Sandbox (experimental)
 

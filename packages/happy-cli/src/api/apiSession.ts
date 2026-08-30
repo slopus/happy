@@ -693,11 +693,11 @@ export class ApiSessionClient extends EventEmitter {
         }
     }
 
-    private enqueueMessage(content: unknown, invalidate: boolean = true) {
+    private enqueueMessage(content: unknown, invalidate: boolean = true, localId: string = randomUUID()) {
         const encrypted = encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, content));
         this.pendingOutbox.push({
             content: encrypted,
-            localId: randomUUID()
+            localId,
         });
         if (invalidate) {
             this.sendSync.invalidate();
@@ -766,7 +766,10 @@ export class ApiSessionClient extends EventEmitter {
             }
         };
 
-        this.enqueueMessage(content, invalidate);
+        // Envelope IDs are stable across thread/read replays. Reuse them as the
+        // server idempotency key so a crash between message delivery and cursor
+        // persistence cannot create duplicate history on reconnect.
+        this.enqueueMessage(content, invalidate, `session-envelope:${envelope.id}`);
     }
 
     sendSessionProtocolMessage(envelope: SessionEnvelope) {
@@ -1011,6 +1014,27 @@ export class ApiSessionClient extends EventEmitter {
                 resolve();
             }, 10000);
         });
+    }
+
+    /**
+     * Wait until every queued message has been acknowledged by the v3 API.
+     * Unlike flush(), timing out rejects: callers must not commit a replay
+     * cursor when the outbox may still contain undelivered envelopes.
+     */
+    async flushOutboxAndAwait(timeoutMs = 60_000): Promise<void> {
+        let timeout: NodeJS.Timeout | undefined;
+        try {
+            await Promise.race([
+                this.sendSync.invalidateAndAwait(),
+                new Promise<never>((_, reject) => {
+                    timeout = setTimeout(() => {
+                        reject(new Error(`Timed out waiting for session outbox after ${timeoutMs}ms`));
+                    }, timeoutMs);
+                }),
+            ]);
+        } finally {
+            if (timeout) clearTimeout(timeout);
+        }
     }
 
     async close() {

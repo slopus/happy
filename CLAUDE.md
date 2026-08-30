@@ -523,6 +523,13 @@ git tag cli-vX.Y.Z <发布时的 main tip> && git push origin cli-vX.Y.Z
 
 | 文件 | 主题 | 何时读取 |
 |------|------|----------|
+| Happy 手机 E2E 视频验收与 PR 交付 SOP.md | 从需求到手机 MP4、Obsidian 双端同步与 PR 证据的完整验收 SOP | 用户要求手机回归、E2E 录屏、MP4 交付或 PR 携带视频证据时 |
+| Happy 桌面三栏侧边栏交互验收.md | PC Web 左右侧边栏折叠、快捷键、拖拽及中间区约束的视频验收证据 | 回归桌面三栏布局、复跑侧边栏 Playwright Case 或查验录屏时 |
+| 如何让-Finance-Card-稳定显示上证指数走势.md | Finance Card 通过腾讯财经 fallback 稳定显示上证指数走势 | 遇到 finance chart 拉取失败、A 股指数出卡失败、MCP finance 数据源不稳时 |
+| 如何跑通-Codex-交互通知.md | Codex 需要用户交互时的通知端到端跑通手册 | 排查 Codex pending permission 手机通知、session-event push、Expo token 或 OTA 验证时 |
+| structured-message-cards.md | 结构化 agent 输出驱动聊天自定义卡片 | 新增 `<happy-*>` typed block、聊天卡片或 sidebar 结构化展示时 |
+| mascot-theme-fusion.md | 吉祥物×主题色合并联动（AI 出图到 OTA 全链路） | 改主题、吉祥物、主题色联动、出图抠图或 OTA 发布视觉改动时 |
+| selfhost-ota-channel-preview.md | 自建 OTA 频道隔离 + PR 自动发预览流水线 | 调整 preview/production OTA、PR 预览发布或自建更新通道时 |
 | pc-web-interaction-review-fix-loop.md | Paws PC Web 全站交互评审、独立选题/修复/验收与证据链 | 做 PC Web 交互评审、Picker 焦点修复或复用 Playwright 生产评审 Harness 时 |
 | foreground-push-notification.md | 让会话通知在 App 前台也弹 + 点通知跳转会话 | 改推送通知行为、排查「收不到通知」时 |
 | selfhost-server-deploy.md | 把服务端源码改动部署到阿里云 VPS（docker 离线叠层 + esbuild） | 部署/重建 happy-server、改服务端代码要上线时 |

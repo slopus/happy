@@ -22,7 +22,9 @@ export type PluginRegistryErrorCode =
     | 'plugin_not_found'
     | 'plugin_not_installed'
     | 'version_mismatch'
+    | 'invalid_permission_grant'
     | 'permission_not_declared'
+    | 'permission_not_granted'
     | 'connection_test_unsupported'
     | 'invalid_configuration';
 
@@ -42,7 +44,12 @@ function findDefinition(definitions: readonly PluginDefinition[], pluginId: stri
 function publicStatus(definition: PluginDefinition, installation: PluginInstallation | null): PluginInstallationStatus {
     if (!installation) return { installed: false };
     const status = definition.redactConfiguration(installation.configuration);
-    return { ...status, version: installation.version };
+    return {
+        installed: true,
+        version: installation.version,
+        grantedPermissions: installation.grantedPermissions,
+        ...status,
+    };
 }
 
 export function createPluginRegistry(
@@ -102,6 +109,16 @@ export function createPluginRegistry(
                 `Plugin ${definition.manifest.id} requires version ${definition.manifest.version}`,
             );
         }
+        const declaredPermissions = definition.manifest.permissions;
+        if (
+            request.grantedPermissions.length !== declaredPermissions.length
+            || declaredPermissions.some((permission) => !request.grantedPermissions.includes(permission))
+        ) {
+            throw new PluginRegistryError(
+                'invalid_permission_grant',
+                `Plugin ${definition.manifest.id} requires its declared permission set`,
+            );
+        }
         try {
             const previous = await store.get(accountId, definition.manifest.id);
             const merged = { ...request.configuration };
@@ -143,7 +160,11 @@ export function createPluginRegistry(
         ): Promise<PluginInstallationStatus> {
             const definition = findDefinition(definitions, pluginId);
             const configuration = await resolveRequestedConfiguration(accountId, definition, request);
-            const installation = { version: definition.manifest.version, configuration };
+            const installation = {
+                version: definition.manifest.version,
+                grantedPermissions: [...definition.manifest.permissions],
+                configuration,
+            };
             await store.set(accountId, pluginId, installation);
             return publicStatus(definition, installation);
         },
@@ -168,21 +189,36 @@ export function createPluginRegistry(
             await store.delete(accountId, pluginId);
             return { installed: false };
         },
-        async requirePermission(
+        async openRuntime(
             accountId: string,
             pluginId: string,
-            permission: PluginPermission,
-        ): Promise<void> {
-            const { definition } = await requireCurrentInstallation(accountId, pluginId);
-            if (!definition.manifest.permissions.includes(permission)) {
+            requiredPermissions: readonly PluginPermission[],
+        ): Promise<Record<string, string>> {
+            const { definition, installation } = await requireCurrentInstallation(accountId, pluginId);
+            const declaredPermissions = definition.manifest.permissions;
+            if (
+                installation.grantedPermissions.length !== declaredPermissions.length
+                || declaredPermissions.some((permission) => !installation.grantedPermissions.includes(permission))
+            ) {
                 throw new PluginRegistryError(
-                    'permission_not_declared',
-                    `Plugin ${pluginId} did not declare permission ${permission}`,
+                    'permission_not_granted',
+                    `Plugin ${pluginId} must review and grant its current permission set`,
                 );
             }
-        },
-        async requireConfiguration(accountId: string, pluginId: string): Promise<Record<string, string>> {
-            const { definition, installation } = await requireCurrentInstallation(accountId, pluginId);
+            for (const permission of requiredPermissions) {
+                if (!declaredPermissions.includes(permission)) {
+                    throw new PluginRegistryError(
+                        'permission_not_declared',
+                        `Plugin ${pluginId} did not declare permission ${permission}`,
+                    );
+                }
+                if (!installation.grantedPermissions.includes(permission)) {
+                    throw new PluginRegistryError(
+                        'permission_not_granted',
+                        `Plugin ${pluginId} was not granted permission ${permission}`,
+                    );
+                }
+            }
             try {
                 return definition.normalizeConfiguration(installation.configuration);
             } catch {
