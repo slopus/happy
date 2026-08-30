@@ -43,6 +43,27 @@ describe('Codex attach candidates', () => {
         ]);
     });
 
+    it('returns every eligible thread from the last 30 days instead of truncating at 20', async () => {
+        const stateDir = await mkdtemp(join(tmpdir(), 'paws-codex-candidates-'));
+        const service = createCodexAttachCandidateService({
+            statePath: join(stateDir, 'state.json'),
+            now: () => 2_000_000_000_000,
+            listThreads: async () => ({
+                data: Array.from({ length: 21 }, (_, index) => thread({
+                    id: `desktop-${index + 1}`,
+                    recencyAt: 1_999_999_950 - index,
+                })),
+                nextCursor: null,
+            }),
+            readThreadOriginator: async () => 'Codex Desktop',
+        });
+
+        const candidates = await service.list({ existingThreadIds: [] });
+
+        expect(candidates).toHaveLength(21);
+        expect(candidates.at(-1)?.threadId).toBe('desktop-21');
+    });
+
     it('reads the Desktop originator from the first rollout record', async () => {
         const stateDir = await mkdtemp(join(tmpdir(), 'paws-codex-candidates-'));
         const rolloutPath = join(stateDir, 'rollout.jsonl');
@@ -59,12 +80,14 @@ describe('Codex attach candidates', () => {
         let closed = false;
         const response = listCodexThreadsFromStateDb({
             codexHome: '/tmp/codex-home',
+            now: () => 2_000_000_000_000,
             limit: 7,
             openDatabase: (path) => {
                 openedPath = path;
                 return {
                     prepare: () => ({
-                        all: (limit) => {
+                        all: (oldestAllowed, limit) => {
+                            expect(oldestAllowed).toBe(1_997_408_000);
                             expect(limit).toBe(7);
                             return [{
                                 id: 'desktop',
@@ -97,6 +120,51 @@ describe('Codex attach candidates', () => {
                 source: 'vscode',
             }),
         ]);
+    });
+
+    it('reads every matching indexed thread when no limit is requested', () => {
+        const recentRows = Array.from({ length: 101 }, (_, index) => ({
+            id: `desktop-${index + 1}`,
+            rolloutPath: `/tmp/desktop-${index + 1}.jsonl`,
+            cwd: '/Users/test/project',
+            name: `Desktop ${index + 1}`,
+            title: null,
+            preview: 'First user message',
+            createdAt: 1_999_999_900,
+            updatedAt: 1_999_999_950,
+            recencyAt: 1_999_999_960 - index,
+            source: 'vscode',
+            archived: 0,
+            parentThreadId: null,
+        }));
+        const rows = [
+            ...recentRows,
+            {
+                ...recentRows[0],
+                id: 'desktop-too-old',
+                rolloutPath: '/tmp/desktop-too-old.jsonl',
+                recencyAt: 1_997_407_999,
+            },
+        ];
+
+        const response = listCodexThreadsFromStateDb({
+            codexHome: '/tmp/codex-home',
+            now: () => 2_000_000_000_000,
+            openDatabase: () => ({
+                prepare: () => ({
+                    all: (oldestAllowed, limit) => {
+                        const eligible = typeof oldestAllowed === 'number'
+                            ? rows.filter((row) => row.recencyAt >= oldestAllowed)
+                            : rows;
+                        return typeof limit === 'number' ? eligible.slice(0, limit) : eligible;
+                    },
+                }),
+                close: () => undefined,
+            }),
+        });
+
+        expect(response.data).toHaveLength(101);
+        expect(response.data.at(-1)?.id).toBe('desktop-101');
     });
 
     it('persists dismissed and attached threads and also removes server-known mappings', async () => {

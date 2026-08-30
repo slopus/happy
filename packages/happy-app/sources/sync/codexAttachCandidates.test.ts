@@ -11,6 +11,7 @@ vi.mock('./sync', () => ({ sync: { refreshSessions } }));
 import {
     attachCodexCandidate,
     dismissCodexCandidate,
+    filterCodexAttachCandidates,
     listCodexAttachCandidates,
 } from './codexAttachCandidates';
 
@@ -44,5 +45,39 @@ describe('Codex attach candidate operations', () => {
         expect(machineRPC).toHaveBeenLastCalledWith('machine-1', 'codex-dismiss-attach-candidate', {
             threadId: 'thread-2',
         });
+    });
+
+    it('filters candidates by title, directory, or machine name without case sensitivity', () => {
+        const candidates = [
+            {
+                threadId: 'title-match',
+                title: 'Investigate Chrome freeze',
+                directory: '/Users/test/browser',
+                createdAt: 1,
+                updatedAt: 3,
+                machineId: 'machine-1',
+                machineName: 'Mac mini',
+            },
+            {
+                threadId: 'path-match',
+                title: 'Prepare release',
+                directory: '/Users/test/Photo Wall',
+                createdAt: 1,
+                updatedAt: 2,
+                machineId: 'machine-2',
+                machineName: 'MacBook Air',
+            },
+        ];
+
+        expect(filterCodexAttachCandidates(candidates, 'CHROME').map((candidate) => candidate.threadId)).toEqual([
+            'title-match',
+        ]);
+        expect(filterCodexAttachCandidates(candidates, 'photo wall').map((candidate) => candidate.threadId)).toEqual([
+            'path-match',
+        ]);
+        expect(filterCodexAttachCandidates(candidates, 'macbook').map((candidate) => candidate.threadId)).toEqual([
+            'path-match',
+        ]);
+        expect(filterCodexAttachCandidates(candidates, '   ')).toEqual(candidates);
     });
 });

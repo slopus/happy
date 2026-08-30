@@ -208,6 +208,8 @@ export const ja: TranslationStructure = {
         attachCandidate: '引き継ぐ',
         dismissCandidate: '無視',
         candidateUnavailable: 'この Codex セッションを処理できませんでした。コンピューターがオンラインか確認してください。',
+        searchCodexCandidatesPlaceholder: 'タイトル、プロジェクト、またはコンピュータを検索',
+        noCodexCandidatesFound: '一致する Codex セッションがありません。',
     },
 
     common: {

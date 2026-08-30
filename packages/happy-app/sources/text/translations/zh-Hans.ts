@@ -207,6 +207,8 @@ export const zhHans: TranslationStructure = {
         attachCandidate: '接管',
         dismissCandidate: '忽略',
         candidateUnavailable: '暂时无法处理这个 Codex 会话，请确认电脑在线后重试。',
+        searchCodexCandidatesPlaceholder: '搜索标题、项目路径或电脑',
+        noCodexCandidatesFound: '没有匹配的 Codex 会话。',
     },
 
     common: {

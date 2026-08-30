@@ -207,6 +207,8 @@ export const zhHant: TranslationStructure = {
         attachCandidate: '接管',
         dismissCandidate: '忽略',
         candidateUnavailable: '暫時無法處理這個 Codex 工作階段，請確認電腦在線後再試。',
+        searchCodexCandidatesPlaceholder: '搜尋標題、專案路徑或電腦',
+        noCodexCandidatesFound: '沒有符合的 Codex 工作階段。',
     },
 
     common: {

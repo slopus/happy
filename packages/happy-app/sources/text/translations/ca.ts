@@ -205,6 +205,8 @@ export const ca: TranslationStructure = {
         attachCandidate: 'Pren el control',
         dismissCandidate: 'Ignora',
         candidateUnavailable: 'No s’ha pogut processar la sessió de Codex. Comprova que l’ordinador estigui connectat.',
+        searchCodexCandidatesPlaceholder: 'Cerca per títol, projecte o ordinador',
+        noCodexCandidatesFound: 'No hi ha sessions Codex coincidents.',
     },
 
     common: {

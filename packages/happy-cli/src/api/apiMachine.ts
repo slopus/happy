@@ -139,7 +139,7 @@ export class ApiMachineClient {
     private reconnectInterval: NodeJS.Timeout | null = null;
     private readonly codexAttachCandidates = createCodexAttachCandidateService({
         statePath: join(configuration.happyHomeDir, 'codex-attach-candidates.json'),
-        listThreads: async () => listCodexThreadsFromStateDb({ limit: 100 }),
+        listThreads: async () => listCodexThreadsFromStateDb(),
     });
 
     constructor(

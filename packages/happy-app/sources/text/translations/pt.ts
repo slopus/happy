@@ -205,6 +205,8 @@ export const pt: TranslationStructure = {
         attachCandidate: 'Assumir controlo',
         dismissCandidate: 'Ignorar',
         candidateUnavailable: 'Não foi possível processar a sessão do Codex. Confirme que o computador está online.',
+        searchCodexCandidatesPlaceholder: 'Pesquisar por título, projeto ou computador',
+        noCodexCandidatesFound: 'Nenhuma sessão Codex correspondente.',
     },
 
     common: {

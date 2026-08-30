@@ -12,7 +12,6 @@ import type { ListedThread, ThreadListResponse } from './codexAppServerTypes';
 import { resolveCodexHome } from './codexHome';
 
 const DEFAULT_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
-const DEFAULT_LIMIT = 20;
 
 export type CodexAttachCandidate = {
     threadId: string;
@@ -88,12 +87,18 @@ function optionalNumber(value: unknown): number | undefined {
 export function listCodexThreadsFromStateDb(options: {
     codexHome?: string;
     limit?: number;
+    now?: () => number;
+    maxAgeMs?: number;
     openDatabase?: OpenReadonlyDatabase;
 } = {}): ThreadListResponse {
     const database = (options.openDatabase ?? openReadonlyDatabase)(
         join(options.codexHome ?? resolveCodexHome(), 'state_5.sqlite'),
     );
     try {
+        const limit = options.limit;
+        const oldestAllowedSeconds = Math.floor(
+            ((options.now ?? Date.now)() - (options.maxAgeMs ?? DEFAULT_MAX_AGE_MS)) / 1000,
+        );
         const rows = database.prepare(`
             SELECT
                 threads.id AS id,
@@ -111,10 +116,14 @@ export function listCodexThreadsFromStateDb(options: {
             FROM threads
             LEFT JOIN thread_spawn_edges
                 ON thread_spawn_edges.child_thread_id = threads.id
-            WHERE threads.source = 'vscode' AND threads.archived = 0
+            WHERE threads.source = 'vscode'
+                AND threads.archived = 0
+                AND threads.recency_at >= ?
             ORDER BY threads.recency_at DESC, threads.id DESC
-            LIMIT ?
-        `).all(options.limit ?? 100) as CodexStateThreadRow[];
+            ${limit === undefined ? '' : 'LIMIT ?'}
+        `).all(...(limit === undefined
+            ? [oldestAllowedSeconds]
+            : [oldestAllowedSeconds, limit])) as CodexStateThreadRow[];
 
         return {
             data: rows.flatMap((row): ListedThread[] => {
@@ -226,7 +235,7 @@ async function saveState(statePath: string, state: CandidateState): Promise<void
 export function createCodexAttachCandidateService(options: CandidateServiceOptions) {
     const now = options.now ?? Date.now;
     const maxAgeMs = options.maxAgeMs ?? DEFAULT_MAX_AGE_MS;
-    const limit = options.limit ?? DEFAULT_LIMIT;
+    const limit = options.limit;
     const readThreadOriginator = options.readThreadOriginator ?? readCodexThreadOriginator;
     let stateWriteQueue = Promise.resolve();
 
@@ -256,14 +265,14 @@ export function createCodexAttachCandidateService(options: CandidateServiceOptio
                 return await readThreadOriginator(thread.path) === 'Codex Desktop' ? candidate : null;
             }));
 
-            return candidates
+            const eligible = candidates
                 .filter((candidate): candidate is CodexAttachCandidate => Boolean(
                     candidate
                     && !excluded.has(candidate.threadId)
                     && candidate.updatedAt >= oldestAllowed,
                 ))
-                .sort((a, b) => b.updatedAt - a.updatedAt)
-                .slice(0, limit);
+                .sort((a, b) => b.updatedAt - a.updatedAt);
+            return limit === undefined ? eligible : eligible.slice(0, limit);
         },
         dismiss(threadId: string): Promise<void> {
             return updateState('dismissed', threadId);

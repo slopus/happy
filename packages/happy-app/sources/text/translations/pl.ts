@@ -216,6 +216,8 @@ export const pl: TranslationStructure = {
         attachCandidate: 'Przejmij',
         dismissCandidate: 'Ignoruj',
         candidateUnavailable: 'Nie udało się obsłużyć sesji Codex. Sprawdź, czy komputer jest online.',
+        searchCodexCandidatesPlaceholder: 'Szukaj według tytułu, projektu lub komputera',
+        noCodexCandidatesFound: 'Brak pasujących sesji Codex.',
     },
 
     common: {

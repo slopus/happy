@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { View, Text, ScrollView, Pressable, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, Pressable, ActivityIndicator, TextInput } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useAcceptedFriends, useFriendRequests, useRequestedFriends, useFeedItems, useFeedLoaded, useFriendsLoaded, useRealtimeStatus } from '@/sync/storage';
 import { UserCard } from '@/components/UserCard';
@@ -20,6 +20,7 @@ import { useCodexAttachCandidateInbox } from '@/hooks/useCodexAttachCandidateInb
 import type { MachineCodexAttachCandidate } from '@/sync/codexAttachCandidates';
 import { formatLastSeen } from '@/utils/sessionUtils';
 import { Modal } from '@/modal';
+import { filterCodexAttachCandidates } from '@/sync/filterCodexAttachCandidates';
 
 const styles = StyleSheet.create((theme) => ({
     container: {
@@ -64,6 +65,33 @@ const styles = StyleSheet.create((theme) => ({
         lineHeight: 18,
         paddingHorizontal: 16,
         paddingBottom: 10,
+        ...Typography.default(),
+    },
+    candidateSearch: {
+        alignItems: 'center',
+        backgroundColor: theme.colors.surfaceHigh,
+        borderRadius: 10,
+        flexDirection: 'row',
+        gap: 8,
+        marginBottom: 12,
+        marginHorizontal: 16,
+        minHeight: 44,
+        paddingHorizontal: 12,
+    },
+    candidateSearchInput: {
+        color: theme.colors.text,
+        flex: 1,
+        fontSize: 14,
+        paddingVertical: 10,
+        ...Typography.default(),
+    },
+    candidateSearchEmpty: {
+        color: theme.colors.textSecondary,
+        fontSize: 13,
+        lineHeight: 18,
+        paddingBottom: 18,
+        paddingHorizontal: 16,
+        textAlign: 'center',
         ...Typography.default(),
     },
     candidateCard: {
@@ -183,6 +211,11 @@ export const InboxView = React.memo(({}: InboxViewProps) => {
     const isTablet = useIsTablet();
     const realtimeStatus = useRealtimeStatus();
     const candidateInbox = useCodexAttachCandidateInbox();
+    const [candidateQuery, setCandidateQuery] = React.useState('');
+    const filteredCandidates = React.useMemo(
+        () => filterCodexAttachCandidates(candidateInbox.candidates, candidateQuery),
+        [candidateInbox.candidates, candidateQuery],
+    );
 
     const isLoading = !feedLoaded || !friendsLoaded || candidateInbox.loading;
     const isEmpty = !isLoading
@@ -293,10 +326,29 @@ export const InboxView = React.memo(({}: InboxViewProps) => {
                 {(candidateInbox.candidates.length > 0 || candidateInbox.error) && (
                     <ItemGroup title={t('inbox.codexCandidates')}>
                         <Text style={styles.candidateIntro}>{t('inbox.codexCandidateDescription')}</Text>
+                        {candidateInbox.candidates.length > 0 ? (
+                            <View style={styles.candidateSearch}>
+                                <Ionicons name="search-outline" size={18} color={theme.colors.textSecondary} />
+                                <TextInput
+                                    accessibilityLabel={t('inbox.searchCodexCandidatesPlaceholder')}
+                                    autoCapitalize="none"
+                                    autoCorrect={false}
+                                    clearButtonMode="while-editing"
+                                    onChangeText={setCandidateQuery}
+                                    placeholder={t('inbox.searchCodexCandidatesPlaceholder')}
+                                    placeholderTextColor={theme.colors.input.placeholder}
+                                    style={styles.candidateSearchInput}
+                                    value={candidateQuery}
+                                />
+                            </View>
+                        ) : null}
                         {candidateInbox.error ? (
                             <Text style={styles.candidateError}>{t('inbox.candidateUnavailable')}</Text>
                         ) : null}
-                        {candidateInbox.candidates.map((candidate) => {
+                        {!candidateInbox.error && candidateQuery.trim() && filteredCandidates.length === 0 ? (
+                            <Text style={styles.candidateSearchEmpty}>{t('inbox.noCodexCandidatesFound')}</Text>
+                        ) : null}
+                        {filteredCandidates.map((candidate) => {
                             const busy = candidateInbox.busyThreadId === candidate.threadId;
                             return (
                                 <View key={`${candidate.machineId}:${candidate.threadId}`} style={styles.candidateCard}>

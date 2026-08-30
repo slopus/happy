@@ -14,6 +14,8 @@ export type MachineCodexAttachCandidate = CodexAttachCandidate & {
     machineName: string;
 };
 
+export { filterCodexAttachCandidates } from './filterCodexAttachCandidates';
+
 export async function listCodexAttachCandidates(
     machineId: string,
     existingThreadIds: string[],

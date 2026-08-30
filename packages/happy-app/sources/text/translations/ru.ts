@@ -216,6 +216,8 @@ export const ru: TranslationStructure = {
         attachCandidate: 'Подключить',
         dismissCandidate: 'Игнорировать',
         candidateUnavailable: 'Не удалось обработать сеанс Codex. Убедитесь, что компьютер подключён к сети.',
+        searchCodexCandidatesPlaceholder: 'Поиск по названию, проекту или компьютеру',
+        noCodexCandidatesFound: 'Подходящие сеансы Codex не найдены.',
     },
 
     common: {
