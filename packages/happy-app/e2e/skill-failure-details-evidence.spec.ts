@@ -6,7 +6,7 @@ const authenticatedWebUrl = process.env.HAPPY_E2E_WEB_URL!;
 const evidenceDirectory = process.env.HAPPY_SKILL_FAILURE_EVIDENCE_DIR;
 
 function evidencePath(testInfo: TestInfo, state: 'collapsed' | 'expanded'): string {
-    const filename = `skill-failure-${state}.png`;
+    const filename = `after-${state}.png`;
     if (!evidenceDirectory) {
         return testInfo.outputPath(filename);
     }
@@ -42,12 +42,12 @@ test('[SKILL-FAILURE-DETAILS] failure summary is visible and diagnostic detail e
     await page.setViewportSize({ width: 1280, height: 720 });
     await page.goto(url.toString());
 
-    const failedSkill = page.getByRole('button', { name: '查看技能失败详情：gpt-image-2' });
-    await expect(failedSkill).toBeVisible({ timeout: 45_000 });
-    await expect(failedSkill).toHaveAttribute('aria-expanded', 'false');
-    await expect(failedSkill).toContainText('失败');
-    await expect(failedSkill).toContainText('Skill file was not found.');
-    await expect(failedSkill).not.toContainText('No such file or directory');
+    const collapsedSkill = page.getByRole('button', { name: '查看技能失败详情：gpt-image-2' });
+    await expect(collapsedSkill).toBeVisible({ timeout: 45_000 });
+    await expect(collapsedSkill).toHaveAttribute('aria-expanded', 'false');
+    await expect(collapsedSkill).toContainText('失败');
+    await expect(collapsedSkill).toContainText('Skill file was not found.');
+    await expect(collapsedSkill).not.toContainText('No such file or directory');
     const implementationAgent = page.getByText('Implementation agent', { exact: true });
     await expect(implementationAgent).toBeVisible();
     expect(await implementationAgent.evaluate((element) => getComputedStyle(element.parentElement!).flexDirection)).toBe('row');
@@ -55,9 +55,10 @@ test('[SKILL-FAILURE-DETAILS] failure summary is visible and diagnostic detail e
     await page.screenshot({ path: evidencePath(testInfo, 'collapsed') });
     await paceRecordedReview(page);
 
-    await failedSkill.click();
-    await expect(failedSkill).toHaveAttribute('aria-expanded', 'true');
-    await expect(failedSkill).toContainText('sed: /plugins/gpt-image-2/SKILL.md: No such file or directory');
+    await collapsedSkill.click();
+    const expandedSkill = page.getByRole('button', { name: '收起技能失败详情：gpt-image-2' });
+    await expect(expandedSkill).toHaveAttribute('aria-expanded', 'true');
+    await expect(expandedSkill).toContainText('sed: /plugins/gpt-image-2/SKILL.md: No such file or directory');
     await page.screenshot({ path: evidencePath(testInfo, 'expanded') });
     await paceRecordedReview(page, 1_200);
 
