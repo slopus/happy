@@ -608,6 +608,7 @@ describe('mapCodexThreadToSessionEnvelopes', () => {
             message: userRequest,
             mode: { model: 'gpt-5.6-terra', effort: 'high' },
             includeAppendSystemPrompt: false,
+            includeBrowserStepInstruction: true,
             includeTitleInstruction: false,
         });
         const envelopes = mapCodexThreadToSessionEnvelopes({

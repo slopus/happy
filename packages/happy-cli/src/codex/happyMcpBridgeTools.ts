@@ -10,6 +10,8 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 
+import { BROWSER_STEP_TOOL_DESCRIPTION } from '@/browser/browserStepReportingPrompt';
+
 export const HAPPY_MCP_BRIDGE_TOOL_NAMES = ['change_title', 'send_image', 'send_file', 'report_browser_step', 'archive_session', 'finance_chart'] as const;
 
 type HappyMcpBridgeToolName = typeof HAPPY_MCP_BRIDGE_TOOL_NAMES[number];
@@ -101,7 +103,7 @@ export function registerHappyBridgeTools(
   server.registerTool(
     'report_browser_step',
     {
-      description: 'Report a browser automation step with a screenshot. The frame is shown in the dedicated browser-steps panel, not as a normal chat image. Provide an absolute PNG/JPEG path and a short completed-step label.',
+      description: BROWSER_STEP_TOOL_DESCRIPTION,
       title: 'Report Browser Step',
       inputSchema: {
         path: z.string().describe('Absolute path to the browser screenshot (PNG/JPEG)'),

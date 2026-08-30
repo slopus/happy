@@ -17,6 +17,7 @@ import { logger } from "@/ui/logger";
 import { ApiSessionClient } from "@/api/apiSession";
 import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
+import { BROWSER_STEP_TOOL_DESCRIPTION } from "@/browser/browserStepReportingPrompt";
 import { configuration } from "@/configuration";
 import { captureScreenshot, type ScreenshotTarget } from "@/utils/screenshot";
 import { type ScreenshotStore, type ScreenshotRef } from "@/utils/screenshotStore";
@@ -192,7 +193,7 @@ function createMcpServer(handlers: HappyMcpHandlers, screenshotTools: ReturnType
     });
 
     mcp.registerTool('report_browser_step', {
-        description: 'Report one completed browser automation operation with a screenshot. The frame appears in the dedicated browser-steps panel and does not render as a normal chat image.',
+        description: BROWSER_STEP_TOOL_DESCRIPTION,
         title: 'Report Browser Step',
         inputSchema: {
             path: z.string().describe('Absolute path to the browser screenshot (PNG/JPEG)'),
