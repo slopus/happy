@@ -52,6 +52,7 @@ describe('pluginRoutes', () => {
         const install = vi.fn(async () => ({
             installed: true as const,
             version: '1.0.0',
+            grantedPermissions: ['paws.conversations.images.read' as const],
             configuration: {},
             secretHints: {},
         }));
@@ -67,12 +68,18 @@ describe('pluginRoutes', () => {
             method: 'PUT',
             url: '/v1/plugins/generated-images-gallery',
             headers: { 'x-user-id': 'user-2' },
-            payload: { version: '1.0.0', configuration: {} },
+            payload: {
+                version: '1.0.0',
+                grantedPermissions: ['paws.conversations.images.read'],
+                configuration: {},
+            },
         });
 
         expect(response.statusCode).toBe(200);
         expect(install).toHaveBeenCalledWith('user-2', 'generated-images-gallery', {
-            version: '1.0.0', configuration: {},
+            version: '1.0.0',
+            grantedPermissions: ['paws.conversations.images.read'],
+            configuration: {},
         });
     });
 
@@ -93,7 +100,7 @@ describe('pluginRoutes', () => {
             method: 'PUT',
             url: '/v1/plugins/relationship-advisor',
             headers: { 'x-user-id': 'user-3' },
-            payload: { version: '0.9.0', configuration: {} },
+            payload: { version: '0.9.0', grantedPermissions: [], configuration: {} },
         });
 
         expect(response.statusCode).toBe(409);
@@ -116,6 +123,7 @@ describe('pluginRoutes', () => {
             headers: { 'x-user-id': 'user-4' },
             payload: {
                 version: '1.1.1',
+                grantedPermissions: ['paws.ai.provider.invoke', 'paws.secrets.use'],
                 configuration: {
                     apiKey: 'secret',
                     baseUrl: 'https://api.example.com/v1',
@@ -128,6 +136,7 @@ describe('pluginRoutes', () => {
         expect(response.json()).toEqual({ success: true, latencyMs: 18 });
         expect(testConnection).toHaveBeenCalledWith('user-4', 'relationship-advisor', {
             version: '1.1.1',
+            grantedPermissions: ['paws.ai.provider.invoke', 'paws.secrets.use'],
             configuration: {
                 apiKey: 'secret',
                 baseUrl: 'https://api.example.com/v1',

@@ -31,7 +31,12 @@ function errorStatus(error: unknown): 400 | 404 | 409 | 500 {
     const code = (error as { code?: unknown })?.code;
     if (code === 'plugin_not_found') return 404;
     if (code === 'version_mismatch') return 409;
-    if (code === 'invalid_configuration' || code === 'plugin_not_installed' || code === 'connection_test_unsupported') return 400;
+    if (
+        code === 'invalid_configuration'
+        || code === 'invalid_permission_grant'
+        || code === 'plugin_not_installed'
+        || code === 'connection_test_unsupported'
+    ) return 400;
     return 500;
 }
 

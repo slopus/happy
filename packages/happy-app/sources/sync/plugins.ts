@@ -9,6 +9,7 @@ import type {
     PluginCatalogResponse,
     PluginConnectionTestResult,
     PluginInstallationStatus,
+    PluginPermission,
 } from '@slopus/happy-wire';
 
 import { apiSocket } from './apiSocket';
@@ -36,12 +37,13 @@ export async function installPlugin(
     pluginId: string,
     version: string,
     configuration: Record<string, string>,
+    grantedPermissions: PluginPermission[],
 ): Promise<PluginInstallationStatus> {
     return readResponse(
         await apiSocket.request(`/v1/plugins/${encodeURIComponent(pluginId)}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ version, configuration }),
+            body: JSON.stringify({ version, grantedPermissions, configuration }),
         }),
         (value) => PluginInstallationStatusSchema.parse(value),
     );
@@ -58,12 +60,13 @@ export async function testPluginConnection(
     pluginId: string,
     version: string,
     configuration: Record<string, string>,
+    grantedPermissions: PluginPermission[],
 ): Promise<PluginConnectionTestResult> {
     return readResponse(
         await apiSocket.request(`/v1/plugins/${encodeURIComponent(pluginId)}/test-connection`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ version, configuration }),
+            body: JSON.stringify({ version, grantedPermissions, configuration }),
         }),
         (value) => PluginConnectionTestResultSchema.parse(value),
     );

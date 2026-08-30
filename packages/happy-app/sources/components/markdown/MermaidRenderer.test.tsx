@@ -61,7 +61,7 @@ vi.mock('@panzoom/panzoom', () => ({
     })),
 }));
 
-import { MermaidRenderer } from './MermaidRenderer';
+import { initializeWebDiagramPanzoom, MermaidRenderer } from './MermaidRenderer';
 
 describe('MermaidRenderer', () => {
     const originalConsoleError = console.error;
@@ -121,7 +121,9 @@ describe('MermaidRenderer', () => {
     it('uses the themed pressed surface while a toolbar button is hovered', async () => {
         await act(async () => {
             renderer = TestRenderer.create(<MermaidRenderer content="flowchart LR\nA --> B" />, {
-                createNodeMock: (element: { type: string }) => element.type === 'div' ? {} : {},
+                createNodeMock: (element: { type: string }) => element.type === 'div'
+                    ? { querySelector: () => null }
+                    : {},
             });
         });
 
@@ -132,7 +134,7 @@ describe('MermaidRenderer', () => {
         expect(button.props.style({ pressed: false })).toContainEqual({ backgroundColor: '#303a45' });
     });
 
-    it('allows default-scale mouse panning without stealing ordinary page scroll', async () => {
+    it('allows default-scale mouse panning without stealing ordinary page scroll', () => {
         let wheelHandler: ((event: WheelEvent) => void) | undefined;
         const viewport = {
             addEventListener: vi.fn((type: string, handler: (event: WheelEvent) => void) => {
@@ -140,24 +142,28 @@ describe('MermaidRenderer', () => {
             }),
             removeEventListener: vi.fn(),
         };
-        const svg = {
-            setAttribute: vi.fn(),
-            style: {},
-        };
         const scene = {
             parentElement: viewport,
-            querySelector: vi.fn(() => svg),
         };
+        const createPanzoom = vi.fn(() => ({
+            destroy: mocks.destroy,
+            zoomWithWheel: mocks.zoomWithWheel,
+        }));
 
-        await act(async () => {
-            renderer = TestRenderer.create(<MermaidRenderer content="flowchart LR\nA --> B" />, {
-                createNodeMock: (element: { type: string }) => element.type === 'div' ? scene : {},
-            });
-        });
+        const controller = initializeWebDiagramPanzoom(
+            scene as unknown as HTMLElement,
+            createPanzoom as unknown as Parameters<typeof initializeWebDiagramPanzoom>[1],
+        );
 
-        await vi.waitFor(() => {
-            expect(mocks.panzoom).toHaveBeenCalledWith(scene, expect.not.objectContaining({ contain: expect.anything() }));
-        });
+        expect(createPanzoom).toHaveBeenCalledWith(
+            scene,
+            {
+                canvas: true,
+                maxScale: 5,
+                minScale: 0.5,
+                step: 0.25,
+            },
+        );
         expect(wheelHandler).toBeDefined();
 
         const ordinaryWheel = { ctrlKey: false, metaKey: false } as WheelEvent;
@@ -167,5 +173,9 @@ describe('MermaidRenderer', () => {
         const modifiedWheel = { ctrlKey: true, metaKey: false } as WheelEvent;
         wheelHandler!(modifiedWheel);
         expect(mocks.zoomWithWheel).toHaveBeenCalledWith(modifiedWheel);
+
+        controller.dispose();
+        expect(viewport.removeEventListener).toHaveBeenCalledWith('wheel', wheelHandler);
+        expect(mocks.destroy).toHaveBeenCalledOnce();
     });
 });

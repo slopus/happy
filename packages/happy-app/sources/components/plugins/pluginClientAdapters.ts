@@ -5,6 +5,8 @@ import type {
     PluginViewSurface,
 } from '@slopus/happy-wire';
 
+import { isCurrentPluginInstallation } from './pluginInstallation';
+
 export type PluginClientComponentId =
     | 'relationship-advisor-history'
     | 'plugin-configuration'
@@ -73,10 +75,6 @@ const bundledPluginAdapters: readonly PluginClientAdapterRegistration[] = [{
     },
 }];
 
-function isCurrentInstallation(plugin: PluginCatalogItem): boolean {
-    return plugin.status.installed && plugin.status.version === plugin.manifest.version;
-}
-
 export function createPluginClientHost(initialAdapters: readonly PluginClientAdapterRegistration[] = []) {
     const adapters = new Map<string, Readonly<Record<string, PluginClientViewAdapter>>>();
 
@@ -102,7 +100,7 @@ export function createPluginClientHost(initialAdapters: readonly PluginClientAda
         viewId: string,
         surface: PluginViewSurface,
     ): ResolvedPluginClientView | null {
-        if (!isCurrentInstallation(plugin)) return null;
+        if (!isCurrentPluginInstallation(plugin)) return null;
         return resolveDeclaredView(plugin, viewId, surface);
     }
 
@@ -119,6 +117,13 @@ export function createPluginClientHost(initialAdapters: readonly PluginClientAda
         if (!adapter || adapter.surface !== surface) return null;
         if (adapter.requiredPermissions?.some((permission) => !plugin.manifest.permissions.includes(permission))) {
             return null;
+        }
+        if (adapter.requiredPermissions) {
+            if (!plugin.status.installed) return null;
+            const grantedPermissions = plugin.status.grantedPermissions;
+            if (adapter.requiredPermissions.some((permission) => !grantedPermissions.includes(permission))) {
+                return null;
+            }
         }
         return {
             pluginId: plugin.manifest.id,

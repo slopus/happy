@@ -48,7 +48,13 @@ function galleryItem(permissions: string[]) {
             },
             configuration: { fields: [] },
         },
-        status: { installed: true, version: '1.1.1', configuration: {}, secretHints: {} },
+        status: {
+            installed: true,
+            version: '1.1.1',
+            grantedPermissions: [...permissions],
+            configuration: {},
+            secretHints: {},
+        },
     };
 }
 

@@ -25,6 +25,15 @@ export const PluginPermissionSchema = z.enum([
   'paws.storage.images.write',
 ]);
 
+export const PluginPermissionListSchema = z.array(PluginPermissionSchema).max(20).superRefine((permissions, context) => {
+  if (new Set(permissions).size !== permissions.length) {
+    context.addIssue({
+      code: 'custom',
+      message: 'Plugin permissions must be unique',
+    });
+  }
+});
+
 export const PluginViewSurfaceSchema = z.enum(['page', 'left-sidebar', 'right-panel', 'modal']);
 
 export const PluginViewContributionSchema = z.object({
@@ -44,7 +53,7 @@ export const PluginManifestSchema = z.object({
   icon: z.string().regex(/^[A-Za-z0-9-]+$/).max(100),
   featured: z.boolean(),
   installedAction: z.enum(['configure', 'open']),
-  permissions: z.array(PluginPermissionSchema).max(20),
+  permissions: PluginPermissionListSchema,
   entrypoint: z.discriminatedUnion('type', [
     z.object({
       type: z.literal('view'),
@@ -97,6 +106,7 @@ export const PluginInstallationStatusSchema = z.discriminatedUnion('installed', 
   z.object({
     installed: z.literal(true),
     version: PluginVersionSchema,
+    grantedPermissions: PluginPermissionListSchema,
     configuration: z.record(PluginFieldKeySchema, z.string().max(2_000)),
     secretHints: z.record(PluginFieldKeySchema, z.string().max(100)),
   }).strict(),
@@ -113,6 +123,7 @@ export const PluginCatalogResponseSchema = z.object({
 
 export const PluginInstallRequestSchema = z.object({
   version: PluginVersionSchema,
+  grantedPermissions: PluginPermissionListSchema,
   configuration: z.record(PluginFieldKeySchema, z.string().max(4_000)),
 }).strict();
 

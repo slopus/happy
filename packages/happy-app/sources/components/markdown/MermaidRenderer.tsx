@@ -1,5 +1,5 @@
 import { Feather } from '@expo/vector-icons';
-import type { PanzoomObject } from '@panzoom/panzoom';
+import type { PanzoomGlobalOptions, PanzoomObject } from '@panzoom/panzoom';
 import * as React from 'react';
 import { Modal, Platform, Pressable, Text, View } from 'react-native';
 import { WebView } from 'react-native-webview';
@@ -23,6 +23,38 @@ type DiagramCanvasProps = {
     content: string;
     fullscreen?: boolean;
 };
+
+type PanzoomFactory = (
+    element: HTMLElement | SVGElement,
+    options: PanzoomGlobalOptions,
+) => PanzoomObject;
+
+export function initializeWebDiagramPanzoom(
+    host: HTMLElement,
+    createPanzoom: PanzoomFactory,
+): { dispose: () => void; panzoom: PanzoomObject } {
+    const panzoom = createPanzoom(host, {
+        canvas: true,
+        maxScale: 5,
+        minScale: 0.5,
+        step: 0.25,
+    });
+    const wheelTarget = host.parentElement;
+    const wheelHandler = (event: WheelEvent) => {
+        if (!event.ctrlKey && !event.metaKey) return;
+        panzoom.zoomWithWheel(event);
+    };
+
+    wheelTarget?.addEventListener('wheel', wheelHandler, { passive: false });
+
+    return {
+        panzoom,
+        dispose: () => {
+            wheelTarget?.removeEventListener('wheel', wheelHandler);
+            panzoom.destroy();
+        },
+    };
+}
 
 let nextDiagramId = 0;
 
@@ -92,35 +124,18 @@ const WebDiagramCanvas = React.forwardRef<DiagramCanvasHandle, DiagramCanvasProp
         svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
 
         let disposed = false;
-        let wheelTarget: HTMLElement | SVGElement | null = null;
-        let wheelHandler: ((event: WheelEvent) => void) | null = null;
+        let disposePanzoom: (() => void) | null = null;
 
         void import('@panzoom/panzoom').then((module) => {
             if (disposed) return;
-            const Panzoom = module.default;
-            const panzoom = Panzoom(host, {
-                canvas: true,
-                maxScale: 5,
-                minScale: 0.5,
-                step: 0.25,
-            });
+            const { dispose, panzoom } = initializeWebDiagramPanzoom(host, module.default);
             panzoomRef.current = panzoom;
-            wheelTarget = host.parentElement;
-            wheelHandler = panzoom.zoomWithWheel
-                ? (event) => {
-                    if (!event.ctrlKey && !event.metaKey) return;
-                    panzoom.zoomWithWheel?.(event);
-                }
-                : null;
-            if (wheelTarget && wheelHandler) {
-                wheelTarget.addEventListener('wheel', wheelHandler as EventListener, { passive: false });
-            }
+            disposePanzoom = dispose;
         });
 
         return () => {
             disposed = true;
-            if (wheelTarget && wheelHandler) wheelTarget.removeEventListener('wheel', wheelHandler as EventListener);
-            panzoomRef.current?.destroy();
+            disposePanzoom?.();
             panzoomRef.current = null;
         };
     }, [props.fullscreen, svgContent]);

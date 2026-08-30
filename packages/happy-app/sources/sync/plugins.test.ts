@@ -20,7 +20,7 @@ const manifest = {
     icon: 'apps-outline',
     featured: true,
     installedAction: 'open',
-    permissions: [],
+    permissions: ['paws.secrets.use'],
     entrypoint: { type: 'view', viewId: 'sample-plugin.page' },
     contributes: {
         views: [{ id: 'sample-plugin.page', surface: 'page', title: { default: 'Sample' } }],
@@ -45,17 +45,25 @@ describe('dynamic plugin client', () => {
     it('pins the manifest version when installing and supports generic uninstall', async () => {
         request
             .mockResolvedValueOnce(new Response(JSON.stringify({
-                installed: true, version: '2.1.0', configuration: {}, secretHints: {},
+                installed: true,
+                version: '2.1.0',
+                grantedPermissions: ['paws.secrets.use'],
+                configuration: {},
+                secretHints: {},
             }), { status: 200 }))
             .mockResolvedValueOnce(new Response(JSON.stringify({ installed: false }), { status: 200 }));
 
-        await installPlugin('sample-plugin', '2.1.0', { token: 'secret' });
+        await installPlugin('sample-plugin', '2.1.0', { token: 'secret' }, ['paws.secrets.use']);
         await uninstallPlugin('sample-plugin');
 
         expect(request).toHaveBeenNthCalledWith(1, '/v1/plugins/sample-plugin', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ version: '2.1.0', configuration: { token: 'secret' } }),
+            body: JSON.stringify({
+                version: '2.1.0',
+                grantedPermissions: ['paws.secrets.use'],
+                configuration: { token: 'secret' },
+            }),
         });
         expect(request).toHaveBeenNthCalledWith(2, '/v1/plugins/sample-plugin', { method: 'DELETE' });
     });
@@ -65,12 +73,16 @@ describe('dynamic plugin client', () => {
 
         await expect(testPluginConnection('sample-plugin', '2.1.0', {
             token: 'secret',
-        })).resolves.toEqual({ success: true, latencyMs: 27 });
+        }, ['paws.secrets.use'])).resolves.toEqual({ success: true, latencyMs: 27 });
 
         expect(request).toHaveBeenCalledWith('/v1/plugins/sample-plugin/test-connection', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ version: '2.1.0', configuration: { token: 'secret' } }),
+            body: JSON.stringify({
+                version: '2.1.0',
+                grantedPermissions: ['paws.secrets.use'],
+                configuration: { token: 'secret' },
+            }),
         });
     });
 });

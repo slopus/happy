@@ -1,6 +1,6 @@
 # Paws 动态插件开发规范
 
-本文是 Paws 当前动态插件系统的开发约定，适用于插件清单、安装状态、服务端配置、客户端入口和运行时能力。协议的机器可读定义仍以 [`packages/happy-wire/src/plugins.ts`](../packages/happy-wire/src/plugins.ts) 为准；第一方插件包的源码位于公开的 [`wangjs-jacky/paws-plugins`](https://github.com/wangjs-jacky/paws-plugins) Monorepo。
+本文是 Paws 当前动态插件系统的开发约定，适用于插件清单、安装状态、服务端配置、客户端入口和运行时能力。先阅读 [`plugin-system-overview.md`](plugin-system-overview.md) 了解当前系统真正动态的部分、两个仓库的职责和现状审阅。协议的机器可读定义仍以 [`packages/happy-wire/src/plugins.ts`](../packages/happy-wire/src/plugins.ts) 为准；第一方插件包的源码位于公开的 [`wangjs-jacky/paws-plugins`](https://github.com/wangjs-jacky/paws-plugins) Monorepo。
 
 ## 1. 系统定位与安全边界
 
@@ -10,8 +10,8 @@
 - App 根据清单动态生成市场列表、配置表单、安装、更新和卸载界面；
 - 插件的可复用 Implementation 来自固定 commit 的 `@paws/plugins` Git 依赖；客户端页面以及数据库、Socket 和文件存储 Adapter 必须随受信任的 Paws 代码发布；
 - “安装”只启用一个已随 Paws 发布的能力并保存其配置，不下载 npm 包，也不执行清单中的脚本；
-- 已安装且版本匹配时，Plugin Host 才把页面、左栏、右栏和弹窗贡献解析到受信任 Adapter；卸载或版本过期会立即撤销全部贡献；
-- 服务端 Capability Broker 在每次业务调用时同时检查安装状态、精确版本和 Manifest 权限。
+- 已安装且版本匹配时，Plugin Host 才把页面、左栏、右栏和弹窗贡献解析到受信任 Adapter；卸载或版本过期后的目录 refresh 会撤销全部贡献；
+- 服务端 Capability Broker 在每次业务调用时通过一个短生命周期 Runtime context，同时检查安装状态、精确版本、Manifest 权限声明和账号授权快照。
 
 插件清单不得包含 JavaScript、远程模块 URL、任意路由路径或可执行表达式。第三方签名包、沙箱执行和远程代码更新仍不属于 `schemaVersion: 2` 第一阶段的能力范围。身份、密钥保险库、Manifest 校验、Capability Broker、审计、导航骨架和平台适配属于不可插件化的 Paws Kernel。
 
@@ -36,8 +36,9 @@ flowchart LR
 | Wire contract | `packages/happy-wire/src/plugins.ts` | 清单、请求、响应的 Zod schema 和共享类型 | 业务校验、存储、页面跳转 |
 | Plugin packages | `paws-plugins/src/plugins/` | 第一方清单、配置白名单、归一化、脱敏和可复用业务逻辑 | Paws 数据库、Socket、Expo 页面 |
 | Plugin definitions Adapter | `packages/happy-server/sources/modules/plugins/pluginDefinitions.ts` | 校验外部清单并接入 Paws registry Interface | 重复定义插件清单或配置策略 |
-| Plugin registry | `packages/happy-server/sources/modules/plugins/pluginRegistry.ts` | 列表、安装、更新、卸载、版本门禁和运行时配置读取 | 某个插件的业务执行 |
-| Installation store | `packages/happy-server/sources/modules/plugins/pluginInstallationStore.ts` | 加密记录的读写、删除和兼容迁移 | 清单展示、业务调用 |
+| Plugin registry | `packages/happy-server/sources/modules/plugins/pluginRegistry.ts` | 列表、安装、更新、卸载、版本/权限门禁和单次 Runtime context | 某个插件的业务执行 |
+| Installation store | `packages/happy-server/sources/modules/plugins/pluginInstallationStore.ts` | 加密版本、账号授权与配置记录的读写、删除和兼容迁移 | 清单展示、业务调用 |
+| Account catalog owner | `packages/happy-app/sources/sync/pluginCatalogStore.ts` | 每个账号唯一的目录 snapshot、加载状态、刷新和订阅 | 在每个消费 Hook 中重复发请求 |
 | Generic API | `packages/happy-server/sources/app/api/routes/pluginRoutes.ts` | 认证、协议校验、错误到 HTTP 状态的映射 | 每个插件各自的安装接口 |
 | Marketplace UI | `packages/happy-app/sources/components/plugins/` | 动态列表、配置表单和生命周期操作 | 执行服务端下发的代码或路径 |
 | Client Plugin Host | `pluginClientAdapters.ts`、`usePluginSurfaceViews.ts` | 校验安装状态、声明贡献点和受信任 Adapter，并投影到页面/左栏/右栏/弹窗 | 接受清单提供的任意 URL、组件名或代码 |
@@ -59,7 +60,7 @@ flowchart LR
 | `icon` | 字母、数字或连字符 | 必须是当前 App 已支持的 Ionicons 名称，不得是远程图片 URL |
 | `featured` | boolean | 表示市场推荐属性；不要用它表达权限或安装状态 |
 | `installedAction` | `configure` 或 `open` | 安装后继续配置，或打开可信的内置能力 |
-| `permissions` | 已知权限枚举，最多 20 项 | 只声明真实需要的能力；服务端调用时再次校验 |
+| `permissions` | 已知且不重复的权限枚举，最多 20 项 | 只声明真实需要的能力；当前均为必需权限，安装/更新时保存完整账号授权快照，服务端调用时再次校验 |
 | `entrypoint.type` | `view` 或 `configuration` | 普通入口引用 `page`；纯配置插件入口引用 `modal`，两者都不是路由或代码 |
 | `entrypoint.viewId` | 稳定 contribution ID | 必须引用与入口类型匹配的本清单 View |
 | `contributes.views` | 最多 50 项且 ID 唯一 | ID 必须以 `<pluginId>.` 为命名空间；可声明 `page`、`left-sidebar`、`right-panel`、`modal` |
@@ -155,7 +156,7 @@ const exampleManifest: PluginManifestV2 = {
 'example-provider.page': { surface: 'page', path: '/example-provider' },
 ```
 
-同时实现对应 Expo Router 页面或 Slot Adapter。受信 Adapter 通过 `Plugin Client Host.register()` 挂载并获得幂等 `dispose()`，其 activation 结束时必须统一撤销。Host 必须同时确认：插件已安装、安装版本等于 Manifest、View 在清单中声明、surface 与本地 Adapter 一致；任一条件不满足都返回 `null`。不要把 `path`、React 组件名加入服务端清单，也不要对清单字符串调用动态 import、`eval` 或 URL 跳转。
+同时实现对应 Expo Router 页面或 Slot Adapter。受信 Adapter 通过 `Plugin Client Host.register()` 挂载并获得幂等 `dispose()`；当前第一方 Adapter 随 App 模块加载，其注册生命周期属于 Host 构建，不等同于账号安装状态。安装和卸载通过最新目录状态派生或撤销 View，而不是动态加载或卸载 Adapter 代码。Host 必须同时确认：插件已安装、安装版本等于 Manifest、保存的账号授权集合等于 Manifest、View 在清单中声明、surface 与本地 Adapter 一致，且 Adapter 要求的权限已声明并已授权；任一条件不满足都返回 `null`。不要把 `path`、React 组件名加入服务端清单，也不要对清单字符串调用动态 import、`eval` 或 URL 跳转。
 
 `modal` 表示插件贡献一个可由用户动作打开的对话框定义，不表示插件可以任意抢占焦点弹窗。主题、无障碍、排序、密度、同时可见数量及移动端降级均由 Host 决定。
 
@@ -163,15 +164,17 @@ const exampleManifest: PluginManifestV2 = {
 
 ### 5.3 接入服务端运行时
 
-需要服务端执行能力的插件必须先通过 registry 权限门禁，再读取配置：
+需要服务端执行能力的插件必须用一次 registry 调用打开完整能力上下文：
 
 ```ts
-await pluginRegistry.requirePermission(accountId, 'example-provider', 'paws.ai.provider.invoke');
-await pluginRegistry.requirePermission(accountId, 'example-provider', 'paws.secrets.use');
-const configuration = await pluginRegistry.requireConfiguration(accountId, 'example-provider');
+const configuration = await pluginRegistry.openRuntime(
+    accountId,
+    'example-provider',
+    ['paws.ai.provider.invoke', 'paws.secrets.use'],
+);
 ```
 
-再由插件自己的 Runtime Adapter 用更具体的 Zod schema 解析成业务类型。该 Adapter 提供 Locality：插件 ID、业务配置类型和外部服务调用保持在同一业务 Module 附近；加密和生命周期仍封装在 registry 后面。
+`openRuntime` 只读取和解密一次安装记录，在同一个 Interface 内检查安装、版本、声明、授权，并返回经过插件 normalization 的配置。门禁先要求安装记录的完整 grant 快照与当前 Manifest 完全一致，再检查调用方传入的 requirements；不能因为某个部分授权记录恰好包含本次所需权限就执行能力。再由插件自己的 Runtime Adapter 用更具体的 Zod schema 解析成业务类型。需要图片等附加能力时，应在打开上下文前一次性构造完整 requirements，不能先解析资源再补权限检查。该 Adapter 提供 Locality：插件 ID、业务配置类型和外部服务调用保持在同一业务 Module 附近；加密和生命周期仍封装在 registry 后面。
 
 运行时不得：
 
@@ -185,11 +188,11 @@ const configuration = await pluginRegistry.requireConfiguration(accountId, 'exam
 插件状态按以下规则转换：
 
 1. **未安装**：目录中可见，但没有账号安装记录；运行时返回 `plugin_not_installed`。
-2. **已安装且为当前版本**：可配置；`open` 插件可以进入可信页面；运行时可以读取配置。
-3. **已安装但版本过期**：市场显示更新；运行时返回 `version_mismatch`，直到用户以当前 manifest version 完成 `PUT`。
+2. **已安装、当前版本且授权完整**：可配置；`open` 插件可以进入可信页面；运行时可以读取配置。
+3. **需要重新审阅**：版本过期、Manifest 权限变化，或旧记录没有授权快照；市场显示更新，Client Host 撤销贡献，运行时 fail closed，直到用户以当前 version 和完整权限集合完成 `PUT`。
 4. **卸载**：`DELETE` 删除该账号的加密安装记录；重复卸载是幂等操作。
 
-客户端 Slot Registry 只从“已安装且为当前版本”的目录状态派生贡献，不额外持久化 UI 注册表。因此安装或更新后的 refresh 会挂载贡献，卸载或版本过期后的 refresh 会产生等价于 reversible effect 的统一撤销。
+客户端 Slot Registry 只从“已安装、为当前版本且 grant 快照完整”的目录状态派生贡献，不额外持久化 UI 注册表。因此安装或更新后的 refresh 会挂载贡献，卸载、版本过期或授权变化后的 refresh 会产生等价于 reversible effect 的统一撤销。账号切换会递增目录 generation，旧账号的在途响应不能覆盖新账号快照；Socket 重连也会重新获取目录，以收敛其他设备上的安装和卸载变化。
 
 通用 API：
 
@@ -200,7 +203,7 @@ const configuration = await pluginRegistry.requireConfiguration(accountId, 'exam
 | `PUT` | `/v1/plugins/:pluginId` | 安装、更新版本或更新配置 |
 | `DELETE` | `/v1/plugins/:pluginId` | 卸载并删除安装记录 |
 
-`PUT` 必须携带清单的精确 `version`。更新配置时，空的 secret 输入表示沿用现有密钥；初次安装时缺少必填 secret 仍会失败。客户端应在成功响应后重新获取目录状态，不能乐观伪造安装结果。
+`PUT` 必须携带清单的精确 `version` 和完整 `grantedPermissions`。当前权限全部是必需项，Registry 要求 grant 集合与当前 Manifest 完全一致；这为未来升级新增权限提供显式重新审阅门槛。更新配置时，空的 secret 输入表示沿用现有密钥；初次安装时缺少必填 secret 仍会失败。客户端应在成功响应后重新获取账号级目录状态，不能乐观伪造安装结果，也不能由每个消费 Hook 各自触发初始刷新。
 
 ## 7. 版本与兼容性
 
@@ -222,7 +225,7 @@ const configuration = await pluginRegistry.requireConfiguration(accountId, 'exam
 
 - 数据表：`ServiceAccountToken`；
 - vendor/storage key：`plugin:<pluginId>`；
-- 明文结构：`{ version, configuration }`；
+- 明文结构：`{ version, grantedPermissions, configuration }`；
 - 加密关联路径：`['user', accountId, 'plugins', pluginId, 'installation']`。
 
 整个安装文档在服务端应用层加密后入库。API 读取状态时只输出非敏感配置和 `secretHints`；卸载会删除对应记录。
@@ -236,8 +239,10 @@ const configuration = await pluginRegistry.requireConfiguration(accountId, 'exam
 | `plugin_not_found` | 404 | 服务端不存在该 plugin ID |
 | `version_mismatch` | 409；运行时门禁 | 请求或安装记录不是当前版本 |
 | `invalid_configuration` | 400 | 配置不满足插件白名单和业务 schema |
+| `invalid_permission_grant` | 400 | 安装/更新请求的授权集合不等于当前 Manifest 声明 |
 | `plugin_not_installed` | 运行时门禁 | 账号尚未安装；若暴露为 HTTP，目前映射为 400 |
 | `permission_not_declared` | Capability Broker | 插件调用了 Manifest 未声明的宿主能力 |
+| `permission_not_granted` | Capability Broker | 能力已声明，但账号安装记录没有授权；旧记录默认进入此安全状态 |
 | `internal_error` | 500 | 未分类服务端错误 |
 
 对外错误保持稳定、简短且不包含配置值。业务 Runtime 可以把 registry 错误转换为适合用户的提示，但不能把缺少插件静默降级成继续执行。
@@ -252,7 +257,7 @@ const configuration = await pluginRegistry.requireConfiguration(accountId, 'exam
 - storage：密文不含明文 secret、账号/插件隔离、删除、历史记录兼容（如涉及）；
 - API：认证、schema、200/400/404/409 响应；
 - App：动态表单、必填状态、安装/更新/卸载、各 surface Adapter 白名单、未知/错配贡献拒绝、卸载后贡献撤销；
-- runtime：只有已安装、为当前版本且声明相应 permission 时才执行业务能力。
+- runtime：只有已安装、为当前版本，且相应 permission 同时已声明和已授权时才执行业务能力；一次上下文只读取一遍安装记录。
 
 常用检查：
 
@@ -282,7 +287,7 @@ pnpm --filter happy-app exec vitest run \
 - [ ] 服务端使用 strict schema，并有长度、格式和 URL 安全校验；
 - [ ] API、日志、错误、测试快照中都没有 secret 明文；
 - [ ] `open` 插件只通过可信 Adapter 打开内置页面；
-- [ ] 服务端运行时通过 `requirePermission` 和 `requireConfiguration` 检查权限、安装和版本；
+- [ ] 服务端运行时通过一次 `openRuntime` 检查声明、授权、安装和版本，再使用返回的短生命周期配置；
 - [ ] 更新路径能安全读取旧记录，破坏性配置变更有迁移方案；
 - [ ] 卸载删除插件安装记录，并阻止后续运行时调用；
 - [ ] 聚焦测试、相关 package typecheck 和可视验收通过；

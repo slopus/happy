@@ -1,5 +1,5 @@
 import Constants from 'expo-constants';
-import type { PluginCatalogItem, PluginCatalogResponse } from '@slopus/happy-wire';
+import type { PluginCatalogResponse } from '@slopus/happy-wire';
 import { apiSocket, getCurrentAppState, getHappyClientId } from '@/sync/apiSocket';
 import { notifyUnreadMessage } from '@/sync/webTabTitle';
 import { AuthCredentials } from '@/auth/tokenStorage';
@@ -91,6 +91,7 @@ import { t } from '@/text';
 import type { SessionApplyOptions } from './sessionApply';
 import { deriveSessionFallbackTitle, ensureSessionFallbackTitle } from './sessionFallbackTitle';
 import { getPluginCatalog } from './plugins';
+import { PluginCatalogStore, type PluginCatalogSnapshot } from './pluginCatalogStore';
 
 type V3GetSessionMessagesResponse = {
     messages: ApiMessage[];
@@ -179,8 +180,7 @@ class Sync {
     private friendRequestsSync: InvalidateSync;
     private feedSync: InvalidateSync;
     private pluginCatalogSync: InvalidateSync;
-    private pluginCatalogSnapshot: readonly PluginCatalogItem[] = [];
-    private pluginCatalogListeners = new Set<() => void>();
+    private pluginCatalogStore = new PluginCatalogStore();
     private activityAccumulator: ActivityUpdateAccumulator;
     private initialPendingSessionPinnedState = loadPendingSessionPinnedState();
     private pendingSettings: Partial<Settings> = recoverPendingSettingsWithPinnedState(
@@ -334,6 +334,7 @@ class Sync {
         this.friendRequestsSync.invalidate();
         this.artifactsSync.invalidate();
         this.feedSync.invalidate();
+        this.pluginCatalogStore.beginAccount();
         this.pluginCatalogSync.invalidate();
         log.log('🔄 #init: All syncs invalidated, including artifacts');
 
@@ -350,21 +351,25 @@ class Sync {
     }
 
     private fetchPluginCatalog = async () => {
-        const catalog = await getPluginCatalog();
-        this.pluginCatalogSnapshot = catalog.plugins;
-        for (const listener of this.pluginCatalogListeners) listener();
+        const accountGeneration = this.pluginCatalogStore.beginRefresh();
+        try {
+            const catalog = await getPluginCatalog();
+            this.pluginCatalogStore.resolve(catalog.plugins, accountGeneration);
+        } catch (error) {
+            this.pluginCatalogStore.reject(accountGeneration);
+            throw error;
+        }
     }
 
-    getPluginCatalogSnapshot = (): readonly PluginCatalogItem[] => this.pluginCatalogSnapshot;
+    getPluginCatalogSnapshot = (): PluginCatalogSnapshot => this.pluginCatalogStore.getSnapshot();
 
     subscribePluginCatalog = (listener: () => void): (() => void) => {
-        this.pluginCatalogListeners.add(listener);
-        return () => this.pluginCatalogListeners.delete(listener);
+        return this.pluginCatalogStore.subscribe(listener);
     }
 
     refreshPluginCatalog = async (): Promise<PluginCatalogResponse> => {
         await this.pluginCatalogSync.invalidateAndAwait();
-        return { plugins: [...this.pluginCatalogSnapshot] };
+        return { plugins: [...this.pluginCatalogStore.getSnapshot().plugins] };
     }
 
 
@@ -2437,6 +2442,7 @@ class Sync {
             this.friendsSync.invalidate();
             this.friendRequestsSync.invalidate();
             this.feedSync.invalidate();
+            this.pluginCatalogSync.invalidate();
             // Messages are fetched lazily per-session via onSessionVisible (called by SessionView
             // when realtimeStatus changes). Session metadata + agentState (including permission
             // requests) are already refreshed by sessionsSync.invalidate() above.

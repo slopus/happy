@@ -3,7 +3,7 @@ import { z } from 'zod';
 
 import { streamRelationshipAdvisor } from '@/modules/relationship-advisor/relationshipAdvisorClient';
 import {
-    createRelationshipAdvisorPluginRuntime,
+    type RelationshipAdvisorConfiguration,
     relationshipAdvisorPlugin,
 } from '@/modules/relationship-advisor/relationshipAdvisorPlugin';
 import {
@@ -28,29 +28,28 @@ export interface RelationshipAdvisorStreamInput extends RelationshipAdvisorStart
 }
 
 export interface RelationshipAdvisorHandlerDependencies {
-    streamChat: (input: RelationshipAdvisorStreamInput & { signal?: AbortSignal }) => AsyncIterable<{ text: string }>;
-    requireImageReadPermission: (userId: string) => Promise<void>;
-    requireImageWritePermission: (userId: string) => Promise<void>;
+    openRuntime: (
+        userId: string,
+        options: { includeImages: boolean },
+    ) => Promise<RelationshipAdvisorConfiguration>;
+    streamChat: (
+        input: RelationshipAdvisorStreamInput & { signal?: AbortSignal },
+        configuration: RelationshipAdvisorConfiguration,
+    ) => AsyncIterable<{ text: string }>;
     resolveImageUrls: (userId: string, refs: string[]) => Promise<string[]>;
     deleteImageRefs?: (userId: string, refs: string[]) => Promise<void>;
 }
 
 type AdvisorSocket = Pick<Socket, 'on' | 'emit'>;
 
-const relationshipAdvisorPluginRuntime = createRelationshipAdvisorPluginRuntime(
-    relationshipAdvisorPlugin,
-    (input, configuration) => streamRelationshipAdvisor({
-        messages: input.messages,
-        imageUrls: input.imageUrls,
-        signal: input.signal,
-    }, configuration),
-);
-
 function defaultRelationshipAdvisorDependencies(): RelationshipAdvisorHandlerDependencies {
     return {
-        streamChat: (input) => relationshipAdvisorPluginRuntime.stream(input),
-        requireImageReadPermission: (userId) => relationshipAdvisorPlugin.requireImageReadPermission(userId),
-        requireImageWritePermission: (userId) => relationshipAdvisorPlugin.requireImageWritePermission(userId),
+        openRuntime: (userId, options) => relationshipAdvisorPlugin.openRuntime(userId, options),
+        streamChat: (input, configuration) => streamRelationshipAdvisor({
+            messages: input.messages,
+            imageUrls: input.imageUrls,
+            signal: input.signal,
+        }, configuration),
         resolveImageUrls: resolveRelationshipAdvisorImageUrls,
         deleteImageRefs: deleteRelationshipAdvisorImages,
     };
@@ -129,18 +128,16 @@ export function relationshipAdvisorHandler(
         void (async () => {
             let canDeleteImageRefs = false;
             try {
-                if (request.imageRefs.length > 0) {
-                    await dependencies.requireImageReadPermission(userId);
-                    await dependencies.requireImageWritePermission(userId);
-                    canDeleteImageRefs = true;
-                }
+                const includeImages = request.imageRefs.length > 0;
+                const configuration = await dependencies.openRuntime(userId, { includeImages });
+                canDeleteImageRefs = includeImages;
                 const imageUrls = await dependencies.resolveImageUrls(userId, request.imageRefs);
                 for await (const delta of dependencies.streamChat({
                     ...request,
                     userId,
                     imageUrls,
                     signal: abortController.signal,
-                })) {
+                }, configuration)) {
                     if (delta.text) {
                         clearTimeout(firstTokenTimeout);
                         socket.emit('relationship-advisor:event', {

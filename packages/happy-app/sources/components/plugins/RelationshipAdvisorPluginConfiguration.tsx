@@ -1,10 +1,11 @@
+import type { PluginInstallationStatus } from '@slopus/happy-wire';
 import * as React from 'react';
 
 import { usePlugins } from '@/hooks/usePlugins';
 import { DynamicPluginConfiguration } from './DynamicPluginConfiguration';
 
 type Props = {
-    onInstalled?: () => void;
+    onInstalled?: (status: PluginInstallationStatus) => void | Promise<void>;
     onStatusChanged?: () => void | Promise<void>;
 };
 

@@ -1,4 +1,4 @@
-import type { PluginCatalogItem } from '@slopus/happy-wire';
+import type { PluginCatalogItem, PluginInstallationStatus } from '@slopus/happy-wire';
 import * as React from 'react';
 
 import { DynamicPluginConfiguration } from './DynamicPluginConfiguration';
@@ -6,7 +6,7 @@ import { resolveInstalledPluginView } from './pluginClientAdapters';
 
 interface Props {
     plugin: PluginCatalogItem;
-    onInstalled?: () => void;
+    onInstalled?: (status: PluginInstallationStatus) => void | Promise<void>;
     onOpen?: () => void;
     onStatusChanged?: () => void | Promise<void>;
 }

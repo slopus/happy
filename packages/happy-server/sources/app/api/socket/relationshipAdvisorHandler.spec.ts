@@ -2,6 +2,12 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { relationshipAdvisorHandler } from '@/app/api/socket/relationshipAdvisorHandler';
 
+const configuration = {
+    apiKey: 'server-stored-secret',
+    baseUrl: 'https://api.example.com/v1',
+    model: 'example-chat',
+};
+
 type Listener = (...args: any[]) => void;
 
 class FakeSocket {
@@ -36,8 +42,7 @@ describe('relationshipAdvisorHandler', () => {
 
         relationshipAdvisorHandler('user-1', socket as any, {
             streamChat,
-            requireImageReadPermission: vi.fn(async () => undefined),
-            requireImageWritePermission: vi.fn(async () => undefined),
+            openRuntime: vi.fn(async () => configuration),
             resolveImageUrls: vi.fn(async () => []),
         });
 
@@ -77,7 +82,7 @@ describe('relationshipAdvisorHandler', () => {
             userId: 'user-1',
             messages: [{ role: 'user', text: '她只回了哈哈，我怎么接？' }],
             imageUrls: [],
-        }));
+        }), configuration);
     });
 
     it('aborts the matching provider stream when the client cancels', async () => {
@@ -89,8 +94,7 @@ describe('relationshipAdvisorHandler', () => {
 
         relationshipAdvisorHandler('user-1', socket as any, {
             streamChat: streamChat as any,
-            requireImageReadPermission: vi.fn(async () => undefined),
-            requireImageWritePermission: vi.fn(async () => undefined),
+            openRuntime: vi.fn(async () => configuration),
             resolveImageUrls: vi.fn(async () => []),
         });
 
@@ -127,8 +131,7 @@ describe('relationshipAdvisorHandler', () => {
 
         relationshipAdvisorHandler('user-1', socket as any, {
             streamChat: streamChat as any,
-            requireImageReadPermission: vi.fn(async () => undefined),
-            requireImageWritePermission: vi.fn(async () => undefined),
+            openRuntime: vi.fn(async () => configuration),
             resolveImageUrls: vi.fn(async () => []),
         });
 
@@ -150,8 +153,7 @@ describe('relationshipAdvisorHandler', () => {
             streamChat: async function* () {
                 throw new Error('upstream secret response');
             },
-            requireImageReadPermission: vi.fn(async () => undefined),
-            requireImageWritePermission: vi.fn(async () => undefined),
+            openRuntime: vi.fn(async () => configuration),
             resolveImageUrls: vi.fn(async () => []),
         });
 
@@ -183,8 +185,7 @@ describe('relationshipAdvisorHandler', () => {
 
         relationshipAdvisorHandler('user-1', socket as any, {
             streamChat: streamChat as any,
-            requireImageReadPermission: vi.fn(async () => undefined),
-            requireImageWritePermission: vi.fn(async () => undefined),
+            openRuntime: vi.fn(async () => configuration),
             resolveImageUrls: vi.fn(async () => []),
         });
         socket.receive('relationship-advisor:start', {
@@ -203,20 +204,18 @@ describe('relationshipAdvisorHandler', () => {
         socket.receive('relationship-advisor:cancel', { requestId: 'request-4' });
     });
 
-    it('checks image-read permission before resolving plugin image references', async () => {
+    it('opens the full runtime context before resolving plugin image references', async () => {
         const socket = new FakeSocket();
-        const requireImageReadPermission = vi.fn(async () => {
+        const openRuntime = vi.fn(async () => {
             throw new Error('plugin not installed');
         });
         const resolveImageUrls = vi.fn(async () => ['https://storage.example/image']);
         const streamChat = vi.fn();
-        const requireImageWritePermission = vi.fn(async () => undefined);
         const deleteImageRefs = vi.fn(async () => undefined);
 
         relationshipAdvisorHandler('user-1', socket as any, {
             streamChat: streamChat as any,
-            requireImageReadPermission,
-            requireImageWritePermission,
+            openRuntime,
             resolveImageUrls,
             deleteImageRefs,
         });
@@ -236,8 +235,8 @@ describe('relationshipAdvisorHandler', () => {
                 },
             });
         });
-        expect(requireImageReadPermission).toHaveBeenCalledWith('user-1');
-        expect(requireImageWritePermission).not.toHaveBeenCalled();
+        expect(openRuntime).toHaveBeenCalledTimes(1);
+        expect(openRuntime).toHaveBeenCalledWith('user-1', { includeImages: true });
         expect(resolveImageUrls).not.toHaveBeenCalled();
         expect(streamChat).not.toHaveBeenCalled();
         expect(deleteImageRefs).not.toHaveBeenCalled();

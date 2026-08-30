@@ -1,6 +1,6 @@
 # Paws Plugin Host v2 设计
 
-状态：第一阶段实现中
+状态：第一阶段已实现；本文保留为历史设计记录，当前总览见 [`../plugin-system-overview.md`](../plugin-system-overview.md)
 日期：2026-08-28
 
 ## 决策
@@ -39,7 +39,7 @@ Manifest 不得包含路径、URL、JavaScript、组件名或动态 import 目�
 | `right-panel` | 会话级能力面板 | 会话图片 |
 | `modal` | 用户动作触发的对话框 | 军师配置声明 |
 
-Host 解析贡献时必须同时满足：安装存在、版本精确匹配、View 已声明、surface 匹配、存在本地受信任 Adapter。Adapter 通过 `register()` 挂载并获得幂等 `dispose()`；停用 Adapter、卸载或版本过期都会让解析结果立刻变为空，这就是第一阶段的 reversible effect。
+Host 解析贡献时必须同时满足：安装存在、版本精确匹配、账号授权集合与 Manifest 声明一致、View 已声明、surface 匹配、存在本地受信任 Adapter。Adapter 通过 `register()` 挂载并获得幂等 `dispose()`；停用 Adapter、卸载、版本过期或授权不完整都会让解析结果立刻变为空，这就是第一阶段的 reversible effect。
 
 ### Capability Broker
 
@@ -50,18 +50,18 @@ Host 解析贡献时必须同时满足：安装存在、版本精确匹配、Vie
 - `paws.conversations.images.read`：读取会话生成图片投影；
 - `paws.storage.images.write`：写入或删除插件自有图片对象。
 
-业务 Runtime 必须先调用 `requirePermission`，再通过 `requireConfiguration` 读取和解析配置。Manifest 隐藏、UI `when` 条件和安装按钮都不能替代服务端权限检查。
+业务 Runtime 必须通过一次 `openRuntime(accountId, pluginId, requiredPermissions)` 读取安装记录，在同一门禁内检查安装、版本、Manifest 声明和账号授权，再使用经过插件归一化的短生命周期配置。Manifest 隐藏、UI `when` 条件和安装按钮都不能替代服务端权限检查。
 
 ## 生命周期
 
 ```text
-catalogued -> installed/current -> contributions active
-                       | update/version stale
-                       v
-                 contributions retracted
-                       | uninstall
-                       v
-           encrypted installation deleted
+catalogued -> installed/current/granted -> contributions active
+                               | update/version or grant stale
+                               v
+                         contributions retracted
+                               | uninstall
+                               v
+                   encrypted installation deleted
 ```
 
 第一阶段不单独持久化 activation 状态。客户端从账号 Catalog 派生 UI contribution；服务端从同一 Installation Store 派生 capability authorization。后续加入可执行 runtime 时，再扩展 `PENDING / ACTIVE / FAILED / DISPOSED` 与统一 `Disposable`，不改变现有 Manifest/Slot seam。
