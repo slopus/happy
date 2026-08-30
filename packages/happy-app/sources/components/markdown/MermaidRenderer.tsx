@@ -126,6 +126,8 @@ const WebDiagramCanvas = React.forwardRef<DiagramCanvasHandle, DiagramCanvasProp
         let disposed = false;
         let disposePanzoom: (() => void) | null = null;
 
+        // Interaction contract and regression matrix:
+        // docs/mermaid-panzoom-integration.md
         void import('@panzoom/panzoom').then((module) => {
             if (disposed) return;
             const { dispose, panzoom } = initializeWebDiagramPanzoom(host, module.default);

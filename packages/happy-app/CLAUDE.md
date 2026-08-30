@@ -183,6 +183,18 @@ The agent should be called whenever new user-facing text is introduced to the co
 - `sources/auth/AuthContext.tsx` - Authentication state management
 - `sources/app/_layout.tsx` - Root navigation structure
 
+### Mermaid + Panzoom Interaction Contract
+
+Before changing `sources/components/markdown/MermaidRenderer.tsx`, Panzoom options,
+message scrolling, or fullscreen diagram layout, read
+[`docs/mermaid-panzoom-integration.md`](../../docs/mermaid-panzoom-integration.md).
+
+The non-negotiable contract is: ordinary wheel/trackpad scrolling belongs to
+the page; only Ctrl/Command + wheel zooms the diagram; default-scale dragging
+must work; inline and fullscreen canvases use separate controllers; and Web
+plus Native/WebView behavior must be verified independently. Do not restore
+`contain: 'outside'` or register `zoomWithWheel` unconditionally.
+
 ### Custom Header Component
 
 The app includes a custom header component (`sources/components/Header.tsx`) that provides consistent header rendering across platforms and integrates with React Navigation.
