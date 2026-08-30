@@ -777,7 +777,14 @@ export class CodexAppServerClient {
     }
 
     private buildThreadConfig(mcpServers?: Record<string, unknown>): Record<string, unknown> | null {
-        return mcpServers ? { mcp_servers: mcpServers } : null;
+        const entries = Object.entries(mcpServers ?? {});
+        if (entries.length === 0) {
+            return null;
+        }
+
+        return Object.fromEntries(
+            entries.map(([name, config]) => [`mcp_servers.${name}`, config]),
+        );
     }
 
     private rememberThreadDefaults(opts: {

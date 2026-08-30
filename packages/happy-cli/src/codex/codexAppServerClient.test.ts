@@ -138,6 +138,46 @@ describe('CodexAppServerClient sandbox integration', () => {
         expect(new CodexAppServerClient().supportsGoalActions()).toBe(false);
     });
 
+    it('scopes thread MCP overrides to the configured server instead of the whole namespace', async () => {
+        const requests: MockRpcMessage[] = [];
+        const proc = createMockProcess({
+            onRequest: (msg, stdout) => {
+                if (!['thread/start', 'thread/resume', 'thread/fork'].includes(msg.method ?? '')) {
+                    return;
+                }
+                requests.push(msg);
+                const threadId = msg.method === 'thread/fork' ? 'thread-forked' : 'thread-1';
+                pushJsonLine(stdout, {
+                    id: msg.id,
+                    result: {
+                        thread: { id: threadId, turns: [] },
+                        model: 'gpt-5.4',
+                    },
+                });
+            },
+        });
+        mockSpawn.mockReturnValue(proc);
+
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        const happyMcp = { command: 'node', args: ['happy-mcp.js'] };
+
+        await client.connect();
+        await client.startThread({ mcpServers: { happy: happyMcp } });
+        await client.resumeThread({ threadId: 'thread-1', mcpServers: { happy: happyMcp } });
+        await client.forkThread({ threadId: 'thread-1', mcpServers: { happy: happyMcp } });
+
+        expect(requests).toHaveLength(3);
+        for (const request of requests) {
+            expect(request.params.config).toEqual({
+                'mcp_servers.happy': happyMcp,
+            });
+            expect(request.params.config).not.toHaveProperty('mcp_servers');
+        }
+
+        await client.disconnect();
+    });
+
     it('wraps transport when sandbox is enabled', async () => {
         // Dynamic import to ensure mocks are applied
         const { CodexAppServerClient } = await import('./codexAppServerClient');
