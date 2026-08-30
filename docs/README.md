@@ -9,6 +9,7 @@ Internal package names and compatibility identifiers still use `happy-*` in many
 - `getting-started.zh-CN.md`: Chinese onboarding for users, self-hosters, and contributors.
 - `selfhost-web-deploy.md`: English manual for building, securing, deploying, updating, and rolling back the Web App.
 - `selfhost-web-deploy.zh-CN.md`: Chinese manual for building, securing, deploying, updating, and rolling back the Web App.
+- `selfhost-operations-resources.md`: Chinese inventory of compute, database, Redis, object storage, OTA, agent runners, security, backups, and observability required for self-hosting Paws.
 - `CONTRIBUTING.md`: Paws repository workflow, worktrees, checks, and pull requests.
 - `plugin-system-overview.md`: Current plugin-system boundaries, repository split, install flow, storage model, and architecture review.
 - `plugin-development.md`: Dynamic plugin architecture, manifest contract, encrypted configuration, lifecycle, security, and contribution gates.
