@@ -202,6 +202,11 @@ export const zhHans: TranslationStructure = {
         emptyTitle: '收件箱为空',
         emptyDescription: '与好友建立连接，开始共享会话',
         updates: '更新',
+        codexCandidates: '待接管的 Codex 会话',
+        codexCandidateDescription: '已在电脑上发现，但尚未连接到 Paws。',
+        attachCandidate: '接管',
+        dismissCandidate: '忽略',
+        candidateUnavailable: '暂时无法处理这个 Codex 会话，请确认电脑在线后重试。',
     },
 
     common: {

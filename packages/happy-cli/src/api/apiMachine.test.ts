@@ -17,7 +17,8 @@ vi.mock('socket.io-client', () => ({
 vi.mock('@/configuration', () => ({
     configuration: {
         serverUrl: 'http://127.0.0.1:3005',
-        currentCliVersion: 'test'
+        currentCliVersion: 'test',
+        happyHomeDir: '/tmp/happy-api-machine-test'
     }
 }));
 

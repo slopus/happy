@@ -203,6 +203,11 @@ export const ja: TranslationStructure = {
         emptyTitle: '受信トレイは空です',
         emptyDescription: '友達と接続してセッションを共有しましょう',
         updates: '更新',
+        codexCandidates: '引き継ぎ待ちの Codex セッション',
+        codexCandidateDescription: 'コンピューターで検出され、まだ Paws に接続されていません。',
+        attachCandidate: '引き継ぐ',
+        dismissCandidate: '無視',
+        candidateUnavailable: 'この Codex セッションを処理できませんでした。コンピューターがオンラインか確認してください。',
     },
 
     common: {

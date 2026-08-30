@@ -178,6 +178,7 @@ export async function handleAttachCommand(args: string[], runtime?: AttachRuntim
   }
 
   const target = resolveAttachTarget(args, runtime);
+  const attachEnv = runtime?.env ?? process.env;
   await ensureDaemonRunning();
 
   const result = await spawnDaemonSession(
@@ -186,6 +187,15 @@ export async function handleAttachCommand(args: string[], runtime?: AttachRuntim
         directory: target.directory,
         agent: 'codex',
         resumeCodexThreadId: target.resumeCodexThreadId,
+        environmentVariables: {
+          // `attach` means joining the current live Codex Thread. Spawning a
+          // second app-server would create competing writers for that Thread.
+          HAPPY_CODEX_APP_SERVER_MODE: 'shared',
+          HAPPY_CODEX_APPROVAL_AUTHORITY: attachEnv.HAPPY_CODEX_APPROVAL_AUTHORITY ?? 'desktop',
+          ...(attachEnv.HAPPY_CODEX_APP_SERVER_SOCKET
+            ? { HAPPY_CODEX_APP_SERVER_SOCKET: attachEnv.HAPPY_CODEX_APP_SERVER_SOCKET }
+            : {}),
+        },
       }
       : {
         directory: target.directory,

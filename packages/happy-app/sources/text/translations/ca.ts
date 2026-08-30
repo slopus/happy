@@ -200,6 +200,11 @@ export const ca: TranslationStructure = {
         emptyTitle: 'Safata buida',
         emptyDescription: 'Connecta\'t amb amics per començar a compartir sessions',
         updates: 'Actualitzacions',
+        codexCandidates: 'Sessions de Codex Desktop',
+        codexCandidateDescription: 'Detectades a l’ordinador i encara no connectades a Paws.',
+        attachCandidate: 'Pren el control',
+        dismissCandidate: 'Ignora',
+        candidateUnavailable: 'No s’ha pogut processar la sessió de Codex. Comprova que l’ordinador estigui connectat.',
     },
 
     common: {

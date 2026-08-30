@@ -78,6 +78,7 @@ describe('handleCodexCommand', () => {
 
     await handleCodexCommand(['--no-sandbox', '--resume', 'thread-123', '--started-by', 'daemon'])
 
+    expect(mocks.mockEnsureDaemonRunning).toHaveBeenCalledWith({ startedBy: 'daemon' })
     expect(mocks.mockRunCodex).toHaveBeenCalledWith({
       credentials: { token: 'token' },
       startedBy: 'daemon',

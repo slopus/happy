@@ -2,7 +2,8 @@
  * Codex App Server Client — drives Codex via the v2 JSON-RPC protocol
  * (`codex app-server`), replacing the legacy MCP-based CodexMcpClient.
  *
- * Protocol: JSON-RPC 2.0 over stdio (newline-delimited JSON).
+ * Protocol: JSON-RPC 2.0 over stdio (newline-delimited JSON) or WebSocket
+ * frames over the Codex app-server Unix control socket.
  * Reference: codex-rs/app-server/README.md in the openai/codex repo.
  *
  * WARNING: @openai/codex-sdk (v0.118.0) exists but only wraps `codex exec`
@@ -14,8 +15,11 @@
  */
 
 import { execSync, type ChildProcess } from 'node:child_process';
+import { homedir } from 'node:os';
+import { isAbsolute, join } from 'node:path';
 import { spawn as crossSpawn } from 'cross-spawn';
 import { createInterface, type Interface as ReadlineInterface } from 'node:readline';
+import WebSocket from 'ws';
 import { logger } from '@/ui/logger';
 import type {
     InitializeParams,
@@ -27,6 +31,8 @@ import type {
     ForkConversationResponse,
     ReadConversationParams,
     ReadConversationResponse,
+    ThreadListParams,
+    ThreadListResponse,
     RollbackConversationParams,
     RollbackConversationResponse,
     InjectItemsParams,
@@ -69,6 +75,45 @@ type PendingRequest = {
 
 type LegacyPatchChanges = Record<string, Record<string, unknown>>;
 
+export type CodexApprovalAuthority = 'desktop' | 'paws';
+
+export type CodexAppServerConnection =
+    | { type: 'spawn' }
+    | {
+        type: 'unixSocket';
+        socketPath: string;
+        connectTimeoutMs?: number;
+        approvalAuthority?: CodexApprovalAuthority;
+    };
+
+export function resolveCodexAppServerConnection(
+    env: NodeJS.ProcessEnv = process.env,
+): CodexAppServerConnection {
+    const mode = env.HAPPY_CODEX_APP_SERVER_MODE?.trim().toLowerCase();
+    if (!mode || mode === 'spawn') {
+        return { type: 'spawn' };
+    }
+    if (mode !== 'shared') {
+        throw new Error(
+            `Invalid HAPPY_CODEX_APP_SERVER_MODE=${env.HAPPY_CODEX_APP_SERVER_MODE}; expected "spawn" or "shared"`,
+        );
+    }
+
+    const codexHome = env.CODEX_HOME?.trim() || join(homedir(), '.codex');
+    const socketPath = env.HAPPY_CODEX_APP_SERVER_SOCKET?.trim()
+        || join(codexHome, 'app-server-control', 'app-server-control.sock');
+    if (!isAbsolute(socketPath)) {
+        throw new Error('HAPPY_CODEX_APP_SERVER_SOCKET must be an absolute path');
+    }
+    const approvalAuthority = env.HAPPY_CODEX_APPROVAL_AUTHORITY?.trim().toLowerCase() || 'desktop';
+    if (approvalAuthority !== 'desktop' && approvalAuthority !== 'paws') {
+        throw new Error(
+            `Invalid HAPPY_CODEX_APPROVAL_AUTHORITY=${env.HAPPY_CODEX_APPROVAL_AUTHORITY}; expected "desktop" or "paws"`,
+        );
+    }
+    return { type: 'unixSocket', socketPath, approvalAuthority };
+}
+
 export type ApprovalHandler = (params: {
     type: 'exec' | 'patch' | 'mcp';
     callId: string;
@@ -102,7 +147,7 @@ function isAppServerAvailable(): boolean {
 function buildCodexProcessEnv(): Record<string, string> {
     const env: Record<string, string> = {};
     for (const [key, value] of Object.entries(process.env)) {
-        if (typeof value === 'string') {
+        if (typeof value === 'string' && !key.startsWith('HAPPY_RECONNECT_')) {
             env[key] = value;
         }
     }
@@ -199,6 +244,7 @@ function normalizeRawFileChangeList(changes: unknown): LegacyPatchChanges | unde
 export class CodexAppServerClient {
     private process: ChildProcess | null = null;
     private readline: ReadlineInterface | null = null;
+    private socket: WebSocket | null = null;
     private nextId = 1;
     private pending = new Map<number, PendingRequest>();
     private processEpoch = 0;
@@ -232,13 +278,25 @@ export class CodexAppServerClient {
     private notificationProtocol: 'unknown' | 'legacy' | 'raw' = 'unknown';
     private startedTurnIds = new Set<string>();
     private completedTurnIds = new Set<string>();
+    private pawsStartedTurnIds = new Set<string>();
+    private pendingPawsTurnStart: {
+        prompt: string;
+        deferredUserItems: Array<{
+            content: unknown;
+            itemId: unknown;
+            turnId: string | null;
+        }>;
+    } | null = null;
     private rawFileChangesByItemId = new Map<string, LegacyPatchChanges>();
 
     // Handlers set by the consumer (runCodex.ts)
     private eventHandler: ((msg: EventMsg) => void) | null = null;
     private approvalHandler: ApprovalHandler | null = null;
 
-    constructor(sandboxConfig?: SandboxConfig) {
+    constructor(
+        sandboxConfig?: SandboxConfig,
+        private readonly connection: CodexAppServerConnection = { type: 'spawn' },
+    ) {
         this.sandboxConfig = sandboxConfig;
     }
 
@@ -283,6 +341,49 @@ export class CodexAppServerClient {
         return threadId && this._threadId && threadId !== this._threadId
             ? { subagent: threadId }
             : {};
+    }
+
+    private userMessageText(content: unknown): string | null {
+        if (!Array.isArray(content)) return null;
+        const text = content
+            .filter((item): item is { type: 'text'; text: string } => (
+                item?.type === 'text' && typeof item.text === 'string'
+            ))
+            .map((item) => item.text)
+            .join('\n');
+        return text.length > 0 ? text : null;
+    }
+
+    private rememberPawsStartedTurn(turnId: string): void {
+        this.pawsStartedTurnIds.add(turnId);
+        const oldest = this.pawsStartedTurnIds.values().next().value;
+        if (this.pawsStartedTurnIds.size > 256 && typeof oldest === 'string') {
+            this.pawsStartedTurnIds.delete(oldest);
+        }
+    }
+
+    private emitExternalUserItem(item: { content: unknown; itemId: unknown; turnId: string | null }): void {
+        this.eventHandler?.({
+            type: 'user_message',
+            content: item.content,
+            item_id: item.itemId,
+            turn_id: item.turnId,
+        });
+    }
+
+    private settlePawsTurnStart(turnId: string | null, accepted: boolean): void {
+        const pending = this.pendingPawsTurnStart;
+        this.pendingPawsTurnStart = null;
+        if (!pending) return;
+
+        if (accepted && turnId) {
+            this.rememberPawsStartedTurn(turnId);
+        }
+        for (const item of pending.deferredUserItems) {
+            if (!accepted || !turnId || item.turnId !== turnId) {
+                this.emitExternalUserItem(item);
+            }
+        }
     }
 
     private shouldHandleRawNotification(method: string): boolean {
@@ -441,7 +542,38 @@ export class CodexAppServerClient {
             return method.startsWith('item/');
         }
 
-        const eventScope = this.childEventScope(params);
+        const rootTurnId = this.isRootThreadNotification(params) ? this.extractTurnId(params) : null;
+        const eventScope = {
+            ...this.childEventScope(params),
+            ...(rootTurnId ? { turn_id: rootTurnId } : {}),
+        };
+
+        if (method === 'item/completed' && item.type === 'userMessage') {
+            // A turn submitted through this Bridge already exists in Paws as the
+            // incoming user message. Only mirror user items created by another
+            // client of the shared app-server (for example Codex Desktop).
+            if (!this.isRootThreadNotification(params)) {
+                return true;
+            }
+            const userItem = {
+                content: item.content,
+                itemId: item.id,
+                turnId: this.extractTurnId(params),
+            };
+            if (userItem.turnId && this.pawsStartedTurnIds.has(userItem.turnId)) {
+                return true;
+            }
+            const pendingStart = this.pendingPawsTurnStart;
+            if (pendingStart && this.userMessageText(item.content) === pendingStart.prompt) {
+                // The app-server may publish the item before replying to turn/start.
+                // Defer only this matching candidate until the authoritative turn
+                // ID arrives, so an overlapping Desktop turn is not hidden.
+                pendingStart.deferredUserItems.push(userItem);
+                return true;
+            }
+            this.emitExternalUserItem(userItem);
+            return true;
+        }
 
         if (method === 'item/completed' && item.type === 'subAgentActivity') {
             const kind = item.kind;
@@ -580,19 +712,21 @@ export class CodexAppServerClient {
 
         if (method === 'item/completed' && item.type === 'agentMessage') {
             const text = typeof item.text === 'string' ? item.text : '';
+            const turnId = this.extractTurnId(params);
             if (text.length > 0) {
                 this.eventHandler?.({
                     type: 'agent_message',
                     message: text,
                     item_id: item.id,
                     phase: item.phase,
+                    ...(turnId ? { turn_id: turnId } : {}),
                     ...eventScope,
                 });
             }
 
             if (this.isRootThreadNotification(params) && item.phase === 'final_answer' && this.pendingTurnCompletion) {
                 this.emitRawTurnCompletion(
-                    this.extractTurnId(params),
+                    turnId,
                     'completed',
                     null,
                     `${method}:final_answer`,
@@ -603,19 +737,21 @@ export class CodexAppServerClient {
 
         if (method === 'item/completed' && item.type === 'exitedReviewMode') {
             const review = typeof item.review === 'string' ? item.review : '';
+            const turnId = this.extractTurnId(params);
             if (review.length > 0) {
                 this.eventHandler?.({
                     type: 'agent_message',
                     message: review,
                     item_id: item.id,
                     phase: 'final_answer',
+                    ...(turnId ? { turn_id: turnId } : {}),
                     ...eventScope,
                 });
             }
 
             if (this.isRootThreadNotification(params) && this.pendingTurnCompletion) {
                 this.emitRawTurnCompletion(
-                    this.extractTurnId(params),
+                    turnId,
                     'completed',
                     null,
                     `${method}:exitedReviewMode`,
@@ -631,6 +767,17 @@ export class CodexAppServerClient {
 
     async connect(): Promise<void> {
         if (this.connected) return;
+
+        if (this.connection.type === 'unixSocket') {
+            try {
+                await this.connectUnixSocket(this.connection);
+                await this.initializeConnection();
+            } catch (error) {
+                await this.disconnectInternal();
+                throw error;
+            }
+            return;
+        }
 
         if (!isAppServerAvailable()) {
             throw new Error(
@@ -721,6 +868,76 @@ export class CodexAppServerClient {
             this.handleLine(line, epoch);
         });
 
+        await this.initializeConnection();
+    }
+
+    private async connectUnixSocket(
+        connection: Extract<CodexAppServerConnection, { type: 'unixSocket' }>,
+    ): Promise<void> {
+        this.sandboxEnabled = false;
+        if (this.sandboxConfig?.enabled) {
+            logger.warn('[CodexAppServer] Client sandbox is ignored when using a shared app-server');
+        }
+
+        const epoch = ++this.processEpoch;
+        const socketUrl = `ws+unix://${connection.socketPath}:/`;
+        const socket = new WebSocket(socketUrl, {
+            handshakeTimeout: connection.connectTimeoutMs ?? 5_000,
+            perMessageDeflate: false,
+        });
+        this.socket = socket;
+
+        socket.on('message', (data, isBinary) => {
+            if (this.socket !== socket || this.processEpoch !== epoch) return;
+            if (isBinary) {
+                logger.warn('[CodexAppServer] Ignoring unexpected binary message from shared app-server');
+                return;
+            }
+            this.handleLine(data.toString(), epoch);
+        });
+        socket.on('error', (error) => {
+            if (this.socket !== socket || this.processEpoch !== epoch) return;
+            logger.debug('[CodexAppServer] Shared socket error:', error);
+        });
+        socket.on('close', (code, reason) => {
+            if (this.socket !== socket || this.processEpoch !== epoch) return;
+            this.socket = null;
+            this.connected = false;
+            for (const [id, request] of this.pending) {
+                if (request.epoch !== epoch) continue;
+                request.reject(new Error(
+                    `Shared Codex app-server connection closed (${code}${reason.length > 0 ? `: ${reason.toString()}` : ''}) while waiting for ${request.method}`,
+                ));
+                this.pending.delete(id);
+            }
+            this.resolvePendingTurn(true);
+        });
+
+        await new Promise<void>((resolve, reject) => {
+            const handleOpen = (): void => {
+                socket.off('error', handleConnectError);
+                socket.off('close', handleConnectClose);
+                resolve();
+            };
+            const handleConnectError = (error: Error): void => {
+                socket.off('open', handleOpen);
+                socket.off('close', handleConnectClose);
+                reject(new Error(`Unable to connect to shared Codex app-server at ${connection.socketPath}: ${error.message}`));
+            };
+            const handleConnectClose = (): void => {
+                socket.off('open', handleOpen);
+                socket.off('error', handleConnectError);
+                reject(new Error(`Shared Codex app-server closed before initialization at ${connection.socketPath}`));
+            };
+            socket.once('open', handleOpen);
+            socket.once('error', handleConnectError);
+            socket.once('close', handleConnectClose);
+        });
+
+        logger.debug(`[CodexAppServer] Connected to shared Unix socket: ${connection.socketPath}`);
+    }
+
+    private async initializeConnection(): Promise<void> {
         // Perform initialize handshake
         const initParams: InitializeParams = {
             clientInfo: {
@@ -739,15 +956,17 @@ export class CodexAppServerClient {
     }
 
     private async disconnectInternal(opts?: { preserveThreadState?: boolean }): Promise<void> {
-        if (!this.connected && !this.process) return;
+        if (!this.connected && !this.process && !this.socket) return;
 
         const proc = this.process;
+        const socket = this.socket;
         const pid = proc?.pid;
         const epoch = this.processEpoch;
-        logger.debug(`[CodexAppServer] Disconnecting; pid=${pid ?? 'none'}`);
+        logger.debug(`[CodexAppServer] Disconnecting; pid=${pid ?? 'none'} shared=${socket !== null}`);
 
         this.readline?.close();
         this.readline = null;
+        this.socket = null;
 
         try {
             proc?.stdin?.end();
@@ -765,15 +984,37 @@ export class CodexAppServerClient {
             killTimer.unref();
         }
 
+        if (socket) {
+            await new Promise<void>((resolve) => {
+                if (socket.readyState === WebSocket.CLOSED) {
+                    resolve();
+                    return;
+                }
+                const timer = setTimeout(resolve, 1_000);
+                timer.unref();
+                socket.once('close', () => {
+                    clearTimeout(timer);
+                    resolve();
+                });
+                if (socket.readyState === WebSocket.CONNECTING) {
+                    socket.terminate();
+                } else {
+                    socket.close(1000, 'Paws client disconnected');
+                }
+            });
+        }
+
         this.process = null;
         this.connected = false;
         this._turnId = null;
         this.notificationProtocol = 'unknown';
         this.startedTurnIds.clear();
         this.completedTurnIds.clear();
+        this.settlePawsTurnStart(null, false);
         if (!opts?.preserveThreadState) {
             this._threadId = null;
             this.threadDefaults = null;
+            this.pawsStartedTurnIds.clear();
         }
 
         // Fail in-flight requests from this process generation.
@@ -951,6 +1192,10 @@ export class CodexAppServerClient {
             includeTurns: opts.includeTurns ?? true,
         };
         return await this.request('thread/read', params) as ReadConversationResponse;
+    }
+
+    async listThreads(opts: ThreadListParams = {}): Promise<ThreadListResponse> {
+        return await this.request('thread/list', opts) as ThreadListResponse;
     }
 
     async rollbackThread(opts: {
@@ -1214,16 +1459,24 @@ export class CodexAppServerClient {
         // turn/start returns immediately; turn completes via events.
         // We don't await completion here — the caller's event handler
         // tracks task_complete / turn_aborted.
-        const result = await this.request('turn/start', params) as { turn?: { id?: string | null } };
-        const turnId = result?.turn?.id;
-        if (typeof turnId === 'string' && turnId.length > 0) {
-            if (this.pendingTurnCompletion) {
-                this.pendingTurnCompletion.turnId = turnId;
+        this.pendingPawsTurnStart = { prompt, deferredUserItems: [] };
+        try {
+            const result = await this.request('turn/start', params) as { turn?: { id?: string | null } };
+            const turnId = result?.turn?.id;
+            const resolvedTurnId = typeof turnId === 'string' && turnId.length > 0 ? turnId : null;
+            this.settlePawsTurnStart(resolvedTurnId, true);
+            if (resolvedTurnId) {
+                if (this.pendingTurnCompletion) {
+                    this.pendingTurnCompletion.turnId = resolvedTurnId;
+                }
+                // Some app-server versions accept a turn but omit turn/started and
+                // legacy task_started notifications. The successful RPC response is
+                // authoritative that work has begun, so keep session state live.
+                this.emitTaskStarted(resolvedTurnId);
             }
-            // Some app-server versions accept a turn but omit turn/started and
-            // legacy task_started notifications. The successful RPC response is
-            // authoritative that work has begun, so keep session state live.
-            this.emitTaskStarted(turnId);
+        } catch (error) {
+            this.settlePawsTurnStart(null, false);
+            throw error;
         }
     }
 
@@ -1388,6 +1641,8 @@ export class CodexAppServerClient {
         this.threadDefaults = null;
         this.startedTurnIds.clear();
         this.completedTurnIds.clear();
+        this.pawsStartedTurnIds.clear();
+        this.settlePawsTurnStart(null, false);
         this.rawFileChangesByItemId.clear();
     }
 
@@ -1399,8 +1654,8 @@ export class CodexAppServerClient {
     private request(method: string, params?: unknown, timeoutMs?: number): Promise<unknown> {
         const timeout = timeoutMs ?? CodexAppServerClient.REQUEST_TIMEOUT_MS;
         return new Promise((resolve, reject) => {
-            if (!this.process?.stdin?.writable) {
-                reject(new Error(`Cannot send ${method}: stdin not writable`));
+            if (!this.canWriteToTransport()) {
+                reject(new Error(`Cannot send ${method}: Codex transport is not writable`));
                 return;
             }
             const id = this.nextId++;
@@ -1418,24 +1673,45 @@ export class CodexAppServerClient {
             });
 
             const msg: JsonRpcRequest = { jsonrpc: '2.0', id, method, params };
-            const line = JSON.stringify(msg) + '\n';
             logger.debug(`[CodexAppServer] → ${method} (id=${id})`);
-            this.process.stdin.write(line);
+            try {
+                this.writeTransportMessage(JSON.stringify(msg));
+            } catch (error) {
+                clearTimeout(timer);
+                this.pending.delete(id);
+                reject(error instanceof Error ? error : new Error(String(error)));
+            }
         });
     }
 
     private notify(method: string, params?: unknown): void {
-        if (!this.process?.stdin?.writable) return;
+        if (!this.canWriteToTransport()) return;
         const msg: JsonRpcRequest = { jsonrpc: '2.0', method, params };
-        this.process.stdin.write(JSON.stringify(msg) + '\n');
+        this.writeTransportMessage(JSON.stringify(msg));
         logger.debug(`[CodexAppServer] → ${method} (notification)`);
     }
 
     private respond(id: number, result: unknown): void {
-        if (!this.process?.stdin?.writable) return;
+        if (!this.canWriteToTransport()) return;
         const msg: JsonRpcResponse = { jsonrpc: '2.0', id, result };
-        this.process.stdin.write(JSON.stringify(msg) + '\n');
+        this.writeTransportMessage(JSON.stringify(msg));
         logger.debug(`[CodexAppServer] → response (id=${id})`);
+    }
+
+    private canWriteToTransport(): boolean {
+        return this.socket?.readyState === WebSocket.OPEN || this.process?.stdin?.writable === true;
+    }
+
+    private writeTransportMessage(message: string): void {
+        if (this.socket?.readyState === WebSocket.OPEN) {
+            this.socket.send(message);
+            return;
+        }
+        if (this.process?.stdin?.writable) {
+            this.process.stdin.write(`${message}\n`);
+            return;
+        }
+        throw new Error('Codex transport is not writable');
     }
 
     private handleLine(line: string, sourceEpoch: number = this.processEpoch): void {
@@ -1564,6 +1840,19 @@ export class CodexAppServerClient {
     }
 
     private async handleServerRequest(id: number, method: string, params: any): Promise<void> {
+        const isApprovalRequest = method === 'mcpServer/elicitation/request'
+            || method === 'item/commandExecution/requestApproval'
+            || method === 'execCommandApproval'
+            || method === 'item/fileChange/requestApproval'
+            || method === 'applyPatchApproval';
+        const approvalAuthority = this.connection.type === 'unixSocket'
+            ? (this.connection.approvalAuthority ?? 'desktop')
+            : 'paws';
+        if (isApprovalRequest && approvalAuthority === 'desktop') {
+            logger.debug(`[CodexAppServer] Leaving ${method} for the Desktop approval authority`);
+            return;
+        }
+
         if (method === 'mcpServer/elicitation/request') {
             const toolName = this.parseToolNameFromElicitationMessage(params?.message) ?? params?.serverName ?? 'McpTool';
             const decision = await this.handleApproval({

@@ -180,10 +180,14 @@ export async function checkIfDaemonRunningAndCleanupStaleState(): Promise<boolea
         return true;
       }
     } catch {
-      // HTTP check failed - the PID is not our daemon (likely reused by OS after reboot)
-      logger.debug(`[DAEMON RUN] PID ${state.pid} is alive but HTTP health check failed on port ${state.httpPort}, cleaning up stale state`);
-      await cleanupDaemonState();
-      return false;
+      // A timeout only proves that the control server is temporarily unavailable;
+      // it does not prove that the live PID belongs to a stale process. Clearing
+      // daemon.state.json here also clears the ownership lock, which lets a child
+      // session start a competing daemon and report its webhook to the wrong
+      // parent. Keep the live daemon authoritative and let normal control calls
+      // retry/fail without destroying ownership.
+      logger.debug(`[DAEMON RUN] PID ${state.pid} is alive but HTTP health check failed on port ${state.httpPort}; preserving daemon state and ownership`);
+      return true;
     }
   }
 

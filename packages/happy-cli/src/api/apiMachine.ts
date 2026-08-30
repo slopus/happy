@@ -4,6 +4,7 @@
  */
 
 import { io, Socket } from 'socket.io-client';
+import { join } from 'node:path';
 import { logger } from '@/ui/logger';
 import { configuration } from '@/configuration';
 import { MachineMetadata, DaemonState, Machine, Update, UpdateMachineBody } from './types';
@@ -22,7 +23,8 @@ import {
     ForkTruncateUuidNotFoundError,
     ForkSourceMissingError,
 } from '@/claude/utils/claudeSessionFork';
-import { CodexAppServerClient } from '@/codex/codexAppServerClient';
+import { CodexAppServerClient, resolveCodexAppServerConnection } from '@/codex/codexAppServerClient';
+import { createCodexAttachCandidateService, listCodexThreadsFromStateDb } from '@/codex/codexAttachCandidates';
 import {
     CodexForkRewindPointNotFoundError,
     forkCodexThread,
@@ -112,6 +114,21 @@ async function withCodexAppServerClient<T>(handler: (client: CodexAppServerClien
     }
 }
 
+async function withSharedCodexAppServerClient<T>(handler: (client: CodexAppServerClient) => Promise<T>): Promise<T> {
+    const connection = resolveCodexAppServerConnection({
+        ...process.env,
+        HAPPY_CODEX_APP_SERVER_MODE: 'shared',
+        HAPPY_CODEX_APPROVAL_AUTHORITY: 'desktop',
+    });
+    const client = new CodexAppServerClient(undefined, connection);
+    await client.connect();
+    try {
+        return await handler(client);
+    } finally {
+        await client.disconnect();
+    }
+}
+
 export class ApiMachineClient {
     private socket!: Socket<ServerToDaemonEvents, DaemonToServerEvents>;
     private keepAliveInterval: NodeJS.Timeout | null = null;
@@ -120,6 +137,10 @@ export class ApiMachineClient {
     private rpcHandlerManager: RpcHandlerManager;
     private resumeSessionHandler: ((sessionId: string, options?: { model?: string; permissionMode?: string; effort?: string | null }) => Promise<SpawnSessionResult>) | null = null;
     private reconnectInterval: NodeJS.Timeout | null = null;
+    private readonly codexAttachCandidates = createCodexAttachCandidateService({
+        statePath: join(configuration.happyHomeDir, 'codex-attach-candidates.json'),
+        listThreads: async () => listCodexThreadsFromStateDb({ limit: 100 }),
+    });
 
     constructor(
         private token: string,
@@ -186,6 +207,57 @@ export class ApiMachineClient {
 
             logger.debug(`[API MACHINE] Stopped session ${sessionId}`);
             return { message: 'Session stopped' };
+        });
+
+        this.rpcHandlerManager.registerHandler('codex-list-attach-candidates', async (params: any) => {
+            const rawExistingThreadIds = params?.existingThreadIds;
+            if (!Array.isArray(rawExistingThreadIds) || rawExistingThreadIds.length > 5000) {
+                throw new Error('existingThreadIds must be an array with at most 5000 entries');
+            }
+            const existingThreadIds = rawExistingThreadIds.filter(
+                (value: unknown): value is string => typeof value === 'string' && value.length > 0,
+            );
+            return {
+                candidates: await this.codexAttachCandidates.list({ existingThreadIds }),
+            };
+        });
+
+        this.rpcHandlerManager.registerHandler('codex-dismiss-attach-candidate', async (params: any) => {
+            const threadId = requireNonEmptyString(params?.threadId, 'threadId');
+            await this.codexAttachCandidates.dismiss(threadId);
+            return { type: 'success' };
+        });
+
+        this.rpcHandlerManager.registerHandler('codex-attach-candidate', async (params: any) => {
+            const threadId = requireNonEmptyString(params?.threadId, 'threadId');
+            const candidates = await this.codexAttachCandidates.list({ existingThreadIds: [] });
+            const candidate = candidates.find((item) => item.threadId === threadId);
+            if (!candidate) {
+                throw new Error('Codex Desktop thread is no longer available for attachment');
+            }
+
+            const result = await spawnSession({
+                directory: candidate.directory,
+                agent: 'codex',
+                resumeCodexThreadId: candidate.threadId,
+                environmentVariables: {
+                    HAPPY_CODEX_APP_SERVER_MODE: 'shared',
+                    HAPPY_CODEX_APPROVAL_AUTHORITY: 'desktop',
+                    HAPPY_IMPORTED_SESSION_TITLE: candidate.title.slice(0, 200),
+                    ...(process.env.HAPPY_CODEX_APP_SERVER_SOCKET
+                        ? { HAPPY_CODEX_APP_SERVER_SOCKET: process.env.HAPPY_CODEX_APP_SERVER_SOCKET }
+                        : {}),
+                },
+            });
+
+            if (result.type === 'success') {
+                await this.codexAttachCandidates.markAttached(threadId);
+                return result;
+            }
+            if (result.type === 'requestToApproveDirectoryCreation') {
+                throw new Error('Codex Desktop thread directory is no longer available');
+            }
+            throw new Error(result.errorMessage);
         });
 
         // Register Claude session fork handlers (used by app-side fork /

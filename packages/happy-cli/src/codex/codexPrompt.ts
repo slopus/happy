@@ -6,6 +6,45 @@ import type { ReasoningEffort } from './codexAppServerTypes';
 
 export const CODEX_HAPPY_SYSTEM_PROMPT_START = '<!-- happy:system-prompt:start -->';
 export const CODEX_HAPPY_SYSTEM_PROMPT_END = '<!-- happy:system-prompt:end -->';
+const CODEX_PAWS_ORIGIN_PREFIX = '<!-- happy:paws-origin:';
+const CODEX_PAWS_ORIGIN_SUFFIX = ' -->';
+
+/**
+ * Persist an opaque Paws origin token inside the Codex Thread itself.
+ *
+ * The marker is deliberately an HTML comment: it survives app-server
+ * thread/read, while the history mapper removes it from the user-visible text.
+ * The random token is stored in encrypted session metadata and is not the
+ * Paws session ID. On reconnect it suppresses only that session's already
+ * stored user message, without hiding Desktop-originated turns.
+ */
+export function markPawsTurnOrigin(prompt: string, originToken: string): string {
+    return `${CODEX_PAWS_ORIGIN_PREFIX}${encodeURIComponent(originToken)}${CODEX_PAWS_ORIGIN_SUFFIX}\n${prompt}`;
+}
+
+export function readPawsTurnOrigin(text: string): string | null {
+    const start = text.indexOf(CODEX_PAWS_ORIGIN_PREFIX);
+    if (start < 0) return null;
+    const valueStart = start + CODEX_PAWS_ORIGIN_PREFIX.length;
+    const end = text.indexOf(CODEX_PAWS_ORIGIN_SUFFIX, valueStart);
+    if (end < 0) return null;
+    try {
+        return decodeURIComponent(text.slice(valueStart, end));
+    } catch {
+        return null;
+    }
+}
+
+export function stripPawsTurnOrigin(text: string): string {
+    let result = text;
+    while (true) {
+        const start = result.indexOf(CODEX_PAWS_ORIGIN_PREFIX);
+        if (start < 0) return result;
+        const end = result.indexOf(CODEX_PAWS_ORIGIN_SUFFIX, start + CODEX_PAWS_ORIGIN_PREFIX.length);
+        if (end < 0) return result;
+        result = result.slice(0, start) + result.slice(end + CODEX_PAWS_ORIGIN_SUFFIX.length);
+    }
+}
 
 export interface CodexEnhancedMode {
     permissionMode: PermissionMode;

@@ -10,7 +10,7 @@ vi.mock('@/persistence', () => ({
   clearDaemonState: mocks.mockClearDaemonState,
 }));
 
-import { spawnDaemonSession } from './controlClient';
+import { checkIfDaemonRunningAndCleanupStaleState, spawnDaemonSession } from './controlClient';
 
 describe('spawnDaemonSession', () => {
   beforeEach(() => {
@@ -44,5 +44,32 @@ describe('spawnDaemonSession', () => {
         }),
       }),
     );
+  });
+});
+
+describe('checkIfDaemonRunningAndCleanupStaleState', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.mockReadDaemonState.mockResolvedValue({
+      pid: 12345,
+      httpPort: 54321,
+    });
+  });
+
+  it('keeps daemon ownership when the PID is alive but the HTTP health check is transiently unavailable', async () => {
+    vi.spyOn(process, 'kill').mockImplementation(() => true);
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('timed out')));
+
+    await expect(checkIfDaemonRunningAndCleanupStaleState()).resolves.toBe(true);
+    expect(mocks.mockClearDaemonState).not.toHaveBeenCalled();
+  });
+
+  it('cleans up daemon ownership when the recorded PID is no longer alive', async () => {
+    vi.spyOn(process, 'kill').mockImplementation(() => {
+      throw new Error('ESRCH');
+    });
+
+    await expect(checkIfDaemonRunningAndCleanupStaleState()).resolves.toBe(false);
+    expect(mocks.mockClearDaemonState).toHaveBeenCalledTimes(1);
   });
 });

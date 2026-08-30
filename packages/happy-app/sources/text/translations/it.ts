@@ -200,6 +200,11 @@ export const it: TranslationStructure = {
         emptyTitle: 'Posta vuota',
         emptyDescription: 'Connettiti con amici per iniziare a condividere sessioni',
         updates: 'Aggiornamenti',
+        codexCandidates: 'Sessioni Codex Desktop',
+        codexCandidateDescription: 'Rilevate sul computer e non ancora collegate a Paws.',
+        attachCandidate: 'Prendi il controllo',
+        dismissCandidate: 'Ignora',
+        candidateUnavailable: 'Impossibile elaborare la sessione Codex. Verifica che il computer sia online.',
     },
 
     common: {

@@ -45,6 +45,14 @@ describe('ensureDaemonRunning', () => {
     )
   })
 
+  it('does not discover or replace the parent daemon for a daemon-spawned session', async () => {
+    await ensureDaemonRunning({ startedBy: 'daemon' })
+
+    expect(mocks.mockIsDaemonRunningCurrentlyInstalledHappyVersion).not.toHaveBeenCalled()
+    expect(mocks.mockCheckIfDaemonRunningAndCleanupStaleState).not.toHaveBeenCalled()
+    expect(mocks.mockSpawnHappyCLI).not.toHaveBeenCalled()
+  })
+
   it('starts the daemon and waits for readiness when the installed version is not running', async () => {
     const mockUnref = vi.fn()
     mocks.mockIsDaemonRunningCurrentlyInstalledHappyVersion.mockResolvedValue(false)

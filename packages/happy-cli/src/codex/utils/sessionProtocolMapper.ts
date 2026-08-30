@@ -4,9 +4,12 @@ import type { ReasoningOutput } from './reasoningProcessor';
 import type { DiffToolCall, DiffToolResult } from './diffProcessor';
 import { createEnvelope, type CreateEnvelopeOptions, type SessionEnvelope } from '@slopus/happy-wire';
 import type { Thread, ThreadItem, ThreadTurn } from '../codexAppServerTypes';
+import { hashObject } from '@/utils/deterministicJson';
 import {
     CODEX_HAPPY_SYSTEM_PROMPT_END,
     CODEX_HAPPY_SYSTEM_PROMPT_START,
+    readPawsTurnOrigin,
+    stripPawsTurnOrigin,
 } from '../codexPrompt';
 
 export type CodexTurnState = {
@@ -14,6 +17,7 @@ export type CodexTurnState = {
     startedSubagents?: Set<string>;
     activeSubagents?: Set<string>;
     providerSubagentToSessionSubagent?: Map<string, string>;
+    textEnvelopeOccurrences?: Map<string, number>;
 };
 
 type CodexMapperResult = {
@@ -280,7 +284,42 @@ function completedTimestampMs(turn: ThreadTurn): number {
         : Date.now();
 }
 
-function textFromInputItems(items: unknown): string | null {
+function stableTextEnvelopeId(opts: {
+    turn?: string;
+    subagent?: string;
+    role: 'user' | 'agent';
+    text: string;
+    thinking?: boolean;
+}, occurrence: number): string | undefined {
+    if (!opts.turn) return undefined;
+    return `codex-text:${hashObject({
+        turn: opts.turn,
+        subagent: opts.subagent ?? null,
+        role: opts.role,
+        text: opts.text.trim(),
+        thinking: opts.thinking ?? false,
+        occurrence,
+    }, undefined, 'base64url')}`;
+}
+
+function nextTextEnvelopeOccurrence(
+    occurrences: Map<string, number> | undefined,
+    opts: { turn?: string; subagent?: string; role: 'user' | 'agent'; text: string; thinking?: boolean },
+): number {
+    if (!occurrences) return 0;
+    const key = hashObject({
+        turn: opts.turn ?? null,
+        subagent: opts.subagent ?? null,
+        role: opts.role,
+        text: opts.text.trim(),
+        thinking: opts.thinking ?? false,
+    }, undefined, 'base64url');
+    const occurrence = occurrences.get(key) ?? 0;
+    occurrences.set(key, occurrence + 1);
+    return occurrence;
+}
+
+function textFromInputItems(items: unknown, omitPawsOriginToken?: string): string | null {
     if (!Array.isArray(items)) {
         return null;
     }
@@ -296,7 +335,10 @@ function textFromInputItems(items: unknown): string | null {
     if (isCodexRuntimeContext(text)) {
         return null;
     }
-    const visibleText = stripHappySystemPromptBlocks(text).trim();
+    if (omitPawsOriginToken && readPawsTurnOrigin(text) === omitPawsOriginToken) {
+        return null;
+    }
+    const visibleText = stripPawsTurnOrigin(stripHappySystemPromptBlocks(text)).trim();
     return visibleText.length > 0 ? visibleText : null;
 }
 
@@ -342,7 +384,7 @@ function reasoningText(item: ThreadItem): string | null {
     return text.length > 0 ? text : null;
 }
 
-function turnStatus(turn: ThreadTurn): TurnEndStatus {
+function turnStatus(turn: ThreadTurn): TurnEndStatus | null {
     const status = typeof turn.status === 'string' ? turn.status : null;
     if (status === 'failed') {
         return 'failed';
@@ -350,7 +392,14 @@ function turnStatus(turn: ThreadTurn): TurnEndStatus {
     if (status === 'cancelled' || status === 'canceled' || status === 'aborted' || status === 'interrupted') {
         return 'cancelled';
     }
+    if (status && status !== 'completed') {
+        return null;
+    }
     return 'completed';
+}
+
+export function isTerminalCodexTurn(turn: ThreadTurn): boolean {
+    return turnStatus(turn) !== null;
 }
 
 function emitHistoricalToolCall(
@@ -398,8 +447,24 @@ function emitHistoricalToolCall(
     }));
 }
 
-export function mapCodexThreadToSessionEnvelopes(thread: Pick<Thread, 'turns'>): SessionEnvelope[] {
+export function mapCodexThreadToSessionEnvelopes(
+    thread: Pick<Thread, 'turns'>,
+    opts?: {
+        omitPawsUserMessagesFromOriginToken?: string;
+        /** Reconnect catch-up prioritizes durable dialogue and avoids replaying
+         * transient tool/reasoning events that may already have streamed live. */
+        dialogueOnly?: boolean;
+        /** For an active Turn, replay only its user request. Agent output may
+         * still be streaming and is handled by the live notification path. */
+        activeTurnsUserOnly?: boolean;
+    },
+): SessionEnvelope[] {
     const envelopes: SessionEnvelope[] = [];
+    // History and live mapping intentionally use independent counters. Given
+    // the same ordered snapshot/events they derive the same occurrence IDs,
+    // so overlap during thread/read is idempotent instead of consuming the
+    // next occurrence and creating a duplicate.
+    const textEnvelopeOccurrences = new Map<string, number>();
 
     for (const turn of thread.turns ?? []) {
         const startedAt = turnTimestampMs(turn);
@@ -411,12 +476,28 @@ export function mapCodexThreadToSessionEnvelopes(thread: Pick<Thread, 'turns'>):
         }));
 
         for (const item of turn.items ?? []) {
+            if (opts?.activeTurnsUserOnly && !isTerminalCodexTurn(turn) && item.type !== 'userMessage') {
+                continue;
+            }
+            if (
+                opts?.dialogueOnly
+                && item.type !== 'userMessage'
+                && item.type !== 'agentMessage'
+                && item.type !== 'exitedReviewMode'
+            ) {
+                continue;
+            }
             switch (item.type) {
                 case 'userMessage': {
-                    const text = textFromInputItems(item.content);
+                    const text = textFromInputItems(item.content, opts?.omitPawsUserMessagesFromOriginToken);
                     if (text) {
+                        const textIdentity = { turn: turn.id, role: 'user' as const, text };
                         envelopes.push(createEnvelope('user', { t: 'text', text }, {
-                            id: item.id,
+                            id: stableTextEnvelopeId(
+                                textIdentity,
+                                nextTextEnvelopeOccurrence(textEnvelopeOccurrences, textIdentity),
+                            ),
+                            turn: turn.id,
                             time: startedAt,
                             codexItemId: item.id,
                         }));
@@ -426,8 +507,12 @@ export function mapCodexThreadToSessionEnvelopes(thread: Pick<Thread, 'turns'>):
                 case 'agentMessage': {
                     const text = typeof item.text === 'string' ? item.text.trim() : '';
                     if (text.length > 0) {
+                        const textIdentity = { turn: turn.id, role: 'agent' as const, text };
                         envelopes.push(createEnvelope('agent', { t: 'text', text }, {
-                            id: item.id,
+                            id: stableTextEnvelopeId(
+                                textIdentity,
+                                nextTextEnvelopeOccurrence(textEnvelopeOccurrences, textIdentity),
+                            ),
                             turn: turn.id,
                             time: completedAt,
                             codexItemId: item.id,
@@ -441,8 +526,12 @@ export function mapCodexThreadToSessionEnvelopes(thread: Pick<Thread, 'turns'>):
                         ? review.trim()
                         : '';
                     if (text.length > 0) {
+                        const textIdentity = { turn: turn.id, role: 'agent' as const, text };
                         envelopes.push(createEnvelope('agent', { t: 'text', text }, {
-                            id: item.id,
+                            id: stableTextEnvelopeId(
+                                textIdentity,
+                                nextTextEnvelopeOccurrence(textEnvelopeOccurrences, textIdentity),
+                            ),
                             turn: turn.id,
                             time: completedAt,
                             codexItemId: item.id,
@@ -453,8 +542,12 @@ export function mapCodexThreadToSessionEnvelopes(thread: Pick<Thread, 'turns'>):
                 case 'reasoning': {
                     const text = reasoningText(item);
                     if (text) {
+                        const textIdentity = { turn: turn.id, role: 'agent' as const, text, thinking: true };
                         envelopes.push(createEnvelope('agent', { t: 'text', text, thinking: true }, {
-                            id: item.id,
+                            id: stableTextEnvelopeId(
+                                textIdentity,
+                                nextTextEnvelopeOccurrence(textEnvelopeOccurrences, textIdentity),
+                            ),
                             turn: turn.id,
                             time: startedAt,
                             codexItemId: item.id,
@@ -512,11 +605,14 @@ export function mapCodexThreadToSessionEnvelopes(thread: Pick<Thread, 'turns'>):
             }
         }
 
-        envelopes.push(createEnvelope('agent', { t: 'turn-end', status: turnStatus(turn) }, {
-            id: `${turn.id}:end`,
-            turn: turn.id,
-            time: completedAt,
-        }));
+        const endStatus = turnStatus(turn);
+        if (endStatus) {
+            envelopes.push(createEnvelope('agent', { t: 'turn-end', status: endStatus }, {
+                id: `${turn.id}:end`,
+                turn: turn.id,
+                time: completedAt,
+            }));
+        }
     }
 
     return envelopes;
@@ -568,13 +664,20 @@ function pickTurnEndStatus(message: Record<string, unknown>, type: unknown): Tur
 
 export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unknown>, state: CodexTurnState): CodexMapperResult {
     const type = message.type;
+    const eventTurnId = typeof message.turn_id === 'string' && message.turn_id.length > 0
+        ? message.turn_id
+        : null;
     const startedSubagents = getStartedSubagents(state);
     const activeSubagents = getActiveSubagents(state);
     const providerSubagentToSessionSubagent = getProviderSubagentToSessionSubagent(state);
 
     if (type === 'task_started') {
-        const turnId = createId();
-        const turnStart = createEnvelope('agent', { t: 'turn-start' }, { turn: turnId });
+        const providerTurnId = eventTurnId;
+        const turnId = providerTurnId ?? createId();
+        const turnStart = createEnvelope('agent', { t: 'turn-start' }, {
+            ...(providerTurnId ? { id: `${providerTurnId}:start` } : {}),
+            turn: turnId,
+        });
         if (activeSubagents.size === 0) {
             startedSubagents.clear();
         }
@@ -588,9 +691,10 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
     }
 
     if (type === 'task_complete' || type === 'turn_aborted') {
-        if (!state.currentTurnId) {
+        const completedTurnId = eventTurnId ?? state.currentTurnId;
+        if (!completedTurnId) {
             return {
-                currentTurnId: null,
+                currentTurnId: state.currentTurnId,
                 startedSubagents,
                 activeSubagents,
                 providerSubagentToSessionSubagent,
@@ -598,17 +702,20 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
             };
         }
 
-        const lifecycleOpts = { turn: state.currentTurnId } satisfies CreateEnvelopeOptions;
+        const lifecycleOpts = { turn: completedTurnId } satisfies CreateEnvelopeOptions;
         const status = pickTurnEndStatus(message, type);
         return {
-            currentTurnId: null,
+            currentTurnId: state.currentTurnId === completedTurnId ? null : state.currentTurnId,
             startedSubagents,
             activeSubagents,
             providerSubagentToSessionSubagent,
             envelopes: [createEnvelope('agent', {
                 t: 'turn-end',
                 status,
-            }, lifecycleOpts)],
+            }, {
+                ...lifecycleOpts,
+                id: `${completedTurnId}:end`,
+            })],
         };
     }
 
@@ -727,10 +834,42 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
     }
 
     const subagent = resolveSessionSubagent(message, providerSubagentToSessionSubagent);
+    const rootTurnId = eventTurnId ?? state.currentTurnId;
     const opts = buildEnvelopeOptions(
-        subagent ? (getSubagentTurn(providerSubagentToSessionSubagent, subagent) ?? state.currentTurnId) : state.currentTurnId,
+        subagent ? (getSubagentTurn(providerSubagentToSessionSubagent, subagent) ?? rootTurnId) : rootTurnId,
         subagent,
     );
+
+    if (type === 'user_message') {
+        const text = textFromInputItems(message.content);
+        if (!text || subagent) {
+            return {
+                currentTurnId: state.currentTurnId,
+                startedSubagents,
+                activeSubagents,
+                providerSubagentToSessionSubagent,
+                envelopes: [],
+            };
+        }
+
+        const itemId = typeof message.item_id === 'string' ? message.item_id : undefined;
+        const textIdentity = { ...opts, role: 'user' as const, text };
+        const envelopeId = stableTextEnvelopeId(
+            textIdentity,
+            nextTextEnvelopeOccurrence(state.textEnvelopeOccurrences, textIdentity),
+        );
+        return {
+            currentTurnId: state.currentTurnId,
+            startedSubagents,
+            activeSubagents,
+            providerSubagentToSessionSubagent,
+            envelopes: [createEnvelope('user', { t: 'text', text }, {
+                ...opts,
+                ...(envelopeId ? { id: envelopeId } : {}),
+                ...(itemId ? { codexItemId: itemId } : {}),
+            })],
+        };
+    }
 
     if (type === 'agent_message') {
         if (typeof message.message !== 'string') {
@@ -743,9 +882,20 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
             };
         }
 
+        const text = message.message.trim();
+        const itemId = typeof message.item_id === 'string' ? message.item_id : undefined;
+        const textIdentity = { ...opts, role: 'agent' as const, text };
+        const envelopeId = stableTextEnvelopeId(
+            textIdentity,
+            nextTextEnvelopeOccurrence(state.textEnvelopeOccurrences, textIdentity),
+        );
         const envelopes: SessionEnvelope[] = [];
         maybeEmitSubagentStart(subagent, opts, startedSubagents, activeSubagents, providerSubagentToSessionSubagent, envelopes);
-        envelopes.push(createEnvelope('agent', { t: 'text', text: message.message }, opts));
+        envelopes.push(createEnvelope('agent', { t: 'text', text }, {
+            ...opts,
+            ...(envelopeId ? { id: envelopeId } : {}),
+            ...(itemId ? { codexItemId: itemId } : {}),
+        }));
         return {
             currentTurnId: state.currentTurnId,
             startedSubagents,
@@ -808,7 +958,7 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
                     ...(args as Record<string, unknown>),
                     ...(skillNames.length > 0 ? { skillNames } : {}),
                 },
-            }, opts)
+            }, { ...opts, id: `${call}:start` })
         );
         return {
             currentTurnId: state.currentTurnId,
@@ -824,7 +974,7 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
         const status = pickTurnEndStatus(message, type);
         const envelopes: SessionEnvelope[] = [];
         maybeEmitSubagentStart(subagent, opts, startedSubagents, activeSubagents, providerSubagentToSessionSubagent, envelopes);
-        envelopes.push(createEnvelope('agent', { t: 'tool-call-end', call, status }, opts));
+        envelopes.push(createEnvelope('agent', { t: 'tool-call-end', call, status }, { ...opts, id: `${call}:end` }));
         return {
             currentTurnId: state.currentTurnId,
             startedSubagents,
@@ -852,7 +1002,7 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
                     auto_approved: autoApproved,
                     changes,
                 },
-            }, opts)
+            }, { ...opts, id: `${call}:start` })
         );
         return {
             currentTurnId: state.currentTurnId,
@@ -867,7 +1017,7 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
         const call = pickCallId(message);
         const envelopes: SessionEnvelope[] = [];
         maybeEmitSubagentStart(subagent, opts, startedSubagents, activeSubagents, providerSubagentToSessionSubagent, envelopes);
-        envelopes.push(createEnvelope('agent', { t: 'tool-call-end', call }, opts));
+        envelopes.push(createEnvelope('agent', { t: 'tool-call-end', call }, { ...opts, id: `${call}:end` }));
         return {
             currentTurnId: state.currentTurnId,
             startedSubagents,
@@ -894,11 +1044,20 @@ export function mapCodexProcessorMessageToSessionEnvelopes(
     const opts = buildEnvelopeOptions(state.currentTurnId);
 
     if (message.type === 'reasoning') {
+        const text = message.message.trim();
+        const textIdentity = { ...opts, role: 'agent' as const, text, thinking: true };
         return [createEnvelope('agent', {
             t: 'text',
-            text: message.message,
+            text,
             thinking: true,
-        }, opts)];
+        }, {
+            ...opts,
+            id: stableTextEnvelopeId(
+                textIdentity,
+                nextTextEnvelopeOccurrence(state.textEnvelopeOccurrences, textIdentity),
+            ),
+            codexItemId: message.id,
+        })];
     }
 
     if (message.type === 'tool-call') {

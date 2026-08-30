@@ -10,16 +10,41 @@ import {
     buildCodexTurnPrompt,
     CODEX_HAPPY_SYSTEM_PROMPT_END,
     CODEX_HAPPY_SYSTEM_PROMPT_START,
+    markPawsTurnOrigin,
 } from '../codexPrompt';
 
 describe('mapCodexMcpMessageToSessionEnvelopes', () => {
+    it('maps a Codex Desktop user item into a root user envelope', () => {
+        const result = mapCodexMcpMessageToSessionEnvelopes({
+            type: 'user_message',
+            item_id: 'user-desktop-1',
+            content: [{ type: 'text', text: 'Continue from Codex Desktop.' }],
+        }, { currentTurnId: 'turn-desktop-1' });
+
+        expect(result.envelopes).toEqual([
+            expect.objectContaining({
+                id: expect.stringMatching(/^codex-text:/),
+                codexItemId: 'user-desktop-1',
+                role: 'user',
+                turn: 'turn-desktop-1',
+                ev: { t: 'text', text: 'Continue from Codex Desktop.' },
+            }),
+        ]);
+    });
+
     it('starts and ends turns for task lifecycle events', () => {
-        const started = mapCodexMcpMessageToSessionEnvelopes({ type: 'task_started' }, { currentTurnId: null });
+        const started = mapCodexMcpMessageToSessionEnvelopes(
+            { type: 'task_started', turn_id: 'codex-turn-1' },
+            { currentTurnId: null },
+        );
 
         expect(started.envelopes).toHaveLength(1);
         expect(started.envelopes[0].ev.t).toBe('turn-start');
-        expect(started.envelopes[0].turn).toBe(started.currentTurnId);
-        expect(started.envelopes[0].turn).not.toBe(started.envelopes[0].id);
+        expect(started.currentTurnId).toBe('codex-turn-1');
+        expect(started.envelopes[0]).toMatchObject({
+            id: 'codex-turn-1:start',
+            turn: 'codex-turn-1',
+        });
 
         const ended = mapCodexMcpMessageToSessionEnvelopes({ type: 'task_complete' }, { currentTurnId: started.currentTurnId });
         expect(ended.envelopes).toHaveLength(1);
@@ -27,8 +52,38 @@ describe('mapCodexMcpMessageToSessionEnvelopes', () => {
         if (ended.envelopes[0].ev.t === 'turn-end') {
             expect(ended.envelopes[0].ev.status).toBe('completed');
         }
+        expect(ended.envelopes[0].id).toBe('codex-turn-1:end');
         expect(ended.envelopes[0].turn).toBe(started.currentTurnId);
         expect(ended.currentTurnId).toBeNull();
+    });
+
+    it('uses an event turn ID without clearing a newer active turn', () => {
+        const text = mapCodexMcpMessageToSessionEnvelopes(
+            { type: 'agent_message', turn_id: 'turn-older', message: 'Older turn finished.' },
+            { currentTurnId: 'turn-newer' },
+        );
+        expect(text.envelopes[0]).toMatchObject({
+            turn: 'turn-older',
+            ev: { t: 'text', text: 'Older turn finished.' },
+        });
+        expect(text.currentTurnId).toBe('turn-newer');
+
+        const ended = mapCodexMcpMessageToSessionEnvelopes(
+            { type: 'task_complete', turn_id: 'turn-older' },
+            { currentTurnId: text.currentTurnId },
+        );
+        expect(ended.envelopes[0]).toMatchObject({
+            id: 'turn-older:end',
+            turn: 'turn-older',
+            ev: { t: 'turn-end', status: 'completed' },
+        });
+        expect(ended.currentTurnId).toBe('turn-newer');
+
+        const newerEnded = mapCodexMcpMessageToSessionEnvelopes(
+            { type: 'task_complete', turn_id: 'turn-newer' },
+            { currentTurnId: ended.currentTurnId },
+        );
+        expect(newerEnded.currentTurnId).toBeNull();
     });
 
     it('maps abort lifecycle with cancelled turn-end status', () => {
@@ -47,11 +102,13 @@ describe('mapCodexMcpMessageToSessionEnvelopes', () => {
 
     it('maps agent text messages with turn context', () => {
         const result = mapCodexMcpMessageToSessionEnvelopes(
-            { type: 'agent_message', message: 'hello' },
+            { type: 'agent_message', message: 'hello', item_id: 'agent-item-1' },
             { currentTurnId: 'turn-1' }
         );
 
         expect(result.envelopes).toHaveLength(1);
+        expect(result.envelopes[0].id).toMatch(/^codex-text:/);
+        expect(result.envelopes[0].codexItemId).toBe('agent-item-1');
         expect(result.envelopes[0].turn).toBe('turn-1');
         expect(result.envelopes[0].ev).toEqual({ t: 'text', text: 'hello' });
     });
@@ -513,6 +570,38 @@ describe('mapCodexProcessorMessageToSessionEnvelopes', () => {
 });
 
 describe('mapCodexThreadToSessionEnvelopes', () => {
+    it('omits a replayed Paws user message only for the opaque origin that stored it', () => {
+        const thread = {
+            turns: [{
+                id: 'turn-paws-1',
+                startedAt: 100,
+                items: [
+                    {
+                        id: 'user-paws-1',
+                        type: 'userMessage' as const,
+                        content: [{ type: 'text' as const, text: markPawsTurnOrigin('continue remotely', 'paws-origin-a') }],
+                    },
+                    { id: 'agent-paws-1', type: 'agentMessage' as const, text: 'done' },
+                ],
+            }],
+        };
+
+        const sameSession = mapCodexThreadToSessionEnvelopes(thread, {
+            omitPawsUserMessagesFromOriginToken: 'paws-origin-a',
+        });
+        expect(sameSession.some((envelope) => envelope.role === 'user')).toBe(false);
+        expect(sameSession).toEqual(expect.arrayContaining([
+            expect.objectContaining({ role: 'agent', ev: { t: 'text', text: 'done' } }),
+        ]));
+
+        const otherSession = mapCodexThreadToSessionEnvelopes(thread, {
+            omitPawsUserMessagesFromOriginToken: 'paws-origin-b',
+        });
+        expect(otherSession).toEqual(expect.arrayContaining([
+            expect.objectContaining({ role: 'user', ev: { t: 'text', text: 'continue remotely' } }),
+        ]));
+    });
+
     it('keeps only the user request when a fork backfills a constructed runtime-settings prompt', () => {
         const userRequest = 'Continue with the implementation plan.';
         const prompt = buildCodexTurnPrompt({
@@ -671,17 +760,128 @@ describe('mapCodexThreadToSessionEnvelopes', () => {
         ]);
         expect(envelopes[1]).toMatchObject({
             role: 'user',
-            id: 'user-1',
+            id: expect.stringMatching(/^codex-text:/),
+            turn: 'turn-1',
             codexItemId: 'user-1',
             ev: { t: 'text', text: 'hello codex' },
         });
         expect(envelopes[2]).toMatchObject({
             role: 'agent',
-            id: 'agent-1',
+            id: expect.stringMatching(/^codex-text:/),
             turn: 'turn-1',
             codexItemId: 'agent-1',
             ev: { t: 'text', text: 'hello human' },
         });
+    });
+
+    it('uses the same text envelope IDs for live notifications and thread history', () => {
+        const liveUser = mapCodexMcpMessageToSessionEnvelopes({
+            type: 'user_message',
+            item_id: 'msg-live-user',
+            content: [{ type: 'text', text: 'same user text' }],
+        }, { currentTurnId: 'turn-stable-1' }).envelopes[0];
+        const liveAgent = mapCodexMcpMessageToSessionEnvelopes({
+            type: 'agent_message',
+            item_id: 'msg-live-agent',
+            message: 'same agent text',
+        }, { currentTurnId: 'turn-stable-1' }).envelopes[0];
+        const historical = mapCodexThreadToSessionEnvelopes({
+            turns: [{
+                id: 'turn-stable-1',
+                items: [
+                    { id: 'item-history-user', type: 'userMessage', content: [{ type: 'text', text: 'same user text' }] },
+                    { id: 'item-history-agent', type: 'agentMessage', text: 'same agent text' },
+                ],
+            }],
+        });
+        const historicalUser = historical.find((envelope) => envelope.role === 'user');
+        const historicalAgent = historical.find((envelope) => envelope.role === 'agent' && envelope.ev.t === 'text');
+
+        expect(liveUser.id).toBe(historicalUser?.id);
+        expect(liveAgent.id).toBe(historicalAgent?.id);
+        expect(liveUser.codexItemId).not.toBe(historicalUser?.codexItemId);
+        expect(liveAgent.codexItemId).not.toBe(historicalAgent?.codexItemId);
+    });
+
+    it('keeps repeated identical text distinct while matching live and historical occurrences', () => {
+        const liveState = {
+            currentTurnId: 'turn-repeated-1',
+            textEnvelopeOccurrences: new Map<string, number>(),
+        };
+        const liveFirst = mapCodexMcpMessageToSessionEnvelopes({
+            type: 'agent_message',
+            item_id: 'msg-live-1',
+            message: 'repeated text',
+        }, liveState).envelopes[0];
+        const liveSecond = mapCodexMcpMessageToSessionEnvelopes({
+            type: 'agent_message',
+            item_id: 'msg-live-2',
+            message: 'repeated text',
+        }, liveState).envelopes[0];
+        const historical = mapCodexThreadToSessionEnvelopes({
+            turns: [{
+                id: 'turn-repeated-1',
+                items: [
+                    { id: 'item-history-1', type: 'agentMessage', text: 'repeated text' },
+                    { id: 'item-history-2', type: 'agentMessage', text: 'repeated text' },
+                ],
+            }],
+        }).filter((envelope) => envelope.role === 'agent' && envelope.ev.t === 'text');
+
+        expect(liveFirst.id).not.toBe(liveSecond.id);
+        expect(historical).toHaveLength(2);
+        expect(liveFirst.id).toBe(historical[0].id);
+        expect(liveSecond.id).toBe(historical[1].id);
+    });
+
+    it('replays only the active user request and deduplicates a concurrent live user event', () => {
+        const historical = mapCodexThreadToSessionEnvelopes({
+            turns: [{
+                id: 'turn-active-1',
+                status: 'inProgress',
+                items: [
+                    { id: 'item-user-history', type: 'userMessage', content: [{ type: 'text', text: 'active request' }] },
+                    { id: 'item-partial', type: 'agentMessage', text: 'partial agent text' },
+                ],
+            }],
+        }, { activeTurnsUserOnly: true });
+        const historicalUser = historical.find((envelope) => envelope.role === 'user');
+        const liveUser = mapCodexMcpMessageToSessionEnvelopes({
+            type: 'user_message',
+            item_id: 'msg-live-user',
+            content: [{ type: 'text', text: 'active request' }],
+        }, {
+            currentTurnId: 'turn-active-1',
+        }).envelopes[0];
+
+        expect(historical.some((envelope) => envelope.ev.t === 'turn-end')).toBe(false);
+        expect(historical.some((envelope) => envelope.role === 'agent' && envelope.ev.t === 'text')).toBe(false);
+        expect(liveUser.id).toBe(historicalUser?.id);
+    });
+
+    it('uses the same stable ID for untitled live and historical reasoning text', () => {
+        const live = mapCodexProcessorMessageToSessionEnvelopes({
+            type: 'reasoning',
+            message: 'inspect the edge case',
+            id: 'live-reasoning-random-id',
+        }, {
+            currentTurnId: 'turn-reasoning-1',
+            textEnvelopeOccurrences: new Map<string, number>(),
+        })[0];
+        const historical = mapCodexThreadToSessionEnvelopes({
+            turns: [{
+                id: 'turn-reasoning-1',
+                items: [{
+                    id: 'history-reasoning-item',
+                    type: 'reasoning',
+                    summary: ['inspect the edge case'],
+                    content: [],
+                }],
+            }],
+        }).find((envelope) => envelope.ev.t === 'text' && envelope.ev.thinking === true);
+
+        expect(live.id).toBe(historical?.id);
+        expect(live.codexItemId).not.toBe(historical?.codexItemId);
     });
 
     it('backfills Codex command execution items as tool calls', () => {

@@ -267,6 +267,24 @@ describe('CodexAppServerClient sandbox integration', () => {
         await client.disconnect();
     });
 
+    it('does not forward Happy reconnect credentials or metadata to app-server', async () => {
+        process.env.HAPPY_RECONNECT_ENCRYPTION_KEY = 'secret-key';
+        process.env.HAPPY_RECONNECT_METADATA_JSON = '{"path":"/private/project"}';
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+
+        try {
+            await client.connect();
+            const childEnv = mockSpawn.mock.calls.at(-1)?.[2]?.env as Record<string, string>;
+            expect(childEnv.HAPPY_RECONNECT_ENCRYPTION_KEY).toBeUndefined();
+            expect(childEnv.HAPPY_RECONNECT_METADATA_JSON).toBeUndefined();
+        } finally {
+            delete process.env.HAPPY_RECONNECT_ENCRYPTION_KEY;
+            delete process.env.HAPPY_RECONNECT_METADATA_JSON;
+            await client.disconnect();
+        }
+    });
+
     it('ignores stale process exit during reconnect initialize', async () => {
         const proc1 = createMockProcess({ pid: 1001, initializeDelayMs: 5 });
         const proc2 = createMockProcess({ pid: 1002, initializeDelayMs: 50 });
@@ -809,7 +827,7 @@ describe('CodexAppServerClient sandbox integration', () => {
         })).resolves.toEqual({ aborted: false });
 
         expect(events).toEqual(expect.arrayContaining([
-            expect.objectContaining({ type: 'agent_message', message: 'Findings: none.', item_id: 'review-item-1' }),
+            expect.objectContaining({ type: 'agent_message', message: 'Findings: none.', item_id: 'review-item-1', turn_id: 'turn-review-inline' }),
             expect.objectContaining({ type: 'task_complete', turn_id: 'turn-review-inline' }),
         ]));
 
@@ -922,6 +940,18 @@ describe('CodexAppServerClient sandbox integration', () => {
                             },
                         });
                         pushJsonLine(stdout, {
+                            method: 'item/completed',
+                            params: {
+                                threadId: 'thread-raw-1',
+                                turnId: 'turn-raw-1',
+                                item: {
+                                    type: 'userMessage',
+                                    id: 'user-local-1',
+                                    content: [{ type: 'text', text: 'run pwd' }],
+                                },
+                            },
+                        });
+                        pushJsonLine(stdout, {
                             method: 'item/started',
                             params: {
                                 threadId: 'thread-raw-1',
@@ -1002,11 +1032,178 @@ describe('CodexAppServerClient sandbox integration', () => {
 
         expect(events).toEqual(expect.arrayContaining([
             expect.objectContaining({ type: 'task_started', turn_id: 'turn-raw-1' }),
-            expect.objectContaining({ type: 'exec_command_begin', callId: 'call-1' }),
-            expect.objectContaining({ type: 'exec_command_end', callId: 'call-1', output: '/tmp/project\n' }),
-            expect.objectContaining({ type: 'agent_message', message: 'done' }),
+            expect.objectContaining({ type: 'exec_command_begin', callId: 'call-1', turn_id: 'turn-raw-1' }),
+            expect.objectContaining({ type: 'exec_command_end', callId: 'call-1', output: '/tmp/project\n', turn_id: 'turn-raw-1' }),
+            expect.objectContaining({ type: 'agent_message', message: 'done', turn_id: 'turn-raw-1' }),
         ]));
         expect(events.filter((event) => event.type === 'task_complete')).toHaveLength(1);
+        expect(events.filter((event) => event.type === 'user_message')).toHaveLength(0);
+
+        await client.disconnect();
+    });
+
+    it('mirrors a root user item submitted by another shared app-server client', async () => {
+        const proc = createMockProcess({
+            pid: 3002,
+            onRequest: (msg, stdout) => {
+                if (msg.method === 'thread/start' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: {
+                                thread: { id: 'thread-shared-1', path: '/tmp/thread-shared-1' },
+                                model: 'gpt-test',
+                                modelProvider: 'openai',
+                                cwd: '/tmp/project',
+                                approvalPolicy: 'never',
+                                sandbox: { type: 'dangerFullAccess' },
+                                reasoningEffort: null,
+                            },
+                        });
+                    }, 0);
+                }
+            },
+        });
+        mockSpawn.mockImplementation(() => proc);
+
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        const events: Array<Record<string, unknown>> = [];
+        client.setEventHandler((msg) => events.push(msg as Record<string, unknown>));
+
+        await client.connect();
+        await client.startThread({
+            model: 'gpt-test',
+            cwd: '/tmp/project',
+            approvalPolicy: 'never',
+            sandbox: 'danger-full-access',
+        });
+
+        pushJsonLine(proc.stdout, {
+            method: 'turn/started',
+            params: {
+                threadId: 'thread-shared-1',
+                turn: { id: 'turn-desktop-1', items: [], status: 'inProgress', error: null },
+            },
+        });
+        pushJsonLine(proc.stdout, {
+            method: 'item/completed',
+            params: {
+                threadId: 'thread-shared-1',
+                turnId: 'turn-desktop-1',
+                item: {
+                    type: 'userMessage',
+                    id: 'user-desktop-1',
+                    content: [{ type: 'text', text: 'Continue from Codex Desktop.' }],
+                },
+            },
+        });
+
+        await waitFor(() => events.some((event) => event.type === 'user_message'));
+        expect(events).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                type: 'user_message',
+                item_id: 'user-desktop-1',
+                turn_id: 'turn-desktop-1',
+                content: [{ type: 'text', text: 'Continue from Codex Desktop.' }],
+            }),
+        ]));
+
+        await client.disconnect();
+    });
+
+    it('uses the authoritative turn ID to suppress only the Paws-originated user item', async () => {
+        const proc = createMockProcess({
+            pid: 3003,
+            onRequest: (msg, stdout) => {
+                if (msg.method === 'thread/start' && msg.id != null) {
+                    setTimeout(() => pushJsonLine(stdout, {
+                        id: msg.id,
+                        result: {
+                            thread: { id: 'thread-shared-overlap', path: '/tmp/thread-shared-overlap' },
+                            model: 'gpt-test',
+                            modelProvider: 'openai',
+                            cwd: '/tmp/project',
+                            approvalPolicy: 'never',
+                            sandbox: { type: 'dangerFullAccess' },
+                            reasoningEffort: null,
+                        },
+                    }), 0);
+                }
+
+                if (msg.method === 'turn/start' && msg.id != null) {
+                    setTimeout(() => {
+                        // An overlapping Desktop item must remain visible even while
+                        // the Paws turn/start RPC is still pending.
+                        pushJsonLine(stdout, {
+                            method: 'item/completed',
+                            params: {
+                                threadId: 'thread-shared-overlap',
+                                turnId: 'turn-desktop-overlap',
+                                item: {
+                                    type: 'userMessage',
+                                    id: 'user-desktop-overlap',
+                                    content: [{ type: 'text', text: 'Desktop overlaps.' }],
+                                },
+                            },
+                        });
+                        // The local echo can race ahead of the turn/start response.
+                        pushJsonLine(stdout, {
+                            method: 'item/completed',
+                            params: {
+                                threadId: 'thread-shared-overlap',
+                                turnId: 'turn-paws-overlap',
+                                item: {
+                                    type: 'userMessage',
+                                    id: 'user-paws-early',
+                                    content: [{ type: 'text', text: 'Paws starts.' }],
+                                },
+                            },
+                        });
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: { turn: { id: 'turn-paws-overlap', items: [], status: 'inProgress', error: null } },
+                        });
+                        // A delayed duplicate echo is still identified by turn ID.
+                        pushJsonLine(stdout, {
+                            method: 'item/completed',
+                            params: {
+                                threadId: 'thread-shared-overlap',
+                                turnId: 'turn-paws-overlap',
+                                item: {
+                                    type: 'userMessage',
+                                    id: 'user-paws-late',
+                                    content: [{ type: 'text', text: 'Paws starts.' }],
+                                },
+                            },
+                        });
+                    }, 0);
+                }
+            },
+        });
+        mockSpawn.mockImplementation(() => proc);
+
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        const events: Array<Record<string, unknown>> = [];
+        client.setEventHandler((msg) => events.push(msg as Record<string, unknown>));
+
+        await client.connect();
+        await client.startThread({
+            model: 'gpt-test',
+            cwd: '/tmp/project',
+            approvalPolicy: 'never',
+            sandbox: 'danger-full-access',
+        });
+        await client.sendTurn('Paws starts.');
+        await waitFor(() => events.some((event) => event.item_id === 'user-desktop-overlap'));
+
+        expect(events.filter((event) => event.type === 'user_message')).toEqual([
+            expect.objectContaining({
+                item_id: 'user-desktop-overlap',
+                turn_id: 'turn-desktop-overlap',
+            }),
+        ]);
 
         await client.disconnect();
     });

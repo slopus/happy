@@ -123,6 +123,38 @@ export type ReadConversationResponse = {
     thread: Thread;
 };
 
+export type ThreadListParams = {
+    cursor?: string | null;
+    limit?: number | null;
+    sortKey?: "created_at" | "updated_at" | "recency_at" | null;
+    sortDirection?: "asc" | "desc" | null;
+    modelProviders?: string[] | null;
+    sourceKinds?: Array<"cli" | "vscode" | "exec" | "appServer" | "subAgent" | "subAgentReview" | "subAgentCompact" | "subAgentThreadSpawn" | "subAgentOther" | "unknown"> | null;
+    archived?: boolean | null;
+    cwd?: string | string[] | null;
+    useStateDbOnly?: boolean;
+    searchTerm?: string | null;
+};
+
+export type ListedThread = Thread & {
+    sessionId?: string;
+    parentThreadId?: string | null;
+    preview?: string;
+    ephemeral?: boolean;
+    createdAt?: number;
+    updatedAt?: number;
+    recencyAt?: number | null;
+    source?: "cli" | "vscode" | "exec" | "appServer" | { custom: string } | { subAgent: unknown } | "unknown";
+    name?: string | null;
+    archived?: boolean;
+};
+
+export type ThreadListResponse = {
+    data: ListedThread[];
+    nextCursor: string | null;
+    backwardsCursor?: string | null;
+};
+
 export type RollbackConversationParams = {
     threadId: ThreadId;
     numTurns: number;

@@ -673,19 +673,33 @@ export async function startDaemon(): Promise<void> {
       return sessionIdToFinishedSession.get(happySessionId);
     };
 
-    const fetchServerSessionMetadata = async (sessionId: string, encryptionKey: Uint8Array, encryptionVariant: 'legacy' | 'dataKey'): Promise<Metadata | null> => {
+    const fetchServerSessionSnapshot = async (
+      sessionId: string,
+      encryptionKey: Uint8Array,
+      encryptionVariant: 'legacy' | 'dataKey',
+    ): Promise<{ metadata: Metadata; seq: number; metadataVersion: number } | null> => {
       try {
         const response = await axios.get(`${configuration.serverUrl}/v1/sessions`, {
           headers: { Authorization: `Bearer ${credentials.token}` },
           timeout: 10_000,
         });
-        const sessions = (response.data as { sessions: { id: string; metadata: string }[] }).sessions;
+        const sessions = (response.data as { sessions: Array<{
+          id: string;
+          metadata: string;
+          seq: number;
+          metadataVersion: number;
+        }> }).sessions;
         const matched = sessions.find(s => s.id === sessionId);
         if (!matched) return null;
         const decrypted = decrypt(encryptionKey, encryptionVariant, decodeBase64(matched.metadata));
-        return decrypted as Metadata | null;
+        if (!decrypted) return null;
+        return {
+          metadata: decrypted as Metadata,
+          seq: matched.seq,
+          metadataVersion: matched.metadataVersion,
+        };
       } catch (error) {
-        logger.debug(`[DAEMON RUN] Failed to fetch session metadata from server: ${error instanceof Error ? error.message : error}`);
+        logger.debug(`[DAEMON RUN] Failed to fetch session snapshot from server: ${error instanceof Error ? error.message : error}`);
         return null;
       }
     };
@@ -724,18 +738,20 @@ export async function startDaemon(): Promise<void> {
           return { type: 'error', errorMessage: `Session ${happySessionId} has no stored encryption data. It was likely started before this feature was available. Restart the daemon and start a new session to enable resume.` };
         }
 
-        // Webhook metadata may be stale (missing claudeSessionId/codexThreadId set after startup).
-        // Fetch fresh metadata from server if needed.
+        // Webhook metadata and versions are startup snapshots. Always refresh
+        // before resume so Codex history replay starts with the persisted sync
+        // cursor instead of racing a later websocket update-session event.
         let metadata = tracked.happySessionMetadataFromLocalWebhook;
-        const needsFetch = (!metadata.claudeSessionId && (!metadata.flavor || metadata.flavor === 'claude'))
-          || (!metadata.codexThreadId && metadata.flavor === 'codex');
-        if (needsFetch) {
-          logger.debug(`[DAEMON RUN] Session ${happySessionId} missing agent session ID in webhook metadata, fetching from server`);
-          const serverMetadata = await fetchServerSessionMetadata(happySessionId, tracked.encryption.encryptionKey, tracked.encryption.encryptionVariant);
-          if (serverMetadata) {
-            metadata = serverMetadata;
-            tracked.happySessionMetadataFromLocalWebhook = serverMetadata;
-          }
+        const serverSnapshot = await fetchServerSessionSnapshot(
+          happySessionId,
+          tracked.encryption.encryptionKey,
+          tracked.encryption.encryptionVariant,
+        );
+        if (serverSnapshot) {
+          metadata = serverSnapshot.metadata;
+          tracked.happySessionMetadataFromLocalWebhook = serverSnapshot.metadata;
+          tracked.encryption.seq = serverSnapshot.seq;
+          tracked.encryption.metadataVersion = serverSnapshot.metadataVersion;
         }
 
         const launch = buildResumeLaunch(
@@ -766,6 +782,7 @@ export async function startDaemon(): Promise<void> {
             HAPPY_RECONNECT_SEQ: String(tracked.encryption.seq),
             HAPPY_RECONNECT_METADATA_VERSION: String(tracked.encryption.metadataVersion),
             HAPPY_RECONNECT_AGENT_STATE_VERSION: String(tracked.encryption.agentStateVersion),
+            HAPPY_RECONNECT_METADATA_JSON: JSON.stringify(metadata),
           },
         });
       } catch (error) {

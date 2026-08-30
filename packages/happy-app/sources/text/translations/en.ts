@@ -215,6 +215,11 @@ export const en: TranslationStructure = {
         emptyTitle: 'Empty Inbox',
         emptyDescription: 'Connect with friends to start sharing sessions',
         updates: 'Updates',
+        codexCandidates: 'Codex Desktop sessions',
+        codexCandidateDescription: 'Detected on your computer and not yet connected to Paws.',
+        attachCandidate: 'Take over',
+        dismissCandidate: 'Ignore',
+        candidateUnavailable: 'This Codex session could not be processed. Check that the computer is online and try again.',
     },
 
     common: {

@@ -202,6 +202,11 @@ export const zhHant: TranslationStructure = {
         emptyTitle: '收件匣是空的',
         emptyDescription: '與好友建立連結，開始共享工作階段',
         updates: '更新',
+        codexCandidates: '待接管的 Codex 工作階段',
+        codexCandidateDescription: '已在電腦上偵測到，但尚未連接至 Paws。',
+        attachCandidate: '接管',
+        dismissCandidate: '忽略',
+        candidateUnavailable: '暫時無法處理這個 Codex 工作階段，請確認電腦在線後再試。',
     },
 
     common: {

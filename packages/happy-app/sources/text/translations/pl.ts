@@ -211,6 +211,11 @@ export const pl: TranslationStructure = {
         emptyTitle: 'Pusta skrzynka',
         emptyDescription: 'Połącz się z przyjaciółmi, aby zacząć udostępniać sesje',
         updates: 'Aktualizacje',
+        codexCandidates: 'Sesje Codex Desktop',
+        codexCandidateDescription: 'Wykryte na komputerze i jeszcze niepołączone z Paws.',
+        attachCandidate: 'Przejmij',
+        dismissCandidate: 'Ignoruj',
+        candidateUnavailable: 'Nie udało się obsłużyć sesji Codex. Sprawdź, czy komputer jest online.',
     },
 
     common: {

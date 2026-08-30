@@ -211,6 +211,11 @@ export const ru: TranslationStructure = {
         emptyTitle: 'Входящие пусты',
         emptyDescription: 'Подключитесь к друзьям, чтобы начать делиться сессиями',
         updates: 'Обновления',
+        codexCandidates: 'Сеансы Codex Desktop',
+        codexCandidateDescription: 'Обнаружены на компьютере и ещё не подключены к Paws.',
+        attachCandidate: 'Подключить',
+        dismissCandidate: 'Игнорировать',
+        candidateUnavailable: 'Не удалось обработать сеанс Codex. Убедитесь, что компьютер подключён к сети.',
     },
 
     common: {
