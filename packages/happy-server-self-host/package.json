@@ -36,6 +36,8 @@
     "bundle:webapp": "node ../happy-cli/scripts/bundle-webapp.cjs --out-dir webapp",
     "generate": "prisma generate --schema=prisma/schema.prisma",
     "postinstall": "node scripts/postinstall.cjs",
+    "test:data-safety:unit": "node --test tests/packaged-data-safety.test.mjs",
+    "test:data-safety": "pnpm run test:data-safety:unit && node tests/packaged-data-safety-e2e.mjs --runs 2",
     "prepublishOnly": "pnpm run build && pnpm run bundle:webapp && pnpm --filter happy-server --fail-if-no-match test"
   },
   "dependencies": {

@@ -42,87 +42,15 @@ jobs:
     - name: Install dependencies
       run: pnpm install --frozen-lockfile
 
-    - name: Build packages
-      run: |
-        pnpm --filter @slopus/happy-wire --fail-if-no-match build
-        pnpm --filter happy --fail-if-no-match build
-
     # happy-server-self-host ships only a bundled runtime (no sources), and the
     # bundler is bun.
     - name: Install Bun
       uses: oven-sh/setup-bun@v2
+      with:
+        bun-version: 1.2.22
 
-    # `happy server` resolves the self-host runtime and bundled webapp from
-    # happy-server-self-host. Its build bundles packages/happy-server's
-    # standalone entrypoint and copies prisma/ in, so it must run before pack.
-    - name: Build happy-server-self-host runtime + bundle webapp
-      run: |
-        pnpm --filter happy-server-self-host --fail-if-no-match build
-        pnpm --filter happy-server-self-host --fail-if-no-match run bundle:webapp
-
-    - name: Pack packages
-      run: |
-        pnpm --filter @slopus/happy-wire --fail-if-no-match pack --pack-destination packages/happy-wire
-        pnpm --filter happy --fail-if-no-match pack --pack-destination packages/happy-cli
-        pnpm --filter happy-server-self-host --fail-if-no-match pack --pack-destination packages/happy-server-self-host
-
-    - name: Install packed packages globally
-      run: |
-        WIRE_PACKAGE_FILE=$(ls packages/happy-wire/*.tgz)
-        HAPPY_PACKAGE_FILE=$(ls packages/happy-cli/*.tgz)
-        SERVER_PACKAGE_FILE=$(ls packages/happy-server-self-host/*.tgz)
-        npm install -g "./$WIRE_PACKAGE_FILE" "./$SERVER_PACKAGE_FILE" "./$HAPPY_PACKAGE_FILE"
-
-    - name: Test binary execution
-      run: |
-        # Test that the binary starts successfully
-        echo "Testing happy --help..."
-        timeout 30s happy --help || {
-          echo "Error: happy --help failed or timed out"
-          exit 1
-        }
-
-        echo "Testing happy --version..."
-        timeout 10s happy --version || {
-          echo "Error: happy --version failed or timed out"
-          exit 1
-        }
-
-        echo "Testing happy doctor..."
-        timeout 30s happy doctor || {
-          echo "Error: happy doctor failed or timed out"
-          exit 1
-        }
-
-        echo "Testing happy daemon status..."
-        timeout 10s happy daemon status || {
-          echo "Error: happy daemon status failed or timed out"
-          exit 1
-        }
-
-        echo "Binary smoke test passed on Linux!"
-
-    - name: Test packaged server (happy server)
-      run: |
-        export HAPPY_HOME_DIR="$(mktemp -d)"
-        timeout 90s happy server --port 4505 --host 127.0.0.1 --no-persist --reset > /tmp/happy-server.log 2>&1 &
-        SERVER_PID=$!
-        UP=0
-        for i in $(seq 1 60); do
-          if curl -sf -m 2 http://127.0.0.1:4505/ -o /dev/null; then UP=1; echo "server up after ${i}s"; break; fi
-          sleep 1
-        done
-        # Exercise the Prisma native query engine via a DB-backed read.
-        PK=$(node -e "console.log(Buffer.alloc(32).toString('base64'))")
-        BODY=$(curl -s -m 5 -G http://127.0.0.1:4505/v1/auth/request/status --data-urlencode "publicKey=$PK" || true)
-        echo "auth/request/status -> $BODY"
-        kill "$SERVER_PID" 2>/dev/null || true
-        pkill -f happy-server || true
-        echo "=== happy server log ==="; cat /tmp/happy-server.log || true
-        if [ "$UP" != "1" ]; then echo "Error: happy server did not become healthy"; exit 1; fi
-        if ! echo "$BODY" | grep -q '"status"'; then echo "Error: Prisma-backed endpoint did not respond"; exit 1; fi
-        if grep -qiE 'PrismaClientInitializationError|could not locate.*Query Engine' /tmp/happy-server.log; then echo "Error: Prisma query engine failed to load"; exit 1; fi
-        echo "happy server smoke test passed (booted + Prisma query engine OK)"
+    - name: Test packaged self-host data safety (Linux Native)
+      run: pnpm --filter happy-server-self-host test:data-safety
 
   smoke-test-windows:
     runs-on: windows-latest
