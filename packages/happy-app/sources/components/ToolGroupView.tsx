@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { View, Text, Pressable, ActivityIndicator, Platform } from 'react-native';
+import { View, Text, Pressable, ActivityIndicator } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Ionicons, Octicons } from '@expo/vector-icons';
 import {
@@ -16,9 +16,8 @@ import { layout } from './layout';
 import { useElapsedTime } from '@/hooks/useElapsedTime';
 import { t } from '@/text';
 import { Message, ToolCallMessage } from '@/sync/typesMessage';
-import { getToolSummaryCategory, getToolSummaryDetail, ToolSummaryCategory } from '@/utils/toolDisplay';
+import { getToolActivityLabel, getToolSummaryCategory, ToolSummaryCategory } from '@/utils/toolDisplay';
 import { useRouter } from 'expo-router';
-import { formatMCPTitle } from './tools/views/MCPToolView';
 
 interface ToolGroupViewProps {
     group: ToolGroupItem;
@@ -26,15 +25,33 @@ interface ToolGroupViewProps {
     sessionId: string;
     expanded: boolean;
     onToggle: () => void;
+    onAnchorLayoutChange?: (anchor: ToolGroupLayoutAnchor) => void;
     nested?: boolean;
     hideSingleToolChildren?: boolean;
+    forceCompleted?: boolean;
 }
 
+export type ToolGroupLayoutAnchor = {
+    node: View;
+    y: number;
+};
+
 export const ToolGroupView = React.memo<ToolGroupViewProps>((props) => {
-    const { group, metadata, sessionId, expanded, onToggle, nested, hideSingleToolChildren } = props;
+    const {
+        group,
+        metadata,
+        sessionId,
+        expanded,
+        onToggle,
+        onAnchorLayoutChange,
+        nested,
+        hideSingleToolChildren,
+        forceCompleted,
+    } = props;
     const router = useRouter();
     const summary = React.useMemo(() => generateGroupSummary(group.messages), [group.messages]);
     const summaryCategory = React.useMemo(() => getGroupSummaryCategory(group.messages), [group.messages]);
+    const hasRunning = !forceCompleted && group.hasRunning;
     const suppressChildren = hideSingleToolChildren && group.messages.length === 1 && group.messages[0]?.kind === 'tool-call';
     const singleToolMessage = suppressChildren && group.messages[0]?.kind === 'tool-call'
         ? group.messages[0]
@@ -53,6 +70,7 @@ export const ToolGroupView = React.memo<ToolGroupViewProps>((props) => {
         }
         router.push(`/session/${sessionId}/message/${singleToolMessage.id}`);
     }, [onToggle, router, sessionId, singleToolMessage]);
+    const handleAnchoredToggle = useAnchoredToggle(expanded, onToggle, onAnchorLayoutChange);
     const renderGroupMessage = React.useCallback((msg: Message) => (
         <ToolGroupMessageRow
             key={msg.id}
@@ -66,9 +84,9 @@ export const ToolGroupView = React.memo<ToolGroupViewProps>((props) => {
         <View style={nested ? styles.nestedInnerContainer : styles.innerContainer}>
             <CollapseHeader
                 expanded={expanded}
-                hasRunning={group.hasRunning}
+                hasRunning={hasRunning}
                 label={summary}
-                onPress={singleToolMessage ? handleSingleToolPress : onToggle}
+                onPress={singleToolMessage ? handleSingleToolPress : handleAnchoredToggle}
                 category={summaryCategory}
                 showChevron
             />
@@ -101,15 +119,18 @@ interface AgentWorkGroupViewProps {
     sessionId: string;
     expanded: boolean;
     onToggle: () => void;
+    onAnchorLayoutChange?: (anchor: ToolGroupLayoutAnchor) => void;
 }
 
 export const AgentWorkGroupView = React.memo<AgentWorkGroupViewProps>((props) => {
-    const { group, metadata, sessionId, expanded, onToggle } = props;
+    const { group, metadata, sessionId, expanded, onToggle, onAnchorLayoutChange } = props;
+    const isCompleted = group.completedAt !== null;
     const runningElapsedSeconds = useElapsedTime(group.completedAt === null ? group.startedAt : null);
     const durationMs = group.completedAt === null
         ? runningElapsedSeconds * 1000
         : group.completedAt - group.startedAt;
     const label = t('toolGroup.workedFor', { duration: formatWorkDuration(durationMs) });
+    const handleAnchoredToggle = useAnchoredToggle(expanded, onToggle, onAnchorLayoutChange);
     const nestedItemsNewestFirst = React.useMemo(
         () => groupToolCallsForDisplay(group.messages, true, { groupSingleToolCalls: true }),
         [group.messages],
@@ -176,8 +197,10 @@ export const AgentWorkGroupView = React.memo<AgentWorkGroupViewProps>((props) =>
                     sessionId={sessionId}
                     expanded={!collapsedToolGroups.has(item.id)}
                     onToggle={() => handleToggleNestedGroup(item.id)}
+                    onAnchorLayoutChange={onAnchorLayoutChange}
                     nested
                     hideSingleToolChildren
+                    forceCompleted={isCompleted}
                 />
             );
         }
@@ -189,16 +212,16 @@ export const AgentWorkGroupView = React.memo<AgentWorkGroupViewProps>((props) =>
                 sessionId={sessionId}
             />
         );
-    }, [collapsedToolGroups, handleToggleNestedGroup, metadata, sessionId]);
+    }, [collapsedToolGroups, handleToggleNestedGroup, isCompleted, metadata, onAnchorLayoutChange, sessionId]);
 
     return (
         <View style={styles.outerContainer}>
             <View style={styles.innerContainer}>
                 <CollapseHeader
                     expanded={expanded}
-                    hasRunning={group.hasRunning}
+                    hasRunning={!isCompleted && group.hasRunning}
                     label={label}
-                    onPress={onToggle}
+                    onPress={handleAnchoredToggle}
                 />
                 {expanded && (
                     <View style={styles.content}>
@@ -214,13 +237,28 @@ function CollapseHeader(props: {
     expanded: boolean;
     hasRunning: boolean;
     label: string;
-    onPress: () => void;
+    onPress: (anchor?: ToolGroupLayoutAnchor) => void;
     category?: ToolSummaryCategory | null;
     showChevron?: boolean;
     disabled?: boolean;
 }) {
     const { theme } = useUnistyles();
     const showChevron = props.showChevron ?? true;
+    const headerRef = React.useRef<View>(null);
+    const handlePress = React.useCallback(() => {
+        const node = headerRef.current;
+        if (!node) {
+            props.onPress();
+            return;
+        }
+        node.measureInWindow((_x, y, _width, height) => {
+            if (!Number.isFinite(y) || height <= 0) {
+                props.onPress();
+                return;
+            }
+            props.onPress({ node, y });
+        });
+    }, [props.onPress]);
     const content = (
         <>
             {props.category ? (
@@ -258,7 +296,9 @@ function CollapseHeader(props: {
 
     return (
         <Pressable
-            onPress={props.onPress}
+            ref={headerRef}
+            collapsable={false}
+            onPress={handlePress}
             style={({ pressed }) => [
                 styles.header,
                 pressed && styles.headerPressed,
@@ -267,6 +307,28 @@ function CollapseHeader(props: {
             {content}
         </Pressable>
     );
+}
+
+function useAnchoredToggle(
+    expanded: boolean,
+    onToggle: () => void,
+    onAnchorLayoutChange?: (anchor: ToolGroupLayoutAnchor) => void,
+): (anchor?: ToolGroupLayoutAnchor) => void {
+    const pendingAnchorRef = React.useRef<ToolGroupLayoutAnchor | null>(null);
+
+    React.useLayoutEffect(() => {
+        const anchor = pendingAnchorRef.current;
+        if (!anchor) {
+            return;
+        }
+        pendingAnchorRef.current = null;
+        onAnchorLayoutChange?.(anchor);
+    }, [expanded, onAnchorLayoutChange]);
+
+    return React.useCallback((anchor?: ToolGroupLayoutAnchor) => {
+        pendingAnchorRef.current = anchor ?? null;
+        onToggle();
+    }, [onToggle]);
 }
 
 function ToolGroupMessageRow(props: {
@@ -285,7 +347,8 @@ function ToolGroupMessageRow(props: {
     }
 
     const shouldRenderFullTool = props.message.tool.permission?.status === 'pending'
-        || props.message.tool.name === 'AskUserQuestion';
+        || props.message.tool.name === 'AskUserQuestion'
+        || props.message.tool.name === 'request_user_input';
     if (shouldRenderFullTool) {
         return (
             <MessageView
@@ -312,8 +375,7 @@ function ToolSummaryRow(props: {
     const router = useRouter();
     const { tool } = props.message;
     const category = getToolSummaryCategory(tool.name);
-    const detail = getToolSummaryDetail(tool);
-    const title = getToolRowTitle(category, tool.name);
+    const label = getToolActivityLabel(tool);
     const filePath = isFileEditTool(tool.name) && typeof tool.input?.file_path === 'string'
         ? tool.input.file_path
         : null;
@@ -329,18 +391,16 @@ function ToolSummaryRow(props: {
     const content = (
         <>
             <View style={styles.toolSummaryIcon}>
-                <ToolSummaryIcon category={category} color={theme.colors.textSecondary} />
+                <ToolSummaryIcon
+                    category={category}
+                    color={theme.colors.textSecondary}
+                    size={18}
+                    toolName={tool.name}
+                />
             </View>
-            <Text style={styles.toolSummaryTitle} numberOfLines={1}>
-                {title}
+            <Text style={styles.toolSummaryLabel} numberOfLines={1}>
+                {label}
             </Text>
-            {detail ? (
-                <View style={styles.toolSummaryDetailPill}>
-                    <Text style={styles.toolSummaryDetailText} numberOfLines={1}>
-                        {detail}
-                    </Text>
-                </View>
-            ) : null}
         </>
     );
 
@@ -368,22 +428,28 @@ function ToolSummaryRow(props: {
 function ToolSummaryIcon(props: {
     category: ToolSummaryCategory;
     color: string;
+    size?: number;
+    toolName?: string;
 }) {
+    const size = props.size ?? 12;
+    if (props.toolName === 'WebSearch') {
+        return <Ionicons name="globe-outline" size={size + 1} color={props.color} />;
+    }
     switch (props.category) {
         case 'terminal':
-            return <Octicons name="terminal" size={12} color={props.color} />;
+            return <Octicons name="terminal" size={size} color={props.color} />;
         case 'edit':
-            return <Octicons name="file-diff" size={12} color={props.color} />;
+            return <Octicons name="file-diff" size={size} color={props.color} />;
         case 'read':
-            return <Octicons name="eye" size={12} color={props.color} />;
+            return <Octicons name="eye" size={size} color={props.color} />;
         case 'search':
-            return <Octicons name="search" size={12} color={props.color} />;
+            return <Octicons name="search" size={size} color={props.color} />;
         case 'web':
-            return <Ionicons name="globe-outline" size={13} color={props.color} />;
+            return <Ionicons name="globe-outline" size={size + 1} color={props.color} />;
         case 'task':
-            return <Octicons name="rocket" size={12} color={props.color} />;
+            return <Octicons name="rocket" size={size} color={props.color} />;
         default:
-            return <Ionicons name="construct-outline" size={13} color={props.color} />;
+            return <Ionicons name="construct-outline" size={size + 1} color={props.color} />;
     }
 }
 
@@ -400,29 +466,6 @@ function getGroupSummaryCategory(messages: Message[]): ToolSummaryCategory | nul
     return categories.size > 1 ? 'other' : null;
 }
 
-function getToolRowTitle(category: ToolSummaryCategory, toolName: string): string {
-    if (toolName.startsWith('mcp__')) {
-        return formatMCPTitle(toolName);
-    }
-
-    switch (category) {
-        case 'terminal':
-            return t('tools.names.terminal');
-        case 'edit':
-            return t('toolGroup.editedFile');
-        case 'read':
-            return t('tools.names.readFile');
-        case 'search':
-            return t('tools.names.search');
-        case 'web':
-            return t('tools.names.fetchUrl');
-        case 'task':
-            return t('tools.names.task');
-        default:
-            return toolName;
-    }
-}
-
 function isFileEditTool(toolName: string): boolean {
     return toolName === 'Edit' || toolName === 'MultiEdit' || toolName === 'Write';
 }
@@ -437,7 +480,7 @@ const styles = StyleSheet.create((theme) => ({
         flexBasis: 0,
         minWidth: 0,
         maxWidth: layout.maxWidth,
-        marginVertical: 6,
+        marginVertical: 8,
         overflow: 'hidden',
     },
     nestedOuterContainer: {
@@ -453,8 +496,8 @@ const styles = StyleSheet.create((theme) => ({
         gap: 6,
         alignSelf: 'stretch',
         marginHorizontal: 16,
-        minHeight: 24,
-        paddingVertical: 2,
+        minHeight: 28,
+        paddingVertical: 4,
         borderRadius: 4,
     },
     headerPressed: {
@@ -475,16 +518,16 @@ const styles = StyleSheet.create((theme) => ({
         color: theme.colors.textSecondary,
     },
     content: {
-        marginTop: 2,
-        gap: 2,
+        marginTop: 6,
+        gap: 4,
     },
     toolSummaryRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 6,
-        minHeight: 24,
+        gap: 10,
+        minHeight: 32,
         marginHorizontal: 16,
-        paddingVertical: 2,
+        paddingVertical: 5,
         borderRadius: 4,
         overflow: 'hidden',
     },
@@ -492,31 +535,17 @@ const styles = StyleSheet.create((theme) => ({
         opacity: 0.65,
     },
     toolSummaryIcon: {
-        width: 14,
-        height: 18,
+        width: 20,
+        height: 22,
         alignItems: 'center',
         justifyContent: 'center',
         flexShrink: 0,
     },
-    toolSummaryTitle: {
-        flexShrink: 0,
-        fontSize: 13,
-        lineHeight: 18,
-        color: theme.colors.textSecondary,
-    },
-    toolSummaryDetailPill: {
-        flexShrink: 1,
+    toolSummaryLabel: {
+        flex: 1,
         minWidth: 0,
-        maxWidth: '100%',
-        borderRadius: 3,
-        paddingHorizontal: 4,
-        paddingVertical: 1,
-        backgroundColor: theme.colors.surfaceHighest,
-    },
-    toolSummaryDetailText: {
-        fontSize: 12,
-        lineHeight: 16,
+        fontSize: 15,
+        lineHeight: 22,
         color: theme.colors.textSecondary,
-        fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' }),
     },
 }));

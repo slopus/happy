@@ -1,5 +1,5 @@
 import * as privacyKit from "privacy-kit";
-import { log } from "@/utils/log";
+import { debug, log } from "@/utils/log";
 
 /** Cache entries expire after 24 hours */
 const TOKEN_CACHE_TTL = 24 * 60 * 60 * 1000;
@@ -133,7 +133,7 @@ class AuthModule {
             return { userId, extras };
             
         } catch (error) {
-            log({ module: 'auth', level: 'error' }, `Token verification failed: ${error}`);
+            debug({ module: 'auth' }, `auth:token-verification-failed error=${error}`);
             return null;
         }
     }
@@ -196,7 +196,7 @@ class AuthModule {
             
             return { userId: verified.user as string };
         } catch (error) {
-            log({ module: 'auth', level: 'error' }, `GitHub token verification failed: ${error}`);
+            debug({ module: 'auth' }, `auth:github-token-verification-failed error=${error}`);
             return null;
         }
     }

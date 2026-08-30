@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { compareVersions, isVersionSupported, parseVersion, MINIMUM_CLI_VERSION } from './versionUtils';
+import { compareVersions, compareVersionsWithPrerelease, isVersionSupported, parseVersion, MINIMUM_CLI_VERSION } from './versionUtils';
 
 describe('versionUtils', () => {
     describe('compareVersions', () => {
@@ -39,6 +39,42 @@ describe('versionUtils', () => {
         it('should use default minimum version', () => {
             expect(isVersionSupported('0.10.0')).toBe(true);
             expect(isVersionSupported('0.9.0')).toBe(false);
+        });
+    });
+
+    describe('compareVersionsWithPrerelease', () => {
+        it('distinguishes prerelease numbers compareVersions collapses', () => {
+            expect(compareVersionsWithPrerelease('1.2.1-beta.1', '1.2.1-beta.2')).toBe(-1);
+            expect(compareVersionsWithPrerelease('1.2.1-beta.2', '1.2.1-beta.2')).toBe(0);
+            expect(compareVersionsWithPrerelease('1.2.1-beta.10', '1.2.1-beta.9')).toBe(1);
+        });
+
+        it('ranks a release above its own prereleases', () => {
+            expect(compareVersionsWithPrerelease('1.2.1', '1.2.1-beta.2')).toBe(1);
+            expect(compareVersionsWithPrerelease('1.2.1-beta.2', '1.2.1')).toBe(-1);
+        });
+
+        it('defers to the core version when cores differ', () => {
+            expect(compareVersionsWithPrerelease('1.2.2-beta.1', '1.2.1')).toBe(1);
+            expect(compareVersionsWithPrerelease('1.2.0', '1.2.1-beta.1')).toBe(-1);
+        });
+
+        it('ranks fewer prerelease segments lower and numeric below alphanumeric', () => {
+            expect(compareVersionsWithPrerelease('1.2.1-beta', '1.2.1-beta.2')).toBe(-1);
+            expect(compareVersionsWithPrerelease('1.2.1-1', '1.2.1-beta')).toBe(-1);
+        });
+
+        it('ignores build metadata entirely', () => {
+            expect(compareVersionsWithPrerelease('1.2.0+local', '1.2.1-beta.2')).toBe(-1);
+            expect(compareVersionsWithPrerelease('1.2.1-beta.1+local', '1.2.1-beta.2')).toBe(-1);
+            expect(compareVersionsWithPrerelease('1.2.1-beta.2+local', '1.2.1-beta.2')).toBe(0);
+        });
+
+        it('compares numeric identifiers beyond Number precision exactly', () => {
+            expect(compareVersionsWithPrerelease(
+                '1.0.0-9007199254740993',
+                '1.0.0-9007199254740992',
+            )).toBe(1);
         });
     });
 

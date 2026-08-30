@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, FlatList, Pressable, ActivityIndicator } from 'react-native';
+import { Platform, View, FlatList, Pressable, ActivityIndicator } from 'react-native';
 import { Text } from '@/components/StyledText';
 import { useArtifacts } from '@/sync/storage';
 import { DecryptedArtifact } from '@/sync/artifactTypes';
@@ -11,12 +11,13 @@ import { t } from '@/text';
 import { layout } from '@/components/layout';
 import { sync } from '@/sync/sync';
 import { FAB } from '@/components/FAB';
+import { MobileGlassSurface } from '@/components/MobileGlass';
 // Date formatting
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
         flex: 1,
-        backgroundColor: theme.colors.groupped.background,
+        backgroundColor: Platform.select({ web: theme.colors.groupped.background, default: 'transparent' }),
     },
     contentContainer: {
         paddingBottom: 100,
@@ -50,26 +51,32 @@ const stylesheet = StyleSheet.create((theme) => ({
         lineHeight: 20,
     },
     artifactItem: {
-        backgroundColor: theme.colors.surface,
+        backgroundColor: Platform.select({ web: theme.colors.surface, android: theme.colors.glass.backgroundStrong, default: 'transparent' }),
         marginHorizontal: 16,
         marginBottom: 1,
-        paddingHorizontal: 16,
-        paddingVertical: 14,
+        overflow: 'hidden',
+        borderWidth: Platform.select({ web: 0, default: StyleSheet.hairlineWidth }),
+        borderColor: theme.colors.glass.border,
+    },
+    artifactPressable: {
         flexDirection: 'row',
         alignItems: 'center',
+        paddingHorizontal: 16,
+        paddingVertical: 14,
+        width: '100%',
     },
     artifactItemFirst: {
-        borderTopLeftRadius: 12,
-        borderTopRightRadius: 12,
+        borderTopLeftRadius: Platform.select({ web: 12, default: 18 }),
+        borderTopRightRadius: Platform.select({ web: 12, default: 18 }),
         marginTop: 16,
     },
     artifactItemLast: {
-        borderBottomLeftRadius: 12,
-        borderBottomRightRadius: 12,
+        borderBottomLeftRadius: Platform.select({ web: 12, default: 18 }),
+        borderBottomRightRadius: Platform.select({ web: 12, default: 18 }),
         marginBottom: 16,
     },
     artifactItemSingle: {
-        borderRadius: 12,
+        borderRadius: Platform.select({ web: 12, default: 18 }),
         marginTop: 16,
         marginBottom: 16,
     },
@@ -176,13 +183,18 @@ export default function ArtifactsScreen() {
         const isSingle = artifacts.length === 1;
 
         return (
-            <Pressable
+            <MobileGlassSurface
+                enabled={Platform.OS !== 'web'}
+                intensity={64}
                 style={[
                     styles.artifactItem,
                     isSingle ? styles.artifactItemSingle :
                     isFirst ? styles.artifactItemFirst :
                     isLast ? styles.artifactItemLast : {}
                 ]}
+            >
+            <Pressable
+                style={({ pressed }) => [styles.artifactPressable, Platform.OS !== 'web' && pressed && { opacity: 0.7 }]}
                 onPress={() => router.push(`/artifacts/${item.id}`)}
             >
                 <View style={styles.artifactContent}>
@@ -208,6 +220,7 @@ export default function ArtifactsScreen() {
                     color={theme.colors.textSecondary}
                 />
             </Pressable>
+            </MobileGlassSurface>
         );
     }, [artifacts, router, styles]);
 

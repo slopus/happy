@@ -2,12 +2,12 @@ import * as React from 'react';
 import { useHappyAction } from '@/hooks/useHappyAction';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { Modal } from '@/modal';
-import { machineResumeSession, sessionArchive, sessionKill, forkAndSpawn, type ForkSource } from '@/sync/ops';
+import { machineResumeSession, sessionArchive, sessionKill, sessionSetAgentModes, forkAndSpawn, type ForkSource } from '@/sync/ops';
 import { maybeCleanupWorktree } from '@/hooks/useWorktreeCleanup';
 import { storage, useLocalSetting, useMachine, useSetting } from '@/sync/storage';
 import { Machine, Session } from '@/sync/storageTypes';
 import { sync } from '@/sync/sync';
-import { resolveMessageModeMeta } from '@/sync/messageMeta';
+import { resolveMessageModeMeta, UnsupportedPermissionModeError } from '@/sync/messageMeta';
 import { t } from '@/text';
 import { HappyError } from '@/utils/errors';
 import { copySessionMetadataToClipboard, copySessionMetadataAndLogsToClipboard } from '@/utils/copySessionMetadataToClipboard';
@@ -17,9 +17,11 @@ import { getSessionForkSource } from '@/utils/sessionFork';
 import { useRouter } from 'expo-router';
 import { useSession } from '@/sync/storage';
 import { DuplicateSheet } from '@/components/DuplicateSheet';
+import type { SessionActionShortcutId } from '@/keyboard/shortcuts';
+import { isRigMetadata } from '@/sync/rig';
 
 export interface SessionActionItem {
-    id: string;
+    id: SessionActionShortcutId;
     label: string;
     icon: string;
     onPress: () => void;
@@ -40,6 +42,14 @@ type ResumeAvailability = {
 };
 
 function getResumeAvailability(session: Session, machine: Machine | null | undefined, isConnected: boolean): ResumeAvailability {
+    if (isRigMetadata(session.metadata) || session.metadata?.capabilities?.resume === false) {
+        return {
+            canResume: false,
+            canShowResume: false,
+            subtitle: '',
+            message: '',
+        };
+    }
     if (isConnected) {
         return {
             canResume: false,
@@ -90,6 +100,18 @@ function getResumeAvailability(session: Session, machine: Machine | null | undef
         };
     }
 
+    // Older daemons do not publish resumeSupport and do not implement the
+    // resume RPC. Capability presence is the compatibility check; the UI is
+    // hidden instead of offering an action that the machine cannot execute.
+    if (machine.metadata?.resumeSupport?.rpcAvailable !== true) {
+        return {
+            canResume: false,
+            canShowResume: false,
+            subtitle: '',
+            message: '',
+        };
+    }
+
     return {
         canResume: true,
         canShowResume: true,
@@ -112,16 +134,16 @@ export function useSessionQuickActions(
     const machineId = session.metadata?.machineId ?? '';
     const machine = useMachine(machineId);
     const devModeEnabled = useLocalSetting('devModeEnabled');
-    const expResumeSession = useSetting('expResumeSession');
+    const continuationExperimentsEnabled = useSetting('expResumeSession');
     const resumeAvailability = React.useMemo(
-        () => expResumeSession ? getResumeAvailability(session, machine, sessionStatus.isConnected) : { canResume: false, canShowResume: false, subtitle: '', message: '' },
-        [machine, session, sessionStatus.isConnected, expResumeSession],
+        () => getResumeAvailability(session, machine, sessionStatus.isConnected),
+        [machine, session, sessionStatus.isConnected],
     );
 
     // Fork eligibility — separate from resume because fork works on both
-    // active AND inactive provider sessions. The user-facing toggle is the same
-    // expResumeSession experiment so all three flows (resume / fork /
-    // duplicate) ride a single switch on settings/features.
+    // active AND inactive provider sessions. Fork/duplicate still use the
+    // legacy rollout flag because resumeSupport does not prove that the daemon
+    // implements the newer fork RPC.
     const forkSource = React.useMemo(() => getSessionForkSource(session), [
         session.id,
         session.metadata?.flavor,
@@ -131,10 +153,11 @@ export function useSessionQuickActions(
         session.metadata?.codexThreadId,
     ]);
     const canFork = Boolean(
-        expResumeSession
+        continuationExperimentsEnabled
+        && !isRigMetadata(session.metadata)
         && forkSource
         && machine
-        && isMachineOnline(machine),
+        && isMachineOnline(machine)
     );
 
     const openDetails = React.useCallback(() => {
@@ -168,7 +191,17 @@ export function useSessionQuickActions(
             throw new HappyError(t('sessionInfo.resumeSessionMissingMachine'), false);
         }
 
-        const modeMeta = resolveMessageModeMeta(session, storage.getState().settings);
+        let modeMeta: ReturnType<typeof resolveMessageModeMeta>;
+        try {
+            modeMeta = resolveMessageModeMeta(session, storage.getState().settings);
+        } catch (error) {
+            if (error instanceof UnsupportedPermissionModeError) {
+                // Refuse loudly instead of substituting a mode: swapping in a
+                // default would silently change what the agent may do.
+                throw new HappyError(error.message, false);
+            }
+            throw error;
+        }
         const result = await machineResumeSession({
             machineId,
             sessionId: session.id,
@@ -183,11 +216,10 @@ export function useSessionQuickActions(
                 await sync.refreshSessions();
 
                 if (session.permissionMode) {
-                    storage.getState().updateSessionPermissionMode(result.sessionId, session.permissionMode);
+                    sessionSetAgentModes(result.sessionId, { permissionMode: session.permissionMode });
                 }
-                if (session.modelMode) {
-                    storage.getState().updateSessionModelMode(result.sessionId, session.modelMode);
-                }
+                // Model / effort picks survive resume on their own — they live
+                // in the session's synced metadata (#1492).
 
                 navigateToSession(result.sessionId);
                 return;

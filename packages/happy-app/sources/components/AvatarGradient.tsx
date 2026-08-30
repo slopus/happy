@@ -1,4 +1,5 @@
 import * as React from "react";
+import { View } from "react-native";
 import { Image } from "expo-image";
 
 // Copy hashCode function for consistency with Avatar.tsx
@@ -126,12 +127,12 @@ interface AvatarGradientProps {
 
 export const AvatarGradient = React.memo((props: AvatarGradientProps) => {
     const { id, square, size = 48, monochrome } = props;
-    
+
     // Use hashCode to get consistent gradient index
     const imageIndex = hashCode(id) % 100;
     const gradientImage = gradientImages[imageIndex];
-    
-    return (
+
+    const image = (
         <Image
             source={gradientImage}
             style={{
@@ -140,8 +141,37 @@ export const AvatarGradient = React.memo((props: AvatarGradientProps) => {
                 borderRadius: square ? 0 : size / 2,
             }}
             contentFit="cover"
-            // Apply grayscale tint for monochrome mode
-            // tintColor={monochrome ? '#808080' : undefined}
         />
+    );
+
+    if (!monochrome) {
+        return image;
+    }
+
+    // A grey sheet in `saturation` blend mode keeps the gradient's light and
+    // shape while draining its color — a flat tint would erase the gradient
+    // itself, which is the only thing telling these avatars apart.
+    return (
+        <View
+            style={{
+                width: size,
+                height: size,
+                borderRadius: square ? 0 : size / 2,
+                overflow: 'hidden',
+            }}
+        >
+            {image}
+            <View
+                style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    backgroundColor: '#808080',
+                    mixBlendMode: 'saturation',
+                }}
+            />
+        </View>
     );
 });

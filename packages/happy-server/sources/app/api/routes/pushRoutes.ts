@@ -98,8 +98,15 @@ export function pushRoutes(app: Fastify) {
                 data: z.record(z.string(), z.unknown()).optional()
             }),
             response: {
+                // `result` reports what actually happened so callers can tell a
+                // delivered push from a suppressed one. `success` stays for
+                // older clients that only check it.
                 200: z.object({
-                    success: z.literal(true)
+                    success: z.literal(true),
+                    result: z.enum(['sent', 'partial', 'suppressed', 'no_tokens', 'failed']),
+                    tokens: z.number().optional(),
+                    delivered: z.number().optional(),
+                    reason: z.string().optional()
                 }),
                 404: z.object({
                     error: z.literal('Session not found')
@@ -129,7 +136,9 @@ export function pushRoutes(app: Fastify) {
             recipientFilter: { type: 'all-interested-in-session', sessionId }
         });
 
-        void dispatchSessionEventPush({
+        // Awaited so the response can report the real outcome. The CLI sends
+        // this fire-and-forget, so the extra latency never blocks a turn.
+        const outcome = await dispatchSessionEventPush({
             userId,
             sessionId,
             title,
@@ -137,7 +146,7 @@ export function pushRoutes(app: Fastify) {
             data: { ...(data ?? {}), kind }
         });
 
-        return reply.send({ success: true });
+        return reply.send({ success: true, ...outcome });
     });
 
     // Get Push Tokens API

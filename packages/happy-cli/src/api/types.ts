@@ -22,17 +22,23 @@ export type {
 
 /**
  * Permission mode type - includes both Claude and Codex modes
- * Must match MessageMetaSchema.permissionMode enum values
+ * The wire schema (MessageMetaSchema.permissionMode) deliberately accepts any
+ * string; each harness narrows to this union itself and ignores the rest.
  *
+ * Shared: auto — the harness reviews each call itself
  * Claude modes: default, acceptEdits, bypassPermissions, plan
  * Codex modes: read-only, safe-yolo, yolo
+ *
+ * `auto` is the one mode both harnesses implement natively: Claude ships it
+ * in the Agent SDK's own PermissionMode union, and Codex spells it as the
+ * `on-request` approval policy inside the workspace sandbox.
  *
  * When calling Claude SDK, Codex modes are mapped at the SDK boundary:
  * - yolo → bypassPermissions
  * - safe-yolo → default
  * - read-only → default
  */
-export type PermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'read-only' | 'safe-yolo' | 'yolo'
+export type PermissionMode = 'auto' | 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'read-only' | 'safe-yolo' | 'yolo'
 
 /**
  * Usage data type from Claude
@@ -139,6 +145,9 @@ export const MachineMetadataSchema = z.object({
     codex: z.boolean(),
     gemini: z.boolean(),
     openclaw: z.boolean(),
+    // Optional so metadata written by a CLI predating agy detection still
+    // matches this shape. detectCLIAvailability always reports it.
+    agy: z.boolean().optional(),
     detectedAt: z.number(),
   }).optional(),
   resumeSupport: z.object({
@@ -188,13 +197,17 @@ export type Machine = {
  */
 export const MessageMetaSchema = z.object({
   sentFrom: z.string().optional(), // Source identifier
-  permissionMode: z.enum(['default', 'acceptEdits', 'bypassPermissions', 'plan', 'read-only', 'safe-yolo', 'yolo']).optional(), // Permission mode for this message
+  // Any string is accepted so a newer app can name a mode this CLI does not
+  // know yet without the whole message failing safeParse and being dropped.
+  // Each harness validates the value itself and falls back with a warning.
+  permissionMode: z.string().optional(), // Permission mode for this message
   model: z.string().nullable().optional(), // Model name for this message (null = reset)
   fallbackModel: z.string().nullable().optional(), // Fallback model for this message (null = reset)
   customSystemPrompt: z.string().nullable().optional(), // Custom system prompt for this message (null = reset)
   appendSystemPrompt: z.string().nullable().optional(), // Append to system prompt for this message (null = reset)
   allowedTools: z.array(z.string()).nullable().optional(), // Allowed tools for this message (null = reset)
-  disallowedTools: z.array(z.string()).nullable().optional() // Disallowed tools for this message (null = reset)
+  disallowedTools: z.array(z.string()).nullable().optional(), // Disallowed tools for this message (null = reset)
+  effort: z.string().nullable().optional() // Effort level for this message (null = reset). happy-app sends this key; without it Zod strips the value before runClaude reads it.
 })
 
 export type MessageMeta = z.infer<typeof MessageMetaSchema>
@@ -300,6 +313,7 @@ export type Metadata = {
     updatedAt: number
   },
   machineId?: string,
+  gitBranch?: string,
   claudeSessionId?: string, // Claude Code session ID
   codexThreadId?: string, // Codex app-server thread ID
   tools?: string[],
@@ -324,7 +338,31 @@ export type Metadata = {
   /** Lineage for sessions created via the fork / duplicate flow. */
   parentSessionId?: string
   forkedFromMessageId?: string
+  /**
+   * Marks a session as a hidden "side chat" forked from `parentSessionId`.
+   * Side chats never appear in the top-level session list; they render only
+   * inside the parent session's sidebar panel.
+   */
+  isSideChat?: boolean
 };
+
+export type UsageLimitWindowStatus = 'allowed' | 'allowed_warning' | 'rejected'
+
+export type UsageLimitWindow = {
+  /** Stable machine key, e.g. 'five_hour' / 'seven_day'. */
+  id: string,
+  label?: string,
+  status?: UsageLimitWindowStatus,
+  /** Percent of the window used, 0-100. */
+  utilization?: number | null,
+  /** Epoch milliseconds when the window resets. */
+  resetsAt?: number | null,
+}
+
+export type UsageLimits = {
+  capturedAt: number,
+  windows: UsageLimitWindow[],
+}
 
 export type AgentGoalStatus = {
   source: 'claude' | 'codex',
@@ -362,11 +400,20 @@ export type AgentGoalStatus = {
 
 export type AgentState = {
   controlledByUser?: boolean | null | undefined
+  /**
+   * Ephemeral plan rate-limit windows reported by the agent backend.
+   * Apps must tolerate window ids they don't recognize.
+   */
+  usageLimits?: UsageLimits
   requests?: {
     [id: string]: {
       tool: string,
       arguments: any,
-      createdAt: number
+      createdAt: number,
+      // Raw provider tool-use id when the request id is scoped (e.g. claude
+      // subagent ids are `agentID:toolUseID`); the app joins the permission
+      // card to its tool call through this.
+      toolUseId?: string
     }
   }
   completedRequests?: {
@@ -379,7 +426,12 @@ export type AgentState = {
       reason?: string,
       mode?: PermissionMode,
       decision?: 'approved' | 'approved_for_session' | 'denied' | 'abort',
-      allowTools?: string[]
+      // Historical field name from the RPC payload; the app reads
+      // `allowedTools`. Both are written until every app build folds the
+      // old key.
+      allowTools?: string[],
+      allowedTools?: string[],
+      toolUseId?: string
     }
   }
   agentGoalStatus?: AgentGoalStatus

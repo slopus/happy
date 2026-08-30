@@ -239,7 +239,7 @@ describe('responsive utilities', () => {
                 deviceType: 'phone',
                 isLandscape: false
             });
-            expect(height).toBe(56);
+            expect(height).toBe(64);
         });
 
         it('should return correct height for Android phone in landscape', () => {

@@ -16,7 +16,7 @@ Use Claude Code or Codex from anywhere with end-to-end encryption.
 
 <div align="center">
   
-[📱 **iOS App**](https://apps.apple.com/us/app/happy-claude-code-client/id6748571505) • [🤖 **Android App**](https://play.google.com/store/apps/details?id=com.ex3ndr.happy) • [🌐 **Web App**](https://app.happy.engineering) • [🎥 **See a Demo**](https://youtu.be/GCS0OG9QMSE) • [📚 **Documentation**](https://happy.engineering/docs/) • [💬 **Discord**](https://discord.gg/fX9WBAhyfD)
+[🖥️ **macOS App**](https://github.com/slopus/happy-desktop/releases/latest) • [📱 **iOS App**](https://apps.apple.com/us/app/happy-claude-code-client/id6748571505) • [🤖 **Android App**](https://play.google.com/store/apps/details?id=com.ex3ndr.happy) • [🌐 **Web App**](https://app.happy.engineering) • [🎥 **See a Demo**](https://youtu.be/GCS0OG9QMSE) • [📚 **Documentation**](https://happy.engineering/docs/) • [💬 **Discord**](https://discord.gg/fX9WBAhyfD)
 
 </div>
 
@@ -52,6 +52,24 @@ happy claude
 happy codex
 ```
 
+<h3 align="center">
+Step 4 (optional): Get the desktop app
+</h3>
+
+<div align="center">
+  <a href="https://github.com/slopus/happy-desktop/releases/latest">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="/.github/banner-desktop-dark.png">
+      <source media="(prefers-color-scheme: light)" srcset="/.github/banner-desktop-light.png">
+      <img src="/.github/banner-desktop-dark.png" width="640" alt="Now on Mac desktop — download for macOS">
+    </picture>
+  </a>
+</div>
+
+<p align="center">
+Prefer a native app over the terminal? <a href="https://github.com/slopus/happy-desktop/releases/latest"><b>Download Happy for macOS</b></a> — conversations beside the files, diffs, terminals, and previews your work actually touches.
+</p>
+
 ## How does it work?
 
 On your computer, run `happy` instead of `claude` or `happy codex` instead of `codex` to start your AI through our wrapper. When you want to control your coding agent from your phone, it restarts the session in remote mode. To switch back to your computer, just press any key on your keyboard.
@@ -66,6 +84,7 @@ On your computer, run `happy` instead of `claude` or `happy codex` instead of `c
 
 ## 📦 Project Components
 
+- **[Happy Desktop](https://github.com/slopus/happy-desktop)** - Native macOS app ([download](https://github.com/slopus/happy-desktop/releases/latest))
 - **[Happy App](https://github.com/slopus/happy/tree/main/packages/happy-app)** - Web UI + mobile client (Expo)
 - **[Happy CLI](https://github.com/slopus/happy/tree/main/packages/happy-cli)** - Command-line interface for Claude Code and Codex
 - **[Happy Agent](https://github.com/slopus/happy/tree/main/packages/happy-agent)** - Remote agent control CLI (create, send, monitor sessions)

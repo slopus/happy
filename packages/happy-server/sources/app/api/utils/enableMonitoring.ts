@@ -1,9 +1,13 @@
 import { db } from "@/storage/db";
 import { Fastify } from "../types";
 import { httpRequestsCounter, httpRequestDurationHistogram, getMetricsLabelsFromRequest } from "@/app/monitoring/metrics2";
-import { log } from "@/utils/log";
+import { debug } from "@/utils/log";
+import { recordProductionRequest, startProductionLogSummary } from "@/app/monitoring/productionLogSummary";
 
 export function enableMonitoring(app: Fastify) {
+    const stopProductionLogSummary = startProductionLogSummary();
+    app.addHook('onClose', async () => stopProductionLogSummary());
+
     // Add metrics hooks
     app.addHook('onRequest', async (request, reply) => {
         request.startTime = Date.now();
@@ -22,6 +26,12 @@ export function enableMonitoring(app: Fastify) {
 
         // Record request duration
         httpRequestDurationHistogram.observe({ method, route, status, ...labels }, duration);
+        recordProductionRequest({
+            method,
+            route: request.routeOptions?.url || '<unmatched>',
+            statusCode: reply.statusCode,
+            durationMs: duration * 1_000,
+        });
     });
 
     app.get('/health', async (request, reply) => {
@@ -34,7 +44,7 @@ export function enableMonitoring(app: Fastify) {
                 service: 'happy-server'
             });
         } catch (error) {
-            log({ module: 'health', level: 'error' }, `Health check failed: ${error}`);
+            debug({ module: 'health' }, `health:database-check-failed error=${error}`);
             reply.code(503).send({
                 status: 'error',
                 timestamp: new Date().toISOString(),

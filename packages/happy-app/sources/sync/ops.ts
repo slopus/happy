@@ -5,7 +5,21 @@
 
 import { apiSocket } from './apiSocket';
 import { sync } from './sync';
-import type { MachineMetadata, Metadata } from './storageTypes';
+import { storage } from './storage';
+import type { AgentQuestionAnswer, MachineMetadata, Metadata, SessionAgentModesPatch } from './storageTypes';
+import { markAgentModePushPending, clearAgentModePushPending, type AgentModeField } from './agentModesPending';
+import {
+    isRigMetadata,
+    rigCanAbort,
+    rigCanReadFiles,
+    rigCanSearchFiles,
+    rigCanUseShell,
+    rigCanWriteFiles,
+    rigHasRpcMethod,
+} from './rig';
+import type { HappyAgentSpawnTarget } from './happyAgentSpawn';
+
+export type { SessionAgentModesPatch };
 
 // Strict type definitions for all operations
 
@@ -18,6 +32,19 @@ interface SessionPermissionRequest {
     allowTools?: string[];
     updatedInput?: Record<string, unknown>;
     decision?: 'approved' | 'approved_for_session' | 'denied' | 'abort';
+}
+
+/**
+ * Reply to an agent-to-user communication. Separate from the permission channel
+ * on purpose: nothing here approves or denies an action, it carries information
+ * the agent asked for. `kind` mirrors the request so the agent can route the
+ * reply once other kinds of communication exist.
+ */
+interface SessionCommunicationReply {
+    id: string;
+    kind: string;
+    status: 'answered' | 'cancelled';
+    answers?: Record<string, AgentQuestionAnswer>;
 }
 
 // Mode change operation types
@@ -135,6 +162,7 @@ interface SessionKillResponse {
 // Response types for spawn session
 export type SpawnSessionResult =
     | { type: 'success'; sessionId: string }
+    | { type: 'pending'; clientRequestId: string; retryAfterMs: number }
     | { type: 'requestToApproveDirectoryCreation'; directory: string }
     | { type: 'error'; errorMessage: string };
 
@@ -144,7 +172,18 @@ export interface SpawnSessionOptions {
     directory: string;
     approvedNewDirectoryCreation?: boolean;
     token?: string;
-    agent?: 'codex' | 'claude' | 'gemini' | 'openclaw';
+    agent?: 'codex' | 'claude' | 'gemini' | 'openclaw' | 'agy' | 'rig';
+    permissionMode?: string;
+    modelMode?: string;
+    effortLevel?: string;
+    /** Stable idempotency key required by Rig's machine RPC. */
+    clientRequestId?: string;
+    /** Rig-native provider/model selection. */
+    providerId?: string;
+    modelId?: string;
+    effort?: string;
+    /** Catalog destination for Happy Agent's native project/workspace spawn. */
+    happyAgentTarget?: HappyAgentSpawnTarget;
     /**
      * If set, the daemon spawns the agent with `--resume <id>` so the new
      * Happy session attaches to a pre-existing on-disk Claude conversation
@@ -160,6 +199,8 @@ export interface SpawnSessionOptions {
     parentSessionId?: string;
     /** Happy message id used as the rewind point (only set for "duplicate"). */
     forkedFromMessageId?: string;
+    /** Marks the spawned session as a hidden side chat of `parentSessionId`. */
+    isSideChat?: boolean;
 }
 
 // Options for forking a Claude session on a machine
@@ -219,23 +260,77 @@ export interface ResumeSessionOptions {
  */
 export async function machineSpawnNewSession(options: SpawnSessionOptions): Promise<SpawnSessionResult> {
 
-    const { machineId, directory, approvedNewDirectoryCreation = false, token, agent, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, forkedFromMessageId } = options;
+    const { machineId, directory, approvedNewDirectoryCreation = false, token, agent, permissionMode, modelMode, effortLevel, clientRequestId, providerId, modelId, effort, happyAgentTarget, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, forkedFromMessageId, isSideChat } = options;
 
     try {
-        const result = await apiSocket.machineRPC<SpawnSessionResult, {
+        if (agent === 'rig' && !clientRequestId) {
+            throw new Error('Rig session creation requires a client request ID');
+        }
+        if (happyAgentTarget && agent !== 'rig') {
+            throw new Error('Happy Agent catalog targets require the Happy Agent harness');
+        }
+        type DirectorySpawnRequest = {
             type: 'spawn-in-directory'
             directory: string
             approvedNewDirectoryCreation?: boolean,
             token?: string,
-            agent?: 'codex' | 'claude' | 'gemini' | 'openclaw',
+            agent?: 'codex' | 'claude' | 'gemini' | 'openclaw' | 'agy' | 'rig',
+            permissionMode?: string,
+            modelMode?: string,
+            effortLevel?: string,
+            clientRequestId?: string,
+            providerId?: string,
+            modelId?: string,
+            effort?: string,
             resumeClaudeSessionId?: string,
             resumeCodexThreadId?: string,
             parentSessionId?: string,
             forkedFromMessageId?: string,
-        }>(
+            isSideChat?: boolean,
+        };
+        type HappyAgentSpawnRequest = {
+            type: 'happy-agent-spawn';
+            clientRequestId: string;
+            target: HappyAgentSpawnTarget;
+            agentConfiguration: {
+                type: 'happy-agent';
+                permissionMode?: string;
+                providerId?: string;
+                modelId?: string;
+                effort?: string;
+            };
+        };
+        type SpawnRequest = DirectorySpawnRequest | HappyAgentSpawnRequest;
+        const request: SpawnRequest = agent === 'rig' && happyAgentTarget
+            ? {
+                type: 'happy-agent-spawn',
+                clientRequestId: clientRequestId!,
+                target: happyAgentTarget,
+                agentConfiguration: {
+                    type: 'happy-agent',
+                    ...(permissionMode ? { permissionMode } : {}),
+                    ...(providerId ? { providerId } : {}),
+                    ...(modelId ? { modelId } : {}),
+                    ...((effort ?? effortLevel) ? { effort: effort ?? effortLevel } : {}),
+                },
+            }
+            : agent === 'rig'
+            ? {
+                type: 'spawn-in-directory',
+                agent: 'rig',
+                directory,
+                approvedNewDirectoryCreation,
+                ...(clientRequestId ? { clientRequestId } : {}),
+                ...(permissionMode ? { permissionMode } : {}),
+                ...(providerId ? { providerId } : {}),
+                ...(modelId ? { modelId } : {}),
+                ...((effort ?? effortLevel) ? { effort: effort ?? effortLevel } : {}),
+            }
+            : { type: 'spawn-in-directory', directory, approvedNewDirectoryCreation, token, agent, permissionMode, modelMode, effortLevel, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, forkedFromMessageId, isSideChat };
+        const result = await apiSocket.machineRPC<SpawnSessionResult, SpawnRequest>(
             machineId,
             'spawn-happy-session',
-            { type: 'spawn-in-directory', directory, approvedNewDirectoryCreation, token, agent, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, forkedFromMessageId }
+            request,
         );
         return result;
     } catch (error) {
@@ -439,6 +534,36 @@ export async function machineDelete(machineId: string): Promise<{ success: boole
 }
 
 /**
+ * Ask the daemon that started a session to stop it, by SIGTERM to the process
+ * it is tracking.
+ *
+ * This is the only stop that reaches a session which has only just been
+ * spawned. `sessionKill` talks to the session's own RPC handler, which does not
+ * exist until that process is up and has registered it, and it needs the
+ * session's encryption key, which arrives with the sessions list — so for the
+ * first seconds of a session's life it fails on both counts. The daemon's
+ * socket, by contrast, is the one we just spawned through.
+ */
+export async function machineStopSession(
+    machineId: string,
+    sessionId: string,
+): Promise<{ success: boolean; message?: string }> {
+    try {
+        const result = await apiSocket.machineRPC<{ message: string }, { sessionId: string }>(
+            machineId,
+            'stop-session',
+            { sessionId },
+        );
+        return { success: true, message: result?.message };
+    } catch (error) {
+        return {
+            success: false,
+            message: error instanceof Error ? error.message : 'Failed to stop session',
+        };
+    }
+}
+
+/**
  * Stop the daemon on a specific machine
  */
 export async function machineStopDaemon(machineId: string): Promise<{ message: string }> {
@@ -615,10 +740,132 @@ export async function sessionUpdateMetadata(
 }
 
 /**
+ * Persist per-session mode picks into synced session metadata with optimistic
+ * concurrency and automatic retry. On version conflict the latest metadata is
+ * taken from the server via the schema-free raw decrypt, so fields this app
+ * version doesn't know about survive the read-modify-write.
+ */
+async function sessionUpdateAgentModesMetadata(
+    sessionId: string,
+    patch: SessionAgentModesPatch,
+    maxRetries: number = 3
+): Promise<void> {
+    const encryption = sync.encryption.getSessionEncryption(sessionId);
+    const session = storage.getState().sessions[sessionId];
+    if (!encryption || !session?.metadata) {
+        throw new Error(`Session ${sessionId} is not ready for metadata updates`);
+    }
+
+    // Defensive copy: retries drop fields from the patch (see below)
+    let pendingPatch: SessionAgentModesPatch = { ...patch };
+    let currentVersion = session.metadataVersion;
+    let currentMetadata: Record<string, unknown> = { ...session.metadata, ...pendingPatch };
+
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+        const encrypted = await encryption.encryptRaw(currentMetadata);
+        const result = await apiSocket.emitWithAck<{
+            result: 'success' | 'version-mismatch' | 'error';
+            version?: number;
+            metadata?: string;
+        }>('update-metadata', {
+            sid: sessionId,
+            metadata: encrypted,
+            expectedVersion: currentVersion
+        });
+
+        if (result.result === 'success') {
+            return;
+        }
+        if (result.result === 'version-mismatch') {
+            currentVersion = result.version!;
+            const latest = await encryption.decryptRaw(result.metadata!);
+            if (!latest) {
+                throw new Error('Failed to decrypt latest session metadata');
+            }
+            // A newer local action (another pick, an abort clearing modes) may
+            // have changed the mirror since this push started — that action
+            // owns the field now, and blindly replaying the original patch
+            // would resurrect a pick the user already cleared.
+            const liveSession = storage.getState().sessions[sessionId];
+            for (const field of Object.keys(pendingPatch) as (keyof SessionAgentModesPatch)[]) {
+                if ((liveSession?.[field] ?? null) !== (pendingPatch[field] ?? null)) {
+                    delete pendingPatch[field];
+                }
+            }
+            if (Object.keys(pendingPatch).length === 0) {
+                return;
+            }
+            currentMetadata = { ...latest, ...pendingPatch };
+            continue;
+        }
+        throw new Error('Failed to update session metadata');
+    }
+
+    throw new Error(`Failed to update session metadata after ${maxRetries} retries due to version conflicts`);
+}
+
+/**
+ * Apply a per-session model / effort pick: updates local state immediately for
+ * a snappy UI and pushes the pick into synced session metadata so other
+ * devices receive it through the update-session broadcast. Never throws — a
+ * failed push leaves the optimistic local value, and the next inbound
+ * metadata update reconciles the UI.
+ */
+export function sessionSetAgentModes(sessionId: string, patch: SessionAgentModesPatch): void {
+    const state = storage.getState();
+    const session = state.sessions[sessionId];
+
+    // Only touch fields that actually change — clearing modes on a session
+    // with no picks (e.g. every abort) must not cost a metadata round-trip.
+    // A pick counts as changed when it differs from the local mirror OR from
+    // synced metadata: a local-only value (e.g. the EnterPlanMode auto-switch
+    // writes the mirror without metadata) must still be pushed when the user
+    // picks it explicitly, or other devices never see it.
+    const isChanged = (value: string | null, field: keyof SessionAgentModesPatch): boolean => {
+        const mirror = session?.[field] ?? null;
+        const metaRaw = session?.metadata?.[field];
+        const meta = metaRaw === undefined ? null : (metaRaw ?? null);
+        return value !== mirror || value !== meta;
+    };
+    const changed: SessionAgentModesPatch = {};
+    if (patch.permissionMode !== undefined && isChanged(patch.permissionMode, 'permissionMode')) {
+        changed.permissionMode = patch.permissionMode;
+    }
+    if (patch.modelMode !== undefined && isChanged(patch.modelMode, 'modelMode')) {
+        changed.modelMode = patch.modelMode;
+    }
+    if (patch.effortLevel !== undefined && isChanged(patch.effortLevel, 'effortLevel')) {
+        changed.effortLevel = patch.effortLevel;
+    }
+    if (Object.keys(changed).length === 0) {
+        return;
+    }
+
+    state.updateSessionAgentModes(sessionId, changed);
+
+    // While the push is in flight, inbound updates still carry the OLD
+    // metadata; mark the fields pending so applySessions keeps the fresher
+    // local mirror instead of bouncing the pick back.
+    const changedFields = Object.keys(changed) as AgentModeField[];
+    markAgentModePushPending(sessionId, changedFields);
+    sessionUpdateAgentModesMetadata(sessionId, changed)
+        .catch((error) => {
+            console.error(`Failed to sync agent modes for session ${sessionId}`, error);
+        })
+        .finally(() => {
+            clearAgentModePushPending(sessionId, changedFields);
+        });
+}
+
+/**
  * Abort the current session operation
  */
 export async function sessionAbort(sessionId: string): Promise<void> {
-    await apiSocket.sessionRPC(sessionId, 'abort', {
+    const metadata = storage.getState().sessions[sessionId]?.metadata;
+    if (!rigCanAbort(metadata)) {
+        throw new Error('Abort is not available for this session');
+    }
+    await apiSocket.sessionRPC(sessionId, 'abort', isRigMetadata(metadata) ? {} : {
         reason: `The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). STOP what you are doing and wait for the user to tell you how to proceed.`
     });
 }
@@ -629,6 +876,32 @@ export async function sessionAbort(sessionId: string): Promise<void> {
 export async function sessionAllow(sessionId: string, id: string, mode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan', allowedTools?: string[], decision?: 'approved' | 'approved_for_session', updatedInput?: Record<string, unknown>): Promise<void> {
     const request: SessionPermissionRequest = { id, approved: true, mode, allowTools: allowedTools, decision, updatedInput };
     await apiSocket.sessionRPC(sessionId, 'permission', request);
+}
+
+/**
+ * Answer a question the agent asked. The reply carries back the same `kind` the
+ * agent published, so the agent can route it without guessing.
+ */
+export async function sessionAnswerQuestion(
+    sessionId: string,
+    id: string,
+    answers: Record<string, AgentQuestionAnswer>,
+    kind: string = 'form',
+): Promise<void> {
+    const reply: SessionCommunicationReply = { id, kind, status: 'answered', answers };
+    await apiSocket.sessionRPC(sessionId, 'communication', reply);
+}
+
+/**
+ * Dismiss a communication without answering it.
+ */
+export async function sessionCancelCommunication(
+    sessionId: string,
+    id: string,
+    kind: string = 'form',
+): Promise<void> {
+    const reply: SessionCommunicationReply = { id, kind, status: 'cancelled' };
+    await apiSocket.sessionRPC(sessionId, 'communication', reply);
 }
 
 /**
@@ -671,6 +944,10 @@ export async function sessionGoalAction(
  */
 export async function sessionBash(sessionId: string, request: SessionBashRequest): Promise<SessionBashResponse> {
     try {
+        const metadata = storage.getState().sessions[sessionId]?.metadata;
+        if (!rigCanUseShell(metadata)) {
+            throw new Error('Shell access is not available for this session');
+        }
         const response = await apiSocket.sessionRPC<SessionBashResponse, SessionBashRequest>(
             sessionId,
             'bash',
@@ -693,6 +970,10 @@ export async function sessionBash(sessionId: string, request: SessionBashRequest
  */
 export async function sessionReadFile(sessionId: string, path: string): Promise<SessionReadFileResponse> {
     try {
+        const metadata = storage.getState().sessions[sessionId]?.metadata;
+        if (!rigCanReadFiles(metadata)) {
+            throw new Error('File reading is not available for this session');
+        }
         const request: SessionReadFileRequest = { path };
         const response = await apiSocket.sessionRPC<SessionReadFileResponse, SessionReadFileRequest>(
             sessionId,
@@ -718,6 +999,10 @@ export async function sessionWriteFile(
     expectedHash?: string | null
 ): Promise<SessionWriteFileResponse> {
     try {
+        const metadata = storage.getState().sessions[sessionId]?.metadata;
+        if (!rigCanWriteFiles(metadata)) {
+            throw new Error('File writing is not available for this session');
+        }
         const request: SessionWriteFileRequest = { path, content, expectedHash };
         const response = await apiSocket.sessionRPC<SessionWriteFileResponse, SessionWriteFileRequest>(
             sessionId,
@@ -738,6 +1023,10 @@ export async function sessionWriteFile(
  */
 export async function sessionListDirectory(sessionId: string, path: string): Promise<SessionListDirectoryResponse> {
     try {
+        const metadata = storage.getState().sessions[sessionId]?.metadata;
+        if (isRigMetadata(metadata) && !rigHasRpcMethod(metadata, 'listDirectory')) {
+            throw new Error('Directory listing is not advertised by this Rig session');
+        }
         const request: SessionListDirectoryRequest = { path };
         const response = await apiSocket.sessionRPC<SessionListDirectoryResponse, SessionListDirectoryRequest>(
             sessionId,
@@ -762,6 +1051,10 @@ export async function sessionGetDirectoryTree(
     maxDepth: number
 ): Promise<SessionGetDirectoryTreeResponse> {
     try {
+        const metadata = storage.getState().sessions[sessionId]?.metadata;
+        if (isRigMetadata(metadata) && !rigHasRpcMethod(metadata, 'getDirectoryTree')) {
+            throw new Error('Directory tree is not advertised by this Rig session');
+        }
         const request: SessionGetDirectoryTreeRequest = { path, maxDepth };
         const response = await apiSocket.sessionRPC<SessionGetDirectoryTreeResponse, SessionGetDirectoryTreeRequest>(
             sessionId,
@@ -786,6 +1079,10 @@ export async function sessionRipgrep(
     cwd?: string
 ): Promise<SessionRipgrepResponse> {
     try {
+        const metadata = storage.getState().sessions[sessionId]?.metadata;
+        if (!rigCanSearchFiles(metadata)) {
+            throw new Error('File search is not available for this session');
+        }
         const request: SessionRipgrepRequest = { args, cwd };
         const response = await apiSocket.sessionRPC<SessionRipgrepResponse, SessionRipgrepRequest>(
             sessionId,
@@ -890,6 +1187,8 @@ type ForkOptions = {
     cutAfterUuid?: string;
     cutAfterItemId?: string;
     forkedFromMessageId?: string;
+    /** Marks the forked child as a hidden side chat (kept out of the session list). */
+    isSideChat?: boolean;
 };
 
 /**
@@ -934,6 +1233,7 @@ export async function forkAndSpawn(
             resumeCodexThreadId: forkResult.newCodexThreadId,
             parentSessionId: source.sessionId,
             forkedFromMessageId: opts.forkedFromMessageId,
+            isSideChat: opts.isSideChat,
         });
 
         if (spawnResult.type === 'success') {
@@ -972,6 +1272,7 @@ export async function forkAndSpawn(
         resumeClaudeSessionId: forkResult.newClaudeSessionId,
         parentSessionId: source.sessionId,
         forkedFromMessageId: opts.forkedFromMessageId,
+        isSideChat: opts.isSideChat,
     });
 
     // Pull the newly-created session row into local sync state before we
@@ -988,6 +1289,18 @@ export async function forkAndSpawn(
     }
 
     return spawnResult;
+}
+
+/**
+ * Create a "side chat" for a session: a forked child that inherits the
+ * parent's full context but is provably isolated (writes only to its own
+ * transcript, never back into the parent) and is flagged `isSideChat` so it
+ * stays out of the top-level session list. Rendered only inside the parent's
+ * sidebar panel. Reuses the fork/spawn machinery; the only difference from a
+ * normal fork is the `isSideChat` marker.
+ */
+export async function spawnSideChat(source: ForkSource): Promise<SpawnSessionResult> {
+    return forkAndSpawn(source, { isSideChat: true });
 }
 
 // Export types for external use

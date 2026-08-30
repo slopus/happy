@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { resolveCodexExecutionPolicy } from '../executionPolicy';
+import {
+    isRemoteCodexPermissionMode,
+    resolveCodexExecutionPolicy,
+    shouldAutoApproveCodexApproval,
+} from '../executionPolicy';
 
 describe('resolveCodexExecutionPolicy', () => {
     it('forces never + danger-full-access when sandbox is managed by Happy', () => {
@@ -20,6 +24,21 @@ describe('resolveCodexExecutionPolicy', () => {
         });
     });
 
+    it('accepts Auto from app messages and maps it to on-request + workspace-write', () => {
+        expect(isRemoteCodexPermissionMode('auto')).toBe(true);
+        expect(resolveCodexExecutionPolicy('auto', false)).toEqual({
+            approvalPolicy: 'on-request',
+            sandbox: 'workspace-write',
+        });
+    });
+
+    it('rejects non-Codex and crafted remote permission modes', () => {
+        expect(isRemoteCodexPermissionMode('bypassPermissions')).toBe(false);
+        expect(isRemoteCodexPermissionMode('plan')).toBe(false);
+        expect(isRemoteCodexPermissionMode('totally_unsafe')).toBe(false);
+        expect(isRemoteCodexPermissionMode(null)).toBe(false);
+    });
+
     it('maps read-only mode to never + read-only without managed sandbox', () => {
         const policy = resolveCodexExecutionPolicy('read-only', false);
 
@@ -29,11 +48,11 @@ describe('resolveCodexExecutionPolicy', () => {
         });
     });
 
-    it('maps safe-yolo mode to on-failure + workspace-write without managed sandbox', () => {
+    it('maps safe-yolo mode to never + workspace-write without managed sandbox', () => {
         const policy = resolveCodexExecutionPolicy('safe-yolo', false);
 
         expect(policy).toEqual({
-            approvalPolicy: 'on-failure',
+            approvalPolicy: 'never',
             sandbox: 'workspace-write',
         });
     });
@@ -54,5 +73,23 @@ describe('resolveCodexExecutionPolicy', () => {
             approvalPolicy: 'never',
             sandbox: 'danger-full-access',
         });
+    });
+
+    it('auto-approves bridge prompts for no-prompt modes without managed sandbox', () => {
+        expect(shouldAutoApproveCodexApproval('default', false)).toBe(false);
+        expect(shouldAutoApproveCodexApproval('read-only', false)).toBe(false);
+        // safe-yolo must keep prompting: its turns run with approvalPolicy
+        // 'never' inside the workspace sandbox, so any approval codex still
+        // surfaces is a sandbox escalation — the one thing safe-yolo
+        // promises to ask the user about.
+        expect(shouldAutoApproveCodexApproval('safe-yolo', false)).toBe(false);
+        expect(shouldAutoApproveCodexApproval('yolo', false)).toBe(true);
+        expect(shouldAutoApproveCodexApproval('bypassPermissions', false)).toBe(true);
+    });
+
+    it('auto-approves bridge prompts when Happy owns sandboxing', () => {
+        expect(shouldAutoApproveCodexApproval('default', true)).toBe(true);
+        expect(shouldAutoApproveCodexApproval('read-only', true)).toBe(true);
+        expect(shouldAutoApproveCodexApproval('safe-yolo', true)).toBe(true);
     });
 });

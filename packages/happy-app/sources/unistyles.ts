@@ -81,6 +81,15 @@ const setRootBackgroundColor = () => {
 // Set initial background color
 setRootBackgroundColor();
 
+// Align the NATIVE appearance with the app theme. Unistyles only themes the
+// React tree; UIKit keeps following the system, so with an explicit app theme
+// everything native — SwiftUI composer menus, the keyboard, context menus —
+// rendered in the other scheme (white-on-white chips on the light composer
+// with a dark system). Adaptive resets the override back to the system.
+if (Platform.OS !== 'web') {
+    Appearance.setColorScheme(themePreference === 'adaptive' ? 'unspecified' : themePreference);
+}
+
 // Re-sync theme when tab becomes visible (web only — Appearance API may miss changes while hidden)
 if (Platform.OS === 'web' && themePreference === 'adaptive') {
     document.addEventListener('visibilitychange', () => {

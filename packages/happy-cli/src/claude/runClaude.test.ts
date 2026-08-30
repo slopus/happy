@@ -815,6 +815,35 @@ describe('runClaude remote JSONL scanner', () => {
         await harness.finish();
     });
 
+    it('keeps the picked model and effort after an abort resets the other mode defaults', async () => {
+        const harness = await startRemoteRunClaudeHarness();
+        const userMessageHandler = harness.sessionClient.onUserMessage.mock.calls[0][0];
+
+        await userMessageHandler({
+            content: { text: 'first turn' },
+            meta: { model: 'claude-fable-5-20260115', effort: 'high' },
+        });
+        expect(harness.loopOptions.messageQueue.queue[0].mode).toMatchObject({
+            model: 'claude-fable-5-20260115',
+            effort: 'high',
+        });
+
+        // Aborting the turn must not silently revert the picker's choice —
+        // the app only sends meta.model/meta.effort when the user changes them.
+        harness.loopOptions.onAbort();
+
+        await userMessageHandler({
+            content: { text: 'second turn' },
+            meta: {},
+        });
+        expect(harness.loopOptions.messageQueue.queue[1].mode).toMatchObject({
+            model: 'claude-fable-5-20260115',
+            effort: 'high',
+        });
+
+        await harness.finish();
+    });
+
     it('rejects Claude goal-action while Claude is still thinking', async () => {
         const harness = await startRemoteRunClaudeHarness();
         await vi.waitFor(() => {

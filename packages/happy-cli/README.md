@@ -32,13 +32,23 @@ This will:
 
 ```
 happy codex
-happy gemini
+happy agy        # Antigravity CLI (Gemini's successor)
+happy gemini     # deprecated — use `happy agy`
 happy openclaw
 
 # or any ACP-compatible CLI
 happy acp opencode
 happy acp -- custom-agent --flag
 ```
+
+> **Note on agy permissions:** the agy backend runs `agy --print`, which is
+> one-shot and has no interactive approval surface — tool calls proceed
+> automatically without ever prompting you. The permission mode you pick in
+> Happy only chooses which flag is passed to agy: the default modes use
+> `--sandbox`, and the bypass/yolo-style modes (including `acceptEdits`) use
+> `--dangerously-skip-permissions`. Neither adds a per-tool approval gate
+> inside Happy, so selecting "default" for an agy session does **not** give
+> you an approval prompt the way it does for Claude Code.
 
 ## Daemon
 
@@ -99,7 +109,8 @@ happy connect status
 |---------|-------------|
 | `happy` | Start Claude Code session (default) |
 | `happy codex` | Start Codex mode |
-| `happy gemini` | Start Gemini CLI session |
+| `happy agy` | Start agy (Antigravity CLI) session |
+| `happy gemini` | Start Gemini CLI session (**deprecated** — use `happy agy`) |
 | `happy openclaw` | Start OpenClaw session |
 | `happy acp` | Start any ACP-compatible agent |
 | `happy resume <id>` | Resume a previous session |
@@ -144,7 +155,8 @@ yarn workspace happy cli --help
 - Node.js >= 20.0.0
 - For Claude: `claude` CLI installed & logged in
 - For Codex: `codex` CLI installed & logged in
-- For Gemini: `npm install -g @google/gemini-cli` + `happy connect gemini`
+- For agy: install the Antigravity CLI (`agy`) and log in
+- For Gemini (**deprecated** — use agy): `npm install -g @google/gemini-cli` + `happy connect gemini`
 
 ## License
 

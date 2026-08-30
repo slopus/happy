@@ -1,6 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import {
+  resolveClaudeEntrypoint,
   findGlobalClaudeCliPath,
   findClaudeInPath,
   detectSourceFromPath,
@@ -14,6 +17,46 @@ import {
 } from '../scripts/claude_version_utils.cjs';
 
 describe('Claude Version Utils - Cross-Platform Detection', () => {
+
+  describe('resolveClaudeEntrypoint', () => {
+    let packageDir: string;
+
+    beforeEach(() => {
+      packageDir = fs.mkdtempSync(path.join(os.tmpdir(), 'happy-claude-entrypoint-'));
+    });
+
+    afterEach(() => {
+      fs.rmSync(packageDir, { recursive: true, force: true });
+    });
+
+    it('uses the legacy cli.js entrypoint when present', () => {
+      const cliPath = path.join(packageDir, 'cli.js');
+      fs.writeFileSync(cliPath, 'legacy cli');
+
+      expect(resolveClaudeEntrypoint(packageDir)).toBe(cliPath);
+    });
+
+    it('uses the native binary declared by current Claude Code packages', () => {
+      const binaryPath = path.join(packageDir, 'bin', 'claude.exe');
+      fs.mkdirSync(path.dirname(binaryPath), { recursive: true });
+      fs.writeFileSync(path.join(packageDir, 'package.json'), JSON.stringify({
+        bin: { claude: 'bin/claude.exe' },
+      }));
+      fs.writeFileSync(binaryPath, 'native binary');
+
+      expect(resolveClaudeEntrypoint(packageDir)).toBe(binaryPath);
+    });
+
+    it('uses the Node wrapper when the declared binary is unavailable', () => {
+      const wrapperPath = path.join(packageDir, 'cli-wrapper.cjs');
+      fs.writeFileSync(path.join(packageDir, 'package.json'), JSON.stringify({
+        bin: 'bin/claude.exe',
+      }));
+      fs.writeFileSync(wrapperPath, 'node wrapper');
+
+      expect(resolveClaudeEntrypoint(packageDir)).toBe(wrapperPath);
+    });
+  });
 
   describe('detectSourceFromPath', () => {
 

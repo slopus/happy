@@ -5,6 +5,7 @@ const serverConfigStorage = new MMKV({ id: 'server-config' });
 
 const SERVER_KEY = 'custom-server-url';
 const LOG_SERVER_KEY = 'log-server-url';
+const USE_CUSTOM_SERVER_FOR_VOICE_KEY = 'use-custom-server-for-voice';
 const DEFAULT_SERVER_URL = 'https://api.cluster-fluster.com';
 
 export function getServerUrl(): string {
@@ -14,12 +15,43 @@ export function getServerUrl(): string {
            DEFAULT_SERVER_URL;
 }
 
+export function rewriteLoopbackHost(url: string): string {
+    try {
+        const target = new URL(url);
+        if (target.hostname !== 'localhost' && target.hostname !== '127.0.0.1' && target.hostname !== '::1') {
+            return url;
+        }
+        const reachable = new URL(getServerUrl());
+        target.protocol = reachable.protocol;
+        target.host = reachable.host;
+        return target.toString();
+    } catch {
+        return url;
+    }
+}
+
 export function setServerUrl(url: string | null): void {
     if (url && url.trim()) {
         serverConfigStorage.set(SERVER_KEY, url.trim());
     } else {
         serverConfigStorage.delete(SERVER_KEY);
     }
+}
+
+export function shouldUseCustomServerForVoice(): boolean {
+    return isUsingCustomServer() && serverConfigStorage.getBoolean(USE_CUSTOM_SERVER_FOR_VOICE_KEY) === true;
+}
+
+export function setUseCustomServerForVoice(enabled: boolean): void {
+    if (enabled) {
+        serverConfigStorage.set(USE_CUSTOM_SERVER_FOR_VOICE_KEY, true);
+    } else {
+        serverConfigStorage.delete(USE_CUSTOM_SERVER_FOR_VOICE_KEY);
+    }
+}
+
+export function getVoiceServerUrl(): string {
+    return shouldUseCustomServerForVoice() ? getServerUrl() : DEFAULT_SERVER_URL;
 }
 
 export function getLogServerUrl(): string | null {

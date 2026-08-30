@@ -16,7 +16,8 @@ import type { PermissionMode } from "@/api/types"
 export type ClaudeEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 
 export interface EnhancedMode {
-    permissionMode: PermissionMode;
+    /** Unset means "no override" — Claude uses its own configured mode. */
+    permissionMode?: PermissionMode;
     model?: string;
     fallbackModel?: string;
     customSystemPrompt?: string;

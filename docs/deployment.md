@@ -65,6 +65,18 @@ The deployment config expects:
 - A secret named `handy-secrets` populated by ExternalSecrets.
 - A service mapping port `3000` to container port `3005`.
 
+## Production deployment order
+
+The `Lab_HappyServer` TeamCity build runs Build, Push, and its private Deploy
+recipe in order. The recipe runs `prisma migrate deploy` in a one-off
+Kubernetes Job using the new image and `handy-secrets`, then applies
+`handy.yaml` and waits for the rollout. A failed migration exits before apply.
+
+GitHub CI continues to apply migrations to its disposable Postgres database.
+Production migrations run before the rolling update, so they must remain
+compatible with the currently running release; destructive changes require an
+expand/contract deployment.
+
 ## Local dev helpers
 The server package includes scripts for local infrastructure:
 - `pnpm --filter happy-server db` (Postgres in Docker)

@@ -1,15 +1,23 @@
 import * as React from 'react';
-import { View, ActivityIndicator, Text, Pressable } from 'react-native';
+import {
+    View,
+    ActivityIndicator,
+    Text,
+    Pressable,
+    Platform,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
-import { useFriendRequests, useSocketStatus, useRealtimeStatus } from '@/sync/storage';
+import { useFriendRequests, useSocketStatus, useRealtimeStatus, useSettingMutable } from '@/sync/storage';
+import { NativeSettingsMenu, type NativeSettingsMenuGroup } from './NativeSettingsMenu';
 import { useVisibleSessionListViewData } from '@/hooks/useVisibleSessionListViewData';
 import { useIsTablet } from '@/utils/responsive';
 import { useRouter } from 'expo-router';
 import { EmptySessionsTablet } from './EmptySessionsTablet';
 import { SessionsList } from './SessionsList';
-import { FABWide } from './FABWide';
 import { TabBar, TabType } from './TabBar';
 import { InboxView } from './InboxView';
+import { HomeDock, MOBILE_HOME_DOCK_CONTENT_INSET } from './HomeDock';
 import { SettingsViewWrapper } from './SettingsViewWrapper';
 import { SessionsListWrapper } from './SessionsListWrapper';
 import { Header } from './navigation/Header';
@@ -21,6 +29,10 @@ import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
 import { isUsingCustomServer } from '@/sync/serverConfig';
 import { trackFriendsSearch } from '@/track';
+import { MOBILE_GLASS_HEADER_HEIGHT } from './navigation/headerMetrics';
+import { useNewSessionDraft } from '@/hooks/useNewSessionDraft';
+import { useStartSessionFromDraft } from '@/hooks/useStartSessionFromDraft';
+import { shouldShowHomeConnectionStatus } from './homeConnectionStatus';
 
 interface MainViewProps {
     variant: 'phone' | 'sidebar';
@@ -32,6 +44,34 @@ const styles = StyleSheet.create((theme) => ({
     },
     phoneContainer: {
         flex: 1,
+        backgroundColor: Platform.OS === 'web' ? 'transparent' : theme.colors.groupped.background,
+    },
+    phoneSceneStack: {
+        flex: 1,
+        position: 'relative',
+        overflow: 'hidden',
+        backgroundColor: theme.colors.groupped.background,
+    },
+    phoneRoot: {
+        flex: 1,
+        backgroundColor: Platform.OS === 'web' ? 'transparent' : theme.colors.groupped.background,
+    },
+    phoneHeader: {
+        zIndex: 10,
+        backgroundColor: Platform.OS === 'web' ? theme.colors.groupped.background : 'transparent',
+    },
+    phoneHeaderOverlay: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+    },
+    phoneBottomDockOverlay: {
+        position: 'absolute',
+        left: 0,
+        right: 0,
+        bottom: 0,
+        zIndex: 30,
     },
     sidebarContentContainer: {
         flex: 1,
@@ -72,9 +112,10 @@ const styles = StyleSheet.create((theme) => ({
     titleContainer: {
         flex: 1,
         alignItems: 'center',
+        justifyContent: Platform.OS === 'web' ? 'flex-start' : 'center',
     },
     titleText: {
-        fontSize: 17,
+        fontSize: Platform.OS === 'web' ? 17 : 16,
         color: theme.colors.header.tint,
         fontWeight: '600',
         ...Typography.default('semiBold'),
@@ -85,7 +126,7 @@ const styles = StyleSheet.create((theme) => ({
         marginTop: -2,
     },
     statusText: {
-        fontSize: 12,
+        fontSize: Platform.OS === 'web' ? 12 : 11,
         fontWeight: '500',
         lineHeight: 16,
         ...Typography.default(),
@@ -93,8 +134,27 @@ const styles = StyleSheet.create((theme) => ({
     headerButton: {
         width: 32,
         height: 32,
+        borderRadius: 16,
         alignItems: 'center',
         justifyContent: 'center',
+        backgroundColor: 'transparent',
+    },
+    headerActionButton: {
+        width: 44,
+        height: 44,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    headerActions: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    // The seam between the two actions sharing the header pill. Shorter than
+    // the pill so it reads as a divider inside one control, not two controls.
+    headerActionDivider: {
+        width: StyleSheet.hairlineWidth,
+        height: 22,
+        backgroundColor: theme.colors.divider,
     },
 }));
 
@@ -106,7 +166,7 @@ const TAB_TITLES = {
 } as const;
 
 // Active tabs
-type ActiveTabType = 'sessions' | 'inbox' | 'settings';
+type ActiveTabType = TabType;
 
 // Header title component with connection status
 const HeaderTitle = React.memo(({ activeTab }: { activeTab: ActiveTabType }) => {
@@ -154,7 +214,7 @@ const HeaderTitle = React.memo(({ activeTab }: { activeTab: ActiveTabType }) => 
             <Text style={styles.titleText}>
                 {t(TAB_TITLES[activeTab])}
             </Text>
-            {connectionStatus.text && (
+            {shouldShowHomeConnectionStatus(socketStatus.status) && connectionStatus.text && (
                 <View style={styles.statusContainer}>
                     <StatusDot
                         color={connectionStatus.color}
@@ -176,16 +236,71 @@ const HeaderRight = React.memo(({ activeTab }: { activeTab: ActiveTabType }) => 
     const router = useRouter();
     const { theme } = useUnistyles();
     const isCustomServer = isUsingCustomServer();
+    const [sessionListGrouping, setSessionListGrouping] = useSettingMutable('sessionListGrouping');
 
     if (activeTab === 'sessions') {
+        if (Platform.OS !== 'web') {
+            const viewMenuGroups: NativeSettingsMenuGroup[] = [
+                {
+                    key: 'grouping',
+                    label: t('sessionsFilter.groupingTitle'),
+                    title: t('sessionsFilter.groupingTitle'),
+                    systemImage: 'rectangle.grid.1x2',
+                    options: [
+                        { key: 'flat', label: t('sessionsFilter.flatList') },
+                        { key: 'project', label: t('sessionsFilter.groupByProject') },
+                    ],
+                    selectedKey: sessionListGrouping === 'project' ? 'project' : 'flat',
+                    onSelect: (key) => setSessionListGrouping(key === 'project' ? 'project' : 'flat'),
+                },
+                // A plain row, not a choice: it leaves this screen for the
+                // appearance settings, where the avatar options now live.
+                {
+                    key: 'appearance',
+                    label: '',
+                    title: '',
+                    options: [{
+                        key: 'open',
+                        label: t('sessionsFilter.appearanceSettings'),
+                        systemImage: 'paintpalette',
+                    }],
+                    selectedKey: null,
+                    onSelect: () => router.push('/settings/appearance'),
+                },
+            ];
+            return (
+                <View style={styles.headerActions}>
+                    <NativeSettingsMenu
+                        groups={viewMenuGroups}
+                        anchor="top"
+                        accessibilityLabel={t('sessionsFilter.title')}
+                    >
+                        <View style={styles.headerActionButton}>
+                            <Ionicons name="filter" size={22} color={theme.colors.header.tint} />
+                        </View>
+                    </NativeSettingsMenu>
+                    <View style={styles.headerActionDivider} />
+                    <Pressable
+                        onPress={() => router.push('/settings')}
+                        accessibilityLabel={t('settings.title')}
+                        accessibilityRole="button"
+                        style={styles.headerActionButton}
+                    >
+                        <Ionicons name="settings-outline" size={22} color={theme.colors.header.tint} />
+                    </Pressable>
+                </View>
+            );
+        }
         return (
-            <Pressable
-                onPress={() => router.navigate('/new')}
-                hitSlop={15}
-                style={styles.headerButton}
-            >
-                <Ionicons name="add-outline" size={28} color={theme.colors.header.tint} />
-            </Pressable>
+            <View style={styles.headerActions}>
+                <Pressable
+                    onPress={() => router.navigate('/new')}
+                    hitSlop={15}
+                    style={styles.headerButton}
+                >
+                    <Ionicons name="add-outline" size={28} color={theme.colors.header.tint} />
+                </Pressable>
+            </View>
         );
     }
 
@@ -206,8 +321,7 @@ const HeaderRight = React.memo(({ activeTab }: { activeTab: ActiveTabType }) => 
 
     if (activeTab === 'settings') {
         if (!isCustomServer) {
-            // Empty view to maintain header centering
-            return <View style={styles.headerButton} />;
+            return Platform.OS === 'web' ? <View style={styles.headerButton} /> : null;
         }
         return (
             <Pressable
@@ -230,31 +344,61 @@ export const MainView = React.memo(({ variant }: MainViewProps) => {
     const router = useRouter();
     const friendRequests = useFriendRequests();
     const realtimeStatus = useRealtimeStatus();
+    const safeArea = useSafeAreaInsets();
+    const {
+        isStarting: isStartingHomeSession,
+        phase: homeSessionPhase,
+        startSession: startHomeSession,
+        cancelStart: cancelHomeSession,
+    } = useStartSessionFromDraft();
 
     // Tab state management
     // NOTE: Zen tab removed - the feature never got to a useful state
-    const [activeTab, setActiveTab] = React.useState<TabType>('sessions');
+    const [activeTab, setActiveTab] = React.useState<ActiveTabType>('sessions');
+    const [homePrompt, setHomePrompt] = React.useState('');
+    const showHeaderRight = activeTab !== 'settings' || isUsingCustomServer();
+    const topChromeInset = Platform.OS === 'web'
+        ? 0
+        : safeArea.top
+            + MOBILE_GLASS_HEADER_HEIGHT
+            + (realtimeStatus !== 'disconnected' ? 32 : 0);
+    const topContentInset = topChromeInset + (Platform.OS === 'web' ? 0 : 12);
+    const bottomContentInset = Platform.OS === 'web'
+        ? 0
+        : MOBILE_HOME_DOCK_CONTENT_INSET;
 
-    const handleNewSession = React.useCallback(() => {
-        router.navigate('/new');
-    }, [router]);
+    const handleHomePromptSubmit = React.useCallback(async (): Promise<boolean> => {
+        const prompt = homePrompt.trim();
+        const attachments = useNewSessionDraft.getState().attachments;
+        if (!prompt && attachments.length === 0) {
+            return false;
+        }
+        useNewSessionDraft.getState().setInput(prompt);
+        // The keyboard stays up: the dock reports what is happening above the
+        // composer and closes itself once the session is open.
+        const started = await startHomeSession();
+        if (started) setHomePrompt('');
+        return started;
+    }, [homePrompt, startHomeSession]);
 
-    const handleTabPress = React.useCallback((tab: TabType) => {
-        setActiveTab(tab);
+    const handleTabPress = React.useCallback((tab: ActiveTabType) => {
+        // This callback is intentionally independent of activeTab. Gesture
+        // worklets can outlive the render that created them, so comparing with a
+        // captured tab here can discard a newer tap or drag commit.
+        setActiveTab((currentTab) => currentTab === tab ? currentTab : tab);
     }, []);
 
-    // Regular phone mode with tabs - define this before any conditional returns
-    const renderTabContent = React.useCallback(() => {
+    const renderWebTabContent = () => {
         switch (activeTab) {
             case 'inbox':
                 return <InboxView />;
             case 'settings':
-                return <SettingsViewWrapper />;
+                return <SettingsViewWrapper topContentInset={topContentInset} bottomContentInset={bottomContentInset} />;
             case 'sessions':
             default:
-                return <SessionsListWrapper />;
+                return <SessionsListWrapper topContentInset={topContentInset} />;
         }
-    }, [activeTab]);
+    };
 
     // Sidebar variant
     if (variant === 'sidebar') {
@@ -297,28 +441,62 @@ export const MainView = React.memo(({ variant }: MainViewProps) => {
     }
 
     // Regular phone mode with tabs
-    return (
-        <>
-            <View style={styles.phoneContainer}>
-                <View style={{ backgroundColor: theme.colors.groupped.background }}>
-                    <Header
-                        title={<HeaderTitle activeTab={activeTab as ActiveTabType} />}
-                        headerRight={() => <HeaderRight activeTab={activeTab as ActiveTabType} />}
-                        headerLeft={() => <HeaderLogo />}
-                        headerShadowVisible={false}
-                        headerTransparent={true}
-                    />
-                    {realtimeStatus !== 'disconnected' && (
-                        <VoiceAssistantStatusBar variant="full" />
-                    )}
-                </View>
-                {renderTabContent()}
-            </View>
-            <TabBar
-                activeTab={activeTab}
-                onTabPress={handleTabPress}
-                inboxBadgeCount={friendRequests.length}
+    const phoneHeader = (
+        <View style={[styles.phoneHeader, Platform.OS !== 'web' && styles.phoneHeaderOverlay]}>
+            <Header
+                title={<HeaderTitle activeTab={activeTab} />}
+                headerRight={showHeaderRight ? () => (
+                    <HeaderRight activeTab={activeTab} />
+                ) : undefined}
+                headerLeft={() => <HeaderLogo />}
+                headerLeftGlass={Platform.OS !== 'web'}
+                headerBackdropAlwaysVisible={Platform.OS !== 'web'}
+                headerBackdropVariant="home"
+                headerShadowVisible={false}
+                headerTransparent={true}
+                mobileTitleSurface="plain"
+                mobileTitleAlignment="center"
             />
-        </>
+            {realtimeStatus !== 'disconnected' && (
+                <VoiceAssistantStatusBar variant="full" />
+            )}
+        </View>
+    );
+
+    return (
+        <View style={styles.phoneRoot}>
+            <View style={styles.phoneContainer}>
+                {Platform.OS === 'web' && phoneHeader}
+                {Platform.OS === 'web' ? renderWebTabContent() : (
+                    <View style={styles.phoneSceneStack}>
+                        <SessionsListWrapper
+                            topContentInset={topContentInset}
+                            scrollIndicatorTopInset={topChromeInset}
+                            bottomContentInset={bottomContentInset}
+                        />
+                    </View>
+                )}
+                {Platform.OS !== 'web' && phoneHeader}
+            </View>
+            {Platform.OS === 'web' ? (
+                <TabBar
+                    activeTab={activeTab}
+                    onTabPress={handleTabPress}
+                    inboxBadgeCount={friendRequests.length}
+                />
+            ) : (
+                <View pointerEvents="box-none" style={styles.phoneBottomDockOverlay}>
+                    <HomeDock
+                        prompt={homePrompt}
+                        onPromptChange={setHomePrompt}
+                        onSubmit={handleHomePromptSubmit}
+                        isSubmitting={isStartingHomeSession}
+                        submitPhase={homeSessionPhase}
+                        onSubmitCancel={cancelHomeSession}
+                        showBottomBackdrop={sessionListViewData !== null && sessionListViewData.length > 0}
+                    />
+                </View>
+            )}
+        </View>
     );
 });

@@ -8,6 +8,7 @@
  */
 
 import os from 'node:os';
+import { execSync } from 'node:child_process';
 import { resolve } from 'node:path';
 
 import type { AgentState, Metadata } from '@/api/types';
@@ -19,7 +20,7 @@ import packageJson from '../../package.json';
 /**
  * Backend flavor identifier for session metadata.
  */
-export type BackendFlavor = 'claude' | 'codex' | 'gemini' | 'opencode' | 'openclaw' | 'acp';
+export type BackendFlavor = 'claude' | 'codex' | 'gemini' | 'opencode' | 'openclaw' | 'agy' | 'acp';
 
 /**
  * Options for creating session metadata.
@@ -39,6 +40,8 @@ export interface CreateSessionMetadataOptions {
     parentSessionId?: string;
     /** Happy message id used as the fork rewind point. */
     forkedFromMessageId?: string;
+    /** Marks this session as a hidden side chat of `parentSessionId`. */
+    isSideChat?: boolean;
 }
 
 /**
@@ -49,6 +52,20 @@ export interface SessionMetadataResult {
     state: AgentState;
     /** Session metadata */
     metadata: Metadata;
+}
+
+function getGitBranch(cwd: string): string | undefined {
+    try {
+        const branch = execSync('git rev-parse --abbrev-ref HEAD', {
+            cwd,
+            encoding: 'utf8',
+            stdio: ['ignore', 'pipe', 'ignore'],
+            windowsHide: true,
+        }).trim();
+        return branch && branch !== 'HEAD' ? branch : undefined;
+    } catch {
+        return undefined;
+    }
 }
 
 /**
@@ -75,9 +92,11 @@ export function createSessionMetadata(opts: CreateSessionMetadataOptions): Sessi
     const state: AgentState = {
         controlledByUser: false,
     };
+    const cwd = process.cwd();
+    const gitBranch = getGitBranch(cwd);
 
     const metadata: Metadata = {
-        path: process.cwd(),
+        path: cwd,
         host: os.hostname(),
         version: packageJson.version,
         os: os.platform(),
@@ -94,8 +113,10 @@ export function createSessionMetadata(opts: CreateSessionMetadataOptions): Sessi
         flavor: opts.flavor,
         sandbox: opts.sandbox?.enabled ? opts.sandbox : null,
         dangerouslySkipPermissions: opts.dangerouslySkipPermissions ?? null,
+        ...(gitBranch ? { gitBranch } : {}),
         ...(opts.parentSessionId ? { parentSessionId: opts.parentSessionId } : {}),
         ...(opts.forkedFromMessageId ? { forkedFromMessageId: opts.forkedFromMessageId } : {}),
+        ...(opts.isSideChat ? { isSideChat: true } : {}),
     };
 
     return { state, metadata };

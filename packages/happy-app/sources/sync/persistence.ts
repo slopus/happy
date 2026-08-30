@@ -12,7 +12,7 @@ const VOICE_SOFT_PAYWALL_SHOWN_KEY = 'voice-soft-paywall-shown';
 const VOICE_ONBOARDING_PROMPT_LOAD_COUNT_KEY = 'voice-onboarding-prompt-load-count';
 const VOICE_MESSAGE_COUNT_KEY = 'voice-message-count';
 
-export type NewSessionAgentType = 'claude' | 'codex' | 'gemini' | 'openclaw';
+export type NewSessionAgentType = 'claude' | 'codex' | 'gemini' | 'openclaw' | 'agy' | 'rig';
 export type NewSessionSessionType = 'simple' | 'worktree';
 
 export interface NewSessionDraft {
@@ -20,8 +20,9 @@ export interface NewSessionDraft {
     selectedMachineId: string | null;
     selectedPath: string | null;
     agentType: NewSessionAgentType;
-    permissionMode: PermissionModeKey;
-    modelMode: string;
+    permissionMode: PermissionModeKey | null;
+    modelMode: string | null;
+    effortLevel: string | null;
     sessionType: NewSessionSessionType;
     worktreeKey: string | null;
     updatedAt: number;
@@ -49,8 +50,24 @@ export function loadPendingSettings(): Partial<Settings> {
     const pending = mmkv.getString('pending-settings');
     if (pending) {
         try {
-            const parsed = JSON.parse(pending);
-            return SettingsSchema.partial().parse(parsed);
+            const raw = JSON.parse(pending);
+            if (!raw || typeof raw !== 'object') {
+                return {};
+            }
+            const parsed = SettingsSchema.partial().parse(raw) as Partial<Settings>;
+            // Keep only the keys that were actually pending. `.partial()` leaves the
+            // `.default()` wrappers intact (schemaVersion, agentDefaultOverrides,
+            // dismissedCLIWarnings), so zod re-injects those defaults for keys that
+            // were never queued. Returning them would turn "nothing is pending" into
+            // "reset these fields", which overwrites the real values on the next sync
+            // and pushes the reset to the server — wiping them on every device.
+            const result: Partial<Settings> = {};
+            for (const key of Object.keys(raw) as (keyof Settings)[]) {
+                if (key in parsed) {
+                    (result as any)[key] = parsed[key];
+                }
+            }
+            return result;
         } catch (e) {
             console.error('Failed to parse pending settings', e);
             return {};
@@ -145,13 +162,14 @@ export function loadNewSessionDraft(): NewSessionDraft | null {
         const input = typeof parsed.input === 'string' ? parsed.input : '';
         const selectedMachineId = typeof parsed.selectedMachineId === 'string' ? parsed.selectedMachineId : null;
         const selectedPath = typeof parsed.selectedPath === 'string' ? parsed.selectedPath : null;
-        const agentType: NewSessionAgentType = parsed.agentType === 'codex' || parsed.agentType === 'gemini' || parsed.agentType === 'openclaw'
+        const agentType: NewSessionAgentType = parsed.agentType === 'codex' || parsed.agentType === 'gemini' || parsed.agentType === 'openclaw' || parsed.agentType === 'agy' || parsed.agentType === 'rig'
             ? parsed.agentType
             : 'claude';
-        const permissionMode: PermissionModeKey = typeof parsed.permissionMode === 'string'
+        const permissionMode: PermissionModeKey | null = typeof parsed.permissionMode === 'string'
             ? parsed.permissionMode
-            : 'default';
-        const modelMode: string = typeof parsed.modelMode === 'string' ? parsed.modelMode : 'default';
+            : null;
+        const modelMode: string | null = typeof parsed.modelMode === 'string' ? parsed.modelMode : null;
+        const effortLevel: string | null = typeof parsed.effortLevel === 'string' ? parsed.effortLevel : null;
         const sessionType: NewSessionSessionType = parsed.sessionType === 'worktree' ? 'worktree' : 'simple';
         const worktreeKey = typeof parsed.worktreeKey === 'string' ? parsed.worktreeKey : null;
         const updatedAt = typeof parsed.updatedAt === 'number' ? parsed.updatedAt : Date.now();
@@ -163,6 +181,7 @@ export function loadNewSessionDraft(): NewSessionDraft | null {
             agentType,
             permissionMode,
             modelMode,
+            effortLevel,
             sessionType,
             worktreeKey,
             updatedAt,
@@ -193,55 +212,21 @@ export function clearRegisteredPushToken() {
     mmkv.delete(REGISTERED_PUSH_TOKEN_KEY);
 }
 
-export function loadSessionPermissionModes(): Record<string, string> {
-    const modes = mmkv.getString('session-permission-modes');
-    if (modes) {
+export function loadSessionLastMessageSentAt(): Record<string, number> {
+    const timestamps = mmkv.getString('session-last-message-sent-at');
+    if (timestamps) {
         try {
-            return JSON.parse(modes);
+            return JSON.parse(timestamps);
         } catch (e) {
-            console.error('Failed to parse session permission modes', e);
+            console.error('Failed to parse session last message sent timestamps', e);
             return {};
         }
     }
     return {};
 }
 
-export function saveSessionPermissionModes(modes: Record<string, string>) {
-    mmkv.set('session-permission-modes', JSON.stringify(modes));
-}
-
-export function loadSessionModelModes(): Record<string, string> {
-    const modes = mmkv.getString('session-model-modes');
-    if (modes) {
-        try {
-            return JSON.parse(modes);
-        } catch (e) {
-            console.error('Failed to parse session model modes', e);
-            return {};
-        }
-    }
-    return {};
-}
-
-export function saveSessionModelModes(modes: Record<string, string>) {
-    mmkv.set('session-model-modes', JSON.stringify(modes));
-}
-
-export function loadSessionEffortLevels(): Record<string, string> {
-    const levels = mmkv.getString('session-effort-levels');
-    if (levels) {
-        try {
-            return JSON.parse(levels);
-        } catch (e) {
-            console.error('Failed to parse session effort levels', e);
-            return {};
-        }
-    }
-    return {};
-}
-
-export function saveSessionEffortLevels(levels: Record<string, string>) {
-    mmkv.set('session-effort-levels', JSON.stringify(levels));
+export function saveSessionLastMessageSentAt(timestamps: Record<string, number>) {
+    mmkv.set('session-last-message-sent-at', JSON.stringify(timestamps));
 }
 
 export function loadProfile(): Profile {

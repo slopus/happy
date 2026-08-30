@@ -10,7 +10,7 @@ import {
     getHardcodedPermissionModes,
     type ModeOption,
 } from '@/components/modelModeOptions';
-import { useSettingMutable } from '@/sync/storage';
+import { useAllMachines, useSettingMutable } from '@/sync/storage';
 import {
     agentKeys,
     getCodeAgentDefaults,
@@ -21,7 +21,12 @@ import {
     type AgentDefaultField,
     type AgentKey,
 } from '@/sync/agentDefaults';
+import { getHarnessName, isRetiredHarness } from '@/utils/harnessCatalog';
 import { t } from '@/text';
+import { Modal } from '@/modal';
+import { collectMachineChoices } from '@/sync/machineChoices';
+import { isMachineOnline } from '@/utils/machineUtils';
+import { useRouter } from 'expo-router';
 
 type ExpandedField = {
     agent: AgentKey;
@@ -37,21 +42,35 @@ type FieldConfig = {
 };
 
 const agentLabels: Record<AgentKey, string> = {
-    claude: 'Claude Code',
-    codex: 'Codex',
-    gemini: 'Gemini',
-    openclaw: 'OpenClaw',
+    claude: getHarnessName('claude'),
+    codex: getHarnessName('codex'),
+    gemini: getHarnessName('gemini'),
+    openclaw: getHarnessName('openclaw'),
+    agy: getHarnessName('agy'),
 };
+
+// A retired harness keeps its stored defaults — the schema still carries them,
+// and "Reset all" still clears them — but there is nothing to configure for an
+// agent you can no longer start a session with.
+const configurableAgentKeys = agentKeys.filter((agent) => !isRetiredHarness(agent));
 
 function optionName(options: ModeOption[], key: string | null | undefined): string {
     if (!key) return 'none';
     return options.find((option) => option.key === key)?.name ?? key;
 }
 
-export default function AgentDefaultsSettingsScreen() {
+export default function AgentsSettingsScreen() {
     const { theme } = useUnistyles();
+    const router = useRouter();
     const [agentDefaultOverrides, setAgentDefaultOverrides] = useSettingMutable('agentDefaultOverrides');
     const [expanded, setExpanded] = React.useState<ExpandedField>(null);
+    const machines = useAllMachines({ includeOffline: true });
+    const machineChoices = React.useMemo(() => (
+        collectMachineChoices(machines).sort((left, right) => (
+            Number(right.online) - Number(left.online)
+            || right.activeAt - left.activeAt
+        ))
+    ), [machines]);
 
     const updateOverride = React.useCallback((
         agent: AgentKey,
@@ -60,6 +79,22 @@ export default function AgentDefaultsSettingsScreen() {
     ) => {
         setAgentDefaultOverrides(setAgentDefaultOverride(agentDefaultOverrides, agent, field, value));
     }, [agentDefaultOverrides, setAgentDefaultOverrides]);
+
+    const editCustomCodexModel = React.useCallback(async (currentValue?: string) => {
+        const value = await Modal.prompt(
+            'Custom Codex model',
+            'Enter an exact model ID. Availability depends on your Codex account or API configuration.',
+            {
+                defaultValue: currentValue ?? '',
+                placeholder: 'model-id',
+                confirmText: 'Save',
+            },
+        );
+        const model = value?.trim();
+        if (model) {
+            updateOverride('codex', 'modelMode', model);
+        }
+    }, [updateOverride]);
 
     const renderOption = (
         agent: AgentKey,
@@ -91,6 +126,10 @@ export default function AgentDefaultsSettingsScreen() {
             ? optionName(config.options, overrideValue)
             : `Default (${optionName(config.options, effectiveValue)})`;
         const codeDefaultLabel = optionName(config.options, config.codeDefaultKey);
+        const isCustomCodexModel = agent === 'codex'
+            && config.field === 'modelMode'
+            && Boolean(overrideValue)
+            && !config.options.some((option) => option.key === overrideValue);
 
         return (
             <React.Fragment key={`${agent}-${config.field}`}>
@@ -118,6 +157,17 @@ export default function AgentDefaultsSettingsScreen() {
                             hasOverride && overrideValue === option.key,
                             option.key,
                         ))}
+                        {agent === 'codex' && config.field === 'modelMode' && (
+                            <Item
+                                title="Custom model…"
+                                subtitle={isCustomCodexModel ? overrideValue : 'Enter an exact model ID'}
+                                onPress={() => editCustomCodexModel(isCustomCodexModel ? overrideValue : undefined)}
+                                showChevron={false}
+                                rightElement={isCustomCodexModel ? (
+                                    <Ionicons name="checkmark" size={20} color={theme.colors.header.tint} />
+                                ) : undefined}
+                            />
+                        )}
                     </>
                 )}
             </React.Fragment>
@@ -126,8 +176,50 @@ export default function AgentDefaultsSettingsScreen() {
 
     return (
         <ItemList style={{ paddingTop: 0 }}>
+            <ItemGroup title="Machines">
+                {machineChoices.length === 0 ? (
+                    <Item
+                        title="No connected machines"
+                        subtitle="Run Happy on a computer to connect it"
+                        icon={<Ionicons name="desktop-outline" size={29} color={theme.colors.textSecondary} />}
+                        disabled
+                        showChevron={false}
+                    />
+                ) : machineChoices.map((choice) => {
+                    const machine = choice.happyMachine ?? choice.rigMachine;
+                    const platform = machine?.metadata?.platform?.trim();
+                    const subtitle = [platform, choice.online ? t('status.online') : t('status.offline')]
+                        .filter(Boolean)
+                        .join(' • ');
+                    const targetMachine = [choice.happyMachine, choice.rigMachine]
+                        .find((candidate) => candidate && isMachineOnline(candidate))
+                        ?? machine;
+
+                    return (
+                        <Item
+                            key={choice.id}
+                            title={choice.name}
+                            subtitle={subtitle}
+                            icon={
+                                <Ionicons
+                                    name="desktop-outline"
+                                    size={29}
+                                    color={choice.online
+                                        ? theme.colors.status.connected
+                                        : theme.colors.status.disconnected}
+                                />
+                            }
+                            style={{ opacity: choice.online ? 1 : 0.5 }}
+                            onPress={targetMachine
+                                ? () => router.push(`/machine/${targetMachine.id}`)
+                                : undefined}
+                        />
+                    );
+                })}
+            </ItemGroup>
+
             <ItemGroup
-                title="Agent Defaults"
+                title="Defaults"
             >
                 <Item
                     title="Clear Overrides"
@@ -139,7 +231,7 @@ export default function AgentDefaultsSettingsScreen() {
                 />
             </ItemGroup>
 
-            {agentKeys.map((agent) => {
+            {configurableAgentKeys.map((agent) => {
                 const codeDefaults = getCodeAgentDefaults(agent);
                 const effectiveDefaults = resolveAgentDefaultConfig(agentDefaultOverrides, agent);
                 const permissionOptions = getHardcodedPermissionModes(agent, t);

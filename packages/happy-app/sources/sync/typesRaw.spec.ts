@@ -1529,6 +1529,62 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
             }
         });
 
+        it('preserves session protocol usage for context tracking', () => {
+            const usage = {
+                input_tokens: 1200,
+                cache_creation_input_tokens: 40,
+                cache_read_input_tokens: 500,
+                output_tokens: 80
+            };
+            const normalized = normalizeRawMessage('db-usage-1', null, 1, {
+                ...base,
+                content: {
+                    type: 'session',
+                    data: {
+                        id: 'env-usage-1',
+                        time: 1,
+                        role: 'agent',
+                        turn: 'turn-usage-1',
+                        usage,
+                        ev: { t: 'text', text: 'usage-bearing response' }
+                    }
+                }
+            });
+
+            expect(normalized).toBeTruthy();
+            expect(normalized?.role).toBe('agent');
+            expect(normalized?.usage).toEqual(usage);
+        });
+
+        it('normalizes usage-only service envelopes without chat content or turn', () => {
+            const usage = {
+                input_tokens: 1200,
+                cache_creation_input_tokens: 40,
+                cache_read_input_tokens: 500,
+                output_tokens: 80
+            };
+            const normalized = normalizeRawMessage('db-usage-only-1', null, 1, {
+                ...base,
+                content: {
+                    type: 'session',
+                    data: {
+                        id: 'env-usage-only-1',
+                        time: 1,
+                        role: 'agent',
+                        usage,
+                        ev: { t: 'service', text: '' }
+                    }
+                }
+            });
+
+            expect(normalized).toBeTruthy();
+            expect(normalized?.role).toBe('agent');
+            if (normalized?.role === 'agent') {
+                expect(normalized.content).toEqual([]);
+            }
+            expect(normalized?.usage).toEqual(usage);
+        });
+
         it('normalizes new direct session-role envelope shape', () => {
             const normalized = normalizeRawMessage('db-1-direct', null, 1, {
                 role: 'session',
@@ -1600,6 +1656,60 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
                     text: 'modern user envelope'
                 });
             }
+        });
+
+        it('drops persisted control-only task notifications for user and agent envelopes', () => {
+            const notification = `<task-notification>
+<task-id>agent-123</task-id>
+<status>completed</status>
+<result>already rendered in the subagent sidechain</result>
+<usage><subagent_tokens>29207</subagent_tokens></usage>
+</task-notification>`;
+            const user = normalizeRawMessage('db-task-user', null, 1, {
+                role: 'session',
+                content: {
+                    id: 'env-task-user',
+                    time: 1,
+                    role: 'user',
+                    codexItemId: 'codex-task-user',
+                    ev: { t: 'text', text: notification }
+                }
+            } as any);
+            const agent = normalizeRawMessage('db-task-agent', null, 1, {
+                role: 'session',
+                content: {
+                    id: 'env-task-agent',
+                    time: 1,
+                    role: 'agent',
+                    turn: 'turn-task-agent',
+                    codexItemId: 'codex-task-agent',
+                    ev: { t: 'text', text: notification }
+                }
+            } as any);
+
+            expect(user).toBeNull();
+            expect(agent).toBeNull();
+        });
+
+        it('preserves visible text after a persisted task notification wrapper', () => {
+            const normalized = normalizeRawMessage('db-task-followup', null, 1, {
+                role: 'session',
+                content: {
+                    id: 'env-task-followup',
+                    time: 1,
+                    role: 'user',
+                    codexItemId: 'codex-task-followup',
+                    ev: {
+                        t: 'text',
+                        text: '<task-notification>internal</task-notification>\nContinue with the fix'
+                    }
+                }
+            } as any);
+
+            expect(normalized).toMatchObject({
+                role: 'user',
+                content: { type: 'text', text: 'Continue with the fix' }
+            });
         });
 
         it('renders legacy user text messages', () => {

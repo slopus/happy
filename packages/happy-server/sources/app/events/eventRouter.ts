@@ -8,7 +8,8 @@ import type { SessionMessageContent } from "@slopus/happy-wire";
 // Grace window during which a freshly-connected viewer socket that has not yet
 // reported its app-state is treated as foreground. Covers the race between
 // connect and the first `app-state` event without letting an ever-silent socket
-// suppress pushes indefinitely. See hasActiveViewerSocket().
+// suppress pushes indefinitely. Used by the pure isForegroundViewerSocket()
+// predicate below.
 const UNKNOWN_APP_STATE_GRACE_MS = 15_000;
 
 /** Minimal view of socket.data the viewer-presence decision depends on. */
@@ -21,8 +22,17 @@ export interface ViewerSocketData {
 
 /**
  * Pure predicate: is this socket a viewer client currently in the foreground?
- * Extracted from hasActiveViewerSocket so the F1/F2 rules are unit-testable
- * without a live socket.io server. See hasActiveViewerSocket() for rationale.
+ * Originally extracted from the local push-suppression fix so the F1/F2 rules
+ * are unit-testable without a live socket.io server (see
+ * isForegroundViewerSocket.test.ts).
+ *
+ * MERGE NOTE (2026-08-30 upstream catch-up): upstream independently landed the
+ * same incident fix as `hasActiveUiClient` below, which is now the production
+ * presence check (stricter: no grace window, undefined clientType is NOT a UI
+ * client, plus a bounded fetch that fails open). This predicate is retained as
+ * the tested statement of the original F1/F2 intent; both it and
+ * hasActiveUiClient enforce "presence must be proven" for the two incident
+ * cases (session-scoped self-suppression; silent socket suppressing forever).
  */
 export function isForegroundViewerSocket(data: ViewerSocketData, now: number): boolean {
     // Rule 1 — only a user-scoped viewer counts (undefined defaults to
@@ -38,6 +48,12 @@ export function isForegroundViewerSocket(data: ViewerSocketData, now: number): b
     if (ref === undefined) return false;
     return (now - ref) < UNKNOWN_APP_STATE_GRACE_MS;
 }
+
+/**
+ * Cross-replica presence lookups must stay well inside the CLI's 15s push
+ * timeout, and a stalled peer replica should degrade to "send" quickly.
+ */
+const PRESENCE_FETCH_TIMEOUT_MS = 2_000;
 
 // === CONNECTION TYPES ===
 
@@ -96,10 +112,20 @@ export type UpdateEvent = {
     agentState: string | null;
     agentStateVersion: number;
     dataEncryptionKey: string | null;
+    projectId: string | null;
     active: boolean;
     activeAt: number;
     createdAt: number;
     updatedAt: number;
+} | {
+    type: 'new-project';
+    projectId: string;
+} | {
+    type: 'update-project';
+    projectId: string;
+} | {
+    type: 'delete-project';
+    projectId: string;
 } | {
     type: 'update-session';
     sessionId: string;
@@ -315,34 +341,32 @@ class EventRouter {
     // === PRESENCE QUERIES ===
 
     /**
-     * Returns true if the user has a *viewer* client (mobile / web / desktop app)
-     * that is genuinely in the foreground — i.e. a human is looking at Happy right
-     * now and an "attention needed" push would be redundant.
+     * Returns true if the user is demonstrably looking at a Happy UI client
+     * right now. Used to suppress a push they would only find redundant.
      *
-     * Two rules, both learned from a 100%-suppression incident (2026-08-03):
+     * Both conditions are deliberately positive — presence must be proven, not
+     * assumed. The costs are asymmetric: a redundant push is a buzz the user
+     * dismisses, while a missed push leaves an agent blocked on a permission
+     * prompt with nobody watching.
      *
-     *  1. Only `user-scoped` sockets count. A `session-scoped` socket is the CLI
-     *     agent itself (the very thing that raises the push) and a `machine-scoped`
-     *     socket is the daemon — neither means a human is watching. Counting the
-     *     session socket made every push suppress itself while a session ran.
+     *   - Only `user-scoped` sockets are notification surfaces. `session-scoped`
+     *     is the coding agent itself and `machine-scoped` is the daemon; neither
+     *     displays anything. Counting `session-scoped` meant a running session's
+     *     own socket suppressed the very push that session was asking for, so
+     *     mobile push went silent whenever a session was live.
+     *   - Only an explicit `app-state: active` counts. A client that never
+     *     reported is unknown, not present.
      *
-     *  2. A socket suppresses only when it has explicitly reported `app-state:
-     *     active`. `background` never suppresses. An "unknown" state (a client
-     *     that has never reported, e.g. an old build or a frozen/zombie socket)
-     *     gets a brief post-connect grace to cover the connect→first-event race,
-     *     then is treated as NOT foreground. Previously "unknown" meant "assume
-     *     active", so a silent/zombie socket suppressed every push forever.
-     *
-     * An explicit `active` never expires here — a user watching the app for
-     * minutes sends `active` once; a frozen socket that lied "active" then died
-     * is bounded by Socket.IO's own ping-timeout reaping.
-     *
-     * Uses fetchSockets() which works cross-replica via Redis streams adapter.
+     * Uses fetchSockets() which works cross-replica via Redis streams adapter,
+     * bounded so an unresponsive peer replica cannot stall a push. On timeout
+     * this throws and the caller fails open — an infrastructure problem must
+     * never turn into silence.
      */
-    async hasActiveViewerSocket(userId: string): Promise<boolean> {
-        const sockets = await this.io.in(`user:${userId}`).fetchSockets();
-        const now = Date.now();
-        return sockets.some(s => isForegroundViewerSocket(s.data as ViewerSocketData, now));
+    async hasActiveUiClient(userId: string): Promise<boolean> {
+        const sockets = await this.io.in(`user:${userId}`)
+            .timeout(PRESENCE_FETCH_TIMEOUT_MS)
+            .fetchSockets();
+        return sockets.some(s => s.data.clientType === 'user-scoped' && s.data.appState === 'active');
     }
 
     // === PRIVATE ROUTING LOGIC ===
@@ -391,6 +415,7 @@ export function buildNewSessionUpdate(session: {
     agentState: string | null;
     agentStateVersion: number;
     dataEncryptionKey: Uint8Array | null;
+    projectId: string | null;
     active: boolean;
     lastActiveAt: Date;
     createdAt: Date;
@@ -408,10 +433,47 @@ export function buildNewSessionUpdate(session: {
             agentState: session.agentState,
             agentStateVersion: session.agentStateVersion,
             dataEncryptionKey: session.dataEncryptionKey ? Buffer.from(session.dataEncryptionKey).toString('base64') : null,
+            projectId: session.projectId,
             active: session.active,
             activeAt: session.lastActiveAt.getTime(),
             createdAt: session.createdAt.getTime(),
             updatedAt: session.updatedAt.getTime()
+        },
+        createdAt: Date.now()
+    };
+}
+
+export function buildNewProjectUpdate(project: { id: string }, updateSeq: number, updateId: string): UpdatePayload {
+    return {
+        id: updateId,
+        seq: updateSeq,
+        body: {
+            t: 'new-project',
+            projectId: project.id,
+        },
+        createdAt: Date.now()
+    };
+}
+
+export function buildUpdateProjectUpdate(project: { id: string }, updateSeq: number, updateId: string): UpdatePayload {
+    return {
+        id: updateId,
+        seq: updateSeq,
+        body: {
+            t: 'update-project',
+            projectId: project.id,
+        },
+        createdAt: Date.now()
+    };
+}
+
+export function buildDeleteProjectUpdate(projectId: string, updateSeq: number, updateId: string): UpdatePayload {
+    return {
+        id: updateId,
+        seq: updateSeq,
+        body: {
+            t: 'delete-project',
+            projectId
         },
         createdAt: Date.now()
     };
@@ -444,7 +506,7 @@ export function buildNewMessageUpdate(message: {
     };
 }
 
-export function buildUpdateSessionUpdate(sessionId: string, updateSeq: number, updateId: string, metadata?: { value: string; version: number }, agentState?: { value: string; version: number }): UpdatePayload {
+export function buildUpdateSessionUpdate(sessionId: string, updateSeq: number, updateId: string, metadata?: { value: string; version: number }, agentState?: { value: string; version: number }, projectId?: string | null): UpdatePayload {
     return {
         id: updateId,
         seq: updateSeq,
@@ -452,7 +514,8 @@ export function buildUpdateSessionUpdate(sessionId: string, updateSeq: number, u
             t: 'update-session',
             id: sessionId,
             metadata,
-            agentState
+            agentState,
+            ...(projectId !== undefined ? { projectId } : {})
         },
         createdAt: Date.now()
     };

@@ -74,7 +74,7 @@ export function calculateHeaderHeight(params: {
     if (platform === 'android') {
         // For Android, use our custom device type detection
         if (deviceType === 'phone') {
-            return isLandscape ? 48 : 56; // Material Design: 48dp landscape, 56dp portrait
+            return isLandscape ? 48 : 64; // Material 3 small app bar
         }
         return 64; // Tablet: 64dp
     }

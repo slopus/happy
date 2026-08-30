@@ -24,6 +24,12 @@ export async function resumeExistingThread(opts: {
     threadId: string;
     cwd: string;
     mcpServers: Record<string, unknown>;
+    /**
+     * Whether to surface a "Resumed Codex thread …" message in the chat UI.
+     * Side chats open empty on purpose, so they pass `false` to keep this
+     * internal resume detail out of the conversation. Defaults to `true`.
+     */
+    announce?: boolean;
 }): Promise<{ threadId: string; model: string }> {
     try {
         const resumedThread = await opts.client.resumeThread({
@@ -37,10 +43,12 @@ export async function resumeExistingThread(opts: {
             codexThreadId: resumedThread.threadId,
         }));
         opts.messageBuffer.addMessage(`Resumed thread ${trimIdent(resumedThread.threadId)}`, 'status');
-        opts.session.sendSessionEvent({
-            type: 'message',
-            message: `Resumed Codex thread ${resumedThread.threadId}`,
-        });
+        if (opts.announce !== false) {
+            opts.session.sendSessionEvent({
+                type: 'message',
+                message: `Resumed Codex thread ${resumedThread.threadId}`,
+            });
+        }
 
         return resumedThread;
     } catch (error) {

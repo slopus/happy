@@ -83,3 +83,26 @@ diffs-container {
     scrollbar-width: auto;
     scrollbar-color: auto;
 }
+
+/* The working-session title uses CSS on web because MaskedView intentionally
+   renders as a no-op there. The last 28% of the cycle is a quiet pause. */
+@keyframes happy-session-title-shimmer {
+    0% {
+        background-position: 100% 0;
+    }
+    72%,
+    100% {
+        background-position: 0% 0;
+    }
+}
+
+[data-happy-session-title-shimmer] > * {
+    animation: happy-session-title-shimmer 2350ms linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    [data-happy-session-title-shimmer] > * {
+        animation: none;
+        background-position: 0% 0;
+    }
+}

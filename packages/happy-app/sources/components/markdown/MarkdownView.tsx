@@ -27,6 +27,11 @@ export const MarkdownView = React.memo((props: {
     markdown: string;
     onOptionPress?: (option: Option) => void;
     sessionId?: string;
+    /**
+     * The parent owns long-press copy (see LongPressCopyable). Suppresses native
+     * selection and the built-in copy gesture so only one of them fires.
+     */
+    externalCopyHandler?: boolean;
 }) => {
     const blocks = React.useMemo(() => parseMarkdown(props.markdown), [props.markdown]);
     
@@ -36,7 +41,7 @@ export const MarkdownView = React.memo((props: {
     // will be handled by a wrapper Pressable. If we don't disable the selectable property, then you will see
     // the native copy modal come up at the same time as the long press handler is fired.
     const markdownCopyV2 = useLocalSetting('markdownCopyV2');
-    const selectable = Platform.OS === 'web' || !markdownCopyV2;
+    const selectable = Platform.OS === 'web' || !(markdownCopyV2 || props.externalCopyHandler);
     const router = useRouter();
 
     const handleLinkPress = React.useCallback((url: string) => {
@@ -88,7 +93,7 @@ export const MarkdownView = React.memo((props: {
         );
     }
 
-    if (!markdownCopyV2) {
+    if (props.externalCopyHandler || !markdownCopyV2) {
         return renderContent();
     }
     
@@ -237,15 +242,16 @@ function RenderOptionsBlock(props: {
             {props.items.map((item, index) => {
                 if (props.onOptionPress) {
                     return (
-                        <Pressable 
-                            key={index} 
+                        <Pressable
+                            key={index}
                             style={({ pressed }) => [
-                                style.optionItem,
-                                pressed && style.optionItemPressed
+                                style.optionPressable,
+                                style.optionButton,
+                                pressed && style.optionButtonPressed
                             ]}
                             onPress={() => props.onOptionPress?.({ title: item })}
                         >
-                            <Text selectable={props.selectable} style={style.optionText}>{item}</Text>
+                            <Text selectable={props.selectable} style={style.optionButtonText}>{item}</Text>
                         </Pressable>
                     );
                 } else {
@@ -385,9 +391,9 @@ const style = StyleSheet.create((theme) => ({
     text: {
         ...Typography.default(),
         fontSize: 16,
-        lineHeight: 24, // Reduced from 28 to 24
+        lineHeight: 25,
         marginTop: 8,
-        marginBottom: 8,
+        marginBottom: 10,
         color: theme.colors.text,
         fontWeight: '400',
     },
@@ -593,19 +599,41 @@ const style = StyleSheet.create((theme) => ({
         gap: 8,
         marginVertical: 8,
     },
+    optionPressable: {
+        borderRadius: Platform.select({ web: 8, default: 18 }),
+    },
     optionItem: {
-        backgroundColor: theme.colors.surfaceHighest,
-        borderRadius: 8,
+        backgroundColor: Platform.select({ web: theme.colors.surfaceHighest, default: theme.colors.surface }),
+        borderRadius: Platform.select({ web: 8, default: 18 }),
         paddingHorizontal: 16,
-        paddingVertical: 12,
-        borderWidth: 1,
+        paddingVertical: Platform.select({ web: 12, default: 14 }),
+        borderWidth: Platform.select({ web: 1, default: StyleSheet.hairlineWidth }),
         borderColor: theme.colors.divider,
+        overflow: 'hidden',
     },
     optionItemPressed: {
-        opacity: 0.7,
-        backgroundColor: theme.colors.surfaceHigh,
+        backgroundColor: Platform.select({ web: theme.colors.surfaceHigh, default: theme.colors.surfacePressed }),
+        opacity: Platform.select({ web: 0.7, default: 1 }),
     },
     optionText: {
+        ...Typography.default(),
+        fontSize: 16,
+        lineHeight: 24,
+        color: theme.colors.text,
+    },
+    // Tapping an option sends it as your message. Full-width rows in the
+    // composer send button's resting grey — flat, no border.
+    optionButton: {
+        backgroundColor: theme.colors.surfaceHighest,
+        borderRadius: 12,
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        overflow: 'hidden',
+    },
+    optionButtonPressed: {
+        opacity: 0.7,
+    },
+    optionButtonText: {
         ...Typography.default(),
         fontSize: 16,
         lineHeight: 24,

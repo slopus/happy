@@ -5,13 +5,17 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
 
-// Style for Web platform
-const webStyle: any = {
-    backgroundColor: '#1a1a1a',
+// Tall diagrams scroll inside a capped container instead of taking over the chat
+const MAX_DIAGRAM_HEIGHT = 600;
+
+// Style for Web platform; background follows the theme — a hardcoded dark
+// block used to sit like a stain in the light theme.
+const webStyle = (backgroundColor: string): any => ({
+    backgroundColor,
     borderRadius: 8,
     padding: 16,
     overflow: 'auto',
-};
+});
 
 // Mermaid render component that works on all platforms
 export const MermaidRenderer = React.memo((props: {
@@ -42,7 +46,7 @@ export const MermaidRenderer = React.memo((props: {
                     if (mermaid.initialize) {
                         mermaid.initialize({
                             startOnLoad: false,
-                            theme: 'dark'
+                            theme: theme.dark ? 'dark' : 'default'
                         });
                     }
 
@@ -69,7 +73,7 @@ export const MermaidRenderer = React.memo((props: {
             return () => {
                 isMounted = false;
             };
-        }, [props.content]);
+        }, [props.content, theme.dark]);
 
         if (hasError) {
             return (
@@ -96,7 +100,7 @@ export const MermaidRenderer = React.memo((props: {
             <View style={style.container}>
                 {/* @ts-ignore - Web only */}
                 <div
-                    style={webStyle}
+                    style={webStyle(theme.colors.surfaceHighest)}
                     dangerouslySetInnerHTML={{ __html: svgContent }}
                 />
             </View>
@@ -139,23 +143,39 @@ export const MermaidRenderer = React.memo((props: {
         <body>
             <div id="mermaid-container"></div>
             <script>
+                function reportHeight() {
+                    const height = Math.max(
+                        document.body.scrollHeight,
+                        document.documentElement.scrollHeight
+                    );
+                    if (window.ReactNativeWebView) {
+                        window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'dimensions', height: height }));
+                    }
+                }
+
                 (async function() {
                     const content = ${mermaidContent};
                     const container = document.getElementById('mermaid-container');
-                    
+
                     try {
                         mermaid.initialize({
                             startOnLoad: false,
-                            theme: 'dark'
+                            theme: '${theme.dark ? 'dark' : 'default'}'
                         });
-                        
+
                         const { svg } = await mermaid.render('mermaid-diagram', content);
                         container.innerHTML = svg;
                     } catch (error) {
-                        container.innerHTML = '<div class="error">Diagram error: ' + 
-                            (error.message || String(error)).replace(/</g, '&lt;').replace(/>/g, '&gt;') + 
+                        container.innerHTML = '<div class="error">Diagram error: ' +
+                            (error.message || String(error)).replace(/</g, '&lt;').replace(/>/g, '&gt;') +
                             '</div>';
                     }
+
+                    // SVG sizing can settle asynchronously, so report again after a delay
+                    requestAnimationFrame(() => {
+                        reportHeight();
+                        setTimeout(reportHeight, 200);
+                    });
                 })();
             </script>
         </body>
@@ -164,11 +184,11 @@ export const MermaidRenderer = React.memo((props: {
 
     return (
         <View style={style.container} onLayout={onLayout}>
-            <View style={[style.innerContainer, { height: dimensions.height }]}>
+            <View style={[style.innerContainer, { height: Math.min(dimensions.height, MAX_DIAGRAM_HEIGHT) }]}>
                 <WebView
                     source={{ html }}
                     style={{ flex: 1 }}
-                    scrollEnabled={false}
+                    scrollEnabled={true}
                     onMessage={(event) => {
                         const data = JSON.parse(event.nativeEvent.data);
                         if (data.type === 'dimensions') {

@@ -2,6 +2,8 @@ import { AgentEvent } from "./typesRaw";
 import { MessageMeta } from "./typesMessageMeta";
 
 export type ToolCall = {
+    /** Provider/session-protocol tool-call id used to join side-channel UI state. */
+    callId?: string;
     name: string;
     state: 'running' | 'completed' | 'error';
     input: any;

@@ -150,21 +150,23 @@ const {
         return rows.map((row) => selectFields(row as unknown as Record<string, unknown>, args?.select));
     });
 
-    const sessionMessageCreate = vi.fn(async (args: any) => {
+    const sessionMessageCreateManyAndReturn = vi.fn(async (args: any) => {
         const createdAt = new Date(state.nowMs);
         state.nowMs += 1;
-        const row: MessageRecord = {
-            id: `msg-${state.nextMessageId}`,
-            sessionId: args?.data?.sessionId,
-            seq: args?.data?.seq,
-            localId: args?.data?.localId ?? null,
-            content: args?.data?.content,
-            createdAt,
-            updatedAt: createdAt
-        };
-        state.nextMessageId += 1;
-        state.messages.push(row);
-        return selectFields(row as unknown as Record<string, unknown>, args?.select);
+        return args.data.map((data: any) => {
+            const row: MessageRecord = {
+                id: `msg-${state.nextMessageId}`,
+                sessionId: data.sessionId,
+                seq: data.seq,
+                localId: data.localId ?? null,
+                content: data.content,
+                createdAt,
+                updatedAt: createdAt
+            };
+            state.nextMessageId += 1;
+            state.messages.push(row);
+            return selectFields(row as unknown as Record<string, unknown>, args?.select);
+        });
     });
 
     const txClient = {
@@ -173,7 +175,7 @@ const {
         },
         sessionMessage: {
             findMany: sessionMessageFindMany,
-            create: sessionMessageCreate
+            createManyAndReturn: sessionMessageCreateManyAndReturn
         },
         account: {
             update: accountUpdate
@@ -190,7 +192,7 @@ const {
         },
         sessionMessage: {
             findMany: sessionMessageFindMany,
-            create: sessionMessageCreate
+            createManyAndReturn: sessionMessageCreateManyAndReturn
         },
         $transaction: vi.fn(async (fn: any) => fn(txClient))
     };
@@ -256,8 +258,8 @@ describe("v3SessionRoutes", () => {
     let app: Fastify;
 
     beforeEach(() => {
+        vi.clearAllMocks();
         resetState();
-        emitUpdateMock.mockClear();
     });
 
     afterEach(async () => {
@@ -469,6 +471,24 @@ describe("v3SessionRoutes", () => {
         expect(response.statusCode).toBe(200);
         const body = response.json();
         expect(body.messages.map((message: any) => message.seq)).toEqual([1, 2, 3]);
+        expect(dbMock.sessionMessage.createManyAndReturn).toHaveBeenCalledTimes(1);
+        expect(dbMock.sessionMessage.createManyAndReturn).toHaveBeenCalledWith(expect.objectContaining({
+            data: expect.arrayContaining([
+                expect.objectContaining({ localId: "l1", seq: 1 }),
+                expect.objectContaining({ localId: "l2", seq: 2 }),
+                expect.objectContaining({ localId: "l3", seq: 3 })
+            ])
+        }));
+        expect(dbMock.account.update).toHaveBeenCalledTimes(3);
+        expect(dbMock.account.update).toHaveBeenNthCalledWith(1, expect.objectContaining({
+            data: { seq: { increment: 1 } }
+        }));
+        expect(dbMock.account.update).toHaveBeenNthCalledWith(2, expect.objectContaining({
+            data: { seq: { increment: 1 } }
+        }));
+        expect(dbMock.account.update).toHaveBeenNthCalledWith(3, expect.objectContaining({
+            data: { seq: { increment: 1 } }
+        }));
         expect(emitUpdateMock).toHaveBeenCalledTimes(3);
     });
 
@@ -495,6 +515,30 @@ describe("v3SessionRoutes", () => {
         expect(body.messages.map((message: any) => message.seq)).toEqual([1, 2]);
         expect(state.messages).toHaveLength(2);
         expect(emitUpdateMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not write or reserve sequences when every message already exists", async () => {
+        seedSession({ id: "session-1", accountId: "user-1", seq: 1 });
+        seedMessage({ sessionId: "session-1", seq: 1, localId: "existing", content: { t: "encrypted", c: "old" } });
+
+        app = await createApp();
+        const response = await app.inject({
+            method: "POST",
+            url: "/v3/sessions/session-1/messages",
+            headers: { "x-user-id": "user-1" },
+            payload: {
+                messages: [
+                    { localId: "existing", content: "ignored" }
+                ]
+            }
+        });
+
+        expect(response.statusCode).toBe(200);
+        expect(response.json().messages.map((message: any) => message.localId)).toEqual(["existing"]);
+        expect(dbMock.session.update).not.toHaveBeenCalled();
+        expect(dbMock.sessionMessage.createManyAndReturn).not.toHaveBeenCalled();
+        expect(dbMock.account.update).not.toHaveBeenCalled();
+        expect(emitUpdateMock).not.toHaveBeenCalled();
     });
 
     it("enforces send validation limits and auth/session ownership", async () => {

@@ -32,7 +32,7 @@ import {
     type ClaudeGoalStatusTranscriptEvent,
 } from '@/claude/claudeGoalStatus';
 import { Session } from './session';
-import { applySandboxPermissionPolicy, resolveInitialClaudePermissionMode, resolveRemoteClaudePermissionMode } from './utils/permissionMode';
+import { applySandboxPermissionPolicy, normalizeRemotePermissionMode, resolveInitialClaudePermissionMode, resolveRemoteClaudePermissionMode } from './utils/permissionMode';
 import { decodeBase64, encodeBase64 } from '@/api/encryption';
 import type { Session as ApiSession } from '@/api/types';
 import { getProjectPath } from './utils/path';
@@ -46,6 +46,7 @@ export type JsRuntime = 'node' | 'bun'
 export interface StartOptions {
     model?: string
     permissionMode?: PermissionMode
+    effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max'
     startingMode?: 'local' | 'remote'
     shouldStartDaemon?: boolean
     claudeEnvVars?: Record<string, string>
@@ -56,8 +57,13 @@ export interface StartOptions {
     jsRuntime?: JsRuntime
 }
 
-const DEFAULT_CLAUDE_PERMISSION_MODE: PermissionMode = 'yolo';
-const DEFAULT_CLAUDE_MODEL = 'opus';
+// No default permission mode. "Default" in the picker means "whatever this
+// harness is already configured to do", so the mode is left unset and Claude
+// applies its own settings. Substituting a value here — this used to be
+// 'yolo' — silently overrode every user's Claude config with full access.
+// The model works the same way: no default. This used to be 'opus', which
+// pinned every remote turn to the 200K model even when the user's own Claude
+// config (settings.json, ANTHROPIC_MODEL) said e.g. claude-opus-5[1m] (#1721).
 const DEFAULT_CLAUDE_EFFORT: 'low' | 'medium' | 'high' | 'xhigh' | 'max' = 'medium';
 type ClaudeGoalCommand = NonNullable<ReturnType<typeof parseClaudeGoalActionParams>>;
 type PendingClaudeGoalAction = {
@@ -98,7 +104,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     const sandboxConfig = options.noSandbox ? undefined : settings?.sandboxConfig;
     const sandboxEnabled = Boolean(sandboxConfig?.enabled);
     const initialPermissionMode = applySandboxPermissionPolicy(
-        resolveInitialClaudePermissionMode(options.permissionMode ?? DEFAULT_CLAUDE_PERMISSION_MODE, options.claudeArgs),
+        resolveInitialClaudePermissionMode(options.permissionMode, options.claudeArgs),
         sandboxEnabled,
     );
     const dangerouslySkipPermissions =
@@ -121,6 +127,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     // Lineage from the daemon's spawn RPC (set by app-side fork / duplicate).
     const forkedFromSessionId = process.env.HAPPY_FORKED_FROM_SESSION_ID;
     const forkedFromMessageId = process.env.HAPPY_FORKED_FROM_MESSAGE_ID;
+    const isSideChat = process.env.HAPPY_SIDE_CHAT === '1';
 
     let metadata: Metadata = {
         path: workingDirectory,
@@ -143,6 +150,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         dangerouslySkipPermissions,
         ...(forkedFromSessionId ? { parentSessionId: forkedFromSessionId } : {}),
         ...(forkedFromMessageId ? { forkedFromMessageId } : {}),
+        ...(isSideChat ? { isSideChat: true } : {}),
     };
 
     // Check for session reconnection env vars (set by daemon for resume-in-place)
@@ -304,29 +312,34 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     // message it needs.
     const forkClaudeSessionId = process.env.HAPPY_FORK_CLAUDE_SESSION_ID;
     if (!reconnectSessionId && forkClaudeSessionId) {
-        const jsonlPath = join(getProjectPath(workingDirectory), `${forkClaudeSessionId}.jsonl`);
-        try {
-            const file = await readFile(jsonlPath, 'utf-8');
-            const lines = file.split('\n');
-            let backfilled = 0;
-            for (const line of lines) {
-                if (line.trim().length === 0) continue;
-                let parsed: unknown;
-                try { parsed = JSON.parse(line); } catch { continue; }
-                const result = RawJSONLinesSchema.safeParse(parsed);
-                if (!result.success) continue;
-                await session.sendClaudeSessionMessageFromLocalTranscript(result.data as RawJSONLines);
-                backfilled += 1;
+        // Side chats resume the forked JSONL for full model context via the
+        // SDK (`resume:`), but we deliberately do NOT replay the pre-fork
+        // history into the UI — a side chat starts empty from the moment it
+        // was opened, so the user only sees the aside they began.
+        if (!isSideChat) {
+            const jsonlPath = join(getProjectPath(workingDirectory), `${forkClaudeSessionId}.jsonl`);
+            try {
+                const file = await readFile(jsonlPath, 'utf-8');
+                const lines = file.split('\n');
+                let backfilled = 0;
+                for (const line of lines) {
+                    if (line.trim().length === 0) continue;
+                    let parsed: unknown;
+                    try { parsed = JSON.parse(line); } catch { continue; }
+                    const result = RawJSONLinesSchema.safeParse(parsed);
+                    if (!result.success) continue;
+                    await session.sendClaudeSessionMessageFromLocalTranscript(result.data as RawJSONLines);
+                    backfilled += 1;
+                }
+                logger.debug(`[FORK BACKFILL] Replayed ${backfilled} historical messages from ${jsonlPath}`);
+            } catch (error) {
+                logger.debug(`[FORK BACKFILL] Failed to read ${jsonlPath}:`, error);
             }
-            logger.debug(`[FORK BACKFILL] Replayed ${backfilled} historical messages from ${jsonlPath}`);
-            // Bind the new Happy session to the forked Claude UUID up
-            // front so the metadata is consistent the moment the app
-            // opens this session — even before the SDK's hook callback
-            // fires.
-            session.updateMetadata((meta) => ({ ...meta, claudeSessionId: forkClaudeSessionId }));
-        } catch (error) {
-            logger.debug(`[FORK BACKFILL] Failed to read ${jsonlPath}:`, error);
         }
+        // Bind the new Happy session to the forked Claude UUID up front so the
+        // metadata is consistent the moment the app opens this session — even
+        // before the SDK's hook callback fires. Done regardless of backfill.
+        session.updateMetadata((meta) => ({ ...meta, claudeSessionId: forkClaudeSessionId }));
     }
 
     // Ring buffer of user prompts that just arrived from the app via the
@@ -520,27 +533,33 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     // Forward messages to the queue
     // Permission modes: Use the unified 7-mode type, mapping happens at SDK boundary in claudeRemote.ts
     let currentPermissionMode: PermissionMode | undefined = initialPermissionMode;
-    let currentModel: string | undefined = options.model ?? DEFAULT_CLAUDE_MODEL; // Track current model state
+    // Undefined means "no override" and lets Claude resolve the model itself —
+    // same contract as the mid-session reset below (meta.model null → undefined).
+    let currentModel: string | undefined = options.model;
     let currentFallbackModel: string | undefined = undefined; // Track current fallback model
     let currentCustomSystemPrompt: string | undefined = undefined; // Track current custom system prompt
     let currentAppendSystemPrompt: string | undefined = undefined; // Track current append system prompt
     let currentAllowedTools: string[] | undefined = undefined; // Track current allowed tools
     let currentDisallowedTools: string[] | undefined = undefined; // Track current disallowed tools
-    let currentEffort: 'low' | 'medium' | 'high' | 'xhigh' | 'max' | undefined = DEFAULT_CLAUDE_EFFORT; // Track current Claude effort (thinking depth)
+    let currentEffort: 'low' | 'medium' | 'high' | 'xhigh' | 'max' | undefined = options.effort ?? DEFAULT_CLAUDE_EFFORT; // Track current Claude effort (thinking depth)
 
     const resetCurrentModeDefaults = () => {
+        // Model and effort are deliberately NOT reset here. The app sends them
+        // only when the user changes the picker, so resetting them on abort
+        // silently desyncs the picker from what the next turn actually runs.
         currentPermissionMode = initialPermissionMode;
-        currentModel = options.model ?? DEFAULT_CLAUDE_MODEL;
         currentFallbackModel = undefined;
         currentCustomSystemPrompt = undefined;
         currentAppendSystemPrompt = undefined;
         currentAllowedTools = undefined;
         currentDisallowedTools = undefined;
-        currentEffort = DEFAULT_CLAUDE_EFFORT;
         logger.debug('[loop] Reset current mode defaults after abort');
     };
     const currentEnhancedMode = (): EnhancedMode => ({
-        permissionMode: currentPermissionMode || 'default',
+        // Deliberately not coerced to 'default': undefined means "no override",
+        // which the SDK reads as "use Claude's own configuration". Coercing it
+        // would pin every unset session to prompting mode.
+        permissionMode: currentPermissionMode,
         model: currentModel,
         fallbackModel: currentFallbackModel,
         customSystemPrompt: currentCustomSystemPrompt,
@@ -653,7 +672,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             const previousPermissionMode = currentPermissionMode;
             messagePermissionMode = resolveRemoteClaudePermissionMode(
                 currentPermissionMode,
-                message.meta.permissionMode,
+                normalizeRemotePermissionMode(message.meta.permissionMode),
                 sandboxEnabled,
             );
             currentPermissionMode = messagePermissionMode;
