@@ -14,6 +14,126 @@ import { join, basename } from 'node:path'
 // Note: readDaemonState is imported lazily inside listDaemonLogFiles() to avoid
 // circular dependency: logger.ts ↔ persistence.ts
 
+const REDACTED = '[REDACTED]'
+const MAX_LOG_SANITIZE_DEPTH = 8
+
+function isSensitiveLogKey(key: string): boolean {
+  const normalizedKey = key.toLowerCase().replace(/[^a-z0-9]/g, '')
+
+  return /(?:authorization|cookie|token|secret|password|passwd|apikey|credential|privatekey|sessionkey)$/.test(normalizedKey)
+}
+
+export function redactSensitiveLogString(value: string): string {
+  return value
+    .replace(/\b(Bearer|Basic)\s+[^\s"',;\\]+/gi, `$1 ${REDACTED}`)
+    .replace(
+      /((?:authorization|proxy-authorization|x-api-key|api-key|cookie|set-cookie)\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^\r\n,;}]+)/gi,
+      `$1${REDACTED}`,
+    )
+    .replace(
+      /([?&](?:access_token|refresh_token|id_token|api_key|token|secret|password)=)[^&#\s]*/gi,
+      `$1${REDACTED}`,
+    )
+}
+
+export function redactSensitiveLogValue(
+  value: unknown,
+  seen: WeakSet<object> = new WeakSet<object>(),
+  depth: number = 0,
+): unknown {
+  if (typeof value === 'string') {
+    return redactSensitiveLogString(value)
+  }
+
+  if (
+    value === null
+    || typeof value === 'number'
+    || typeof value === 'boolean'
+    || typeof value === 'undefined'
+  ) {
+    return value
+  }
+
+  if (typeof value === 'bigint' || typeof value === 'symbol') {
+    return String(value)
+  }
+
+  if (typeof value === 'function') {
+    return `[Function${value.name ? `: ${value.name}` : ''}]`
+  }
+
+  if (depth >= MAX_LOG_SANITIZE_DEPTH) {
+    return '[Max Depth]'
+  }
+
+  if (seen.has(value)) {
+    return '[Circular]'
+  }
+  seen.add(value)
+
+  if (value instanceof Date) {
+    return value.toISOString()
+  }
+
+  if (value instanceof RegExp) {
+    return value.toString()
+  }
+
+  if (ArrayBuffer.isView(value)) {
+    return `[${value.constructor.name} ${value.byteLength} bytes]`
+  }
+
+  if (value instanceof ArrayBuffer) {
+    return `[ArrayBuffer ${value.byteLength} bytes]`
+  }
+
+  if (Array.isArray(value)) {
+    return value.map(item => redactSensitiveLogValue(item, seen, depth + 1))
+  }
+
+  if (value instanceof Map) {
+    return Array.from(value.entries(), ([key, entryValue]) => [
+      redactSensitiveLogValue(key, seen, depth + 1),
+      redactSensitiveLogValue(entryValue, seen, depth + 1),
+    ])
+  }
+
+  if (value instanceof Set) {
+    return Array.from(value, item => redactSensitiveLogValue(item, seen, depth + 1))
+  }
+
+  const result: Record<string, unknown> = {}
+  const keys = new Set(Object.keys(value))
+  if (value instanceof Error) {
+    keys.add('name')
+    keys.add('message')
+    keys.add('stack')
+    if ('cause' in value) {
+      keys.add('cause')
+    }
+  }
+
+  for (const key of keys) {
+    if (isSensitiveLogKey(key)) {
+      result[key] = REDACTED
+      continue
+    }
+
+    const descriptor = Object.getOwnPropertyDescriptor(value, key)
+    if (!descriptor) {
+      continue
+    }
+    if (!('value' in descriptor)) {
+      result[key] = '[Getter]'
+      continue
+    }
+
+    result[key] = redactSensitiveLogValue(descriptor.value, seen, depth + 1)
+  }
+
+  return result
+}
+
 /**
  * Consistent date/time formatting functions
  */
@@ -120,7 +240,7 @@ class Logger {
       return obj
     }
 
-    const truncatedObject = truncateStrings(object)
+    const truncatedObject = truncateStrings(redactSensitiveLogValue(object))
     const json = JSON.stringify(truncatedObject, null, 2)
     this.logToFile(`[${this.localTimezoneTimestamp()}]`, message, '\n', json)
   }
@@ -150,30 +270,33 @@ class Logger {
   }
   
   private logToConsole(level: 'debug' | 'error' | 'info' | 'warn', prefix: string, message: string, ...args: unknown[]): void {
+    const safeMessage = redactSensitiveLogString(message)
+    const safeArgs = args.map(arg => redactSensitiveLogValue(arg))
+
     switch (level) {
       case 'debug': {
-        console.log(chalk.gray(prefix), message, ...args)
+        console.log(chalk.gray(prefix), safeMessage, ...safeArgs)
         break
       }
 
       case 'error': {
-        console.error(chalk.red(prefix), message, ...args)
+        console.error(chalk.red(prefix), safeMessage, ...safeArgs)
         break
       }
 
       case 'info': {
-        console.log(chalk.blue(prefix), message, ...args)
+        console.log(chalk.blue(prefix), safeMessage, ...safeArgs)
         break
       }
 
       case 'warn': {
-        console.log(chalk.yellow(prefix), message, ...args)
+        console.log(chalk.yellow(prefix), safeMessage, ...safeArgs)
         break
       }
 
       default: {
         this.debug('Unknown log level:', level)
-        console.log(chalk.blue(prefix), message, ...args)
+        console.log(chalk.blue(prefix), safeMessage, ...safeArgs)
         break
       }
     }
@@ -181,6 +304,9 @@ class Logger {
 
   private async sendToRemoteServer(level: string, message: string, ...args: unknown[]): Promise<void> {
     if (!this.dangerouslyUnencryptedServerLoggingUrl) return
+
+    const safeMessage = redactSensitiveLogString(message)
+    const safeArgs = args.map(arg => redactSensitiveLogValue(arg))
     
     try {
       await fetch(this.dangerouslyUnencryptedServerLoggingUrl + '/logs-combined-from-cli-and-mobile-for-simple-ai-debugging', {
@@ -189,7 +315,7 @@ class Logger {
         body: JSON.stringify({
           timestamp: new Date().toISOString(),
           level,
-          message: `${message} ${args.map(a => 
+          message: `${safeMessage} ${safeArgs.map(a =>
             typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)
           ).join(' ')}`,
           source: 'cli',
@@ -202,7 +328,10 @@ class Logger {
   }
 
   private logToFile(prefix: string, message: string, ...args: unknown[]): void {
-    const logLine = `${prefix} ${message} ${args.map(arg =>
+    const safePrefix = redactSensitiveLogString(prefix)
+    const safeMessage = redactSensitiveLogString(message)
+    const safeArgs = args.map(arg => redactSensitiveLogValue(arg))
+    const logLine = `${safePrefix} ${safeMessage} ${safeArgs.map(arg =>
       typeof arg === 'string' ? arg : inspect(arg, { depth: 5, breakLength: 120 })
     ).join(' ')}\n`
     
@@ -214,7 +343,7 @@ class Logger {
         level = 'debug'
       }
       // Fire and forget, with explicit .catch to prevent unhandled rejection
-      this.sendToRemoteServer(level, message, ...args).catch(() => {
+      this.sendToRemoteServer(level, safeMessage, ...safeArgs).catch(() => {
         // Silently ignore remote logging errors to prevent loops
       })
     }
