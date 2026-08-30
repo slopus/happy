@@ -916,6 +916,14 @@ describe('CodexAppServerClient sandbox integration', () => {
                             },
                         });
                         pushJsonLine(stdout, {
+                            method: 'turn/diff/updated',
+                            params: {
+                                threadId: 'thread-raw-1',
+                                turnId: 'turn-raw-1',
+                                diff: 'diff --git a/README.md b/README.md\n--- a/README.md\n+++ b/README.md\n@@ -1 +1,2 @@\n # Happy\n+Diff support\n',
+                            },
+                        });
+                        pushJsonLine(stdout, {
                             method: 'item/started',
                             params: {
                                 threadId: 'thread-raw-1',
@@ -1019,6 +1027,10 @@ describe('CodexAppServerClient sandbox integration', () => {
 
         expect(events).toEqual(expect.arrayContaining([
             expect.objectContaining({ type: 'task_started', turn_id: 'turn-raw-1' }),
+            expect.objectContaining({
+                type: 'turn_diff',
+                unified_diff: 'diff --git a/README.md b/README.md\n--- a/README.md\n+++ b/README.md\n@@ -1 +1,2 @@\n # Happy\n+Diff support\n',
+            }),
             expect.objectContaining({ type: 'exec_command_begin', callId: 'thread-raw-1:call-1' }),
             expect.objectContaining({ type: 'exec_command_end', callId: 'thread-raw-1:call-1', output: '/tmp/project\n' }),
             expect.objectContaining({

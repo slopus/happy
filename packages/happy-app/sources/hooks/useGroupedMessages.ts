@@ -275,6 +275,7 @@ function collectAgentWorkGroups(messages: Message[], turnOf: number[], collapseC
             if (msg.kind === 'user-text') return false;
             if (isInvisibleMessage(msg) || isUserAttachment(msg)) return false;
             if (msg.kind === 'tool-call' && isInteractiveQuestionToolName(msg.tool.name)) return false;
+            if (msg.kind === 'tool-call' && msg.tool.name === 'CodexDiff') return false;
             return true;
         });
 

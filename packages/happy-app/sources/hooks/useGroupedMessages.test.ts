@@ -376,6 +376,33 @@ describe('useGroupedMessages', () => {
         expect(workGroup?.messages.some(message => message.id === 'question')).toBe(false);
     });
 
+    it('keeps Codex diff output visible outside collapsed agent work', () => {
+        const messages: Message[] = [
+            {
+                kind: 'agent-text',
+                id: 'agent-final',
+                localId: null,
+                createdAt: 5,
+                text: 'done',
+            },
+            namedToolMessage('diff', 'CodexDiff', 4),
+            toolMessage('tool-earliest', 2),
+            {
+                kind: 'user-text',
+                id: 'user',
+                localId: null,
+                createdAt: 1,
+                text: 'run tools',
+            },
+        ];
+
+        const items = groupMessagesForDisplay(messages, true);
+
+        expect(items.some(item => item.id === 'diff' && item.type === 'message')).toBe(true);
+        const workGroup = items.find(item => item.type === 'agent-work-group');
+        expect(workGroup?.messages.map(message => message.id)).toEqual(['tool-earliest']);
+    });
+
     it('hides Claude Skill tool calls from the display list', () => {
         const messages: Message[] = [
             {

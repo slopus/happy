@@ -74,6 +74,10 @@ describe('terminal tool display helpers', () => {
         expect(getToolSummaryCategory('spawn_agent')).toBe('task');
     });
 
+    it('keeps Codex diff output expanded in compact mode', () => {
+        expect(shouldUseCompactToolRow({ name: 'CodexDiff' } as ToolCall, true)).toBe(false);
+    });
+
     it('extracts compact transcript row details', () => {
         expect(getToolSummaryDetail(tool('CodexBash', {
             command: ['/usr/bin/zsh', '-lc', 'git status --short'],

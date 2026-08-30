@@ -297,6 +297,7 @@ export class CodexAppServerClient {
             || method === 'thread/goal/cleared'
             || method === 'turn/started'
             || method === 'turn/completed'
+            || method === 'turn/diff/updated'
             || method === 'thread/status/changed'
             || method === 'thread/tokenUsage/updated'
             || method.startsWith('item/');
@@ -377,6 +378,17 @@ export class CodexAppServerClient {
                 params?.turn?.error ?? params?.error,
                 method,
             );
+            return true;
+        }
+
+        if (method === 'turn/diff/updated') {
+            const diff = params?.diff;
+            if (typeof diff === 'string' && diff.length > 0) {
+                this.eventHandler?.({
+                    type: 'turn_diff',
+                    unified_diff: diff,
+                });
+            }
             return true;
         }
 
