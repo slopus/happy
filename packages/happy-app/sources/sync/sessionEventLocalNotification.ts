@@ -33,6 +33,7 @@ export async function maybeScheduleSessionEventLocalNotification(
                     source: 'session-event-local-fallback',
                 },
                 sound: true,
+                ...(Platform.OS === 'android' ? { badge: 1 } : {}),
             },
             trigger: {
                 channelId: 'messages',

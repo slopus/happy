@@ -91,6 +91,7 @@ import { t } from '@/text';
 import type { SessionApplyOptions } from './sessionApply';
 import { deriveSessionFallbackTitle, ensureSessionFallbackTitle } from './sessionFallbackTitle';
 import { getPluginCatalog } from './plugins';
+import { shouldMarkSessionEventUnread } from '@/utils/sessionAttentionBadge';
 import { PluginCatalogStore, type PluginCatalogSnapshot } from './pluginCatalogStore';
 
 type V3GetSessionMessagesResponse = {
@@ -3044,6 +3045,14 @@ class Sync {
         // unread counter on these only, ignore the noisy per-message stream.
         if (updateData.type === 'session-event') {
             notifyUnreadMessage();
+            const currentState = storage.getState();
+            if (shouldMarkSessionEventUnread(
+                this.appState,
+                currentState.currentViewingSessionId,
+                updateData.sessionId,
+            )) {
+                currentState.markSessionUnread(updateData.sessionId);
+            }
             void maybeScheduleSessionEventLocalNotification(updateData, {
                 enabled: this.sessionEventLocalNotificationsEnabled,
             });

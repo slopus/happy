@@ -54,6 +54,7 @@ describe('sessionEventLocalNotification', () => {
                     source: 'session-event-local-fallback',
                 },
                 sound: true,
+                badge: 1,
             },
             trigger: {
                 channelId: 'messages',
@@ -68,6 +69,15 @@ describe('sessionEventLocalNotification', () => {
 
         expect(scheduled).toBe(false);
         expect(notificationsMock.scheduleNotificationAsync).not.toHaveBeenCalled();
+    });
+
+    it('does not change the iOS app icon badge', async () => {
+        reactNativeMock.Platform.OS = 'ios';
+
+        await maybeScheduleSessionEventLocalNotification(sessionEvent, { enabled: true });
+
+        const request = notificationsMock.scheduleNotificationAsync.mock.calls[0][0];
+        expect(request.content).not.toHaveProperty('badge');
     });
 
     it('enables fallback only when notification permission exists but remote push registration is unavailable', () => {
