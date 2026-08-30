@@ -31,7 +31,7 @@ import {
 import { ScreenshotGalleryDrawer } from '@/components/ScreenshotGalleryDrawer';
 import { imageViewer } from '@/sync/imageViewer';
 import { Modal } from '@/modal';
-import { storage, useIsDataReady, useLocalSetting, useLocalSettingMutable, useLocalSettingUpdater, useMachine, useSessionMessages, useSessionUsage, useSetting } from '@/sync/storage';
+import { storage, useIsDataReady, useLocalSetting, useLocalSettingMutable, useMachine, useSessionMessages, useSessionUsage, useSetting, useSettingUpdater } from '@/sync/storage';
 import { useSession } from '@/sync/storage';
 import { Session } from '@/sync/storageTypes';
 import {
@@ -494,8 +494,8 @@ const SessionViewContent = React.memo((props: { id: string }) => {
     const isMacTauri = inTauri && typeof navigator !== 'undefined' && /Mac/.test(navigator.platform);
     const fileDiffsSidebarEnabled = useSetting('fileDiffsSidebar');
     const zenMode = useLocalSetting('zenMode');
-    const sidebarOrganization = useLocalSetting('sidebarOrganization');
-    const updateSidebarOrganization = useLocalSettingUpdater('sidebarOrganization');
+    const sidebarOrganization = useSetting('sidebarOrganization');
+    const updateSidebarOrganization = useSettingUpdater('sidebarOrganization');
     const [desktopRightPanelCollapsed, setDesktopRightPanelCollapsed] = useLocalSettingMutable('desktopRightPanelCollapsed');
     const [rightDrawerOpen, setRightDrawerOpen] = React.useState(false);
     const [organizerOpen, setOrganizerOpen] = React.useState(false);

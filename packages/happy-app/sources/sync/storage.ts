@@ -1533,6 +1533,13 @@ export function useSettingMutable<K extends keyof Settings>(name: K): [Settings[
     return [value, setValue];
 }
 
+export function useSettingUpdater<K extends keyof Settings>(name: K): (updater: (value: Settings[K]) => Settings[K]) => void {
+    return React.useCallback((updater: (value: Settings[K]) => Settings[K]) => {
+        const currentValue = storage.getState().settings[name];
+        sync.applySettings({ [name]: updater(currentValue) });
+    }, [name]);
+}
+
 export function useSetting<K extends keyof Settings>(name: K): Settings[K] {
     return storage(useShallow((state) => state.settings[name]));
 }

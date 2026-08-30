@@ -113,13 +113,13 @@ export function useSpawnSession() {
                             sessionStorage.updateSessionFastMode(result.sessionId, fastMode);
                         }
                         if (args.sidebarListId) {
-                            sessionStorage.updateLocalSettings((settings) => ({
+                            sync.applySettings({
                                 sidebarOrganization: organizeSession(
-                                    settings.sidebarOrganization,
+                                    sessionStorage.settings.sidebarOrganization,
                                     result.sessionId,
                                     { listId: args.sidebarListId!, tagIds: [] },
                                 ),
-                            }));
+                            });
                         }
                         return { type: 'success', sessionId: result.sessionId };
                     }

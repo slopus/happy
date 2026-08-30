@@ -94,7 +94,8 @@ vi.mock('@/sync/storage', async () => {
     return {
         useAllMachines: () => [{ id: 'mac', active: true, lastActiveAt: Date.now(), metadata: { displayName: 'Mac mini', homeDir: '/Users/test' } }],
         useLocalSettingMutable: (name: string) => ReactModule.useState(name === 'desktopSidebarMode' ? 'projects' : mocks.organization),
-        useLocalSettingUpdater: () => mocks.updateOrganization,
+        useSetting: () => mocks.organization,
+        useSettingUpdater: () => mocks.updateOrganization,
     };
 });
 vi.mock('@/text', () => ({ t: (key: string) => key }));

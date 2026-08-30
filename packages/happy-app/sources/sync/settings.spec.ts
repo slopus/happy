@@ -1,5 +1,15 @@
 import { describe, it, expect } from 'vitest';
-import { mergeServerSettings, settingsParse, applySettings, settingsDefaults, settingsToSyncPayload, type Settings } from './settings';
+import {
+    applySettings,
+    mergeServerSettings,
+    mergeSessionPinnedOrders,
+    resolveSessionPinnedOrderMigration,
+    resolveSidebarOrganizationMigration,
+    settingsDefaults,
+    settingsParse,
+    settingsToSyncPayload,
+    type Settings,
+} from './settings';
 
 describe('settings', () => {
     describe('settingsParse', () => {
@@ -87,6 +97,59 @@ describe('settings', () => {
                     height: 200
                 }
             });
+        });
+
+        it('validates sidebar organization as an account-synced database setting', () => {
+            const organization = {
+                lists: [{
+                    id: 'list-1',
+                    name: 'Happy',
+                    kind: 'workspace' as const,
+                    color: 'blue' as const,
+                    machineId: 'machine-1',
+                    path: '/Users/jacky/jacky-github',
+                    defaultAgent: 'codex' as const,
+                    createdAt: 1,
+                }],
+                tags: [{ id: 'tag-1', name: '同步', color: 'green' as const, createdAt: 2 }],
+                sessions: {
+                    'session-1': { listId: 'list-1', tagIds: ['tag-1'] },
+                },
+            };
+
+            expect(settingsParse({ sidebarOrganization: organization }).sidebarOrganization).toEqual(organization);
+            expect(settingsParse({ sidebarOrganization: 'device-only' }).sidebarOrganization).toEqual({
+                lists: [],
+                tags: [],
+                sessions: {},
+            });
+            expect(settingsParse({
+                sidebarOrganization: {
+                    lists: [...organization.lists, { id: 'broken', kind: 'future-kind' }],
+                    tags: organization.tags,
+                    sessions: organization.sessions,
+                },
+            }).sidebarOrganization).toEqual(organization);
+        });
+
+        it('validates pinned session order as an account-synced database setting', () => {
+            expect(settingsParse({ sessionPinnedOrder: ['session-b', 'session-a', 'session-b'] }).sessionPinnedOrder)
+                .toEqual(['session-b', 'session-a']);
+            expect(settingsParse({ sessionPinnedOrder: ['session-a', 42, ''] }).sessionPinnedOrder)
+                .toEqual([]);
+        });
+
+        it('preserves an unrecognized pinned-order payload for forward-compatible writes', () => {
+            const futurePinnedOrder = { version: 2, ids: ['session-a'] };
+            const parsed = settingsParse({
+                viewInline: true,
+                sessionPinnedOrder: futurePinnedOrder,
+            });
+
+            expect(parsed.viewInline).toBe(true);
+            expect(parsed.sessionPinnedOrder).toEqual([]);
+            expect(parsed.sessionPinnedOrderRaw).toEqual(futurePinnedOrder);
+            expect(settingsToSyncPayload(parsed).sessionPinnedOrder).toEqual(futurePinnedOrder);
         });
 
         describe('agents field', () => {
@@ -301,6 +364,10 @@ describe('settings', () => {
                 lastUsedPermissionMode: null,
                 lastUsedModelMode: null,
                 agentDefaultOverrides: {},
+                sessionPinnedOrder: [],
+                sessionPinnedOrderRaw: null,
+                sidebarOrganization: { lists: [], tags: [], sessions: {} },
+                sidebarOrganizationRaw: null,
                 dismissedCLIWarnings: { perMachine: {}, global: {} },
                 agents: [],
             });
@@ -455,6 +522,115 @@ describe('settings', () => {
 
             expect(merged.customImageStyles).toEqual([]);
         });
+
+        it('preserves sidebar organization when an older server payload omits the field', () => {
+            const organization = {
+                lists: [],
+                tags: [{ id: 'tag-1', name: '同步', color: 'green' as const, createdAt: 1 }],
+                sessions: { 'session-1': { listId: null, tagIds: ['tag-1'] } },
+            };
+            const serverRaw = { viewInline: true };
+
+            const merged = mergeServerSettings(
+                { ...settingsDefaults, sidebarOrganization: organization },
+                settingsParse(serverRaw),
+                {},
+                serverRaw,
+            );
+
+            expect(merged.sidebarOrganization).toEqual(organization);
+        });
+
+        it('preserves pinned sessions when an older server payload omits the field', () => {
+            const serverRaw = { viewInline: true };
+            const merged = mergeServerSettings(
+                { ...settingsDefaults, sessionPinnedOrder: ['session-b', 'session-a'] },
+                settingsParse(serverRaw),
+                {},
+                serverRaw,
+            );
+
+            expect(merged.sessionPinnedOrder).toEqual(['session-b', 'session-a']);
+        });
+    });
+
+    describe('pinned session migration and conflict merge', () => {
+        it('uploads legacy device-local pins only when the database field is absent', () => {
+            expect(resolveSessionPinnedOrderMigration(
+                { viewInline: true },
+                [],
+                ['session-b', 'session-a'],
+            )).toEqual({ pinnedOrder: ['session-b', 'session-a'], shouldUpload: true });
+            expect(resolveSessionPinnedOrderMigration(
+                { sessionPinnedOrder: [] },
+                [],
+                ['session-b', 'session-a'],
+            )).toEqual({ pinnedOrder: [], shouldUpload: false });
+        });
+
+        it('keeps independent concurrent pins while honoring a local unpin', () => {
+            expect(mergeSessionPinnedOrders(
+                ['existing'],
+                ['local-added'],
+                ['remote-added', 'existing'],
+            )).toEqual(['local-added', 'remote-added']);
+        });
+
+        it('preserves an independent remote reorder when local only adds a pin', () => {
+            expect(mergeSessionPinnedOrders(
+                ['session-a', 'session-b'],
+                ['session-c', 'session-a', 'session-b'],
+                ['session-b', 'session-a'],
+            )).toEqual(['session-c', 'session-b', 'session-a']);
+        });
+
+        it('uses the local reorder when both clients reorder the same base pins', () => {
+            expect(mergeSessionPinnedOrders(
+                ['session-a', 'session-b', 'session-c'],
+                ['session-c', 'session-a', 'session-b'],
+                ['session-b', 'session-c', 'session-a'],
+            )).toEqual(['session-c', 'session-a', 'session-b']);
+        });
+
+        it('keeps multiple local additions ordered within the same insertion region', () => {
+            expect(mergeSessionPinnedOrders(
+                ['session-a'],
+                ['session-a', 'local-c', 'local-d'],
+                ['remote-b', 'session-a', 'local-c'],
+            )).toEqual(['remote-b', 'session-a', 'local-c', 'local-d']);
+        });
+    });
+
+    describe('sidebar organization migration', () => {
+        const legacyOrganization = {
+            lists: [],
+            tags: [{ id: 'tag-1', name: '本地标签', color: 'blue' as const, createdAt: 1 }],
+            sessions: { 'session-1': { listId: null, tagIds: ['tag-1'] } },
+        };
+
+        it('uploads legacy device-local data when the database field is absent', () => {
+            expect(resolveSidebarOrganizationMigration(
+                { viewInline: true },
+                settingsDefaults.sidebarOrganization,
+                legacyOrganization,
+            )).toEqual({ organization: legacyOrganization, shouldUpload: true });
+        });
+
+        it('does not resurrect legacy data when the database explicitly contains an empty organization', () => {
+            expect(resolveSidebarOrganizationMigration(
+                { sidebarOrganization: { lists: [], tags: [], sessions: {} } },
+                settingsDefaults.sidebarOrganization,
+                legacyOrganization,
+            )).toEqual({ organization: settingsDefaults.sidebarOrganization, shouldUpload: false });
+        });
+
+        it('does not treat a present future-format database payload as missing migration data', () => {
+            expect(resolveSidebarOrganizationMigration(
+                { sidebarOrganization: { lists: 'broken', tags: [], sessions: {} } },
+                settingsDefaults.sidebarOrganization,
+                legacyOrganization,
+            )).toEqual({ organization: settingsDefaults.sidebarOrganization, shouldUpload: false });
+        });
     });
 
     describe('forward/backward compatibility', () => {
@@ -492,6 +668,73 @@ describe('settings', () => {
                 futureField1: 'value1',
                 futureField2: 42
             });
+        });
+
+        it('preserves future-format sidebar records while syncing known records', () => {
+            const futureList = {
+                id: 'future-list',
+                name: 'Future',
+                kind: 'smart-folder',
+                color: 'blue',
+                createdAt: 2,
+                query: { unread: true },
+            };
+            const parsed = settingsParse({
+                sidebarOrganization: {
+                    lists: [futureList],
+                    tags: [],
+                    sessions: {},
+                },
+            });
+            const knownList = {
+                id: 'known-list',
+                name: 'Known',
+                kind: 'agent' as const,
+                color: 'green' as const,
+                createdAt: 3,
+            };
+
+            const payload = settingsToSyncPayload({
+                ...parsed,
+                sidebarOrganization: { lists: [knownList], tags: [], sessions: {} },
+            });
+
+            expect(payload.sidebarOrganization?.lists).toEqual([knownList, futureList]);
+            expect(payload).not.toHaveProperty('sidebarOrganizationRaw');
+        });
+
+        it('preserves additive future fields on known sidebar records', () => {
+            const rawOrganization = {
+                lists: [{
+                    id: 'known-list',
+                    name: 'Known',
+                    kind: 'agent' as const,
+                    color: 'green' as const,
+                    createdAt: 3,
+                    query: { unread: true },
+                }],
+                tags: [{
+                    id: 'known-tag',
+                    name: 'Known tag',
+                    color: 'blue' as const,
+                    createdAt: 4,
+                    icon: 'sparkles',
+                }],
+                sessions: {
+                    'session-1': {
+                        listId: 'known-list',
+                        tagIds: ['known-tag'],
+                        pinned: true,
+                    },
+                },
+                smartFoldersVersion: 2,
+            };
+
+            const parsed = settingsParse({ sidebarOrganization: rawOrganization });
+            const payload = settingsToSyncPayload(parsed);
+
+            expect(parsed.sidebarOrganizationRaw).toBeNull();
+            expect(payload.sidebarOrganization).toEqual(rawOrganization);
         });
     });
 

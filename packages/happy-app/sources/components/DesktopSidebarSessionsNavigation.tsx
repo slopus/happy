@@ -19,7 +19,8 @@ import { Modal } from '@/modal';
 import {
     useAllMachines,
     useLocalSettingMutable,
-    useLocalSettingUpdater,
+    useSetting,
+    useSettingUpdater,
     type SessionRowData,
 } from '@/sync/storage';
 import type { NewSessionAgentType } from '@/sync/persistence';
@@ -469,8 +470,8 @@ function SidebarListsView() {
     const listColors = getListColors(theme.colors);
     const pathname = usePathname();
     const data = useVisibleSessionListViewData();
-    const organization = useLocalSettingMutable('sidebarOrganization')[0];
-    const updateOrganization = useLocalSettingUpdater('sidebarOrganization');
+    const organization = useSetting('sidebarOrganization');
+    const updateOrganization = useSettingUpdater('sidebarOrganization');
     const [expanded, setExpanded] = React.useState<Set<string>>(() => new Set());
     const [selectedTagId, setSelectedTagId] = React.useState<string | null>(null);
     const [editorVisible, setEditorVisible] = React.useState(false);

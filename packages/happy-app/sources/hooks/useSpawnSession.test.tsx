@@ -20,7 +20,7 @@ const mocks = vi.hoisted(() => ({
     updatePermission: vi.fn(),
     updateModel: vi.fn(),
     updateEffort: vi.fn(),
-    updateLocalSettings: vi.fn(),
+    applySettings: vi.fn(),
     alert: vi.fn(),
     confirm: vi.fn(),
 }));
@@ -33,6 +33,7 @@ vi.mock('@/sync/sync', () => ({
         refreshSession: mocks.refreshSession,
         refreshSessions: mocks.refreshSessions,
         sendMessage: mocks.sendMessage,
+        applySettings: mocks.applySettings,
     },
 }));
 vi.mock('@/sync/storage', () => ({
@@ -41,7 +42,13 @@ vi.mock('@/sync/storage', () => ({
             updateSessionPermissionMode: mocks.updatePermission,
             updateSessionModelMode: mocks.updateModel,
             updateSessionEffortLevel: mocks.updateEffort,
-            updateLocalSettings: mocks.updateLocalSettings,
+            settings: {
+                sidebarOrganization: {
+                    lists: [{ id: 'happy-list', name: 'Happy', kind: 'workspace', color: 'blue', machineId: 'machine-1', path: '~/work', defaultAgent: 'codex', createdAt: 1 }],
+                    tags: [],
+                    sessions: {},
+                },
+            },
         }),
     },
 }));
@@ -188,10 +195,8 @@ describe('useSpawnSession', () => {
             await hook.current().spawnSession({ ...args, sidebarListId: 'happy-list' });
         });
 
-        expect(mocks.updateLocalSettings).toHaveBeenCalledOnce();
-        const updater = mocks.updateLocalSettings.mock.calls[0]?.[0];
         const list = { id: 'happy-list', name: 'Happy', kind: 'workspace', color: 'blue', machineId: 'machine-1', path: '~/work', defaultAgent: 'codex', createdAt: 1 };
-        expect(updater({ sidebarOrganization: { lists: [list], tags: [], sessions: {} } })).toEqual({
+        expect(mocks.applySettings).toHaveBeenCalledWith({
             sidebarOrganization: {
                 lists: [list],
                 tags: [],

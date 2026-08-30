@@ -5,7 +5,7 @@ import { Feather } from '@expo/vector-icons';
 import { type SessionState, getSessionStateLabel } from '@/utils/sessionUtils';
 import { Typography } from '@/constants/Typography';
 import { StatusDot } from './StatusDot';
-import { storage, type SessionRowData, useAllMachines, useLocalSetting } from '@/sync/storage';
+import { storage, type SessionRowData, useAllMachines, useSetting } from '@/sync/storage';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
@@ -278,7 +278,7 @@ export const CompactSessionRow = React.memo(({ session, selected, bulkSelected, 
     const { theme } = useUnistyles();
     const navigateToSession = useNavigateToSession();
     const router = useRouter();
-    const organization = useLocalSetting('sidebarOrganization');
+    const organization = useSetting('sidebarOrganization');
     const [actionsAnchor, setActionsAnchor] = React.useState<SessionActionsAnchor | null>(null);
     const disclosure = useSessionRowDisclosure(session.name);
     const presentation = useSessionRowPresentation(session);

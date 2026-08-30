@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
     buildSidebarSessionIndex,
+    mergeSidebarOrganizations,
     moveSidebarSessionToList,
     normalizeSidebarTagName,
     normalizeSidebarOrganization,
@@ -138,5 +139,80 @@ describe('sidebar organization model', () => {
         expect(index.unassigned).toHaveLength(30);
         expect(index.byTagId.get('product')).toHaveLength(50);
         expect(index.byTagId.get('research')).toHaveLength(50);
+    });
+
+    it('three-way merges concurrent additions from different clients without losing data', () => {
+        const base = organizeSession(organization, 'session-1', { listId: null, tagIds: [] });
+        const local = organizeSession({
+            ...base,
+            tags: [...base.tags, { id: 'local', name: 'local', color: 'blue', createdAt: 3 }],
+        }, 'session-1', { listId: null, tagIds: ['local'] });
+        const remote = organizeSession({
+            ...base,
+            tags: [...base.tags, { id: 'remote', name: 'remote', color: 'orange', createdAt: 4 }],
+        }, 'session-1', { listId: 'workspace', tagIds: ['remote'] });
+
+        const merged = mergeSidebarOrganizations(base, local, remote);
+
+        expect(merged.tags.map((tag) => tag.id)).toEqual(['product', 'research', 'local', 'remote']);
+        expect(merged.sessions['session-1']).toEqual({
+            listId: 'workspace',
+            tagIds: ['remote', 'local'],
+        });
+    });
+
+    it('preserves intentional deletions while merging unrelated remote additions', () => {
+        const base = organizeSession(organization, 'session-1', {
+            listId: 'workspace',
+            tagIds: ['product'],
+        });
+        const local = removeSidebarTag(base, 'product');
+        const remote = {
+            ...base,
+            tags: [...base.tags, { id: 'remote', name: 'remote', color: 'orange' as const, createdAt: 4 }],
+        };
+
+        const merged = mergeSidebarOrganizations(base, local, remote);
+
+        expect(merged.tags.map((tag) => tag.id)).toEqual(['research', 'remote']);
+        expect(merged.sessions['session-1']?.tagIds).toEqual([]);
+    });
+
+    it('keeps concurrent additions above UI creation limits parseable and lossless', () => {
+        const baseTags = Array.from({ length: 499 }, (_, index) => ({
+            id: `tag-${index}`,
+            name: `tag-${index}`,
+            color: 'blue' as const,
+            createdAt: index,
+        }));
+        const base: SidebarOrganization = {
+            lists: Array.from({ length: 199 }, (_, index) => ({
+                id: `list-${index}`,
+                name: `List ${index}`,
+                kind: 'agent' as const,
+                color: 'blue' as const,
+                createdAt: index,
+            })),
+            tags: baseTags,
+            sessions: { 'session-1': { listId: null, tagIds: baseTags.slice(0, 99).map((tag) => tag.id) } },
+        };
+        const local: SidebarOrganization = {
+            lists: [...base.lists, { id: 'list-local', name: 'Local', kind: 'agent', color: 'green', createdAt: 200 }],
+            tags: [...base.tags, { id: 'tag-local', name: 'local', color: 'green', createdAt: 100 }],
+            sessions: { 'session-1': { listId: null, tagIds: [...base.sessions['session-1'].tagIds, 'tag-local'] } },
+        };
+        const remote: SidebarOrganization = {
+            lists: [...base.lists, { id: 'list-remote', name: 'Remote', kind: 'agent', color: 'pink', createdAt: 201 }],
+            tags: [...base.tags, { id: 'tag-remote', name: 'remote', color: 'pink', createdAt: 101 }],
+            sessions: { 'session-1': { listId: null, tagIds: [...base.sessions['session-1'].tagIds, 'tag-remote'] } },
+        };
+
+        const merged = mergeSidebarOrganizations(base, local, remote);
+
+        expect(merged.lists).toHaveLength(201);
+        expect(merged.tags).toHaveLength(501);
+        expect(merged.sessions['session-1'].tagIds).toHaveLength(101);
+        expect(merged.sessions['session-1'].tagIds).toContain('tag-local');
+        expect(merged.sessions['session-1'].tagIds).toContain('tag-remote');
     });
 });

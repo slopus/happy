@@ -331,12 +331,16 @@ vi.mock('@/sync/storage', () => ({
         }
         return [false, vi.fn()];
     },
-    useLocalSettingUpdater: () => mocks.updateSidebarOrganization,
+    useSettingUpdater: () => mocks.updateSidebarOrganization,
     useMachine: () => null,
     useSession: () => mocks.sessionAvailable ? mocks.session : null,
     useSessionMessages: () => ({ messages: mocks.sessionMessages, isLoaded: true }),
     useSessionUsage: () => undefined,
-    useSetting: (key: string) => key === 'fileDiffsSidebar' ? mocks.fileDiffsSidebarEnabled : false,
+    useSetting: (key: string) => {
+        if (key === 'fileDiffsSidebar') return mocks.fileDiffsSidebarEnabled;
+        if (key === 'sidebarOrganization') return mocks.sidebarOrganization;
+        return false;
+    },
 }));
 vi.mock('@/sync/gitStatusSync', () => ({ gitStatusSync: { getSync: vi.fn() } }));
 vi.mock('@/sync/ops', () => ({ sessionAbort: mocks.sessionAbort }));

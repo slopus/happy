@@ -1,9 +1,10 @@
 import * as React from 'react';
 import {
-    loadSessionManagementPreferences,
-    saveSessionManagementPreferences,
+    loadSessionManagementFocusOrder,
+    saveSessionManagementFocusOrder,
     type SessionManagementPreferences,
 } from '@/sync/persistence';
+import { useSetting, useSettingUpdater } from '@/sync/storage';
 
 export type SessionManagementQueue = 'pinned' | 'focus';
 
@@ -15,7 +16,7 @@ function unique(items: string[]): string[] {
     return Array.from(new Set(items));
 }
 
-let currentPreferences = loadSessionManagementPreferences();
+let currentFocusOrder = loadSessionManagementFocusOrder();
 const listeners = new Set<() => void>();
 
 function emitPreferencesChanged() {
@@ -29,24 +30,24 @@ function subscribePreferences(listener: () => void) {
     };
 }
 
-export function getSessionManagementPreferencesSnapshot(): SessionManagementPreferences {
-    return currentPreferences;
+function getSessionManagementFocusOrderSnapshot(): string[] {
+    return currentFocusOrder;
 }
 
-function updateSessionManagementPreferences(updater: (current: SessionManagementPreferences) => SessionManagementPreferences) {
-    const next = updater(currentPreferences);
-    if (next === currentPreferences) {
+function updateSessionManagementFocusOrder(updater: (current: string[]) => string[]) {
+    const next = updater(currentFocusOrder);
+    if (next === currentFocusOrder) {
         return;
     }
-    currentPreferences = next;
-    saveSessionManagementPreferences(next);
+    currentFocusOrder = next;
+    saveSessionManagementFocusOrder(next);
     emitPreferencesChanged();
 }
 
 /**
- * Keeps the local session-management queues in sync with sessions that still
- * exist. The queue is intentionally local-only: pinning and focus ordering are
- * personal triage state, separate from encrypted session metadata.
+ * Reads account-synced pinning and maintains the device-local focus queue.
+ * Synced pins are never pruned from a local session snapshot because settings
+ * and session events can arrive out of order across devices.
  */
 export function useSessionManagementPreferences(
     validSessionIds: string[],
@@ -54,33 +55,27 @@ export function useSessionManagementPreferences(
 ) {
     const prune = options.prune ?? true;
     const validSessionIdSet = React.useMemo(() => new Set(validSessionIds), [validSessionIds]);
-    const preferences = React.useSyncExternalStore(
+    const sessionPinnedOrder = useSetting('sessionPinnedOrder');
+    const updateSessionPinnedOrder = useSettingUpdater('sessionPinnedOrder');
+    const focusOrder = React.useSyncExternalStore(
         subscribePreferences,
-        getSessionManagementPreferencesSnapshot,
-        getSessionManagementPreferencesSnapshot,
+        getSessionManagementFocusOrderSnapshot,
+        getSessionManagementFocusOrderSnapshot,
     );
-
-    const setPreferences = React.useCallback((updater: (current: SessionManagementPreferences) => SessionManagementPreferences) => {
-        updateSessionManagementPreferences(updater);
-    }, []);
+    const preferences = React.useMemo<SessionManagementPreferences>(() => ({
+        pinnedOrder: sessionPinnedOrder,
+        focusOrder,
+    }), [focusOrder, sessionPinnedOrder]);
 
     React.useEffect(() => {
-        if (!prune) {
-            return;
-        }
-
-        setPreferences((current) => {
-            const pinnedOrder = unique(current.pinnedOrder).filter((id) => validSessionIdSet.has(id));
-            const pinnedSet = new Set(pinnedOrder);
-            const focusOrder = unique(current.focusOrder).filter((id) => validSessionIdSet.has(id) && !pinnedSet.has(id));
-
-            if (sameArray(pinnedOrder, current.pinnedOrder) && sameArray(focusOrder, current.focusOrder)) {
-                return current;
-            }
-
-            return { pinnedOrder, focusOrder };
+        const pinnedSet = new Set(sessionPinnedOrder);
+        updateSessionManagementFocusOrder((current) => {
+            const next = unique(current).filter((id) => (
+                !pinnedSet.has(id) && (!prune || validSessionIdSet.has(id))
+            ));
+            return sameArray(next, current) ? current : next;
         });
-    }, [prune, setPreferences, validSessionIdSet]);
+    }, [prune, sessionPinnedOrder, validSessionIdSet]);
 
     const isPinned = React.useCallback((sessionId: string) => (
         preferences.pinnedOrder.includes(sessionId)
@@ -91,47 +86,40 @@ export function useSessionManagementPreferences(
     ), [preferences.focusOrder]);
 
     const moveToPinned = React.useCallback((sessionId: string) => {
-        setPreferences((current) => ({
-            pinnedOrder: [sessionId, ...current.pinnedOrder.filter((id) => id !== sessionId)],
-            focusOrder: current.focusOrder.filter((id) => id !== sessionId),
-        }));
-    }, [setPreferences]);
+        updateSessionPinnedOrder((current) => [sessionId, ...current.filter((id) => id !== sessionId)]);
+        updateSessionManagementFocusOrder((current) => current.filter((id) => id !== sessionId));
+    }, [updateSessionPinnedOrder]);
 
     const moveToFocus = React.useCallback((sessionId: string) => {
-        setPreferences((current) => ({
-            pinnedOrder: current.pinnedOrder.filter((id) => id !== sessionId),
-            focusOrder: [sessionId, ...current.focusOrder.filter((id) => id !== sessionId)],
-        }));
-    }, [setPreferences]);
+        updateSessionPinnedOrder((current) => current.filter((id) => id !== sessionId));
+        updateSessionManagementFocusOrder((current) => [sessionId, ...current.filter((id) => id !== sessionId)]);
+    }, [updateSessionPinnedOrder]);
 
     const togglePinned = React.useCallback((sessionId: string) => {
-        setPreferences((current) => {
-            const pinned = current.pinnedOrder.includes(sessionId);
-            return {
-                pinnedOrder: pinned
-                    ? current.pinnedOrder.filter((id) => id !== sessionId)
-                    : [sessionId, ...current.pinnedOrder],
-                focusOrder: current.focusOrder.filter((id) => id !== sessionId),
-            };
+        updateSessionPinnedOrder((current) => {
+            const pinned = current.includes(sessionId);
+            return pinned
+                ? current.filter((id) => id !== sessionId)
+                : [sessionId, ...current];
         });
-    }, [setPreferences]);
+        updateSessionManagementFocusOrder((current) => current.filter((id) => id !== sessionId));
+    }, [updateSessionPinnedOrder]);
 
     const toggleFocus = React.useCallback((sessionId: string) => {
-        setPreferences((current) => {
-            const focused = current.focusOrder.includes(sessionId);
-            return {
-                pinnedOrder: focused ? current.pinnedOrder : current.pinnedOrder.filter((id) => id !== sessionId),
-                focusOrder: focused
-                    ? current.focusOrder.filter((id) => id !== sessionId)
-                    : [sessionId, ...current.focusOrder.filter((id) => id !== sessionId)],
-            };
+        const focused = focusOrder.includes(sessionId);
+        if (!focused) {
+            updateSessionPinnedOrder((current) => current.filter((id) => id !== sessionId));
+        }
+        updateSessionManagementFocusOrder((current) => {
+            return focused
+                ? current.filter((id) => id !== sessionId)
+                : [sessionId, ...current.filter((id) => id !== sessionId)];
         });
-    }, [setPreferences]);
+    }, [focusOrder, updateSessionPinnedOrder]);
 
     const moveWithinQueueByOffset = React.useCallback((queue: SessionManagementQueue, sessionId: string, offset: number) => {
-        setPreferences((current) => {
-            const key = queue === 'pinned' ? 'pinnedOrder' : 'focusOrder';
-            const order = current[key].slice();
+        const reorder = (current: string[]) => {
+            const order = current.slice();
             const index = order.indexOf(sessionId);
             if (index === -1) {
                 return current;
@@ -144,9 +132,14 @@ export function useSessionManagementPreferences(
 
             order.splice(index, 1);
             order.splice(nextIndex, 0, sessionId);
-            return { ...current, [key]: order };
-        });
-    }, [setPreferences]);
+            return order;
+        };
+        if (queue === 'pinned') {
+            updateSessionPinnedOrder(reorder);
+        } else {
+            updateSessionManagementFocusOrder(reorder);
+        }
+    }, [updateSessionPinnedOrder]);
 
     const moveWithinQueue = React.useCallback((queue: SessionManagementQueue, sessionId: string, direction: 'up' | 'down') => {
         moveWithinQueueByOffset(queue, sessionId, direction === 'up' ? -1 : 1);

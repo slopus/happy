@@ -17,9 +17,32 @@ import { syncCurrentPushToken } from './pushRegistration';
 import { Platform, AppState, type AppStateStatus } from 'react-native';
 import { isRunningOnMac } from '@/utils/platform';
 import { NormalizedMessage, normalizeRawMessage, RawRecord } from './typesRaw';
-import { applySettings, mergeServerSettings, Settings, settingsDefaults, settingsParse, settingsToSyncPayload, SUPPORTED_SCHEMA_VERSION } from './settings';
+import {
+    applySettings,
+    mergeServerSettings,
+    mergeSessionPinnedOrders,
+    isValidSessionPinnedOrderPayload,
+    resolveSessionPinnedOrderMigration,
+    resolveSidebarOrganizationMigration,
+    Settings,
+    settingsDefaults,
+    settingsParse,
+    settingsToSyncPayload,
+    SUPPORTED_SCHEMA_VERSION,
+} from './settings';
 import { Profile, profileParse } from './profile';
-import { loadPendingSettings, savePendingSettings } from './persistence';
+import {
+    clearLegacySessionPinnedOrder,
+    loadLegacySessionPinnedOrder,
+    loadPendingSessionPinnedState,
+    loadPendingSettings,
+    loadPendingSidebarOrganizationBase,
+    recoverPendingSettingsWithPinnedState,
+    savePendingSessionPinnedState,
+    savePendingSettings,
+    savePendingSidebarOrganizationBase,
+} from './persistence';
+import { emptySidebarOrganization, isSidebarOrganizationEmpty, isUsableSidebarOrganizationPayload, isValidSidebarOrganizationPayload, mergeSidebarOrganizations } from './sidebarOrganization';
 import {
     initializeTracking,
     trackGitHubConnected,
@@ -159,7 +182,13 @@ class Sync {
     private pluginCatalogSnapshot: readonly PluginCatalogItem[] = [];
     private pluginCatalogListeners = new Set<() => void>();
     private activityAccumulator: ActivityUpdateAccumulator;
-    private pendingSettings: Partial<Settings> = loadPendingSettings();
+    private initialPendingSessionPinnedState = loadPendingSessionPinnedState();
+    private pendingSettings: Partial<Settings> = recoverPendingSettingsWithPinnedState(
+        loadPendingSettings(),
+        this.initialPendingSessionPinnedState,
+    );
+    private pendingSidebarOrganizationBase = loadPendingSidebarOrganizationBase();
+    private pendingSessionPinnedOrderBase = this.initialPendingSessionPinnedState?.base ?? null;
     private appState: AppStateStatus = AppState.currentState;
     private backgroundSendTimeout: ReturnType<typeof setTimeout> | null = null;
     private backgroundSendNotificationId: string | null = null;
@@ -810,6 +839,126 @@ class Sync {
 
     /** Server sent us settings — merge any pending local changes on top, then apply as one update. */
     private applyServerSettings = (serverSettings: Settings, version: number, rawServerSettings: unknown) => {
+        const rawServerSidebarOrganization = !!rawServerSettings
+            && typeof rawServerSettings === 'object'
+            && !Array.isArray(rawServerSettings)
+            && Object.prototype.hasOwnProperty.call(rawServerSettings, 'sidebarOrganization')
+            ? (rawServerSettings as { sidebarOrganization: unknown }).sidebarOrganization
+            : undefined;
+        const hasValidServerSidebarOrganization = isValidSidebarOrganizationPayload(rawServerSidebarOrganization);
+        const hasUsableServerSidebarOrganization = isUsableSidebarOrganizationPayload(rawServerSidebarOrganization);
+        const hasServerSessionPinnedOrderField = !!rawServerSettings
+            && typeof rawServerSettings === 'object'
+            && !Array.isArray(rawServerSettings)
+            && Object.prototype.hasOwnProperty.call(rawServerSettings, 'sessionPinnedOrder');
+        const rawServerSessionPinnedOrder = hasServerSessionPinnedOrderField
+            ? (rawServerSettings as { sessionPinnedOrder: unknown }).sessionPinnedOrder
+            : undefined;
+        const hasValidServerSessionPinnedOrder = isValidSessionPinnedOrderPayload(rawServerSessionPinnedOrder);
+        const legacyLocalOrganization = storage.getState().localSettings.sidebarOrganization;
+        const legacyLocalPinnedOrder = loadLegacySessionPinnedOrder();
+        if (hasServerSessionPinnedOrderField
+            && !hasValidServerSessionPinnedOrder
+            && Object.prototype.hasOwnProperty.call(this.pendingSettings, 'sessionPinnedOrder')) {
+            // A newer client owns an unrecognized representation. Do not let an
+            // older pending array overwrite it during a version-conflict retry.
+            const {
+                sessionPinnedOrder: _unsupportedPendingPinnedOrder,
+                sessionPinnedOrderRaw: _pendingRawReset,
+                ...compatiblePending
+            } = this.pendingSettings;
+            this.pendingSettings = compatiblePending;
+            this.pendingSessionPinnedOrderBase = null;
+            savePendingSessionPinnedState(null);
+            savePendingSettings(this.pendingSettings);
+        }
+        if (this.pendingSettings.sidebarOrganization
+            && this.pendingSidebarOrganizationBase
+            && hasUsableServerSidebarOrganization) {
+            this.pendingSettings = {
+                ...this.pendingSettings,
+                sidebarOrganization: mergeSidebarOrganizations(
+                    this.pendingSidebarOrganizationBase,
+                    this.pendingSettings.sidebarOrganization,
+                    serverSettings.sidebarOrganization,
+                ),
+            };
+            this.pendingSidebarOrganizationBase = serverSettings.sidebarOrganization;
+            savePendingSettings(this.pendingSettings);
+            savePendingSidebarOrganizationBase(this.pendingSidebarOrganizationBase);
+        }
+        if (!Object.prototype.hasOwnProperty.call(this.pendingSettings, 'sidebarOrganization')) {
+            const migration = resolveSidebarOrganizationMigration(
+                rawServerSettings,
+                storage.getState().settings.sidebarOrganization,
+                legacyLocalOrganization,
+            );
+            if (migration.shouldUpload) {
+                this.pendingSidebarOrganizationBase = serverSettings.sidebarOrganization;
+                const migratedOrganization = mergeSidebarOrganizations(
+                    emptySidebarOrganization,
+                    migration.organization,
+                    serverSettings.sidebarOrganization,
+                );
+                this.pendingSettings = {
+                    ...this.pendingSettings,
+                    sidebarOrganization: migratedOrganization,
+                };
+                savePendingSettings(this.pendingSettings);
+                savePendingSidebarOrganizationBase(this.pendingSidebarOrganizationBase);
+                this.settingsSync.invalidate();
+            }
+        }
+        if (hasValidServerSidebarOrganization && !isSidebarOrganizationEmpty(legacyLocalOrganization)) {
+            storage.getState().applyLocalSettings({ sidebarOrganization: emptySidebarOrganization });
+        }
+        if (this.pendingSettings.sessionPinnedOrder
+            && this.pendingSessionPinnedOrderBase
+            && hasValidServerSessionPinnedOrder) {
+            this.pendingSettings = {
+                ...this.pendingSettings,
+                sessionPinnedOrder: mergeSessionPinnedOrders(
+                    this.pendingSessionPinnedOrderBase,
+                    this.pendingSettings.sessionPinnedOrder,
+                    serverSettings.sessionPinnedOrder,
+                ),
+            };
+            this.pendingSessionPinnedOrderBase = serverSettings.sessionPinnedOrder;
+            savePendingSessionPinnedState({
+                value: this.pendingSettings.sessionPinnedOrder!,
+                base: this.pendingSessionPinnedOrderBase,
+                clearRaw: true,
+            });
+            savePendingSettings(this.pendingSettings);
+        }
+        if (!Object.prototype.hasOwnProperty.call(this.pendingSettings, 'sessionPinnedOrder')) {
+            const migration = resolveSessionPinnedOrderMigration(
+                rawServerSettings,
+                storage.getState().settings.sessionPinnedOrder,
+                legacyLocalPinnedOrder,
+            );
+            if (migration.shouldUpload) {
+                this.pendingSessionPinnedOrderBase = serverSettings.sessionPinnedOrder;
+                this.pendingSettings = {
+                    ...this.pendingSettings,
+                    sessionPinnedOrder: mergeSessionPinnedOrders(
+                        [],
+                        migration.pinnedOrder,
+                        serverSettings.sessionPinnedOrder,
+                    ),
+                };
+                savePendingSessionPinnedState({
+                    value: this.pendingSettings.sessionPinnedOrder!,
+                    base: this.pendingSessionPinnedOrderBase,
+                    clearRaw: true,
+                });
+                savePendingSettings(this.pendingSettings);
+                this.settingsSync.invalidate();
+            }
+        }
+        if (hasValidServerSessionPinnedOrder && legacyLocalPinnedOrder.length > 0) {
+            clearLegacySessionPinnedOrder();
+        }
         const merged = mergeServerSettings(
             storage.getState().settings,
             serverSettings,
@@ -820,10 +969,29 @@ class Sync {
     }
 
     applySettings = (delta: Partial<Settings>) => {
-        storage.getState().applySettingsLocal(delta);
+        const normalizedDelta = Object.prototype.hasOwnProperty.call(delta, 'sessionPinnedOrder')
+            ? { ...delta, sessionPinnedOrderRaw: null }
+            : delta;
+        if (Object.prototype.hasOwnProperty.call(delta, 'sidebarOrganization')
+            && !Object.prototype.hasOwnProperty.call(this.pendingSettings, 'sidebarOrganization')) {
+            this.pendingSidebarOrganizationBase = storage.getState().settings.sidebarOrganization;
+            savePendingSidebarOrganizationBase(this.pendingSidebarOrganizationBase);
+        }
+        if (Object.prototype.hasOwnProperty.call(normalizedDelta, 'sessionPinnedOrder')
+            && !Object.prototype.hasOwnProperty.call(this.pendingSettings, 'sessionPinnedOrder')) {
+            this.pendingSessionPinnedOrderBase = storage.getState().settings.sessionPinnedOrder;
+        }
+        if (Object.prototype.hasOwnProperty.call(normalizedDelta, 'sessionPinnedOrder')) {
+            savePendingSessionPinnedState({
+                value: normalizedDelta.sessionPinnedOrder!,
+                base: this.pendingSessionPinnedOrderBase ?? storage.getState().settings.sessionPinnedOrder,
+                clearRaw: true,
+            });
+        }
+        storage.getState().applySettingsLocal(normalizedDelta);
 
         // Save pending settings
-        this.pendingSettings = { ...this.pendingSettings, ...delta };
+        this.pendingSettings = { ...this.pendingSettings, ...normalizedDelta };
         savePendingSettings(this.pendingSettings);
 
         // Sync PostHog opt-out state if it was changed
@@ -1691,7 +1859,28 @@ class Sync {
                         }
                     }
                     this.pendingSettings = newPending;
+                    if (newPending.sidebarOrganization) {
+                        this.pendingSidebarOrganizationBase = sentPending.sidebarOrganization ?? settings.sidebarOrganization;
+                    } else {
+                        this.pendingSidebarOrganizationBase = null;
+                    }
+                    savePendingSidebarOrganizationBase(this.pendingSidebarOrganizationBase);
+                    if (newPending.sessionPinnedOrder) {
+                        this.pendingSessionPinnedOrderBase = sentPending.sessionPinnedOrder ?? settings.sessionPinnedOrder;
+                    } else {
+                        this.pendingSessionPinnedOrderBase = null;
+                    }
+                    savePendingSessionPinnedState(newPending.sessionPinnedOrder && this.pendingSessionPinnedOrderBase
+                        ? {
+                            value: newPending.sessionPinnedOrder,
+                            base: this.pendingSessionPinnedOrderBase,
+                            clearRaw: true,
+                        }
+                        : null);
                     savePendingSettings(this.pendingSettings);
+                    if (sentPending.sessionPinnedOrder) {
+                        clearLegacySessionPinnedOrder();
+                    }
                     break;
                 }
                 if (data.error === 'version-mismatch') {

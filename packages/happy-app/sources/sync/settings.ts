@@ -1,5 +1,13 @@
 import * as z from 'zod';
 import { AgentDefaultOverridesSchema } from './agentDefaults';
+import {
+    emptySidebarOrganization,
+    isValidSidebarOrganizationPayload,
+    serializeSidebarOrganizationWithRaw,
+    isSidebarOrganizationEmpty,
+    SidebarOrganizationSchema,
+    type SidebarOrganization,
+} from './sidebarOrganization';
 
 //
 // Settings Schema
@@ -15,6 +23,16 @@ export const QuickPromptSchema = z.object({
     createdAt: z.number().optional(),
     updatedAt: z.number().optional(),
 });
+
+const StrictSessionPinnedOrderSchema = z.array(z.string().min(1));
+
+export const SessionPinnedOrderSchema = StrictSessionPinnedOrderSchema
+    .transform((items) => Array.from(new Set(items)))
+    .catch([]);
+
+export function isValidSessionPinnedOrderPayload(value: unknown): value is string[] {
+    return StrictSessionPinnedOrderSchema.safeParse(value).success;
+}
 
 const ImageStyleReferenceImageSchema = z.object({
     id: z.string(),
@@ -113,6 +131,10 @@ export const SettingsSchema = z.object({
     lastUsedPermissionMode: z.string().nullable().describe('Last selected permission mode for new sessions'),
     lastUsedModelMode: z.string().nullable().describe('Last selected model mode for new sessions'),
     agentDefaultOverrides: AgentDefaultOverridesSchema.describe('User-selected agent defaults. Missing values use code defaults and are not sent as agent metadata.'),
+    sessionPinnedOrder: SessionPinnedOrderSchema.describe('Account-synced pinned session IDs in display order'),
+    sessionPinnedOrderRaw: z.unknown().nullable().describe('Locally preserved future-format pinned-session data; written back unchanged until the user edits pins'),
+    sidebarOrganization: SidebarOrganizationSchema.describe('Account-synced session Lists, Tags, and assignments'),
+    sidebarOrganizationRaw: z.unknown().nullable().describe('Locally preserved future-format sidebar records; reconstructed into sidebarOrganization before sync'),
     // Dismissed CLI warning banners (supports both per-machine and global dismissal)
     dismissedCLIWarnings: z.object({
         perMachine: z.record(z.string(), z.object({
@@ -190,6 +212,10 @@ export const settingsDefaults: Settings = {
     lastUsedPermissionMode: null,
     lastUsedModelMode: null,
     agentDefaultOverrides: {},
+    sessionPinnedOrder: [],
+    sessionPinnedOrderRaw: null,
+    sidebarOrganization: emptySidebarOrganization,
+    sidebarOrganizationRaw: null,
     dismissedCLIWarnings: { perMachine: {}, global: {} },
     agents: [],
 };
@@ -226,7 +252,23 @@ export function settingsParse(settings: unknown): Settings {
     // Remove known fields from unknownFields to preserve only the unknown ones
     Object.keys(parsed.data).forEach(key => delete unknownFields[key]);
 
-    return { ...settingsDefaults, ...parsed.data, ...unknownFields };
+    const rawSidebarOrganization = Object.prototype.hasOwnProperty.call(settings, 'sidebarOrganization')
+        ? (settings as { sidebarOrganization: unknown }).sidebarOrganization
+        : undefined;
+    const rawSessionPinnedOrder = Object.prototype.hasOwnProperty.call(settings, 'sessionPinnedOrder')
+        ? (settings as { sessionPinnedOrder: unknown }).sessionPinnedOrder
+        : undefined;
+    return {
+        ...settingsDefaults,
+        ...parsed.data,
+        ...unknownFields,
+        sidebarOrganizationRaw: isValidSidebarOrganizationPayload(rawSidebarOrganization)
+            ? null
+            : rawSidebarOrganization ?? null,
+        sessionPinnedOrderRaw: isValidSessionPinnedOrderPayload(rawSessionPinnedOrder)
+            ? null
+            : rawSessionPinnedOrder ?? null,
+    };
 }
 
 //
@@ -255,6 +297,100 @@ function hasOwnField(value: unknown, field: string): boolean {
         && Object.prototype.hasOwnProperty.call(value, field);
 }
 
+export function resolveSidebarOrganizationMigration(
+    rawServerSettings: unknown,
+    currentOrganization: SidebarOrganization,
+    legacyLocalOrganization: SidebarOrganization,
+): { organization: SidebarOrganization; shouldUpload: boolean } {
+    if (hasOwnField(rawServerSettings, 'sidebarOrganization')) {
+        return { organization: currentOrganization, shouldUpload: false };
+    }
+
+    const organization = isSidebarOrganizationEmpty(currentOrganization)
+        ? legacyLocalOrganization
+        : currentOrganization;
+    return {
+        organization,
+        shouldUpload: !isSidebarOrganizationEmpty(organization),
+    };
+}
+
+export function resolveSessionPinnedOrderMigration(
+    rawServerSettings: unknown,
+    currentPinnedOrder: string[],
+    legacyLocalPinnedOrder: string[],
+): { pinnedOrder: string[]; shouldUpload: boolean } {
+    if (hasOwnField(rawServerSettings, 'sessionPinnedOrder')) {
+        return { pinnedOrder: currentPinnedOrder, shouldUpload: false };
+    }
+
+    const pinnedOrder = currentPinnedOrder.length > 0
+        ? currentPinnedOrder
+        : legacyLocalPinnedOrder;
+    return {
+        pinnedOrder,
+        shouldUpload: pinnedOrder.length > 0,
+    };
+}
+
+export function mergeSessionPinnedOrders(
+    basePinnedOrder: string[],
+    localPinnedOrder: string[],
+    remotePinnedOrder: string[],
+): string[] {
+    const base = new Set(basePinnedOrder);
+    const local = new Set(localPinnedOrder);
+    const remote = new Set(remotePinnedOrder);
+    const finalPinned = new Set<string>();
+
+    for (const sessionId of new Set([...basePinnedOrder, ...localPinnedOrder, ...remotePinnedOrder])) {
+        const localChangedMembership = local.has(sessionId) !== base.has(sessionId);
+        const included = localChangedMembership ? local.has(sessionId) : remote.has(sessionId);
+        if (included) finalPinned.add(sessionId);
+    }
+
+    const baseOrder = Array.from(new Set(basePinnedOrder)).filter((id) => finalPinned.has(id));
+    const localOrder = Array.from(new Set(localPinnedOrder)).filter((id) => finalPinned.has(id));
+    const remoteOrder = Array.from(new Set(remotePinnedOrder)).filter((id) => finalPinned.has(id));
+    const localBaseOrder = localOrder.filter((id) => base.has(id));
+    const unchangedLocalBaseOrder = baseOrder.filter((id) => local.has(id));
+
+    // If the local client only changed membership, retain the remote client's
+    // independent ordering of the pre-existing pins and splice local additions
+    // into the same leading/interior/trailing regions chosen locally.
+    if (localBaseOrder.length === unchangedLocalBaseOrder.length
+        && localBaseOrder.every((id, index) => id === unchangedLocalBaseOrder[index])) {
+        const localAdditions = localOrder.filter((id) => !base.has(id));
+        const localAdditionSet = new Set(localAdditions);
+        const merged = remoteOrder.filter((id) => !localAdditionSet.has(id));
+        const additionsByPreviousBase = new Map<string | null, string[]>();
+        let previousBase: string | null = null;
+        for (const id of localOrder) {
+            if (base.has(id)) {
+                previousBase = id;
+            } else {
+                const additions = additionsByPreviousBase.get(previousBase) ?? [];
+                additions.push(id);
+                additionsByPreviousBase.set(previousBase, additions);
+            }
+        }
+
+        const leading = additionsByPreviousBase.get(null) ?? [];
+        merged.unshift(...leading);
+        for (const baseId of localBaseOrder) {
+            const additions = additionsByPreviousBase.get(baseId) ?? [];
+            if (additions.length === 0) continue;
+            const baseIndex = merged.indexOf(baseId);
+            merged.splice(baseIndex === -1 ? merged.length : baseIndex + 1, 0, ...additions);
+        }
+        return merged;
+    }
+
+    // Both sides reordered the existing pins. The pending local gesture wins,
+    // while remote-only membership changes remain appended in remote order.
+    return [...localOrder, ...remoteOrder].filter((id, index, ids) => ids.indexOf(id) === index);
+}
+
 export function mergeServerSettings(
     currentSettings: Settings,
     serverSettings: Settings,
@@ -276,6 +412,19 @@ export function mergeServerSettings(
     if (!hasOwnField(pendingSettings, 'customImageStyles') && !hasOwnField(rawServerSettings, 'customImageStyles') && currentSettings.customImageStyles.length > 0) {
         baseSettings = { ...baseSettings, customImageStyles: currentSettings.customImageStyles };
     }
+    if (!hasOwnField(pendingSettings, 'sidebarOrganization')
+        && !hasOwnField(rawServerSettings, 'sidebarOrganization')
+        && !isSidebarOrganizationEmpty(currentSettings.sidebarOrganization)) {
+        baseSettings = { ...baseSettings, sidebarOrganization: currentSettings.sidebarOrganization };
+    }
+    if (!hasOwnField(pendingSettings, 'sessionPinnedOrder')
+        && (!hasOwnField(rawServerSettings, 'sessionPinnedOrder')
+            || !isValidSessionPinnedOrderPayload(
+                (rawServerSettings as { sessionPinnedOrder?: unknown } | null)?.sessionPinnedOrder,
+            ))
+        && currentSettings.sessionPinnedOrder.length > 0) {
+        baseSettings = { ...baseSettings, sessionPinnedOrder: currentSettings.sessionPinnedOrder };
+    }
 
     return Object.keys(pendingSettings).length > 0
         ? applySettings(baseSettings, pendingSettings)
@@ -284,6 +433,17 @@ export function mergeServerSettings(
 
 export function settingsToSyncPayload(settings: Settings): Partial<Settings> {
     const result: Partial<Settings> = { ...settings };
+    if (settings.sidebarOrganizationRaw !== null) {
+        result.sidebarOrganization = serializeSidebarOrganizationWithRaw(
+            settings.sidebarOrganization,
+            settings.sidebarOrganizationRaw,
+        ) as Settings['sidebarOrganization'];
+    }
+    delete result.sidebarOrganizationRaw;
+    if (settings.sessionPinnedOrderRaw !== null) {
+        result.sessionPinnedOrder = settings.sessionPinnedOrderRaw as Settings['sessionPinnedOrder'];
+    }
+    delete result.sessionPinnedOrderRaw;
     const compactAgentOverrides = Object.fromEntries(
         Object.entries(settings.agentDefaultOverrides ?? {}).filter(([, value]) => (
             value && typeof value === 'object' && Object.keys(value).length > 0
