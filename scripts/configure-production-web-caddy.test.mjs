@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
     configureProductionWebCaddy,
+    PRODUCTION_CADDY_GRACE_PERIOD,
     PUBLIC_SHARE_CADDY_BLOCK_START,
 } from './configure-production-web-caddy.mjs';
 
@@ -25,6 +26,7 @@ const fixture = `:8001 {
 
 test('routes public shares to the SPA and installs exact public-document headers', () => {
     const configured = configureProductionWebCaddy(fixture);
+    assert.match(configured, new RegExp(`^\\{\\n\\tgrace_period ${PRODUCTION_CADDY_GRACE_PERIOD}\\n\\}`, 'm'));
     assert.match(configured, /@backend path \/v1\/\* \/v3\/\* \/v4\/\* \/files\/\*/);
     assert.doesNotMatch(configured, /@backend path[^\n]*\/share\/\*/);
     assert.match(configured, /@public_session_share path \/share\/\*/);
@@ -33,6 +35,18 @@ test('routes public shares to the SPA and installs exact public-document headers
     assert.match(configured, /X-Robots-Tag "noindex, nofollow, noarchive"/);
     assert.match(configured, /X-Content-Type-Options "nosniff"/);
     assert.match(configured, /Referrer-Policy "no-referrer"/);
+});
+
+test('bounds an existing eternal grace period so Caddy reloads cannot wait for WebSockets forever', () => {
+    const configured = configureProductionWebCaddy(`{
+    default_sni 47.115.228.20
+    grace_period eternal
+}
+
+${fixture}`);
+
+    assert.match(configured, new RegExp(`\\n    grace_period ${PRODUCTION_CADDY_GRACE_PERIOD}\\n`));
+    assert.doesNotMatch(configured, /grace_period eternal/);
 });
 
 test('is idempotent and leaves unrelated sites untouched', () => {

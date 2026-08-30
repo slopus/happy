@@ -3,6 +3,7 @@ import { pathToFileURL } from 'node:url';
 
 export const PUBLIC_SHARE_CADDY_BLOCK_START = '# paws-public-session-share:start';
 export const PUBLIC_SHARE_CADDY_BLOCK_END = '# paws-public-session-share:end';
+export const PRODUCTION_CADDY_GRACE_PERIOD = '10s';
 
 const PUBLIC_SHARE_CADDY_LINES = [
     PUBLIC_SHARE_CADDY_BLOCK_START,
@@ -22,9 +23,51 @@ function braceDelta(line) {
     return (content.match(/{/g) ?? []).length - (content.match(/}/g) ?? []).length;
 }
 
+function configureGracePeriod(lines) {
+    const firstDirective = lines.findIndex((line) => {
+        const trimmed = line.trim();
+        return trimmed.length > 0 && !trimmed.startsWith('#');
+    });
+
+    if (firstDirective < 0 || lines[firstDirective].trim() !== '{') {
+        lines.unshift(
+            '{',
+            `\tgrace_period ${PRODUCTION_CADDY_GRACE_PERIOD}`,
+            '}',
+            '',
+        );
+        return;
+    }
+
+    let globalEnd = -1;
+    let depth = 0;
+    for (let index = firstDirective; index < lines.length; index += 1) {
+        depth += braceDelta(lines[index]);
+        if (index > firstDirective && depth === 0) {
+            globalEnd = index;
+            break;
+        }
+    }
+    if (globalEnd < 0) throw new Error('Caddy global options block is unbalanced');
+
+    const gracePeriod = lines.findIndex(
+        (line, index) => index > firstDirective && index < globalEnd && /^\s*grace_period\s+/.test(line),
+    );
+    if (gracePeriod >= 0) {
+        const indentation = lines[gracePeriod].match(/^\s*/)?.[0] ?? '\t';
+        lines[gracePeriod] = `${indentation}grace_period ${PRODUCTION_CADDY_GRACE_PERIOD}`;
+        return;
+    }
+
+    const firstOption = lines.slice(firstDirective + 1, globalEnd).find((line) => line.trim().length > 0);
+    const indentation = firstOption?.match(/^\s*/)?.[0] ?? '\t';
+    lines.splice(firstDirective + 1, 0, `${indentation}grace_period ${PRODUCTION_CADDY_GRACE_PERIOD}`);
+}
+
 export function configureProductionWebCaddy(source, siteAddress = '47.115.228.20:8443') {
     const hadFinalNewline = source.endsWith('\n');
     const lines = source.replace(/\r\n/g, '\n').split('\n');
+    configureGracePeriod(lines);
     const siteStart = lines.findIndex((line) => line.trim() === `${siteAddress} {`);
     if (siteStart < 0) throw new Error(`Caddy site block not found: ${siteAddress}`);
 
