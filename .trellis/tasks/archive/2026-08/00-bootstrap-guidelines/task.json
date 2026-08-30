@@ -12,11 +12,11 @@
   "assignee": "ljpsfree",
   "createdAt": "2026-08-30",
   "completedAt": "2026-08-30",
-  "branch": null,
-  "base_branch": null,
+  "branch": "fix/codex-turn-diff-notification",
+  "base_branch": "main",
   "worktree_path": null,
-  "commit": null,
-  "pr_url": null,
+  "commit": "d523acf",
+  "pr_url": "https://github.com/slopus/happy/pull/1737",
   "subtasks": [],
   "children": [],
   "parent": null,
@@ -30,6 +30,6 @@
     ".trellis/spec/happy-app-logs/",
     ".trellis/spec/codium/"
   ],
-  "notes": "First-time setup task created by trellis init (frontend project)",
+  "notes": "Bootstrap completed for the eight-package monorepo; non-applicable generated layers were removed.",
   "meta": {}
 }
