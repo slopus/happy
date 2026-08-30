@@ -1742,6 +1742,35 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
                 });
             }
 
+            const inconsistentEnd = normalizeRawMessage('db-4-error-with-completed-status', null, 1, {
+                ...base,
+                content: {
+                    type: 'session',
+                    data: {
+                        id: 'env-4-error-with-completed-status',
+                        time: 2,
+                        role: 'agent',
+                        turn: 'turn-1',
+                        ev: {
+                            t: 'tool-call-end',
+                            call: 'call-error-with-completed-status',
+                            status: 'completed',
+                            error: { summary: 'The tool failed despite an inconsistent status.' },
+                        },
+                    },
+                },
+            });
+            expect(inconsistentEnd).toBeTruthy();
+            if (inconsistentEnd && inconsistentEnd.role === 'agent') {
+                expect(inconsistentEnd.content[0]).toMatchObject({
+                    type: 'tool-result',
+                    tool_use_id: 'call-error-with-completed-status',
+                    is_error: true,
+                    status: 'failed',
+                    failure: { summary: 'The tool failed despite an inconsistent status.' },
+                });
+            }
+
             const cancelledEnd = normalizeRawMessage('db-4-cancelled', null, 1, {
                 ...base,
                 content: {

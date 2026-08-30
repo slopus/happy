@@ -1020,6 +1020,7 @@ export const zhHant: TranslationStructure = {
         subagentPanelLabel: ({ title }: { title: string }) => `子 Agent「${title}」詳情`,
         subagentNoDetails: '未擷取到詳細記錄',
         openSkillDetails: ({ title }: { title: string }) => `查看技能失敗詳情：${title}`,
+        closeSkillDetails: ({ title }: { title: string }) => `收起技能失敗詳情：${title}`,
         skillFailureNoDetails: '未擷取到失敗診斷資訊。',
         subagentStatus: {
             running: '進行中',

@@ -1012,6 +1012,7 @@ export const ja: TranslationStructure = {
         subagentPanelLabel: ({ title }: { title: string }) => `サブエージェント「${title}」の詳細`,
         subagentNoDetails: '詳細な記録は取得されていません',
         openSkillDetails: ({ title }: { title: string }) => `スキル失敗の詳細を表示: ${title}`,
+        closeSkillDetails: ({ title }: { title: string }) => `スキル失敗の詳細を非表示: ${title}`,
         skillFailureNoDetails: '診断の詳細は取得されていません。',
         subagentStatus: {
             running: '実行中',

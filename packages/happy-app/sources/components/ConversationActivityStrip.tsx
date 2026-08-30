@@ -97,6 +97,7 @@ function SkillActivityRow(props: { activity: SkillConversationActivity }) {
     const summary = activity.failure?.summary ?? (isFailed ? t('toolGroup.skillFailureNoDetails') : null);
     const detail = activity.failure?.detail;
     const hasAdditionalDetail = Boolean(detail && detail !== summary);
+    const canExpand = isFailed && hasAdditionalDetail;
     const rowStyle = [
         styles.row,
         { paddingLeft: 8 + activity.depth * 16 },
@@ -112,7 +113,7 @@ function SkillActivityRow(props: { activity: SkillConversationActivity }) {
                     <ActivityStatusIcon status={activity.status} />
                     <Text style={styles.statusText}>{getStatusLabel(activity.status)}</Text>
                 </View>
-                {isFailed && (
+                {canExpand && (
                     <Ionicons
                         name={expanded ? 'chevron-up' : 'chevron-down'}
                         size={14}
@@ -131,7 +132,7 @@ function SkillActivityRow(props: { activity: SkillConversationActivity }) {
         </>
     );
 
-    if (!isFailed) {
+    if (!canExpand) {
         return (
             <View style={rowStyle} testID={`activity-skill-${activity.name}`}>
                 {content}
@@ -141,7 +142,10 @@ function SkillActivityRow(props: { activity: SkillConversationActivity }) {
 
     return (
         <Pressable
-            accessibilityLabel={t('toolGroup.openSkillDetails', { title: activity.name })}
+            accessibilityLabel={t(
+                expanded ? 'toolGroup.closeSkillDetails' : 'toolGroup.openSkillDetails',
+                { title: activity.name },
+            )}
             accessibilityRole="button"
             accessibilityState={{ expanded }}
             aria-expanded={expanded}

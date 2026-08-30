@@ -721,6 +721,7 @@ function normalizeSessionEnvelope(
     }
 
     if (envelope.ev.t === 'tool-call-end') {
+        const status = envelope.ev.error ? 'failed' : envelope.ev.status;
         return {
             id: messageId,
             localId,
@@ -731,8 +732,8 @@ function normalizeSessionEnvelope(
                 type: 'tool-result',
                 tool_use_id: envelope.ev.call,
                 content: envelope.ev.error?.detail ?? envelope.ev.error?.summary ?? null,
-                is_error: envelope.ev.status === 'failed',
-                ...(envelope.ev.status ? { status: envelope.ev.status } : {}),
+                is_error: status === 'failed',
+                ...(status ? { status } : {}),
                 ...(envelope.ev.error ? { failure: envelope.ev.error } : {}),
                 uuid: contentUUID,
                 parentUUID

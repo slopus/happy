@@ -1011,6 +1011,7 @@ export const ca: TranslationStructure = {
         subagentPanelLabel: ({ title }: { title: string }) => `els detalls del subagent «${title}»`,
         subagentNoDetails: 'No s\'ha capturat cap registre detallat',
         openSkillDetails: ({ title }: { title: string }) => `Mostra els detalls de l'error de l'habilitat: ${title}`,
+        closeSkillDetails: ({ title }: { title: string }) => `Amaga els detalls de l'error de l'habilitat: ${title}`,
         skillFailureNoDetails: 'No s\'han capturat detalls de diagnòstic.',
         subagentStatus: {
             running: 'En curs',

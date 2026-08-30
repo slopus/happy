@@ -1076,6 +1076,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                         if (sidechainMessage && sidechainMessage.tool && sidechainMessage.tool.state === 'running') {
                             sidechainMessage.tool.state = c.status === 'failed' || c.is_error ? 'error' : 'completed';
                             sidechainMessage.tool.result = c.content;
+                            sidechainMessage.tool.failure = c.failure;
                             sidechainMessage.tool.completedAt = msg.createdAt;
                             
                             // Update permission data if provided by backend
@@ -1120,6 +1121,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                         if (permissionMessage && permissionMessage.tool && permissionMessage.tool.state === 'running') {
                             permissionMessage.tool.state = c.status === 'failed' || c.is_error ? 'error' : 'completed';
                             permissionMessage.tool.result = c.content;
+                            permissionMessage.tool.failure = c.failure;
                             permissionMessage.tool.completedAt = msg.createdAt;
                             
                             // Update permission data if provided by backend

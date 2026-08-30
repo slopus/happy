@@ -930,6 +930,45 @@ describe('mapCodexThreadToSessionEnvelopes', () => {
         });
     });
 
+    it('preserves failed Skill diagnostics when backfilling command history', () => {
+        const envelopes = mapCodexThreadToSessionEnvelopes({
+            turns: [{
+                id: 'turn-failed-skill',
+                startedAt: 100,
+                completedAt: 110,
+                status: 'failed',
+                items: [{
+                    id: 'cmd-failed-skill',
+                    type: 'commandExecution',
+                    command: 'sed -n 1,200p /plugins/gpt-image-2/SKILL.md',
+                    cwd: '/tmp/project',
+                    status: 'failed',
+                    exitCode: 1,
+                    aggregatedOutput: 'sed: /plugins/gpt-image-2/SKILL.md: No such file or directory',
+                }],
+            }],
+        });
+
+        expect(envelopes.find((envelope) => envelope.ev.t === 'tool-call-start')).toMatchObject({
+            ev: {
+                t: 'tool-call-start',
+                name: 'Skill',
+                args: { skillNames: ['gpt-image-2'] },
+            },
+        });
+        expect(envelopes.find((envelope) => envelope.ev.t === 'tool-call-end')).toMatchObject({
+            ev: {
+                t: 'tool-call-end',
+                call: 'cmd-failed-skill',
+                status: 'failed',
+                error: {
+                    code: 'command_failed',
+                    summary: 'sed: /plugins/gpt-image-2/SKILL.md: No such file or directory',
+                },
+            },
+        });
+    });
+
     it('backfills inline review results from exitedReviewMode items', () => {
         const envelopes = mapCodexThreadToSessionEnvelopes({
             turns: [{

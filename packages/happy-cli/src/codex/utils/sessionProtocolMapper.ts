@@ -436,10 +436,13 @@ function emitHistoricalToolCall(
         }));
     }
 
+    const status = pickTurnEndStatus(item as unknown as Record<string, unknown>, 'historical_tool_end');
+    const failure = getToolFailure(item as unknown as Record<string, unknown>, status);
     envelopes.push(createEnvelope('agent', {
         t: 'tool-call-end',
         call: item.id,
-        status: pickTurnEndStatus(item as unknown as Record<string, unknown>, 'historical_tool_end'),
+        status,
+        ...(failure ? { error: failure } : {}),
     }, {
         ...opts,
         id: `${item.id}:end`,
@@ -692,7 +695,15 @@ function getToolFailure(message: Record<string, unknown>, status: TurnEndStatus)
         return undefined;
     }
 
-    const detail = [message.error, message.stderr, message.output, message.message, message.reason]
+    const detail = [
+        message.error,
+        message.stderr,
+        message.output,
+        message.aggregatedOutput,
+        message.result,
+        message.message,
+        message.reason,
+    ]
         .map(readFailureText)
         .find((value): value is string => value !== null);
     const exitCode = message.exit_code ?? message.exitCode;
