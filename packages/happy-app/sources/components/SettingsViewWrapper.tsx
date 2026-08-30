@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { View } from 'react-native';
+import { NativeScrollEvent, NativeSyntheticEvent, View } from 'react-native';
 import { StyleSheet } from 'react-native-unistyles';
 import { SettingsView } from './SettingsView';
 
@@ -10,12 +10,20 @@ const stylesheet = StyleSheet.create((theme) => ({
     },
 }));
 
-export const SettingsViewWrapper = React.memo(() => {
+export const SettingsViewWrapper = React.memo(({
+    topContentInset = 0,
+    bottomContentInset = 0,
+    onScroll,
+}: {
+    topContentInset?: number;
+    bottomContentInset?: number;
+    onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
+}) => {
     const styles = stylesheet;
 
     return (
         <View style={styles.container}>
-            <SettingsView />
+            <SettingsView topContentInset={topContentInset} bottomContentInset={bottomContentInset} onScroll={onScroll} />
         </View>
     );
 });

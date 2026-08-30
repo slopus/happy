@@ -1,0 +1,5 @@
+# Build artifacts assembled from packages/happy-server by scripts/build-runtime.cjs
+dist/
+prisma/
+webapp/
+*.tgz

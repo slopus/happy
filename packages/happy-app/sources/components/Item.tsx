@@ -2,7 +2,6 @@ import * as React from 'react';
 import { 
     View, 
     Text, 
-    Pressable, 
     StyleProp, 
     ViewStyle, 
     TextStyle,
@@ -15,11 +14,12 @@ import * as Clipboard from 'expo-clipboard';
 import { Modal } from '@/modal';
 import { t } from '@/text';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import { BubblePressable } from './BubblePressable';
 
 export interface ItemProps {
     title: string;
     subtitle?: string;
-    subtitleLines?: number; // set 0 or undefined for auto/multiline
+    subtitleLines?: number; // defaults to 2; set 0 for unlimited
     detail?: string;
     icon?: React.ReactNode;
     leftElement?: React.ReactNode;
@@ -101,7 +101,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     },
     divider: {
         height: Platform.select({ ios: 0.33, default: 0 }),
-        backgroundColor: theme.colors.divider,
+        backgroundColor: Platform.select({ web: theme.colors.divider, default: theme.colors.glass.divider }),
     },
     pressablePressed: {
         backgroundColor: theme.colors.surfacePressedOverlay,
@@ -223,10 +223,12 @@ export const Item = React.memo<ItemProps>((props) => {
                         {title}
                     </Text>
                     {subtitle && (() => {
-                        // Allow multiline when requested or when content contains line breaks
+                        // Settings descriptions frequently need a second line, especially in
+                        // translated copy. The row already sizes to its content, so keep short
+                        // subtitles compact and allow longer ones to grow by one line.
                         const effectiveLines = subtitleLines !== undefined
                             ? (subtitleLines <= 0 ? undefined : subtitleLines)
-                            : (typeof subtitle === 'string' && subtitle.indexOf('\n') !== -1 ? undefined : 1);
+                            : (typeof subtitle === 'string' && subtitle.indexOf('\n') !== -1 ? undefined : 2);
                         return (
                             <Text
                                 style={[styles.subtitle, subtitleStyle]}
@@ -287,19 +289,21 @@ export const Item = React.memo<ItemProps>((props) => {
 
     if (isInteractive) {
         return (
-            <Pressable
+            <BubblePressable
                 onPress={handlePress}
                 onLongPress={onLongPress}
                 onPressIn={handlePressIn}
                 onPressOut={handlePressOut}
                 disabled={disabled || loading}
-                style={({ pressed }) => [
+                bubbleScale={1.012}
+                style={[
                     {
-                        backgroundColor: pressed && isIOS && !isWeb ? theme.colors.surfacePressedOverlay : 'transparent',
+                        backgroundColor: 'transparent',
                         opacity: disabled ? 0.5 : 1
                     },
                     pressableStyle
                 ]}
+                pressedStyle={isIOS && !isWeb ? styles.pressablePressed : undefined}
                 android_ripple={(isAndroid || isWeb) ? {
                     color: theme.colors.surfaceRipple,
                     borderless: false,
@@ -307,7 +311,7 @@ export const Item = React.memo<ItemProps>((props) => {
                 } : undefined}
             >
                 {content}
-            </Pressable>
+            </BubblePressable>
         );
     }
 

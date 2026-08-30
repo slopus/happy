@@ -18,14 +18,16 @@ const { spawnSync } = require('child_process');
 const path = require('path');
 
 const PACKAGE_DIR = path.resolve(__dirname, '..');
+const WORKSPACE_ROOT = path.resolve(PACKAGE_DIR, '..', '..');
 const IS_WINDOWS = process.platform === 'win32';
 
-function run(cmd, args, { allowFailure = false } = {}) {
+function run(cmd, args, { allowFailure = false, env = process.env } = {}) {
     const label = [cmd, ...args].join(' ');
     console.log(`\n▶ ${label}`);
     const result = spawnSync(cmd, args, {
         cwd: PACKAGE_DIR,
         stdio: 'inherit',
+        env,
         // shell: true resolves `.cmd` shims on Windows so `pnpm` / `npm` / `happy` are found.
         shell: IS_WINDOWS,
     });
@@ -42,11 +44,29 @@ function run(cmd, args, { allowFailure = false } = {}) {
     return status;
 }
 
+function withoutWorkspaceBinPaths() {
+    const pathKey = Object.keys(process.env).find((key) => key.toUpperCase() === 'PATH') ?? 'PATH';
+    const inheritedPath = process.env[pathKey] ?? '';
+    const cleanPath = inheritedPath
+        .split(path.delimiter)
+        .filter((entry) => !(
+            entry.startsWith(`${WORKSPACE_ROOT}${path.sep}`)
+            && entry.endsWith(`${path.sep}node_modules${path.sep}.bin`)
+        ))
+        .join(path.delimiter);
+    return { ...process.env, [pathKey]: cleanPath };
+}
+
 run('pnpm', ['run', 'build']);
 run('happy', ['daemon', 'stop'], { allowFailure: true });
 run('npm', ['link']);
-run('happy', ['daemon', 'start']);
-run('happy', ['--version']);
+// pnpm prepends workspace node_modules/.bin to PATH for lifecycle scripts.
+// A missing optional native agent package can leave a discoverable but broken
+// local shim there, shadowing the user's working global Codex/Claude binary in
+// every daemon-spawned session. The daemon should inherit the normal shell PATH.
+const daemonEnvironment = withoutWorkspaceBinPaths();
+run('happy', ['daemon', 'start'], { env: daemonEnvironment });
+run('happy', ['--version'], { env: daemonEnvironment });
 
 console.log(`\n✓ Installed from ${PACKAGE_DIR}`);
 console.log('  To undo: npm unlink -g happy && npm i -g happy@latest');

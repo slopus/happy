@@ -13,6 +13,7 @@ import type {
     SDKResultMessage
 } from '@/claude/sdk'
 import type { RawJSONLines } from '@/claude/types'
+import type { PermissionResponseLookup } from './permissionHandler'
 
 /**
  * Context for converting SDK messages to log format
@@ -49,12 +50,13 @@ function getGitBranch(cwd: string): string | undefined {
 export class SDKToLogConverter {
     private lastUuid: string | null = null
     private context: ConversionContext
-    private responses?: Map<string, { approved: boolean, mode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan', reason?: string }>
+    private responses?: PermissionResponseLookup
     private sidechainLastUUID = new Map<string, string>();
+    private contextWindowByModel = new Map<string, number>();
 
     constructor(
         context: Omit<ConversionContext, 'parentUuid'>,
-        responses?: Map<string, { approved: boolean, mode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan', reason?: string }>
+        responses?: PermissionResponseLookup
     ) {
         this.context = {
             ...context,
@@ -78,6 +80,31 @@ export class SDKToLogConverter {
     resetParentChain(): void {
         this.lastUuid = null
         this.context.parentUuid = null
+    }
+
+    /**
+     * Stamp the model's real context window onto the message usage.
+     *
+     * The SDK only reports `contextWindow` on result messages, which arrive
+     * after the assistant messages of the same turn, so we remember it per
+     * model and attach it to later assistant usage. Clients can then measure
+     * context against the account's actual limit — which varies by model and
+     * plan — instead of assuming a fixed one. Left untouched when the window
+     * is not known yet (the first turn of a session).
+     */
+    private withContextWindow(message: any): any {
+        if (!message?.usage) {
+            return message
+        }
+        const model = typeof message.model === 'string' ? message.model : undefined
+        const contextWindow = model ? this.contextWindowByModel.get(model) : undefined
+        if (!contextWindow) {
+            return message
+        }
+        return {
+            ...message,
+            usage: { ...message.usage, context_window: contextWindow }
+        }
     }
 
     /**
@@ -147,7 +174,7 @@ export class SDKToLogConverter {
                 logMessage = {
                     ...baseFields,
                     type: 'assistant',
-                    message: assistantMsg.message as any,
+                    message: this.withContextWindow(assistantMsg.message) as any,
                     // Assistant messages often have additional fields
                     requestId: (assistantMsg as any).requestId,
                     ...((assistantMsg as any).isCompactSummary ? { isCompactSummary: true } : {}),
@@ -188,7 +215,17 @@ export class SDKToLogConverter {
             case 'result': {
                 // Result messages are not converted to log messages
                 // They're SDK-specific messages that indicate session completion
-                // Not part of the actual conversation log
+                // Not part of the actual conversation log.
+                // They are, however, the only place the SDK reports each
+                // model's context window, so record it for later assistant
+                // messages (see withContextWindow).
+                const resultMsg = sdkMessage as SDKResultMessage
+                for (const [model, usage] of Object.entries(resultMsg.modelUsage ?? {})) {
+                    const contextWindow = usage?.contextWindow
+                    if (typeof contextWindow === 'number' && Number.isFinite(contextWindow) && contextWindow > 0) {
+                        this.contextWindowByModel.set(model, contextWindow)
+                    }
+                }
                 break
             }
 
@@ -307,7 +344,7 @@ export class SDKToLogConverter {
 export function convertSDKToLog(
     sdkMessage: SDKMessage,
     context: Omit<ConversionContext, 'parentUuid'>,
-    responses?: Map<string, { approved: boolean, mode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan', reason?: string }>
+    responses?: PermissionResponseLookup
 ): RawJSONLines | null {
     const converter = new SDKToLogConverter(context, responses)
     return converter.convert(sdkMessage)

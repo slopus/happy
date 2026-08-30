@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
     getImageAttachmentSendPlan,
+    isAttachmentAllowedByPolicy,
     supportsImageAttachmentsForFlavor,
 } from './attachmentSupport';
 
@@ -58,5 +59,23 @@ describe('getImageAttachmentSendPlan', () => {
             shouldShowUnsupportedAlert: true,
             shouldSendText: false,
         });
+    });
+});
+
+describe('Rig attachment policy', () => {
+    it('lets capability metadata override provider flavor inference', () => {
+        expect(getImageAttachmentSendPlan({
+            flavor: 'custom',
+            text: '',
+            attachmentCount: 1,
+            supportsAttachments: true,
+        }).shouldUseAttachments).toBe(true);
+    });
+
+    it('honors media type wildcards and max bytes', () => {
+        const policy = { maxBytes: 10, mediaTypes: ['image/*'] };
+        expect(isAttachmentAllowedByPolicy({ mimeType: 'image/png', size: 10 }, policy)).toBe(true);
+        expect(isAttachmentAllowedByPolicy({ mimeType: 'image/png', size: 11 }, policy)).toBe(false);
+        expect(isAttachmentAllowedByPolicy({ mimeType: 'application/pdf', size: 5 }, policy)).toBe(false);
     });
 });

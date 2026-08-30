@@ -15,33 +15,10 @@ import {
     createAttachmentDiagnosticError,
     errorMessageFromUnknown,
 } from './attachmentDiagnostics';
-import { getServerUrl } from './serverConfig';
+import { getServerUrl, rewriteLoopbackHost } from './serverConfig';
 import { appendFormFile } from './uploadFormFile';
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
-
-/**
- * If a self-hosted server's request-upload / request-download response points
- * at loopback (e.g. PUBLIC_URL not set so it returned http://localhost:3005)
- * the phone can't reach it — that's the server's own loopback. Rewrite the
- * host to whatever the client actually used to talk to the server, since
- * that address is by definition reachable from here. No-op for any non-
- * loopback URL (presigned S3 GET URLs, properly configured PUBLIC_URL, etc.).
- */
-function rewriteLoopbackHost(url: string): string {
-    try {
-        const target = new URL(url);
-        if (target.hostname !== 'localhost' && target.hostname !== '127.0.0.1' && target.hostname !== '::1') {
-            return url;
-        }
-        const reachable = new URL(getServerUrl());
-        target.protocol = reachable.protocol;
-        target.host = reachable.host; // includes port
-        return target.toString();
-    } catch {
-        return url;
-    }
-}
 
 export type RequestUploadResult = {
     ref: string;

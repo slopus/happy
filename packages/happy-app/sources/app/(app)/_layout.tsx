@@ -2,33 +2,48 @@ import { Stack } from 'expo-router';
 import 'react-native-reanimated';
 import * as React from 'react';
 import { Typography } from '@/constants/Typography';
-import { createHeader } from '@/components/navigation/Header';
-import { Platform, TouchableOpacity, Text } from 'react-native';
+import { createHeader, createPlainHeader } from '@/components/navigation/Header';
+import { Platform, TouchableOpacity, Text, View, Image } from 'react-native';
 import { isRunningOnMac } from '@/utils/platform';
 import { useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
+import { MobileGlassBackdrop } from '@/components/MobileGlass';
 
 export const unstable_settings = {
     initialRouteName: 'index',
 };
 
 export default function RootLayout() {
-    // Use custom header on Android and Mac Catalyst, native header on iOS (non-Catalyst)
+    // Keep UIKit in charge of most iPhone/iPad headers. Screens that belong to
+    // the floating-glass family opt into createHeader below.
     const shouldUseCustomHeader = Platform.OS === 'android' || isRunningOnMac() || Platform.OS === 'web';
+    const isDesktop = Platform.OS === 'web' || isRunningOnMac();
     const { theme } = useUnistyles();
 
     return (
+        <View
+            style={{
+                flex: 1,
+                backgroundColor: isDesktop
+                    ? theme.colors.surface
+                    : theme.colors.groupped.background,
+            }}
+        >
+            <MobileGlassBackdrop enabled={!isDesktop} />
         <Stack
             initialRouteName='index'
             screenOptions={{
                 header: shouldUseCustomHeader ? createHeader : undefined,
                 headerBackTitle: t('common.back'),
+                headerBackButtonDisplayMode: Platform.OS === 'ios' ? 'minimal' : undefined,
                 headerShadowVisible: false,
                 contentStyle: {
-                    backgroundColor: theme.colors.surface,
+                    backgroundColor: isDesktop
+                        ? theme.colors.surface
+                        : theme.colors.groupped.background,
                 },
                 headerStyle: {
-                    backgroundColor: theme.colors.header.background,
+                    backgroundColor: isDesktop ? theme.colors.header.background : 'transparent',
                 },
                 headerTintColor: theme.colors.header.tint,
                 headerTitleStyle: {
@@ -57,8 +72,13 @@ export default function RootLayout() {
                 name="settings/index"
                 options={{
                     headerShown: true,
+                    header: createPlainHeader,
                     headerTitle: t('settings.title'),
-                    headerBackTitle: t('common.home')
+                    headerBackTitle: t('common.home'),
+                    headerTransparent: Platform.OS === 'ios',
+                    headerStyle: {
+                        backgroundColor: theme.colors.groupped.background,
+                    },
                 }}
             />
             <Stack.Screen
@@ -79,8 +99,26 @@ export default function RootLayout() {
                 name="session/[id]/info"
                 options={{
                     headerShown: true,
+                    header: createPlainHeader,
                     headerTitle: '',
                     headerBackTitle: t('common.back'),
+                    headerTransparent: Platform.OS === 'ios',
+                    headerStyle: {
+                        backgroundColor: theme.colors.groupped.background,
+                    },
+                }}
+            />
+            <Stack.Screen
+                name="machine/[id]"
+                options={{
+                    headerShown: true,
+                    header: createPlainHeader,
+                    headerTitle: '',
+                    headerBackTitle: t('machine.back'),
+                    headerTransparent: Platform.OS === 'ios',
+                    headerStyle: {
+                        backgroundColor: theme.colors.groupped.background,
+                    },
                 }}
             />
             <Stack.Screen
@@ -114,13 +152,7 @@ export default function RootLayout() {
             <Stack.Screen
                 name="settings/agents"
                 options={{
-                    headerTitle: 'Agent Defaults',
-                }}
-            />
-            <Stack.Screen
-                name="settings/features"
-                options={{
-                    headerTitle: t('settings.features'),
+                    headerTitle: 'Agents',
                 }}
             />
             <Stack.Screen
@@ -155,8 +187,34 @@ export default function RootLayout() {
                 name="changelog"
                 options={{
                     headerShown: true,
-                    headerTitle: t('navigation.whatsNew'),
+                    header: createPlainHeader,
+                    headerTitle: () => (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                            <Text
+                                numberOfLines={1}
+                                style={[
+                                    {
+                                        fontSize: isDesktop ? 17 : 16,
+                                        fontWeight: '600',
+                                        color: theme.colors.header.tint,
+                                    },
+                                    Typography.default('semiBold'),
+                                ]}
+                            >
+                                {t('navigation.whatsNew')}
+                            </Text>
+                            <Image
+                                source={require('@/changelog/images/mouse-on-the-phone.webp')}
+                                style={{ width: 40, height: 40 }}
+                                resizeMode="contain"
+                            />
+                        </View>
+                    ),
                     headerBackTitle: t('common.back'),
+                    headerTransparent: Platform.OS === 'ios',
+                    headerStyle: {
+                        backgroundColor: theme.colors.groupped.background,
+                    },
                 }}
             />
             <Stack.Screen
@@ -287,6 +345,12 @@ export default function RootLayout() {
                 }}
             />
             <Stack.Screen
+                name="dev/rig-preview"
+                options={{
+                    headerTitle: 'Rig Preview',
+                }}
+            />
+            <Stack.Screen
                 name="session/recent"
                 options={{
                     headerShown: true,
@@ -317,5 +381,6 @@ export default function RootLayout() {
                 }}
             />
         </Stack>
+        </View>
     );
 }

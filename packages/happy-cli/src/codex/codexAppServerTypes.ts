@@ -61,6 +61,12 @@ export type ResumeConversationParams = {
 
 export type ResumeConversationResponse = NewConversationResponse;
 
+export type CollabAgentTool = "spawnAgent" | "sendInput" | "resumeAgent" | "wait" | "closeAgent";
+export type CollabAgentToolCallStatus = "inProgress" | "completed" | "failed";
+export type CollabAgentStatus = "pendingInit" | "running" | "interrupted" | "completed" | "errored" | "shutdown" | "notFound";
+export type CollabAgentState = { status: CollabAgentStatus | string; message?: string | null };
+export type SubAgentActivityKind = "started" | "interacted" | "interrupted";
+
 export type ThreadItem =
     | { type: "userMessage"; id: string; content: InputItem[] }
     | { type: "agentMessage"; id: string; text: string; phase?: string | null; memoryCitation?: unknown | null }
@@ -68,6 +74,19 @@ export type ThreadItem =
     | { type: "commandExecution"; id: string; command: string; cwd?: string; status?: string; aggregatedOutput?: string | null; exitCode?: number | null; durationMs?: number | null }
     | { type: "fileChange"; id: string; changes: unknown[]; status?: string }
     | { type: "mcpToolCall"; id: string; server: string; tool: string; status?: string; arguments?: unknown; result?: unknown; error?: unknown; durationMs?: number | null }
+    | {
+        type: "collabAgentToolCall";
+        id: string;
+        tool: CollabAgentTool | string;
+        status: CollabAgentToolCallStatus | string;
+        senderThreadId?: string;
+        receiverThreadIds?: string[];
+        prompt?: string | null;
+        model?: string | null;
+        reasoningEffort?: ReasoningEffort | string | null;
+        agentsStates?: Record<string, CollabAgentState | undefined>;
+    }
+    | { type: "subAgentActivity"; id: string; kind: SubAgentActivityKind | string; agentThreadId: string; agentPath?: string }
     | ({ type: string; id: string } & Record<string, unknown>);
 
 export type ThreadTurn = {
@@ -247,7 +266,11 @@ export type ReviewDecision =
 
 export type ApprovalPolicy = "untrusted" | "on-failure" | "on-request" | "never";
 export type SandboxMode = "read-only" | "workspace-write" | "danger-full-access";
-export type ReasoningEffort = "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
+// Mirrors codex-rs `protocol/src/openai_models.rs` ReasoningEffort. `max` and
+// `ultra` are on the wire and in the model registry — gpt-5.6 sol/terra list
+// both, luna lists max — so stopping this union at `xhigh` silently dropped
+// every effort above it.
+export type ReasoningEffort = "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max" | "ultra";
 export type ReasoningSummary = "auto" | "concise" | "detailed" | "none";
 export type TurnAbortReason = "interrupted" | "replaced" | "review_ended";
 

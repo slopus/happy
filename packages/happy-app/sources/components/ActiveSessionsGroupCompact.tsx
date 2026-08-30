@@ -2,7 +2,6 @@ import React from 'react';
 import { View, Pressable, Platform } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
 import { Text } from '@/components/StyledText';
-import { Machine } from '@/sync/storageTypes';
 import { SessionRowData } from '@/sync/storage';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { type SessionState, formatPathRelativeToHome, vibingMessages, formatLastSeen } from '@/utils/sessionUtils';
@@ -21,12 +20,15 @@ import { sessionKill } from '@/sync/ops';
 import { isWorktreePath, getRepoPath, getWorktreeName } from '@/utils/worktree';
 import { useNewSessionDraft } from '@/hooks/useNewSessionDraft';
 import { useRouter } from 'expo-router';
+import { SessionShortcutHintBadge } from './ShortcutHints';
+import { buildActiveSessionDisplayGroups } from '@/utils/sessionDisplayOrder';
 
 const STATUS_CONFIG: Record<SessionState, { color: string; dotColor: string; isPulsing: boolean; isConnected: boolean }> = {
     disconnected: { color: '#999', dotColor: '#999', isPulsing: false, isConnected: false },
     thinking: { color: '#007AFF', dotColor: '#007AFF', isPulsing: true, isConnected: true },
     waiting: { color: '#34C759', dotColor: '#34C759', isPulsing: false, isConnected: true },
     permission_required: { color: '#FF9500', dotColor: '#FF9500', isPulsing: true, isConnected: true },
+    input_required: { color: '#FF9500', dotColor: '#FF9500', isPulsing: true, isConnected: true },
 };
 
 interface ActiveSessionsGroupProps {
@@ -98,7 +100,7 @@ const SectionHeader = React.memo(({ session, displayPath }: { session: SessionRo
         >
             {/* Avatar — vertically centered */}
             <View style={styles.sectionHeaderAvatar}>
-                <Avatar id={session.avatarId} size={24} flavor={null} />
+                <Avatar id={session.avatarId} size={24} flavor={null} imageUrl={session.projectAvatarUri} thumbhash={session.projectAvatarThumbhash} />
             </View>
 
             {/* Path + branch */}
@@ -167,63 +169,12 @@ export function ActiveSessionsGroupCompact({ sessions, selectedSessionId }: Acti
     const styles = stylesheet;
     const machines = useAllMachines();
 
-    const machinesMap = React.useMemo(() => {
-        const map: Record<string, Machine> = {};
-        machines.forEach(machine => {
-            map[machine.id] = machine;
-        });
-        return map;
-    }, [machines]);
-
-    // Group sessions by machine, then by project within each machine
-    const { machineGroups, hasMultipleMachines } = React.useMemo(() => {
-        const unknownText = t('status.unknown');
-        const byMachine = new Map<string, {
-            machineId: string;
-            machineName: string;
-            projects: Map<string, {
-                displayPath: string;
-                sessions: SessionRowData[];
-            }>;
-        }>();
-
-        sessions.forEach(session => {
-            const machineId = session.machineId || unknownText;
-            const machine = machineId !== unknownText ? machinesMap[machineId] : null;
-            const machineName = machine?.metadata?.displayName ||
-                machine?.metadata?.host ||
-                (machineId !== unknownText ? machineId : `<${unknownText}>`);
-
-            let machineGroup = byMachine.get(machineId);
-            if (!machineGroup) {
-                machineGroup = { machineId, machineName, projects: new Map() };
-                byMachine.set(machineId, machineGroup);
-            }
-
-            const projectPath = session.path || '';
-            let projectGroup = machineGroup.projects.get(projectPath);
-            if (!projectGroup) {
-                const displayPath = formatPathRelativeToHome(projectPath, session.homeDir ?? undefined);
-                projectGroup = { displayPath, sessions: [] };
-                machineGroup.projects.set(projectPath, projectGroup);
-            }
-
-            projectGroup.sessions.push(session);
-        });
-
-        // Sort sessions within each project group
-        byMachine.forEach(mg => {
-            mg.projects.forEach(pg => {
-                pg.sessions.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
-            });
-        });
-
-        const sorted = Array.from(byMachine.values()).sort((a, b) =>
-            a.machineName.localeCompare(b.machineName)
-        );
-
-        return { machineGroups: sorted, hasMultipleMachines: byMachine.size > 1 };
-    }, [sessions, machinesMap]);
+    const machineGroups = React.useMemo(() => buildActiveSessionDisplayGroups(
+        sessions,
+        machines,
+        t('status.unknown'),
+    ), [machines, sessions]);
+    const hasMultipleMachines = machineGroups.length > 1;
 
     return (
         <View style={styles.container}>
@@ -271,12 +222,13 @@ export function ActiveSessionsGroupCompact({ sessions, selectedSessionId }: Acti
 }
 
 // Compact session row with status dot indicator
-const CompactSessionRow = React.memo(({ session, selected, showBorder }: { session: SessionRowData; selected?: boolean; showBorder?: boolean }) => {
+export const CompactSessionRow = React.memo(({ session, selected, showBorder }: { session: SessionRowData; selected?: boolean; showBorder?: boolean }) => {
     const styles = stylesheet;
     const { theme } = useUnistyles();
     const baseStatus = STATUS_CONFIG[session.state];
-    // Override to solid blue when session has unread results
-    const status = session.hasUnread
+    const needsUserAction = session.state === 'permission_required' || session.state === 'input_required';
+    // User action stays orange and pulsing even when the request also marked the session unread.
+    const status = session.hasUnread && !needsUserAction
         ? { ...baseStatus, color: '#007AFF', dotColor: '#007AFF', isPulsing: false, isConnected: baseStatus.isConnected }
         : baseStatus;
     const navigateToSession = useNavigateToSession();
@@ -317,10 +269,12 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
         onLongPress: showActionAlert,
     };
 
-    const renderLeadingIndicator = () => {
+    const renderTrailingIndicator = () => {
         let indicator: React.ReactNode = null;
 
-        if (session.hasUnread) {
+        if (needsUserAction) {
+            indicator = <StatusDot color={status.dotColor} isPulsing={status.isPulsing} />;
+        } else if (session.hasUnread) {
             indicator = <StatusDot color={status.dotColor} isPulsing={false} />;
         } else if (session.state === 'waiting' && session.hasDraft) {
             indicator = (
@@ -330,14 +284,14 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
                     color={theme.colors.textSecondary}
                 />
             );
-        } else if (session.state === 'permission_required' || session.state === 'thinking') {
+        } else if (session.state === 'thinking') {
             indicator = <StatusDot color={status.dotColor} isPulsing={status.isPulsing} />;
         } else if (session.state === 'waiting') {
             indicator = <StatusDot color={theme.colors.textSecondary} isPulsing={false} />;
         }
 
         return (
-            <View style={styles.leadingIndicatorSlot}>
+            <View style={styles.trailingIndicatorSlot}>
                 {indicator}
             </View>
         );
@@ -355,8 +309,6 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
         >
             <View style={styles.sessionContent}>
                 <View style={styles.sessionTitleRow}>
-                    {renderLeadingIndicator()}
-
                     <Text
                         style={[
                             styles.sessionTitle,
@@ -366,6 +318,11 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
                     >
                         {session.name}
                     </Text>
+                    <SessionShortcutHintBadge
+                        sessionId={session.id}
+                        style={styles.sessionShortcutBadge}
+                    />
+                    {renderTrailingIndicator()}
                 </View>
             </View>
         </Pressable>
@@ -412,7 +369,7 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
-        backgroundColor: theme.colors.groupped.background,
+        backgroundColor: Platform.select({ web: theme.colors.groupped.background, default: 'transparent' }),
         paddingTop: 8,
     },
     // Section header styles
@@ -501,13 +458,15 @@ const stylesheet = StyleSheet.create((theme) => ({
         backgroundColor: theme.colors.surface,
         marginBottom: 8,
         marginHorizontal: Platform.select({ ios: 16, default: 12 }),
-        borderRadius: Platform.select({ ios: 10, default: 16 }),
+        borderRadius: Platform.select({ web: 16, default: 18 }),
+        borderWidth: Platform.select({ web: 0, default: StyleSheet.hairlineWidth }),
+        borderColor: theme.colors.divider,
         overflow: 'hidden',
-        shadowColor: theme.colors.shadow.color,
+        shadowColor: Platform.select({ web: theme.colors.shadow.color, default: 'transparent' }),
         shadowOffset: { width: 0, height: 0.33 },
-        shadowOpacity: theme.colors.shadow.opacity,
+        shadowOpacity: Platform.select({ web: theme.colors.shadow.opacity, default: 0 }),
         shadowRadius: 0,
-        elevation: 1,
+        elevation: Platform.select({ web: 1, default: 0 }),
     },
     // Session row styles
     sessionRow: {
@@ -515,6 +474,10 @@ const stylesheet = StyleSheet.create((theme) => ({
         flexDirection: 'row',
         alignItems: 'center',
         paddingHorizontal: 16,
+        // Solid, and the same color the card behind it paints: the row is the
+        // thing that slides during the archive swipe, so it must cover the red
+        // action underneath the way the flat list's rows do — a transparent
+        // row lets the red show through the moment the drag starts.
         backgroundColor: theme.colors.surface,
     },
     sessionRowWithBorder: {
@@ -537,18 +500,24 @@ const stylesheet = StyleSheet.create((theme) => ({
         flex: 1,
         ...Typography.default('regular'),
     },
+    sessionShortcutBadge: {
+        flexShrink: 0,
+        marginLeft: 8,
+    },
     sessionTitleConnected: {
         color: theme.colors.text,
     },
     sessionTitleDisconnected: {
         color: theme.colors.textSecondary,
     },
-    leadingIndicatorSlot: {
+    // 18 wide so the dot's center lines up with the center of the project
+    // header's "+" button above the card, on both platform paddings.
+    trailingIndicatorSlot: {
         alignItems: 'center',
         justifyContent: 'center',
-        width: 16,
-        height: 16,
-        marginRight: 8,
+        width: 18,
+        height: 18,
+        marginLeft: 8,
     },
     swipeAction: {
         width: 112,

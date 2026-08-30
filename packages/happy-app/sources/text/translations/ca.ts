@@ -15,10 +15,17 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
  * Must match the exact structure of the English translations
  */
 export const ca: TranslationStructure = {
+    voiceStatusBar: {
+        tapToEnd: 'toca per finalitzar',
+        connecting: 'Connectant…',
+        error: 'Error de connexió',
+        active: 'Assistent de veu actiu',
+    },
+
     tabs: {
         // Tab navigation labels
         inbox: 'Safata',
-        sessions: 'Terminals',
+        sessions: 'Sessions',
         settings: 'Configuració',
     },
 
@@ -81,6 +88,7 @@ export const ca: TranslationStructure = {
         offline: 'fora de línia',
         lastSeen: ({ time }: { time: string }) => `vist per última vegada ${time}`,
         permissionRequired: 'permís requerit',
+        inputRequired: 'esperant la teva resposta',
         activeNow: 'Actiu ara',
         unknown: 'desconegut',
         unread: 'nous resultats',
@@ -161,35 +169,53 @@ export const ca: TranslationStructure = {
             light: 'Usa sempre el tema clar',
             dark: 'Usa sempre el tema fosc',
         },
+        chat: 'Xat',
+        chatDescription: 'Personalitza l\'aspecte dels missatges del xat',
+        usageLimitShowRemaining: 'Mostra la quota restant',
+        usageLimitShowRemainingDescription: 'Els indicadors de límit compten enrere en lloc d\'endavant',
+        userMessageBubbleColor: 'Color dels teus missatges',
+        userMessageBubbleColorDescription: 'Fes que els teus missatges siguin més fàcils de trobar en xats llargs',
+        userMessageBubbleColorOptions: {
+            blue: 'Blau',
+            green: 'Verd',
+            purple: 'Porpra',
+            rose: 'Rosa',
+            sand: 'Sorra',
+            gray: 'Gris',
+        },
         display: 'Pantalla',
         displayDescription: 'Controla la disposició i l\'espaiat',
-        inlineToolCalls: 'Crides d\'eines en línia',
-        inlineToolCallsDescription: 'Mostra les crides d\'eines directament als missatges de xat',
-        expandTodoLists: 'Expandeix les llistes de tasques',
-        expandTodoListsDescription: 'Mostra totes les tasques en lloc de només els canvis',
-        showLineNumbersInDiffs: 'Mostra els números de línia a les diferències',
-        showLineNumbersInDiffsDescription: 'Mostra els números de línia a les diferències de codi',
+        compactToolCalls: 'Crides d\'eines compactes',
+        compactToolCallsDescription: 'Mostra les crides no interactives en una sola línia; obre una fila per veure\'n els detalls',
         showLineNumbersInToolViews: 'Mostra els números de línia a les vistes d\'eines',
         showLineNumbersInToolViewsDescription: 'Mostra els números de línia a les diferències de vistes d\'eines',
-        wrapLinesInDiffs: 'Ajusta les línies a les diferències',
-        wrapLinesInDiffsDescription: 'Ajusta les línies llargues en lloc de desplaçament horitzontal a les vistes de diferències',
-        diffStyle: 'Vista de diferències',
-        diffStyleDescription: 'Mostra les diferències en una sola columna (unified) o una al costat de l\'altra (split). La vista split només funciona al web.',
-        diffStyleOptions: {
-            unified: 'Unified',
-            split: 'Split',
-        },
-        alwaysShowContextSize: 'Mostra sempre la mida del context',
-        alwaysShowContextSizeDescription: 'Mostra l\'ús del context fins i tot quan no estigui prop del límit',
+        alwaysShowContextSize: 'Mostra l\'ús',
+        alwaysShowContextSizeDescription: 'Context i límits del pla sota el camp de missatge. Els avisos prop del límit sempre es mostren.',
+        input: 'Entrada',
+        inputDescription: 'Configura el camp de missatge',
+        showHarnessIconInSessionHeader: 'Mostrar la icona de l\'arnès a la capçalera de la sessió',
+        showHarnessIconInSessionHeaderDescription: 'Mostra la icona de l\'arnès a la capçalera de la sessió',
+        showHarnessIconsInSessionList: 'Mostrar les icones d\'arnès a la llista de sessions',
+        showHarnessIconsInSessionListDescription: 'Mostra les icones d\'arnès als avatars de la llista de sessions',
+        avatars: 'Avatars',
+        avatarsDescription: 'Tria l\'aspecte dels avatars de sessió generats',
         avatarStyle: 'Estil d\'avatar',
-        avatarStyleDescription: 'Tria l\'aparença de l\'avatar de la sessió',
-        avatarOptions: {
-            pixelated: 'Pixelat',
-            gradient: 'Gradient',
+        avatarStyleOptions: {
             brutalist: 'Brutalista',
+            pixelated: 'Pixelat',
+            gradient: 'Degradat',
         },
-        showFlavorIcons: "Mostrar icones de proveïdors d'IA",
-        showFlavorIconsDescription: "Mostrar icones del proveïdor d'IA als avatars de sessió",
+        avatarMonochrome: 'Avatars en blanc i negre',
+        avatarMonochromeDescription: 'Mostra els avatars sense color',
+    },
+
+    sessionsFilter: {
+        // Filter menu on the home sessions list header
+        title: 'Filtre',
+        groupingTitle: 'Agrupació',
+        flatList: 'Llista plana',
+        groupByProject: 'Agrupa per projecte',
+        appearanceSettings: 'Configuració d\'aparença',
     },
 
     settingsFeatures: {
@@ -209,17 +235,8 @@ export const ca: TranslationStructure = {
         commandPaletteDisabled: 'Accés ràpid a comandes desactivat',
         markdownCopyV2: 'Markdown Copy v2',
         markdownCopyV2Subtitle: 'Pulsació llarga obre modal de còpia',
-        hideInactiveSessions: 'Amaga les sessions inactives',
-        hideInactiveSessionsSubtitle: 'Mostra només els xats actius a la llista',
         groupToolCalls: 'Agrupa les crides a eines',
         groupToolCallsSubtitle: 'Replega les crides consecutives a eines en un sol contenidor',
-        privacy: 'Privadesa',
-        privacyDescription: 'Desactiva completament tota l\'analítica i telemetria. No s\'enviaran dades a PostHog ni a cap altre servei de seguiment.',
-        disableAnalytics: 'Desactivar analítica',
-        analyticsDisabled: 'Tot el seguiment i telemetria desactivats',
-        analyticsEnabled: 'Analítica anònima d\'ús activa',
-        imageUpload: 'Pujada d\'imatges',
-        imageUploadSubtitle: 'Adjunta imatges als missatges perquè els agents compatibles les analitzin',
     },
 
     errors: {
@@ -293,6 +310,8 @@ export const ca: TranslationStructure = {
         inactiveArchived: 'Aquesta sessió està inactiva.',
         resumeFromTerminal: 'Per reprendre-la des del terminal:',
         newChat: 'Nou xat',
+        statusBarContext: 'Context',
+        statusBarPathTitle: 'Directori de treball',
         forkAction: 'Bifurca la sessió',
         forkSubtitle: 'Continua en una nova sessió amb el mateix context',
         duplicateAction: 'Duplica des d\'un missatge…',
@@ -331,7 +350,12 @@ export const ca: TranslationStructure = {
         failedToConnectToServer: 'Ha fallat la connexió amb el servidor',
         currentlyUsingCustomServer: 'Actualment utilitzant un servidor personalitzat',
         customServerUrlLabel: 'URL del servidor personalitzat',
-        advancedFeatureFooter: 'Aquesta és una funció avançada. Només canvia el servidor si saps el que fas. Hauràs de tancar la sessió i tornar-la a iniciar després de canviar els servidors.'
+        advancedFeatureFooter: 'Aquesta és una funció avançada. Només canvia el servidor si saps el que fas. Hauràs de tancar la sessió i tornar-la a iniciar després de canviar els servidors.',
+        services: 'Serveis',
+        useCustomServerForVoice: 'Utilitza el servidor personalitzat per a la veu',
+        customServerVoiceEnabled: 'Les credencials i l’ús de veu utilitzen el teu servidor personalitzat',
+        customServerVoiceDisabled: 'La veu utilitza Happy Cloud i la teva subscripció de Happy',
+        customServerVoiceFooter: 'Quan està desactivat, iniciar la veu contacta amb Happy Cloud i ElevenLabs. Activa-ho només si el teu servidor personalitzat està configurat per a veu.',
     },
 
     sessionInfo: {
@@ -365,7 +389,6 @@ export const ca: TranslationStructure = {
         resumeSessionSubtitle: 'Resume this session on the same machine',
         resumeSessionSameMachineOnly: 'This session can only be resumed on the same machine it started on.',
         resumeSessionMachineOffline: 'This machine is offline. Resume is only available while it is online.',
-        resumeSessionNeedsHappyAgent: 'Resume is unavailable on this machine. Run `happy-agent auth login` to enable it.',
         resumeSessionMissingMachine: 'This session is missing its machine metadata, so it cannot be resumed.',
         resumeSessionMissingBackendId: 'This session does not have a resumable Claude or Codex identifier.',
         resumeSessionUnexpectedDirectoryPrompt: 'Resume cannot create directories. Start the session manually from its original path.',
@@ -423,7 +446,10 @@ export const ca: TranslationStructure = {
     agentInput: {
         permissionMode: {
             title: 'MODE DE PERMISOS',
+            auto: 'decideix pel seu compte, pregunta si dubta',
             default: 'Per defecte',
+            agyDefault: "sandbox d'agy, sense preguntes",
+            openclawInert: "no s'aplica a openclaw",
             acceptEdits: 'Accepta edicions',
             plan: 'Mode de planificació',
             dontAsk: 'No preguntis',
@@ -451,6 +477,11 @@ export const ca: TranslationStructure = {
             readOnly: 'Read Only Mode',
             safeYolo: 'Safe YOLO',
             yolo: 'YOLO',
+            defaultDescription: "pregunta abans d'ordres no fiables",
+            autoDescription: 'decideix pel seu compte, pregunta si dubta',
+            readOnlyDescription: 'sense escriptura',
+            safeYoloDescription: "sense preguntes, sandbox de l'espai de treball",
+            yoloDescription: 'sense preguntes, accés complet',
             badgeReadOnly: 'Read Only Mode',
             badgeSafeYolo: 'Safe YOLO',
             badgeYolo: 'YOLO',
@@ -476,7 +507,14 @@ export const ca: TranslationStructure = {
             badgePlan: 'Planificació',
         },
         context: {
-            remaining: ({ percent }: { percent: number }) => `${percent}% restant`,
+            detailContext: ({ used, total }: { used: string; total: string }) => `${used} / ${total} de context`,
+            percentContext: ({ percent }: { percent: number }) => `${percent}% context`,
+            percentWeek: ({ percent }: { percent: number }) => `${percent}% setmana`,
+        },
+        usagePopup: {
+            session: 'Sessió',
+            week: 'Setmana',
+            resets: ({ time }: { time: string }) => `Es restableix ${time}`,
         },
         suggestion: {
             fileLabel: 'FITXER',
@@ -492,11 +530,26 @@ export const ca: TranslationStructure = {
         offlineUnableToSpawn: 'No es pot crear una nova sessió, fora de línia',
     },
 
+    agentQuestion: {
+        title: "Pregunta",
+        submit: "Envia la resposta",
+        chooseMultiple: "Tria totes les que apliquin",
+        ownAnswer: "La teva pròpia resposta",
+        ownAnswerPlaceholder: "Escriu una resposta",
+        submitFailed: "No s'ha pogut enviar la resposta",
+        dismiss: "Descarta",
+        unsupportedTitle: "Sol·licitud no compatible",
+        unsupportedDescription: ({ kind }: { kind: string }) => `Aquesta versió de Happy no pot mostrar una sol·licitud «${kind}». Actualitza l'app per respondre.`,
+        moreQuestions: ({ count }: { count: number }) =>
+            count === 1 ? "1 pregunta més" : `${count} preguntes més`,
+    },
+
     sidebar: {
         sessionsTitle: 'Happy',
         showArchived: 'Mostra arxivades',
         hideArchived: 'Amaga arxivades',
         newSession: 'Nova sessió',
+        projects: "Projectes",
     },
 
     zen: {
@@ -614,6 +667,8 @@ export const ca: TranslationStructure = {
         deleted: 'Eliminat',
         changedFiles: ({ count }: { count: number }) => `${count} ${count === 1 ? 'fitxer modificat' : 'fitxers modificats'}`,
         allFiles: 'Tots els fitxers',
+        addPanel: 'Afegeix un panell',
+        closePanel: 'Tanca el panell',
         editFile: 'Editar',
         saveFile: 'Desar',
         failedToRead: 'No s\'ha pogut llegir el fitxer',
@@ -622,6 +677,19 @@ export const ca: TranslationStructure = {
         fileConflictDescription: 'Aquest fitxer s\'ha modificat al dispositiu mentre l\'editaves. Recarrega per veure la darrera versió.',
         reload: 'Recarregar',
         overwrite: 'Sobreescriure',
+    },
+    sideChat: {
+        panelTitle: 'Xat lateral',
+        emptyTitle: 'Inicia un xat lateral',
+        emptySubtitle: 'Pregunta alguna cosa a l’agent a part. Hereta el context d’aquest xat però es manté aïllat — res d’aquí no afecta la conversa principal.',
+        startButton: 'Inicia el xat lateral',
+        creating: 'Iniciant el xat lateral…',
+        unavailable: 'Aquesta sessió encara no pot iniciar un xat lateral — espera que l’agent estigui en línia.',
+        composerPlaceholder: 'Missatge al xat lateral…',
+        expand: 'Obre a pantalla completa',
+        tabLabel: ({ index }: { index: number }) => `Xat lateral ${index}`,
+        newChat: 'Nou xat lateral',
+        close: 'Tanca el xat lateral',
     },
 
     settingsVoice: {

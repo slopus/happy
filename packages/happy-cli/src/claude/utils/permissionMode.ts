@@ -1,11 +1,12 @@
 import type { QueryOptions } from '@/claude/sdk';
 import type { PermissionMode } from '@/api/types';
+import { logger } from '@/ui/logger';
 
 /** Derived from SDK's QueryOptions - the modes Claude actually supports */
 export type ClaudeSdkPermissionMode = NonNullable<QueryOptions['permissionMode']>;
 
 /**
- * Map any PermissionMode (7 modes) to a Claude-compatible mode (4 modes)
+ * Map any PermissionMode (8 modes) to a Claude-compatible mode (5 modes)
  * This is the ONLY place where Codex modes are mapped to Claude equivalents.
  *
  * Mapping:
@@ -14,9 +15,20 @@ export type ClaudeSdkPermissionMode = NonNullable<QueryOptions['permissionMode']
  * - read-only → default (Claude doesn't support read-only)
  *
  * Claude modes pass through unchanged:
- * - default, acceptEdits, bypassPermissions, plan
+ * - auto, default, acceptEdits, bypassPermissions, plan
+ *
+ * `auto` is a first-class mode in the Agent SDK's own PermissionMode union,
+ * so it passes straight through rather than being mapped onto `default`.
  */
-export function mapToClaudeMode(mode: PermissionMode): ClaudeSdkPermissionMode {
+export function mapToClaudeMode(mode: undefined): undefined;
+export function mapToClaudeMode(mode: PermissionMode): ClaudeSdkPermissionMode;
+export function mapToClaudeMode(mode: PermissionMode | undefined): ClaudeSdkPermissionMode | undefined;
+export function mapToClaudeMode(mode: PermissionMode | undefined): ClaudeSdkPermissionMode | undefined {
+    // Undefined is a meaningful value, not a missing one: it is how "Default"
+    // reaches the SDK, which then applies Claude's own configuration.
+    if (mode === undefined) {
+        return undefined;
+    }
     const codexToClaudeMap: Record<string, ClaudeSdkPermissionMode> = {
         'yolo': 'bypassPermissions',
         'safe-yolo': 'default',
@@ -26,6 +38,7 @@ export function mapToClaudeMode(mode: PermissionMode): ClaudeSdkPermissionMode {
 }
 
 const VALID_PERMISSION_MODES: readonly PermissionMode[] = [
+    'auto',
     'default',
     'acceptEdits',
     'bypassPermissions',
@@ -35,8 +48,25 @@ const VALID_PERMISSION_MODES: readonly PermissionMode[] = [
     'yolo',
 ] as const;
 
-function isPermissionMode(value: string | undefined): value is PermissionMode {
+export function isPermissionMode(value: string | undefined): value is PermissionMode {
     return !!value && VALID_PERMISSION_MODES.includes(value as PermissionMode);
+}
+
+/**
+ * Narrow a permission mode that arrived over the wire. The message schema
+ * accepts any string so a newer app can name a mode this CLI does not know
+ * yet; an unknown one is dropped here with a warning, keeping the message
+ * itself deliverable and the session on its current mode.
+ */
+export function normalizeRemotePermissionMode(value: string | undefined): PermissionMode | undefined {
+    if (value === undefined) {
+        return undefined;
+    }
+    if (isPermissionMode(value)) {
+        return value;
+    }
+    logger.info(`[permissionMode] Ignoring unknown permission mode '${value}' from app; this CLI version does not support it`);
+    return undefined;
 }
 
 /**
@@ -101,7 +131,7 @@ export function applySandboxPermissionPolicy(
     return 'bypassPermissions';
 }
 
-function isClaudeBypassEquivalent(mode: PermissionMode | undefined): boolean {
+export function isClaudeBypassEquivalent(mode: PermissionMode | undefined): boolean {
     return mode === 'bypassPermissions' || mode === 'yolo';
 }
 

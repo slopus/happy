@@ -1,7 +1,7 @@
 {
-  "name": "happy-server-self-host",
-  "version": "1.1.11",
-  "description": "Happy self-host server and bundled web app",
+  "name": "happy-server",
+  "version": "0.0.0",
+  "description": "Happy backend server",
   "repository": {
     "type": "git",
     "url": "https://github.com/slopus/happy"
@@ -10,37 +10,22 @@
   "bugs": "https://github.com/slopus/happy/issues",
   "author": "Kirill Dubovitskiy",
   "license": "MIT",
+  "private": true,
   "type": "module",
-  "bin": {
-    "happy-server": "./bin/happy-server.cjs"
-  },
-  "main": "./index.cjs",
+  "main": "./sources/index.ts",
   "exports": {
-    ".": "./index.cjs",
-    "./standalone": "./dist/standalone.mjs",
-    "./package.json": "./package.json"
+    ".": "./sources/index.ts",
+    "./standalone": "./sources/standalone.ts"
   },
-  "files": [
-    "bin",
-    "index.cjs",
-    "dist",
-    "prisma",
-    "webapp",
-    "package.json",
-    "README.md"
-  ],
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "build": "pnpm run typecheck && node scripts/build-runtime.cjs",
-    "build:runtime": "node scripts/build-runtime.cjs",
-    "bundle:webapp": "node ../happy-cli/scripts/bundle-webapp.cjs --out-dir webapp",
-    "build:standalone": "bun build ./sources/standalone.ts --compile --outfile dist/happy-server --target bun && find ../../node_modules/@electric-sql/pglite/dist -name 'pglite.wasm' -exec cp {} dist/ \\; && find ../../node_modules/@electric-sql/pglite/dist -name 'pglite.data' -exec cp {} dist/ \\; && cp -r prisma/migrations dist/prisma/migrations",
+    "build": "pnpm run typecheck:prod",
+    "typecheck:prod": "tsc --noEmit -p tsconfig.build.json",
     "start": "tsx ./sources/main.ts",
     "standalone": "tsx ./sources/standalone.ts",
     "standalone:dev": "tsx --env-file=.env.dev ./sources/standalone.ts migrate && tsx --env-file=.env.dev ./sources/standalone.ts serve",
     "dev": "lsof -ti tcp:3005 | xargs kill -9 && tsx --env-file=.env --env-file=.env.dev ./sources/main.ts",
     "test": "vitest run",
-    "prepublishOnly": "pnpm run build && pnpm run bundle:webapp && pnpm test",
     "migrate": "dotenv -e .env.dev -- prisma migrate dev",
     "migrate:reset": "dotenv -e .env.dev -- prisma migrate reset",
     "generate": "prisma generate --schema=prisma/schema.prisma",
@@ -104,9 +89,5 @@
     "uuid": "^9.0.1",
     "zod": "^4.0.0",
     "zod-to-json-schema": "^3.24.3"
-  },
-  "publishConfig": {
-    "access": "public",
-    "registry": "https://registry.npmjs.org"
   }
 }

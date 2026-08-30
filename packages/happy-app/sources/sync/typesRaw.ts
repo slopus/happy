@@ -1,5 +1,6 @@
 import * as z from 'zod';
 import { isCuid } from '@paralleldrive/cuid2';
+import { stripLeadingTaskNotificationWrappers } from '@slopus/happy-wire';
 import { MessageMetaSchema, MessageMeta } from './typesMessageMeta';
 
 //
@@ -12,8 +13,9 @@ const usageDataSchema = z.object({
     cache_creation_input_tokens: z.number().optional(),
     cache_read_input_tokens: z.number().optional(),
     output_tokens: z.number(),
+    context_window: z.number().optional(),
     service_tier: z.string().optional(),
-});
+}).passthrough();
 
 export type UsageData = z.infer<typeof usageDataSchema>;
 
@@ -115,6 +117,9 @@ const sessionEnvelopeSchema = z.object({
     claudeUuid: z.string().min(1).optional(),
     // Codex app-server item id for precise thread rollback points.
     codexItemId: z.string().min(1).optional(),
+    // Optional model usage from the source agent message. The reducer uses it
+    // for context meters; it is not rendered as a separate chat row.
+    usage: usageDataSchema.optional(),
     ev: sessionEventSchema,
 }).superRefine((envelope, ctx) => {
     if (envelope.ev.t === 'service' && envelope.role !== 'agent') {
@@ -543,9 +548,15 @@ function normalizeSessionEnvelope(
     createdAt: number,
     meta: MessageMeta | undefined,
 ): NormalizedMessage | null {
+    const isUsageOnlyServiceEvent = envelope.role === 'agent'
+        && envelope.ev.t === 'service'
+        && envelope.ev.text.trim().length === 0
+        && !!envelope.usage;
+
     // Session protocol requires turn id on all agent-originated envelopes.
-    // Drop malformed agent events without turn to avoid attaching stray messages.
-    if (envelope.role === 'agent' && !envelope.turn) {
+    // Usage-only updates may arrive after turn-end, when the producer no longer has
+    // an active turn to attach to; they update status bars without rendering rows.
+    if (envelope.role === 'agent' && !envelope.turn && !isUsageOnlyServiceEvent) {
         return null;
     }
 
@@ -587,17 +598,25 @@ function normalizeSessionEnvelope(
             createdAt: messageCreatedAt,
             role: 'agent',
             isSidechain,
-            content: [{
-                type: 'text',
-                text: envelope.ev.text,
-                uuid: contentUUID,
-                parentUUID
-            }],
-            meta
+            content: isUsageOnlyServiceEvent
+                ? []
+                : [{
+                    type: 'text',
+                    text: envelope.ev.text,
+                    uuid: contentUUID,
+                    parentUUID
+                }],
+            meta,
+            usage: envelope.usage,
         } satisfies NormalizedMessage;
     }
 
     if (envelope.ev.t === 'text') {
+        const visibleText = stripLeadingTaskNotificationWrappers(envelope.ev.text);
+        if (visibleText !== envelope.ev.text && visibleText.trim().length === 0) {
+            return null;
+        }
+
         if (envelope.role === 'user') {
             return {
                 id: messageId,
@@ -607,7 +626,7 @@ function normalizeSessionEnvelope(
                 isSidechain: false,
                 content: {
                     type: 'text',
-                    text: envelope.ev.text
+                    text: visibleText
                 },
                 meta,
                 claudeUuid: envelope.claudeUuid,
@@ -624,12 +643,12 @@ function normalizeSessionEnvelope(
             content: [
                 envelope.ev.thinking ? {
                     type: 'thinking',
-                    thinking: envelope.ev.text,
+                    thinking: visibleText,
                     uuid: contentUUID,
                     parentUUID
                 } : {
                     type: 'text',
-                    text: envelope.ev.text,
+                    text: visibleText,
                     uuid: contentUUID,
                     parentUUID
                 }
@@ -637,6 +656,7 @@ function normalizeSessionEnvelope(
             meta,
             claudeUuid: envelope.claudeUuid,
             codexItemId: envelope.codexItemId,
+            usage: envelope.usage,
         } satisfies NormalizedMessage;
     }
 
@@ -656,7 +676,8 @@ function normalizeSessionEnvelope(
                 uuid: contentUUID,
                 parentUUID
             }],
-            meta
+            meta,
+            usage: envelope.usage,
         } satisfies NormalizedMessage;
     }
 
@@ -675,7 +696,8 @@ function normalizeSessionEnvelope(
                 uuid: contentUUID,
                 parentUUID
             }],
-            meta
+            meta,
+            usage: envelope.usage,
         } satisfies NormalizedMessage;
     }
 
@@ -728,7 +750,8 @@ function normalizeSessionEnvelope(
                     parentUUID: contentUUID
                 }
             ],
-            meta
+            meta,
+            usage: envelope.usage,
         } satisfies NormalizedMessage;
     }
 

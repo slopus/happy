@@ -1,15 +1,25 @@
 import React, { useState } from 'react';
 import { View, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { Stack, useRouter } from 'expo-router';
 import { Text } from '@/components/StyledText';
 import { Typography } from '@/constants/Typography';
+import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
 import { RoundButton } from '@/components/RoundButton';
+import { Switch } from '@/components/Switch';
 import { Modal } from '@/modal';
 import { layout } from '@/components/layout';
 import { t } from '@/text';
-import { getServerUrl, setServerUrl, validateServerUrl, getServerInfo } from '@/sync/serverConfig';
+import {
+    getServerUrl,
+    setServerUrl,
+    validateServerUrl,
+    getServerInfo,
+    setUseCustomServerForVoice,
+    shouldUseCustomServerForVoice,
+} from '@/sync/serverConfig';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 
 const stylesheet = StyleSheet.create((theme) => ({
@@ -20,7 +30,7 @@ const stylesheet = StyleSheet.create((theme) => ({
         flex: 1,
     },
     contentContainer: {
-        backgroundColor: theme.colors.surface,
+        backgroundColor: Platform.select({ web: theme.colors.surface, default: 'transparent' }),
         paddingHorizontal: 16,
         paddingVertical: 12,
         width: '100%',
@@ -36,7 +46,7 @@ const stylesheet = StyleSheet.create((theme) => ({
         marginBottom: 8,
     },
     textInput: {
-        backgroundColor: theme.colors.input.background,
+        backgroundColor: Platform.select({ web: theme.colors.input.background, default: theme.colors.glass.backgroundSubtle }),
         padding: 12,
         borderRadius: 8,
         marginBottom: 8,
@@ -81,6 +91,8 @@ export default function ServerConfigScreen() {
     const router = useRouter();
     const serverInfo = getServerInfo();
     const [inputUrl, setInputUrl] = useState(serverInfo.isCustom ? getServerUrl() : '');
+    const [isCustomServer, setIsCustomServer] = useState(serverInfo.isCustom);
+    const [useCustomServerForVoice, setUseCustomServerForVoiceState] = useState(shouldUseCustomServerForVoice());
     const [error, setError] = useState<string | null>(null);
     const [isValidating, setIsValidating] = useState(false);
 
@@ -142,6 +154,12 @@ export default function ServerConfigScreen() {
 
         if (confirmed) {
             setServerUrl(inputUrl);
+            const nextIsCustomServer = getServerInfo().isCustom;
+            setIsCustomServer(nextIsCustomServer);
+            if (!nextIsCustomServer) {
+                setUseCustomServerForVoice(false);
+                setUseCustomServerForVoiceState(false);
+            }
         }
     };
 
@@ -154,8 +172,16 @@ export default function ServerConfigScreen() {
 
         if (confirmed) {
             setServerUrl(null);
+            setUseCustomServerForVoice(false);
             setInputUrl('');
+            setIsCustomServer(getServerInfo().isCustom);
+            setUseCustomServerForVoiceState(false);
         }
+    };
+
+    const handleUseCustomServerForVoice = (enabled: boolean) => {
+        setUseCustomServerForVoice(enabled);
+        setUseCustomServerForVoiceState(enabled);
     };
 
     return (
@@ -221,13 +247,35 @@ export default function ServerConfigScreen() {
                                     />
                                 </View>
                             </View>
-                            {serverInfo.isCustom && (
+                            {isCustomServer && (
                                 <Text style={styles.statusText}>
                                     {t('server.currentlyUsingCustomServer')}
                                 </Text>
                             )}
                         </View>
                     </ItemGroup>
+
+                    {isCustomServer && (
+                        <ItemGroup
+                            title={t('server.services')}
+                            footer={t('server.customServerVoiceFooter')}
+                        >
+                            <Item
+                                title={t('server.useCustomServerForVoice')}
+                                subtitle={useCustomServerForVoice
+                                    ? t('server.customServerVoiceEnabled')
+                                    : t('server.customServerVoiceDisabled')}
+                                icon={<Ionicons name="mic-outline" size={29} color="#34C759" />}
+                                rightElement={
+                                    <Switch
+                                        value={useCustomServerForVoice}
+                                        onValueChange={handleUseCustomServerForVoice}
+                                    />
+                                }
+                                showChevron={false}
+                            />
+                        </ItemGroup>
+                    )}
 
                     </ItemList>
             </KeyboardAvoidingView>

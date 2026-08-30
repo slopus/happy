@@ -1,7 +1,21 @@
 import type { ApprovalPolicy, SandboxMode } from './codexAppServerTypes';
+import type { PermissionMode } from '@/api/types';
+
+export const CODEX_REMOTE_PERMISSION_MODES = [
+    'auto',
+    'default',
+    'read-only',
+    'safe-yolo',
+    'yolo',
+] as const satisfies readonly PermissionMode[];
+
+export function isRemoteCodexPermissionMode(value: unknown): value is typeof CODEX_REMOTE_PERMISSION_MODES[number] {
+    return typeof value === 'string'
+        && (CODEX_REMOTE_PERMISSION_MODES as readonly string[]).includes(value);
+}
 
 export function resolveCodexExecutionPolicy(
-    permissionMode: import('@/api/types').PermissionMode,
+    permissionMode: PermissionMode,
     sandboxManagedByHappy: boolean,
 ): { approvalPolicy: ApprovalPolicy; sandbox: SandboxMode } {
     if (sandboxManagedByHappy) {
@@ -14,9 +28,10 @@ export function resolveCodexExecutionPolicy(
     const approvalPolicy: ApprovalPolicy = (() => {
         switch (permissionMode) {
             // Codex native modes
+            case 'auto': return 'on-request';                      // Codex decides, asks only when it needs more
             case 'default': return 'untrusted';                    // Ask for non-trusted commands
             case 'read-only': return 'never';                      // Never ask, read-only enforced by sandbox
-            case 'safe-yolo': return 'on-failure';                 // Auto-run, ask only on failure
+            case 'safe-yolo': return 'never';                      // Workspace sandbox enforces safety; do not prompt
             case 'yolo': return 'never';                           // Full YOLO: never interrupt for approvals
             // Defensive fallback for Claude-specific modes (backward compatibility)
             case 'bypassPermissions': return 'never';              // Full access: map to yolo behavior
@@ -29,6 +44,7 @@ export function resolveCodexExecutionPolicy(
     const sandbox: SandboxMode = (() => {
         switch (permissionMode) {
             // Codex native modes
+            case 'auto': return 'workspace-write';                 // Codex's own Auto preset: on-request + workspace
             case 'default': return 'workspace-write';              // Can write in workspace
             case 'read-only': return 'read-only';                  // Read-only filesystem
             case 'safe-yolo': return 'workspace-write';            // Can write in workspace
@@ -42,4 +58,19 @@ export function resolveCodexExecutionPolicy(
     })();
 
     return { approvalPolicy, sandbox };
+}
+
+export function shouldAutoApproveCodexApproval(
+    permissionMode: PermissionMode,
+    sandboxManagedByHappy: boolean,
+): boolean {
+    if (sandboxManagedByHappy) {
+        return true;
+    }
+
+    // safe-yolo is deliberately absent: its turns run with approvalPolicy
+    // 'never' inside the workspace sandbox, so any approval codex still
+    // surfaces (a sandbox-escalation retry or an MCP elicitation) is exactly
+    // what safe-yolo promises to ask the user about.
+    return permissionMode === 'yolo' || permissionMode === 'bypassPermissions';
 }

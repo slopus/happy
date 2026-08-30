@@ -17,10 +17,17 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 }
 
 export const zhHant: TranslationStructure = {
+    voiceStatusBar: {
+        tapToEnd: '點按結束',
+        connecting: '連接中…',
+        error: '連接錯誤',
+        active: '語音助手運行中',
+    },
+
     tabs: {
         // Tab navigation labels
         inbox: '收件匣',
-        sessions: '終端',
+        sessions: '工作階段',
         settings: '設定',
     },
 
@@ -82,6 +89,7 @@ export const zhHant: TranslationStructure = {
         offline: '離線',
         lastSeen: ({ time }: { time: string }) => `最後活躍時間 ${time}`,
         permissionRequired: '需要權限',
+        inputRequired: '等待你的回答',
         activeNow: '目前活躍',
         unknown: '未知',
         unread: '新結果',
@@ -161,35 +169,53 @@ export const zhHant: TranslationStructure = {
             light: '始終使用淺色主題',
             dark: '始終使用深色主題',
         },
+        chat: '聊天',
+        chatDescription: '自訂聊天訊息外觀',
+        usageLimitShowRemaining: '顯示剩餘額度',
+        usageLimitShowRemainingDescription: '額度指示器顯示剩餘量，而非已用量',
+        userMessageBubbleColor: '使用者氣泡顏色',
+        userMessageBubbleColorDescription: '讓您的訊息在長聊天中更容易找到',
+        userMessageBubbleColorOptions: {
+            blue: '藍色',
+            green: '綠色',
+            purple: '紫色',
+            rose: '玫瑰色',
+            sand: '沙色',
+            gray: '灰色',
+        },
         display: '顯示',
         displayDescription: '控制版面配置和間距',
-        inlineToolCalls: '內嵌工具呼叫',
-        inlineToolCallsDescription: '在聊天訊息中直接顯示工具呼叫',
-        expandTodoLists: '展開待辦清單',
-        expandTodoListsDescription: '顯示所有待辦事項而不僅僅是變更',
-        showLineNumbersInDiffs: '在差異中顯示行號',
-        showLineNumbersInDiffsDescription: '在程式碼差異中顯示行號',
+        compactToolCalls: '精簡顯示工具呼叫',
+        compactToolCallsDescription: '將非互動式工具呼叫顯示為單行；開啟該行可查看詳細資訊',
         showLineNumbersInToolViews: '在工具檢視中顯示行號',
         showLineNumbersInToolViewsDescription: '在工具檢視差異中顯示行號',
-        wrapLinesInDiffs: '在差異中換行',
-        wrapLinesInDiffsDescription: '在差異檢視中換行顯示長行而不是水平捲動',
-        diffStyle: '差異檢視',
-        diffStyleDescription: '以單欄（unified）或並排（split）顯示差異。split 檢視僅在 Web 上可用。',
-        diffStyleOptions: {
-            unified: 'Unified',
-            split: 'Split',
-        },
-        alwaysShowContextSize: '始終顯示上下文大小',
-        alwaysShowContextSizeDescription: '即使未接近限制時也顯示上下文使用情況',
-        avatarStyle: '頭像風格',
-        avatarStyleDescription: '選擇工作階段頭像外觀',
-        avatarOptions: {
-            pixelated: '像素化',
+        alwaysShowContextSize: '顯示用量',
+        alwaysShowContextSizeDescription: '在輸入框下方顯示上下文和方案用量。接近上限時始終顯示警告。',
+        input: '輸入',
+        inputDescription: '配置訊息輸入框',
+        showHarnessIconInSessionHeader: '在工作階段標題中顯示 harness 圖示',
+        showHarnessIconInSessionHeaderDescription: '在工作階段標題中顯示 harness 圖示',
+        showHarnessIconsInSessionList: '在工作階段列表中顯示 harness 圖示',
+        showHarnessIconsInSessionListDescription: '在工作階段列表的頭像上顯示 harness 圖示',
+        avatars: '頭像',
+        avatarsDescription: '選擇生成的工作階段頭像外觀',
+        avatarStyle: '頭像樣式',
+        avatarStyleOptions: {
+            brutalist: '粗獷主義',
+            pixelated: '像素',
             gradient: '漸層',
-            brutalist: '粗獷風格',
         },
-        showFlavorIcons: '顯示 AI 提供者圖示',
-        showFlavorIconsDescription: '在工作階段頭像上顯示 AI 提供者圖示',
+        avatarMonochrome: '黑白頭像',
+        avatarMonochromeDescription: '不帶顏色顯示頭像',
+    },
+
+    sessionsFilter: {
+        // Filter menu on the home sessions list header
+        title: '篩選',
+        groupingTitle: '分組',
+        flatList: '平鋪列表',
+        groupByProject: '按專案分組',
+        appearanceSettings: '外觀設定',
     },
 
     settingsFeatures: {
@@ -209,17 +235,8 @@ export const zhHant: TranslationStructure = {
         commandPaletteDisabled: '快速命令存取已停用',
         markdownCopyV2: 'Markdown 複製 v2',
         markdownCopyV2Subtitle: '長按開啟複製強制回應視窗',
-        hideInactiveSessions: '隱藏非活躍工作階段',
-        hideInactiveSessionsSubtitle: '僅在清單中顯示活躍的聊天',
         groupToolCalls: '分組工具呼叫',
         groupToolCallsSubtitle: '將連續的工具呼叫摺疊到單一容器中',
-        privacy: '隱私',
-        privacyDescription: '完全停用所有分析和遙測。不會向 PostHog 或任何其他追蹤服務傳送資料。',
-        disableAnalytics: '停用分析',
-        analyticsDisabled: '所有追蹤和遙測已停用',
-        analyticsEnabled: '匿名使用分析已啟用',
-        imageUpload: '圖片上傳',
-        imageUploadSubtitle: '將圖片附加到訊息中，讓支援的代理分析',
     },
 
     errors: {
@@ -293,6 +310,8 @@ export const zhHant: TranslationStructure = {
         inactiveArchived: '此會話處於非活動狀態。',
         resumeFromTerminal: '若要從終端恢復它：',
         newChat: '新對話',
+        statusBarContext: '上下文',
+        statusBarPathTitle: '工作目錄',
         forkAction: '分叉會話',
         forkSubtitle: '在相同上下文中開啟新會話繼續',
         duplicateAction: '從訊息處複製…',
@@ -331,7 +350,12 @@ export const zhHant: TranslationStructure = {
         failedToConnectToServer: '連線伺服器失敗',
         currentlyUsingCustomServer: '目前使用自訂伺服器',
         customServerUrlLabel: '自訂伺服器 URL',
-        advancedFeatureFooter: "這是一個進階功能。只有在您知道自己在做什麼時才更改伺服器。更改伺服器後您需要重新登入。"
+        advancedFeatureFooter: "這是一個進階功能。只有在您知道自己在做什麼時才更改伺服器。更改伺服器後您需要重新登入。",
+        services: '服務',
+        useCustomServerForVoice: '使用自訂伺服器處理語音',
+        customServerVoiceEnabled: '語音憑證和用量由您的自訂伺服器處理',
+        customServerVoiceDisabled: '語音使用 Happy Cloud 和您的 Happy 訂閱',
+        customServerVoiceFooter: '關閉時，啟動語音會連線至 Happy Cloud 和 ElevenLabs。僅當您的自訂伺服器已設定語音功能時才啟用。',
     },
 
     sessionInfo: {
@@ -365,7 +389,6 @@ export const zhHant: TranslationStructure = {
         resumeSessionSubtitle: 'Resume this session on the same machine',
         resumeSessionSameMachineOnly: 'This session can only be resumed on the same machine it started on.',
         resumeSessionMachineOffline: 'This machine is offline. Resume is only available while it is online.',
-        resumeSessionNeedsHappyAgent: 'Resume is unavailable on this machine. Run `happy-agent auth login` to enable it.',
         resumeSessionMissingMachine: 'This session is missing its machine metadata, so it cannot be resumed.',
         resumeSessionMissingBackendId: 'This session does not have a resumable Claude or Codex identifier.',
         resumeSessionUnexpectedDirectoryPrompt: 'Resume cannot create directories. Start the session manually from its original path.',
@@ -423,7 +446,10 @@ export const zhHant: TranslationStructure = {
     agentInput: {
         permissionMode: {
             title: '權限模式',
+            auto: '自行判斷，不確定時詢問',
             default: '預設',
+            agyDefault: 'agy 沙箱，不詢問',
+            openclawInert: 'openclaw 不使用此設定',
             acceptEdits: '接受編輯',
             plan: '計畫模式',
             dontAsk: '不再詢問',
@@ -451,6 +477,11 @@ export const zhHant: TranslationStructure = {
             readOnly: '唯讀模式',
             safeYolo: '安全 YOLO',
             yolo: 'YOLO',
+            defaultDescription: '不受信任的命令前詢問',
+            autoDescription: '自行判斷，不確定時詢問',
+            readOnlyDescription: '禁止寫入',
+            safeYoloDescription: '無需確認，工作區沙盒',
+            yoloDescription: '無需確認，完全存取',
             badgeReadOnly: '唯讀模式',
             badgeSafeYolo: '安全 YOLO',
             badgeYolo: 'YOLO',
@@ -476,7 +507,14 @@ export const zhHant: TranslationStructure = {
             badgePlan: '計畫',
         },
         context: {
-            remaining: ({ percent }: { percent: number }) => `剩餘 ${percent}%`,
+            detailContext: ({ used, total }: { used: string; total: string }) => `上下文 ${used} / ${total}`,
+            percentContext: ({ percent }: { percent: number }) => `上下文 ${percent}%`,
+            percentWeek: ({ percent }: { percent: number }) => `本週 ${percent}%`,
+        },
+        usagePopup: {
+            session: '會話',
+            week: '週',
+            resets: ({ time }: { time: string }) => `重置於 ${time}`,
         },
         suggestion: {
             fileLabel: '檔案',
@@ -492,11 +530,26 @@ export const zhHant: TranslationStructure = {
         offlineUnableToSpawn: '無法生成新工作階段，已離線',
     },
 
+    agentQuestion: {
+        title: "問題",
+        submit: "傳送回答",
+        chooseMultiple: "選擇所有適用項",
+        ownAnswer: "自訂回答",
+        ownAnswerPlaceholder: "輸入你的回答",
+        submitFailed: "無法傳送你的回答",
+        dismiss: "忽略",
+        unsupportedTitle: "不支援的請求",
+        unsupportedDescription: ({ kind }: { kind: string }) => `此版本的 Happy 無法顯示「${kind}」請求。請更新應用程式後回覆。`,
+        moreQuestions: ({ count }: { count: number }) =>
+            count === 1 ? "還有 1 個問題" : `${count} 個問題`,
+    },
+
     sidebar: {
         sessionsTitle: 'Happy',
         showArchived: '顯示已封存',
         hideArchived: '隱藏已封存',
         newSession: '新建對話',
+        projects: "專案",
     },
 
     zen: {
@@ -614,6 +667,8 @@ export const zhHant: TranslationStructure = {
         deleted: '已刪除',
         changedFiles: ({ count }: { count: number }) => `${count} 個已變更的檔案`,
         allFiles: '所有檔案',
+        addPanel: '新增面板',
+        closePanel: '關閉面板',
         editFile: '編輯',
         saveFile: '儲存',
         failedToRead: '讀取檔案失敗',
@@ -622,6 +677,19 @@ export const zhHant: TranslationStructure = {
         fileConflictDescription: '編輯期間檔案已在裝置上被修改。重新載入以查看最新版本。',
         reload: '重新載入',
         overwrite: '覆蓋',
+    },
+    sideChat: {
+        panelTitle: '側邊聊天',
+        emptyTitle: '開始側邊聊天',
+        emptySubtitle: '在一旁向智能體提問。它會繼承此聊天的上下文，但保持獨立——這裡的任何操作都不會影響主對話。',
+        startButton: '開始側邊聊天',
+        creating: '正在開始側邊聊天…',
+        unavailable: '此工作階段暫時無法開始側邊聊天——請等待智能體上線。',
+        composerPlaceholder: '傳送訊息到側邊聊天…',
+        expand: '全螢幕開啟',
+        tabLabel: ({ index }: { index: number }) => `側邊聊天 ${index}`,
+        newChat: '新增側邊聊天',
+        close: '關閉側邊聊天',
     },
 
     settingsVoice: {

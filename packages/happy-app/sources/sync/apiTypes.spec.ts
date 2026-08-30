@@ -68,5 +68,19 @@ describe('ApiUpdateSchema', () => {
         });
         expect(parsed.success).toBe(true);
     });
+
+    it('accepts project lifecycle updates and preserves session projectId', () => {
+        expect(ApiUpdateSchema.safeParse({
+            t: 'new-project',
+            projectId: 'project-1',
+        }).success).toBe(true);
+
+        const session = ApiUpdateSchema.parse({
+            t: 'update-session',
+            id: 'session-1',
+            projectId: 'project-1',
+        });
+        expect(session).toMatchObject({ projectId: 'project-1' });
+    });
 });
 

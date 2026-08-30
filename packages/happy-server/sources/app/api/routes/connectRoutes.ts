@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { type Fastify, GitHubProfile } from "../types";
 import { auth } from "@/app/auth/auth";
-import { log } from "@/utils/log";
+import { debug, log } from "@/utils/log";
 import { eventRouter } from "@/app/events/eventRouter";
 import { decryptString, encryptString } from "@/modules/encrypt";
 import { githubConnect } from "@/app/github/githubConnect";
@@ -37,7 +37,8 @@ export function connectRoutes(app: Fastify) {
                 (req as any).rawBody = bodyStr;
                 done(null, json);
             } catch (err: any) {
-                log({ module: 'content-parser', level: 'error' }, `JSON parse error on ${req.method} ${req.url}: ${err.message}, body: "${body}"`);
+                const path = req.url.split('?')[0] || '<unknown>';
+                debug({ module: 'content-parser' }, `http:invalid-json method=${req.method} path=${path} message=${err.message}`);
                 err.statusCode = 400;
                 done(err, undefined);
             }

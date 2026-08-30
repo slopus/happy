@@ -3,10 +3,15 @@ import pretty from 'pino-pretty';
 import { mkdirSync } from 'fs';
 import { join } from 'path';
 
+export const isProduction = process.env.NODE_ENV === 'production';
+
+const MODULE_WIDTH = 18;
+const remoteDebugEnabled = Boolean(process.env.DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING);
+
 // Single log file name created once at startup
 let consolidatedLogFile: string | undefined;
 
-if (process.env.DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING) {
+if (remoteDebugEnabled) {
     const logsDir = join(process.cwd(), '.logs');
     try {
         mkdirSync(logsDir, { recursive: true });
@@ -24,14 +29,13 @@ if (process.env.DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING) {
     }
 }
 
-// Format time as HH:MM:ss.mmm in local time
+// Format time as HH:MM:ss in local time
 function formatLocalTime(timestamp?: number) {
     const date = timestamp ? new Date(timestamp) : new Date();
     const hours = String(date.getHours()).padStart(2, '0');
     const mins = String(date.getMinutes()).padStart(2, '0');
     const secs = String(date.getSeconds()).padStart(2, '0');
-    const ms = String(date.getMilliseconds()).padStart(3, '0');
-    return `${hours}:${mins}:${secs}.${ms}`;
+    return `${hours}:${mins}:${secs}`;
 }
 
 // IMPORTANT: do NOT use pino's `transport` option here.
@@ -46,16 +50,27 @@ function formatLocalTime(timestamp?: number) {
 // composed with pino.multistream) need no worker and no on-disk resolution, so
 // they work identically whether bundled or run from source.
 const prettyStream = pretty({
-    colorize: true,
-    translateTime: 'HH:MM:ss.l',
-    ignore: 'pid,hostname',
-    messageFormat: '{levelLabel} {msg} | [{time}]',
+    colorize: !isProduction,
+    translateTime: false,
+    ignore: 'pid,hostname,module,localTime,level,time',
+    hideObject: true,
+    messageFormat: (log, messageKey) => {
+        const module = String(log.module || 'server').slice(0, MODULE_WIDTH).padEnd(MODULE_WIDTH);
+        const time = String(log.localTime || formatLocalTime());
+        return `${time} ${module}  ${String(log[messageKey] || '')}`;
+    },
     errorLikeObjectKeys: ['err', 'error'],
 });
 
-const loggerStreams: pino.StreamEntry[] = [{ level: 'debug', stream: prettyStream }];
+// Production console receives only errors and fatals. Summaries use a small
+// dedicated logger below so they retain info semantics without admitting all
+// info logs. Explicit remote-debug files still receive every level.
+const loggerStreams: pino.StreamEntry[] = [{
+    level: isProduction ? 'error' : 'debug',
+    stream: prettyStream
+}];
 
-if (process.env.DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING && consolidatedLogFile) {
+if (remoteDebugEnabled && consolidatedLogFile) {
     loggerStreams.push({
         level: 'debug',
         stream: pino.destination({ dest: consolidatedLogFile, mkdir: true }),
@@ -65,7 +80,7 @@ if (process.env.DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING && consolidatedL
 // Shared core options: both loggers add localTime to every entry and emit the
 // same timestamp shape. Stream selection (pretty/file) is layered on top.
 const baseOptions = {
-    level: 'debug',
+    level: isProduction && !remoteDebugEnabled ? 'error' : 'debug',
     formatters: {
         log: (object: any) => {
             // Add localTime to every log entry
@@ -81,11 +96,25 @@ const baseOptions = {
 // Main server logger with local time formatting
 export const logger = pino(baseOptions, pino.multistream(loggerStreams));
 
+// This logger bypasses the production error threshold only for the explicit
+// 30-second aggregate emitted by productionLogSummary.
+const summaryLogger = pino({ ...baseOptions, level: 'info' }, prettyStream);
+
 // Optional file-only logger for remote logs from CLI/mobile
-export const fileConsolidatedLogger = process.env.DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING && consolidatedLogFile ?
+export const fileConsolidatedLogger = remoteDebugEnabled && consolidatedLogFile ?
     pino(baseOptions, pino.destination({ dest: consolidatedLogFile, mkdir: true })) : undefined;
 
 export function log(src: any, ...args: any[]) {
+    if (src && typeof src === 'object' && typeof src.level === 'string') {
+        const { level, ...context } = src;
+        switch (level) {
+            case 'debug': logger.debug(context, ...args); return;
+            case 'info': logger.info(context, ...args); return;
+            case 'warn': logger.warn(context, ...args); return;
+            case 'error': logger.error(context, ...args); return;
+            case 'fatal': logger.fatal(context, ...args); return;
+        }
+    }
     logger.info(src, ...args);
 }
 
@@ -99,4 +128,9 @@ export function error(src: any, ...args: any[]) {
 
 export function debug(src: any, ...args: any[]) {
     logger.debug(src, ...args);
+}
+
+export function summary(src: any, ...args: any[]) {
+    summaryLogger.info(src, ...args);
+    fileConsolidatedLogger?.info(src, ...args);
 }

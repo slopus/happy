@@ -148,7 +148,7 @@ export default function SearchFriendsScreen() {
 const styles = StyleSheet.create((theme) => ({
     container: {
         flex: 1,
-        backgroundColor: theme.colors.groupped.background,
+        backgroundColor: Platform.select({ web: theme.colors.groupped.background, default: 'transparent' }),
     },
     searchSection: {
         marginBottom: 16,
@@ -159,7 +159,7 @@ const styles = StyleSheet.create((theme) => ({
         position: 'relative',
     },
     searchInput: {
-        backgroundColor: theme.colors.surface,
+        backgroundColor: Platform.select({ web: theme.colors.surface, default: 'transparent' }),
         borderWidth: 1,
         borderColor: theme.colors.divider,
         borderRadius: 12,

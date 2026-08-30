@@ -6,7 +6,7 @@
 
 import { FileHandle } from 'node:fs/promises'
 import { readFile, writeFile, mkdir, open, unlink, rename, stat } from 'node:fs/promises'
-import { existsSync, writeFileSync, readFileSync, unlinkSync, renameSync } from 'node:fs'
+import { existsSync, writeFileSync, readFileSync, unlinkSync, renameSync, linkSync } from 'node:fs'
 import { constants } from 'node:fs'
 import { configuration } from '@/configuration'
 import * as z from 'zod';
@@ -342,32 +342,49 @@ export async function acquireDaemonLock(
   maxAttempts: number = 5,
   delayIncrementMs: number = 200
 ): Promise<FileHandle | null> {
+  // Lock creation is atomic INCLUDING the PID payload: the PID is written to
+  // a private temp file first and hard-linked into place (link fails with
+  // EEXIST exactly like O_EXCL). A lock file therefore never exists in an
+  // empty/partially-written state, so any lock without a live-PID payload is
+  // unambiguously stale and can be reclaimed immediately.
+  const tempPath = `${configuration.daemonLockFile}.${process.pid}.tmp`;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-      // O_EXCL ensures we only create if it doesn't exist (atomic lock acquisition)
-      const fileHandle = await open(
-        configuration.daemonLockFile,
-        constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY
-      );
-      // Write PID to lock file for debugging
-      await fileHandle.writeFile(String(process.pid));
-      return fileHandle;
+      writeFileSync(tempPath, String(process.pid));
+      linkSync(tempPath, configuration.daemonLockFile);
+      unlinkSync(tempPath);
+      // Hold an open handle for the daemon's lifetime (released by releaseDaemonLock)
+      return await open(configuration.daemonLockFile, constants.O_RDONLY);
     } catch (error: any) {
+      try {
+        unlinkSync(tempPath);
+      } catch { }
+
       if (error.code === 'EEXIST') {
-        // Lock file exists, check if process is still running
+        // Lock file exists, check if its owner is still running
+        let lockIsStale = false;
         try {
           const lockPid = readFileSync(configuration.daemonLockFile, 'utf-8').trim();
-          if (lockPid && !isNaN(Number(lockPid))) {
+          const lockPidNumber = Number(lockPid);
+          if (!lockPid || !Number.isSafeInteger(lockPidNumber) || lockPidNumber <= 0) {
+            lockIsStale = true;
+          } else {
             try {
-              process.kill(Number(lockPid), 0); // Check if process exists
+              process.kill(lockPidNumber, 0); // Check if process exists
             } catch {
-              // Process doesn't exist, remove stale lock
-              unlinkSync(configuration.daemonLockFile);
-              continue; // Retry acquisition
+              lockIsStale = true;
             }
           }
         } catch {
-          // Can't read lock file, might be corrupted
+          // Can't read the lock file — corrupted leftovers, reclaim
+          lockIsStale = true;
+        }
+
+        if (lockIsStale) {
+          try {
+            unlinkSync(configuration.daemonLockFile);
+            continue; // Retry acquisition
+          } catch { }
         }
       }
 
@@ -444,4 +461,3 @@ export function persistSession(sessionId: string, session: PersistedSession): vo
     logger.debug(`[PERSISTENCE] Failed to persist session ${sessionId}:`, error);
   }
 }
-

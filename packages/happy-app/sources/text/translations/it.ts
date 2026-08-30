@@ -15,10 +15,17 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
  * Must match the exact structure of the English translations
  */
 export const it: TranslationStructure = {
+    voiceStatusBar: {
+        tapToEnd: 'tocca per terminare',
+        connecting: 'Connessione…',
+        error: 'Errore di connessione',
+        active: 'Assistente vocale attivo',
+    },
+
     tabs: {
         // Tab navigation labels
         inbox: 'Posta',
-        sessions: 'Terminali',
+        sessions: 'Sessioni',
         settings: 'Impostazioni',
     },
 
@@ -80,6 +87,7 @@ export const it: TranslationStructure = {
         offline: 'offline',
         lastSeen: ({ time }: { time: string }) => `visto l'ultima volta ${time}`,
         permissionRequired: 'permesso richiesto',
+        inputRequired: 'in attesa della tua risposta',
         activeNow: 'Attivo ora',
         unknown: 'sconosciuto',
         unread: 'nuovi risultati',
@@ -159,35 +167,53 @@ export const it: TranslationStructure = {
             light: 'Usa sempre il tema chiaro',
             dark: 'Usa sempre il tema scuro',
         },
+        chat: 'Chat',
+        chatDescription: 'Personalizza l\'aspetto dei messaggi della chat',
+        usageLimitShowRemaining: 'Mostra la quota rimanente',
+        usageLimitShowRemainingDescription: 'Gli indicatori di limite contano alla rovescia invece che in avanti',
+        userMessageBubbleColor: 'Colore dei tuoi messaggi',
+        userMessageBubbleColorDescription: 'Rendi i tuoi messaggi più facili da trovare nelle chat lunghe',
+        userMessageBubbleColorOptions: {
+            blue: 'Blu',
+            green: 'Verde',
+            purple: 'Viola',
+            rose: 'Rosa',
+            sand: 'Sabbia',
+            gray: 'Grigio',
+        },
         display: 'Schermo',
         displayDescription: 'Controlla layout e spaziatura',
-        inlineToolCalls: 'Chiamate strumenti inline',
-        inlineToolCallsDescription: 'Mostra le chiamate agli strumenti direttamente nei messaggi di chat',
-        expandTodoLists: 'Espandi liste di attività',
-        expandTodoListsDescription: 'Mostra tutte le attività invece dei soli cambiamenti',
-        showLineNumbersInDiffs: 'Mostra numeri di riga nelle differenze',
-        showLineNumbersInDiffsDescription: 'Mostra i numeri di riga nei diff del codice',
+        compactToolCalls: 'Chiamate strumenti compatte',
+        compactToolCallsDescription: 'Mostra le chiamate non interattive su una riga; apri una riga per i dettagli',
         showLineNumbersInToolViews: 'Mostra numeri di riga nelle viste strumenti',
         showLineNumbersInToolViewsDescription: 'Mostra i numeri di riga nei diff delle viste strumenti',
-        wrapLinesInDiffs: 'A capo nelle differenze',
-        wrapLinesInDiffsDescription: 'A capo delle righe lunghe invece dello scorrimento orizzontale nelle viste diff',
-        diffStyle: 'Vista diff',
-        diffStyleDescription: 'Mostra le differenze in una sola colonna (unified) o affiancate (split). La vista split è disponibile solo sul web.',
-        diffStyleOptions: {
-            unified: 'Unified',
-            split: 'Split',
-        },
-        alwaysShowContextSize: 'Mostra sempre dimensione contesto',
-        alwaysShowContextSizeDescription: 'Mostra l\'uso del contesto anche quando non è vicino al limite',
+        alwaysShowContextSize: 'Mostra utilizzo',
+        alwaysShowContextSizeDescription: 'Contesto e limiti del piano sotto il campo messaggio. Gli avvisi vicino al limite restano visibili.',
+        input: 'Input',
+        inputDescription: 'Configura il campo messaggio',
+        showHarnessIconInSessionHeader: 'Mostra l\'icona harness nell\'intestazione della sessione',
+        showHarnessIconInSessionHeaderDescription: 'Mostra l\'icona harness nell\'intestazione della sessione',
+        showHarnessIconsInSessionList: 'Mostra le icone harness nell\'elenco delle sessioni',
+        showHarnessIconsInSessionListDescription: 'Mostra le icone harness negli avatar dell\'elenco delle sessioni',
+        avatars: 'Avatar',
+        avatarsDescription: 'Scegli l\'aspetto degli avatar di sessione generati',
         avatarStyle: 'Stile avatar',
-        avatarStyleDescription: 'Scegli l\'aspetto dell\'avatar di sessione',
-        avatarOptions: {
+        avatarStyleOptions: {
+            brutalist: 'Brutalista',
             pixelated: 'Pixelato',
             gradient: 'Gradiente',
-            brutalist: 'Brutalista',
         },
-        showFlavorIcons: 'Mostra icone provider IA',
-        showFlavorIconsDescription: 'Mostra le icone del provider IA sugli avatar di sessione',
+        avatarMonochrome: 'Avatar in bianco e nero',
+        avatarMonochromeDescription: 'Mostra gli avatar senza colore',
+    },
+
+    sessionsFilter: {
+        // Filter menu on the home sessions list header
+        title: 'Filtro',
+        groupingTitle: 'Raggruppamento',
+        flatList: 'Elenco semplice',
+        groupByProject: 'Raggruppa per progetto',
+        appearanceSettings: 'Impostazioni aspetto',
     },
 
     settingsFeatures: {
@@ -207,17 +233,8 @@ export const it: TranslationStructure = {
         commandPaletteDisabled: 'Accesso rapido ai comandi disabilitato',
         markdownCopyV2: 'Markdown Copy v2',
         markdownCopyV2Subtitle: 'Pressione lunga apre la finestra di copia',
-        hideInactiveSessions: 'Nascondi sessioni inattive',
-        hideInactiveSessionsSubtitle: 'Mostra solo le chat attive nella tua lista',
         groupToolCalls: 'Raggruppa chiamate agli strumenti',
         groupToolCallsSubtitle: 'Comprimi le chiamate consecutive agli strumenti in un unico contenitore',
-        privacy: 'Privacy',
-        privacyDescription: 'Disabilita completamente tutte le analisi e la telemetria. Nessun dato verrà inviato a PostHog o ad altri servizi di tracciamento.',
-        disableAnalytics: 'Disabilita analisi',
-        analyticsDisabled: 'Tutto il tracciamento e la telemetria disabilitati',
-        analyticsEnabled: 'Analisi anonime di utilizzo attive',
-        imageUpload: 'Caricamento immagini',
-        imageUploadSubtitle: 'Allega immagini ai messaggi per farle analizzare dagli agenti supportati',
     },
 
     errors: {
@@ -291,6 +308,8 @@ export const it: TranslationStructure = {
         inactiveArchived: 'Questa sessione è inattiva.',
         resumeFromTerminal: 'Per riprenderla dal terminale:',
         newChat: 'Nuova chat',
+        statusBarContext: 'Contesto',
+        statusBarPathTitle: 'Directory di lavoro',
         forkAction: 'Biforca sessione',
         forkSubtitle: 'Continua in una nuova sessione con lo stesso contesto',
         duplicateAction: 'Duplica da un messaggio…',
@@ -329,7 +348,12 @@ export const it: TranslationStructure = {
         failedToConnectToServer: 'Impossibile connettersi al server',
         currentlyUsingCustomServer: 'Attualmente si usa un server personalizzato',
         customServerUrlLabel: 'URL server personalizzato',
-        advancedFeatureFooter: 'Questa è una funzionalità avanzata. Cambia il server solo se sai cosa stai facendo. Dovrai disconnetterti e accedere di nuovo dopo aver cambiato server.'
+        advancedFeatureFooter: 'Questa è una funzionalità avanzata. Cambia il server solo se sai cosa stai facendo. Dovrai disconnetterti e accedere di nuovo dopo aver cambiato server.',
+        services: 'Servizi',
+        useCustomServerForVoice: 'Usa il server personalizzato per la voce',
+        customServerVoiceEnabled: 'Le credenziali e l’utilizzo vocale usano il server personalizzato',
+        customServerVoiceDisabled: 'La voce usa Happy Cloud e il tuo abbonamento Happy',
+        customServerVoiceFooter: 'Quando è disattivato, l’avvio della voce contatta Happy Cloud ed ElevenLabs. Attivalo solo se il server personalizzato è configurato per la voce.',
     },
 
     sessionInfo: {
@@ -363,7 +387,6 @@ export const it: TranslationStructure = {
         resumeSessionSubtitle: 'Resume this session on the same machine',
         resumeSessionSameMachineOnly: 'This session can only be resumed on the same machine it started on.',
         resumeSessionMachineOffline: 'This machine is offline. Resume is only available while it is online.',
-        resumeSessionNeedsHappyAgent: 'Resume is unavailable on this machine. Run `happy-agent auth login` to enable it.',
         resumeSessionMissingMachine: 'This session is missing its machine metadata, so it cannot be resumed.',
         resumeSessionMissingBackendId: 'This session does not have a resumable Claude or Codex identifier.',
         resumeSessionUnexpectedDirectoryPrompt: 'Resume cannot create directories. Start the session manually from its original path.',
@@ -421,7 +444,10 @@ export const it: TranslationStructure = {
     agentInput: {
         permissionMode: {
             title: 'MODALITÀ PERMESSI',
+            auto: 'decide da sé, chiede in caso di dubbio',
             default: 'Predefinito',
+            agyDefault: 'sandbox di agy, nessuna richiesta',
+            openclawInert: 'non applicato da openclaw',
             acceptEdits: 'Accetta modifiche',
             plan: 'Modalità piano',
             dontAsk: 'Non chiedere',
@@ -449,6 +475,11 @@ export const it: TranslationStructure = {
             readOnly: 'Modalità sola lettura',
             safeYolo: 'YOLO sicuro',
             yolo: 'YOLO',
+            defaultDescription: 'chiedi prima dei comandi non attendibili',
+            autoDescription: 'decide da sé, chiede in caso di dubbio',
+            readOnlyDescription: 'nessuna scrittura',
+            safeYoloDescription: "nessuna richiesta, sandbox dell'area di lavoro",
+            yoloDescription: 'nessuna richiesta, accesso completo',
             badgeReadOnly: 'Modalità sola lettura',
             badgeSafeYolo: 'YOLO sicuro',
             badgeYolo: 'YOLO',
@@ -474,7 +505,14 @@ export const it: TranslationStructure = {
             badgePlan: 'Pianificazione',
         },
         context: {
-            remaining: ({ percent }: { percent: number }) => `${percent}% restante`,
+            detailContext: ({ used, total }: { used: string; total: string }) => `${used} / ${total} di contesto`,
+            percentContext: ({ percent }: { percent: number }) => `${percent}% contesto`,
+            percentWeek: ({ percent }: { percent: number }) => `${percent}% settimana`,
+        },
+        usagePopup: {
+            session: 'Sessione',
+            week: 'Settimana',
+            resets: ({ time }: { time: string }) => `Si azzera ${time}`,
         },
         suggestion: {
             fileLabel: 'FILE',
@@ -490,11 +528,26 @@ export const it: TranslationStructure = {
         offlineUnableToSpawn: 'Impossibile avviare una nuova sessione, offline',
     },
 
+    agentQuestion: {
+        title: "Domanda",
+        submit: "Invia risposta",
+        chooseMultiple: "Scegli tutte quelle pertinenti",
+        ownAnswer: "La tua risposta",
+        ownAnswerPlaceholder: "Scrivi una risposta",
+        submitFailed: "Impossibile inviare la risposta",
+        dismiss: "Ignora",
+        unsupportedTitle: "Richiesta non supportata",
+        unsupportedDescription: ({ kind }: { kind: string }) => `Questa versione di Happy non può mostrare una richiesta «${kind}». Aggiorna l'app per rispondere.`,
+        moreQuestions: ({ count }: { count: number }) =>
+            count === 1 ? "1 altra domanda" : `${count} altre domande`,
+    },
+
     sidebar: {
         sessionsTitle: 'Happy',
         showArchived: 'Mostra archiviate',
         hideArchived: 'Nascondi archiviate',
         newSession: 'Nuova sessione',
+        projects: "Progetti",
     },
 
     zen: {
@@ -612,6 +665,8 @@ export const it: TranslationStructure = {
         deleted: 'Eliminato',
         changedFiles: ({ count }: { count: number }) => `${count} ${count === 1 ? 'file modificato' : 'file modificati'}`,
         allFiles: 'Tutti i file',
+        addPanel: 'Aggiungi pannello',
+        closePanel: 'Chiudi pannello',
         editFile: 'Modifica',
         saveFile: 'Salva',
         failedToRead: 'Impossibile leggere il file',
@@ -620,6 +675,19 @@ export const it: TranslationStructure = {
         fileConflictDescription: 'Questo file è stato modificato sul dispositivo mentre lo stavi modificando. Ricarica per vedere l\'ultima versione.',
         reload: 'Ricarica',
         overwrite: 'Sovrascrivi',
+    },
+    sideChat: {
+        panelTitle: 'Chat laterale',
+        emptyTitle: 'Avvia una chat laterale',
+        emptySubtitle: 'Chiedi qualcosa all’agente a parte. Eredita il contesto di questa chat ma rimane isolata — nulla qui tocca la conversazione principale.',
+        startButton: 'Avvia chat laterale',
+        creating: 'Avvio della chat laterale…',
+        unavailable: 'Questa sessione non può ancora avviare una chat laterale — attendi che l’agente sia online.',
+        composerPlaceholder: 'Messaggio alla chat laterale…',
+        expand: 'Apri a schermo intero',
+        tabLabel: ({ index }: { index: number }) => `Chat laterale ${index}`,
+        newChat: 'Nuova chat laterale',
+        close: 'Chiudi chat laterale',
     },
 
     settingsVoice: {

@@ -1,14 +1,13 @@
 import * as React from 'react';
 import { View, Text, Platform, Pressable } from 'react-native';
 import { InboxView } from "@/components/InboxView";
-import { LinearGradient } from 'expo-linear-gradient';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
-import { useIsTablet, useHeaderHeight } from '@/utils/responsive';
+import { useIsTablet } from '@/utils/responsive';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
+import { Header } from '@/components/navigation/Header';
 
 const styles = StyleSheet.create((theme) => ({
     container: {
@@ -43,7 +42,7 @@ const styles = StyleSheet.create((theme) => ({
         width: 40,
         height: 40,
         borderRadius: 20,
-        backgroundColor: theme.colors.surface,
+        backgroundColor: Platform.select({ web: theme.colors.surface, default: theme.colors.glass.backgroundStrong }),
         alignItems: 'center',
         justifyContent: 'center',
         shadowColor: theme.colors.shadow.color,
@@ -52,21 +51,8 @@ const styles = StyleSheet.create((theme) => ({
         shadowRadius: 4,
         elevation: 4,
     },
-    header: {
-        backgroundColor: theme.colors.header.background,
-        borderBottomWidth: 1,
-        borderBottomColor: theme.colors.divider,
-    },
-    headerContent: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: 16,
-    },
-    backButton: {
-        marginRight: 16,
-    },
     headerTitle: {
-        fontSize: 17,
+        fontSize: 16,
         color: theme.colors.header.tint,
         ...Typography.default('semiBold'),
     },
@@ -74,34 +60,21 @@ const styles = StyleSheet.create((theme) => ({
 
 export default function InboxPage() {
     const { theme } = useUnistyles();
-    const insets = useSafeAreaInsets();
     const isTablet = useIsTablet();
     const router = useRouter();
-    const headerHeight = useHeaderHeight();
-
-    // Calculate gradient height: safe area + some extra for the fade effect
-    const gradientHeight = insets.top + 40;
-
-    // Create gradient colors from opaque background to transparent
-    const gradientColors: readonly [string, string, ...string[]] = [
-        theme.colors.groupped.background,
-        theme.colors.groupped.background + 'E6', // 90% opacity
-        theme.colors.groupped.background + '99', // 60% opacity
-        theme.colors.groupped.background + '33', // 20% opacity
-        theme.colors.groupped.background + '00', // transparent
-    ] as const;
 
     // In phone mode, show header; in tablet mode, show gradient
     if (!isTablet) {
         // Phone mode: render with header
         return (
             <View style={styles.container}>
-                <View style={[styles.header, { paddingTop: insets.top }]}>
-                    <View style={[styles.headerContent, { height: headerHeight }]}>
+                <Header
+                    title={<Text style={styles.headerTitle}>{t('tabs.inbox')}</Text>}
+                    headerLeft={() => (
                         <Pressable
                             onPress={() => router.back()}
-                            style={styles.backButton}
-                            hitSlop={15}
+                            hitSlop={12}
+                            style={{ width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' }}
                         >
                             <Ionicons
                                 name={Platform.OS === 'ios' ? 'chevron-back' : 'arrow-back'}
@@ -109,9 +82,11 @@ export default function InboxPage() {
                                 color={theme.colors.header.tint}
                             />
                         </Pressable>
-                        <Text style={styles.headerTitle}>{t('tabs.inbox')}</Text>
-                    </View>
-                </View>
+                    )}
+                    headerLeftGlass
+                    headerShadowVisible={false}
+                    headerTransparent
+                />
                 <InboxView />
             </View>
         );

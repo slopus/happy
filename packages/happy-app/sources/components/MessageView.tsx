@@ -1,7 +1,8 @@
 import * as React from "react";
-import { View, Text, Pressable, Platform } from "react-native";
-import { StyleSheet } from 'react-native-unistyles';
+import { Platform, Pressable, Text, View } from "react-native";
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Ionicons } from '@expo/vector-icons';
+import * as Clipboard from 'expo-clipboard';
 import { MarkdownView } from "./markdown/MarkdownView";
 import { t } from '@/text';
 import { Message, UserTextMessage, AgentTextMessage, ToolCallMessage } from "@/sync/typesMessage";
@@ -9,9 +10,12 @@ import { Metadata } from "@/sync/storageTypes";
 import { ToolView } from "./tools/ToolView";
 import { AgentEvent } from "@/sync/typesRaw";
 import { sync } from '@/sync/sync';
+import { useSetting } from '@/sync/storage';
 import { Option } from './markdown/MarkdownView';
 import { layout } from "./layout";
 import { parseLocalCommandMessage, isUserSlashCommandEcho } from './parseLocalCommandMessage';
+import { resolveUserMessageBubbleColor } from '@/utils/userMessageBubbleColor';
+import { LongPressCopyable } from './LongPressCopyable';
 
 
 export const MessageView = React.memo((props: {
@@ -19,11 +23,7 @@ export const MessageView = React.memo((props: {
   metadata: Metadata | null;
   sessionId: string;
   getMessageById?: (id: string) => Message | null;
-  /**
-   * Long-press handler for user-text bubbles. Wired by ChatList from
-   * the active session screen and used by the fork-from-message flow.
-   */
-  onForkFromUserMessage?: (messageId: string, rewindPointId: string | undefined, messageText: string) => void;
+  copyText?: string;
 }) => {
   return (
     <View
@@ -36,7 +36,7 @@ export const MessageView = React.memo((props: {
           metadata={props.metadata}
           sessionId={props.sessionId}
           getMessageById={props.getMessageById}
-          onForkFromUserMessage={props.onForkFromUserMessage}
+          copyText={props.copyText}
         />
       </View>
     </View>
@@ -49,7 +49,7 @@ function RenderBlock(props: {
   metadata: Metadata | null;
   sessionId: string;
   getMessageById?: (id: string) => Message | null;
-  onForkFromUserMessage?: (messageId: string, rewindPointId: string | undefined, messageText: string) => void;
+  copyText?: string;
 }): React.ReactElement {
   switch (props.message.kind) {
     case 'user-text':
@@ -58,12 +58,11 @@ function RenderBlock(props: {
           message={props.message}
           metadata={props.metadata}
           sessionId={props.sessionId}
-          onForkFromUserMessage={props.onForkFromUserMessage}
         />
       );
 
     case 'agent-text':
-      return <AgentTextBlock message={props.message} sessionId={props.sessionId} />;
+      return <AgentTextBlock message={props.message} sessionId={props.sessionId} copyText={props.copyText} />;
 
     case 'tool-call':
       return <ToolCallBlock
@@ -88,21 +87,18 @@ function UserTextBlock(props: {
   message: UserTextMessage;
   metadata: Metadata | null;
   sessionId: string;
-  onForkFromUserMessage?: (messageId: string, rewindPointId: string | undefined, messageText: string) => void;
 }) {
   const handleOptionPress = React.useCallback((option: Option) => {
     sync.sendMessage(props.sessionId, option.title, { source: 'option' });
   }, [props.sessionId]);
 
-  const rewindPointId = props.message.claudeUuid ?? props.message.codexItemId;
-  const canFork = Boolean(props.onForkFromUserMessage)
-    && (Boolean(rewindPointId) || props.metadata?.flavor === 'codex');
-  const handleLongPress = React.useCallback(() => {
-    if (props.onForkFromUserMessage) {
-      props.onForkFromUserMessage(props.message.id, rewindPointId, props.message.text);
-    }
-  }, [props.message.id, props.message.text, props.onForkFromUserMessage, rewindPointId]);
-
+  const userMessageBubbleColor = useSetting('userMessageBubbleColor');
+  const { theme } = useUnistyles();
+  const bubblePalette = resolveUserMessageBubbleColor(userMessageBubbleColor, theme.dark);
+  const bubbleStyle = {
+    backgroundColor: bubblePalette.background,
+    borderColor: bubblePalette.border,
+  };
   // Claude Agent SDK emits synthetic user messages wrapped in tags like
   // <local-command-caveat>…</local-command-caveat> and
   // <command-message>…</command-message><command-name>/foo</command-name>
@@ -130,48 +126,45 @@ function UserTextBlock(props: {
   if (parsed.kind === 'goal-run') {
     return (
       <View style={styles.userMessageContainer}>
-        <Pressable
-          onLongPress={canFork ? handleLongPress : undefined}
-          delayLongPress={400}
-          style={[styles.userMessageBubble, styles.goalMessageBubble]}
-        >
-          <MarkdownView markdown={parsed.goal} onOptionPress={handleOptionPress} sessionId={props.sessionId} />
-        </Pressable>
-        <View style={styles.goalSentRow}>
-          <Ionicons name="locate-outline" size={16} color={styles.goalSentText.color} />
-          <Text style={styles.goalSentText}>{t('message.sentAsGoal')}</Text>
-        </View>
+        <LongPressCopyable style={styles.userCopyTarget} text={parsed.goal}>
+          <View style={[styles.userMessageBubble, styles.userMessageBubbleSolid, bubbleStyle, styles.goalMessageBubble]}>
+            <MarkdownView externalCopyHandler markdown={parsed.goal} onOptionPress={handleOptionPress} sessionId={props.sessionId} />
+          </View>
+          <View style={styles.goalSentRow}>
+            <Ionicons name="locate-outline" size={16} color={styles.goalSentText.color} />
+            <Text style={styles.goalSentText}>{t('message.sentAsGoal')}</Text>
+          </View>
+        </LongPressCopyable>
       </View>
     );
   }
   if (parsed.kind === 'command-run') {
+    const commandText = parsed.args ? `/${parsed.commandName} ${parsed.args}` : `/${parsed.commandName}`;
     return (
       <View style={styles.userMessageContainer}>
-        {parsed.args ? (
-          <Pressable
-            onLongPress={canFork ? handleLongPress : undefined}
-            delayLongPress={400}
-            style={[styles.userMessageBubble, styles.commandMessageBubble]}
-          >
-            <MarkdownView markdown={parsed.args} onOptionPress={handleOptionPress} sessionId={props.sessionId} />
-          </Pressable>
-        ) : null}
-        <View style={styles.commandChip}>
-          <Text style={styles.commandChipText}>/{parsed.commandName}</Text>
-        </View>
+        <LongPressCopyable style={styles.userCopyTarget} text={commandText}>
+          {parsed.args ? (
+            <View style={[styles.userMessageBubble, styles.userMessageBubbleSolid, bubbleStyle, styles.commandMessageBubble]}>
+              <MarkdownView externalCopyHandler markdown={parsed.args} onOptionPress={handleOptionPress} sessionId={props.sessionId} />
+            </View>
+          ) : null}
+          <View style={[styles.commandChip, styles.userMessageBubbleSolid, bubbleStyle]}>
+            <Text style={styles.commandChipText}>/{parsed.commandName}</Text>
+          </View>
+        </LongPressCopyable>
       </View>
     );
   }
 
   return (
     <View style={styles.userMessageContainer}>
-      <Pressable
-        onLongPress={canFork ? handleLongPress : undefined}
-        delayLongPress={400}
-        style={styles.userMessageBubble}
-      >
-        <MarkdownView markdown={parsed.text} onOptionPress={handleOptionPress} sessionId={props.sessionId} />
-      </Pressable>
+      {/* Long-press copies the whole message through our own menu rather than the
+          OS selection callout. Rewind remains in session actions. */}
+      <LongPressCopyable style={styles.userCopyTarget} text={parsed.text}>
+        <View style={[styles.userMessageBubble, styles.userMessageBubbleSolid, bubbleStyle]}>
+          <MarkdownView externalCopyHandler markdown={parsed.text} onOptionPress={handleOptionPress} sessionId={props.sessionId} />
+        </View>
+      </LongPressCopyable>
     </View>
   );
 }
@@ -179,6 +172,7 @@ function UserTextBlock(props: {
 function AgentTextBlock(props: {
   message: AgentTextMessage;
   sessionId: string;
+  copyText?: string;
 }) {
   const handleOptionPress = React.useCallback((option: Option) => {
     sync.sendMessage(props.sessionId, option.title, { source: 'option' });
@@ -192,7 +186,55 @@ function AgentTextBlock(props: {
   return (
     <View style={styles.agentMessageContainer}>
       <MarkdownView markdown={props.message.text} onOptionPress={handleOptionPress} sessionId={props.sessionId} />
+      {props.copyText ? <MessageCopyButton text={props.copyText} /> : null}
     </View>
+  );
+}
+
+// The glyph is deliberately small, so widen the touch target well past it.
+const COPY_HIT_SLOP = { top: 14, bottom: 14, left: 14, right: 20 };
+
+function MessageCopyButton(props: { text: string }) {
+  const { theme } = useUnistyles();
+  const [copied, setCopied] = React.useState(false);
+  const resetTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  React.useEffect(() => () => {
+    if (resetTimerRef.current) {
+      clearTimeout(resetTimerRef.current);
+    }
+  }, []);
+
+  const handleCopy = React.useCallback(async () => {
+    try {
+      await Clipboard.setStringAsync(props.text);
+      setCopied(true);
+      if (resetTimerRef.current) {
+        clearTimeout(resetTimerRef.current);
+      }
+      resetTimerRef.current = setTimeout(() => setCopied(false), 1500);
+    } catch (error) {
+      console.error('Failed to copy message:', error);
+    }
+  }, [props.text]);
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={copied ? t('common.copied') : t('common.copy')}
+      hitSlop={COPY_HIT_SLOP}
+      onPress={handleCopy}
+      style={({ pressed }) => [
+        styles.copyAction,
+        pressed && styles.copyActionPressed,
+      ]}
+    >
+      <Ionicons
+        name={copied ? 'checkmark' : 'copy-outline'}
+        size={16}
+        color={theme.colors.text}
+      />
+    </Pressable>
   );
 }
 
@@ -286,8 +328,12 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: 12,
     paddingVertical: 4,
     borderRadius: 12,
-    marginBottom: 12,
+    marginBottom: 4,
     maxWidth: '100%',
+  },
+  userMessageBubbleSolid: {
+    borderWidth: Platform.select({ web: 0, default: StyleSheet.hairlineWidth }),
+    overflow: 'hidden',
   },
   goalMessageBubble: {
     marginBottom: 6,
@@ -299,7 +345,7 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    marginBottom: 12,
+    marginBottom: 4,
     maxWidth: '100%',
     opacity: 0.72,
   },
@@ -309,10 +355,12 @@ const styles = StyleSheet.create((theme) => ({
   },
   commandChip: {
     backgroundColor: theme.colors.userMessageBackground,
+    borderColor: theme.colors.divider,
+    borderWidth: 1,
     paddingHorizontal: 10,
     paddingVertical: 2,
     borderRadius: 10,
-    marginBottom: 12,
+    marginBottom: 4,
     maxWidth: '100%',
     opacity: 0.65,
   },
@@ -322,9 +370,28 @@ const styles = StyleSheet.create((theme) => ({
     fontFamily: 'monospace',
   },
   agentMessageContainer: {
+    // Symmetric, so a tool row reads the same distance from the text whether
+    // it lands above or below it. Total rhythm matches the old 4 + 16.
     marginHorizontal: 16,
-    marginBottom: 12,
+    marginVertical: 10,
     borderRadius: 16,
+    maxWidth: '100%',
+  },
+  copyAction: {
+    // No width, so the box shrink-wraps the glyph and its left edge lands on the
+    // same x as the markdown text above it. hitSlop carries the touch target.
+    alignSelf: 'flex-start',
+    height: 20,
+    justifyContent: 'center',
+    // Sits fully below the last markdown block's trailing margin, clear of the
+    // reply text.
+    marginTop: 0,
+  },
+  copyActionPressed: {
+    opacity: 0.5,
+  },
+  userCopyTarget: {
+    alignItems: 'flex-end',
     maxWidth: '100%',
   },
   agentEventContainer: {

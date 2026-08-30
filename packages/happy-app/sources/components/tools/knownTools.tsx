@@ -918,6 +918,29 @@ export const knownTools = {
             return null;
         }
     },
+    'request_user_input': {
+        title: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
+            const input = opts.tool.input?.input ?? opts.tool.input;
+            const firstQuestion = Array.isArray(input?.questions) ? input.questions[0] : input;
+            return typeof firstQuestion?.header === 'string'
+                ? firstQuestion.header
+                : t('tools.names.question');
+        },
+        icon: ICON_QUESTION,
+        minimal: false,
+        noStatus: true,
+        input: z.object({
+            input: z.any().optional(),
+            question: z.string().optional(),
+            header: z.string().optional(),
+            questions: z.array(z.any()).optional(),
+        }).partial().passthrough(),
+        extractSubtitle: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
+            const input = opts.tool.input?.input ?? opts.tool.input;
+            const firstQuestion = Array.isArray(input?.questions) ? input.questions[0] : input;
+            return typeof firstQuestion?.question === 'string' ? firstQuestion.question : null;
+        }
+    },
     // Internal Claude Code tool for loading deferred tools - no user-visible output
     'Skill': {
         icon: ICON_TASK,

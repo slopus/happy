@@ -181,30 +181,26 @@ export function v3SessionRoutes(app: Fastify) {
             const newMessages = uniqueMessages.filter((message) => !existingByLocalId.has(message.localId));
             const seqs = await allocateSessionSeqBatch(sessionId, newMessages.length, tx);
 
-            const createdMessages: Omit<SelectedMessage, 'content'>[] = [];
-            for (let i = 0; i < newMessages.length; i += 1) {
-                const message = newMessages[i];
-                const createdMessage = await tx.sessionMessage.create({
-                    data: {
+            const createdMessages = newMessages.length === 0
+                ? []
+                : await tx.sessionMessage.createManyAndReturn({
+                    data: newMessages.map((message, index) => ({
                         sessionId,
-                        seq: seqs[i],
+                        seq: seqs[index],
                         content: {
                             t: 'encrypted',
                             c: message.content
                         },
                         localId: message.localId
-                    },
+                    })),
                     select: {
                         id: true,
                         seq: true,
-                        content: true,
                         localId: true,
                         createdAt: true,
                         updatedAt: true
                     }
                 });
-                createdMessages.push(createdMessage);
-            }
 
             const responseMessages = [...existing, ...createdMessages].sort((a, b) => a.seq - b.seq);
 
@@ -214,7 +210,9 @@ export function v3SessionRoutes(app: Fastify) {
             };
         });
 
-        for (const message of txResult.createdMessages) {
+        const createdMessages = [...txResult.createdMessages].sort((a, b) => a.seq - b.seq);
+
+        for (const message of createdMessages) {
             const content = message.localId ? contentByLocalId.get(message.localId) : null;
             if (!content) {
                 continue;

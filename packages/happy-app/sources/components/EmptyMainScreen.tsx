@@ -1,11 +1,16 @@
 import React from 'react';
-import { View, Text, Platform } from 'react-native';
+import { View, Text, Platform, Pressable } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { Typography } from '@/constants/Typography';
 import { RoundButton } from '@/components/RoundButton';
 import { useConnectTerminal } from '@/hooks/useConnectTerminal';
 import { Modal } from '@/modal';
 import { t } from '@/text';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import { useAllMachines } from '@/sync/storage';
+import { collectMachineChoices } from '@/sync/machineChoices';
+import { useOfflineMachineTroubleshooting } from '@/hooks/useOfflineMachineTroubleshooting';
+import { useRouter } from 'expo-router';
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
@@ -21,9 +26,29 @@ const stylesheet = StyleSheet.create((theme) => ({
         color: theme.colors.text,
         ...Typography.default('semiBold'),
     },
+    stateIcon: {
+        marginBottom: 20,
+    },
+    stateTitle: {
+        marginBottom: 8,
+        paddingHorizontal: 24,
+        textAlign: 'center',
+        fontSize: 24,
+        color: theme.colors.text,
+        ...Typography.default('semiBold'),
+    },
+    stateDescription: {
+        maxWidth: 360,
+        marginBottom: 24,
+        paddingHorizontal: 24,
+        textAlign: 'center',
+        fontSize: 16,
+        color: theme.colors.textSecondary,
+        ...Typography.default(),
+    },
     terminalBlock: {
-        backgroundColor: theme.colors.surfaceHighest,
-        borderRadius: 8,
+        backgroundColor: Platform.select({ web: theme.colors.surfaceHighest, default: theme.colors.surfaceHigh }),
+        borderRadius: Platform.select({ web: 8, default: 12 }),
         padding: 20,
         marginHorizontal: 24,
         marginBottom: 20,
@@ -57,7 +82,9 @@ const stylesheet = StyleSheet.create((theme) => ({
         width: 24,
         height: 24,
         borderRadius: 12,
-        backgroundColor: theme.colors.surfaceHigh,
+        backgroundColor: Platform.select({ web: theme.colors.surfaceHigh, default: theme.colors.surfaceHighest }),
+        borderWidth: Platform.OS === 'web' ? 0 : 1,
+        borderColor: theme.colors.divider,
         alignItems: 'center',
         justifyContent: 'center',
         marginRight: 12,
@@ -80,15 +107,110 @@ const stylesheet = StyleSheet.create((theme) => ({
         width: 240,
         marginBottom: 12,
     },
-    buttonWrapperSecondary: {
-        width: 240,
+    manualUrlButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 7,
+        minHeight: 40,
+        paddingHorizontal: 14,
+        borderRadius: 20,
+    },
+    manualUrlButtonPressed: {
+        backgroundColor: theme.colors.surfacePressedOverlay,
+    },
+    manualUrlButtonText: {
+        fontSize: 15,
+        color: theme.colors.textSecondary,
+        ...Typography.default('semiBold'),
+    },
+    secondaryAction: {
+        minHeight: 40,
+        marginTop: 4,
+        paddingHorizontal: 14,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderRadius: 20,
+    },
+    secondaryActionPressed: {
+        backgroundColor: theme.colors.surfacePressedOverlay,
+    },
+    secondaryActionText: {
+        fontSize: 15,
+        color: theme.colors.textSecondary,
+        ...Typography.default('semiBold'),
     },
 }));
 
-export function EmptyMainScreen() {
+export function EmptyMainScreen({
+    hasArchivedSessions = false,
+    onShowArchived,
+}: {
+    hasArchivedSessions?: boolean;
+    onShowArchived?: () => void;
+}) {
     const { connectTerminal, connectWithUrl, isLoading } = useConnectTerminal();
     const { theme } = useUnistyles();
     const styles = stylesheet;
+    const router = useRouter();
+    const machines = useAllMachines({ includeOffline: true });
+    const machineChoices = React.useMemo(() => collectMachineChoices(machines), [machines]);
+    const hasOnlineMachines = machineChoices.some((machine) => machine.online);
+    const troubleshoot = useOfflineMachineTroubleshooting(machineChoices);
+    const showArchivedAction = hasArchivedSessions && onShowArchived ? (
+        <Pressable
+            onPress={onShowArchived}
+            accessibilityRole="button"
+            style={({ pressed }) => [
+                styles.secondaryAction,
+                pressed && styles.secondaryActionPressed,
+            ]}
+        >
+            <Text style={styles.secondaryActionText}>{t('sidebar.showArchived')}</Text>
+        </Pressable>
+    ) : null;
+    const enterUrlManually = React.useCallback(async () => {
+        const url = await Modal.prompt(
+            t('modals.authenticateTerminal'),
+            t('modals.pasteUrlFromTerminal'),
+            {
+                placeholder: 'happy://terminal?...',
+                cancelText: t('common.cancel'),
+                confirmText: t('common.authenticate'),
+            },
+        );
+
+        if (url?.trim()) {
+            connectWithUrl(url.trim());
+        }
+    }, [connectWithUrl]);
+
+    if (machineChoices.length > 0) {
+        if (hasOnlineMachines) {
+            return (
+                <View style={styles.container}>
+                    <Ionicons name="terminal-outline" size={56} color={theme.colors.textSecondary} style={styles.stateIcon} />
+                    <Text style={styles.stateTitle}>No sessions yet</Text>
+                    <Text style={styles.stateDescription}>Start one on a connected machine.</Text>
+                    <RoundButton title="Start New Session" size="large" onPress={() => router.navigate('/new')} />
+                    {showArchivedAction}
+                </View>
+            );
+        }
+
+        const title = machineChoices.length === 1
+            ? `${machineChoices[0].name} is unreachable`
+            : 'No machines are reachable';
+        return (
+            <View style={styles.container}>
+                <Ionicons name="cloud-offline-outline" size={56} color={theme.colors.textSecondary} style={styles.stateIcon} />
+                <Text style={styles.stateTitle}>{title}</Text>
+                <Text style={styles.stateDescription}>Bring a machine online to start a session.</Text>
+                <RoundButton title="Troubleshoot" size="large" onPress={troubleshoot} />
+                {showArchivedAction}
+            </View>
+        );
+    }
 
     return (
         <View style={styles.container}>
@@ -141,31 +263,24 @@ export function EmptyMainScreen() {
                                 onPress={connectTerminal}
                             />
                         </View>
-                        <View style={styles.buttonWrapperSecondary}>
-                            <RoundButton
-                                title={t('connect.enterUrlManually')}
-                                size="normal"
-                                display="inverted"
-                                onPress={async () => {
-                                    const url = await Modal.prompt(
-                                        t('modals.authenticateTerminal'),
-                                        t('modals.pasteUrlFromTerminal'),
-                                        {
-                                            placeholder: 'happy://terminal?...',
-                                            cancelText: t('common.cancel'),
-                                            confirmText: t('common.authenticate')
-                                        }
-                                    );
-
-                                    if (url?.trim()) {
-                                        connectWithUrl(url.trim());
-                                    }
-                                }}
-                            />
-                        </View>
+                        <Pressable
+                            onPress={enterUrlManually}
+                            accessibilityRole="button"
+                            accessibilityLabel={t('connect.enterUrlManually')}
+                            style={({ pressed }) => [
+                                styles.manualUrlButton,
+                                pressed && styles.manualUrlButtonPressed,
+                            ]}
+                        >
+                            <Ionicons name="link-outline" size={17} color={theme.colors.textSecondary} />
+                            <Text style={styles.manualUrlButtonText}>
+                                {t('connect.enterUrlManually')}
+                            </Text>
+                        </Pressable>
                     </View>
                 </>
             )}
+            {showArchivedAction}
         </View>
     );
 }

@@ -28,6 +28,13 @@ import { detectCLIAvailability } from '@/utils/detectCLI';
 import { buildResumeLaunch } from '@/resume/handleResumeCommand';
 import { detectResumeSupport } from '@/resume/localHappyAgentAuth';
 import { encodeBase64, decodeBase64, decrypt } from '@/api/encryption';
+import {
+  buildSessionChildEnvironment,
+  sanitizeSessionEnvironment,
+  wrapTmuxCommandWithSessionEnvironmentSanitizer,
+} from './sessionEnvironment';
+import { startHappyTerminalDaemon } from './happyTerminalBoot';
+import { appendDaemonSpawnModeArgs, shouldForwardDaemonPermissionMode } from './spawnModeArgs';
 
 /** Shell-escape a string for safe interpolation into tmux commands. */
 function shellescape(s: string): string {
@@ -51,6 +58,11 @@ export const initialMachineMetadata: MachineMetadata = {
 };
 
 export async function startDaemon(): Promise<void> {
+  // The daemon may have been launched from a session process. Keep its normal
+  // environment, but never let session lineage or reconnect state reach a
+  // later, unrelated child session.
+  const ambientEnvironment = sanitizeSessionEnvironment(process.env);
+
   // We don't have cleanup function at the time of server construction
   // Control flow is:
   // 1. Create promise that will resolve when shutdown is requested
@@ -135,8 +147,8 @@ export async function startDaemon(): Promise<void> {
   // Acquire exclusive lock (proves daemon is running)
   const daemonLockHandle = await acquireDaemonLock(5, 200);
   if (!daemonLockHandle) {
-    logger.debug('[DAEMON RUN] Daemon lock file already held, another daemon is running');
-    process.exit(0);
+    logger.warn('[DAEMON RUN] Failed to acquire daemon lock; daemon startup did not complete');
+    process.exit(1);
   }
 
   // At this point we should be safe to startup the daemon:
@@ -144,6 +156,11 @@ export async function startDaemon(): Promise<void> {
   // 2. Should not have another daemon process running
 
   try {
+    // Happy Agent is a machine-level service shared by the mobile app and
+    // Happy Terminal. Start it concurrently and keep this daemon boot path
+    // independent from its install/download/network state.
+    startHappyTerminalDaemon();
+
     // Start caffeinate
     const caffeinateStarted = startCaffeinate();
     if (caffeinateStarted) {
@@ -318,13 +335,16 @@ export async function startDaemon(): Promise<void> {
 
         let extraEnv: Record<string, string> = {
           ...authEnv,
-          ...(options.environmentVariables ?? {}),
+          ...sanitizeSessionEnvironment(options.environmentVariables ?? {}),
         };
         if (options.parentSessionId) {
           extraEnv.HAPPY_FORKED_FROM_SESSION_ID = options.parentSessionId;
         }
         if (options.forkedFromMessageId) {
           extraEnv.HAPPY_FORKED_FROM_MESSAGE_ID = options.forkedFromMessageId;
+        }
+        if (options.isSideChat) {
+          extraEnv.HAPPY_SIDE_CHAT = '1';
         }
         // For fork: spawned Happy CLI needs to know which Claude JSONL to
         // backfill into the fresh Happy session row. Without this, the
@@ -338,10 +358,10 @@ export async function startDaemon(): Promise<void> {
         }
         logger.debug(`[DAEMON RUN] Environment variable keys (before expansion) (${Object.keys(extraEnv).length}): ${Object.keys(extraEnv).join(', ')}`);
 
-        // Expand ${VAR} references from daemon's process.env
+        // Expand ${VAR} references from the sanitized daemon environment.
         // This ensures variable substitution works in both tmux and non-tmux modes
         // Example: ANTHROPIC_AUTH_TOKEN="${Z_AI_AUTH_TOKEN}" → ANTHROPIC_AUTH_TOKEN="sk-real-key"
-        extraEnv = expandEnvironmentVariables(extraEnv, process.env);
+        extraEnv = expandEnvironmentVariables(extraEnv, ambientEnvironment);
         logger.debug(`[DAEMON RUN] After variable expansion: ${Object.keys(extraEnv).join(', ')}`);
 
         // Fail fast if any passed-through environment variable still contains an
@@ -401,35 +421,41 @@ export async function startDaemon(): Promise<void> {
 
           // Construct command for the CLI
           const cliPath = join(projectPath(), 'dist', 'index.mjs');
-          // Determine agent command - support claude, codex, and gemini
-          const agent = options.agent === 'gemini' ? 'gemini' : (options.agent === 'codex' ? 'codex' : (options.agent === 'openclaw' ? 'openclaw' : 'claude'));
+          // Determine agent command - support claude, codex, gemini, openclaw, and agy
+          const agent = options.agent === 'gemini' ? 'gemini' : (options.agent === 'codex' ? 'codex' : (options.agent === 'openclaw' ? 'openclaw' : (options.agent === 'agy' ? 'agy' : 'claude')));
           const resumeId = agent === 'claude'
             ? options.resumeClaudeSessionId
             : (agent === 'codex' ? options.resumeCodexThreadId : undefined);
           const resumeFragment = resumeId
             ? ` --resume ${shellescape(resumeId)}`
             : '';
-          const fullCommand = `node --no-warnings --no-deprecation ${cliPath} ${agent} --happy-starting-mode remote --started-by daemon${resumeFragment}`;
+          const launchArgs = [
+            agent,
+            '--happy-starting-mode', 'remote',
+            '--started-by', 'daemon',
+          ];
+          appendDaemonSpawnModeArgs(launchArgs, options, agent);
+          const modeFragment = launchArgs.map(shellescape).join(' ');
+          const fullCommand = `node --no-warnings --no-deprecation ${shellescape(cliPath)} ${modeFragment}${resumeFragment}`;
+          const sanitizedTmuxCommand = wrapTmuxCommandWithSessionEnvironmentSanitizer(fullCommand, extraEnv);
 
-          // Spawn in tmux with environment variables
-          // IMPORTANT: Pass complete environment (process.env + extraEnv) because:
+          // Spawn in tmux with environment variables.
+          // IMPORTANT: Pass the complete safe environment (ambient + extraEnv) because:
           // 1. tmux sessions need daemon's expanded auth variables (e.g., ANTHROPIC_AUTH_TOKEN)
-          // 2. Regular spawn uses env: { ...process.env, ...extraEnv }
-          // 3. tmux needs explicit environment via -e flags to ensure all variables are available
+          // 2. regular spawning uses the same clean environment
+          // 3. tmux needs explicit -e values, and the command unsets omitted
+          //    session variables that could otherwise survive in its server environment
           const windowName = `happy-${Date.now()}-${agent}`;
           const tmuxEnv: Record<string, string> = {};
 
-          // Add all daemon environment variables (filtering out undefined)
-          for (const [key, value] of Object.entries(process.env)) {
+          // Add all safe daemon environment variables (filtering out undefined)
+          for (const [key, value] of Object.entries(buildSessionChildEnvironment(ambientEnvironment, extraEnv))) {
             if (value !== undefined) {
               tmuxEnv[key] = value;
             }
           }
 
-          // Add extra environment variables (these should already be filtered)
-          Object.assign(tmuxEnv, extraEnv);
-
-          const tmuxResult = await tmux.spawnInTmux([fullCommand], {
+          const tmuxResult = await tmux.spawnInTmux([sanitizedTmuxCommand], {
             sessionName: tmuxSessionName,
             windowName: windowName,
             cwd: directory
@@ -507,6 +533,9 @@ export async function startDaemon(): Promise<void> {
             case 'openclaw':
               agentCommand = 'openclaw';
               break;
+            case 'agy':
+              agentCommand = 'agy';
+              break;
             default:
               return {
                 type: 'error',
@@ -518,6 +547,7 @@ export async function startDaemon(): Promise<void> {
             '--happy-starting-mode', 'remote',
             '--started-by', 'daemon'
           ];
+          appendDaemonSpawnModeArgs(args, options, agentCommand);
 
           // Resume ids attach the new Happy session to a pre-existing provider
           // conversation created by the fork / duplicate RPC.
@@ -533,10 +563,7 @@ export async function startDaemon(): Promise<void> {
           return spawnTrackedHappyProcess({
             args,
             cwd: directory,
-            env: {
-              ...process.env,
-              ...extraEnv
-            },
+            env: buildSessionChildEnvironment(ambientEnvironment, extraEnv),
             directoryCreated,
             message: directoryCreated ? `The path '${directory}' did not exist. We created a new folder and spawned a new session there.` : undefined,
           });
@@ -693,8 +720,9 @@ export async function startDaemon(): Promise<void> {
         if (options?.model) {
           launch.args.push('--model', options.model);
         }
-        if (options?.permissionMode) {
-          launch.args.push('--permission-mode', options.permissionMode);
+        const resumePermissionMode = options?.permissionMode;
+        if (shouldForwardDaemonPermissionMode(metadata.flavor ?? 'claude', resumePermissionMode)) {
+          launch.args.push('--permission-mode', resumePermissionMode);
         }
 
         await fs.access(launch.cwd);
@@ -702,15 +730,14 @@ export async function startDaemon(): Promise<void> {
         return spawnTrackedHappyProcess({
           args: launch.args,
           cwd: launch.cwd,
-          env: {
-            ...process.env,
+          env: buildSessionChildEnvironment(ambientEnvironment, {
             HAPPY_RECONNECT_SESSION_ID: happySessionId,
             HAPPY_RECONNECT_ENCRYPTION_KEY: encodeBase64(tracked.encryption.encryptionKey),
             HAPPY_RECONNECT_ENCRYPTION_VARIANT: tracked.encryption.encryptionVariant,
             HAPPY_RECONNECT_SEQ: String(tracked.encryption.seq),
             HAPPY_RECONNECT_METADATA_VERSION: String(tracked.encryption.metadataVersion),
             HAPPY_RECONNECT_AGENT_STATE_VERSION: String(tracked.encryption.agentStateVersion),
-          },
+          }),
         });
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : (error && typeof error === 'object' ? JSON.stringify(error) : String(error));
@@ -732,11 +759,34 @@ export async function startDaemon(): Promise<void> {
           (sessionId.startsWith('PID-') && pid === parseInt(sessionId.replace('PID-', '')))) {
 
           if (session.startedBy === 'daemon' && session.childProcess) {
-            try {
-              session.childProcess.kill('SIGTERM');
-              logger.debug(`[DAEMON RUN] Sent SIGTERM to daemon-spawned session ${sessionId}`);
-            } catch (error) {
-              logger.debug(`[DAEMON RUN] Failed to kill session ${sessionId}:`, error);
+            // Signal the whole process group, not just the Happy CLI parent.
+            // The harness runs its own backend as a grandchild — Codex spawns
+            // `codex app-server` (codexAppServerClient.ts:647) and only kills it
+            // from its own disconnect path, which a bare SIGTERM to the parent
+            // never reaches. Killing the parent alone therefore left the agent
+            // running, reparented and invisible. The daemon spawns with
+            // `detached: true` (see spawnSession above), which makes the parent
+            // a group leader, so the negative pid covers every descendant.
+            let signalled = false;
+            if (process.platform !== 'win32') {
+              try {
+                process.kill(-pid, 'SIGTERM');
+                signalled = true;
+                logger.debug(`[DAEMON RUN] Sent SIGTERM to process group of session ${sessionId}`);
+              } catch (error) {
+                logger.debug(`[DAEMON RUN] Group kill failed for session ${sessionId}, falling back:`, error);
+              }
+            }
+            // Windows has no process groups to signal, and a group kill can
+            // still fail if the child already exited or never led a group.
+            // Either way the parent is worth killing on its own.
+            if (!signalled) {
+              try {
+                session.childProcess.kill('SIGTERM');
+                logger.debug(`[DAEMON RUN] Sent SIGTERM to daemon-spawned session ${sessionId}`);
+              } catch (error) {
+                logger.debug(`[DAEMON RUN] Failed to kill session ${sessionId}:`, error);
+              }
             }
           } else {
             // For externally started sessions, try to kill by PID
@@ -901,7 +951,8 @@ export async function startDaemon(): Promise<void> {
         try {
           spawnHappyCLI(['daemon', 'start'], {
             detached: true,
-            stdio: 'ignore'
+            stdio: 'ignore',
+            env: ambientEnvironment,
           });
         } catch (error) {
           logger.debug('[DAEMON RUN] Failed to spawn new daemon, this is quite likely to happen during integration tests as we are cleaning out dist/ directory', error);

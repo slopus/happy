@@ -20,6 +20,7 @@ export { AbortError } from '@anthropic-ai/claude-agent-sdk'
 // Alias for backward compatibility
 import type { CanUseTool } from '@anthropic-ai/claude-agent-sdk'
 export type CanCallToolCallback = CanUseTool
+export type CanCallToolOptions = Parameters<CanUseTool>[2]
 
 /**
  * Adapter type for query options.
@@ -35,7 +36,7 @@ export interface QueryOptions {
     disallowedTools?: string[]
     maxTurns?: number
     mcpServers?: Record<string, unknown>
-    permissionMode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan'
+    permissionMode?: 'auto' | 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan'
     continue?: boolean
     resume?: string
     model?: string

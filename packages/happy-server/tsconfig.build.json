@@ -1,0 +1,8 @@
+{
+  // Production build typecheck. Specs are excluded because they are never
+  // shipped and may reach across packages for contract checks (e.g.
+  // machinesRoutes.spec.ts imports happy-app source), which is not available
+  // in the server-only Docker builder stage.
+  "extends": "./tsconfig.json",
+  "exclude": ["sources/**/*.spec.ts", "sources/**/*.test.ts"]
+}

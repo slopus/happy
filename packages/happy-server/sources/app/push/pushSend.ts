@@ -6,6 +6,12 @@
 
 const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send';
 const BATCH_SIZE = 100;
+/**
+ * Shared deadline for the whole send. `/v1/sessions/:id/push-event` awaits this
+ * to report the real outcome, so it must finish well inside the CLI's 15s
+ * request timeout rather than holding the request open indefinitely.
+ */
+const SEND_TIMEOUT_MS = 8_000;
 
 export interface PushMessage {
     to: string;
@@ -30,6 +36,9 @@ export async function sendPushNotifications(messages: PushMessage[]): Promise<Pu
     }
 
     const tickets: PushTicket[] = [];
+    // One deadline across every batch, so a large fan-out cannot extend the
+    // total time the awaiting request is held open.
+    const signal = AbortSignal.timeout(SEND_TIMEOUT_MS);
 
     for (let i = 0; i < messages.length; i += BATCH_SIZE) {
         const batch = messages.slice(i, i + BATCH_SIZE);
@@ -37,7 +46,12 @@ export async function sendPushNotifications(messages: PushMessage[]): Promise<Pu
             const response = await fetch(EXPO_PUSH_URL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(batch)
+                body: JSON.stringify(batch),
+                // @types/node 20 ships two conflicting AbortSignal declarations
+                // (its own web-globals one, which has .timeout(), and undici's,
+                // which RequestInit refers to). The cast bridges them; at
+                // runtime there is only one AbortSignal.
+                signal: signal as unknown as RequestInit['signal']
             });
 
             if (!response.ok) {

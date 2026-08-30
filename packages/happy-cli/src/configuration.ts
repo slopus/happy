@@ -27,6 +27,7 @@ class Configuration {
 
   public readonly isExperimentalEnabled: boolean
   public readonly disableCaffeinate: boolean
+  public readonly bootHappyAgent: boolean
 
   constructor() {
     // Check if we're running as daemon based on process args
@@ -64,6 +65,12 @@ class Configuration {
 
     this.isExperimentalEnabled = ['true', '1', 'yes'].includes(process.env.HAPPY_EXPERIMENTAL?.toLowerCase() || '');
     this.disableCaffeinate = ['true', '1', 'yes'].includes(process.env.HAPPY_DISABLE_CAFFEINATE?.toLowerCase() || '');
+    // Happy Agent is a second machine-level daemon with its own database and its own
+    // registration on the Happy account, so starting it is opted into rather than
+    // inherited by everyone who upgrades the CLI.
+    this.bootHappyAgent =
+      ['true', '1', 'yes'].includes(process.env.HAPPY_BOOT_AGENT?.toLowerCase() || '') ||
+      this.isExperimentalEnabled;
 
     this.currentCliVersion = packageJson.version
 

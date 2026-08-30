@@ -1,26 +1,48 @@
 import React from 'react';
-import { View, Pressable, FlatList, Platform } from 'react-native';
+import { View, Pressable, FlatList, NativeScrollEvent, NativeSyntheticEvent, Platform } from 'react-native';
 import { Text } from '@/components/StyledText';
-import { usePathname } from 'expo-router';
-import { SessionListViewItem, SessionRowData } from '@/sync/storage';
+import { usePathname, useRouter } from 'expo-router';
+import { SessionListViewItem, SessionRowData, useAllMachines, useSetting, useSettingMutable } from '@/sync/storage';
 import { Ionicons } from '@expo/vector-icons';
 import { type SessionState, formatLastSeen, vibingMessages } from '@/utils/sessionUtils';
 import { Avatar } from './Avatar';
 import { ActiveSessionsGroupCompact } from './ActiveSessionsGroupCompact';
+import { ProjectGroup } from './ProjectGroup';
+import { FlatSessionRow, flatListBackgroundColor } from './FlatSessionRow';
+import { buildFlatSessionRows, toFlatSessionRow, type FlatSessionRowData } from '@/utils/flatSessionList';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useVisibleSessionListViewData } from '@/hooks/useVisibleSessionListViewData';
+import { useHasArchivedSessions, useVisibleSessionListViewData } from '@/hooks/useVisibleSessionListViewData';
 import { Typography } from '@/constants/Typography';
 import { StatusDot } from './StatusDot';
-import { StyleSheet } from 'react-native-unistyles';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useIsTablet } from '@/utils/responsive';
+import { getHarnessName } from '@/utils/harnessCatalog';
 import { requestReview } from '@/utils/requestReview';
 import { UpdateBanner } from './UpdateBanner';
 import { layout } from './layout';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { SessionActionsAnchor, SessionActionsPopover } from './SessionActionsPopover';
 import { useSessionActionAlert } from '@/hooks/useSessionQuickActions';
-import { useSettingMutable } from '@/sync/storage';
 import { t } from '@/text';
+import { SessionShortcutHintBadge } from './ShortcutHints';
+import { ProviderIcon } from './ProviderIcon';
+import { buildSessionProjectDisplayGroups } from '@/utils/sessionDisplayOrder';
+
+type SessionListDisplayItem = SessionListViewItem | {
+    type: 'machine-header';
+    machineId: string | null;
+    machineName: string;
+} | {
+    type: 'archive-toggle';
+    hidden: boolean;
+    /** Sits inside the grey heading band rather than floating on the page. */
+    banded?: boolean;
+} | {
+    type: 'flat-session';
+    row: FlatSessionRowData;
+    last: boolean;
+    archived?: boolean;
+};
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
@@ -29,6 +51,11 @@ const stylesheet = StyleSheet.create((theme) => ({
         justifyContent: 'center',
         alignItems: 'stretch',
         backgroundColor: theme.colors.groupped.background,
+    },
+    // The flat variant removes the card/backdrop split entirely, so the page
+    // takes the same colour the rows do.
+    containerFlat: {
+        backgroundColor: flatListBackgroundColor(theme),
     },
     contentContainer: {
         flex: 1,
@@ -40,6 +67,41 @@ const stylesheet = StyleSheet.create((theme) => ({
         paddingTop: 20,
         paddingBottom: 8,
     },
+    // A date heading in the flat list is just a label sitting between rows, so
+    // it drops the grey band and keeps the one background the variant uses.
+    headerSectionFlat: {
+        backgroundColor: flatListBackgroundColor(theme),
+        paddingHorizontal: 16,
+    },
+    archiveToggle: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+        paddingHorizontal: 24,
+        paddingTop: 20,
+        paddingBottom: 12,
+    },
+    // In the flat list the toggle heads the archive rather than dividing the
+    // page. It sits between the rows on the same background they use — the
+    // variant has no grey band anywhere.
+    archiveToggleBanded: {
+        backgroundColor: flatListBackgroundColor(theme),
+        paddingTop: 24,
+        paddingBottom: 8,
+    },
+    archiveTogglePressed: {
+        opacity: 0.5,
+    },
+    archiveToggleLine: {
+        flex: 1,
+        height: StyleSheet.hairlineWidth,
+        backgroundColor: theme.colors.divider,
+    },
+    archiveToggleText: {
+        fontSize: 14,
+        color: theme.colors.textSecondary,
+        ...Typography.default('regular'),
+    },
     headerText: {
         fontSize: 14,
         fontWeight: '600',
@@ -47,10 +109,29 @@ const stylesheet = StyleSheet.create((theme) => ({
         letterSpacing: 0.1,
         ...Typography.default('semiBold'),
     },
+    machineHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: Platform.select({ ios: 32, default: 24 }),
+        paddingTop: 8,
+        paddingBottom: 0,
+    },
+    machineHeaderLine: {
+        flex: 1,
+        height: StyleSheet.hairlineWidth,
+        backgroundColor: theme.colors.divider,
+    },
+    machineHeaderText: {
+        maxWidth: '60%',
+        fontSize: 11,
+        color: theme.colors.textSecondary,
+        marginRight: 4,
+        ...Typography.default('regular'),
+    },
     projectGroup: {
         paddingHorizontal: 16,
         paddingVertical: 10,
-        backgroundColor: theme.colors.surface,
+        backgroundColor: Platform.select({ web: theme.colors.surface, default: theme.colors.surfaceHigh }),
     },
     projectGroupTitle: {
         fontSize: 13,
@@ -69,12 +150,15 @@ const stylesheet = StyleSheet.create((theme) => ({
         flexDirection: 'row',
         alignItems: 'center',
         paddingHorizontal: 16,
-        backgroundColor: theme.colors.surface,
+        backgroundColor: 'transparent',
     },
     sessionItemContainer: {
         marginHorizontal: 16,
         marginBottom: 1,
         overflow: 'hidden',
+        backgroundColor: theme.colors.surface,
+        borderWidth: Platform.select({ web: 0, default: StyleSheet.hairlineWidth }),
+        borderColor: theme.colors.divider,
     },
     sessionItemFirst: {
         borderTopLeftRadius: 12,
@@ -118,6 +202,10 @@ const stylesheet = StyleSheet.create((theme) => ({
         fontWeight: '500',
         flex: 1,
         ...Typography.default('semiBold'),
+    },
+    sessionShortcutBadge: {
+        flexShrink: 0,
+        marginLeft: 8,
     },
     sessionTitleConnected: {
         color: theme.colors.text,
@@ -174,38 +262,78 @@ const stylesheet = StyleSheet.create((theme) => ({
     artifactsSection: {
         paddingHorizontal: 16,
         paddingBottom: 12,
-        backgroundColor: theme.colors.groupped.background,
+        backgroundColor: Platform.select({ web: theme.colors.groupped.background, default: 'transparent' }),
     },
-    archiveToggle: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: 24,
-        paddingVertical: 16,
+    phoneUpdateBanner: {
+        paddingBottom: 16,
     },
-    archiveToggleLine: {
-        flex: 1,
-        height: StyleSheet.hairlineWidth,
-        backgroundColor: theme.colors.groupped.sectionTitle,
-        opacity: 0.3,
-    },
-    archiveToggleText: {
-        fontSize: 12,
-        color: theme.colors.textSecondary,
-        paddingHorizontal: 12,
-        ...Typography.default('semiBold'),
+    phoneUpdateBannerHeader: {
+        paddingTop: 4,
     },
 }));
 
-export function SessionsList() {
+const MachineHeader = React.memo(({ machineId, machineName }: {
+    machineId: string | null;
+    machineName: string;
+}) => {
+    const styles = stylesheet;
+    const { theme } = useUnistyles();
+    const router = useRouter();
+
+    const handlePress = React.useCallback(() => {
+        if (machineId) {
+            router.navigate(`/machine/${machineId}` as any);
+        }
+    }, [machineId, router]);
+
+    return (
+        <Pressable
+            onPress={handlePress}
+            disabled={!machineId}
+            accessibilityRole={machineId ? 'button' : undefined}
+            style={styles.machineHeader}
+            hitSlop={{ top: 8, bottom: 8 }}
+        >
+            <View style={styles.machineHeaderLine} />
+            <Ionicons
+                name="desktop-outline"
+                size={11}
+                color={theme.colors.textSecondary}
+                style={{ marginHorizontal: 6 }}
+            />
+            <Text style={styles.machineHeaderText} numberOfLines={1}>
+                {machineName}
+            </Text>
+            <View style={styles.machineHeaderLine} />
+        </Pressable>
+    );
+});
+
+export function SessionsList({
+    topContentInset = 0,
+    scrollIndicatorTopInset = 0,
+    bottomContentInset = 128,
+    onScroll,
+}: {
+    topContentInset?: number;
+    scrollIndicatorTopInset?: number;
+    bottomContentInset?: number;
+    onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
+} = {}) {
     const styles = stylesheet;
     const safeArea = useSafeAreaInsets();
-    const data = useVisibleSessionListViewData();
+    const sourceData = useVisibleSessionListViewData();
+    const hasArchivedSessions = useHasArchivedSessions();
+    // Stored under its original `hideInactiveSessions` key — synced settings
+    // have no rename migration — but it hides archived sessions only.
+    const [hideArchivedSessions, setHideArchivedSessions] = useSettingMutable('hideInactiveSessions');
+    // The activity-sorted chat list is the default; the project-card hierarchy
+    // is offered back through the home filter menu for people who organized
+    // around it.
+    const flatSessionList = useSetting('sessionListGrouping') !== 'project';
+    const machines = useAllMachines();
     const pathname = usePathname();
     const isTablet = useIsTablet();
-    const [hideInactiveSessions, setHideInactiveSessions] = useSettingMutable('hideInactiveSessions');
-    const toggleArchived = React.useCallback(() => {
-        setHideInactiveSessions(!hideInactiveSessions);
-    }, [hideInactiveSessions, setHideInactiveSessions]);
     // Selection is derived once from pathname so the data array stays stable
     // across navigations. This keeps FlatList virtualization intact: only
     // the previously- and newly-selected rows re-render, instead of the
@@ -218,42 +346,133 @@ export function SessionsList() {
 
     // Request review
     React.useEffect(() => {
-        if (data && data.length > 0) {
+        if (sourceData && sourceData.length > 0) {
             requestReview();
         }
-    }, [data && data.length > 0]);
+    }, [sourceData && sourceData.length > 0]);
+
+    const data = React.useMemo<SessionListDisplayItem[] | null>(() => {
+        if (!sourceData) return sourceData;
+
+        // The archive is a flat, date-grouped tail rather than extra rows
+        // inside the project cards, so the toggle is the divider that opens
+        // it and always sits directly above those rows.
+        const archivedRows = sourceData.filter((item) => (
+            item.type === 'header' || item.type === 'session'
+        ));
+        const groupedRows = sourceData.filter((item) => (
+            item.type !== 'header' && item.type !== 'session'
+        ));
+        const archiveToggle: SessionListDisplayItem[] = hasArchivedSessions
+            ? [{ type: 'archive-toggle', hidden: hideArchivedSessions }]
+            : [];
+
+        if (flatSessionList) {
+            // A chat list should always float the thing the user just replied
+            // to, so the canonical layout is ordered by recent activity.
+            const flatRows = buildFlatSessionRows(groupedRows, { sortByActivity: true });
+            const flatItems = flatRows.map<SessionListDisplayItem>((row, index) => ({
+                type: 'flat-session',
+                row,
+                last: index === flatRows.length - 1,
+            }));
+            // The archive is the same column, only retired: its rows get the
+            // flat row too rather than reverting to inset cards. The toggle
+            // joins the date headings in their grey band, so opening the
+            // archive extends that band instead of adding a second divider
+            // style above it.
+            const flatArchived = archivedRows.map<SessionListDisplayItem>((item, index) => (
+                item.type === 'session'
+                    ? {
+                        type: 'flat-session',
+                        row: toFlatSessionRow(item.session),
+                        last: index === archivedRows.length - 1,
+                        archived: true,
+                    }
+                    : item
+            ));
+            const flatToggle = archiveToggle.map<SessionListDisplayItem>((item) => (
+                item.type === 'archive-toggle' ? { ...item, banded: true } : item
+            ));
+            return [...flatItems, ...flatToggle, ...flatArchived];
+        }
+
+        const machineGroups = buildSessionProjectDisplayGroups(
+            groupedRows,
+            machines,
+            t('status.unknown'),
+        );
+        if (machineGroups.length === 0) {
+            return [...groupedRows, ...archiveToggle, ...archivedRows];
+        }
+
+        const hierarchy = machineGroups.flatMap<SessionListDisplayItem>((group) => [
+            {
+                type: 'machine-header',
+                machineId: group.machineId,
+                machineName: group.machineName,
+            },
+            ...group.projects,
+        ]);
+        const legacyItems = groupedRows.filter((item) => (
+            item.type !== 'project' && item.type !== 'projects-header'
+        ));
+        return [...hierarchy, ...legacyItems, ...archiveToggle, ...archivedRows];
+    }, [flatSessionList, hasArchivedSessions, hideArchivedSessions, machines, sourceData]);
 
     // Early return if no data yet
     if (!data) {
         return (
-            <View style={styles.container} />
+            <View style={[styles.container, flatSessionList && styles.containerFlat]} />
         );
     }
 
-    const keyExtractor = React.useCallback((item: SessionListViewItem, index: number) => {
+    const keyExtractor = React.useCallback((item: SessionListDisplayItem, index: number) => {
         switch (item.type) {
+            case 'machine-header': return `machine-header-${JSON.stringify(item.machineId)}`;
+            case 'archive-toggle': return 'archive-toggle';
+            case 'flat-session': return `flat-session-${item.row.session.id}`;
             case 'header': return `header-${item.title}-${index}`;
             case 'active-sessions': return 'active-sessions';
-            case 'archive-toggle': return 'archive-toggle';
             case 'project-group': return `project-group-${item.machine.id}-${item.displayPath}-${index}`;
+            case 'projects-header': return `projects-header-${item.source}`;
+            case 'project': return `project-${item.source}-${item.project.machineId ?? 'unknown'}-${item.project.id}`;
             case 'session': return `session-${item.session.id}`;
         }
     }, []);
 
-    const renderItem = React.useCallback(({ item, index }: { item: SessionListViewItem, index: number }) => {
+    const renderItem = React.useCallback(({ item, index }: { item: SessionListDisplayItem, index: number }) => {
         switch (item.type) {
-            case 'header':
+            case 'machine-header':
                 return (
-                    <View style={styles.headerSection}>
-                        <Text style={styles.headerText}>
-                            {item.title}
-                        </Text>
-                    </View>
+                    <MachineHeader
+                        machineId={item.machineId}
+                        machineName={item.machineName}
+                    />
+                );
+
+            case 'flat-session':
+                return (
+                    <FlatSessionRow
+                        row={item.row}
+                        selected={item.row.session.id === selectedSessionId}
+                        showBorder={!item.last}
+                        archived={item.archived}
+                    />
                 );
 
             case 'archive-toggle':
                 return (
-                    <Pressable style={styles.archiveToggle} onPress={toggleArchived}>
+                    <Pressable
+                        onPress={() => setHideArchivedSessions(!item.hidden)}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: !item.hidden }}
+                        style={({ pressed }) => [
+                            styles.archiveToggle,
+                            item.banded && styles.archiveToggleBanded,
+                            pressed && styles.archiveTogglePressed,
+                        ]}
+                    >
                         <View style={styles.archiveToggleLine} />
                         <Text style={styles.archiveToggleText}>
                             {item.hidden ? t('sidebar.showArchived') : t('sidebar.hideArchived')}
@@ -262,10 +481,36 @@ export function SessionsList() {
                     </Pressable>
                 );
 
+            case 'header':
+                return (
+                    <View style={[styles.headerSection, flatSessionList && styles.headerSectionFlat]}>
+                        <Text style={styles.headerText}>
+                            {item.title}
+                        </Text>
+                    </View>
+                );
+
             case 'active-sessions':
                 return (
                     <ActiveSessionsGroupCompact
                         sessions={item.sessions}
+                        selectedSessionId={selectedSessionId}
+                    />
+                );
+
+            case 'projects-header':
+                return (
+                    <View style={styles.headerSection}>
+                        <Text style={styles.headerText}>
+                            {item.source === 'rig' ? getHarnessName('rig') : t('sidebar.sessionsTitle')}
+                        </Text>
+                    </View>
+                );
+
+            case 'project':
+                return (
+                    <ProjectGroup
+                        project={item.project}
                         selectedSessionId={selectedSessionId}
                     />
                 );
@@ -302,33 +547,47 @@ export function SessionsList() {
                     />
                 );
         }
-    }, [selectedSessionId, data, toggleArchived]);
+    }, [selectedSessionId, data, flatSessionList]);
 
 
     // Remove this section as we'll use FlatList for all items now
 
 
     const HeaderComponent = React.useCallback(() => {
+        const isPhoneLayout = topContentInset > 0;
         return (
-            <UpdateBanner />
+            <UpdateBanner
+                style={isPhoneLayout ? styles.phoneUpdateBanner : undefined}
+                headerStyle={isPhoneLayout ? styles.phoneUpdateBannerHeader : undefined}
+            />
         );
-    }, []);
+    }, [styles.phoneUpdateBanner, styles.phoneUpdateBannerHeader, topContentInset]);
 
     // Footer removed - all sessions now shown inline
 
     return (
-        <View style={styles.container}>
+        <View style={[styles.container, flatSessionList && styles.containerFlat]}>
             <View style={styles.contentContainer}>
                 <FlatList
                     data={data}
                     renderItem={renderItem}
                     keyExtractor={keyExtractor}
                     extraData={selectedSessionId}
-                    contentContainerStyle={{ paddingBottom: safeArea.bottom + 128, maxWidth: layout.maxWidth }}
+                    contentContainerStyle={{
+                        paddingTop: topContentInset,
+                        paddingBottom: safeArea.bottom + bottomContentInset,
+                        maxWidth: layout.maxWidth,
+                    }}
                     ListHeaderComponent={HeaderComponent}
+                    automaticallyAdjustsScrollIndicatorInsets={scrollIndicatorTopInset === 0}
+                    scrollIndicatorInsets={scrollIndicatorTopInset > 0
+                        ? { top: scrollIndicatorTopInset }
+                        : undefined}
                     windowSize={5}
                     maxToRenderPerBatch={8}
                     initialNumToRender={12}
+                    onScroll={onScroll}
+                    scrollEventThrottle={16}
                 />
             </View>
         </View>
@@ -340,6 +599,7 @@ const STATUS_CONFIG: Record<SessionState, { color: string; dotColor: string; isP
     thinking: { color: '#007AFF', dotColor: '#007AFF', isPulsing: true, isConnected: true },
     waiting: { color: '#34C759', dotColor: '#34C759', isPulsing: false, isConnected: true },
     permission_required: { color: '#FF9500', dotColor: '#FF9500', isPulsing: true, isConnected: true },
+    input_required: { color: '#FF9500', dotColor: '#FF9500', isPulsing: true, isConnected: true },
 };
 
 const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }: {
@@ -353,8 +613,9 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
     const navigateToSession = useNavigateToSession();
     const [actionsAnchor, setActionsAnchor] = React.useState<SessionActionsAnchor | null>(null);
     const baseStatus = STATUS_CONFIG[session.state];
-    // Override to solid blue when session has unread results
-    const status = session.hasUnread
+    const needsUserAction = session.state === 'permission_required' || session.state === 'input_required';
+    // User action stays orange and pulsing even when the request also marked the session unread.
+    const status = session.hasUnread && !needsUserAction
         ? { ...baseStatus, color: '#007AFF', dotColor: '#007AFF', isPulsing: false, isConnected: baseStatus.isConnected }
         : baseStatus;
 
@@ -362,15 +623,17 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
         return vibingMessages[Math.floor(Math.random() * vibingMessages.length)].toLowerCase() + '…';
     }, [session.state]);
 
-    const statusText = session.hasUnread
-        ? t('status.unread')
-        : session.state === 'thinking'
-            ? vibingMessage
-            : session.state === 'disconnected'
-                ? t('status.lastSeen', { time: formatLastSeen(session.activeAt!, false) })
-                : session.state === 'permission_required'
-                    ? t('status.permissionRequired')
-                    : t('status.online');
+    const statusText = session.state === 'input_required'
+        ? t('status.inputRequired')
+        : session.state === 'permission_required'
+            ? t('status.permissionRequired')
+            : session.hasUnread
+                ? t('status.unread')
+                : session.state === 'thinking'
+                    ? vibingMessage
+                    : session.state === 'disconnected'
+                        ? t('status.lastSeen', { time: formatLastSeen(session.activeAt!, false) })
+                        : t('status.online');
 
     const handlePress = React.useCallback(() => {
         navigateToSession(session.id);
@@ -412,7 +675,7 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
             {...menuProps}
         >
             <View style={styles.avatarContainer}>
-                <Avatar id={session.avatarId} size={48} monochrome={!status.isConnected} flavor={session.flavor} />
+                <Avatar id={session.avatarId} size={48} monochrome={!status.isConnected} flavor={session.flavor} clientId={session.clientId} imageUrl={session.projectAvatarUri} thumbhash={session.projectAvatarThumbhash} badgeLocation="sessionList" />
                 {session.hasDraft && (
                     <View style={styles.draftIconContainer}>
                         <Ionicons
@@ -431,9 +694,20 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
                     ]} numberOfLines={1}>
                         {session.name}
                     </Text>
+                    <SessionShortcutHintBadge
+                        sessionId={session.id}
+                        style={styles.sessionShortcutBadge}
+                    />
                 </View>
 
-                {session.path ? (
+                {session.identityLine ? (
+                    <View style={styles.sessionSubtitleRow}>
+                        <ProviderIcon kind={session.providerKind} size={13} />
+                        <Text style={styles.sessionSubtitle} numberOfLines={1}>
+                            {session.identityLine}
+                        </Text>
+                    </View>
+                ) : session.path ? (
                     <View style={styles.sessionSubtitleRow}>
                         <Text style={styles.sessionSubtitle} numberOfLines={1}>
                             {session.path.split(/[/\\]/).filter(Boolean).pop()}
@@ -453,7 +727,7 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
                         styles.statusText,
                         { color: status.color }
                     ]}>
-                        {statusText}
+                        {session.modelName ? `${session.modelName} · ` : ''}{statusText}{session.activitySummary ? ` · ${session.activitySummary}` : ''}
                     </Text>
                 </View>
             </View>

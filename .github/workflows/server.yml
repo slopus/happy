@@ -1,0 +1,212 @@
+name: Server
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'packages/happy-server/**'
+      - 'packages/happy-server-self-host/**'
+      - 'packages/happy-wire/**'
+      - 'Dockerfile'
+      - 'Dockerfile.server'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - '.npmrc'
+      - 'scripts/**'
+      - 'patches/**'
+      - '.github/workflows/server.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'packages/happy-server/**'
+      - 'packages/happy-server-self-host/**'
+      - 'packages/happy-wire/**'
+      - 'Dockerfile'
+      - 'Dockerfile.server'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - '.npmrc'
+      - 'scripts/**'
+      - 'patches/**'
+      - '.github/workflows/server.yml'
+  workflow_dispatch:
+
+jobs:
+  typecheck-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Install pnpm
+      uses: pnpm/action-setup@v4
+
+    - name: Setup Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: 20
+        cache: pnpm
+
+    - name: Install dependencies
+      run: pnpm install --frozen-lockfile
+
+    - name: Build happy-wire
+      run: pnpm --filter @slopus/happy-wire --fail-if-no-match build
+
+    # `build` is the production typecheck (tsconfig.build.json, specs excluded).
+    # This is exactly what Dockerfile.server runs, so a break here is a break there.
+    - name: Production typecheck
+      run: pnpm --filter happy-server --fail-if-no-match build
+
+    # The full typecheck additionally covers specs, which reach into happy-app
+    # for cross-package contract checks.
+    - name: Full typecheck
+      run: pnpm --filter happy-server --fail-if-no-match typecheck
+
+    - name: Unit tests
+      run: pnpm --filter happy-server --fail-if-no-match test
+
+  # Builds the production image and proves it actually serves traffic.
+  # A container whose CMD silently no-ops exits 0 immediately and would pass
+  # every check except starting it, which is how a broken image shipped before.
+  docker-production:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: handy
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/handy
+      HANDY_MASTER_SECRET: ci-master-secret-not-used-in-production
+      PORT: "3005"
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Build production image
+      run: docker build -t happy-server:ci -f Dockerfile.server .
+
+    - name: Apply migrations
+      run: |
+        docker run --rm --network host \
+          -e DATABASE_URL="$DATABASE_URL" \
+          -w /repo/packages/happy-server \
+          --entrypoint sh happy-server:ci \
+          -c '../../node_modules/.bin/prisma migrate deploy'
+
+    - name: Start container
+      run: |
+        docker run -d --name happy-server-ci --network host \
+          -e DATABASE_URL="$DATABASE_URL" \
+          -e HANDY_MASTER_SECRET="$HANDY_MASTER_SECRET" \
+          -e PORT="$PORT" \
+          -e METRICS_ENABLED=false \
+          happy-server:ci
+
+    - name: Wait for health
+      run: |
+        UP=0
+        for i in $(seq 1 60); do
+          if curl -sf -m 2 "http://127.0.0.1:${PORT}/health" -o /dev/null; then
+            UP=1; echo "server healthy after ${i}s"; break
+          fi
+          # A no-op CMD exits immediately — fail fast and loudly rather than
+          # waiting out the full timeout.
+          if [ "$(docker inspect -f '{{.State.Running}}' happy-server-ci)" != "true" ]; then
+            echo "Error: container exited before becoming healthy"
+            echo "exit code: $(docker inspect -f '{{.State.ExitCode}}' happy-server-ci)"
+            docker logs happy-server-ci
+            exit 1
+          fi
+          sleep 1
+        done
+        if [ "$UP" != "1" ]; then
+          echo "Error: server did not become healthy"
+          docker logs happy-server-ci
+          exit 1
+        fi
+
+    - name: Exercise endpoints
+      run: |
+        echo "--- /health"
+        curl -sf -m 5 "http://127.0.0.1:${PORT}/health"; echo
+        # Hits the database through Prisma, so this fails if the query engine
+        # or the schema is not actually usable in the image.
+        echo "--- /v1/auth/request/status"
+        PK=$(node -e "console.log(Buffer.alloc(32).toString('base64'))")
+        BODY=$(curl -sf -m 5 -G "http://127.0.0.1:${PORT}/v1/auth/request/status" --data-urlencode "publicKey=$PK")
+        echo "$BODY"
+        echo "$BODY" | grep -q '"status"' || { echo "Error: Prisma-backed endpoint did not respond"; exit 1; }
+
+    - name: Container logs
+      if: always()
+      run: docker logs happy-server-ci || true
+
+    - name: Stop container
+      if: always()
+      run: docker rm -f happy-server-ci || true
+
+  # The standalone image is the self-host path: embedded PGlite, local files,
+  # no external services.
+  docker-standalone:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Build standalone image
+      run: docker build -t happy-server-standalone:ci -f Dockerfile .
+
+    - name: Start container
+      run: |
+        docker run -d --name happy-standalone-ci -p 3005:3005 \
+          -e HANDY_MASTER_SECRET=ci-master-secret-not-used-in-production \
+          happy-server-standalone:ci
+
+    - name: Wait for health
+      run: |
+        UP=0
+        for i in $(seq 1 90); do
+          if curl -sf -m 2 http://127.0.0.1:3005/health -o /dev/null; then
+            UP=1; echo "standalone healthy after ${i}s"; break
+          fi
+          if [ "$(docker inspect -f '{{.State.Running}}' happy-standalone-ci)" != "true" ]; then
+            echo "Error: container exited before becoming healthy"
+            echo "exit code: $(docker inspect -f '{{.State.ExitCode}}' happy-standalone-ci)"
+            docker logs happy-standalone-ci
+            exit 1
+          fi
+          sleep 1
+        done
+        if [ "$UP" != "1" ]; then
+          echo "Error: standalone server did not become healthy"
+          docker logs happy-standalone-ci
+          exit 1
+        fi
+
+    - name: Container logs
+      if: always()
+      run: docker logs happy-standalone-ci || true
+
+    - name: Stop container
+      if: always()
+      run: docker rm -f happy-standalone-ci || true

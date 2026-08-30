@@ -217,6 +217,76 @@ describe('SDKToLogConverter', () => {
         })
     })
 
+    describe('Context window', () => {
+        const assistantWithUsage = (model: string) => ({
+            type: 'assistant',
+            message: {
+                role: 'assistant',
+                model,
+                content: [{ type: 'text', text: 'hi' }],
+                usage: { input_tokens: 10, output_tokens: 5 }
+            }
+        } as unknown as SDKAssistantMessage)
+
+        const resultReporting = (modelUsage: Record<string, { contextWindow: number }>) => ({
+            type: 'result',
+            subtype: 'success',
+            is_error: false,
+            session_id: 'ctx-session',
+            modelUsage
+        } as unknown as SDKResultMessage)
+
+        it('should leave usage untouched before any result message', () => {
+            const logMessage = converter.convert(assistantWithUsage('claude-opus-4-8'))
+
+            expect((logMessage as any)?.message.usage).not.toHaveProperty('context_window')
+        })
+
+        it('should stamp the reported context window onto later assistant usage', () => {
+            converter.convert(resultReporting({ 'claude-opus-4-8': { contextWindow: 1_000_000 } }))
+
+            const logMessage = converter.convert(assistantWithUsage('claude-opus-4-8'))
+
+            expect((logMessage as any)?.message.usage).toMatchObject({
+                input_tokens: 10,
+                output_tokens: 5,
+                context_window: 1_000_000
+            })
+        })
+
+        it('should match the window to the model of the message', () => {
+            converter.convert(resultReporting({
+                'claude-opus-4-8': { contextWindow: 1_000_000 },
+                'claude-haiku-4-5': { contextWindow: 200_000 }
+            }))
+
+            const haiku = converter.convert(assistantWithUsage('claude-haiku-4-5'))
+            const opus = converter.convert(assistantWithUsage('claude-opus-4-8'))
+
+            expect((haiku as any)?.message.usage.context_window).toBe(200_000)
+            expect((opus as any)?.message.usage.context_window).toBe(1_000_000)
+        })
+
+        it('should ignore unusable window values', () => {
+            converter.convert(resultReporting({ 'claude-opus-4-8': { contextWindow: 0 } }))
+
+            const logMessage = converter.convert(assistantWithUsage('claude-opus-4-8'))
+
+            expect((logMessage as any)?.message.usage).not.toHaveProperty('context_window')
+        })
+
+        it('should leave messages without usage alone', () => {
+            converter.convert(resultReporting({ 'claude-opus-4-8': { contextWindow: 1_000_000 } }))
+
+            const logMessage = converter.convert({
+                type: 'assistant',
+                message: { role: 'assistant', model: 'claude-opus-4-8', content: [] }
+            } as unknown as SDKAssistantMessage)
+
+            expect((logMessage as any)?.message).not.toHaveProperty('usage')
+        })
+    })
+
     describe('Parent-child relationships', () => {
         it('should track parent UUIDs across messages', () => {
             const msg1: SDKUserMessage = {

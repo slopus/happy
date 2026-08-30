@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { Message } from '@/sync/typesMessage';
 import { knownTools } from '@/components/tools/knownTools';
+import { getToolSummaryCategory, isInteractiveQuestionToolName } from '@/utils/toolDisplay';
 import { t } from '@/text';
 
 // Display item types for the grouped message list
@@ -73,9 +74,13 @@ export function groupMessagesForDisplay(
     }
 
     const visibleForToolGrouping = (msg: Message, index: number): boolean => {
+        // Keep every current-turn tool call visible while the agent is still
+        // working. Once the turn completes, its intermediate work is folded
+        // into one AgentWorkGroupItem above the final response.
+        if (!collapseCurrentTurn && turnOf[index] === 0) return false;
         if (hiddenWorkIndexes.has(index)) return false;
         if (isInvisibleMessage(msg) || isUserAttachment(msg)) return false;
-        return msg.kind === 'tool-call';
+        return msg.kind === 'tool-call' && !isInteractiveQuestionToolName(msg.tool.name);
     };
 
     const toolRuns = collectToolRuns(messages, visibleForToolGrouping);
@@ -143,7 +148,7 @@ export function groupToolCallsForDisplay(
 
     const groupSingleToolCalls = options.groupSingleToolCalls ?? false;
     const toolRuns = collectToolRuns(messages, (msg) => {
-        if (msg.kind !== 'tool-call') return false;
+        if (msg.kind !== 'tool-call' || isInteractiveQuestionToolName(msg.tool.name)) return false;
         if (isInvisibleMessage(msg) || isUserAttachment(msg)) return false;
         return true;
     });
@@ -269,6 +274,7 @@ function collectAgentWorkGroups(messages: Message[], turnOf: number[], collapseC
             const msg = messages[index];
             if (msg.kind === 'user-text') return false;
             if (isInvisibleMessage(msg) || isUserAttachment(msg)) return false;
+            if (msg.kind === 'tool-call' && isInteractiveQuestionToolName(msg.tool.name)) return false;
             return true;
         });
 
@@ -282,7 +288,6 @@ function collectAgentWorkGroups(messages: Message[], turnOf: number[], collapseC
         const hiddenMessages = hiddenIndexes.map((index) => messages[index]);
         const startedAt = Math.min(...hiddenMessages.map((msg) => msg.createdAt));
         const completedAt = messages[finalTextIndex].createdAt;
-        const hasRunning = hiddenMessages.some((msg) => msg.kind === 'tool-call' && msg.tool.state === 'running');
 
         groups.push({
             hiddenIndexes,
@@ -291,7 +296,7 @@ function collectAgentWorkGroups(messages: Message[], turnOf: number[], collapseC
                 type: 'agent-work-group',
                 id: `work-${messages[oldestIdx].id}`,
                 messages: hiddenMessages,
-                hasRunning,
+                hasRunning: false,
                 hasPendingPermission: hasPendingPermission(hiddenMessages),
                 startedAt,
                 completedAt,
@@ -329,25 +334,13 @@ function hasPendingPermission(messages: Message[]): boolean {
     ));
 }
 
-// Tool name → category mapping for summary generation
-const TOOL_CATEGORIES: Record<string, string> = {
-    Edit: 'edit', MultiEdit: 'edit', Write: 'edit',
-    CodexPatch: 'edit', GeminiPatch: 'edit', edit: 'edit', NotebookEdit: 'edit',
-    Read: 'read', read: 'read', NotebookRead: 'read',
-    Bash: 'terminal', CodexBash: 'terminal', GeminiBash: 'terminal',
-    shell: 'terminal', execute: 'terminal',
-    Grep: 'search', Glob: 'search', LS: 'search', search: 'search', WebSearch: 'search',
-    WebFetch: 'web',
-    Task: 'task', Agent: 'task',
-};
-
 /** Generate a human-readable summary of tools in a group */
 export function generateGroupSummary(messages: Message[]): string {
     const counts: Record<string, number> = {};
 
     for (const msg of messages) {
         if (msg.kind === 'tool-call') {
-            const category = TOOL_CATEGORIES[msg.tool.name] || 'other';
+            const category = getToolSummaryCategory(msg.tool.name);
             counts[category] = (counts[category] || 0) + 1;
         }
     }
