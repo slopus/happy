@@ -52,7 +52,7 @@ vi.mock("fs", async () => {
     return { ...actual, existsSync: fsMock.existsSync, createReadStream: fsMock.createReadStream };
 });
 
-import { fileRoutes } from "./fileRoutes";
+import { fileRoutes, isReservedSessionSharePath } from "./fileRoutes";
 
 async function createApp() {
     const app = fastify();
@@ -97,5 +97,26 @@ describe("fileRoutes", () => {
         });
 
         expect(res.statusCode).toBe(404);
+    });
+
+    it("blocks current and legacy share prefixes before local or S3 lookup", async () => {
+        expect(isReservedSessionSharePath("private/session-shares/share/draft/asset")).toBe(true);
+        expect(isReservedSessionSharePath("public/session-shares/share/draft/asset")).toBe(true);
+        expect(isReservedSessionSharePath("public/avatars/avatar.png")).toBe(false);
+
+        state.useLocalStorage = true;
+        state.localFiles.set("private/session-shares/share/draft/asset", Buffer.from("private"));
+        app = await createApp();
+        expect((await app.inject({ method: "GET", url: "/files/private/session-shares/share/draft/asset" })).statusCode).toBe(403);
+        await app.close();
+
+        state.useLocalStorage = false;
+        app = await createApp();
+        expect((await app.inject({ method: "GET", url: "/files/public/session-shares/share/draft/asset" })).statusCode).toBe(403);
+        expect(filesMock.s3client.presignedGetObject).not.toHaveBeenCalledWith(
+            "test-bucket",
+            "public/session-shares/share/draft/asset",
+            expect.any(Number),
+        );
     });
 });

@@ -778,6 +778,41 @@ export const zhHant: TranslationStructure = {
 
     },
 
+    sessionShare: {
+        shareSession: '分享工作階段',
+        manageSharing: '管理分享',
+        confirmTitle: '分享此工作階段？',
+        confirmMessage: '將建立目前對話及全部附件的公開快照。任何取得連結的人都可以查看。',
+        confirmAction: '建立公開連結',
+        preparing: '正在準備對話…',
+        uploading: ({ completed, total }: { completed: number; total: number }) => `正在上傳附件（${completed}/${total}）…`,
+        publishing: '正在發布快照…',
+        copyLink: '複製連結',
+        openSharedPage: '開啟分享頁面',
+        updateSnapshot: '更新快照',
+        revokeSharing: '撤銷分享',
+        revokeTitle: '撤銷公開連結？',
+        revokeMessage: '分享頁面及其全部附件將立即失效。',
+        revokeAction: '撤銷連結',
+        shared: '工作階段已分享',
+        linkCopied: '連結已複製',
+        sharedOn: ({ date }: { date: string }) => `分享於 ${date}`,
+        sharedViaPaws: '透過 Paws 分享',
+        thinking: '思考中',
+        toolRunning: '執行中',
+        toolCompleted: '已完成',
+        toolFailed: '失敗',
+        downloadAttachment: '下載附件',
+        attachmentUnavailable: '附件無法使用',
+        notFoundTitle: '此分享工作階段無法使用',
+        notFoundMessage: '連結可能無效，或已由擁有者撤銷。',
+        authenticationUnavailable: '身分驗證無法使用',
+        attachmentKeyUnavailable: '附件金鑰無法使用',
+        attachmentDownloadFailed: '附件下載失敗',
+        shareFailed: '無法分享工作階段',
+        revokeFailed: '無法撤銷工作階段分享',
+    },
+
     components: {
         emptyMainScreen: {
             // Used by EmptyMainScreen component

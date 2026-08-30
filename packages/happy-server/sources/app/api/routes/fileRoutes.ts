@@ -5,10 +5,17 @@ import { getLocalFilesDir, isLocalStorage, isPublicFilePath, s3bucket, s3client 
 
 const PRESIGNED_TTL_SECONDS = 15 * 60;
 
+export function isReservedSessionSharePath(filePath: string): boolean {
+    return filePath === 'private/session-shares'
+        || filePath.startsWith('private/session-shares/')
+        || filePath === 'public/session-shares'
+        || filePath.startsWith('public/session-shares/');
+}
+
 export function fileRoutes(app: Fastify) {
     app.get('/files/*', async function (request, reply) {
         const filePath = (request.params as any)['*'];
-        if (typeof filePath !== "string" || filePath.includes("..")) {
+        if (typeof filePath !== "string" || filePath.includes("..") || isReservedSessionSharePath(filePath)) {
             return reply.code(403).send('Forbidden');
         }
 

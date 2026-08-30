@@ -792,6 +792,41 @@ export const en: TranslationStructure = {
 
     },
 
+    sessionShare: {
+        shareSession: 'Share session',
+        manageSharing: 'Manage sharing',
+        confirmTitle: 'Share this session?',
+        confirmMessage: 'A public snapshot of the current conversation and all attachments will be created. Anyone with the link can view it.',
+        confirmAction: 'Create public link',
+        preparing: 'Preparing conversation…',
+        uploading: ({ completed, total }: { completed: number; total: number }) => `Uploading attachments (${completed}/${total})…`,
+        publishing: 'Publishing snapshot…',
+        copyLink: 'Copy link',
+        openSharedPage: 'Open shared page',
+        updateSnapshot: 'Update snapshot',
+        revokeSharing: 'Revoke sharing',
+        revokeTitle: 'Revoke public link?',
+        revokeMessage: 'The shared page and all of its attachments will stop working immediately.',
+        revokeAction: 'Revoke link',
+        shared: 'Session shared',
+        linkCopied: 'Link copied',
+        sharedOn: ({ date }: { date: string }) => `Shared ${date}`,
+        sharedViaPaws: 'Shared via Paws',
+        thinking: 'Thinking',
+        toolRunning: 'Running',
+        toolCompleted: 'Completed',
+        toolFailed: 'Failed',
+        downloadAttachment: 'Download attachment',
+        attachmentUnavailable: 'Attachment unavailable',
+        notFoundTitle: 'This shared session is unavailable',
+        notFoundMessage: 'This link may be invalid or the owner may have revoked it.',
+        authenticationUnavailable: 'Authentication is unavailable',
+        attachmentKeyUnavailable: 'Attachment key is unavailable',
+        attachmentDownloadFailed: 'Attachment download failed',
+        shareFailed: 'Unable to share session',
+        revokeFailed: 'Unable to revoke session share',
+    },
+
     components: {
         emptyMainScreen: {
             // Used by EmptyMainScreen component

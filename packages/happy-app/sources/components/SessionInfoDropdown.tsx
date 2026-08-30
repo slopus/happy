@@ -75,10 +75,11 @@ interface SessionInfoDropdownProps {
     top: number;
     canCopySessionId?: boolean;
     onClose: () => void;
+    onShareSession?: () => void;
     onViewDetails: () => void;
 }
 
-export const SessionInfoDropdown = React.memo(({ session, machineName, online, top, canCopySessionId = false, onClose, onViewDetails }: SessionInfoDropdownProps) => {
+export const SessionInfoDropdown = React.memo(({ session, machineName, online, top, canCopySessionId = false, onClose, onShareSession, onViewDetails }: SessionInfoDropdownProps) => {
     const { theme } = useUnistyles();
     const metadata = session.metadata;
     const flavor = metadata?.flavor ?? undefined;
@@ -407,6 +408,19 @@ export const SessionInfoDropdown = React.memo(({ session, machineName, online, t
                                     <Text style={styles.actionLabel} numberOfLines={1}>{t('sessionInfo.happySessionId')}</Text>
                                 </Pressable>
                             ) : null}
+                            {Platform.OS === 'web' && onShareSession ? (
+                                <Pressable
+                                    accessibilityLabel={t('sessionShare.shareSession')}
+                                    accessibilityRole="button"
+                                    style={(p) => [styles.actionRow, p.pressed && styles.rowPressed]}
+                                    onPress={onShareSession}
+                                    testID="session-agent-panel-share-session"
+                                >
+                                    <Ionicons name="share-social-outline" size={16} color={theme.colors.text} />
+                                    <Text style={styles.actionLabel} numberOfLines={1}>{t('sessionShare.shareSession')}</Text>
+                                    <Ionicons name="chevron-forward" size={14} color={theme.colors.textSecondary} />
+                                </Pressable>
+                            ) : null}
                             <Pressable
                                 accessibilityLabel={t('sessionInfo.viewDetails')}
                                 accessibilityRole="button"
@@ -489,7 +503,7 @@ const styles = StyleSheet.create((theme) => ({
         borderRadius: 12,
     },
     rowPressed: {
-        backgroundColor: theme.colors.surfaceHigh,
+        backgroundColor: theme.colors.surfacePressed,
     },
     configLabel: {
         minWidth: 0,

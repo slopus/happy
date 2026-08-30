@@ -143,7 +143,8 @@ const session = {
     },
 } as any;
 
-function renderPanel(online: boolean) {
+function renderPanel(online: boolean, sharingEnabled = true) {
+    const onShareSession = vi.fn();
     let renderer: any;
     act(() => {
         renderer = TestRenderer.create(
@@ -153,11 +154,12 @@ function renderPanel(online: boolean) {
                 online={online}
                 top={64}
                 onClose={vi.fn()}
+                onShareSession={sharingEnabled ? onShareSession : undefined}
                 onViewDetails={vi.fn()}
             />,
         );
     });
-    return renderer;
+    return { renderer, onShareSession };
 }
 
 describe('SessionInfoDropdown', () => {
@@ -182,7 +184,7 @@ describe('SessionInfoDropdown', () => {
     });
 
     it('groups runtime, execution, and management while exposing honest row affordances', () => {
-        const renderer = renderPanel(true);
+        const { renderer } = renderPanel(true);
 
         expect(renderer.root.findAllByProps({ testID: 'session-agent-panel-runtime-location' })).toHaveLength(1);
         expect(renderer.root.findAllByProps({ testID: 'session-agent-panel-current-execution' })).toHaveLength(1);
@@ -215,7 +217,7 @@ describe('SessionInfoDropdown', () => {
     });
 
     it('keeps the last execution values visible but removes edit affordances while offline', () => {
-        const renderer = renderPanel(false);
+        const { renderer } = renderPanel(false);
 
         expect(renderer.root.findByProps({ testID: 'session-agent-panel-offline-notice' })).toBeTruthy();
         for (const testID of [
@@ -234,6 +236,23 @@ describe('SessionInfoDropdown', () => {
         expect(renderer.root.findByProps({ testID: 'session-agent-panel-permission' }).props.accessibilityLabel)
             .toContain('Needs confirmation');
 
+        act(() => renderer.unmount());
+    });
+
+    it('offers public sharing from the PC session-management section', () => {
+        const { renderer, onShareSession } = renderPanel(true);
+
+        const share = renderer.root.findByProps({ testID: 'session-agent-panel-share-session' });
+        expect(share.props.accessibilityRole).toBe('button');
+        act(() => share.props.onPress());
+        expect(onShareSession).toHaveBeenCalledTimes(1);
+
+        act(() => renderer.unmount());
+    });
+
+    it('does not expose sharing when the responsive parent disables PC management', () => {
+        const { renderer } = renderPanel(true, false);
+        expect(renderer.root.findAllByProps({ testID: 'session-agent-panel-share-session' })).toHaveLength(0);
         act(() => renderer.unmount());
     });
 });

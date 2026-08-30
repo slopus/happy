@@ -31,6 +31,8 @@ spec:
           value: production
         - name: PORT
           value: "3005"
+        - name: HAPPY_TRUST_PROXY_HOPS
+          value: "1"
         - name: REDIS_URL
           value: redis://happy-redis:6379
         - name: S3_PUBLIC_URL

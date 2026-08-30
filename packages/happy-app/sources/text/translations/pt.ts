@@ -777,6 +777,41 @@ export const pt: TranslationStructure = {
 
     },
 
+    sessionShare: {
+        shareSession: 'Compartilhar sessão',
+        manageSharing: 'Gerenciar compartilhamento',
+        confirmTitle: 'Compartilhar esta sessão?',
+        confirmMessage: 'Será criado um snapshot público da conversa atual e de todos os anexos. Qualquer pessoa com o link poderá visualizá-lo.',
+        confirmAction: 'Criar link público',
+        preparing: 'Preparando a conversa…',
+        uploading: ({ completed, total }: { completed: number; total: number }) => `Enviando anexos (${completed}/${total})…`,
+        publishing: 'Publicando snapshot…',
+        copyLink: 'Copiar link',
+        openSharedPage: 'Abrir página compartilhada',
+        updateSnapshot: 'Atualizar snapshot',
+        revokeSharing: 'Revogar compartilhamento',
+        revokeTitle: 'Revogar o link público?',
+        revokeMessage: 'A página compartilhada e todos os anexos deixarão de funcionar imediatamente.',
+        revokeAction: 'Revogar link',
+        shared: 'Sessão compartilhada',
+        linkCopied: 'Link copiado',
+        sharedOn: ({ date }: { date: string }) => `Compartilhada em ${date}`,
+        sharedViaPaws: 'Compartilhada via Paws',
+        thinking: 'Pensando',
+        toolRunning: 'Em execução',
+        toolCompleted: 'Concluído',
+        toolFailed: 'Falhou',
+        downloadAttachment: 'Baixar anexo',
+        attachmentUnavailable: 'Anexo indisponível',
+        notFoundTitle: 'Esta sessão compartilhada não está disponível',
+        notFoundMessage: 'Este link pode ser inválido ou o proprietário pode tê-lo revogado.',
+        authenticationUnavailable: 'A autenticação não está disponível',
+        attachmentKeyUnavailable: 'A chave do anexo não está disponível',
+        attachmentDownloadFailed: 'Falha ao baixar o anexo',
+        shareFailed: 'Não foi possível compartilhar a sessão',
+        revokeFailed: 'Não foi possível revogar o compartilhamento da sessão',
+    },
+
     components: {
         emptyMainScreen: {
             // Used by EmptyMainScreen component

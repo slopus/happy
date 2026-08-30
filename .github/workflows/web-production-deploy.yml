@@ -87,6 +87,38 @@ jobs:
           47.115.228.20 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBEmQUBstAnrOJApt7mRCo0vqiQKe9AG6IgWcwZ+X/RxBwVNPQnCPWjfR3GnxeZOsB5D/6XLIKQAyj/0/N79BlEU=
           EOF
 
+      - name: Route public session shares to the Web SPA
+        run: |
+          set -euo pipefail
+          current_caddy="$(mktemp)"
+          next_caddy="$(mktemp)"
+          remote_candidate="/tmp/paws-caddy-$GITHUB_SHA"
+          trap 'rm -f "$current_caddy" "$next_caddy"' EXIT
+          ssh -p "$PAWS_DEPLOY_PORT" "$PAWS_DEPLOY_HOST" \
+            'cat /etc/caddy/Caddyfile' > "$current_caddy"
+          node scripts/configure-production-web-caddy.mjs "$current_caddy" "$next_caddy"
+          scp -P "$PAWS_DEPLOY_PORT" "$next_caddy" "$PAWS_DEPLOY_HOST:$remote_candidate"
+          ssh -p "$PAWS_DEPLOY_PORT" "$PAWS_DEPLOY_HOST" bash -s -- "$remote_candidate" <<'REMOTE_SCRIPT'
+          set -euo pipefail
+          candidate="$1"
+          config="/etc/caddy/Caddyfile"
+          backup="/etc/caddy/Caddyfile.paws-public-share.previous"
+          cleanup() { rm -f -- "$candidate"; }
+          trap cleanup EXIT
+          cp -p -- "$config" "$backup"
+          install -m 644 -- "$candidate" "$config"
+          if ! caddy validate --config "$config"; then
+            cp -p -- "$backup" "$config"
+            exit 1
+          fi
+          if ! systemctl reload caddy; then
+            cp -p -- "$backup" "$config"
+            caddy validate --config "$config"
+            systemctl reload caddy
+            exit 1
+          fi
+          REMOTE_SCRIPT
+
       - name: Build Web from this main revision
         run: |
           set -euo pipefail

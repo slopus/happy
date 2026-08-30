@@ -199,6 +199,7 @@ vi.mock('@/components/ChatHeaderView', async () => {
 });
 vi.mock('@/components/SessionHeaderChip', () => ({ SessionHeaderChip: 'SessionHeaderChip' }));
 vi.mock('@/components/SessionInfoDropdown', () => ({ SessionInfoDropdown: 'SessionInfoDropdown' }));
+vi.mock('@/components/PublicSessionShareDialog', () => ({ PublicSessionShareDialog: 'PublicSessionShareDialog' }));
 vi.mock('@/components/SessionOrganizerDialog', () => ({ SessionOrganizerDialog: 'SessionOrganizerDialog' }));
 vi.mock('@/components/ChatList', async () => {
     const ReactModule = await import('react');
@@ -512,7 +513,7 @@ describe('SessionView Agent-space boundary', () => {
         act(() => renderer.unmount());
     });
 
-    it('keeps new session and adds button-only right panel access to the phone header', () => {
+    it('keeps the phone header focused on the current session and right-panel access', () => {
         mocks.isDataReady = true;
         let renderer: any;
 
@@ -532,9 +533,8 @@ describe('SessionView Agent-space boundary', () => {
         expect(renderer.root.findByType('RightSwipePanelHost').props.open).toBe(true);
         expect(renderer.root.findByProps({ testID: 'desktop-right-panel-toggle-button' }).props['aria-expanded']).toBe(true);
 
-        const newSession = renderer.root.findByProps({ testID: 'session-header-new-session-button' });
-        act(() => newSession.props.onPress());
-        expect(mocks.routerNavigate).toHaveBeenCalledWith('/new');
+        expect(renderer.root.findAllByProps({ testID: 'session-header-new-session-button' })).toHaveLength(0);
+        expect(mocks.routerNavigate).not.toHaveBeenCalledWith('/new');
 
         act(() => renderer.unmount());
     });

@@ -779,6 +779,41 @@ export const ja: TranslationStructure = {
 
     },
 
+    sessionShare: {
+        shareSession: 'セッションを共有',
+        manageSharing: '共有を管理',
+        confirmTitle: 'このセッションを共有しますか？',
+        confirmMessage: '現在の会話とすべての添付ファイルの公開スナップショットが作成されます。リンクを知っている人は誰でも閲覧できます。',
+        confirmAction: '公開リンクを作成',
+        preparing: '会話を準備しています…',
+        uploading: ({ completed, total }: { completed: number; total: number }) => `添付ファイルをアップロード中（${completed}/${total}）…`,
+        publishing: 'スナップショットを公開しています…',
+        copyLink: 'リンクをコピー',
+        openSharedPage: '共有ページを開く',
+        updateSnapshot: 'スナップショットを更新',
+        revokeSharing: '共有を取り消す',
+        revokeTitle: '公開リンクを無効にしますか？',
+        revokeMessage: '共有ページとすべての添付ファイルは直ちに利用できなくなります。',
+        revokeAction: 'リンクを無効にする',
+        shared: 'セッションを共有しました',
+        linkCopied: 'リンクをコピーしました',
+        sharedOn: ({ date }: { date: string }) => `${date}に共有`,
+        sharedViaPaws: 'Pawsで共有',
+        thinking: '思考中',
+        toolRunning: '実行中',
+        toolCompleted: '完了',
+        toolFailed: '失敗',
+        downloadAttachment: '添付ファイルをダウンロード',
+        attachmentUnavailable: '添付ファイルを利用できません',
+        notFoundTitle: 'この共有セッションは利用できません',
+        notFoundMessage: 'リンクが無効であるか、所有者によって取り消された可能性があります。',
+        authenticationUnavailable: '認証を利用できません',
+        attachmentKeyUnavailable: '添付ファイルのキーを利用できません',
+        attachmentDownloadFailed: '添付ファイルのダウンロードに失敗しました',
+        shareFailed: 'セッションを共有できませんでした',
+        revokeFailed: 'セッションの共有を取り消せませんでした',
+    },
+
     components: {
         emptyMainScreen: {
             // Used by EmptyMainScreen component

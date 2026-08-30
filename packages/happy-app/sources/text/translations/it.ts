@@ -776,6 +776,41 @@ export const it: TranslationStructure = {
 
     },
 
+    sessionShare: {
+        shareSession: 'Condividi sessione',
+        manageSharing: 'Gestisci condivisione',
+        confirmTitle: 'Condividere questa sessione?',
+        confirmMessage: 'Verrà creata un\'istantanea pubblica della conversazione attuale e di tutti gli allegati. Chiunque disponga del link potrà visualizzarla.',
+        confirmAction: 'Crea link pubblico',
+        preparing: 'Preparazione della conversazione…',
+        uploading: ({ completed, total }: { completed: number; total: number }) => `Caricamento allegati (${completed}/${total})…`,
+        publishing: 'Pubblicazione istantanea…',
+        copyLink: 'Copia link',
+        openSharedPage: 'Apri pagina condivisa',
+        updateSnapshot: 'Aggiorna istantanea',
+        revokeSharing: 'Revoca condivisione',
+        revokeTitle: 'Revocare il link pubblico?',
+        revokeMessage: 'La pagina condivisa e tutti i suoi allegati smetteranno immediatamente di funzionare.',
+        revokeAction: 'Revoca link',
+        shared: 'Sessione condivisa',
+        linkCopied: 'Link copiato',
+        sharedOn: ({ date }: { date: string }) => `Condivisa il ${date}`,
+        sharedViaPaws: 'Condivisa tramite Paws',
+        thinking: 'Elaborazione',
+        toolRunning: 'In esecuzione',
+        toolCompleted: 'Completato',
+        toolFailed: 'Non riuscito',
+        downloadAttachment: 'Scarica allegato',
+        attachmentUnavailable: 'Allegato non disponibile',
+        notFoundTitle: 'Questa sessione condivisa non è disponibile',
+        notFoundMessage: 'Il link potrebbe non essere valido oppure il proprietario potrebbe averlo revocato.',
+        authenticationUnavailable: 'L\'autenticazione non è disponibile',
+        attachmentKeyUnavailable: 'La chiave dell\'allegato non è disponibile',
+        attachmentDownloadFailed: 'Download dell\'allegato non riuscito',
+        shareFailed: 'Impossibile condividere la sessione',
+        revokeFailed: 'Impossibile revocare la condivisione della sessione',
+    },
+
     components: {
         emptyMainScreen: {
             // Used by EmptyMainScreen component

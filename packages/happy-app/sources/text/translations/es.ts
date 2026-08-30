@@ -778,6 +778,41 @@ export const es: TranslationStructure = {
 
     },
 
+    sessionShare: {
+        shareSession: 'Compartir sesión',
+        manageSharing: 'Gestionar uso compartido',
+        confirmTitle: '¿Compartir esta sesión?',
+        confirmMessage: 'Se creará una copia pública de la conversación actual y de todos los archivos adjuntos. Cualquier persona que tenga el enlace podrá verla.',
+        confirmAction: 'Crear enlace público',
+        preparing: 'Preparando la conversación…',
+        uploading: ({ completed, total }: { completed: number; total: number }) => `Subiendo archivos adjuntos (${completed}/${total})…`,
+        publishing: 'Publicando la copia…',
+        copyLink: 'Copiar enlace',
+        openSharedPage: 'Abrir página compartida',
+        updateSnapshot: 'Actualizar copia',
+        revokeSharing: 'Revocar uso compartido',
+        revokeTitle: '¿Revocar el enlace público?',
+        revokeMessage: 'La página compartida y todos sus archivos adjuntos dejarán de funcionar inmediatamente.',
+        revokeAction: 'Revocar enlace',
+        shared: 'Sesión compartida',
+        linkCopied: 'Enlace copiado',
+        sharedOn: ({ date }: { date: string }) => `Compartida el ${date}`,
+        sharedViaPaws: 'Compartida mediante Paws',
+        thinking: 'Pensando',
+        toolRunning: 'En curso',
+        toolCompleted: 'Completado',
+        toolFailed: 'Fallido',
+        downloadAttachment: 'Descargar archivo adjunto',
+        attachmentUnavailable: 'Archivo adjunto no disponible',
+        notFoundTitle: 'Esta sesión compartida no está disponible',
+        notFoundMessage: 'Puede que este enlace no sea válido o que el propietario lo haya revocado.',
+        authenticationUnavailable: 'La autenticación no está disponible',
+        attachmentKeyUnavailable: 'La clave del archivo adjunto no está disponible',
+        attachmentDownloadFailed: 'No se pudo descargar el archivo adjunto',
+        shareFailed: 'No se pudo compartir la sesión',
+        revokeFailed: 'No se pudo revocar el uso compartido de la sesión',
+    },
+
     components: {
         emptyMainScreen: {
             // Used by EmptyMainScreen component

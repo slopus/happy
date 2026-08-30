@@ -778,6 +778,41 @@ export const ca: TranslationStructure = {
 
     },
 
+    sessionShare: {
+        shareSession: 'Comparteix la sessió',
+        manageSharing: 'Gestiona la compartició',
+        confirmTitle: 'Voleu compartir aquesta sessió?',
+        confirmMessage: 'Es crearà una instantània pública de la conversa actual i de tots els fitxers adjunts. Qualsevol persona que tingui l\'enllaç podrà veure-la.',
+        confirmAction: 'Crea un enllaç públic',
+        preparing: 'S\'està preparant la conversa…',
+        uploading: ({ completed, total }: { completed: number; total: number }) => `S'estan pujant els fitxers adjunts (${completed}/${total})…`,
+        publishing: 'S\'està publicant la instantània…',
+        copyLink: 'Copia l\'enllaç',
+        openSharedPage: 'Obre la pàgina compartida',
+        updateSnapshot: 'Actualitza la instantània',
+        revokeSharing: 'Revoca la compartició',
+        revokeTitle: 'Voleu revocar l\'enllaç públic?',
+        revokeMessage: 'La pàgina compartida i tots els fitxers adjunts deixaran de funcionar immediatament.',
+        revokeAction: 'Revoca l\'enllaç',
+        shared: 'Sessió compartida',
+        linkCopied: 'Enllaç copiat',
+        sharedOn: ({ date }: { date: string }) => `Compartida el ${date}`,
+        sharedViaPaws: 'Compartida mitjançant Paws',
+        thinking: 'Pensant',
+        toolRunning: 'En execució',
+        toolCompleted: 'Completat',
+        toolFailed: 'Ha fallat',
+        downloadAttachment: 'Baixa el fitxer adjunt',
+        attachmentUnavailable: 'Fitxer adjunt no disponible',
+        notFoundTitle: 'Aquesta sessió compartida no està disponible',
+        notFoundMessage: 'És possible que aquest enllaç no sigui vàlid o que el propietari l\'hagi revocat.',
+        authenticationUnavailable: 'L\'autenticació no està disponible',
+        attachmentKeyUnavailable: 'La clau del fitxer adjunt no està disponible',
+        attachmentDownloadFailed: 'No s\'ha pogut baixar el fitxer adjunt',
+        shareFailed: 'No s\'ha pogut compartir la sessió',
+        revokeFailed: 'No s\'ha pogut revocar la compartició de la sessió',
+    },
+
     components: {
         emptyMainScreen: {
             // Used by EmptyMainScreen component

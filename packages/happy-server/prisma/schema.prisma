@@ -53,6 +53,7 @@ model Account {
     UserFeedItem        UserFeedItem[]
     UserKVStore         UserKVStore[]
     VoiceConversation   VoiceConversation[]
+    PublicSessionShare  PublicSessionShare[]
 }
 
 model TerminalAuthRequest {
@@ -109,9 +110,63 @@ model Session {
     messages          SessionMessage[]
     usageReports      UsageReport[]
     accessKeys        AccessKey[]
+    publicShare       PublicSessionShare?
 
     @@unique([accountId, tag])
     @@index([accountId, updatedAt(sort: Desc)])
+}
+
+model PublicSessionShare {
+    id               String                    @id @default(cuid())
+    publicId         String                    @unique
+    accountId        String
+    account          Account                   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+    sessionId        String                    @unique
+    session          Session                   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+    snapshot         Json?
+    activeGeneration String?
+    publishedAt      DateTime?
+    revokedAt        DateTime?
+    lifecycleVersion Int                       @default(1)
+    createdAt        DateTime                  @default(now())
+    updatedAt        DateTime                  @updatedAt
+    assets           PublicSessionShareAsset[]
+    drafts           PublicSessionShareDraft[]
+
+    @@index([accountId, updatedAt(sort: Desc)])
+}
+
+model PublicSessionShareDraft {
+    id               String                    @id
+    shareId          String
+    share             PublicSessionShare        @relation(fields: [shareId], references: [id], onDelete: Cascade)
+    lifecycleVersion Int
+    status           String                    @default("pending")
+    expiresAt        DateTime
+    createdAt        DateTime                  @default(now())
+    updatedAt        DateTime                  @updatedAt
+    assets           PublicSessionShareAsset[]
+
+    @@index([shareId, status, expiresAt])
+}
+
+model PublicSessionShareAsset {
+    id          String             @id
+    shareId     String
+    share       PublicSessionShare @relation(fields: [shareId], references: [id], onDelete: Cascade)
+    generation  String
+    draft       PublicSessionShareDraft @relation(fields: [generation], references: [id], onDelete: Cascade)
+    name        String
+    mimeType    String
+    kind        String
+    size        Int
+    sha256      String
+    uploadedAt  DateTime?
+    storagePath String
+    createdAt   DateTime           @default(now())
+
+    @@unique([shareId, generation, id])
+    @@index([shareId, generation])
 }
 
 model SessionMessage {

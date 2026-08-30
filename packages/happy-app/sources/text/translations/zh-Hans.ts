@@ -779,6 +779,41 @@ export const zhHans: TranslationStructure = {
 
     },
 
+    sessionShare: {
+        shareSession: '分享会话',
+        manageSharing: '管理分享',
+        confirmTitle: '分享此会话？',
+        confirmMessage: '将创建当前对话及全部附件的公开快照。任何获得链接的人都可以查看。',
+        confirmAction: '创建公开链接',
+        preparing: '正在准备对话…',
+        uploading: ({ completed, total }: { completed: number; total: number }) => `正在上传附件（${completed}/${total}）…`,
+        publishing: '正在发布快照…',
+        copyLink: '复制链接',
+        openSharedPage: '打开分享页面',
+        updateSnapshot: '更新快照',
+        revokeSharing: '撤销分享',
+        revokeTitle: '撤销公开链接？',
+        revokeMessage: '分享页面及其全部附件将立即失效。',
+        revokeAction: '撤销链接',
+        shared: '会话已分享',
+        linkCopied: '链接已复制',
+        sharedOn: ({ date }: { date: string }) => `分享于 ${date}`,
+        sharedViaPaws: '通过 Paws 分享',
+        thinking: '思考中',
+        toolRunning: '运行中',
+        toolCompleted: '已完成',
+        toolFailed: '失败',
+        downloadAttachment: '下载附件',
+        attachmentUnavailable: '附件不可用',
+        notFoundTitle: '此分享会话不可用',
+        notFoundMessage: '链接可能无效，或已被所有者撤销。',
+        authenticationUnavailable: '身份验证不可用',
+        attachmentKeyUnavailable: '附件密钥不可用',
+        attachmentDownloadFailed: '附件下载失败',
+        shareFailed: '无法分享会话',
+        revokeFailed: '无法撤销会话分享',
+    },
+
     components: {
         emptyMainScreen: {
             // Used by EmptyMainScreen component

@@ -7,6 +7,7 @@ import { getSuggestions } from '@/components/autocomplete/suggestions';
 import { ChatHeaderView } from '@/components/ChatHeaderView';
 import { SessionHeaderChip } from '@/components/SessionHeaderChip';
 import { SessionInfoDropdown } from '@/components/SessionInfoDropdown';
+import { PublicSessionShareDialog } from '@/components/PublicSessionShareDialog';
 import { SessionOrganizerDialog } from '@/components/SessionOrganizerDialog';
 import { DesktopRightPanel, DesktopRightPanelToggleButton } from '@/components/DesktopRightPanel';
 import { DesktopPresenceTransition } from '@/components/DesktopPresenceTransition';
@@ -113,39 +114,6 @@ function hasVisibleWebDialog(): boolean {
         const style = typeof window === 'undefined' ? null : window.getComputedStyle(element);
         return style?.display !== 'none' && style?.visibility !== 'hidden';
     });
-}
-
-function SessionNewSessionAction({
-    onPress,
-}: {
-    onPress: () => void;
-}) {
-    const { theme } = useUnistyles();
-    const [pressed, setPressed] = React.useState(false);
-    sessionNewActionStyles.useVariants({ pressState: pressed ? 'pressed' : 'idle' });
-
-    return (
-        <Pressable
-            accessibilityLabel={t('sidebar.newSession')}
-            accessibilityRole="button"
-            onPress={onPress}
-            onPressIn={() => setPressed(true)}
-            onPressOut={() => setPressed(false)}
-            hitSlop={10}
-            style={sessionNewActionStyles.headerAction}
-            testID="session-header-new-session-button"
-        >
-            <Ionicons
-                name="add-outline"
-                size={18}
-                color={theme.colors.button.primary.tint}
-                testID="session-header-new-session-icon"
-            />
-            <Text numberOfLines={1} ellipsizeMode="tail" style={sessionNewActionStyles.headerActionText}>
-                {t('sidebar.newSession')}
-            </Text>
-        </Pressable>
-    );
 }
 
 function SessionHeaderTitle({
@@ -911,15 +879,11 @@ const SessionViewContent = React.memo((props: { id: string }) => {
             onPress={() => setInfoPanelOpen((value) => !value)}
         />
     ) : null;
-    const newSessionButton = !isTablet && !spaceAgent ? (
-        <SessionNewSessionAction onPress={() => router.navigate('/new')} />
-    ) : null;
     const defaultHeaderRightSlot = (
         <View style={workspaceStyles.headerActions}>
             {moreButton}
             {rightPanelToggleButton}
             {spaceAgent ? exitSpaceButton : null}
-            {newSessionButton}
         </View>
     );
     const overlayHeaderRightSlot = (
@@ -1036,6 +1000,17 @@ const SessionViewContent = React.memo((props: { id: string }) => {
                     top={safeArea.top + headerHeight}
                     canCopySessionId={CAN_COPY_SESSION_ID}
                     onClose={() => setInfoPanelOpen(false)}
+                    onShareSession={desktopWebHeader ? () => {
+                        setInfoPanelOpen(false);
+                        Modal.show({
+                            accessibilityLabel: t('sessionShare.shareSession'),
+                            component: PublicSessionShareDialog,
+                            props: {
+                                sessionId,
+                                title: headerProps.title,
+                            },
+                        });
+                    } : undefined}
                     onViewDetails={() => {
                         setInfoPanelOpen(false);
                         router.push(`/session/${sessionId}/info`);
@@ -1953,35 +1928,6 @@ function CenteredInputWidth(props: {
         </View>
     );
 }
-
-const sessionNewActionStyles = StyleSheet.create((theme) => ({
-    headerAction: {
-        minHeight: 32,
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: 6,
-        paddingHorizontal: 11,
-        paddingVertical: 6,
-        borderRadius: 16,
-        backgroundColor: theme.colors.button.primary.background,
-        variants: {
-            pressState: {
-                idle: {
-                    opacity: 1,
-                },
-                pressed: {
-                    opacity: 0.82,
-                },
-            },
-        },
-    },
-    headerActionText: {
-        color: theme.colors.button.primary.tint,
-        fontSize: 12,
-        fontWeight: '600',
-    },
-}));
 
 const sessionHeaderTitleStyles = StyleSheet.create((theme) => ({
     headerTitleWrapper: {

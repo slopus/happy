@@ -26,6 +26,7 @@ import { attachmentRoutes } from "./routes/attachmentRoutes";
 import { fileRoutes } from "./routes/fileRoutes";
 import { relationshipAdvisorRoutes } from "./routes/relationshipAdvisorRoutes";
 import { pluginRoutes } from "@/app/api/routes/pluginRoutes";
+import { publicSessionShareRoutes } from "./routes/publicSessionShareRoutes";
 import * as path from "path";
 import * as fs from "fs";
 
@@ -34,6 +35,50 @@ export interface StartApiOptions {
     host?: string;
     staticDir?: string;
     injectHtmlConfig?: Record<string, unknown>;
+}
+
+export function resolveTrustProxySetting(value = process.env.HAPPY_TRUST_PROXY_HOPS): false | number {
+    if (!value) return false;
+    const hops = Number.parseInt(value, 10);
+    return Number.isSafeInteger(hops) && hops > 0 ? hops : false;
+}
+
+const PUBLIC_SHARE_DOCUMENT_CSP = [
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline'",
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob: https: http:",
+    "media-src 'self' blob: https: http:",
+    "connect-src 'self' https: http:",
+    "font-src 'self' data:",
+    "object-src 'none'",
+    "base-uri 'none'",
+    "frame-ancestors 'none'",
+    "form-action 'none'",
+].join('; ');
+
+export function isPublicShareDocumentUrl(url: string): boolean {
+    const pathname = url.split('?', 1)[0];
+    return /^\/share\/[^/]+\/?$/.test(pathname);
+}
+
+export function getPublicShareDocumentHeaders(): Record<string, string> {
+    return {
+        'Cache-Control': 'no-store',
+        'X-Robots-Tag': 'noindex, nofollow, noarchive',
+        'X-Content-Type-Options': 'nosniff',
+        'Content-Security-Policy': PUBLIC_SHARE_DOCUMENT_CSP,
+        'Referrer-Policy': 'no-referrer',
+    };
+}
+
+function securePublicShareDocument(reply: any): void {
+    for (const [name, value] of Object.entries(getPublicShareDocumentHeaders())) reply.header(name, value);
+}
+
+function injectPublicShareMetadata(html: string): string {
+    if (/name=["']robots["']/i.test(html)) return html;
+    return html.replace(/<head[^>]*>/i, (head) => `${head}\n<meta name="robots" content="noindex,nofollow,noarchive">`);
 }
 
 export async function startApi(opts: StartApiOptions = {}) {
@@ -45,6 +90,7 @@ export async function startApi(opts: StartApiOptions = {}) {
     const app = fastify({
         loggerInstance: logger,
         bodyLimit: 1024 * 1024 * 100, // 100MB
+        trustProxy: resolveTrustProxySetting(),
     });
     app.register(import('@fastify/cors'), {
         origin: '*',
@@ -99,6 +145,7 @@ export async function startApi(opts: StartApiOptions = {}) {
     attachmentRoutes(typed);
     relationshipAdvisorRoutes(typed);
     pluginRoutes(typed);
+    publicSessionShareRoutes(typed);
 
     // Static webapp (self-host mode)
     if (opts.staticDir) {
@@ -113,33 +160,35 @@ export async function startApi(opts: StartApiOptions = {}) {
             // SPA fallback — if file not found, serve index.html
             wildcard: false,
         });
-        if (injectScript) {
-            app.addHook('onSend', async (request, reply, payload) => {
-                const url = request.raw.url || '';
-                const isIndex = url === '/' || url === '/index.html' || url.startsWith('/?');
-                if (!isIndex) return payload;
-                const contentType = reply.getHeader('content-type');
-                if (typeof contentType !== 'string' || !contentType.includes('text/html')) return payload;
-                let html: string;
-                if (typeof payload === 'string') {
-                    html = payload;
-                } else if (Buffer.isBuffer(payload)) {
-                    html = payload.toString('utf8');
-                } else if (payload && typeof (payload as any).pipe === 'function') {
-                    // stream — read it
-                    const chunks: Buffer[] = [];
-                    for await (const chunk of payload as any) {
-                        chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk);
-                    }
-                    html = Buffer.concat(chunks).toString('utf8');
-                } else {
-                    return payload;
+        app.addHook('onSend', async (request, reply, payload) => {
+            const url = request.raw.url || '';
+            const isIndex = url === '/' || url === '/index.html' || url.startsWith('/?');
+            const isPublicShare = isPublicShareDocumentUrl(url);
+            if (!isIndex && !isPublicShare) return payload;
+            const contentType = reply.getHeader('content-type');
+            if (typeof contentType !== 'string' || !contentType.includes('text/html')) return payload;
+            let html: string;
+            if (typeof payload === 'string') {
+                html = payload;
+            } else if (Buffer.isBuffer(payload)) {
+                html = payload.toString('utf8');
+            } else if (payload && typeof (payload as any).pipe === 'function') {
+                const chunks: Buffer[] = [];
+                for await (const chunk of payload as any) {
+                    chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk);
                 }
-                const injected = html.replace(/<head[^>]*>/i, (m) => `${m}\n${injectScript}`);
-                reply.header('content-length', Buffer.byteLength(injected));
-                return injected;
-            });
-        }
+                html = Buffer.concat(chunks).toString('utf8');
+            } else {
+                return payload;
+            }
+            let injected = injectScript ? html.replace(/<head[^>]*>/i, (head) => `${head}\n${injectScript}`) : html;
+            if (isPublicShare) {
+                securePublicShareDocument(reply);
+                injected = injectPublicShareMetadata(injected);
+            }
+            reply.header('content-length', Buffer.byteLength(injected));
+            return injected;
+        });
         // SPA fallback: serve index.html for any unmatched GET that looks like a route.
         app.setNotFoundHandler(async (request, reply) => {
             const url = request.raw.url || '';
@@ -154,7 +203,10 @@ export async function startApi(opts: StartApiOptions = {}) {
                 return reply.code(404).send({ error: 'Not found' });
             }
             const html = fs.readFileSync(indexPath, 'utf8');
-            const injected = injectScript ? html.replace(/<head[^>]*>/i, (m) => `${m}\n${injectScript}`) : html;
+            const isPublicShare = isPublicShareDocumentUrl(url);
+            const injected = injectScript && !isPublicShare
+                ? html.replace(/<head[^>]*>/i, (head) => `${head}\n${injectScript}`)
+                : html;
             reply.type('text/html').send(injected);
         });
     }
