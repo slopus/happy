@@ -7,3 +7,4 @@ packages:
   - "packages/happy-app-logs"
   - "packages/image-gateway"
   - "packages/codium"
+  - "packages/paws-agent-chrome"

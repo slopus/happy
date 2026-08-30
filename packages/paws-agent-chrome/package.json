@@ -1,0 +1,35 @@
+{
+  "name": "@wangjs-jacky/paws-agent-chrome",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Paws Agent floating conversation bubble for Chromium browsers",
+  "type": "module",
+  "scripts": {
+    "prepare:sdk": "pnpm --filter @wangjs-jacky/paws-agent build",
+    "pretypecheck": "pnpm run prepare:sdk",
+    "typecheck": "tsc --noEmit",
+    "prebuild": "pnpm run prepare:sdk",
+    "build": "node scripts/build.mjs",
+    "test": "vitest run",
+    "test:smoke": "node scripts/smoke.mjs",
+    "test:e2e": "pnpm run build && node scripts/e2e.mjs",
+    "test:e2e:headed": "PAWS_EXTENSION_E2E_HEADED=1 pnpm run test:e2e",
+    "test:e2e:record": "PAWS_EXTENSION_E2E_RECORD=1 pnpm run test:e2e",
+    "test:e2e:ego": "PAWS_EXTENSION_INCLUDE_LOCALHOST=1 pnpm run build && node scripts/egoE2e.mjs",
+    "test:e2e:ego:record": "PAWS_EGO_E2E_RECORD=1 pnpm run test:e2e:ego",
+    "verify": "pnpm run typecheck && pnpm run test && pnpm run build && pnpm run test:smoke"
+  },
+  "dependencies": {
+    "@wangjs-jacky/paws-agent": "workspace:*",
+    "qrcode": "^1.5.4"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.61.1",
+    "@types/qrcode": "^1.5.6",
+    "esbuild": "^0.27.2",
+    "socket.io": "^4.8.1",
+    "typescript": "5.9.3",
+    "vitest": "^3.2.4"
+  },
+  "packageManager": "pnpm@10.11.0"
+}

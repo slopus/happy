@@ -42,7 +42,8 @@
             "packages/happy-wire",
             "packages/happy-app-logs",
             "packages/image-gateway",
-            "packages/codium"
+            "packages/codium",
+            "packages/paws-agent-chrome"
         ]
     },
     "pnpm": {

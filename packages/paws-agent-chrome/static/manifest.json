@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "Paws Agent Bubble",
+  "description": "Start and continue remote Paws Agent sessions from the current page.",
+  "version": "0.0.1",
+  "permissions": ["storage"],
+  "host_permissions": [
+    "http://47.115.228.20:3005/*",
+    "https://47.115.228.20:3005/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["panel.html", "panel.js", "styles.css"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}

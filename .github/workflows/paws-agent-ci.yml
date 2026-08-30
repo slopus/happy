@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths: &paths
       - 'packages/paws-agent/**'
+      - 'packages/paws-agent-chrome/**'
       - 'packages/happy-wire/**'
       - 'packages/happy-cli/src/api/**'
       - 'packages/happy-cli/src/daemon/**'
@@ -95,3 +96,17 @@ jobs:
         with: { node-version: 24, cache: pnpm }
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @wangjs-jacky/paws-agent test:integration
+
+  chrome:
+    name: Chrome bubble
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install chromium --with-deps
+      - run: pnpm --filter @wangjs-jacky/paws-agent-chrome verify
+      - run: pnpm --filter @wangjs-jacky/paws-agent-chrome test:e2e

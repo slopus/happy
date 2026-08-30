@@ -22,34 +22,57 @@ const keepIntegrationEnv = ['1', 'true', 'yes'].includes((process.env.HAPPY_AGEN
 
 type PawsAgentClientConstructor = typeof import('./client/PawsAgentClient').PawsAgentClient;
 type FileCredentialProviderConstructor = typeof import('./adapters/nodeCredentials').FileCredentialProvider;
+type BrowserCredentialProviderConstructor = typeof import('./adapters/browserCredentials').BrowserCredentialProvider;
+type StartBrowserAccountLink = typeof import('./auth/browserAccountLink').startBrowserAccountLink;
 
 async function loadSdkRuntime(): Promise<{
     PawsAgentClient: PawsAgentClientConstructor;
     FileCredentialProvider: FileCredentialProviderConstructor;
+    BrowserCredentialProvider: BrowserCredentialProviderConstructor;
+    startBrowserAccountLink: StartBrowserAccountLink;
 }> {
     const consumerDir = process.env.PAWS_AGENT_CONSUMER_DIR;
     if (!consumerDir) {
-        const [root, node] = await Promise.all([
+        const [root, node, browser] = await Promise.all([
             import('./client/PawsAgentClient'),
             import('./adapters/nodeCredentials'),
+            import('./browser'),
         ]);
-        return { PawsAgentClient: root.PawsAgentClient, FileCredentialProvider: node.FileCredentialProvider };
+        return {
+            PawsAgentClient: root.PawsAgentClient,
+            FileCredentialProvider: node.FileCredentialProvider,
+            BrowserCredentialProvider: browser.BrowserCredentialProvider,
+            startBrowserAccountLink: browser.startBrowserAccountLink,
+        };
     }
     const resolveFromConsumer = createRequire(resolve(consumerDir, 'package.json')).resolve;
-    const [root, node] = await Promise.all([
+    const [root, node, browser] = await Promise.all([
         import(pathToFileURL(resolveFromConsumer('@wangjs-jacky/paws-agent')).href),
         import(pathToFileURL(resolveFromConsumer('@wangjs-jacky/paws-agent/node')).href),
+        import(pathToFileURL(resolveFromConsumer('@wangjs-jacky/paws-agent/browser')).href),
     ]);
-    if (typeof root.PawsAgentClient !== 'function' || typeof node.FileCredentialProvider !== 'function') {
+    if (
+        typeof root.PawsAgentClient !== 'function'
+        || typeof node.FileCredentialProvider !== 'function'
+        || typeof browser.BrowserCredentialProvider !== 'function'
+        || typeof browser.startBrowserAccountLink !== 'function'
+    ) {
         throw new Error('Installed Paws Agent package does not expose the required integration runtime');
     }
     return {
         PawsAgentClient: root.PawsAgentClient as PawsAgentClientConstructor,
         FileCredentialProvider: node.FileCredentialProvider as FileCredentialProviderConstructor,
+        BrowserCredentialProvider: browser.BrowserCredentialProvider as BrowserCredentialProviderConstructor,
+        startBrowserAccountLink: browser.startBrowserAccountLink as StartBrowserAccountLink,
     };
 }
 
-const { PawsAgentClient, FileCredentialProvider } = await loadSdkRuntime();
+const {
+    PawsAgentClient,
+    FileCredentialProvider,
+    BrowserCredentialProvider,
+    startBrowserAccountLink,
+} = await loadSdkRuntime();
 
 type EnvironmentConfig = {
     name: string;
@@ -755,6 +778,36 @@ describe('paws-agent integration', { timeout: 180_000 }, () => {
         expect(sendResult.localId).toBeTruthy();
 
         await waitForHistoryMessage(sessionId, prompt, agentEnv);
+    });
+
+    it('links browser credentials and lists machines through the browser SDK entrypoint', async () => {
+        if (!integrationConfig || !integrationEnvDir) {
+            throw new Error('Integration environment not initialized');
+        }
+        const serverUrl = `http://localhost:${integrationConfig.serverPort}`;
+        const seededCredentials = readSeededCliCredentials(integrationEnvDir);
+        const values = new Map<string, string>();
+        const browserCredentials = new BrowserCredentialProvider({
+            async get(key) { return values.get(key) ?? null; },
+            async set(key, value) { values.set(key, value); },
+            async remove(key) { values.delete(key); },
+        });
+
+        const link = await startBrowserAccountLink({ serverUrl, credentials: browserCredentials });
+        expect(link.qrUrl).toMatch(/^paws:\/\/\/account\?/);
+        await approveAgentLogin(serverUrl, seededCredentials.token, seededCredentials.secret, link.publicKey);
+        const linkedCredentials = await link.waitForAuthorization({ pollIntervalMs: 10, timeoutMs: 5_000 });
+        expect(linkedCredentials.token).toBeTruthy();
+        expect(await browserCredentials.getCredentials()).toEqual(linkedCredentials);
+
+        const browserClient = new PawsAgentClient({ serverUrl, credentials: browserCredentials });
+        await browserClient.connect();
+        try {
+            const browserMachines = await browserClient.machines.list({ active: true });
+            expect(browserMachines.length).toBeGreaterThan(0);
+        } finally {
+            await browserClient.dispose();
+        }
     });
 
     it('handles directory approval through the SDK and real machine RPC', async () => {
