@@ -1,38 +1,24 @@
-# Backend Development Guidelines
+# Happy Server 规范
 
-> Best practices for backend development in this project.
+## 适用范围
 
----
+packages/happy-server 是 Happy 的私有服务端源码，提供 Fastify HTTP、Socket.IO 实时同步、Prisma 持久化、Redis/EventRouter 路由与 S3/本地文件存储。它只处理密文和账户元数据，不解密用户会话内容。
 
-## Overview
+## 先读什么
 
-This directory contains guidelines for backend development. Fill in each file with your project's specific conventions.
+- 服务启动与目录：architecture.md
+- HTTP、Socket.IO 与更新序列：api-and-realtime.md
+- Prisma、事务与事件：persistence-and-events.md
+- 认证、日志与错误：security-logging-and-errors.md
+- 测试与完成标准：quality.md
+- 系统说明：docs/backend-architecture.md
+- 包级既有约定：packages/happy-server/CLAUDE.md
 
----
+## 红线
 
-## Guidelines Index
-
-| Guide | Description | Status |
-|-------|-------------|--------|
-| [Directory Structure](./directory-structure.md) | Module organization and file layout | To fill |
-| [Database Guidelines](./database-guidelines.md) | ORM patterns, queries, migrations | To fill |
-| [Error Handling](./error-handling.md) | Error types, handling strategies | To fill |
-| [Quality Guidelines](./quality-guidelines.md) | Code standards, forbidden patterns | To fill |
-| [Logging Guidelines](./logging-guidelines.md) | Structured logging, log levels | To fill |
-
----
-
-## How to Fill These Guidelines
-
-For each guideline file:
-
-1. Document your project's **actual conventions** (not ideals)
-2. Include **code examples** from your codebase
-3. List **forbidden patterns** and why
-4. Add **common mistakes** your team has made
-
-The goal is to help AI assistants and new team members understand how YOUR project works.
-
----
-
-**Language**: All documentation should be written in **English**.
+- Prisma migration 只由人创建和执行；Agent 可以改 schema、运行 generate、准备说明和测试，但不得生成或执行 migration。
+- 所有外部输入使用 Zod/Fastify schema 验证。
+- 客户端会重试，写操作应保持幂等或显式用 repeat key/版本号防重。
+- 数据库事务只包含数据库操作；通知、对象存储和网络调用在提交后执行。
+- 服务端不得记录 bearer、secret、加密 payload 原文或用户消息。
+- 使用 privacy-kit 的 encodeBase64/decodeBase64 处理协议编码；不要散落 Buffer 转换新实现。

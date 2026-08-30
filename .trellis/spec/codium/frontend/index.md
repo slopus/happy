@@ -1,39 +1,24 @@
-# Frontend Development Guidelines
+# Codium 规范
 
-> Best practices for frontend development in this project.
+## 适用范围
 
----
+packages/codium 是 Electron 41 桌面客户端，由 main、preload 与 React renderer 三个信任区组成。它使用 React 19、Jotai、Electron IPC、agent worker、插件 host、SQLite/本地持久化和自有主题系统。
 
-## Overview
+## 先读什么
 
-This directory contains guidelines for frontend development. Fill in each file with your project's specific conventions.
+- Electron 与 worker 边界：electron-boundaries.md
+- React、Jotai、路由和插件 UI：components-state-and-routing.md
+- CSS token 与主题：theme-and-styling.md
+- 测试与构建：quality.md
+- 视觉系统来源：packages/codium/design-system.md
 
----
+## 关键入口
 
-## Guidelines Index
-
-| Guide | Description | Status |
-|-------|-------------|--------|
-| [Directory Structure](./directory-structure.md) | Module organization and file layout | To fill |
-| [Component Guidelines](./component-guidelines.md) | Component patterns, props, composition | To fill |
-| [Hook Guidelines](./hook-guidelines.md) | Custom hooks, data fetching patterns | To fill |
-| [State Management](./state-management.md) | Local state, global state, server state | To fill |
-| [Quality Guidelines](./quality-guidelines.md) | Code standards, forbidden patterns | To fill |
-| [Type Safety](./type-safety.md) | Type patterns, validation | To fill |
-
----
-
-## How to Fill These Guidelines
-
-For each guideline file:
-
-1. Document your project's **actual conventions** (not ideals)
-2. Include **code examples** from your codebase
-3. List **forbidden patterns** and why
-4. Add **common mistakes** your team has made
-
-The goal is to help AI assistants and new team members understand how YOUR project works.
-
----
-
-**Language**: All documentation should be written in **English**.
+- sources/boot/main/index.ts：Electron 主进程与 IPC 注册
+- sources/boot/preload/index.ts：contextBridge 白名单
+- sources/main.tsx 与 sources/providers.tsx：renderer 启动
+- sources/app/routes.tsx：React Router
+- sources/agents/agent-bridge.ts：renderer 侧 agent API
+- sources/boot/main/agent-worker：隔离的 agent runtime
+- sources/plugins：插件合同、host 与内置插件
+- sources/theme：主题输入、派生与 preset

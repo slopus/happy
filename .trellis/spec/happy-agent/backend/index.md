@@ -1,38 +1,16 @@
-# Backend Development Guidelines
+# Happy Agent 规范
 
-> Best practices for backend development in this project.
+## 适用范围
 
----
+packages/happy-agent 是可发布的 Node.js CLI/库，只远程控制已经运行的 Happy 机器与会话；它不启动 Claude、Codex 等 agent runtime。入口是 src/index.ts，公开库产物由 pkgroll 生成。
 
-## Overview
+## 核心边界
 
-This directory contains guidelines for backend development. Fill in each file with your project's specific conventions.
+- 命令解析和人类/JSON 输出归 src/index.ts 与 src/output.ts。
+- HTTP、Socket.IO 与服务端 payload 归 src/api.ts。
+- 会话 ID 前缀解析、等待空闲和消息辅助归 src/session.ts。
+- 机器 RPC 归 src/machineRpc.ts。
+- 密钥落盘归 src/credentials.ts，加解密归 src/encryption.ts，二维码登录归 src/auth.ts。
+- 共享消息结构从 @slopus/happy-wire 导入，不在本包复制 schema。
 
----
-
-## Guidelines Index
-
-| Guide | Description | Status |
-|-------|-------------|--------|
-| [Directory Structure](./directory-structure.md) | Module organization and file layout | To fill |
-| [Database Guidelines](./database-guidelines.md) | ORM patterns, queries, migrations | To fill |
-| [Error Handling](./error-handling.md) | Error types, handling strategies | To fill |
-| [Quality Guidelines](./quality-guidelines.md) | Code standards, forbidden patterns | To fill |
-| [Logging Guidelines](./logging-guidelines.md) | Structured logging, log levels | To fill |
-
----
-
-## How to Fill These Guidelines
-
-For each guideline file:
-
-1. Document your project's **actual conventions** (not ideals)
-2. Include **code examples** from your codebase
-3. List **forbidden patterns** and why
-4. Add **common mistakes** your team has made
-
-The goal is to help AI assistants and new team members understand how YOUR project works.
-
----
-
-**Language**: All documentation should be written in **English**.
+详细规则见 architecture-and-security.md 与 quality.md。

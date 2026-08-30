@@ -1,38 +1,18 @@
-# Backend Development Guidelines
+# Happy Wire 共享协议规范
 
-> Best practices for backend development in this project.
+## 适用范围
 
----
+packages/happy-wire 是可发布的共享 TypeScript/Zod 合同库，供 App、CLI、Agent 与 Server 同时消费。目录放在 backend 层仅用于 Trellis 分组；它不是服务端私有代码。
 
-## Overview
+## 文件所有权
 
-This directory contains guidelines for backend development. Fill in each file with your project's specific conventions.
+- src/messages.ts：加密消息容器、核心 update body 与兼容 alias。
+- src/legacyProtocol.ts：仍需读取的 user/agent legacy 内容。
+- src/sessionProtocol.ts：冻结、仍在评审的 session envelope。
+- src/controlMessages.ts：控制类文本 wrapper 的安全解析。
+- src/voice.ts：语音协议。
+- src/rigMetadata.ts：Rig 元数据。
+- src/messageMeta.ts：消息元信息。
+- src/index.ts：唯一公开 export 面。
 
----
-
-## Guidelines Index
-
-| Guide | Description | Status |
-|-------|-------------|--------|
-| [Directory Structure](./directory-structure.md) | Module organization and file layout | To fill |
-| [Database Guidelines](./database-guidelines.md) | ORM patterns, queries, migrations | To fill |
-| [Error Handling](./error-handling.md) | Error types, handling strategies | To fill |
-| [Quality Guidelines](./quality-guidelines.md) | Code standards, forbidden patterns | To fill |
-| [Logging Guidelines](./logging-guidelines.md) | Structured logging, log levels | To fill |
-
----
-
-## How to Fill These Guidelines
-
-For each guideline file:
-
-1. Document your project's **actual conventions** (not ideals)
-2. Include **code examples** from your codebase
-3. List **forbidden patterns** and why
-4. Add **common mistakes** your team has made
-
-The goal is to help AI assistants and new team members understand how YOUR project works.
-
----
-
-**Language**: All documentation should be written in **English**.
+修改协议先读 protocol-guidelines.md，构建与发布读 quality-and-release.md。

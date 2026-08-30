@@ -1,38 +1,15 @@
-# Backend Development Guidelines
+# Happy Server Self Host 规范
 
-> Best practices for backend development in this project.
+## 适用范围
 
----
+packages/happy-server-self-host 是发布壳，不拥有服务端业务源码。它把 packages/happy-server 的 standalone 入口、Prisma schema/migrations 和 Happy Web 应用打包成 npm 包与 happy-server 可执行文件。
 
-## Overview
+包内主要文件：
 
-This directory contains guidelines for backend development. Fill in each file with your project's specific conventions.
+- scripts/build-runtime.cjs：构建 standalone.mjs，校验依赖漂移并复制 Prisma 资产。
+- scripts/postinstall.cjs：发布包安装后生成 Prisma client。
+- bin/happy-server.cjs：命令入口。
+- index.cjs：编程式入口。
+- README.md：用户运行与环境变量合同。
 
----
-
-## Guidelines Index
-
-| Guide | Description | Status |
-|-------|-------------|--------|
-| [Directory Structure](./directory-structure.md) | Module organization and file layout | To fill |
-| [Database Guidelines](./database-guidelines.md) | ORM patterns, queries, migrations | To fill |
-| [Error Handling](./error-handling.md) | Error types, handling strategies | To fill |
-| [Quality Guidelines](./quality-guidelines.md) | Code standards, forbidden patterns | To fill |
-| [Logging Guidelines](./logging-guidelines.md) | Structured logging, log levels | To fill |
-
----
-
-## How to Fill These Guidelines
-
-For each guideline file:
-
-1. Document your project's **actual conventions** (not ideals)
-2. Include **code examples** from your codebase
-3. List **forbidden patterns** and why
-4. Add **common mistakes** your team has made
-
-The goal is to help AI assistants and new team members understand how YOUR project works.
-
----
-
-**Language**: All documentation should be written in **English**.
+修改前读 packaging-and-runtime.md。
