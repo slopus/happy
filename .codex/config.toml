@@ -1,2 +1,9 @@
+# Keep AGENTS.md as the primary project instruction file.
+project_doc_fallback_filenames = ["AGENTS.md"]
+
+# Keep Trellis subagent dispatch to one level of recursion.
+[agents]
+max_depth = 1
+
 [mcp_servers.paper]
 url = "http://127.0.0.1:29979/mcp"
