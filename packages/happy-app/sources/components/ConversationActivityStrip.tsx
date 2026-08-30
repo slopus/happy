@@ -7,6 +7,7 @@ import { t } from '@/text';
 import {
     collectConversationActivities,
     ConversationActivityStatus,
+    SkillConversationActivity,
 } from '@/utils/conversationActivity';
 import { useSubagentInspector } from './subagent/SubagentInspectorContext';
 
@@ -36,19 +37,10 @@ export const ConversationActivityStrip = React.memo(function ConversationActivit
     return (
         <View style={[styles.container, props.nested && styles.nestedContainer]}>
             {orderedActivities.map((activity) => activity.kind === 'skill' ? (
-                    <View
+                    <SkillActivityRow
                         key={`skill-${activity.order}-${activity.name}`}
-                        style={[styles.row, { paddingLeft: 8 + activity.depth * 16 }]}
-                        testID={`activity-skill-${activity.name}`}
-                    >
-                        <Ionicons name="sparkles-outline" size={14} color={theme.colors.textSecondary} />
-                        <Text style={styles.kind}>{t('toolGroup.skillLabel')}</Text>
-                        <Text style={styles.title} numberOfLines={1}>{activity.name}</Text>
-                        <View style={styles.statusPill}>
-                            <ActivityStatusIcon status={activity.status} />
-                            <Text style={styles.statusText}>{getStatusLabel(activity.status)}</Text>
-                        </View>
-                    </View>
+                        activity={activity}
+                    />
                 ) : inspector ? (
                     <Pressable
                         accessibilityLabel={t('toolGroup.openSubagentDetails', {
@@ -64,7 +56,7 @@ export const ConversationActivityStrip = React.memo(function ConversationActivit
                             status: activity.status,
                         })}
                         style={({ pressed }) => [
-                            styles.row,
+                            styles.subagentRow,
                             { paddingLeft: 8 + activity.depth * 16 },
                             pressed && styles.rowPressed,
                         ]}
@@ -81,7 +73,7 @@ export const ConversationActivityStrip = React.memo(function ConversationActivit
                 ) : (
                     <View
                         key={`subagent-${activity.id}`}
-                        style={[styles.row, { paddingLeft: 8 + activity.depth * 16 }]}
+                        style={[styles.subagentRow, { paddingLeft: 8 + activity.depth * 16 }]}
                         testID={`activity-subagent-${activity.id}`}
                     >
                         <Ionicons name="git-branch-outline" size={14} color={theme.colors.textSecondary} />
@@ -96,6 +88,75 @@ export const ConversationActivityStrip = React.memo(function ConversationActivit
         </View>
     );
 });
+
+function SkillActivityRow(props: { activity: SkillConversationActivity }) {
+    const { theme } = useUnistyles();
+    const [expanded, setExpanded] = React.useState(false);
+    const { activity } = props;
+    const isFailed = activity.status === 'failed';
+    const summary = activity.failure?.summary ?? (isFailed ? t('toolGroup.skillFailureNoDetails') : null);
+    const detail = activity.failure?.detail;
+    const hasAdditionalDetail = Boolean(detail && detail !== summary);
+    const canExpand = isFailed && hasAdditionalDetail;
+    const rowStyle = [
+        styles.row,
+        { paddingLeft: 8 + activity.depth * 16 },
+        isFailed && styles.failedRow,
+    ];
+    const content = (
+        <>
+            <View style={styles.rowHeader}>
+                <Ionicons name="sparkles-outline" size={14} color={theme.colors.textSecondary} />
+                <Text style={styles.kind}>{t('toolGroup.skillLabel')}</Text>
+                <Text style={styles.title} numberOfLines={1}>{activity.name}</Text>
+                <View style={styles.statusPill}>
+                    <ActivityStatusIcon status={activity.status} />
+                    <Text style={styles.statusText}>{getStatusLabel(activity.status)}</Text>
+                </View>
+                {canExpand && (
+                    <Ionicons
+                        name={expanded ? 'chevron-up' : 'chevron-down'}
+                        size={14}
+                        color={theme.colors.textSecondary}
+                    />
+                )}
+            </View>
+            {isFailed && summary && (
+                <Text style={styles.failureSummary} numberOfLines={expanded ? undefined : 2}>
+                    {summary}
+                </Text>
+            )}
+            {expanded && hasAdditionalDetail && (
+                <Text style={styles.failureDetail}>{detail}</Text>
+            )}
+        </>
+    );
+
+    if (!canExpand) {
+        return (
+            <View style={rowStyle} testID={`activity-skill-${activity.name}`}>
+                {content}
+            </View>
+        );
+    }
+
+    return (
+        <Pressable
+            accessibilityLabel={t(
+                expanded ? 'toolGroup.closeSkillDetails' : 'toolGroup.openSkillDetails',
+                { title: activity.name },
+            )}
+            accessibilityRole="button"
+            accessibilityState={{ expanded }}
+            aria-expanded={expanded}
+            onPress={() => setExpanded((value) => !value)}
+            style={({ pressed }) => [rowStyle, pressed && styles.rowPressed]}
+            testID={`activity-skill-${activity.name}`}
+        >
+            {content}
+        </Pressable>
+    );
+}
 
 function ActivityStatusIcon(props: { status: ConversationActivityStatus }) {
     const { theme } = useUnistyles();
@@ -137,6 +198,15 @@ const styles = StyleSheet.create((theme) => ({
     row: {
         minWidth: 0,
         minHeight: 24,
+        gap: 6,
+        paddingHorizontal: 8,
+        paddingVertical: 3,
+        borderRadius: 7,
+        backgroundColor: theme.colors.surfaceHigh,
+    },
+    subagentRow: {
+        minWidth: 0,
+        minHeight: 24,
         flexDirection: 'row',
         alignItems: 'center',
         gap: 6,
@@ -145,8 +215,19 @@ const styles = StyleSheet.create((theme) => ({
         borderRadius: 7,
         backgroundColor: theme.colors.surfaceHigh,
     },
+    rowHeader: {
+        minWidth: 0,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+    },
     rowPressed: {
         opacity: 0.72,
+    },
+    failedRow: {
+        backgroundColor: theme.colors.box.error.background,
+        borderWidth: 1,
+        borderColor: theme.colors.box.error.border,
     },
     kind: {
         flexShrink: 0,
@@ -174,6 +255,21 @@ const styles = StyleSheet.create((theme) => ({
     statusText: {
         color: theme.colors.textSecondary,
         fontSize: 11,
+    },
+    failureSummary: {
+        marginLeft: 20,
+        marginTop: 3,
+        color: theme.colors.box.error.text,
+        fontSize: 12,
+        lineHeight: 17,
+    },
+    failureDetail: {
+        marginLeft: 20,
+        marginTop: 4,
+        color: theme.colors.textSecondary,
+        fontFamily: 'monospace',
+        fontSize: 11,
+        lineHeight: 16,
     },
     spinner: {
         transform: [{ scaleX: 0.65 }, { scaleY: 0.65 }],

@@ -1717,7 +1717,12 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
                         ev: {
                             t: 'tool-call-end',
                             call: 'call-failed',
-                            status: 'failed'
+                            status: 'failed',
+                            error: {
+                                code: 'command_failed',
+                                summary: 'Skill file was not found.',
+                                detail: 'sed: /plugins/gpt-image-2/SKILL.md: No such file or directory',
+                            },
                         }
                     }
                 }
@@ -1727,8 +1732,42 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
                 expect(failedEnd.content[0]).toMatchObject({
                     type: 'tool-result',
                     tool_use_id: 'call-failed',
+                    content: 'sed: /plugins/gpt-image-2/SKILL.md: No such file or directory',
                     is_error: true,
-                    status: 'failed'
+                    status: 'failed',
+                    failure: {
+                        code: 'command_failed',
+                        summary: 'Skill file was not found.',
+                    },
+                });
+            }
+
+            const inconsistentEnd = normalizeRawMessage('db-4-error-with-completed-status', null, 1, {
+                ...base,
+                content: {
+                    type: 'session',
+                    data: {
+                        id: 'env-4-error-with-completed-status',
+                        time: 2,
+                        role: 'agent',
+                        turn: 'turn-1',
+                        ev: {
+                            t: 'tool-call-end',
+                            call: 'call-error-with-completed-status',
+                            status: 'completed',
+                            error: { summary: 'The tool failed despite an inconsistent status.' },
+                        },
+                    },
+                },
+            });
+            expect(inconsistentEnd).toBeTruthy();
+            if (inconsistentEnd && inconsistentEnd.role === 'agent') {
+                expect(inconsistentEnd.content[0]).toMatchObject({
+                    type: 'tool-result',
+                    tool_use_id: 'call-error-with-completed-status',
+                    is_error: true,
+                    status: 'failed',
+                    failure: { summary: 'The tool failed despite an inconsistent status.' },
                 });
             }
 

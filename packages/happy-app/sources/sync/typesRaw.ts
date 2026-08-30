@@ -60,6 +60,11 @@ const sessionToolCallEndEventSchema = z.object({
     t: z.literal('tool-call-end'),
     call: z.string(),
     status: z.enum(['completed', 'failed', 'cancelled']).optional(),
+    error: z.object({
+        code: z.string().max(64).optional(),
+        summary: z.string().min(1).max(280),
+        detail: z.string().min(1).max(4000).optional(),
+    }).optional(),
 });
 
 const sessionFileEventSchema = z.object({
@@ -516,6 +521,11 @@ type NormalizedAgentContent =
         content: any;
         is_error: boolean;
         status?: 'completed' | 'failed' | 'cancelled';
+        failure?: {
+            code?: string;
+            summary: string;
+            detail?: string;
+        };
         uuid: string;
         parentUUID: string | null;
         permissions?: {
@@ -711,6 +721,7 @@ function normalizeSessionEnvelope(
     }
 
     if (envelope.ev.t === 'tool-call-end') {
+        const status = envelope.ev.error ? 'failed' : envelope.ev.status;
         return {
             id: messageId,
             localId,
@@ -720,9 +731,10 @@ function normalizeSessionEnvelope(
             content: [{
                 type: 'tool-result',
                 tool_use_id: envelope.ev.call,
-                content: null,
-                is_error: envelope.ev.status === 'failed',
-                ...(envelope.ev.status ? { status: envelope.ev.status } : {}),
+                content: envelope.ev.error?.detail ?? envelope.ev.error?.summary ?? null,
+                is_error: status === 'failed',
+                ...(status ? { status } : {}),
+                ...(envelope.ev.error ? { failure: envelope.ev.error } : {}),
                 uuid: contentUUID,
                 parentUUID
             }],

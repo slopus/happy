@@ -42,6 +42,11 @@ export const sessionToolCallEndEventSchema = z.object({
   t: z.literal('tool-call-end'),
   call: z.string(),
   status: z.enum(['completed', 'failed', 'cancelled']).optional(),
+  error: z.object({
+    code: z.string().max(64).optional(),
+    summary: z.string().min(1).max(280),
+    detail: z.string().min(1).max(4000).optional(),
+  }).optional(),
 });
 
 export const sessionFileEventSchema = z.object({

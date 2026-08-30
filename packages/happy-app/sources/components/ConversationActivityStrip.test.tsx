@@ -22,6 +22,7 @@ vi.mock('react-native-unistyles', () => ({
             ? (factory as (theme: object) => object)({
                 colors: {
                     success: '#00ff00',
+                    box: { error: { background: '#330000', border: '#aa0000', text: '#ff7777' } },
                     surfaceHigh: '#222222',
                     surfaceHighest: '#333333',
                     text: '#ffffff',
@@ -33,7 +34,12 @@ vi.mock('react-native-unistyles', () => ({
             : factory,
     },
     useUnistyles: () => ({
-        theme: { colors: { success: '#00ff00', textDestructive: '#ff0000', textSecondary: '#aaaaaa', warning: '#ffaa00' } },
+        theme: { colors: {
+            success: '#00ff00',
+            textDestructive: '#ff0000',
+            textSecondary: '#aaaaaa',
+            warning: '#ffaa00',
+        } },
     }),
 }));
 vi.mock('@/text', () => ({
@@ -98,11 +104,83 @@ describe('ConversationActivityStrip', () => {
         expect(subagentRow.props.accessibilityLabel).toBe('toolGroup.openSubagentDetails:Implementation agent');
         expect(subagentRow.props.accessibilityState).toEqual({ expanded: false });
         expect(subagentRow.props['aria-expanded']).toBe(false);
+        expect(subagentRow.props.style({ pressed: false })).toContainEqual(
+            expect.objectContaining({ flexDirection: 'row', alignItems: 'center' }),
+        );
 
         act(() => subagentRow.props.onPress());
         expect(selectedId).toBe('agent-one');
         subagentRow = renderer.root.findByProps({ testID: 'activity-subagent-agent-one' });
         expect(subagentRow.props.accessibilityState).toEqual({ expanded: true });
+
+        act(() => renderer.unmount());
+    });
+
+    it('shows a failed Skill summary and expands its diagnostic detail', () => {
+        const failedSkill = toolMessage('1', 'Skill', { skillName: 'gpt-image-2' });
+        failedSkill.tool.state = 'error';
+        failedSkill.tool.failure = {
+            summary: 'Skill file was not found.',
+            detail: 'sed: /plugins/gpt-image-2/SKILL.md: No such file or directory',
+        };
+
+        let renderer: any;
+        act(() => {
+            renderer = TestRenderer.create(<ConversationActivityStrip messages={[failedSkill]} />);
+        });
+
+        let skillRow = renderer.root.findByProps({ testID: 'activity-skill-gpt-image-2' });
+        expect(skillRow.type).toBe('Pressable');
+        expect(skillRow.props.accessibilityLabel).toBe('toolGroup.openSkillDetails:gpt-image-2');
+        expect(skillRow.props.accessibilityState).toEqual({ expanded: false });
+        expect(renderer.root.findAllByType('Text').map((node: any) => node.children.join('')))
+            .toContain('Skill file was not found.');
+        expect(renderer.root.findAllByType('Text').map((node: any) => node.children.join('')))
+            .not.toContain('sed: /plugins/gpt-image-2/SKILL.md: No such file or directory');
+
+        act(() => skillRow.props.onPress());
+        skillRow = renderer.root.findByProps({ testID: 'activity-skill-gpt-image-2' });
+        expect(skillRow.props.accessibilityLabel).toBe('toolGroup.closeSkillDetails:gpt-image-2');
+        expect(skillRow.props.accessibilityState).toEqual({ expanded: true });
+        expect(renderer.root.findAllByType('Text').map((node: any) => node.children.join('')))
+            .toContain('sed: /plugins/gpt-image-2/SKILL.md: No such file or directory');
+
+        act(() => renderer.unmount());
+    });
+
+    it('keeps summary-only failed Skills non-interactive', () => {
+        const failedSkill = toolMessage('1', 'Skill', { skillName: 'gpt-image-2' });
+        failedSkill.tool.state = 'error';
+        failedSkill.tool.failure = { summary: 'Skill file was not found.' };
+
+        let renderer: any;
+        act(() => {
+            renderer = TestRenderer.create(<ConversationActivityStrip messages={[failedSkill]} />);
+        });
+
+        const skillRow = renderer.root.findByProps({ testID: 'activity-skill-gpt-image-2' });
+        expect(skillRow.type).toBe('View');
+        expect(skillRow.props.onPress).toBeUndefined();
+        expect(renderer.root.findAllByType('Ionicons').map((node: any) => node.props.name))
+            .not.toContain('chevron-down');
+
+        act(() => renderer.unmount());
+    });
+
+    it('keeps failed Skills without diagnostics non-interactive', () => {
+        const failedSkill = toolMessage('1', 'Skill', { skillName: 'gpt-image-2' });
+        failedSkill.tool.state = 'error';
+
+        let renderer: any;
+        act(() => {
+            renderer = TestRenderer.create(<ConversationActivityStrip messages={[failedSkill]} />);
+        });
+
+        const skillRow = renderer.root.findByProps({ testID: 'activity-skill-gpt-image-2' });
+        expect(skillRow.type).toBe('View');
+        expect(skillRow.props.onPress).toBeUndefined();
+        expect(renderer.root.findAllByType('Text').map((node: any) => node.children.join('')))
+            .toContain('toolGroup.skillFailureNoDetails');
 
         act(() => renderer.unmount());
     });

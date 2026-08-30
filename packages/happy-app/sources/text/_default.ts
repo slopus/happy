@@ -1093,6 +1093,9 @@ export const en = {
         openSubagentDetails: ({ title }: { title: string }) => `View sub-agent details: ${title}`,
         subagentPanelLabel: ({ title }: { title: string }) => `sub-agent details for ${title}`,
         subagentNoDetails: 'No detailed record captured',
+        openSkillDetails: ({ title }: { title: string }) => `View skill failure details: ${title}`,
+        closeSkillDetails: ({ title }: { title: string }) => `Hide skill failure details: ${title}`,
+        skillFailureNoDetails: 'No diagnostic details were captured.',
         subagentStatus: {
             running: 'Running',
             completed: 'Completed',

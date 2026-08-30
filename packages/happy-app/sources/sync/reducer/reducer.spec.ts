@@ -3088,6 +3088,85 @@ describe('reducer', () => {
             }
         });
 
+        it('preserves failed Skill diagnostics inside Agent sidechains', () => {
+            const result = reducer(createReducer(), [
+                {
+                    id: 'agent-parent-msg',
+                    localId: null,
+                    createdAt: 1000,
+                    role: 'agent',
+                    isSidechain: false,
+                    content: [{
+                        type: 'tool-call',
+                        id: 'tool-agent-parent',
+                        name: 'Agent',
+                        input: {
+                            prompt: 'Use the image skill',
+                            sessionSubagent: 'session-subagent-failure',
+                        },
+                        description: 'Use the image skill',
+                        uuid: 'agent-parent-uuid',
+                        parentUUID: null,
+                    }],
+                },
+                {
+                    id: 'agent-child-skill-start',
+                    localId: null,
+                    createdAt: 1100,
+                    role: 'agent',
+                    isSidechain: true,
+                    content: [{
+                        type: 'tool-call',
+                        id: 'tool-skill-child',
+                        name: 'Skill',
+                        input: { skillNames: ['gpt-image-2'] },
+                        description: 'Read gpt-image-2 skill',
+                        uuid: 'agent-child-skill-start-uuid',
+                        parentUUID: 'session-subagent-failure',
+                    }],
+                },
+                {
+                    id: 'agent-child-skill-end',
+                    localId: null,
+                    createdAt: 1200,
+                    role: 'agent',
+                    isSidechain: true,
+                    content: [{
+                        type: 'tool-result',
+                        tool_use_id: 'tool-skill-child',
+                        content: 'sed: /plugins/gpt-image-2/SKILL.md: No such file or directory',
+                        is_error: true,
+                        status: 'failed',
+                        failure: {
+                            code: 'command_failed',
+                            summary: 'Skill file was not found.',
+                            detail: 'sed: /plugins/gpt-image-2/SKILL.md: No such file or directory',
+                        },
+                        uuid: 'agent-child-skill-end-uuid',
+                        parentUUID: 'session-subagent-failure',
+                    }],
+                },
+            ]);
+
+            expect(result.messages).toHaveLength(1);
+            expect(result.messages[0]).toMatchObject({
+                kind: 'tool-call',
+                tool: { name: 'Agent' },
+                children: [{
+                    kind: 'tool-call',
+                    tool: {
+                        name: 'Skill',
+                        state: 'error',
+                        failure: {
+                            code: 'command_failed',
+                            summary: 'Skill file was not found.',
+                            detail: 'sed: /plugins/gpt-image-2/SKILL.md: No such file or directory',
+                        },
+                    },
+                }],
+            });
+        });
+
         it('nests CUID-linked Agent sidechains when history arrives newest first', () => {
             const state = createReducer();
             const sessionSubagent = createId();
@@ -3491,6 +3570,62 @@ describe('reducer', () => {
             expect(collectConversationActivities(result.messages).skills).toEqual([
                 expect.objectContaining({ name: 'dev', status: 'cancelled' }),
             ]);
+        });
+
+        it('preserves failed Skill diagnostics through normalization and the reducer', () => {
+            const envelopes = [
+                {
+                    id: 'failed-skill-start',
+                    time: 1000,
+                    role: 'agent',
+                    turn: 'failed-skill-turn',
+                    ev: {
+                        t: 'tool-call-start',
+                        call: 'failed-skill-call',
+                        name: 'Skill',
+                        title: 'Use skill `gpt-image-2`',
+                        description: 'Read gpt-image-2 skill',
+                        args: { skillNames: ['gpt-image-2'] },
+                    },
+                },
+                {
+                    id: 'failed-skill-end',
+                    time: 1100,
+                    role: 'agent',
+                    turn: 'failed-skill-turn',
+                    ev: {
+                        t: 'tool-call-end',
+                        call: 'failed-skill-call',
+                        status: 'failed',
+                        error: {
+                            code: 'command_failed',
+                            summary: 'Skill file was not found.',
+                            detail: 'sed: /plugins/gpt-image-2/SKILL.md: No such file or directory',
+                        },
+                    },
+                },
+            ]
+                .map((envelope, index) => normalizeRawMessage(
+                    `failed-skill-db-${index}`,
+                    null,
+                    envelope.time,
+                    { role: 'session', content: envelope } as any,
+                ))
+                .filter((message): message is NormalizedMessage => message !== null);
+
+            const result = reducer(createReducer(), envelopes);
+            expect(result.messages).toMatchObject([{
+                kind: 'tool-call',
+                tool: {
+                    state: 'error',
+                    result: 'sed: /plugins/gpt-image-2/SKILL.md: No such file or directory',
+                    failure: {
+                        code: 'command_failed',
+                        summary: 'Skill file was not found.',
+                        detail: 'sed: /plugins/gpt-image-2/SKILL.md: No such file or directory',
+                    },
+                },
+            }]);
         });
     });
 

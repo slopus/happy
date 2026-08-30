@@ -1026,6 +1026,9 @@ export const ru: TranslationStructure = {
         openSubagentDetails: ({ title }: { title: string }) => `Просмотреть сведения о субагенте: ${title}`,
         subagentPanelLabel: ({ title }: { title: string }) => `сведения о субагенте «${title}»`,
         subagentNoDetails: 'Подробные сведения не зафиксированы',
+        openSkillDetails: ({ title }: { title: string }) => `Показать сведения об ошибке навыка: ${title}`,
+        closeSkillDetails: ({ title }: { title: string }) => `Скрыть сведения об ошибке навыка: ${title}`,
+        skillFailureNoDetails: 'Диагностические сведения не получены.',
         subagentStatus: {
             running: 'Выполняется',
             completed: 'Завершён',

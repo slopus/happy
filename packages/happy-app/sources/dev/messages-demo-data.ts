@@ -88,6 +88,39 @@ export const activityStatusDemoEnvelopes: Array<Record<string, unknown>> = [
         ev: { t: 'tool-call-end', call: 'activity-skill-call', status: 'completed' },
     },
     {
+        id: 'activity-failed-skill-start',
+        time: activityDemoBaseTime + 2_750,
+        role: 'agent',
+        turn: 'activity-turn',
+        ev: {
+            t: 'tool-call-start',
+            call: 'activity-failed-skill-call',
+            name: 'Skill',
+            title: 'Use skill `gpt-image-2`',
+            description: 'Read the gpt-image-2 skill instructions',
+            args: {
+                skillNames: ['gpt-image-2'],
+                command: 'sed -n 1,240p /plugins/gpt-image-2/SKILL.md',
+            },
+        },
+    },
+    {
+        id: 'activity-failed-skill-end',
+        time: activityDemoBaseTime + 2_900,
+        role: 'agent',
+        turn: 'activity-turn',
+        ev: {
+            t: 'tool-call-end',
+            call: 'activity-failed-skill-call',
+            status: 'failed',
+            error: {
+                code: 'command_failed',
+                summary: 'Skill file was not found.',
+                detail: 'sed: /plugins/gpt-image-2/SKILL.md: No such file or directory',
+            },
+        },
+    },
+    {
         id: 'activity-agent-running',
         time: activityDemoBaseTime + 3_000,
         role: 'agent',
