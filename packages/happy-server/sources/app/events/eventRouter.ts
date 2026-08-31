@@ -5,6 +5,50 @@ import { AccountProfile } from "@/types";
 import { getPublicUrl } from "@/storage/files";
 import type { SessionMessageContent } from "@slopus/happy-wire";
 
+// Grace window during which a freshly-connected viewer socket that has not yet
+// reported its app-state is treated as foreground. Covers the race between
+// connect and the first `app-state` event without letting an ever-silent socket
+// suppress pushes indefinitely. Used by the pure isForegroundViewerSocket()
+// predicate below.
+const UNKNOWN_APP_STATE_GRACE_MS = 15_000;
+
+/** Minimal view of socket.data the viewer-presence decision depends on. */
+export interface ViewerSocketData {
+    clientType?: string;
+    appState?: string;
+    appStateAt?: number;
+    connectedAt?: number;
+}
+
+/**
+ * Pure predicate: is this socket a viewer client currently in the foreground?
+ * Originally extracted from the local push-suppression fix so the F1/F2 rules
+ * are unit-testable without a live socket.io server (see
+ * isForegroundViewerSocket.test.ts).
+ *
+ * MERGE NOTE (2026-08-30 upstream catch-up): upstream independently landed the
+ * same incident fix as `hasActiveUiClient` below, which is now the production
+ * presence check (stricter: no grace window, undefined clientType is NOT a UI
+ * client, plus a bounded fetch that fails open). This predicate is retained as
+ * the tested statement of the original F1/F2 intent; both it and
+ * hasActiveUiClient enforce "presence must be proven" for the two incident
+ * cases (session-scoped self-suppression; silent socket suppressing forever).
+ */
+export function isForegroundViewerSocket(data: ViewerSocketData, now: number): boolean {
+    // Rule 1 — only a user-scoped viewer counts (undefined defaults to
+    // user-scoped, matching how the connection itself is classified).
+    if (data.clientType === 'session-scoped' || data.clientType === 'machine-scoped') {
+        return false;
+    }
+    // Rule 2 — foreground = explicit `active`; background never suppresses.
+    if (data.appState === 'active') return true;
+    if (data.appState === 'background') return false;
+    // Unknown state: only within a short grace window after connect.
+    const ref = data.appStateAt ?? data.connectedAt;
+    if (ref === undefined) return false;
+    return (now - ref) < UNKNOWN_APP_STATE_GRACE_MS;
+}
+
 /**
  * Cross-replica presence lookups must stay well inside the CLI's 15s push
  * timeout, and a stalled peer replica should degrade to "send" quickly.

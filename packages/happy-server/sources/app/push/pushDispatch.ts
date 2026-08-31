@@ -14,18 +14,31 @@
  * (`user-scoped` socket reporting `app-state: active`), suppress the push —
  * they can see in-app indicators (unread dots, tab title counter) instead.
  * Anything short of that proof sends, because a missed push is far more
- * costly than a redundant one. See eventRouter.hasActiveUiClient.
+ * costly than a redundant one. See eventRouter.hasActiveUiClient (fixes the
+ * 2026-08-03 incident where the session's own socket suppressed 100% of pushes
+ * and silent sockets suppressed the rest).
  *
  * Every path reports a PushOutcome so callers can tell "delivered" from
  * "suppressed" from "nobody has a device registered" — previously all three
  * looked identical to the CLI, which is how a total push outage stayed
  * invisible for two months.
+ *
+ * Observability: each outcome also increments push_notifications_total
+ * {outcome,kind} (see metrics2.pushNotificationsCounter), so a regression like
+ * the 100%-suppression incident is visible at :9090/metrics at a glance (F4).
  */
 
 import { db } from "@/storage/db";
 import { isUserActive } from "@/app/push/focusTracker";
 import { sendPushNotifications } from "@/app/push/pushSend";
+import { pushNotificationsCounter } from "@/app/monitoring/metrics2";
 import { log } from "@/utils/log";
+
+/** Normalise the event kind for the metrics label (bounded cardinality). */
+function pushKindLabel(data: Record<string, unknown> | undefined): string {
+    const kind = data?.kind;
+    return kind === 'done' || kind === 'permission' || kind === 'question' ? kind : 'unknown';
+}
 
 /** What actually happened to a session-event push. */
 export type PushOutcome =
@@ -42,6 +55,7 @@ async function fetchTokensAndSend(params: {
     body: string;
     data: Record<string, unknown>;
     channelId: string;
+    kind: string;
 }): Promise<PushOutcome> {
     // All push tokens are mobile — web/CLI never register Expo tokens.
     const tokens = await db.accountPushToken.findMany({
@@ -49,6 +63,7 @@ async function fetchTokensAndSend(params: {
     });
 
     if (tokens.length === 0) {
+        pushNotificationsCounter.inc({ outcome: 'no_tokens', kind: params.kind });
         log({ module: 'push' }, `No push tokens for user ${params.userId} session ${params.sessionId} — skipped`);
         return { result: 'no_tokens' };
     }
@@ -81,16 +96,21 @@ async function fetchTokensAndSend(params: {
     }
 
     if (errors.length === 0) {
+        pushNotificationsCounter.inc({ outcome: 'sent', kind: params.kind });
         log({ module: 'push' }, `Push sent for user ${params.userId} session ${params.sessionId}: ${okCount} token(s)`);
         return { result: 'sent', tokens: okCount };
     }
 
     // Nothing got through — an Expo outage or timeout, not a per-device problem.
     if (okCount === 0) {
+        // F4 observability: a total-delivery failure is an 'error' outcome.
+        pushNotificationsCounter.inc({ outcome: 'error', kind: params.kind });
         log({ module: 'push', level: 'error' }, `Push failed for user ${params.userId} session ${params.sessionId}: errors=${JSON.stringify(errors)}`);
         return { result: 'failed', reason: errors.join(', ') };
     }
 
+    // F4 observability: partial delivery still had per-device errors — count as 'error'.
+    pushNotificationsCounter.inc({ outcome: 'error', kind: params.kind });
     log({ module: 'push', level: 'warn' }, `Push partial for user ${params.userId} session ${params.sessionId}: ok=${okCount} errors=${JSON.stringify(errors)}`);
     return { result: 'partial', tokens: tokens.length, delivered: okCount, reason: errors.join(', ') };
 }
@@ -103,10 +123,12 @@ export async function dispatchSessionEventPush(params: {
     data?: Record<string, unknown>;
 }): Promise<PushOutcome> {
     const { userId, sessionId, title, body, data } = params;
+    const kind = pushKindLabel(data);
 
     try {
         try {
             if (await isUserActive(userId)) {
+                pushNotificationsCounter.inc({ outcome: 'suppressed', kind });
                 log({ module: 'push' }, `Suppressed session-event push for user ${userId} session ${sessionId}: user active`);
                 return { result: 'suppressed', reason: 'active-ui-client' };
             }
@@ -121,9 +143,11 @@ export async function dispatchSessionEventPush(params: {
             title,
             body,
             data: { sessionId, ...(data ?? {}) },
-            channelId: 'messages'
+            channelId: 'messages',
+            kind
         });
     } catch (error) {
+        pushNotificationsCounter.inc({ outcome: 'error', kind });
         log({ module: 'push', level: 'error' }, `Session-event push dispatch failed: ${error}`);
         return { result: 'failed', reason: error instanceof Error ? error.message : String(error) };
     }

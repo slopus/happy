@@ -12,9 +12,9 @@
  * (see packages/happy-cli/src/claude/loop.ts), so "user is at the keyboard"
  * is handled structurally rather than guessed at here.
  *
- * State lives on `socket.data.appState` — set by the `app-state` socket
- * event in socket.ts. No external storage (Redis, Maps) needed: when a
- * socket disconnects the state disappears automatically.
+ * State lives on `socket.data` — set by the `app-state` socket event in
+ * socket.ts. No external storage (Redis, Maps) needed: when a socket disconnects
+ * the state disappears automatically.
  */
 
 import { eventRouter } from "@/app/events/eventRouter";

@@ -11,7 +11,7 @@ import { useSession, useIsDataReady, useSessionProjectAvatar } from '@/sync/stor
 import { getSessionName, useSessionStatus, formatOSPlatform, formatPathRelativeToHome, getSessionAvatarId, getResumeCommand } from '@/utils/sessionUtils';
 import * as Clipboard from 'expo-clipboard';
 import { Modal } from '@/modal';
-import { sessionArchive, sessionKill, sessionDelete } from '@/sync/ops';
+import { sessionArchive, sessionKill, sessionDelete, sessionUpdateMetadata } from '@/sync/ops';
 import { maybeCleanupWorktree } from '@/hooks/useWorktreeCleanup';
 import { useUnistyles } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
@@ -153,6 +153,31 @@ function SessionInfoContent({ session }: { session: Session }) {
             Modal.alert(t('common.success'), t('sessionInfo.happySessionIdCopied'));
         } catch (error) {
             Modal.alert(t('common.error'), t('sessionInfo.failedToCopySessionId'));
+        }
+    }, [session]);
+
+    const handleRenameSession = useCallback(async () => {
+        if (!session) return;
+        const newName = await Modal.prompt(
+            'Rename Session',
+            'Give this session a custom name. Leave empty to use the auto-generated summary.',
+            {
+                defaultValue: session.metadata?.name || '',
+                placeholder: getSessionName(session),
+                cancelText: t('common.cancel'),
+                confirmText: t('common.rename')
+            }
+        );
+        if (newName !== null) {
+            try {
+                const updatedMetadata = {
+                    ...session.metadata!,
+                    name: newName.trim() || undefined
+                };
+                await sessionUpdateMetadata(session.id, updatedMetadata, session.metadataVersion);
+            } catch (error) {
+                Modal.alert(t('common.error'), error instanceof Error ? error.message : 'Failed to rename session');
+            }
         }
     }, [session]);
 
@@ -351,6 +376,12 @@ function SessionInfoContent({ session }: { session: Session }) {
                             copyText={getResumeCommand(session)!}
                         />
                     )}
+                    <Item
+                        title="Rename Session"
+                        subtitle={session.metadata?.name ? `Custom: ${session.metadata.name}` : 'Using auto-generated name'}
+                        icon={<Ionicons name="pencil-outline" size={29} color="#007AFF" />}
+                        onPress={handleRenameSession}
+                    />
                     <Item
                         title={t('sessionInfo.connectionStatus')}
                         detail={sessionStatus.isConnected ? t('status.online') : t('status.offline')}

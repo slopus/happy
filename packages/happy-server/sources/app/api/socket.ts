@@ -173,15 +173,21 @@ export function startSocket(app: Fastify) {
 
         // Track app focus state for push notification routing.
         // State lives on socket.data — no external storage needed.
+        // connectedAt anchors the grace window for a socket that hasn't yet
+        // reported its app-state (see eventRouter.hasActiveViewerSocket).
+        socket.data.connectedAt = Date.now();
+
         // Read initial state from handshake to close the race window between
         // connect and the first async app-state event.
         const initialAppState = socket.handshake.auth.appState as string | undefined;
         if (initialAppState) {
             socket.data.appState = initialAppState === 'active' ? 'active' : 'background';
+            socket.data.appStateAt = Date.now();
         }
 
         socket.on('app-state', (data: { state: string }) => {
             socket.data.appState = data?.state === 'active' ? 'active' : 'background';
+            socket.data.appStateAt = Date.now();
         });
 
         socket.on('disconnect', () => {
