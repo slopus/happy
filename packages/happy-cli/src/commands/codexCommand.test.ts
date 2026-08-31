@@ -51,7 +51,7 @@ describe('handleCodexCommand', () => {
   it('ensures the daemon is running before starting a codex session', async () => {
     await handleCodexCommand(['--started-by', 'terminal'])
 
-    expect(mocks.mockEnsureDaemonRunning).toHaveBeenCalledTimes(1)
+    expect(mocks.mockEnsureDaemonRunning).toHaveBeenCalledWith('terminal')
     expect(mocks.mockRunCodex).toHaveBeenCalledWith({
       credentials: { token: 'token' },
       startedBy: 'terminal',
@@ -78,6 +78,7 @@ describe('handleCodexCommand', () => {
 
     await handleCodexCommand(['--no-sandbox', '--resume', 'thread-123', '--started-by', 'daemon'])
 
+    expect(mocks.mockEnsureDaemonRunning).toHaveBeenCalledWith('daemon')
     expect(mocks.mockRunCodex).toHaveBeenCalledWith({
       credentials: { token: 'token' },
       startedBy: 'daemon',

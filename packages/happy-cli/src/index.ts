@@ -347,7 +347,7 @@ Conversation history is preserved on the server, but in-flight tool calls are in
       const {
         credentials
       } = await authAndSetupMachineIfNeeded();
-      await ensureDaemonRunning()
+      await ensureDaemonRunning(startedBy)
 
       await runGemini({credentials, startedBy});
     } catch (error) {
@@ -383,7 +383,7 @@ Conversation history is preserved on the server, but in-flight tool calls are in
 
       const resolved = resolveAcpAgentConfig(acpArgs);
       const { credentials } = await authAndSetupMachineIfNeeded();
-      await ensureDaemonRunning()
+      await ensureDaemonRunning(startedBy)
 
       await runAcp({
         credentials,
@@ -425,7 +425,7 @@ Conversation history is preserved on the server, but in-flight tool calls are in
       }
 
       const { credentials } = await authAndSetupMachineIfNeeded();
-      await ensureDaemonRunning()
+      await ensureDaemonRunning(startedBy)
 
       await runOpenClaw({
         credentials,
@@ -458,7 +458,7 @@ Conversation history is preserved on the server, but in-flight tool calls are in
       }
 
       const { credentials } = await authAndSetupMachineIfNeeded();
-      await ensureDaemonRunning()
+      await ensureDaemonRunning(startedBy)
 
       await runAgy({
         credentials,
@@ -776,7 +776,7 @@ ${chalk.bold.cyan('Claude Code Options (from `claude --help`):')}
     const {
       credentials
     } = await authAndSetupMachineIfNeeded();
-    await ensureDaemonRunning()
+    await ensureDaemonRunning(options.startedBy)
 
     // Start the CLI
     try {

@@ -38,10 +38,18 @@ describe('ensureDaemonRunning', () => {
     mocks.mockCheckIfDaemonRunningAndCleanupStaleState.mockResolvedValue(true)
   })
 
+  it('does not inspect or replace the daemon that started this session', async () => {
+    await ensureDaemonRunning('daemon')
+
+    expect(mocks.mockIsDaemonRunningCurrentlyInstalledHappyVersion).not.toHaveBeenCalled()
+    expect(mocks.mockCheckIfDaemonRunningAndCleanupStaleState).not.toHaveBeenCalled()
+    expect(mocks.mockSpawnHappyCLI).not.toHaveBeenCalled()
+  })
+
   it('returns without spawning when the daemon is already running', async () => {
     mocks.mockIsDaemonRunningCurrentlyInstalledHappyVersion.mockResolvedValue(true)
 
-    await ensureDaemonRunning()
+    await ensureDaemonRunning('terminal')
 
     expect(mocks.mockSpawnHappyCLI).not.toHaveBeenCalled()
     expect(mocks.mockCheckIfDaemonRunningAndCleanupStaleState).not.toHaveBeenCalled()
@@ -65,7 +73,7 @@ describe('ensureDaemonRunning', () => {
     }
     vi.stubEnv('HAPPY_SAFE_ENV', 'kept')
 
-    await ensureDaemonRunning()
+    await ensureDaemonRunning(undefined)
 
     expect(mocks.mockSpawnHappyCLI).toHaveBeenCalledWith(['daemon', 'start-sync'], expect.objectContaining({
       detached: true,

@@ -316,15 +316,46 @@ export function writeDaemonState(state: DaemonLocallyPersistedState): void {
   writeFileSync(configuration.daemonStateFile, JSON.stringify(state, null, 2), 'utf-8');
 }
 
+function daemonLockIsOwnedBy(pid: number): boolean {
+  try {
+    return readFileSync(configuration.daemonLockFile, 'utf-8').trim() === String(pid);
+  } catch {
+    return false;
+  }
+}
+
 /**
- * Clean up daemon state file and lock file
+ * Refresh daemon state only while the caller still owns the persisted state.
+ * Returns false when a successor daemon has already taken ownership.
  */
-export async function clearDaemonState(): Promise<void> {
-  if (existsSync(configuration.daemonStateFile)) {
+export async function writeDaemonStateIfOwned(state: DaemonLocallyPersistedState): Promise<boolean> {
+  const persistedState = await readDaemonState();
+  if (persistedState && persistedState.pid !== state.pid) {
+    return false;
+  }
+
+  if (!daemonLockIsOwnedBy(state.pid)) {
+    return false;
+  }
+
+  writeDaemonState(state);
+  return true;
+}
+
+/**
+ * Clean up daemon state file and lock file. When expectedOwnerPid is provided,
+ * only files still owned by that daemon are removed.
+ */
+export async function clearDaemonState(expectedOwnerPid?: number): Promise<void> {
+  const stateIsOwned = expectedOwnerPid === undefined
+    || (await readDaemonState())?.pid === expectedOwnerPid;
+  if (stateIsOwned && existsSync(configuration.daemonStateFile)) {
     await unlink(configuration.daemonStateFile);
   }
-  // Also clean up lock file if it exists (for stale cleanup)
-  if (existsSync(configuration.daemonLockFile)) {
+
+  const lockIsOwned = expectedOwnerPid === undefined || daemonLockIsOwnedBy(expectedOwnerPid);
+
+  if (lockIsOwned && existsSync(configuration.daemonLockFile)) {
     try {
       await unlink(configuration.daemonLockFile);
     } catch {
@@ -399,7 +430,7 @@ export async function acquireDaemonLock(
 }
 
 /**
- * Release daemon lock by closing handle and deleting lock file
+ * Release this daemon's lock without deleting a successor's replacement lock.
  */
 export async function releaseDaemonLock(lockHandle: FileHandle): Promise<void> {
   try {
@@ -407,7 +438,7 @@ export async function releaseDaemonLock(lockHandle: FileHandle): Promise<void> {
   } catch { }
 
   try {
-    if (existsSync(configuration.daemonLockFile)) {
+    if (existsSync(configuration.daemonLockFile) && daemonLockIsOwnedBy(process.pid)) {
       unlinkSync(configuration.daemonLockFile);
     }
   } catch { }

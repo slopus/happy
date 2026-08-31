@@ -147,7 +147,7 @@ export async function checkIfDaemonRunningAndCleanupStaleState(): Promise<boolea
     process.kill(state.pid, 0);
   } catch {
     logger.debug('[DAEMON RUN] Daemon PID not running, cleaning up state');
-    await cleanupDaemonState();
+    await cleanupDaemonState(state.pid);
     return false;
   }
 
@@ -164,10 +164,16 @@ export async function checkIfDaemonRunningAndCleanupStaleState(): Promise<boolea
       if (response.ok) {
         return true;
       }
-    } catch {
-      // HTTP check failed - the PID is not our daemon (likely reused by OS after reboot)
+    } catch (error) {
+      if (error instanceof Error && error.name === 'TimeoutError') {
+        logger.debug(`[DAEMON RUN] PID ${state.pid} is alive but HTTP health check timed out on port ${state.httpPort}; preserving daemon ownership state`);
+        return true;
+      }
+
+      // A non-timeout connection failure means the live PID is not listening as
+      // our daemon (most commonly a PID reused by Windows after reboot).
       logger.debug(`[DAEMON RUN] PID ${state.pid} is alive but HTTP health check failed on port ${state.httpPort}, cleaning up stale state`);
-      await cleanupDaemonState();
+      await cleanupDaemonState(state.pid);
       return false;
     }
   }
@@ -215,10 +221,10 @@ export async function isDaemonRunningCurrentlyInstalledHappyVersion(): Promise<b
   return currentCliVersion === state.startedWithCliVersion;
 }
 
-export async function cleanupDaemonState(): Promise<void> {
+export async function cleanupDaemonState(expectedOwnerPid: number): Promise<void> {
   try {
-    await clearDaemonState();
-    logger.debug('[DAEMON RUN] Daemon state file removed');
+    await clearDaemonState(expectedOwnerPid);
+    logger.debug(`[DAEMON RUN] Daemon state cleanup completed for PID ${expectedOwnerPid}`);
   } catch (error) {
     logger.debug('[DAEMON RUN] Error cleaning up daemon metadata', error);
   }

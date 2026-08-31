@@ -6,8 +6,13 @@ import { sanitizeSessionEnvironment } from './sessionEnvironment'
 const DAEMON_READY_TIMEOUT_MS = 5000
 const DAEMON_READY_POLL_INTERVAL_MS = 100
 
-export async function ensureDaemonRunning(): Promise<void> {
+export async function ensureDaemonRunning(startedBy: 'daemon' | 'terminal' | undefined): Promise<void> {
   logger.debug('Ensuring Happy background service is running & matches our version...')
+
+  if (startedBy === 'daemon') {
+    logger.debug('Skipping daemon check for a session started by the daemon')
+    return
+  }
 
   if (await isDaemonRunningCurrentlyInstalledHappyVersion()) {
     return

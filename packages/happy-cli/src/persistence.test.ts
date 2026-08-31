@@ -1,8 +1,16 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { acquireDaemonLock, releaseDaemonLock, SandboxConfigSchema } from './persistence';
+import {
+    acquireDaemonLock,
+    clearDaemonState,
+    readDaemonState,
+    releaseDaemonLock,
+    SandboxConfigSchema,
+    writeDaemonState,
+    writeDaemonStateIfOwned,
+} from './persistence';
 
 const mockConfiguration = vi.hoisted(() => ({
     daemonLockFile: '',
@@ -132,5 +140,125 @@ describe('acquireDaemonLock', () => {
 
         expect(lockHandle).toBeNull();
         expect(readFileSync(mockConfiguration.daemonLockFile, 'utf-8')).toBe(String(process.pid));
+    });
+});
+
+describe('daemon state ownership', () => {
+    let testDir: string;
+
+    beforeEach(() => {
+        testDir = mkdtempSync(join(tmpdir(), 'happy-daemon-state-'));
+        mockConfiguration.daemonStateFile = join(testDir, 'daemon.state.json');
+        mockConfiguration.daemonLockFile = join(testDir, 'daemon.state.json.lock');
+    });
+
+    afterEach(() => {
+        rmSync(testDir, { recursive: true, force: true });
+    });
+
+    it('refreshes state while both state and lock still belong to this daemon', async () => {
+        const ownedState = {
+            pid: process.pid,
+            httpPort: 4000,
+            startTime: 'owner',
+            startedWithCliVersion: '1.2.2',
+        };
+        writeDaemonState(ownedState);
+        writeFileSync(mockConfiguration.daemonLockFile, String(process.pid), 'utf-8');
+
+        await expect(writeDaemonStateIfOwned({
+            ...ownedState,
+            lastHeartbeat: 'later',
+        })).resolves.toBe(true);
+        await expect(readDaemonState()).resolves.toEqual({
+            ...ownedState,
+            lastHeartbeat: 'later',
+        });
+    });
+
+    it('does not overwrite state owned by a successor daemon', async () => {
+        const successorState = {
+            pid: process.pid + 1,
+            httpPort: 4001,
+            startTime: 'successor',
+            startedWithCliVersion: '1.2.2',
+        };
+        writeDaemonState(successorState);
+
+        const wroteHeartbeat = await writeDaemonStateIfOwned({
+            pid: process.pid,
+            httpPort: 4000,
+            startTime: 'predecessor',
+            startedWithCliVersion: '1.2.2',
+            lastHeartbeat: 'later',
+        });
+
+        expect(wroteHeartbeat).toBe(false);
+        await expect(readDaemonState()).resolves.toEqual(successorState);
+    });
+
+    it('does not write a heartbeat after lock ownership moves to a successor', async () => {
+        const predecessorState = {
+            pid: process.pid,
+            httpPort: 4000,
+            startTime: 'predecessor',
+            startedWithCliVersion: '1.2.2',
+        };
+        writeDaemonState(predecessorState);
+        writeFileSync(mockConfiguration.daemonLockFile, String(process.pid + 1), 'utf-8');
+
+        const wroteHeartbeat = await writeDaemonStateIfOwned({
+            ...predecessorState,
+            lastHeartbeat: 'later',
+        });
+
+        expect(wroteHeartbeat).toBe(false);
+        await expect(readDaemonState()).resolves.toEqual(predecessorState);
+    });
+
+    it('does not clear state or lock owned by a successor daemon', async () => {
+        const successorPid = process.pid + 1;
+        const successorState = {
+            pid: successorPid,
+            httpPort: 4001,
+            startTime: 'successor',
+            startedWithCliVersion: '1.2.2',
+        };
+        writeDaemonState(successorState);
+        writeFileSync(mockConfiguration.daemonLockFile, String(successorPid), 'utf-8');
+
+        await clearDaemonState(process.pid);
+
+        await expect(readDaemonState()).resolves.toEqual(successorState);
+        expect(readFileSync(mockConfiguration.daemonLockFile, 'utf-8')).toBe(String(successorPid));
+    });
+
+    it('clears state and lock that still belong to the expected daemon', async () => {
+        const ownedState = {
+            pid: process.pid,
+            httpPort: 4000,
+            startTime: 'owner',
+            startedWithCliVersion: '1.2.2',
+        };
+        writeDaemonState(ownedState);
+        writeFileSync(mockConfiguration.daemonLockFile, String(process.pid), 'utf-8');
+
+        await clearDaemonState(process.pid);
+
+        expect(existsSync(mockConfiguration.daemonStateFile)).toBe(false);
+        expect(existsSync(mockConfiguration.daemonLockFile)).toBe(false);
+    });
+
+    it('does not delete a successor lock when releasing a predecessor handle', async () => {
+        const predecessorHandle = await acquireDaemonLock(1, 0);
+        expect(predecessorHandle).not.toBeNull();
+
+        unlinkSync(mockConfiguration.daemonLockFile);
+        const successorPid = process.pid + 1;
+        writeFileSync(mockConfiguration.daemonLockFile, String(successorPid), 'utf-8');
+
+        await releaseDaemonLock(predecessorHandle!);
+
+        expect(readFileSync(mockConfiguration.daemonLockFile, 'utf-8')).toBe(String(successorPid));
     });
 });

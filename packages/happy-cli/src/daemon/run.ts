@@ -14,7 +14,7 @@ import { startCaffeinate, stopCaffeinate } from '@/utils/caffeinate';
 import packageJson from '../../package.json';
 import { getEnvironmentInfo } from '@/ui/doctor';
 import { spawnHappyCLI } from '@/utils/spawnHappyCLI';
-import { writeDaemonState, DaemonLocallyPersistedState, readDaemonState, acquireDaemonLock, releaseDaemonLock, readPersistedSessions, persistSession } from '@/persistence';
+import { writeDaemonState, writeDaemonStateIfOwned, DaemonLocallyPersistedState, acquireDaemonLock, releaseDaemonLock, readPersistedSessions, persistSession } from '@/persistence';
 import type { PersistedSession } from '@/persistence';
 
 import { cleanupDaemonState, isDaemonRunningCurrentlyInstalledHappyVersion, stopDaemon } from './controlClient';
@@ -944,7 +944,7 @@ export async function startDaemon(): Promise<void> {
         // leaving nothing running once we also exit.
         apiMachine.shutdown();
         await stopControlServer();
-        await cleanupDaemonState();
+        await cleanupDaemonState(process.pid);
         await releaseDaemonLock(daemonLockHandle);
         await stopCaffeinate();
 
@@ -961,14 +961,6 @@ export async function startDaemon(): Promise<void> {
         process.exit(0);
       }
 
-      // Before wrecklessly overriting the daemon state file, we should check if we are the ones who own it
-      // Race condition is possible, but thats okay for the time being :D
-      const daemonState = await readDaemonState();
-      if (daemonState && daemonState.pid !== process.pid) {
-        logger.debug('[DAEMON RUN] Somehow a different daemon was started without killing us. We should kill ourselves.')
-        requestShutdown('exception', 'A different daemon was started without killing us. We should kill ourselves.')
-      }
-
       // Heartbeat
       try {
         const updatedState: DaemonLocallyPersistedState = {
@@ -979,7 +971,13 @@ export async function startDaemon(): Promise<void> {
           lastHeartbeat: new Date().toLocaleString(),
           daemonLogPath: fileState.daemonLogPath
         };
-        writeDaemonState(updatedState);
+        const wroteHeartbeat = await writeDaemonStateIfOwned(updatedState);
+        if (!wroteHeartbeat) {
+          logger.debug('[DAEMON RUN] A different daemon owns the state. Stopping before writing this daemon PID back.')
+          requestShutdown('exception', 'A different daemon was started without killing us. We should kill ourselves.')
+          heartbeatRunning = false;
+          return;
+        }
         if (process.env.DEBUG) {
           logger.debug(`[DAEMON RUN] Health check completed at ${updatedState.lastHeartbeat}`);
         }
@@ -1013,7 +1011,7 @@ export async function startDaemon(): Promise<void> {
 
       apiMachine.shutdown();
       await stopControlServer();
-      await cleanupDaemonState();
+      await cleanupDaemonState(process.pid);
       await stopCaffeinate();
       await releaseDaemonLock(daemonLockHandle);
 
