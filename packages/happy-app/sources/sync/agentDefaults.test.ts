@@ -50,4 +50,8 @@ describe('agent defaults', () => {
         expect(resolveAgentDefaultConfig({}, 'agy', '1.0.0').permissionMode).toBe('default');
         expect(resolveAgentDefaultConfig({}, 'opencode', '1.0.0').permissionMode).toBe('default');
     });
+
+    it('uses opencode/big-pickle as default model for opencode', () => {
+        expect(getCodeAgentDefaults('opencode').modelMode).toBe('opencode/big-pickle');
+    });
 });

@@ -257,7 +257,7 @@ describe('modelModeOptions', () => {
     it('gives opencode its own default model mode and permission modes', () => {
         const models = getAvailableModels('opencode', null, translate);
         expect(models).toEqual(getOpenCodeModelModes());
-        expect(getDefaultModelKey('opencode')).toBe('default');
+        expect(getDefaultModelKey('opencode')).toBe('opencode/big-pickle');
 
         const permissions = getAvailablePermissionModes('opencode', null, translate);
         expect(permissions).toEqual(getOpenCodePermissionModes(translate));

@@ -301,6 +301,7 @@ export function getOpenClawModelModes(): ModelMode[] {
 
 export function getOpenCodePermissionModes(translate: Translate): PermissionMode[] {
     return [
+        { key: 'plan', name: 'Plan', description: translate('agentInput.permissionMode.plan') },
         { key: 'bypassPermissions', name: 'Yolo', description: translate('agentInput.permissionMode.bypassPermissions') },
         { key: 'default', name: 'Default', description: translate('agentInput.permissionMode.default') },
     ];
@@ -308,7 +309,18 @@ export function getOpenCodePermissionModes(translate: Translate): PermissionMode
 
 export function getOpenCodeModelModes(): ModelMode[] {
     return [
-        { key: 'default', name: 'Default model', description: null },
+        { key: 'opencode/big-pickle', name: 'Big Pickle', description: 'OpenCode Zen (Default)' },
+        { key: 'opencode/ling-3.0-flash-fin-free', name: 'Ling 3.0 Flash', description: 'Free' },
+        { key: 'opencode/mimo-v2.5-free', name: 'MiMo V2.5', description: 'Free' },
+        { key: 'opencode/muse-spark-1.2-contributor-free', name: 'Muse Spark 1.2', description: 'Free' },
+        { key: 'opencode/nemotron-3-ultra-free', name: 'Nemotron 3 Ultra', description: 'Free' },
+        { key: 'opencode/nemotron-3.5-lightning-free', name: 'Nemotron 3.5 Lightning', description: 'Free' },
+        { key: 'anthropic/claude-3-7-sonnet', name: 'Claude 3.7 Sonnet', description: 'Anthropic' },
+        { key: 'anthropic/claude-3-5-sonnet', name: 'Claude 3.5 Sonnet', description: 'Anthropic' },
+        { key: 'openai/gpt-4o', name: 'GPT-4o', description: 'OpenAI' },
+        { key: 'openai/o3-mini', name: 'o3-mini', description: 'OpenAI' },
+        { key: 'deepseek/deepseek-r1', name: 'DeepSeek R1', description: 'DeepSeek' },
+        { key: 'google/gemini-2.0-flash', name: 'Gemini 2.0 Flash', description: 'Google' },
     ];
 }
 
