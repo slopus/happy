@@ -11,6 +11,8 @@ import {
     getCodexPermissionModes,
     getClaudeModelModes,
     getClaudePermissionModes,
+    getCursorModelModes,
+    getCursorPermissionModes,
     getGeminiPermissionModes,
     getDefaultEffortKey,
     getDefaultModelKey,
@@ -249,6 +251,17 @@ describe('modelModeOptions', () => {
         // not the claude list
         expect(keys).not.toContain('opus');
         expect(keys).not.toContain('sonnet');
+    });
+
+    it('returns the curated cursor models and default model key', () => {
+        const models = getAvailableModels('cursor', null, translate);
+        expect(models).toEqual(getCursorModelModes());
+        const keys = models.map((m) => m.key);
+        expect(keys).toContain('default[]');
+        expect(getDefaultModelKey('cursor')).toBe('default[]');
+        expect(getDefaultPermissionModeKey('cursor')).toBe('agent');
+        expect(getCursorPermissionModes(translate).map((m) => m.key)).toContain('agent');
+        expect(getCursorPermissionModes(translate).map((m) => m.key)).toContain('plan');
     });
 
     it('resolves the first matching preferred key', () => {

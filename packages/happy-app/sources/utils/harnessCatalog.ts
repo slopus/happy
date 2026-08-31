@@ -8,6 +8,7 @@ import type { NewSessionAgentType } from '@/sync/persistence';
 export const HARNESS_NAMES: Record<NewSessionAgentType, string> = {
     claude: 'Claude Code',
     codex: 'Codex',
+    cursor: 'Cursor',
     rig: 'Happy',
     agy: 'Antigravity',
     gemini: 'Gemini',
@@ -32,6 +33,7 @@ export const RETIRED_HARNESSES: ReadonlySet<NewSessionAgentType> = new Set([
 export const HARNESS_ORDER: readonly NewSessionAgentType[] = [
     'claude',
     'codex',
+    'cursor',
     'agy',
     'rig',
 ];

@@ -48,5 +48,7 @@ describe('agent defaults', () => {
         expect(resolveAgentDefaultConfig({}, 'gemini', '1.0.0').permissionMode).toBe('default');
         expect(resolveAgentDefaultConfig({}, 'openclaw', '1.0.0').permissionMode).toBe('default');
         expect(resolveAgentDefaultConfig({}, 'agy', '1.0.0').permissionMode).toBe('default');
+        expect(resolveAgentDefaultConfig({}, 'cursor', '1.0.0').permissionMode).toBe('agent');
+        expect(resolveAgentDefaultConfig({}, 'cursor', '1.0.0').modelMode).toBe('default[]');
     });
 });

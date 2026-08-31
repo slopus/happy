@@ -2,9 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { resolveAvatarHarness } from './avatarHarness';
 
 describe('resolveAvatarHarness', () => {
-    it('keeps the existing Claude, Codex, and Antigravity mappings', () => {
+    it('keeps the existing Claude, Codex, Cursor, and Antigravity mappings', () => {
         expect(resolveAvatarHarness('claude')).toBe('claude');
         expect(resolveAvatarHarness('codex')).toBe('codex');
+        expect(resolveAvatarHarness('cursor')).toBe('cursor');
         expect(resolveAvatarHarness('agy')).toBe('agy');
     });
 

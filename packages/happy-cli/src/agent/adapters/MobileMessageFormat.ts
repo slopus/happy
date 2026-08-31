@@ -11,7 +11,7 @@
 /**
  * Supported agent types for the mobile app
  */
-export type MobileAgentType = 'gemini' | 'codex' | 'claude' | 'opencode';
+export type MobileAgentType = 'gemini' | 'codex' | 'claude' | 'cursor' | 'opencode';
 
 /**
  * Message roles for the mobile app

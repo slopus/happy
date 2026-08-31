@@ -105,6 +105,7 @@ const agentIcons = {
     rig: require('@/assets/images/logo-black.png'),
     claude: require('@/assets/images/icon-claude.png'),
     codex: require('@/assets/images/icon-gpt.png'),
+    cursor: require('@/assets/images/icon-cursor.png'),
     openclaw: require('@/assets/images/icon-openclaw.png'),
     gemini: require('@/assets/images/icon-gemini.png'),
     agy: require('@/assets/images/icon-agy.png'),
@@ -116,6 +117,7 @@ type AgentKey = NewSessionAgentType;
 const ALL_AGENTS: { key: AgentKey; label: string }[] = [
     { key: 'claude', label: 'claude code' },
     { key: 'codex', label: 'codex' },
+    { key: 'cursor', label: 'cursor' },
     { key: 'agy', label: 'antigravity' },
     { key: 'rig', label: 'happy' },
 ];
