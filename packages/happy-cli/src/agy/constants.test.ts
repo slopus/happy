@@ -45,3 +45,13 @@ describe('resolveAgyBin', () => {
     );
   });
 });
+
+describe('AGY_MODELS', () => {
+  it('includes Gemini 3.7 Flash models', async () => {
+    const { AGY_MODELS, DEFAULT_AGY_MODEL } = await import('./constants');
+    expect(AGY_MODELS).toContain('Gemini 3.7 Flash (High)');
+    expect(AGY_MODELS).toContain('Gemini 3.7 Flash (Medium)');
+    expect(AGY_MODELS).toContain('Gemini 3.7 Flash (Low)');
+    expect(AGY_MODELS).toContain(DEFAULT_AGY_MODEL);
+  });
+});
