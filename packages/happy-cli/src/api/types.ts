@@ -197,6 +197,7 @@ export const CodexUsageSnapshotSchema = z.object({
       }).optional(),
       rateLimitReachedType: z.string().nullable().optional(),
     }).optional(),
+    rateLimitsTimestamp: z.string().optional(),
   }).nullable(),
   warnings: z.array(z.string()),
 })

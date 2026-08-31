@@ -1409,10 +1409,16 @@ export const ru: TranslationStructure = {
         codexUsageEvents: 'События',
         codexUsageSessions: 'Сессии',
         codexUsageRateLimits: 'Лимиты частоты',
+        codexUsageRemaining: 'Осталось',
+        codexUsageResetsAt: ({ time }: { time: string }) => `Сбросится ${time}`,
+        codexUsageRateLimitWindow: ({ period, used, remaining, resetAt }: { period: string; used: number; remaining: number; resetAt: string }) => `${period}: использовано ${used}% · осталось ${remaining}% · Сброс ${resetAt}`,
         codexUsageScannedAt: 'Просканировано',
         codexUsageNoData: 'Локальные данные использования Codex не найдены',
         codexUsageWaitingForDaemon: 'Ожидание отчета об использовании от демона',
         codexUsageFooter: 'Читает локальные журналы сессий Codex на этой машине. Запуск этого сборщика не отправляет запросы к модели.',
+        codexUsageHeatmap: 'Активность за последние 14 дней',
+        codexUsageHeatmapLegend: 'Меньше → Больше',
+        codexUsageHeatmapDay: ({ date, tokens, sessions }: { date: string; tokens: string; sessions: number }) => `${date}: ${tokens} токенов · ${sessions} сесс.`,
         activeSessions: ({ count }: { count: number }) => `Активные сессии (${count})`,
         machineGroup: 'Машина',
         host: 'Хост',
@@ -1597,6 +1603,7 @@ export const ru: TranslationStructure = {
 
     usage: {
         // Usage panel strings
+        apiUsage: 'Использование API',
         today: 'Сегодня',
         last7Days: 'Последние 7 дней',
         last30Days: 'Последние 30 дней',

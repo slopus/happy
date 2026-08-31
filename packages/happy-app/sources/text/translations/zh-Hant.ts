@@ -1514,10 +1514,16 @@ export const zhHant: TranslationStructure = {
         codexUsageEvents: '事件',
         codexUsageSessions: '會話',
         codexUsageRateLimits: '限流狀態',
+        codexUsageRemaining: '剩餘',
+        codexUsageResetsAt: ({ time }: { time: string }) => `${time} 重設`,
+        codexUsageRateLimitWindow: ({ period, used, remaining, resetAt }: { period: string; used: number; remaining: number; resetAt: string }) => `${period}：已用 ${used}% · 剩餘 ${remaining}% · ${resetAt} 重設`,
         codexUsageScannedAt: '掃描時間',
         codexUsageNoData: '沒有找到本機 Codex 用量資料',
         codexUsageWaitingForDaemon: '等待守護進程上報本機 Codex 用量',
         codexUsageFooter: '讀取此機器本機 Codex 會話日誌。執行這個採集器不會發起模型請求。',
+        codexUsageHeatmap: '近 14 天活動',
+        codexUsageHeatmapLegend: '少 → 多',
+        codexUsageHeatmapDay: ({ date, tokens, sessions }: { date: string; tokens: string; sessions: number }) => `${date}：${tokens} 個 Token · ${sessions} 個工作階段`,
         activeSessions: ({ count }: { count: number }) => `活躍工作階段 (${count})`,
         machineGroup: '裝置',
         host: '主機',
@@ -1677,6 +1683,7 @@ export const zhHant: TranslationStructure = {
 
     usage: {
         // Usage panel strings
+        apiUsage: 'API 用量',
         today: '今天',
         last7Days: '過去 7 天',
         last30Days: '過去 30 天',

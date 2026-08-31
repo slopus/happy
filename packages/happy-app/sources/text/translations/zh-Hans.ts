@@ -1984,10 +1984,16 @@ export const zhHans: TranslationStructure = {
         codexUsageEvents: '事件',
         codexUsageSessions: '会话',
         codexUsageRateLimits: '限流状态',
+        codexUsageRemaining: '剩余',
+        codexUsageResetsAt: ({ time }: { time: string }) => `${time} 重置`,
+        codexUsageRateLimitWindow: ({ period, used, remaining, resetAt }: { period: string; used: number; remaining: number; resetAt: string }) => `${period}：已用 ${used}% · 剩余 ${remaining}% · ${resetAt} 重置`,
         codexUsageScannedAt: '扫描时间',
         codexUsageNoData: '没有找到本机 Codex 用量数据',
         codexUsageWaitingForDaemon: '等待守护进程上报本机 Codex 用量',
         codexUsageFooter: '读取此机器本地 Codex 会话日志。运行这个采集器不会发起模型请求。',
+        codexUsageHeatmap: '近 14 天活动',
+        codexUsageHeatmapLegend: '少 → 多',
+        codexUsageHeatmapDay: ({ date, tokens, sessions }: { date: string; tokens: string; sessions: number }) => `${date}：${tokens} 个令牌 · ${sessions} 个会话`,
         activeSessions: ({ count }: { count: number }) => `活跃会话 (${count})`,
         machineGroup: '设备',
         host: '主机',
@@ -2147,6 +2153,7 @@ export const zhHans: TranslationStructure = {
 
     usage: {
         // Usage panel strings
+        apiUsage: 'API 用量',
         today: '今天',
         last7Days: '过去 7 天',
         last30Days: '过去 30 天',

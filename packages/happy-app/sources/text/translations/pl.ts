@@ -1421,10 +1421,16 @@ export const pl: TranslationStructure = {
         codexUsageEvents: 'Zdarzenia',
         codexUsageSessions: 'Sesje',
         codexUsageRateLimits: 'Limity częstotliwości',
+        codexUsageRemaining: 'Pozostało',
+        codexUsageResetsAt: ({ time }: { time: string }) => `Reset ${time}`,
+        codexUsageRateLimitWindow: ({ period, used, remaining, resetAt }: { period: string; used: number; remaining: number; resetAt: string }) => `${period}: wykorzystano ${used}% · pozostało ${remaining}% · Reset ${resetAt}`,
         codexUsageScannedAt: 'Zeskanowano',
         codexUsageNoData: 'Nie znaleziono lokalnych danych użycia Codex',
         codexUsageWaitingForDaemon: 'Oczekiwanie na raport użycia z demona',
         codexUsageFooter: 'Czyta lokalne logi sesji Codex na tej maszynie. Uruchomienie tego kolektora nie wysyła żądań do modelu.',
+        codexUsageHeatmap: 'Aktywność (ostatnie 14 dni)',
+        codexUsageHeatmapLegend: 'Mniej → Więcej',
+        codexUsageHeatmapDay: ({ date, tokens, sessions }: { date: string; tokens: string; sessions: number }) => `${date}: ${tokens} tokenów · ${sessions} ses.`,
         activeSessions: ({ count }: { count: number }) => `Aktywne sesje (${count})`,
         machineGroup: 'Maszyna',
         host: 'Host',
@@ -1598,6 +1604,7 @@ export const pl: TranslationStructure = {
 
     usage: {
         // Usage panel strings
+        apiUsage: 'Użycie API',
         today: 'Dzisiaj',
         last7Days: 'Ostatnie 7 dni',
         last30Days: 'Ostatnie 30 dni',

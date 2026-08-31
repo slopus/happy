@@ -1,3 +1,8 @@
+# August 30 — Codex usage at a glance
+
+- View your remaining Codex allowance, reset time, and 14-day activity heatmap in Settings → Usage.
+- Daily totals now match ccusage by merging machines and excluding replayed activity.
+
 # July 5 — #100 feat(app): preview OTA metadata surfaces
 
 Merged into `jacky-main` on July 5, 2026 from `fix/preview-ota-display-meta`.

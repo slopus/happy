@@ -1,6 +1,11 @@
 {
   "entries": [
     {
+      "title": "August 30 — Codex usage at a glance",
+      "summary": "",
+      "markdown": "- View your remaining Codex allowance, reset time, and 14-day activity heatmap in Settings → Usage.\n- Daily totals now match ccusage by merging machines and excluding replayed activity."
+    },
+    {
       "title": "July 5 — #100 feat(app): preview OTA metadata surfaces",
       "summary": "Merged into `jacky-main` on July 5, 2026 from `fix/preview-ota-display-meta`.",
       "markdown": "- PR: [#100](https://github.com/wangjs-jacky/happy/pull/100)\n- Branch: `fix/preview-ota-display-meta`"
@@ -456,5 +461,5 @@
       "markdown": "- PR: [#1](https://github.com/wangjs-jacky/happy/pull/1)\n- Branch: `feat/2dev-integration`"
     }
   ],
-  "latestTitle": "July 5 — #100 feat(app): preview OTA metadata surfaces"
+  "latestTitle": "August 30 — Codex usage at a glance"
 }

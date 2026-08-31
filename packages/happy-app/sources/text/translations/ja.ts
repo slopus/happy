@@ -1406,10 +1406,16 @@ export const ja: TranslationStructure = {
         codexUsageEvents: 'イベント',
         codexUsageSessions: 'セッション',
         codexUsageRateLimits: 'レート制限',
+        codexUsageRemaining: '残り',
+        codexUsageResetsAt: ({ time }: { time: string }) => `${time} にリセット`,
+        codexUsageRateLimitWindow: ({ period, used, remaining, resetAt }: { period: string; used: number; remaining: number; resetAt: string }) => `${period}: 使用済み ${used}% · 残り ${remaining}% · ${resetAt} にリセット`,
         codexUsageScannedAt: 'スキャン時刻',
         codexUsageNoData: 'ローカルの Codex 使用量データが見つかりません',
         codexUsageWaitingForDaemon: 'デーモンからの使用量レポートを待機中',
         codexUsageFooter: 'このマシン上のローカル Codex セッションログを読み取ります。この収集処理はモデルリクエストを送信しません。',
+        codexUsageHeatmap: 'アクティビティ（過去14日間）',
+        codexUsageHeatmapLegend: '少ない → 多い',
+        codexUsageHeatmapDay: ({ date, tokens, sessions }: { date: string; tokens: string; sessions: number }) => `${date}: ${tokens} トークン · ${sessions} セッション`,
         activeSessions: ({ count }: { count: number }) => `アクティブセッション (${count})`,
         machineGroup: 'マシン',
         host: 'ホスト',
@@ -1570,6 +1576,7 @@ export const ja: TranslationStructure = {
 
     usage: {
         // Usage panel strings
+        apiUsage: 'API 使用量',
         today: '今日',
         last7Days: '過去7日間',
         last30Days: '過去30日間',
