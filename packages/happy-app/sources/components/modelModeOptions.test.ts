@@ -244,6 +244,10 @@ describe('modelModeOptions', () => {
         // the agentDefaults agy default must be selectable
         expect(keys).toContain('Gemini 3.1 Pro (High)');
         expect(getDefaultModelKey('agy')).toBe('Gemini 3.1 Pro (High)');
+        // includes new Gemini 3.7 Flash models
+        expect(keys).toContain('Gemini 3.7 Flash (High)');
+        expect(keys).toContain('Gemini 3.7 Flash (Medium)');
+        expect(keys).toContain('Gemini 3.7 Flash (Low)');
         // no 'default' entry — agy would receive the literal string "default" as --model
         expect(keys).not.toContain('default');
         // not the claude list
