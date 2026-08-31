@@ -287,10 +287,26 @@ export function getHardcodedPermissionModes(flavor: AgentFlavor, translate: Tran
     if (flavor === 'agy') {
         return getAgyPermissionModes(translate);
     }
+    if (flavor === 'opencode') {
+        return getOpenCodePermissionModes(translate);
+    }
     return getClaudePermissionModes(translate);
 }
 
 export function getOpenClawModelModes(): ModelMode[] {
+    return [
+        { key: 'default', name: 'Default model', description: null },
+    ];
+}
+
+export function getOpenCodePermissionModes(translate: Translate): PermissionMode[] {
+    return [
+        { key: 'bypassPermissions', name: 'Yolo', description: translate('agentInput.permissionMode.bypassPermissions') },
+        { key: 'default', name: 'Default', description: translate('agentInput.permissionMode.default') },
+    ];
+}
+
+export function getOpenCodeModelModes(): ModelMode[] {
     return [
         { key: 'default', name: 'Default model', description: null },
     ];
@@ -325,6 +341,9 @@ export function getHardcodedModelModes(flavor: AgentFlavor, _translate: Translat
     }
     if (flavor === 'agy') {
         return getAgyModelModes();
+    }
+    if (flavor === 'opencode') {
+        return getOpenCodeModelModes();
     }
     return getClaudeModelModes();
 }

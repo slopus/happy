@@ -48,5 +48,6 @@ describe('agent defaults', () => {
         expect(resolveAgentDefaultConfig({}, 'gemini', '1.0.0').permissionMode).toBe('default');
         expect(resolveAgentDefaultConfig({}, 'openclaw', '1.0.0').permissionMode).toBe('default');
         expect(resolveAgentDefaultConfig({}, 'agy', '1.0.0').permissionMode).toBe('default');
+        expect(resolveAgentDefaultConfig({}, 'opencode', '1.0.0').permissionMode).toBe('default');
     });
 });

@@ -18,6 +18,8 @@ import {
     getDefaultPermissionModeKey,
     includeConfiguredModel,
     getOpenClawPermissionModes,
+    getOpenCodeModelModes,
+    getOpenCodePermissionModes,
     mapMetadataOptions,
     resolveCurrentOption,
 } from './modelModeOptions';
@@ -78,6 +80,7 @@ describe('modelModeOptions', () => {
         ['codex', getCodexPermissionModes],
         ['gemini', getGeminiPermissionModes],
         ['openclaw', getOpenClawPermissionModes],
+        ['opencode', getOpenCodePermissionModes],
     ] as const)('lists %s modes in the shared rank order', (_flavor, build) => {
         const modes = build(translate);
         expect(modes.map((mode) => mode.key)).toEqual(sortPermissionModes(modes).map((mode) => mode.key));
@@ -249,6 +252,16 @@ describe('modelModeOptions', () => {
         // not the claude list
         expect(keys).not.toContain('opus');
         expect(keys).not.toContain('sonnet');
+    });
+
+    it('gives opencode its own default model mode and permission modes', () => {
+        const models = getAvailableModels('opencode', null, translate);
+        expect(models).toEqual(getOpenCodeModelModes());
+        expect(getDefaultModelKey('opencode')).toBe('default');
+
+        const permissions = getAvailablePermissionModes('opencode', null, translate);
+        expect(permissions).toEqual(getOpenCodePermissionModes(translate));
+        expect(getDefaultPermissionModeKey('opencode')).toBe('default');
     });
 
     it('resolves the first matching preferred key', () => {

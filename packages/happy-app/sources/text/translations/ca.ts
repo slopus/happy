@@ -463,6 +463,8 @@ export const ca: TranslationStructure = {
             codex: 'Codex',
             gemini: 'Gemini',
             openclaw: 'OpenClaw',
+            agy: 'Antigravity',
+            opencode: 'OpenCode',
         },
         model: {
             title: 'MODEL',

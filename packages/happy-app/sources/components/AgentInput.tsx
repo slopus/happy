@@ -109,7 +109,7 @@ interface AgentInputProps {
     /** Plan quota windows from agent state, for the week stat and its popup. */
     sessionStatusUsageLimits?: UsageLimitsLike | null;
     onFileViewerPress?: () => void;
-    agentType?: 'claude' | 'codex' | 'gemini' | 'openclaw' | 'agy';
+    agentType?: 'claude' | 'codex' | 'gemini' | 'openclaw' | 'agy' | 'opencode';
     onAgentClick?: () => void;
     machineName?: string | null;
     onMachineClick?: () => void;
@@ -1496,7 +1496,11 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                             ? t('agentInput.agent.codex')
                                             : props.agentType === 'openclaw'
                                                 ? t('agentInput.agent.openclaw')
-                                                : t('agentInput.agent.gemini')}
+                                                : props.agentType === 'agy'
+                                                    ? t('agentInput.agent.agy')
+                                                    : props.agentType === 'opencode'
+                                                        ? t('agentInput.agent.opencode')
+                                                        : t('agentInput.agent.gemini')}
                                 </Text>
                             </Pressable>
                         )}
