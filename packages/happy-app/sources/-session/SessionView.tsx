@@ -1000,7 +1000,7 @@ const SessionViewContent = React.memo((props: { id: string }) => {
                     top={safeArea.top + headerHeight}
                     canCopySessionId={CAN_COPY_SESSION_ID}
                     onClose={() => setInfoPanelOpen(false)}
-                    onShareSession={desktopWebHeader ? () => {
+                    onShareSession={() => {
                         setInfoPanelOpen(false);
                         Modal.show({
                             accessibilityLabel: t('sessionShare.shareSession'),
@@ -1010,7 +1010,7 @@ const SessionViewContent = React.memo((props: { id: string }) => {
                                 title: headerProps.title,
                             },
                         });
-                    } : undefined}
+                    }}
                     onViewDetails={() => {
                         setInfoPanelOpen(false);
                         router.push(`/session/${sessionId}/info`);

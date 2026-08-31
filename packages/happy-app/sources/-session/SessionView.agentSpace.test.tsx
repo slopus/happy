@@ -45,6 +45,7 @@ const mocks = vi.hoisted(() => ({
     routerPush: vi.fn(),
     routerBack: vi.fn(),
     navigationDispatch: vi.fn(),
+    modalShow: vi.fn(),
     styleUseVariants: vi.fn(),
     switchDirectory: vi.fn(),
     renameSession: vi.fn(),
@@ -353,7 +354,7 @@ vi.mock('@/sync/screenshotGallery', () => ({
 }));
 vi.mock('@/sync/imageViewer', () => ({ imageViewer: { open: vi.fn() } }));
 vi.mock('@/sync/sync', () => ({ sync: { onSessionVisible: vi.fn(), sendMessage: vi.fn() } }));
-vi.mock('@/modal', () => ({ Modal: { alert: vi.fn() } }));
+vi.mock('@/modal', () => ({ Modal: { alert: vi.fn(), show: mocks.modalShow } }));
 vi.mock('@/utils/platform', () => ({ isRunningOnMac: () => mocks.runningOnMac }));
 vi.mock('@/utils/responsive', () => ({
     useDeviceType: () => 'phone',
@@ -535,6 +536,32 @@ describe('SessionView Agent-space boundary', () => {
 
         expect(renderer.root.findAllByProps({ testID: 'session-header-new-session-button' })).toHaveLength(0);
         expect(mocks.routerNavigate).not.toHaveBeenCalledWith('/new');
+
+        act(() => renderer.unmount());
+    });
+
+    it('opens the public-session share dialog from the phone session chip', () => {
+        mocks.isDataReady = true;
+        let renderer: any;
+
+        act(() => {
+            renderer = TestRenderer.create(<SessionView id="session-1" />);
+        });
+
+        act(() => renderer.root.findByType('SessionHeaderChip').props.onPress());
+        const sessionInfo = renderer.root.findByType('SessionInfoDropdown');
+        expect(sessionInfo.props.onShareSession).toEqual(expect.any(Function));
+
+        act(() => sessionInfo.props.onShareSession());
+        expect(mocks.modalShow).toHaveBeenCalledWith({
+            accessibilityLabel: 'sessionShare.shareSession',
+            component: 'PublicSessionShareDialog',
+            props: {
+                sessionId: 'session-1',
+                title: 'Health session',
+            },
+        });
+        expect(renderer.root.findAllByType('SessionInfoDropdown')).toHaveLength(0);
 
         act(() => renderer.unmount());
     });

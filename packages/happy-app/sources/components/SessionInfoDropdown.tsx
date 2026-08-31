@@ -408,7 +408,7 @@ export const SessionInfoDropdown = React.memo(({ session, machineName, online, t
                                     <Text style={styles.actionLabel} numberOfLines={1}>{t('sessionInfo.happySessionId')}</Text>
                                 </Pressable>
                             ) : null}
-                            {Platform.OS === 'web' && onShareSession ? (
+                            {onShareSession ? (
                                 <Pressable
                                     accessibilityLabel={t('sessionShare.shareSession')}
                                     accessibilityRole="button"

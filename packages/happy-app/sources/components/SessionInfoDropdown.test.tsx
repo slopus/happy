@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import TestRenderer from 'react-test-renderer';
 
 const mocks = vi.hoisted(() => ({
+    platformOS: 'web',
     updateEffort: vi.fn(),
     updateModel: vi.fn(),
     updatePermission: vi.fn(),
@@ -17,8 +18,10 @@ vi.mock('react-native', () => ({
         Presets: { easeInEaseOut: {} },
     },
     Platform: {
-        OS: 'web',
-        select: (options: Record<string, unknown>) => options.web ?? options.default,
+        get OS() {
+            return mocks.platformOS;
+        },
+        select: (options: Record<string, unknown>) => options[mocks.platformOS] ?? options.default,
     },
     Pressable: 'Pressable',
     Text: 'Text',
@@ -167,6 +170,7 @@ describe('SessionInfoDropdown', () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
+        mocks.platformOS = 'web';
         (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
         consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     });
@@ -250,7 +254,18 @@ describe('SessionInfoDropdown', () => {
         act(() => renderer.unmount());
     });
 
-    it('does not expose sharing when the responsive parent disables PC management', () => {
+    it('offers the same public sharing action from the native session-management section', () => {
+        mocks.platformOS = 'android';
+        const { renderer, onShareSession } = renderPanel(true);
+
+        const share = renderer.root.findByProps({ testID: 'session-agent-panel-share-session' });
+        act(() => share.props.onPress());
+        expect(onShareSession).toHaveBeenCalledTimes(1);
+
+        act(() => renderer.unmount());
+    });
+
+    it('does not expose sharing when the parent does not provide the action', () => {
         const { renderer } = renderPanel(true, false);
         expect(renderer.root.findAllByProps({ testID: 'session-agent-panel-share-session' })).toHaveLength(0);
         act(() => renderer.unmount());

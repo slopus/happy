@@ -96,6 +96,9 @@ describe('apiPublicSessionShares', () => {
 
         vi.stubGlobal('location', { origin: 'tauri://localhost' });
         expect(getPublicSessionShareUrl('public-id')).toBe('https://api.paws.test/share/public-id');
+
+        vi.stubGlobal('location', undefined);
+        expect(getPublicSessionShareUrl('public-id')).toBe('https://api.paws.test/share/public-id');
     });
 
     it('loads a public snapshot and builds public attachment URLs without credentials', async () => {
