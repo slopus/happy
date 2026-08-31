@@ -25,6 +25,28 @@ describe('public session share publishing', () => {
         expect(loadOlder).toHaveBeenCalledOnce();
     });
 
+    it('waits when background prefetch temporarily owns the older-page load', async () => {
+        const first: Message = { kind: 'user-text', id: 'm1', localId: null, createdAt: 1, text: 'first' };
+        const second: Message = { kind: 'agent-text', id: 'm2', localId: null, createdAt: 2, text: 'second' };
+        let state: { messages: Message[]; hasMoreOlder: boolean } = { messages: [second], hasMoreOlder: true };
+        let attempts = 0;
+        const loadOlder = vi.fn(async () => {
+            attempts += 1;
+            if (attempts === 3) {
+                state = { messages: [first, second], hasMoreOlder: false };
+            }
+        });
+
+        const messages = await loadCompleteSessionMessages('session-1', {
+            ensureMessagesLoaded: vi.fn(async () => undefined),
+            loadOlderMessages: loadOlder,
+            getMessageState: () => state,
+        });
+
+        expect(messages).toEqual([first, second]);
+        expect(loadOlder).toHaveBeenCalledTimes(3);
+    });
+
     it('uploads every decrypted attachment before atomically publishing', async () => {
         const events: string[] = [];
         const message: Message = {

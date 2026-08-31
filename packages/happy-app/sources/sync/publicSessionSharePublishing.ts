@@ -11,17 +11,19 @@ export async function loadCompleteSessionMessages(sessionId: string, deps: {
     getMessageState: () => MessagePageState;
 }): Promise<Message[]> {
     await deps.ensureMessagesLoaded(sessionId);
-    let previousOldestId: string | null = null;
     for (let page = 0; page < 10_000; page += 1) {
         const state = deps.getMessageState();
         if (!state?.hasMoreOlder) return state?.messages ?? [];
         const oldestId = state.messages[0]?.id ?? null;
         await deps.loadOlderMessages(sessionId);
         const nextState = deps.getMessageState();
-        if (nextState?.hasMoreOlder && nextState.messages[0]?.id === oldestId && previousOldestId === oldestId) {
-            throw new Error('Unable to load complete session history');
+        if (nextState?.hasMoreOlder && nextState.messages[0]?.id === oldestId) {
+            // Background prefetch and the share flow can ask for the same page.
+            // loadOlderMessages intentionally returns while another request owns
+            // that page, so wait briefly and retry instead of treating it as a
+            // permanently stalled history load.
+            await new Promise((resolve) => setTimeout(resolve, 100));
         }
-        previousOldestId = oldestId;
     }
     throw new Error('Session history exceeds the supported page count');
 }
