@@ -58,19 +58,6 @@ type AgyStepUpdate = {
   tool_info?: { parameters?: unknown };
 };
 
-function safeToolArgs(value: unknown, depth = 0): Record<string, unknown> {
-  if (!value || typeof value !== 'object' || Array.isArray(value) || depth > 2) return {};
-  return Object.fromEntries(Object.entries(value as Record<string, unknown>)
-    .filter(([key]) => !/(token|secret|password|authorization|cookie|api[_-]?key)/i.test(key))
-    .slice(0, 12)
-    .map(([key, item]) => {
-      if (typeof item === 'string') return [key, item.slice(0, 512)];
-      if (typeof item === 'number' || typeof item === 'boolean' || item === null) return [key, item];
-      if (Array.isArray(item)) return [key, item.slice(0, 8).map((entry) => typeof entry === 'string' ? entry.slice(0, 256) : String(entry).slice(0, 256))];
-      return [key, safeToolArgs(item, depth + 1)];
-    }));
-}
-
 /** Parse an agy duration string ("10m", "30s", "1h") to milliseconds; defaults to 10m. */
 function parsePrintTimeoutMs(value: string): number {
   const m = /^(\d+)\s*(s|m|h)$/.exec(value.trim());
@@ -158,7 +145,7 @@ export class AgyBackend implements AgentBackend {
         try {
           record = JSON.parse(line) as typeof record;
         } catch {
-          this.log(`ignored malformed agy stream-json record: ${line.slice(0, 256)}`);
+          this.log(`ignored malformed agy stream-json record (${Buffer.byteLength(line, 'utf8')} bytes)`);
           return;
         }
         if (record.event === 'init' && typeof record.conversation_id === 'string') {
@@ -179,7 +166,7 @@ export class AgyBackend implements AgentBackend {
         if (update.step_type !== 'tool' || typeof update.step_index !== 'number' || typeof update.tool_name !== 'string') return;
         const callId = `${streamConversationId ?? 'agy'}:${update.step_index}`;
         if (update.state === 'ACTIVE') {
-          this.emit({ type: 'tool-call', toolName: update.tool_name, callId, args: safeToolArgs(update.tool_info?.parameters) });
+          this.emit({ type: 'tool-call', toolName: update.tool_name, callId, args: {} });
         } else if (update.state === 'DONE' || update.state === 'ERROR') {
           this.emit({ type: 'tool-result', toolName: update.tool_name, callId, result: { status: update.state } });
         }
@@ -229,7 +216,7 @@ export class AgyBackend implements AgentBackend {
         if (settled) return;
         settled = true;
         cleanup();
-        if (streamBuffer.trim()) this.log(`ignored unterminated agy stream-json record: ${streamBuffer.slice(0, 256)}`);
+        if (streamBuffer.trim()) this.log(`ignored unterminated agy stream-json record (${Buffer.byteLength(streamBuffer, 'utf8')} bytes)`);
         // Pin the conversation our first turn created so later turns resume it.
         // Once pinned, never re-read the cache: another session in the same cwd
         // may have updated it since, and adopting that id would cross-resume.

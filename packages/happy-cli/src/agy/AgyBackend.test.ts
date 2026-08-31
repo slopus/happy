@@ -61,7 +61,7 @@ describe('AgyBackend', () => {
     expect(messages.at(-1)).toMatchObject({ type: 'status', status: 'idle' });
   });
 
-  it('maps tool lifecycle records with paired ids and redacted args', async () => {
+  it('maps tool lifecycle records with paired ids and no arguments', async () => {
     const { child, stdout } = makeFakeChild();
     const spawnFn = vi.fn(() => child) as unknown as SpawnFn;
     const backend = new AgyBackend({ cwd: '/work', permissionMode: 'default', spawnFn, resolveConversationId: () => null });
@@ -74,9 +74,25 @@ describe('AgyBackend', () => {
     await turn;
 
     expect(messages.filter((m) => m.type === 'tool-call' || m.type === 'tool-result')).toEqual([
-      { type: 'tool-call', toolName: 'ReadFile', callId: 'c1:2', args: { path: 'a.txt' } },
+      { type: 'tool-call', toolName: 'ReadFile', callId: 'c1:2', args: {} },
       { type: 'tool-result', toolName: 'ReadFile', callId: 'c1:2', result: { status: 'DONE' } },
     ]);
+  });
+
+  it('logs malformed records without including their contents', async () => {
+    const { child, stdout } = makeFakeChild();
+    const spawnFn = vi.fn(() => child) as unknown as SpawnFn;
+    const log = vi.fn();
+    const backend = new AgyBackend({ cwd: '/work', permissionMode: 'default', spawnFn, log, resolveConversationId: () => null });
+
+    const turn = backend.sendPrompt('/work', 'hi');
+    stdout.emit('data', 'secret-token\nunterminated-secret');
+    child.emit('close', 0);
+    await turn;
+
+    expect(log).toHaveBeenCalledWith('ignored malformed agy stream-json record (12 bytes)');
+    expect(log).toHaveBeenCalledWith('ignored unterminated agy stream-json record (19 bytes)');
+    expect(log.mock.calls.flat().join(' ')).not.toContain('secret');
   });
 
   it('emits an error status and rejects on non-zero exit', async () => {
