@@ -39,9 +39,9 @@ describe('AgyBackend', () => {
     await backend.startSession();
     const turn = backend.sendPrompt('/work', 'hi');
 
-    // Stream two chunks then exit cleanly.
-    stdout.emit('data', 'Hello ');
-    stdout.emit('data', 'world');
+    // Split NDJSON records across arbitrary stdout chunks.
+    stdout.emit('data', '{"event":"init","conversation_id":"c1"}\n{"event":"step_update","step_update":{"step_type":"agent_response","text_');
+    stdout.emit('data', 'delta":"Hello "}}\n{"event":"step_update","step_update":{"step_type":"agent_response","text_delta":"world"}}\n');
     child.emit('close', 0);
 
     await expect(turn).resolves.toBeUndefined();
@@ -55,10 +55,28 @@ describe('AgyBackend', () => {
     expect(spawnOpts.stdio).toEqual(['ignore', 'pipe', 'pipe']);
 
     expect(messages.filter((m) => m.type === 'model-output')).toEqual([
-      { type: 'model-output', textDelta: 'Hello ' },
-      { type: 'model-output', textDelta: 'world' },
+      { type: 'model-output', textDelta: 'Hello ', flush: true },
+      { type: 'model-output', textDelta: 'world', flush: true },
     ]);
     expect(messages.at(-1)).toMatchObject({ type: 'status', status: 'idle' });
+  });
+
+  it('maps tool lifecycle records with paired ids and redacted args', async () => {
+    const { child, stdout } = makeFakeChild();
+    const spawnFn = vi.fn(() => child) as unknown as SpawnFn;
+    const backend = new AgyBackend({ cwd: '/work', permissionMode: 'default', spawnFn, resolveConversationId: () => null });
+    const messages: AgentMessage[] = [];
+    backend.onMessage((m) => messages.push(m));
+
+    const turn = backend.sendPrompt('/work', 'hi');
+    stdout.emit('data', '{"event":"init","conversation_id":"c1"}\n{"event":"step_update","step_update":{"step_index":2,"state":"ACTIVE","step_type":"tool","tool_name":"ReadFile","tool_info":{"parameters":{"path":"a.txt","token":"nope"}}}}\n{"event":"step_update","step_update":{"step_index":2,"state":"DONE","step_type":"tool","tool_name":"ReadFile"}}\n');
+    child.emit('close', 0);
+    await turn;
+
+    expect(messages.filter((m) => m.type === 'tool-call' || m.type === 'tool-result')).toEqual([
+      { type: 'tool-call', toolName: 'ReadFile', callId: 'c1:2', args: { path: 'a.txt' } },
+      { type: 'tool-result', toolName: 'ReadFile', callId: 'c1:2', result: { status: 'DONE' } },
+    ]);
   });
 
   it('emits an error status and rejects on non-zero exit', async () => {

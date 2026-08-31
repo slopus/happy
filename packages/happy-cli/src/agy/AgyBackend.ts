@@ -48,6 +48,29 @@ export interface AgyBackendOptions {
   resolveConversationId?: (cwd: string) => string | null;
 }
 
+type AgyStepUpdate = {
+  conversation_id?: unknown;
+  step_index?: unknown;
+  state?: unknown;
+  step_type?: unknown;
+  text_delta?: unknown;
+  tool_name?: unknown;
+  tool_info?: { parameters?: unknown };
+};
+
+function safeToolArgs(value: unknown, depth = 0): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value) || depth > 2) return {};
+  return Object.fromEntries(Object.entries(value as Record<string, unknown>)
+    .filter(([key]) => !/(token|secret|password|authorization|cookie|api[_-]?key)/i.test(key))
+    .slice(0, 12)
+    .map(([key, item]) => {
+      if (typeof item === 'string') return [key, item.slice(0, 512)];
+      if (typeof item === 'number' || typeof item === 'boolean' || item === null) return [key, item];
+      if (Array.isArray(item)) return [key, item.slice(0, 8).map((entry) => typeof entry === 'string' ? entry.slice(0, 256) : String(entry).slice(0, 256))];
+      return [key, safeToolArgs(item, depth + 1)];
+    }));
+}
+
 /** Parse an agy duration string ("10m", "30s", "1h") to milliseconds; defaults to 10m. */
 function parsePrintTimeoutMs(value: string): number {
   const m = /^(\d+)\s*(s|m|h)$/.exec(value.trim());
@@ -127,6 +150,40 @@ export class AgyBackend implements AgentBackend {
         stdio: ['ignore', 'pipe', 'pipe'],
       });
       this.child = child;
+      let streamBuffer = '';
+      let streamConversationId: string | null = null;
+      let streamFailure: string | null = null;
+      const handleRecord = (line: string) => {
+        let record: { event?: unknown; conversation_id?: unknown; step_update?: AgyStepUpdate; result?: { status?: unknown } };
+        try {
+          record = JSON.parse(line) as typeof record;
+        } catch {
+          this.log(`ignored malformed agy stream-json record: ${line.slice(0, 256)}`);
+          return;
+        }
+        if (record.event === 'init' && typeof record.conversation_id === 'string') {
+          streamConversationId = record.conversation_id;
+          return;
+        }
+        if (record.event === 'result' && record.result?.status !== 'SUCCESS') {
+          streamFailure = `agy stream result status ${String(record.result?.status)}`;
+          return;
+        }
+        if (record.event !== 'step_update' || !record.step_update) return;
+        const update = record.step_update;
+        if (typeof update.conversation_id === 'string') streamConversationId = update.conversation_id;
+        if (update.step_type === 'agent_response' && typeof update.text_delta === 'string' && update.text_delta) {
+          this.emit({ type: 'model-output', textDelta: update.text_delta, flush: true });
+          return;
+        }
+        if (update.step_type !== 'tool' || typeof update.step_index !== 'number' || typeof update.tool_name !== 'string') return;
+        const callId = `${streamConversationId ?? 'agy'}:${update.step_index}`;
+        if (update.state === 'ACTIVE') {
+          this.emit({ type: 'tool-call', toolName: update.tool_name, callId, args: safeToolArgs(update.tool_info?.parameters) });
+        } else if (update.state === 'DONE' || update.state === 'ERROR') {
+          this.emit({ type: 'tool-result', toolName: update.tool_name, callId, result: { status: update.state } });
+        }
+      };
 
       // Node can fire both 'error' and 'close' on spawn failure; act on the first only.
       let settled = false;
@@ -143,9 +200,10 @@ export class AgyBackend implements AgentBackend {
 
       child.stdout?.setEncoding('utf8');
       child.stdout?.on('data', (chunk: string) => {
-        if (chunk) {
-          this.emit({ type: 'model-output', textDelta: chunk });
-        }
+        streamBuffer += chunk;
+        const records = streamBuffer.split('\n');
+        streamBuffer = records.pop() ?? '';
+        for (const record of records) if (record.trim()) handleRecord(record);
       });
 
       child.stderr?.setEncoding('utf8');
@@ -171,6 +229,7 @@ export class AgyBackend implements AgentBackend {
         if (settled) return;
         settled = true;
         cleanup();
+        if (streamBuffer.trim()) this.log(`ignored unterminated agy stream-json record: ${streamBuffer.slice(0, 256)}`);
         // Pin the conversation our first turn created so later turns resume it.
         // Once pinned, never re-read the cache: another session in the same cwd
         // may have updated it since, and adopting that id would cross-resume.
@@ -190,11 +249,11 @@ export class AgyBackend implements AgentBackend {
           }
         }
 
-        if (code === 0) {
+        if (code === 0 && !streamFailure) {
           this.emit({ type: 'status', status: 'idle' });
           resolve();
         } else {
-          const detail = `agy exited with code ${code ?? 'null'}`;
+          const detail = streamFailure ?? `agy exited with code ${code ?? 'null'}`;
           this.emit({ type: 'status', status: 'error', detail });
           reject(new Error(detail));
         }

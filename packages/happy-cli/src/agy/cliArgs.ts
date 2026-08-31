@@ -61,6 +61,6 @@ export function buildAgyArgs(opts: BuildAgyArgsOptions): string[] {
     args.push('--print-timeout', opts.printTimeout);
   }
 
-  args.push('--print', opts.prompt);
+  args.push('--output-format', 'stream-json', '--print', opts.prompt);
   return args;
 }
