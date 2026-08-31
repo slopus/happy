@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { ActivityIndicator, Linking, Platform, Pressable, Text, View } from 'react-native';
+import { ActivityIndicator, Linking, Pressable, Text, useWindowDimensions, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { StyleSheet } from 'react-native-unistyles';
@@ -27,6 +27,8 @@ export const PublicSessionShareDialog = React.memo(function PublicSessionShareDi
         publish,
         revoke,
     } = usePublicSessionShare(sessionId, title);
+    const { width: windowWidth } = useWindowDimensions();
+    const dialogWidth = Math.min(520, Math.max(0, windowWidth - 32));
     const [copied, setCopied] = React.useState(false);
     const [confirmingRevoke, setConfirmingRevoke] = React.useState(false);
     const wasPublishing = React.useRef(false);
@@ -66,7 +68,7 @@ export const PublicSessionShareDialog = React.memo(function PublicSessionShareDi
         : t('sessionShare.revokeSharing');
 
     return (
-        <View style={styles.dialog} testID="public-session-share-dialog">
+        <View style={[styles.dialog, { width: dialogWidth }]} testID="public-session-share-dialog">
             <View style={styles.header}>
                 <View style={styles.titleRow}>
                     <View style={styles.iconWrap}>
@@ -93,6 +95,7 @@ export const PublicSessionShareDialog = React.memo(function PublicSessionShareDi
             {checking ? (
                 <View style={styles.checking} testID="public-session-share-checking">
                     <ActivityIndicator size="small" color={styles.icon.color} />
+                    <Text style={styles.checkingText}>{t('sessionShare.preparing')}</Text>
                 </View>
             ) : shareState.active && shareUrl && confirmingRevoke ? (
                 <View style={styles.body} testID="public-session-share-revoke-confirmation">
@@ -253,8 +256,6 @@ function DialogButton({
 
 const styles = StyleSheet.create((theme) => ({
     dialog: {
-        width: Platform.OS === 'web' ? 520 : '92%',
-        maxWidth: '92%',
         alignSelf: 'center',
         borderRadius: 18,
         overflow: 'hidden',
@@ -269,7 +270,7 @@ const styles = StyleSheet.create((theme) => ({
         borderBottomWidth: StyleSheet.hairlineWidth,
         borderBottomColor: theme.colors.divider,
     },
-    titleRow: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12 },
+    titleRow: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 12 },
     iconWrap: {
         width: 38,
         height: 38,
@@ -280,12 +281,13 @@ const styles = StyleSheet.create((theme) => ({
     },
     icon: { color: theme.colors.accent },
     closeIcon: { color: theme.colors.textSecondary },
-    titleCopy: { flex: 1 },
+    titleCopy: { flex: 1, minWidth: 0 },
     title: { color: theme.colors.text, fontSize: 18, fontWeight: '600' as const },
     sessionTitle: { color: theme.colors.textSecondary, fontSize: 13, marginTop: 3 },
-    closeButton: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center', borderRadius: 10 },
+    closeButton: { width: 36, height: 36, flexShrink: 0, alignItems: 'center', justifyContent: 'center', borderRadius: 10 },
     body: { padding: 20, gap: 16 },
-    checking: { minHeight: 150, alignItems: 'center', justifyContent: 'center' },
+    checking: { minHeight: 150, alignItems: 'center', justifyContent: 'center', gap: 12 },
+    checkingText: { color: theme.colors.textSecondary, fontSize: 13 },
     notice: {
         flexDirection: 'row',
         alignItems: 'flex-start',
@@ -341,7 +343,8 @@ const styles = StyleSheet.create((theme) => ({
     revokeText: { color: theme.colors.status.error, fontSize: 14, fontWeight: '500' as const },
     footerActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10 },
     secondaryButton: {
-        minWidth: 100,
+        flex: 1,
+        minWidth: 0,
         minHeight: 44,
         alignItems: 'center',
         justifyContent: 'center',
@@ -351,7 +354,8 @@ const styles = StyleSheet.create((theme) => ({
     },
     secondaryButtonText: { color: theme.colors.text, fontSize: 14, fontWeight: '500' as const },
     primaryButton: {
-        minWidth: 170,
+        flex: 1.6,
+        minWidth: 0,
         minHeight: 44,
         flexDirection: 'row',
         alignItems: 'center',
@@ -363,7 +367,8 @@ const styles = StyleSheet.create((theme) => ({
     },
     primaryButtonText: { color: theme.colors.button.primary.tint, fontSize: 14, fontWeight: '600' as const },
     destructiveButton: {
-        minWidth: 140,
+        flex: 1.4,
+        minWidth: 0,
         minHeight: 44,
         alignItems: 'center',
         justifyContent: 'center',
