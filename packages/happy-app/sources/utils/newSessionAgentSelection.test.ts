@@ -27,6 +27,16 @@ describe('resolveMachineAgent', () => {
         })).toBe('rig');
     });
 
+    it('selects OpenCode when it is the only available agent', () => {
+        expect(resolveMachineAgent('claude', {
+            claude: false,
+            codex: false,
+            opencode: true,
+            agy: false,
+            rig: false,
+        })).toBe('opencode');
+    });
+
     it('keeps the persisted selection when capability metadata is missing', () => {
         expect(resolveMachineAgent('claude', undefined)).toBe('claude');
     });
