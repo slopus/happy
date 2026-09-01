@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="180" viewBox="0 0 320 180">
+  <rect width="320" height="180" rx="24" fill="#17151d"/>
+  <circle cx="98" cy="90" r="48" fill="#8b5cf6"/>
+  <path d="M84 72h28v36H84z" fill="#fff" opacity=".92"/>
+  <text x="164" y="98" fill="#fff" font-family="sans-serif" font-size="22">Paws Share</text>
+</svg>
