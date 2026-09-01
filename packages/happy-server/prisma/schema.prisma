@@ -119,10 +119,14 @@ model Session {
 model PublicSessionShare {
     id               String                    @id @default(cuid())
     publicId         String                    @unique
-    accountId        String
-    account          Account                   @relation(fields: [accountId], references: [id], onDelete: Cascade)
-    sessionId        String                    @unique
-    session          Session                   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+    accountId        String?
+    account          Account?                  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+    sessionId        String?                   @unique
+    session          Session?                  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+    managementTokenHash Bytes?                 @unique
+    createRequestId  String?                   @unique
+    sourceProvider   String?
+    expiresAt        DateTime?
     snapshot         Json?
     activeGeneration String?
     publishedAt      DateTime?
@@ -134,6 +138,7 @@ model PublicSessionShare {
     drafts           PublicSessionShareDraft[]
 
     @@index([accountId, updatedAt(sort: Desc)])
+    @@index([expiresAt])
 }
 
 model PublicSessionShareDraft {
