@@ -1,0 +1,67 @@
+{
+  "name": "@wangjs-jacky/paws-share",
+  "version": "0.1.0-beta.0",
+  "description": "Publish Codex and Claude Code sessions as read-only Paws snapshots",
+  "author": "wangjs-jacky",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "type": "module",
+  "homepage": "https://github.com/wangjs-jacky/happy/tree/main/packages/paws-share",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/wangjs-jacky/happy",
+    "directory": "packages/paws-share"
+  },
+  "bin": {
+    "paws-share": "./bin/paws-share.mjs"
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.cts",
+  "exports": {
+    ".": {
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      },
+      "import": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      }
+    },
+    "./package.json": "./package.json"
+  },
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "bin",
+    "skills",
+    "README.md",
+    "package.json"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && tsc --noEmit && pkgroll --input dist/cli.mjs",
+    "test": "$npm_execpath run build && vitest run",
+    "verify:pack": "node scripts/verify-pack.mjs",
+    "dev": "tsx src/cli.ts"
+  },
+  "dependencies": {
+    "@slopus/happy-wire": "workspace:*",
+    "commander": "^13.1.0"
+  },
+  "devDependencies": {
+    "@types/node": ">=20",
+    "pkgroll": "^2.14.2",
+    "tsx": "^4.20.6",
+    "typescript": "5.9.3",
+    "vitest": "^3.2.4"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org",
+    "access": "public"
+  },
+  "packageManager": "pnpm@10.11.0"
+}

@@ -1325,6 +1325,31 @@ importers:
         specifier: ^3.2.4
         version: 3.2.4(@types/debug@4.1.13)(@types/node@24.12.2)(jiti@2.6.1)(jsdom@26.1.0)(lightningcss@1.32.0)(terser@5.46.0)(tsx@4.21.0)(yaml@2.8.2)
 
+  packages/paws-share:
+    dependencies:
+      '@slopus/happy-wire':
+        specifier: workspace:*
+        version: link:../happy-wire
+      commander:
+        specifier: ^13.1.0
+        version: 13.1.0
+    devDependencies:
+      '@types/node':
+        specifier: '>=20'
+        version: 20.19.39
+      pkgroll:
+        specifier: ^2.14.2
+        version: 2.22.0(typescript@5.9.3)
+      tsx:
+        specifier: ^4.20.6
+        version: 4.21.0
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/debug@4.1.13)(@types/node@20.19.39)(jiti@2.6.1)(jsdom@26.1.0)(lightningcss@1.32.0)(terser@5.46.0)(tsx@4.21.0)(yaml@2.8.2)
+
 packages:
 
   '@agentclientprotocol/sdk@0.14.1':

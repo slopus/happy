@@ -1,0 +1,170 @@
+name: Paws Share npm publish
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'packages/paws-share/**'
+      - 'packages/happy-wire/**'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - '.github/workflows/paws-share-npm-publish.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: paws-share-npm-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.repository == 'wangjs-jacky/happy'
+    runs-on: ubuntu-latest
+    environment: npm
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          registry-url: 'https://registry.npmjs.org'
+          package-manager-cache: false
+
+      - name: Install npm with trusted publishing support
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --global 'npm@^11.5.1'
+          npm --version
+          node --version
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Read package contract
+        id: package
+        shell: bash
+        run: |
+          set -euo pipefail
+          PACKAGE='@wangjs-jacky/paws-share'
+          VERSION="$(node -p "require('./packages/paws-share/package.json').version")"
+          if [[ "${VERSION}" == *-* ]]; then
+            DIST_TAG="${VERSION#*-}"
+            DIST_TAG="${DIST_TAG%%.*}"
+          else
+            DIST_TAG='latest'
+          fi
+          echo "name=${PACKAGE}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "dist_tag=${DIST_TAG}" >> "$GITHUB_OUTPUT"
+          echo "Publishing candidate: ${PACKAGE}@${VERSION} (${DIST_TAG})"
+
+      - name: Inspect npm registry
+        id: registry
+        shell: bash
+        run: |
+          set -euo pipefail
+          PACKAGE='${{ steps.package.outputs.name }}'
+          VERSION='${{ steps.package.outputs.version }}'
+          if npm view "${PACKAGE}" name --json >/dev/null 2>&1; then
+            echo 'package-exists=true' >> "$GITHUB_OUTPUT"
+            if npm view "${PACKAGE}@${VERSION}" version --json >/dev/null 2>&1; then
+              echo 'version-exists=true' >> "$GITHUB_OUTPUT"
+              echo "${PACKAGE}@${VERSION} already exists on npm."
+            else
+              echo 'version-exists=false' >> "$GITHUB_OUTPUT"
+              echo "${PACKAGE} exists, but ${VERSION} is not published."
+            fi
+          else
+            echo 'package-exists=false' >> "$GITHUB_OUTPUT"
+            echo 'version-exists=false' >> "$GITHUB_OUTPUT"
+            echo "${PACKAGE} needs its one-time bootstrap publish before npm OIDC can be enabled."
+          fi
+
+      - name: Test package
+        if: steps.registry.outputs.version-exists == 'false'
+        run: pnpm --filter @wangjs-jacky/paws-share test
+
+      - name: Verify and pack package
+        if: steps.registry.outputs.version-exists == 'false'
+        id: pack
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm --filter @wangjs-jacky/paws-share verify:pack
+          TARBALL="$(find artifacts/paws-share-pack -maxdepth 1 -name 'wangjs-jacky-paws-share-*.tgz' -print -quit)"
+          if [ -z "${TARBALL}" ] || [ ! -f "${TARBALL}" ]; then
+            echo '::error::Package tarball was not generated.'
+            exit 1
+          fi
+          echo "tarball=${TARBALL}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload verified package artifact
+        if: steps.registry.outputs.version-exists == 'false'
+        uses: actions/upload-artifact@v6
+        with:
+          name: paws-share-${{ steps.package.outputs.version }}
+          path: |
+            ${{ steps.pack.outputs.tarball }}
+            artifacts/paws-share-pack/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Report bootstrap requirement
+        if: steps.registry.outputs.package-exists == 'false'
+        shell: bash
+        run: |
+          {
+            echo '### npm bootstrap required'
+            echo
+            echo 'The verified package artifact is ready, but npm Trusted Publishing can only be configured after the package exists.'
+            echo 'Publish this version once with maintainer 2FA, then configure the npm trusted publisher for:'
+            echo
+            echo '- Repository: `wangjs-jacky/happy`'
+            echo '- Workflow: `paws-share-npm-publish.yml`'
+            echo '- Environment: `npm`'
+            echo '- Allowed action: `npm publish`'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish package with npm OIDC
+        if: steps.registry.outputs.package-exists == 'true' && steps.registry.outputs.version-exists == 'false'
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm publish '${{ steps.pack.outputs.tarball }}' \
+            --access public \
+            --tag '${{ steps.package.outputs.dist_tag }}'
+
+      - name: Verify published package
+        if: steps.registry.outputs.package-exists == 'true' && steps.registry.outputs.version-exists == 'false'
+        shell: bash
+        run: |
+          set -euo pipefail
+          PACKAGE='${{ steps.package.outputs.name }}'
+          EXPECTED='${{ steps.package.outputs.version }}'
+          TAG='${{ steps.package.outputs.dist_tag }}'
+          for attempt in $(seq 1 24); do
+            PUBLISHED="$(npm view "${PACKAGE}@${TAG}" version --json 2>/dev/null | tr -d '"' || true)"
+            if [ "${PUBLISHED}" = "${EXPECTED}" ]; then
+              echo "Verified ${PACKAGE}@${PUBLISHED} on npm tag ${TAG}."
+              exit 0
+            fi
+            echo "npm ${TAG} is ${PUBLISHED:-unknown}; waiting for ${EXPECTED} (attempt ${attempt}/24)"
+            sleep 5
+          done
+          echo '::error::Published package did not appear on the expected npm tag.'
+          exit 1
+
+      - name: Report skipped version
+        if: steps.registry.outputs.version-exists == 'true'
+        run: echo 'Skipped publish because ${{ steps.package.outputs.name }}@${{ steps.package.outputs.version }} already exists on npm.'

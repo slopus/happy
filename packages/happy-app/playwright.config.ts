@@ -9,6 +9,7 @@ if (!authenticatedWebUrl) {
 
 export default defineConfig({
     testDir: './e2e',
+    outputDir: process.env.HAPPY_E2E_OUTPUT_DIR ?? 'test-results',
     fullyParallel: false,
     workers: 1,
     retries: 0,

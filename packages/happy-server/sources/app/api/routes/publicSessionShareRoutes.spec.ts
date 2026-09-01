@@ -199,6 +199,7 @@ vi.mock('@/storage/db', () => ({ db: dbMock }));
 vi.mock('@/app/sessionSharing/publicSessionShareStorage', () => storageMock);
 
 import { publicSessionShareRoutes } from './publicSessionShareRoutes';
+import { enableErrorHandlers } from '../utils/enableErrorHandlers';
 
 async function createApp() {
     const app = fastify({ bodyLimit: 10 * 1024 * 1024 });
@@ -211,6 +212,7 @@ async function createApp() {
         if (typeof userId !== 'string') return reply.code(401).send({ error: 'Unauthorized' });
         request.userId = userId;
     });
+    enableErrorHandlers(typed);
     publicSessionShareRoutes(typed);
     await app.ready();
     return app;
@@ -485,5 +487,9 @@ describe('publicSessionShareRoutes', () => {
         expect(head.body).toBe('');
         expect((await app.inject({ method: 'GET', url: '/v1/public/session-shares/unknown' })).statusCode).toBe(404);
         expect((await app.inject({ method: 'GET', url: `/v1/public/session-shares/${draft.publicId}/attachments/unknown` })).statusCode).toBe(404);
+        const overlong = await app.inject({ method: 'GET', url: `/v1/public/session-shares/${'x'.repeat(2_000)}` });
+        expect(overlong.statusCode).toBe(404);
+        expect(overlong.json()).toEqual({ error: 'Shared session not found' });
+        expect(overlong.headers['cache-control']).toBe('no-store');
     });
 });
