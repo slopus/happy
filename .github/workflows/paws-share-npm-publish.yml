@@ -120,20 +120,22 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-      - name: Report bootstrap requirement
+      - name: Bootstrap package with npm token
         if: steps.registry.outputs.package-exists == 'false'
         shell: bash
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
+          set -euo pipefail
+          npm publish '${{ steps.pack.outputs.tarball }}' \
+            --access public \
+            --tag '${{ steps.package.outputs.dist_tag }}'
+
           {
-            echo '### npm bootstrap required'
+            echo '### npm bootstrap published'
             echo
-            echo 'The verified package artifact is ready, but npm Trusted Publishing can only be configured after the package exists.'
-            echo 'Publish this version once with maintainer 2FA, then configure the npm trusted publisher for:'
-            echo
-            echo '- Repository: `wangjs-jacky/happy`'
-            echo '- Workflow: `paws-share-npm-publish.yml`'
-            echo '- Environment: `npm`'
-            echo '- Allowed action: `npm publish`'
+            echo 'The package was created with the one-time bootstrap token.'
+            echo 'Future versions use npm Trusted Publishing through GitHub OIDC.'
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Publish package with npm OIDC
@@ -146,7 +148,7 @@ jobs:
             --tag '${{ steps.package.outputs.dist_tag }}'
 
       - name: Verify published package
-        if: steps.registry.outputs.package-exists == 'true' && steps.registry.outputs.version-exists == 'false'
+        if: steps.registry.outputs.version-exists == 'false'
         shell: bash
         run: |
           set -euo pipefail
