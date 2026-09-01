@@ -234,18 +234,18 @@ jobs:
           fi
           if [ -n "$caddy_backup" ]; then
             ssh -p "$PAWS_DEPLOY_PORT" "$PAWS_DEPLOY_HOST" bash -s -- "$caddy_backup" <<'REMOTE_SCRIPT'
-            set -euo pipefail
-            backup="$1"
-            config="/etc/caddy/Caddyfile"
-            case "$backup" in
-              /etc/caddy/Caddyfile.paws-web-oss.previous-*) ;;
-              *) echo "错误：Caddy rollback path 越界。" >&2; exit 1 ;;
-            esac
-            test -f "$backup"
-            cp -p -- "$backup" "$config"
-            caddy validate --config "$config"
-            systemctl reload caddy
-            REMOTE_SCRIPT
+          set -euo pipefail
+          backup="$1"
+          config="/etc/caddy/Caddyfile"
+          case "$backup" in
+            /etc/caddy/Caddyfile.paws-web-oss.previous-*) ;;
+            *) echo "错误：Caddy rollback path 越界。" >&2; exit 1 ;;
+          esac
+          test -f "$backup"
+          cp -p -- "$backup" "$config"
+          caddy validate --config "$config"
+          systemctl reload caddy
+          REMOTE_SCRIPT
             caddy_rollback_status=$?
           fi
           set -e

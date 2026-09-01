@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import { parse } from 'yaml';
@@ -44,4 +45,6 @@ test('production workflow has rollback outputs and no active server deploy path'
     assert.match(rollbackStep.run, /oss_rollback_status/);
     assert.match(rollbackStep.run, /caddy_rollback_status/);
     assert.match(rollbackStep.run, /exit 1/);
+    const syntax = spawnSync('bash', ['-n'], { input: rollbackStep.run, encoding: 'utf8' });
+    assert.equal(syntax.status, 0, syntax.stderr);
 });
