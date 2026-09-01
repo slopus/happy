@@ -110,6 +110,7 @@ interface AgentWorkGroupViewProps {
 
 export const AgentWorkGroupView = React.memo<AgentWorkGroupViewProps>((props) => {
     const { group, metadata, sessionId, expanded, onToggle } = props;
+    const summaryCategory = React.useMemo(() => getGroupSummaryCategory(group.messages), [group.messages]);
     const runningElapsedSeconds = useElapsedTime(group.completedAt === null ? group.startedAt : null);
     const durationMs = group.completedAt === null
         ? runningElapsedSeconds * 1000
@@ -208,6 +209,7 @@ export const AgentWorkGroupView = React.memo<AgentWorkGroupViewProps>((props) =>
                     hasRunning={group.hasRunning}
                     label={label}
                     onPress={onToggle}
+                    category={summaryCategory}
                 />
                 <ConversationActivityStrip messages={group.messages} />
                 {expanded && (

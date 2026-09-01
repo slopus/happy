@@ -42,6 +42,7 @@ vi.mock('./AnchorListSheet', () => ({ AnchorListSheet: 'AnchorListSheet' }));
 const { theme } = vi.hoisted(() => ({ theme: {
     colors: {
         accent: '#08f', divider: '#444', surface: '#181818', surfaceHigh: '#222',
+        surfaceHighest: '#292929',
         text: '#fff', textSecondary: '#aaa', status: { connected: '#0f0', error: '#f00' },
         groupped: { background: '#111' }, input: { background: '#222' },
         shadow: { color: '#000', opacity: 0.2 },
@@ -132,6 +133,32 @@ describe('PublicSessionTranscript', () => {
         expect(transcriptLists[0].props.inverted).toBe(false);
         expect(transcriptLists[0].props.data.some((item: any) => item.message?.kind === 'user-text')).toBe(true);
         expect(transcriptLists[0].props.data.some((item: any) => item.message?.kind === 'agent-text')).toBe(true);
+
+        act(() => renderer.unmount());
+    });
+
+    it('presents a document header with semantic title and publication icons', () => {
+        let renderer: any;
+        act(() => {
+            renderer = TestRenderer.create(
+                <PublicSessionTranscript
+                    publicId="public-id"
+                    publishedAt={snapshot.sharedAt}
+                    snapshot={snapshot}
+                />,
+            );
+        });
+
+        expect(renderer.root.findAllByProps({ testID: 'public-session-header-inner' })).toHaveLength(1);
+        const title = renderer.root.findByProps({ testID: 'public-session-title' });
+        expect(title.props.accessibilityRole).toBe('header');
+        expect(title.props.style).toMatchObject({ fontSize: 22, lineHeight: 28, fontWeight: '600' });
+        const icons = renderer.root.findAllByType('Ionicons').map((icon: any) => icon.props.name);
+        expect(icons).toContain('chatbubble-ellipses-outline');
+        expect(icons).toContain('time-outline');
+        expect(icons).not.toContain('paw');
+        expect(renderer.root.findByProps({ testID: 'public-session-published-at' }).props.children)
+            .toBe(new Date(snapshot.sharedAt).toLocaleString());
 
         act(() => renderer.unmount());
     });
