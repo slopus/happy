@@ -342,10 +342,13 @@ export const ConversationTranscript = React.memo((props: ConversationTranscriptP
             {props.showScrollToBottom !== false && showScrollButton ? (
                 <View style={styles.scrollButtonContainer}>
                     <Pressable
+                        testID="conversation-scroll-to-bottom"
+                        accessibilityRole="button"
+                        accessibilityLabel={`${t('session.anchorsButton')} ↓`}
                         style={({ pressed }) => [styles.scrollButton, pressed ? styles.scrollButtonPressed : styles.scrollButtonDefault]}
                         onPress={scrollToBottom}
                     >
-                        <Octicons name="arrow-down" size={14} color={theme.colors.text} />
+                        <Octicons testID="conversation-scroll-to-bottom-icon" name="arrow-down" size={14} color={theme.colors.text} />
                     </Pressable>
                 </View>
             ) : null}

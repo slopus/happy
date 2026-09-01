@@ -7,6 +7,12 @@ import { t } from '@/text';
 
 const COPY_FEEDBACK_DURATION_MS = 1_800;
 
+function withoutFenceBoundaryNewlines(content: string): string {
+    return content
+        .replace(/^(?:\r\n|\r|\n)+/, '')
+        .replace(/(?:\r\n|\r|\n)+$/, '');
+}
+
 export function CodeBlockCopyButton({ content, visible }: { content: string; visible: boolean }) {
     const { theme } = useUnistyles();
     const [status, setStatus] = React.useState<'idle' | 'copied' | 'failed'>('idle');
@@ -26,7 +32,7 @@ export function CodeBlockCopyButton({ content, visible }: { content: string; vis
 
     const copyCode = React.useCallback(async () => {
         try {
-            await Clipboard.setStringAsync(content);
+            await Clipboard.setStringAsync(withoutFenceBoundaryNewlines(content));
             setStatus('copied');
         } catch (error) {
             console.error('Failed to copy code:', error);

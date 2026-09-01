@@ -80,8 +80,8 @@ describe('AgentWorkGroupView', () => {
         });
 
         const toggle = renderer.root.findByProps({ testID: 'conversation-agent-work-toggle' });
-        expect(toggle.findByType('Octicons').props.name).toBe('eye');
-        expect(toggle.findByType('Ionicons').props.name).toBe('chevron-forward');
+        expect(toggle.findByProps({ testID: 'conversation-tool-summary-icon' }).findByType('Octicons').props.name).toBe('eye');
+        expect(toggle.findByProps({ testID: 'conversation-collapse-chevron' }).props.name).toBe('chevron-forward');
 
         act(() => renderer.unmount());
     });

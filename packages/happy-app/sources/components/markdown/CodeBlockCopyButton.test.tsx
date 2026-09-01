@@ -61,7 +61,7 @@ describe('CodeBlockCopyButton', () => {
     it('announces a successful copy and returns to idle after 1.8 seconds', async () => {
         let renderer: any;
         act(() => {
-            renderer = TestRenderer.create(<CodeBlockCopyButton content={'pnpm test\n'} visible />);
+            renderer = TestRenderer.create(<CodeBlockCopyButton content={'\n\npnpm test\n\n'} visible />);
         });
 
         const button = renderer.root.findByProps({ testID: 'markdown-code-copy' });
@@ -70,7 +70,7 @@ describe('CodeBlockCopyButton', () => {
 
         await act(async () => button.props.onPress());
 
-        expect(clipboard.setStringAsync).toHaveBeenCalledWith('pnpm test\n');
+        expect(clipboard.setStringAsync).toHaveBeenCalledWith('pnpm test');
         expect(button.props.accessibilityLabel).toBe('common.copied');
         expect(button.findByType('Ionicons').props.name).toBe('checkmark');
         const feedback = renderer.root.findByProps({ testID: 'markdown-code-copy-feedback' });

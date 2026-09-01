@@ -239,7 +239,7 @@ function CollapseHeader(props: {
     const content = (
         <>
             {props.category ? (
-                <View style={styles.headerIcon}>
+                <View testID="conversation-tool-summary-icon" style={styles.headerIcon}>
                     <ToolSummaryIcon category={props.category} color={theme.colors.textSecondary} />
                 </View>
             ) : null}
@@ -255,6 +255,7 @@ function CollapseHeader(props: {
             )}
             {showChevron ? (
                 <Ionicons
+                    testID="conversation-collapse-chevron"
                     name={props.expanded ? 'chevron-down' : 'chevron-forward'}
                     size={13}
                     color={theme.colors.textSecondary}
