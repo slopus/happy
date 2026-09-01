@@ -9,7 +9,7 @@
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { execSync, spawn } from 'child_process';
-import { existsSync, readFileSync, writeFileSync } from 'fs';
+import { readFileSync, writeFileSync } from 'fs';
 import path from 'path';
 import type { Metadata } from '@/api/types';
 import { getIntegrationEnv } from '@/testing/currentIntegrationEnv';
@@ -22,7 +22,7 @@ import {
   stopDaemonHttp,
   stopDaemonSession,
 } from '@/daemon/controlClient';
-import { clearDaemonState, readDaemonState } from '@/persistence';
+import { clearDaemonStateForTests, readDaemonState } from '@/persistence';
 import { getLatestDaemonLog } from '@/ui/logger';
 import { spawnHappyCLI } from '@/utils/spawnHappyCLI';
 
@@ -158,10 +158,12 @@ describe('Daemon Integration Tests', { timeout: 180_000 }, () => {
   });
 
   it('should handle daemon stop request gracefully', async () => {    
-    await stopDaemonHttp();
+    const state = await readDaemonState();
+    expect(state).not.toBeNull();
+    await stopDaemonHttp(state!);
 
-    // Verify metadata file is cleaned up
-    await waitFor(async () => !existsSync(configuration.daemonStateFile), 1000);
+    // Verify the retired generation is no longer observable as current state.
+    await waitFor(async () => await readDaemonState() === null, 1000);
   });
 
   it('should track both daemon-spawned and terminal sessions', async () => {
@@ -320,7 +322,7 @@ describe('Daemon Integration Tests', { timeout: 180_000 }, () => {
     console.log('[TEST] Daemon killed with SIGKILL - no cleanup logs expected');
     
     // Clean up state file manually since daemon couldn't do it
-    await clearDaemonState();
+    await clearDaemonStateForTests();
   });
 
   it('should die with cleanup logs when SIGTERM is sent', async () => {
@@ -355,7 +357,7 @@ describe('Daemon Integration Tests', { timeout: 180_000 }, () => {
     console.log('[TEST] Daemon terminated gracefully with SIGTERM - cleanup logs written');
     
     // Clean up state file if it still exists (should have been cleaned by SIGTERM handler)
-    await clearDaemonState();
+    await clearDaemonStateForTests();
   });
 
   /**

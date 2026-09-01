@@ -4,10 +4,11 @@
  * Handles settings and private key storage in ~/.happy/ or local .happy/
  */
 
-import { FileHandle } from 'node:fs/promises'
 import { readFile, writeFile, mkdir, open, unlink, rename, stat } from 'node:fs/promises'
-import { existsSync, writeFileSync, readFileSync, unlinkSync, renameSync, linkSync } from 'node:fs'
+import { existsSync, writeFileSync, readFileSync, unlinkSync, renameSync, mkdirSync, rmSync, statSync } from 'node:fs'
 import { constants } from 'node:fs'
+import { randomUUID } from 'node:crypto'
+import { join } from 'node:path'
 import { configuration } from '@/configuration'
 import * as z from 'zod';
 import { encodeBase64, decodeBase64 } from '@/api/encryption';
@@ -75,6 +76,7 @@ export interface DaemonLocallyPersistedState {
   httpPort: number;
   startTime: string;
   startedWithCliVersion: string;
+  ownerToken?: string;
   lastHeartbeat?: string;
   daemonLogPath?: string;
 }
@@ -296,29 +298,175 @@ export async function clearMachineId(): Promise<void> {
  * Read daemon state from local file
  */
 export async function readDaemonState(): Promise<DaemonLocallyPersistedState | null> {
-  try {
-    if (!existsSync(configuration.daemonStateFile)) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const before = readDaemonLockObservation();
+    if (!before?.owner) {
       return null;
     }
-    const content = await readFile(configuration.daemonStateFile, 'utf-8');
-    return JSON.parse(content) as DaemonLocallyPersistedState;
-  } catch (error) {
-    // State corrupted somehow :(
-    console.error(`[PERSISTENCE] Daemon state file corrupted: ${configuration.daemonStateFile}`, error);
+
+    const isLegacy = before.owner.ownerToken.startsWith('legacy-');
+    const stateFile = isLegacy
+      ? configuration.daemonStateFile
+      : `${configuration.daemonStateFile}.owner.${before.owner.ownerToken}`;
+
+    let content: string;
+    try {
+      content = await readFile(stateFile, 'utf-8');
+    } catch (error: any) {
+      const after = readDaemonLockObservation();
+      if (after?.generationToken !== before.generationToken) {
+        continue;
+      }
+      if (error?.code !== 'ENOENT') {
+        console.error(`[PERSISTENCE] Daemon state file corrupted: ${stateFile}`, error);
+      }
+      return null;
+    }
+
+    const after = readDaemonLockObservation();
+    if (after?.generationToken !== before.generationToken) {
+      continue;
+    }
+
+    try {
+      const state = JSON.parse(content) as DaemonLocallyPersistedState;
+      if (
+        !Number.isSafeInteger(state.pid)
+        || state.pid <= 0
+        || state.pid !== before.owner.pid
+      ) {
+        return null;
+      }
+      if (!isLegacy && state.ownerToken !== before.owner.ownerToken) {
+        return null;
+      }
+      return state;
+    } catch (error) {
+      console.error(`[PERSISTENCE] Daemon state file corrupted: ${stateFile}`, error);
+      return null;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Publish the initial state for one lock generation.
+ *
+ * New generations never mutate the legacy fixed path. State lives only at the
+ * owner-token path selected by the current generation lock.
+ */
+export function writeDaemonState(
+  lockHandle: DaemonLockHandle,
+  state: DaemonLocallyPersistedState,
+): void {
+  writeDaemonGenerationState(lockHandle, state);
+}
+
+function writeDaemonGenerationState(
+  lockHandle: DaemonLockHandle,
+  state: DaemonLocallyPersistedState,
+): void {
+  const tempPath = `${lockHandle.stateFile}.tmp.${randomUUID()}`;
+  try {
+    writeFileSync(
+      tempPath,
+      JSON.stringify({ ...state, pid: lockHandle.pid, ownerToken: lockHandle.ownerToken }, null, 2),
+      'utf-8',
+    );
+    renameSync(tempPath, lockHandle.stateFile);
+  } finally {
+    try {
+      unlinkSync(tempPath);
+    } catch { }
+  }
+}
+
+export interface DaemonLockHandle {
+  ownerToken: string;
+  pid: number;
+  stateFile: string;
+  released: boolean;
+}
+
+type PersistedDaemonLockOwner = {
+  pid: number;
+  ownerToken: string;
+};
+
+const daemonLockOwnerFile = 'owner.json';
+const daemonOwnerTokenPattern = /^[A-Za-z0-9._-]{1,200}$/;
+
+function isSafeDaemonOwnerToken(ownerToken: string): boolean {
+  return daemonOwnerTokenPattern.test(ownerToken);
+}
+
+type DaemonLockObservation = {
+  owner: PersistedDaemonLockOwner | null;
+  generationToken: string;
+};
+
+function readDaemonLockObservation(): DaemonLockObservation | null {
+  try {
+    const lockStat = statSync(configuration.daemonLockFile);
+    const kind = lockStat.isDirectory() ? 'dir' : 'file';
+    const unknownGenerationToken = `unknown-${kind}-${lockStat.dev}-${lockStat.ino}-${lockStat.birthtimeMs}`;
+
+    if (lockStat.isDirectory()) {
+      try {
+        const owner = JSON.parse(
+          readFileSync(join(configuration.daemonLockFile, daemonLockOwnerFile), 'utf-8'),
+        ) as PersistedDaemonLockOwner;
+        if (
+          Number.isSafeInteger(owner.pid)
+          && owner.pid > 0
+          && isSafeDaemonOwnerToken(owner.ownerToken)
+        ) {
+          return { owner, generationToken: owner.ownerToken };
+        }
+      } catch { }
+      return { owner: null, generationToken: unknownGenerationToken };
+    }
+
+    try {
+      // Compatibility with the legacy PID-only lock file. New acquisitions use
+      // generation-specific lock directories, but a running older daemon must
+      // still block a replacement after an upgrade.
+      const pid = Number(readFileSync(configuration.daemonLockFile, 'utf-8').trim());
+      if (Number.isSafeInteger(pid) && pid > 0) {
+        const owner = {
+          pid,
+          ownerToken: `legacy-${pid}-${lockStat.birthtimeMs}-${lockStat.ino}`,
+        };
+        return { owner, generationToken: owner.ownerToken };
+      }
+    } catch { }
+    return { owner: null, generationToken: unknownGenerationToken };
+  } catch {
     return null;
   }
 }
 
-/**
- * Write daemon state to local file (synchronously for atomic operation)
- */
-export function writeDaemonState(state: DaemonLocallyPersistedState): void {
-  writeFileSync(configuration.daemonStateFile, JSON.stringify(state, null, 2), 'utf-8');
+function readDaemonLockOwner(): PersistedDaemonLockOwner | null {
+  return readDaemonLockObservation()?.owner ?? null;
 }
 
-function daemonLockIsOwnedBy(pid: number): boolean {
+function daemonLockIsOwnedBy(owner: PersistedDaemonLockOwner): boolean {
+  const persistedOwner = readDaemonLockOwner();
+  return persistedOwner?.pid === owner.pid && persistedOwner.ownerToken === owner.ownerToken;
+}
+
+function retireDaemonLock(ownerToken: string): boolean {
+  if (!isSafeDaemonOwnerToken(ownerToken)) {
+    return false;
+  }
+  const retiredPath = `${configuration.daemonLockFile}.retired.${ownerToken}`;
   try {
-    return readFileSync(configuration.daemonLockFile, 'utf-8').trim() === String(pid);
+    // The generation-specific destination is deliberately retained as a
+    // tombstone. A delayed operation for this generation then fails instead of
+    // renaming or deleting a successor that occupies the shared lock path.
+    renameSync(configuration.daemonLockFile, retiredPath);
+    return true;
   } catch {
     return false;
   }
@@ -328,98 +476,137 @@ function daemonLockIsOwnedBy(pid: number): boolean {
  * Refresh daemon state only while the caller still owns the persisted state.
  * Returns false when a successor daemon has already taken ownership.
  */
-export async function writeDaemonStateIfOwned(state: DaemonLocallyPersistedState): Promise<boolean> {
-  const persistedState = await readDaemonState();
-  if (persistedState && persistedState.pid !== state.pid) {
+export async function writeDaemonStateIfOwned(
+  lockHandle: DaemonLockHandle,
+  state: DaemonLocallyPersistedState,
+): Promise<boolean> {
+  if (!daemonLockIsOwnedBy(lockHandle)) {
     return false;
   }
 
-  if (!daemonLockIsOwnedBy(state.pid)) {
-    return false;
-  }
-
-  writeDaemonState(state);
-  return true;
+  // Intentional scheduling seam: correctness must survive ownership changing
+  // after validation, not merely the ordered-before-call test case.
+  await Promise.resolve();
+  writeDaemonGenerationState(lockHandle, state);
+  return daemonLockIsOwnedBy(lockHandle);
 }
 
 /**
- * Clean up daemon state file and lock file. When expectedOwnerPid is provided,
- * only files still owned by that daemon are removed.
+ * Retire one daemon generation and remove only its private state. PID-only
+ * callers are deliberately ignored because they cannot prove a generation.
  */
-export async function clearDaemonState(expectedOwnerPid?: number): Promise<void> {
-  const stateIsOwned = expectedOwnerPid === undefined
-    || (await readDaemonState())?.pid === expectedOwnerPid;
-  if (stateIsOwned && existsSync(configuration.daemonStateFile)) {
-    await unlink(configuration.daemonStateFile);
+export async function clearDaemonState(
+  expectedOwner: DaemonLockHandle | DaemonLocallyPersistedState | number,
+): Promise<void> {
+  if (typeof expectedOwner === 'number') {
+    // PID-only cleanup cannot distinguish a reused PID or legacy successor.
+    // Leave it for generation-aware acquisition to reclaim once safely stale.
+    return;
   }
 
-  const lockIsOwned = expectedOwnerPid === undefined || daemonLockIsOwnedBy(expectedOwnerPid);
-
-  if (lockIsOwned && existsSync(configuration.daemonLockFile)) {
-    try {
-      await unlink(configuration.daemonLockFile);
-    } catch {
-      // Lock file might be held by running daemon, ignore error
-    }
+  const ownerToken = expectedOwner.ownerToken;
+  if (!ownerToken || !isSafeDaemonOwnerToken(ownerToken)) {
+    return;
   }
+  await Promise.resolve();
+  retireDaemonLock(ownerToken);
+
+  const ownerStateFile = 'stateFile' in expectedOwner
+    ? expectedOwner.stateFile
+    : `${configuration.daemonStateFile}.owner.${ownerToken}`;
+  try {
+    await unlink(ownerStateFile);
+  } catch { }
 }
 
 /**
- * Acquire an exclusive lock file for the daemon.
- * The lock file proves the daemon is running and prevents multiple instances.
- * Returns the file handle to hold for the daemon's lifetime, or null if locked.
+ * Destructive reset for isolated Vitest processes only. Production callers
+ * must always use generation-scoped cleanup so delayed work remains fenced.
+ */
+export async function clearDaemonStateForTests(): Promise<void> {
+  if (!process.env.VITEST) {
+    throw new Error('Unscoped daemon-state cleanup is only available under Vitest');
+  }
+  try {
+    await unlink(configuration.daemonStateFile);
+  } catch { }
+  try {
+    rmSync(configuration.daemonLockFile, { recursive: true, force: true });
+  } catch { }
+}
+
+/**
+ * Acquire an exclusive generation lock for the daemon. Creating the shared
+ * directory is the cross-platform no-replace CAS, including against legacy
+ * PID files. An ownerless/partial directory is untrusted and never reclaimed.
  */
 export async function acquireDaemonLock(
   maxAttempts: number = 5,
   delayIncrementMs: number = 200
-): Promise<FileHandle | null> {
-  // Lock creation is atomic INCLUDING the PID payload: the PID is written to
-  // a private temp file first and hard-linked into place (link fails with
-  // EEXIST exactly like O_EXCL). A lock file therefore never exists in an
-  // empty/partially-written state, so any lock without a live-PID payload is
-  // unambiguously stale and can be reclaimed immediately.
-  const tempPath = `${configuration.daemonLockFile}.${process.pid}.tmp`;
+): Promise<DaemonLockHandle | null> {
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const ownerToken = randomUUID();
     try {
-      writeFileSync(tempPath, String(process.pid));
-      linkSync(tempPath, configuration.daemonLockFile);
-      unlinkSync(tempPath);
-      // Hold an open handle for the daemon's lifetime (released by releaseDaemonLock)
-      return await open(configuration.daemonLockFile, constants.O_RDONLY);
-    } catch (error: any) {
+      // mkdir is atomic and fails when either a legacy file or a generation
+      // directory already occupies the shared path. In particular, unlike a
+      // Windows directory rename, it cannot replace a legacy PID file that is
+      // installed concurrently.
+      mkdirSync(configuration.daemonLockFile);
+      writeFileSync(
+        join(configuration.daemonLockFile, daemonLockOwnerFile),
+        JSON.stringify({ pid: process.pid, ownerToken } satisfies PersistedDaemonLockOwner),
+        'utf-8',
+      );
+      // A new generation never uses the legacy fixed-path state. Once this
+      // lock is ours, removing a leftover legacy snapshot cannot affect a
+      // successor because no successor can acquire the shared lock yet.
       try {
-        unlinkSync(tempPath);
+        unlinkSync(configuration.daemonStateFile);
       } catch { }
-
-      if (error.code === 'EEXIST') {
-        // Lock file exists, check if its owner is still running
-        let lockIsStale = false;
+      return {
+        ownerToken,
+        pid: process.pid,
+        stateFile: `${configuration.daemonStateFile}.owner.${ownerToken}`,
+        released: false,
+      };
+    } catch (error: any) {
+      const observation = readDaemonLockObservation();
+      const currentOwner = observation?.owner ?? null;
+      let lockIsStale = false;
+      if (currentOwner && !currentOwner.ownerToken.startsWith('legacy-')) {
         try {
-          const lockPid = readFileSync(configuration.daemonLockFile, 'utf-8').trim();
-          const lockPidNumber = Number(lockPid);
-          if (!lockPid || !Number.isSafeInteger(lockPidNumber) || lockPidNumber <= 0) {
-            lockIsStale = true;
-          } else {
-            try {
-              process.kill(lockPidNumber, 0); // Check if process exists
-            } catch {
-              lockIsStale = true;
-            }
-          }
-        } catch {
-          // Can't read the lock file — corrupted leftovers, reclaim
-          lockIsStale = true;
+          process.kill(currentOwner.pid, 0);
+        } catch (probeError: any) {
+          // EPERM (and unknown platform errors) mean the process may still be
+          // alive. Only ESRCH is affirmative evidence that the PID is absent.
+          lockIsStale = probeError?.code === 'ESRCH';
         }
+      }
 
-        if (lockIsStale) {
+      if (lockIsStale) {
+        const confirmed = readDaemonLockObservation();
+        if (
+          observation
+          && confirmed?.generationToken === observation.generationToken
+          && retireDaemonLock(observation.generationToken)
+        ) {
           try {
-            unlinkSync(configuration.daemonLockFile);
-            continue; // Retry acquisition
+            unlinkSync(`${configuration.daemonStateFile}.owner.${observation.generationToken}`);
           } catch { }
+          continue;
         }
       }
 
       if (attempt === maxAttempts) {
+        if (currentOwner?.ownerToken.startsWith('legacy-')) {
+          logger.warn(
+            `[PERSISTENCE] Refusing to replace legacy daemon lock ${configuration.daemonLockFile} for PID ${currentOwner.pid} without generation proof. Stop the old Happy daemon, or confirm that PID is absent before removing the lock file manually.`,
+          );
+        } else if (observation && !currentOwner) {
+          logger.warn(
+            `[PERSISTENCE] Refusing to replace unreadable daemon lock ${configuration.daemonLockFile}; automatic cleanup cannot prove ownership.`,
+          );
+        }
         return null;
       }
       const delayMs = attempt * delayIncrementMs;
@@ -432,16 +619,16 @@ export async function acquireDaemonLock(
 /**
  * Release this daemon's lock without deleting a successor's replacement lock.
  */
-export async function releaseDaemonLock(lockHandle: FileHandle): Promise<void> {
-  try {
-    await lockHandle.close();
-  } catch { }
+export async function releaseDaemonLock(lockHandle: DaemonLockHandle): Promise<void> {
+  if (lockHandle.released) {
+    return;
+  }
 
-  try {
-    if (existsSync(configuration.daemonLockFile) && daemonLockIsOwnedBy(process.pid)) {
-      unlinkSync(configuration.daemonLockFile);
-    }
-  } catch { }
+  await Promise.resolve();
+  const retired = retireDaemonLock(lockHandle.ownerToken);
+  if (retired || !daemonLockIsOwnedBy(lockHandle)) {
+    lockHandle.released = true;
+  }
 }
 
 // ─── Session persistence (survives daemon restarts) ───

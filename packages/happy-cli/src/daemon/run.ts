@@ -17,7 +17,7 @@ import { spawnHappyCLI } from '@/utils/spawnHappyCLI';
 import { writeDaemonState, writeDaemonStateIfOwned, DaemonLocallyPersistedState, acquireDaemonLock, releaseDaemonLock, readPersistedSessions, persistSession } from '@/persistence';
 import type { PersistedSession } from '@/persistence';
 
-import { cleanupDaemonState, isDaemonRunningCurrentlyInstalledHappyVersion, stopDaemon } from './controlClient';
+import { cleanupDaemonState, readRunningDaemonStateAndCleanupStaleState, stopDaemon } from './controlClient';
 import { startDaemonControlServer } from './controlServer';
 import { statSync } from 'fs';
 import { join } from 'path';
@@ -130,14 +130,17 @@ export async function startDaemon(): Promise<void> {
 
   // Check if already running
   // Check if running daemon version matches current CLI version
-  const runningDaemonVersionMatches = await isDaemonRunningCurrentlyInstalledHappyVersion();
+  const runningDaemonState = await readRunningDaemonStateAndCleanupStaleState();
+  const runningDaemonVersionMatches = runningDaemonState?.startedWithCliVersion === packageJson.version;
   if (!runningDaemonVersionMatches) {
     // TODO: This hand-rolled self-restart path is awkward to reason about and awkward to test.
     // We should probably migrate this daemon to native system service management
     // (launchd/systemd, similar to OpenClaw's model), so startup/start-at-login and upgrades
     // are owned by the OS instead of by the daemon trying to replace itself in-process.
     logger.debug('[DAEMON RUN] Daemon version mismatch detected, restarting daemon with current CLI version');
-    await stopDaemon();
+    if (runningDaemonState) {
+      await stopDaemon(runningDaemonState);
+    }
   } else {
     logger.debug('[DAEMON RUN] Daemon version matches, keeping existing daemon');
     console.log('Daemon already running with matching version');
@@ -822,6 +825,7 @@ export async function startDaemon(): Promise<void> {
 
     // Start control server
     const { port: controlPort, stop: stopControlServer } = await startDaemonControlServer({
+      ownerToken: daemonLockHandle.ownerToken,
       getChildren: getCurrentChildren,
       stopSession,
       spawnSession,
@@ -837,7 +841,7 @@ export async function startDaemon(): Promise<void> {
       startedWithCliVersion: packageJson.version,
       daemonLogPath: logger.logFilePath
     };
-    writeDaemonState(fileState);
+    writeDaemonState(daemonLockHandle, fileState);
     logger.debug('[DAEMON RUN] Daemon state written');
 
     // Capture the bundled CLI's mtime at startup so the heartbeat can detect
@@ -944,7 +948,7 @@ export async function startDaemon(): Promise<void> {
         // leaving nothing running once we also exit.
         apiMachine.shutdown();
         await stopControlServer();
-        await cleanupDaemonState(process.pid);
+        await cleanupDaemonState(daemonLockHandle);
         await releaseDaemonLock(daemonLockHandle);
         await stopCaffeinate();
 
@@ -971,7 +975,7 @@ export async function startDaemon(): Promise<void> {
           lastHeartbeat: new Date().toLocaleString(),
           daemonLogPath: fileState.daemonLogPath
         };
-        const wroteHeartbeat = await writeDaemonStateIfOwned(updatedState);
+        const wroteHeartbeat = await writeDaemonStateIfOwned(daemonLockHandle, updatedState);
         if (!wroteHeartbeat) {
           logger.debug('[DAEMON RUN] A different daemon owns the state. Stopping before writing this daemon PID back.')
           requestShutdown('exception', 'A different daemon was started without killing us. We should kill ourselves.')
@@ -1011,7 +1015,7 @@ export async function startDaemon(): Promise<void> {
 
       apiMachine.shutdown();
       await stopControlServer();
-      await cleanupDaemonState(process.pid);
+      await cleanupDaemonState(daemonLockHandle);
       await stopCaffeinate();
       await releaseDaemonLock(daemonLockHandle);
 

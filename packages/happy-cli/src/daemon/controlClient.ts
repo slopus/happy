@@ -4,12 +4,16 @@
  */
 
 import { logger } from '@/ui/logger';
-import { clearDaemonState, readDaemonState } from '@/persistence';
+import { clearDaemonState, readDaemonState, type DaemonLockHandle, type DaemonLocallyPersistedState } from '@/persistence';
 import { Metadata } from '@/api/types';
 import { configuration } from '@/configuration';
 
-async function daemonPost(path: string, body?: any): Promise<{ error?: string } | any> {
-  const state = await readDaemonState();
+async function daemonPost(
+  path: string,
+  body?: any,
+  targetState?: DaemonLocallyPersistedState,
+): Promise<{ error?: string } | any> {
+  const state = targetState ?? await readDaemonState();
   if (!state?.httpPort) {
     const errorMessage = 'No daemon running, no state file found';
     logger.debug(`[CONTROL CLIENT] ${errorMessage}`);
@@ -105,8 +109,16 @@ export async function spawnDaemonSession(directory: string, sessionId?: string):
   return result;
 }
 
-export async function stopDaemonHttp(): Promise<void> {
-  await daemonPost('/stop');
+export async function stopDaemonHttp(state: DaemonLocallyPersistedState): Promise<void> {
+  if (!state.ownerToken) {
+    throw new Error('Refusing to stop a daemon without generation ownership proof');
+  }
+  const result = await daemonPost('/stop', {
+    expectedOwnerToken: state.ownerToken,
+  }, state);
+  if (result?.error) {
+    throw new Error(result.error);
+  }
 }
 
 /**
@@ -136,19 +148,23 @@ export async function stopDaemonHttp(): Promise<void> {
  * We can destructure the response on the caller for richer output.
  * For instance when running `happy daemon status` we can show more information.
  */
-export async function checkIfDaemonRunningAndCleanupStaleState(): Promise<boolean> {
+export async function readRunningDaemonStateAndCleanupStaleState(): Promise<DaemonLocallyPersistedState | null> {
   const state = await readDaemonState();
   if (!state) {
-    return false;
+    return null;
   }
 
   // Check if the PID is alive
   try {
     process.kill(state.pid, 0);
-  } catch {
-    logger.debug('[DAEMON RUN] Daemon PID not running, cleaning up state');
-    await cleanupDaemonState(state.pid);
-    return false;
+  } catch (probeError: any) {
+    if (probeError?.code === 'ESRCH') {
+      logger.debug('[DAEMON RUN] Daemon PID not running, cleaning up state');
+      await cleanupDaemonState(state);
+      return null;
+    }
+    logger.debug('[DAEMON RUN] Daemon PID could not be probed; preserving ownership state', probeError);
+    return state;
   }
 
   // PID is alive, but on Windows PIDs get reused after reboot.
@@ -162,23 +178,21 @@ export async function checkIfDaemonRunningAndCleanupStaleState(): Promise<boolea
         signal: AbortSignal.timeout(2000)
       });
       if (response.ok) {
-        return true;
+        return state;
       }
+      logger.debug(`[DAEMON RUN] PID ${state.pid} responded with HTTP ${response.status} on port ${state.httpPort}; preserving ownership after an inconclusive health check`);
+      return state;
     } catch (error) {
-      if (error instanceof Error && error.name === 'TimeoutError') {
-        logger.debug(`[DAEMON RUN] PID ${state.pid} is alive but HTTP health check timed out on port ${state.httpPort}; preserving daemon ownership state`);
-        return true;
-      }
-
-      // A non-timeout connection failure means the live PID is not listening as
-      // our daemon (most commonly a PID reused by Windows after reboot).
-      logger.debug(`[DAEMON RUN] PID ${state.pid} is alive but HTTP health check failed on port ${state.httpPort}, cleaning up stale state`);
-      await cleanupDaemonState(state.pid);
-      return false;
+      logger.debug(`[DAEMON RUN] PID ${state.pid} is alive but HTTP health check failed on port ${state.httpPort}; preserving ownership after an inconclusive health check`, error);
+      return state;
     }
   }
 
-  return true;
+  return state;
+}
+
+export async function checkIfDaemonRunningAndCleanupStaleState(): Promise<boolean> {
+  return (await readRunningDaemonStateAndCleanupStaleState()) !== null;
 }
 
 /**
@@ -190,15 +204,9 @@ export async function checkIfDaemonRunningAndCleanupStaleState(): Promise<boolea
  */
 export async function isDaemonRunningCurrentlyInstalledHappyVersion(): Promise<boolean> {
   logger.debug('[DAEMON CONTROL] Checking if daemon is running same version');
-  const runningDaemon = await checkIfDaemonRunningAndCleanupStaleState();
-  if (!runningDaemon) {
-    logger.debug('[DAEMON CONTROL] No daemon running, returning false');
-    return false;
-  }
-
-  const state = await readDaemonState();
+  const state = await readRunningDaemonStateAndCleanupStaleState();
   if (!state) {
-    logger.debug('[DAEMON CONTROL] No daemon state found, returning false');
+    logger.debug('[DAEMON CONTROL] No daemon running, returning false');
     return false;
   }
   
@@ -221,20 +229,24 @@ export async function isDaemonRunningCurrentlyInstalledHappyVersion(): Promise<b
   return currentCliVersion === state.startedWithCliVersion;
 }
 
-export async function cleanupDaemonState(expectedOwnerPid: number): Promise<void> {
+export async function cleanupDaemonState(expectedOwner: DaemonLockHandle | DaemonLocallyPersistedState): Promise<void> {
   try {
-    await clearDaemonState(expectedOwnerPid);
-    logger.debug(`[DAEMON RUN] Daemon state cleanup completed for PID ${expectedOwnerPid}`);
+    await clearDaemonState(expectedOwner);
+    logger.debug(`[DAEMON RUN] Daemon state cleanup completed for PID ${expectedOwner.pid}`);
   } catch (error) {
     logger.debug('[DAEMON RUN] Error cleaning up daemon metadata', error);
   }
 }
 
-export async function stopDaemon() {
+export async function stopDaemon(expectedState?: DaemonLocallyPersistedState) {
   try {
-    const state = await readDaemonState();
+    const state = expectedState ?? await readRunningDaemonStateAndCleanupStaleState();
     if (!state) {
-      logger.debug('No daemon state found');
+      logger.debug('Daemon identity could not be verified; refusing to stop an unrelated process');
+      return;
+    }
+    if (!state.ownerToken) {
+      logger.warn('Legacy daemon state has no generation proof; refusing automatic stop. Stop the old daemon manually before retrying.');
       return;
     }
 
@@ -242,22 +254,16 @@ export async function stopDaemon() {
 
     // Try HTTP graceful stop
     try {
-      await stopDaemonHttp();
+      await stopDaemonHttp(state);
 
       // Wait for daemon to die
       await waitForProcessDeath(state.pid, 2000);
       logger.debug('Daemon stopped gracefully via HTTP');
       return;
     } catch (error) {
-      logger.debug('HTTP stop failed, will force kill', error);
-    }
-
-    // Force kill
-    try {
-      process.kill(state.pid, 'SIGKILL');
-      logger.debug('Force killed daemon');
-    } catch (error) {
-      logger.debug('Daemon already dead');
+      // A PID plus failed HTTP identity is not enough evidence to send a kill
+      // signal on Windows, where PIDs are routinely reused after reboot.
+      logger.debug('HTTP stop failed; refusing to force kill an unverified PID', error);
     }
   } catch (error) {
     logger.debug('Error stopping daemon', error);
