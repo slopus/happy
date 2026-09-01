@@ -191,6 +191,22 @@ function createProgram(io: CliIo, dependencies: CliDependencies) {
     return program;
 }
 
+function normalizeLegacyManagementId(argv: string[]): string[] {
+    const commandIndex = argv.findIndex((value, index) => index >= 2 && (value === 'renew' || value === 'revoke'));
+    if (commandIndex < 0) return argv;
+    const commandArguments = argv.slice(commandIndex + 1);
+    if (commandArguments.includes('--')) return argv;
+    const identifier = commandArguments.find((value) => value !== '--json');
+    if (!identifier || !/^-[A-Za-z0-9_-]{42}$/.test(identifier)) return argv;
+    if (commandArguments.some((value) => value !== '--json' && value !== identifier)) return argv;
+    return [
+        ...argv.slice(0, commandIndex + 1),
+        ...commandArguments.filter((value) => value === '--json'),
+        '--',
+        identifier,
+    ];
+}
+
 export async function runCli(
     argv = process.argv,
     io: CliIo = processIo,
@@ -198,7 +214,7 @@ export async function runCli(
 ): Promise<number> {
     const dependencies = { ...defaults(), ...overrides };
     try {
-        await createProgram(io, dependencies).parseAsync(argv);
+        await createProgram(io, dependencies).parseAsync(normalizeLegacyManagementId(argv));
         return 0;
     } catch (error) {
         if (error instanceof CommanderError) {

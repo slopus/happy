@@ -56,7 +56,7 @@ class ExternalShareRequestError extends Error {
 }
 
 function newPublicId(): string {
-    return crypto.randomBytes(32).toString('base64url');
+    return `ps_${crypto.randomBytes(32).toString('base64url')}`;
 }
 
 function draftExpiry(): Date {

@@ -255,6 +255,7 @@ describe('externalSessionShareRoutes', () => {
         expect(state.shares).toHaveLength(1);
         expect(state.drafts).toHaveLength(1);
         expect(state.shares[0]).toMatchObject({ accountId: null, sessionId: null, sourceProvider: 'codex' });
+        expect(first.json().publicId).toMatch(/^ps_[A-Za-z0-9_-]{43}$/);
         expect(state.shares[0].managementTokenHash?.toString('hex')).not.toBe(Buffer.from(TOKEN).toString('hex'));
         expect(first.json().expiresAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
         expect(JSON.stringify(first.json())).not.toContain(TOKEN);

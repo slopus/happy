@@ -126,6 +126,22 @@ describe('paws-share CLI', () => {
         expect(output.stdout.join('')).toContain('"revoked":true');
     });
 
+    it('accepts a legacy public ID that begins with a hyphen', async () => {
+        const output = capture();
+        const publicId = `-${'a'.repeat(42)}`;
+        const revokeManagedShare = vi.fn(async () => ({ publicId, revoked: true as const }));
+
+        const exitCode = await runCli(
+            ['node', 'paws-share', 'revoke', publicId, '--json'],
+            output.io,
+            { revokeManagedShare },
+        );
+
+        expect(exitCode).toBe(0);
+        expect(revokeManagedShare).toHaveBeenCalledWith(publicId);
+        expect(JSON.parse(output.stdout.join(''))).toEqual({ publicId, revoked: true });
+    });
+
     it('installs the provider-neutral Agent Skill for both supported agents', async () => {
         const output = capture();
         const dependencies: Partial<CliDependencies> = {
