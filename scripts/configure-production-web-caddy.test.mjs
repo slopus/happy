@@ -1,5 +1,10 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 import {
     configureProductionWebCaddy,
     PRODUCTION_CADDY_GRACE_PERIOD,
@@ -23,6 +28,30 @@ const fixture = `:8001 {
     }
 }
 `;
+const configuratorCliPath = fileURLToPath(new URL('./configure-production-web-caddy.mjs', import.meta.url));
+
+async function runConfiguratorCli(source) {
+    const directory = await mkdtemp(join(tmpdir(), 'paws-caddy-config-'));
+    const inputPath = join(directory, 'current.Caddyfile');
+    const outputPath = join(directory, 'next.Caddyfile');
+
+    try {
+        await writeFile(inputPath, source, 'utf8');
+        const result = spawnSync(
+            process.execPath,
+            [configuratorCliPath, inputPath, outputPath],
+            { encoding: 'utf8' },
+        );
+        return {
+            status: result.status,
+            stderr: result.stderr,
+            stdout: result.stdout,
+            output: await readFile(outputPath, 'utf8'),
+        };
+    } finally {
+        await rm(directory, { recursive: true, force: true });
+    }
+}
 
 test('routes public shares to the SPA and installs exact public-document headers', () => {
     const configured = configureProductionWebCaddy(fixture);
@@ -55,6 +84,23 @@ test('is idempotent and leaves unrelated sites untouched', () => {
     assert.equal(twice, once);
     assert.equal(twice.match(new RegExp(PUBLIC_SHARE_CADDY_BLOCK_START, 'g'))?.length, 1);
     assert.match(twice, /:8001 \{\n    respond "other site"\n\}/);
+});
+
+test('CLI reports unchanged for an already-managed production config', async () => {
+    const configured = configureProductionWebCaddy(fixture);
+    const result = await runConfiguratorCli(configured);
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout, 'unchanged\n');
+    assert.equal(result.output, configured);
+});
+
+test('CLI reports changed when the generated production config differs', async () => {
+    const result = await runConfiguratorCli(fixture);
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout, 'changed\n');
+    assert.notEqual(result.output, fixture);
 });
 
 test('fails closed when the production site matcher is missing', () => {

@@ -112,7 +112,9 @@ async function main() {
         throw new Error('Usage: node scripts/configure-production-web-caddy.mjs <input> <output> [site-address]');
     }
     const source = await readFile(inputPath, 'utf8');
-    await writeFile(outputPath, configureProductionWebCaddy(source, siteAddress), 'utf8');
+    const configured = configureProductionWebCaddy(source, siteAddress);
+    await writeFile(outputPath, configured, 'utf8');
+    process.stdout.write(configured === source ? 'unchanged\n' : 'changed\n');
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

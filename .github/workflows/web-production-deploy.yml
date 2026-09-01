@@ -96,7 +96,12 @@ jobs:
           trap 'rm -f "$current_caddy" "$next_caddy"' EXIT
           ssh -p "$PAWS_DEPLOY_PORT" "$PAWS_DEPLOY_HOST" \
             'cat /etc/caddy/Caddyfile' > "$current_caddy"
-          node scripts/configure-production-web-caddy.mjs "$current_caddy" "$next_caddy"
+          caddy_change="$(node scripts/configure-production-web-caddy.mjs "$current_caddy" "$next_caddy")"
+          if [ "$caddy_change" = 'unchanged' ]; then
+            echo 'Caddyfile already has the required production Web routes; skipping reload.'
+            exit 0
+          fi
+          test "$caddy_change" = 'changed'
           scp -P "$PAWS_DEPLOY_PORT" "$next_caddy" "$PAWS_DEPLOY_HOST:$remote_candidate"
           ssh -p "$PAWS_DEPLOY_PORT" "$PAWS_DEPLOY_HOST" bash -s -- "$remote_candidate" <<'REMOTE_SCRIPT'
           set -euo pipefail
