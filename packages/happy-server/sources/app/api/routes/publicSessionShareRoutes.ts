@@ -560,7 +560,12 @@ export function publicSessionShareRoutes(app: Fastify) {
     }, async (request, reply) => {
         if (!await enforcePublicReadRate(`${request.ip}:${request.params.publicId}`, reply)) return;
         const share = await db.publicSessionShare.findUnique({ where: { publicId: request.params.publicId } });
-        if (!share || share.revokedAt || !share.publishedAt || !share.snapshot || !share.activeGeneration) {
+        if (!share
+            || share.revokedAt
+            || (share.expiresAt && share.expiresAt <= new Date())
+            || !share.publishedAt
+            || !share.snapshot
+            || !share.activeGeneration) {
             return publicNotFound(reply);
         }
         const parsed = publicSessionSnapshotSchema.safeParse(share.snapshot);
@@ -574,7 +579,11 @@ export function publicSessionShareRoutes(app: Fastify) {
     }, async (request, reply) => {
         if (!await enforcePublicReadRate(`${request.ip}:${request.params.publicId}`, reply)) return;
         const share = await db.publicSessionShare.findUnique({ where: { publicId: request.params.publicId } });
-        if (!share || share.revokedAt || !share.publishedAt || !share.activeGeneration) return publicNotFound(reply);
+        if (!share
+            || share.revokedAt
+            || (share.expiresAt && share.expiresAt <= new Date())
+            || !share.publishedAt
+            || !share.activeGeneration) return publicNotFound(reply);
         const asset = await db.publicSessionShareAsset.findFirst({
             where: { id: request.params.assetId, shareId: share.id, generation: share.activeGeneration },
         });
