@@ -662,6 +662,7 @@ export const storage = create<StorageState>()((set, get) => {
         applyMessages: (sessionId: string, messages: NormalizedMessage[]) => {
             let changed = new Set<string>();
             let hasReadyEvent = false;
+            let latestReadyEventAt: number | null = null;
 
             // Track plan mode transitions through the batch in order.
             // Set true on EnterPlanMode, false on ExitPlanMode. The final value
@@ -670,6 +671,10 @@ export const storage = create<StorageState>()((set, get) => {
             // re-triggering plan mode, while still catching real-time EnterPlanMode.
             let shouldEnterPlanMode = false;
             for (const msg of messages) {
+                if (msg.role === 'event' && msg.content.type === 'ready') {
+                    latestReadyEventAt = Math.max(latestReadyEventAt ?? 0, msg.createdAt);
+                }
+
                 if (msg.role === 'agent') {
                     for (const c of msg.content) {
                         if (c.type === 'tool-call') {
@@ -726,7 +731,11 @@ export const storage = create<StorageState>()((set, get) => {
                 // IMPORTANT: We extract latestUsage from the mutable reducerState and copy it to the Session object
                 // This ensures latestUsage is available immediately on load, even before messages are fully loaded
                 let updatedSessions = state.sessions;
-                const needsUpdate = (reducerResult.todos !== undefined || existingSession.reducerState.latestUsage || shouldEnterPlanMode) && session;
+                const shouldClearThinking = !!session
+                    && hasReadyEvent
+                    && latestReadyEventAt !== null
+                    && latestReadyEventAt >= session.thinkingAt;
+                const needsUpdate = (reducerResult.todos !== undefined || existingSession.reducerState.latestUsage || shouldEnterPlanMode || shouldClearThinking) && session;
 
                 if (needsUpdate) {
                     updatedSessions = {
@@ -739,7 +748,10 @@ export const storage = create<StorageState>()((set, get) => {
                                 ...existingSession.reducerState.latestUsage
                             } : session.latestUsage,
                             // Auto-switch to plan mode when EnterPlanMode tool call is detected
-                            ...(shouldEnterPlanMode && { permissionMode: 'plan' })
+                            ...(shouldEnterPlanMode && { permissionMode: 'plan' }),
+                            // 补拉的终止事件只能关闭它所属的旧运行态，不能让更晚开始的
+                            // 当前 Turn 被历史消息误标为空闲。
+                            ...(shouldClearThinking && { thinking: false })
                         }
                     };
                 }

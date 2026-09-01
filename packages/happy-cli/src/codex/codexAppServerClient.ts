@@ -1325,6 +1325,28 @@ export class CodexAppServerClient {
         this.pendingTurnCompletion = null;
     }
 
+    private resolveTimedOutTurn(timeoutMs: number, label: string): void {
+        const pending = this.pendingTurnCompletion;
+        if (!pending) return;
+
+        const turnId = pending.turnId ?? this._turnId;
+        const error = `${label} timed out after ${timeoutMs}ms`;
+        logger.warn(`[CodexAppServer] ${error} — treating as failed abort`);
+
+        this.resolvePendingTurn(true);
+        this._turnId = null;
+        if (turnId) {
+            this.completedTurnIds.add(turnId);
+        }
+        this.eventHandler?.({
+            type: 'turn_aborted',
+            ...(turnId ? { turn_id: turnId } : {}),
+            status: 'failed',
+            reason: 'timeout',
+            error,
+        });
+    }
+
     private markPendingTurnStarted(turnId?: string | null): void {
         if (!this.pendingTurnCompletion) return;
         if (turnId) {
@@ -1517,10 +1539,7 @@ export class CodexAppServerClient {
             };
 
             timer = setTimeout(() => {
-                if (this.pendingTurnCompletion) {
-                    logger.warn(`[CodexAppServer] Turn timed out after ${timeoutMs}ms — treating as abort`);
-                    this.resolvePendingTurn(true);
-                }
+                this.resolveTimedOutTurn(timeoutMs, 'Turn');
             }, timeoutMs);
         });
 
@@ -1554,10 +1573,7 @@ export class CodexAppServerClient {
             };
 
             timer = setTimeout(() => {
-                if (this.pendingTurnCompletion) {
-                    logger.warn(`[CodexAppServer] Server-started turn timed out after ${timeoutMs}ms — treating as abort`);
-                    this.resolvePendingTurn(true);
-                }
+                this.resolveTimedOutTurn(timeoutMs, 'Server-started turn');
             }, timeoutMs);
         });
 
