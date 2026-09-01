@@ -2,4 +2,4 @@
 
 import { runCli } from '../dist/cli.mjs';
 
-await runCli();
+process.exitCode = await runCli();

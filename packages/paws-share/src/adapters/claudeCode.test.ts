@@ -12,6 +12,11 @@ describe('claudeCodeAdapter', () => {
         expect(publicSessionSnapshotSchema.parse(converted.snapshot)).toEqual(converted.snapshot);
         expect(converted.snapshot.source).toEqual({ provider: 'claude-code' });
         expect(converted.snapshot.title).toBe('Review this Paws sharing illustration.');
+        expect(converted.snapshot.messages[0]).toMatchObject({
+            role: 'assistant',
+            blocks: [expect.objectContaining({ type: 'text', markdown: 'The illustration is ready to share.' })],
+        });
+        expect(converted.snapshot.messages.at(-1)).toMatchObject({ role: 'user' });
         expect(converted.snapshot.messages.flatMap((message) => message.blocks)).toEqual(expect.arrayContaining([
             expect.objectContaining({ type: 'thinking', markdown: 'I should inspect the image dimensions first.' }),
             expect.objectContaining({ type: 'tool', name: 'Read', status: 'completed', body: 'SVG is 320 by 180 pixels.' }),

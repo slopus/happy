@@ -46,8 +46,8 @@ function isWithin(root: string, file: string): boolean {
     return child === '' || (!child.startsWith(`..${sep}`) && child !== '..' && !isAbsolute(child));
 }
 
-function uuidFromPath(file: string): string {
-    const bytes = createHash('sha256').update(file).digest().subarray(0, 16);
+function uuidFromSessionAttachment(session: string, file: string): string {
+    const bytes = createHash('sha256').update(session).update('\0').update(file).digest().subarray(0, 16);
     bytes[6] = (bytes[6] & 0x0f) | 0x40;
     bytes[8] = (bytes[8] & 0x3f) | 0x80;
     const hex = bytes.toString('hex');
@@ -73,7 +73,7 @@ export async function resolveStructuredAttachment(
     const bytes = await readFile(file);
     const media = MIME_TYPES[extname(file).toLowerCase()] ?? { mimeType: 'application/octet-stream', kind: 'file' as const };
     return {
-        attachmentId: uuidFromPath(file),
+        attachmentId: uuidFromSessionAttachment(resolve(candidate.path), file),
         path: file,
         name: basename(file),
         mimeType: media.mimeType,

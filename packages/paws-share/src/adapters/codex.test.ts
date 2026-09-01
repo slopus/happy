@@ -13,6 +13,11 @@ describe('codexAdapter', () => {
         expect(publicSessionSnapshotSchema.parse(converted.snapshot)).toEqual(converted.snapshot);
         expect(converted.snapshot.source).toEqual({ provider: 'codex' });
         expect(converted.snapshot.title).toBe('Create a purple Paws sharing illustration.');
+        expect(converted.snapshot.messages[0]).toMatchObject({
+            role: 'assistant',
+            blocks: [expect.objectContaining({ type: 'text', markdown: 'The illustration is ready and keeps the same aspect ratio.' })],
+        });
+        expect(converted.snapshot.messages.at(-1)).toMatchObject({ role: 'user' });
         expect(converted.snapshot.messages.flatMap((message) => message.blocks)).toEqual(expect.arrayContaining([
             expect.objectContaining({ type: 'thinking', markdown: expect.stringContaining('preserve its proportions') }),
             expect.objectContaining({ type: 'tool', name: 'view_image', status: 'completed', body: 'Image is 320 by 180 pixels.' }),

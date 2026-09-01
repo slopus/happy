@@ -122,7 +122,7 @@ export const codexAdapter: TranscriptAdapter = {
                 sharedAt: Date.now(),
                 source: { provider: 'codex' },
                 presentation: { groupToolCalls: true },
-                messages,
+                messages: [...messages].reverse(),
             },
             attachments: Array.from(attachments.values()),
             unresolvedAttachments,

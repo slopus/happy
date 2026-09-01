@@ -109,7 +109,7 @@ export const claudeCodeAdapter: TranscriptAdapter = {
                 sharedAt: Date.now(),
                 source: { provider: 'claude-code' },
                 presentation: { groupToolCalls: true },
-                messages,
+                messages: [...messages].reverse(),
             },
             attachments: Array.from(attachments.values()),
             unresolvedAttachments,
