@@ -694,6 +694,7 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: 16,
   },
   userMessageBubble: {
+    alignSelf: 'stretch',
     backgroundColor: theme.colors.userMessageBackground,
     paddingHorizontal: 12,
     paddingVertical: 4,
