@@ -823,7 +823,7 @@ export async function collectCodexUsageSnapshot(options: CollectCodexUsageOption
     const timeZone = options.timeZone || getTimeZone();
     const codexHome = options.codexHome || process.env.CODEX_HOME || join(os.homedir(), '.codex');
     const sessionsDir = join(codexHome, 'sessions');
-    const maxDays = Math.max(1, Math.floor(options.maxDays ?? 14));
+    const maxDays = Math.max(1, Math.floor(options.maxDays ?? 365));
     const warnings: string[] = [];
     const dateKeys = recentLocalDateKeys(now, timeZone, maxDays);
     const recentFiles = await listRecentCodexSessionFiles(codexHome, sessionsDir, dateKeys, warnings);

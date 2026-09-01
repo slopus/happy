@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
     calculateTotals: vi.fn(),
     credentials: { token: 'test' } as { token: string } | null,
     getUsageForPeriod: vi.fn(),
+    language: 'en',
     machines: [] as Array<{ daemonState: unknown }>,
 }));
 
@@ -54,6 +55,7 @@ vi.mock('@/components/ItemGroup', () => ({ ItemGroup: 'ItemGroup' }));
 vi.mock('@/components/Item', () => ({ Item: 'Item' }));
 vi.mock('@/utils/errors', () => ({ HappyError: class HappyError extends Error {} }));
 vi.mock('@/text', () => ({
+    getCurrentLanguage: () => mocks.language,
     t: (key: string, values?: Record<string, unknown>) => values
         ? `${key}:${JSON.stringify(values)}`
         : key,
@@ -88,6 +90,7 @@ describe('UsagePanel', () => {
 
     beforeEach(() => {
         mocks.credentials = { token: 'test' };
+        mocks.language = 'en';
         mocks.machines = [];
         mocks.getUsageForPeriod.mockReset();
         mocks.calculateTotals.mockReset();
@@ -393,7 +396,7 @@ describe('UsagePanel', () => {
         act(() => renderer.unmount());
     });
 
-    it('renders a 14-day Codex activity heatmap with empty days included', async () => {
+    it('renders a scrollable 365-day Codex activity heatmap as week columns with month labels', async () => {
         mocks.getUsageForPeriod.mockResolvedValue({ usage: [] });
         mocks.machines = [{
             daemonState: {
@@ -401,6 +404,17 @@ describe('UsagePanel', () => {
                     source: 'codex-session-jsonl',
                     scannedAt: Date.UTC(2026, 7, 30, 12),
                     days: [
+                        {
+                            date: '2025-08-31',
+                            inputTokens: 50,
+                            cachedInputTokens: 0,
+                            outputTokens: 10,
+                            reasoningOutputTokens: 2,
+                            totalTokens: 60,
+                            tokenCountEvents: 1,
+                            sessions: 1,
+                            totalOnlyTokens: 0,
+                        },
                         {
                             date: '2026-08-18',
                             inputTokens: 100,
@@ -439,38 +453,83 @@ describe('UsagePanel', () => {
         ));
         const texts = renderer.root.findAllByType('Text').map(textValue);
 
-        expect(cells).toHaveLength(14);
+        const horizontalScrollViews = renderer.root.findAllByType('ScrollView')
+            .filter((node: any) => node.props.horizontal === true);
+        const heatmapGrid = renderer.root.findAllByType('View').find((node: any) => (
+            node.props.style?.flexDirection === 'row'
+            && node.props.style?.gap === 5
+            && node.findAll((child: any) => (
+                typeof child.props.testID === 'string'
+                && child.props.testID.startsWith('codex-usage-day-')
+            )).length === 365
+        ));
+        const monthLabels = renderer.root.findAllByType('Text').filter((node: any) => (
+            Array.isArray(node.props.style)
+            && node.props.style.some((style: any) => style?.position === 'absolute' && style?.top === 0)
+        ));
+
+        expect(cells).toHaveLength(365);
+        expect(cells.some((cell: any) => cell.props.testID === 'codex-usage-day-2025-08-31')).toBe(true);
+        expect(cells.some((cell: any) => cell.props.testID === 'codex-usage-day-2025-09-01')).toBe(true);
         expect(cells.some((cell: any) => cell.props.testID === 'codex-usage-day-2026-08-18')).toBe(true);
         expect(cells.some((cell: any) => cell.props.testID === 'codex-usage-day-2026-08-19')).toBe(true);
         expect(cells.every((cell: any) => {
             const styles = typeof cell.props.style === 'function'
                 ? cell.props.style({ pressed: false })
                 : cell.props.style;
-            return styles.some((style: any) => style?.flex === 1);
+            return styles.some((style: any) => style?.width === 14 && style?.height === 14)
+                && styles.every((style: any) => style?.flex === undefined);
         })).toBe(true);
+        expect(horizontalScrollViews).toHaveLength(1);
+        expect(horizontalScrollViews[0].props.testID).toBe('codex-usage-heatmap-scroll');
+        expect(heatmapGrid?.children).toHaveLength(53);
+        expect(renderer.root.findAll((node: any) => (
+            typeof node.props.testID === 'string'
+            && node.props.testID.startsWith('codex-usage-week-')
+        ))).toHaveLength(53);
+        expect(monthLabels).toHaveLength(12);
+        expect(renderer.root.findAll((node: any) => (
+            typeof node.props.testID === 'string'
+            && node.props.testID.startsWith('codex-usage-month-')
+        ))).toHaveLength(12);
+        expect(monthLabels.find((label: any) => textValue(label) === 'Sep')?.props.style)
+            .toContainEqual({ left: 0 });
         expect(texts.some((text: string) => text.startsWith('machine.codexUsageHeatmapDay:'))).toBe(true);
 
         act(() => renderer.unmount());
     });
 
-    it('uses theme selected and pressed surfaces for heatmap buttons', async () => {
+    it('keeps low-intensity opacity off selected and pressed heatmap surfaces', async () => {
         mocks.getUsageForPeriod.mockResolvedValue({ usage: [] });
         mocks.machines = [{
             daemonState: {
                 codexUsage: {
                     source: 'codex-session-jsonl',
                     scannedAt: Date.UTC(2026, 7, 30, 12),
-                    days: [{
-                        date: '2026-08-30',
-                        inputTokens: 500,
-                        cachedInputTokens: 0,
-                        outputTokens: 80,
-                        reasoningOutputTokens: 40,
-                        totalTokens: 580,
-                        tokenCountEvents: 2,
-                        sessions: 2,
-                        totalOnlyTokens: 0,
-                    }],
+                    days: [
+                        {
+                            date: '2026-08-29',
+                            inputTokens: 1,
+                            cachedInputTokens: 0,
+                            outputTokens: 0,
+                            reasoningOutputTokens: 0,
+                            totalTokens: 1,
+                            tokenCountEvents: 1,
+                            sessions: 1,
+                            totalOnlyTokens: 0,
+                        },
+                        {
+                            date: '2026-08-30',
+                            inputTokens: 500,
+                            cachedInputTokens: 0,
+                            outputTokens: 80,
+                            reasoningOutputTokens: 40,
+                            totalTokens: 580,
+                            tokenCountEvents: 2,
+                            sessions: 2,
+                            totalOnlyTokens: 0,
+                        },
+                    ],
                 },
             },
         }];
@@ -483,6 +542,95 @@ describe('UsagePanel', () => {
         const pressedStyles = selected.props.style({ pressed: true });
         expect(selectedStyles.some((style: any) => style?.backgroundColor === '#283544')).toBe(true);
         expect(pressedStyles.some((style: any) => style?.backgroundColor === '#1F2A38')).toBe(true);
+
+        const lowIntensity = renderer.root.find((node: any) => node.props.testID === 'codex-usage-day-2026-08-29');
+        expect(lowIntensity.props.style({ pressed: false })).toContainEqual({ opacity: 0.28 });
+        expect(lowIntensity.props.style({ pressed: true }))
+            .not.toEqual(expect.arrayContaining([expect.objectContaining({ opacity: expect.any(Number) })]));
+
+        act(() => lowIntensity.props.onPress());
+        const selectedLowIntensity = renderer.root.find(
+            (node: any) => node.props.testID === 'codex-usage-day-2026-08-29',
+        );
+        expect(selectedLowIntensity.props.style({ pressed: false }))
+            .not.toEqual(expect.arrayContaining([expect.objectContaining({ opacity: expect.any(Number) })]));
+        expect(selectedLowIntensity.props.style({ pressed: false }))
+            .toEqual(expect.arrayContaining([expect.objectContaining({ backgroundColor: '#283544' })]));
+
+        act(() => renderer.unmount());
+    });
+
+    it('formats month labels with the selected Paws language', async () => {
+        mocks.language = 'zh-Hans';
+        mocks.getUsageForPeriod.mockResolvedValue({ usage: [] });
+        mocks.machines = [{
+            daemonState: {
+                codexUsage: {
+                    source: 'codex-session-jsonl',
+                    scannedAt: Date.UTC(2026, 7, 30, 12),
+                    days: [{
+                        date: '2026-08-30',
+                        inputTokens: 10,
+                        cachedInputTokens: 0,
+                        outputTokens: 0,
+                        reasoningOutputTokens: 0,
+                        totalTokens: 10,
+                        tokenCountEvents: 1,
+                        sessions: 1,
+                        totalOnlyTokens: 0,
+                    }],
+                },
+            },
+        }];
+
+        const renderer = await renderUsagePanel();
+        const monthLabels = renderer.root.findAllByType('Text')
+            .filter((node: any) => Array.isArray(node.props.style))
+            .map(textValue);
+
+        expect(monthLabels).toContain('9月');
+        expect(monthLabels).not.toContain('Sep');
+
+        act(() => renderer.unmount());
+    });
+
+    it('uses four discrete intensity levels for active heatmap days', async () => {
+        mocks.getUsageForPeriod.mockResolvedValue({ usage: [] });
+        const usageDay = (date: string, totalTokens: number) => ({
+            date,
+            inputTokens: totalTokens,
+            cachedInputTokens: 0,
+            outputTokens: 0,
+            reasoningOutputTokens: 0,
+            totalTokens,
+            tokenCountEvents: 1,
+            sessions: 1,
+            totalOnlyTokens: 0,
+        });
+        mocks.machines = [{
+            daemonState: {
+                codexUsage: {
+                    source: 'codex-session-jsonl',
+                    scannedAt: Date.UTC(2026, 7, 30, 12),
+                    days: [
+                        usageDay('2026-08-26', 100),
+                        usageDay('2026-08-27', 1),
+                        usageDay('2026-08-28', 9),
+                        usageDay('2026-08-29', 36),
+                        usageDay('2026-08-30', 100),
+                    ],
+                },
+            },
+        }];
+
+        const renderer = await renderUsagePanel();
+        const opacities = ['2026-08-27', '2026-08-28', '2026-08-29', '2026-08-26'].map((date) => {
+            const cell = renderer.root.find((node: any) => node.props.testID === `codex-usage-day-${date}`);
+            const styles = cell.props.style({ pressed: false });
+            return styles.find((style: any) => typeof style?.opacity === 'number')?.opacity;
+        });
+
+        expect(opacities).toEqual([0.28, 0.5, 0.72, 1]);
 
         act(() => renderer.unmount());
     });

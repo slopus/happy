@@ -281,6 +281,37 @@ describe('collectCodexUsageSnapshot', () => {
         expect(snapshot.days.map(day => day.sessions)).toEqual([1, 1]);
     });
 
+    it('collects the latest 365 calendar days by default', async () => {
+        const codexHome = mkdtempSync(join(tmpdir(), 'codex-usage-home-'));
+        created.push(codexHome);
+
+        writeJsonl(join(codexHome, 'sessions', '2025', '08', '31', 'year-start.jsonl'), [
+            tokenCount('2025-08-31T05:00:00.000Z', {
+                input_tokens: 90,
+                cached_input_tokens: 40,
+                output_tokens: 10,
+                total_tokens: 100,
+            }),
+        ]);
+        writeJsonl(join(codexHome, 'sessions', '2026', '08', '30', 'today.jsonl'), [
+            tokenCount('2026-08-30T05:00:00.000Z', {
+                input_tokens: 180,
+                cached_input_tokens: 100,
+                output_tokens: 20,
+                total_tokens: 200,
+            }),
+        ]);
+
+        const snapshot = await collectCodexUsageSnapshot({
+            codexHome,
+            now: new Date('2026-08-30T12:00:00.000Z'),
+            timeZone: 'UTC',
+        });
+
+        expect(snapshot.days.map(day => day.date)).toEqual(['2025-08-31', '2026-08-30']);
+        expect(snapshot.days.map(day => day.totalTokens)).toEqual([100, 200]);
+    });
+
     it('includes in-range events from a session file created before the visible window', async () => {
         const codexHome = mkdtempSync(join(tmpdir(), 'codex-usage-home-'));
         created.push(codexHome);

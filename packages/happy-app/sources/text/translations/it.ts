@@ -1415,7 +1415,7 @@ export const it: TranslationStructure = {
         codexUsageNoData: 'Nessun dato locale di utilizzo Codex trovato',
         codexUsageWaitingForDaemon: 'In attesa del report di utilizzo del daemon',
         codexUsageFooter: 'Legge i log locali delle sessioni Codex su questa macchina. Eseguire questo raccoglitore non invia richieste al modello.',
-        codexUsageHeatmap: 'Attività (ultimi 14 giorni)',
+        codexUsageHeatmap: 'Attività nell\'ultimo anno',
         codexUsageHeatmapLegend: 'Meno → Più',
         codexUsageHeatmapDay: ({ date, tokens, sessions }: { date: string; tokens: string; sessions: number }) => `${date}: ${tokens} token · ${sessions} sessioni`,
         activeSessions: ({ count }: { count: number }) => `Sessioni attive (${count})`,

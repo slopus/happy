@@ -1417,7 +1417,7 @@ export const ca: TranslationStructure = {
         codexUsageNoData: 'No s\'han trobat dades locals d\'ús de Codex',
         codexUsageWaitingForDaemon: 'Esperant l\'informe d\'ús del daemon',
         codexUsageFooter: 'Llegeix els registres locals de sessions de Codex en aquesta màquina. Executar aquest recopilador no fa peticions al model.',
-        codexUsageHeatmap: 'Activitat (últims 14 dies)',
+        codexUsageHeatmap: 'Activitat de l\'últim any',
         codexUsageHeatmapLegend: 'Menys → Més',
         codexUsageHeatmapDay: ({ date, tokens, sessions }: { date: string; tokens: string; sessions: number }) => `${date}: ${tokens} tokens · ${sessions} sessions`,
         activeSessions: ({ count }: { count: number }) => `Sessions actives (${count})`,

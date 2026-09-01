@@ -1418,7 +1418,7 @@ export const ja: TranslationStructure = {
         codexUsageNoData: 'ローカルの Codex 使用量データが見つかりません',
         codexUsageWaitingForDaemon: 'デーモンからの使用量レポートを待機中',
         codexUsageFooter: 'このマシン上のローカル Codex セッションログを読み取ります。この収集処理はモデルリクエストを送信しません。',
-        codexUsageHeatmap: 'アクティビティ（過去14日間）',
+        codexUsageHeatmap: '過去1年間のアクティビティ',
         codexUsageHeatmapLegend: '少ない → 多い',
         codexUsageHeatmapDay: ({ date, tokens, sessions }: { date: string; tokens: string; sessions: number }) => `${date}: ${tokens} トークン · ${sessions} セッション`,
         activeSessions: ({ count }: { count: number }) => `アクティブセッション (${count})`,

@@ -1421,7 +1421,7 @@ export const ru: TranslationStructure = {
         codexUsageNoData: 'Локальные данные использования Codex не найдены',
         codexUsageWaitingForDaemon: 'Ожидание отчета об использовании от демона',
         codexUsageFooter: 'Читает локальные журналы сессий Codex на этой машине. Запуск этого сборщика не отправляет запросы к модели.',
-        codexUsageHeatmap: 'Активность за последние 14 дней',
+        codexUsageHeatmap: 'Активность за последний год',
         codexUsageHeatmapLegend: 'Меньше → Больше',
         codexUsageHeatmapDay: ({ date, tokens, sessions }: { date: string; tokens: string; sessions: number }) => `${date}: ${tokens} токенов · ${sessions} сесс.`,
         activeSessions: ({ count }: { count: number }) => `Активные сессии (${count})`,
