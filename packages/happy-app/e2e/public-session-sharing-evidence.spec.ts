@@ -329,7 +329,7 @@ async function elementStyleSignature(page: Page, testID: string) {
 function expectSameLayout<T extends { backgroundColor: string }>(actual: T, expected: T): void {
     const { backgroundColor: actualBackgroundColor, ...actualLayout } = actual;
     const { backgroundColor: expectedBackgroundColor, ...expectedLayout } = expected;
-    expect(actualLayout).toEqual(expectedLayout);
+    expect(actualLayout as Record<string, unknown>).toEqual(expectedLayout as Record<string, unknown>);
     expect(actualBackgroundColor).toMatch(/^rgba?\(/);
     expect(expectedBackgroundColor).toMatch(/^rgba?\(/);
 }
