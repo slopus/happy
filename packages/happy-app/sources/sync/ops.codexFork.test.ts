@@ -41,13 +41,14 @@ describe('codex fork ops', () => {
                 permissionMode: 'yolo',
                 effort: 'xhigh',
             },
+            { timeoutMs: 140_000 },
         );
     });
 
     it('forwards ask API environment variables when spawning a session', async () => {
         machineRPC.mockResolvedValue({ type: 'success', sessionId: 'happy-ask' });
 
-        const { machineSpawnNewSession } = await import('./ops');
+        const { machineSpawnNewSession, SESSION_START_RPC_TIMEOUT_MS } = await import('./ops');
         const result = await machineSpawnNewSession({
             machineId: 'machine-1',
             directory: '/tmp/project',
@@ -69,6 +70,7 @@ describe('codex fork ops', () => {
                     HAPPY_DEEPSEEK_BASE_URL: 'https://api.deepseek.com',
                 },
             }),
+            { timeoutMs: SESSION_START_RPC_TIMEOUT_MS },
         );
     });
 
@@ -88,6 +90,21 @@ describe('codex fork ops', () => {
         });
     });
 
+    it('normalizes a legacy RPC error envelope when resuming a session', async () => {
+        machineRPC.mockResolvedValue({ error: 'Session webhook timeout after 90 seconds' });
+
+        const { machineResumeSession } = await import('./ops');
+        const result = await machineResumeSession({
+            machineId: 'machine-1',
+            sessionId: 'happy-source',
+        });
+
+        expect(result).toEqual({
+            type: 'error',
+            errorMessage: 'Session webhook timeout after 90 seconds',
+        });
+    });
+
     it('forks a full Codex thread and spawns a Codex session resumed to the new thread', async () => {
         machineRPC.mockImplementation(async (_machineId: string, method: string) => {
             if (method === 'codex-fork-thread') {
@@ -99,7 +116,7 @@ describe('codex fork ops', () => {
             throw new Error(`unexpected method ${method}`);
         });
 
-        const { forkAndSpawn } = await import('./ops');
+        const { forkAndSpawn, SESSION_START_RPC_TIMEOUT_MS } = await import('./ops');
         const result = await forkAndSpawn({
             kind: 'codex',
             sessionId: 'happy-source',
@@ -125,6 +142,7 @@ describe('codex fork ops', () => {
                 resumeCodexThreadId: 'thread-forked',
                 parentSessionId: 'happy-source',
             }),
+            { timeoutMs: SESSION_START_RPC_TIMEOUT_MS },
         );
         expect(refreshSessions).toHaveBeenCalledTimes(1);
     });
@@ -140,7 +158,7 @@ describe('codex fork ops', () => {
             throw new Error(`unexpected method ${method}`);
         });
 
-        const { forkAndSpawn } = await import('./ops');
+        const { forkAndSpawn, SESSION_START_RPC_TIMEOUT_MS } = await import('./ops');
         const result = await forkAndSpawn({
             kind: 'codex',
             sessionId: 'happy-source',
@@ -165,6 +183,7 @@ describe('codex fork ops', () => {
                 resumeCodexThreadId: 'thread-moved',
                 parentSessionId: 'happy-source',
             }),
+            { timeoutMs: SESSION_START_RPC_TIMEOUT_MS },
         );
     });
 
@@ -179,7 +198,7 @@ describe('codex fork ops', () => {
             throw new Error(`unexpected method ${method}`);
         });
 
-        const { forkAndSpawn } = await import('./ops');
+        const { forkAndSpawn, SESSION_START_RPC_TIMEOUT_MS } = await import('./ops');
         await forkAndSpawn({
             kind: 'claude',
             sessionId: 'happy-source',
@@ -207,6 +226,7 @@ describe('codex fork ops', () => {
                 resumeClaudeSessionId: 'claude-moved',
                 parentSessionId: 'happy-source',
             }),
+            { timeoutMs: SESSION_START_RPC_TIMEOUT_MS },
         );
     });
 
@@ -221,7 +241,7 @@ describe('codex fork ops', () => {
             throw new Error(`unexpected method ${method}`);
         });
 
-        const { forkAndSpawn } = await import('./ops');
+        const { forkAndSpawn, SESSION_START_RPC_TIMEOUT_MS } = await import('./ops');
         const result = await forkAndSpawn({
             kind: 'codex',
             sessionId: 'happy-source',
@@ -249,13 +269,14 @@ describe('codex fork ops', () => {
                 resumeCodexThreadId: 'thread-cut',
                 forkedFromMessageId: 'message-2',
             }),
+            { timeoutMs: SESSION_START_RPC_TIMEOUT_MS },
         );
     });
 
     it('forwards effort through the resume session RPC', async () => {
         machineRPC.mockResolvedValue({ type: 'success', sessionId: 'happy-resumed' });
 
-        const { machineResumeSession } = await import('./ops');
+        const { machineResumeSession, SESSION_START_RPC_TIMEOUT_MS } = await import('./ops');
         const result = await machineResumeSession({
             machineId: 'machine-1',
             sessionId: 'happy-source',
@@ -274,6 +295,7 @@ describe('codex fork ops', () => {
                 permissionMode: 'yolo',
                 effort: 'xhigh',
             },
+            { timeoutMs: SESSION_START_RPC_TIMEOUT_MS },
         );
     });
 });

@@ -49,11 +49,22 @@ export interface SyncSocketState {
 
 export type SyncSocketListener = (state: SyncSocketState) => void;
 
+export const DEFAULT_RPC_ACK_TIMEOUT_MS = 60_000;
+
+export interface RpcCallOptions {
+    timeoutMs?: number;
+}
+
+interface RawEncryption {
+    encryptRaw(data: unknown): Promise<string>;
+    decryptRaw(encrypted: string): Promise<unknown>;
+}
+
 //
 // Main Class
 //
 
-class ApiSocket {
+export class ApiSocket {
 
     // State
     private socket: Socket | null = null;
@@ -143,41 +154,37 @@ class ApiSocket {
     /**
      * RPC call for sessions - uses session-specific encryption
      */
-    async sessionRPC<R, A>(sessionId: string, method: string, params: A): Promise<R> {
-        const sessionEncryption = this.encryption!.getSessionEncryption(sessionId);
-        if (!sessionEncryption) {
-            throw new Error(`Session encryption not found for ${sessionId}`);
-        }
-        
-        const result = await this.socket!.emitWithAck('rpc-call', {
-            method: `${sessionId}:${method}`,
-            params: await sessionEncryption.encryptRaw(params)
-        });
-        
-        if (result.ok) {
-            return await sessionEncryption.decryptRaw(result.result) as R;
-        }
-        throw new Error(result.error || 'RPC call failed');
+    async sessionRPC<R, A>(sessionId: string, method: string, params: A, options?: RpcCallOptions): Promise<R> {
+        return this.encryptedRPC<R, A>(
+            `${sessionId}:${method}`,
+            params,
+            () => {
+                const encryption = this.encryption?.getSessionEncryption(sessionId);
+                if (!encryption) {
+                    throw new Error(`Session encryption not found for ${sessionId}`);
+                }
+                return encryption;
+            },
+            options,
+        );
     }
 
     /**
      * RPC call for machines - uses legacy/global encryption (for now)
      */
-    async machineRPC<R, A>(machineId: string, method: string, params: A): Promise<R> {
-        const machineEncryption = this.encryption!.getMachineEncryption(machineId);
-        if (!machineEncryption) {
-            throw new Error(`Machine encryption not found for ${machineId}`);
-        }
-
-        const result = await this.socket!.emitWithAck('rpc-call', {
-            method: `${machineId}:${method}`,
-            params: await machineEncryption.encryptRaw(params)
-        });
-
-        if (result.ok) {
-            return await machineEncryption.decryptRaw(result.result) as R;
-        }
-        throw new Error(result.error || 'RPC call failed');
+    async machineRPC<R, A>(machineId: string, method: string, params: A, options?: RpcCallOptions): Promise<R> {
+        return this.encryptedRPC<R, A>(
+            `${machineId}:${method}`,
+            params,
+            () => {
+                const encryption = this.encryption?.getMachineEncryption(machineId);
+                if (!encryption) {
+                    throw new Error(`Machine encryption not found for ${machineId}`);
+                }
+                return encryption;
+            },
+            options,
+        );
     }
 
     /**
@@ -245,6 +252,47 @@ class ApiSocket {
     //
     // Private Methods
     //
+
+    private async encryptedRPC<R, A>(
+        method: string,
+        params: A,
+        getEncryption: () => RawEncryption,
+        options?: RpcCallOptions,
+    ): Promise<R> {
+        const rpcSocket = this.socket;
+        if (!rpcSocket?.connected) {
+            throw new Error('Socket not connected');
+        }
+
+        const encryption = getEncryption();
+        const encryptedParams = await encryption.encryptRaw(params);
+
+        if (this.socket !== rpcSocket || !rpcSocket.connected) {
+            throw new Error('Socket not connected');
+        }
+
+        const timeoutMs = options?.timeoutMs ?? DEFAULT_RPC_ACK_TIMEOUT_MS;
+        const result: unknown = await rpcSocket.timeout(timeoutMs).emitWithAck('rpc-call', {
+            method,
+            params: encryptedParams,
+        });
+
+        if (
+            result !== null
+            && typeof result === 'object'
+            && (result as { ok?: unknown }).ok === true
+            && typeof (result as { result?: unknown }).result === 'string'
+        ) {
+            return await encryption.decryptRaw((result as { result: string }).result) as R;
+        }
+
+        if (result !== null && typeof result === 'object' && (result as { ok?: unknown }).ok === false) {
+            const error = (result as { error?: unknown }).error;
+            throw new Error(typeof error === 'string' ? error : 'RPC call failed');
+        }
+
+        throw new Error('RPC call failed');
+    }
 
     private isVerboseLogging(): boolean {
         try {

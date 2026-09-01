@@ -66,9 +66,9 @@ jobs:
             echo "@wangjs-jacky/paws@${{ steps.pkg.outputs.version }} is not on npm yet."
           fi
 
-      - name: Build package
+      - name: Test package
         if: steps.npm.outputs.exists == 'false'
-        run: pnpm --filter @wangjs-jacky/paws build
+        run: pnpm --filter @wangjs-jacky/paws test
 
       - name: Pack package
         if: steps.npm.outputs.exists == 'false'
@@ -84,6 +84,22 @@ jobs:
             exit 1
           fi
           echo "tarball=${TARBALL}" >> "$GITHUB_OUTPUT"
+
+      - name: Smoke test packed package
+        if: steps.npm.outputs.exists == 'false'
+        shell: bash
+        run: |
+          set -euo pipefail
+          SMOKE_DIR="$(mktemp -d)"
+          npm install --prefix "$SMOKE_DIR" --ignore-scripts "${{ steps.pack.outputs.tarball }}"
+          VERSION_OUTPUT="$("$SMOKE_DIR/node_modules/.bin/paws" --version 2>&1)"
+          EXPECTED_VERSION="happy version: ${{ steps.pkg.outputs.version }}"
+          printf '%s\n' "$VERSION_OUTPUT"
+          if [ "$VERSION_OUTPUT" != "$EXPECTED_VERSION" ]; then
+            echo "::error::Installed paws reported '$VERSION_OUTPUT'; expected '$EXPECTED_VERSION'."
+            exit 1
+          fi
+          echo "Verified installed paws reports '$EXPECTED_VERSION'."
 
       - name: Publish package
         if: steps.npm.outputs.exists == 'false'
