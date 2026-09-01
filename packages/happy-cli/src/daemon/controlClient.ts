@@ -110,12 +110,11 @@ export async function spawnDaemonSession(directory: string, sessionId?: string):
 }
 
 export async function stopDaemonHttp(state: DaemonLocallyPersistedState): Promise<void> {
-  if (!state.ownerToken) {
-    throw new Error('Refusing to stop a daemon without generation ownership proof');
-  }
-  const result = await daemonPost('/stop', {
-    expectedOwnerToken: state.ownerToken,
-  }, state);
+  const result = await daemonPost(
+    '/stop',
+    state.ownerToken ? { expectedOwnerToken: state.ownerToken } : {},
+    state,
+  );
   if (result?.error) {
     throw new Error(result.error);
   }
@@ -246,8 +245,21 @@ export async function stopDaemon(expectedState?: DaemonLocallyPersistedState) {
       return;
     }
     if (!state.ownerToken) {
-      logger.warn('Legacy daemon state has no generation proof; refusing automatic stop. Stop the old daemon manually before retrying.');
-      return;
+      const stableBefore = await readDaemonState();
+      if (!sameLegacyDaemonSnapshot(state, stableBefore)) {
+        logger.warn('Legacy daemon ownership changed before identity verification; refusing automatic stop.');
+        return;
+      }
+      const evidence = await daemonPost('/list', {}, state);
+      if (!isLegacyDaemonListEvidence(evidence)) {
+        logger.warn('Legacy daemon did not provide positive HTTP identity evidence; refusing automatic stop.');
+        return;
+      }
+      const stableAfter = await readDaemonState();
+      if (!sameLegacyDaemonSnapshot(state, stableAfter)) {
+        logger.warn('Legacy daemon ownership changed during identity verification; refusing automatic stop.');
+        return;
+      }
     }
 
     logger.debug(`Stopping daemon with PID ${state.pid}`);
@@ -276,9 +288,38 @@ async function waitForProcessDeath(pid: number, timeout: number): Promise<void> 
     try {
       process.kill(pid, 0);
       await new Promise(resolve => setTimeout(resolve, 100));
-    } catch {
-      return; // Process is dead
+    } catch (error: any) {
+      if (error?.code === 'ESRCH') {
+        return; // Process is affirmatively dead
+      }
+      throw error;
     }
   }
   throw new Error('Process did not die within timeout');
+}
+
+function isLegacyDaemonListEvidence(value: unknown): boolean {
+  if (!value || typeof value !== 'object' || !Array.isArray((value as any).children)) {
+    return false;
+  }
+  return (value as any).children.every((child: unknown) => {
+    if (!child || typeof child !== 'object') return false;
+    const candidate = child as Record<string, unknown>;
+    return typeof candidate.startedBy === 'string'
+      && typeof candidate.happySessionId === 'string'
+      && Number.isSafeInteger(candidate.pid)
+      && (candidate.pid as number) > 0;
+  });
+}
+
+function sameLegacyDaemonSnapshot(
+  expected: DaemonLocallyPersistedState,
+  observed: DaemonLocallyPersistedState | null,
+): boolean {
+  return observed !== null
+    && !observed.ownerToken
+    && observed.pid === expected.pid
+    && observed.httpPort === expected.httpPort
+    && observed.startTime === expected.startTime
+    && observed.startedWithCliVersion === expected.startedWithCliVersion;
 }

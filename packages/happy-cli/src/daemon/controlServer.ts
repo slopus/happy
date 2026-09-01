@@ -199,7 +199,7 @@ export function startDaemonControlServer({
     typed.post('/stop', {
       schema: {
         body: z.object({
-          expectedOwnerToken: z.string()
+          expectedOwnerToken: z.string().optional()
         }),
         response: {
           200: z.object({
@@ -211,7 +211,10 @@ export function startDaemonControlServer({
         }
       }
     }, async (request, reply) => {
-      if (request.body.expectedOwnerToken !== ownerToken) {
+      if (
+        request.body.expectedOwnerToken !== undefined
+        && request.body.expectedOwnerToken !== ownerToken
+      ) {
         logger.debug('[CONTROL SERVER] Refusing stop request for a different daemon generation');
         reply.code(409);
         return { error: 'Daemon generation changed; stop request refused' };

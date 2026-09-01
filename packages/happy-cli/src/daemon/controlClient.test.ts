@@ -148,24 +148,72 @@ describe('checkIfDaemonRunningAndCleanupStaleState', () => {
     )
   })
 
-  it('refuses to stop a legacy snapshot that has no generation token', async () => {
+  it('gracefully stops a live legacy owner after stable HTTP identity evidence', async () => {
     vi.useFakeTimers()
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      json: vi.fn().mockResolvedValue({ status: 'stopping' }),
-    })
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: vi.fn().mockResolvedValue({ children: [] }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: vi.fn().mockResolvedValue({ status: 'stopping' }),
+      })
     vi.stubGlobal('fetch', fetchMock)
-
-    const stopPromise = stopDaemon({
+    const legacyState = {
       pid: 1111,
       httpPort: 4111,
       startTime: 'legacy',
       startedWithCliVersion: '1.0.0',
-    })
+    }
+    mocks.mockReadDaemonState.mockResolvedValue(legacyState)
+
+    const stopPromise = stopDaemon(legacyState)
     await vi.advanceTimersByTimeAsync(2100)
     await stopPromise
 
+    expect(fetchMock).toHaveBeenNthCalledWith(1, 'http://127.0.0.1:4111/list', expect.anything())
+    expect(fetchMock).toHaveBeenNthCalledWith(2, 'http://127.0.0.1:4111/stop', expect.objectContaining({
+      body: JSON.stringify({}),
+    }))
+    expect(process.kill).not.toHaveBeenCalledWith(1111, 'SIGKILL')
+  })
+
+  it('refuses a legacy stop when the fixed snapshot changes before the request', async () => {
+    const legacyState = {
+      pid: 1111,
+      httpPort: 4111,
+      startTime: 'legacy',
+      startedWithCliVersion: '1.0.0',
+    }
+    mocks.mockReadDaemonState.mockResolvedValue({ ...legacyState, pid: 2222 })
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+
+    await stopDaemon(legacyState)
+
     expect(fetchMock).not.toHaveBeenCalled()
+    expect(process.kill).not.toHaveBeenCalledWith(1111, 'SIGKILL')
+  })
+
+  it('refuses a legacy stop when a 2xx response has the wrong list shape', async () => {
+    const legacyState = {
+      pid: 1111,
+      httpPort: 4111,
+      startTime: 'legacy',
+      startedWithCliVersion: '1.0.0',
+    }
+    mocks.mockReadDaemonState.mockResolvedValue(legacyState)
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: vi.fn().mockResolvedValue({}),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await stopDaemon(legacyState)
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock).toHaveBeenCalledWith('http://127.0.0.1:4111/list', expect.anything())
     expect(process.kill).not.toHaveBeenCalledWith(1111, 'SIGKILL')
   })
 })
