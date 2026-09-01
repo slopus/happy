@@ -23,7 +23,7 @@ export type ToolCallId = string;
  * These messages are forwarded to the Happy server and mobile app.
  */
 export type AgentMessage =
-  | { type: 'model-output'; textDelta?: string; fullText?: string; flush?: boolean }
+  | { type: 'model-output'; textDelta?: string; fullText?: string }
   | { type: 'status'; status: 'starting' | 'running' | 'idle' | 'stopped' | 'error'; detail?: string }
   | { type: 'tool-call'; toolName: string; args: Record<string, unknown>; callId: ToolCallId }
   | { type: 'tool-result'; toolName: string; result: unknown; callId: ToolCallId }

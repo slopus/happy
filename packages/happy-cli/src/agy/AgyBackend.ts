@@ -1,18 +1,9 @@
 /**
  * Agy AgentBackend Implementation
  *
- * Custom AgentBackend that drives the agy (Antigravity) CLI. Unlike the ACP-based
- * backends, agy has no streaming-event protocol — its only non-interactive surface
- * is `agy --print "<prompt>"`, which streams the final answer as plain text and
- * exits. So this backend spawns one `agy --print` process per turn and maps:
- *
- *   spawn            → { type: 'status', status: 'running' }
- *   stdout chunk     → { type: 'model-output', textDelta }
- *   exit code 0      → { type: 'status', status: 'idle' }
- *   exit code != 0   → { type: 'status', status: 'error', detail }
- *
- * There are no tool-call or permission events: print mode is one-shot and governed
- * by the CLI flags (see cliArgs.ts) plus agy's own settings.json.
+ * Agy's print-mode stream contains response fragments, a complete terminal
+ * response, and tool lifecycle records. Happy needs the complete response as
+ * one message and tool calls translated to its native card schemas.
  */
 
 import { spawn, type ChildProcess } from 'node:child_process';
@@ -48,15 +39,115 @@ export interface AgyBackendOptions {
   resolveConversationId?: (cwd: string) => string | null;
 }
 
-type AgyStepUpdate = {
-  conversation_id?: unknown;
-  step_index?: unknown;
-  state?: unknown;
-  step_type?: unknown;
-  text_delta?: unknown;
-  tool_name?: unknown;
-  tool_info?: { parameters?: unknown };
+type DisplayTool = {
+  toolName: string;
+  args: Record<string, unknown>;
 };
+
+const MAX_STREAM_RECORD_BYTES = 16 * 1024 * 1024;
+const MAX_TOOL_CALLS_PER_TURN = 512;
+const MAX_TOOL_NAME_BYTES = 128;
+const MAX_TOOL_STEP_INDEX = 1_000_000;
+const MAX_TOOL_ARG_BYTES = 4096;
+
+const CREDENTIAL_CARRIER_PATTERNS = [
+  /\b(?:Bearer|Basic)\s+\S+/i,
+  /\b[a-z0-9_-]*(?:authorization|cookie|credential|password|private[-_]?key|secret|token|api[-_]?key)[a-z0-9_-]*["']?\s*(?:=|:)\s*\S+/i,
+  /(?:^|\s)--?[a-z0-9_-]*(?:authorization|cookie|credential|password|private[-_]?key|secret|token|api[-_]?key)[a-z0-9_-]*\s+\S+/i,
+  /(?:^|\s)(?:-u|--user)(?:=|\s)\s*\S+/i,
+  /[a-z][a-z0-9+.-]*:\/\/[^/\s@]+@/i,
+];
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+function truncateUtf8(value: string): string {
+  if (Buffer.byteLength(value, 'utf8') <= MAX_TOOL_ARG_BYTES) return value;
+  const prefix = Buffer.from(value)
+    .subarray(0, MAX_TOOL_ARG_BYTES - 3)
+    .toString('utf8')
+    .replace(/\uFFFD$/, '');
+  return `${prefix}...`;
+}
+
+function safeString(value: unknown, redacted = '[redacted]'): string | undefined {
+  if (typeof value !== 'string' || value.length === 0) return undefined;
+  const truncated = truncateUtf8(value);
+  return CREDENTIAL_CARRIER_PATTERNS.some((pattern) => pattern.test(truncated))
+    ? redacted
+    : truncated;
+}
+
+function safeLine(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
+    ? value
+    : undefined;
+}
+
+function safeToolName(value: string): string {
+  if (Buffer.byteLength(value, 'utf8') > MAX_TOOL_NAME_BYTES) return 'agy_tool';
+  return /^[a-zA-Z0-9_.:-]+$/.test(value) ? value : 'agy_tool';
+}
+
+/** Copy only known scalar inputs and translate them to Happy's native cards. */
+function displayTool(toolName: string, parameters: unknown): DisplayTool {
+  const values = isPlainRecord(parameters) ? parameters : {};
+  const fallback = { toolName: safeToolName(toolName), args: {} };
+
+  switch (toolName.toLowerCase()) {
+    case 'list_dir': {
+      const path = safeString(values.DirectoryPath);
+      return { toolName: 'LS', args: path ? { path } : {} };
+    }
+    case 'view_file':
+    case 'sed_file': {
+      const filePath = safeString(values.AbsolutePath);
+      const offset = safeLine(values.StartLine);
+      const endLine = safeLine(values.EndLine);
+      const limit = offset !== undefined && endLine !== undefined && endLine >= offset
+        ? endLine - offset + 1
+        : undefined;
+      return {
+        toolName: 'Read',
+        args: {
+          ...(filePath ? { file_path: filePath } : {}),
+          ...(offset !== undefined ? { offset } : {}),
+          ...(limit !== undefined ? { limit } : {}),
+        },
+      };
+    }
+    case 'run_command': {
+      const command = safeString(values.CommandLine, '[redacted command]');
+      return { toolName: 'Bash', args: command ? { command } : {} };
+    }
+    case 'grep_search': {
+      const pattern = safeString(values.Query);
+      const path = safeString(values.SearchPath);
+      return {
+        toolName: 'Grep',
+        args: { ...(pattern ? { pattern } : {}), ...(path ? { path } : {}) },
+      };
+    }
+    case 'find_by_name': {
+      const pattern = safeString(values.Pattern);
+      const path = safeString(values.SearchDirectory);
+      return {
+        toolName: 'Glob',
+        args: { ...(pattern ? { pattern } : {}), ...(path ? { path } : {}) },
+      };
+    }
+    case 'open_browser_url':
+    case 'read_url_content': {
+      const url = safeString(values.Url);
+      return { toolName: 'WebFetch', args: url ? { url } : {} };
+    }
+    default:
+      return fallback;
+  }
+}
 
 /** Parse an agy duration string ("10m", "30s", "1h") to milliseconds; defaults to 10m. */
 function parsePrintTimeoutMs(value: string): number {
@@ -78,6 +169,7 @@ export class AgyBackend implements AgentBackend {
   private model?: string;
   private conversationId: string | null = null;
   private child: ChildProcess | null = null;
+  private turnSequence = 0;
 
   constructor(opts: AgyBackendOptions) {
     this.cwd = opts.cwd;
@@ -109,6 +201,7 @@ export class AgyBackend implements AgentBackend {
   }
 
   async sendPrompt(_sessionId: SessionId, prompt: string): Promise<void> {
+    const turnNumber = ++this.turnSequence;
     const args = buildAgyArgs({
       prompt,
       model: this.model,
@@ -137,38 +230,117 @@ export class AgyBackend implements AgentBackend {
         stdio: ['ignore', 'pipe', 'pipe'],
       });
       this.child = child;
+
       let streamBuffer = '';
-      let streamConversationId: string | null = null;
+      let discardingOversizedRecord = false;
       let streamFailure: string | null = null;
+      let resultSeen = false;
+      let stderrBytes = 0;
+      const startedToolCalls = new Set<string>();
+      const endedToolCalls = new Set<string>();
+
       const handleRecord = (line: string) => {
-        let record: { event?: unknown; conversation_id?: unknown; step_update?: AgyStepUpdate; result?: { status?: unknown } };
+        let record: unknown;
         try {
-          record = JSON.parse(line) as typeof record;
+          record = JSON.parse(line) as unknown;
         } catch {
           this.log(`ignored malformed agy stream-json record (${Buffer.byteLength(line, 'utf8')} bytes)`);
           return;
         }
-        if (record.event === 'init' && typeof record.conversation_id === 'string') {
-          streamConversationId = record.conversation_id;
+        if (!isPlainRecord(record)) {
+          this.log(`ignored non-object agy stream-json record (${Buffer.byteLength(line, 'utf8')} bytes)`);
           return;
         }
-        if (record.event === 'result' && record.result?.status !== 'SUCCESS') {
-          streamFailure = `agy stream result status ${String(record.result?.status)}`;
+
+        if (record.event === 'init') return;
+        if (record.event === 'result') {
+          if (resultSeen) return;
+          resultSeen = true;
+          const result = isPlainRecord(record.result) ? record.result : {};
+          if (result.status !== 'SUCCESS') {
+            streamFailure = 'agy stream reported failure';
+          } else if (typeof result.response === 'string' && result.response) {
+            this.emit({ type: 'model-output', textDelta: result.response });
+          }
           return;
         }
-        if (record.event !== 'step_update' || !record.step_update) return;
+        if (record.event !== 'step_update' || !isPlainRecord(record.step_update)) return;
+
         const update = record.step_update;
-        if (typeof update.conversation_id === 'string') streamConversationId = update.conversation_id;
-        if (update.step_type === 'agent_response' && typeof update.text_delta === 'string' && update.text_delta) {
-          this.emit({ type: 'model-output', textDelta: update.text_delta, flush: true });
+        // The terminal result contains the same final answer intact.
+        if (update.step_type === 'agent_response') return;
+        if (
+          update.step_type !== 'tool'
+          || typeof update.step_index !== 'number'
+          || !Number.isSafeInteger(update.step_index)
+          || update.step_index < 0
+          || update.step_index > MAX_TOOL_STEP_INDEX
+          || typeof update.tool_name !== 'string'
+        ) return;
+
+        const callId = `agy:${turnNumber}:${update.step_index}`;
+        const toolInfo = isPlainRecord(update.tool_info) ? update.tool_info : {};
+        const display = displayTool(update.tool_name, toolInfo.parameters);
+
+        if (update.state === 'ACTIVE') {
+          if (startedToolCalls.has(callId) || startedToolCalls.size >= MAX_TOOL_CALLS_PER_TURN) return;
+          startedToolCalls.add(callId);
+          this.emit({ type: 'tool-call', ...display, callId });
           return;
         }
-        if (update.step_type !== 'tool' || typeof update.step_index !== 'number' || typeof update.tool_name !== 'string') return;
-        const callId = `${streamConversationId ?? 'agy'}:${update.step_index}`;
-        if (update.state === 'ACTIVE') {
-          this.emit({ type: 'tool-call', toolName: update.tool_name, callId, args: {} });
-        } else if (update.state === 'DONE' || update.state === 'ERROR') {
-          this.emit({ type: 'tool-result', toolName: update.tool_name, callId, result: { status: update.state } });
+
+        if (update.state !== 'DONE' && update.state !== 'ERROR') return;
+        if (endedToolCalls.has(callId)) return;
+        if (!startedToolCalls.has(callId)) {
+          if (startedToolCalls.size >= MAX_TOOL_CALLS_PER_TURN) return;
+          startedToolCalls.add(callId);
+          this.emit({ type: 'tool-call', ...display, callId });
+        }
+        endedToolCalls.add(callId);
+        this.emit({
+          type: 'tool-result',
+          toolName: display.toolName,
+          callId,
+          result: { status: update.state },
+        });
+      };
+
+      const handleStdoutChunk = (chunk: string) => {
+        let remaining = chunk;
+        while (remaining) {
+          if (discardingOversizedRecord) {
+            const newline = remaining.indexOf('\n');
+            if (newline === -1) return;
+            discardingOversizedRecord = false;
+            remaining = remaining.slice(newline + 1);
+            continue;
+          }
+
+          const newline = remaining.indexOf('\n');
+          if (newline === -1) {
+            const combinedBytes = Buffer.byteLength(streamBuffer, 'utf8')
+              + Buffer.byteLength(remaining, 'utf8');
+            if (combinedBytes > MAX_STREAM_RECORD_BYTES) {
+              this.log(`ignored oversized agy stream-json record (>${MAX_STREAM_RECORD_BYTES} bytes)`);
+              streamBuffer = '';
+              discardingOversizedRecord = true;
+            } else {
+              streamBuffer += remaining;
+            }
+            return;
+          }
+
+          const prefix = remaining.slice(0, newline);
+          const recordBytes = Buffer.byteLength(streamBuffer, 'utf8')
+            + Buffer.byteLength(prefix, 'utf8');
+          if (recordBytes > MAX_STREAM_RECORD_BYTES) {
+            this.log(`ignored oversized agy stream-json record (${recordBytes} bytes)`);
+          } else {
+            const record = streamBuffer + prefix;
+            if (record.trim()) handleRecord(record);
+          }
+          streamBuffer = '';
+          remaining = remaining.slice(newline + 1);
         }
       };
 
@@ -186,25 +358,18 @@ export class AgyBackend implements AgentBackend {
       };
 
       child.stdout?.setEncoding('utf8');
-      child.stdout?.on('data', (chunk: string) => {
-        streamBuffer += chunk;
-        const records = streamBuffer.split('\n');
-        streamBuffer = records.pop() ?? '';
-        for (const record of records) if (record.trim()) handleRecord(record);
-      });
+      child.stdout?.on('data', handleStdoutChunk);
 
       child.stderr?.setEncoding('utf8');
       child.stderr?.on('data', (chunk: string) => {
-        const text = chunk.trimEnd();
-        if (text) {
-          this.log(`stderr: ${text}`);
-        }
+        stderrBytes += Buffer.byteLength(chunk, 'utf8');
       });
 
       child.on('error', (err: Error) => {
         if (settled) return;
         settled = true;
         cleanup();
+        if (stderrBytes > 0) this.log(`agy stderr suppressed (${stderrBytes} bytes)`);
         const detail = (err as NodeJS.ErrnoException).code === 'ENOENT'
           ? `agy executable not found. Install the Antigravity CLI, or set HAPPY_AGY_PATH to its absolute path (tried 'agy' on PATH and ~/.local/bin/agy).`
           : err.message;
@@ -216,7 +381,11 @@ export class AgyBackend implements AgentBackend {
         if (settled) return;
         settled = true;
         cleanup();
-        if (streamBuffer.trim()) this.log(`ignored unterminated agy stream-json record (${Buffer.byteLength(streamBuffer, 'utf8')} bytes)`);
+        if (stderrBytes > 0) this.log(`agy stderr suppressed (${stderrBytes} bytes)`);
+        if (streamBuffer.trim()) {
+          this.log(`ignored unterminated agy stream-json record (${Buffer.byteLength(streamBuffer, 'utf8')} bytes)`);
+        }
+
         // Pin the conversation our first turn created so later turns resume it.
         // Once pinned, never re-read the cache: another session in the same cwd
         // may have updated it since, and adopting that id would cross-resume.
@@ -236,11 +405,12 @@ export class AgyBackend implements AgentBackend {
           }
         }
 
-        if (code === 0 && !streamFailure) {
+        const detail = streamFailure
+          ?? (code === 0 ? null : `agy exited with code ${code ?? 'null'}`);
+        if (!detail) {
           this.emit({ type: 'status', status: 'idle' });
           resolve();
         } else {
-          const detail = streamFailure ?? `agy exited with code ${code ?? 'null'}`;
           this.emit({ type: 'status', status: 'error', detail });
           reject(new Error(detail));
         }

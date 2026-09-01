@@ -139,14 +139,6 @@ describe('AcpSessionManager text mapping', () => {
     expect(envelopes[1].ev).toEqual({ t: 'turn-end', status: 'completed' });
   });
 
-  it('flushes model output marked for immediate delivery', () => {
-    const mapper = new AcpSessionManager();
-    mapper.startTurn();
-    const envelopes = mapper.mapMessage({ type: 'model-output', textDelta: 'live', flush: true });
-    expect(envelopes).toHaveLength(1);
-    expect(envelopes[0].ev).toMatchObject({ t: 'text', text: 'live' });
-  });
-
   it('flushes accumulated output when thinking starts', () => {
     const mapper = new AcpSessionManager();
     mapper.startTurn();

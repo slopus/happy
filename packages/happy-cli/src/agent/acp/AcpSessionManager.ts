@@ -139,7 +139,7 @@ export class AcpSessionManager {
       const flushed = this.pendingType !== 'output' ? this.flush() : [];
       this.pendingType = 'output';
       this.pendingText += text;
-      return msg.flush ? [...flushed, ...this.flush()] : flushed;
+      return flushed;
     }
 
     if (msg.type === 'tool-call') {
