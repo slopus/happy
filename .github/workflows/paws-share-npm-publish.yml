@@ -138,9 +138,11 @@ jobs:
             echo 'Future versions use npm Trusted Publishing through GitHub OIDC.'
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Publish package with npm OIDC
+      - name: Publish package with npm OIDC or release-token fallback
         if: steps.registry.outputs.package-exists == 'true' && steps.registry.outputs.version-exists == 'false'
         shell: bash
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           set -euo pipefail
           npm publish '${{ steps.pack.outputs.tarball }}' \
