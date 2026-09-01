@@ -1,4 +1,4 @@
-import { expect, test, type APIRequestContext, type Page, type Route, type TestInfo } from '@playwright/test';
+import { expect, test, type APIRequestContext, type Locator, type Page, type Route, type TestInfo } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { encodeBase64, encryptLegacy } from '../../happy-cli/src/api/encryption';
 
@@ -164,7 +164,16 @@ async function appendConversation(request: APIRequestContext, sessionId: string)
                     message: {
                         role: 'assistant',
                         model: 'gpt-5.6-sol',
-                        content: [{ type: 'text', text: '已检查：这是一次不可继续输入、可随时撤销的公开快照。' }],
+                        content: [{
+                            type: 'text',
+                            text: [
+                                '已检查：这是一次不可继续输入、可随时撤销的公开快照。',
+                                ...Array.from({ length: 36 }, (_, index) => `发布检查项 ${index + 1}：公开页只展示快照内容。`),
+                                '```sh',
+                                'pnpm test -- --grep public-session-share',
+                                '```',
+                            ].join('\n\n'),
+                        }],
                     },
                     uuid: `public-share-assistant-${now}`,
                 },
@@ -245,6 +254,33 @@ async function enableToolGrouping(page: Page): Promise<void> {
     await expect(toggle).toBeChecked();
 }
 
+async function enableGinghamDark(page: Page): Promise<void> {
+    await page.emulateMedia({ colorScheme: 'dark' });
+    await page.goto(authenticatedRoute('/settings/appearance'), { waitUntil: 'domcontentloaded', timeout: 180_000 });
+    await page.getByText('Gingham', { exact: true }).click();
+    await expect.poll(() => page.locator('body').evaluate((element) => getComputedStyle(element).backgroundColor))
+        .toBe('rgb(18, 24, 33)');
+}
+
+async function expectLoadedVectorIcon(icon: Locator): Promise<void> {
+    await expect(icon).toBeVisible();
+    const signature = await icon.evaluate((element) => {
+        const style = getComputedStyle(element);
+        const rect = element.getBoundingClientRect();
+        return {
+            fontFamily: style.fontFamily,
+            fontLoaded: document.fonts.check(`${style.fontSize} ${style.fontFamily}`),
+            height: rect.height,
+            text: element.textContent ?? '',
+            width: rect.width,
+        };
+    });
+    expect(signature.text.length).toBeGreaterThan(0);
+    expect(signature.width).toBeGreaterThan(0);
+    expect(signature.height).toBeGreaterThan(0);
+    expect(signature.fontLoaded, `font was not loaded: ${signature.fontFamily}`).toBe(true);
+}
+
 async function messageStyleSignature(page: Page, testIdPrefix: 'message-user-' | 'message-agent-', text: string) {
     const message = page.locator(`[data-testid^="${testIdPrefix}"]`).filter({ hasText: text }).first();
     await expect(message).toBeVisible();
@@ -290,6 +326,14 @@ async function elementStyleSignature(page: Page, testID: string) {
     });
 }
 
+function expectSameLayout<T extends { backgroundColor: string }>(actual: T, expected: T): void {
+    const { backgroundColor: actualBackgroundColor, ...actualLayout } = actual;
+    const { backgroundColor: expectedBackgroundColor, ...expectedLayout } = expected;
+    expect(actualLayout).toEqual(expectedLayout);
+    expect(actualBackgroundColor).toMatch(/^rgba?\(/);
+    expect(expectedBackgroundColor).toMatch(/^rgba?\(/);
+}
+
 test.afterEach(async ({ page }) => {
     await page.close();
 });
@@ -299,6 +343,7 @@ test('PUBLIC-SESSION-SHARE owner publishes a complete snapshot and anonymous vie
     const sessionId = await createSession(request);
     await appendConversation(request, sessionId);
     await page.setViewportSize({ width: 1440, height: 900 });
+    await enableGinghamDark(page);
     await enableToolGrouping(page);
     await page.goto(authenticatedRoute(`/session/${sessionId}`), { waitUntil: 'domcontentloaded', timeout: 180_000 });
     await expect(page.getByTestId('session-message-input')).toBeVisible({ timeout: 180_000 });
@@ -360,28 +405,64 @@ test('PUBLIC-SESSION-SHARE owner publishes a complete snapshot and anonymous vie
     await expect(page.getByText('请确认公开分享页只展示对话正文和全部附件。', { exact: true })).toBeVisible();
     await expect(page.getByText('已检查：这是一次不可继续输入、可随时撤销的公开快照。', { exact: true })).toBeVisible();
     await expect(page.locator('video')).toBeVisible();
-    expect(await messageStyleSignature(
+    expectSameLayout(await messageStyleSignature(
         page,
         'message-user-',
         '请确认公开分享页只展示对话正文和全部附件。',
-    )).toEqual(authenticatedUserStyle);
-    expect(await messageStyleSignature(
+    ), authenticatedUserStyle);
+    expectSameLayout(await messageStyleSignature(
         page,
         'message-agent-',
         '已检查：这是一次不可继续输入、可随时撤销的公开快照。',
-    )).toEqual(authenticatedAgentStyle);
+    ), authenticatedAgentStyle);
     expect(await elementStyleSignature(page, 'media-attachment-player-generated')).toEqual(authenticatedVideoStyle);
     const publicWorkToggle = page.getByTestId('conversation-agent-work-toggle').first();
     await expect(publicWorkToggle).toBeVisible();
     await expect(page.getByTestId('conversation-tool-group-toggle')).toHaveCount(0);
     expect((await publicWorkToggle.textContent())?.trim()).toBe(authenticatedWorkLabel);
-    expect(await elementStyleSignature(page, 'conversation-agent-work-toggle')).toEqual(authenticatedWorkStyle);
+    expectSameLayout(await elementStyleSignature(page, 'conversation-agent-work-toggle'), authenticatedWorkStyle);
     await publicWorkToggle.click();
     await expect(page.getByTestId('conversation-tool-group-toggle').first()).toBeVisible();
     await publicWorkToggle.click();
     await expect(page.getByTestId('conversation-tool-group-toggle')).toHaveCount(0);
     await expect(page.getByTestId('public-session-compact-header')).toBeVisible();
-    await expect(page.getByRole('heading', { name: '[PUBLIC-SESSION-SHARE] 产品发布检查清单' })).toHaveCSS('font-size', '15px');
+    await expect(page.getByRole('heading', { name: '[PUBLIC-SESSION-SHARE] 产品发布检查清单' }))
+        .toHaveCSS('font-size', evidencePhase === 'before' ? '15px' : '22px');
+    const codeScroll = page.getByTestId('markdown-code-scroll').filter({ hasText: 'pnpm test -- --grep public-session-share' });
+    if (evidencePhase === 'before') {
+        await codeScroll.hover();
+        await expect(page.getByText('Copy', { exact: true }).last()).toBeVisible();
+        await page.screenshot({ path: evidencePath(testInfo, 'anonymous-copy-feedback'), fullPage: true });
+    } else {
+        await expectLoadedVectorIcon(page.getByTestId('public-session-header-icon'));
+        await expectLoadedVectorIcon(page.getByTestId('public-session-time-icon'));
+        await expectLoadedVectorIcon(publicWorkToggle.getByTestId('conversation-tool-summary-icon'));
+        await expectLoadedVectorIcon(publicWorkToggle.getByTestId('conversation-collapse-chevron'));
+
+        const transcript = page.getByTestId('conversation-transcript-list');
+        await transcript.evaluate((element) => {
+            element.scrollTop = 0;
+            element.dispatchEvent(new Event('scroll', { bubbles: true }));
+        });
+        const scrollButton = page.getByTestId('conversation-scroll-to-bottom');
+        await expect(scrollButton).toBeVisible();
+        await expectLoadedVectorIcon(page.getByTestId('conversation-scroll-to-bottom-icon'));
+        await scrollButton.click();
+
+        await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: new URL(publicUrl!).origin });
+        await codeScroll.hover();
+        const copyButton = page.getByTestId('markdown-code-copy').first();
+        await copyButton.focus();
+        await expect(copyButton).toBeFocused();
+        await page.keyboard.press('Enter');
+        await expect(copyButton).toHaveAttribute('aria-label', 'Copied');
+        await expect(page.getByTestId('markdown-code-copy-feedback')).toHaveAttribute('aria-live', 'polite');
+        await expect.poll(() => page.evaluate(() => navigator.clipboard.readText()))
+            .toBe('pnpm test -- --grep public-session-share');
+        await page.waitForTimeout(900);
+        await page.screenshot({ path: evidencePath(testInfo, 'anonymous-copy-feedback'), fullPage: true });
+        await expect(copyButton).toHaveAttribute('aria-label', 'Copy', { timeout: 3_000 });
+    }
     await expect(page.getByTestId('session-message-input')).toHaveCount(0);
     await expect(page.getByTestId('desktop-navigation-sidebar')).toHaveCount(0);
     await expect(page.getByTestId('desktop-right-panel')).toHaveCount(0);
