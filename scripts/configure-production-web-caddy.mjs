@@ -14,7 +14,7 @@ const PUBLIC_SHARE_CADDY_LINES = [
     '@public_session_share path /share/*',
     'header @public_session_share {',
     '    Cache-Control "no-store"',
-    `    Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' ${PRODUCTION_WEB_OSS_ORIGIN}; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https: http:; media-src 'self' blob: https: http:; connect-src 'self' https: http:; font-src 'self' data: ${PRODUCTION_WEB_OSS_ORIGIN}; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'"`,
+    `    Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' ${PRODUCTION_WEB_OSS_ORIGIN}; style-src 'self' 'unsafe-inline' ${PRODUCTION_WEB_OSS_ORIGIN}; img-src 'self' data: blob: https: http:; media-src 'self' blob: https: http:; connect-src 'self' https: http:; font-src 'self' data: ${PRODUCTION_WEB_OSS_ORIGIN}; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'"`,
     '    X-Robots-Tag "noindex, nofollow, noarchive"',
     '    X-Content-Type-Options "nosniff"',
     '    Referrer-Policy "no-referrer"',

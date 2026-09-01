@@ -63,7 +63,8 @@ test('routes public shares to the SPA and installs exact public-document headers
     assert.match(configured, /@public_session_share path \/share\/\*/);
     assert.match(configured, /Cache-Control "no-store"/);
     assert.match(configured, /Content-Security-Policy "default-src 'self'/);
-    assert.match(configured, new RegExp(`font-src [^\n]*${PRODUCTION_WEB_OSS_ORIGIN.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
+    assert.match(configured, new RegExp(`style-src [^;]*${PRODUCTION_WEB_OSS_ORIGIN.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
+    assert.match(configured, new RegExp(`font-src [^;]*${PRODUCTION_WEB_OSS_ORIGIN.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
     assert.match(configured, /X-Robots-Tag "noindex, nofollow, noarchive"/);
     assert.match(configured, /X-Content-Type-Options "nosniff"/);
     assert.match(configured, /Referrer-Policy "no-referrer"/);
