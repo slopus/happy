@@ -24,7 +24,7 @@ const PUBLIC_SHARE_CADDY_LINES = [
 
 const WEB_OSS_CADDY_LINES = [
     WEB_OSS_CADDY_BLOCK_START,
-    '@paws_web_asset path /_expo/* /assets/* /canvaskit.wasm /favicon.ico /favicon-active.ico /metadata.json',
+    '@paws_web_asset path /_expo/* /assets/* /.well-known/* /canvaskit.wasm /favicon.ico /favicon-active.ico /metadata.json',
     `redir @paws_web_asset ${PRODUCTION_WEB_OSS_ORIGIN}{uri} 302`,
     'handle {',
     '    rewrite * /web/current/index.html',

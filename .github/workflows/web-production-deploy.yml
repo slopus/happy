@@ -23,6 +23,7 @@ jobs:
       PAWS_DEPLOY_PORT: '22'
       PAWS_LEGACY_WEB_PATH: /var/www/happy-web
       PAWS_WEB_OSS_BUCKET: happy-app-ota-jacky
+      PAWS_WEB_OSS_ORIGIN: https://happy-app-ota-jacky.oss-cn-hangzhou.aliyuncs.com
       OSS_UPLOAD_ENDPOINT: https://oss-cn-hangzhou.aliyuncs.com
       OSS_ADDRESSING_STYLE: virtual
       ALIBABA_CLOUD_ACCESS_KEY_ID: ${{ secrets.ALIYUN_OSS_ACCESS_KEY_ID }}
@@ -44,6 +45,7 @@ jobs:
           test -n "$ALIBABA_CLOUD_ACCESS_KEY_SECRET" || { echo '::error::Missing ALIYUN_OSS_ACCESS_KEY_SECRET secret.'; exit 1; }
           test -n "${{ secrets.PAWS_WEB_DEPLOY_SSH_PRIVATE_KEY }}" || { echo '::error::Missing PAWS_WEB_DEPLOY_SSH_PRIVATE_KEY secret.'; exit 1; }
           test "$PAWS_WEB_ORIGIN" = 'https://47.115.228.20:8443'
+          test "$PAWS_WEB_OSS_ORIGIN" = 'https://happy-app-ota-jacky.oss-cn-hangzhou.aliyuncs.com'
           test "$PAWS_LEGACY_WEB_PATH" = '/var/www/happy-web'
 
       - name: Install pnpm
@@ -135,6 +137,9 @@ jobs:
       - name: Upload and verify immutable Web release
         run: bash scripts/upload-web-assets.sh
 
+      - name: Verify immutable OSS release before activation
+        run: node scripts/verify-web-release.mjs "$PAWS_WEB_OSS_ORIGIN" packages/happy-app/dist/index.html --immutable "$PAWS_WEB_ORIGIN"
+
       - name: Atomically switch OSS Web entry
         id: switch
         env:
@@ -217,11 +222,15 @@ jobs:
       - name: Roll back failed Web activation
         if: ${{ failure() && steps.live_verify.outcome != 'success' }}
         run: |
-          set -euo pipefail
+          set -uo pipefail
           rollback_prefix="${{ steps.switch.outputs.rollback_prefix }}"
           caddy_backup="${{ steps.caddy.outputs.backup_path }}"
+          oss_rollback_status=0
+          caddy_rollback_status=0
+          set +e
           if [ -n "$rollback_prefix" ]; then
             bash scripts/deploy-web.sh --rollback "$rollback_prefix"
+            oss_rollback_status=$?
           fi
           if [ -n "$caddy_backup" ]; then
             ssh -p "$PAWS_DEPLOY_PORT" "$PAWS_DEPLOY_HOST" bash -s -- "$caddy_backup" <<'REMOTE_SCRIPT'
@@ -237,6 +246,12 @@ jobs:
             caddy validate --config "$config"
             systemctl reload caddy
             REMOTE_SCRIPT
+            caddy_rollback_status=$?
+          fi
+          set -e
+          if [ "$oss_rollback_status" -ne 0 ] || [ "$caddy_rollback_status" -ne 0 ]; then
+            echo "错误：Web 回滚未完全成功（OSS=$oss_rollback_status, Caddy=$caddy_rollback_status）。" >&2
+            exit 1
           fi
 
       - name: Write deployment summary

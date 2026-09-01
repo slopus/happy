@@ -74,7 +74,7 @@ test('serves every Web file from OSS without a filesystem fallback', () => {
     const configured = configureProductionWebCaddy(fixture);
 
     assert.match(configured, new RegExp(WEB_OSS_CADDY_BLOCK_START));
-    assert.match(configured, /@paws_web_asset path \/_expo\/\* \/assets\/\* \/canvaskit\.wasm \/favicon\.ico \/favicon-active\.ico \/metadata\.json/);
+    assert.match(configured, /@paws_web_asset path \/_expo\/\* \/assets\/\* \/\.well-known\/\* \/canvaskit\.wasm \/favicon\.ico \/favicon-active\.ico \/metadata\.json/);
     assert.match(configured, new RegExp(`redir @paws_web_asset ${PRODUCTION_WEB_OSS_ORIGIN.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\{uri\\} 302`));
     assert.match(configured, /rewrite \* \/web\/current\/index\.html/);
     assert.match(configured, new RegExp(`reverse_proxy ${PRODUCTION_WEB_OSS_ORIGIN.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));

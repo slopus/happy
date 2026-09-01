@@ -7,15 +7,10 @@ import { t } from '@/text';
 
 const COPY_FEEDBACK_DURATION_MS = 1_800;
 
-function withoutFenceBoundaryNewlines(content: string): string {
-    return content
-        .replace(/^(?:\r\n|\r|\n)+/, '')
-        .replace(/(?:\r\n|\r|\n)+$/, '');
-}
-
 export function CodeBlockCopyButton({ content, visible }: { content: string; visible: boolean }) {
     const { theme } = useUnistyles();
     const [status, setStatus] = React.useState<'idle' | 'copied' | 'failed'>('idle');
+    const [isFocused, setIsFocused] = React.useState(false);
     const resetTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const resetLater = React.useCallback(() => {
@@ -32,7 +27,7 @@ export function CodeBlockCopyButton({ content, visible }: { content: string; vis
 
     const copyCode = React.useCallback(async () => {
         try {
-            await Clipboard.setStringAsync(withoutFenceBoundaryNewlines(content));
+            await Clipboard.setStringAsync(content);
             setStatus('copied');
         } catch (error) {
             console.error('Failed to copy code:', error);
@@ -58,17 +53,19 @@ export function CodeBlockCopyButton({ content, visible }: { content: string; vis
             : theme.colors.textSecondary;
 
     return (
-        <View style={[styles.wrapper, (visible || status !== 'idle') && styles.wrapperVisible]}>
+        <View style={[styles.wrapper, (visible || isFocused || status !== 'idle') && styles.wrapperVisible]}>
             <Pressable
                 testID="markdown-code-copy"
                 accessibilityRole="button"
                 accessibilityLabel={label}
                 onPress={copyCode}
+                onFocus={() => setIsFocused(true)}
+                onBlur={() => setIsFocused(false)}
                 style={({ pressed }) => [
                     styles.button,
                     status === 'copied' && styles.buttonCopied,
                     status === 'failed' && styles.buttonFailed,
-                    pressed && styles.buttonPressed,
+                    (pressed || isFocused) && styles.buttonPressed,
                 ]}
             >
                 <Ionicons
@@ -119,7 +116,7 @@ const styles = StyleSheet.create((theme) => ({
         borderRadius: 6,
         borderWidth: 1,
         borderColor: theme.colors.divider,
-        backgroundColor: theme.colors.surfaceHighest,
+        backgroundColor: theme.colors.surface,
         cursor: 'pointer',
     },
     buttonCopied: {

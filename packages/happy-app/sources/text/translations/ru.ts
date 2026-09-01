@@ -847,6 +847,7 @@ export const ru: TranslationStructure = {
 
     session: {
         anchorsButton: 'Переход',
+        scrollToBottom: 'Прокрутить вниз',
         anchorsTitle: 'Ваши сообщения',
         anchorsSubtitle: ({ count }: { count: number }) => `Сообщений: ${count}`,
         anchorsEmpty: 'Пока некуда переходить.',

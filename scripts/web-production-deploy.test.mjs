@@ -14,7 +14,8 @@ test('production workflow switches verified OSS content before Caddy and guarded
     assert.ok(position('Build and stamp Web from this main revision') >= 0);
     assert.ok(position('Ensure browser-readable OSS font CORS') > position('Build and stamp Web from this main revision'));
     assert.ok(position('Upload and verify immutable Web release') > position('Ensure browser-readable OSS font CORS'));
-    assert.ok(position('Atomically switch OSS Web entry') > position('Upload and verify immutable Web release'));
+    assert.ok(position('Verify immutable OSS release before activation') > position('Upload and verify immutable Web release'));
+    assert.ok(position('Atomically switch OSS Web entry') > position('Verify immutable OSS release before activation'));
     assert.ok(position('Route the Web SPA to OSS') > position('Atomically switch OSS Web entry'));
     assert.ok(position('Verify live OSS-backed release and routes') > position('Route the Web SPA to OSS'));
     assert.ok(position('Remove guarded legacy Web files') > position('Verify live OSS-backed release and routes'));
@@ -39,4 +40,8 @@ test('production workflow has rollback outputs and no active server deploy path'
     assert.match(rollbackStep.if, /failure\(\)/);
     assert.match(rollbackStep.if, /live_verify\.outcome != 'success'/);
     assert.match(rollbackStep.run, /deploy-web\.sh --rollback/);
+    assert.match(rollbackStep.run, /set \+e/);
+    assert.match(rollbackStep.run, /oss_rollback_status/);
+    assert.match(rollbackStep.run, /caddy_rollback_status/);
+    assert.match(rollbackStep.run, /exit 1/);
 });

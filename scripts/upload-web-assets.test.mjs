@@ -16,6 +16,7 @@ async function createFixture(marker = revision) {
     const logPath = join(directory, 'aliyun.log');
     await mkdir(join(dist, '_expo', 'static'), { recursive: true });
     await mkdir(join(dist, 'assets', 'fonts'), { recursive: true });
+    await mkdir(join(dist, '.well-known'), { recursive: true });
     await mkdir(fakeBin, { recursive: true });
     await Promise.all([
         writeFile(join(dist, 'index.html'), '<html></html>'),
@@ -25,6 +26,8 @@ async function createFixture(marker = revision) {
         writeFile(join(dist, 'canvaskit.wasm'), 'wasm'),
         writeFile(join(dist, 'favicon.ico'), 'icon'),
         writeFile(join(dist, 'metadata.json'), '{}'),
+        writeFile(join(dist, '.well-known', 'apple-app-site-association'), '{}'),
+        writeFile(join(dist, '.well-known', 'assetlinks.json'), '[]'),
     ]);
     const fakeAliyun = join(fakeBin, 'aliyun');
     await writeFile(fakeAliyun, `#!/usr/bin/env bash\nprintf '%s\\n' "$*" >> "$FAKE_ALIYUN_LOG"\nexit 0\n`);
@@ -65,6 +68,7 @@ test('uploads a complete immutable release before Metro-compatible root objects'
     assert.match(result.log, /oss:\/\/test-web-bucket\/_expo\/.*--cache-control public,max-age=31536000,immutable/);
     assert.match(result.log, /oss:\/\/test-web-bucket\/assets\/.*--cache-control public,max-age=31536000,immutable/);
     assert.match(result.log, /oss:\/\/test-web-bucket\/metadata\.json.*--cache-control no-cache/);
+    assert.match(result.log, /oss:\/\/test-web-bucket\/\.well-known\/.*--cache-control no-cache/);
     assert.match(result.log, new RegExp(`ossutil stat oss://test-web-bucket/web/releases/${revision}/index.html`));
     assert.match(result.log, new RegExp(`ossutil stat oss://test-web-bucket/web/releases/${revision}/\\.paws-release-revision`));
 });

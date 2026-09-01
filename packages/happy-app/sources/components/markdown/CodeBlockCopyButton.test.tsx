@@ -22,6 +22,7 @@ vi.mock('react-native-unistyles', () => ({
                 divider: '#333',
                 success: '#0a0',
                 status: { connected: '#0a0', error: '#c00' },
+                surface: '#181818',
                 surfaceHighest: '#222',
                 surfacePressed: '#292929',
                 text: '#fff',
@@ -35,6 +36,7 @@ vi.mock('react-native-unistyles', () => ({
                 divider: '#333',
                 success: '#0a0',
                 status: { connected: '#0a0', error: '#c00' },
+                surface: '#181818',
                 surfaceHighest: '#222',
                 surfacePressed: '#292929',
                 text: '#fff',
@@ -70,7 +72,7 @@ describe('CodeBlockCopyButton', () => {
 
         await act(async () => button.props.onPress());
 
-        expect(clipboard.setStringAsync).toHaveBeenCalledWith('pnpm test');
+        expect(clipboard.setStringAsync).toHaveBeenCalledWith('\n\npnpm test\n\n');
         expect(button.props.accessibilityLabel).toBe('common.copied');
         expect(button.findByType('Ionicons').props.name).toBe('checkmark');
         const feedback = renderer.root.findByProps({ testID: 'markdown-code-copy-feedback' });
@@ -82,6 +84,28 @@ describe('CodeBlockCopyButton', () => {
         expect(button.props.accessibilityLabel).toBe('common.copy');
         expect(button.findByType('Ionicons').props.name).toBe('copy-outline');
         expect(renderer.root.findAllByProps({ testID: 'markdown-code-copy-feedback' })).toHaveLength(0);
+
+        act(() => renderer.unmount());
+    });
+
+    it('reveals the control on keyboard focus and uses the pressed surface', () => {
+        let renderer: any;
+        act(() => {
+            renderer = TestRenderer.create(<CodeBlockCopyButton content="pnpm test" visible={false} />);
+        });
+
+        let button = renderer.root.findByProps({ testID: 'markdown-code-copy' });
+        expect(button.parent.props.style.filter(Boolean)).not.toContainEqual(expect.objectContaining({ opacity: 1 }));
+        expect(button.props.style({ pressed: false })).toContainEqual(expect.objectContaining({ backgroundColor: '#181818' }));
+
+        act(() => button.props.onFocus());
+        button = renderer.root.findByProps({ testID: 'markdown-code-copy' });
+        expect(button.parent.props.style.filter(Boolean)).toContainEqual(expect.objectContaining({ opacity: 1 }));
+        expect(button.props.style({ pressed: false })).toContainEqual(expect.objectContaining({ backgroundColor: '#292929' }));
+
+        act(() => button.props.onBlur());
+        button = renderer.root.findByProps({ testID: 'markdown-code-copy' });
+        expect(button.parent.props.style.filter(Boolean)).not.toContainEqual(expect.objectContaining({ opacity: 1 }));
 
         act(() => renderer.unmount());
     });

@@ -616,6 +616,7 @@ export const zhHant: TranslationStructure = {
 
     session: {
         anchorsButton: '錨點',
+        scrollToBottom: '捲動到底部',
         anchorsTitle: '我的提問',
         anchorsSubtitle: ({ count }: { count: number }) => `${count} 則提問`,
         anchorsEmpty: '還沒有可跳轉的提問。',

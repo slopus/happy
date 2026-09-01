@@ -616,6 +616,7 @@ export const ca: TranslationStructure = {
 
     session: {
         anchorsButton: 'Salta',
+        scrollToBottom: "Desplaça't fins al final",
         anchorsTitle: 'Els teus missatges',
         anchorsSubtitle: ({ count }: { count: number }) => count === 1 ? "1 missatge" : `${count} missatges`,
         anchorsEmpty: 'Encara no hi ha missatges on saltar.',

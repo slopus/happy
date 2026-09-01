@@ -344,7 +344,7 @@ export const ConversationTranscript = React.memo((props: ConversationTranscriptP
                     <Pressable
                         testID="conversation-scroll-to-bottom"
                         accessibilityRole="button"
-                        accessibilityLabel={`${t('session.anchorsButton')} ↓`}
+                        accessibilityLabel={t('session.scrollToBottom')}
                         style={({ pressed }) => [styles.scrollButton, pressed ? styles.scrollButtonPressed : styles.scrollButtonDefault]}
                         onPress={scrollToBottom}
                     >

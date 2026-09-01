@@ -616,6 +616,7 @@ export const es: TranslationStructure = {
 
     session: {
         anchorsButton: 'Saltar',
+        scrollToBottom: 'Desplazarse al final',
         anchorsTitle: 'Tus mensajes',
         anchorsSubtitle: ({ count }: { count: number }) => count === 1 ? "1 mensaje" : `${count} mensajes`,
         anchorsEmpty: 'Aún no hay mensajes a los que saltar.',

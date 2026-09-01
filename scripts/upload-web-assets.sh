@@ -47,12 +47,19 @@ upload_file() {
     local source_file="$1"
     local destination="$2"
     local cache_control="$3"
+    local content_type="${4:-}"
 
     if [[ -f "$source_file" ]]; then
         echo "==> 上传 $source_file 到 $destination"
-        aliyun ossutil cp "$source_file" "$destination" --force \
-            --cache-control "$cache_control" \
-            --endpoint "$OSS_UPLOAD_ENDPOINT" --addressing-style "$OSS_ADDRESSING_STYLE"
+        if [[ -n "$content_type" ]]; then
+            aliyun ossutil cp "$source_file" "$destination" --force \
+                --cache-control "$cache_control" --content-type "$content_type" \
+                --endpoint "$OSS_UPLOAD_ENDPOINT" --addressing-style "$OSS_ADDRESSING_STYLE"
+        else
+            aliyun ossutil cp "$source_file" "$destination" --force \
+                --cache-control "$cache_control" \
+                --endpoint "$OSS_UPLOAD_ENDPOINT" --addressing-style "$OSS_ADDRESSING_STYLE"
+        fi
     fi
 }
 
@@ -64,6 +71,12 @@ upload_directory \
 
 upload_directory "$DIST_DIR/_expo" "oss://$OSS_BUCKET/_expo/" "$IMMUTABLE_CACHE_CONTROL"
 upload_directory "$DIST_DIR/assets" "oss://$OSS_BUCKET/assets/" "$IMMUTABLE_CACHE_CONTROL"
+
+for source_file in "$DIST_DIR/.well-known"/*; do
+    [[ -f "$source_file" ]] || continue
+    filename="$(basename -- "$source_file")"
+    upload_file "$source_file" "oss://$OSS_BUCKET/.well-known/$filename" "$REVALIDATE_CACHE_CONTROL" "application/json"
+done
 
 for source_file in "$DIST_DIR"/*; do
     if [[ -f "$source_file" && "$(basename -- "$source_file")" != "index.html" ]]; then

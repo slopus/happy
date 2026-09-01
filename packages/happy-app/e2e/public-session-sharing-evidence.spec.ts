@@ -169,9 +169,7 @@ async function appendConversation(request: APIRequestContext, sessionId: string)
                             text: [
                                 '已检查：这是一次不可继续输入、可随时撤销的公开快照。',
                                 ...Array.from({ length: 36 }, (_, index) => `发布检查项 ${index + 1}：公开页只展示快照内容。`),
-                                '```sh',
-                                'pnpm test -- --grep public-session-share',
-                                '```',
+                                '```sh\npnpm test -- --grep public-session-share\n```',
                             ].join('\n\n'),
                         }],
                     },
@@ -450,10 +448,13 @@ test('PUBLIC-SESSION-SHARE owner publishes a complete snapshot and anonymous vie
         await scrollButton.click();
 
         await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: new URL(publicUrl!).origin });
-        await codeScroll.hover();
         const copyButton = page.getByTestId('markdown-code-copy').first();
-        await copyButton.focus();
+        await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+        for (let index = 0; index < 40 && !(await copyButton.evaluate((element) => element === document.activeElement)); index += 1) {
+            await page.keyboard.press('Tab');
+        }
         await expect(copyButton).toBeFocused();
+        await expect.poll(() => copyButton.evaluate((element) => getComputedStyle(element.parentElement!).opacity)).toBe('1');
         await page.keyboard.press('Enter');
         await expect(copyButton).toHaveAttribute('aria-label', 'Copied');
         await expect(page.getByTestId('markdown-code-copy-feedback')).toHaveAttribute('aria-live', 'polite');
