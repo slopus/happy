@@ -364,6 +364,38 @@ class Sync {
 
     getPluginCatalogSnapshot = (): PluginCatalogSnapshot => this.pluginCatalogStore.getSnapshot();
 
+    getPluginConfigurationDraftScope = (): number => this.pluginCatalogStore.getConfigurationDraftScope();
+
+    isPluginConfigurationDraftScopeCurrent = (scope: number): boolean => (
+        this.pluginCatalogStore.isConfigurationDraftScopeCurrent(scope)
+    );
+
+    getPluginConfigurationDraft = (
+        pluginId: string,
+        pluginVersion: string,
+        scope?: number,
+    ): Record<string, string> | undefined => (
+        this.pluginCatalogStore.getConfigurationDraft(pluginId, pluginVersion, scope)
+    );
+
+    setPluginConfigurationDraft = (
+        pluginId: string,
+        pluginVersion: string,
+        draft: Record<string, string>,
+        scope?: number,
+    ): void => {
+        this.pluginCatalogStore.setConfigurationDraft(pluginId, pluginVersion, draft, scope);
+    };
+
+    clearPluginConfigurationDraft = (
+        pluginId: string,
+        pluginVersion: string,
+        expectedDraft?: Record<string, string>,
+        scope?: number,
+    ): void => {
+        this.pluginCatalogStore.clearConfigurationDraft(pluginId, pluginVersion, expectedDraft, scope);
+    };
+
     subscribePluginCatalog = (listener: () => void): (() => void) => {
         return this.pluginCatalogStore.subscribe(listener);
     }

@@ -17,6 +17,7 @@ import { SecureTextInput } from '@/components/SecureTextInput';
 import { Typography } from '@/constants/Typography';
 import { useHappyAction } from '@/hooks/useHappyAction';
 import { installPlugin, testPluginConnection, uninstallPlugin } from '@/sync/plugins';
+import { sync } from '@/sync/sync';
 import { t } from '@/text';
 import { resolvePluginText } from './pluginText';
 import { isCurrentPluginInstallation } from './pluginInstallation';
@@ -27,6 +28,62 @@ type Props = {
     onOpen?: () => void;
     onStatusChanged?: () => void | Promise<void>;
 };
+
+type ConnectionFeedback = {
+    installationFingerprint: string | null;
+    result: PluginConnectionTestResult;
+};
+
+function storedConfiguration(status: PluginInstallationStatus): Record<string, string> {
+    return status.installed ? { ...status.configuration } : {};
+}
+
+function configurationValues(plugin: PluginCatalogItem, draftScope: number): Record<string, string> {
+    return {
+        ...storedConfiguration(plugin.status),
+        ...sync.getPluginConfigurationDraft(plugin.manifest.id, plugin.manifest.version, draftScope),
+    };
+}
+
+function nonSecretDraft(
+    plugin: PluginCatalogItem,
+    savedConfiguration: Record<string, string>,
+    values: Record<string, string>,
+): Record<string, string> {
+    return Object.fromEntries(plugin.manifest.configuration.fields
+        .filter((field) => field.type !== 'secret')
+        .map((field) => [field.key, values[field.key] ?? ''] as const)
+        .filter(([key, value]) => value !== (savedConfiguration[key] ?? '')));
+}
+
+function updateTransientDraft(
+    plugin: PluginCatalogItem,
+    savedConfiguration: Record<string, string>,
+    values: Record<string, string>,
+    draftScope: number,
+): void {
+    sync.setPluginConfigurationDraft(
+        plugin.manifest.id,
+        plugin.manifest.version,
+        nonSecretDraft(plugin, savedConfiguration, values),
+        draftScope,
+    );
+}
+
+function installationFingerprint(plugin: PluginCatalogItem, status: PluginInstallationStatus): string {
+    if (!status.installed) return JSON.stringify({ installed: false });
+    return JSON.stringify({
+        configuration: plugin.manifest.configuration.fields
+            .filter((field) => field.type !== 'secret')
+            .map((field) => [field.key, status.configuration[field.key] ?? '']),
+        grantedPermissions: [...status.grantedPermissions].sort(),
+        installed: true,
+        secretHints: plugin.manifest.configuration.fields
+            .filter((field) => field.type === 'secret')
+            .map((field) => [field.key, status.secretHints[field.key] ?? '']),
+        version: status.version,
+    });
+}
 
 function fieldTestId(pluginId: string, key: string): string {
     return `${pluginId}-plugin-${key.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}`;
@@ -79,61 +136,143 @@ export const DynamicPluginConfiguration = React.memo(function DynamicPluginConfi
     onStatusChanged,
 }: Props) {
     const { theme } = useUnistyles();
-    const [values, setValues] = React.useState<Record<string, string>>({});
-    const [connectionResult, setConnectionResult] = React.useState<PluginConnectionTestResult | null>(null);
-    const connectionTestVersion = React.useRef(0);
     const { manifest, status } = plugin;
+    const draftScope = sync.getPluginConfigurationDraftScope();
+    const [values, setValues] = React.useState<Record<string, string>>(() => configurationValues(plugin, draftScope));
+    const [savedConfiguration, setSavedConfiguration] = React.useState<Record<string, string>>(
+        () => storedConfiguration(status),
+    );
+    const [connectionFeedback, setConnectionFeedback] = React.useState<ConnectionFeedback | null>(null);
+    const connectionTestVersion = React.useRef(0);
+    const configurationEditVersion = React.useRef(0);
+    const activePluginKey = React.useRef(`${manifest.id}@${manifest.version}`);
     const installed = status.installed;
     const currentInstallation = isCurrentPluginInstallation(plugin);
     const reviewRequired = installed && !currentInstallation;
+    const statusRevision = JSON.stringify(status);
+    const latestStatusRef = React.useRef(status);
+    const statusRevisionRef = React.useRef(statusRevision);
+    latestStatusRef.current = status;
+    statusRevisionRef.current = statusRevision;
 
     React.useEffect(() => {
         connectionTestVersion.current += 1;
-        setValues(status.installed ? { ...status.configuration } : {});
-        setConnectionResult(null);
+        const pluginKey = `${manifest.id}@${manifest.version}`;
+        const pluginChanged = activePluginKey.current !== pluginKey;
+        activePluginKey.current = pluginKey;
+        const nextSavedConfiguration = storedConfiguration(status);
+        const nextValues = configurationValues(plugin, draftScope);
+        updateTransientDraft(plugin, nextSavedConfiguration, nextValues, draftScope);
+        setSavedConfiguration(nextSavedConfiguration);
+        setValues(nextValues);
+        setConnectionFeedback((current) => {
+            if (pluginChanged || !current?.result.success || !status.installed) return null;
+            if (status.version !== manifest.version) return null;
+            return installationFingerprint(plugin, status) === current.installationFingerprint
+                ? current
+                : null;
+        });
         return () => {
             connectionTestVersion.current += 1;
         };
-    }, [manifest.id, status]);
+        // statusRevision prevents equivalent catalog snapshots from erasing an active draft.
+    }, [draftScope, manifest.id, manifest.version, statusRevision]);
 
-    const install = React.useCallback(async () => {
+    React.useEffect(() => {
+        connectionTestVersion.current += 1;
+        setValues((current) => Object.fromEntries(manifest.configuration.fields.map((field) => [
+            field.key,
+            field.type === 'secret' ? '' : current[field.key] ?? '',
+        ])));
+    }, [manifest.configuration.fields, status]);
+
+    const saveConfiguration = React.useCallback(async (
+        configuration: Record<string, string>,
+        expectedVersion: number,
+        notifyInstalled: boolean,
+    ) => {
+        const submittedDraft = nonSecretDraft(plugin, savedConfiguration, configuration);
         const installedStatus = await installPlugin(
             manifest.id,
             manifest.version,
-            values,
+            configuration,
             [...manifest.permissions],
         );
+        if (!sync.isPluginConfigurationDraftScopeCurrent(draftScope)) return installedStatus;
+        sync.clearPluginConfigurationDraft(manifest.id, manifest.version, submittedDraft, draftScope);
+        if (connectionTestVersion.current === expectedVersion) {
+            const saved = storedConfiguration(installedStatus);
+            setSavedConfiguration(saved);
+            setValues(saved);
+        }
         await onStatusChanged?.();
-        await onInstalled?.(installedStatus);
-    }, [manifest.id, manifest.permissions, manifest.version, onInstalled, onStatusChanged, values]);
+        if (notifyInstalled && sync.isPluginConfigurationDraftScopeCurrent(draftScope)) {
+            await onInstalled?.(installedStatus);
+        }
+        return installedStatus;
+    }, [draftScope, manifest.id, manifest.permissions, manifest.version, onInstalled, onStatusChanged, plugin, savedConfiguration]);
+
+    const install = React.useCallback(async () => {
+        await saveConfiguration(values, connectionTestVersion.current, true);
+    }, [saveConfiguration, values]);
     const [installing, performInstall] = useHappyAction(install);
 
     const uninstall = React.useCallback(async () => {
         await uninstallPlugin(manifest.id);
+        if (!sync.isPluginConfigurationDraftScopeCurrent(draftScope)) return;
+        sync.clearPluginConfigurationDraft(manifest.id, manifest.version, undefined, draftScope);
+        setSavedConfiguration({});
         setValues({});
+        setConnectionFeedback(null);
         await onStatusChanged?.();
-    }, [manifest.id, onStatusChanged]);
+    }, [draftScope, manifest.id, manifest.version, onStatusChanged]);
     const [uninstalling, performUninstall] = useHappyAction(uninstall);
 
     const testConnection = React.useCallback(async () => {
         const requestVersion = connectionTestVersion.current + 1;
+        const editVersion = configurationEditVersion.current;
+        const catalogRevisionAtStart = statusRevisionRef.current;
         connectionTestVersion.current = requestVersion;
-        setConnectionResult(null);
+        setConnectionFeedback(null);
         const result = await testPluginConnection(
             manifest.id,
             manifest.version,
             values,
             [...manifest.permissions],
         );
-        if (connectionTestVersion.current === requestVersion) setConnectionResult(result);
-    }, [manifest.id, manifest.permissions, manifest.version, values]);
+        if (connectionTestVersion.current !== requestVersion) return;
+        if (!result.success) {
+            setConnectionFeedback({ installationFingerprint: null, result });
+            return;
+        }
+        const installedStatus = await saveConfiguration(values, requestVersion, false);
+        if (!sync.isPluginConfigurationDraftScopeCurrent(draftScope)) return;
+        const savedFingerprint = installationFingerprint(plugin, installedStatus);
+        const catalogChangedDuringSave = statusRevisionRef.current !== catalogRevisionAtStart;
+        const latestCatalogMatchesSave = installationFingerprint(plugin, latestStatusRef.current) === savedFingerprint;
+        if (configurationEditVersion.current === editVersion
+            && (!catalogChangedDuringSave || latestCatalogMatchesSave)) {
+            setConnectionFeedback({ installationFingerprint: savedFingerprint, result });
+        }
+    }, [draftScope, manifest.id, manifest.permissions, manifest.version, plugin, saveConfiguration, values]);
     const [testingConnection, performConnectionTest] = useHappyAction(testConnection);
 
     const updateValue = React.useCallback((key: string, value: string) => {
         connectionTestVersion.current += 1;
-        setConnectionResult(null);
-        setValues((current) => ({ ...current, [key]: value }));
-    }, []);
+        configurationEditVersion.current += 1;
+        setConnectionFeedback(null);
+        setValues((current) => {
+            const next = { ...current, [key]: value };
+            updateTransientDraft(plugin, savedConfiguration, next, draftScope);
+            return next;
+        });
+    }, [draftScope, plugin, savedConfiguration]);
+
+    const hasUnsavedChanges = manifest.configuration.fields.some((field) => {
+        const value = values[field.key] ?? '';
+        if (field.type === 'secret') return value.length > 0;
+        return value !== (savedConfiguration[field.key] ?? '');
+    });
 
     const canInstall = manifest.configuration.fields.every((field) => {
         if (!field.required) return true;
@@ -141,6 +280,8 @@ export const DynamicPluginConfiguration = React.memo(function DynamicPluginConfi
         return field.type === 'secret' && status.installed && Boolean(status.secretHints[field.key]);
     }) && !installing && !testingConnection && !uninstalling;
     const canTestConnection = canInstall && manifest.permissions.includes('paws.ai.provider.invoke');
+    const configurationFieldsEditable = !installing && !testingConnection && !uninstalling;
+    const connectionResult = connectionFeedback?.result ?? null;
 
     return (
         <ItemList style={styles.list}>
@@ -154,11 +295,21 @@ export const DynamicPluginConfiguration = React.memo(function DynamicPluginConfi
                     {manifest.configuration.fields.map((field) => {
                         const label = resolvePluginText(field.label);
                         const secretHint = status.installed ? status.secretHints[field.key] : undefined;
+                        const manifestPlaceholder = field.placeholder
+                            ? resolvePluginText(field.placeholder)
+                            : undefined;
+                        const relationshipAdvisorPlaceholder = manifest.id === 'relationship-advisor'
+                            ? field.key === 'apiKey'
+                                ? t('relationshipAdvisorPlugin.apiKeyPlaceholder')
+                                : field.key === 'baseUrl'
+                                    ? t('relationshipAdvisorPlugin.baseUrlPlaceholder')
+                                    : field.key === 'model'
+                                        ? t('relationshipAdvisorPlugin.modelPlaceholder')
+                                        : undefined
+                            : undefined;
                         const placeholder = secretHint
                             ? `•••• ${secretHint}`
-                            : field.placeholder
-                                ? resolvePluginText(field.placeholder)
-                                : undefined;
+                            : relationshipAdvisorPlaceholder ?? manifestPlaceholder;
                         return (
                             <View key={field.key} style={styles.fieldRow}>
                                 <Text style={styles.fieldLabel}>{label}</Text>
@@ -168,6 +319,7 @@ export const DynamicPluginConfiguration = React.memo(function DynamicPluginConfi
                                         autoCapitalize="none"
                                         autoCorrect={false}
                                         emptyValueAccessibilityLabel={`${label} · ${t('relationshipAdvisorPlugin.encryptionNotice')}`}
+                                        editable={configurationFieldsEditable}
                                         hideValueAccessibilityLabel={`${label} · ${t('settingsAccount.tapToHide')}`}
                                         onChangeText={(value) => updateValue(field.key, value)}
                                         placeholder={placeholder}
@@ -183,6 +335,7 @@ export const DynamicPluginConfiguration = React.memo(function DynamicPluginConfi
                                         accessibilityLabel={label}
                                         autoCapitalize="none"
                                         autoCorrect={false}
+                                        editable={configurationFieldsEditable}
                                         keyboardType={field.type === 'url' ? 'url' : 'default'}
                                         onChangeText={(value) => updateValue(field.key, value)}
                                         placeholder={placeholder}
@@ -193,11 +346,77 @@ export const DynamicPluginConfiguration = React.memo(function DynamicPluginConfi
                                         value={values[field.key] ?? ''}
                                     />
                                 )}
+                                {manifest.id === 'relationship-advisor' && field.key === 'model' ? (
+                                    <Text
+                                        style={styles.fieldHint}
+                                        testID={`${manifest.id}-plugin-model-recommendation`}
+                                    >
+                                        {t('relationshipAdvisorPlugin.modelRecommendation')}
+                                    </Text>
+                                ) : null}
                             </View>
                         );
                     })}
                 </ItemGroup>
             ) : null}
+
+            <View testID={`${manifest.id}-plugin-actions`}>
+                <ItemGroup>
+                    {hasUnsavedChanges ? (
+                        <Item
+                            icon={<Ionicons color={theme.colors.accent} name="alert-circle-outline" size={29} />}
+                            showChevron={false}
+                            subtitle={t('relationshipAdvisorPlugin.unsavedChangesSubtitle')}
+                            testID={`${manifest.id}-plugin-unsaved-changes`}
+                            title={t('relationshipAdvisorPlugin.unsavedChangesTitle')}
+                        />
+                    ) : null}
+                    {manifest.permissions.includes('paws.ai.provider.invoke') ? (
+                        <Item
+                            disabled={!canTestConnection}
+                            icon={<Ionicons color={theme.colors.accent} name="pulse-outline" size={29} />}
+                            loading={testingConnection}
+                            onPress={performConnectionTest}
+                            showChevron={false}
+                            subtitle={t('relationshipAdvisorPlugin.testConnectionSubtitle')}
+                            testID={`${manifest.id}-plugin-test-connection`}
+                            title={t('relationshipAdvisorPlugin.testConnection')}
+                        />
+                    ) : null}
+                    {currentInstallation && manifest.installedAction === 'open' ? null : (
+                        <Item
+                            disabled={!canInstall}
+                            icon={<Ionicons color={theme.colors.accent} name="cloud-download-outline" size={29} />}
+                            loading={installing}
+                            onPress={performInstall}
+                            showChevron={false}
+                            testID={`${manifest.id}-plugin-install`}
+                            title={reviewRequired
+                                ? t('relationshipAdvisorPlugin.reviewAndUpdate')
+                                : installed
+                                    ? t('relationshipAdvisorPlugin.update')
+                                : t('relationshipAdvisorPlugin.install')}
+                        />
+                    )}
+                    {connectionResult ? (
+                        <Item
+                            icon={<Ionicons
+                                color={connectionResult.success ? theme.colors.accent : theme.colors.textDestructive}
+                                name={connectionResult.success ? 'checkmark-circle-outline' : 'alert-circle-outline'}
+                                size={29}
+                            />}
+                            showChevron={false}
+                            subtitle={connectionResult.success
+                                ? t('relationshipAdvisorPlugin.connectionSuccessSubtitle')
+                                : undefined}
+                            testID={`${manifest.id}-plugin-test-connection-result`}
+                            title={connectionResult.success
+                                ? t('relationshipAdvisorPlugin.connectionSuccess')
+                                : connectionFailureTitle(connectionResult.code)}
+                        />
+                    ) : null}
+                </ItemGroup>
+            </View>
 
             <View testID={`${manifest.id}-plugin-permissions`}>
                 <ItemGroup
@@ -231,96 +450,55 @@ export const DynamicPluginConfiguration = React.memo(function DynamicPluginConfi
                 </ItemGroup>
             </View>
 
-            <ItemGroup title={t('relationshipAdvisorPlugin.status')}>
-                <Item
-                    icon={<Ionicons
-                        color={theme.colors.accent}
-                        name={currentInstallation
-                            ? 'checkmark-circle-outline'
-                            : reviewRequired
-                                ? 'alert-circle-outline'
-                                : 'download-outline'}
-                        size={29}
-                    />}
-                    showChevron={false}
-                    subtitle={currentInstallation
-                        ? t('relationshipAdvisorPlugin.installedSubtitle')
-                        : reviewRequired
-                            ? t('relationshipAdvisorPlugin.reviewRequiredSubtitle')
-                            : t('relationshipAdvisorPlugin.notInstalledSubtitle')}
-                    testID={`${manifest.id}-plugin-status`}
-                    title={currentInstallation
-                        ? t('relationshipAdvisorPlugin.installed')
-                        : reviewRequired
-                            ? t('relationshipAdvisorPlugin.reviewRequired')
-                            : t('relationshipAdvisorPlugin.notInstalled')}
-                />
-                {manifest.permissions.includes('paws.ai.provider.invoke') ? (
-                    <Item
-                        disabled={!canTestConnection}
-                        icon={<Ionicons color={theme.colors.accent} name="pulse-outline" size={29} />}
-                        loading={testingConnection}
-                        onPress={performConnectionTest}
-                        showChevron={false}
-                        subtitle={t('relationshipAdvisorPlugin.testConnectionSubtitle')}
-                        testID={`${manifest.id}-plugin-test-connection`}
-                        title={t('relationshipAdvisorPlugin.testConnection')}
-                    />
-                ) : null}
-                {connectionResult ? (
+            <View testID={`${manifest.id}-plugin-status-section`}>
+                <ItemGroup title={t('relationshipAdvisorPlugin.status')}>
                     <Item
                         icon={<Ionicons
-                            color={connectionResult.success ? theme.colors.accent : theme.colors.textDestructive}
-                            name={connectionResult.success ? 'checkmark-circle-outline' : 'alert-circle-outline'}
+                            color={theme.colors.accent}
+                            name={currentInstallation
+                                ? 'checkmark-circle-outline'
+                                : reviewRequired
+                                    ? 'alert-circle-outline'
+                                    : 'download-outline'}
                             size={29}
                         />}
                         showChevron={false}
-                        subtitle={connectionResult.success
-                            ? t('relationshipAdvisorPlugin.connectionSuccessSubtitle')
-                            : undefined}
-                        testID={`${manifest.id}-plugin-test-connection-result`}
-                        title={connectionResult.success
-                            ? t('relationshipAdvisorPlugin.connectionSuccess')
-                            : connectionFailureTitle(connectionResult.code)}
+                        subtitle={currentInstallation
+                            ? t('relationshipAdvisorPlugin.installedSubtitle')
+                            : reviewRequired
+                                ? t('relationshipAdvisorPlugin.reviewRequiredSubtitle')
+                                : t('relationshipAdvisorPlugin.notInstalledSubtitle')}
+                        testID={`${manifest.id}-plugin-status`}
+                        title={currentInstallation
+                            ? t('relationshipAdvisorPlugin.installed')
+                            : reviewRequired
+                                ? t('relationshipAdvisorPlugin.reviewRequired')
+                                : t('relationshipAdvisorPlugin.notInstalled')}
                     />
-                ) : null}
-                {currentInstallation && manifest.installedAction === 'open' ? (
-                    <Item
-                        disabled={installing || testingConnection || uninstalling || !onOpen}
-                        icon={<Ionicons color={theme.colors.accent} name="open-outline" size={29} />}
-                        onPress={onOpen}
-                        showChevron={false}
-                        testID={`${manifest.id}-plugin-open`}
-                        title={t('relationshipAdvisorPlugin.openPlugin')}
-                    />
-                ) : (
-                    <Item
-                        disabled={!canInstall}
-                        icon={<Ionicons color={theme.colors.accent} name="cloud-download-outline" size={29} />}
-                        loading={installing}
-                        onPress={performInstall}
-                        showChevron={false}
-                        testID={`${manifest.id}-plugin-install`}
-                        title={reviewRequired
-                            ? t('relationshipAdvisorPlugin.reviewAndUpdate')
-                            : installed
-                                ? t('relationshipAdvisorPlugin.update')
-                            : t('relationshipAdvisorPlugin.install')}
-                    />
-                )}
-                {installed ? (
-                    <Item
-                        destructive
-                        disabled={installing || testingConnection || uninstalling}
-                        icon={<Ionicons color={theme.colors.textDestructive} name="trash-outline" size={29} />}
-                        loading={uninstalling}
-                        onPress={performUninstall}
-                        showChevron={false}
-                        testID={`${manifest.id}-plugin-uninstall`}
-                        title={t('relationshipAdvisorPlugin.uninstall')}
-                    />
-                ) : null}
-            </ItemGroup>
+                    {currentInstallation && manifest.installedAction === 'open' ? (
+                        <Item
+                            disabled={installing || testingConnection || uninstalling || !onOpen}
+                            icon={<Ionicons color={theme.colors.accent} name="open-outline" size={29} />}
+                            onPress={onOpen}
+                            showChevron={false}
+                            testID={`${manifest.id}-plugin-open`}
+                            title={t('relationshipAdvisorPlugin.openPlugin')}
+                        />
+                    ) : null}
+                    {installed ? (
+                        <Item
+                            destructive
+                            disabled={installing || testingConnection || uninstalling}
+                            icon={<Ionicons color={theme.colors.textDestructive} name="trash-outline" size={29} />}
+                            loading={uninstalling}
+                            onPress={performUninstall}
+                            showChevron={false}
+                            testID={`${manifest.id}-plugin-uninstall`}
+                            title={t('relationshipAdvisorPlugin.uninstall')}
+                        />
+                    ) : null}
+                </ItemGroup>
+            </View>
         </ItemList>
     );
 });
@@ -332,6 +510,12 @@ const styles = StyleSheet.create((theme) => ({
         ...Typography.default('semiBold'),
         color: theme.colors.text,
         fontSize: 15,
+    },
+    fieldHint: {
+        ...Typography.default(),
+        color: theme.colors.textSecondary,
+        fontSize: 13,
+        lineHeight: 18,
     },
     textInput: {
         ...Typography.default(),

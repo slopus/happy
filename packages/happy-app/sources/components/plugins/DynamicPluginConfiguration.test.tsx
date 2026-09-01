@@ -5,7 +5,58 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // @ts-expect-error react-test-renderer does not publish declarations used by this narrow test.
 import TestRenderer from 'react-test-renderer';
 
-const mocks = vi.hoisted(() => ({ install: vi.fn(), testConnection: vi.fn(), uninstall: vi.fn() }));
+const mocks = vi.hoisted(() => {
+    const drafts = new Map<string, Record<string, string>>();
+    const draftKey = (pluginId: string, pluginVersion: string) => `${pluginId}@${pluginVersion}`;
+    let draftScope = 0;
+    return {
+        drafts,
+        advanceDraftScope: () => {
+            draftScope += 1;
+            drafts.clear();
+        },
+        install: vi.fn(),
+        resetDraftScope: () => {
+            draftScope = 0;
+        },
+        testConnection: vi.fn(),
+        uninstall: vi.fn(),
+        sync: {
+            clearPluginConfigurationDraft: vi.fn((
+                pluginId: string,
+                pluginVersion: string,
+                expectedDraft?: Record<string, string>,
+                scope = draftScope,
+            ) => {
+                if (scope !== draftScope) return;
+                const key = draftKey(pluginId, pluginVersion);
+                if (expectedDraft && JSON.stringify(drafts.get(key)) !== JSON.stringify(expectedDraft)) return;
+                drafts.delete(key);
+            }),
+            getPluginConfigurationDraft: vi.fn((
+                pluginId: string,
+                pluginVersion: string,
+                scope = draftScope,
+            ) => scope === draftScope ? drafts.get(draftKey(pluginId, pluginVersion)) : undefined),
+            getPluginConfigurationDraftScope: vi.fn(() => draftScope),
+            isPluginConfigurationDraftScopeCurrent: vi.fn((scope: number) => scope === draftScope),
+            setPluginConfigurationDraft: vi.fn((
+                pluginId: string,
+                pluginVersion: string,
+                draft: Record<string, string>,
+                scope = draftScope,
+            ) => {
+                if (scope !== draftScope) return;
+                const key = draftKey(pluginId, pluginVersion);
+                if (Object.keys(draft).length === 0) {
+                    drafts.delete(key);
+                    return;
+                }
+                drafts.set(key, { ...draft });
+            }),
+        },
+    };
+});
 vi.mock('react-native', () => ({ Pressable: 'Pressable', Text: 'Text', TextInput: 'TextInput', View: 'View' }));
 vi.mock('@expo/vector-icons', () => ({ Ionicons: 'Ionicons' }));
 vi.mock('react-native-unistyles', () => ({
@@ -21,15 +72,39 @@ vi.mock('@/components/Item', () => ({ Item: 'Item' }));
 vi.mock('@/components/ItemGroup', () => ({ ItemGroup: 'ItemGroup' }));
 vi.mock('@/components/ItemList', () => ({ ItemList: 'ItemList' }));
 vi.mock('@/constants/Typography', () => ({ Typography: { default: () => ({}) } }));
-vi.mock('@/hooks/useHappyAction', () => ({
-    useHappyAction: (action: (...args: any[]) => Promise<void>) => [false, action],
-}));
+vi.mock('@/hooks/useHappyAction', async () => {
+    const ReactModule = await import('react');
+    return {
+        useHappyAction: (action: (...args: any[]) => Promise<void>) => {
+            const [running, setRunning] = ReactModule.useState(false);
+            const perform = ReactModule.useCallback(async () => {
+                if (running) return;
+                setRunning(true);
+                try {
+                    await action();
+                } finally {
+                    setRunning(false);
+                }
+            }, [action, running]);
+            return [running, perform] as const;
+        },
+    };
+});
 vi.mock('@/sync/plugins', () => ({
     installPlugin: mocks.install,
     testPluginConnection: mocks.testConnection,
     uninstallPlugin: mocks.uninstall,
 }));
-vi.mock('@/text', () => ({ getCurrentLanguage: () => 'zh-Hans', t: (key: string) => key }));
+vi.mock('@/sync/sync', () => ({ sync: mocks.sync }));
+vi.mock('@/text', () => ({
+    getCurrentLanguage: () => 'zh-Hans',
+    t: (key: string) => ({
+        'relationshipAdvisorPlugin.apiKeyPlaceholder': '例如：sk-...',
+        'relationshipAdvisorPlugin.baseUrlPlaceholder': '例如：https://api.deepseek.com',
+        'relationshipAdvisorPlugin.modelPlaceholder': '例如：deepseek-v4-flash-vision-exp',
+        'relationshipAdvisorPlugin.modelRecommendation': '建议填写支持多模态的模型，才能同时理解文字和图片。',
+    }[key] ?? key),
+}));
 
 import { DynamicPluginConfiguration } from './DynamicPluginConfiguration';
 
@@ -63,12 +138,36 @@ const manifest = {
     },
 };
 
+const relationshipAdvisorManifest = {
+    ...manifest,
+    id: 'relationship-advisor',
+    permissions: ['paws.ai.provider.invoke' as const, 'paws.secrets.use' as const],
+    configuration: {
+        fields: [
+            {
+                key: 'apiKey', type: 'secret' as const, required: true,
+                label: { default: 'API key' }, placeholder: { default: 'Enter API key' },
+            },
+            {
+                key: 'baseUrl', type: 'url' as const, required: true,
+                label: { default: 'Provider URL' }, placeholder: { default: 'https://api.openai.com/v1' },
+            },
+            {
+                key: 'model', type: 'text' as const, required: true,
+                label: { default: 'Model' }, placeholder: { default: 'gpt-4.1-mini' },
+            },
+        ],
+    },
+};
+
 describe('DynamicPluginConfiguration', () => {
     const originalConsoleError = console.error;
     let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
     beforeEach(() => {
         vi.clearAllMocks();
+        mocks.drafts.clear();
+        mocks.resetDraftScope();
         mocks.install.mockResolvedValue({ installed: true });
         (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
         consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation((...values: unknown[]) => {
@@ -211,8 +310,15 @@ describe('DynamicPluginConfiguration', () => {
         act(() => renderer.unmount());
     });
 
-    it('validates provider configuration before it is saved', async () => {
+    it('saves provider configuration after a successful connection test', async () => {
         mocks.testConnection.mockResolvedValue({ success: true, latencyMs: 31 });
+        mocks.install.mockResolvedValue({
+            installed: true,
+            version: '2.3.0',
+            grantedPermissions: ['paws.ai.provider.invoke'],
+            configuration: { endpoint: 'https://example.com/v1' },
+            secretHints: { token: 'cret' },
+        });
         let renderer: any;
         await act(async () => {
             renderer = TestRenderer.create(<DynamicPluginConfiguration plugin={{
@@ -238,7 +344,545 @@ describe('DynamicPluginConfiguration', () => {
         );
         expect(renderer.root.findByProps({ testID: 'server-plugin-plugin-test-connection-result' }).props.title)
             .toBe('relationshipAdvisorPlugin.connectionSuccess');
+        expect(mocks.install).toHaveBeenCalledWith(
+            'server-plugin',
+            '2.3.0',
+            { token: 'server-secret', endpoint: 'https://example.com/v1' },
+            ['paws.ai.provider.invoke'],
+        );
+        act(() => renderer.unmount());
+    });
+
+    it('does not run the explicit-install navigation callback after an automatic test save', async () => {
+        mocks.testConnection.mockResolvedValue({ success: true, latencyMs: 31 });
+        mocks.install.mockResolvedValue({
+            installed: true,
+            version: '2.3.0',
+            grantedPermissions: ['paws.ai.provider.invoke'],
+            configuration: { endpoint: 'https://example.com/v1' },
+            secretHints: { token: 'cret' },
+        });
+        const onInstalled = vi.fn();
+        let renderer: any;
+        await act(async () => {
+            renderer = TestRenderer.create(<DynamicPluginConfiguration
+                onInstalled={onInstalled}
+                plugin={{
+                    manifest: { ...manifest, id: 'automatic-save-plugin', permissions: ['paws.ai.provider.invoke'] },
+                    status: { installed: false },
+                }}
+            />);
+        });
+
+        const fields = renderer.root.findAllByType('TextInput');
+        act(() => {
+            fields[0].props.onChangeText('server-secret');
+            fields[1].props.onChangeText('https://example.com/v1');
+        });
+        await act(async () => {
+            await renderer.root.findByProps({
+                testID: 'automatic-save-plugin-plugin-test-connection',
+            }).props.onPress();
+        });
+
+        expect(mocks.install).toHaveBeenCalledOnce();
+        expect(onInstalled).not.toHaveBeenCalled();
+        act(() => renderer.unmount());
+    });
+
+    it('keeps the successful connection result visible after the saved status refreshes', async () => {
+        mocks.testConnection.mockResolvedValue({ success: true, latencyMs: 31 });
+        const initialStatus = {
+            installed: true as const,
+            version: '2.3.0',
+            grantedPermissions: ['paws.ai.provider.invoke' as const],
+            configuration: { endpoint: 'https://example.com/saved' },
+            secretHints: { token: '1234' },
+        };
+        const updatedStatus = {
+            ...initialStatus,
+            configuration: { endpoint: 'https://example.com/draft' },
+        };
+        mocks.install.mockResolvedValue(updatedStatus);
+        const refreshManifest = {
+            ...manifest,
+            id: 'refresh-result-plugin',
+            permissions: ['paws.ai.provider.invoke' as const],
+        };
+        let renderer: any;
+        const onStatusChanged = async () => {
+            renderer.update(<DynamicPluginConfiguration
+                onStatusChanged={onStatusChanged}
+                plugin={{ manifest: refreshManifest, status: updatedStatus }}
+            />);
+        };
+        await act(async () => {
+            renderer = TestRenderer.create(<DynamicPluginConfiguration
+                onStatusChanged={onStatusChanged}
+                plugin={{ manifest: refreshManifest, status: initialStatus }}
+            />);
+        });
+
+        act(() => renderer.root.findAllByType('TextInput')[1].props.onChangeText('https://example.com/draft'));
+        await act(async () => {
+            await renderer.root.findByProps({
+                testID: 'refresh-result-plugin-plugin-test-connection',
+            }).props.onPress();
+        });
+
+        expect(renderer.root.findByProps({
+            testID: 'refresh-result-plugin-plugin-test-connection-result',
+        }).props.title).toBe('relationshipAdvisorPlugin.connectionSuccess');
+        act(() => renderer.unmount());
+    });
+
+    it('keeps a failed connection test as an unsaved draft', async () => {
+        mocks.testConnection.mockResolvedValue({ success: false, code: 'authentication_failed' });
+        let renderer: any;
+        await act(async () => {
+            renderer = TestRenderer.create(<DynamicPluginConfiguration plugin={{
+                manifest: { ...manifest, id: 'failed-test-plugin', permissions: ['paws.ai.provider.invoke'] },
+                status: { installed: false },
+            }} />);
+        });
+
+        const fields = renderer.root.findAllByType('TextInput');
+        act(() => {
+            fields[0].props.onChangeText('bad-secret');
+            fields[1].props.onChangeText('https://example.com/v1');
+        });
+        await act(async () => {
+            await renderer.root.findByProps({ testID: 'failed-test-plugin-plugin-test-connection' }).props.onPress();
+        });
+
         expect(mocks.install).not.toHaveBeenCalled();
+        expect(renderer.root.findByProps({
+            testID: 'failed-test-plugin-plugin-unsaved-changes',
+        }).props.subtitle).toBe('relationshipAdvisorPlugin.unsavedChangesSubtitle');
+        act(() => renderer.unmount());
+    });
+
+    it('retains an unsaved URL after the configuration surface remounts', async () => {
+        const draftManifest = { ...manifest, id: 'tab-draft-plugin' };
+        const status = {
+            installed: true as const,
+            version: '2.3.0',
+            grantedPermissions: [...manifest.permissions],
+            configuration: { endpoint: 'https://example.com/saved' },
+            secretHints: { token: '1234' },
+        };
+        let renderer: any;
+        await act(async () => {
+            renderer = TestRenderer.create(<DynamicPluginConfiguration plugin={{ manifest: draftManifest, status }} />);
+        });
+
+        act(() => {
+            renderer.root.findAllByType('TextInput')[0].props.onChangeText('unsaved-secret');
+            renderer.root.findAllByType('TextInput')[1].props.onChangeText('https://example.com/draft');
+        });
+        expect(mocks.drafts.get('tab-draft-plugin@2.3.0')).toEqual({
+            endpoint: 'https://example.com/draft',
+        });
+        act(() => renderer.unmount());
+        await act(async () => {
+            renderer = TestRenderer.create(<DynamicPluginConfiguration plugin={{
+                manifest: draftManifest,
+                status: { ...status, configuration: { ...status.configuration } },
+            }} />);
+        });
+
+        expect(renderer.root.findAllByType('TextInput')[0].props.value).toBe('');
+        expect(renderer.root.findAllByType('TextInput')[1].props.value).toBe('https://example.com/draft');
+        expect(renderer.root.findByProps({
+            testID: 'tab-draft-plugin-plugin-unsaved-changes',
+        }).props.subtitle).toBe('relationshipAdvisorPlugin.unsavedChangesSubtitle');
+        act(() => renderer.unmount());
+    });
+
+    it('does not reuse an unsaved draft after the plugin version changes', async () => {
+        const draftManifest = { ...manifest, id: 'version-scoped-draft-plugin' };
+        let renderer: any;
+        await act(async () => {
+            renderer = TestRenderer.create(<DynamicPluginConfiguration plugin={{
+                manifest: draftManifest,
+                status: { installed: false },
+            }} />);
+        });
+
+        act(() => renderer.root.findAllByType('TextInput')[1].props.onChangeText('https://example.com/draft'));
+        act(() => renderer.unmount());
+        await act(async () => {
+            renderer = TestRenderer.create(<DynamicPluginConfiguration plugin={{
+                manifest: { ...draftManifest, version: '3.0.0' },
+                status: { installed: false },
+            }} />);
+        });
+
+        expect(renderer.root.findAllByType('TextInput')[1].props.value).toBe('');
+        act(() => renderer.unmount());
+    });
+
+    it('retires the submitted draft when a save finishes after the surface unmounts', async () => {
+        let resolveInstall: ((value: {
+            installed: true;
+            version: string;
+            grantedPermissions: typeof manifest.permissions;
+            configuration: { endpoint: string };
+            secretHints: { token: string };
+        }) => void) | undefined;
+        mocks.install.mockReturnValue(new Promise((resolve) => {
+            resolveInstall = resolve;
+        }));
+        const saveManifest = { ...manifest, id: 'unmounted-save-plugin' };
+        let renderer: any;
+        await act(async () => {
+            renderer = TestRenderer.create(<DynamicPluginConfiguration plugin={{
+                manifest: saveManifest,
+                status: { installed: false },
+            }} />);
+        });
+        const fields = renderer.root.findAllByType('TextInput');
+        act(() => {
+            fields[0].props.onChangeText('server-secret');
+            fields[1].props.onChangeText('https://example.com/submitted');
+        });
+
+        let pendingSave: Promise<void> | undefined;
+        act(() => {
+            pendingSave = renderer.root.findByProps({
+                testID: 'unmounted-save-plugin-plugin-install',
+            }).props.onPress();
+            renderer.unmount();
+        });
+        await act(async () => {
+            resolveInstall?.({
+                installed: true,
+                version: '2.3.0',
+                grantedPermissions: [...manifest.permissions],
+                configuration: { endpoint: 'https://example.com/submitted' },
+                secretHints: { token: 'cret' },
+            });
+            await pendingSave;
+        });
+        await act(async () => {
+            renderer = TestRenderer.create(<DynamicPluginConfiguration plugin={{
+                manifest: saveManifest,
+                status: { installed: false },
+            }} />);
+        });
+
+        expect(renderer.root.findAllByType('TextInput')[1].props.value).toBe('');
+        act(() => renderer.unmount());
+    });
+
+    it('clears successful connection feedback after uninstall or an incompatible catalog update', async () => {
+        mocks.testConnection.mockResolvedValue({ success: true, latencyMs: 31 });
+        const installedStatus = {
+            installed: true as const,
+            version: '2.3.0',
+            grantedPermissions: ['paws.ai.provider.invoke' as const],
+            configuration: { endpoint: 'https://example.com/saved' },
+            secretHints: { token: '1234' },
+        };
+        const testedStatus = {
+            ...installedStatus,
+            configuration: { endpoint: 'https://example.com/tested' },
+        };
+        mocks.install.mockResolvedValue(testedStatus);
+        const feedbackManifest = {
+            ...manifest,
+            id: 'feedback-lifecycle-plugin',
+            permissions: ['paws.ai.provider.invoke' as const],
+        };
+        let renderer: any;
+        await act(async () => {
+            renderer = TestRenderer.create(<DynamicPluginConfiguration plugin={{
+                manifest: feedbackManifest,
+                status: installedStatus,
+            }} />);
+        });
+        act(() => renderer.root.findAllByType('TextInput')[1].props.onChangeText('https://example.com/tested'));
+        await act(async () => {
+            await renderer.root.findByProps({
+                testID: 'feedback-lifecycle-plugin-plugin-test-connection',
+            }).props.onPress();
+        });
+        expect(renderer.root.findAllByProps({
+            testID: 'feedback-lifecycle-plugin-plugin-test-connection-result',
+        })).toHaveLength(1);
+
+        await act(async () => {
+            renderer.update(<DynamicPluginConfiguration plugin={{
+                manifest: feedbackManifest,
+                status: { ...testedStatus, secretHints: { token: 'changed' } },
+            }} />);
+        });
+        expect(renderer.root.findAllByProps({
+            testID: 'feedback-lifecycle-plugin-plugin-test-connection-result',
+        })).toHaveLength(0);
+
+        await act(async () => {
+            renderer.update(<DynamicPluginConfiguration plugin={{
+                manifest: feedbackManifest,
+                status: testedStatus,
+            }} />);
+        });
+        await act(async () => {
+            renderer.update(<DynamicPluginConfiguration plugin={{
+                manifest: feedbackManifest,
+                status: { ...testedStatus, configuration: { endpoint: 'https://example.com/external' } },
+            }} />);
+        });
+        expect(renderer.root.findAllByProps({
+            testID: 'feedback-lifecycle-plugin-plugin-test-connection-result',
+        })).toHaveLength(0);
+
+        await act(async () => {
+            renderer.update(<DynamicPluginConfiguration plugin={{
+                manifest: feedbackManifest,
+                status: { installed: false },
+            }} />);
+        });
+        expect(renderer.root.findAllByProps({
+            testID: 'feedback-lifecycle-plugin-plugin-test-connection-result',
+        })).toHaveLength(0);
+        act(() => renderer.unmount());
+    });
+
+    it('does not publish stale success feedback when the catalog changes during the save refresh', async () => {
+        mocks.testConnection.mockResolvedValue({ success: true, latencyMs: 31 });
+        const initialStatus = {
+            installed: true as const,
+            version: '2.3.0',
+            grantedPermissions: ['paws.ai.provider.invoke' as const],
+            configuration: { endpoint: 'https://example.com/saved' },
+            secretHints: { token: '1234' },
+        };
+        const savedStatus = {
+            ...initialStatus,
+            configuration: { endpoint: 'https://example.com/tested' },
+            secretHints: { token: 'tested' },
+        };
+        const externalStatus = {
+            ...savedStatus,
+            configuration: { endpoint: 'https://example.com/external' },
+            secretHints: { token: 'external' },
+        };
+        mocks.install.mockResolvedValue(savedStatus);
+        const raceManifest = {
+            ...manifest,
+            id: 'feedback-save-race-plugin',
+            permissions: ['paws.ai.provider.invoke' as const],
+        };
+        let renderer: any;
+        const onStatusChanged = async () => {
+            renderer.update(<DynamicPluginConfiguration
+                onStatusChanged={onStatusChanged}
+                plugin={{ manifest: raceManifest, status: externalStatus }}
+            />);
+        };
+        await act(async () => {
+            renderer = TestRenderer.create(<DynamicPluginConfiguration
+                onStatusChanged={onStatusChanged}
+                plugin={{ manifest: raceManifest, status: initialStatus }}
+            />);
+        });
+        act(() => renderer.root.findAllByType('TextInput')[1].props.onChangeText('https://example.com/tested'));
+        await act(async () => {
+            await renderer.root.findByProps({
+                testID: 'feedback-save-race-plugin-plugin-test-connection',
+            }).props.onPress();
+        });
+
+        expect(renderer.root.findAllByProps({
+            testID: 'feedback-save-race-plugin-plugin-test-connection-result',
+        })).toHaveLength(0);
+        act(() => renderer.unmount());
+    });
+
+    it('locks every configuration field while a save request is pending', async () => {
+        let resolveInstall: ((value: {
+            installed: true;
+            version: string;
+            grantedPermissions: typeof manifest.permissions;
+            configuration: { endpoint: string };
+            secretHints: { token: string };
+        }) => void) | undefined;
+        mocks.install.mockReturnValue(new Promise((resolve) => {
+            resolveInstall = resolve;
+        }));
+        const lockedManifest = { ...manifest, id: 'locked-during-save-plugin' };
+        let renderer: any;
+        await act(async () => {
+            renderer = TestRenderer.create(<DynamicPluginConfiguration plugin={{
+                manifest: lockedManifest,
+                status: { installed: false },
+            }} />);
+        });
+        const fields = renderer.root.findAllByType('TextInput');
+        act(() => {
+            fields[0].props.onChangeText('submitted-secret');
+            fields[1].props.onChangeText('https://example.com/submitted');
+        });
+        let pendingSave: Promise<void> | undefined;
+        await act(async () => {
+            pendingSave = renderer.root.findByProps({
+                testID: 'locked-during-save-plugin-plugin-install',
+            }).props.onPress();
+            await Promise.resolve();
+        });
+
+        expect(renderer.root.findAllByType('TextInput').every((field: any) => field.props.editable === false))
+            .toBe(true);
+
+        await act(async () => {
+            resolveInstall?.({
+                installed: true,
+                version: '2.3.0',
+                grantedPermissions: [...manifest.permissions],
+                configuration: { endpoint: 'https://example.com/submitted' },
+                secretHints: { token: 'cret' },
+            });
+            await pendingSave;
+        });
+        act(() => renderer.unmount());
+    });
+
+    it('does not run the old account install callback after account scope changes during refresh', async () => {
+        let finishRefresh: (() => void) | undefined;
+        const onStatusChanged = vi.fn(() => new Promise<void>((resolve) => {
+            finishRefresh = resolve;
+        }));
+        const onInstalled = vi.fn();
+        mocks.install.mockResolvedValue({
+            installed: true,
+            version: '2.3.0',
+            grantedPermissions: [...manifest.permissions],
+            configuration: { endpoint: 'https://example.com/account-a' },
+            secretHints: { token: 'cret' },
+        });
+        const scopedManifest = { ...manifest, id: 'account-scope-install-plugin' };
+        let renderer: any;
+        await act(async () => {
+            renderer = TestRenderer.create(<DynamicPluginConfiguration
+                onInstalled={onInstalled}
+                onStatusChanged={onStatusChanged}
+                plugin={{ manifest: scopedManifest, status: { installed: false } }}
+            />);
+        });
+        const fields = renderer.root.findAllByType('TextInput');
+        act(() => {
+            fields[0].props.onChangeText('account-a-secret');
+            fields[1].props.onChangeText('https://example.com/account-a');
+        });
+        let pendingInstall: Promise<void> | undefined;
+        await act(async () => {
+            pendingInstall = renderer.root.findByProps({
+                testID: 'account-scope-install-plugin-plugin-install',
+            }).props.onPress();
+            await vi.waitFor(() => expect(onStatusChanged).toHaveBeenCalledTimes(1));
+        });
+
+        mocks.advanceDraftScope();
+        await act(async () => {
+            finishRefresh?.();
+            await pendingInstall;
+        });
+
+        expect(onInstalled).not.toHaveBeenCalled();
+        act(() => renderer.unmount());
+    });
+
+    it('does not publish automatic-test success after account scope changes during refresh', async () => {
+        let finishRefresh: (() => void) | undefined;
+        const onStatusChanged = vi.fn(() => new Promise<void>((resolve) => {
+            finishRefresh = resolve;
+        }));
+        mocks.testConnection.mockResolvedValue({ success: true, latencyMs: 21 });
+        mocks.install.mockResolvedValue({
+            installed: true,
+            version: '2.3.0',
+            grantedPermissions: ['paws.ai.provider.invoke'],
+            configuration: { endpoint: 'https://example.com/account-a' },
+            secretHints: { token: 'cret' },
+        });
+        const scopedManifest = {
+            ...manifest,
+            id: 'account-scope-test-plugin',
+            permissions: ['paws.ai.provider.invoke' as const],
+        };
+        let renderer: any;
+        await act(async () => {
+            renderer = TestRenderer.create(<DynamicPluginConfiguration
+                onStatusChanged={onStatusChanged}
+                plugin={{ manifest: scopedManifest, status: { installed: false } }}
+            />);
+        });
+        const fields = renderer.root.findAllByType('TextInput');
+        act(() => {
+            fields[0].props.onChangeText('account-a-secret');
+            fields[1].props.onChangeText('https://example.com/account-a');
+        });
+        let pendingTest: Promise<void> | undefined;
+        await act(async () => {
+            pendingTest = renderer.root.findByProps({
+                testID: 'account-scope-test-plugin-plugin-test-connection',
+            }).props.onPress();
+            await vi.waitFor(() => expect(onStatusChanged).toHaveBeenCalledTimes(1));
+        });
+
+        mocks.advanceDraftScope();
+        await act(async () => {
+            finishRefresh?.();
+            await pendingTest;
+        });
+
+        expect(renderer.root.findAllByProps({
+            testID: 'account-scope-test-plugin-plugin-test-connection-result',
+        })).toHaveLength(0);
+        act(() => renderer.unmount());
+    });
+
+    it('keeps configuration actions above permissions and status', async () => {
+        let renderer: any;
+        await act(async () => {
+            renderer = TestRenderer.create(<DynamicPluginConfiguration plugin={{
+                manifest: { ...manifest, id: 'action-order-plugin', permissions: ['paws.ai.provider.invoke'] },
+                status: { installed: false },
+            }} />);
+        });
+
+        const orderedSections = renderer.root.findAll((node: any) => [
+            'action-order-plugin-plugin-actions',
+            'action-order-plugin-plugin-permissions',
+            'action-order-plugin-plugin-status-section',
+        ].includes(node.props.testID)).map((node: any) => node.props.testID);
+        expect(orderedSections).toEqual([
+            'action-order-plugin-plugin-actions',
+            'action-order-plugin-plugin-permissions',
+            'action-order-plugin-plugin-status-section',
+        ]);
+        act(() => renderer.unmount());
+    });
+
+    it('shows DeepSeek examples as placeholders and recommends a multimodal model', async () => {
+        let renderer: any;
+        await act(async () => {
+            renderer = TestRenderer.create(<DynamicPluginConfiguration plugin={{
+                manifest: relationshipAdvisorManifest,
+                status: { installed: false },
+            }} />);
+        });
+
+        const fields = renderer.root.findAllByType('TextInput');
+        expect(fields.map((field: any) => field.props.placeholder)).toEqual([
+            '例如：sk-...',
+            '例如：https://api.deepseek.com',
+            '例如：deepseek-v4-flash-vision-exp',
+        ]);
+        expect(renderer.root.findByProps({
+            testID: 'relationship-advisor-plugin-model-recommendation',
+        }).props.children).toBe('建议填写支持多模态的模型，才能同时理解文字和图片。');
         act(() => renderer.unmount());
     });
 

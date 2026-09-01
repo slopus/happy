@@ -11,6 +11,62 @@ function plugin(id: string): PluginCatalogItem {
 }
 
 describe('PluginCatalogStore', () => {
+    it('scopes configuration drafts to both the plugin version and the active account', () => {
+        const store = new PluginCatalogStore();
+        store.setConfigurationDraft('relationship-advisor', '1.0.0', {
+            baseUrl: 'https://api.deepseek.com',
+        });
+
+        expect(store.getConfigurationDraft('relationship-advisor', '1.0.0')).toEqual({
+            baseUrl: 'https://api.deepseek.com',
+        });
+        expect(store.getConfigurationDraft('relationship-advisor', '2.0.0')).toBeUndefined();
+
+        store.beginAccount();
+
+        expect(store.getConfigurationDraft('relationship-advisor', '1.0.0')).toBeUndefined();
+    });
+
+    it('only retires the submitted draft when no newer edit has replaced it', () => {
+        const store = new PluginCatalogStore();
+        const submitted = { baseUrl: 'https://api.deepseek.com' };
+        store.setConfigurationDraft('relationship-advisor', '1.0.0', submitted);
+
+        store.setConfigurationDraft('relationship-advisor', '1.0.0', {
+            baseUrl: 'https://api.deepseek.com/v2',
+        });
+        store.clearConfigurationDraft('relationship-advisor', '1.0.0', submitted);
+        expect(store.getConfigurationDraft('relationship-advisor', '1.0.0')).toEqual({
+            baseUrl: 'https://api.deepseek.com/v2',
+        });
+
+        store.clearConfigurationDraft('relationship-advisor', '1.0.0', {
+            baseUrl: 'https://api.deepseek.com/v2',
+        });
+        expect(store.getConfigurationDraft('relationship-advisor', '1.0.0')).toBeUndefined();
+    });
+
+    it('ignores draft operations that finish after the active account changes', () => {
+        const store = new PluginCatalogStore();
+        const priorAccount = store.getConfigurationDraftScope();
+        store.setConfigurationDraft('relationship-advisor', '1.0.0', {
+            baseUrl: 'https://account-a.example.com',
+        }, priorAccount);
+
+        store.beginAccount();
+        const activeAccount = store.getConfigurationDraftScope();
+        const activeDraft = { baseUrl: 'https://account-b.example.com' };
+        store.setConfigurationDraft('relationship-advisor', '1.0.0', activeDraft, activeAccount);
+
+        store.clearConfigurationDraft('relationship-advisor', '1.0.0', activeDraft, priorAccount);
+        store.setConfigurationDraft('relationship-advisor', '1.0.0', {
+            baseUrl: 'https://stale-account-a.example.com',
+        }, priorAccount);
+
+        expect(store.getConfigurationDraft('relationship-advisor', '1.0.0', priorAccount)).toBeUndefined();
+        expect(store.getConfigurationDraft('relationship-advisor', '1.0.0', activeAccount)).toEqual(activeDraft);
+    });
+
     it('clears the prior account catalog before loading a new account', () => {
         const store = new PluginCatalogStore();
         store.resolve([plugin('account-one-plugin')]);
