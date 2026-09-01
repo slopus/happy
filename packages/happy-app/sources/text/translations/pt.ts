@@ -811,7 +811,12 @@ export const pt: TranslationStructure = {
         attachmentKeyUnavailable: 'A chave do anexo não está disponível',
         attachmentDownloadFailed: 'Falha ao baixar o anexo',
         shareFailed: 'Não foi possível compartilhar a sessão',
+        pendingMessages: 'Antes de compartilhar, aguarde o envio de todas as mensagens pendentes.',
         revokeFailed: 'Não foi possível revogar o compartilhamento da sessão',
+        readyNotificationTitle: 'Link público criado',
+        readyNotificationBody: ({ title }: { title: string }) => `O link público de “${title}” está pronto. Toque para visualizar.`,
+        failedNotificationTitle: 'Falha ao criar link público',
+        failedNotificationBody: ({ title }: { title: string }) => `Não foi possível criar o link público de “${title}”. Toque para tentar novamente.`,
     },
 
     components: {

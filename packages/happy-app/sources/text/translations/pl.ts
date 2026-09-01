@@ -828,7 +828,12 @@ export const pl: TranslationStructure = {
         attachmentKeyUnavailable: 'Klucz załącznika jest niedostępny',
         attachmentDownloadFailed: 'Nie udało się pobrać załącznika',
         shareFailed: 'Nie udało się udostępnić sesji',
+        pendingMessages: 'Przed udostępnieniem poczekaj, aż oczekujące wiadomości zostaną wysłane.',
         revokeFailed: 'Nie udało się cofnąć udostępniania sesji',
+        readyNotificationTitle: 'Link publiczny został utworzony',
+        readyNotificationBody: ({ title }: { title: string }) => `Link publiczny do „${title}” jest gotowy. Naciśnij, aby go otworzyć.`,
+        failedNotificationTitle: 'Nie udało się utworzyć linku publicznego',
+        failedNotificationBody: ({ title }: { title: string }) => `Nie udało się utworzyć linku publicznego do „${title}”. Naciśnij, aby spróbować ponownie.`,
     },
 
     components: {

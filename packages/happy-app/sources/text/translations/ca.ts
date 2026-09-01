@@ -812,7 +812,12 @@ export const ca: TranslationStructure = {
         attachmentKeyUnavailable: 'La clau del fitxer adjunt no està disponible',
         attachmentDownloadFailed: 'No s\'ha pogut baixar el fitxer adjunt',
         shareFailed: 'No s\'ha pogut compartir la sessió',
+        pendingMessages: 'Abans de compartir, espera que s\'acabin d\'enviar els missatges pendents.',
         revokeFailed: 'No s\'ha pogut revocar la compartició de la sessió',
+        readyNotificationTitle: 'Enllaç públic creat',
+        readyNotificationBody: ({ title }: { title: string }) => `L'enllaç públic de «${title}» està a punt. Toca per veure'l.`,
+        failedNotificationTitle: 'No s\'ha pogut crear l\'enllaç públic',
+        failedNotificationBody: ({ title }: { title: string }) => `No s'ha pogut crear l'enllaç públic de «${title}». Toca per tornar-ho a provar.`,
     },
 
     components: {

@@ -826,7 +826,12 @@ export const en: TranslationStructure = {
         attachmentKeyUnavailable: 'Attachment key is unavailable',
         attachmentDownloadFailed: 'Attachment download failed',
         shareFailed: 'Unable to share session',
+        pendingMessages: 'Wait for pending messages to finish sending before sharing.',
         revokeFailed: 'Unable to revoke session share',
+        readyNotificationTitle: 'Public link created',
+        readyNotificationBody: ({ title }: { title: string }) => `The public link for “${title}” is ready. Tap to view.`,
+        failedNotificationTitle: 'Failed to create public link',
+        failedNotificationBody: ({ title }: { title: string }) => `Failed to create a public link for “${title}”. Tap to retry.`,
     },
 
     components: {

@@ -79,3 +79,13 @@ export function getSessionRouteFromNotificationResponse(response: unknown): `/se
     const contentData = getObjectValue(getObjectValue(getObjectValue(response, 'notification'), 'request'), 'content');
     return getSessionRouteFromNotificationData(getObjectValue(contentData, 'data'));
 }
+
+export function getPublicSessionShareRetrySessionId(response: unknown): string | null {
+    const contentData = getObjectValue(getObjectValue(getObjectValue(response, 'notification'), 'request'), 'content');
+    const data = normalizeNotificationData(getObjectValue(contentData, 'data'));
+    if (!data || typeof data !== 'object' || Array.isArray(data) || getObjectValue(data, 'kind') !== 'share-failed') {
+        return null;
+    }
+    const sessionId = getObjectValue(data, 'sessionId');
+    return typeof sessionId === 'string' && sessionId.trim() ? sessionId.trim() : null;
+}

@@ -750,7 +750,12 @@ export const ru: TranslationStructure = {
         attachmentKeyUnavailable: 'Ключ вложения недоступен',
         attachmentDownloadFailed: 'Не удалось скачать вложение',
         shareFailed: 'Не удалось поделиться сессией',
+        pendingMessages: 'Перед тем как поделиться, дождитесь отправки всех ожидающих сообщений.',
         revokeFailed: 'Не удалось отозвать доступ к сессии',
+        readyNotificationTitle: 'Публичная ссылка создана',
+        readyNotificationBody: ({ title }: { title: string }) => `Публичная ссылка для «${title}» готова. Нажмите, чтобы открыть.`,
+        failedNotificationTitle: 'Не удалось создать публичную ссылку',
+        failedNotificationBody: ({ title }: { title: string }) => `Не удалось создать публичную ссылку для «${title}». Нажмите, чтобы повторить попытку.`,
     },
 
     components: {

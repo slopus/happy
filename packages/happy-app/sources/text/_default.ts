@@ -858,7 +858,12 @@ export const en = {
         attachmentKeyUnavailable: 'Attachment key is unavailable',
         attachmentDownloadFailed: 'Attachment download failed',
         shareFailed: 'Unable to share session',
+        pendingMessages: 'Wait for pending messages to finish sending before sharing.',
         revokeFailed: 'Unable to revoke session share',
+        readyNotificationTitle: 'Public link ready',
+        readyNotificationBody: ({ title }: { title: string }) => `The public link for “${title}” is ready. Tap to view it.`,
+        failedNotificationTitle: 'Public link failed',
+        failedNotificationBody: ({ title }: { title: string }) => `Could not create a public link for “${title}”. Tap to retry.`,
     },
 
     components: {

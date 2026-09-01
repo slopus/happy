@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+    getPublicSessionShareRetrySessionId,
     getSessionRouteFromNotificationData,
     getSessionRouteFromNotificationResponse,
 } from './notificationRouting';
@@ -46,6 +47,17 @@ describe('getSessionRouteFromNotificationResponse', () => {
                     content: {}
                 }
             }
+        })).toBeNull();
+    });
+});
+
+describe('getPublicSessionShareRetrySessionId', () => {
+    it('returns the session only for a failed share notification', () => {
+        expect(getPublicSessionShareRetrySessionId({
+            notification: { request: { content: { data: { kind: 'share-failed', sessionId: 'session-123' } } } },
+        })).toBe('session-123');
+        expect(getPublicSessionShareRetrySessionId({
+            notification: { request: { content: { data: { kind: 'share-ready', sessionId: 'session-123' } } } },
         })).toBeNull();
     });
 });

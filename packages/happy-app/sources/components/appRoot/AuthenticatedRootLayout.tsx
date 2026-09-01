@@ -29,7 +29,7 @@ import { ImageViewerHost } from '@/components/ImageViewerHost';
 import { StatusBarProvider } from '@/components/StatusBarProvider';
 import { initConsoleLogging, setConsoleOutputEnabled } from '@/utils/consoleLogging';
 import { useLocalSetting } from '@/sync/storage';
-import { getSessionRouteFromNotificationResponse } from '@/utils/notificationRouting';
+import { getPublicSessionShareRetrySessionId, getSessionRouteFromNotificationResponse } from '@/utils/notificationRouting';
 import { navigateToSession } from '@/hooks/useNavigateToSession';
 import { applyVoiceUpsellOverride } from '@/realtime/voiceExperiment';
 import { useTauriZoom } from '@/hooks/useTauriZoom';
@@ -39,12 +39,14 @@ import { OtaPreviewFloatingButton } from '@/components/OtaPreviewFloatingButton'
 import { loadAppConfig } from '@/sync/appConfig';
 import { shouldShowOtaFloatingSwitcher } from '@/utils/otaFloatingSwitcher';
 import { loadAppRootFonts } from './appRootFonts';
+import { shouldPresentNotification } from '@/utils/notificationPresentation';
+import { PublicSessionShareJobResumer } from '@/components/PublicSessionShareJobResumer';
+import { retryPublicSessionShareJob } from '@/sync/publicSessionShareQueueRuntime';
 
 Notifications.setNotificationHandler({
     handleNotification: async (notification) => {
         const kind = (notification?.request?.content?.data as { kind?: unknown } | undefined)?.kind;
-        const isSessionEvent = kind === 'done' || kind === 'permission' || kind === 'question';
-        const shouldShow = isSessionEvent || AppState.currentState !== 'active';
+        const shouldShow = shouldPresentNotification(kind, AppState.currentState);
         return {
             shouldShowAlert: shouldShow,
             shouldPlaySound: shouldShow,
@@ -172,6 +174,8 @@ export default function AuthenticatedRootLayout() {
         handledNotificationIds.current.add(responseId);
         try {
             if (response.actionIdentifier !== Notifications.DEFAULT_ACTION_IDENTIFIER) return;
+            const retrySessionId = getPublicSessionShareRetrySessionId(response);
+            if (retrySessionId) retryPublicSessionShareJob(retrySessionId);
             const route = getSessionRouteFromNotificationResponse(response);
             if (!route) return;
             const encodedSessionId = route.replace(/^\/session\//, '');
@@ -223,6 +227,7 @@ export default function AuthenticatedRootLayout() {
                                         <BrowserNavigationShortcuts />
                                         <CommandPaletteProvider>
                                             <RealtimeProvider>
+                                                <PublicSessionShareJobResumer />
                                                 <HorizontalSafeAreaWrapper>
                                                     <SidebarNavigator />
                                                 </HorizontalSafeAreaWrapper>

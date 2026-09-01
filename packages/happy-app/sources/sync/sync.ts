@@ -1300,6 +1300,14 @@ class Sync {
         return this.credentials;
     }
 
+    public getSessionLastMessageSeq(sessionId: string): number | null {
+        return this.sessionLastSeq.get(sessionId) ?? null;
+    }
+
+    public hasPendingOutboxMessagesForSession(sessionId: string): boolean {
+        return (this.pendingOutbox.get(sessionId)?.length ?? 0) > 0;
+    }
+
     // Artifact methods
     public fetchArtifactsList = async (): Promise<void> => {
         log.log('📦 fetchArtifactsList: Starting artifact sync');

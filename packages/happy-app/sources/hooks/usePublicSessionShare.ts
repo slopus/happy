@@ -1,48 +1,34 @@
 import * as React from 'react';
-import type { AuthCredentials } from '@/auth/tokenStorage';
-import { decryptBlob } from '@/encryption/blob';
+import { Platform } from 'react-native';
 import { useHappyAction } from './useHappyAction';
 import { HappyError } from '@/utils/errors';
-import { storage, useSetting } from '@/sync/storage';
+import { useSetting } from '@/sync/storage';
 import { sync } from '@/sync/sync';
-import type { PublicSessionAttachmentJob, PublicSessionShareState } from '@/sync/publicSessionShareTypes';
-import { loadCompleteSessionMessages, publishPublicSessionSnapshot } from '@/sync/publicSessionSharePublishing';
-import { downloadEncryptedAttachment, requestAttachmentDownloadSource } from '@/sync/apiAttachments';
+import type { PublicSessionShareState } from '@/sync/publicSessionShareTypes';
 import {
-    createPublicSessionShareDraft,
     getPublicSessionShare,
     getPublicSessionShareUrl,
-    preparePublicSessionShareAsset,
-    publishPublicSessionShareDraft,
     revokePublicSessionShare,
-    uploadPublicSessionShareAsset,
 } from '@/sync/apiPublicSessionShares';
+import {
+    cancelPublicSessionShareJob,
+    enqueuePublicSessionShareJob,
+    getPublicSessionShareJob,
+    subscribePublicSessionShareJobs,
+} from '@/sync/publicSessionShareQueueRuntime';
+import { Modal } from '@/modal';
 import { t } from '@/text';
-
-async function loadAttachmentBytes(
-    credentials: AuthCredentials,
-    sessionId: string,
-    attachment: PublicSessionAttachmentJob,
-): Promise<Uint8Array> {
-    if (attachment.encrypted) {
-        const key = sync.encryption.getSessionBlobKey(sessionId);
-        if (!key || key.length !== 32) throw new Error(t('sessionShare.attachmentKeyUnavailable'));
-        const encrypted = await downloadEncryptedAttachment(credentials, sessionId, attachment.sourceRef);
-        const decrypted = decryptBlob(encrypted, key);
-        if (!decrypted) throw new Error(`${t('sessionShare.attachmentDownloadFailed')}: ${attachment.name}`);
-        return decrypted;
-    }
-    const source = await requestAttachmentDownloadSource(credentials, sessionId, attachment.sourceRef);
-    const response = await fetch(source.uri, { headers: source.headers });
-    if (!response.ok) throw new Error(`${t('sessionShare.attachmentDownloadFailed')}: ${response.status}`);
-    return new Uint8Array(await response.arrayBuffer());
-}
 
 export function usePublicSessionShare(sessionId: string, title: string) {
     const groupToolCalls = useSetting('groupToolCalls');
     const [shareState, setShareState] = React.useState<PublicSessionShareState>({ active: false, publicId: null, publishedAt: null });
-    const [progress, setProgress] = React.useState({ completed: 0, total: 0 });
     const [checking, setChecking] = React.useState(true);
+    const getQueuedJob = React.useCallback(() => getPublicSessionShareJob(sessionId), [sessionId]);
+    const queuedJob = React.useSyncExternalStore(
+        subscribePublicSessionShareJobs,
+        getQueuedJob,
+        getQueuedJob,
+    );
 
     const credentials = sync.getCredentials();
     const refresh = React.useCallback(async () => {
@@ -63,34 +49,47 @@ export function usePublicSessionShare(sessionId: string, title: string) {
         void refresh();
     }, [refresh]);
 
-    const [publishing, performPublish] = useHappyAction(async () => {
-        if (!credentials) throw new HappyError(t('sessionShare.authenticationUnavailable'), false);
-        try {
-            const result = await publishPublicSessionSnapshot(
-                { sessionId, title, sharedAt: Date.now(), groupToolCalls },
-                {
-                    loadMessages: () => loadCompleteSessionMessages(sessionId, {
-                        ensureMessagesLoaded: sync.ensureMessagesLoaded,
-                        loadOlderMessages: sync.loadOlderMessages,
-                        getMessageState: () => storage.getState().sessionMessages[sessionId],
-                    }),
-                    createDraft: () => createPublicSessionShareDraft(credentials, sessionId),
-                    loadAttachmentBytes: (asset) => loadAttachmentBytes(credentials, sessionId, asset),
-                    prepareAsset: (generation, asset, sha256) => preparePublicSessionShareAsset(credentials, sessionId, generation, asset, sha256),
-                    uploadAsset: (upload, bytes) => uploadPublicSessionShareAsset(upload, bytes, credentials),
-                    publishDraft: (generation, snapshot) => publishPublicSessionShareDraft(credentials, sessionId, generation, snapshot),
-                    onProgress: (completed, total) => setProgress({ completed, total }),
-                },
-            );
-            setShareState({ active: true, publicId: result.publicId, publishedAt: result.publishedAt });
-        } catch (error) {
-            throw new HappyError(error instanceof Error ? error.message : t('sessionShare.shareFailed'), false);
+    React.useEffect(() => {
+        if (queuedJob?.status !== 'ready' || !queuedJob.publicId || !queuedJob.publishedAt) return;
+        setShareState({ active: true, publicId: queuedJob.publicId, publishedAt: queuedJob.publishedAt });
+    }, [queuedJob?.publicId, queuedJob?.publishedAt, queuedJob?.status]);
+
+    const reportedWebFailureAt = React.useRef<number | null>(null);
+    React.useEffect(() => {
+        if (Platform.OS !== 'web' || queuedJob?.status !== 'failed' || !queuedJob.notificationPending) return;
+        if (reportedWebFailureAt.current === queuedJob.updatedAt) return;
+        reportedWebFailureAt.current = queuedJob.updatedAt;
+        Modal.alert(t('common.error'), queuedJob.error || t('sessionShare.shareFailed'));
+    }, [queuedJob?.error, queuedJob?.notificationPending, queuedJob?.status, queuedJob?.updatedAt]);
+
+    const performPublish = React.useCallback((): boolean => {
+        if (!credentials) {
+            Modal.alert(t('common.error'), t('sessionShare.authenticationUnavailable'));
+            return false;
         }
-    });
+        if (sync.hasPendingOutboxMessagesForSession(sessionId)) {
+            Modal.alert(t('common.error'), t('sessionShare.pendingMessages'));
+            return false;
+        }
+        const cutoffSeq = sync.getSessionLastMessageSeq(sessionId);
+        if (cutoffSeq === null) {
+            Modal.alert(t('common.error'), t('sessionShare.shareFailed'));
+            return false;
+        }
+        enqueuePublicSessionShareJob({
+            sessionId,
+            title,
+            requestedAt: Date.now(),
+            cutoffSeq,
+            groupToolCalls,
+        });
+        return true;
+    }, [credentials, groupToolCalls, sessionId, title]);
 
     const [revoking, performRevoke] = useHappyAction(async () => {
         if (!credentials) throw new HappyError(t('sessionShare.authenticationUnavailable'), false);
         try {
+            cancelPublicSessionShareJob(sessionId);
             await revokePublicSessionShare(credentials, sessionId);
             setShareState({ active: false, publicId: null, publishedAt: null });
         } catch (error) {
@@ -101,9 +100,9 @@ export function usePublicSessionShare(sessionId: string, title: string) {
     return {
         shareState,
         shareUrl: shareState.publicId ? getPublicSessionShareUrl(shareState.publicId) : null,
-        progress,
+        progress: queuedJob?.progress ?? { completed: 0, total: 0 },
         checking,
-        publishing,
+        publishing: queuedJob?.status === 'queued' || queuedJob?.status === 'running',
         revoking,
         refresh,
         publish: performPublish,

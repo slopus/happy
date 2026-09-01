@@ -813,7 +813,12 @@ export const zhHans: TranslationStructure = {
         attachmentKeyUnavailable: '附件密钥不可用',
         attachmentDownloadFailed: '附件下载失败',
         shareFailed: '无法分享会话',
+        pendingMessages: '请等待所有待发送消息发送完成后再分享。',
         revokeFailed: '无法撤销会话分享',
+        readyNotificationTitle: '公开链接已生成',
+        readyNotificationBody: ({ title }: { title: string }) => `“${title}”的公开链接已准备好，点击查看。`,
+        failedNotificationTitle: '公开链接生成失败',
+        failedNotificationBody: ({ title }: { title: string }) => `“${title}”生成公开链接失败，点击重试。`,
     },
 
     components: {

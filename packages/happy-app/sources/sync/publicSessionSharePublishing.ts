@@ -2,8 +2,44 @@ import type { Message } from './typesMessage';
 import { buildPublicSessionSnapshot } from './publicSessionSnapshot';
 import type { PublicSessionAttachmentJob, PublicSessionSnapshotV1 } from './publicSessionShareTypes';
 import type { PreparedPublicSessionShareAsset } from './apiPublicSessionShares';
+import { createReducer, reducer } from './reducer/reducer';
+import type { NormalizedMessage } from './typesRaw';
 
 type MessagePageState = { messages: Message[]; hasMoreOlder: boolean } | undefined;
+
+export type PublicSessionSequencePage = {
+    messages: Array<{ seq: number; normalized: NormalizedMessage | null }>;
+    hasMore: boolean;
+};
+
+export async function loadSessionMessagesThroughSequence(cutoffSeq: number, deps: {
+    loadPage: (beforeSeq: number) => Promise<PublicSessionSequencePage>;
+}): Promise<Message[]> {
+    const sequenced = new Map<number, NormalizedMessage>();
+    let beforeSeq = cutoffSeq + 1;
+    for (let pageIndex = 0; pageIndex < 10_000; pageIndex += 1) {
+        const page = await deps.loadPage(beforeSeq);
+        let nextBeforeSeq = beforeSeq;
+        for (const item of page.messages) {
+            if (!Number.isInteger(item.seq) || item.seq < 1 || item.seq > cutoffSeq || item.seq >= beforeSeq) continue;
+            nextBeforeSeq = Math.min(nextBeforeSeq, item.seq);
+            if (item.normalized) sequenced.set(item.seq, item.normalized);
+        }
+        if (!page.hasMore) break;
+        if (nextBeforeSeq >= beforeSeq) throw new Error('Session history pagination stalled');
+        beforeSeq = nextBeforeSeq;
+        if (pageIndex === 9_999) throw new Error('Session history exceeds the supported page count');
+    }
+
+    const state = createReducer();
+    const normalized = Array.from(sequenced.entries())
+        .sort(([left], [right]) => left - right)
+        .map(([, message]) => message);
+    const reduced = reducer(state, normalized);
+    const messages = new Map<string, Message>();
+    for (const message of reduced.messages) messages.set(message.id, message);
+    return Array.from(messages.values()).sort((left, right) => right.createdAt - left.createdAt);
+}
 
 export async function loadCompleteSessionMessages(sessionId: string, deps: {
     ensureMessagesLoaded: (sessionId: string) => Promise<void>;
@@ -35,9 +71,11 @@ export type PublicSessionPublishDependencies = {
     prepareAsset: (generation: string, asset: PublicSessionAttachmentJob, sha256: string) => Promise<PreparedPublicSessionShareAsset>;
     uploadAsset: (upload: PreparedPublicSessionShareAsset, bytes: Uint8Array) => Promise<void>;
     publishDraft: (generation: string, snapshot: PublicSessionSnapshotV1) => Promise<{ publicId: string; publishedAt: number }>;
+    cleanupPublishedShare?: () => Promise<void>;
     createAttachmentId?: () => string;
     hashAttachmentBytes?: (bytes: Uint8Array) => Promise<string>;
     onProgress?: (completed: number, total: number) => void;
+    isCancelled?: () => boolean;
 };
 
 async function sha256Hex(bytes: Uint8Array): Promise<string> {
@@ -60,7 +98,9 @@ export async function publishPublicSessionSnapshot(
     input: { sessionId: string; title: string; sharedAt: number; groupToolCalls?: boolean },
     deps: PublicSessionPublishDependencies,
 ): Promise<{ publicId: string; publishedAt: number }> {
+    if (deps.isCancelled?.()) throw new Error('Public session share cancelled');
     const messages = await deps.loadMessages();
+    if (deps.isCancelled?.()) throw new Error('Public session share cancelled');
     const { snapshot, attachments } = buildPublicSessionSnapshot({
         title: input.title,
         messages,
@@ -69,8 +109,10 @@ export async function publishPublicSessionSnapshot(
         createAttachmentId: deps.createAttachmentId,
     });
     const draft = await deps.createDraft();
+    if (deps.isCancelled?.()) throw new Error('Public session share cancelled');
     deps.onProgress?.(0, attachments.length);
     for (let index = 0; index < attachments.length; index += 1) {
+        if (deps.isCancelled?.()) throw new Error('Public session share cancelled');
         const attachment = attachments[index];
         const bytes = await deps.loadAttachmentBytes(attachment);
         if (attachment.size !== bytes.length) {
@@ -80,7 +122,14 @@ export async function publishPublicSessionSnapshot(
         const sha256 = await (deps.hashAttachmentBytes ?? sha256Hex)(bytes);
         const upload = await deps.prepareAsset(draft.generation, attachment, sha256);
         await deps.uploadAsset(upload, bytes);
+        if (deps.isCancelled?.()) throw new Error('Public session share cancelled');
         deps.onProgress?.(index + 1, attachments.length);
     }
-    return deps.publishDraft(draft.generation, snapshot);
+    if (deps.isCancelled?.()) throw new Error('Public session share cancelled');
+    const result = await deps.publishDraft(draft.generation, snapshot);
+    if (deps.isCancelled?.()) {
+        await deps.cleanupPublishedShare?.();
+        throw new Error('Public session share cancelled');
+    }
+    return result;
 }

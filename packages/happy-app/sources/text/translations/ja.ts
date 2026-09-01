@@ -813,7 +813,12 @@ export const ja: TranslationStructure = {
         attachmentKeyUnavailable: '添付ファイルのキーを利用できません',
         attachmentDownloadFailed: '添付ファイルのダウンロードに失敗しました',
         shareFailed: 'セッションを共有できませんでした',
+        pendingMessages: '共有する前に、保留中のメッセージの送信が完了するまでお待ちください。',
         revokeFailed: 'セッションの共有を取り消せませんでした',
+        readyNotificationTitle: '公開リンクを作成しました',
+        readyNotificationBody: ({ title }: { title: string }) => `「${title}」の公開リンクが準備できました。タップして表示します。`,
+        failedNotificationTitle: '公開リンクの作成に失敗しました',
+        failedNotificationBody: ({ title }: { title: string }) => `「${title}」の公開リンクを作成できませんでした。タップして再試行します。`,
     },
 
     components: {

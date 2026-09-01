@@ -812,7 +812,12 @@ export const es: TranslationStructure = {
         attachmentKeyUnavailable: 'La clave del archivo adjunto no está disponible',
         attachmentDownloadFailed: 'No se pudo descargar el archivo adjunto',
         shareFailed: 'No se pudo compartir la sesión',
+        pendingMessages: 'Antes de compartir, espera a que terminen de enviarse los mensajes pendientes.',
         revokeFailed: 'No se pudo revocar el uso compartido de la sesión',
+        readyNotificationTitle: 'Enlace público creado',
+        readyNotificationBody: ({ title }: { title: string }) => `El enlace público de «${title}» está listo. Toca para verlo.`,
+        failedNotificationTitle: 'No se pudo crear el enlace público',
+        failedNotificationBody: ({ title }: { title: string }) => `No se pudo crear el enlace público de «${title}». Toca para volver a intentarlo.`,
     },
 
     components: {

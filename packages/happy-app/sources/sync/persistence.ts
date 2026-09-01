@@ -5,6 +5,7 @@ import { Purchases, purchasesDefaults, purchasesParse } from './purchases';
 import { Profile, profileDefaults, profileParse } from './profile';
 import type { PermissionModeKey } from '@/components/PermissionModeSelector';
 import { SidebarOrganizationSchema, type SidebarOrganization } from './sidebarOrganization';
+import { clearPublicSessionShareQueueStorage } from './publicSessionShareQueuePersistence';
 
 const mmkv = new MMKV();
 const NEW_SESSION_DRAFT_KEY = 'new-session-draft-v1';
@@ -505,4 +506,5 @@ export function resetVoiceLocalCounters() {
 
 export function clearPersistence() {
     mmkv.clearAll();
+    clearPublicSessionShareQueueStorage();
 }

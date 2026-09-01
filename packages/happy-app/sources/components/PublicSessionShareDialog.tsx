@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { ActivityIndicator, Linking, Pressable, Text, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, Linking, Platform, Pressable, Text, useWindowDimensions, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { StyleSheet } from 'react-native-unistyles';
@@ -59,6 +59,11 @@ export const PublicSessionShareDialog = React.memo(function PublicSessionShareDi
         setConfirmingRevoke(false);
         revoke();
     }, [revoke]);
+
+    const startPublish = React.useCallback(() => {
+        const accepted = publish();
+        if (accepted && Platform.OS !== 'web') onClose?.();
+    }, [onClose, publish]);
 
     const busy = publishing || revoking;
     const busyLabel = publishing
@@ -167,7 +172,7 @@ export const PublicSessionShareDialog = React.memo(function PublicSessionShareDi
                             disabled={busy}
                             icon="refresh-outline"
                             label={t('sessionShare.updateSnapshot')}
-                            onPress={publish}
+                            onPress={startPublish}
                             testID="public-session-share-update"
                         />
                     </View>
@@ -203,7 +208,7 @@ export const PublicSessionShareDialog = React.memo(function PublicSessionShareDi
                             accessibilityLabel={t('sessionShare.confirmAction')}
                             accessibilityRole="button"
                             disabled={busy}
-                            onPress={publish}
+                            onPress={startPublish}
                             style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed, busy && styles.disabled]}
                             testID="public-session-share-create"
                         >

@@ -6,6 +6,7 @@ import { clearPersistence, loadRegisteredPushToken } from '@/sync/persistence';
 import { unregisterPushToken } from '@/sync/apiPush';
 import { Platform } from 'react-native';
 import { trackLogout } from '@/track';
+import { clearPublicSessionShareJobs } from '@/sync/publicSessionShareQueueRuntime';
 
 interface AuthContextType {
     isAuthenticated: boolean;
@@ -39,6 +40,7 @@ export function AuthProvider({ children, initialCredentials }: { children: React
 
     const logout = async () => {
         trackLogout();
+        clearPublicSessionShareJobs();
         const registeredPushToken = credentials ? loadRegisteredPushToken() : null;
         if (credentials && registeredPushToken) {
             try {

@@ -812,7 +812,12 @@ export const zhHant: TranslationStructure = {
         attachmentKeyUnavailable: '附件金鑰無法使用',
         attachmentDownloadFailed: '附件下載失敗',
         shareFailed: '無法分享工作階段',
+        pendingMessages: '請等待所有待傳送訊息傳送完成後再分享。',
         revokeFailed: '無法撤銷工作階段分享',
+        readyNotificationTitle: '公開連結已產生',
+        readyNotificationBody: ({ title }: { title: string }) => `「${title}」的公開連結已準備好，點按即可查看。`,
+        failedNotificationTitle: '公開連結產生失敗',
+        failedNotificationBody: ({ title }: { title: string }) => `「${title}」產生公開連結失敗，點按即可重試。`,
     },
 
     components: {

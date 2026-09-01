@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { Message } from '@/sync/typesMessage';
 import {
     loadCompleteSessionMessages,
+    loadSessionMessagesThroughSequence,
     publishPublicSessionSnapshot,
     type PublicSessionPublishDependencies,
 } from '@/sync/publicSessionSharePublishing';
@@ -105,5 +106,126 @@ describe('public session share publishing', () => {
 
         await expect(publishPublicSessionSnapshot({ sessionId: 'session-1', title: 'Title', sharedAt: 123 }, deps)).rejects.toThrow('upload failed');
         expect(publishDraft).not.toHaveBeenCalled();
+    });
+
+    it('keeps the resumed publication pinned to messages that existed when sharing was requested', async () => {
+        const loadPage = vi.fn(async () => ({
+            hasMore: false,
+            messages: [
+                {
+                    seq: 43,
+                    normalized: {
+                        id: 'after', localId: null, createdAt: 50, isSidechain: false,
+                        role: 'agent' as const,
+                        content: [{ type: 'text' as const, text: 'after tap despite an older desktop clock', uuid: 'after', parentUUID: null }],
+                    },
+                },
+                {
+                    seq: 42,
+                    normalized: {
+                        id: 'before', localId: null, createdAt: 100, isSidechain: false,
+                        role: 'user' as const,
+                        content: { type: 'text' as const, text: 'before tap' },
+                    },
+                },
+            ],
+        }));
+
+        const messages = await loadSessionMessagesThroughSequence(42, { loadPage });
+
+        expect(loadPage).toHaveBeenCalledWith(43);
+        expect(messages).toEqual([
+            expect.objectContaining({ kind: 'user-text', text: 'before tap' }),
+        ]);
+    });
+
+    it('does not apply a later tool result to a tool captured by the sequence cursor', async () => {
+        const messages = await loadSessionMessagesThroughSequence(1, {
+            loadPage: async () => ({
+                hasMore: false,
+                messages: [
+                    {
+                        seq: 2,
+                        normalized: {
+                            id: 'tool-result', localId: null, createdAt: 50, isSidechain: false,
+                            role: 'agent',
+                            content: [{
+                                type: 'tool-result', tool_use_id: 'tool-1', content: 'later output', is_error: false,
+                                uuid: 'tool-result', parentUUID: null,
+                            }],
+                        },
+                    },
+                    {
+                        seq: 1,
+                        normalized: {
+                            id: 'tool-call', localId: null, createdAt: 100, isSidechain: false,
+                            role: 'agent',
+                            content: [{
+                                type: 'tool-call', id: 'tool-1', name: 'Bash', input: { command: 'test' },
+                                description: null, uuid: 'tool-call', parentUUID: null,
+                            }],
+                        },
+                    },
+                ],
+            }),
+        });
+
+        expect(messages).toEqual([
+            expect.objectContaining({ kind: 'tool-call', tool: expect.objectContaining({ state: 'running' }) }),
+        ]);
+    });
+
+    it('stops before publishing when the queued job was cancelled during attachment upload', async () => {
+        const message: Message = {
+            kind: 'tool-call', id: 'file-1', localId: null, createdAt: 100,
+            tool: {
+                name: 'file', state: 'completed', input: {
+                    ref: 'sessions/s1/attachments/photo.enc', name: 'photo.jpg', size: 3,
+                    kind: 'image', mimeType: 'image/jpeg', encrypted: true,
+                },
+                description: null, createdAt: 100, startedAt: 100, completedAt: 100,
+            }, children: [],
+        };
+        let cancelled = false;
+        const publishDraft = vi.fn(async () => ({ publicId: 'public-id', publishedAt: 300 }));
+        const deps: PublicSessionPublishDependencies = {
+            loadMessages: vi.fn(async () => [message]),
+            createDraft: vi.fn(async () => ({ generation: 'generation-1', publicId: 'public-id' })),
+            loadAttachmentBytes: vi.fn(async () => new Uint8Array([1, 2, 3])),
+            prepareAsset: vi.fn(async (_generation, asset) => ({
+                assetId: asset.attachmentId, method: 'PUT' as const, uploadUrl: 'https://upload.test',
+            })),
+            uploadAsset: vi.fn(async () => { cancelled = true; }),
+            publishDraft,
+            createAttachmentId: () => '11111111-1111-4111-8111-111111111111',
+            hashAttachmentBytes: vi.fn(async () => 'a'.repeat(64)),
+            isCancelled: () => cancelled,
+        };
+
+        await expect(publishPublicSessionSnapshot({ sessionId: 'session-1', title: 'Title', sharedAt: 200 }, deps))
+            .rejects.toThrow('Public session share cancelled');
+        expect(publishDraft).not.toHaveBeenCalled();
+    });
+
+    it('removes a snapshot that finishes publishing after the queued job was cancelled', async () => {
+        let cancelled = false;
+        const cleanupPublishedShare = vi.fn(async () => undefined);
+        const deps: PublicSessionPublishDependencies = {
+            loadMessages: vi.fn(async () => []),
+            createDraft: vi.fn(async () => ({ generation: 'generation-1', publicId: 'public-id' })),
+            loadAttachmentBytes: vi.fn(async () => new Uint8Array()),
+            prepareAsset: vi.fn(),
+            uploadAsset: vi.fn(),
+            publishDraft: vi.fn(async () => {
+                cancelled = true;
+                return { publicId: 'public-id', publishedAt: 300 };
+            }),
+            cleanupPublishedShare,
+            isCancelled: () => cancelled,
+        };
+
+        await expect(publishPublicSessionSnapshot({ sessionId: 'session-1', title: 'Title', sharedAt: 200 }, deps))
+            .rejects.toThrow('Public session share cancelled');
+        expect(cleanupPublishedShare).toHaveBeenCalledOnce();
     });
 });

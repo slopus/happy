@@ -176,4 +176,22 @@ describe('PublicSessionShareDialog', () => {
 
         act(() => renderer.unmount());
     });
+
+    it('queues a mobile share and closes the dialog without waiting for completion', () => {
+        mocks.platformOS = 'android';
+        mocks.publish.mockReturnValue(true);
+        const onClose = vi.fn();
+        let renderer: any;
+        act(() => {
+            renderer = TestRenderer.create(
+                <PublicSessionShareDialog sessionId="session-1" title="Release notes" onClose={onClose} />,
+            );
+        });
+
+        act(() => renderer.root.findByProps({ testID: 'public-session-share-create' }).props.onPress());
+
+        expect(mocks.publish).toHaveBeenCalledOnce();
+        expect(onClose).toHaveBeenCalledOnce();
+        act(() => renderer.unmount());
+    });
 });

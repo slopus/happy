@@ -810,7 +810,12 @@ export const it: TranslationStructure = {
         attachmentKeyUnavailable: 'La chiave dell\'allegato non è disponibile',
         attachmentDownloadFailed: 'Download dell\'allegato non riuscito',
         shareFailed: 'Impossibile condividere la sessione',
+        pendingMessages: 'Prima di condividere, attendi che venga completato l\'invio dei messaggi in sospeso.',
         revokeFailed: 'Impossibile revocare la condivisione della sessione',
+        readyNotificationTitle: 'Link pubblico creato',
+        readyNotificationBody: ({ title }: { title: string }) => `Il link pubblico per “${title}” è pronto. Tocca per visualizzarlo.`,
+        failedNotificationTitle: 'Creazione del link pubblico non riuscita',
+        failedNotificationBody: ({ title }: { title: string }) => `Impossibile creare il link pubblico per “${title}”. Tocca per riprovare.`,
     },
 
     components: {
