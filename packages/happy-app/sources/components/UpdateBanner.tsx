@@ -4,9 +4,7 @@ import { Item } from './Item';
 import { ItemGroup } from './ItemGroup';
 import { useUnistyles } from 'react-native-unistyles';
 import { useUpdates } from '@/hooks/useUpdates';
-import { useChangelog } from '@/hooks/useChangelog';
 import { useNativeUpdate } from '@/hooks/useNativeUpdate';
-import { useRouter } from 'expo-router';
 import { Platform } from 'react-native';
 import { openExternalUrl } from '@/utils/openExternalUrl';
 import { t } from '@/text';
@@ -14,9 +12,7 @@ import { t } from '@/text';
 export const UpdateBanner = React.memo(() => {
     const { theme } = useUnistyles();
     const { updateAvailable, reloadApp } = useUpdates();
-    const { hasUnread, markAsRead } = useChangelog();
     const updateUrl = useNativeUpdate();
-    const router = useRouter();
 
     // Show native app update banner (highest priority)
     if (updateUrl) {
@@ -45,26 +41,6 @@ export const UpdateBanner = React.memo(() => {
                     icon={<Ionicons name="download-outline" size={28} color={theme.colors.success} />}
                     showChevron={false}
                     onPress={reloadApp}
-                />
-            </ItemGroup>
-        );
-    }
-
-    // Show changelog banner if there are unread changelog entries (lowest priority)
-    if (hasUnread) {
-        return (
-            <ItemGroup>
-                <Item
-                    title={t('updateBanner.whatsNew')}
-                    subtitle={t('updateBanner.seeLatest')}
-                    icon={<Ionicons name="sparkles-outline" size={28} color={theme.colors.text} />}
-                    showChevron={true}
-                    onPress={() => {
-                        router.push('/changelog');
-                        setTimeout(() => {
-                            markAsRead();
-                        }, 1000);
-                    }}
                 />
             </ItemGroup>
         );
