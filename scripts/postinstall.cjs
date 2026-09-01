@@ -1,4 +1,10 @@
 const { execSync } = require('child_process');
+const path = require('path');
+const { markNodeModulesAsNoIndex } = require('./mark-node-modules-noindex.cjs');
+
+markNodeModulesAsNoIndex({
+  rootDir: path.resolve(__dirname, '..'),
+});
 
 // Apply patches to node_modules
 require('../patches/fix-pglite-prisma-bytes.cjs');
