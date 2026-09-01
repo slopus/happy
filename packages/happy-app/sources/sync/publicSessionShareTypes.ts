@@ -1,34 +1,13 @@
-export type PublicSessionAttachmentKind = 'image' | 'audio' | 'video' | 'file';
+import type {
+    PublicSessionBlock,
+    PublicSessionSnapshot,
+    PublicShareAssetKind,
+} from '@slopus/happy-wire';
 
-export type PublicSessionBlockV1 =
-    | { type: 'text'; markdown: string }
-    | { type: 'thinking'; markdown: string }
-    | { type: 'tool'; name: string; status: 'running' | 'completed' | 'failed'; title?: string; body?: string }
-    | {
-        type: 'attachment';
-        attachmentId: string;
-        kind: PublicSessionAttachmentKind;
-        name: string;
-        mimeType: string;
-        size: number;
-        source?: 'user' | 'generated' | 'browser_step';
-        image?: { width: number; height: number; thumbhash?: string };
-    };
-
-export type PublicSessionMessageV1 = {
-    id: string;
-    role: 'user' | 'assistant' | 'system';
-    createdAt: number;
-    blocks: PublicSessionBlockV1[];
-};
-
-export type PublicSessionSnapshotV1 = {
-    version: 1;
-    title: string;
-    sharedAt: number;
-    presentation?: { groupToolCalls: boolean };
-    messages: PublicSessionMessageV1[];
-};
+export type PublicSessionAttachmentKind = PublicShareAssetKind;
+export type PublicSessionBlockV1 = PublicSessionBlock;
+export type PublicSessionSnapshotV1 = PublicSessionSnapshot;
+export type PublicSessionMessageV1 = PublicSessionSnapshot['messages'][number];
 
 export type PublicSessionAttachmentJob = {
     attachmentId: string;
