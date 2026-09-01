@@ -22,7 +22,11 @@ export function PublicSessionTranscript({
     }), [publicId, snapshot]);
     return (
         <View style={styles.page} testID="public-session-transcript">
-            <PublicTranscriptHeader title={snapshot.title} publishedAt={publishedAt} />
+            <PublicTranscriptHeader
+                title={snapshot.title}
+                publishedAt={publishedAt}
+                source={snapshot.source?.provider}
+            />
             <View style={styles.transcript}>
                 <View style={styles.transcriptFrame}>
                     <ConversationTranscript
@@ -44,7 +48,21 @@ export function PublicSessionTranscript({
     );
 }
 
-function PublicTranscriptHeader({ title, publishedAt }: { title: string; publishedAt: number }) {
+const sourceLabels = {
+    paws: 'Paws',
+    codex: 'Codex',
+    'claude-code': 'Claude Code',
+} as const;
+
+function PublicTranscriptHeader({
+    title,
+    publishedAt,
+    source,
+}: {
+    title: string;
+    publishedAt: number;
+    source?: keyof typeof sourceLabels;
+}) {
     return (
         <View style={styles.headerFrame} testID="public-session-compact-header">
             <View style={styles.brandMark}>
@@ -52,9 +70,16 @@ function PublicTranscriptHeader({ title, publishedAt }: { title: string; publish
             </View>
             <View style={styles.headerCopy}>
                 <Text accessibilityRole="header" numberOfLines={1} style={styles.title}>{title}</Text>
-                <Text numberOfLines={1} style={styles.date}>
-                    {new Date(publishedAt).toLocaleString()}
-                </Text>
+                <View style={styles.metadataRow}>
+                    {source ? (
+                        <Text numberOfLines={1} style={styles.source} testID="public-session-source-label">
+                            {sourceLabels[source]}
+                        </Text>
+                    ) : null}
+                    <Text numberOfLines={1} style={styles.date}>
+                        {new Date(publishedAt).toLocaleString()}
+                    </Text>
+                </View>
             </View>
         </View>
     );
@@ -101,6 +126,17 @@ const styles = StyleSheet.create((theme) => ({
         color: theme.colors.text,
         fontSize: 15,
         lineHeight: 20,
+        fontWeight: '600' as const,
+    },
+    metadataRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 7,
+    },
+    source: {
+        color: theme.colors.accent,
+        fontSize: 12,
+        lineHeight: 16,
         fontWeight: '600' as const,
     },
     date: {

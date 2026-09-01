@@ -61,6 +61,7 @@ const snapshot = {
     version: 1 as const,
     title: 'Launch review',
     sharedAt: 1_788_000_000_000,
+    source: { provider: 'codex' as const },
     messages: [
         {
             id: 'assistant-1', role: 'assistant' as const, createdAt: 2,
@@ -109,6 +110,7 @@ describe('PublicSessionTranscript', () => {
         expect(renderer.root.findAllByProps({ testID: 'message-composer' })).toHaveLength(0);
         expect(renderer.root.findAllByProps({ testID: 'desktop-left-sidebar' })).toHaveLength(0);
         expect(renderer.root.findAllByProps({ testID: 'desktop-right-panel' })).toHaveLength(0);
+        expect(renderer.root.findAllByProps({ testID: 'public-session-source-label' })[0].props.children).toBe('Codex');
 
         act(() => renderer.unmount());
     });
