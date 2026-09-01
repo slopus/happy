@@ -72,6 +72,8 @@ jobs:
       - name: Inspect npm registry
         id: registry
         shell: bash
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           set -euo pipefail
           PACKAGE='${{ steps.package.outputs.name }}'
@@ -90,6 +92,18 @@ jobs:
             echo 'version-exists=false' >> "$GITHUB_OUTPUT"
             echo "${PACKAGE} needs its one-time bootstrap publish before npm OIDC can be enabled."
           fi
+
+      - name: Restore public visibility after bootstrap
+        if: steps.registry.outputs.package-exists == 'true'
+        shell: bash
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          PACKAGE='${{ steps.package.outputs.name }}'
+          npm access get status "${PACKAGE}" --json
+          npm access set status=public "${PACKAGE}"
+          npm access get status "${PACKAGE}" --json
 
       - name: Test package
         if: steps.registry.outputs.version-exists == 'false'
