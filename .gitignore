@@ -33,6 +33,7 @@ yarn-debug.*
 yarn-error.*
 test-results/
 playwright-report/
+/artifacts/
 
 # Acceptance recordings and media fixtures must stay outside Git. Playwright
 # receives/generated them through HAPPY_E2E_MP4_PATH at runtime instead.

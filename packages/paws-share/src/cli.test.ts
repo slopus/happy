@@ -125,4 +125,20 @@ describe('paws-share CLI', () => {
         expect(output.stdout.join('')).not.toContain(managementToken);
         expect(output.stdout.join('')).toContain('"revoked":true');
     });
+
+    it('installs the provider-neutral Agent Skill for both supported agents', async () => {
+        const output = capture();
+        const dependencies: Partial<CliDependencies> = {
+            installSkill: async () => ({ installed: ['/codex/skills/share-session', '/claude/skills/share-session'] }),
+        };
+
+        const exitCode = await runCli([
+            'node', 'paws-share', 'install-skill', '--target', 'all', '--json',
+        ], output.io, dependencies);
+
+        expect(exitCode).toBe(0);
+        expect(JSON.parse(output.stdout.join(''))).toEqual({
+            installed: ['/codex/skills/share-session', '/claude/skills/share-session'],
+        });
+    });
 });

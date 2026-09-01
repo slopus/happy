@@ -2,6 +2,7 @@ import { resolve } from 'node:path';
 import { Command, CommanderError, Option } from 'commander';
 import { discoverCurrentTranscript } from './adapters/discover';
 import type { TranscriptCandidate } from './adapters/types';
+import { installSkill, type InstallSkillResult, type InstallSkillTarget } from './installSkill';
 import { ShareRecordStore, type PublicShareRecord } from './records';
 import {
     inspectSession,
@@ -28,6 +29,7 @@ export type CliDependencies = {
     renewManagedShare: (identifier: string) => Promise<{ publicId: string; expiresAt: string }>;
     revokeManagedShare: (identifier: string) => Promise<{ publicId: string; revoked: true }>;
     discoverCurrentTranscript: (options?: { cwd?: string }) => Promise<TranscriptCandidate>;
+    installSkill: (options: { target: InstallSkillTarget }) => Promise<InstallSkillResult>;
     environment: NodeJS.ProcessEnv;
     cwd: () => string;
 };
@@ -52,6 +54,7 @@ function defaults(): CliDependencies {
         renewManagedShare: (identifier) => renewManagedShare(identifier, store),
         revokeManagedShare: (identifier) => revokeManagedShare(identifier, store),
         discoverCurrentTranscript,
+        installSkill,
         environment: process.env,
         cwd: () => process.cwd(),
     };
@@ -176,7 +179,15 @@ function createProgram(io: CliIo, dependencies: CliDependencies) {
             else io.stdout(`Revoked ${result.publicId}\n`);
         });
 
-    program.command('install-skill').description('Install the portable session-sharing Agent Skill');
+    program.command('install-skill')
+        .description('Install the portable session-sharing Agent Skill')
+        .addOption(new Option('--target <agent>', 'agent skill root').choices(['codex', 'claude-code', 'all']).default('all'))
+        .option('--json', 'print JSON output')
+        .action(async (options: { target: InstallSkillTarget; json?: boolean }) => {
+            const result = await dependencies.installSkill({ target: options.target });
+            if (options.json) writeJson(io, result);
+            else io.stdout(`${result.installed.map((path) => `Installed ${path}`).join('\n')}\n`);
+        });
     return program;
 }
 

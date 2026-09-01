@@ -45,6 +45,7 @@
     "typecheck": "tsc --noEmit",
     "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && tsc --noEmit && pkgroll --input dist/cli.mjs",
     "test": "$npm_execpath run build && vitest run",
+    "verify:pack": "node scripts/verify-pack.mjs",
     "dev": "tsx src/cli.ts"
   },
   "dependencies": {

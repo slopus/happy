@@ -14,3 +14,9 @@ export {
     type ShareSessionOptions,
     type ShareSessionResult,
 } from './share';
+export {
+    installSkill,
+    type InstallSkillOptions,
+    type InstallSkillResult,
+    type InstallSkillTarget,
+} from './installSkill';
