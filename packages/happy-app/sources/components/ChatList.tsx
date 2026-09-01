@@ -17,7 +17,7 @@ export const ChatList = React.memo((props: { session: Session }) => {
     const hasPendingPermission = Boolean(
         session?.agentState?.requests && Object.keys(session.agentState.requests).length > 0,
     );
-    const { canFork, forkFromMessage } = useSessionQuickActions(session!, {});
+    const { canFork, forkFromMessage, forkingFromMessageId } = useSessionQuickActions(session!, {});
     const handleForkFromMessage = React.useCallback((
         messageId: string,
         rewindPointId: string | undefined,
@@ -59,6 +59,7 @@ export const ChatList = React.memo((props: { session: Session }) => {
             canEditLatestUserMessage={session?.thinking !== true}
             onEditUserMessage={handleEditUserMessage}
             onForkFromMessage={canFork ? handleForkFromMessage : undefined}
+            forkingFromMessageId={forkingFromMessageId}
         />
     );
 });

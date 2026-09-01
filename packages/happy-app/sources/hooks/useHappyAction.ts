@@ -1,8 +1,12 @@
 import * as React from 'react';
 import { Modal } from '@/modal';
 import { HappyError } from '@/utils/errors';
+import { t } from '@/text';
 
-export function useHappyAction<TArgs extends unknown[]>(action: (...args: TArgs) => Promise<void>) {
+export function useHappyAction<TArgs extends unknown[]>(
+    action: (...args: TArgs) => Promise<void>,
+    options: { fallbackErrorMessage?: string } = {},
+) {
     const [loading, setLoading] = React.useState(false);
     const loadingRef = React.useRef(false);
     const mountedRef = React.useRef(true);
@@ -16,7 +20,7 @@ export function useHappyAction<TArgs extends unknown[]>(action: (...args: TArgs)
 
     const doAction = React.useCallback((...args: TArgs) => {
         if (!mountedRef.current || loadingRef.current) {
-            return;
+            return false;
         }
         loadingRef.current = true;
         setLoading(true);
@@ -36,10 +40,18 @@ export function useHappyAction<TArgs extends unknown[]>(action: (...args: TArgs)
                             //     await alert('Error', e.message, [{ text: 'OK', style: 'cancel' }]);
                             //     break;
                             // }
-                            Modal.alert('Error', e.message, [{ text: 'OK', style: 'cancel' }]);
+                            Modal.alert(
+                                t('common.error'),
+                                e.message.trim() || options.fallbackErrorMessage || t('errors.unknownError'),
+                                [{ text: 'OK', style: 'cancel' }],
+                            );
                             break;
                         } else {
-                            Modal.alert('Error', 'Unknown error', [{ text: 'OK', style: 'cancel' }]);
+                            Modal.alert(
+                                t('common.error'),
+                                options.fallbackErrorMessage || t('errors.unknownError'),
+                                [{ text: 'OK', style: 'cancel' }],
+                            );
                             break;
                         }
                     }
@@ -49,6 +61,7 @@ export function useHappyAction<TArgs extends unknown[]>(action: (...args: TArgs)
                 if (mountedRef.current) setLoading(false);
             }
         })();
-    }, [action]);
+        return true;
+    }, [action, options.fallbackErrorMessage]);
     return [loading, doAction] as const;
 }

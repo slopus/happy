@@ -53,6 +53,7 @@ export type ConversationTranscriptProps = {
     canEditLatestUserMessage?: boolean;
     onEditUserMessage?: (messageId: string, messageText: string) => Promise<void> | void;
     onForkFromMessage?: ForkFromMessage;
+    forkingFromMessageId?: string | null;
     showAnchorNavigation?: boolean;
     showScrollToBottom?: boolean;
     inverted?: boolean;
@@ -214,6 +215,7 @@ export const ConversationTranscript = React.memo((props: ConversationTranscriptP
                 metadata={props.metadata}
                 sessionId={props.sessionId}
                 onForkFromMessage={props.onForkFromMessage}
+                forkingFromMessageId={props.forkingFromMessageId}
                 agentForkTarget={item.message.kind === 'agent-text' ? agentForkTargets.get(item.message.id) : undefined}
                 showAgentMessageActions={props.showMessageActions}
                 showUserMessageActions={props.showMessageActions}
@@ -236,6 +238,7 @@ export const ConversationTranscript = React.memo((props: ConversationTranscriptP
         props.metadata,
         props.onEditUserMessage,
         props.onForkFromMessage,
+        props.forkingFromMessageId,
         props.sessionId,
         props.showMessageActions,
     ]);

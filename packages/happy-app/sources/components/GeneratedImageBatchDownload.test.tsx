@@ -60,6 +60,10 @@ vi.mock('@/modal', () => ({
 vi.mock('@/text', () => ({
     t: (key: string, params: Record<string, number> = {}) => {
         switch (key) {
+            case 'common.error':
+                return 'Error';
+            case 'errors.unknownError':
+                return 'Unknown error';
             case 'generatedImageBatchDownload.preparing':
                 return `Preparing ${params.ready}/${params.total}`;
             case 'generatedImageBatchDownload.downloadAll':
@@ -585,7 +589,7 @@ describe('GeneratedImageBatchDownload', () => {
             for (let index = 0; index < 6; index += 1) await Promise.resolve();
         });
 
-        expect(pressResult).toBeUndefined();
+        expect(pressResult).not.toBeInstanceOf(Promise);
         expect(mocks.alert).toHaveBeenCalledWith(
             'Error',
             'Unknown error',

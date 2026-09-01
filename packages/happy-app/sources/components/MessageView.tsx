@@ -1,5 +1,5 @@
 import * as React from "react";
-import { View, Text, Pressable, Platform, TextInput } from "react-native";
+import { ActivityIndicator, View, Text, Pressable, Platform, TextInput } from "react-native";
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
@@ -36,6 +36,7 @@ export const MessageView = React.memo((props: {
     retainSelectedTurn?: boolean,
     messageCreatedAt?: number,
   ) => void;
+  forkingFromMessageId?: string | null;
   agentForkTarget?: MessageForkTarget;
   showAgentMessageActions?: boolean;
   showUserMessageActions?: boolean;
@@ -59,6 +60,7 @@ export const MessageView = React.memo((props: {
           sessionId={props.sessionId}
           getMessageById={props.getMessageById}
           onForkFromMessage={props.onForkFromMessage}
+          forkingFromMessageId={props.forkingFromMessageId}
           agentForkTarget={props.agentForkTarget}
           showAgentMessageActions={props.showAgentMessageActions}
           showUserMessageActions={props.showUserMessageActions}
@@ -83,6 +85,7 @@ function RenderBlock(props: {
     retainSelectedTurn?: boolean,
     messageCreatedAt?: number,
   ) => void;
+  forkingFromMessageId?: string | null;
   agentForkTarget?: MessageForkTarget;
   showAgentMessageActions?: boolean;
   showUserMessageActions?: boolean;
@@ -110,6 +113,7 @@ function RenderBlock(props: {
           sessionId={props.sessionId}
           forkTarget={props.agentForkTarget}
           onForkFromMessage={props.onForkFromMessage}
+          forkingFromMessageId={props.forkingFromMessageId}
           showActions={props.showAgentMessageActions}
         />
       );
@@ -397,6 +401,7 @@ function AgentTextBlock(props: {
     retainSelectedTurn?: boolean,
     messageCreatedAt?: number,
   ) => void;
+  forkingFromMessageId?: string | null;
   showActions?: boolean;
 }) {
   const { theme } = useUnistyles();
@@ -432,9 +437,12 @@ function AgentTextBlock(props: {
 
   const showActions = Platform.OS === 'web' && props.showActions;
   const canFork = Boolean(props.forkTarget && props.onForkFromMessage);
-  const actionsVisible = Boolean(showActions && (isHovered || isActionFocused || isCopied));
+  const isForkingThisMessage = Boolean(
+    props.forkTarget && props.forkingFromMessageId === props.forkTarget.messageId,
+  );
+  const actionsVisible = Boolean(showActions && (isHovered || isActionFocused || isCopied || isForkingThisMessage));
   const handleFork = () => {
-    if (!props.forkTarget || !props.onForkFromMessage) return;
+    if (!props.forkTarget || !props.onForkFromMessage || isForkingThisMessage) return;
     props.onForkFromMessage(
       props.forkTarget.messageId,
       props.forkTarget.rewindPointId,
@@ -511,8 +519,13 @@ function AgentTextBlock(props: {
             <View style={styles.agentMessageActionSlot}>
               <Pressable
                 testID={`message-agent-fork-${props.message.id}`}
-                accessibilityLabel={t('session.forkFromHere')}
+                accessibilityLabel={isForkingThisMessage ? t('common.loading') : t('session.forkFromHere')}
                 accessibilityRole="button"
+                accessibilityState={{
+                  busy: isForkingThisMessage,
+                  disabled: isForkingThisMessage,
+                }}
+                disabled={isForkingThisMessage}
                 hitSlop={6}
                 onBlur={() => { setIsActionFocused(false); setHoveredAction(null); }}
                 onFocus={() => { setIsActionFocused(true); setHoveredAction('fork'); }}
@@ -525,7 +538,15 @@ function AgentTextBlock(props: {
                   pressed && styles.agentMessageActionPressed,
                 ]}
               >
-                <Ionicons name="git-branch-outline" size={16} color={theme.colors.textSecondary} />
+                {isForkingThisMessage ? (
+                  <ActivityIndicator
+                    color={theme.colors.textSecondary}
+                    size="small"
+                    testID={`message-agent-fork-loading-${props.message.id}`}
+                  />
+                ) : (
+                  <Ionicons name="git-branch-outline" size={16} color={theme.colors.textSecondary} />
+                )}
               </Pressable>
               <DesktopShortcutTooltip
                 align="center"
@@ -825,12 +846,12 @@ const styles = StyleSheet.create((theme) => ({
     maxWidth: '100%',
   },
   agentMessageContainerWithActions: {
-    marginBottom: 46,
+    paddingBottom: 30,
   },
   agentMessageActions: {
     position: 'absolute',
     left: 0,
-    bottom: -30,
+    bottom: 0,
     zIndex: 30,
     height: 28,
     flexDirection: 'row',
