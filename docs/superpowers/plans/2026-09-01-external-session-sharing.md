@@ -75,9 +75,9 @@ export {
 } from '@slopus/happy-wire';
 ```
 
-- [ ] **Step 5: Run wire, server route, and App public-share tests**
+- [ ] **Step 5: Run wire/server tests and the App typecheck**
 
-Run: `pnpm --filter @slopus/happy-wire test && pnpm --filter happy-server-self-host exec vitest run sources/app/api/routes/publicSessionShareRoutes.spec.ts && pnpm --filter happy-app exec vitest run sources/sync/publicSessionShareTypes.test.ts`
+Run: `pnpm --filter @slopus/happy-wire test && pnpm --filter happy-server-self-host exec vitest run sources/app/api/routes/publicSessionShareRoutes.spec.ts && pnpm --filter happy-app typecheck`
 
 Expected: PASS.
 
@@ -493,9 +493,8 @@ git commit -m "feat(cli): package session-sharing agent skill"
 ### Task 9: Preserve Same-Renderer Public UX
 
 **Files:**
-- Modify: `packages/happy-app/sources/app/(app)/share/[publicId].tsx`
-- Modify: `packages/happy-app/sources/sync/publicSessionShareTypes.test.ts`
-- Modify: `packages/happy-app/sources/app/(app)/share/[publicId].test.tsx`
+- Modify: `packages/happy-app/sources/components/PublicSessionTranscript.tsx`
+- Modify: `packages/happy-app/sources/components/PublicSessionTranscript.test.tsx`
 
 **Interfaces:**
 - Consumes: optional snapshot source metadata.
@@ -512,7 +511,7 @@ expect(screen.queryByTestId('left-sidebar')).toBeNull();
 
 - [ ] **Step 2: Run the public page test and verify the source label is missing**
 
-Run: `pnpm --filter happy-app exec vitest run 'sources/app/(app)/share/[publicId].test.tsx'`
+Run: `pnpm --filter happy-app exec vitest run sources/components/PublicSessionTranscript.test.tsx`
 
 Expected: FAIL.
 
@@ -524,7 +523,7 @@ Expected: FAIL.
 
 - [ ] **Step 4: Run focused public-page tests and App typecheck**
 
-Run: `pnpm --filter happy-app exec vitest run sources/sync/publicSessionShareTypes.test.ts 'sources/app/(app)/share/[publicId].test.tsx' && pnpm --filter happy-app typecheck`
+Run: `pnpm --filter happy-app exec vitest run sources/components/PublicSessionTranscript.test.tsx && pnpm --filter happy-app typecheck`
 
 Expected: PASS.
 
