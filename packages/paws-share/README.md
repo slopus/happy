@@ -13,7 +13,9 @@ Manage links locally:
 
 ```bash
 paws-share list --json
+paws-share status <public-id> --json
 paws-share renew <public-id> --json
+paws-share replace <public-id> --current --yes --json
 paws-share revoke <public-id> --json
 paws-share install-skill --target all --json
 ```

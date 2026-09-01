@@ -114,7 +114,9 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: paws-share-${{ steps.package.outputs.version }}
-          path: ${{ steps.pack.outputs.tarball }}
+          path: |
+            ${{ steps.pack.outputs.tarball }}
+            artifacts/paws-share-pack/SHA256SUMS
           if-no-files-found: error
           retention-days: 14
 

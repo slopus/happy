@@ -1,9 +1,27 @@
 import { log } from "@/utils/log";
 import { Fastify } from "../types";
 import { FastifyError } from "fastify";
+import {
+    isPublicSessionShareApiUrl,
+    publicSessionShareNotFound,
+} from '@/app/sessionSharing/publicSessionShareHttp';
 
 export interface EnableErrorHandlersOptions {
     skipNotFoundHandler?: boolean;
+}
+
+export function handleFrameworkError(error: FastifyError, request: any, reply: any) {
+    if (error.code === 'FST_ERR_BAD_URL'
+        && isPublicSessionShareApiUrl(request.raw.url || request.url)) {
+        return publicSessionShareNotFound(reply);
+    }
+    const statusCode = error.statusCode || 500;
+    return reply.code(statusCode).send({
+        error: error.name || 'Error',
+        code: error.code,
+        message: error.message || 'An error occurred',
+        statusCode,
+    });
 }
 
 export function enableErrorHandlers(app: Fastify, options: EnableErrorHandlersOptions = {}) {
@@ -51,7 +69,14 @@ export function enableErrorHandlers(app: Fastify, options: EnableErrorHandlersOp
     // its own (e.g. SPA fallback for self-hosted webapp).
     if (!options.skipNotFoundHandler) {
         app.setNotFoundHandler((request, reply) => {
-            log({ module: '404-handler' }, `404 - Method: ${request.method}, Path: ${request.url}, Headers: ${JSON.stringify(request.headers)}`);
+            if (isPublicSessionShareApiUrl(request.url)) return publicSessionShareNotFound(reply);
+            log({
+                module: '404-handler',
+                method: request.method,
+                path: request.url,
+                userAgent: request.headers['user-agent'] || 'unknown',
+                ip: request.ip || 'unknown',
+            }, 'Route not found');
             reply.code(404).send({ error: 'Not found', path: request.url, method: request.method });
         });
     }

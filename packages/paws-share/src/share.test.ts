@@ -2,7 +2,13 @@ import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { ShareRecordStore } from './records';
-import { inspectSession, shareSession, type ShareApi } from './share';
+import {
+    inspectSession,
+    replaceManagedShare,
+    shareSession,
+    statusManagedShare,
+    type ShareApi,
+} from './share';
 import { createTemporaryDirectory, removeTemporaryDirectory } from './testSupport/temporaryDirectory';
 
 const temporaryDirectories: string[] = [];
@@ -45,6 +51,7 @@ describe('session sharing orchestration', () => {
                 publicUrl: 'https://paws.test/share/public-1',
                 expiresAt: '2026-11-30T00:00:00.000Z',
             }),
+            createReplacementDraft: async () => ({ generation: 'generation-2', publicId: 'public-1' }),
             prepareAndUploadAsset: async (_shareId, _generation, asset) => {
                 uploaded.push({ name: asset.name, bytes: Buffer.from(asset.bytes) });
             },
@@ -52,6 +59,10 @@ describe('session sharing orchestration', () => {
                 publishedTitle = snapshot.title;
                 return { publicId: 'public-1', publishedAt: 1_788_192_000_000 };
             },
+            status: async () => ({
+                shareId: 'share-1', publicId: 'public-1', active: true, revoked: false,
+                publishedAt: '2026-09-01T00:00:00.000Z', expiresAt: '2026-11-30T00:00:00.000Z', sourceProvider: 'codex',
+            }),
             renew: async () => ({ expiresAt: '2026-11-30T00:00:00.000Z' }),
             revoke: async () => ({ ok: true as const }),
         };
@@ -87,5 +98,55 @@ describe('session sharing orchestration', () => {
         expect(uploaded[0].bytes).toEqual(await readFile(resolve('test/fixtures/attachment.svg')));
         expect((await store.get('public-1'))?.managementToken).toBe(managementToken);
         expect(JSON.stringify(await store.list())).not.toContain(managementToken);
+    });
+
+    it('queries and replaces a managed share without changing its public link', async () => {
+        const home = await createTemporaryDirectory('paws-share-replace-');
+        temporaryDirectories.push(home);
+        const store = new ShareRecordStore(home);
+        const managementToken = Buffer.alloc(32, 4).toString('base64url');
+        await store.save({
+            recordId: 'public-1', serverUrl: 'https://paws.test', publicId: 'public-1', shareId: 'share-1', managementToken,
+            source: 'codex', title: 'Old title', createdAt: '2026-09-01T00:00:00.000Z', expiresAt: '2026-11-30T00:00:00.000Z',
+        });
+        const uploaded: string[] = [];
+        const api: ShareApi = {
+            createDraft: async () => { throw new Error('unexpected new share'); },
+            createReplacementDraft: async (shareId) => {
+                expect(shareId).toBe('share-1');
+                return { generation: 'generation-2', publicId: 'public-1' };
+            },
+            prepareAndUploadAsset: async (_shareId, generation, asset) => {
+                expect(generation).toBe('generation-2');
+                uploaded.push(asset.name);
+            },
+            publish: async (_shareId, generation) => {
+                expect(generation).toBe('generation-2');
+                return { publicId: 'public-1', publishedAt: 1_788_192_000_000 };
+            },
+            status: async () => ({
+                shareId: 'share-1', publicId: 'public-1', active: true, revoked: false,
+                publishedAt: '2026-09-01T00:00:00.000Z', expiresAt: '2026-11-30T00:00:00.000Z', sourceProvider: 'codex',
+            }),
+            renew: async () => ({ expiresAt: '2026-11-30T00:00:00.000Z' }),
+            revoke: async () => ({ ok: true as const }),
+        };
+        const createApi = (token: string, serverUrl: string) => {
+            expect(token).toBe(managementToken);
+            expect(serverUrl).toBe('https://paws.test');
+            return api;
+        };
+
+        const status = await statusManagedShare('public-1', store, createApi);
+        const replaced = await replaceManagedShare({
+            identifier: 'public-1',
+            candidate: { provider: 'codex', path: resolve('test/fixtures/codex-session.jsonl') },
+            store,
+        }, { createApi });
+
+        expect(status).toMatchObject({ publicId: 'public-1', publicUrl: 'https://paws.test/share/public-1', active: true });
+        expect(replaced).toMatchObject({ publicId: 'public-1', publicUrl: 'https://paws.test/share/public-1', attachmentCount: 1 });
+        expect(uploaded).toEqual(['attachment.svg']);
+        expect((await store.get('public-1'))?.title).toBe('Create a purple Paws sharing illustration.');
     });
 });

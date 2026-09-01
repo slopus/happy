@@ -8,9 +8,12 @@ export type TranscriptCandidate = {
     modifiedAt?: number;
 };
 
-export type ResolvedAttachment = {
+type ResolvedAttachmentSource =
+    | { path: string; bytes?: never }
+    | { path?: never; bytes: Buffer };
+
+export type ResolvedAttachment = ResolvedAttachmentSource & {
     attachmentId: string;
-    path: string;
     name: string;
     mimeType: string;
     kind: 'image' | 'audio' | 'video' | 'file';

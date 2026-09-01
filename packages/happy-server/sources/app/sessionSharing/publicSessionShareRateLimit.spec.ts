@@ -26,4 +26,18 @@ describe('public session share rate limiting', () => {
         expect(key).not.toContain('203.0.113.7');
         expect(window).toBe('60000');
     });
+
+    it('bounds and expires local fallback entries when identifiers are attacker-controlled', async () => {
+        const now = vi.fn(() => 1_000);
+        const limiter = createPublicShareRateLimiter({
+            scope: 'bounded', max: 2, windowMs: 60_000, maxLocalEntries: 3, now, redisEval: null,
+        });
+
+        for (let index = 0; index < 20; index += 1) await limiter.check(`attacker-${index}`);
+        expect(limiter.localEntryCount()).toBe(3);
+
+        now.mockReturnValue(61_001);
+        await limiter.check('fresh');
+        expect(limiter.localEntryCount()).toBe(1);
+    });
 });

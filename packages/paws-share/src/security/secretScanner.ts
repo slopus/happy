@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
 import { extname } from 'node:path';
 import type { PublicSessionSnapshot } from '@slopus/happy-wire';
 import type { ResolvedAttachment } from '../adapters/types';
+import { readResolvedAttachmentBytes } from '../adapters/shared';
 
 export type SecretFinding = {
     rule: 'private-key' | 'vendor-token' | 'bearer-token' | 'credential-assignment'
@@ -84,7 +84,7 @@ export function scanText(value: string, location: string): SecretFinding[] {
 function isSmallTextAttachment(attachment: ResolvedAttachment): boolean {
     if (attachment.size > 1024 * 1024) return false;
     if (attachment.mimeType.startsWith('text/')) return true;
-    return ['.env', '.json', '.md', '.toml', '.txt', '.yaml', '.yml'].includes(extname(attachment.name).toLowerCase());
+    return ['.env', '.json', '.md', '.svg', '.toml', '.txt', '.yaml', '.yml'].includes(extname(attachment.name).toLowerCase());
 }
 
 export async function scanShareExport(
@@ -108,7 +108,7 @@ export async function scanShareExport(
     for (const attachment of attachments) {
         findings.push(...scanText(attachment.name, `attachment:${attachment.name}:name`));
         if (!isSmallTextAttachment(attachment)) continue;
-        const text = await readFile(attachment.path, 'utf8');
+        const text = (await readResolvedAttachmentBytes(attachment)).toString('utf8');
         findings.push(...scanText(text, `attachment:${attachment.name}`));
     }
     return findings;

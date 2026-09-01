@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { writeFile } from 'node:fs/promises';
+import { mkdir, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { resolveStructuredAttachment } from './shared';
 import { createTemporaryDirectory, removeTemporaryDirectory } from '../testSupport/temporaryDirectory';
@@ -24,5 +24,20 @@ describe('resolveStructuredAttachment', () => {
 
         expect(repeated.attachmentId).toBe(first.attachmentId);
         expect(secondSession.attachmentId).not.toBe(first.attachmentId);
+    });
+
+    it('rejects a symlink that escapes every allowed attachment root', async () => {
+        const directory = await createTemporaryDirectory('paws-share-attachment-root-');
+        directories.push(directory);
+        const sessionDirectory = join(directory, 'session');
+        const outsideDirectory = join(directory, 'outside');
+        await mkdir(sessionDirectory);
+        await mkdir(outsideDirectory);
+        await writeFile(join(outsideDirectory, 'secret.txt'), 'outside secret');
+        await symlink(join(outsideDirectory, 'secret.txt'), join(sessionDirectory, 'linked-secret.txt'));
+        const candidate = { provider: 'codex' as const, path: join(sessionDirectory, 'session.jsonl'), cwd: sessionDirectory };
+
+        await expect(resolveStructuredAttachment(candidate, 'linked-secret.txt', sessionDirectory))
+            .rejects.toThrow('outside the session root');
     });
 });

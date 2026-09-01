@@ -41,6 +41,28 @@ export type PawsShareClientOptions = {
     retryDelayMs?: number;
 };
 
+function isLoopbackHost(hostname: string): boolean {
+    return hostname === 'localhost'
+        || hostname === '[::1]'
+        || /^127(?:\.\d{1,3}){3}$/.test(hostname);
+}
+
+function trustedServerOrigin(value: string): string {
+    let server: URL;
+    try {
+        server = new URL(value);
+    } catch {
+        throw new Error('Paws Share server URL is invalid');
+    }
+    if (server.username || server.password || server.search || server.hash || (server.pathname !== '/' && server.pathname !== '')) {
+        throw new Error('Paws Share server URL must contain only a trusted origin');
+    }
+    if (server.protocol !== 'https:' && !(server.protocol === 'http:' && isLoopbackHost(server.hostname))) {
+        throw new Error('Paws Share server URL must use HTTPS (HTTP is allowed only for loopback development)');
+    }
+    return server.origin;
+}
+
 export class PawsShareClient {
     private readonly serverUrl: string;
     private readonly token: string;
@@ -48,7 +70,7 @@ export class PawsShareClient {
     private readonly retryDelayMs: number;
 
     constructor(options: PawsShareClientOptions) {
-        this.serverUrl = options.serverUrl.replace(/\/$/, '');
+        this.serverUrl = trustedServerOrigin(options.serverUrl);
         this.token = options.token;
         this.fetchImplementation = options.fetch ?? globalThis.fetch;
         this.retryDelayMs = options.retryDelayMs ?? 250;
@@ -110,17 +132,20 @@ export class PawsShareClient {
     }
 
     private normalizeUploadUrl(value: string): string {
-        const upload = new URL(value, this.serverUrl);
+        const upload = new URL(value, `${this.serverUrl}/`);
         const server = new URL(this.serverUrl);
-        if ((upload.hostname === 'localhost' || upload.hostname === '127.0.0.1')
-            && upload.hostname !== server.hostname) {
-            return new URL(`${upload.pathname}${upload.search}`, server).toString();
+        if (upload.origin !== server.origin || upload.username || upload.password || upload.hash) {
+            throw new Error('Paws Share server returned an untrusted upload URL');
         }
-        return upload.toString();
+        return `${upload.pathname}${upload.search}`;
     }
 
     private async request<T>(pathOrUrl: string, init: RequestInit): Promise<T> {
-        const url = new URL(pathOrUrl, `${this.serverUrl}/`).toString();
+        const requestUrl = new URL(pathOrUrl, `${this.serverUrl}/`);
+        if (requestUrl.origin !== this.serverUrl || requestUrl.username || requestUrl.password || requestUrl.hash) {
+            throw new Error('Paws Share request URL is outside the trusted server origin');
+        }
+        const url = requestUrl.toString();
         const headers = new Headers(init.headers);
         headers.set('Authorization', `PawsShare ${this.token}`);
         if (typeof init.body === 'string' && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
@@ -128,7 +153,7 @@ export class PawsShareClient {
         for (let attempt = 0; attempt < 3; attempt += 1) {
             let response: Response;
             try {
-                response = await this.fetchImplementation(url, { ...init, headers });
+                response = await this.fetchImplementation(url, { ...init, headers, redirect: 'error' });
             } catch (error) {
                 if (attempt === 2) throw new PawsShareApiError(0);
                 await this.delay(attempt);

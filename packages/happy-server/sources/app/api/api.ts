@@ -16,7 +16,11 @@ import { voiceRoutes } from "./routes/voiceRoutes";
 import { artifactsRoutes } from "./routes/artifactsRoutes";
 import { accessKeysRoutes } from "./routes/accessKeysRoutes";
 import { enableMonitoring } from "./utils/enableMonitoring";
-import { enableErrorHandlers } from "./utils/enableErrorHandlers";
+import { enableErrorHandlers, handleFrameworkError } from "./utils/enableErrorHandlers";
+import {
+    isPublicSessionShareApiUrl,
+    publicSessionShareNotFound,
+} from '@/app/sessionSharing/publicSessionShareHttp';
 import { enableAuthentication } from "./utils/enableAuthentication";
 import { userRoutes } from "./routes/userRoutes";
 import { feedRoutes } from "./routes/feedRoutes";
@@ -92,6 +96,7 @@ export async function startApi(opts: StartApiOptions = {}) {
         loggerInstance: logger,
         bodyLimit: 1024 * 1024 * 100, // 100MB
         trustProxy: resolveTrustProxySetting(),
+        frameworkErrors: handleFrameworkError,
     });
     app.register(import('@fastify/cors'), {
         origin: '*',
@@ -194,6 +199,7 @@ export async function startApi(opts: StartApiOptions = {}) {
         // SPA fallback: serve index.html for any unmatched GET that looks like a route.
         app.setNotFoundHandler(async (request, reply) => {
             const url = request.raw.url || '';
+            if (isPublicSessionShareApiUrl(url)) return publicSessionShareNotFound(reply);
             // Don't fall through for API/socket/files paths
             if (request.method !== 'GET') return reply.code(404).send({ error: 'Not found' });
             if (url.startsWith('/v1') || url.startsWith('/v3') || url.startsWith('/socket') ||

@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { readFile, stat } from 'node:fs/promises';
+import { readFile, realpath, stat } from 'node:fs/promises';
 import { basename, dirname, extname, isAbsolute, relative, resolve, sep } from 'node:path';
 import type { ResolvedAttachment, TranscriptCandidate } from './types';
 
@@ -19,6 +19,14 @@ const MIME_TYPES: Record<string, { mimeType: string; kind: ResolvedAttachment['k
     '.wav': { mimeType: 'audio/wav', kind: 'audio' },
     '.webm': { mimeType: 'video/webm', kind: 'video' },
     '.webp': { mimeType: 'image/webp', kind: 'image' },
+};
+
+const EMBEDDED_IMAGE_TYPES: Record<string, string> = {
+    'image/gif': '.gif',
+    'image/jpeg': '.jpg',
+    'image/png': '.png',
+    'image/svg+xml': '.svg',
+    'image/webp': '.webp',
 };
 
 export type JsonLine = Record<string, unknown>;
@@ -65,22 +73,72 @@ export async function resolveStructuredAttachment(
         : sessionDirectory;
     const normalizedReference = reference.startsWith('file://') ? decodeURIComponent(new URL(reference).pathname) : reference;
     const file = resolve(isAbsolute(normalizedReference) ? normalizedReference : resolve(cwd, normalizedReference));
-    if (!isWithin(cwd, file) && !isWithin(sessionDirectory, file)) {
+    const [canonicalCwd, canonicalSessionDirectory, canonicalFile] = await Promise.all([
+        realpath(cwd),
+        realpath(sessionDirectory),
+        realpath(file),
+    ]);
+    if (!isWithin(canonicalCwd, canonicalFile) && !isWithin(canonicalSessionDirectory, canonicalFile)) {
         throw new Error(`Attachment is outside the session root: ${basename(file)}`);
     }
-    const metadata = await stat(file);
+    const metadata = await stat(canonicalFile);
     if (!metadata.isFile()) throw new Error(`Attachment is not a regular file: ${basename(file)}`);
-    const bytes = await readFile(file);
+    const bytes = await readFile(canonicalFile);
     const media = MIME_TYPES[extname(file).toLowerCase()] ?? { mimeType: 'application/octet-stream', kind: 'file' as const };
     return {
-        attachmentId: uuidFromSessionAttachment(resolve(candidate.path), file),
-        path: file,
+        attachmentId: uuidFromSessionAttachment(resolve(candidate.path), canonicalFile),
+        bytes,
         name: basename(file),
         mimeType: media.mimeType,
         kind: media.kind,
         size: bytes.length,
         sha256: createHash('sha256').update(bytes).digest('hex'),
     };
+}
+
+export function resolveEmbeddedImageAttachment(
+    candidate: TranscriptCandidate,
+    bytes: Buffer,
+    mimeType: string,
+    referenceKey: string,
+): ResolvedAttachment {
+    const normalizedMimeType = mimeType.toLowerCase();
+    const extension = EMBEDDED_IMAGE_TYPES[normalizedMimeType];
+    if (!extension || bytes.length === 0) throw new Error('Unsupported embedded image');
+    const sha256 = createHash('sha256').update(bytes).digest('hex');
+    return {
+        attachmentId: uuidFromSessionAttachment(resolve(candidate.path), `embedded:${referenceKey}:${sha256}`),
+        bytes,
+        name: `image-${sha256.slice(0, 12)}${extension}`,
+        mimeType: normalizedMimeType,
+        kind: 'image',
+        size: bytes.length,
+        sha256,
+    };
+}
+
+export function decodeBase64Bytes(value: string): Buffer {
+    const normalized = value.replace(/\s/g, '');
+    if (!normalized || normalized.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(normalized)) {
+        throw new Error('Invalid base64 data');
+    }
+    const bytes = Buffer.from(normalized, 'base64');
+    if (bytes.toString('base64') !== normalized) throw new Error('Invalid base64 data');
+    return bytes;
+}
+
+export function resolveDataUrlImageAttachment(
+    candidate: TranscriptCandidate,
+    value: string,
+    referenceKey: string,
+): ResolvedAttachment {
+    const match = /^data:([^;,]+);base64,([A-Za-z0-9+/=\s]+)$/.exec(value);
+    if (!match) throw new Error('Unsupported image data URL');
+    return resolveEmbeddedImageAttachment(candidate, decodeBase64Bytes(match[2]), match[1], referenceKey);
+}
+
+export async function readResolvedAttachmentBytes(attachment: ResolvedAttachment): Promise<Buffer> {
+    return attachment.bytes ?? readFile(attachment.path);
 }
 
 export function timestamp(value: unknown, fallback: number): number {

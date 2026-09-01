@@ -8,6 +8,7 @@ const shareHome = process.env.HAPPY_EXTERNAL_SHARE_HOME!;
 const serverUrl = process.env.HAPPY_E2E_SERVER_URL!;
 const webUrl = process.env.HAPPY_E2E_WEB_URL!;
 const codexFixture = process.env.HAPPY_EXTERNAL_SHARE_CODEX_FIXTURE!;
+const codexReplacementFixture = process.env.HAPPY_EXTERNAL_SHARE_CODEX_REPLACEMENT_FIXTURE!;
 const claudeFixture = process.env.HAPPY_EXTERNAL_SHARE_CLAUDE_FIXTURE!;
 const attachmentFixture = process.env.HAPPY_EXTERNAL_SHARE_ATTACHMENT_FIXTURE!;
 const evidenceDirectory = process.env.HAPPY_EXTERNAL_SHARE_EVIDENCE_DIR;
@@ -272,6 +273,42 @@ test('EXTERNAL-SESSION-SHARE packed CLI publishes Codex and Claude Code snapshot
         await expect(page.getByTestId('conversation-tool-group-toggle').first()).toBeVisible();
         await pauseForEvidence(page);
         await page.screenshot({ path: evidencePath(testInfo, 'codex-public-snapshot.png'), fullPage: true });
+
+        const statusOutput = runCli(['status', codex.result.publicId, '--json']);
+        if (records.records.some((record) => statusOutput.includes(record.managementToken))) {
+            throw new Error('Packed CLI status output exposed a management capability');
+        }
+        expect(JSON.parse(statusOutput)).toMatchObject({
+            publicId: codex.result.publicId,
+            publicUrl: codex.result.publicUrl,
+            active: true,
+            revoked: false,
+            source: 'codex',
+        });
+
+        await showRecordingStage(
+            page,
+            'Replacing the snapshot in place',
+            'The local management capability updates the content while preserving the original public URL.',
+        );
+        const replaceOutput = runCli([
+            'replace', codex.result.publicId,
+            '--source', 'codex',
+            '--session', codexReplacementFixture,
+            '--yes',
+            '--json',
+        ]);
+        if (records.records.some((record) => replaceOutput.includes(record.managementToken))) {
+            throw new Error('Packed CLI replace output exposed a management capability');
+        }
+        const replacement = JSON.parse(replaceOutput) as PublishedShare;
+        expect(replacement).toMatchObject({ publicId: codex.result.publicId, publicUrl: codex.result.publicUrl, source: 'codex' });
+        await page.goto(anonymousViewerUrl(codex.result.publicId), { waitUntil: 'domcontentloaded', timeout: 180_000 });
+        await expectReadOnlyTranscript(page);
+        await expectMessageText(page, 'agent', 'The updated illustration is ready on the same public link.');
+        await expect(page.getByText('The illustration is ready and keeps the same aspect ratio.', { exact: true })).toHaveCount(0);
+        await pauseForEvidence(page);
+        await page.screenshot({ path: evidencePath(testInfo, 'codex-replaced-public-snapshot.png'), fullPage: true });
 
         await page.goto(anonymousViewerUrl(claude.result.publicId), { waitUntil: 'domcontentloaded', timeout: 180_000 });
         await expectReadOnlyTranscript(page);

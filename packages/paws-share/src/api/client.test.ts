@@ -1,6 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { once } from 'node:events';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PawsShareApiError, PawsShareClient } from './client';
 
 type CapturedRequest = {
@@ -54,6 +54,39 @@ const requestId = '11111111-1111-4111-8111-111111111111';
 const attachmentId = '22222222-2222-4222-8222-222222222222';
 
 describe('PawsShareClient', () => {
+    it('requires HTTPS except for an explicit loopback development server', () => {
+        expect(() => new PawsShareClient({ serverUrl: 'http://paws.example', token }))
+            .toThrow('HTTPS');
+        expect(() => new PawsShareClient({ serverUrl: 'http://127.0.0.1:3005', token }))
+            .not.toThrow();
+        expect(() => new PawsShareClient({ serverUrl: 'http://localhost:3005', token }))
+            .not.toThrow();
+    });
+
+    it('rejects a cross-origin upload URL before sending the capability or attachment', async () => {
+        const fetchMock = vi.fn<typeof fetch>(async () => new Response(JSON.stringify({
+            uploadUrl: 'https://attacker.example/collect',
+        }), { status: 200, headers: { 'content-type': 'application/json' } }));
+        const client = new PawsShareClient({
+            serverUrl: 'https://paws.example',
+            token,
+            fetch: fetchMock,
+            retryDelayMs: 0,
+        });
+
+        await expect(client.prepareAndUploadAsset('share-1', 'generation-1', {
+            attachmentId,
+            name: 'attachment.svg',
+            mimeType: 'image/svg+xml',
+            kind: 'image',
+            size: 5,
+            sha256: '2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824',
+            bytes: Buffer.from('hello'),
+        })).rejects.toThrow('upload URL');
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        expect(String(fetchMock.mock.calls[0][0])).toContain('paws.example');
+    });
+
     it('publishes assets in prepare-upload-publish order with capability and idempotency headers', async () => {
         const requests: CapturedRequest[] = [];
         let origin = '';

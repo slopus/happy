@@ -156,7 +156,7 @@ model PublicSessionShareDraft {
 }
 
 model PublicSessionShareAsset {
-    id          String             @id
+    id          String
     shareId     String
     share       PublicSessionShare @relation(fields: [shareId], references: [id], onDelete: Cascade)
     generation  String
@@ -170,7 +170,7 @@ model PublicSessionShareAsset {
     storagePath String
     createdAt   DateTime           @default(now())
 
-    @@unique([shareId, generation, id])
+    @@id([shareId, generation, id])
     @@index([shareId, generation])
 }
 

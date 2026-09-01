@@ -54,6 +54,23 @@ describe('ShareRecordStore', () => {
         await expect(stat(join(home, 'shares.json.tmp'))).rejects.toMatchObject({ code: 'ENOENT' });
     });
 
+    it('serializes concurrent writers without losing management records', async () => {
+        const home = await createTemporaryDirectory('paws-share-records-');
+        temporaryDirectories.push(home);
+        const stores = Array.from({ length: 12 }, () => new ShareRecordStore(home));
+
+        await Promise.all(stores.map((store, index) => store.save(record({
+            recordId: `record-${index}`,
+            publicId: `public-${index}`,
+            shareId: `share-${index}`,
+            managementToken: Buffer.alloc(32, index + 1).toString('base64url'),
+        }))));
+
+        const records = await stores[0].load();
+        expect(records).toHaveLength(stores.length);
+        expect(new Set(records.map((item) => item.managementToken)).size).toBe(stores.length);
+    });
+
     it('returns public records without exposing management tokens', async () => {
         const home = await createTemporaryDirectory('paws-share-records-');
         temporaryDirectories.push(home);

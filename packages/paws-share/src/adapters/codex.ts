@@ -3,6 +3,7 @@ import {
     publicTitle,
     readStableJsonLines,
     recordValue,
+    resolveDataUrlImageAttachment,
     resolveStructuredAttachment,
     stringValue,
     timestamp,
@@ -79,7 +80,7 @@ export const codexAdapter: TranscriptAdapter = {
             if (payload.type !== 'message' || (payload.role !== 'user' && payload.role !== 'assistant')) continue;
             const content = Array.isArray(payload.content) ? payload.content : [];
             const blocks: PublicSessionBlock[] = [];
-            for (const rawBlock of content) {
+            for (const [blockIndex, rawBlock] of content.entries()) {
                 const block = recordValue(rawBlock);
                 if (!block) continue;
                 const text = stringValue(block.text);
@@ -91,8 +92,10 @@ export const codexAdapter: TranscriptAdapter = {
                 const reference = stringValue(block.image_url) ?? stringValue(block.path);
                 if (block.type === 'input_image' && reference) {
                     try {
-                        const attachment = await resolveStructuredAttachment(candidate, reference, recordedCwd);
-                        attachments.set(attachment.path, attachment);
+                        const attachment = reference.startsWith('data:')
+                            ? resolveDataUrlImageAttachment(candidate, reference, `${stableId ?? sequence}:image:${blockIndex}`)
+                            : await resolveStructuredAttachment(candidate, reference, recordedCwd);
+                        attachments.set(attachment.attachmentId, attachment);
                         blocks.push({
                             type: 'attachment',
                             attachmentId: attachment.attachmentId,
@@ -103,7 +106,7 @@ export const codexAdapter: TranscriptAdapter = {
                             source: 'user',
                         });
                     } catch {
-                        unresolvedAttachments.push(reference);
+                        unresolvedAttachments.push(`${stableId ?? sequence}:image:${blockIndex}`);
                     }
                 }
             }

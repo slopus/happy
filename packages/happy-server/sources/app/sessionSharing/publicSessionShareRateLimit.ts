@@ -26,12 +26,25 @@ export function createPublicShareRateLimiter(options: {
     scope: string;
     max: number;
     windowMs: number;
+    maxLocalEntries?: number;
     now?: () => number;
     redisEval?: RedisEval | null;
 }) {
     const now = options.now ?? Date.now;
     const localEntries = new Map<string, { count: number; windowStart: number }>();
     const redisEval = options.redisEval === undefined ? redisEvalFromEnvironment() : options.redisEval;
+    const maxLocalEntries = options.maxLocalEntries ?? 10_000;
+
+    function pruneLocalEntries(currentTime: number): void {
+        for (const [key, entry] of localEntries) {
+            if (currentTime - entry.windowStart >= options.windowMs) localEntries.delete(key);
+        }
+        while (localEntries.size >= maxLocalEntries) {
+            const oldest = localEntries.keys().next().value as string | undefined;
+            if (!oldest) break;
+            localEntries.delete(oldest);
+        }
+    }
 
     return {
         async check(identifier: string): Promise<RateLimitResult> {
@@ -53,6 +66,7 @@ export function createPublicShareRateLimiter(options: {
             const currentTime = now();
             const entry = localEntries.get(digest);
             if (!entry || currentTime - entry.windowStart >= options.windowMs) {
+                pruneLocalEntries(currentTime);
                 localEntries.set(digest, { count: 1, windowStart: currentTime });
                 return { allowed: true, retryAfterSeconds: Math.ceil(options.windowMs / 1000) };
             }
@@ -61,6 +75,9 @@ export function createPublicShareRateLimiter(options: {
                 allowed: entry.count <= options.max,
                 retryAfterSeconds: Math.max(1, Math.ceil((options.windowMs - (currentTime - entry.windowStart)) / 1000)),
             };
+        },
+        localEntryCount(): number {
+            return localEntries.size;
         },
     };
 }

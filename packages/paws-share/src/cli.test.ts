@@ -37,6 +37,8 @@ describe('paws-share CLI', () => {
         expect(output.stdout.join('')).toContain('list');
         expect(output.stdout.join('')).toContain('renew');
         expect(output.stdout.join('')).toContain('revoke');
+        expect(output.stdout.join('')).toContain('status');
+        expect(output.stdout.join('')).toContain('replace');
         expect(output.stderr).toEqual([]);
     });
 
@@ -106,7 +108,7 @@ describe('paws-share CLI', () => {
         expect(output.stderr).toEqual([]);
     });
 
-    it('lists, renews, and revokes records without printing local management tokens', async () => {
+    it('lists, queries, renews, replaces, and revokes records without printing local management tokens', async () => {
         const output = capture();
         const managementToken = Buffer.alloc(32, 9).toString('base64url');
         const dependencies: Partial<CliDependencies> = {
@@ -115,11 +117,23 @@ describe('paws-share CLI', () => {
                 source: 'codex', title: 'Review', createdAt: '2026-09-01T00:00:00.000Z', expiresAt: '2026-11-30T00:00:00.000Z',
             }],
             renewManagedShare: async () => ({ publicId: 'public-1', expiresAt: '2026-12-01T00:00:00.000Z' }),
+            statusManagedShare: async () => ({
+                publicId: 'public-1', publicUrl: 'https://paws.test/share/public-1', active: true, revoked: false,
+                publishedAt: '2026-09-01T00:00:00.000Z', expiresAt: '2026-11-30T00:00:00.000Z', source: 'codex',
+            }),
+            replaceManagedShare: async () => ({
+                publicUrl: 'https://paws.test/share/public-1', publicId: 'public-1', expiresAt: '2026-11-30T00:00:00.000Z',
+                source: 'codex', messageCount: 4, attachmentCount: 1, attachmentBytes: 320, recordId: 'public-1',
+            }),
             revokeManagedShare: async () => ({ publicId: 'public-1', revoked: true as const }),
         };
 
         expect(await runCli(['node', 'paws-share', 'list', '--json'], output.io, dependencies)).toBe(0);
+        expect(await runCli(['node', 'paws-share', 'status', 'public-1', '--json'], output.io, dependencies)).toBe(0);
         expect(await runCli(['node', 'paws-share', 'renew', 'public-1', '--json'], output.io, dependencies)).toBe(0);
+        expect(await runCli([
+            'node', 'paws-share', 'replace', 'public-1', '--source', 'codex', '--session', '/tmp/session.jsonl', '--yes', '--json',
+        ], output.io, dependencies)).toBe(0);
         expect(await runCli(['node', 'paws-share', 'revoke', 'public-1', '--json'], output.io, dependencies)).toBe(0);
 
         expect(output.stdout.join('')).not.toContain(managementToken);

@@ -6,9 +6,13 @@ import { installSkill, type InstallSkillResult, type InstallSkillTarget } from '
 import { ShareRecordStore, type PublicShareRecord } from './records';
 import {
     inspectSession,
+    replaceManagedShare,
     renewManagedShare,
     revokeManagedShare,
     shareSession,
+    statusManagedShare,
+    type ManagedShareStatusResult,
+    type ReplaceManagedShareOptions,
     type SessionInspection,
     type ShareSessionOptions,
     type ShareSessionResult,
@@ -26,7 +30,9 @@ export type CliDependencies = {
     inspectSession: (options: { candidate: TranscriptCandidate }) => Promise<SessionInspection>;
     shareSession: (options: ShareSessionOptions) => Promise<ShareSessionResult>;
     listRecords: () => Promise<PublicShareRecord[]>;
+    statusManagedShare: (identifier: string) => Promise<ManagedShareStatusResult>;
     renewManagedShare: (identifier: string) => Promise<{ publicId: string; expiresAt: string }>;
+    replaceManagedShare: (options: ReplaceManagedShareOptions) => Promise<ShareSessionResult>;
     revokeManagedShare: (identifier: string) => Promise<{ publicId: string; revoked: true }>;
     discoverCurrentTranscript: (options?: { cwd?: string }) => Promise<TranscriptCandidate>;
     installSkill: (options: { target: InstallSkillTarget }) => Promise<InstallSkillResult>;
@@ -51,7 +57,9 @@ function defaults(): CliDependencies {
         inspectSession,
         shareSession: (options) => shareSession({ ...options, store }),
         listRecords: () => store.list(),
+        statusManagedShare: (identifier) => statusManagedShare(identifier, store),
         renewManagedShare: (identifier) => renewManagedShare(identifier, store),
+        replaceManagedShare: (options) => replaceManagedShare({ ...options, store }),
         revokeManagedShare: (identifier) => revokeManagedShare(identifier, store),
         discoverCurrentTranscript,
         installSkill,
@@ -169,6 +177,40 @@ function createProgram(io: CliIo, dependencies: CliDependencies) {
             else io.stdout(`Renewed ${result.publicId} until ${result.expiresAt}\n`);
         });
 
+    program.command('status')
+        .description('Query a managed public link')
+        .argument('<public-id>', 'local public ID')
+        .option('--json', 'print JSON output')
+        .action(async (identifier: string, options: { json?: boolean }) => {
+            const result = await dependencies.statusManagedShare(identifier);
+            if (options.json) writeJson(io, result);
+            else io.stdout(`${result.publicId}: ${result.active ? 'active' : result.revoked ? 'revoked' : 'inactive'}${result.expiresAt ? ` until ${result.expiresAt}` : ''}\n`);
+        });
+
+    addSourceOptions(program.command('replace').description('Replace the snapshot behind a managed public link')
+        .argument('<public-id>', 'local public ID'))
+        .option('--yes', 'confirm that the inspected replacement will become public')
+        .option('--allow-sensitive', 'override high-confidence secret findings')
+        .option('--json', 'print JSON output')
+        .action(async (identifier: string, options: SourceOptions & {
+            yes?: boolean;
+            allowSensitive?: boolean;
+            json?: boolean;
+        }) => {
+            const candidate = await candidateFromOptions(options, dependencies);
+            if (!options.yes) {
+                writeInspection(io, await dependencies.inspectSession({ candidate }), Boolean(options.json));
+                throw new CliExpectedError('Public replacement requires explicit --yes after reviewing the disclosure', 2);
+            }
+            const result = await dependencies.replaceManagedShare({
+                identifier,
+                candidate,
+                allowSensitive: Boolean(options.allowSensitive),
+            });
+            if (options.json) writeJson(io, result);
+            else io.stdout(`Updated public link: ${result.publicUrl}\nExpires: ${result.expiresAt}\n`);
+        });
+
     program.command('revoke')
         .description('Revoke a managed public link')
         .argument('<public-id>', 'local public ID')
@@ -192,7 +234,7 @@ function createProgram(io: CliIo, dependencies: CliDependencies) {
 }
 
 function normalizeLegacyManagementId(argv: string[]): string[] {
-    const commandIndex = argv.findIndex((value, index) => index >= 2 && (value === 'renew' || value === 'revoke'));
+    const commandIndex = argv.findIndex((value, index) => index >= 2 && (value === 'status' || value === 'renew' || value === 'revoke'));
     if (commandIndex < 0) return argv;
     const commandArguments = argv.slice(commandIndex + 1);
     if (commandArguments.includes('--')) return argv;

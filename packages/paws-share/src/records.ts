@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { chmod, mkdir, open, readFile, rename, unlink } from 'node:fs/promises';
+import { chmod, mkdir, open, readFile, rename, stat, unlink } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
@@ -24,15 +24,24 @@ type RecordFile = {
     records: ShareRecord[];
 };
 
+const LOCK_STALE_MS = 30_000;
+const LOCK_WAIT_MS = 10_000;
+
+function delay(milliseconds: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
 export function defaultShareHome(environment: NodeJS.ProcessEnv = process.env): string {
     return environment.PAWS_SHARE_HOME || join(homedir(), '.paws-share');
 }
 
 export class ShareRecordStore {
     readonly recordPath: string;
+    readonly lockPath: string;
 
     constructor(readonly home = defaultShareHome()) {
         this.recordPath = join(home, 'shares.json');
+        this.lockPath = join(home, 'shares.lock');
     }
 
     async load(): Promise<ShareRecord[]> {
@@ -51,11 +60,13 @@ export class ShareRecordStore {
     }
 
     async save(record: ShareRecord): Promise<void> {
-        const records = await this.load();
-        const index = records.findIndex((candidate) => candidate.recordId === record.recordId);
-        if (index >= 0) records[index] = record;
-        else records.push(record);
-        await this.write({ version: 1, records });
+        await this.withWriteLock(async () => {
+            const records = await this.load();
+            const index = records.findIndex((candidate) => candidate.recordId === record.recordId);
+            if (index >= 0) records[index] = record;
+            else records.push(record);
+            await this.write({ version: 1, records });
+        });
     }
 
     async get(recordId: string): Promise<ShareRecord | null> {
@@ -63,12 +74,41 @@ export class ShareRecordStore {
     }
 
     async remove(recordId: string): Promise<void> {
-        const records = (await this.load()).filter((record) => record.recordId !== recordId && record.publicId !== recordId);
-        await this.write({ version: 1, records });
+        await this.withWriteLock(async () => {
+            const records = (await this.load()).filter((record) => record.recordId !== recordId && record.publicId !== recordId);
+            await this.write({ version: 1, records });
+        });
     }
 
     async list(): Promise<PublicShareRecord[]> {
         return (await this.load()).map(({ managementToken: _managementToken, ...record }) => record);
+    }
+
+    private async withWriteLock<T>(callback: () => Promise<T>): Promise<T> {
+        await mkdir(this.home, { recursive: true, mode: 0o700 });
+        await chmod(this.home, 0o700);
+        const deadline = Date.now() + LOCK_WAIT_MS;
+        let handle;
+        while (!handle) {
+            try {
+                handle = await open(this.lockPath, 'wx', 0o600);
+            } catch (error) {
+                if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+                const lockStat = await stat(this.lockPath).catch(() => null);
+                if (lockStat && lockStat.mtimeMs < Date.now() - LOCK_STALE_MS) {
+                    await unlink(this.lockPath).catch(() => undefined);
+                    continue;
+                }
+                if (Date.now() >= deadline) throw new Error('Timed out waiting for the Paws Share management record lock');
+                await delay(20);
+            }
+        }
+        try {
+            return await callback();
+        } finally {
+            await handle.close();
+            await unlink(this.lockPath).catch(() => undefined);
+        }
     }
 
     private async write(file: RecordFile): Promise<void> {

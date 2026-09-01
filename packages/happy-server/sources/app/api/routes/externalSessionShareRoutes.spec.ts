@@ -53,6 +53,9 @@ const { state, dbMock, storageMock, resetState } = vi.hoisted(() => {
         assets: [] as AssetRow[],
         bytes: new Map<string, Buffer>(),
         nextShare: 1,
+        transactionDepth: 0,
+        transactionTail: Promise.resolve(),
+        binaryParseCount: 0,
     };
 
     const matches = (value: Record<string, any>, where: Record<string, any>): boolean => Object.entries(where).every(([key, wanted]) => {
@@ -136,11 +139,21 @@ const { state, dbMock, storageMock, resetState } = vi.hoisted(() => {
             rows.forEach((row) => applyData(row, data));
             return { count: rows.length };
         }),
+        deleteMany: vi.fn(async ({ where }: any) => {
+            const before = state.drafts.length;
+            state.drafts = state.drafts.filter((row) => !matches(row, where));
+            state.assets = state.assets.filter((row) => !matches(row, { generation: where.id, shareId: where.shareId }));
+            return { count: before - state.drafts.length };
+        }),
     };
     const publicSessionShareAsset = {
         findMany: vi.fn(async ({ where }: any) => state.assets.filter((row) => matches(row, where))),
         findFirst: vi.fn(async ({ where }: any) => state.assets.find((row) => matches(row, where)) ?? null),
         create: vi.fn(async ({ data }: any) => {
+            if (state.transactionDepth === 0) throw new Error('asset quota writes must run in a transaction');
+            if (state.assets.some((row) => row.id === data.id && row.shareId === data.shareId && row.generation === data.generation)) {
+                throw new Error('duplicate asset primary key');
+            }
             const row = { createdAt: new Date(), uploadedAt: null, ...data } as AssetRow;
             state.assets.push(row);
             return row;
@@ -157,7 +170,19 @@ const { state, dbMock, storageMock, resetState } = vi.hoisted(() => {
         publicSessionShareDraft,
         publicSessionShareAsset,
     };
-    dbMock.$transaction = vi.fn(async (callback: any) => callback(dbMock));
+    dbMock.$transaction = vi.fn(async (callback: any) => {
+        const previous = state.transactionTail;
+        let release!: () => void;
+        state.transactionTail = new Promise<void>((resolve) => { release = resolve; });
+        await previous;
+        state.transactionDepth += 1;
+        try {
+            return await callback(dbMock);
+        } finally {
+            state.transactionDepth -= 1;
+            release();
+        }
+    });
 
     const storageMock = {
         buildPublicShareStoragePath: vi.fn((shareId: string, generation: string, assetId: string) =>
@@ -178,6 +203,9 @@ const { state, dbMock, storageMock, resetState } = vi.hoisted(() => {
         state.assets = [];
         state.bytes.clear();
         state.nextShare = 1;
+        state.transactionDepth = 0;
+        state.transactionTail = Promise.resolve();
+        state.binaryParseCount = 0;
         vi.clearAllMocks();
     };
     return { state, dbMock, storageMock, resetState };
@@ -200,7 +228,10 @@ async function createApp() {
     const app = fastify({ bodyLimit: 12 * 1024 * 1024 });
     app.setValidatorCompiler(validatorCompiler);
     app.setSerializerCompiler(serializerCompiler);
-    app.addContentTypeParser('application/octet-stream', { parseAs: 'buffer' }, (_request, body, done) => done(null, body));
+    app.addContentTypeParser('application/octet-stream', { parseAs: 'buffer' }, (_request, body, done) => {
+        state.binaryParseCount += 1;
+        done(null, body);
+    });
     const typed = app.withTypeProvider<ZodTypeProvider>() as unknown as Fastify;
     typed.decorate('authenticate', async (_request: any, reply: any) => reply.code(401).send({ error: 'Unauthorized' }));
     externalSessionShareRoutes(typed);
@@ -274,6 +305,20 @@ describe('externalSessionShareRoutes', () => {
         expect(response.json()).toEqual({ error: 'Shared session not found' });
     });
 
+    it('rejects an invalid upload capability before parsing the binary body', async () => {
+        const created = (await createDraft()).json();
+
+        const response = await app.inject({
+            method: 'PUT',
+            url: `/v1/external/session-shares/${created.shareId}/drafts/${created.generation}/assets/${ATTACHMENT_ID}`,
+            headers: { authorization: `PawsShare ${OTHER_TOKEN}`, 'content-type': 'application/octet-stream' },
+            payload: Buffer.from('unauthorized body'),
+        });
+
+        expect(response.statusCode).toBe(404);
+        expect(state.binaryParseCount).toBe(0);
+    });
+
     it('publishes an uploaded attachment atomically through the existing public endpoints', async () => {
         const created = (await createDraft()).json();
         const prepared = await app.inject({
@@ -328,6 +373,171 @@ describe('externalSessionShareRoutes', () => {
         expect(publicAttachment.headers['content-type']).toContain('application/octet-stream');
     });
 
+    it('allows the same deterministic attachment ID in a replacement generation', async () => {
+        const created = (await createDraft()).json();
+        const first = await app.inject({
+            method: 'POST',
+            url: `/v1/external/session-shares/${created.shareId}/drafts/${created.generation}/assets`,
+            headers: { authorization: AUTHORIZATION },
+            payload: { attachmentId: ATTACHMENT_ID, name: 'drawing.svg', mimeType: 'image/svg+xml', kind: 'file', size: 5, sha256: HELLO_SHA256 },
+        });
+        expect(first.statusCode).toBe(200);
+        expect((await app.inject({
+            method: 'PUT',
+            url: first.json().uploadUrl,
+            headers: { authorization: AUTHORIZATION, 'content-type': 'application/octet-stream' },
+            payload: Buffer.from('hello'),
+        })).statusCode).toBe(200);
+        expect((await app.inject({
+            method: 'PUT',
+            url: `/v1/external/session-shares/${created.shareId}/drafts/${created.generation}/publish`,
+            headers: { authorization: AUTHORIZATION },
+            payload: { snapshot: snapshot(ATTACHMENT_ID) },
+        })).statusCode).toBe(200);
+
+        const replacement = await app.inject({
+            method: 'POST',
+            url: `/v1/external/session-shares/${created.shareId}/drafts`,
+            headers: { authorization: AUTHORIZATION },
+        });
+        expect(replacement.statusCode).toBe(200);
+        const second = await app.inject({
+            method: 'POST',
+            url: `/v1/external/session-shares/${created.shareId}/drafts/${replacement.json().generation}/assets`,
+            headers: { authorization: AUTHORIZATION },
+            payload: { attachmentId: ATTACHMENT_ID, name: 'drawing.svg', mimeType: 'image/svg+xml', kind: 'file', size: 5, sha256: HELLO_SHA256 },
+        });
+
+        expect(second.statusCode).toBe(200);
+
+        const secondUpload = await app.inject({
+            method: 'PUT',
+            url: second.json().uploadUrl,
+            headers: { authorization: AUTHORIZATION, 'content-type': 'application/octet-stream' },
+            payload: Buffer.from('hello'),
+        });
+        expect(secondUpload.statusCode).toBe(200);
+        const secondPublish = await app.inject({
+            method: 'PUT',
+            url: `/v1/external/session-shares/${created.shareId}/drafts/${replacement.json().generation}/publish`,
+            headers: { authorization: AUTHORIZATION },
+            payload: { snapshot: snapshot(ATTACHMENT_ID) },
+        });
+        expect(secondPublish.statusCode).toBe(200);
+        expect(storageMock.deletePublicShareGeneration).toHaveBeenCalledWith(created.shareId, created.generation);
+        expect(state.drafts.some((draft) => draft.id === created.generation)).toBe(false);
+    });
+
+    it('retains a superseded pending draft as a durable marker for in-flight uploads', async () => {
+        const created = (await createDraft()).json();
+        expect((await app.inject({
+            method: 'POST',
+            url: `/v1/external/session-shares/${created.shareId}/drafts/${created.generation}/assets`,
+            headers: { authorization: AUTHORIZATION },
+            payload: { attachmentId: ATTACHMENT_ID, name: 'drawing.svg', mimeType: 'image/svg+xml', kind: 'file', size: 5, sha256: HELLO_SHA256 },
+        })).statusCode).toBe(200);
+
+        const replacement = await app.inject({
+            method: 'POST',
+            url: `/v1/external/session-shares/${created.shareId}/drafts`,
+            headers: { authorization: AUTHORIZATION },
+        });
+
+        expect(replacement.statusCode).toBe(200);
+        expect(state.drafts.find((draft) => draft.id === created.generation)?.status).toBe('superseded');
+        expect(state.assets.some((asset) => asset.generation === created.generation)).toBe(true);
+        expect(storageMock.deletePublicShareGeneration).not.toHaveBeenCalled();
+    });
+
+    it('counts superseded grace generations against the capability attachment quota', async () => {
+        const created = (await createDraft()).json();
+        for (let index = 0; index < 4; index += 1) {
+            const prepared = await app.inject({
+                method: 'POST',
+                url: `/v1/external/session-shares/${created.shareId}/drafts/${created.generation}/assets`,
+                headers: { authorization: AUTHORIZATION },
+                payload: {
+                    attachmentId: `10000000-0000-4000-8000-${String(index).padStart(12, '0')}`,
+                    name: `large-${index}.bin`,
+                    mimeType: 'application/octet-stream',
+                    kind: 'file',
+                    size: 50 * 1024 * 1024,
+                    sha256: HELLO_SHA256,
+                },
+            });
+            expect(prepared.statusCode).toBe(200);
+        }
+        const replacement = await app.inject({
+            method: 'POST',
+            url: `/v1/external/session-shares/${created.shareId}/drafts`,
+            headers: { authorization: AUTHORIZATION },
+        });
+
+        const overLimit = await app.inject({
+            method: 'POST',
+            url: `/v1/external/session-shares/${created.shareId}/drafts/${replacement.json().generation}/assets`,
+            headers: { authorization: AUTHORIZATION },
+            payload: {
+                attachmentId: '20000000-0000-4000-8000-000000000000',
+                name: 'one-more.bin',
+                mimeType: 'application/octet-stream',
+                kind: 'file',
+                size: 1,
+                sha256: HELLO_SHA256,
+            },
+        });
+
+        expect(replacement.statusCode).toBe(200);
+        expect(overLimit.statusCode).toBe(413);
+        expect(state.assets).toHaveLength(4);
+    });
+
+    it('enforces the attachment count atomically across concurrent prepare requests', async () => {
+        const created = (await createDraft()).json();
+        const responses = await Promise.all(Array.from({ length: 51 }, (_, index) => app.inject({
+            method: 'POST',
+            url: `/v1/external/session-shares/${created.shareId}/drafts/${created.generation}/assets`,
+            headers: { authorization: AUTHORIZATION },
+            payload: {
+                attachmentId: `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`,
+                name: `drawing-${index}.svg`,
+                mimeType: 'image/svg+xml',
+                kind: 'file',
+                size: 0,
+                sha256: HELLO_SHA256,
+            },
+        })));
+
+        expect(responses.filter((response) => response.statusCode === 200)).toHaveLength(50);
+        expect(responses.filter((response) => response.statusCode === 413)).toHaveLength(1);
+        expect(state.assets).toHaveLength(50);
+    });
+
+    it('removes a just-written generation when expiry cleanup claims the share during upload', async () => {
+        const created = (await createDraft()).json();
+        const prepared = await app.inject({
+            method: 'POST',
+            url: `/v1/external/session-shares/${created.shareId}/drafts/${created.generation}/assets`,
+            headers: { authorization: AUTHORIZATION },
+            payload: { attachmentId: ATTACHMENT_ID, name: 'drawing.svg', mimeType: 'image/svg+xml', kind: 'file', size: 5, sha256: HELLO_SHA256 },
+        });
+        storageMock.putPublicShareAsset.mockImplementationOnce(async (storagePath: string, bytes: Buffer) => {
+            state.bytes.set(storagePath, bytes);
+            state.shares[0].revokedAt = new Date();
+            state.shares[0].lifecycleVersion += 1;
+        });
+
+        const upload = await app.inject({
+            method: 'PUT',
+            url: prepared.json().uploadUrl,
+            headers: { authorization: AUTHORIZATION, 'content-type': 'application/octet-stream' },
+            payload: Buffer.from('hello'),
+        });
+
+        expect(upload.statusCode).toBe(409);
+        expect(storageMock.deletePublicShareGeneration).toHaveBeenCalledWith(created.shareId, created.generation);
+    });
+
     it('renews and then revokes a share idempotently using only the local capability', async () => {
         const created = (await createDraft()).json();
         const originalExpiry = state.shares[0].expiresAt!.getTime();
@@ -353,6 +563,23 @@ describe('externalSessionShareRoutes', () => {
         expect(firstRevoke.statusCode).toBe(200);
         expect(retryRevoke.statusCode).toBe(200);
         expect(state.shares[0].revokedAt).toBeInstanceOf(Date);
+    });
+
+    it('does not renew after expiry cleanup has atomically claimed the share', async () => {
+        const created = (await createDraft()).json();
+        dbMock.publicSessionShare.updateMany.mockImplementationOnce(async () => {
+            state.shares[0].revokedAt = new Date();
+            return { count: 0 };
+        });
+
+        const renew = await app.inject({
+            method: 'POST',
+            url: `/v1/external/session-shares/${created.shareId}/renew`,
+            headers: { authorization: AUTHORIZATION },
+        });
+
+        expect(renew.statusCode).toBe(404);
+        expect(renew.json()).toEqual({ error: 'Shared session not found' });
     });
 
     it('returns the generic public not-found response after expiry', async () => {

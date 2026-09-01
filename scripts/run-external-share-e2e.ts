@@ -11,7 +11,6 @@ import {
     startEnvironmentWeb,
     stopEnvironment,
 } from '../environments/environments';
-import { createPGlite } from '../packages/happy-server/sources/storage/pgliteLoader';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const armHomebrewBin = '/opt/homebrew/bin';
@@ -29,32 +28,6 @@ function run(command: string, args: string[], options?: { cwd?: string; env?: No
     });
     if (result.status !== 0) {
         throw new Error(`${command} ${args.join(' ')} failed with exit code ${result.status ?? 'unknown'}`);
-    }
-}
-
-async function synchronizeCapabilitySchema(environmentName: string): Promise<void> {
-    const pgliteDir = path.join(getEnvironmentDir(environmentName), 'server', 'pglite');
-    const pg = createPGlite(pgliteDir);
-    try {
-        // Production migrations are created by the repository's gated migration
-        // workflow. This isolated E2E database mirrors the pending Prisma schema
-        // without adding or applying a production migration from a feature branch.
-        await pg.exec(`
-            ALTER TABLE "PublicSessionShare" ALTER COLUMN "accountId" DROP NOT NULL;
-            ALTER TABLE "PublicSessionShare" ALTER COLUMN "sessionId" DROP NOT NULL;
-            ALTER TABLE "PublicSessionShare" ADD COLUMN IF NOT EXISTS "managementTokenHash" BYTEA;
-            ALTER TABLE "PublicSessionShare" ADD COLUMN IF NOT EXISTS "createRequestId" TEXT;
-            ALTER TABLE "PublicSessionShare" ADD COLUMN IF NOT EXISTS "sourceProvider" TEXT;
-            ALTER TABLE "PublicSessionShare" ADD COLUMN IF NOT EXISTS "expiresAt" TIMESTAMP(3);
-            CREATE UNIQUE INDEX IF NOT EXISTS "PublicSessionShare_managementTokenHash_key"
-                ON "PublicSessionShare"("managementTokenHash");
-            CREATE UNIQUE INDEX IF NOT EXISTS "PublicSessionShare_createRequestId_key"
-                ON "PublicSessionShare"("createRequestId");
-            CREATE INDEX IF NOT EXISTS "PublicSessionShare_expiresAt_idx"
-                ON "PublicSessionShare"("expiresAt");
-        `);
-    } finally {
-        await pg.close();
     }
 }
 
@@ -78,16 +51,23 @@ function installPackedCli(temporaryDirectory: string): string {
     return cli;
 }
 
-function prepareFixtures(temporaryDirectory: string): { codex: string; claude: string; attachment: string } {
+function prepareFixtures(temporaryDirectory: string): { codex: string; codexReplacement: string; claude: string; attachment: string } {
     const sourceDirectory = path.join(repoRoot, 'packages', 'paws-share', 'test', 'fixtures');
     const fixtureDirectory = path.join(temporaryDirectory, 'fixtures');
     fs.mkdirSync(fixtureDirectory, { recursive: true });
     const codex = path.join(fixtureDirectory, 'codex-session.jsonl');
+    const codexReplacement = path.join(fixtureDirectory, 'codex-replacement-session.jsonl');
     const claude = path.join(fixtureDirectory, 'claude-code-session.jsonl');
     const attachment = path.join(fixtureDirectory, 'attachment.png');
     fs.writeFileSync(
         codex,
         fs.readFileSync(path.join(sourceDirectory, 'codex-session.jsonl'), 'utf8').replaceAll('attachment.svg', 'attachment.png'),
+    );
+    fs.writeFileSync(
+        codexReplacement,
+        fs.readFileSync(path.join(sourceDirectory, 'codex-session.jsonl'), 'utf8')
+            .replaceAll('attachment.svg', 'attachment.png')
+            .replace('The illustration is ready and keeps the same aspect ratio.', 'The updated illustration is ready on the same public link.'),
     );
     fs.writeFileSync(
         claude,
@@ -97,7 +77,7 @@ function prepareFixtures(temporaryDirectory: string): { codex: string; claude: s
         path.join(repoRoot, 'packages', 'happy-app', 'sources', 'assets', 'images', 'icon-adaptive.png'),
         attachment,
     );
-    return { codex, claude, attachment };
+    return { codex, codexReplacement, claude, attachment };
 }
 
 function collectFiles(directory: string, suffix: string): string[] {
@@ -145,7 +125,6 @@ async function main(): Promise<void> {
         const fixtures = prepareFixtures(temporaryDirectory);
         run('pnpm', ['--filter', 'happy-server-self-host', 'generate']);
         environmentName = await createEnvironment({ noSwitch: true });
-        await synchronizeCapabilitySchema(environmentName);
 
         await startEnvironmentServices(environmentName, {
             startWeb: false,
@@ -169,6 +148,7 @@ async function main(): Promise<void> {
                     HAPPY_EXTERNAL_SHARE_CLI_PATH: cliPath,
                     HAPPY_EXTERNAL_SHARE_HOME: path.join(temporaryDirectory, 'share-home'),
                     HAPPY_EXTERNAL_SHARE_CODEX_FIXTURE: fixtures.codex,
+                    HAPPY_EXTERNAL_SHARE_CODEX_REPLACEMENT_FIXTURE: fixtures.codexReplacement,
                     HAPPY_EXTERNAL_SHARE_CLAUDE_FIXTURE: fixtures.claude,
                     HAPPY_EXTERNAL_SHARE_ATTACHMENT_FIXTURE: fixtures.attachment,
                     HAPPY_EXTERNAL_SHARE_EVIDENCE_DIR: screenshots,

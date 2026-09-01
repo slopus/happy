@@ -19,6 +19,11 @@ import {
 import { createPublicShareRateLimiter } from '@/app/sessionSharing/publicSessionShareRateLimit';
 import { cleanupPublicSessionShareGeneration } from '@/app/sessionSharing/publicSessionShareCleanup';
 import { log } from '@/utils/log';
+import { isValidShareOwnership } from '@/app/sessionSharing/publicSessionShareCapability';
+import {
+    publicSessionShareNotFound,
+    setPublicSessionShareHeaders,
+} from '@/app/sessionSharing/publicSessionShareHttp';
 
 const MAX_ASSET_COUNT = 100;
 // This matches Fastify's global binary-body limit. Share uploads are proxied
@@ -38,8 +43,8 @@ const assetParamsSchema = draftParamsSchema.extend({ assetId: z.string().uuid() 
 // Public handlers deliberately accept malformed identifiers and resolve them
 // through the same not-found branch as revoked/unknown links. Returning Zod's
 // 400 here would reveal a different public state than the product promises.
-const publicParamsSchema = z.object({ publicId: z.string().min(1).max(200) });
-const publicAssetParamsSchema = publicParamsSchema.extend({ assetId: z.string().min(1).max(200) });
+const publicParamsSchema = z.object({ publicId: z.string() });
+const publicAssetParamsSchema = publicParamsSchema.extend({ assetId: z.string() });
 const prepareAssetBodySchema = z.object({
     attachmentId: z.string().uuid(),
     name: z.string().min(1).max(500),
@@ -62,15 +67,12 @@ function newPublicId(): string {
     return crypto.randomBytes(32).toString('base64url');
 }
 
-function publicNotFound(reply: any) {
-    setPublicHeaders(reply);
-    return reply.code(404).send({ error: 'Shared session not found' });
+function validPublicId(value: string): boolean {
+    return /^(?:[A-Za-z0-9_-]{43}|ps_[A-Za-z0-9_-]{43})$/.test(value);
 }
 
-function setPublicHeaders(reply: any) {
-    reply.header('Cache-Control', 'no-store');
-    reply.header('X-Robots-Tag', 'noindex, nofollow, noarchive');
-    reply.header('X-Content-Type-Options', 'nosniff');
+function validAssetId(value: string): boolean {
+    return z.string().uuid().safeParse(value).success;
 }
 
 async function enforceShareWriteRate(userId: string, reply: any): Promise<boolean> {
@@ -84,7 +86,7 @@ async function enforceShareWriteRate(userId: string, reply: any): Promise<boolea
 async function enforcePublicReadRate(key: string, reply: any): Promise<boolean> {
     const result = await publicReadRate.check(key);
     if (result.allowed) return true;
-    setPublicHeaders(reply);
+    setPublicSessionShareHeaders(reply);
     reply.header('Retry-After', result.retryAfterSeconds);
     reply.code(429).send({ error: 'Too many requests. Try again in a minute.' });
     return false;
@@ -195,6 +197,8 @@ export function publicSessionShareRoutes(app: Fastify) {
                 let share = await tx.publicSessionShare.findUnique({ where: { sessionId: session.id } });
                 let oldGeneration: string | null = null;
                 if (!share) {
+                    const ownership = { accountId: request.userId, sessionId: session.id, managementTokenHash: null };
+                    if (!isValidShareOwnership(ownership)) throw new Error('Invalid public share ownership');
                     share = await tx.publicSessionShare.create({
                         data: { publicId: newPublicId(), accountId: request.userId, sessionId: session.id },
                     });
@@ -558,7 +562,8 @@ export function publicSessionShareRoutes(app: Fastify) {
     app.get('/v1/public/session-shares/:publicId', {
         schema: { params: publicParamsSchema },
     }, async (request, reply) => {
-        if (!await enforcePublicReadRate(`${request.ip}:${request.params.publicId}`, reply)) return;
+        if (!await enforcePublicReadRate(request.ip, reply)) return;
+        if (!validPublicId(request.params.publicId)) return publicSessionShareNotFound(reply);
         const share = await db.publicSessionShare.findUnique({ where: { publicId: request.params.publicId } });
         if (!share
             || share.revokedAt
@@ -566,28 +571,29 @@ export function publicSessionShareRoutes(app: Fastify) {
             || !share.publishedAt
             || !share.snapshot
             || !share.activeGeneration) {
-            return publicNotFound(reply);
+            return publicSessionShareNotFound(reply);
         }
         const parsed = publicSessionSnapshotSchema.safeParse(share.snapshot);
-        if (!parsed.success) return publicNotFound(reply);
-        setPublicHeaders(reply);
+        if (!parsed.success) return publicSessionShareNotFound(reply);
+        setPublicSessionShareHeaders(reply);
         return reply.send({ snapshot: parsed.data, publishedAt: share.publishedAt.getTime() });
     });
 
     app.get('/v1/public/session-shares/:publicId/attachments/:assetId', {
         schema: { params: publicAssetParamsSchema },
     }, async (request, reply) => {
-        if (!await enforcePublicReadRate(`${request.ip}:${request.params.publicId}`, reply)) return;
+        if (!await enforcePublicReadRate(request.ip, reply)) return;
+        if (!validPublicId(request.params.publicId) || !validAssetId(request.params.assetId)) return publicSessionShareNotFound(reply);
         const share = await db.publicSessionShare.findUnique({ where: { publicId: request.params.publicId } });
         if (!share
             || share.revokedAt
             || (share.expiresAt && share.expiresAt <= new Date())
             || !share.publishedAt
-            || !share.activeGeneration) return publicNotFound(reply);
+            || !share.activeGeneration) return publicSessionShareNotFound(reply);
         const asset = await db.publicSessionShareAsset.findFirst({
             where: { id: request.params.assetId, shareId: share.id, generation: share.activeGeneration },
         });
-        if (!asset) return publicNotFound(reply);
+        if (!asset) return publicSessionShareNotFound(reply);
         const contentType = safeMimeType(asset.kind, asset.mimeType);
         const disposition = contentType === 'application/octet-stream' ? 'attachment' : 'inline';
         const attachmentDisposition = contentDisposition(disposition, asset.name);
@@ -595,11 +601,16 @@ export function publicSessionShareRoutes(app: Fastify) {
         try {
             source = await getPublicShareDownloadSource(asset.storagePath);
         } catch {
-            return publicNotFound(reply);
+            return publicSessionShareNotFound(reply);
         }
-        setPublicHeaders(reply);
+        setPublicSessionShareHeaders(reply);
         reply.header('Content-Type', contentType);
         reply.header('Content-Disposition', attachmentDisposition);
         return reply.type(contentType).send(source.data);
     });
+
+    // Fastify's router rejects path parameters over its safety limit before a
+    // parameterized handler runs. Keep those malformed public URLs
+    // indistinguishable from unknown, expired, and revoked shares.
+    app.get('/v1/public/session-shares/*', async (_request, reply) => publicSessionShareNotFound(reply));
 }

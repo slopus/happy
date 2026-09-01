@@ -1,6 +1,6 @@
 ---
 name: share-session
-description: Inspect and publish local Codex or Claude Code conversations as complete, read-only Paws snapshots. Use when a user asks to share, publish, export, or create a public link for the current coding-agent session, including its structured attachments, or asks to list, renew, or revoke links previously created with Paws Share.
+description: Inspect and publish local Codex or Claude Code conversations as complete, read-only Paws snapshots. Use when a user asks to share, publish, export, or create a public link for the current coding-agent session, including its structured attachments, or asks to list, query, replace, renew, or revoke links previously created with Paws Share.
 ---
 
 # Share Session
@@ -44,7 +44,9 @@ Use only the CLI so the local capability remains private:
 
 ```bash
 paws-share list --json
+paws-share status <public-id> --json
 paws-share renew <public-id> --json
+paws-share replace <public-id> --current --yes --json
 paws-share revoke <public-id> --json
 ```
 
