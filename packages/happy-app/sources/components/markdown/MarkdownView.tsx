@@ -15,7 +15,6 @@ import { imageViewer } from '@/sync/imageViewer';
 import { OtaPreviewCard } from '@/components/OtaPreviewCard';
 import { FinanceChartCard } from '@/components/FinanceChartCard';
 import { useRouter } from 'expo-router';
-import * as Clipboard from 'expo-clipboard';
 import * as WebBrowser from 'expo-web-browser';
 import { MermaidRenderer } from './MermaidRenderer';
 import { t } from '@/text';
@@ -29,6 +28,7 @@ import {
     type ParsedImageStyleOption,
 } from '@/components/agents/imageStyleOptions';
 import { MAX_IMAGE_AGENT_VARIANTS_PER_STYLE } from '@/components/agents/imageAgentPrompt';
+import { CodeBlockCopyButton } from './CodeBlockCopyButton';
 
 // Option type for callback
 export type Option = {
@@ -191,16 +191,6 @@ function RenderCodeBlock(props: { content: string, language: string | null, firs
     const [isHovered, setIsHovered] = React.useState(false);
     const foldedPrompt = props.variant === 'foldedPrompt';
 
-    const copyCode = React.useCallback(async () => {
-        try {
-            await Clipboard.setStringAsync(props.content);
-            Modal.alert(t('common.success'), t('markdown.codeCopied'), [{ text: t('common.ok'), style: 'cancel' }]);
-        } catch (error) {
-            console.error('Failed to copy code:', error);
-            Modal.alert(t('common.error'), t('markdown.copyFailed'), [{ text: t('common.ok'), style: 'cancel' }]);
-        }
-    }, [props.content]);
-
     return (
         <View
             style={[style.codeBlock, foldedPrompt && style.foldedCodeBlock, props.first && style.first, props.last && style.last]}
@@ -222,17 +212,10 @@ function RenderCodeBlock(props: { content: string, language: string | null, firs
                     monochromeColor={foldedPrompt ? theme.colors.textSecondary : undefined}
                 />
             </HorizontalScrollView>
-            <View
-                style={[style.copyButtonWrapper, isHovered && style.copyButtonWrapperVisible]}
-                {...(Platform.OS === 'web' ? ({ className: 'copy-button-wrapper' } as any) : {})}
-            >
-                <Pressable
-                    style={style.copyButton}
-                    onPress={copyCode}
-                >
-                    <Text style={style.copyButtonText}>{t('common.copy')}</Text>
-                </Pressable>
-            </View>
+            <CodeBlockCopyButton
+                content={props.content}
+                visible={Platform.OS !== 'web' || isHovered}
+            />
         </View>
     );
 }
@@ -815,19 +798,6 @@ const style = StyleSheet.create((theme) => ({
         paddingVertical: 10,
         alignItems: 'flex-start',
     },
-    copyButtonWrapper: {
-        position: 'absolute',
-        top: 8,
-        right: 8,
-        opacity: 0,
-        zIndex: 10,
-        elevation: 10,
-        pointerEvents: 'none',
-    },
-    copyButtonWrapperVisible: {
-        opacity: 1,
-        pointerEvents: 'auto',
-    },
     codeLanguage: {
         ...Typography.mono(),
         color: theme.colors.textSecondary,
@@ -877,41 +847,6 @@ const style = StyleSheet.create((theme) => ({
         maxWidth: 520,
         alignSelf: 'flex-start',
     },
-    copyButtonContainer: {
-        position: 'absolute',
-        top: 8,
-        right: 8,
-        zIndex: 10,
-        elevation: 10,
-        opacity: 1,
-    },
-    copyButtonContainerHidden: {
-        opacity: 0,
-    },
-    copyButton: {
-        backgroundColor: theme.colors.surfaceHighest,
-        paddingHorizontal: 8,
-        paddingVertical: 4,
-        borderRadius: 4,
-        borderWidth: 1,
-        borderColor: theme.colors.divider,
-        cursor: 'pointer',
-    },
-    copyButtonHidden: {
-        display: 'none',
-    },
-    copyButtonCopied: {
-        backgroundColor: theme.colors.success,
-        borderColor: theme.colors.success,
-        opacity: 1,
-    },
-    copyButtonText: {
-        ...Typography.default(),
-        color: theme.colors.text,
-        fontSize: 12,
-        lineHeight: 16,
-    },
-
     //
     // Options Block
     //
