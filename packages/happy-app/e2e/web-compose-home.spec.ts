@@ -34,6 +34,12 @@ const subagentInspectorEvidenceDirectory = process.env.HAPPY_SUBAGENT_INSPECTOR_
 const messageHoverEvidenceDirectory = process.env.HAPPY_MESSAGE_HOVER_EVIDENCE_DIR;
 const messageHoverEvidencePhase = process.env.HAPPY_MESSAGE_HOVER_EVIDENCE_PHASE ?? 'after';
 const messageHoverSuccessOnlyRecording = process.env.HAPPY_MESSAGE_HOVER_SUCCESS_ONLY_RECORDING === '1';
+const forkLatencyEvidenceDirectory = process.env.HAPPY_FORK_LATENCY_EVIDENCE_DIR;
+const forkLatencyEvidencePhase = process.env.HAPPY_FORK_LATENCY_EVIDENCE_PHASE === 'before'
+    ? 'before'
+    : process.env.HAPPY_FORK_LATENCY_EVIDENCE_PHASE === 'after'
+        ? 'after'
+        : null;
 const forkTranscriptEvidenceDirectory = process.env.HAPPY_FORK_TRANSCRIPT_EVIDENCE_DIR;
 const motionPhotoEvidenceDirectory = process.env.HAPPY_MOTION_PHOTO_EVIDENCE_DIR;
 const motionPhotoEvidencePhase = process.env.HAPPY_MOTION_PHOTO_EVIDENCE_PHASE === 'before' ? 'before' : 'after';
@@ -53,6 +59,13 @@ function projectHoverScreenshotPath(testInfo: { outputPath: (filename: string) =
     if (!projectHoverEvidenceDirectory) return testInfo.outputPath(filename);
     fs.mkdirSync(projectHoverEvidenceDirectory, { recursive: true });
     return path.join(projectHoverEvidenceDirectory, filename);
+}
+
+function forkLatencyScreenshotPath(testInfo: { outputPath: (filename: string) => string }): string {
+    const filename = `case-1-${forkLatencyEvidencePhase ?? 'after'}.png`;
+    if (!forkLatencyEvidenceDirectory) return testInfo.outputPath(filename);
+    fs.mkdirSync(forkLatencyEvidenceDirectory, { recursive: true });
+    return path.join(forkLatencyEvidenceDirectory, filename);
 }
 
 function sessionStatusScreenshotPath(
@@ -1912,6 +1925,17 @@ test('[MESSAGE-HOVER-ACTIONS] PC Agent 回复悬浮后直接从所属回合分�
         }
         await expect(secondResponseText).toBeVisible({ timeout: 120_000 });
 
+        if (forkLatencyEvidencePhase) {
+            // Reproduce the production race deterministically: the new-session
+            // broadcast starts a full refresh while the Fork action hydrates
+            // the spawned row. The old implementation queued and awaited a
+            // second full refresh; the fast path only awaits its targeted one.
+            await page.route('**/v1/sessions', async (route) => {
+                await new Promise((resolve) => setTimeout(resolve, 3_500));
+                await route.continue();
+            });
+        }
+
         const responseContainer = secondResponseText.locator(
             'xpath=ancestor::*[starts-with(@data-testid, "message-agent-")]',
         ).first();
@@ -2015,6 +2039,7 @@ test('[MESSAGE-HOVER-ACTIONS] PC Agent 回复悬浮后直接从所属回合分�
             animations: 'disabled',
         });
 
+        const forkNavigationStartedAt = Date.now();
         await forkButton.evaluate((button: HTMLElement) => button.click());
         await expect(page.getByRole('dialog')).toHaveCount(0);
         const forkLoading = responseContainer.locator('[data-testid^="message-agent-fork-loading-"]');
@@ -2024,6 +2049,24 @@ test('[MESSAGE-HOVER-ACTIONS] PC Agent 回复悬浮后直接从所属回合分�
             path: messageHoverScreenshotPath(testInfo, 2),
             animations: 'disabled',
         });
+        if (forkLatencyEvidencePhase) {
+            const remainingEvidenceDelayMs = Math.max(
+                0,
+                6_500 - (Date.now() - forkNavigationStartedAt),
+            );
+            await page.waitForTimeout(remainingEvidenceDelayMs);
+            const evidencePathname = new URL(page.url()).pathname;
+            if (forkLatencyEvidencePhase === 'before') {
+                expect(evidencePathname).toBe(`/session/${fixture.sessionId}`);
+            } else {
+                expect(evidencePathname).not.toBe(`/session/${fixture.sessionId}`);
+            }
+            await page.screenshot({
+                path: forkLatencyScreenshotPath(testInfo),
+                animations: 'disabled',
+            });
+            if (forkLatencyEvidencePhase === 'before') return;
+        }
         await expect.poll(
             () => fixture.rpcCalls.some((call) => call.method.endsWith(':codex-list-rewind-points')),
             { timeout: 15_000 },
@@ -2034,6 +2077,9 @@ test('[MESSAGE-HOVER-ACTIONS] PC Agent 回复悬浮后直接从所属回合分�
         ).toBe(true);
         await expect.poll(() => new URL(page.url()).pathname, { timeout: 15_000 })
             .not.toBe(`/session/${fixture.sessionId}`);
+        const forkNavigationMs = Date.now() - forkNavigationStartedAt;
+        expect(forkNavigationMs).toBeLessThan(15_000);
+        console.log(`[MESSAGE-HOVER-ACTIONS] fork-navigation-ms=${forkNavigationMs}`);
 
         const duplicateCall = fixture.rpcCalls.find((call) => call.method.endsWith(':codex-duplicate-thread'));
         expect(duplicateCall).toMatchObject({

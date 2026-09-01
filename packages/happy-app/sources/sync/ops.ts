@@ -982,6 +982,18 @@ type ForkOptions = {
     targetDirectory?: string;
 };
 
+async function hydrateSpawnedSession(sessionId: string): Promise<void> {
+    try {
+        const hydrated = await sync.refreshSession(sessionId);
+        if (!hydrated) {
+            await sync.refreshSessions();
+        }
+    } catch {
+        // Hydration is best-effort; the new-session broadcast will still
+        // populate local state if either fetch path flakes.
+    }
+}
+
 /**
  * Two-step orchestrator for the session fork / duplicate flow:
  *   1. Ask the daemon to copy (and optionally truncate) the source Claude
@@ -1029,11 +1041,7 @@ export async function forkAndSpawn(
         });
 
         if (spawnResult.type === 'success') {
-            try {
-                await sync.refreshSessions();
-            } catch {
-                // Refresh is best-effort; broadcast sync will still hydrate.
-            }
+            await hydrateSpawnedSession(spawnResult.sessionId);
         }
 
         return spawnResult;
@@ -1067,17 +1075,12 @@ export async function forkAndSpawn(
         forkedFromMessageId: opts.forkedFromMessageId,
     });
 
-    // Pull the newly-created session row into local sync state before we
-    // hand control back to the caller — otherwise router.replace into the
-    // new session id races the broadcast and the app screams
-    // "Session X not found" until the next sync tick lands.
+    // Pull only the newly-created session row into local sync state before we
+    // hand control back to the caller. A full account refresh can decrypt up
+    // to 150 sessions and may be queued twice by the concurrent broadcast,
+    // unnecessarily blocking navigation after the fork already succeeded.
     if (spawnResult.type === 'success') {
-        try {
-            await sync.refreshSessions();
-        } catch {
-            // Refresh is best-effort; the broadcast will still hydrate the
-            // session shortly even if this fetch flaked.
-        }
+        await hydrateSpawnedSession(spawnResult.sessionId);
     }
 
     return spawnResult;

@@ -98,9 +98,16 @@ export function useSessionWorkingDirectory(
                 };
             }
 
-            const hydrated = await sync.refreshSession(result.sessionId);
-            if (!hydrated) {
-                await sync.refreshSessions();
+            // forkAndSpawn already hydrates context continuations on its normal
+            // path. Retry only when that row is still absent (for example after
+            // a transient targeted-sync failure), because the local overrides
+            // below are intentionally no-ops until the session exists.
+            const spawnedSessionMissing = !storage.getState().sessions[result.sessionId];
+            if (switchStrategy === 'new-session' || spawnedSessionMissing) {
+                const hydrated = await sync.refreshSession(result.sessionId);
+                if (!hydrated) {
+                    await sync.refreshSessions();
+                }
             }
 
             const sessionStorage = storage.getState();

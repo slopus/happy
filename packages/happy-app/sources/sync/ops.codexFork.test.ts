@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { machineRPC, refreshSessions } = vi.hoisted(() => ({
+const { machineRPC, refreshSession, refreshSessions } = vi.hoisted(() => ({
     machineRPC: vi.fn(),
+    refreshSession: vi.fn(),
     refreshSessions: vi.fn(),
 }));
 
@@ -10,13 +11,16 @@ vi.mock('./apiSocket', () => ({
 }));
 
 vi.mock('./sync', () => ({
-    sync: { refreshSessions },
+    sync: { refreshSession, refreshSessions },
 }));
 
 describe('codex fork ops', () => {
     beforeEach(() => {
         machineRPC.mockReset();
+        refreshSession.mockReset();
+        refreshSession.mockResolvedValue(true);
         refreshSessions.mockReset();
+        refreshSessions.mockResolvedValue(undefined);
     });
 
     it('forwards effort when resuming a Happy session', async () => {
@@ -144,7 +148,8 @@ describe('codex fork ops', () => {
             }),
             { timeoutMs: SESSION_START_RPC_TIMEOUT_MS },
         );
-        expect(refreshSessions).toHaveBeenCalledTimes(1);
+        expect(refreshSession).toHaveBeenCalledWith('happy-forked');
+        expect(refreshSessions).not.toHaveBeenCalled();
     });
 
     it('forks Codex history into the selected next-turn working directory', async () => {
@@ -185,6 +190,55 @@ describe('codex fork ops', () => {
             }),
             { timeoutMs: SESSION_START_RPC_TIMEOUT_MS },
         );
+    });
+
+    it('falls back to a full refresh when the spawned session is not yet available', async () => {
+        refreshSession.mockResolvedValue(false);
+        machineRPC.mockImplementation(async (_machineId: string, method: string) => {
+            if (method === 'codex-fork-thread') {
+                return { type: 'success', newCodexThreadId: 'thread-delayed' };
+            }
+            if (method === 'spawn-happy-session') {
+                return { type: 'success', sessionId: 'happy-delayed' };
+            }
+            throw new Error(`unexpected method ${method}`);
+        });
+
+        const { forkAndSpawn } = await import('./ops');
+        const result = await forkAndSpawn({
+            kind: 'codex',
+            sessionId: 'happy-source',
+            machineId: 'machine-1',
+            directory: '/tmp/project',
+            codexThreadId: 'thread-source',
+        });
+
+        expect(result).toEqual({ type: 'success', sessionId: 'happy-delayed' });
+        expect(refreshSession).toHaveBeenCalledWith('happy-delayed');
+        expect(refreshSessions).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps navigation best-effort when single-session hydration fails', async () => {
+        refreshSession.mockRejectedValue(new Error('temporary sync failure'));
+        machineRPC.mockImplementation(async (_machineId: string, method: string) => {
+            if (method === 'codex-fork-thread') {
+                return { type: 'success', newCodexThreadId: 'thread-flaky' };
+            }
+            if (method === 'spawn-happy-session') {
+                return { type: 'success', sessionId: 'happy-flaky' };
+            }
+            throw new Error(`unexpected method ${method}`);
+        });
+
+        const { forkAndSpawn } = await import('./ops');
+        await expect(forkAndSpawn({
+            kind: 'codex',
+            sessionId: 'happy-source',
+            machineId: 'machine-1',
+            directory: '/tmp/project',
+            codexThreadId: 'thread-source',
+        })).resolves.toEqual({ type: 'success', sessionId: 'happy-flaky' });
+        expect(refreshSessions).not.toHaveBeenCalled();
     });
 
     it('copies Claude history into the selected directory before spawning there', async () => {
@@ -228,6 +282,8 @@ describe('codex fork ops', () => {
             }),
             { timeoutMs: SESSION_START_RPC_TIMEOUT_MS },
         );
+        expect(refreshSession).toHaveBeenCalledWith('happy-moved');
+        expect(refreshSessions).not.toHaveBeenCalled();
     });
 
     it('duplicates a Codex thread from a selected user item before spawning', async () => {
