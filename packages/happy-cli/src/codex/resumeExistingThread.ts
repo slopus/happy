@@ -20,13 +20,13 @@ type ResumeThreadSession = {
     getMetadata: () => {
         codexThreadId?: string;
         codexSyncCursor?: { threadId: string; turnId: string };
+        codexHistoryReplay?: { threadId: string; startedAt: number };
         codexPawsOriginToken?: string;
     } | null;
     updateMetadata: (handler: (currentMetadata: any) => any) => void;
     updateMetadataAndAwait: (handler: (currentMetadata: any) => any) => Promise<void>;
-    flushOutboxAndAwait: () => Promise<void>;
     sendSessionEvent: (event: { type: 'message'; message: string }) => void;
-    sendSessionProtocolMessage: (envelope: SessionEnvelope) => void;
+    sendSessionProtocolHistoryAndAwait: (envelopes: readonly SessionEnvelope[]) => Promise<void>;
 };
 
 type ResumeThreadMessageBuffer = {
@@ -54,14 +54,29 @@ export async function resumeExistingThread(opts: {
             mcpServers: opts.mcpServers,
         });
 
-        opts.session.updateMetadata((currentMetadata) => ({
-            ...currentMetadata,
-            codexThreadId: resumedThread.threadId,
-        }));
-
         const historyMode = opts.historyMode ?? 'full';
+        const initialMetadata = opts.session.getMetadata();
+        const interruptedReplay = initialMetadata?.codexHistoryReplay?.threadId === resumedThread.threadId;
+        if (historyMode === 'full') {
+            // Persist a durable recovery marker before the first batch. If the
+            // process or relay fails midway, reconnect can safely replay the
+            // whole thread because envelope localIds are deterministic.
+            await opts.session.updateMetadataAndAwait((currentMetadata) => ({
+                ...currentMetadata,
+                codexThreadId: resumedThread.threadId,
+                codexHistoryReplay: currentMetadata?.codexHistoryReplay?.threadId === resumedThread.threadId
+                    ? currentMetadata.codexHistoryReplay
+                    : { threadId: resumedThread.threadId, startedAt: Date.now() },
+            }));
+        } else {
+            opts.session.updateMetadata((currentMetadata) => ({
+                ...currentMetadata,
+                codexThreadId: resumedThread.threadId,
+            }));
+        }
+
         let activeTurnId: string | null = null;
-        const syncCursor = opts.session.getMetadata()?.codexSyncCursor;
+        const syncCursor = initialMetadata?.codexSyncCursor;
         const { thread } = await opts.client.readThread({
             threadId: resumedThread.threadId,
             includeTurns: true,
@@ -72,10 +87,15 @@ export async function resumeExistingThread(opts: {
             const cursorIndex = syncCursor?.threadId === resumedThread.threadId
                 ? turns.findIndex((turn) => turn.id === syncCursor.turnId)
                 : -1;
-            // Legacy sessions have no cursor, and a missing cursor cannot be
-            // reconciled safely without duplicating already mirrored turns. We
-            // still read the thread so an in-flight Turn can be attached live.
-            turnsToReplay = cursorIndex >= 0 ? turns.slice(cursorIndex + 1) : [];
+            // Legacy sessions with neither a cursor nor an interrupted-replay
+            // marker still skip old history to avoid duplicating rows written
+            // before deterministic envelope localIds existed. A durable marker
+            // proves that a partial modern replay is safe to retry in full.
+            turnsToReplay = cursorIndex >= 0
+                ? turns.slice(cursorIndex + 1)
+                : interruptedReplay
+                    ? turns
+                    : [];
         }
         activeTurnId = turns.filter((turn) => !isTerminalCodexTurn(turn)).at(-1)?.id ?? null;
 
@@ -83,27 +103,33 @@ export async function resumeExistingThread(opts: {
             { turns: turnsToReplay },
             {
                 omitPawsUserMessagesFromOriginToken: opts.session.getMetadata()?.codexPawsOriginToken,
-                dialogueOnly: historyMode === 'after-cursor',
+                // A reconnect normally catches up durable dialogue only, but
+                // an interrupted full replay must reconstruct the exact full
+                // envelope set (tools, reasoning, and lifecycle included).
+                dialogueOnly: historyMode === 'after-cursor' && !interruptedReplay,
                 activeTurnsUserOnly: true,
             },
         );
-        for (const envelope of historicalEnvelopes) {
-            opts.session.sendSessionProtocolMessage(envelope);
-        }
+        await opts.session.sendSessionProtocolHistoryAndAwait(historicalEnvelopes);
 
         const lastReplayedTurn = turnsToReplay.filter(isTerminalCodexTurn).at(-1);
-        if (lastReplayedTurn) {
+        if (lastReplayedTurn || historyMode === 'full' || interruptedReplay) {
             // Persist the cursor only after the server has acknowledged all
             // deterministic envelope IDs. A crash can then cause a safe,
             // idempotent replay, but never a silently skipped Turn.
-            await opts.session.flushOutboxAndAwait();
-            await opts.session.updateMetadataAndAwait((currentMetadata) => ({
-                ...currentMetadata,
-                codexSyncCursor: {
-                    threadId: resumedThread.threadId,
-                    turnId: lastReplayedTurn.id,
-                },
-            }));
+            await opts.session.updateMetadataAndAwait((currentMetadata) => {
+                const nextMetadata = { ...currentMetadata };
+                if (lastReplayedTurn) {
+                    nextMetadata.codexSyncCursor = {
+                        threadId: resumedThread.threadId,
+                        turnId: lastReplayedTurn.id,
+                    };
+                }
+                if (nextMetadata.codexHistoryReplay?.threadId === resumedThread.threadId) {
+                    delete nextMetadata.codexHistoryReplay;
+                }
+                return nextMetadata;
+            });
         }
 
         opts.messageBuffer.addMessage(`Resumed thread ${trimIdent(resumedThread.threadId)}`, 'status');

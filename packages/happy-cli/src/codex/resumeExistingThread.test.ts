@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import type { SessionEnvelope } from '@slopus/happy-wire';
 
 import { resumeExistingThread } from './resumeExistingThread';
 
@@ -34,9 +35,8 @@ describe('resumeExistingThread', () => {
             updateMetadataAndAwait: vi.fn(async (handler) => {
                 metadata = handler(metadata);
             }),
-            flushOutboxAndAwait: vi.fn(async () => {}),
+            sendSessionProtocolHistoryAndAwait: vi.fn(async (_envelopes: readonly SessionEnvelope[]) => {}),
             sendSessionEvent: vi.fn(),
-            sendSessionProtocolMessage: vi.fn(),
         };
         const messageBuffer = {
             addMessage: vi.fn(),
@@ -74,17 +74,20 @@ describe('resumeExistingThread', () => {
             threadId: '019ccca2-1a77-7481-9873-de72f3464372',
             includeTurns: true,
         });
-        expect(session.sendSessionProtocolMessage).toHaveBeenCalledWith(expect.objectContaining({
-            role: 'user',
-            ev: expect.objectContaining({
-                t: 'text',
-                text: 'Existing desktop message',
+        expect(session.sendSessionProtocolHistoryAndAwait).toHaveBeenCalledWith(expect.arrayContaining([
+            expect.objectContaining({
+                role: 'user',
+                ev: expect.objectContaining({
+                    t: 'text',
+                    text: 'Existing desktop message',
+                }),
             }),
-        }));
-        expect(session.flushOutboxAndAwait).toHaveBeenCalledTimes(1);
-        expect(session.updateMetadataAndAwait).toHaveBeenCalledTimes(1);
-        expect(session.flushOutboxAndAwait.mock.invocationCallOrder[0])
-            .toBeLessThan(session.updateMetadataAndAwait.mock.invocationCallOrder[0]);
+        ]));
+        expect(session.updateMetadataAndAwait).toHaveBeenCalledTimes(2);
+        expect(session.updateMetadataAndAwait.mock.invocationCallOrder[0])
+            .toBeLessThan(session.sendSessionProtocolHistoryAndAwait.mock.invocationCallOrder[0]);
+        expect(session.sendSessionProtocolHistoryAndAwait.mock.invocationCallOrder[0])
+            .toBeLessThan(session.updateMetadataAndAwait.mock.invocationCallOrder[1]);
         expect(messageBuffer.addMessage).toHaveBeenCalledWith(expect.stringContaining('Resumed thread'), 'status');
         expect(session.sendSessionEvent).toHaveBeenCalledWith({
             type: 'message',
@@ -102,9 +105,8 @@ describe('resumeExistingThread', () => {
             getMetadata: vi.fn(() => null),
             updateMetadata: vi.fn(),
             updateMetadataAndAwait: vi.fn(async () => {}),
-            flushOutboxAndAwait: vi.fn(async () => {}),
+            sendSessionProtocolHistoryAndAwait: vi.fn(async (_envelopes: readonly SessionEnvelope[]) => {}),
             sendSessionEvent: vi.fn(),
-            sendSessionProtocolMessage: vi.fn(),
         };
         const messageBuffer = {
             addMessage: vi.fn(),
@@ -155,9 +157,8 @@ describe('resumeExistingThread', () => {
             getMetadata: vi.fn(() => ({ codexThreadId: 'thread-reconnect-1' })),
             updateMetadata: vi.fn(),
             updateMetadataAndAwait: vi.fn(async () => {}),
-            flushOutboxAndAwait: vi.fn(async () => {}),
+            sendSessionProtocolHistoryAndAwait: vi.fn(async (_envelopes: readonly SessionEnvelope[]) => {}),
             sendSessionEvent: vi.fn(),
-            sendSessionProtocolMessage: vi.fn(),
         };
 
         const result = await resumeExistingThread({
@@ -174,7 +175,7 @@ describe('resumeExistingThread', () => {
             threadId: 'thread-reconnect-1',
             includeTurns: true,
         });
-        expect(session.sendSessionProtocolMessage).not.toHaveBeenCalled();
+        expect(session.sendSessionProtocolHistoryAndAwait).toHaveBeenCalledWith([]);
         expect(result.activeTurnId).toBe('turn-active');
     });
 
@@ -261,9 +262,8 @@ describe('resumeExistingThread', () => {
             updateMetadataAndAwait: vi.fn(async (handler) => {
                 metadata = handler(metadata);
             }),
-            flushOutboxAndAwait: vi.fn(async () => {}),
+            sendSessionProtocolHistoryAndAwait: vi.fn(async (_envelopes: readonly SessionEnvelope[]) => {}),
             sendSessionEvent: vi.fn(),
-            sendSessionProtocolMessage: vi.fn(),
         };
 
         const result = await resumeExistingThread({
@@ -276,7 +276,7 @@ describe('resumeExistingThread', () => {
             historyMode: 'after-cursor',
         });
 
-        const mirrored = session.sendSessionProtocolMessage.mock.calls.map(([envelope]) => envelope);
+        const mirrored = session.sendSessionProtocolHistoryAndAwait.mock.calls[0][0];
         expect(mirrored).toEqual(expect.arrayContaining([
             expect.objectContaining({ role: 'user', ev: expect.objectContaining({ text: 'new desktop message' }) }),
             expect.objectContaining({ role: 'agent', ev: expect.objectContaining({ text: 'new desktop response' }) }),
@@ -298,7 +298,7 @@ describe('resumeExistingThread', () => {
         expect(result.activeTurnId).toBe('turn-still-running');
     });
 
-    it('does not advance the cursor when replay delivery is not acknowledged', async () => {
+    it('recovers an interrupted full replay on reconnect before advancing the cursor', async () => {
         const client = {
             resumeThread: vi.fn().mockResolvedValue({
                 threadId: 'thread-reconnect-3',
@@ -307,29 +307,63 @@ describe('resumeExistingThread', () => {
             }),
             readThread: vi.fn().mockResolvedValue({
                 thread: {
-                    turns: [{
-                        id: 'turn-after-cursor',
-                        items: [{
-                            type: 'agentMessage',
-                            id: 'agent-after-cursor',
-                            text: 'reply while disconnected',
-                        }],
-                    }],
+                    turns: [
+                        {
+                            id: 'turn-after-cursor',
+                            status: 'completed',
+                            items: [{
+                                type: 'agentMessage',
+                                id: 'agent-after-cursor',
+                                text: 'reply while disconnected',
+                            }, {
+                                type: 'reasoning',
+                                id: 'reasoning-after-cursor',
+                                summary: ['reasoning that must survive retry'],
+                                content: [],
+                            }, {
+                                type: 'commandExecution',
+                                id: 'command-after-cursor',
+                                command: 'pwd',
+                                cwd: '/tmp/project',
+                                aggregatedOutput: '/tmp/project',
+                            }],
+                        },
+                        {
+                            id: 'turn-still-active',
+                            status: 'inProgress',
+                            items: [{
+                                type: 'userMessage',
+                                id: 'user-still-active',
+                                content: [{ type: 'text', text: 'active request' }],
+                            }, {
+                                type: 'agentMessage',
+                                id: 'agent-still-active',
+                                text: 'partial response that live sync owns',
+                            }, {
+                                type: 'commandExecution',
+                                id: 'command-still-active',
+                                command: 'sleep 10',
+                            }],
+                        },
+                    ],
                 },
             }),
         };
+        let metadata: any = {};
+        const sendSessionProtocolHistoryAndAwait = vi.fn()
+            .mockRejectedValueOnce(new Error('relay unavailable'))
+            .mockResolvedValueOnce(undefined);
         const session = {
             sessionId: 'paws-session-1',
-            getMetadata: vi.fn(() => ({
-                codexSyncCursor: { threadId: 'thread-reconnect-3', turnId: 'missing-old-turn' },
-            })),
-            updateMetadata: vi.fn(),
-            updateMetadataAndAwait: vi.fn(async () => {}),
-            flushOutboxAndAwait: vi.fn(async () => {
-                throw new Error('relay unavailable');
+            getMetadata: vi.fn(() => metadata),
+            updateMetadata: vi.fn((handler) => {
+                metadata = handler(metadata);
             }),
+            updateMetadataAndAwait: vi.fn(async (handler) => {
+                metadata = handler(metadata);
+            }),
+            sendSessionProtocolHistoryAndAwait,
             sendSessionEvent: vi.fn(),
-            sendSessionProtocolMessage: vi.fn(),
         };
 
         await expect(resumeExistingThread({
@@ -342,6 +376,46 @@ describe('resumeExistingThread', () => {
             historyMode: 'full',
         })).rejects.toThrow('relay unavailable');
 
-        expect(session.updateMetadataAndAwait).not.toHaveBeenCalled();
+        expect(metadata).toMatchObject({
+            codexThreadId: 'thread-reconnect-3',
+            codexHistoryReplay: {
+                threadId: 'thread-reconnect-3',
+                startedAt: expect.any(Number),
+            },
+        });
+        expect(metadata.codexSyncCursor).toBeUndefined();
+
+        await resumeExistingThread({
+            client,
+            session,
+            messageBuffer: { addMessage: vi.fn() },
+            threadId: 'thread-reconnect-3',
+            cwd: '/tmp/project',
+            mcpServers: {},
+            historyMode: 'after-cursor',
+        });
+
+        expect(sendSessionProtocolHistoryAndAwait).toHaveBeenCalledTimes(2);
+        expect(sendSessionProtocolHistoryAndAwait.mock.calls[0][0].some(
+            (envelope: SessionEnvelope) => envelope.ev.t === 'tool-call-start',
+        )).toBe(true);
+        expect(sendSessionProtocolHistoryAndAwait.mock.calls[0][0].some(
+            (envelope: SessionEnvelope) => envelope.ev.t === 'text' && envelope.ev.thinking === true,
+        )).toBe(true);
+        expect(sendSessionProtocolHistoryAndAwait.mock.calls[0][0].some(
+            (envelope: SessionEnvelope) => envelope.codexItemId === 'agent-still-active',
+        )).toBe(false);
+        expect(sendSessionProtocolHistoryAndAwait.mock.calls[0][0].some(
+            (envelope: SessionEnvelope) => envelope.ev.t === 'tool-call-start'
+                && envelope.ev.call === 'command-still-active',
+        )).toBe(false);
+        expect(sendSessionProtocolHistoryAndAwait.mock.calls[1][0].map((envelope: SessionEnvelope) => envelope.id)).toEqual(
+            sendSessionProtocolHistoryAndAwait.mock.calls[0][0].map((envelope: SessionEnvelope) => envelope.id),
+        );
+        expect(metadata.codexSyncCursor).toEqual({
+            threadId: 'thread-reconnect-3',
+            turnId: 'turn-after-cursor',
+        });
+        expect(metadata.codexHistoryReplay).toBeUndefined();
     });
 });

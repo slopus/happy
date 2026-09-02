@@ -49,6 +49,12 @@ export const MetadataSchema = z.object({
         threadId: z.string(),
         turnId: z.string(),
     }).optional(),
+    // A full replay writes this marker before uploading deterministic envelope
+    // IDs and removes it only after every batch is acknowledged.
+    codexHistoryReplay: z.object({
+        threadId: z.string(),
+        startedAt: z.number(),
+    }).optional(),
     codexPawsOriginToken: z.string().optional(),
     tools: z.array(z.string()).optional(),
     slashCommands: z.array(z.string()).optional(),

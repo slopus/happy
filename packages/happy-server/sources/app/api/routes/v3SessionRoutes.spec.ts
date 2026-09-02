@@ -167,13 +167,18 @@ const {
         return selectFields(row as unknown as Record<string, unknown>, args?.select);
     });
 
+    const sessionMessageCreateManyAndReturn = vi.fn(async (args: any) => (
+        Promise.all(args.data.map((data: any) => sessionMessageCreate({ data, select: args.select })))
+    ));
+
     const txClient = {
         session: {
             update: sessionUpdate
         },
         sessionMessage: {
             findMany: sessionMessageFindMany,
-            create: sessionMessageCreate
+            create: sessionMessageCreate,
+            createManyAndReturn: sessionMessageCreateManyAndReturn
         },
         account: {
             update: accountUpdate
@@ -190,7 +195,8 @@ const {
         },
         sessionMessage: {
             findMany: sessionMessageFindMany,
-            create: sessionMessageCreate
+            create: sessionMessageCreate,
+            createManyAndReturn: sessionMessageCreateManyAndReturn
         },
         $transaction: vi.fn(async (fn: any) => fn(txClient))
     };
@@ -256,8 +262,8 @@ describe("v3SessionRoutes", () => {
     let app: Fastify;
 
     beforeEach(() => {
+        vi.clearAllMocks();
         resetState();
-        emitUpdateMock.mockClear();
     });
 
     afterEach(async () => {
@@ -469,7 +475,12 @@ describe("v3SessionRoutes", () => {
         expect(response.statusCode).toBe(200);
         const body = response.json();
         expect(body.messages.map((message: any) => message.seq)).toEqual([1, 2, 3]);
-        expect(emitUpdateMock).toHaveBeenCalledTimes(3);
+        expect(emitUpdateMock).toHaveBeenCalledTimes(1);
+        expect(dbMock.account.update).toHaveBeenCalledTimes(1);
+        expect(emitUpdateMock.mock.calls[0][0].payload).toMatchObject({
+            seq: 1,
+            body: { message: { seq: 3 } },
+        });
     });
 
     it("deduplicates by localId and returns mixed existing/new messages sorted by seq", async () => {

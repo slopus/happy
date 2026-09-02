@@ -1,6 +1,7 @@
 import { buildNewMessageUpdate, eventRouter } from "@/app/events/eventRouter";
 import { db } from "@/storage/db";
-import { allocateSessionSeqBatch, allocateUserSeq } from "@/storage/seq";
+import { afterTx, inTx } from "@/storage/inTx";
+import { allocateSessionSeqBatch, allocateUserSeqBatch } from "@/storage/seq";
 import { randomKeyNaked } from "@/utils/randomKeyNaked";
 import { z } from "zod";
 import { type Fastify } from "../types";
@@ -155,7 +156,16 @@ export function v3SessionRoutes(app: Fastify) {
         const uniqueMessages = Array.from(firstMessageByLocalId.values());
         const contentByLocalId = new Map(uniqueMessages.map((message) => [message.localId, message.content]));
 
-        const txResult = await db.$transaction(async (tx) => {
+        const responseMessages = await inTx(async (tx) => {
+            // Lock the per-session seq row before checking localIds. This makes
+            // concurrent retries for the same batch observe committed rows
+            // before allocating new seq values.
+            await tx.session.update({
+                where: { id: sessionId },
+                data: { seq: { increment: 0 } },
+                select: { id: true }
+            });
+
             const localIds = uniqueMessages.map((message) => message.localId);
             const existing = await tx.sessionMessage.findMany({
                 where: {
@@ -181,62 +191,80 @@ export function v3SessionRoutes(app: Fastify) {
             const newMessages = uniqueMessages.filter((message) => !existingByLocalId.has(message.localId));
             const seqs = await allocateSessionSeqBatch(sessionId, newMessages.length, tx);
 
-            const createdMessages: Omit<SelectedMessage, 'content'>[] = [];
-            for (let i = 0; i < newMessages.length; i += 1) {
-                const message = newMessages[i];
-                const createdMessage = await tx.sessionMessage.create({
-                    data: {
+            const createdMessages = newMessages.length > 0
+                ? await tx.sessionMessage.createManyAndReturn({
+                    data: newMessages.map((message, index) => ({
                         sessionId,
-                        seq: seqs[i],
+                        seq: seqs[index],
                         content: {
                             t: 'encrypted',
                             c: message.content
                         },
                         localId: message.localId
-                    },
+                    })),
+                    skipDuplicates: true,
                     select: {
                         id: true,
                         seq: true,
-                        content: true,
                         localId: true,
                         createdAt: true,
                         updatedAt: true
                     }
-                });
-                createdMessages.push(createdMessage);
+                })
+                : [];
+            createdMessages.sort((a, b) => a.seq - b.seq);
+
+            // Re-read every requested localId so a concurrent retry returns the
+            // same idempotent acknowledgement even if skipDuplicates handled a
+            // uniqueness race inside createManyAndReturn.
+            const acknowledgedMessages = await tx.sessionMessage.findMany({
+                where: {
+                    sessionId,
+                    localId: { in: localIds }
+                },
+                select: {
+                    id: true,
+                    seq: true,
+                    localId: true,
+                    createdAt: true,
+                    updatedAt: true
+                }
+            });
+            acknowledgedMessages.sort((a, b) => a.seq - b.seq);
+
+            // Allocate the account update seq inside the same transaction as
+            // the message rows. Only the non-transactional socket delivery is
+            // deferred through afterTx.
+            const newestCreatedMessage = createdMessages.at(-1);
+            if (newestCreatedMessage) {
+                const content = newestCreatedMessage.localId
+                    ? contentByLocalId.get(newestCreatedMessage.localId)
+                    : null;
+                if (content) {
+                    const [updateSeq] = await allocateUserSeqBatch(userId, 1, tx);
+                    const updatePayload = buildNewMessageUpdate({
+                        ...newestCreatedMessage,
+                        content: {
+                            t: 'encrypted',
+                            c: content
+                        }
+                    }, sessionId, updateSeq, randomKeyNaked(12));
+
+                    afterTx(tx, () => {
+                        eventRouter.emitUpdate({
+                            userId,
+                            payload: updatePayload,
+                            recipientFilter: { type: 'all-interested-in-session', sessionId }
+                        });
+                    });
+                }
             }
 
-            const responseMessages = [...existing, ...createdMessages].sort((a, b) => a.seq - b.seq);
-
-            return {
-                responseMessages,
-                createdMessages
-            };
+            return acknowledgedMessages;
         });
 
-        for (const message of txResult.createdMessages) {
-            const content = message.localId ? contentByLocalId.get(message.localId) : null;
-            if (!content) {
-                continue;
-            }
-            const updSeq = await allocateUserSeq(userId);
-            const updatePayload = buildNewMessageUpdate({
-                ...message,
-                content: {
-                    t: 'encrypted',
-                    c: content
-                }
-            }, sessionId, updSeq, randomKeyNaked(12));
-
-            eventRouter.emitUpdate({
-                userId,
-                payload: updatePayload,
-                recipientFilter: { type: 'all-interested-in-session', sessionId }
-            });
-        }
-
         return reply.send({
-            messages: txResult.responseMessages.map(toSendResponseMessage)
+            messages: responseMessages.map(toSendResponseMessage)
         });
     });
 }

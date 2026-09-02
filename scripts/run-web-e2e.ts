@@ -112,6 +112,7 @@ async function main(): Promise<void> {
             ['--filter', 'happy-app', 'exec', 'playwright', 'test', ...playwrightArgs],
             {
                 HAPPY_E2E_SERVER_URL: `http://localhost:${config.serverPort}`,
+                HAPPY_SERVER_URL: `http://localhost:${config.serverPort}`,
                 HAPPY_E2E_WEB_URL: config.authenticatedWebUrl,
                 HAPPY_E2E_MP4_PATH: videoFixture.filePath,
             },

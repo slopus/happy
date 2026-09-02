@@ -40,6 +40,7 @@ import type { PermissionMode } from '@/api/types';
 import type { ApiSessionClient } from '@/api/apiSession';
 import { isRemoteCodexPermissionMode, resolveCodexExecutionPolicy } from './executionPolicy';
 import {
+    isTerminalCodexTurn,
     mapCodexMcpMessageToSessionEnvelopes,
     mapCodexProcessorMessageToSessionEnvelopes,
     mapCodexThreadToSessionEnvelopes,
@@ -1181,17 +1182,39 @@ export async function runCodex(opts: {
                 });
                 const envelopes = mapCodexThreadToSessionEnvelopes(thread, {
                     omitPawsUserMessagesFromOriginToken: codexPawsOriginToken,
+                    // Match the normal resume path so a durable retry rebuilds
+                    // the exact same envelope set for an in-progress Turn.
+                    activeTurnsUserOnly: true,
                 });
-                for (const envelope of envelopes) {
-                    session.sendSessionProtocolMessage(envelope);
-                }
-                session.updateMetadata((currentMetadata) => ({
+                await session.updateMetadataAndAwait((currentMetadata) => ({
                     ...currentMetadata,
                     codexThreadId: forkCodexThreadId,
+                    codexHistoryReplay: currentMetadata?.codexHistoryReplay?.threadId === forkCodexThreadId
+                        ? currentMetadata.codexHistoryReplay
+                        : { threadId: forkCodexThreadId, startedAt: Date.now() },
                 }));
+                await session.sendSessionProtocolHistoryAndAwait(envelopes);
+                const lastReplayedTurn = (thread.turns ?? []).filter(isTerminalCodexTurn).at(-1);
+                await session.updateMetadataAndAwait((currentMetadata) => {
+                    const nextMetadata = {
+                        ...currentMetadata,
+                        codexThreadId: forkCodexThreadId,
+                        ...(lastReplayedTurn ? {
+                            codexSyncCursor: {
+                                threadId: forkCodexThreadId,
+                                turnId: lastReplayedTurn.id,
+                            },
+                        } : {}),
+                    };
+                    if (nextMetadata.codexHistoryReplay?.threadId === forkCodexThreadId) {
+                        delete nextMetadata.codexHistoryReplay;
+                    }
+                    return nextMetadata;
+                });
                 logger.debug(`[CODEX FORK BACKFILL] Replayed ${envelopes.length} historical envelopes from thread ${forkCodexThreadId}`);
             } catch (error) {
                 logger.debug(`[CODEX FORK BACKFILL] Failed to read thread ${forkCodexThreadId}:`, error);
+                throw error;
             }
         }
 

@@ -171,6 +171,7 @@ export class ApiSessionClient extends EventEmitter {
     readonly screenshotStore = new ScreenshotStore();
     private agentStateLock = new AsyncLock();
     private metadataLock = new AsyncLock();
+    private outboxLock = new AsyncLock();
     private encryptionKey: Uint8Array;
     private encryptionVariant: 'legacy' | 'dataKey';
     private reconnectInterval: NodeJS.Timeout | null = null;
@@ -664,41 +665,49 @@ export class ApiSessionClient extends EventEmitter {
     }
 
     private static readonly MAX_OUTBOX_BATCH_SIZE = 50;
+    private static readonly MAX_HISTORY_BATCH_SIZE = 100;
 
     private async flushOutbox() {
-        // Send latest messages first so the user sees recent activity immediately,
-        // then backfill older messages in subsequent batches.
-        while (this.pendingOutbox.length > 0) {
-            const batchSize = Math.min(this.pendingOutbox.length, ApiSessionClient.MAX_OUTBOX_BATCH_SIZE);
-            const batchStart = this.pendingOutbox.length - batchSize;
-            const batch = this.pendingOutbox.slice(batchStart);
+        await this.outboxLock.inLock(async () => {
+            // Send latest messages first so the user sees recent live activity
+            // immediately, then backfill older queued messages.
+            while (this.pendingOutbox.length > 0) {
+                const batchSize = Math.min(this.pendingOutbox.length, ApiSessionClient.MAX_OUTBOX_BATCH_SIZE);
+                const batchStart = this.pendingOutbox.length - batchSize;
+                const batch = this.pendingOutbox.slice(batchStart);
 
-            const response = await axios.post<V3PostSessionMessagesResponse>(
-                `${configuration.serverUrl}/v3/sessions/${encodeURIComponent(this.sessionId)}/messages`,
-                {
-                    messages: batch
-                },
-                {
-                    headers: this.authHeaders(),
-                    timeout: 60000
-                }
-            );
+                await this.postOutboxBatch(batch);
 
-            // Do not advance the receive cursor from POST acknowledgements.
-            // Outbound agent messages can receive higher seq values while an
-            // app-sent user message with a lower seq is still in flight on the
-            // socket. Advancing here would make the next catch-up fetch start
-            // after that queued user message, so Codex would never read it.
-            this.pendingOutbox.splice(batchStart, batch.length);
-        }
+                // Do not advance the receive cursor from POST acknowledgements.
+                // Outbound agent messages can receive higher seq values while an
+                // app-sent user message with a lower seq is still in flight on the
+                // socket. Advancing here would make the next catch-up fetch start
+                // after that queued user message, so Codex would never read it.
+                this.pendingOutbox.splice(batchStart, batch.length);
+            }
+        });
+    }
+
+    private async postOutboxBatch(batch: Array<{ content: string; localId: string }>): Promise<void> {
+        await axios.post<V3PostSessionMessagesResponse>(
+            `${configuration.serverUrl}/v3/sessions/${encodeURIComponent(this.sessionId)}/messages`,
+            { messages: batch },
+            {
+                headers: this.authHeaders(),
+                timeout: 60000
+            }
+        );
+    }
+
+    private encodeOutboxMessage(content: unknown, localId: string): { content: string; localId: string } {
+        return {
+            content: encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, content)),
+            localId,
+        };
     }
 
     private enqueueMessage(content: unknown, invalidate: boolean = true, localId: string = randomUUID()) {
-        const encrypted = encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, content));
-        this.pendingOutbox.push({
-            content: encrypted,
-            localId,
-        });
+        this.pendingOutbox.push(this.encodeOutboxMessage(content, localId));
         if (invalidate) {
             this.sendSync.invalidate();
         }
@@ -758,13 +767,7 @@ export class ApiSessionClient extends EventEmitter {
     }
 
     private enqueueSessionProtocolEnvelope(envelope: SessionEnvelope, invalidate: boolean = true) {
-        const content = {
-            role: 'session',
-            content: envelope,
-            meta: {
-                sentFrom: 'cli'
-            }
-        };
+        const content = this.createSessionProtocolContent(envelope);
 
         // Envelope IDs are stable across thread/read replays. Reuse them as the
         // server idempotency key so a crash between message delivery and cursor
@@ -772,7 +775,17 @@ export class ApiSessionClient extends EventEmitter {
         this.enqueueMessage(content, invalidate, `session-envelope:${envelope.id}`);
     }
 
-    sendSessionProtocolMessage(envelope: SessionEnvelope) {
+    private createSessionProtocolContent(envelope: SessionEnvelope) {
+        return {
+            role: 'session',
+            content: envelope,
+            meta: {
+                sentFrom: 'cli'
+            }
+        };
+    }
+
+    private observeSessionProtocolEnvelope(envelope: SessionEnvelope) {
         if (!envelope.subagent && envelope.role !== 'user') {
             if (envelope.ev.t === 'turn-start') {
                 this.hasObservedRootTurnLifecycle = true;
@@ -782,6 +795,28 @@ export class ApiSessionClient extends EventEmitter {
                 this.persistTurnStatus(envelope.ev.status, envelope.time, envelope.turn);
             }
         }
+    }
+
+    private persistFinalSessionProtocolHistoryStatus(envelopes: readonly SessionEnvelope[]): Promise<void> {
+        for (let index = envelopes.length - 1; index >= 0; index -= 1) {
+            const envelope = envelopes[index];
+            if (envelope.subagent || envelope.role === 'user') continue;
+
+            if (envelope.ev.t === 'turn-start') {
+                this.hasObservedRootTurnLifecycle = true;
+                return this.persistTurnStatus('running', envelope.time, envelope.turn);
+            }
+            if (envelope.ev.t === 'turn-end') {
+                this.hasObservedRootTurnLifecycle = true;
+                return this.persistTurnStatus(envelope.ev.status, envelope.time, envelope.turn);
+            }
+        }
+
+        return Promise.resolve();
+    }
+
+    sendSessionProtocolMessage(envelope: SessionEnvelope) {
+        this.observeSessionProtocolEnvelope(envelope);
 
         if (envelope.role !== 'user') {
             this.enqueueSessionProtocolEnvelope(envelope);
@@ -794,6 +829,47 @@ export class ApiSessionClient extends EventEmitter {
         }
 
         this.enqueueSessionProtocolEnvelope(envelope);
+    }
+
+    /**
+     * Persist a reconstructed transcript in chronological order. Historical
+     * replay must not use the live outbox's newest-first drain: server seq is
+     * also the pagination cursor, so reversing it makes the app's latest page
+     * contain the oldest conversation content.
+     */
+    async sendSessionProtocolHistoryAndAwait(envelopes: readonly SessionEnvelope[], timeoutMs = 60_000): Promise<void> {
+        if (envelopes.length === 0) {
+            return;
+        }
+
+        let timeout: NodeJS.Timeout | undefined;
+        try {
+            await Promise.race([
+                this.outboxLock.inLock(async () => {
+                    for (let offset = 0; offset < envelopes.length; offset += ApiSessionClient.MAX_HISTORY_BATCH_SIZE) {
+                        const batch = envelopes
+                            .slice(offset, offset + ApiSessionClient.MAX_HISTORY_BATCH_SIZE)
+                            .map((envelope) => this.encodeOutboxMessage(
+                                this.createSessionProtocolContent(envelope),
+                                `session-envelope:${envelope.id}`,
+                            ));
+                        await this.postOutboxBatch(batch);
+                    }
+
+                    // Do not publish a terminal lifecycle state while the
+                    // transcript is only partially acknowledged. A failed
+                    // replay keeps its durable marker and retries on reconnect.
+                    await this.persistFinalSessionProtocolHistoryStatus(envelopes);
+                }),
+                new Promise<never>((_, reject) => {
+                    timeout = setTimeout(() => {
+                        reject(new Error(`Timed out waiting for session history replay after ${timeoutMs}ms`));
+                    }, timeoutMs);
+                }),
+            ]);
+        } finally {
+            if (timeout) clearTimeout(timeout);
+        }
     }
 
     /**
@@ -859,8 +935,8 @@ export class ApiSessionClient extends EventEmitter {
         status: 'running' | 'completed' | 'failed' | 'cancelled',
         updatedAt: number,
         turnId?: string,
-    ) {
-        this.updateAgentState(currentState => applyPersistedTurnStatus(currentState, {
+    ): Promise<void> {
+        return this.updateAgentState(currentState => applyPersistedTurnStatus(currentState, {
             status,
             updatedAt,
             ...(turnId ? { turnId } : {}),

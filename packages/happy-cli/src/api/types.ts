@@ -382,6 +382,11 @@ export type Metadata = {
     threadId: string
     turnId: string
   },
+  /** Durable marker for an acknowledged, idempotent Codex history replay. */
+  codexHistoryReplay?: {
+    threadId: string
+    startedAt: number
+  },
   /** Opaque key used to recognize this Paws session's user turns in a shared Codex Thread. */
   codexPawsOriginToken?: string,
   tools?: string[],

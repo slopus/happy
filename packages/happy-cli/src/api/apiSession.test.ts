@@ -422,6 +422,74 @@ describe('ApiSessionClient v3 messages API migration', () => {
         });
     });
 
+    it('uploads historical session envelopes oldest-first in server-sized batches', async () => {
+        const client = new ApiSessionClient('fake-token', session);
+        mockAxiosPost.mockImplementation(async (_url: string, payload: { messages: Array<{ localId: string }> }) => ({
+            data: {
+                messages: payload.messages.map((message, index) => ({
+                    id: `msg-${message.localId}`,
+                    seq: index + 1,
+                    localId: message.localId,
+                    createdAt: index + 1,
+                    updatedAt: index + 1,
+                })),
+            },
+        }));
+
+        const envelopes = Array.from({ length: 205 }, (_, index) => ({
+            id: `history-${String(index + 1).padStart(3, '0')}`,
+            time: index + 1,
+            role: 'agent' as const,
+            turn: `turn-${index + 1}`,
+            ev: { t: 'text' as const, text: `historical message ${index + 1}` },
+        }));
+
+        await client.sendSessionProtocolHistoryAndAwait(envelopes);
+
+        expect(mockAxiosPost).toHaveBeenCalledTimes(3);
+        expect(mockAxiosPost.mock.calls.map(([, payload]) => payload.messages.length)).toEqual([100, 100, 5]);
+
+        const uploadedEnvelopeIds = mockAxiosPost.mock.calls.flatMap(([, payload]) => (
+            payload.messages.map((message: { content: string }) => {
+                const decrypted = decrypt(
+                    session.encryptionKey,
+                    session.encryptionVariant,
+                    decodeBase64(message.content),
+                ) as { content: { id: string } };
+                return decrypted.content.id;
+            })
+        ));
+        expect(uploadedEnvelopeIds).toEqual(envelopes.map((envelope) => envelope.id));
+    });
+
+    it('persists only the final root lifecycle while replaying historical turns', async () => {
+        const client = new ApiSessionClient('fake-token', session);
+        mockAxiosPost.mockResolvedValue({ data: { messages: [] } });
+        mockSocket.emitWithAck.mockImplementation(async (_event: string, payload: any) => ({
+            result: 'success',
+            version: 1,
+            agentState: payload.agentState,
+        }));
+
+        await client.sendSessionProtocolHistoryAndAwait([
+            { id: 'start-1', time: 100, role: 'agent', turn: 'turn-1', ev: { t: 'turn-start' } },
+            { id: 'end-1', time: 101, role: 'agent', turn: 'turn-1', ev: { t: 'turn-end', status: 'completed' } },
+            { id: 'start-2', time: 200, role: 'agent', turn: 'turn-2', ev: { t: 'turn-start' } },
+            { id: 'end-2', time: 201, role: 'agent', turn: 'turn-2', ev: { t: 'turn-end', status: 'failed' } },
+        ]);
+
+        expect(mockSocket.emitWithAck).toHaveBeenCalledTimes(1);
+        expect(mockAxiosPost.mock.invocationCallOrder.at(-1))
+            .toBeLessThan(mockSocket.emitWithAck.mock.invocationCallOrder[0]);
+        expect(decrypt(
+            session.encryptionKey,
+            session.encryptionVariant,
+            decodeBase64(mockSocket.emitWithAck.mock.calls[0][1].agentState),
+        )).toEqual({
+            turnStatus: { status: 'failed', updatedAt: 201, turnId: 'turn-2' },
+        });
+    });
+
     it('sends only modern payload for user session envelopes', async () => {
         const client = new ApiSessionClient('fake-token', session);
         mockAxiosPost.mockResolvedValueOnce({
