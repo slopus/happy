@@ -46,6 +46,29 @@ function getSessionLogPath(): string {
   return join(configuration.logsDir, filename)
 }
 
+/**
+ * Hard cap on how much a single inspected argument may contribute to a log line.
+ *
+ * `inspect(depth: 5)` on any value that transitively holds a Node socket — every
+ * error thrown by a failed HTTP or socket.io call does — expands into hundreds of
+ * lines of TLS cipher lists and internal symbols. Measured on one machine's
+ * ~1.3 GB of session logs, those dumps were 55% of all bytes written, and the
+ * part anyone actually reads (the error's own top-level fields) fits far inside
+ * this cap. Truncating keeps the readable head and drops the rest.
+ */
+const MAX_INSPECTED_ARG_CHARS = 4000
+
+function inspectForLog(arg: unknown): string {
+  if (typeof arg === 'string') {
+    return arg
+  }
+  const text = inspect(arg, { depth: 5, breakLength: 120 })
+  if (text.length <= MAX_INSPECTED_ARG_CHARS) {
+    return text
+  }
+  return `${text.slice(0, MAX_INSPECTED_ARG_CHARS)}… [truncated ${text.length - MAX_INSPECTED_ARG_CHARS} more chars]`
+}
+
 class Logger {
   private dangerouslyUnencryptedServerLoggingUrl: string | undefined
 
@@ -202,9 +225,7 @@ class Logger {
   }
 
   private logToFile(prefix: string, message: string, ...args: unknown[]): void {
-    const logLine = `${prefix} ${message} ${args.map(arg =>
-      typeof arg === 'string' ? arg : inspect(arg, { depth: 5, breakLength: 120 })
-    ).join(' ')}\n`
+    const logLine = `${prefix} ${message} ${args.map(inspectForLog).join(' ')}\n`
     
     // Send to remote server if configured
     if (this.dangerouslyUnencryptedServerLoggingUrl) {
