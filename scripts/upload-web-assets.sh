@@ -85,10 +85,4 @@ for source_file in "$DIST_DIR"/*; do
     fi
 done
 
-for object_name in index.html .paws-release-revision; do
-    aliyun ossutil stat \
-        "oss://$OSS_BUCKET/web/releases/$RELEASE_REVISION/$object_name" \
-        --endpoint "$OSS_UPLOAD_ENDPOINT" --addressing-style "$OSS_ADDRESSING_STYLE" >/dev/null
-done
-
-echo "==> OSS immutable release 已验证：$RELEASE_REVISION"
+echo "==> OSS immutable release 已上传，等待公开 HTTP 预激活验证：$RELEASE_REVISION"

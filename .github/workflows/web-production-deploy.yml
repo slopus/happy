@@ -106,7 +106,7 @@ jobs:
             packages/happy-app/dist/.paws-release-revision \
             "$GITHUB_SHA"
 
-      - name: Upload and verify immutable Web release
+      - name: Upload complete immutable Web release
         run: bash scripts/upload-web-assets.sh
 
       - name: Verify immutable OSS release before activation
