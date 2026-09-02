@@ -31,14 +31,22 @@ esac
 exit 0
 `);
     await writeFile(join(fakeBin, 'pnpm'), `#!/usr/bin/env bash\nprintf 'pnpm %s\\n' "$*" >> "$FAKE_COMMAND_LOG"\nexit 0\n`);
+    await writeFile(join(fakeBin, 'curl'), `#!/usr/bin/env bash
+printf 'curl %s\\n' "$*" >> "$FAKE_COMMAND_LOG"
+printf '200'
+exit 0
+`);
     await writeFile(join(fakeBin, 'aliyun'), `#!/usr/bin/env bash
 printf 'aliyun %s\\n' "$*" >> "$FAKE_COMMAND_LOG"
+if [[ "$*" == "ossutil stat "* ]]; then
+  exit 97
+fi
 if [[ "$FAKE_FAIL_FINAL_SWITCH" = "1" && "$*" == *"web/releases/$FAKE_REVISION/index.html oss://test-web-bucket/web/current/index.html"* ]]; then
   exit 42
 fi
 exit 0
 `);
-    await Promise.all(['git', 'pnpm', 'aliyun'].map((name) => chmod(join(fakeBin, name), 0o755)));
+    await Promise.all(['git', 'pnpm', 'curl', 'aliyun'].map((name) => chmod(join(fakeBin, name), 0o755)));
     return { directory, dist, fakeBin, logPath, outputPath };
 }
 
@@ -58,6 +66,7 @@ async function runDeploy(args = [], extraEnv = {}) {
                 PAWS_WEB_DIST_DIR: fixture.dist,
                 PAWS_WEB_ORIGIN: 'https://47.115.228.20:8443',
                 PAWS_WEB_OSS_BUCKET: 'test-web-bucket',
+                PAWS_WEB_OSS_ORIGIN: 'https://test-web-bucket.example.com',
                 PAWS_WEB_RELEASE_ID: 'test-release',
                 ...extraEnv,
             },
@@ -87,6 +96,8 @@ test('backs up current and switches the verified HTML entry last', async () => {
     assert.match(copies[3], new RegExp(`web/releases/${revision}/index.html oss://test-web-bucket/web/current/index.html`));
     assert.equal(copies.length, 4, result.log);
     assert.equal(result.githubOutput, 'rollback_prefix=web/rollback/test-release\n');
+    assert.doesNotMatch(result.log, /ossutil stat/);
+    assert.match(result.log, /curl .*web\/releases\/.*\.paws-release-revision/);
 });
 
 test('restores the previous marker when the final HTML switch fails', async () => {
