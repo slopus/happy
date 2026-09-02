@@ -38,12 +38,19 @@ async function runVerifier({
     mode = 'live',
     scriptContentType = 'application/javascript; charset=utf-8',
     immutableCache = true,
+    legacyRedirectLocation = 'canonical',
+    legacyRedirectStatus = 308,
+    healthTimeoutMs = 300,
+    requestTimeoutMs = 300,
+    assetNeverResponds = false,
+    entryNeverResponds = false,
 } = {}) {
     const directory = await createDist();
     let healthRequests = 0;
     const server = http.createServer((request, response) => {
         const origin = `http://127.0.0.1:${server.address().port}`;
         if (request.url?.endsWith('.ttf')) {
+            if (assetNeverResponds) return;
             response.statusCode = 200;
             response.setHeader('Content-Type', 'font/ttf');
             if (includeFontCors) response.setHeader('Access-Control-Allow-Origin', origin);
@@ -73,6 +80,7 @@ async function runVerifier({
             return;
         }
         if (request.url === '/' || request.url?.startsWith('/session/') || request.url?.startsWith('/share/')) {
+            if (entryNeverResponds && request.url === '/') return;
             response.statusCode = 200;
             response.setHeader('Content-Type', 'text/html; charset=utf-8');
             if (request.url?.startsWith('/share/')) {
@@ -112,6 +120,18 @@ async function runVerifier({
     });
     await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
     const origin = `http://127.0.0.1:${server.address().port}`;
+    const legacyServer = http.createServer((request, response) => {
+        response.statusCode = legacyRedirectStatus;
+        if (legacyRedirectLocation) {
+            response.setHeader(
+                'Location',
+                legacyRedirectLocation === 'canonical' ? `${origin}${request.url}` : legacyRedirectLocation,
+            );
+        }
+        response.end();
+    });
+    await new Promise((resolve) => legacyServer.listen(0, '127.0.0.1', resolve));
+    const legacyOrigin = `http://127.0.0.1:${legacyServer.address().port}`;
 
     try {
         const result = await new Promise((resolve) => {
@@ -121,7 +141,9 @@ async function runVerifier({
                 env: {
                     ...process.env,
                     PAWS_WEB_HEALTH_RETRY_INTERVAL_MS: '10',
-                    PAWS_WEB_HEALTH_TIMEOUT_MS: '100',
+                    PAWS_WEB_HEALTH_TIMEOUT_MS: String(healthTimeoutMs),
+                    PAWS_WEB_REQUEST_TIMEOUT_MS: String(requestTimeoutMs),
+                    PAWS_LEGACY_WEB_ORIGIN: legacyOrigin,
                 },
                 stdio: ['ignore', 'pipe', 'pipe'],
             });
@@ -137,6 +159,7 @@ async function runVerifier({
         });
         return result;
     } finally {
+        await new Promise((resolve) => legacyServer.close(resolve));
         await new Promise((resolve) => server.close(resolve));
         await rm(directory, { recursive: true, force: true });
     }
@@ -164,6 +187,21 @@ test('accepts matching HTML and browser-readable Ionicons and Octicons', async (
     assert.match(result.stdout, /Octicons/);
     assert.match(result.stdout, /representative image asset/);
     assert.match(result.stdout, new RegExp(revision));
+    assert.match(result.stdout, /legacy Web entry redirects to the canonical origin/i);
+});
+
+test('rejects a legacy Web entry that still serves content instead of redirecting', async () => {
+    const result = await runVerifier({ legacyRedirectStatus: 200, legacyRedirectLocation: null });
+
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /legacy Web entry.*HTTP 308/i);
+});
+
+test('rejects a legacy Web entry that redirects away from the canonical origin', async () => {
+    const result = await runVerifier({ legacyRedirectLocation: 'https://example.com/share/public-deployment-probe' });
+
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /legacy Web entry.*canonical/i);
 });
 
 test('waits for a transient SPA health fallback while Caddy reload finishes', async () => {
@@ -175,11 +213,29 @@ test('waits for a transient SPA health fallback while Caddy reload finishes', as
 
 test('enforces the health readiness deadline when a request never responds', async () => {
     const startedAt = Date.now();
-    const result = await runVerifier({ healthNeverResponds: true });
+    const result = await runVerifier({ healthNeverResponds: true, healthTimeoutMs: 100 });
 
     assert.notEqual(result.status, 0);
     assert.ok(Date.now() - startedAt < 1_000, 'health verifier exceeded its hard deadline');
     assert.match(result.stderr, /health endpoint.*within 100ms/i);
+});
+
+test('bounds a Web asset request that never responds', async () => {
+    const startedAt = Date.now();
+    const result = await runVerifier({ assetNeverResponds: true, requestTimeoutMs: 100 });
+
+    assert.notEqual(result.status, 0);
+    assert.ok(Date.now() - startedAt < 1_000, 'asset verifier exceeded its hard deadline');
+    assert.match(result.stderr, /timeout|aborted/i);
+});
+
+test('bounds a canonical Web entry request that never responds', async () => {
+    const startedAt = Date.now();
+    const result = await runVerifier({ entryNeverResponds: true, requestTimeoutMs: 100 });
+
+    assert.notEqual(result.status, 0);
+    assert.ok(Date.now() - startedAt < 1_000, 'entry verifier exceeded its hard deadline');
+    assert.match(result.stderr, /timeout|aborted/i);
 });
 
 test('rejects an HTML SPA fallback at the backend health endpoint', async () => {

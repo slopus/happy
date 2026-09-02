@@ -21,6 +21,7 @@ jobs:
     environment: production-web
     env:
       PAWS_WEB_ORIGIN: https://47.115.228.20:8443
+      PAWS_LEGACY_WEB_ORIGIN: http://47.115.228.20:8080
       PAWS_DEPLOY_HOST: root@47.115.228.20
       PAWS_DEPLOY_PORT: '22'
       PAWS_LEGACY_WEB_PATH: /var/www/happy-web
@@ -47,6 +48,7 @@ jobs:
           test -n "$ALIBABA_CLOUD_ACCESS_KEY_SECRET" || { echo '::error::Missing ALIYUN_OSS_ACCESS_KEY_SECRET secret.'; exit 1; }
           test -n "${{ secrets.PAWS_WEB_DEPLOY_SSH_PRIVATE_KEY }}" || { echo '::error::Missing PAWS_WEB_DEPLOY_SSH_PRIVATE_KEY secret.'; exit 1; }
           test "$PAWS_WEB_ORIGIN" = 'https://47.115.228.20:8443'
+          test "$PAWS_LEGACY_WEB_ORIGIN" = 'http://47.115.228.20:8080'
           test "$PAWS_WEB_OSS_ORIGIN" = 'https://happy-app-ota-jacky.oss-cn-hangzhou.aliyuncs.com'
           test "$PAWS_LEGACY_WEB_PATH" = '/var/www/happy-web'
 
@@ -138,16 +140,27 @@ jobs:
           test "$caddy_change" = 'changed'
           scp -P "$PAWS_DEPLOY_PORT" "$next_caddy" "$PAWS_DEPLOY_HOST:$remote_candidate"
           echo "backup_path=$remote_backup" >> "$GITHUB_OUTPUT"
-          ssh -p "$PAWS_DEPLOY_PORT" "$PAWS_DEPLOY_HOST" bash -s -- "$remote_candidate" "$remote_backup" <<'REMOTE_SCRIPT'
+          ssh -p "$PAWS_DEPLOY_PORT" "$PAWS_DEPLOY_HOST" bash -s -- "$remote_candidate" "$remote_backup" "$PAWS_LEGACY_WEB_PATH" <<'REMOTE_SCRIPT'
           set -euo pipefail
           candidate="$1"
           backup="$2"
+          legacy_path="$3"
           config="/etc/caddy/Caddyfile"
+          test "$legacy_path" = '/var/www/happy-web'
           cleanup() { rm -f -- "$candidate"; }
           trap cleanup EXIT
           cp -p -- "$config" "$backup"
           install -m 644 -- "$candidate" "$config"
           if ! caddy validate --config "$config"; then
+            cp -p -- "$backup" "$config"
+            exit 1
+          fi
+          if ! adapted_config="$(caddy adapt --config "$config" --adapter caddyfile)"; then
+            cp -p -- "$backup" "$config"
+            exit 1
+          fi
+          if grep -Fq -- "$legacy_path" <<<"$adapted_config"; then
+            echo "错误：expanded Caddy config 仍引用 $legacy_path，拒绝激活。" >&2
             cp -p -- "$backup" "$config"
             exit 1
           fi
@@ -173,8 +186,12 @@ jobs:
           set -euo pipefail
           legacy_path="$1"
           test "$legacy_path" = '/var/www/happy-web'
-          if grep -Fq -- "$legacy_path" /etc/caddy/Caddyfile; then
-            echo "错误：active Caddyfile 仍引用 $legacy_path，拒绝删除。" >&2
+          if ! adapted_config="$(caddy adapt --config /etc/caddy/Caddyfile --adapter caddyfile)"; then
+            echo '错误：无法展开 active Caddy config，拒绝删除 legacy Web files。' >&2
+            exit 1
+          fi
+          if grep -Fq -- "$legacy_path" <<<"$adapted_config"; then
+            echo "错误：expanded active Caddy config 仍引用 $legacy_path，拒绝删除。" >&2
             exit 1
           fi
           for target in "$legacy_path" "${legacy_path}.backup-"* "${legacy_path}.next-"*; do

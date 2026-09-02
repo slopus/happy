@@ -48,12 +48,18 @@ test('production workflow has rollback outputs and no active server deploy path'
     const rollbackStep = job.steps.find((step) => step.name === 'Roll back failed Web activation');
 
     assert.equal(job.env.PAWS_DEPLOY_PATH, undefined);
+    assert.equal(job.env.PAWS_LEGACY_WEB_ORIGIN, 'http://47.115.228.20:8080');
     assert.equal(job.env.PAWS_LEGACY_WEB_PATH, '/var/www/happy-web');
     assert.equal(switchStep.id, 'switch');
     assert.equal(caddyStep.id, 'caddy');
     assert.equal(cleanupStep.id, 'cleanup');
     assert.match(cleanupStep.run, /test "\$legacy_path" = '\/var\/www\/happy-web'/);
     assert.match(cleanupStep.run, /Caddyfile/);
+    assert.match(caddyStep.run, /caddy adapt --config "\$config" --adapter caddyfile/);
+    assert.match(cleanupStep.run, /caddy adapt --config \/etc\/caddy\/Caddyfile --adapter caddyfile/);
+    assert.doesNotMatch(cleanupStep.run, /grep[^\n]*\/etc\/caddy\/Caddyfile/);
+    const liveVerifyStep = job.steps.find((step) => step.name === 'Verify live OSS-backed release and routes');
+    assert.match(liveVerifyStep.run, /verify-web-release\.mjs/);
     assert.match(rollbackStep.if, /failure\(\)/);
     assert.match(rollbackStep.if, /live_verify\.outcome != 'success'/);
     assert.match(rollbackStep.run, /deploy-web\.sh --rollback/);

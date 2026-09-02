@@ -5,6 +5,8 @@ export const PUBLIC_SHARE_CADDY_BLOCK_START = '# paws-public-session-share:start
 export const PUBLIC_SHARE_CADDY_BLOCK_END = '# paws-public-session-share:end';
 export const WEB_OSS_CADDY_BLOCK_START = '# paws-web-oss:start';
 export const WEB_OSS_CADDY_BLOCK_END = '# paws-web-oss:end';
+export const LEGACY_WEB_REDIRECT_CADDY_BLOCK_START = '# paws-web-legacy-redirect:start';
+export const LEGACY_WEB_REDIRECT_CADDY_BLOCK_END = '# paws-web-legacy-redirect:end';
 export const PRODUCTION_CADDY_GRACE_PERIOD = '10s';
 export const PRODUCTION_WEB_OSS_HOST = 'happy-app-ota-jacky.oss-cn-hangzhou.aliyuncs.com';
 export const PRODUCTION_WEB_OSS_ORIGIN = `https://${PRODUCTION_WEB_OSS_HOST}`;
@@ -38,6 +40,12 @@ const WEB_OSS_CADDY_LINES = [
     WEB_OSS_CADDY_BLOCK_END,
 ];
 
+const LEGACY_WEB_REDIRECT_CADDY_LINES = [
+    LEGACY_WEB_REDIRECT_CADDY_BLOCK_START,
+    'redir https://47.115.228.20:8443{uri} 308',
+    LEGACY_WEB_REDIRECT_CADDY_BLOCK_END,
+];
+
 function braceDelta(line) {
     const content = line.split('#', 1)[0];
     return (content.match(/{/g) ?? []).length - (content.match(/}/g) ?? []).length;
@@ -59,6 +67,39 @@ function findBlockEnd(lines, start) {
         if (index > start && depth === 0) return index;
     }
     throw new Error(`Caddy block is unbalanced at line ${start + 1}`);
+}
+
+function configureLegacyWebRedirect(lines, siteAddress = ':8080') {
+    const siteStart = lines.findIndex((line) => line.trim() === `${siteAddress} {`);
+    if (siteStart < 0) return;
+    const siteEnd = findBlockEnd(lines, siteStart);
+    const siteLines = lines.slice(siteStart + 1, siteEnd);
+    const managedRange = findManagedRange(
+        siteLines,
+        LEGACY_WEB_REDIRECT_CADDY_BLOCK_START,
+        LEGACY_WEB_REDIRECT_CADDY_BLOCK_END,
+    );
+    const referencesLegacyDirectory = siteLines.some((line) => line.includes('/var/www/happy-web'));
+    if (!managedRange && !referencesLegacyDirectory) return;
+
+    const unmanagedLines = siteLines.filter((line, index) => (
+        !managedRange || index < managedRange.start || index > managedRange.end
+    ));
+    const allowedLegacyDirective = /^\s*(?:root\s+\*\s+\/var\/www\/happy-web|encode\s+\S+(?:\s+\S+)*|try_files\s+\{path\}\s+\/index\.html|file_server)\s*$/;
+    const unexpectedDirective = unmanagedLines.find((line) => {
+        const trimmed = line.trim();
+        return trimmed.length > 0 && !trimmed.startsWith('#') && !allowedLegacyDirective.test(line);
+    });
+    if (unexpectedDirective) {
+        throw new Error(`Unexpected directive in ${siteAddress} legacy Web site: ${unexpectedDirective.trim()}`);
+    }
+
+    const indentation = siteLines.find((line) => line.trim().length > 0)?.match(/^\s*/)?.[0] ?? '\t';
+    lines.splice(
+        siteStart + 1,
+        siteEnd - siteStart - 1,
+        ...LEGACY_WEB_REDIRECT_CADDY_LINES.map((line) => `${indentation}${line}`),
+    );
 }
 
 function configureGracePeriod(lines) {
@@ -176,7 +217,11 @@ export function configureProductionWebCaddy(source, siteAddress = '47.115.228.20
     );
 
     lines.splice(siteStart + 1, siteEnd - siteStart - 1, ...siteLines);
+    configureLegacyWebRedirect(lines);
     const result = lines.join('\n');
+    if (result.includes('/var/www/happy-web')) {
+        throw new Error('Configured Caddyfile still references the legacy Web directory');
+    }
     return hadFinalNewline && !result.endsWith('\n') ? `${result}\n` : result;
 }
 

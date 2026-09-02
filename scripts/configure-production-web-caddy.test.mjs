@@ -9,12 +9,20 @@ import {
     configureProductionWebCaddy,
     PRODUCTION_WEB_OSS_ORIGIN,
     PRODUCTION_CADDY_GRACE_PERIOD,
+    LEGACY_WEB_REDIRECT_CADDY_BLOCK_START,
     PUBLIC_SHARE_CADDY_BLOCK_START,
     WEB_OSS_CADDY_BLOCK_START,
 } from './configure-production-web-caddy.mjs';
 
 const fixture = `:8001 {
     respond "other site"
+}
+
+:8080 {
+    root * /var/www/happy-web
+    encode gzip
+    try_files {path} /index.html
+    file_server
 }
 
 47.115.228.20:8443 {
@@ -86,6 +94,14 @@ test('serves every Web file from OSS without a filesystem fallback', () => {
     assert.doesNotMatch(configured, /^\s*file_server\s*$/m);
 });
 
+test('redirects the legacy HTTP Web entry to the canonical OSS-backed origin', () => {
+    const configured = configureProductionWebCaddy(fixture);
+
+    assert.match(configured, new RegExp(LEGACY_WEB_REDIRECT_CADDY_BLOCK_START));
+    assert.match(configured, /:8080 \{\n\s+# paws-web-legacy-redirect:start\n\s+redir https:\/\/47\.115\.228\.20:8443\{uri\} 308\n\s+# paws-web-legacy-redirect:end\n\}/);
+    assert.doesNotMatch(configured, /\/var\/www\/happy-web/);
+});
+
 test('bounds an existing eternal grace period so Caddy reloads cannot wait for WebSockets forever', () => {
     const configured = configureProductionWebCaddy(`{
     default_sni 47.115.228.20
@@ -126,4 +142,11 @@ test('CLI reports changed when the generated production config differs', async (
 
 test('fails closed when the production site matcher is missing', () => {
     assert.throws(() => configureProductionWebCaddy(':8080 {\n}\n'), /site block not found/);
+});
+
+test('fails closed when an unexpected site still references the legacy Web directory', () => {
+    assert.throws(
+        () => configureProductionWebCaddy(`${fixture}\n:9090 {\n    root * /var/www/happy-web\n}\n`),
+        /still references the legacy Web directory/,
+    );
 });
