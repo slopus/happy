@@ -16,8 +16,9 @@ import type {
   SessionId,
   StartSessionResult,
 } from '@/agent/core/AgentBackend';
+import { CHANGE_TITLE_INSTRUCTION } from '@/gemini/constants';
 import { resolveAgyBin, AGY_PRINT_TIMEOUT } from './constants';
-import { buildAgyArgs } from './cliArgs';
+import { agySkipsPermissions, buildAgyArgs } from './cliArgs';
 import { readAgyConversationId } from './conversationStore';
 
 /** Signature of node's `spawn`, injectable so tests can supply a fake process. */
@@ -38,6 +39,10 @@ export interface AgyBackendOptions {
   spawnFn?: SpawnFn;
   /** Optional override for resolving the resume conversation id (tests). */
   resolveConversationId?: (cwd: string) => string | null;
+  /** Environment inherited by each agy child process. */
+  env?: NodeJS.ProcessEnv;
+  /** Sets a safe fallback title when sandbox mode cannot approve the MCP call. */
+  onTitle?: (title: string) => void;
 }
 
 type DisplayTool = {
@@ -58,6 +63,20 @@ const VISIBLE_OUTPUT_TOOLS = new Set([
   'run_command',
   'search_web',
 ]);
+const TITLE_ALREADY_SET_INSTRUCTION =
+  'Happy has already set the session title for this turn. Do not call happy.change_title or any other title tool.';
+const MAX_FALLBACK_TITLE_CHARS = 60;
+
+function fallbackTitle(prompt: string): string | null {
+  const compact = prompt.replace(/\s+/g, ' ').trim();
+  if (!compact) return null;
+  const chars = [...compact];
+  if (chars.length <= MAX_FALLBACK_TITLE_CHARS) return compact.replace(/[.!?]+$/, '');
+  const prefix = chars.slice(0, MAX_FALLBACK_TITLE_CHARS - 1).join('');
+  const wordBoundary = prefix.lastIndexOf(' ');
+  const shortened = wordBoundary >= 30 ? prefix.slice(0, wordBoundary) : prefix;
+  return `${shortened.replace(/[\s.!?,;:]+$/, '')}…`;
+}
 
 const CREDENTIAL_CARRIER_PATTERNS = [
   /\b(?:Bearer|Basic)\s+\S+/i,
@@ -205,6 +224,8 @@ export class AgyBackend implements AgentBackend {
   private readonly log: (msg: string) => void;
   private readonly spawnFn: SpawnFn;
   private readonly resolveConversationId: (cwd: string) => string | null;
+  private readonly env: NodeJS.ProcessEnv;
+  private readonly onTitle?: (title: string) => void;
 
   private permissionMode: PermissionMode;
   private model?: string;
@@ -220,6 +241,8 @@ export class AgyBackend implements AgentBackend {
     this.log = opts.log ?? (() => {});
     this.spawnFn = opts.spawnFn ?? spawn;
     this.resolveConversationId = opts.resolveConversationId ?? readAgyConversationId;
+    this.env = opts.env ?? process.env;
+    this.onTitle = opts.onTitle;
   }
 
   /** Update the permission mode applied to subsequent turns. */
@@ -243,8 +266,18 @@ export class AgyBackend implements AgentBackend {
 
   async sendPrompt(_sessionId: SessionId, prompt: string): Promise<void> {
     const turnNumber = ++this.turnSequence;
+    let turnPrompt = prompt;
+    if (turnNumber === 1) {
+      if (agySkipsPermissions(this.permissionMode)) {
+        turnPrompt = `${prompt}\n\n${CHANGE_TITLE_INSTRUCTION}`;
+      } else {
+        const title = fallbackTitle(prompt);
+        if (title) this.onTitle?.(title);
+        turnPrompt = `${prompt}\n\n${TITLE_ALREADY_SET_INSTRUCTION}`;
+      }
+    }
     const args = buildAgyArgs({
-      prompt,
+      prompt: turnPrompt,
       model: this.model,
       conversationId: this.conversationId,
       permissionMode: this.permissionMode,
@@ -263,7 +296,7 @@ export class AgyBackend implements AgentBackend {
     await new Promise<void>((resolve, reject) => {
       const child = this.spawnFn(resolveAgyBin(), args, {
         cwd: this.cwd,
-        env: process.env,
+        env: this.env,
         windowsHide: true,
         // agy --print blocks until stdin reaches EOF. We never write stdin, so
         // give the child an empty stdin (immediate EOF) instead of an open pipe;

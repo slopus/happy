@@ -21,6 +21,10 @@ const SKIP_PERMISSION_MODES: ReadonlySet<PermissionMode> = new Set<PermissionMod
   'acceptEdits',
 ]);
 
+export function agySkipsPermissions(mode: PermissionMode): boolean {
+  return SKIP_PERMISSION_MODES.has(mode);
+}
+
 export interface BuildAgyArgsOptions {
   /** The user prompt for this turn. */
   prompt: string;
@@ -49,7 +53,7 @@ export function buildAgyArgs(opts: BuildAgyArgsOptions): string[] {
   if (opts.model) {
     args.push('--model', opts.model);
   }
-  if (SKIP_PERMISSION_MODES.has(opts.permissionMode)) {
+  if (agySkipsPermissions(opts.permissionMode)) {
     args.push('--dangerously-skip-permissions');
   } else {
     args.push('--sandbox');

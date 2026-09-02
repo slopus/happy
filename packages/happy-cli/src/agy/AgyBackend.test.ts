@@ -1,6 +1,7 @@
 import { EventEmitter } from 'node:events';
 import { describe, expect, it, vi } from 'vitest';
 
+import { CHANGE_TITLE_INSTRUCTION } from '@/gemini/constants';
 import { AgyBackend, type SpawnFn } from './AgyBackend';
 import type { AgentMessage } from '@/agent/core/AgentBackend';
 import { AcpSessionManager } from '@/agent/acp/AcpSessionManager';
@@ -59,6 +60,120 @@ describe('AgyBackend', () => {
       { type: 'model-output', textDelta: 'Hello world' },
     ]);
     expect(messages.at(-1)).toMatchObject({ type: 'status', status: 'idle' });
+  });
+
+  it('appends the Happy title instruction only to the first turn', async () => {
+    const spawnCalls: string[][] = [];
+    let current = makeFakeChild();
+    const spawnFn = vi.fn((_bin: string, args: string[]) => {
+      spawnCalls.push(args);
+      return current.child;
+    }) as unknown as SpawnFn;
+
+    const backend = new AgyBackend({
+      cwd: '/work',
+      permissionMode: 'yolo',
+      spawnFn,
+      resolveConversationId: () => null,
+    });
+
+    const firstTurn = backend.sendPrompt('/work', 'first task');
+    current.child.emit('close', 0);
+    await firstTurn;
+
+    current = makeFakeChild();
+    const secondTurn = backend.sendPrompt('/work', 'continue');
+    current.child.emit('close', 0);
+    await secondTurn;
+
+    const promptFromArgs = (args: string[]) => {
+      const printIndex = args.indexOf('--print');
+      expect(printIndex).toBeGreaterThanOrEqual(0);
+      return args[printIndex + 1];
+    };
+
+    expect(promptFromArgs(spawnCalls[0])).toBe(
+      `first task\n\n${CHANGE_TITLE_INSTRUCTION}`,
+    );
+    expect(promptFromArgs(spawnCalls[1])).toBe('continue');
+  });
+
+  it('sets a safe fallback title without invoking the MCP tool in sandbox mode', async () => {
+    const { child } = makeFakeChild();
+    const spawnFn = vi.fn(() => child) as unknown as SpawnFn;
+    const onTitle = vi.fn();
+    const backend = new AgyBackend({
+      cwd: '/work',
+      permissionMode: 'default',
+      spawnFn,
+      resolveConversationId: () => null,
+      onTitle,
+    });
+
+    const turn = backend.sendPrompt(
+      '/work',
+      'Summarize the infrastructure repository purpose.',
+    );
+    child.emit('close', 0);
+    await turn;
+
+    expect(onTitle).toHaveBeenCalledWith(
+      'Summarize the infrastructure repository purpose',
+    );
+    const args = (spawnFn as unknown as ReturnType<typeof vi.fn>).mock.calls[0][1] as string[];
+    const prompt = args[args.indexOf('--print') + 1];
+    expect(prompt).toContain('Happy has already set the session title');
+    expect(prompt).not.toContain('functions.happy__change_title');
+  });
+
+  it('bounds long fallback titles at a word boundary', async () => {
+    const { child } = makeFakeChild();
+    const spawnFn = vi.fn(() => child) as unknown as SpawnFn;
+    const onTitle = vi.fn();
+    const backend = new AgyBackend({
+      cwd: '/work',
+      permissionMode: 'default',
+      spawnFn,
+      resolveConversationId: () => null,
+      onTitle,
+    });
+
+    const turn = backend.sendPrompt(
+      '/work',
+      'Investigate why the Happy mobile application does not receive the final Agy response after setting its title',
+    );
+    child.emit('close', 0);
+    await turn;
+
+    const title = onTitle.mock.calls[0][0] as string;
+    expect([...title].length).toBeLessThanOrEqual(60);
+    expect(title).toMatch(/…$/);
+  });
+
+  it('passes the session-scoped Happy MCP URL to agy', async () => {
+    const { child } = makeFakeChild();
+    const spawnFn = vi.fn(() => child) as unknown as SpawnFn;
+    const env = {
+      PATH: '/test/bin',
+      HAPPY_HTTP_MCP_URL: 'http://127.0.0.1:43210',
+    };
+    const backend = new AgyBackend({
+      cwd: '/work',
+      permissionMode: 'default',
+      spawnFn,
+      resolveConversationId: () => null,
+      env,
+    });
+
+    const turn = backend.sendPrompt('/work', 'hi');
+    child.emit('close', 0);
+    await turn;
+
+    expect(spawnFn).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.any(Array),
+      expect.objectContaining({ env }),
+    );
   });
 
   it('buffers response fragments and does not duplicate the terminal aggregate', async () => {

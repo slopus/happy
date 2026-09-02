@@ -31,6 +31,7 @@ import { MessageBuffer } from '@/ui/ink/messageBuffer';
 import { AgyDisplay } from '@/ui/ink/AgyDisplay';
 import type { AgentMessage } from '@/agent/core';
 import { normalizeRemotePermissionMode } from '@/claude/utils/permissionMode';
+import { startHappyServer } from '@/claude/utils/startHappyServer';
 import { AgyBackend } from './AgyBackend';
 import { DEFAULT_AGY_MODEL } from './constants';
 
@@ -107,12 +108,24 @@ export async function runAgy(opts: RunAgyOptions): Promise<void> {
   let thinking = false;
 
   let displayedModel = DEFAULT_AGY_MODEL;
+  const happyServer = await startHappyServer(session);
 
   const backend = new AgyBackend({
     cwd: process.cwd(),
     permissionMode: 'default',
     model: DEFAULT_AGY_MODEL,
     log,
+    env: {
+      ...process.env,
+      HAPPY_HTTP_MCP_URL: happyServer.url,
+    },
+    onTitle: (title) => {
+      session.sendClaudeSessionMessage({
+        type: 'summary',
+        summary: title,
+        leafUuid: randomUUID(),
+      });
+    },
   });
 
   // Terminal UI (only with a real TTY; the daemon runs headless).
@@ -254,6 +267,7 @@ export async function runAgy(opts: RunAgyOptions): Promise<void> {
 
     backend.offMessage(onBackendMessage);
     await backend.dispose();
+    happyServer.stop();
     inkInstance?.unmount();
 
     try {
