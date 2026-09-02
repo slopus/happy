@@ -4,6 +4,7 @@ import {
   PluginCatalogResponseSchema,
   PluginInstallRequestSchema,
   PluginManifestSchema,
+  PluginSecretRevealResponseSchema,
 } from './plugins';
 
 const manifest = {
@@ -148,6 +149,16 @@ describe('plugin wire contract', () => {
     expect(() => PluginInstallRequestSchema.parse({
       version: '1.0.0',
       configuration: {},
+    })).toThrow();
+  });
+
+  it('returns one revealed secret without accepting unrelated response data', () => {
+    expect(PluginSecretRevealResponseSchema.parse({ value: 'sk-secret' })).toEqual({
+      value: 'sk-secret',
+    });
+    expect(() => PluginSecretRevealResponseSchema.parse({
+      value: 'sk-secret',
+      pluginId: 'relationship-advisor',
     })).toThrow();
   });
 

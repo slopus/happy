@@ -16,9 +16,10 @@ import { ItemList } from '@/components/ItemList';
 import { SecureTextInput } from '@/components/SecureTextInput';
 import { Typography } from '@/constants/Typography';
 import { useHappyAction } from '@/hooks/useHappyAction';
-import { installPlugin, testPluginConnection, uninstallPlugin } from '@/sync/plugins';
+import { installPlugin, revealPluginSecret, testPluginConnection, uninstallPlugin } from '@/sync/plugins';
 import { sync } from '@/sync/sync';
 import { t } from '@/text';
+import { HappyError } from '@/utils/errors';
 import { resolvePluginText } from './pluginText';
 import { isCurrentPluginInstallation } from './pluginInstallation';
 
@@ -143,7 +144,10 @@ export const DynamicPluginConfiguration = React.memo(function DynamicPluginConfi
         () => storedConfiguration(status),
     );
     const [connectionFeedback, setConnectionFeedback] = React.useState<ConnectionFeedback | null>(null);
+    const [revealedSecretKeys, setRevealedSecretKeys] = React.useState<Record<string, true>>({});
+    const [revealingSecretKey, setRevealingSecretKey] = React.useState<string | null>(null);
     const connectionTestVersion = React.useRef(0);
+    const secretRevealVersion = React.useRef(0);
     const configurationEditVersion = React.useRef(0);
     const activePluginKey = React.useRef(`${manifest.id}@${manifest.version}`);
     const installed = status.installed;
@@ -157,6 +161,7 @@ export const DynamicPluginConfiguration = React.memo(function DynamicPluginConfi
 
     React.useEffect(() => {
         connectionTestVersion.current += 1;
+        secretRevealVersion.current += 1;
         const pluginKey = `${manifest.id}@${manifest.version}`;
         const pluginChanged = activePluginKey.current !== pluginKey;
         activePluginKey.current = pluginKey;
@@ -165,6 +170,8 @@ export const DynamicPluginConfiguration = React.memo(function DynamicPluginConfi
         updateTransientDraft(plugin, nextSavedConfiguration, nextValues, draftScope);
         setSavedConfiguration(nextSavedConfiguration);
         setValues(nextValues);
+        setRevealedSecretKeys({});
+        setRevealingSecretKey(null);
         setConnectionFeedback((current) => {
             if (pluginChanged || !current?.result.success || !status.installed) return null;
             if (status.version !== manifest.version) return null;
@@ -174,12 +181,16 @@ export const DynamicPluginConfiguration = React.memo(function DynamicPluginConfi
         });
         return () => {
             connectionTestVersion.current += 1;
+            secretRevealVersion.current += 1;
         };
         // statusRevision prevents equivalent catalog snapshots from erasing an active draft.
     }, [draftScope, manifest.id, manifest.version, statusRevision]);
 
     React.useEffect(() => {
         connectionTestVersion.current += 1;
+        secretRevealVersion.current += 1;
+        setRevealedSecretKeys({});
+        setRevealingSecretKey(null);
         setValues((current) => Object.fromEntries(manifest.configuration.fields.map((field) => [
             field.key,
             field.type === 'secret' ? '' : current[field.key] ?? '',
@@ -204,6 +215,7 @@ export const DynamicPluginConfiguration = React.memo(function DynamicPluginConfi
             const saved = storedConfiguration(installedStatus);
             setSavedConfiguration(saved);
             setValues(saved);
+            setRevealedSecretKeys({});
         }
         await onStatusChanged?.();
         if (notifyInstalled && sync.isPluginConfigurationDraftScopeCurrent(draftScope)) {
@@ -223,6 +235,7 @@ export const DynamicPluginConfiguration = React.memo(function DynamicPluginConfi
         sync.clearPluginConfigurationDraft(manifest.id, manifest.version, undefined, draftScope);
         setSavedConfiguration({});
         setValues({});
+        setRevealedSecretKeys({});
         setConnectionFeedback(null);
         await onStatusChanged?.();
     }, [draftScope, manifest.id, manifest.version, onStatusChanged]);
@@ -257,10 +270,55 @@ export const DynamicPluginConfiguration = React.memo(function DynamicPluginConfi
     }, [draftScope, manifest.id, manifest.permissions, manifest.version, plugin, saveConfiguration, values]);
     const [testingConnection, performConnectionTest] = useHappyAction(testConnection);
 
+    const revealStoredSecret = React.useCallback(async (fieldKey: string) => {
+        const requestVersion = secretRevealVersion.current + 1;
+        secretRevealVersion.current = requestVersion;
+        try {
+            const value = await revealPluginSecret(manifest.id, fieldKey);
+            if (secretRevealVersion.current !== requestVersion) return;
+            if (!sync.isPluginConfigurationDraftScopeCurrent(draftScope)) return;
+            setRevealedSecretKeys((current) => ({ ...current, [fieldKey]: true }));
+            setValues((current) => ({ ...current, [fieldKey]: value }));
+        } catch {
+            if (secretRevealVersion.current === requestVersion
+                && sync.isPluginConfigurationDraftScopeCurrent(draftScope)) {
+                throw new HappyError(t('relationshipAdvisorPlugin.secretRevealFailed'), true);
+            }
+        } finally {
+            if (secretRevealVersion.current === requestVersion) {
+                setRevealingSecretKey((current) => current === fieldKey ? null : current);
+            }
+        }
+    }, [draftScope, manifest.id]);
+    const [revealingSecret, performRevealStoredSecret] = useHappyAction(revealStoredSecret);
+
+    const requestStoredSecretReveal = React.useCallback((fieldKey: string) => {
+        if (revealingSecret) return;
+        setRevealingSecretKey(fieldKey);
+        performRevealStoredSecret(fieldKey);
+    }, [performRevealStoredSecret, revealingSecret]);
+
+    const hideStoredSecret = React.useCallback((fieldKey: string) => {
+        if (revealedSecretKeys[fieldKey]) {
+            setValues((current) => ({ ...current, [fieldKey]: '' }));
+        }
+        setRevealedSecretKeys((current) => {
+            const next = { ...current };
+            delete next[fieldKey];
+            return next;
+        });
+    }, [revealedSecretKeys]);
+
     const updateValue = React.useCallback((key: string, value: string) => {
         connectionTestVersion.current += 1;
         configurationEditVersion.current += 1;
         setConnectionFeedback(null);
+        setRevealedSecretKeys((current) => {
+            if (!(key in current)) return current;
+            const next = { ...current };
+            delete next[key];
+            return next;
+        });
         setValues((current) => {
             const next = { ...current, [key]: value };
             updateTransientDraft(plugin, savedConfiguration, next, draftScope);
@@ -270,7 +328,10 @@ export const DynamicPluginConfiguration = React.memo(function DynamicPluginConfi
 
     const hasUnsavedChanges = manifest.configuration.fields.some((field) => {
         const value = values[field.key] ?? '';
-        if (field.type === 'secret') return value.length > 0;
+        if (field.type === 'secret') {
+            if (revealedSecretKeys[field.key]) return false;
+            return value.length > 0;
+        }
         return value !== (savedConfiguration[field.key] ?? '');
     });
 
@@ -278,9 +339,9 @@ export const DynamicPluginConfiguration = React.memo(function DynamicPluginConfi
         if (!field.required) return true;
         if (values[field.key]?.trim()) return true;
         return field.type === 'secret' && status.installed && Boolean(status.secretHints[field.key]);
-    }) && !installing && !testingConnection && !uninstalling;
+    }) && !installing && !testingConnection && !uninstalling && !revealingSecret;
     const canTestConnection = canInstall && manifest.permissions.includes('paws.ai.provider.invoke');
-    const configurationFieldsEditable = !installing && !testingConnection && !uninstalling;
+    const configurationFieldsEditable = !installing && !testingConnection && !uninstalling && !revealingSecret;
     const connectionResult = connectionFeedback?.result ?? null;
 
     return (
@@ -288,9 +349,11 @@ export const DynamicPluginConfiguration = React.memo(function DynamicPluginConfi
             {manifest.configuration.fields.length > 0 ? (
                 <ItemGroup
                     title={t('relationshipAdvisorPlugin.configuration')}
-                    footer={manifest.configuration.notice
-                        ? resolvePluginText(manifest.configuration.notice)
-                        : undefined}
+                    footer={manifest.id === 'relationship-advisor'
+                        ? t('relationshipAdvisorPlugin.encryptionNotice')
+                        : manifest.configuration.notice
+                            ? resolvePluginText(manifest.configuration.notice)
+                            : undefined}
                 >
                     {manifest.configuration.fields.map((field) => {
                         const label = resolvePluginText(field.label);
@@ -321,13 +384,18 @@ export const DynamicPluginConfiguration = React.memo(function DynamicPluginConfi
                                         emptyValueAccessibilityLabel={`${label} · ${t('relationshipAdvisorPlugin.encryptionNotice')}`}
                                         editable={configurationFieldsEditable}
                                         hideValueAccessibilityLabel={`${label} · ${t('settingsAccount.tapToHide')}`}
+                                        onHideStoredValue={() => hideStoredSecret(field.key)}
                                         onChangeText={(value) => updateValue(field.key, value)}
+                                        onRevealStoredValue={() => requestStoredSecretReveal(field.key)}
                                         placeholder={placeholder}
                                         placeholderTextColor={theme.colors.textSecondary}
                                         showValueAccessibilityLabel={`${label} · ${t('settingsAccount.tapToReveal')}`}
+                                        storedValueAvailable={Boolean(secretHint)}
+                                        storedValueRevealed={Boolean(revealedSecretKeys[field.key])}
                                         testID={fieldTestId(manifest.id, field.key)}
                                         textContentType="password"
                                         value={values[field.key] ?? ''}
+                                        visibilityButtonLoading={revealingSecret && revealingSecretKey === field.key}
                                         visibilityButtonTestID={`${fieldTestId(manifest.id, field.key)}-visibility-toggle`}
                                     />
                                 ) : (

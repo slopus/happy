@@ -2,7 +2,7 @@ import * as z from 'zod';
 
 const PluginIdSchema = z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).max(100);
 const PluginVersionSchema = z.string().regex(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/).max(50);
-const PluginFieldKeySchema = z.string().regex(/^[A-Za-z][A-Za-z0-9]*$/).max(100);
+export const PluginFieldKeySchema = z.string().regex(/^[A-Za-z][A-Za-z0-9]*$/).max(100);
 const PluginContributionIdSchema = z.string().regex(/^[a-z0-9]+(?:[.-][a-z0-9]+)*$/).max(160);
 
 export const PluginLocalizedTextSchema = z.object({
@@ -125,6 +125,10 @@ export const PluginInstallRequestSchema = z.object({
   version: PluginVersionSchema,
   grantedPermissions: PluginPermissionListSchema,
   configuration: z.record(PluginFieldKeySchema, z.string().max(4_000)),
+}).strict();
+
+export const PluginSecretRevealResponseSchema = z.object({
+  value: z.string().min(1).max(4_000),
 }).strict();
 
 export const PluginConnectionTestFailureCodeSchema = z.enum([

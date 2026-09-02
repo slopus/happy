@@ -3,6 +3,7 @@ import {
     PluginCatalogResponseSchema,
     PluginConnectionTestResultSchema,
     PluginInstallationStatusSchema,
+    PluginSecretRevealResponseSchema,
 } from '@slopus/happy-wire';
 import type {
     PluginCatalogItem,
@@ -54,6 +55,17 @@ export async function uninstallPlugin(pluginId: string): Promise<PluginInstallat
         await apiSocket.request(`/v1/plugins/${encodeURIComponent(pluginId)}`, { method: 'DELETE' }),
         (value) => PluginInstallationStatusSchema.parse(value),
     );
+}
+
+export async function revealPluginSecret(pluginId: string, fieldKey: string): Promise<string> {
+    const response = await readResponse(
+        await apiSocket.request(
+            `/v1/plugins/${encodeURIComponent(pluginId)}/secrets/${encodeURIComponent(fieldKey)}/reveal`,
+            { method: 'POST' },
+        ),
+        (value) => PluginSecretRevealResponseSchema.parse(value),
+    );
+    return response.value;
 }
 
 export async function testPluginConnection(

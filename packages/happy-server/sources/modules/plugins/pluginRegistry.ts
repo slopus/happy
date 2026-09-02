@@ -189,6 +189,18 @@ export function createPluginRegistry(
             await store.delete(accountId, pluginId);
             return { installed: false };
         },
+        async revealSecret(accountId: string, pluginId: string, fieldKey: string): Promise<string> {
+            const { definition, installation } = await requireCurrentInstallation(accountId, pluginId);
+            const field = definition.manifest.configuration.fields.find((candidate) => candidate.key === fieldKey);
+            if (field?.type !== 'secret') {
+                throw new PluginRegistryError('invalid_configuration', `Invalid secret field ${fieldKey} for ${pluginId}`);
+            }
+            const value = installation.configuration[fieldKey];
+            if (!value) {
+                throw new PluginRegistryError('invalid_configuration', `Missing secret ${fieldKey} for ${pluginId}`);
+            }
+            return value;
+        },
         async openRuntime(
             accountId: string,
             pluginId: string,

@@ -2,8 +2,10 @@ import {
     PluginCatalogItemSchema,
     PluginCatalogResponseSchema,
     PluginConnectionTestResultSchema,
+    PluginFieldKeySchema,
     PluginInstallRequestSchema,
     PluginInstallationStatusSchema,
+    PluginSecretRevealResponseSchema,
 } from '@slopus/happy-wire';
 import type {
     PluginCatalogItem,
@@ -20,11 +22,13 @@ interface PluginRoutesDependency {
     list: (accountId: string) => Promise<PluginCatalogResponse>;
     get: (accountId: string, pluginId: string) => Promise<PluginCatalogItem>;
     install: (accountId: string, pluginId: string, request: z.infer<typeof PluginInstallRequestSchema>) => Promise<PluginInstallationStatus>;
+    revealSecret: (accountId: string, pluginId: string, fieldKey: string) => Promise<string>;
     testConnection: (accountId: string, pluginId: string, request: z.infer<typeof PluginInstallRequestSchema>) => Promise<PluginConnectionTestResult>;
     uninstall: (accountId: string, pluginId: string) => Promise<PluginInstallationStatus>;
 }
 
 const pluginParamsSchema = z.object({ pluginId: z.string().min(1).max(100) });
+const pluginSecretParamsSchema = pluginParamsSchema.extend({ fieldKey: PluginFieldKeySchema });
 const errorSchema = z.object({ error: z.string(), message: z.string() });
 
 function errorStatus(error: unknown): 400 | 404 | 409 | 500 {
@@ -112,6 +116,31 @@ export function pluginRoutes(
                 request.params.pluginId,
                 request.body,
             ));
+        } catch (error) {
+            return sendError(reply, error);
+        }
+    });
+
+    app.post('/v1/plugins/:pluginId/secrets/:fieldKey/reveal', {
+        preHandler: app.authenticate,
+        schema: {
+            params: pluginSecretParamsSchema,
+            response: {
+                200: PluginSecretRevealResponseSchema,
+                400: errorSchema,
+                404: errorSchema,
+                409: errorSchema,
+                500: errorSchema,
+            },
+        },
+    }, async (request, reply) => {
+        try {
+            const value = await registry.revealSecret(
+                request.userId,
+                request.params.pluginId,
+                request.params.fieldKey,
+            );
+            return reply.header('Cache-Control', 'no-store').send({ value });
         } catch (error) {
             return sendError(reply, error);
         }

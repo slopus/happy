@@ -94,6 +94,44 @@ describe('createPluginRegistry', () => {
             .resolves.toMatchObject({ apiKey: 'sk-secret-1234', model: 'new-model' });
     });
 
+    it('reveals an installed secret only for its owning account', async () => {
+        const { store } = createMemoryStore();
+        const registry = createPluginRegistry(pluginDefinitions, store);
+        await registry.install('user-1', 'relationship-advisor', {
+            version: '1.1.1',
+            grantedPermissions: grants('relationship-advisor'),
+            configuration: {
+                apiKey: 'sk-secret-1234',
+                baseUrl: 'https://api.example.com/v1',
+                model: 'example-chat',
+            },
+        });
+
+        await expect(registry.revealSecret('user-1', 'relationship-advisor', 'apiKey'))
+            .resolves.toBe('sk-secret-1234');
+        await expect(registry.revealSecret('user-2', 'relationship-advisor', 'apiKey'))
+            .rejects.toMatchObject({ code: 'plugin_not_installed' });
+    });
+
+    it('does not reveal non-secret or undeclared configuration fields', async () => {
+        const { store } = createMemoryStore();
+        const registry = createPluginRegistry(pluginDefinitions, store);
+        await registry.install('user-1', 'relationship-advisor', {
+            version: '1.1.1',
+            grantedPermissions: grants('relationship-advisor'),
+            configuration: {
+                apiKey: 'sk-secret-1234',
+                baseUrl: 'https://api.example.com/v1',
+                model: 'example-chat',
+            },
+        });
+
+        await expect(registry.revealSecret('user-1', 'relationship-advisor', 'model'))
+            .rejects.toMatchObject({ code: 'invalid_configuration' });
+        await expect(registry.revealSecret('user-1', 'relationship-advisor', 'missing'))
+            .rejects.toMatchObject({ code: 'invalid_configuration' });
+    });
+
     it('tests merged configuration without saving it', async () => {
         const { store } = createMemoryStore();
         const testConnection = vi.fn(async () => ({ success: true as const, latencyMs: 12 }));

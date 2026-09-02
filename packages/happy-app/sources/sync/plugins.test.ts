@@ -6,6 +6,7 @@ vi.mock('./apiSocket', () => ({ apiSocket: { request } }));
 import {
     getPluginCatalog,
     installPlugin,
+    revealPluginSecret,
     testPluginConnection,
     uninstallPlugin,
 } from './plugins';
@@ -83,6 +84,16 @@ describe('dynamic plugin client', () => {
                 grantedPermissions: ['paws.secrets.use'],
                 configuration: { token: 'secret' },
             }),
+        });
+    });
+
+    it('requests one stored plugin secret from the no-store reveal endpoint', async () => {
+        request.mockResolvedValue(new Response(JSON.stringify({ value: 'sk-secret-1234' }), { status: 200 }));
+
+        await expect(revealPluginSecret('sample-plugin', 'token')).resolves.toBe('sk-secret-1234');
+
+        expect(request).toHaveBeenCalledWith('/v1/plugins/sample-plugin/secrets/token/reveal', {
+            method: 'POST',
         });
     });
 });

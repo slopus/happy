@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as React from 'react';
 import {
+    ActivityIndicator,
     Pressable,
     TextInput,
     type TextInputProps,
@@ -13,25 +14,57 @@ import { Typography } from '@/constants/Typography';
 type Props = Omit<TextInputProps, 'secureTextEntry' | 'style'> & {
     emptyValueAccessibilityLabel: string;
     hideValueAccessibilityLabel: string;
+    onHideStoredValue?: () => void;
+    onRevealStoredValue?: () => void;
     showValueAccessibilityLabel: string;
+    storedValueAvailable?: boolean;
+    storedValueRevealed?: boolean;
+    visibilityButtonLoading?: boolean;
     visibilityButtonTestID?: string;
 };
 
 export const SecureTextInput = React.memo(React.forwardRef<TextInput, Props>(function SecureTextInput({
     emptyValueAccessibilityLabel,
     hideValueAccessibilityLabel,
+    onHideStoredValue,
+    onRevealStoredValue,
     showValueAccessibilityLabel,
+    storedValueAvailable = false,
+    storedValueRevealed = false,
     value,
+    visibilityButtonLoading = false,
     visibilityButtonTestID,
     ...inputProps
 }, ref) {
     const { theme } = useUnistyles();
     const [valueVisible, setValueVisible] = React.useState(false);
+    const pendingStoredRevealRef = React.useRef(false);
     const hasValue = Boolean(value?.length);
+    const canToggleVisibility = hasValue || storedValueAvailable;
 
     React.useEffect(() => {
         if (!hasValue) setValueVisible(false);
-    }, [hasValue]);
+        if (pendingStoredRevealRef.current && hasValue && storedValueRevealed) {
+            pendingStoredRevealRef.current = false;
+            setValueVisible(true);
+        }
+    }, [hasValue, storedValueRevealed]);
+
+    const toggleVisibility = React.useCallback(() => {
+        if (visibilityButtonLoading) return;
+        if (!hasValue) {
+            if (!storedValueAvailable) return;
+            pendingStoredRevealRef.current = true;
+            onRevealStoredValue?.();
+            return;
+        }
+        if (valueVisible) {
+            setValueVisible(false);
+            if (storedValueRevealed) onHideStoredValue?.();
+            return;
+        }
+        setValueVisible(true);
+    }, [hasValue, onHideStoredValue, onRevealStoredValue, storedValueAvailable, storedValueRevealed, valueVisible, visibilityButtonLoading]);
 
     return (
         <View style={styles.container}>
@@ -43,28 +76,32 @@ export const SecureTextInput = React.memo(React.forwardRef<TextInput, Props>(fun
                 value={value}
             />
             <Pressable
-                accessibilityLabel={!hasValue
+                accessibilityLabel={!canToggleVisibility
                     ? emptyValueAccessibilityLabel
                     : valueVisible
                         ? hideValueAccessibilityLabel
                         : showValueAccessibilityLabel}
                 accessibilityRole="button"
-                accessibilityState={{ disabled: !hasValue }}
-                disabled={!hasValue}
+                accessibilityState={{ disabled: !canToggleVisibility || visibilityButtonLoading }}
+                disabled={!canToggleVisibility || visibilityButtonLoading}
                 hitSlop={6}
-                onPress={() => setValueVisible((current) => !current)}
+                onPress={toggleVisibility}
                 style={({ pressed }) => [
                     styles.visibilityButton,
-                    !hasValue && styles.disabled,
-                    pressed && hasValue && styles.pressed,
+                    (!canToggleVisibility || visibilityButtonLoading) && styles.disabled,
+                    pressed && canToggleVisibility && !visibilityButtonLoading && styles.pressed,
                 ]}
                 testID={visibilityButtonTestID}
             >
-                <Ionicons
-                    color={theme.colors.textSecondary}
-                    name={valueVisible ? 'eye-off-outline' : 'eye-outline'}
-                    size={22}
-                />
+                {visibilityButtonLoading ? (
+                    <ActivityIndicator color={theme.colors.textSecondary} size="small" />
+                ) : (
+                    <Ionicons
+                        color={theme.colors.textSecondary}
+                        name={valueVisible ? 'eye-off-outline' : 'eye-outline'}
+                        size={22}
+                    />
+                )}
             </Pressable>
         </View>
     );

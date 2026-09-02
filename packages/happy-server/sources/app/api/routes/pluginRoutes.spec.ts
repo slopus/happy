@@ -35,6 +35,7 @@ describe('pluginRoutes', () => {
             list,
             get: vi.fn(),
             install: vi.fn(),
+            revealSecret: vi.fn(),
             testConnection: vi.fn(),
             uninstall: vi.fn(),
         });
@@ -60,6 +61,7 @@ describe('pluginRoutes', () => {
             list: vi.fn(),
             get: vi.fn(),
             install,
+            revealSecret: vi.fn(),
             testConnection: vi.fn(),
             uninstall: vi.fn(),
         });
@@ -92,6 +94,7 @@ describe('pluginRoutes', () => {
                 error.code = 'version_mismatch';
                 throw error;
             }),
+            revealSecret: vi.fn(),
             testConnection: vi.fn(),
             uninstall: vi.fn(),
         });
@@ -113,6 +116,7 @@ describe('pluginRoutes', () => {
             list: vi.fn(),
             get: vi.fn(),
             install: vi.fn(),
+            revealSecret: vi.fn(),
             testConnection,
             uninstall: vi.fn(),
         });
@@ -143,5 +147,48 @@ describe('pluginRoutes', () => {
                 model: 'fast-model',
             },
         });
+    });
+
+    it('reveals one stored secret without allowing the response to be cached', async () => {
+        const revealSecret = vi.fn(async () => 'sk-secret-1234');
+        app = await createApp({
+            list: vi.fn(),
+            get: vi.fn(),
+            install: vi.fn(),
+            revealSecret,
+            testConnection: vi.fn(),
+            uninstall: vi.fn(),
+        });
+
+        const response = await app.inject({
+            method: 'POST',
+            url: '/v1/plugins/relationship-advisor/secrets/apiKey/reveal',
+            headers: { 'x-user-id': 'user-5' },
+        });
+
+        expect(response.statusCode).toBe(200);
+        expect(response.headers['cache-control']).toBe('no-store');
+        expect(response.json()).toEqual({ value: 'sk-secret-1234' });
+        expect(revealSecret).toHaveBeenCalledWith('user-5', 'relationship-advisor', 'apiKey');
+    });
+
+    it('rejects unauthenticated secret reveal requests', async () => {
+        const revealSecret = vi.fn();
+        app = await createApp({
+            list: vi.fn(),
+            get: vi.fn(),
+            install: vi.fn(),
+            revealSecret,
+            testConnection: vi.fn(),
+            uninstall: vi.fn(),
+        });
+
+        const response = await app.inject({
+            method: 'POST',
+            url: '/v1/plugins/relationship-advisor/secrets/apiKey/reveal',
+        });
+
+        expect(response.statusCode).toBe(401);
+        expect(revealSecret).not.toHaveBeenCalled();
     });
 });

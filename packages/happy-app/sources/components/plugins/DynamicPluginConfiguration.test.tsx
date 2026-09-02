@@ -10,12 +10,14 @@ const mocks = vi.hoisted(() => {
     const draftKey = (pluginId: string, pluginVersion: string) => `${pluginId}@${pluginVersion}`;
     let draftScope = 0;
     return {
+        actionErrors: [] as unknown[],
         drafts,
         advanceDraftScope: () => {
             draftScope += 1;
             drafts.clear();
         },
         install: vi.fn(),
+        revealSecret: vi.fn(),
         resetDraftScope: () => {
             draftScope = 0;
         },
@@ -57,7 +59,13 @@ const mocks = vi.hoisted(() => {
         },
     };
 });
-vi.mock('react-native', () => ({ Pressable: 'Pressable', Text: 'Text', TextInput: 'TextInput', View: 'View' }));
+vi.mock('react-native', () => ({
+    ActivityIndicator: 'ActivityIndicator',
+    Pressable: 'Pressable',
+    Text: 'Text',
+    TextInput: 'TextInput',
+    View: 'View',
+}));
 vi.mock('@expo/vector-icons', () => ({ Ionicons: 'Ionicons' }));
 vi.mock('react-native-unistyles', () => ({
     StyleSheet: { hairlineWidth: 1, create: (factory: any) => factory({ colors: {
@@ -77,11 +85,13 @@ vi.mock('@/hooks/useHappyAction', async () => {
     return {
         useHappyAction: (action: (...args: any[]) => Promise<void>) => {
             const [running, setRunning] = ReactModule.useState(false);
-            const perform = ReactModule.useCallback(async () => {
+            const perform = ReactModule.useCallback(async (...args: any[]) => {
                 if (running) return;
                 setRunning(true);
                 try {
-                    await action();
+                    await action(...args);
+                } catch (error) {
+                    mocks.actionErrors.push(error);
                 } finally {
                     setRunning(false);
                 }
@@ -92,6 +102,7 @@ vi.mock('@/hooks/useHappyAction', async () => {
 });
 vi.mock('@/sync/plugins', () => ({
     installPlugin: mocks.install,
+    revealPluginSecret: mocks.revealSecret,
     testPluginConnection: mocks.testConnection,
     uninstallPlugin: mocks.uninstall,
 }));
@@ -166,9 +177,11 @@ describe('DynamicPluginConfiguration', () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
+        mocks.actionErrors.length = 0;
         mocks.drafts.clear();
         mocks.resetDraftScope();
         mocks.install.mockResolvedValue({ installed: true });
+        mocks.revealSecret.mockResolvedValue('stored-secret-1234');
         (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
         consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation((...values: unknown[]) => {
             if (values[0] === 'react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer') return;
@@ -249,7 +262,7 @@ describe('DynamicPluginConfiguration', () => {
         act(() => renderer.unmount());
     });
 
-    it('lets the user reveal and conceal only the newly entered secret', async () => {
+    it('reveals a stored secret on demand and clears it from memory when hidden', async () => {
         const installedStatus = {
             installed: true as const,
             version: '2.3.0',
@@ -271,27 +284,29 @@ describe('DynamicPluginConfiguration', () => {
         });
         expect(token.props.secureTextEntry).toBe(true);
         expect(token.props.value).toBe('');
-        expect(visibilityToggle.props.disabled).toBe(true);
-        expect(visibilityToggle.props.accessibilityState).toEqual({ disabled: true });
-        expect(visibilityToggle.props.accessibilityLabel)
-            .toContain('relationshipAdvisorPlugin.encryptionNotice');
+        expect(visibilityToggle.props.disabled).toBe(false);
+        expect(visibilityToggle.props.accessibilityState).toEqual({ disabled: false });
 
-        act(() => token.props.onChangeText('replacement-secret'));
+        await act(async () => visibilityToggle.props.onPress());
+        expect(mocks.revealSecret).toHaveBeenCalledWith('server-plugin', 'token');
         expect(renderer.root.findAllByType('TextInput')[0].props.value)
-            .toBe('replacement-secret');
+            .toBe('stored-secret-1234');
+        expect(renderer.root.findAllByType('TextInput')[0].props.secureTextEntry)
+            .toBe(false);
+        expect(renderer.root.findAllByProps({
+            testID: 'server-plugin-plugin-unsaved-changes',
+        })).toHaveLength(0);
+
         visibilityToggle = renderer.root.findByProps({
             testID: 'server-plugin-plugin-token-visibility-toggle',
         });
-        expect(visibilityToggle.props.disabled).toBe(false);
-
         act(() => visibilityToggle.props.onPress());
-        expect(renderer.root.findAllByType('TextInput')[0].props.secureTextEntry)
-            .toBe(false);
-        expect(renderer.root.findByProps({ testID: 'server-plugin-plugin-token-visibility-toggle' })
-            .props.accessibilityLabel).toContain('settingsAccount.tapToHide');
+        expect(renderer.root.findAllByType('TextInput')[0].props.value).toBe('');
+        expect(renderer.root.findAllByType('TextInput')[0].props.secureTextEntry).toBe(true);
 
+        act(() => renderer.unmount());
         await act(async () => {
-            renderer.update(<DynamicPluginConfiguration plugin={{
+            renderer = TestRenderer.create(<DynamicPluginConfiguration plugin={{
                 manifest,
                 status: { ...installedStatus },
             }} />);
@@ -302,11 +317,137 @@ describe('DynamicPluginConfiguration', () => {
         });
         expect(refreshedToken.props.value).toBe('');
         expect(refreshedToken.props.secureTextEntry).toBe(true);
-        expect(refreshedToggle.props.disabled).toBe(true);
+        expect(refreshedToggle.props.disabled).toBe(false);
+        act(() => renderer.unmount());
+    });
 
-        act(() => refreshedToken.props.onChangeText('another-replacement'));
-        expect(renderer.root.findAllByType('TextInput')[0].props.secureTextEntry)
-            .toBe(true);
+    it('treats edits to a revealed secret as an unsaved replacement', async () => {
+        const installedStatus = {
+            installed: true as const,
+            version: '2.3.0',
+            grantedPermissions: [...manifest.permissions],
+            configuration: { endpoint: 'https://example.com/v1' },
+            secretHints: { token: '1234' },
+        };
+        let renderer: any;
+        await act(async () => {
+            renderer = TestRenderer.create(<DynamicPluginConfiguration plugin={{ manifest, status: installedStatus }} />);
+        });
+
+        await act(async () => renderer.root.findByProps({
+            testID: 'server-plugin-plugin-token-visibility-toggle',
+        }).props.onPress());
+        act(() => renderer.root.findAllByType('TextInput')[0].props.onChangeText('replacement-secret'));
+        expect(renderer.root.findAllByType('TextInput')[0].props.value).toBe('replacement-secret');
+        expect(renderer.root.findAllByProps({
+            testID: 'server-plugin-plugin-unsaved-changes',
+        })).toHaveLength(1);
+
+        act(() => renderer.root.findByProps({
+            testID: 'server-plugin-plugin-token-visibility-toggle',
+        }).props.onPress());
+        expect(renderer.root.findAllByType('TextInput')[0].props.value).toBe('replacement-secret');
+        expect(renderer.root.findAllByType('TextInput')[0].props.secureTextEntry).toBe(true);
+        act(() => renderer.unmount());
+    });
+
+    it('keeps the stored secret masked and reports a readable error when reveal fails', async () => {
+        mocks.revealSecret.mockRejectedValueOnce(new Error('network failed'));
+        const installedStatus = {
+            installed: true as const,
+            version: '2.3.0',
+            grantedPermissions: [...manifest.permissions],
+            configuration: { endpoint: 'https://example.com/v1' },
+            secretHints: { token: '1234' },
+        };
+        let renderer: any;
+        await act(async () => {
+            renderer = TestRenderer.create(<DynamicPluginConfiguration plugin={{ manifest, status: installedStatus }} />);
+        });
+
+        const visibilityToggle = renderer.root.findByProps({
+            testID: 'server-plugin-plugin-token-visibility-toggle',
+        });
+        await act(async () => {
+            visibilityToggle.props.onPress();
+            await Promise.resolve();
+        });
+        expect(mocks.actionErrors).toEqual([
+            expect.objectContaining({ message: 'relationshipAdvisorPlugin.secretRevealFailed' }),
+        ]);
+        expect(renderer.root.findAllByType('TextInput')[0].props.value).toBe('');
+        expect(renderer.root.findAllByType('TextInput')[0].props.secureTextEntry).toBe(true);
+        act(() => renderer.unmount());
+    });
+
+    it('discards a revealed secret when the account scope changes before the request finishes', async () => {
+        let resolveReveal: ((value: string) => void) | undefined;
+        mocks.revealSecret.mockReturnValueOnce(new Promise((resolve) => {
+            resolveReveal = resolve;
+        }));
+        const installedStatus = {
+            installed: true as const,
+            version: '2.3.0',
+            grantedPermissions: [...manifest.permissions],
+            configuration: { endpoint: 'https://example.com/v1' },
+            secretHints: { token: '1234' },
+        };
+        let renderer: any;
+        await act(async () => {
+            renderer = TestRenderer.create(<DynamicPluginConfiguration plugin={{ manifest, status: installedStatus }} />);
+        });
+
+        act(() => renderer.root.findByProps({
+            testID: 'server-plugin-plugin-token-visibility-toggle',
+        }).props.onPress());
+        expect(renderer.root.findByProps({
+            testID: 'server-plugin-plugin-token-visibility-toggle',
+        }).props.disabled).toBe(true);
+
+        mocks.advanceDraftScope();
+        await act(async () => {
+            resolveReveal?.('old-account-secret');
+            await Promise.resolve();
+        });
+
+        expect(renderer.root.findAllByType('TextInput')[0].props.value).toBe('');
+        expect(renderer.root.findAllByType('TextInput')[0].props.secureTextEntry).toBe(true);
+        expect(mocks.actionErrors).toEqual([]);
+        act(() => renderer.unmount());
+    });
+
+    it('clears a revealed secret immediately after uninstall even when status refresh fails', async () => {
+        mocks.uninstall.mockResolvedValueOnce({ installed: false });
+        const refreshError = new Error('catalog refresh failed');
+        const onStatusChanged = vi.fn().mockRejectedValue(refreshError);
+        const installedStatus = {
+            installed: true as const,
+            version: '2.3.0',
+            grantedPermissions: [...manifest.permissions],
+            configuration: { endpoint: 'https://example.com/v1' },
+            secretHints: { token: '1234' },
+        };
+        let renderer: any;
+        await act(async () => {
+            renderer = TestRenderer.create(<DynamicPluginConfiguration
+                onStatusChanged={onStatusChanged}
+                plugin={{ manifest, status: installedStatus }}
+            />);
+        });
+
+        await act(async () => renderer.root.findByProps({
+            testID: 'server-plugin-plugin-token-visibility-toggle',
+        }).props.onPress());
+        expect(renderer.root.findAllByType('TextInput')[0].props.value).toBe('stored-secret-1234');
+
+        await act(async () => {
+            renderer.root.findByProps({ testID: 'server-plugin-plugin-uninstall' }).props.onPress();
+            await vi.waitFor(() => expect(mocks.actionErrors).toContain(refreshError));
+        });
+
+        expect(mocks.uninstall).toHaveBeenCalledWith('server-plugin');
+        expect(renderer.root.findAllByType('TextInput')[0].props.value).toBe('');
+        expect(renderer.root.findAllByType('TextInput')[0].props.secureTextEntry).toBe(true);
         act(() => renderer.unmount());
     });
 
@@ -883,6 +1024,9 @@ describe('DynamicPluginConfiguration', () => {
         expect(renderer.root.findByProps({
             testID: 'relationship-advisor-plugin-model-recommendation',
         }).props.children).toBe('建议填写支持多模态的模型，才能同时理解文字和图片。');
+        expect(renderer.root.findByProps({
+            footer: 'relationshipAdvisorPlugin.encryptionNotice',
+        })).toBeDefined();
         act(() => renderer.unmount());
     });
 
