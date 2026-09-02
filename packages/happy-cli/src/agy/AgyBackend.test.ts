@@ -61,7 +61,7 @@ describe('AgyBackend', () => {
     expect(messages.at(-1)).toMatchObject({ type: 'status', status: 'idle' });
   });
 
-  it('ignores response fragments and emits result.response exactly once', async () => {
+  it('buffers response fragments and does not duplicate the terminal aggregate', async () => {
     const { child, stdout } = makeFakeChild();
     const spawnFn = vi.fn(() => child) as unknown as SpawnFn;
     const backend = new AgyBackend({ cwd: '/work', permissionMode: 'default', spawnFn, resolveConversationId: () => null });
@@ -69,8 +69,8 @@ describe('AgyBackend', () => {
     backend.onMessage((m) => messages.push(m));
 
     const turn = backend.sendPrompt('/work', 'hi');
-    stdout.emit('data', `${JSON.stringify({ event: 'step_update', step_update: { step_type: 'agent_response', text_delta: 'split frag' } })}\n`);
-    stdout.emit('data', `${JSON.stringify({ event: 'step_update', step_update: { step_type: 'agent_response', text_delta: 'ment' } })}\n`);
+    stdout.emit('data', `${JSON.stringify({ event: 'step_update', step_update: { step_index: 1, state: 'ACTIVE', step_type: 'agent_response', text_delta: 'split frag' } })}\n`);
+    stdout.emit('data', `${JSON.stringify({ event: 'step_update', step_update: { step_index: 1, state: 'DONE', step_type: 'agent_response', text_delta: 'ment' } })}\n`);
     const result = `${JSON.stringify({ event: 'result', result: { status: 'SUCCESS', response: 'split fragment' } })}\n`;
     stdout.emit('data', result);
     stdout.emit('data', result);
@@ -82,7 +82,7 @@ describe('AgyBackend', () => {
     ]);
   });
 
-  it('produces one intact Happy text envelope after fragmented agy output', async () => {
+  it('emits intact progress before tools and final text after them', async () => {
     const { child, stdout } = makeFakeChild();
     const spawnFn = vi.fn(() => child) as unknown as SpawnFn;
     const backend = new AgyBackend({ cwd: '/work', permissionMode: 'default', spawnFn, resolveConversationId: () => null });
@@ -91,19 +91,32 @@ describe('AgyBackend', () => {
     backend.onMessage((message) => envelopes.push(...mapper.mapMessage(message)));
 
     const turn = backend.sendPrompt('/work', 'hi');
-    const deltas = ['# Head', 'ing\n', '* first', ' item\n', '* second item'];
-    for (const text_delta of deltas) {
-      stdout.emit('data', `${JSON.stringify({ event: 'step_update', step_update: { step_type: 'agent_response', text_delta } })}\n`);
-    }
-    const response = deltas.join('');
+    stdout.emit('data', `${JSON.stringify({ event: 'step_update', step_update: { step_index: 1, state: 'ACTIVE', step_type: 'agent_response', text_delta: '# Head' } })}\n`);
+    stdout.emit('data', `${JSON.stringify({ event: 'step_update', step_update: { step_index: 1, state: 'DONE', step_type: 'agent_response', text_delta: 'ing\n' } })}\n`);
+    stdout.emit('data', `${JSON.stringify({ event: 'step_update', step_update: { step_index: 2, state: 'ACTIVE', step_type: 'tool', tool_name: 'list_dir', tool_info: { parameters: { DirectoryPath: '/work' } } } })}\n`);
+    stdout.emit('data', `${JSON.stringify({ event: 'step_update', step_update: { step_index: 2, state: 'DONE', step_type: 'tool', tool_name: 'list_dir' } })}\n`);
+    stdout.emit('data', `${JSON.stringify({ event: 'step_update', step_update: { step_index: 3, state: 'ACTIVE', step_type: 'agent_response', text_delta: '* first' } })}\n`);
+    stdout.emit('data', `${JSON.stringify({ event: 'step_update', step_update: { step_index: 3, state: 'DONE', step_type: 'agent_response', text_delta: ' item' } })}\n`);
+    const response = '# Heading\n* first item';
     stdout.emit('data', `${JSON.stringify({ event: 'result', result: { status: 'SUCCESS', response } })}\n`);
     child.emit('close', 0);
     await turn;
     envelopes.push(...mapper.endTurn('completed'));
 
     const textEnvelopes = envelopes.filter((envelope) => envelope.ev.t === 'text');
-    expect(textEnvelopes).toHaveLength(1);
-    expect(textEnvelopes[0].ev).toEqual({ t: 'text', text: response });
+    expect(textEnvelopes).toHaveLength(2);
+    expect(textEnvelopes.map((envelope) => envelope.ev)).toEqual([
+      { t: 'text', text: '# Heading' },
+      { t: 'text', text: '* first item' },
+    ]);
+    expect(envelopes.map((envelope) => envelope.ev.t)).toEqual([
+      'turn-start',
+      'text',
+      'tool-call-start',
+      'tool-call-end',
+      'text',
+      'turn-end',
+    ]);
     expect(envelopes.at(-1)?.ev).toMatchObject({ t: 'turn-end', status: 'completed' });
   });
 
@@ -135,15 +148,146 @@ describe('AgyBackend', () => {
         tool_info: { parameters: { DirectoryPath: '/work/tasks' }, output: 'private listing' },
       },
     })}\n`);
+    for (const step_update of [
+      {
+        step_index: 3,
+        state: 'ACTIVE',
+        step_type: 'tool',
+        tool_name: 'replace_file_content',
+        tool_info: {
+          parameters: {
+            TargetFile: '/work/TODO.md',
+            TargetContent: 'private old content',
+            ReplacementContent: 'private replacement content',
+          },
+        },
+      },
+      { step_index: 3, state: 'DONE', step_type: 'tool', tool_name: 'replace_file_content' },
+      {
+        step_index: 4,
+        state: 'ACTIVE',
+        step_type: 'tool',
+        tool_name: 'write_to_file',
+        tool_info: { parameters: { TargetFile: '/work/new.md', CodeContent: 'private new content' } },
+      },
+      { step_index: 4, state: 'DONE', step_type: 'tool', tool_name: 'write_to_file' },
+      {
+        step_index: 5,
+        state: 'ACTIVE',
+        step_type: 'tool',
+        tool_name: 'manage_task',
+        tool_info: {
+          parameters: {
+            Action: 'status',
+            TaskId: 'private-conversation-id/task-20',
+            Input: 'private task input',
+            toolSummary: 'private task summary',
+          },
+        },
+      },
+      {
+        step_index: 5,
+        state: 'DONE',
+        step_type: 'tool',
+        tool_name: 'manage_task',
+        tool_info: { output: 'Task is still running' },
+      },
+      {
+        step_index: 6,
+        state: 'ACTIVE',
+        step_type: 'tool',
+        tool_name: 'manage_task',
+        tool_info: { parameters: { Action: 'kill', TaskId: 'private-conversation-id/task-30' } },
+      },
+      {
+        step_index: 6,
+        state: 'DONE',
+        step_type: 'tool',
+        tool_name: 'manage_task',
+        tool_info: { output: 'Task killed' },
+      },
+      {
+        step_index: 7,
+        state: 'ACTIVE',
+        step_type: 'tool',
+        tool_name: 'call_mcp_tool',
+        tool_info: {
+          parameters: {
+            ServerName: 'happy',
+            ToolName: 'change_title',
+            Arguments: { title: 'private title' },
+          },
+        },
+      },
+      {
+        step_index: 7,
+        state: 'DONE',
+        step_type: 'tool',
+        tool_name: 'call_mcp_tool',
+        tool_info: { output: 'Title changed' },
+      },
+      {
+        step_index: 8,
+        state: 'ACTIVE',
+        step_type: 'tool',
+        tool_name: 'search_web',
+        tool_info: { parameters: { query: 'Agy documentation', toolSummary: 'private search summary' } },
+      },
+      {
+        step_index: 8,
+        state: 'DONE',
+        step_type: 'tool',
+        tool_name: 'search_web',
+        tool_info: { output: 'Search result' },
+      },
+    ]) {
+      stdout.emit('data', `${JSON.stringify({ event: 'step_update', step_update })}\n`);
+    }
     child.emit('close', 0);
     await turn;
 
     expect(messages.filter((m) => m.type === 'tool-call' || m.type === 'tool-result')).toEqual([
       { type: 'tool-call', toolName: 'LS', callId: 'agy:1:2', args: { path: '/work/tasks' } },
       { type: 'tool-result', toolName: 'LS', callId: 'agy:1:2', result: { status: 'DONE' } },
+      { type: 'tool-call', toolName: 'Edit', callId: 'agy:1:3', args: { file_path: '/work/TODO.md' } },
+      { type: 'tool-result', toolName: 'Edit', callId: 'agy:1:3', result: { status: 'DONE' } },
+      { type: 'tool-call', toolName: 'Write', callId: 'agy:1:4', args: { file_path: '/work/new.md' } },
+      { type: 'tool-result', toolName: 'Write', callId: 'agy:1:4', result: { status: 'DONE' } },
+      { type: 'tool-call', toolName: 'Bash', callId: 'agy:1:5', args: { command: 'manage_task status task-20' } },
+      { type: 'tool-result', toolName: 'Bash', callId: 'agy:1:5', result: { status: 'DONE', stdout: 'Task is still running' } },
+      { type: 'tool-call', toolName: 'Bash', callId: 'agy:1:6', args: { command: 'manage_task kill task-30' } },
+      { type: 'tool-result', toolName: 'Bash', callId: 'agy:1:6', result: { status: 'DONE', stdout: 'Task killed' } },
+      { type: 'tool-call', toolName: 'Bash', callId: 'agy:1:7', args: { command: 'mcp happy.change_title' } },
+      { type: 'tool-result', toolName: 'Bash', callId: 'agy:1:7', result: { status: 'DONE', stdout: 'Title changed' } },
+      { type: 'tool-call', toolName: 'WebSearch', callId: 'agy:1:8', args: { query: 'Agy documentation' } },
+      { type: 'tool-result', toolName: 'WebSearch', callId: 'agy:1:8', result: { status: 'DONE', stdout: 'Search result' } },
     ]);
-    expect(JSON.stringify(messages)).not.toContain('private listing');
-    expect(JSON.stringify(messages)).not.toContain('nope');
+    expect(messages.filter((m) => m.type === 'event')).toEqual([
+      { type: 'event', name: 'thinking', payload: { text: 'Task is still running', streaming: false } },
+      { type: 'event', name: 'thinking', payload: { text: 'Task killed', streaming: false } },
+      { type: 'event', name: 'thinking', payload: { text: 'Title changed', streaming: false } },
+      { type: 'event', name: 'thinking', payload: { text: 'Search result', streaming: false } },
+    ]);
+    const mapper = new AcpSessionManager();
+    const envelopes = mapper.startTurn();
+    for (const message of messages) envelopes.push(...mapper.mapMessage(message));
+    envelopes.push(...mapper.endTurn('completed'));
+    expect(
+      envelopes
+        .filter((envelope) => envelope.ev.t === 'text' && envelope.ev.thinking)
+        .map((envelope) => envelope.ev.t === 'text' ? envelope.ev.text : ''),
+    ).toEqual(['Task is still running', 'Task killed', 'Title changed', 'Search result']);
+    const serialized = JSON.stringify(messages);
+    expect(serialized).not.toContain('private listing');
+    expect(serialized).not.toContain('private old content');
+    expect(serialized).not.toContain('private replacement content');
+    expect(serialized).not.toContain('private new content');
+    expect(serialized).not.toContain('private-conversation-id');
+    expect(serialized).not.toContain('private task input');
+    expect(serialized).not.toContain('private task summary');
+    expect(serialized).not.toContain('private title');
+    expect(serialized).not.toContain('private search summary');
+    expect(serialized).not.toContain('nope');
   });
 
   it('maps file and command cards while hiding credential-bearing commands', async () => {
@@ -177,10 +321,16 @@ describe('AgyBackend', () => {
       { step_index: 3, state: 'ACTIVE', step_type: 'tool', tool_name: 'view_file', tool_info: { parameters: { AbsolutePath: '/work/package.json', StartLine: 1, EndLine: 20 } } },
       { step_index: 3, state: 'DONE', step_type: 'tool', tool_name: 'view_file', tool_info: { output: secrets[0] } },
       { step_index: 4, state: 'ACTIVE', step_type: 'tool', tool_name: 'run_command', tool_info: { parameters: { CommandLine: 'pwd' } } },
-      { step_index: 4, state: 'DONE', step_type: 'tool', tool_name: 'run_command' },
+      { step_index: 4, state: 'DONE', step_type: 'tool', tool_name: 'run_command', tool_info: { output: 'command output\n' } },
       ...commands.flatMap((CommandLine, index) => [
         { step_index: index + 5, state: 'ACTIVE', step_type: 'tool', tool_name: 'run_command', tool_info: { parameters: { CommandLine } } },
-        { step_index: index + 5, state: 'ERROR', step_type: 'tool', tool_name: 'run_command', tool_info: { error: { message: secrets[index] } } },
+        {
+          step_index: index + 5,
+          state: 'ERROR',
+          step_type: 'tool',
+          tool_name: 'run_command',
+          tool_info: { output: `token=${secrets[index]}`, error: { message: secrets[index] } },
+        },
       ]),
     ];
     const turn = backend.sendPrompt('/work', 'hi');
@@ -203,10 +353,19 @@ describe('AgyBackend', () => {
       callId: 'agy:1:4',
       args: { command: 'pwd' },
     });
+    expect(messages).toContainEqual({
+      type: 'tool-result',
+      toolName: 'Bash',
+      callId: 'agy:1:4',
+      result: { status: 'DONE', stdout: 'command output\n' },
+    });
     for (const [index, call] of calls.slice(2).entries()) {
       expect(call).toMatchObject({ type: 'tool-call', toolName: 'Bash', callId: `agy:1:${index + 5}` });
       if (call?.type !== 'tool-call') throw new Error('expected run_command call');
       expect(call.args.command, `command ${index}`).toBe('[redacted command]');
+    }
+    for (const result of messages.filter((m) => m.type === 'tool-result').slice(2)) {
+      expect(result).toMatchObject({ result: { status: 'ERROR', stderr: '[redacted output]' } });
     }
     for (const secret of secrets) expect(JSON.stringify(messages)).not.toContain(secret);
   });

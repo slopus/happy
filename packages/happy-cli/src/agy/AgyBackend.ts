@@ -2,8 +2,9 @@
  * Agy AgentBackend Implementation
  *
  * Agy's print-mode stream contains response fragments, a complete terminal
- * response, and tool lifecycle records. Happy needs the complete response as
- * one message and tool calls translated to its native card schemas.
+ * response, and tool lifecycle records. Happy needs fragments buffered into
+ * complete progress messages, without replaying the terminal aggregate, and
+ * tool calls translated to its native card schemas.
  */
 
 import { spawn, type ChildProcess } from 'node:child_process';
@@ -46,9 +47,17 @@ type DisplayTool = {
 
 const MAX_STREAM_RECORD_BYTES = 16 * 1024 * 1024;
 const MAX_TOOL_CALLS_PER_TURN = 512;
+const MAX_AGENT_RESPONSE_STEPS = 512;
 const MAX_TOOL_NAME_BYTES = 128;
 const MAX_TOOL_STEP_INDEX = 1_000_000;
 const MAX_TOOL_ARG_BYTES = 4096;
+const MAX_TOOL_OUTPUT_BYTES = 64 * 1024;
+const VISIBLE_OUTPUT_TOOLS = new Set([
+  'call_mcp_tool',
+  'manage_task',
+  'run_command',
+  'search_web',
+]);
 
 const CREDENTIAL_CARRIER_PATTERNS = [
   /\b(?:Bearer|Basic)\s+\S+/i,
@@ -64,10 +73,10 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return prototype === Object.prototype || prototype === null;
 }
 
-function truncateUtf8(value: string): string {
-  if (Buffer.byteLength(value, 'utf8') <= MAX_TOOL_ARG_BYTES) return value;
+function truncateUtf8(value: string, maxBytes = MAX_TOOL_ARG_BYTES): string {
+  if (Buffer.byteLength(value, 'utf8') <= maxBytes) return value;
   const prefix = Buffer.from(value)
-    .subarray(0, MAX_TOOL_ARG_BYTES - 3)
+    .subarray(0, maxBytes - 3)
     .toString('utf8')
     .replace(/\uFFFD$/, '');
   return `${prefix}...`;
@@ -78,6 +87,14 @@ function safeString(value: unknown, redacted = '[redacted]'): string | undefined
   const truncated = truncateUtf8(value);
   return CREDENTIAL_CARRIER_PATTERNS.some((pattern) => pattern.test(truncated))
     ? redacted
+    : truncated;
+}
+
+function safeToolOutput(value: unknown): string | undefined {
+  if (typeof value !== 'string' || value.length === 0) return undefined;
+  const truncated = truncateUtf8(value, MAX_TOOL_OUTPUT_BYTES);
+  return CREDENTIAL_CARRIER_PATTERNS.some((pattern) => pattern.test(truncated))
+    ? '[redacted output]'
     : truncated;
 }
 
@@ -122,6 +139,30 @@ function displayTool(toolName: string, parameters: unknown): DisplayTool {
     case 'run_command': {
       const command = safeString(values.CommandLine, '[redacted command]');
       return { toolName: 'Bash', args: command ? { command } : {} };
+    }
+    case 'replace_file_content': {
+      const filePath = safeString(values.TargetFile);
+      return { toolName: 'Edit', args: filePath ? { file_path: filePath } : {} };
+    }
+    case 'write_to_file': {
+      const filePath = safeString(values.TargetFile);
+      return { toolName: 'Write', args: filePath ? { file_path: filePath } : {} };
+    }
+    case 'manage_task': {
+      const action = values.Action === 'status' || values.Action === 'kill' ? values.Action : undefined;
+      const taskId = safeString(values.TaskId)?.split('/').filter(Boolean).at(-1);
+      const command = ['manage_task', action, taskId].filter(Boolean).join(' ');
+      return { toolName: 'Bash', args: { command } };
+    }
+    case 'call_mcp_tool': {
+      const server = safeString(values.ServerName);
+      const tool = safeString(values.ToolName);
+      const target = [server, tool].filter(Boolean).join('.');
+      return { toolName: 'Bash', args: { command: target ? `mcp ${target}` : 'mcp tool' } };
+    }
+    case 'search_web': {
+      const query = safeString(values.query);
+      return { toolName: 'WebSearch', args: query ? { query } : {} };
     }
     case 'grep_search': {
       const pattern = safeString(values.Query);
@@ -238,6 +279,17 @@ export class AgyBackend implements AgentBackend {
       let stderrBytes = 0;
       const startedToolCalls = new Set<string>();
       const endedToolCalls = new Set<string>();
+      const agentResponseBuffers = new Map<number, string>();
+      let streamedResponseText = '';
+      let agentResponseBytes = 0;
+
+      const emitAgentResponse = (stepIndex: number) => {
+        const text = agentResponseBuffers.get(stepIndex);
+        agentResponseBuffers.delete(stepIndex);
+        if (!text) return;
+        streamedResponseText += text;
+        this.emit({ type: 'model-output', textDelta: text });
+      };
 
       const handleRecord = (line: string) => {
         let record: unknown;
@@ -256,19 +308,46 @@ export class AgyBackend implements AgentBackend {
         if (record.event === 'result') {
           if (resultSeen) return;
           resultSeen = true;
+          for (const stepIndex of [...agentResponseBuffers.keys()].sort((a, b) => a - b)) {
+            emitAgentResponse(stepIndex);
+          }
           const result = isPlainRecord(record.result) ? record.result : {};
           if (result.status !== 'SUCCESS') {
             streamFailure = 'agy stream reported failure';
           } else if (typeof result.response === 'string' && result.response) {
-            this.emit({ type: 'model-output', textDelta: result.response });
+            const remaining = result.response.startsWith(streamedResponseText)
+              ? result.response.slice(streamedResponseText.length)
+              : streamedResponseText
+                ? ''
+                : result.response;
+            if (remaining) this.emit({ type: 'model-output', textDelta: remaining });
           }
           return;
         }
         if (record.event !== 'step_update' || !isPlainRecord(record.step_update)) return;
 
         const update = record.step_update;
-        // The terminal result contains the same final answer intact.
-        if (update.step_type === 'agent_response') return;
+        if (update.step_type === 'agent_response') {
+          if (
+            typeof update.step_index !== 'number'
+            || !Number.isSafeInteger(update.step_index)
+            || update.step_index < 0
+            || update.step_index > MAX_TOOL_STEP_INDEX
+          ) return;
+          if (typeof update.text_delta === 'string' && update.text_delta) {
+            if (
+              !agentResponseBuffers.has(update.step_index)
+              && agentResponseBuffers.size >= MAX_AGENT_RESPONSE_STEPS
+            ) return;
+            const deltaBytes = Buffer.byteLength(update.text_delta, 'utf8');
+            if (agentResponseBytes + deltaBytes > MAX_STREAM_RECORD_BYTES) return;
+            const current = agentResponseBuffers.get(update.step_index) ?? '';
+            agentResponseBuffers.set(update.step_index, current + update.text_delta);
+            agentResponseBytes += deltaBytes;
+          }
+          if (update.state === 'DONE') emitAgentResponse(update.step_index);
+          return;
+        }
         if (
           update.step_type !== 'tool'
           || typeof update.step_index !== 'number'
@@ -297,11 +376,24 @@ export class AgyBackend implements AgentBackend {
           this.emit({ type: 'tool-call', ...display, callId });
         }
         endedToolCalls.add(callId);
+        const normalizedToolName = update.tool_name.toLowerCase();
+        const toolOutput = VISIBLE_OUTPUT_TOOLS.has(normalizedToolName)
+          ? safeToolOutput(toolInfo.output)
+          : undefined;
+        const toolResult: Record<string, unknown> = { status: update.state };
+        if (toolOutput) {
+          toolResult[update.state === 'ERROR' ? 'stderr' : 'stdout'] = toolOutput;
+          this.emit({
+            type: 'event',
+            name: 'thinking',
+            payload: { text: toolOutput, streaming: false },
+          });
+        }
         this.emit({
           type: 'tool-result',
           toolName: display.toolName,
           callId,
-          result: { status: update.state },
+          result: toolResult,
         });
       };
 
@@ -384,6 +476,11 @@ export class AgyBackend implements AgentBackend {
         if (stderrBytes > 0) this.log(`agy stderr suppressed (${stderrBytes} bytes)`);
         if (streamBuffer.trim()) {
           this.log(`ignored unterminated agy stream-json record (${Buffer.byteLength(streamBuffer, 'utf8')} bytes)`);
+        }
+        if (!resultSeen) {
+          for (const stepIndex of [...agentResponseBuffers.keys()].sort((a, b) => a - b)) {
+            emitAgentResponse(stepIndex);
+          }
         }
 
         // Pin the conversation our first turn created so later turns resume it.
