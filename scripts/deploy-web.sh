@@ -6,6 +6,7 @@ readonly CANONICAL_WEB_ORIGIN="https://47.115.228.20:8443"
 readonly OSS_BUCKET="${PAWS_WEB_OSS_BUCKET:-happy-app-ota-jacky}"
 readonly OSS_UPLOAD_ENDPOINT="${OSS_UPLOAD_ENDPOINT:-https://oss-cn-hangzhou.aliyuncs.com}"
 readonly OSS_ADDRESSING_STYLE="${OSS_ADDRESSING_STYLE:-virtual}"
+readonly OSS_PUBLIC_ORIGIN="${PAWS_WEB_OSS_ORIGIN:-https://$OSS_BUCKET.oss-cn-hangzhou.aliyuncs.com}"
 readonly SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 readonly REPO_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 readonly DIST_DIR="${PAWS_WEB_DIST_DIR:-$REPO_ROOT/packages/happy-app/dist}"
@@ -41,8 +42,17 @@ require_command() {
 
 oss_args=(--endpoint "$OSS_UPLOAD_ENDPOINT" --addressing-style "$OSS_ADDRESSING_STYLE")
 
-oss_stat() {
-    aliyun ossutil stat "$1" "${oss_args[@]}" >/dev/null 2>&1
+oss_http_exists() {
+    local object_path="$1"
+    local status
+    status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+        --head "$OSS_PUBLIC_ORIGIN/$object_path")" \
+        || fail "无法通过公开 HTTP 检查 OSS object：$object_path"
+    case "$status" in
+        200) return 0 ;;
+        404) return 1 ;;
+        *) fail "公开 HTTP 检查 OSS object $object_path 返回 $status。" ;;
+    esac
 }
 
 oss_copy_preserving() {
@@ -78,6 +88,7 @@ if [[ ! "$OSS_BUCKET" =~ ^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$ ]]; then
 fi
 
 require_command aliyun
+require_command curl
 aliyun ossutil --help >/dev/null 2>&1 || fail "需要带 ossutil 子命令的 aliyun CLI。"
 
 if [[ "${1:-}" == "--rollback" ]]; then
@@ -89,8 +100,8 @@ if [[ "${1:-}" == "--rollback" ]]; then
     rollback_index="oss://$OSS_BUCKET/$rollback_prefix/index.html"
     current_marker="oss://$OSS_BUCKET/web/current/.paws-release-revision"
     current_index="oss://$OSS_BUCKET/web/current/index.html"
-    oss_stat "$rollback_marker" || fail "rollback marker 不存在：$rollback_marker"
-    oss_stat "$rollback_index" || fail "rollback index 不存在：$rollback_index"
+    oss_http_exists "$rollback_prefix/.paws-release-revision" || fail "rollback marker 不存在：$rollback_marker"
+    oss_http_exists "$rollback_prefix/index.html" || fail "rollback index 不存在：$rollback_index"
     echo "==> 恢复 OSS Web marker：$rollback_prefix"
     oss_copy_current_marker "$rollback_marker" "$current_marker"
     echo "==> 最后切换 OSS Web HTML：$rollback_prefix"
@@ -163,8 +174,8 @@ release_marker="oss://$OSS_BUCKET/$release_prefix/.paws-release-revision"
 release_index="oss://$OSS_BUCKET/$release_prefix/index.html"
 current_marker="oss://$OSS_BUCKET/web/current/.paws-release-revision"
 current_index="oss://$OSS_BUCKET/web/current/index.html"
-oss_stat "$release_marker" || fail "immutable release marker 未上传：$release_marker"
-oss_stat "$release_index" || fail "immutable release index 未上传：$release_index"
+oss_http_exists "$release_prefix/.paws-release-revision" || fail "immutable release marker 未上传：$release_marker"
+oss_http_exists "$release_prefix/index.html" || fail "immutable release index 未上传：$release_index"
 
 release_id="${PAWS_WEB_RELEASE_ID:-${GITHUB_RUN_ID:-$(date -u +%Y%m%dT%H%M%SZ)}-${RELEASE_REVISION:0:12}}"
 [[ "$release_id" =~ ^[A-Za-z0-9._-]+$ ]] || fail "PAWS_WEB_RELEASE_ID 含不安全字符。"
@@ -174,8 +185,8 @@ rollback_index="oss://$OSS_BUCKET/$rollback_prefix/index.html"
 
 has_current_marker=0
 has_current_index=0
-oss_stat "$current_marker" && has_current_marker=1
-oss_stat "$current_index" && has_current_index=1
+oss_http_exists "web/current/.paws-release-revision" && has_current_marker=1
+oss_http_exists "web/current/index.html" && has_current_index=1
 if [[ "$has_current_marker" != "$has_current_index" ]]; then
     fail "OSS current marker/index 状态不一致，拒绝切换。"
 fi

@@ -54,7 +54,7 @@ async function runUpload(marker = revision) {
     }
 }
 
-test('uploads a complete immutable release before Metro-compatible root objects', async () => {
+test('uploads a complete immutable release without inspecting object ACLs', async () => {
     const result = await runUpload();
 
     assert.equal(result.status, 0, result.stderr);
@@ -69,8 +69,7 @@ test('uploads a complete immutable release before Metro-compatible root objects'
     assert.match(result.log, /oss:\/\/test-web-bucket\/assets\/.*--cache-control public,max-age=31536000,immutable/);
     assert.match(result.log, /oss:\/\/test-web-bucket\/metadata\.json.*--cache-control no-cache/);
     assert.match(result.log, /oss:\/\/test-web-bucket\/\.well-known\/.*--cache-control no-cache/);
-    assert.match(result.log, new RegExp(`ossutil stat oss://test-web-bucket/web/releases/${revision}/index.html`));
-    assert.match(result.log, new RegExp(`ossutil stat oss://test-web-bucket/web/releases/${revision}/\\.paws-release-revision`));
+    assert.doesNotMatch(result.log, /ossutil stat/);
 });
 
 test('rejects an invalid release marker before invoking OSS', async () => {

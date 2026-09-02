@@ -13,8 +13,8 @@ test('production workflow switches verified OSS content before Caddy and guarded
     const position = (name) => names.indexOf(name);
 
     assert.ok(position('Build and stamp Web from this main revision') >= 0);
-    assert.ok(position('Upload and verify immutable Web release') > position('Build and stamp Web from this main revision'));
-    assert.ok(position('Verify immutable OSS release before activation') > position('Upload and verify immutable Web release'));
+    assert.ok(position('Upload complete immutable Web release') > position('Build and stamp Web from this main revision'));
+    assert.ok(position('Verify immutable OSS release before activation') > position('Upload complete immutable Web release'));
     assert.ok(position('Atomically switch OSS Web entry') > position('Verify immutable OSS release before activation'));
     assert.ok(position('Route the Web SPA to OSS') > position('Atomically switch OSS Web entry'));
     assert.ok(position('Verify live OSS-backed release and routes') > position('Route the Web SPA to OSS'));
