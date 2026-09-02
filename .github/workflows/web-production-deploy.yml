@@ -7,7 +7,9 @@ on:
 
 concurrency:
   group: paws-web-production
-  cancel-in-progress: true
+  # A deployment may be between the OSS marker and HTML switches. Queue newer
+  # main revisions instead of cancelling the active release before rollback can run.
+  cancel-in-progress: false
 
 permissions:
   contents: read

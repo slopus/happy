@@ -23,6 +23,13 @@ test('production workflow switches verified OSS content before Caddy and guarded
     assert.ok(position('Roll back failed Web activation') > position('Remove guarded legacy Web files'));
 });
 
+test('production activation is serialized and cannot be cancelled mid-switch', async () => {
+    const workflow = parse(await readFile(workflowUrl, 'utf8'));
+
+    assert.equal(workflow.concurrency.group, 'paws-web-production');
+    assert.equal(workflow.concurrency['cancel-in-progress'], false);
+});
+
 test('production workflow has rollback outputs and no active server deploy path', async () => {
     const workflow = parse(await readFile(workflowUrl, 'utf8'));
     const job = workflow.jobs.deploy;
