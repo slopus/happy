@@ -31,6 +31,8 @@ async function createDist() {
 async function runVerifier({
     healthBody = JSON.stringify({ status: 'ok', service: 'happy-server' }),
     healthContentType = 'application/json; charset=utf-8',
+    healthFailuresBeforeReady = 0,
+    healthNeverResponds = false,
     liveRevision = revision,
     includeFontCors = true,
     mode = 'live',
@@ -38,6 +40,7 @@ async function runVerifier({
     immutableCache = true,
 } = {}) {
     const directory = await createDist();
+    let healthRequests = 0;
     const server = http.createServer((request, response) => {
         const origin = `http://127.0.0.1:${server.address().port}`;
         if (request.url?.endsWith('.ttf')) {
@@ -90,9 +93,16 @@ async function runVerifier({
             return;
         }
         if (request.url === '/health') {
+            healthRequests += 1;
+            if (healthNeverResponds) return;
             response.statusCode = 200;
-            response.setHeader('Content-Type', healthContentType);
-            response.end(healthBody);
+            if (healthRequests <= healthFailuresBeforeReady) {
+                response.setHeader('Content-Type', 'text/html; charset=utf-8');
+                response.end('<html><body>Paws</body></html>');
+            } else {
+                response.setHeader('Content-Type', healthContentType);
+                response.end(healthBody);
+            }
             return;
         }
         response.statusCode = 200;
@@ -108,13 +118,22 @@ async function runVerifier({
             const args = [verifierPath, origin, join(directory, 'index.html')];
             if (mode === 'immutable') args.push('--immutable', origin);
             const child = spawn(process.execPath, args, {
+                env: {
+                    ...process.env,
+                    PAWS_WEB_HEALTH_RETRY_INTERVAL_MS: '10',
+                    PAWS_WEB_HEALTH_TIMEOUT_MS: '100',
+                },
                 stdio: ['ignore', 'pipe', 'pipe'],
             });
             let stdout = '';
             let stderr = '';
+            const killTimer = setTimeout(() => child.kill('SIGKILL'), 2_000);
             child.stdout.on('data', (chunk) => { stdout += chunk; });
             child.stderr.on('data', (chunk) => { stderr += chunk; });
-            child.on('close', (status) => resolve({ status, stdout, stderr }));
+            child.on('close', (status) => {
+                clearTimeout(killTimer);
+                resolve({ status, stdout, stderr });
+            });
         });
         return result;
     } finally {
@@ -145,6 +164,22 @@ test('accepts matching HTML and browser-readable Ionicons and Octicons', async (
     assert.match(result.stdout, /Octicons/);
     assert.match(result.stdout, /representative image asset/);
     assert.match(result.stdout, new RegExp(revision));
+});
+
+test('waits for a transient SPA health fallback while Caddy reload finishes', async () => {
+    const result = await runVerifier({ healthFailuresBeforeReady: 1 });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /healthy happy-server JSON/i);
+});
+
+test('enforces the health readiness deadline when a request never responds', async () => {
+    const startedAt = Date.now();
+    const result = await runVerifier({ healthNeverResponds: true });
+
+    assert.notEqual(result.status, 0);
+    assert.ok(Date.now() - startedAt < 1_000, 'health verifier exceeded its hard deadline');
+    assert.match(result.stderr, /health endpoint.*within 100ms/i);
 });
 
 test('rejects an HTML SPA fallback at the backend health endpoint', async () => {

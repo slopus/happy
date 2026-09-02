@@ -45,6 +45,50 @@ async function fetchRequired(label, url, init) {
     return response;
 }
 
+function positiveDuration(name, fallback) {
+    const raw = process.env[name];
+    if (raw === undefined) return fallback;
+    const value = Number(raw);
+    if (!Number.isFinite(value) || value <= 0) throw new Error(`${name} must be a positive number`);
+    return value;
+}
+
+const healthTimeoutMs = positiveDuration('PAWS_WEB_HEALTH_TIMEOUT_MS', 30_000);
+const healthRetryIntervalMs = positiveDuration('PAWS_WEB_HEALTH_RETRY_INTERVAL_MS', 1_000);
+
+async function waitForHealthyServer() {
+    const deadline = Date.now() + healthTimeoutMs;
+    let lastError;
+    do {
+        try {
+            const remainingMs = Math.max(1, deadline - Date.now());
+            const response = await fetch(`${normalizedOrigin}/health`, {
+                redirect: 'follow',
+                signal: AbortSignal.timeout(remainingMs),
+            });
+            if (!response.ok) throw new Error(`health endpoint failed with HTTP ${response.status}: ${normalizedOrigin}/health`);
+            const contentType = response.headers.get('content-type') ?? '';
+            if (!/^application\/(?:[a-z0-9.+-]+\+)?json\b/i.test(contentType)) {
+                throw new Error(`health endpoint must return application/json, got: ${contentType || '(missing)'}`);
+            }
+            const health = await response.json();
+            if (health?.status !== 'ok' || health?.service !== 'happy-server') {
+                throw new Error(`health endpoint did not return a healthy happy-server response: ${JSON.stringify(health)}`);
+            }
+            console.log('OK 200 health endpoint');
+            console.log('OK health endpoint returned healthy happy-server JSON');
+            return;
+        } catch (error) {
+            lastError = error;
+            if (Date.now() >= deadline) break;
+            await new Promise((resolveDelay) => setTimeout(resolveDelay, Math.min(healthRetryIntervalMs, deadline - Date.now())));
+        }
+    } while (Date.now() <= deadline);
+    throw new Error(`health endpoint did not become ready within ${healthTimeoutMs}ms: ${lastError?.message ?? 'unknown error'}`, {
+        cause: lastError,
+    });
+}
+
 function assertHtmlRevision(label, body) {
     const revisionPattern = /<meta\s+name=["']paws-release-revision["']\s+content=["']([0-9a-f]{40})["']\s*\/?\s*>/i;
     const actualRevision = body.match(revisionPattern)?.[1] ?? null;
@@ -151,16 +195,7 @@ if (immutableMode) {
     }
     console.log(`OK immutable OSS release ${expectedRevision} is safe to activate`);
 } else {
-    const healthResponse = await fetchRequired('health endpoint', `${normalizedOrigin}/health`);
-    const healthContentType = healthResponse.headers.get('content-type') ?? '';
-    if (!/^application\/(?:[a-z0-9.+-]+\+)?json\b/i.test(healthContentType)) {
-        throw new Error(`health endpoint must return application/json, got: ${healthContentType || '(missing)'}`);
-    }
-    const health = await healthResponse.json();
-    if (health?.status !== 'ok' || health?.service !== 'happy-server') {
-        throw new Error(`health endpoint did not return a healthy happy-server response: ${JSON.stringify(health)}`);
-    }
-    console.log('OK health endpoint returned healthy happy-server JSON');
+    await waitForHealthyServer();
     for (const { label, url } of [
         { label: 'Web entry', url: `${normalizedOrigin}/` },
         { label: 'SPA route', url: `${normalizedOrigin}/session/web-deploy-check` },
