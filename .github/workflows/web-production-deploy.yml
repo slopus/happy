@@ -7,10 +7,9 @@ on:
 
 concurrency:
   group: paws-web-production
-  # A newer main revision supersedes any queued or running release. Cancelling
-  # it prevents the release-source guard from reporting an expected race as a
-  # failed deployment, while preserving the latest revision as the only target.
-  cancel-in-progress: true
+  # A deployment may be between the OSS marker and HTML switches. Queue newer
+  # main revisions instead of cancelling the active release before rollback can run.
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -23,9 +22,12 @@ jobs:
     env:
       PAWS_WEB_ORIGIN: https://47.115.228.20:8443
       PAWS_DEPLOY_HOST: root@47.115.228.20
-      PAWS_DEPLOY_PATH: /var/www/happy-web
       PAWS_DEPLOY_PORT: '22'
+      PAWS_LEGACY_WEB_PATH: /var/www/happy-web
       PAWS_WEB_OSS_BUCKET: happy-app-ota-jacky
+      PAWS_WEB_OSS_ORIGIN: https://happy-app-ota-jacky.oss-cn-hangzhou.aliyuncs.com
+      OSS_UPLOAD_ENDPOINT: https://oss-cn-hangzhou.aliyuncs.com
+      OSS_ADDRESSING_STYLE: virtual
       ALIBABA_CLOUD_ACCESS_KEY_ID: ${{ secrets.ALIYUN_OSS_ACCESS_KEY_ID }}
       ALIBABA_CLOUD_ACCESS_KEY_SECRET: ${{ secrets.ALIYUN_OSS_ACCESS_KEY_SECRET }}
       ALIBABA_CLOUD_REGION_ID: cn-hangzhou
@@ -44,6 +46,9 @@ jobs:
           test -n "$ALIBABA_CLOUD_ACCESS_KEY_ID" || { echo '::error::Missing ALIYUN_OSS_ACCESS_KEY_ID secret.'; exit 1; }
           test -n "$ALIBABA_CLOUD_ACCESS_KEY_SECRET" || { echo '::error::Missing ALIYUN_OSS_ACCESS_KEY_SECRET secret.'; exit 1; }
           test -n "${{ secrets.PAWS_WEB_DEPLOY_SSH_PRIVATE_KEY }}" || { echo '::error::Missing PAWS_WEB_DEPLOY_SSH_PRIVATE_KEY secret.'; exit 1; }
+          test "$PAWS_WEB_ORIGIN" = 'https://47.115.228.20:8443'
+          test "$PAWS_WEB_OSS_ORIGIN" = 'https://happy-app-ota-jacky.oss-cn-hangzhou.aliyuncs.com'
+          test "$PAWS_LEGACY_WEB_PATH" = '/var/www/happy-web'
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4
@@ -87,27 +92,87 @@ jobs:
           47.115.228.20 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBEmQUBstAnrOJApt7mRCo0vqiQKe9AG6IgWcwZ+X/RxBwVNPQnCPWjfR3GnxeZOsB5D/6XLIKQAyj/0/N79BlEU=
           EOF
 
-      - name: Route public session shares to the Web SPA
+      - name: Build and stamp Web from this main revision
+        run: |
+          set -euo pipefail
+          RELEASE_TIMESTAMP="$(git show -s --format=%cI "$GITHUB_SHA")"
+          CI=1 APP_ENV=production EXPO_PUBLIC_HAPPY_SERVER_URL="$PAWS_WEB_ORIGIN" \
+            HAPPY_BUILD_COMMIT_SHA="$GITHUB_SHA" \
+            HAPPY_BUILD_COMMIT_TIMESTAMP="$RELEASE_TIMESTAMP" \
+            pnpm --filter happy-app exec expo export --platform web --clear
+          pnpm --filter happy-app exec tsx sources/scripts/injectWebLoading.ts
+          node scripts/stamp-web-release.mjs \
+            packages/happy-app/dist/index.html \
+            packages/happy-app/dist/.paws-release-revision \
+            "$GITHUB_SHA"
+
+      - name: Ensure browser-readable OSS font CORS
+        run: |
+          set -euo pipefail
+          current_cors="$(mktemp)"
+          merged_cors="$(mktemp)"
+          verified_cors="$(mktemp)"
+          verified_merge="$(mktemp)"
+          trap 'rm -f "$current_cors" "$merged_cors" "$verified_cors" "$verified_merge"' EXIT
+          aliyun ossutil api get-bucket-cors \
+            --bucket "$PAWS_WEB_OSS_BUCKET" \
+            --endpoint "$OSS_UPLOAD_ENDPOINT" \
+            --addressing-style "$OSS_ADDRESSING_STYLE" \
+            --output-format json > "$current_cors"
+          cors_change="$(node scripts/merge-web-oss-cors.mjs "$current_cors" "$merged_cors" "$PAWS_WEB_ORIGIN")"
+          if [ "$cors_change" = 'changed' ]; then
+            aliyun ossutil api put-bucket-cors \
+              --bucket "$PAWS_WEB_OSS_BUCKET" \
+              --cors-configuration "file://$merged_cors" \
+              --endpoint "$OSS_UPLOAD_ENDPOINT" \
+              --addressing-style "$OSS_ADDRESSING_STYLE"
+          else
+            test "$cors_change" = 'unchanged'
+          fi
+          aliyun ossutil api get-bucket-cors \
+            --bucket "$PAWS_WEB_OSS_BUCKET" \
+            --endpoint "$OSS_UPLOAD_ENDPOINT" \
+            --addressing-style "$OSS_ADDRESSING_STYLE" \
+            --output-format json > "$verified_cors"
+          test "$(node scripts/merge-web-oss-cors.mjs "$verified_cors" "$verified_merge" "$PAWS_WEB_ORIGIN")" = 'unchanged'
+
+      - name: Upload and verify immutable Web release
+        run: bash scripts/upload-web-assets.sh
+
+      - name: Verify immutable OSS release before activation
+        run: node scripts/verify-web-release.mjs "$PAWS_WEB_OSS_ORIGIN" packages/happy-app/dist/index.html --immutable "$PAWS_WEB_ORIGIN"
+
+      - name: Atomically switch OSS Web entry
+        id: switch
+        env:
+          PAWS_SKIP_BUILD: '1'
+          PAWS_WEB_RELEASE_ID: ${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}
+        run: pnpm web:deploy
+
+      - name: Route the Web SPA to OSS
+        id: caddy
         run: |
           set -euo pipefail
           current_caddy="$(mktemp)"
           next_caddy="$(mktemp)"
           remote_candidate="/tmp/paws-caddy-$GITHUB_SHA"
+          remote_backup="/etc/caddy/Caddyfile.paws-web-oss.previous-$GITHUB_SHA"
           trap 'rm -f "$current_caddy" "$next_caddy"' EXIT
-          ssh -p "$PAWS_DEPLOY_PORT" "$PAWS_DEPLOY_HOST" \
-            'cat /etc/caddy/Caddyfile' > "$current_caddy"
+          ssh -p "$PAWS_DEPLOY_PORT" "$PAWS_DEPLOY_HOST" 'cat /etc/caddy/Caddyfile' > "$current_caddy"
           caddy_change="$(node scripts/configure-production-web-caddy.mjs "$current_caddy" "$next_caddy")"
           if [ "$caddy_change" = 'unchanged' ]; then
-            echo 'Caddyfile already has the required production Web routes; skipping reload.'
+            echo 'backup_path=' >> "$GITHUB_OUTPUT"
+            echo 'Caddyfile already routes the Web SPA to OSS.'
             exit 0
           fi
           test "$caddy_change" = 'changed'
           scp -P "$PAWS_DEPLOY_PORT" "$next_caddy" "$PAWS_DEPLOY_HOST:$remote_candidate"
-          ssh -p "$PAWS_DEPLOY_PORT" "$PAWS_DEPLOY_HOST" bash -s -- "$remote_candidate" <<'REMOTE_SCRIPT'
+          echo "backup_path=$remote_backup" >> "$GITHUB_OUTPUT"
+          ssh -p "$PAWS_DEPLOY_PORT" "$PAWS_DEPLOY_HOST" bash -s -- "$remote_candidate" "$remote_backup" <<'REMOTE_SCRIPT'
           set -euo pipefail
           candidate="$1"
+          backup="$2"
           config="/etc/caddy/Caddyfile"
-          backup="/etc/caddy/Caddyfile.paws-public-share.previous"
           cleanup() { rm -f -- "$candidate"; }
           trap cleanup EXIT
           cp -p -- "$config" "$backup"
@@ -124,34 +189,72 @@ jobs:
           fi
           REMOTE_SCRIPT
 
-      - name: Build Web from this main revision
+      - name: Verify live OSS-backed release and routes
+        id: live_verify
+        run: node scripts/verify-web-release.mjs "$PAWS_WEB_ORIGIN" packages/happy-app/dist/index.html
+
+      - name: Remove guarded legacy Web files
+        id: cleanup
         run: |
           set -euo pipefail
-          RELEASE_TIMESTAMP="$(git show -s --format=%cI "$GITHUB_SHA")"
-          CI=1 APP_ENV=production EXPO_PUBLIC_HAPPY_SERVER_URL="$PAWS_WEB_ORIGIN" \
-            HAPPY_BUILD_COMMIT_SHA="$GITHUB_SHA" \
-            HAPPY_BUILD_COMMIT_TIMESTAMP="$RELEASE_TIMESTAMP" \
-            pnpm --filter happy-app exec expo export --platform web --clear
-          pnpm --filter happy-app exec tsx sources/scripts/injectWebLoading.ts
-          printf '%s\n' "$GITHUB_SHA" > packages/happy-app/dist/.paws-release-revision
-
-      - name: Upload and verify immutable Web assets
-        run: |
+          legacy_path="$PAWS_LEGACY_WEB_PATH"
+          test "$legacy_path" = '/var/www/happy-web'
+          ssh -p "$PAWS_DEPLOY_PORT" "$PAWS_DEPLOY_HOST" bash -s -- "$legacy_path" <<'REMOTE_SCRIPT'
           set -euo pipefail
-          bash scripts/upload-web-assets.sh
-          node scripts/verify-web-release.mjs "$PAWS_WEB_ORIGIN" packages/happy-app/dist/index.html
+          legacy_path="$1"
+          test "$legacy_path" = '/var/www/happy-web'
+          if grep -Fq -- "$legacy_path" /etc/caddy/Caddyfile; then
+            echo "错误：active Caddyfile 仍引用 $legacy_path，拒绝删除。" >&2
+            exit 1
+          fi
+          for target in "$legacy_path" "${legacy_path}.backup-"* "${legacy_path}.next-"*; do
+            [[ -e "$target" ]] || continue
+            case "$target" in
+              /var/www/happy-web|/var/www/happy-web.backup-*|/var/www/happy-web.next-*)
+                rm -rf -- "$target"
+                ;;
+              *)
+                echo "错误：legacy cleanup target 越界：$target" >&2
+                exit 1
+                ;;
+            esac
+          done
+          REMOTE_SCRIPT
 
-      - name: Atomically switch Web entry
-        env:
-          PAWS_SKIP_BUILD: '1'
-        run: pnpm web:deploy
-
-      - name: Verify live release revision and routes
+      - name: Roll back failed Web activation
+        if: ${{ failure() && steps.live_verify.outcome != 'success' }}
         run: |
+          set -uo pipefail
+          rollback_prefix="${{ steps.switch.outputs.rollback_prefix }}"
+          caddy_backup="${{ steps.caddy.outputs.backup_path }}"
+          oss_rollback_status=0
+          caddy_rollback_status=0
+          set +e
+          if [ -n "$rollback_prefix" ]; then
+            bash scripts/deploy-web.sh --rollback "$rollback_prefix"
+            oss_rollback_status=$?
+          fi
+          if [ -n "$caddy_backup" ]; then
+            ssh -p "$PAWS_DEPLOY_PORT" "$PAWS_DEPLOY_HOST" bash -s -- "$caddy_backup" <<'REMOTE_SCRIPT'
           set -euo pipefail
-          ssh -p "$PAWS_DEPLOY_PORT" "$PAWS_DEPLOY_HOST" \
-            "test \"\$(tr -d '[:space:]' < '$PAWS_DEPLOY_PATH/.paws-release-revision')\" = '$GITHUB_SHA'"
-          node scripts/verify-web-release.mjs "$PAWS_WEB_ORIGIN" packages/happy-app/dist/index.html
+          backup="$1"
+          config="/etc/caddy/Caddyfile"
+          case "$backup" in
+            /etc/caddy/Caddyfile.paws-web-oss.previous-*) ;;
+            *) echo "错误：Caddy rollback path 越界。" >&2; exit 1 ;;
+          esac
+          test -f "$backup"
+          cp -p -- "$backup" "$config"
+          caddy validate --config "$config"
+          systemctl reload caddy
+          REMOTE_SCRIPT
+            caddy_rollback_status=$?
+          fi
+          set -e
+          if [ "$oss_rollback_status" -ne 0 ] || [ "$caddy_rollback_status" -ne 0 ]; then
+            echo "错误：Web 回滚未完全成功（OSS=$oss_rollback_status, Caddy=$caddy_rollback_status）。" >&2
+            exit 1
+          fi
 
       - name: Write deployment summary
         if: success()
@@ -163,5 +266,6 @@ jobs:
             echo '| --- | --- |'
             echo "| Origin | $PAWS_WEB_ORIGIN |"
             echo "| Commit | \`$GITHUB_SHA\` |"
-            echo "| Deploy path | \`$PAWS_DEPLOY_PATH\` |"
+            echo "| Static storage | \`oss://$PAWS_WEB_OSS_BUCKET/web/releases/$GITHUB_SHA/\` |"
+            echo '| Server Web files | Removed after verification |'
           } >> "$GITHUB_STEP_SUMMARY"

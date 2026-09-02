@@ -64,21 +64,41 @@ function PublicTranscriptHeader({
     source?: keyof typeof sourceLabels;
 }) {
     return (
-        <View style={styles.headerFrame} testID="public-session-compact-header">
-            <View style={styles.brandMark}>
-                <Ionicons name="paw" size={15} color={styles.brandMarkIcon.color} />
-            </View>
-            <View style={styles.headerCopy}>
-                <Text accessibilityRole="header" numberOfLines={1} style={styles.title}>{title}</Text>
-                <View style={styles.metadataRow}>
-                    {source ? (
-                        <Text numberOfLines={1} style={styles.source} testID="public-session-source-label">
-                            {sourceLabels[source]}
-                        </Text>
-                    ) : null}
-                    <Text numberOfLines={1} style={styles.date}>
-                        {new Date(publishedAt).toLocaleString()}
+        <View style={styles.headerBoundary} testID="public-session-compact-header">
+            <View style={styles.headerFrame} testID="public-session-header-inner">
+                <View style={styles.brandMark}>
+                    <Ionicons
+                        testID="public-session-header-icon"
+                        name="chatbubble-ellipses-outline"
+                        size={18}
+                        color={styles.brandMarkIcon.color}
+                    />
+                </View>
+                <View style={styles.headerCopy}>
+                    <Text
+                        testID="public-session-title"
+                        accessibilityRole="header"
+                        numberOfLines={1}
+                        style={styles.title}
+                    >
+                        {title}
                     </Text>
+                    <View style={styles.dateRow}>
+                        {source ? (
+                            <Text numberOfLines={1} style={styles.source} testID="public-session-source-label">
+                                {sourceLabels[source]}
+                            </Text>
+                        ) : null}
+                        <Ionicons
+                            testID="public-session-time-icon"
+                            name="time-outline"
+                            size={13}
+                            color={styles.date.color}
+                        />
+                        <Text testID="public-session-published-at" numberOfLines={1} style={styles.date}>
+                            {new Date(publishedAt).toLocaleString()}
+                        </Text>
+                    </View>
                 </View>
             </View>
         </View>
@@ -99,39 +119,48 @@ const styles = StyleSheet.create((theme) => ({
         width: '100%',
         maxWidth: layout.maxWidth - 40,
     },
-    headerFrame: {
-        flexDirection: 'row',
+    headerBoundary: {
         alignItems: 'center',
-        minHeight: 58,
-        paddingHorizontal: 18,
-        gap: 10,
+        paddingHorizontal: 20,
         borderBottomWidth: StyleSheet.hairlineWidth,
         borderBottomColor: theme.colors.divider,
         backgroundColor: theme.colors.groupped.background,
     },
+    headerFrame: {
+        width: '100%',
+        maxWidth: layout.maxWidth - 40,
+        flexDirection: 'row',
+        alignItems: 'center',
+        minHeight: 82,
+        paddingVertical: 16,
+        gap: 12,
+    },
     brandMark: {
-        width: 28,
-        height: 28,
-        borderRadius: 9,
+        width: 36,
+        height: 36,
+        borderRadius: 10,
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: theme.colors.accent,
+        backgroundColor: theme.colors.surfaceHighest,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: theme.colors.divider,
     },
-    brandMarkIcon: { color: theme.colors.surface },
+    brandMarkIcon: { color: theme.colors.textSecondary },
     headerCopy: {
         flex: 1,
         minWidth: 0,
     },
     title: {
         color: theme.colors.text,
-        fontSize: 15,
-        lineHeight: 20,
+        fontSize: 22,
+        lineHeight: 28,
         fontWeight: '600' as const,
     },
-    metadataRow: {
+    dateRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 7,
+        gap: 4,
+        marginTop: 2,
     },
     source: {
         color: theme.colors.accent,

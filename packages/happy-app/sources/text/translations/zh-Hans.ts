@@ -617,6 +617,7 @@ export const zhHans: TranslationStructure = {
 
     session: {
         anchorsButton: '锚点',
+        scrollToBottom: '滚动到底部',
         anchorsTitle: '我的提问',
         anchorsSubtitle: ({ count }: { count: number }) => `${count} 条提问`,
         anchorsEmpty: '还没有可跳转的提问。',

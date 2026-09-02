@@ -617,6 +617,7 @@ export const ja: TranslationStructure = {
 
     session: {
         anchorsButton: 'ジャンプ',
+        scrollToBottom: '一番下までスクロール',
         anchorsTitle: 'あなたのメッセージ',
         anchorsSubtitle: ({ count }: { count: number }) => `${count} 件`,
         anchorsEmpty: 'ジャンプできるメッセージはまだありません。',

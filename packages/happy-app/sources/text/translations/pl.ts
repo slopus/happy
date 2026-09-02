@@ -633,6 +633,7 @@ export const pl: TranslationStructure = {
 
     session: {
         anchorsButton: 'Skok',
+        scrollToBottom: 'Przewiń na dół',
         anchorsTitle: 'Twoje wiadomości',
         anchorsSubtitle: ({ count }: { count: number }) => `Wiadomości: ${count}`,
         anchorsEmpty: 'Brak wiadomości do przejścia.',
