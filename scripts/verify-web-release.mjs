@@ -151,7 +151,16 @@ if (immutableMode) {
     }
     console.log(`OK immutable OSS release ${expectedRevision} is safe to activate`);
 } else {
-    await fetchRequired('health endpoint', `${normalizedOrigin}/health`);
+    const healthResponse = await fetchRequired('health endpoint', `${normalizedOrigin}/health`);
+    const healthContentType = healthResponse.headers.get('content-type') ?? '';
+    if (!/^application\/(?:[a-z0-9.+-]+\+)?json\b/i.test(healthContentType)) {
+        throw new Error(`health endpoint must return application/json, got: ${healthContentType || '(missing)'}`);
+    }
+    const health = await healthResponse.json();
+    if (health?.status !== 'ok' || health?.service !== 'happy-server') {
+        throw new Error(`health endpoint did not return a healthy happy-server response: ${JSON.stringify(health)}`);
+    }
+    console.log('OK health endpoint returned healthy happy-server JSON');
     for (const { label, url } of [
         { label: 'Web entry', url: `${normalizedOrigin}/` },
         { label: 'SPA route', url: `${normalizedOrigin}/session/web-deploy-check` },

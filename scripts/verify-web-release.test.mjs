@@ -29,6 +29,8 @@ async function createDist() {
 }
 
 async function runVerifier({
+    healthBody = JSON.stringify({ status: 'ok', service: 'happy-server' }),
+    healthContentType = 'application/json; charset=utf-8',
     liveRevision = revision,
     includeFontCors = true,
     mode = 'live',
@@ -87,6 +89,12 @@ async function runVerifier({
             response.end('app');
             return;
         }
+        if (request.url === '/health') {
+            response.statusCode = 200;
+            response.setHeader('Content-Type', healthContentType);
+            response.end(healthBody);
+            return;
+        }
         response.statusCode = 200;
         response.setHeader('Content-Type', request.url?.endsWith('.wasm') ? 'application/wasm' : 'application/json');
         response.setHeader('Cache-Control', 'no-cache');
@@ -137,6 +145,23 @@ test('accepts matching HTML and browser-readable Ionicons and Octicons', async (
     assert.match(result.stdout, /Octicons/);
     assert.match(result.stdout, /representative image asset/);
     assert.match(result.stdout, new RegExp(revision));
+});
+
+test('rejects an HTML SPA fallback at the backend health endpoint', async () => {
+    const result = await runVerifier({
+        healthBody: '<html><body>Paws</body></html>',
+        healthContentType: 'text/html; charset=utf-8',
+    });
+
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /health endpoint.*application\/json/i);
+});
+
+test('rejects JSON that does not identify a healthy happy-server backend', async () => {
+    const result = await runVerifier({ healthBody: JSON.stringify({ status: 'ok' }) });
+
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /healthy happy-server response/i);
 });
 
 test('rejects an immutable release asset with the wrong MIME type before activation', async () => {

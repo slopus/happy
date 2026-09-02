@@ -8,6 +8,7 @@ export const WEB_OSS_CADDY_BLOCK_END = '# paws-web-oss:end';
 export const PRODUCTION_CADDY_GRACE_PERIOD = '10s';
 export const PRODUCTION_WEB_OSS_HOST = 'happy-app-ota-jacky.oss-cn-hangzhou.aliyuncs.com';
 export const PRODUCTION_WEB_OSS_ORIGIN = `https://${PRODUCTION_WEB_OSS_HOST}`;
+const REQUIRED_BACKEND_PATHS = ['/v1/*', '/v2/*', '/v3/*', '/v4/*', '/files/*', '/health'];
 
 const PUBLIC_SHARE_CADDY_LINES = [
     PUBLIC_SHARE_CADDY_BLOCK_START,
@@ -164,7 +165,10 @@ export function configureProductionWebCaddy(source, siteAddress = '47.115.228.20
     if (backendIndex < 0) throw new Error(`@backend path matcher not found in ${siteAddress}`);
     const indentation = siteLines[backendIndex].match(/^\s*/)?.[0] ?? '\t';
     const backendTokens = siteLines[backendIndex].trim().split(/\s+/);
-    siteLines[backendIndex] = `${indentation}${backendTokens.filter((token) => token !== '/share/*').join(' ')}`;
+    const additionalBackendPaths = backendTokens
+        .slice(2)
+        .filter((token) => token !== '/share/*' && !REQUIRED_BACKEND_PATHS.includes(token));
+    siteLines[backendIndex] = `${indentation}@backend path ${[...REQUIRED_BACKEND_PATHS, ...additionalBackendPaths].join(' ')}`;
     siteLines.splice(
         backendIndex,
         0,

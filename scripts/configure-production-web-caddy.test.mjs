@@ -58,7 +58,7 @@ async function runConfiguratorCli(source) {
 test('routes public shares to the SPA and installs exact public-document headers', () => {
     const configured = configureProductionWebCaddy(fixture);
     assert.match(configured, new RegExp(`^\\{\\n\\tgrace_period ${PRODUCTION_CADDY_GRACE_PERIOD}\\n\\}`, 'm'));
-    assert.match(configured, /@backend path \/v1\/\* \/v3\/\* \/v4\/\* \/files\/\*/);
+    assert.match(configured, /@backend path \/v1\/\* \/v2\/\* \/v3\/\* \/v4\/\* \/files\/\* \/health/);
     assert.doesNotMatch(configured, /@backend path[^\n]*\/share\/\*/);
     assert.match(configured, /@public_session_share path \/share\/\*/);
     assert.match(configured, /Cache-Control "no-store"/);
