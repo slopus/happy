@@ -13,14 +13,23 @@ test('production workflow switches verified OSS content before Caddy and guarded
     const position = (name) => names.indexOf(name);
 
     assert.ok(position('Build and stamp Web from this main revision') >= 0);
-    assert.ok(position('Ensure browser-readable OSS font CORS') > position('Build and stamp Web from this main revision'));
-    assert.ok(position('Upload and verify immutable Web release') > position('Ensure browser-readable OSS font CORS'));
+    assert.ok(position('Upload and verify immutable Web release') > position('Build and stamp Web from this main revision'));
     assert.ok(position('Verify immutable OSS release before activation') > position('Upload and verify immutable Web release'));
     assert.ok(position('Atomically switch OSS Web entry') > position('Verify immutable OSS release before activation'));
     assert.ok(position('Route the Web SPA to OSS') > position('Atomically switch OSS Web entry'));
     assert.ok(position('Verify live OSS-backed release and routes') > position('Route the Web SPA to OSS'));
     assert.ok(position('Remove guarded legacy Web files') > position('Verify live OSS-backed release and routes'));
     assert.ok(position('Roll back failed Web activation') > position('Remove guarded legacy Web files'));
+});
+
+test('production deployment verifies data-plane CORS without bucket-control permissions', async () => {
+    const workflowText = await readFile(workflowUrl, 'utf8');
+    const workflow = parse(workflowText);
+    const verifyStep = workflow.jobs.deploy.steps.find((step) => step.name === 'Verify immutable OSS release before activation');
+
+    assert.doesNotMatch(workflowText, /ossutil api (?:get|put)-bucket-cors/);
+    assert.match(verifyStep.run, /verify-web-release\.mjs/);
+    assert.match(verifyStep.run, /--immutable/);
 });
 
 test('production activation is serialized and cannot be cancelled mid-switch', async () => {

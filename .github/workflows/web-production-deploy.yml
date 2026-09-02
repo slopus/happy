@@ -106,36 +106,6 @@ jobs:
             packages/happy-app/dist/.paws-release-revision \
             "$GITHUB_SHA"
 
-      - name: Ensure browser-readable OSS font CORS
-        run: |
-          set -euo pipefail
-          current_cors="$(mktemp)"
-          merged_cors="$(mktemp)"
-          verified_cors="$(mktemp)"
-          verified_merge="$(mktemp)"
-          trap 'rm -f "$current_cors" "$merged_cors" "$verified_cors" "$verified_merge"' EXIT
-          aliyun ossutil api get-bucket-cors \
-            --bucket "$PAWS_WEB_OSS_BUCKET" \
-            --endpoint "$OSS_UPLOAD_ENDPOINT" \
-            --addressing-style "$OSS_ADDRESSING_STYLE" \
-            --output-format json > "$current_cors"
-          cors_change="$(node scripts/merge-web-oss-cors.mjs "$current_cors" "$merged_cors" "$PAWS_WEB_ORIGIN")"
-          if [ "$cors_change" = 'changed' ]; then
-            aliyun ossutil api put-bucket-cors \
-              --bucket "$PAWS_WEB_OSS_BUCKET" \
-              --cors-configuration "file://$merged_cors" \
-              --endpoint "$OSS_UPLOAD_ENDPOINT" \
-              --addressing-style "$OSS_ADDRESSING_STYLE"
-          else
-            test "$cors_change" = 'unchanged'
-          fi
-          aliyun ossutil api get-bucket-cors \
-            --bucket "$PAWS_WEB_OSS_BUCKET" \
-            --endpoint "$OSS_UPLOAD_ENDPOINT" \
-            --addressing-style "$OSS_ADDRESSING_STYLE" \
-            --output-format json > "$verified_cors"
-          test "$(node scripts/merge-web-oss-cors.mjs "$verified_cors" "$verified_merge" "$PAWS_WEB_ORIGIN")" = 'unchanged'
-
       - name: Upload and verify immutable Web release
         run: bash scripts/upload-web-assets.sh
 
