@@ -16,7 +16,7 @@ import { useHappyAction } from '@/hooks/useHappyAction';
 import { HappyError } from '@/utils/errors';
 import { SessionActionsAnchor, SessionActionsPopover } from './SessionActionsPopover';
 import { useSessionActionAlert } from '@/hooks/useSessionQuickActions';
-import { sessionKill } from '@/sync/ops';
+import { sessionKillOrArchive } from '@/sync/ops';
 import { isWorktreePath, getRepoPath, getWorktreeName } from '@/utils/worktree';
 import { useNewSessionDraft } from '@/hooks/useNewSessionDraft';
 import { useRouter } from 'expo-router';
@@ -237,9 +237,12 @@ export const CompactSessionRow = React.memo(({ session, selected, showBorder }: 
     const [actionsAnchor, setActionsAnchor] = React.useState<SessionActionsAnchor | null>(null);
 
     const [archivingSession, performArchive] = useHappyAction(async () => {
-        const result = await sessionKill(session.id);
-        if (!result.success) {
-            throw new HappyError(result.message || t('sessionInfo.failedToArchiveSession'), false);
+        // Kill the CLI process; if it's already dead, force-archive via the
+        // server so an orphaned session can't get stuck active (#1739).
+        try {
+            await sessionKillOrArchive(session.id);
+        } catch (error) {
+            throw new HappyError(error instanceof Error ? error.message : t('sessionInfo.failedToArchiveSession'), false);
         }
     });
 
