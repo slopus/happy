@@ -11,7 +11,6 @@ import { openExternalUrl } from '@/utils/openExternalUrl';
 const SUPPORT_URL = 'https://github.com/wangjs-jacky/happy/issues';
 
 type SidebarHelpMenuProps = {
-    iconRail?: boolean;
     onOpenChange: (open: boolean) => void;
     open: boolean;
     restoreFocusOnClose?: boolean;
@@ -49,7 +48,6 @@ const MenuAction = React.forwardRef<any, MenuActionProps>(function MenuAction({
 });
 
 export const SidebarHelpMenu = React.memo(function SidebarHelpMenu({
-    iconRail = false,
     onOpenChange,
     open,
     restoreFocusOnClose = true,
@@ -137,7 +135,7 @@ export const SidebarHelpMenu = React.memo(function SidebarHelpMenu({
                     accessibilityLabel={t('keyboardShortcuts.help')}
                     accessibilityRole="menu"
                     accessibilityViewIsModal
-                    style={[styles.menu, iconRail && styles.menuIconRail]}
+                    style={styles.menu}
                     testID="sidebar-help-menu"
                 >
                     <MenuAction
@@ -166,7 +164,7 @@ export const SidebarHelpMenu = React.memo(function SidebarHelpMenu({
                 accessibilityRole="button"
                 accessibilityState={{ expanded: open }}
                 onPress={() => onOpenChange(!open)}
-                style={({ pressed }) => [styles.trigger, iconRail && styles.triggerIconRail, pressed && styles.pressed]}
+                style={({ pressed }) => [styles.trigger, pressed && styles.pressed]}
                 testID="sidebar-help-trigger"
             >
                 <Ionicons color={theme.colors.textSecondary} name="help-circle-outline" size={22} />
@@ -197,7 +195,6 @@ const styles = StyleSheet.create((theme) => ({
         borderColor: theme.colors.divider,
         backgroundColor: theme.colors.surface,
     },
-    triggerIconRail: { borderWidth: 0 },
     pressed: {
         backgroundColor: theme.colors.surfacePressed,
     },
@@ -217,13 +214,6 @@ const styles = StyleSheet.create((theme) => ({
         shadowRadius: 18,
         shadowOffset: { width: 0, height: 8 },
         elevation: 10,
-    },
-    menuIconRail: {
-        bottom: 0,
-        left: '100%',
-        right: undefined,
-        width: 224,
-        marginLeft: 6,
     },
     menuAction: {
         minHeight: 42,

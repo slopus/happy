@@ -11,7 +11,6 @@ import { t } from '@/text';
 
 type SidebarAccountMenuProps = {
     desktopDensity?: boolean;
-    iconOnly?: boolean;
     displayName: string;
     onNavigate: (path: string) => void;
     onOpenSettings?: () => void;
@@ -58,7 +57,6 @@ const MenuAction = React.forwardRef<any, MenuActionProps>(function MenuAction({
 
 export const SidebarAccountMenu = React.memo(function SidebarAccountMenu({
     desktopDensity = false,
-    iconOnly = false,
     displayName,
     onNavigate,
     onOpenSettings,
@@ -145,7 +143,7 @@ export const SidebarAccountMenu = React.memo(function SidebarAccountMenu({
                     accessibilityViewIsModal
                     style={[
                         styles.menu,
-                        iconOnly ? styles.menuIconRail : desktopDensity ? styles.menuDesktop : styles.menuRegular,
+                        desktopDensity ? styles.menuDesktop : styles.menuRegular,
                     ]}
                     testID="sidebar-account-menu"
                 >
@@ -199,7 +197,6 @@ export const SidebarAccountMenu = React.memo(function SidebarAccountMenu({
                 style={({ pressed }) => [
                     styles.trigger,
                     desktopDensity && styles.triggerDesktop,
-                    iconOnly && styles.triggerIconRail,
                     pressed && styles.pressed,
                 ]}
                 testID="sidebar-account-trigger"
@@ -210,17 +207,19 @@ export const SidebarAccountMenu = React.memo(function SidebarAccountMenu({
                     size={desktopDensity ? 30 : 38}
                     thumbhash={profile.avatar?.thumbhash}
                 />
-                {!iconOnly ? <Text numberOfLines={1} style={styles.displayName}>{displayName}</Text> : null}
+                <Text numberOfLines={1} style={styles.displayName}>
+                    {displayName}
+                </Text>
                 {unreadCount > 0 ? (
                     <View style={styles.badge}>
                         <Text style={styles.badgeText}>{unreadCount > 99 ? '99+' : unreadCount}</Text>
                     </View>
                 ) : null}
-                {!iconOnly ? <Ionicons
+                <Ionicons
                     color={theme.colors.textSecondary}
                     name={open ? 'chevron-down' : 'chevron-up'}
                     size={15}
-                /> : null}
+                />
             </Pressable>
         </View>
     );
@@ -258,14 +257,6 @@ const styles = StyleSheet.create((theme) => ({
         borderRadius: 10,
         paddingHorizontal: 9,
         gap: 8,
-    },
-    triggerIconRail: {
-        borderWidth: 0,
-        height: 44,
-        justifyContent: 'center',
-        minHeight: 44,
-        paddingHorizontal: 0,
-        width: 44,
     },
     pressed: {
         backgroundColor: theme.colors.surfacePressed,
@@ -313,12 +304,6 @@ const styles = StyleSheet.create((theme) => ({
     menuDesktop: {
         left: 10,
         right: 10,
-    },
-    menuIconRail: {
-        left: '100%',
-        top: 0,
-        width: 224,
-        marginLeft: 6,
     },
     menuAction: {
         minHeight: 42,
