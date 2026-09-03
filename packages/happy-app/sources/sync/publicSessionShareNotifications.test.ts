@@ -19,7 +19,7 @@ import { notifyPublicSessionShareJob } from './publicSessionShareNotifications';
 const base: PublicSessionShareJob = {
     id: 'job-1', sessionId: 'session-1', title: 'Release notes', requestedAt: 100,
     cutoffSeq: 42, ownerId: 'owner-1', serverUrl: 'https://paws.test',
-    groupToolCalls: true, status: 'ready', progress: { completed: 1, total: 1 },
+    groupToolCalls: true, themePack: 'caramel', status: 'ready', progress: { completed: 1, total: 1 },
     notificationPending: false, updatedAt: 200,
     publicId: 'public-id', publishedAt: 200,
 };

@@ -6,8 +6,10 @@ import {
     NativeSyntheticEvent,
     Platform,
     Pressable,
+    StyleProp,
     Text,
     View,
+    ViewStyle,
 } from 'react-native';
 import { Octicons } from '@expo/vector-icons';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
@@ -57,6 +59,7 @@ export type ConversationTranscriptProps = {
     showAnchorNavigation?: boolean;
     showScrollToBottom?: boolean;
     inverted?: boolean;
+    contentContainerStyle?: StyleProp<ViewStyle>;
 };
 
 export const ConversationTranscript = React.memo((props: ConversationTranscriptProps) => {
@@ -317,6 +320,7 @@ export const ConversationTranscript = React.memo((props: ConversationTranscriptP
                     : undefined}
                 keyboardShouldPersistTaps="handled"
                 keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'none'}
+                contentContainerStyle={props.contentContainerStyle}
                 renderItem={renderItem}
                 onScroll={handleScroll}
                 scrollEventThrottle={16}

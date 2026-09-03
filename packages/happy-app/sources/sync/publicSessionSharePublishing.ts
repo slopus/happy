@@ -1,7 +1,9 @@
 import type { Message } from './typesMessage';
+import type { PublicSessionCover, PublicSessionSnapshotV2, PublicSessionThemePack } from '@slopus/happy-wire';
 import { buildPublicSessionSnapshot } from './publicSessionSnapshot';
-import type { PublicSessionAttachmentJob, PublicSessionSnapshotV1 } from './publicSessionShareTypes';
+import type { PublicSessionAttachmentJob } from './publicSessionShareTypes';
 import type { PreparedPublicSessionShareAsset } from './apiPublicSessionShares';
+import type { PublicSessionCoverSelection } from './publicSessionShareQueue';
 import { createReducer, reducer } from './reducer/reducer';
 import type { NormalizedMessage } from './typesRaw';
 
@@ -68,9 +70,12 @@ export type PublicSessionPublishDependencies = {
     loadMessages: () => Promise<Message[]>;
     createDraft: () => Promise<{ generation: string; publicId: string }>;
     loadAttachmentBytes: (asset: PublicSessionAttachmentJob) => Promise<Uint8Array>;
+    loadCoverBytes?: (selection: Extract<PublicSessionCoverSelection, { kind: 'upload' }>) => Promise<Uint8Array>;
     prepareAsset: (generation: string, asset: PublicSessionAttachmentJob, sha256: string) => Promise<PreparedPublicSessionShareAsset>;
     uploadAsset: (upload: PreparedPublicSessionShareAsset, bytes: Uint8Array) => Promise<void>;
-    publishDraft: (generation: string, snapshot: PublicSessionSnapshotV1) => Promise<{ publicId: string; publishedAt: number }>;
+    importPexelsCover?: (generation: string, assetId: string, photoId: number) => Promise<PublicSessionCover>;
+    cloneExistingCover?: (generation: string, assetId: string) => Promise<PublicSessionCover>;
+    publishDraft: (generation: string, snapshot: PublicSessionSnapshotV2) => Promise<{ publicId: string; publishedAt: number }>;
     cleanupPublishedShare?: () => Promise<void>;
     createAttachmentId?: () => string;
     hashAttachmentBytes?: (bytes: Uint8Array) => Promise<string>;
@@ -86,7 +91,7 @@ async function sha256Hex(bytes: Uint8Array): Promise<string> {
     return Array.from(digest, (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
-function replaceAttachmentSize(snapshot: PublicSessionSnapshotV1, attachmentId: string, size: number): void {
+function replaceAttachmentSize(snapshot: PublicSessionSnapshotV2, attachmentId: string, size: number): void {
     for (const message of snapshot.messages) {
         for (const block of message.blocks) {
             if (block.type === 'attachment' && block.attachmentId === attachmentId) block.size = size;
@@ -95,7 +100,15 @@ function replaceAttachmentSize(snapshot: PublicSessionSnapshotV1, attachmentId: 
 }
 
 export async function publishPublicSessionSnapshot(
-    input: { sessionId: string; title: string; sharedAt: number; groupToolCalls?: boolean },
+    input: {
+        sessionId: string;
+        jobId?: string;
+        title: string;
+        sharedAt: number;
+        themePack?: PublicSessionThemePack;
+        coverSelection?: PublicSessionCoverSelection;
+        groupToolCalls?: boolean;
+    },
     deps: PublicSessionPublishDependencies,
 ): Promise<{ publicId: string; publishedAt: number }> {
     if (deps.isCancelled?.()) throw new Error('Public session share cancelled');
@@ -105,12 +118,66 @@ export async function publishPublicSessionSnapshot(
         title: input.title,
         messages,
         sharedAt: input.sharedAt,
+        themePack: input.themePack ?? 'caramel',
         groupToolCalls: input.groupToolCalls,
         createAttachmentId: deps.createAttachmentId,
     });
     const draft = await deps.createDraft();
     if (deps.isCancelled?.()) throw new Error('Public session share cancelled');
-    deps.onProgress?.(0, attachments.length);
+    const total = attachments.length + (input.coverSelection ? 1 : 0);
+    let completed = 0;
+    deps.onProgress?.(completed, total);
+
+    if (input.coverSelection?.kind === 'existing') {
+        if (!deps.cloneExistingCover) throw new Error('Public session existing cover clone is unavailable');
+        snapshot.appearance.cover = await deps.cloneExistingCover(
+            draft.generation,
+            input.coverSelection.assetId,
+        );
+        if (deps.isCancelled?.()) throw new Error('Public session share cancelled');
+        completed += 1;
+        deps.onProgress?.(completed, total);
+    } else if (input.coverSelection?.kind === 'pexels') {
+        if (!input.jobId) throw new Error('Public session share job ID is unavailable');
+        if (!deps.importPexelsCover) throw new Error('Public session Pexels cover import is unavailable');
+        snapshot.appearance.cover = await deps.importPexelsCover(
+            draft.generation,
+            input.jobId,
+            input.coverSelection.photoId,
+        );
+        if (deps.isCancelled?.()) throw new Error('Public session share cancelled');
+        completed += 1;
+        deps.onProgress?.(completed, total);
+    } else if (input.coverSelection?.kind === 'upload') {
+        if (!deps.loadCoverBytes) throw new Error('Public session cover bytes are unavailable');
+        const selection = input.coverSelection;
+        const bytes = await deps.loadCoverBytes(selection);
+        if (bytes.length === 0) throw new Error('Public session cover is empty');
+        const asset: PublicSessionAttachmentJob = {
+            attachmentId: selection.attachmentId,
+            sourceRef: selection.uri,
+            encrypted: false,
+            kind: 'image',
+            name: selection.name,
+            mimeType: selection.mimeType,
+            size: bytes.length,
+        };
+        const sha256 = await (deps.hashAttachmentBytes ?? sha256Hex)(bytes);
+        const upload = await deps.prepareAsset(draft.generation, asset, sha256);
+        await deps.uploadAsset(upload, bytes);
+        if (deps.isCancelled?.()) throw new Error('Public session share cancelled');
+        snapshot.appearance.cover = {
+            assetId: selection.attachmentId,
+            mimeType: selection.mimeType,
+            size: bytes.length,
+            width: selection.width,
+            height: selection.height,
+            ...(selection.thumbhash ? { thumbhash: selection.thumbhash } : {}),
+        };
+        completed += 1;
+        deps.onProgress?.(completed, total);
+    }
+
     for (let index = 0; index < attachments.length; index += 1) {
         if (deps.isCancelled?.()) throw new Error('Public session share cancelled');
         const attachment = attachments[index];
@@ -123,7 +190,8 @@ export async function publishPublicSessionSnapshot(
         const upload = await deps.prepareAsset(draft.generation, attachment, sha256);
         await deps.uploadAsset(upload, bytes);
         if (deps.isCancelled?.()) throw new Error('Public session share cancelled');
-        deps.onProgress?.(index + 1, attachments.length);
+        completed += 1;
+        deps.onProgress?.(completed, total);
     }
     if (deps.isCancelled?.()) throw new Error('Public session share cancelled');
     const result = await deps.publishDraft(draft.generation, snapshot);

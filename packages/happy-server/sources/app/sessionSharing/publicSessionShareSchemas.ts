@@ -1,10 +1,18 @@
 export {
     publicSessionBlockSchema,
+    publicSessionCoverAttributionSchema,
     publicSessionSnapshotSchema,
+    publicSessionSnapshotV1Schema,
+    publicSessionSnapshotV2Schema,
     publicSessionSourceProviderSchema,
     publicShareAssetKindSchema,
+    publicSessionThemePackSchema,
     type PublicSessionBlock,
+    type PublicSessionCover,
     type PublicSessionSnapshot,
+    type PublicSessionSnapshotV1,
+    type PublicSessionSnapshotV2,
     type PublicSessionSourceProvider,
     type PublicShareAssetKind,
+    type PublicSessionThemePack,
 } from '@slopus/happy-wire';

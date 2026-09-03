@@ -1,4 +1,49 @@
+import type { PublicSessionCover, PublicSessionThemePack } from '@slopus/happy-wire';
+import { z } from 'zod';
+
 export type PublicSessionShareJobStatus = 'queued' | 'running' | 'ready' | 'failed';
+
+export type PublicSessionCoverSelection =
+    | { kind: 'existing'; assetId: string }
+    | { kind: 'pexels'; photoId: number }
+    | {
+        kind: 'upload';
+        attachmentId: string;
+        uri: string;
+        name: string;
+        mimeType: PublicSessionCover['mimeType'];
+        size: number;
+        width: number;
+        height: number;
+        thumbhash?: string;
+    };
+
+export const publicSessionCoverSelectionSchema: z.ZodType<PublicSessionCoverSelection> = z.discriminatedUnion('kind', [
+    z.object({
+        kind: z.literal('existing'),
+        assetId: z.string().uuid(),
+    }).strict(),
+    z.object({
+        kind: z.literal('pexels'),
+        photoId: z.number().int().positive(),
+    }).strict(),
+    z.object({
+        kind: z.literal('upload'),
+        attachmentId: z.string().uuid(),
+        uri: z.string().regex(/^(?:file|content|ph|assets-library|blob):/i),
+        name: z.string().min(1).max(500),
+        mimeType: z.enum(['image/png', 'image/jpeg', 'image/webp', 'image/avif']),
+        size: z.number().int().positive().max(100 * 1024 * 1024),
+        width: z.number().int().positive().max(100_000),
+        height: z.number().int().positive().max(100_000),
+        thumbhash: z.string().max(1_000).optional(),
+    }).strict(),
+]);
+
+export function normalizePublicSessionCoverSelection(value: unknown): PublicSessionCoverSelection | undefined {
+    const parsed = publicSessionCoverSelectionSchema.safeParse(value);
+    return parsed.success ? parsed.data : undefined;
+}
 
 export type PublicSessionShareJob = {
     id: string;
@@ -9,6 +54,8 @@ export type PublicSessionShareJob = {
     ownerId: string;
     serverUrl: string;
     groupToolCalls: boolean;
+    themePack: PublicSessionThemePack;
+    coverSelection?: PublicSessionCoverSelection;
     status: PublicSessionShareJobStatus;
     progress: { completed: number; total: number };
     updatedAt: number;
@@ -25,7 +72,15 @@ export type PublicSessionShareQueueStorage = {
 
 type PublicSessionShareJobInput = Pick<
     PublicSessionShareJob,
-    'sessionId' | 'title' | 'requestedAt' | 'cutoffSeq' | 'ownerId' | 'serverUrl' | 'groupToolCalls'
+    | 'sessionId'
+    | 'title'
+    | 'requestedAt'
+    | 'cutoffSeq'
+    | 'ownerId'
+    | 'serverUrl'
+    | 'groupToolCalls'
+    | 'themePack'
+    | 'coverSelection'
 >;
 
 type PublicSessionShareJobResult = { publicId: string; publishedAt: number };
@@ -150,9 +205,11 @@ export function createPublicSessionShareQueue(deps: PublicSessionShareQueueDepen
         enqueue(input: PublicSessionShareJobInput): PublicSessionShareJob {
             const existing = jobs.get(input.sessionId);
             if (existing?.status === 'queued' || existing?.status === 'running') return existing;
+            const coverSelection = normalizePublicSessionCoverSelection(input.coverSelection);
             const job = replace({
                 id: deps.createId(),
                 ...input,
+                coverSelection,
                 status: 'queued',
                 progress: { completed: 0, total: 0 },
                 notificationPending: false,

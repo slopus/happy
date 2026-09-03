@@ -1,9 +1,10 @@
 import type { AuthCredentials } from '@/auth/tokenStorage';
+import type { PublicSessionCover, PublicSessionSnapshot } from '@slopus/happy-wire';
+import { z } from 'zod';
 import { getServerUrl } from './serverConfig';
 import type {
     PublicSessionAttachmentKind,
     PublicSessionShareState,
-    PublicSessionSnapshotV1,
 } from './publicSessionShareTypes';
 export {
     getPublicSessionAttachmentUrl,
@@ -16,6 +17,37 @@ export type PreparedPublicSessionShareAsset = {
     method: 'PUT';
     uploadUrl: string;
 };
+
+function httpsUrlForHosts(hosts: readonly string[]) {
+    return z.string().url().max(2_000).refine((value) => {
+        try {
+            const url = new URL(value);
+            return url.protocol === 'https:'
+                && hosts.includes(url.hostname.toLowerCase())
+                && !url.username
+                && !url.password
+                && (!url.port || url.port === '443');
+        } catch {
+            return false;
+        }
+    }, 'Untrusted Pexels URL');
+}
+
+const publicSessionCoverCandidateSchema = z.object({
+    provider: z.literal('pexels'),
+    photoId: z.number().int().positive(),
+    previewUrl: httpsUrlForHosts(['images.pexels.com']),
+    width: z.number().int().positive().max(100_000),
+    height: z.number().int().positive().max(100_000),
+    averageColor: z.string().regex(/^#[0-9a-f]{6}$/i).nullable(),
+    attribution: z.object({
+        photographer: z.string().min(1).max(200),
+        photographerUrl: httpsUrlForHosts(['pexels.com', 'www.pexels.com']),
+        photoUrl: httpsUrlForHosts(['pexels.com', 'www.pexels.com']),
+    }).strict(),
+}).strict();
+
+export type PublicSessionCoverCandidate = z.infer<typeof publicSessionCoverCandidateSchema>;
 
 function ownerHeaders(credentials: AuthCredentials, json = false): Record<string, string> {
     return {
@@ -55,6 +87,54 @@ export async function createPublicSessionShareDraft(credentials: AuthCredentials
         headers: ownerHeaders(credentials),
     });
     return expectJson(response, 'Create public session share draft');
+}
+
+export async function getRandomPublicSessionCover(
+    credentials: AuthCredentials,
+    sessionId: string,
+): Promise<PublicSessionCoverCandidate> {
+    const response = await fetch(
+        `${getServerUrl()}/v1/sessions/${encodeURIComponent(sessionId)}/share/covers/random`,
+        { headers: ownerHeaders(credentials) },
+    );
+    return publicSessionCoverCandidateSchema.parse(
+        await expectJson<unknown>(response, 'Get random public session cover'),
+    );
+}
+
+export async function clonePublicSessionCover(
+    credentials: AuthCredentials,
+    sessionId: string,
+    generation: string,
+    assetId: string,
+): Promise<PublicSessionCover> {
+    const response = await fetch(
+        `${getServerUrl()}/v1/sessions/${encodeURIComponent(sessionId)}/share/drafts/${encodeURIComponent(generation)}/covers/clone`,
+        {
+            method: 'POST',
+            headers: ownerHeaders(credentials, true),
+            body: JSON.stringify({ assetId }),
+        },
+    );
+    return expectJson(response, 'Clone public session cover');
+}
+
+export async function importPublicSessionPexelsCover(
+    credentials: AuthCredentials,
+    sessionId: string,
+    generation: string,
+    assetId: string,
+    photoId: number,
+): Promise<PublicSessionCover> {
+    const response = await fetch(
+        `${getServerUrl()}/v1/sessions/${encodeURIComponent(sessionId)}/share/drafts/${encodeURIComponent(generation)}/covers/import`,
+        {
+            method: 'POST',
+            headers: ownerHeaders(credentials, true),
+            body: JSON.stringify({ assetId, photoId }),
+        },
+    );
+    return expectJson(response, 'Import public session Pexels cover');
 }
 
 export async function preparePublicSessionShareAsset(
@@ -108,7 +188,7 @@ export async function publishPublicSessionShareDraft(
     credentials: AuthCredentials,
     sessionId: string,
     generation: string,
-    snapshot: PublicSessionSnapshotV1,
+    snapshot: PublicSessionSnapshot,
 ): Promise<{ publicId: string; publishedAt: number }> {
     const response = await fetch(
         `${getServerUrl()}/v1/sessions/${encodeURIComponent(sessionId)}/share/drafts/${encodeURIComponent(generation)}/publish`,

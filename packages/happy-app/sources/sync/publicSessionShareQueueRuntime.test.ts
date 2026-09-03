@@ -35,6 +35,7 @@ vi.mock('./apiAttachments', () => ({
     requestAttachmentDownloadSource: vi.fn(),
 }));
 vi.mock('./apiPublicSessionShares', () => ({
+    clonePublicSessionCover: vi.fn(),
     createPublicSessionShareDraft: vi.fn(),
     preparePublicSessionShareAsset: vi.fn(),
     publishPublicSessionShareDraft: vi.fn(),
@@ -63,8 +64,20 @@ describe('public session share queue runtime', () => {
         await resumePublicSessionShareJobs();
 
         expect(mocks.publish).toHaveBeenCalledWith(
-            { sessionId: 'session-1', title: 'Release notes', sharedAt: 200, groupToolCalls: true },
-            expect.objectContaining({ isCancelled: expect.any(Function), onProgress: expect.any(Function) }),
+            {
+                sessionId: 'session-1',
+                jobId: queued.id,
+                title: 'Release notes',
+                sharedAt: 200,
+                themePack: 'caramel',
+                coverSelection: undefined,
+                groupToolCalls: true,
+            },
+            expect.objectContaining({
+                cloneExistingCover: expect.any(Function),
+                isCancelled: expect.any(Function),
+                onProgress: expect.any(Function),
+            }),
         );
         expect(getPublicSessionShareJob('session-1')).toMatchObject({
             status: 'ready', publicId: 'public-id', publishedAt: 300,

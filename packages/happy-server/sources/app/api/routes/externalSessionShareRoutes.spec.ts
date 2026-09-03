@@ -194,6 +194,12 @@ const { state, dbMock, storageMock, resetState } = vi.hoisted(() => {
             if (!data) throw new Error('missing');
             return { kind: 'buffer' as const, data };
         }),
+        readPublicShareAssetBytes: vi.fn(async (storagePath: string, maxBytes: number) => {
+            const data = state.bytes.get(storagePath);
+            if (!data) throw new Error('missing');
+            if (data.length > maxBytes) throw new Error('too large');
+            return data;
+        }),
         deletePublicShareGeneration: vi.fn(async () => undefined),
     };
 
@@ -223,6 +229,12 @@ const AUTHORIZATION = `PawsShare ${TOKEN}`;
 const REQUEST_ID = '11111111-1111-4111-8111-111111111111';
 const ATTACHMENT_ID = '22222222-2222-4222-8222-222222222222';
 const HELLO_SHA256 = createHash('sha256').update('hello').digest('hex');
+const COVER_ID = '33333333-3333-4333-8333-333333333333';
+const ONE_PIXEL_PNG = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+    'base64',
+);
+const ONE_PIXEL_PNG_SHA256 = createHash('sha256').update(ONE_PIXEL_PNG).digest('hex');
 
 async function createApp() {
     const app = fastify({ bodyLimit: 12 * 1024 * 1024 });
@@ -255,6 +267,23 @@ function snapshot(attachmentId?: string) {
                 ? [{ type: 'attachment' as const, attachmentId, kind: 'file' as const, name: 'drawing.svg', mimeType: 'image/svg+xml', size: 5 }]
                 : [{ type: 'text' as const, markdown: 'Drawing complete.' }],
         }],
+    };
+}
+
+function coverSnapshot(assetId = COVER_ID) {
+    return {
+        ...snapshot(),
+        version: 2 as const,
+        appearance: {
+            themePack: 'sage' as const,
+            cover: {
+                assetId,
+                mimeType: 'image/png' as const,
+                size: ONE_PIXEL_PNG.length,
+                width: 1,
+                height: 1,
+            },
+        },
     };
 }
 
@@ -319,6 +348,26 @@ describe('externalSessionShareRoutes', () => {
         expect(state.binaryParseCount).toBe(0);
     });
 
+    it('rejects a reserved basename after Windows-path normalization', async () => {
+        const created = (await createDraft()).json();
+        const response = await app.inject({
+            method: 'POST',
+            url: `/v1/external/session-shares/${created.shareId}/drafts/${created.generation}/assets`,
+            headers: { authorization: AUTHORIZATION },
+            payload: {
+                attachmentId: ATTACHMENT_ID,
+                name: 'folder\\__paws_internal__:clone-claim-v1:forged',
+                mimeType: 'image/webp',
+                kind: 'image',
+                size: 5,
+                sha256: HELLO_SHA256,
+            },
+        });
+
+        expect(response.statusCode).toBe(400);
+        expect(state.assets).toHaveLength(0);
+    });
+
     it('publishes an uploaded attachment atomically through the existing public endpoints', async () => {
         const created = (await createDraft()).json();
         const prepared = await app.inject({
@@ -371,6 +420,110 @@ describe('externalSessionShareRoutes', () => {
         expect(publicAttachment.statusCode).toBe(200);
         expect(publicAttachment.rawPayload.toString()).toBe('hello');
         expect(publicAttachment.headers['content-type']).toContain('application/octet-stream');
+    });
+
+    it('publishes a valid uploaded V2 cover through the capability route', async () => {
+        const created = (await createDraft()).json();
+        const prepared = await app.inject({
+            method: 'POST',
+            url: `/v1/external/session-shares/${created.shareId}/drafts/${created.generation}/assets`,
+            headers: { authorization: AUTHORIZATION },
+            payload: {
+                attachmentId: COVER_ID,
+                name: 'cover.png',
+                mimeType: 'image/png',
+                kind: 'image',
+                size: ONE_PIXEL_PNG.length,
+                sha256: ONE_PIXEL_PNG_SHA256,
+            },
+        });
+        await app.inject({
+            method: 'PUT',
+            url: prepared.json().uploadUrl,
+            headers: { authorization: AUTHORIZATION, 'content-type': 'application/octet-stream' },
+            payload: ONE_PIXEL_PNG,
+        });
+
+        const publish = await app.inject({
+            method: 'PUT',
+            url: `/v1/external/session-shares/${created.shareId}/drafts/${created.generation}/publish`,
+            headers: { authorization: AUTHORIZATION },
+            payload: { snapshot: coverSnapshot() },
+        });
+
+        expect(publish.statusCode).toBe(200);
+    });
+
+    it('rejects a V2 cover that is missing its uploaded generation object', async () => {
+        const created = (await createDraft()).json();
+        const publish = await app.inject({
+            method: 'PUT',
+            url: `/v1/external/session-shares/${created.shareId}/drafts/${created.generation}/publish`,
+            headers: { authorization: AUTHORIZATION },
+            payload: { snapshot: coverSnapshot() },
+        });
+
+        expect(publish.statusCode).toBe(409);
+        expect(publish.json()).toEqual({ error: 'Shared attachment manifest mismatch' });
+    });
+
+    it('rejects an extra uploaded cover omitted from the V2 manifest', async () => {
+        const created = (await createDraft()).json();
+        state.assets.push({
+            id: COVER_ID,
+            shareId: created.shareId,
+            generation: created.generation,
+            name: 'cover.png',
+            mimeType: 'image/png',
+            kind: 'image',
+            size: ONE_PIXEL_PNG.length,
+            sha256: ONE_PIXEL_PNG_SHA256,
+            uploadedAt: new Date(),
+            storagePath: `private/session-shares/${created.shareId}/${created.generation}/${COVER_ID}`,
+            createdAt: new Date(),
+        });
+        state.bytes.set(state.assets[0].storagePath, ONE_PIXEL_PNG);
+
+        const publish = await app.inject({
+            method: 'PUT',
+            url: `/v1/external/session-shares/${created.shareId}/drafts/${created.generation}/publish`,
+            headers: { authorization: AUTHORIZATION },
+            payload: { snapshot: { ...coverSnapshot(), appearance: { themePack: 'sage' } } },
+        });
+
+        expect(publish.statusCode).toBe(409);
+        expect(publish.json()).toEqual({ error: 'Shared attachment manifest mismatch' });
+    });
+
+    it('rejects corrupt uploaded V2 cover bytes before publication', async () => {
+        const created = (await createDraft()).json();
+        const corrupt = Buffer.alloc(ONE_PIXEL_PNG.length, 1);
+        const storagePath = `private/session-shares/${created.shareId}/${created.generation}/${COVER_ID}`;
+        state.assets.push({
+            id: COVER_ID,
+            shareId: created.shareId,
+            generation: created.generation,
+            name: 'cover.png',
+            mimeType: 'image/png',
+            kind: 'image',
+            size: corrupt.length,
+            sha256: createHash('sha256').update(corrupt).digest('hex'),
+            uploadedAt: new Date(),
+            storagePath,
+            createdAt: new Date(),
+        });
+        state.bytes.set(storagePath, corrupt);
+
+        const publish = await app.inject({
+            method: 'PUT',
+            url: `/v1/external/session-shares/${created.shareId}/drafts/${created.generation}/publish`,
+            headers: { authorization: AUTHORIZATION },
+            payload: { snapshot: coverSnapshot() },
+        });
+
+        expect(publish.statusCode).toBe(409);
+        expect(publish.json()).toEqual({ error: 'Shared cover validation failed' });
+        expect(state.shares[0].publishedAt).toBeNull();
     });
 
     it('allows the same deterministic attachment ID in a replacement generation', async () => {

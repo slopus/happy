@@ -1,6 +1,32 @@
 import { describe, it, expect } from 'vitest';
 import { localSettingsDefaults, localSettingsParse } from './localSettings';
 
+describe('localSettings public share theme memory', () => {
+    it('defaults new public shares to caramel without changing the app theme', () => {
+        expect(localSettingsDefaults.lastPublicShareThemePack).toBe('caramel');
+        expect(localSettingsParse({ themePack: 'grape' })).toMatchObject({
+            themePack: 'grape',
+            lastPublicShareThemePack: 'caramel',
+        });
+    });
+
+    it('restores each existing theme pack as the next-share default', () => {
+        const themePacks = ['caramel', 'gingham', 'terminal', 'acorn', 'sage', 'sakura', 'grape'] as const;
+
+        for (const lastPublicShareThemePack of themePacks) {
+            expect(localSettingsParse({ lastPublicShareThemePack }).lastPublicShareThemePack)
+                .toBe(lastPublicShareThemePack);
+        }
+        expect(localSettingsParse({
+            themePreference: 'dark',
+            lastPublicShareThemePack: 'share-only-blue',
+        })).toMatchObject({
+            themePreference: 'dark',
+            lastPublicShareThemePack: 'caramel',
+        });
+    });
+});
+
 describe('localSettings web command palette', () => {
     it('drops removed command palette flags from stale local settings', () => {
         const parsed = localSettingsParse({

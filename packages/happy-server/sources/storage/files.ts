@@ -63,6 +63,15 @@ export function isLocalStorage() {
     return useLocalStorage;
 }
 
+export function isObjectStorageConfigured(): boolean {
+    return Boolean(
+        process.env.S3_HOST
+        && process.env.S3_ACCESS_KEY
+        && process.env.S3_SECRET_KEY
+        && process.env.S3_BUCKET,
+    );
+}
+
 export function getLocalFilesDir() {
     return localFilesDir;
 }
@@ -103,6 +112,26 @@ export async function deleteFilePrefix(prefix: string): Promise<void> {
     if (keys.length > 0) {
         await s3client.removeObjects(s3bucket, keys);
     }
+}
+
+export async function deleteFile(filePath: string): Promise<void> {
+    if (useLocalStorage) {
+        const fullPath = path.join(localFilesDir, filePath);
+        if (fs.existsSync(fullPath)) fs.rmSync(fullPath, { force: true });
+        return;
+    }
+    await s3client.removeObject(s3bucket, filePath);
+}
+
+export async function copyFile(sourcePath: string, destinationPath: string): Promise<void> {
+    if (useLocalStorage) {
+        const source = path.join(localFilesDir, sourcePath);
+        const destination = path.join(localFilesDir, destinationPath);
+        fs.mkdirSync(path.dirname(destination), { recursive: true });
+        fs.copyFileSync(source, destination);
+        return;
+    }
+    await s3client.copyObject(s3bucket, destinationPath, `/${s3bucket}/${sourcePath}`);
 }
 
 /**

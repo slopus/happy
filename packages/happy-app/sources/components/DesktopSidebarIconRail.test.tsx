@@ -27,6 +27,7 @@ vi.mock('react-native-unistyles', () => ({
     StyleSheet: {
         hairlineWidth: 1,
         create: (factory: any) => factory({ colors: {
+            button: { destructive: { background: '#b42318', backgroundPressed: '#8f1d14', tint: '#fff' } },
             divider: '#ddd', status: { error: '#d33' }, surface: '#fff', surfaceHigh: '#f5f5f5',
             surfacePressed: '#eee', surfaceSelected: '#e5e5e5', text: '#111', textSecondary: '#666',
         } }),

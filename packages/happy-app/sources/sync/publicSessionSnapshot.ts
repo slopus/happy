@@ -1,4 +1,5 @@
 import { v4 as uuid } from 'uuid';
+import type { PublicSessionCover, PublicSessionSnapshotV2, PublicSessionThemePack } from '@slopus/happy-wire';
 import type { Message, ToolCallMessage } from './typesMessage';
 import type {
     PublicSessionAttachmentJob,
@@ -130,9 +131,11 @@ export function buildPublicSessionSnapshot(input: {
     title: string;
     messages: Message[];
     sharedAt: number;
+    themePack: PublicSessionThemePack;
+    cover?: PublicSessionCover;
     groupToolCalls?: boolean;
     createAttachmentId?: () => string;
-}): { snapshot: PublicSessionSnapshotV1; attachments: PublicSessionAttachmentJob[] } {
+}): { snapshot: PublicSessionSnapshotV2; attachments: PublicSessionAttachmentJob[] } {
     const createAttachmentId = input.createAttachmentId ?? uuid;
     const attachmentByRef = new Map<string, PublicSessionAttachmentJob>();
     const publicMessages: PublicSessionMessageV1[] = [];
@@ -187,10 +190,14 @@ export function buildPublicSessionSnapshot(input: {
     for (const message of input.messages) visit(message);
     return {
         snapshot: {
-            version: 1,
+            version: 2,
             title: input.title.trim() || 'Shared session',
             sharedAt: input.sharedAt,
             presentation: { groupToolCalls: input.groupToolCalls ?? true },
+            appearance: {
+                themePack: input.themePack,
+                ...(input.cover ? { cover: input.cover } : {}),
+            },
             messages: publicMessages,
         },
         attachments: Array.from(attachmentByRef.values()),

@@ -1,7 +1,7 @@
 import * as crypto from 'crypto';
 import { Redis } from 'ioredis';
 
-type RedisEval = (script: string, keyCount: number, key: string, windowMs: string) => Promise<unknown>;
+export type RedisEval = (script: string, keyCount: number, key: string, windowMs: string) => Promise<unknown>;
 type RateLimitResult = { allowed: boolean; retryAfterSeconds: number };
 
 const REDIS_FIXED_WINDOW_SCRIPT = `

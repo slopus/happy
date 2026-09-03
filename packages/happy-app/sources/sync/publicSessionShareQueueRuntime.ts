@@ -9,7 +9,9 @@ import { normalizeRawMessage } from './typesRaw';
 import { getServerUrl } from './serverConfig';
 import { downloadEncryptedAttachment, requestAttachmentDownloadSource } from './apiAttachments';
 import {
+    clonePublicSessionCover,
     createPublicSessionShareDraft,
+    importPublicSessionPexelsCover,
     preparePublicSessionShareAsset,
     publishPublicSessionShareDraft,
     revokePublicSessionShare,
@@ -55,8 +57,11 @@ const queue = createPublicSessionShareQueue({
         return publishPublicSessionSnapshot(
             {
                 sessionId: job.sessionId,
+                jobId: job.id,
                 title: job.title,
                 sharedAt: job.requestedAt,
+                themePack: job.themePack,
+                coverSelection: job.coverSelection,
                 groupToolCalls: job.groupToolCalls,
             },
             {
@@ -87,10 +92,27 @@ const queue = createPublicSessionShareQueue({
                 }),
                 createDraft: () => createPublicSessionShareDraft(credentials, job.sessionId),
                 loadAttachmentBytes: (asset) => loadAttachmentBytes(credentials, job.sessionId, asset),
+                loadCoverBytes: async (selection) => {
+                    const { readFileBytes } = await import('@/utils/readFileBytes');
+                    return readFileBytes(selection.uri, 100 * 1024 * 1024);
+                },
+                cloneExistingCover: (generation, assetId) => clonePublicSessionCover(
+                    credentials,
+                    job.sessionId,
+                    generation,
+                    assetId,
+                ),
                 prepareAsset: (generation, asset, sha256) => (
                     preparePublicSessionShareAsset(credentials, job.sessionId, generation, asset, sha256)
                 ),
                 uploadAsset: (upload, bytes) => uploadPublicSessionShareAsset(upload, bytes, credentials),
+                importPexelsCover: (generation, assetId, photoId) => importPublicSessionPexelsCover(
+                    credentials,
+                    job.sessionId,
+                    generation,
+                    assetId,
+                    photoId,
+                ),
                 publishDraft: (generation, snapshot) => (
                     publishPublicSessionShareDraft(credentials, job.sessionId, generation, snapshot)
                 ),
@@ -108,9 +130,12 @@ export function enqueuePublicSessionShareJob(input: {
     requestedAt: number;
     cutoffSeq: number;
     groupToolCalls: boolean;
+    themePack?: PublicSessionShareJob['themePack'];
+    coverSelection?: PublicSessionShareJob['coverSelection'];
 }): PublicSessionShareJob {
     return queue.enqueue({
         ...input,
+        themePack: input.themePack ?? 'caramel',
         ownerId: sync.serverID,
         serverUrl: getServerUrl(),
     });

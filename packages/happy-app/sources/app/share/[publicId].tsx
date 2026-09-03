@@ -4,19 +4,24 @@ import { Stack, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet } from 'react-native-unistyles';
 import { PublicSessionTranscript } from '@/components/PublicSessionTranscript';
+import { usePublicSessionAppearance } from '@/hooks/usePublicSessionAppearance';
 import { getPublicSessionShareSnapshot } from '@/sync/publicSessionShareViewer';
-import type { PublicSessionSnapshotV1 } from '@/sync/publicSessionShareTypes';
+import type { PublicSessionSnapshot } from '@/sync/publicSessionShareTypes';
 import { publicSessionShareText as t } from '@/text/publicSessionShareText';
 
 type PublicShareLoadState =
     | { status: 'loading' }
-    | { status: 'ready'; snapshot: PublicSessionSnapshotV1; publishedAt: number }
+    | { status: 'ready'; snapshot: PublicSessionSnapshot; publishedAt: number }
     | { status: 'unavailable' };
 
 export default function PublicSessionSharePage() {
     const params = useLocalSearchParams<{ publicId?: string | string[] }>();
     const publicId = Array.isArray(params.publicId) ? params.publicId[0] : params.publicId;
     const [state, setState] = React.useState<PublicShareLoadState>({ status: 'loading' });
+    const themePack = state.status === 'ready' && state.snapshot.version === 2
+        ? state.snapshot.appearance.themePack
+        : 'caramel';
+    const appearance = usePublicSessionAppearance(themePack);
 
     React.useEffect(() => {
         let active = true;
@@ -75,6 +80,18 @@ export default function PublicSessionSharePage() {
             </View>
         );
     }
+    if (!appearance.isReady) {
+        return (
+            <View
+                accessibilityLabel={t('sessionShare.preparing')}
+                style={styles.centered}
+                testID="public-session-share-appearance-loading"
+            >
+                <Stack.Screen options={{ title: state.snapshot.title }} />
+                <ActivityIndicator size="small" color={styles.loadingIcon.color} />
+            </View>
+        );
+    }
     return (
         <>
             <Stack.Screen options={{ title: state.snapshot.title }} />
@@ -82,6 +99,8 @@ export default function PublicSessionSharePage() {
                 publicId={publicId}
                 publishedAt={state.publishedAt}
                 snapshot={state.snapshot}
+                appearanceMode={appearance.mode}
+                onAppearanceModeChange={appearance.setMode}
             />
         </>
     );

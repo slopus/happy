@@ -2,7 +2,7 @@ import type { Message, ToolCall } from './typesMessage';
 import type {
     PublicSessionBlockV1,
     PublicSessionMessageV1,
-    PublicSessionSnapshotV1,
+    PublicSessionSnapshot,
 } from './publicSessionShareTypes';
 
 export const PUBLIC_SESSION_ATTACHMENT_REF_PREFIX = 'public-session-attachment:';
@@ -120,7 +120,7 @@ function adaptBlock(
  * so reverse those blocks when expanding them into the inverted list model.
  */
 export function publicSessionSnapshotToMessages(
-    snapshot: PublicSessionSnapshotV1,
+    snapshot: PublicSessionSnapshot,
     options: { attachmentUrl?: (attachmentId: string) => string } = {},
 ): Message[] {
     const messages: Message[] = [];

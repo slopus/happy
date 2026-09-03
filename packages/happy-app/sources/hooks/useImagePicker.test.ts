@@ -124,6 +124,41 @@ describe('useImagePicker limits', () => {
         expect((current as ReturnType<typeof useImagePicker> | null)?.selectedImages).toEqual([]);
         act(() => renderer.unmount());
     });
+
+    it('allows a one-image feature to clear and reopen the picker in the same press', async () => {
+        let current: ReturnType<typeof useImagePicker> | null = null;
+        function Probe() {
+            current = useImagePicker({ maxAttachments: 1 });
+            return null;
+        }
+        vi.mocked(ImagePicker.launchImageLibraryAsync).mockResolvedValue({ canceled: true, assets: [] } as any);
+        let renderer: any;
+        await act(async () => {
+            renderer = TestRenderer.create(React.createElement(Probe));
+        });
+        act(() => current?.addImages([{
+            id: 'old-cover',
+            uri: 'file:///old-cover.jpg',
+            width: 100,
+            height: 100,
+            mimeType: 'image/jpeg',
+            size: 100,
+            name: 'old-cover.jpg',
+        }]));
+
+        await act(async () => {
+            current?.clearImages();
+            await current?.pickImages();
+        });
+
+        expect(ImagePicker.launchImageLibraryAsync).toHaveBeenCalledOnce();
+        expect(Modal.alert).not.toHaveBeenCalledWith(
+            'imageUpload.limitTitle',
+            'imageUpload.limitMessage',
+            [{ text: 'common.ok' }],
+        );
+        act(() => renderer.unmount());
+    });
 });
 
 describe('useImagePicker PDF documents', () => {

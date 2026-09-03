@@ -2,10 +2,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AuthCredentials } from '@/auth/tokenStorage';
 import {
     createPublicSessionShareDraft,
+    clonePublicSessionCover,
+    getRandomPublicSessionCover,
     getPublicSessionAttachmentUrl,
     getPublicSessionShare,
     getPublicSessionShareSnapshot,
     getPublicSessionShareUrl,
+    importPublicSessionPexelsCover,
     preparePublicSessionShareAsset,
     publishPublicSessionShareDraft,
     revokePublicSessionShare,
@@ -89,6 +92,117 @@ describe('apiPublicSessionShares', () => {
             'Content-Type': 'application/octet-stream',
         });
         expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it('loads a display-safe random candidate and imports only its photo id into a draft', async () => {
+        const candidate = {
+            provider: 'pexels' as const,
+            photoId: 123,
+            previewUrl: 'https://images.pexels.com/photos/123/preview.jpeg',
+            width: 2400,
+            height: 900,
+            averageColor: '#123456',
+            attribution: {
+                photographer: 'Ada Lovelace',
+                photographerUrl: 'https://www.pexels.com/@ada',
+                photoUrl: 'https://www.pexels.com/photo/123',
+            },
+        };
+        const canonicalCover = {
+            assetId: '22222222-2222-4222-8222-222222222222',
+            mimeType: 'image/webp',
+            size: 4321,
+            width: 2400,
+            height: 900,
+            attribution: {
+                photoId: 123,
+                photographer: 'Canonical Ada',
+                photographerUrl: 'https://www.pexels.com/@canonical-ada',
+                photoUrl: 'https://www.pexels.com/photo/123-canonical',
+            },
+        };
+        const fetchMock = vi.fn()
+            .mockResolvedValueOnce(new Response(JSON.stringify(candidate), { status: 200 }))
+            .mockResolvedValueOnce(new Response(JSON.stringify(canonicalCover), { status: 200 }));
+        vi.stubGlobal('fetch', fetchMock);
+
+        expect(await getRandomPublicSessionCover(credentials, 'session / 1')).toEqual(candidate);
+        expect(await importPublicSessionPexelsCover(
+            credentials,
+            'session / 1',
+            '11111111-1111-4111-8111-111111111111',
+            '22222222-2222-4222-8222-222222222222',
+            candidate.photoId,
+        )).toEqual(canonicalCover);
+
+        expect(fetchMock.mock.calls[0]).toEqual([
+            'https://api.paws.test/v1/sessions/session%20%2F%201/share/covers/random',
+            { headers: { Authorization: 'Bearer owner-token' } },
+        ]);
+        expect(fetchMock.mock.calls[1][0]).toBe(
+            'https://api.paws.test/v1/sessions/session%20%2F%201/share/drafts/11111111-1111-4111-8111-111111111111/covers/import',
+        );
+        expect(fetchMock.mock.calls[1][1].headers).toEqual({
+            Authorization: 'Bearer owner-token',
+            'Content-Type': 'application/json',
+        });
+        expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({
+            assetId: '22222222-2222-4222-8222-222222222222',
+            photoId: 123,
+        });
+    });
+
+    it('rejects malformed, extra, or non-allowlisted random candidate data before render', async () => {
+        const valid = {
+            provider: 'pexels',
+            photoId: 123,
+            previewUrl: 'https://images.pexels.com/photos/123/preview.jpeg',
+            width: 2400,
+            height: 900,
+            averageColor: '#123456',
+            attribution: {
+                photographer: 'Ada Lovelace',
+                photographerUrl: 'https://www.pexels.com/@ada',
+                photoUrl: 'https://pexels.com/photo/123',
+            },
+        };
+        const invalidCandidates = [
+            { ...valid, previewUrl: 'http://images.pexels.com/photos/123/preview.jpeg' },
+            { ...valid, previewUrl: 'https://images.pexels.com.attacker.invalid/preview.jpeg' },
+            { ...valid, attribution: { ...valid.attribution, photographerUrl: 'http://www.pexels.com/@ada' } },
+            { ...valid, attribution: { ...valid.attribution, photoUrl: 'https://attacker.invalid/photo/123' } },
+            { ...valid, extra: 'untrusted' },
+            { ...valid, attribution: { ...valid.attribution, extra: 'untrusted' } },
+        ];
+
+        for (const candidate of invalidCandidates) {
+            vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify(candidate), { status: 200 })));
+            await expect(getRandomPublicSessionCover(credentials, 'session-1')).rejects.toThrow();
+        }
+    });
+
+    it('asks the authenticated server to clone only an existing active asset id', async () => {
+        const canonicalCover = {
+            assetId: '51515151-5151-4515-8515-515151515151',
+            mimeType: 'image/jpeg',
+            size: 5,
+            width: 1200,
+            height: 600,
+        };
+        const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(canonicalCover), { status: 200 }));
+        vi.stubGlobal('fetch', fetchMock);
+
+        expect(await clonePublicSessionCover(
+            credentials,
+            'session / 1',
+            '11111111-1111-4111-8111-111111111111',
+            canonicalCover.assetId,
+        )).toEqual(canonicalCover);
+        expect(fetchMock.mock.calls[0][0]).toBe(
+            'https://api.paws.test/v1/sessions/session%20%2F%201/share/drafts/11111111-1111-4111-8111-111111111111/covers/clone',
+        );
+        expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ assetId: canonicalCover.assetId });
+        expect(fetchMock.mock.calls[0][1].headers.Authorization).toBe('Bearer owner-token');
     });
 
     it('builds the browser-facing share URL from the Web origin', () => {

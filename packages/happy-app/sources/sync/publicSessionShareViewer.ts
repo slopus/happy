@@ -1,4 +1,4 @@
-import type { PublicSessionSnapshotV1 } from './publicSessionShareTypes';
+import type { PublicSessionSnapshot } from './publicSessionShareTypes';
 
 const DEFAULT_PUBLIC_ORIGIN = process.env.EXPO_PUBLIC_HAPPY_SERVER_URL || 'https://47.115.228.20:8443';
 
@@ -14,7 +14,7 @@ async function expectPublicJson<T>(response: Response, operation: string): Promi
 }
 
 export async function getPublicSessionShareSnapshot(publicId: string): Promise<{
-    snapshot: PublicSessionSnapshotV1;
+    snapshot: PublicSessionSnapshot;
     publishedAt: number;
 }> {
     const response = await fetch(

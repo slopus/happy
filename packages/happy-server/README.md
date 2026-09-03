@@ -68,7 +68,21 @@ To use external Postgres or Redis instead of the embedded defaults, set:
 |----------|-------------|
 | `DATABASE_URL` | PostgreSQL connection URL (bypasses PGlite) |
 | `REDIS_URL` | Redis connection URL |
-| `S3_HOST` | S3/MinIO host (bypasses local file storage) |
+| `S3_HOST` | S3/MinIO host |
+| `S3_PORT` | S3/MinIO port |
+| `S3_USE_SSL` | Whether the S3 endpoint uses TLS (`true` or `false`) |
+| `S3_ACCESS_KEY` | S3 access key (secret) |
+| `S3_SECRET_KEY` | S3 secret key (secret) |
+| `S3_BUCKET` | S3 bucket name |
+| `S3_PUBLIC_URL` | Optional public base URL for non-share objects |
+| `PEXELS_API_KEY` | Server-only Pexels API key for random/imported share covers |
+| `PUBLIC_SHARE_LOCAL_STORAGE` | Set to `enabled` only to explicitly allow local public-share storage in a production self-host deployment |
+
+Hosted production public shares fail closed unless `S3_HOST`, `S3_ACCESS_KEY`,
+`S3_SECRET_KEY`, and `S3_BUCKET` are all configured. A production self-host may
+explicitly opt into filesystem storage with `PUBLIC_SHARE_LOCAL_STORAGE=enabled`;
+development and test environments continue to use local storage. Never expose
+`PEXELS_API_KEY`, S3 credentials, or the server environment to the app/browser.
 
 ### S3 bucket configuration (when self-hosting with S3)
 
@@ -124,7 +138,8 @@ mc encrypt set sse-s3 myminio/happy-blobs
 Local-storage mode (no `S3_HOST`) writes blobs under
 `<DATA_DIR>/files/sessions/<sessionId>/attachments/`. There is no
 lifecycle equivalent — clean up old session directories on a cron if
-you want a TTL story.
+you want a TTL story. Production public-share assets require the explicit
+`PUBLIC_SHARE_LOCAL_STORAGE=enabled` opt-in described above.
 
 ## License
 

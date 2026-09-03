@@ -27,13 +27,14 @@ describe('buildPublicSessionSnapshot', () => {
             },
         ];
 
-        const result = buildPublicSessionSnapshot({ title: 'Session title', messages, sharedAt: now });
+        const result = buildPublicSessionSnapshot({ title: 'Session title', messages, sharedAt: now, themePack: 'gingham' });
 
         expect(result.snapshot).toEqual({
-            version: 1,
+            version: 2,
             title: 'Session title',
             sharedAt: now,
             presentation: { groupToolCalls: true },
+            appearance: { themePack: 'gingham' },
             messages: [
                 { id: 'message-1', role: 'user', createdAt: 1, blocks: [{ type: 'text', markdown: 'Visible question' }] },
                 { id: 'message-2', role: 'assistant', createdAt: 2, blocks: [{ type: 'text', markdown: 'Visible answer' }] },
@@ -55,11 +56,60 @@ describe('buildPublicSessionSnapshot', () => {
         expect(serialized).not.toContain('secret-password');
     });
 
+    it('freezes canonical cover metadata into a literal V2 appearance', () => {
+        const result = buildPublicSessionSnapshot({
+            title: 'Covered session',
+            messages: [],
+            sharedAt: now,
+            themePack: 'grape',
+            cover: {
+                assetId: '11111111-1111-4111-8111-111111111111',
+                mimeType: 'image/webp',
+                size: 4321,
+                width: 2400,
+                height: 900,
+                thumbhash: 'cover-thumbhash',
+                attribution: {
+                    photoId: 123,
+                    photographer: 'Ada Lovelace',
+                    photographerUrl: 'https://www.pexels.com/@ada',
+                    photoUrl: 'https://www.pexels.com/photo/123',
+                },
+            },
+        });
+
+        expect(result.snapshot).toEqual({
+            version: 2,
+            title: 'Covered session',
+            sharedAt: now,
+            presentation: { groupToolCalls: true },
+            appearance: {
+                themePack: 'grape',
+                cover: {
+                    assetId: '11111111-1111-4111-8111-111111111111',
+                    mimeType: 'image/webp',
+                    size: 4321,
+                    width: 2400,
+                    height: 900,
+                    thumbhash: 'cover-thumbhash',
+                    attribution: {
+                        photoId: 123,
+                        photographer: 'Ada Lovelace',
+                        photographerUrl: 'https://www.pexels.com/@ada',
+                        photoUrl: 'https://www.pexels.com/photo/123',
+                    },
+                },
+            },
+            messages: [],
+        });
+    });
+
     it('freezes the owner tool-grouping preference into the public snapshot', () => {
         const result = buildPublicSessionSnapshot({
             title: 'Ungrouped session',
             messages: [],
             sharedAt: now,
+            themePack: 'caramel',
             groupToolCalls: false,
         });
 
@@ -99,6 +149,7 @@ describe('buildPublicSessionSnapshot', () => {
                 hiddenTool('tool-search', 'ToolSearch'),
             ],
             sharedAt: now,
+            themePack: 'caramel',
         });
 
         expect(result.snapshot.messages).toEqual([{
@@ -128,6 +179,7 @@ describe('buildPublicSessionSnapshot', () => {
         let idCalls = 0;
         const result = buildPublicSessionSnapshot({
             title: 'Files', messages: [fileTool('f1'), fileTool('f2')], sharedAt: now,
+            themePack: 'caramel',
             createAttachmentId: () => { idCalls += 1; return '11111111-1111-4111-8111-111111111111'; },
         });
 
@@ -171,7 +223,9 @@ describe('buildPublicSessionSnapshot', () => {
             },
         ];
         const ids = ['11111111-1111-4111-8111-111111111111', '22222222-2222-4222-8222-222222222222'];
-        const result = buildPublicSessionSnapshot({ title: 'Media', messages, sharedAt: now, createAttachmentId: () => ids.shift()! });
+        const result = buildPublicSessionSnapshot({
+            title: 'Media', messages, sharedAt: now, themePack: 'caramel', createAttachmentId: () => ids.shift()!,
+        });
 
         expect(result.attachments.map(({ kind, mimeType, encrypted }) => ({ kind, mimeType, encrypted }))).toEqual([
             { kind: 'video', mimeType: 'video/mp4', encrypted: false },
@@ -201,6 +255,7 @@ describe('buildPublicSessionSnapshot', () => {
 
         const result = buildPublicSessionSnapshot({
             title: 'Generated image', messages: [message], sharedAt: now,
+            themePack: 'caramel',
             createAttachmentId: () => '11111111-1111-4111-8111-111111111111',
         });
 
@@ -227,6 +282,7 @@ describe('buildPublicSessionSnapshot', () => {
 
         const result = buildPublicSessionSnapshot({
             title: 'Audio', messages: [message], sharedAt: now,
+            themePack: 'caramel',
             createAttachmentId: () => '11111111-1111-4111-8111-111111111111',
         });
 

@@ -38,7 +38,7 @@ export type { AttachmentPreview };
 
 type UseImagePickerResult = {
     selectedImages: AttachmentPreview[];
-    pickImages: () => Promise<void>;
+    pickImages: () => Promise<AttachmentPreview[]>;
     /** Pick audio/video files via the system document picker (plaintext lane). */
     pickMedia: () => Promise<void>;
     /** Pick PDF documents via the system document picker (encrypted lane). */
@@ -80,6 +80,13 @@ export function useImagePicker(options: UseImagePickerOptions = {}): UseImagePic
     const maxImageSizeBytes = Math.max(1, Math.min(MAX_FILE_SIZE, options.maxImageSizeBytes ?? MAX_FILE_SIZE));
     const maxImageSizeMb = Math.max(1, Math.floor(maxImageSizeBytes / 1024 / 1024));
     const [selectedImages, setSelectedImages] = useState<AttachmentPreview[]>([]);
+    const mountedRef = useRef(true);
+    useEffect(() => {
+        mountedRef.current = true;
+        return () => {
+            mountedRef.current = false;
+        };
+    }, []);
     // Ref tracks current count to avoid stale closures on rapid taps.
     const selectedCountRef = useRef(0);
     useEffect(() => {
@@ -103,7 +110,7 @@ export function useImagePicker(options: UseImagePickerOptions = {}): UseImagePic
 
     const pickImages = useCallback(async () => {
         const hasPermission = await requestPermission();
-        if (!hasPermission) return;
+        if (!hasPermission) return [];
 
         const remaining = maxAttachments - selectedCountRef.current;
         if (remaining <= 0) {
@@ -112,7 +119,7 @@ export function useImagePicker(options: UseImagePickerOptions = {}): UseImagePic
                 t('imageUpload.limitMessage', { max: maxAttachments }),
                 [{ text: t('common.ok') }],
             );
-            return;
+            return [];
         }
 
         const result = await ImagePicker.launchImageLibraryAsync({
@@ -123,7 +130,7 @@ export function useImagePicker(options: UseImagePickerOptions = {}): UseImagePic
             exif: false,
         });
 
-        if (result.canceled || !result.assets.length) return;
+        if (result.canceled || !result.assets.length) return [];
 
         // On web, selectionLimit is not enforced by the browser — clamp here.
         const assets = result.assets.slice(0, remaining);
@@ -187,9 +194,10 @@ export function useImagePicker(options: UseImagePickerOptions = {}): UseImagePic
             );
         }
 
-        if (previews.length > 0) {
+        if (previews.length > 0 && mountedRef.current) {
             setSelectedImages(prev => [...prev, ...previews].slice(0, maxAttachments));
         }
+        return previews;
     }, [maxAttachments, maxImageSizeBytes, maxImageSizeMb, requestPermission]);
 
     const pickMedia = useCallback(async () => {
@@ -337,6 +345,7 @@ export function useImagePicker(options: UseImagePickerOptions = {}): UseImagePic
     }, []);
 
     const clearImages = useCallback(() => {
+        selectedCountRef.current = 0;
         setSelectedImages([]);
     }, []);
 

@@ -7,7 +7,7 @@ vi.mock('react-native', () => ({
     },
 }));
 
-import { appThemes } from './themePacks';
+import { appThemes, resolveThemeName, THEME_PACK_IDS } from './themePacks';
 
 function relativeLuminance(color: string): number {
     const [red, green, blue] = color
@@ -29,6 +29,23 @@ function contrastRatio(first: string, second: string): number {
 }
 
 describe('theme pack interactive surfaces', () => {
+    it('registers exactly the seven public-share packs in both visitor modes', () => {
+        expect(THEME_PACK_IDS).toEqual([
+            'caramel', 'gingham', 'terminal', 'acorn', 'sage', 'sakura', 'grape',
+        ]);
+        expect(Object.keys(appThemes)).toEqual([
+            'caramelLight', 'caramelDark',
+            'ginghamLight', 'ginghamDark',
+            'terminalLight', 'terminalDark',
+            'acornLight', 'acornDark',
+            'sageLight', 'sageDark',
+            'sakuraLight', 'sakuraDark',
+            'grapeLight', 'grapeDark',
+        ]);
+        expect(resolveThemeName('gingham', false)).toBe('ginghamLight');
+        expect(resolveThemeName('gingham', true)).toBe('ginghamDark');
+    });
+
     it('uses gingham dark surfaces for pressed and selected states', () => {
         const theme = appThemes.ginghamDark;
 
