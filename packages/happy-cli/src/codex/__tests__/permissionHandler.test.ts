@@ -151,6 +151,28 @@ describe('CodexPermissionHandler', () => {
         await expect(pending).resolves.toEqual({ decision: 'abort' });
     });
 
+    it('cancels one pending permission through its operation signal', async () => {
+        const { session, getState } = createSessionMock();
+        const handler = new CodexPermissionHandler(session as any);
+        const controller = new AbortController();
+
+        const pending = handler.handleToolCall(
+            'mcp-app-call-1-1',
+            'mcp__demo__mutate',
+            { id: 1 },
+            { signal: controller.signal },
+        );
+        expect(getState().requests['mcp-app-call-1-1']).toBeDefined();
+
+        controller.abort();
+
+        await expect(pending).resolves.toEqual({ decision: 'abort' });
+        expect(getState().requests).toEqual({});
+        expect(getState().completedRequests['mcp-app-call-1-1']).toMatchObject({
+            status: 'canceled',
+        });
+    });
+
     it('sends a permission notification when a Codex tool waits for user approval', async () => {
         const { session, metadata, sendSessionNotification } = createSessionMock();
         const handler = new CodexPermissionHandler(session as any, sendSessionNotification);

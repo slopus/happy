@@ -13,7 +13,7 @@ const publicThinkingBlockSchema = z.object({
 const publicToolBlockSchema = z.object({
     type: z.literal('tool'),
     name: z.string().min(1).max(200),
-    status: z.enum(['running', 'completed', 'failed']),
+    status: z.enum(['running', 'completed', 'failed', 'cancelled']),
     title: z.string().max(1_000).optional(),
     body: z.string().max(2_000_000).optional(),
 }).strict();

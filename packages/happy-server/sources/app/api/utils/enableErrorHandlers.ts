@@ -5,12 +5,19 @@ import {
     isPublicSessionShareApiUrl,
     publicSessionShareNotFound,
 } from '@/app/sessionSharing/publicSessionShareHttp';
+import {
+    isLiteralMcpAppSandboxRequestUrl,
+    mcpAppSandboxNotFound,
+} from '@/app/api/mcpAppSandboxHttp';
 
 export interface EnableErrorHandlersOptions {
     skipNotFoundHandler?: boolean;
 }
 
 export function handleFrameworkError(error: FastifyError, request: any, reply: any) {
+    if (isLiteralMcpAppSandboxRequestUrl(request.raw.url || request.url)) {
+        return mcpAppSandboxNotFound(reply);
+    }
     if (error.code === 'FST_ERR_BAD_URL'
         && isPublicSessionShareApiUrl(request.raw.url || request.url)) {
         return publicSessionShareNotFound(reply);

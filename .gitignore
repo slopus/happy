@@ -33,6 +33,7 @@ yarn-debug.*
 yarn-error.*
 test-results/
 playwright-report/
+packages/happy-app/.mcp-app-e2e-auth/
 /artifacts/
 
 # Acceptance recordings and media fixtures must stay outside Git. Playwright

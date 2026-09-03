@@ -1664,7 +1664,12 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
                             name: 'CodexBash',
                             title: 'Run `ls`',
                             description: 'Run command',
-                            args: { command: 'ls' }
+                            args: { command: 'ls' },
+                            mcpApp: {
+                                version: 1,
+                                server: 'demo',
+                                resourceUri: 'ui://demo/index.html',
+                            },
                         }
                     }
                 }
@@ -1675,7 +1680,8 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
                     type: 'tool-call',
                     id: 'call-1',
                     name: 'CodexBash',
-                    input: { command: 'ls' }
+                    input: { command: 'ls' },
+                    mcpApp: { version: 1, resourceUri: 'ui://demo/index.html' },
                 });
             }
 
@@ -1690,7 +1696,13 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
                         turn: 'turn-1',
                         ev: {
                             t: 'tool-call-end',
-                            call: 'call-1'
+                            call: 'call-1',
+                            mcpAppResult: {
+                                version: 1,
+                                state: 'available',
+                                content: [],
+                                structuredContent: { count: 1 },
+                            },
                         }
                     }
                 }
@@ -1701,7 +1713,12 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
                     type: 'tool-result',
                     tool_use_id: 'call-1',
                     content: null,
-                    is_error: false
+                    is_error: false,
+                    mcpAppResult: {
+                        version: 1,
+                        state: 'available',
+                        structuredContent: { count: 1 },
+                    },
                 });
             }
 
@@ -1783,7 +1800,8 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
                         ev: {
                             t: 'tool-call-end',
                             call: 'call-cancelled',
-                            status: 'cancelled'
+                            status: 'cancelled',
+                            error: { summary: 'Stopped by user' },
                         }
                     }
                 }
@@ -1794,7 +1812,8 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
                     type: 'tool-result',
                     tool_use_id: 'call-cancelled',
                     is_error: false,
-                    status: 'cancelled'
+                    status: 'cancelled',
+                    failure: { summary: 'Stopped by user' },
                 });
             }
         });

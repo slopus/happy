@@ -1,4 +1,5 @@
 import fastify from "fastify";
+import type { FastifyBaseLogger } from 'fastify';
 import { log, logger } from "@/utils/log";
 import { serializerCompiler, validatorCompiler, ZodTypeProvider } from "fastify-type-provider-zod";
 import { onShutdown } from "@/utils/shutdown";
@@ -32,6 +33,8 @@ import { relationshipAdvisorRoutes } from "./routes/relationshipAdvisorRoutes";
 import { pluginRoutes } from "@/app/api/routes/pluginRoutes";
 import { publicSessionShareRoutes } from "./routes/publicSessionShareRoutes";
 import { externalSessionShareRoutes } from "./routes/externalSessionShareRoutes";
+import { mcpAppSandboxRoutes } from "./routes/mcpAppSandboxRoutes";
+import { isLiteralMcpAppSandboxRequestUrl } from './mcpAppSandboxHttp';
 import * as path from "path";
 import * as fs from "fs";
 
@@ -40,6 +43,7 @@ export interface StartApiOptions {
     host?: string;
     staticDir?: string;
     injectHtmlConfig?: Record<string, unknown>;
+    loggerInstance?: FastifyBaseLogger;
 }
 
 export function resolveTrustProxySetting(value = process.env.HAPPY_TRUST_PROXY_HOPS): false | number {
@@ -67,6 +71,13 @@ export function isPublicShareDocumentUrl(url: string): boolean {
     return /^\/share\/[^/]+\/?$/.test(pathname);
 }
 
+export function isSpaFallbackExcludedUrl(url: string): boolean {
+    const pathname = url.split('?', 1)[0];
+    return pathname.startsWith('/v1') || pathname.startsWith('/v3') || pathname.startsWith('/socket') ||
+        pathname.startsWith('/files/') || pathname.startsWith('/metrics') || pathname.startsWith('/health') ||
+        pathname === '/mcp-app-sandbox' || pathname.startsWith('/mcp-app-sandbox/');
+}
+
 export function getPublicShareDocumentHeaders(): Record<string, string> {
     return {
         'Cache-Control': 'no-store',
@@ -86,17 +97,18 @@ function injectPublicShareMetadata(html: string): string {
     return html.replace(/<head[^>]*>/i, (head) => `${head}\n<meta name="robots" content="noindex,nofollow,noarchive">`);
 }
 
-export async function startApi(opts: StartApiOptions = {}) {
-
-    // Configure
-    log('Starting API...');
-
-    // Start API
+export async function createApiApp(opts: StartApiOptions = {}): Promise<Fastify> {
     const app = fastify({
-        loggerInstance: logger,
+        loggerInstance: opts.loggerInstance ?? logger,
         bodyLimit: 1024 * 1024 * 100, // 100MB
         trustProxy: resolveTrustProxySetting(),
         frameworkErrors: handleFrameworkError,
+        childLoggerFactory(parentLogger, bindings, loggerOptions, rawRequest) {
+            const options = isLiteralMcpAppSandboxRequestUrl(rawRequest.url)
+                ? { ...loggerOptions, level: 'silent' }
+                : loggerOptions;
+            return parentLogger.child(bindings, options);
+        },
     });
     app.register(import('@fastify/cors'), {
         origin: '*',
@@ -153,6 +165,7 @@ export async function startApi(opts: StartApiOptions = {}) {
     pluginRoutes(typed);
     publicSessionShareRoutes(typed);
     externalSessionShareRoutes(typed);
+    mcpAppSandboxRoutes(typed);
 
     // Static webapp (self-host mode)
     if (opts.staticDir) {
@@ -202,8 +215,7 @@ export async function startApi(opts: StartApiOptions = {}) {
             if (isPublicSessionShareApiUrl(url)) return publicSessionShareNotFound(reply);
             // Don't fall through for API/socket/files paths
             if (request.method !== 'GET') return reply.code(404).send({ error: 'Not found' });
-            if (url.startsWith('/v1') || url.startsWith('/v3') || url.startsWith('/socket') ||
-                url.startsWith('/files/') || url.startsWith('/metrics') || url.startsWith('/health')) {
+            if (isSpaFallbackExcludedUrl(url)) {
                 return reply.code(404).send({ error: 'Not found' });
             }
             const indexPath = path.join(opts.staticDir!, 'index.html');
@@ -219,6 +231,17 @@ export async function startApi(opts: StartApiOptions = {}) {
         });
     }
 
+    return typed;
+}
+
+export async function startApi(opts: StartApiOptions = {}) {
+
+    // Configure
+    log('Starting API...');
+
+    // Start API
+    const app = await createApiApp(opts);
+
     // Start HTTP
     const port = opts.port ?? (process.env.PORT ? parseInt(process.env.PORT, 10) : 3005);
     const host = opts.host ?? '0.0.0.0';
@@ -228,7 +251,7 @@ export async function startApi(opts: StartApiOptions = {}) {
     });
 
     // Start Socket
-    startSocket(typed);
+    startSocket(app);
 
     // End
     log(`API ready on http://${host}:${port}`);

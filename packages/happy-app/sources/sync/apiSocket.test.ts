@@ -136,6 +136,60 @@ describe('ApiSocket RPC', () => {
         expect(mocks.rpcEmitWithAck).not.toHaveBeenCalled();
     });
 
+    it('bounds the whole encrypted RPC and never emits after encryption misses its wall-clock deadline', async () => {
+        vi.useFakeTimers();
+        try {
+            mocks.socket.connected = true;
+            let finishEncryption!: (value: string) => void;
+            const encryptionPending = new Promise<string>((resolve) => {
+                finishEncryption = resolve;
+            });
+            const { encryption, sessionEncryption } = createEncryption();
+            sessionEncryption.encryptRaw.mockReturnValueOnce(encryptionPending);
+            const socket = createApiSocket(encryption);
+            let rejection: unknown;
+            const request = socket.sessionRPC(
+                'session-1', 'mcpAppOperationCancel', {}, { overallTimeoutMs: 5_000 },
+            );
+            void request.catch((error) => { rejection = error; });
+
+            await vi.advanceTimersByTimeAsync(4_999);
+            expect(rejection).toBeUndefined();
+            await vi.advanceTimersByTimeAsync(1);
+            expect(rejection).toMatchObject({ name: 'TimeoutError' });
+
+            finishEncryption('encrypted-session-params');
+            await Promise.resolve();
+            expect(mocks.rpcEmitWithAck).not.toHaveBeenCalled();
+            expect(vi.getTimerCount()).toBe(0);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('does not emit when encryption resolves exactly at the overall deadline', async () => {
+        vi.useFakeTimers();
+        try {
+            mocks.socket.connected = true;
+            const { encryption, sessionEncryption } = createEncryption();
+            sessionEncryption.encryptRaw.mockImplementationOnce(() => new Promise<string>((resolve) => {
+                setTimeout(() => resolve('encrypted-session-params'), 5_000);
+            }));
+            const socket = createApiSocket(encryption);
+            const request = socket.sessionRPC(
+                'session-1', 'mcpAppOperationCancel', {}, { overallTimeoutMs: 5_000 },
+            );
+            const rejected = expect(request).rejects.toMatchObject({ name: 'TimeoutError' });
+
+            await vi.advanceTimersByTimeAsync(5_000);
+
+            await rejected;
+            expect(mocks.rpcEmitWithAck).not.toHaveBeenCalled();
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
     it('propagates a server RPC error without attempting to decrypt it', async () => {
         mocks.socket.connected = true;
         mocks.rpcEmitWithAck.mockResolvedValue({ ok: false, error: 'RPC method not available' });

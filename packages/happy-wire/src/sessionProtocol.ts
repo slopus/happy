@@ -1,15 +1,7 @@
 /**
- * ⚠️ UNDER REVIEW — LIKELY NEEDS MORE CAREFUL DESIGN
- *
- * This session protocol is not used in production and should NOT be used in dev
- * environments either until we revisit the design. The legacy protocol
- * (role: 'user' / role: 'agent') is the active code path everywhere.
- *
- * Before investing more here, look at how pi.dev standardizes their agent
- * protocol — we may want to align with or build on that approach instead of
- * rolling our own envelope format.
- *
- * Types are kept here for reference but are frozen. Do not add new consumers.
+ * Session Protocol v1 is active. Keep additions optional so older clients can
+ * ignore them, preserve event IDs across live delivery and replay, and reserve
+ * required breaking changes for Session Protocol v2.
  */
 
 import { createId, isCuid } from '@paralleldrive/cuid2';
@@ -29,6 +21,33 @@ export const sessionServiceMessageEventSchema = z.object({
   text: z.string(),
 });
 
+export const mcpAppPresentationV1Schema = z.object({
+  version: z.literal(1),
+  server: z.string().min(1).max(256),
+  resourceUri: z.string().min(6).max(2048).refine((value) => value.startsWith('ui://')),
+  appName: z.string().min(1).max(160).optional(),
+  actionName: z.string().min(1).max(160).optional(),
+});
+
+export type McpAppPresentationV1 = z.infer<typeof mcpAppPresentationV1Schema>;
+
+export const mcpAppResultV1Schema = z.discriminatedUnion('state', [
+  z.object({
+    version: z.literal(1),
+    state: z.literal('available'),
+    content: z.array(z.unknown()),
+    structuredContent: z.unknown().optional(),
+    _meta: z.unknown().optional(),
+  }),
+  z.object({
+    version: z.literal(1),
+    state: z.literal('unavailable'),
+    code: z.literal('MCP_APP_RESULT_TOO_LARGE'),
+  }),
+]);
+
+export type McpAppResultV1 = z.infer<typeof mcpAppResultV1Schema>;
+
 export const sessionToolCallStartEventSchema = z.object({
   t: z.literal('tool-call-start'),
   call: z.string(),
@@ -36,6 +55,7 @@ export const sessionToolCallStartEventSchema = z.object({
   title: z.string(),
   description: z.string(),
   args: z.record(z.string(), z.unknown()),
+  mcpApp: mcpAppPresentationV1Schema.optional(),
 });
 
 export const sessionToolCallEndEventSchema = z.object({
@@ -47,6 +67,7 @@ export const sessionToolCallEndEventSchema = z.object({
     summary: z.string().min(1).max(280),
     detail: z.string().min(1).max(4000).optional(),
   }).optional(),
+  mcpAppResult: mcpAppResultV1Schema.optional(),
 });
 
 export const sessionFileEventSchema = z.object({

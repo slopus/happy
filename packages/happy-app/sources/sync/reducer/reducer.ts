@@ -111,6 +111,7 @@
  */
 
 import { Message, ToolCall } from "../typesMessage";
+import { McpAppResultV1 } from '@slopus/happy-wire';
 import { AgentEvent, NormalizedMessage, UsageData } from "../typesRaw";
 import { createTracer, traceMessages, TracerState } from "./reducerTracer";
 import { AgentState, TodoItem, TodoItemsSchema } from "../storageTypes";
@@ -153,6 +154,7 @@ type PendingToolResult = {
         summary: string;
         detail?: string;
     };
+    mcpAppResult?: McpAppResultV1;
     permissions?: {
         date: number;
         result: 'approved' | 'denied';
@@ -165,9 +167,10 @@ type PendingToolResult = {
 
 export type ReducerState = {
     toolIdToMessageId: Map<string, string>; // toolId/permissionId -> messageId (since they're the same now)
-    sidechainToolIdToMessageId: Map<string, string>; // toolId -> sidechain messageId (for dual tracking)
+    sidechainToolIdToMessageId: Map<string, Map<string, string>>; // sidechainId -> toolId -> sidechain messageId
     permissions: Map<string, StoredPermission>; // Store permission details by ID for quick lookup
     pendingToolResults: Map<string, PendingToolResult>;
+    pendingSidechainToolResults: Map<string, Map<string, PendingToolResult>>;
     localIds: Map<string, string>;
     messageIds: Map<string, string>; // originalId -> internalId
     messages: Map<string, ReducerMessage>;
@@ -193,6 +196,7 @@ export function createReducer(): ReducerState {
         sidechainToolIdToMessageId: new Map(),
         permissions: new Map(),
         pendingToolResults: new Map(),
+        pendingSidechainToolResults: new Map(),
         messages: new Map(),
         localIds: new Map(),
         messageIds: new Map(),
@@ -309,8 +313,17 @@ function updateLatestTodos(state: ReducerState, value: unknown, timestamp: numbe
     }
 }
 
-function applyToolResult(
-    state: ReducerState,
+function boundedCancellationReason(result: PendingToolResult): string {
+    const summary = result.failure?.summary.trim();
+    return (summary || 'The tool call was cancelled.').slice(0, 280);
+}
+
+function resultToolState(result: PendingToolResult): ToolCall['state'] {
+    if (result.status === 'cancelled') return 'cancelled';
+    return result.status === 'failed' || result.isError ? 'error' : 'completed';
+}
+
+function applyToolResultToMessage(
     message: ReducerMessage,
     toolUseId: string,
     result: PendingToolResult,
@@ -319,9 +332,13 @@ function applyToolResult(
         return false;
     }
 
-    message.tool.state = result.status === 'failed' || result.isError ? 'error' : 'completed';
+    message.tool.state = resultToolState(result);
     message.tool.result = result.content;
     message.tool.failure = result.failure;
+    message.tool.mcpAppResult = result.status === 'cancelled' ? undefined : result.mcpAppResult;
+    message.tool.cancellationReason = result.status === 'cancelled'
+        ? boundedCancellationReason(result)
+        : undefined;
     message.tool.completedAt = result.createdAt;
 
     if (result.status === 'cancelled') {
@@ -347,10 +364,19 @@ function applyToolResult(
         };
     }
 
-    if (message.tool.name === 'TodoWrite' && !result.isError) {
+    return true;
+}
+
+function applyToolResult(
+    state: ReducerState,
+    message: ReducerMessage,
+    toolUseId: string,
+    result: PendingToolResult,
+): boolean {
+    if (!applyToolResultToMessage(message, toolUseId, result)) return false;
+    if (message.tool?.name === 'TodoWrite' && !result.isError) {
         updateLatestTodos(state, message.tool.result?.newTodos, result.createdAt);
     }
-
     return true;
 }
 
@@ -530,6 +556,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                     // Create a new tool message for the permission request
                     let mid = allocateId();
                     let toolCall: ToolCall = {
+                        callId: permId,
                         name: request.tool,
                         state: 'running' as const,
                         input: request.arguments,
@@ -686,6 +713,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                     // Create a new message for completed permission without tool
                     let mid = allocateId();
                     let toolCall: ToolCall = {
+                        callId: permId,
                         name: completed.tool,
                         state: completed.status === 'approved' ? 'completed' : 'error',
                         input: completed.arguments,
@@ -835,6 +863,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                             message.realID = msg.id;
                             message.tool.input = mergeToolInputs(message.tool.input, c.input);
                             message.tool.description = c.description;
+                            message.tool.mcpApp = c.mcpApp;
                             message.tool.startedAt = msg.createdAt;
                             // If permission was approved and shown as completed (no tool), now it's running
                             if (message.tool.permission?.status === 'approved' && message.tool.state === 'completed') {
@@ -857,6 +886,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                         const permission = state.permissions.get(c.id);
 
                         let toolCall: ToolCall = {
+                            callId: c.id,
                             name: c.name,
                             state: 'running' as const,
                             input: permission ? mergeToolInputs(permission.arguments, c.input) : c.input,
@@ -864,6 +894,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                             startedAt: msg.createdAt,
                             completedAt: null,
                             description: c.description,
+                            mcpApp: c.mcpApp,
                             result: undefined,
                         };
 
@@ -929,6 +960,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                         isError: c.is_error,
                         status: c.status,
                         failure: c.failure,
+                        mcpAppResult: c.mcpAppResult,
                         permissions: c.permissions,
                         createdAt: msg.createdAt,
                     };
@@ -936,7 +968,9 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                     // Find the message containing this tool
                     let messageId = state.toolIdToMessageId.get(c.tool_use_id);
                     if (!messageId) {
-                        state.pendingToolResults.set(c.tool_use_id, pendingResult);
+                        if (!state.pendingToolResults.has(c.tool_use_id)) {
+                            state.pendingToolResults.set(c.tool_use_id, pendingResult);
+                        }
                         continue;
                     }
 
@@ -1026,6 +1060,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
 
                     let mid = allocateId();
                     let toolCall: ToolCall = {
+                        callId: c.id,
                         name: c.name,
                         state: 'running' as const,
                         input: c.input,
@@ -1033,6 +1068,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                         startedAt: null,
                         completedAt: null,
                         description: c.description,
+                        mcpApp: c.mcpApp,
                         result: undefined
                     };
 
@@ -1064,53 +1100,47 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                     state.messages.set(mid, toolMsg);
                     existingSidechain.push(toolMsg);
 
-                    // Map sidechain tool separately to avoid overwriting permission mapping
-                    state.sidechainToolIdToMessageId.set(c.id, mid);
+                    // Map sidechain tools by owner so matching call IDs cannot cross branches.
+                    let sidechainToolIds = state.sidechainToolIdToMessageId.get(msg.sidechainId);
+                    if (!sidechainToolIds) {
+                        sidechainToolIds = new Map();
+                        state.sidechainToolIdToMessageId.set(msg.sidechainId, sidechainToolIds);
+                    }
+                    sidechainToolIds.set(c.id, mid);
+
+                    const pendingResult = state.pendingSidechainToolResults.get(msg.sidechainId)?.get(c.id);
+                    if (pendingResult && applyToolResult(state, toolMsg, c.id, pendingResult)) {
+                        const pendingResults = state.pendingSidechainToolResults.get(msg.sidechainId)!;
+                        pendingResults.delete(c.id);
+                        if (pendingResults.size === 0) {
+                            state.pendingSidechainToolResults.delete(msg.sidechainId);
+                        }
+                    }
                 } else if (c.type === 'tool-result') {
                     // Process tool result in sidechain - update BOTH messages
+                    const sidechainResult: PendingToolResult = {
+                        content: c.content,
+                        isError: c.is_error,
+                        status: c.status,
+                        failure: c.failure,
+                        mcpAppResult: c.mcpAppResult,
+                        permissions: c.permissions,
+                        createdAt: msg.createdAt,
+                    };
 
                     // Update the sidechain tool message
-                    let sidechainMessageId = state.sidechainToolIdToMessageId.get(c.tool_use_id);
+                    let sidechainMessageId = state.sidechainToolIdToMessageId.get(msg.sidechainId)?.get(c.tool_use_id);
                     if (sidechainMessageId) {
                         let sidechainMessage = state.messages.get(sidechainMessageId);
-                        if (sidechainMessage && sidechainMessage.tool && sidechainMessage.tool.state === 'running') {
-                            sidechainMessage.tool.state = c.status === 'failed' || c.is_error ? 'error' : 'completed';
-                            sidechainMessage.tool.result = c.content;
-                            sidechainMessage.tool.failure = c.failure;
-                            sidechainMessage.tool.completedAt = msg.createdAt;
-                            
-                            // Update permission data if provided by backend
-                            if (c.status === 'cancelled') {
-                                sidechainMessage.tool.permission = {
-                                    ...(sidechainMessage.tool.permission ?? { id: c.tool_use_id }),
-                                    id: c.tool_use_id,
-                                    status: 'canceled',
-                                    date: msg.createdAt,
-                                };
-                            } else if (c.permissions) {
-                                // Merge with existing permission to preserve decision field from agentState
-                                if (sidechainMessage.tool.permission) {
-                                    const existingDecision = sidechainMessage.tool.permission.decision;
-                                    sidechainMessage.tool.permission = {
-                                        ...sidechainMessage.tool.permission,
-                                        id: c.tool_use_id,
-                                        status: c.permissions.result === 'approved' ? 'approved' : 'denied',
-                                        date: c.permissions.date,
-                                        mode: c.permissions.mode,
-                                        allowedTools: c.permissions.allowedTools,
-                                        decision: c.permissions.decision || existingDecision
-                                    };
-                                } else {
-                                    sidechainMessage.tool.permission = {
-                                        id: c.tool_use_id,
-                                        status: c.permissions.result === 'approved' ? 'approved' : 'denied',
-                                        date: c.permissions.date,
-                                        mode: c.permissions.mode,
-                                        allowedTools: c.permissions.allowedTools,
-                                        decision: c.permissions.decision
-                                    };
-                                }
-                            }
+                        if (sidechainMessage) applyToolResultToMessage(sidechainMessage, c.tool_use_id, sidechainResult);
+                    } else {
+                        let pendingResults = state.pendingSidechainToolResults.get(msg.sidechainId);
+                        if (!pendingResults) {
+                            pendingResults = new Map();
+                            state.pendingSidechainToolResults.set(msg.sidechainId, pendingResults);
+                        }
+                        if (!pendingResults.has(c.tool_use_id)) {
+                            pendingResults.set(c.tool_use_id, sidechainResult);
                         }
                     }
 
@@ -1118,45 +1148,8 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                     let permissionMessageId = state.toolIdToMessageId.get(c.tool_use_id);
                     if (permissionMessageId) {
                         let permissionMessage = state.messages.get(permissionMessageId);
-                        if (permissionMessage && permissionMessage.tool && permissionMessage.tool.state === 'running') {
-                            permissionMessage.tool.state = c.status === 'failed' || c.is_error ? 'error' : 'completed';
-                            permissionMessage.tool.result = c.content;
-                            permissionMessage.tool.failure = c.failure;
-                            permissionMessage.tool.completedAt = msg.createdAt;
-                            
-                            // Update permission data if provided by backend
-                            if (c.status === 'cancelled') {
-                                permissionMessage.tool.permission = {
-                                    ...(permissionMessage.tool.permission ?? { id: c.tool_use_id }),
-                                    id: c.tool_use_id,
-                                    status: 'canceled',
-                                    date: msg.createdAt,
-                                };
-                            } else if (c.permissions) {
-                                // Merge with existing permission to preserve decision field from agentState
-                                if (permissionMessage.tool.permission) {
-                                    const existingDecision = permissionMessage.tool.permission.decision;
-                                    permissionMessage.tool.permission = {
-                                        ...permissionMessage.tool.permission,
-                                        id: c.tool_use_id,
-                                        status: c.permissions.result === 'approved' ? 'approved' : 'denied',
-                                        date: c.permissions.date,
-                                        mode: c.permissions.mode,
-                                        allowedTools: c.permissions.allowedTools,
-                                        decision: c.permissions.decision || existingDecision
-                                    };
-                                } else {
-                                    permissionMessage.tool.permission = {
-                                        id: c.tool_use_id,
-                                        status: c.permissions.result === 'approved' ? 'approved' : 'denied',
-                                        date: c.permissions.date,
-                                        mode: c.permissions.mode,
-                                        allowedTools: c.permissions.allowedTools,
-                                        decision: c.permissions.decision
-                                    };
-                                }
-                            }
-                            
+                        if (permissionMessage
+                            && applyToolResultToMessage(permissionMessage, c.tool_use_id, sidechainResult)) {
                             changed.add(permissionMessageId);
                         }
                     }

@@ -1,5 +1,11 @@
 import * as z from 'zod';
 import { isCuid } from '@paralleldrive/cuid2';
+import {
+    type McpAppPresentationV1,
+    type McpAppResultV1,
+    sessionToolCallEndEventSchema,
+    sessionToolCallStartEventSchema,
+} from '@slopus/happy-wire';
 import { MessageMetaSchema, MessageMeta } from './typesMessageMeta';
 
 //
@@ -45,26 +51,6 @@ const sessionTextEventSchema = z.object({
 const sessionServiceMessageEventSchema = z.object({
     t: z.literal('service'),
     text: z.string(),
-});
-
-const sessionToolCallStartEventSchema = z.object({
-    t: z.literal('tool-call-start'),
-    call: z.string(),
-    name: z.string(),
-    title: z.string(),
-    description: z.string(),
-    args: z.record(z.string(), z.unknown()),
-});
-
-const sessionToolCallEndEventSchema = z.object({
-    t: z.literal('tool-call-end'),
-    call: z.string(),
-    status: z.enum(['completed', 'failed', 'cancelled']).optional(),
-    error: z.object({
-        code: z.string().max(64).optional(),
-        summary: z.string().min(1).max(280),
-        detail: z.string().min(1).max(4000).optional(),
-    }).optional(),
 });
 
 const sessionFileEventSchema = z.object({
@@ -513,6 +499,7 @@ type NormalizedAgentContent =
         name: string;
         input: any;
         description: string | null;
+        mcpApp?: McpAppPresentationV1;
         uuid: string;
         parentUUID: string | null;
     } | {
@@ -526,6 +513,7 @@ type NormalizedAgentContent =
             summary: string;
             detail?: string;
         };
+        mcpAppResult?: McpAppResultV1;
         uuid: string;
         parentUUID: string | null;
         permissions?: {
@@ -713,6 +701,7 @@ function normalizeSessionEnvelope(
                 name: envelope.ev.name || 'unknown',
                 input: envelope.ev.args,
                 description: envelope.ev.description,
+                ...(envelope.ev.mcpApp ? { mcpApp: envelope.ev.mcpApp } : {}),
                 uuid: contentUUID,
                 parentUUID
             }],
@@ -721,7 +710,9 @@ function normalizeSessionEnvelope(
     }
 
     if (envelope.ev.t === 'tool-call-end') {
-        const status = envelope.ev.error ? 'failed' : envelope.ev.status;
+        const status = envelope.ev.status === 'cancelled'
+            ? 'cancelled'
+            : envelope.ev.error ? 'failed' : envelope.ev.status;
         return {
             id: messageId,
             localId,
@@ -735,6 +726,7 @@ function normalizeSessionEnvelope(
                 is_error: status === 'failed',
                 ...(status ? { status } : {}),
                 ...(envelope.ev.error ? { failure: envelope.ev.error } : {}),
+                ...(envelope.ev.mcpAppResult ? { mcpAppResult: envelope.ev.mcpAppResult } : {}),
                 uuid: contentUUID,
                 parentUUID
             }],

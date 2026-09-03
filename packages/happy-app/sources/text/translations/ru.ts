@@ -1072,6 +1072,17 @@ export const ru: TranslationStructure = {
         input: 'Входные данные',
         output: 'Результат',
     },
+    mcpApps: {
+        loading: 'Загрузка App…',
+        offline: 'Эта App недоступна, пока сеанс не в сети.',
+        retry: 'Повторить',
+        unsupported: 'Это устройство не поддерживает MCP Apps.',
+        unavailable: 'Эта App недоступна.',
+        openLinkTitle: 'Открыть внешнюю ссылку?',
+        openLinkMessage: 'Эта App хочет открыть ссылку вне Paws.',
+        openLinkConfirm: 'Открыть ссылку',
+        openLinkCancel: 'Отмена',
+    },
 
     toolGroup: {
         editedFile: 'Отредактированный файл',

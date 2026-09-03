@@ -16,6 +16,7 @@ import { parseToolUseError } from '@/utils/toolErrorParser';
 import { formatMCPTitle } from './views/MCPToolView';
 import { t } from '@/text';
 import { getTerminalToolCommand, isInlineImageFileTool, isInlineVideoFileTool, shouldRenderToolCardHeader } from '@/utils/toolDisplay';
+import { McpAppHost } from './McpAppHost';
 
 interface ToolViewProps {
     metadata: Metadata | null;
@@ -87,7 +88,7 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
     if (tool.name.startsWith('mcp__')) {
         toolTitle = formatMCPTitle(tool.name);
         icon = <Ionicons name="extension-puzzle-outline" size={18} color={theme.colors.textSecondary} />;
-        minimal = true;
+        minimal = !tool.mcpApp;
     } else if (knownTool?.title) {
         if (typeof knownTool.title === 'function') {
             toolTitle = knownTool.title({ tool, metadata: props.metadata });
@@ -226,11 +227,11 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
         <View style={isCompactTerminalTool ? styles.compactContainer : (isInlineCodexPatch || isInlineMediaFile) ? styles.inlineContainer : styles.container}>
             {renderCardHeader ? (
                 isPressable ? (
-                    <TouchableOpacity style={isCompactTerminalTool ? styles.compactHeader : styles.header} onPress={handlePress} activeOpacity={0.8}>
+                    <TouchableOpacity testID="tool-card-header" style={isCompactTerminalTool ? styles.compactHeader : styles.header} onPress={handlePress} activeOpacity={0.8}>
                         {renderHeaderContent()}
                     </TouchableOpacity>
                 ) : (
-                    <View style={isCompactTerminalTool ? styles.compactHeader : styles.header}>
+                    <View testID="tool-card-header" style={isCompactTerminalTool ? styles.compactHeader : styles.header}>
                         {renderHeaderContent()}
                     </View>
                 )
@@ -238,6 +239,18 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
 
             {/* Content area - either custom children or tool-specific view */}
             {(() => {
+                if (tool.mcpApp) {
+                    return (
+                        <View style={styles.mcpAppContent} testID="mcp-app-content">
+                            <McpAppHost
+                                sessionId={sessionId}
+                                toolCall={tool}
+                                presentation={tool.mcpApp}
+                                result={tool.mcpAppResult}
+                            />
+                        </View>
+                    );
+                }
                 // Check if minimal first - minimal tools don't show content
                 if (minimal || isCompactTerminalTool) {
                     return null;
@@ -419,6 +432,10 @@ const styles = StyleSheet.create((theme) => ({
         paddingHorizontal: 12,
         paddingTop: 8,
         overflow: 'visible'
+    },
+    mcpAppContent: {
+        overflow: 'hidden',
+        backgroundColor: theme.colors.surface,
     },
     inlineMediaContent: {
         overflow: 'visible',

@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { getPublicShareDocumentHeaders, isPublicShareDocumentUrl, resolveTrustProxySetting } from './api';
+import {
+    getPublicShareDocumentHeaders,
+    isPublicShareDocumentUrl,
+    isSpaFallbackExcludedUrl,
+    resolveTrustProxySetting,
+} from './api';
 
 describe('public share HTML security', () => {
     it('recognizes only complete public share document routes', () => {
@@ -23,5 +28,13 @@ describe('public share HTML security', () => {
         expect(resolveTrustProxySetting('1')).toBe(1);
         expect(resolveTrustProxySetting('0')).toBe(false);
         expect(resolveTrustProxySetting('true')).toBe(false);
+    });
+
+    it('never serves the Web SPA for unmatched MCP App sandbox paths', () => {
+        expect(isSpaFallbackExcludedUrl('/mcp-app-sandbox')).toBe(true);
+        expect(isSpaFallbackExcludedUrl('/mcp-app-sandbox?parentOrigin=secret')).toBe(true);
+        expect(isSpaFallbackExcludedUrl('/mcp-app-sandbox/host/extra')).toBe(true);
+        expect(isSpaFallbackExcludedUrl('/mcp-app-sandbox/unknown?parentOrigin=x')).toBe(true);
+        expect(isSpaFallbackExcludedUrl('/conversation/session-id')).toBe(false);
     });
 });

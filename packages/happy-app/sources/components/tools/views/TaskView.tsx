@@ -11,7 +11,7 @@ import { ConversationActivityStrip } from '@/components/ConversationActivityStri
 interface FilteredTool {
     tool: ToolCall;
     title: string;
-    state: 'running' | 'completed' | 'error';
+    state: ToolCall['state'];
 }
 
 export const TaskView = React.memo<ToolViewProps>(({ tool, metadata, messages }) => {
@@ -37,7 +37,8 @@ export const TaskView = React.memo<ToolViewProps>(({ tool, metadata, messages })
                 }
             }
 
-            if (m.tool.state === 'running' || m.tool.state === 'completed' || m.tool.state === 'error') {
+            if (m.tool.state === 'running' || m.tool.state === 'completed'
+                || m.tool.state === 'error' || m.tool.state === 'cancelled') {
                 filtered.push({
                     tool: m.tool,
                     title,
@@ -119,6 +120,14 @@ export const TaskView = React.memo<ToolViewProps>(({ tool, metadata, messages })
                         )}
                         {item.state === 'error' && (
                             <Ionicons name="close-circle" size={16} color={theme.colors.textDestructive} />
+                        )}
+                        {item.state === 'cancelled' && (
+                            <Ionicons
+                                name="remove-circle-outline"
+                                size={16}
+                                color={theme.colors.textSecondary}
+                                accessibilityLabel={t('toolGroup.subagentStatus.cancelled')}
+                            />
                         )}
                     </View>
                 </View>

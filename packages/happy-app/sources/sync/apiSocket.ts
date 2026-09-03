@@ -53,6 +53,7 @@ export const DEFAULT_RPC_ACK_TIMEOUT_MS = 60_000;
 
 export interface RpcCallOptions {
     timeoutMs?: number;
+    overallTimeoutMs?: number;
 }
 
 interface RawEncryption {
@@ -264,18 +265,63 @@ export class ApiSocket {
             throw new Error('Socket not connected');
         }
 
+        const overallTimeoutMs = options?.overallTimeoutMs;
+        const deadlineAt = overallTimeoutMs === undefined
+            ? undefined
+            : Date.now() + Math.max(0, overallTimeoutMs);
+        const timeoutError = () => {
+            const error = new Error('RPC call timed out');
+            error.name = 'TimeoutError';
+            return error;
+        };
+        const withinOverallDeadline = <T>(promise: Promise<T>): Promise<T> => {
+            if (deadlineAt === undefined) return promise;
+            const remainingMs = deadlineAt - Date.now();
+            if (remainingMs <= 0) return Promise.reject(timeoutError());
+            return new Promise<T>((resolve, reject) => {
+                let settled = false;
+                const timer = setTimeout(() => {
+                    if (settled) return;
+                    settled = true;
+                    reject(timeoutError());
+                }, remainingMs);
+                promise.then(
+                    (value) => {
+                        if (settled) return;
+                        settled = true;
+                        clearTimeout(timer);
+                        resolve(value);
+                    },
+                    (error) => {
+                        if (settled) return;
+                        settled = true;
+                        clearTimeout(timer);
+                        reject(error);
+                    },
+                );
+            });
+        };
+
         const encryption = getEncryption();
-        const encryptedParams = await encryption.encryptRaw(params);
+        const encryptedParams = await withinOverallDeadline(encryption.encryptRaw(params));
 
         if (this.socket !== rpcSocket || !rpcSocket.connected) {
             throw new Error('Socket not connected');
         }
 
         const timeoutMs = options?.timeoutMs ?? DEFAULT_RPC_ACK_TIMEOUT_MS;
-        const result: unknown = await rpcSocket.timeout(timeoutMs).emitWithAck('rpc-call', {
-            method,
-            params: encryptedParams,
-        });
+        let remainingOverallMs = timeoutMs;
+        if (deadlineAt !== undefined) {
+            const remaining = deadlineAt - Date.now();
+            if (remaining <= 0) throw timeoutError();
+            remainingOverallMs = Math.min(timeoutMs, remaining);
+        }
+        const result: unknown = await withinOverallDeadline(
+            rpcSocket.timeout(remainingOverallMs).emitWithAck('rpc-call', {
+                method,
+                params: encryptedParams,
+            }),
+        );
 
         if (
             result !== null
@@ -283,7 +329,9 @@ export class ApiSocket {
             && (result as { ok?: unknown }).ok === true
             && typeof (result as { result?: unknown }).result === 'string'
         ) {
-            return await encryption.decryptRaw((result as { result: string }).result) as R;
+            return await withinOverallDeadline(
+                encryption.decryptRaw((result as { result: string }).result),
+            ) as R;
         }
 
         if (result !== null && typeof result === 'object' && (result as { ok?: unknown }).ok === false) {

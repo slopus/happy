@@ -1,7 +1,12 @@
 import type { SessionEnvelope } from '@slopus/happy-wire';
 import { trimIdent } from '@/utils/trimIdent';
 import type { ReasoningEffort, Thread } from './codexAppServerTypes';
-import { isTerminalCodexTurn, mapCodexThreadToSessionEnvelopes } from './utils/sessionProtocolMapper';
+import {
+    isTerminalCodexTurn,
+    mapCodexThreadToSessionEnvelopes,
+    rebuildCodexMcpAppBindings,
+} from './utils/sessionProtocolMapper';
+import type { McpAppBindingRegistry } from './mcpApps/McpAppBindingRegistry';
 
 type ResumeThreadClient = {
     resumeThread: (opts: {
@@ -41,6 +46,7 @@ export async function resumeExistingThread(opts: {
     cwd: string;
     mcpServers: Record<string, unknown>;
     historyMode?: 'full' | 'after-cursor';
+    mcpAppBindingRegistry?: McpAppBindingRegistry;
 }): Promise<{
     threadId: string;
     model: string;
@@ -81,6 +87,12 @@ export async function resumeExistingThread(opts: {
             threadId: resumedThread.threadId,
             includeTurns: true,
         });
+        if (opts.mcpAppBindingRegistry) {
+            rebuildCodexMcpAppBindings(thread, {
+                threadId: resumedThread.threadId,
+                mcpAppBindingRegistry: opts.mcpAppBindingRegistry,
+            });
+        }
         const turns = thread.turns ?? [];
         let turnsToReplay = turns;
         if (historyMode === 'after-cursor') {

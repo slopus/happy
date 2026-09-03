@@ -136,8 +136,10 @@ export class CodexPermissionHandler extends BasePermissionHandler {
     async handleToolCall(
         toolCallId: string,
         toolName: string,
-        input: unknown
+        input: unknown,
+        options?: { signal?: AbortSignal },
     ): Promise<PermissionResult> {
+        if (options?.signal?.aborted) return { decision: 'abort' };
         if (this.shouldAutoApprove(toolName, toolCallId)) {
             const decision = this.currentPermissionMode === 'yolo' ? 'approved_for_session' : 'approved';
             logger.debug(`${this.getLogPrefix()} Auto-approving tool ${toolName} (${toolCallId}) in ${this.currentPermissionMode} mode`);
@@ -161,10 +163,28 @@ export class CodexPermissionHandler extends BasePermissionHandler {
         }
 
         return new Promise<PermissionResult>((resolve, reject) => {
+            let settled = false;
+            const cleanup = () => options?.signal?.removeEventListener('abort', onAbort);
+            const settleResolve = (result: PermissionResult) => {
+                if (settled) return;
+                settled = true;
+                cleanup();
+                resolve(result);
+            };
+            const settleReject = (error: Error) => {
+                if (settled) return;
+                settled = true;
+                cleanup();
+                reject(error);
+            };
+            const onAbort = () => {
+                this.cancelPendingRequest(toolCallId, 'MCP App operation canceled');
+            };
+
             // Store the pending request
             this.pendingRequests.set(toolCallId, {
-                resolve,
-                reject,
+                resolve: settleResolve,
+                reject: settleReject,
                 toolName,
                 input
             });
@@ -172,6 +192,8 @@ export class CodexPermissionHandler extends BasePermissionHandler {
             // Update agent state with pending request
             this.addPendingRequestToState(toolCallId, toolName, input);
             this.notifyPendingPermission(toolCallId, toolName);
+            options?.signal?.addEventListener('abort', onAbort, { once: true });
+            if (options?.signal?.aborted) onAbort();
 
             logger.debug(`${this.getLogPrefix()} Permission request sent for tool: ${toolName} (${toolCallId})`);
         });

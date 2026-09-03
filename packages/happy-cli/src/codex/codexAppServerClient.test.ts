@@ -1,7 +1,10 @@
-import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createServer, type Server } from 'node:http';
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { WebSocket, WebSocketServer } from 'ws';
 import type { SandboxConfig } from '@/persistence';
 
 const codeModeHostName = process.platform === 'win32'
@@ -53,6 +56,7 @@ type MockRpcMessage = {
     method?: string;
     params?: any;
     result?: any;
+    error?: { code: number; message: string };
 };
 
 function pushJsonLine(stdout: NodeJS.ReadableStream & { push: (chunk: string) => void }, payload: unknown) {
@@ -63,6 +67,7 @@ function pushJsonLine(stdout: NodeJS.ReadableStream & { push: (chunk: string) =>
 function createMockProcess(opts?: {
     pid?: number;
     initializeDelayMs?: number;
+    autoInitialize?: boolean;
     onRequest?: (msg: MockRpcMessage, stdout: NodeJS.ReadableStream & { push: (chunk: string) => void }) => void;
 }) {
     const { Readable, Writable } = require('stream');
@@ -82,7 +87,7 @@ function createMockProcess(opts?: {
     stdin.write = (data: any, ...args: any[]) => {
         try {
             const msg = JSON.parse(typeof data === 'string' ? data : data.toString());
-            if (msg.method === 'initialize' && msg.id != null) {
+            if (opts?.autoInitialize !== false && msg.method === 'initialize' && msg.id != null) {
                 // Send response on next tick
                 setTimeout(() => {
                     pushJsonLine(stdout, { id: msg.id, result: { userAgent: 'test' } });
@@ -93,6 +98,60 @@ function createMockProcess(opts?: {
         return origWrite(data, ...args);
     };
     return proc;
+}
+
+async function createUnixSocketAppServer(
+    onInitialize: (
+        message: MockRpcMessage,
+        connection: WebSocket,
+        connectionIndex: number,
+    ) => void,
+): Promise<{
+    socketPath: string;
+    initializeRequests: MockRpcMessage[][];
+    cleanup: () => Promise<void>;
+}> {
+    const tempDir = await mkdtemp(join(tmpdir(), 'paws-codex-capability-'));
+    const socketPath = join(tempDir, 'app-server.sock');
+    const server: Server = createServer();
+    const webSocketServer = new WebSocketServer({ server });
+    const connections = new Set<WebSocket>();
+    const initializeRequests: MockRpcMessage[][] = [];
+
+    webSocketServer.on('connection', (connection) => {
+        const connectionIndex = initializeRequests.length;
+        initializeRequests.push([]);
+        connections.add(connection);
+        connection.on('close', () => connections.delete(connection));
+        connection.on('message', (data) => {
+            const message = JSON.parse(data.toString()) as MockRpcMessage;
+            if (message.method === 'initialize' && message.id !== undefined) {
+                initializeRequests[connectionIndex].push(message);
+                onInitialize(message, connection, connectionIndex);
+            }
+        });
+    });
+
+    await new Promise<void>((resolve, reject) => {
+        server.once('error', reject);
+        server.listen(socketPath, () => {
+            server.off('error', reject);
+            resolve();
+        });
+    });
+
+    return {
+        socketPath,
+        initializeRequests,
+        cleanup: async () => {
+            for (const connection of connections) {
+                connection.terminate();
+            }
+            await new Promise<void>((resolve) => webSocketServer.close(() => resolve()));
+            await new Promise<void>((resolve) => server.close(() => resolve()));
+            await rm(tempDir, { recursive: true, force: true });
+        },
+    };
 }
 
 async function waitFor(predicate: () => boolean, timeoutMs: number = 1000): Promise<void> {
@@ -120,6 +179,7 @@ const sandboxConfig: SandboxConfig = {
 };
 
 describe('CodexAppServerClient sandbox integration', () => {
+    const cleanupTasks: Array<() => Promise<void>> = [];
     const originalRustLog = process.env.RUST_LOG;
     const proxyEnvKeys = [
         'HTTP_PROXY',
@@ -149,6 +209,7 @@ describe('CodexAppServerClient sandbox integration', () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
+        mockSpawn.mockReset();
         process.env.RUST_LOG = originalRustLog;
         restoreProxyEnv();
         mockExecFileSync.mockReturnValue('codex-cli 0.107.0');
@@ -157,9 +218,188 @@ describe('CodexAppServerClient sandbox integration', () => {
         mockSpawn.mockImplementation(() => createMockProcess());
     });
 
+    afterEach(async () => {
+        while (cleanupTasks.length > 0) {
+            await cleanupTasks.pop()?.();
+        }
+    });
+
     afterAll(() => {
         process.env.RUST_LOG = originalRustLog;
         restoreProxyEnv();
+    });
+
+    it('advertises the MCP UI extension during successful initialization', async () => {
+        const requests: MockRpcMessage[] = [];
+        mockSpawn.mockImplementation(() => createMockProcess({
+            onRequest: (message) => requests.push(message),
+        }));
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+
+        await client.connect();
+
+        const initialize = requests.find((message) => message.method === 'initialize');
+        expect(initialize?.params.capabilities).toEqual({
+            experimentalApi: true,
+            extensions: {
+                'io.modelcontextprotocol/ui': {
+                    mimeTypes: ['text/html;profile=mcp-app'],
+                },
+            },
+        });
+        expect(client.mcpUiCapability).toBe('enabled');
+
+        await client.disconnect();
+    });
+
+    it('reconnects a local process once without extensions after invalid initialize params', async () => {
+        const requestsByProcess: MockRpcMessage[][] = [[], []];
+        const firstProcess = createMockProcess({
+            autoInitialize: false,
+            onRequest: (message, stdout) => {
+                requestsByProcess[0].push(message);
+                if (message.method === 'initialize' && message.id !== undefined) {
+                    pushJsonLine(stdout, {
+                        id: message.id,
+                        error: { code: -32602, message: 'extensions are unsupported' },
+                    });
+                }
+            },
+        });
+        const secondProcess = createMockProcess({
+            onRequest: (message) => requestsByProcess[1].push(message),
+        });
+        mockSpawn
+            .mockImplementationOnce(() => firstProcess)
+            .mockImplementationOnce(() => secondProcess);
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+
+        await client.connect();
+
+        const firstInitialize = requestsByProcess[0].find((message) => message.method === 'initialize');
+        const secondInitialize = requestsByProcess[1].find((message) => message.method === 'initialize');
+        expect(firstInitialize?.params.capabilities).toMatchObject({
+            experimentalApi: true,
+            extensions: {
+                'io.modelcontextprotocol/ui': {
+                    mimeTypes: ['text/html;profile=mcp-app'],
+                },
+            },
+        });
+        expect(secondInitialize?.params.capabilities.extensions).toBeUndefined();
+        expect(requestsByProcess[0].filter((message) => message.method === 'initialize')).toHaveLength(1);
+        expect(requestsByProcess[1].filter((message) => message.method === 'initialize')).toHaveLength(1);
+        expect(firstProcess.kill).toHaveBeenCalledWith('SIGTERM');
+        expect(mockSpawn).toHaveBeenCalledTimes(2);
+        expect(client.mcpUiCapability).toBe('legacy');
+
+        await client.disconnect();
+    });
+
+    it('reconnects a shared Unix socket once without extensions after invalid initialize params', async () => {
+        const appServer = await createUnixSocketAppServer((message, connection, connectionIndex) => {
+            if (connectionIndex === 0) {
+                connection.send(JSON.stringify({
+                    id: message.id,
+                    error: { code: -32602, message: 'extensions are unsupported' },
+                }));
+                return;
+            }
+            connection.send(JSON.stringify({ id: message.id, result: { userAgent: 'test' } }));
+        });
+        cleanupTasks.push(appServer.cleanup);
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient(undefined, {
+            type: 'unixSocket',
+            socketPath: appServer.socketPath,
+        });
+
+        await client.connect();
+
+        expect(appServer.initializeRequests).toHaveLength(2);
+        expect(appServer.initializeRequests[0]).toHaveLength(1);
+        expect(appServer.initializeRequests[1]).toHaveLength(1);
+        expect(appServer.initializeRequests[0][0].params.capabilities).toMatchObject({
+            experimentalApi: true,
+            extensions: {
+                'io.modelcontextprotocol/ui': {
+                    mimeTypes: ['text/html;profile=mcp-app'],
+                },
+            },
+        });
+        expect(appServer.initializeRequests[1][0].params.capabilities.extensions).toBeUndefined();
+        expect(client.mcpUiCapability).toBe('legacy');
+
+        await client.disconnect();
+    });
+
+    it('surfaces a second legacy initialize failure without opening a third process', async () => {
+        const requestsByProcess: MockRpcMessage[][] = [[], []];
+        const processes = requestsByProcess.map((requests, index) => createMockProcess({
+            autoInitialize: false,
+            onRequest: (message, stdout) => {
+                requests.push(message);
+                if (message.method === 'initialize' && message.id !== undefined) {
+                    pushJsonLine(stdout, {
+                        id: message.id,
+                        error: {
+                            code: index === 0 ? -32602 : -32603,
+                            message: index === 0 ? 'extensions are unsupported' : 'legacy initialize failed',
+                        },
+                    });
+                }
+            },
+        }));
+        mockSpawn
+            .mockImplementationOnce(() => processes[0])
+            .mockImplementationOnce(() => processes[1]);
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+
+        await expect(client.connect()).rejects.toThrow('initialize: legacy initialize failed (code=-32603)');
+
+        expect(mockSpawn).toHaveBeenCalledTimes(2);
+        expect(requestsByProcess[0].filter((message) => message.method === 'initialize')).toHaveLength(1);
+        expect(requestsByProcess[1].filter((message) => message.method === 'initialize')).toHaveLength(1);
+        expect(requestsByProcess[0][0].params.capabilities.extensions).toEqual({
+            'io.modelcontextprotocol/ui': {
+                mimeTypes: ['text/html;profile=mcp-app'],
+            },
+        });
+        expect(requestsByProcess[1][0].params.capabilities.extensions).toBeUndefined();
+        expect(client.mcpUiCapability).toBeNull();
+    });
+
+    it('leaves MCP UI capability unset without retrying a non-invalid-params initialize failure', async () => {
+        const requests: MockRpcMessage[] = [];
+        const process = createMockProcess({
+            autoInitialize: false,
+            onRequest: (message, stdout) => {
+                requests.push(message);
+                if (message.method === 'initialize' && message.id !== undefined) {
+                    pushJsonLine(stdout, {
+                        id: message.id,
+                        error: { code: -32603, message: 'initialize failed' },
+                    });
+                }
+            },
+        });
+        mockSpawn.mockImplementationOnce(() => process);
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+
+        await expect(client.connect()).rejects.toThrow('initialize: initialize failed (code=-32603)');
+
+        expect(mockSpawn).toHaveBeenCalledTimes(1);
+        expect(requests.filter((message) => message.method === 'initialize')).toHaveLength(1);
+        expect(requests[0].params.capabilities.extensions).toEqual({
+            'io.modelcontextprotocol/ui': {
+                mimeTypes: ['text/html;profile=mcp-app'],
+            },
+        });
+        expect(client.mcpUiCapability).toBeNull();
     });
 
     it('wraps transport when sandbox is enabled', async () => {
@@ -610,6 +850,254 @@ describe('CodexAppServerClient sandbox integration', () => {
         await client.disconnect();
     });
 
+    it('keeps an active turn alive when progress arrives before the inactivity timeout', async () => {
+        const proc = createMockProcess({
+            pid: 2004,
+            onRequest: (msg, stdout) => {
+                if (msg.method === 'thread/start' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: {
+                                thread: { id: 'thread-active', path: '/tmp/thread-active' },
+                                model: 'gpt-test',
+                                modelProvider: 'openai',
+                                cwd: '/tmp/project',
+                                approvalPolicy: 'never',
+                                sandbox: { type: 'dangerFullAccess' },
+                                reasoningEffort: null,
+                            },
+                        });
+                    }, 0);
+                }
+
+                if (msg.method === 'turn/start' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: {
+                                turn: { id: 'turn-active', items: [], status: 'inProgress', error: null },
+                            },
+                        });
+                        pushJsonLine(stdout, {
+                            method: 'turn/started',
+                            params: {
+                                threadId: 'thread-active',
+                                turn: { id: 'turn-active', status: 'inProgress' },
+                            },
+                        });
+                    }, 0);
+
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            method: 'item/started',
+                            params: {
+                                threadId: 'thread-active',
+                                turnId: 'turn-active',
+                                item: {
+                                    id: 'command-active',
+                                    type: 'commandExecution',
+                                    command: 'pnpm test',
+                                    cwd: '/tmp/project',
+                                    status: 'inProgress',
+                                },
+                            },
+                        });
+                    }, 60);
+
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            method: 'turn/completed',
+                            params: {
+                                threadId: 'thread-active',
+                                turn: { id: 'turn-active', status: 'completed', error: null },
+                            },
+                        });
+                    }, 120);
+                }
+            },
+        });
+        mockSpawn.mockImplementation(() => proc);
+
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        const events: Array<Record<string, unknown>> = [];
+        client.setEventHandler((msg) => {
+            events.push(msg as Record<string, unknown>);
+        });
+
+        await client.connect();
+        await client.startThread({
+            model: 'gpt-test',
+            cwd: '/tmp/project',
+            approvalPolicy: 'never',
+            sandbox: 'danger-full-access',
+        });
+
+        await expect(client.sendTurnAndWait('keep working', { turnTimeoutMs: 90 }))
+            .resolves.toEqual({ aborted: false });
+        expect(events).not.toContainEqual(expect.objectContaining({
+            type: 'turn_aborted',
+            reason: 'timeout',
+        }));
+
+        await client.disconnect();
+    });
+
+    it('keeps a turn alive while an approval request waits for a decision', async () => {
+        const proc = createMockProcess({
+            pid: 2005,
+            onRequest: (msg, stdout) => {
+                if (msg.method === 'thread/start' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: {
+                                thread: { id: 'thread-approval-active', path: '/tmp/thread-approval-active' },
+                                model: 'gpt-test',
+                                modelProvider: 'openai',
+                                cwd: '/tmp/project',
+                                approvalPolicy: 'on-request',
+                                sandbox: { type: 'workspaceWrite' },
+                                reasoningEffort: null,
+                            },
+                        });
+                    }, 0);
+                }
+
+                if (msg.method === 'turn/start' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: {
+                                turn: { id: 'turn-approval-active', items: [], status: 'inProgress', error: null },
+                            },
+                        });
+                        pushJsonLine(stdout, {
+                            method: 'turn/started',
+                            params: {
+                                threadId: 'thread-approval-active',
+                                turn: { id: 'turn-approval-active', status: 'inProgress' },
+                            },
+                        });
+                    }, 0);
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: 78,
+                            method: 'item/commandExecution/requestApproval',
+                            params: {
+                                threadId: 'thread-approval-active',
+                                turnId: 'turn-approval-active',
+                                itemId: 'command-needing-approval',
+                                command: 'pnpm test',
+                            },
+                        });
+                    }, 60);
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: 79,
+                            method: 'item/commandExecution/requestApproval',
+                            params: {
+                                threadId: 'thread-approval-active',
+                                turnId: 'turn-approval-active',
+                                itemId: 'second-command-needing-approval',
+                                command: 'pnpm typecheck',
+                            },
+                        });
+                    }, 70);
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            method: 'item/started',
+                            params: {
+                                threadId: 'thread-approval-active',
+                                turnId: 'turn-approval-active',
+                                item: {
+                                    id: 'approval-progress',
+                                    type: 'commandExecution',
+                                    command: 'still working',
+                                    cwd: '/tmp/project',
+                                    status: 'inProgress',
+                                },
+                            },
+                        });
+                    }, 100);
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            method: 'turn/completed',
+                            params: {
+                                threadId: 'thread-approval-active',
+                                turn: { id: 'turn-approval-active', status: 'completed', error: null },
+                            },
+                        });
+                    }, 300);
+                }
+            },
+        });
+        mockSpawn.mockImplementation(() => proc);
+
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        client.setApprovalHandler(async (request) => {
+            await new Promise((resolve) => setTimeout(
+                resolve,
+                request.callId === 'command-needing-approval' ? 160 : 200,
+            ));
+            return 'approved';
+        });
+
+        await client.connect();
+        await client.startThread({
+            model: 'gpt-test',
+            cwd: '/tmp/project',
+            approvalPolicy: 'on-request',
+            sandbox: 'workspace-write',
+        });
+
+        await expect(client.sendTurnAndWait('request approval', { turnTimeoutMs: 90 }))
+            .resolves.toEqual({ aborted: false });
+        await client.disconnect();
+    });
+
+    it('restarts the inactivity deadline when a server-started turn is accepted', async () => {
+        const proc = createMockProcess({
+            pid: 2006,
+            onRequest: (msg, stdout) => {
+                if (msg.method !== 'review/start' || msg.id == null) return;
+                setTimeout(() => {
+                    pushJsonLine(stdout, {
+                        id: msg.id,
+                        result: {
+                            turn: { id: 'turn-delayed-review', status: 'inProgress', items: [], error: null },
+                            reviewThreadId: 'thread-delayed-review',
+                        },
+                    });
+                }, 60);
+                setTimeout(() => {
+                    pushJsonLine(stdout, {
+                        method: 'turn/completed',
+                        params: {
+                            threadId: 'thread-delayed-review',
+                            turn: { id: 'turn-delayed-review', status: 'completed', error: null },
+                        },
+                    });
+                }, 120);
+            },
+        });
+        mockSpawn.mockImplementation(() => proc);
+
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        await client.connect();
+
+        await expect(client.startReviewAndWait({
+            threadId: 'thread-delayed-review',
+            target: { type: 'uncommittedChanges' },
+            delivery: 'inline',
+            turnTimeoutMs: 90,
+        })).resolves.toEqual({ aborted: false });
+        await client.disconnect();
+    });
+
     it('forks, reads, and rolls back Codex threads through app-server RPC', async () => {
         const requests: MockRpcMessage[] = [];
         const proc = createMockProcess({
@@ -888,6 +1376,47 @@ describe('CodexAppServerClient sandbox integration', () => {
             detail: 'toolsAndAuthOnly',
             cursor: null,
             limit: 50,
+        });
+
+        await client.disconnect();
+    });
+
+    it('reads an MCP resource with optional origin authority through app-server RPC', async () => {
+        const requests: MockRpcMessage[] = [];
+        const resource = {
+            contents: [{
+                uri: 'ui://demo/index.html',
+                mimeType: 'text/html;profile=mcp-app',
+                text: '<main>App</main>',
+                futureCodexField: true,
+            }],
+            futureResponseField: 'retained',
+        };
+        const proc = createMockProcess({
+            onRequest: (msg, stdout) => {
+                requests.push(msg);
+                if (msg.method === 'mcpServer/resource/read' && msg.id != null) {
+                    setTimeout(() => pushJsonLine(stdout, { id: msg.id, result: resource }), 0);
+                }
+            },
+        });
+        mockSpawn.mockImplementation(() => proc);
+
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        await client.connect();
+
+        await expect(client.readMcpResource({
+            threadId: 'thread-1',
+            server: 'demo',
+            uri: 'ui://demo/index.html',
+            originCallId: 'call-1',
+        })).resolves.toEqual(resource);
+        expect(requests.find((msg) => msg.method === 'mcpServer/resource/read')?.params).toEqual({
+            threadId: 'thread-1',
+            server: 'demo',
+            uri: 'ui://demo/index.html',
+            originCallId: 'call-1',
         });
 
         await client.disconnect();
@@ -1271,6 +1800,116 @@ describe('CodexAppServerClient sandbox integration', () => {
                 content: [{ type: 'text', text: 'Continue from Codex Desktop.' }],
             }),
         ]));
+
+        await client.disconnect();
+    });
+
+    it('forwards live MCP tool items as normalized start and end events', async () => {
+        const proc = createMockProcess({
+            pid: 3010,
+            onRequest: (msg, stdout) => {
+                if (msg.method === 'thread/start' && msg.id != null) {
+                    setTimeout(() => pushJsonLine(stdout, {
+                        id: msg.id,
+                        result: {
+                            thread: { id: 'thread-mcp-app', path: '/tmp/thread-mcp-app' },
+                            model: 'gpt-test',
+                            modelProvider: 'openai',
+                            cwd: '/tmp/project',
+                            approvalPolicy: 'never',
+                            sandbox: { type: 'dangerFullAccess' },
+                            reasoningEffort: null,
+                        },
+                    }), 0);
+                }
+            },
+        });
+        mockSpawn.mockImplementation(() => proc);
+
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        const events: Array<Record<string, unknown>> = [];
+        client.setEventHandler((msg) => events.push(msg as Record<string, unknown>));
+
+        await client.connect();
+        await client.startThread({
+            model: 'gpt-test',
+            cwd: '/tmp/project',
+            approvalPolicy: 'never',
+            sandbox: 'danger-full-access',
+        });
+
+        const item = {
+            type: 'mcpToolCall',
+            id: 'call-live-app',
+            server: 'demo',
+            tool: 'show_dashboard',
+            status: 'inProgress',
+            arguments: { period: 'week' },
+            appContext: {
+                resourceUri: 'ui://demo/dashboard.html',
+                templateId: 'dashboard-template',
+                appName: 'Demo Dashboard',
+            },
+        };
+        pushJsonLine(proc.stdout, {
+            method: 'item/started',
+            params: { threadId: 'thread-mcp-app', turnId: 'turn-mcp-app', item },
+        });
+        pushJsonLine(proc.stdout, {
+            method: 'item/completed',
+            params: {
+                threadId: 'thread-mcp-app',
+                turnId: 'turn-mcp-app',
+                item: {
+                    ...item,
+                    status: 'completed',
+                    result: {
+                        content: [{ type: 'text', text: 'done' }],
+                        structuredContent: { count: 1 },
+                        _meta: { privateViewState: 'opaque' },
+                    },
+                },
+            },
+        });
+
+        await waitFor(() => events.some((event) => event.type === 'mcp_tool_call_end'));
+        expect(events.filter((event) => String(event.type).startsWith('mcp_tool_call_'))).toEqual([
+            expect.objectContaining({
+                type: 'mcp_tool_call_begin',
+                call_id: 'call-live-app',
+                item_id: 'call-live-app',
+                thread_id: 'thread-mcp-app',
+                turn_id: 'turn-mcp-app',
+                mcp_call: expect.objectContaining({
+                    callId: 'call-live-app',
+                    input: { period: 'week' },
+                    presentation: {
+                        version: 1,
+                        server: 'demo',
+                        resourceUri: 'ui://demo/dashboard.html',
+                        appName: 'Demo Dashboard',
+                    },
+                }),
+            }),
+            expect.objectContaining({
+                type: 'mcp_tool_call_end',
+                call_id: 'call-live-app',
+                item_id: 'call-live-app',
+                thread_id: 'thread-mcp-app',
+                turn_id: 'turn-mcp-app',
+                status: 'completed',
+                mcp_call: expect.objectContaining({
+                    result: {
+                        version: 1,
+                        state: 'available',
+                        content: [{ type: 'text', text: 'done' }],
+                        structuredContent: { count: 1 },
+                        _meta: { privateViewState: 'opaque' },
+                    },
+                }),
+            }),
+        ]);
 
         await client.disconnect();
     });

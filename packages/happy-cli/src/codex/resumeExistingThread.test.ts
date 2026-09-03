@@ -2,8 +2,68 @@ import { describe, expect, it, vi } from 'vitest';
 import type { SessionEnvelope } from '@slopus/happy-wire';
 
 import { resumeExistingThread } from './resumeExistingThread';
+import { McpAppBindingRegistry } from './mcpApps/McpAppBindingRegistry';
 
 describe('resumeExistingThread', () => {
+    it('rebuilds MCP App authority from the full snapshot even when cursor replay emits nothing', async () => {
+        const registry = new McpAppBindingRegistry();
+        const client = {
+            resumeThread: vi.fn().mockResolvedValue({
+                threadId: 'thread-registry',
+                model: 'gpt-5.6-sol',
+                reasoningEffort: 'high',
+            }),
+            readThread: vi.fn().mockResolvedValue({
+                thread: {
+                    turns: [{
+                        id: 'turn-before-cursor',
+                        status: 'completed',
+                        items: [{
+                            id: 'call-before-cursor',
+                            type: 'mcpToolCall',
+                            server: 'demo',
+                            tool: 'show_dashboard',
+                            status: 'completed',
+                            arguments: {},
+                            result: { content: [] },
+                            appContext: {
+                                resourceUri: 'ui://demo/dashboard.html',
+                                connectorId: 'connector-history',
+                            },
+                        }],
+                    }],
+                },
+            }),
+        };
+        const session = {
+            sessionId: 'paws-session-1',
+            getMetadata: vi.fn(() => ({ codexThreadId: 'thread-registry' })),
+            updateMetadata: vi.fn(),
+            updateMetadataAndAwait: vi.fn(async () => {}),
+            flushOutboxAndAwait: vi.fn(async () => {}),
+            sendSessionEvent: vi.fn(),
+            sendSessionProtocolMessage: vi.fn(),
+            sendSessionProtocolHistoryAndAwait: vi.fn(async (_envelopes: readonly SessionEnvelope[]) => {}),
+        };
+
+        await resumeExistingThread({
+            client,
+            session,
+            messageBuffer: { addMessage: vi.fn() },
+            threadId: 'thread-registry',
+            cwd: '/tmp/project',
+            mcpServers: {},
+            historyMode: 'after-cursor',
+            mcpAppBindingRegistry: registry,
+        });
+
+        expect(session.sendSessionProtocolMessage).not.toHaveBeenCalled();
+        expect(registry.get('call-before-cursor')).toMatchObject({
+            threadId: 'thread-registry',
+            trustedOriginCallId: 'call-before-cursor',
+        });
+    });
+
     it('resumes the thread and updates session metadata', async () => {
         const client = {
             resumeThread: vi.fn().mockResolvedValue({

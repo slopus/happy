@@ -302,6 +302,77 @@ describe('reducer', () => {
     });
 
     describe('tool call lifecycle ordering', () => {
+        it('retains matching MCP App metadata when a tool start is completed and replayed', () => {
+            const state = createReducer();
+            const messages: NormalizedMessage[] = [{
+                id: 'mcp-app-start',
+                localId: null,
+                createdAt: 1000,
+                role: 'agent',
+                isSidechain: false,
+                content: [{
+                    type: 'tool-call',
+                    id: 'mcp-app-call',
+                    name: 'ShowDemo',
+                    input: {},
+                    description: 'Show demo',
+                    mcpApp: {
+                        version: 1,
+                        server: 'demo',
+                        resourceUri: 'ui://demo/index.html',
+                    },
+                    uuid: 'mcp-app-start-uuid',
+                    parentUUID: null,
+                }],
+            }, {
+                id: 'mcp-app-result',
+                localId: null,
+                createdAt: 2000,
+                role: 'agent',
+                isSidechain: false,
+                content: [{
+                    type: 'tool-result',
+                    tool_use_id: 'mcp-app-call',
+                    content: 'ok',
+                    is_error: false,
+                    mcpAppResult: {
+                        version: 1,
+                        state: 'available',
+                        content: [],
+                        structuredContent: { count: 1 },
+                    },
+                    uuid: 'mcp-app-result-uuid',
+                    parentUUID: null,
+                }],
+            }];
+
+            const initial = reducer(state, messages);
+            expect(initial.messages[0]).toMatchObject({
+                kind: 'tool-call',
+                tool: {
+                    callId: 'mcp-app-call',
+                    mcpApp: { version: 1, resourceUri: 'ui://demo/index.html' },
+                    mcpAppResult: {
+                        version: 1,
+                        state: 'available',
+                        structuredContent: { count: 1 },
+                    },
+                },
+            });
+
+            expect(reducer(state, messages).messages).toHaveLength(0);
+            const messageId = state.toolIdToMessageId.get('mcp-app-call');
+            expect(state.messages.get(messageId!)?.tool).toMatchObject({
+                callId: 'mcp-app-call',
+                mcpApp: { version: 1, resourceUri: 'ui://demo/index.html' },
+                mcpAppResult: {
+                    version: 1,
+                    state: 'available',
+                    structuredContent: { count: 1 },
+                },
+            });
+        });
+
         it('completes a tool call when its result arrives before its start message', () => {
             const state = createReducer();
 
@@ -316,6 +387,12 @@ describe('reducer', () => {
                     tool_use_id: 'tool-1',
                     content: 'ok',
                     is_error: false,
+                    mcpAppResult: {
+                        version: 1,
+                        state: 'available',
+                        content: [],
+                        structuredContent: { count: 1 },
+                    },
                     uuid: 'tool-result-uuid',
                     parentUUID: null
                 }]
@@ -335,6 +412,11 @@ describe('reducer', () => {
                     name: 'Bash',
                     input: { command: 'happy attach --json' },
                     description: 'Attach current session to Paws mobile',
+                    mcpApp: {
+                        version: 1,
+                        server: 'demo',
+                        resourceUri: 'ui://demo/index.html',
+                    },
                     uuid: 'tool-start-uuid',
                     parentUUID: null
                 }]
@@ -348,7 +430,399 @@ describe('reducer', () => {
                 expect(result.messages[0].tool.state).toBe('completed');
                 expect(result.messages[0].tool.result).toBe('ok');
                 expect(result.messages[0].tool.completedAt).toBe(2000);
+                expect(result.messages[0].tool).toMatchObject({
+                    callId: 'tool-1',
+                    mcpApp: { version: 1, resourceUri: 'ui://demo/index.html' },
+                    mcpAppResult: {
+                        version: 1,
+                        state: 'available',
+                        structuredContent: { count: 1 },
+                    },
+                });
             }
+        });
+
+        it('retains MCP App metadata for matching sidechain tool calls only', () => {
+            const state = createReducer();
+            reducer(state, [{
+                id: 'sidechain-mcp-app',
+                localId: null,
+                createdAt: 900,
+                role: 'agent',
+                isSidechain: false,
+                content: [{
+                    type: 'tool-call',
+                    id: 'sidechain-mcp-app-owner',
+                    name: 'Task',
+                    input: { prompt: 'Show demo' },
+                    description: 'Show demo',
+                    uuid: 'sidechain-mcp-app-owner-uuid',
+                    parentUUID: null,
+                }],
+            }, {
+                id: 'sidechain-mcp-app-start',
+                localId: null,
+                createdAt: 1000,
+                role: 'agent',
+                isSidechain: true,
+                content: [{
+                    type: 'tool-call',
+                    id: 'sidechain-mcp-app-call',
+                    name: 'ShowDemo',
+                    input: {},
+                    description: 'Show demo',
+                    mcpApp: {
+                        version: 1,
+                        server: 'demo',
+                        resourceUri: 'ui://demo/index.html',
+                    },
+                    uuid: 'sidechain-mcp-app-start-uuid',
+                    parentUUID: 'sidechain-mcp-app-owner',
+                }],
+            }, {
+                id: 'sidechain-mcp-app-other-result',
+                localId: null,
+                createdAt: 1500,
+                role: 'agent',
+                isSidechain: true,
+                content: [{
+                    type: 'tool-result',
+                    tool_use_id: 'unrelated-call',
+                    content: 'ignore',
+                    is_error: false,
+                    mcpAppResult: {
+                        version: 1,
+                        state: 'available',
+                        content: [],
+                    },
+                    uuid: 'sidechain-mcp-app-other-result-uuid',
+                    parentUUID: 'sidechain-mcp-app-owner',
+                }],
+            }, {
+                id: 'sidechain-mcp-app-result',
+                localId: null,
+                createdAt: 2000,
+                role: 'agent',
+                isSidechain: true,
+                content: [{
+                    type: 'tool-result',
+                    tool_use_id: 'sidechain-mcp-app-call',
+                    content: 'ok',
+                    is_error: false,
+                    mcpAppResult: {
+                        version: 1,
+                        state: 'available',
+                        content: [],
+                        structuredContent: { count: 1 },
+                    },
+                    uuid: 'sidechain-mcp-app-result-uuid',
+                    parentUUID: 'sidechain-mcp-app-owner',
+                }],
+            }]);
+
+            const tool = state.sidechains.get('sidechain-mcp-app')?.find((message) => (
+                message.tool?.name === 'ShowDemo'
+            ))?.tool;
+            expect(tool).toMatchObject({
+                callId: 'sidechain-mcp-app-call',
+                mcpApp: { version: 1, resourceUri: 'ui://demo/index.html' },
+                mcpAppResult: {
+                    version: 1,
+                    state: 'available',
+                    structuredContent: { count: 1 },
+                },
+            });
+        });
+
+        it('keeps sidechain cancellation terminal with a bounded reason and ignores a late result', () => {
+            const state = createReducer();
+            reducer(state, [{
+                id: 'cancel-owner', localId: null, createdAt: 900, role: 'agent', isSidechain: false,
+                content: [{
+                    type: 'tool-call', id: 'cancel-owner-call', name: 'Task', input: { prompt: 'Cancel demo' },
+                    description: 'Cancel demo', uuid: 'cancel-owner-uuid', parentUUID: null,
+                }],
+            }, {
+                id: 'cancel-start', localId: null, createdAt: 1000, role: 'agent', isSidechain: true,
+                content: [{
+                    type: 'tool-call', id: 'sidechain-cancel-call', name: 'ShowDemo', input: {},
+                    description: 'Cancel demo', uuid: 'cancel-start-uuid', parentUUID: 'cancel-owner-call',
+                }],
+            }, {
+                id: 'cancel-result', localId: null, createdAt: 1100, role: 'agent', isSidechain: true,
+                content: [{
+                    type: 'tool-result', tool_use_id: 'sidechain-cancel-call', content: null, is_error: false,
+                    status: 'cancelled', failure: { summary: `Stopped ${'x'.repeat(400)}` },
+                    uuid: 'cancel-result-uuid', parentUUID: 'cancel-owner-call',
+                }],
+            }, {
+                id: 'cancel-late-result', localId: null, createdAt: 1200, role: 'agent', isSidechain: true,
+                content: [{
+                    type: 'tool-result', tool_use_id: 'sidechain-cancel-call', content: 'late', is_error: false,
+                    status: 'completed', mcpAppResult: { version: 1, state: 'available', content: [] },
+                    uuid: 'cancel-late-result-uuid', parentUUID: 'cancel-owner-call',
+                }],
+            }]);
+
+            const tool = state.sidechains.get('cancel-owner')?.find((message) => (
+                message.tool?.callId === 'sidechain-cancel-call'
+            ))?.tool;
+            expect(tool?.state).toBe('cancelled');
+            expect(tool?.cancellationReason).toHaveLength(280);
+            expect(tool?.cancellationReason).toMatch(/^Stopped x/u);
+            expect(tool?.result).toBeNull();
+            expect(tool?.mcpAppResult).toBeUndefined();
+        });
+
+        it('keeps the first pending main cancellation when a late completion arrives before tool start', () => {
+            const state = createReducer();
+            reducer(state, [{
+                id: 'pending-main-cancel', localId: null, createdAt: 1000, role: 'agent', isSidechain: false,
+                content: [{
+                    type: 'tool-result', tool_use_id: 'pending-main-call', content: null, is_error: false,
+                    status: 'cancelled', failure: { summary: 'Stopped before start' },
+                    uuid: 'pending-main-cancel-uuid', parentUUID: null,
+                }],
+            }, {
+                id: 'pending-main-late', localId: null, createdAt: 1100, role: 'agent', isSidechain: false,
+                content: [{
+                    type: 'tool-result', tool_use_id: 'pending-main-call', content: 'late', is_error: false,
+                    status: 'completed', mcpAppResult: { version: 1, state: 'available', content: [] },
+                    uuid: 'pending-main-late-uuid', parentUUID: null,
+                }],
+            }]);
+
+            reducer(state, [{
+                id: 'pending-main-start', localId: null, createdAt: 1200, role: 'agent', isSidechain: false,
+                content: [{
+                    type: 'tool-call', id: 'pending-main-call', name: 'ShowDemo', input: {},
+                    description: 'Pending main cancellation', uuid: 'pending-main-start-uuid', parentUUID: null,
+                }],
+            }]);
+
+            const messageId = state.toolIdToMessageId.get('pending-main-call');
+            const tool = state.messages.get(messageId!)?.tool;
+            expect(tool).toMatchObject({
+                state: 'cancelled',
+                cancellationReason: 'Stopped before start',
+                permission: { status: 'canceled' },
+            });
+            expect(tool?.result).toBeNull();
+            expect(tool?.mcpAppResult).toBeUndefined();
+        });
+
+        it('keeps the first pending sidechain cancellation when a late error arrives before tool start', () => {
+            const state = createReducer();
+            reducer(state, [{
+                id: 'pending-side-owner', localId: null, createdAt: 900, role: 'agent', isSidechain: false,
+                content: [{
+                    type: 'tool-call', id: 'pending-side-owner-call', name: 'Task',
+                    input: { prompt: 'Pending sidechain cancellation' },
+                    description: 'Pending sidechain cancellation', uuid: 'pending-side-owner-uuid', parentUUID: null,
+                }],
+            }, {
+                id: 'pending-side-cancel', localId: null, createdAt: 1000, role: 'agent', isSidechain: true,
+                content: [{
+                    type: 'tool-result', tool_use_id: 'pending-side-call', content: null, is_error: false,
+                    status: 'cancelled', failure: { summary: 'Sidechain stopped before start' },
+                    uuid: 'pending-side-cancel-uuid', parentUUID: 'pending-side-owner-call',
+                }],
+            }, {
+                id: 'pending-side-late', localId: null, createdAt: 1100, role: 'agent', isSidechain: true,
+                content: [{
+                    type: 'tool-result', tool_use_id: 'pending-side-call', content: 'late failure', is_error: true,
+                    status: 'failed', failure: { summary: 'Late failure' },
+                    uuid: 'pending-side-late-uuid', parentUUID: 'pending-side-owner-call',
+                }],
+            }]);
+
+            reducer(state, [{
+                id: 'pending-side-start', localId: null, createdAt: 1200, role: 'agent', isSidechain: true,
+                content: [{
+                    type: 'tool-call', id: 'pending-side-call', name: 'ShowDemo', input: {},
+                    description: 'Pending sidechain cancellation', uuid: 'pending-side-start-uuid',
+                    parentUUID: 'pending-side-owner-call',
+                }],
+            }]);
+
+            const tool = state.sidechains.get('pending-side-owner')?.find((message) => (
+                message.tool?.callId === 'pending-side-call'
+            ))?.tool;
+            expect(tool).toMatchObject({
+                state: 'cancelled',
+                cancellationReason: 'Sidechain stopped before start',
+                permission: { status: 'canceled' },
+            });
+            expect(tool?.result).toBeNull();
+            expect(tool?.mcpAppResult).toBeUndefined();
+        });
+
+        it('retains result-first MCP App metadata per sidechain call across replay', () => {
+            const state = createReducer();
+            const sidechainAParentId = '11111111-1111-4111-8111-111111111111';
+            const sidechainBParentId = '22222222-2222-4222-8222-222222222222';
+            const messages: NormalizedMessage[] = [{
+                id: 'sidechain-a-shared-result',
+                localId: null,
+                createdAt: 1000,
+                role: 'agent',
+                isSidechain: true,
+                content: [{
+                    type: 'tool-result',
+                    tool_use_id: 'shared-call',
+                    content: 'sidechain a result',
+                    is_error: false,
+                    mcpAppResult: {
+                        version: 1,
+                        state: 'available',
+                        content: [],
+                        structuredContent: { source: 'sidechain-a' },
+                    },
+                    uuid: 'sidechain-a-shared-result-uuid',
+                    parentUUID: sidechainAParentId,
+                }],
+            }, {
+                id: 'sidechain-a-unrelated-result',
+                localId: null,
+                createdAt: 1100,
+                role: 'agent',
+                isSidechain: true,
+                content: [{
+                    type: 'tool-result',
+                    tool_use_id: 'unrelated-call',
+                    content: 'unrelated result',
+                    is_error: false,
+                    mcpAppResult: {
+                        version: 1,
+                        state: 'available',
+                        content: [],
+                        structuredContent: { source: 'unrelated' },
+                    },
+                    uuid: 'sidechain-a-unrelated-result-uuid',
+                    parentUUID: sidechainAParentId,
+                }],
+            }, {
+                id: 'sidechain-b-shared-result',
+                localId: null,
+                createdAt: 1200,
+                role: 'agent',
+                isSidechain: true,
+                content: [{
+                    type: 'tool-result',
+                    tool_use_id: 'shared-call',
+                    content: 'sidechain b result',
+                    is_error: false,
+                    mcpAppResult: {
+                        version: 1,
+                        state: 'available',
+                        content: [],
+                        structuredContent: { source: 'sidechain-b' },
+                    },
+                    uuid: 'sidechain-b-shared-result-uuid',
+                    parentUUID: sidechainBParentId,
+                }],
+            }, {
+                id: 'sidechain-a-shared-start',
+                localId: null,
+                createdAt: 2000,
+                role: 'agent',
+                isSidechain: true,
+                content: [{
+                    type: 'tool-call',
+                    id: 'shared-call',
+                    name: 'ShowDemo',
+                    input: {},
+                    description: 'Show sidechain A demo',
+                    uuid: 'sidechain-a-shared-start-uuid',
+                    parentUUID: sidechainAParentId,
+                }],
+            }, {
+                id: 'sidechain-b-shared-start',
+                localId: null,
+                createdAt: 2100,
+                role: 'agent',
+                isSidechain: true,
+                content: [{
+                    type: 'tool-call',
+                    id: 'shared-call',
+                    name: 'ShowDemo',
+                    input: {},
+                    description: 'Show sidechain B demo',
+                    uuid: 'sidechain-b-shared-start-uuid',
+                    parentUUID: sidechainBParentId,
+                }],
+            }, {
+                id: 'sidechain-a-unrelated-start',
+                localId: null,
+                createdAt: 2200,
+                role: 'agent',
+                isSidechain: true,
+                content: [{
+                    type: 'tool-call',
+                    id: 'unrelated-call',
+                    name: 'ShowOther',
+                    input: {},
+                    description: 'Show unrelated demo',
+                    uuid: 'sidechain-a-unrelated-start-uuid',
+                    parentUUID: sidechainAParentId,
+                }],
+            }, {
+                id: 'sidechain-a',
+                localId: null,
+                createdAt: 2300,
+                role: 'agent',
+                isSidechain: false,
+                content: [{
+                    type: 'tool-call',
+                    id: sidechainAParentId,
+                    name: 'Task',
+                    input: { prompt: 'Show sidechain A demo' },
+                    description: 'Show sidechain A demo',
+                    uuid: 'sidechain-a-owner-uuid',
+                    parentUUID: null,
+                }],
+            }, {
+                id: 'sidechain-b',
+                localId: null,
+                createdAt: 2400,
+                role: 'agent',
+                isSidechain: false,
+                content: [{
+                    type: 'tool-call',
+                    id: sidechainBParentId,
+                    name: 'Task',
+                    input: { prompt: 'Show sidechain B demo' },
+                    description: 'Show sidechain B demo',
+                    uuid: 'sidechain-b-owner-uuid',
+                    parentUUID: null,
+                }],
+            }];
+
+            reducer(state, messages);
+
+            const toolFor = (sidechainId: string, description: string) => (
+                state.sidechains.get(sidechainId)?.find((message) => message.tool?.description === description)?.tool
+            );
+            expect(toolFor('sidechain-a', 'Show sidechain A demo')).toMatchObject({
+                callId: 'shared-call',
+                result: 'sidechain a result',
+                mcpAppResult: { structuredContent: { source: 'sidechain-a' } },
+            });
+            expect(toolFor('sidechain-b', 'Show sidechain B demo')).toMatchObject({
+                callId: 'shared-call',
+                result: 'sidechain b result',
+                mcpAppResult: { structuredContent: { source: 'sidechain-b' } },
+            });
+            expect(toolFor('sidechain-a', 'Show unrelated demo')).toMatchObject({
+                callId: 'unrelated-call',
+                result: 'unrelated result',
+                mcpAppResult: { structuredContent: { source: 'unrelated' } },
+            });
+
+            expect(reducer(state, messages).messages).toHaveLength(0);
+            expect(toolFor('sidechain-a', 'Show sidechain A demo')?.mcpAppResult).toMatchObject({
+                structuredContent: { source: 'sidechain-a' },
+            });
         });
     });
 
@@ -3563,7 +4037,8 @@ describe('reducer', () => {
             expect(result.messages[0]).toMatchObject({
                 kind: 'tool-call',
                 tool: {
-                    state: 'completed',
+                    state: 'cancelled',
+                    cancellationReason: 'The tool call was cancelled.',
                     permission: { status: 'canceled' },
                 },
             });

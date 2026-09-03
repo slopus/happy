@@ -116,6 +116,24 @@ describe('buildPublicSessionSnapshot', () => {
         expect(result.snapshot.presentation).toEqual({ groupToolCalls: false });
     });
 
+    it('keeps cancellation distinct from failure in public tool state', () => {
+        const cancelled: Message = {
+            kind: 'tool-call', id: 'cancelled', localId: null, createdAt: 1,
+            tool: {
+                name: 'ShowDemo', state: 'cancelled', input: {}, description: 'cancelled',
+                cancellationReason: 'private cancellation reason', createdAt: 1, startedAt: 1, completedAt: 2,
+            },
+            children: [],
+        };
+        const result = buildPublicSessionSnapshot({
+            title: 'Cancelled tool', messages: [cancelled], sharedAt: now, themePack: 'caramel',
+        });
+        expect(result.snapshot.messages[0].blocks).toEqual([
+            { type: 'tool', name: 'ShowDemo', status: 'cancelled' },
+        ]);
+        expect(JSON.stringify(result.snapshot)).not.toContain('private cancellation reason');
+    });
+
     it('publishes only the public tool envelope and drops hidden tools and private metadata', () => {
         const visible: Message = {
             kind: 'tool-call', id: 'visible', localId: null, createdAt: 1,

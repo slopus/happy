@@ -1,9 +1,12 @@
 import { AgentEvent } from "./typesRaw";
+import { McpAppPresentationV1, McpAppResultV1 } from '@slopus/happy-wire';
 import { MessageMeta } from "./typesMessageMeta";
 
 export type ToolCall = {
+    /** Immutable protocol identifier used for MCP App RPC correlation. */
+    readonly callId?: string;
     name: string;
-    state: 'running' | 'completed' | 'error';
+    state: 'running' | 'completed' | 'error' | 'cancelled';
     input: any;
     createdAt: number;
     startedAt: number | null;
@@ -15,6 +18,7 @@ export type ToolCall = {
         summary: string;
         detail?: string;
     };
+    cancellationReason?: string;
     permission?: {
         id: string;
         status: 'pending' | 'approved' | 'denied' | 'canceled';
@@ -24,6 +28,8 @@ export type ToolCall = {
         decision?: 'approved' | 'approved_for_session' | 'denied' | 'abort';
         date?: number;
     };
+    mcpApp?: McpAppPresentationV1;
+    mcpAppResult?: McpAppResultV1;
 }
 
 // Flattened message types - each message represents a single block

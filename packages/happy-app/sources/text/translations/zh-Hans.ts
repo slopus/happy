@@ -1066,6 +1066,17 @@ export const zhHans: TranslationStructure = {
         input: '输入',
         output: '输出',
     },
+    mcpApps: {
+        loading: '正在加载 App…',
+        offline: '会话离线时无法使用此 App。',
+        retry: '重试',
+        unsupported: '此设备不支持 MCP Apps。',
+        unavailable: '此 App 暂不可用。',
+        openLinkTitle: '打开外部链接？',
+        openLinkMessage: '此 App 想要打开 Paws 之外的链接。',
+        openLinkConfirm: '打开链接',
+        openLinkCancel: '取消',
+    },
 
     toolGroup: {
         editedFile: 'Edited file',

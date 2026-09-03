@@ -1057,6 +1057,17 @@ export const ja: TranslationStructure = {
         input: '入力',
         output: '出力',
     },
+    mcpApps: {
+        loading: 'Appを読み込んでいます…',
+        offline: 'セッションがオフラインのため、このAppは利用できません。',
+        retry: '再試行',
+        unsupported: 'このデバイスはMCP Appsに対応していません。',
+        unavailable: 'このAppは利用できません。',
+        openLinkTitle: '外部リンクを開きますか？',
+        openLinkMessage: 'このAppがPawsの外部リンクを開こうとしています。',
+        openLinkConfirm: 'リンクを開く',
+        openLinkCancel: 'キャンセル',
+    },
 
     toolGroup: {
         editedFile: 'Edited file',

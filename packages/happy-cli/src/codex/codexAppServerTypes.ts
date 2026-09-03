@@ -1,15 +1,24 @@
 /**
- * Cherry-picked types from `codex app-server generate-ts` (Codex 0.107.0).
- * Only the essential types needed for our integration.
+ * Compatibility subset for the Codex app-server versions supported by Paws
+ * (Codex 0.107.0 through 0.144.5). This is intentionally not a complete
+ * generated protocol surface.
  */
 
 export type ThreadId = string;
 
 // --- Initialize ---
 
+export type McpUiClientCapability = {
+    mimeTypes: Array<'text/html;profile=mcp-app'>;
+};
+
 export type InitializeParams = {
     clientInfo: { name: string; title: string | null; version: string };
-    capabilities: { experimentalApi: boolean; optOutNotificationMethods?: string[] | null } | null;
+    capabilities: {
+        experimentalApi: boolean;
+        optOutNotificationMethods?: string[] | null;
+        extensions?: { 'io.modelcontextprotocol/ui': McpUiClientCapability };
+    } | null;
 };
 
 export type InitializeResponse = { userAgent: string };
@@ -61,13 +70,46 @@ export type ResumeConversationParams = {
 
 export type ResumeConversationResponse = NewConversationResponse;
 
+export type McpToolCallAppContext = {
+    resourceUri?: string | null;
+    resource_uri?: string | null;
+    templateId?: string | null;
+    appName?: string | null;
+    actionName?: string | null;
+    connectorId?: string | null;
+    [key: string]: unknown;
+};
+
+export type McpToolCallResult = {
+    content?: unknown[];
+    structuredContent?: unknown;
+    _meta?: unknown;
+    [key: string]: unknown;
+};
+
+export type McpToolCallItem = {
+    type: 'mcpToolCall';
+    id: string;
+    server: string;
+    tool: string;
+    status?: string;
+    arguments?: unknown;
+    result?: McpToolCallResult | null;
+    error?: unknown;
+    durationMs?: number | null;
+    appContext?: McpToolCallAppContext | null;
+    mcpAppResourceUri?: string | null;
+    readOnlyHint?: boolean | null;
+    [key: string]: unknown;
+};
+
 export type ThreadItem =
     | { type: "userMessage"; id: string; content: InputItem[] }
     | { type: "agentMessage"; id: string; text: string; phase?: string | null; memoryCitation?: unknown | null }
     | { type: "reasoning"; id: string; summary?: string[]; content?: string[] }
     | { type: "commandExecution"; id: string; command: string; cwd?: string; status?: string; aggregatedOutput?: string | null; exitCode?: number | null; durationMs?: number | null }
     | { type: "fileChange"; id: string; changes: unknown[]; status?: string }
-    | { type: "mcpToolCall"; id: string; server: string; tool: string; status?: string; arguments?: unknown; result?: unknown; error?: unknown; durationMs?: number | null }
+    | McpToolCallItem
     | ({ type: string; id: string } & Record<string, unknown>);
 
 export type ThreadTurn = {
@@ -171,6 +213,28 @@ export type InjectItemsParams = {
 
 export type InjectItemsResponse = Record<string, never>;
 
+// --- MCP resources ---
+
+export type McpResourceReadParams = {
+    threadId: string;
+    server: string;
+    uri: string;
+    originCallId?: string;
+    connectorId?: string;
+};
+
+export type McpResourceReadResponse = {
+    contents: Array<{
+        uri: string;
+        mimeType?: string;
+        text?: string;
+        blob?: string;
+        _meta?: unknown;
+        [key: string]: unknown;
+    }>;
+    [key: string]: unknown;
+};
+
 export type ModelListParams = {
     cursor?: string | null;
     includeHidden?: boolean | null;
@@ -272,20 +336,40 @@ export type GetAccountTokenUsageResponse = {
 
 export type McpServerStatusDetail = "full" | "toolsAndAuthOnly";
 
-export type McpToolDefinition = {
+export type McpToolAnnotations = {
+    readOnlyHint?: boolean;
+    destructiveHint?: boolean;
+    openWorldHint?: boolean;
+    [key: string]: unknown;
+};
+
+export type McpToolCatalogEntry = {
     name: string;
+    enabled?: boolean;
     description?: string | null;
     title?: string | null;
-    inputSchema: unknown;
+    inputSchema?: unknown;
     outputSchema?: unknown;
+    annotations?: McpToolAnnotations;
+    _meta?: {
+        ui?: { visibility?: string[]; [key: string]: unknown };
+        'ui/visibility'?: string[];
+        connectorId?: string;
+        [key: string]: unknown;
+    };
+    [key: string]: unknown;
 };
+
+export type McpToolDefinition = McpToolCatalogEntry;
 
 export type McpServerStatus = {
     name: string;
-    authStatus: "unsupported" | "notLoggedIn" | "bearerToken" | "oAuth";
-    tools: Record<string, McpToolDefinition>;
-    resources: unknown[];
-    resourceTemplates: unknown[];
+    authStatus?: "unsupported" | "notLoggedIn" | "bearerToken" | "oAuth";
+    runtimeStatus?: "notStarted" | "starting" | "connected" | "authenticationRequired" | "failed" | "cancelled" | "disabled" | null;
+    pluginId?: string | null;
+    tools: Record<string, McpToolCatalogEntry> | McpToolCatalogEntry[];
+    resources?: unknown[];
+    resourceTemplates?: unknown[];
     serverInfo?: {
         name: string;
         title?: string | null;
@@ -305,6 +389,23 @@ export type ListMcpServerStatusParams = {
 export type ListMcpServerStatusResponse = {
     data: McpServerStatus[];
     nextCursor?: string | null;
+};
+
+export type McpServerToolCallParams = {
+    threadId: string;
+    server: string;
+    tool: string;
+    arguments?: Record<string, unknown>;
+    /** Additive Paws/Codex provenance binding for App-initiated calls. */
+    originCallId: string;
+};
+
+export type McpServerToolCallResponse = {
+    content: unknown[];
+    structuredContent?: unknown;
+    isError?: boolean;
+    _meta?: unknown;
+    [key: string]: unknown;
 };
 
 export type ThreadCompactStartResponse = Record<string, never>;

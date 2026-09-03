@@ -5,6 +5,9 @@ import test from 'node:test';
 import { parse } from 'yaml';
 
 const workflowUrl = new URL('../.github/workflows/web-production-deploy.yml', import.meta.url);
+const evidenceSpecUrl = new URL('../packages/happy-app/e2e/mcp-app-host-evidence.spec.ts', import.meta.url);
+const evidenceHelperUrl = new URL('../packages/happy-app/e2e/helpers/mcpAppHarness.ts', import.meta.url);
+const gitignoreUrl = new URL('../.gitignore', import.meta.url);
 
 test('production workflow switches verified OSS content before Caddy and guarded cleanup', async () => {
     const workflow = parse(await readFile(workflowUrl, 'utf8'));
@@ -22,6 +25,54 @@ test('production workflow switches verified OSS content before Caddy and guarded
     assert.ok(position('Roll back failed Web activation') > position('Remove guarded legacy Web files'));
 });
 
+test('guards the exact origin/main revision before every external production mutation', async () => {
+    const workflow = parse(await readFile(workflowUrl, 'utf8'));
+    const names = workflow.jobs.deploy.steps.map((step) => step.name);
+    const guardIndex = names.indexOf('Guard exact merged main revision before external mutation');
+    assert.ok(guardIndex > names.indexOf('Checkout merged main revision'));
+    for (const mutation of ['Configure MCP App sandbox route', 'Upload complete immutable Web release', 'Atomically switch OSS Web entry']) {
+        assert.ok(names.indexOf(mutation) > guardIndex);
+    }
+    const guard = workflow.jobs.deploy.steps[guardIndex];
+    assert.match(guard.run, /GITHUB_REF.*refs\/heads\/main/);
+    assert.match(guard.run, /git fetch --no-tags origin main/);
+    assert.match(guard.run, /rev-parse origin\/main/);
+    assert.match(guard.run, /GITHUB_SHA/);
+    const syntax = spawnSync('bash', ['-n'], { input: guard.run, encoding: 'utf8' });
+    assert.equal(syntax.status, 0, syntax.stderr);
+});
+
+test('MCP App sandbox rollout is disabled by default and verified before Web export or activation', async () => {
+    const workflow = parse(await readFile(workflowUrl, 'utf8'));
+    const job = workflow.jobs.deploy;
+    const names = job.steps.map((step) => step.name);
+    const position = (name) => names.indexOf(name);
+
+    assert.equal(job.env.PAWS_MCP_APP_SANDBOX_ORIGIN, '${{ vars.PAWS_MCP_APP_SANDBOX_ORIGIN }}');
+    assert.ok(position('Resolve MCP App sandbox rollout') >= 0);
+    assert.ok(position('Configure MCP App sandbox route') > position('Resolve MCP App sandbox rollout'));
+    assert.ok(position('Verify MCP App sandbox endpoint') > position('Configure MCP App sandbox route'));
+    assert.ok(position('Build and stamp Web from this main revision') > position('Verify MCP App sandbox endpoint'));
+    assert.ok(position('Atomically switch OSS Web entry') > position('Build and stamp Web from this main revision'));
+
+    const resolve = job.steps.find((step) => step.name === 'Resolve MCP App sandbox rollout');
+    const configure = job.steps.find((step) => step.name === 'Configure MCP App sandbox route');
+    const verify = job.steps.find((step) => step.name === 'Verify MCP App sandbox endpoint');
+    const build = job.steps.find((step) => step.name === 'Build and stamp Web from this main revision');
+    assert.match(resolve.run, /enabled=false/);
+    assert.match(resolve.run, /sandbox origin must differ/i);
+    assert.match(configure.if, /steps\.mcp_rollout\.outputs\.enabled == 'true'/);
+    assert.match(verify.if, /steps\.mcp_rollout\.outputs\.enabled == 'true'/);
+    assert.match(configure.run, /configure-production-mcp-app-sandbox-caddy\.mjs/);
+    assert.match(verify.run, /verify-production-mcp-app-sandbox\.mjs/);
+    assert.match(build.run, /unset EXPO_PUBLIC_MCP_APP_SANDBOX_ORIGIN/);
+    assert.match(build.run, /export EXPO_PUBLIC_MCP_APP_SANDBOX_ORIGIN/);
+    for (const step of [resolve, configure, build]) {
+        const syntax = spawnSync('bash', ['-n'], { input: step.run, encoding: 'utf8' });
+        assert.equal(syntax.status, 0, syntax.stderr);
+    }
+});
+
 test('production deployment verifies data-plane CORS without bucket-control permissions', async () => {
     const workflowText = await readFile(workflowUrl, 'utf8');
     const workflow = parse(workflowText);
@@ -37,6 +88,18 @@ test('production activation is serialized and cannot be cancelled mid-switch', a
 
     assert.equal(workflow.concurrency.group, 'paws-web-production');
     assert.equal(workflow.concurrency['cancel-in-progress'], false);
+});
+
+test('authenticated MCP App evidence disables traces and protects external storage state', async () => {
+    const [spec, helper, gitignore] = await Promise.all([
+        readFile(evidenceSpecUrl, 'utf8'), readFile(evidenceHelperUrl, 'utf8'), readFile(gitignoreUrl, 'utf8'),
+    ]);
+    assert.match(spec, /test\.use\(\{ storageState: environment\.storageState, trace: 'off' \}\)/);
+    assert.doesNotMatch(spec, /testInfo\.attach|storageState.*evidence/i);
+    assert.match(helper, /HAPPY_E2E_STORAGE_STATE/);
+    assert.match(helper, /webUrl\.search \|\| webUrl\.hash/);
+    assert.match(helper, /state\.mode & 0o077/);
+    assert.match(gitignore, /packages\/happy-app\/\.mcp-app-e2e-auth\//);
 });
 
 test('production workflow has rollback outputs and no active server deploy path', async () => {
@@ -66,6 +129,8 @@ test('production workflow has rollback outputs and no active server deploy path'
     assert.match(rollbackStep.run, /set \+e/);
     assert.match(rollbackStep.run, /oss_rollback_status/);
     assert.match(rollbackStep.run, /caddy_rollback_status/);
+    assert.match(rollbackStep.run, /Caddyfile\.paws-mcp-app\.previous-/);
+    assert.match(rollbackStep.run, /mcp_caddy_rollback_status/);
     assert.match(rollbackStep.run, /exit 1/);
     const syntax = spawnSync('bash', ['-n'], { input: rollbackStep.run, encoding: 'utf8' });
     assert.equal(syntax.status, 0, syntax.stderr);

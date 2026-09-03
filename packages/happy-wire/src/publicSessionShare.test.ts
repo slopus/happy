@@ -149,4 +149,15 @@ describe('publicSessionSnapshotSchema', () => {
             source: { provider: 'codex', sessionId: 'private-session-id' },
         })).toThrow();
     });
+
+    it('preserves the explicit cancelled terminal tool status', () => {
+        const snapshot = {
+            ...legacySnapshot,
+            messages: [{
+                id: 'message-cancelled', role: 'assistant' as const, createdAt: 1,
+                blocks: [{ type: 'tool' as const, name: 'ShowDemo', status: 'cancelled' as const }],
+            }],
+        };
+        expect(publicSessionSnapshotSchema.parse(snapshot)).toEqual(snapshot);
+    });
 });

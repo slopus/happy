@@ -1056,6 +1056,17 @@ export const es: TranslationStructure = {
         input: 'Entrada',
         output: 'Salida',
     },
+    mcpApps: {
+        loading: 'Cargando App…',
+        offline: 'Esta App no está disponible mientras la sesión está sin conexión.',
+        retry: 'Reintentar',
+        unsupported: 'Este dispositivo no admite MCP Apps.',
+        unavailable: 'Esta App no está disponible.',
+        openLinkTitle: '¿Abrir enlace externo?',
+        openLinkMessage: 'Esta App quiere abrir un enlace fuera de Paws.',
+        openLinkConfirm: 'Abrir enlace',
+        openLinkCancel: 'Cancelar',
+    },
 
     toolGroup: {
         editedFile: 'Edited file',

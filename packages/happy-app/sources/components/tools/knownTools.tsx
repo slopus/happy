@@ -47,7 +47,8 @@ const taskLikeTool = {
                 return false;
             }
             if (m.kind === 'tool-call'
-                && (m.tool.state === 'running' || m.tool.state === 'completed' || m.tool.state === 'error')) {
+                && (m.tool.state === 'running' || m.tool.state === 'completed'
+                    || m.tool.state === 'error' || m.tool.state === 'cancelled')) {
                 return false;
             }
         }

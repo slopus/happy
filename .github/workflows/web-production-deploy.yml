@@ -27,6 +27,7 @@ jobs:
       PAWS_LEGACY_WEB_PATH: /var/www/happy-web
       PAWS_WEB_OSS_BUCKET: happy-app-ota-jacky
       PAWS_WEB_OSS_ORIGIN: https://happy-app-ota-jacky.oss-cn-hangzhou.aliyuncs.com
+      PAWS_MCP_APP_SANDBOX_ORIGIN: ${{ vars.PAWS_MCP_APP_SANDBOX_ORIGIN }}
       OSS_UPLOAD_ENDPOINT: https://oss-cn-hangzhou.aliyuncs.com
       OSS_ADDRESSING_STYLE: virtual
       ALIBABA_CLOUD_ACCESS_KEY_ID: ${{ secrets.ALIYUN_OSS_ACCESS_KEY_ID }}
@@ -38,8 +39,14 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Restore main branch for release guard
-        run: git checkout -B main "$GITHUB_SHA"
+      - name: Guard exact merged main revision before external mutation
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = 'refs/heads/main'
+          git fetch --no-tags origin main
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse origin/main)" = "$GITHUB_SHA"
+          git checkout -B main "$GITHUB_SHA"
 
       - name: Guard deployment configuration
         run: |
@@ -94,10 +101,98 @@ jobs:
           47.115.228.20 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBEmQUBstAnrOJApt7mRCo0vqiQKe9AG6IgWcwZ+X/RxBwVNPQnCPWjfR3GnxeZOsB5D/6XLIKQAyj/0/N79BlEU=
           EOF
 
+      - name: Resolve MCP App sandbox rollout
+        id: mcp_rollout
+        run: |
+          set -euo pipefail
+          if [ -z "$PAWS_MCP_APP_SANDBOX_ORIGIN" ]; then
+            echo 'enabled=false' >> "$GITHUB_OUTPUT"
+            echo 'MCP Apps remain disabled: PAWS_MCP_APP_SANDBOX_ORIGIN is unset.'
+            exit 0
+          fi
+          node --input-type=module - "$PAWS_MCP_APP_SANDBOX_ORIGIN" "$PAWS_WEB_ORIGIN" <<'NODE'
+          const [sandboxRaw, parentRaw] = process.argv.slice(2);
+          const exactHttpsOrigin = (raw, label) => {
+            if (!raw || raw.trim() !== raw || /[\s;'"\\?#]/u.test(raw)) throw new Error(`${label} must be an exact HTTPS origin`);
+            const url = new URL(raw);
+            if (url.protocol !== 'https:' || url.username || url.password || url.pathname !== '/'
+                || url.search || url.hash || !url.hostname || url.hostname.includes('*') || url.hostname.endsWith('.')) {
+              throw new Error(`${label} must be an exact HTTPS origin`);
+            }
+            return url.origin;
+          };
+          const sandbox = exactHttpsOrigin(sandboxRaw, 'sandbox origin');
+          const parent = exactHttpsOrigin(parentRaw, 'Paws Web origin');
+          if (sandbox === parent) throw new Error('sandbox origin must differ from Paws Web origin');
+          NODE
+          echo 'enabled=true' >> "$GITHUB_OUTPUT"
+
+      - name: Configure MCP App sandbox route
+        id: mcp_caddy
+        if: ${{ steps.mcp_rollout.outputs.enabled == 'true' }}
+        run: |
+          set -euo pipefail
+          current_caddy="$(mktemp)"
+          next_caddy="$(mktemp)"
+          remote_candidate="/tmp/paws-mcp-app-caddy-$GITHUB_SHA"
+          remote_backup="/etc/caddy/Caddyfile.paws-mcp-app.previous-$GITHUB_SHA"
+          trap 'rm -f "$current_caddy" "$next_caddy"' EXIT
+          ssh -p "$PAWS_DEPLOY_PORT" "$PAWS_DEPLOY_HOST" 'cat /etc/caddy/Caddyfile' > "$current_caddy"
+          caddy_change="$(node scripts/configure-production-mcp-app-sandbox-caddy.mjs \
+            "$current_caddy" "$next_caddy" "$PAWS_MCP_APP_SANDBOX_ORIGIN" "$PAWS_WEB_ORIGIN")"
+          if [ "$caddy_change" = 'unchanged' ]; then
+            echo 'backup_path=' >> "$GITHUB_OUTPUT"
+            echo 'MCP App sandbox route already matches the guarded configuration.'
+            exit 0
+          fi
+          test "$caddy_change" = 'changed'
+          scp -P "$PAWS_DEPLOY_PORT" "$next_caddy" "$PAWS_DEPLOY_HOST:$remote_candidate"
+          echo "backup_path=$remote_backup" >> "$GITHUB_OUTPUT"
+          ssh -p "$PAWS_DEPLOY_PORT" "$PAWS_DEPLOY_HOST" bash -s -- "$remote_candidate" "$remote_backup" <<'REMOTE_SCRIPT'
+          set -euo pipefail
+          candidate="$1"
+          backup="$2"
+          config="/etc/caddy/Caddyfile"
+          cleanup() { rm -f -- "$candidate"; }
+          wait_for_reload() {
+            for ((attempt=1; attempt<=30; attempt+=1)); do
+              pending_jobs="$(systemctl list-jobs --no-legend --plain caddy.service 2>/dev/null || true)"
+              active_state="$(systemctl show caddy --property=ActiveState --value)"
+              reload_result="$(systemctl show caddy --property=ReloadResult --value 2>/dev/null || true)"
+              if [ -z "$pending_jobs" ]; then
+                [ "$active_state" = 'active' ] && { [ -z "$reload_result" ] || [ "$reload_result" = 'success' ]; }
+                return
+              fi
+              sleep 1
+            done
+            return 1
+          }
+          trap cleanup EXIT
+          cp -p -- "$config" "$backup"
+          install -m 644 -- "$candidate" "$config"
+          if ! caddy validate --config "$config" || ! systemctl --no-block reload caddy || ! wait_for_reload; then
+            cp -p -- "$backup" "$config"
+            caddy validate --config "$config"
+            systemctl --no-block reload caddy
+            wait_for_reload
+            exit 1
+          fi
+          REMOTE_SCRIPT
+
+      - name: Verify MCP App sandbox endpoint
+        id: mcp_verify
+        if: ${{ steps.mcp_rollout.outputs.enabled == 'true' }}
+        run: node scripts/verify-production-mcp-app-sandbox.mjs "$PAWS_MCP_APP_SANDBOX_ORIGIN" "$PAWS_WEB_ORIGIN"
+
       - name: Build and stamp Web from this main revision
         run: |
           set -euo pipefail
           RELEASE_TIMESTAMP="$(git show -s --format=%cI "$GITHUB_SHA")"
+          if [ "${{ steps.mcp_rollout.outputs.enabled }}" = 'true' ]; then
+            export EXPO_PUBLIC_MCP_APP_SANDBOX_ORIGIN="$PAWS_MCP_APP_SANDBOX_ORIGIN"
+          else
+            unset EXPO_PUBLIC_MCP_APP_SANDBOX_ORIGIN
+          fi
           CI=1 APP_ENV=production EXPO_PUBLIC_HAPPY_SERVER_URL="$PAWS_WEB_ORIGIN" \
             HAPPY_BUILD_COMMIT_SHA="$GITHUB_SHA" \
             HAPPY_BUILD_COMMIT_TIMESTAMP="$RELEASE_TIMESTAMP" \
@@ -214,8 +309,10 @@ jobs:
           set -uo pipefail
           rollback_prefix="${{ steps.switch.outputs.rollback_prefix }}"
           caddy_backup="${{ steps.caddy.outputs.backup_path }}"
+          mcp_caddy_backup="${{ steps.mcp_caddy.outputs.backup_path }}"
           oss_rollback_status=0
           caddy_rollback_status=0
+          mcp_caddy_rollback_status=0
           set +e
           if [ -n "$rollback_prefix" ]; then
             bash scripts/deploy-web.sh --rollback "$rollback_prefix"
@@ -260,9 +357,44 @@ jobs:
               caddy_rollback_status=$?
             fi
           fi
+          if [ -n "$mcp_caddy_backup" ]; then
+            ssh -p "$PAWS_DEPLOY_PORT" "$PAWS_DEPLOY_HOST" bash -s -- "$mcp_caddy_backup" <<'REMOTE_SCRIPT'
+          set -euo pipefail
+          backup="$1"
+          config="/etc/caddy/Caddyfile"
+          case "$backup" in
+            /etc/caddy/Caddyfile.paws-mcp-app.previous-*) ;;
+            *) echo "错误：MCP App Caddy rollback path 越界。" >&2; exit 1 ;;
+          esac
+          test -f "$backup"
+          cp -p -- "$backup" "$config"
+          caddy validate --config "$config"
+          systemctl --no-block reload caddy
+          reload_completed=0
+          for ((attempt=1; attempt<=30; attempt+=1)); do
+            pending_jobs="$(systemctl list-jobs --no-legend --plain caddy.service 2>/dev/null || true)"
+            active_state="$(systemctl show caddy --property=ActiveState --value)"
+            reload_result="$(systemctl show caddy --property=ReloadResult --value 2>/dev/null || true)"
+            if [ -z "$pending_jobs" ]; then
+              if [ "$active_state" = 'active' ] && { [ -z "$reload_result" ] || [ "$reload_result" = 'success' ]; }; then
+                reload_completed=1
+                break
+              fi
+              echo "错误：MCP App Caddy rollback reload 失败（state=$active_state, result=${reload_result:-unknown}）。" >&2
+              exit 1
+            fi
+            sleep 1
+          done
+          if [ "$reload_completed" -ne 1 ]; then
+            echo '错误：MCP App Caddy rollback reload 未在 30 秒内完成。' >&2
+            exit 1
+          fi
+          REMOTE_SCRIPT
+            mcp_caddy_rollback_status=$?
+          fi
           set -e
-          if [ "$oss_rollback_status" -ne 0 ] || [ "$caddy_rollback_status" -ne 0 ]; then
-            echo "错误：Web 回滚未完全成功（OSS=$oss_rollback_status, Caddy=$caddy_rollback_status）。" >&2
+          if [ "$oss_rollback_status" -ne 0 ] || [ "$caddy_rollback_status" -ne 0 ] || [ "$mcp_caddy_rollback_status" -ne 0 ]; then
+            echo "错误：Web 回滚未完全成功（OSS=$oss_rollback_status, Caddy=$caddy_rollback_status, MCP_App_Caddy=$mcp_caddy_rollback_status）。" >&2
             exit 1
           fi
 
@@ -278,4 +410,5 @@ jobs:
             echo "| Commit | \`$GITHUB_SHA\` |"
             echo "| Static storage | \`oss://$PAWS_WEB_OSS_BUCKET/web/releases/$GITHUB_SHA/\` |"
             echo '| Server Web files | Removed after verification |'
+            echo "| MCP Apps | ${{ steps.mcp_rollout.outputs.enabled == 'true' && 'Enabled after sandbox verification' || 'Disabled (repository variable unset)' }} |"
           } >> "$GITHUB_STEP_SUMMARY"

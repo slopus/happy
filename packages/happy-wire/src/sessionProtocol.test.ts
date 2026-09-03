@@ -5,8 +5,26 @@ import {
   sessionEnvelopeSchema,
   sessionEventSchema,
   sessionFileEventSchema,
+  sessionToolCallEndEventSchema,
+  sessionToolCallStartEventSchema,
   type SessionEvent,
 } from './sessionProtocol';
+
+const legacyToolCallStartEventSchema = sessionToolCallStartEventSchema.pick({
+  t: true,
+  call: true,
+  name: true,
+  title: true,
+  description: true,
+  args: true,
+});
+
+const legacyToolCallEndEventSchema = sessionToolCallEndEventSchema.pick({
+  t: true,
+  call: true,
+  status: true,
+  error: true,
+});
 
 describe('session protocol schemas', () => {
   it('accepts all supported event types', () => {
@@ -85,6 +103,187 @@ describe('session protocol schemas', () => {
     expect(sessionEventSchema.safeParse({ t: 'start', title: 1 }).success).toBe(false);
     expect(sessionEventSchema.safeParse({ t: 'service' }).success).toBe(false);
     expect(sessionEventSchema.safeParse({ t: 'not-real' }).success).toBe(false);
+  });
+
+  it('preserves legacy tool events byte-for-byte', () => {
+    const legacyStart = {
+      id: 'legacy-start',
+      time: 1,
+      role: 'agent' as const,
+      ev: {
+        t: 'tool-call-start' as const,
+        call: 'call-legacy',
+        name: 'mcp__demo__show',
+        title: 'Demo',
+        description: 'Show demo',
+        args: { theme: 'dark' },
+      },
+    };
+    const legacyEnd = {
+      id: 'legacy-end',
+      time: 2,
+      role: 'agent' as const,
+      ev: {
+        t: 'tool-call-end' as const,
+        call: 'call-legacy',
+        status: 'completed' as const,
+      },
+    };
+
+    expect(sessionEnvelopeSchema.parse(legacyStart)).toEqual(legacyStart);
+    expect(sessionEnvelopeSchema.parse(legacyEnd)).toEqual(legacyEnd);
+  });
+
+  it('round-trips optional MCP App data while legacy clients ignore it', () => {
+    const start = sessionEnvelopeSchema.parse({
+      id: 'event-1',
+      time: 1,
+      role: 'agent',
+      ev: {
+        t: 'tool-call-start',
+        call: 'call-1',
+        name: 'mcp__demo__show',
+        title: 'Demo',
+        description: 'Show demo',
+        args: {},
+        mcpApp: {
+          version: 1,
+          server: 'demo',
+          resourceUri: 'ui://demo/index.html',
+          appName: 'Demo App',
+          actionName: 'Show',
+        },
+      },
+    });
+    const end = sessionEnvelopeSchema.parse({
+      id: 'event-2',
+      time: 2,
+      role: 'agent',
+      ev: {
+        t: 'tool-call-end',
+        call: 'call-1',
+        status: 'completed',
+        mcpAppResult: {
+          version: 1,
+          state: 'available',
+          content: [{ type: 'text', text: 'Done' }],
+          structuredContent: { visible: true },
+          _meta: { internal: 'view-only' },
+        },
+      },
+    });
+
+    expect(start.ev).toMatchObject({
+      t: 'tool-call-start',
+      mcpApp: {
+        version: 1,
+        server: 'demo',
+        resourceUri: 'ui://demo/index.html',
+        appName: 'Demo App',
+        actionName: 'Show',
+      },
+    });
+    expect(end.ev).toMatchObject({
+      t: 'tool-call-end',
+      mcpAppResult: {
+        version: 1,
+        state: 'available',
+        content: [{ type: 'text', text: 'Done' }],
+        structuredContent: { visible: true },
+        _meta: { internal: 'view-only' },
+      },
+    });
+    expect(legacyToolCallStartEventSchema.parse(start.ev)).toEqual({
+      t: 'tool-call-start',
+      call: 'call-1',
+      name: 'mcp__demo__show',
+      title: 'Demo',
+      description: 'Show demo',
+      args: {},
+    });
+    expect(legacyToolCallEndEventSchema.parse(end.ev)).toEqual({
+      t: 'tool-call-end',
+      call: 'call-1',
+      status: 'completed',
+    });
+  });
+
+  it('rejects MCP App descriptors without a ui:// resource URI', () => {
+    expect(sessionToolCallStartEventSchema.safeParse({
+      t: 'tool-call-start',
+      call: 'call-1',
+      name: 'mcp__demo__show',
+      title: 'Demo',
+      description: 'Show demo',
+      args: {},
+      mcpApp: {
+        version: 1,
+        server: 'demo',
+        resourceUri: 'https://example.com/index.html',
+      },
+    }).success).toBe(false);
+  });
+
+  it.each([
+    ['server', 's'.repeat(257)],
+    ['resourceUri', `ui://${'r'.repeat(2044)}`],
+    ['appName', 'a'.repeat(161)],
+    ['actionName', 'a'.repeat(161)],
+  ])('rejects an MCP App descriptor with %s beyond its limit', (field, value) => {
+    expect(sessionToolCallStartEventSchema.safeParse({
+      t: 'tool-call-start',
+      call: 'call-1',
+      name: 'mcp__demo__show',
+      title: 'Demo',
+      description: 'Show demo',
+      args: {},
+      mcpApp: {
+        version: 1,
+        server: 'demo',
+        resourceUri: 'ui://demo/index.html',
+        [field]: value,
+      },
+    }).success).toBe(false);
+  });
+
+  it('rejects unsupported MCP App protocol versions', () => {
+    expect(sessionToolCallStartEventSchema.safeParse({
+      t: 'tool-call-start',
+      call: 'call-1',
+      name: 'mcp__demo__show',
+      title: 'Demo',
+      description: 'Show demo',
+      args: {},
+      mcpApp: {
+        version: 2,
+        server: 'demo',
+        resourceUri: 'ui://demo/index.html',
+      },
+    }).success).toBe(false);
+  });
+
+  it('accepts only the stable unavailable MCP App result code', () => {
+    const baseEvent = {
+      t: 'tool-call-end',
+      call: 'call-1',
+    };
+
+    expect(sessionToolCallEndEventSchema.safeParse({
+      ...baseEvent,
+      mcpAppResult: {
+        version: 1,
+        state: 'unavailable',
+        code: 'MCP_APP_RESULT_TOO_LARGE',
+      },
+    }).success).toBe(true);
+    expect(sessionToolCallEndEventSchema.safeParse({
+      ...baseEvent,
+      mcpAppResult: {
+        version: 1,
+        state: 'unavailable',
+        code: 'MCP_APP_RESOURCE_TOO_LARGE',
+      },
+    }).success).toBe(false);
   });
 
   it('accepts audio/video file events with kind + encrypted:false', () => {

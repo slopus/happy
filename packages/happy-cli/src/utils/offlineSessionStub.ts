@@ -49,7 +49,8 @@ export function createOfflineSessionStub(sessionTag: string): ApiSessionClient {
         updateAgentState: async () => {},
         onUserMessage: () => {},
         rpcHandlerManager: {
-            registerHandler: () => {}
+            registerHandler: () => {},
+            unregisterHandler: () => {},
         }
     } as unknown as ApiSessionClient;
 }

@@ -1065,6 +1065,17 @@ export const zhHant: TranslationStructure = {
         input: '輸入',
         output: '輸出',
     },
+    mcpApps: {
+        loading: '正在載入 App…',
+        offline: '工作階段離線時無法使用此 App。',
+        retry: '重試',
+        unsupported: '此裝置不支援 MCP Apps。',
+        unavailable: '此 App 暫時無法使用。',
+        openLinkTitle: '開啟外部連結？',
+        openLinkMessage: '此 App 想要開啟 Paws 以外的連結。',
+        openLinkConfirm: '開啟連結',
+        openLinkCancel: '取消',
+    },
 
     toolGroup: {
         editedFile: 'Edited file',

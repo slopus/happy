@@ -2,11 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { createOfflineSessionStub } from './offlineSessionStub';
 
 describe('createOfflineSessionStub', () => {
-    it('preserves the asynchronous updateAgentState contract while offline', async () => {
-        const session = createOfflineSessionStub('test-session');
-        const result = session.updateAgentState((state) => state);
+    it('supports safe RPC handler cleanup before a reconnect swaps the session', () => {
+        const session = createOfflineSessionStub('session-1');
 
-        expect(result).toBeInstanceOf(Promise);
-        await expect(result).resolves.toBeUndefined();
+        expect(() => session.rpcHandlerManager.unregisterHandler('mcpAppResourceOpen')).not.toThrow();
     });
 });

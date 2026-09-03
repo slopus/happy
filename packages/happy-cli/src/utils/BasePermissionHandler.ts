@@ -137,6 +137,34 @@ export abstract class BasePermissionHandler {
         }));
     }
 
+    /** Cancel one provider-scoped permission without disturbing unrelated prompts. */
+    protected cancelPendingRequest(toolCallId: string, reason: string): boolean {
+        const pending = this.pendingRequests.get(toolCallId);
+        if (!pending) return false;
+        this.pendingRequests.delete(toolCallId);
+        pending.resolve({ decision: 'abort' });
+
+        this.session.updateAgentState((currentState) => {
+            const request = currentState.requests?.[toolCallId];
+            if (!request) return currentState;
+            const { [toolCallId]: _, ...remainingRequests } = currentState.requests || {};
+            return {
+                ...currentState,
+                requests: remainingRequests,
+                completedRequests: {
+                    ...currentState.completedRequests,
+                    [toolCallId]: {
+                        ...request,
+                        completedAt: Date.now(),
+                        status: 'canceled',
+                        reason,
+                    },
+                },
+            } satisfies AgentState;
+        });
+        return true;
+    }
+
     /**
      * Approve every currently pending request.
      * Used when a running session switches into a no-prompt mode mid-turn.
