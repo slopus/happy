@@ -1,7 +1,12 @@
 import { render } from "ink";
 import React from "react";
 import { ApiClient } from '@/api/api';
-import { CodexAppServerClient, resolveCodexAppServerConnection } from './codexAppServerClient';
+import {
+    CodexAppServerClient,
+    isAppServerAvailable,
+    resolveCodexAppServerConnection,
+    resolveCodexExecutablePath,
+} from './codexAppServerClient';
 import type {
     GetAccountTokenUsageResponse,
     ListMcpServerStatusResponse,
@@ -13,7 +18,7 @@ import { CodexPermissionHandler } from './utils/permissionHandler';
 import { ReasoningProcessor } from './utils/reasoningProcessor';
 import { DiffProcessor } from './utils/diffProcessor';
 import { randomUUID } from 'node:crypto';
-import { execFileSync, execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { logger } from '@/ui/logger';
 import { Credentials, readSettings } from '@/persistence';
 import { initialMachineMetadata } from '@/daemon/run';
@@ -296,9 +301,13 @@ export async function runCodex(opts: {
 }): Promise<void> {
     // Early check: ensure Codex CLI is installed before proceeding
     try {
-        execSync('codex --version', { encoding: 'utf8', stdio: 'pipe', windowsHide: true });
-    } catch {
-        console.error('\n\x1b[1m\x1b[33mCodex CLI is not installed\x1b[0m\n');
+        if (!isAppServerAvailable(resolveCodexExecutablePath())) {
+            throw new Error('Codex app-server is unavailable or unsupported');
+        }
+    } catch (error) {
+        const details = error instanceof Error ? error.message : String(error);
+        console.error('\n\x1b[1m\x1b[33mCodex CLI is unavailable\x1b[0m\n');
+        console.error(`Reason: ${details}\n`);
         console.error('Please install Codex CLI using one of these methods:\n');
         console.error('\x1b[1mOption 1 - npm (recommended):\x1b[0m');
         console.error('  \x1b[36mnpm install -g @openai/codex\x1b[0m\n');

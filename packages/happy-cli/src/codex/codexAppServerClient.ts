@@ -14,9 +14,10 @@
  * app-server wrapper or approval callbacks. See docs/plans/codex-app-server-migration.md.
  */
 
-import { execSync, type ChildProcess } from 'node:child_process';
+import { execFileSync, type ChildProcess } from 'node:child_process';
+import { existsSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { isAbsolute, join } from 'node:path';
+import { dirname, isAbsolute, join } from 'node:path';
 import { spawn as crossSpawn } from 'cross-spawn';
 import { createInterface, type Interface as ReadlineInterface } from 'node:readline';
 import WebSocket from 'ws';
@@ -130,9 +131,47 @@ export type ApprovalHandler = (params: {
 /**
  * Check that `codex app-server` is available.
  */
-function isAppServerAvailable(): boolean {
+export function resolveCodexExecutablePath(env: NodeJS.ProcessEnv = process.env): string {
+    const configuredPath = env.HAPPY_CODEX_PATH?.trim();
+    if (!configuredPath) {
+        return 'codex';
+    }
+    if (!isAbsolute(configuredPath)) {
+        throw new Error('HAPPY_CODEX_PATH must be an absolute path');
+    }
+
+    const invalidPairMessage =
+        'HAPPY_CODEX_PATH must point to a Codex installation with a matching code-mode host';
     try {
-        const version = execSync('codex --version', { encoding: 'utf8', windowsHide: true }).trim();
+        if (!existsSync(configuredPath)) {
+            throw new Error(invalidPairMessage);
+        }
+        const resolvedCodexPath = realpathSync(configuredPath);
+        const hostName = process.platform === 'win32'
+            ? 'codex-code-mode-host.exe'
+            : 'codex-code-mode-host';
+        const hostPath = join(dirname(resolvedCodexPath), hostName);
+        if (
+            !existsSync(hostPath)
+            || dirname(realpathSync(hostPath)) !== dirname(resolvedCodexPath)
+        ) {
+            throw new Error(invalidPairMessage);
+        }
+    } catch (error) {
+        if (error instanceof Error && error.message === invalidPairMessage) {
+            throw error;
+        }
+        throw new Error(invalidPairMessage);
+    }
+    return configuredPath;
+}
+
+export function isAppServerAvailable(command: string): boolean {
+    try {
+        const version = execFileSync(command, ['--version'], {
+            encoding: 'utf8',
+            windowsHide: true,
+        }).trim();
         const match = version.match(/codex-cli\s+(\d+\.\d+\.\d+)/);
         if (!match) return false;
         const [, ver] = match;
@@ -779,7 +818,8 @@ export class CodexAppServerClient {
             return;
         }
 
-        if (!isAppServerAvailable()) {
+        const codexCommand = resolveCodexExecutablePath();
+        if (!isAppServerAvailable(codexCommand)) {
             throw new Error(
                 'Codex CLI is not installed\n\n' +
                 'Please install Codex CLI using one of these methods:\n\n' +
@@ -789,14 +829,14 @@ export class CodexAppServerClient {
             );
         }
 
-        let command = 'codex';
+        let command = codexCommand;
         let args = ['app-server', '--listen', 'stdio://', '-c', `service_tier=\"${this.serviceTier}\"`];
         this.sandboxEnabled = false;
 
         if (this.sandboxConfig?.enabled && process.platform !== 'win32') {
             try {
                 this.sandboxCleanup = await initializeSandbox(this.sandboxConfig, process.cwd());
-                const wrapped = await wrapForMcpTransport('codex', args);
+                const wrapped = await wrapForMcpTransport(codexCommand, args);
                 command = wrapped.command;
                 args = wrapped.args;
                 this.sandboxEnabled = true;

@@ -104,9 +104,15 @@ describe('sandbox manager', () => {
     it('wrapForMcpTransport returns sh -c wrapped command', async () => {
         mockWrapWithSandbox.mockResolvedValue('sandbox codex command');
 
-        const wrapped = await wrapForMcpTransport('codex', ['mcp-server']);
+        const wrapped = await wrapForMcpTransport('/Applications/Codex Preview.app/codex', [
+            'app-server',
+            '-c',
+            'service_tier="priority"',
+        ]);
 
-        expect(mockWrapWithSandbox).toHaveBeenCalledWith('codex mcp-server');
+        expect(mockWrapWithSandbox).toHaveBeenCalledWith(
+            "'/Applications/Codex Preview.app/codex' 'app-server' '-c' 'service_tier=\"priority\"'",
+        );
         expect(wrapped).toEqual({
             command: 'sh',
             args: ['-c', 'sandbox codex command'],

@@ -18,11 +18,17 @@ export async function wrapCommand(command: string): Promise<string> {
     return SandboxManager.wrapWithSandbox(command);
 }
 
+function quoteShellArg(value: string): string {
+    return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
 export async function wrapForMcpTransport(
     command: string,
     args: string[],
 ): Promise<{ command: 'sh'; args: ['-c', string] }> {
-    const wrappedCommand = await wrapCommand(`${command} ${args.join(' ')}`.trim());
+    const wrappedCommand = await wrapCommand(
+        [command, ...args].map((arg) => quoteShellArg(arg)).join(' '),
+    );
     return {
         command: 'sh',
         args: ['-c', wrappedCommand],
