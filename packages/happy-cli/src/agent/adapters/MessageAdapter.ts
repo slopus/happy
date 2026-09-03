@@ -280,5 +280,6 @@ export const adapters = {
   gemini: new MessageAdapter({ agentType: 'gemini' }),
   codex: new MessageAdapter({ agentType: 'codex' }),
   claude: new MessageAdapter({ agentType: 'claude' }),
+  cursor: new MessageAdapter({ agentType: 'cursor' }),
   opencode: new MessageAdapter({ agentType: 'opencode' }),
 } as const;

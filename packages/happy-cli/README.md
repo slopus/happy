@@ -32,6 +32,7 @@ This will:
 
 ```
 happy codex
+happy cursor     # Cursor Agent CLI (via ACP)
 happy agy        # Antigravity CLI (Gemini's successor)
 happy gemini     # deprecated — use `happy agy`
 happy openclaw

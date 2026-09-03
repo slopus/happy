@@ -287,12 +287,41 @@ export function getHardcodedPermissionModes(flavor: AgentFlavor, translate: Tran
     if (flavor === 'agy') {
         return getAgyPermissionModes(translate);
     }
+    if (flavor === 'cursor') {
+        return getCursorPermissionModes(translate);
+    }
     return getClaudePermissionModes(translate);
+}
+
+export function getCursorPermissionModes(translate: Translate): PermissionMode[] {
+    return [
+        { key: 'agent', name: 'Agent', description: translate('agentInput.permissionMode.default') },
+        { key: 'plan', name: 'Plan', description: translate('agentInput.permissionMode.plan') },
+        { key: 'ask', name: 'Ask', description: 'Q&A mode - no edits or command execution' },
+        { key: 'bypassPermissions', name: 'Yolo', description: translate('agentInput.permissionMode.bypassPermissions') },
+        { key: 'default', name: 'Default', description: translate('agentInput.permissionMode.default') },
+    ];
 }
 
 export function getOpenClawModelModes(): ModelMode[] {
     return [
         { key: 'default', name: 'Default model', description: null },
+    ];
+}
+
+export function getCursorModelModes(): ModelMode[] {
+    return [
+        { key: 'default[]', name: 'Auto', description: 'Cursor Router (Default)' },
+        { key: 'grok-4.6[effort=high,fast=true]', name: 'Grok 4.6', description: 'xAI' },
+        { key: 'composer-2.5[fast=true]', name: 'Composer 2.5', description: 'Cursor' },
+        { key: 'claude-opus-5[thinking=true,context=300k,effort=high,fast=false]', name: 'Claude Opus 5', description: 'Anthropic' },
+        { key: 'claude-sonnet-5[thinking=true,context=300k,effort=high]', name: 'Claude Sonnet 5', description: 'Anthropic' },
+        { key: 'gpt-5.6-sol[context=272k,reasoning=medium,fast=false]', name: 'GPT-5.6 Sol', description: 'OpenAI' },
+        { key: 'gpt-5.5[context=272k,reasoning=medium,fast=false]', name: 'GPT-5.5', description: 'OpenAI' },
+        { key: 'gemini-3.7-flash[effort=high]', name: 'Gemini 3.7 Flash', description: 'Google' },
+        { key: 'gemini-3.1-pro[]', name: 'Gemini 3.1 Pro', description: 'Google' },
+        { key: 'claude-fable-5[thinking=true,context=300k,effort=high]', name: 'Claude Fable 5', description: 'Anthropic' },
+        { key: 'grok-4.5[effort=high,fast=true]', name: 'Grok 4.5', description: 'xAI' },
     ];
 }
 
@@ -325,6 +354,9 @@ export function getHardcodedModelModes(flavor: AgentFlavor, _translate: Translat
     }
     if (flavor === 'agy') {
         return getAgyModelModes();
+    }
+    if (flavor === 'cursor') {
+        return getCursorModelModes();
     }
     return getClaudeModelModes();
 }

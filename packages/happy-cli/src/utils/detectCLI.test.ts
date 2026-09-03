@@ -41,4 +41,15 @@ describe('CLI availability detection', () => {
 
     expect(detectCLIAvailability().agy).toBe(true);
   });
+
+  it('detects Cursor CLI when agent binary is in PATH', () => {
+    expect(detectCLIAvailability().cursor).toBe(false);
+
+    mockedExecSync.mockImplementation((cmd: string) => {
+      if (cmd.includes('agent')) return Buffer.from('/usr/local/bin/agent');
+      throw new Error('not installed');
+    });
+
+    expect(detectCLIAvailability().cursor).toBe(true);
+  });
 });

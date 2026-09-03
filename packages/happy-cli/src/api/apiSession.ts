@@ -47,7 +47,7 @@ export type ACPMessageData =
     // Usage/metrics
     | { type: 'token_count';[key: string]: unknown };
 
-export type ACPProvider = 'gemini' | 'codex' | 'claude' | 'opencode';
+export type ACPProvider = 'gemini' | 'codex' | 'claude' | 'cursor' | 'opencode';
 
 type V3SessionMessage = {
     id: string;
@@ -823,7 +823,7 @@ export class ApiSessionClient extends EventEmitter {
      * @param provider - The agent provider sending the message (e.g., 'gemini', 'codex', 'claude')
      * @param body - The message payload (type: 'message' | 'reasoning' | 'tool-call' | 'tool-result')
      */
-    sendAgentMessage(provider: 'gemini' | 'codex' | 'claude' | 'opencode' | 'openclaw', body: ACPMessageData) {
+    sendAgentMessage(provider: 'gemini' | 'codex' | 'claude' | 'cursor' | 'opencode' | 'openclaw', body: ACPMessageData) {
         let content = {
             role: 'agent',
             content: {

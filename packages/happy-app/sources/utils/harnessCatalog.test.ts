@@ -3,8 +3,9 @@ import { describe, expect, it } from 'vitest';
 import { HARNESS_NAMES, isRetiredHarness, listAvailableHarnesses } from './harnessCatalog';
 
 describe('harness catalog', () => {
-    it('names Happy and Antigravity by product, not by CLI id', () => {
+    it('names Happy, Cursor, and Antigravity by product, not by CLI id', () => {
         expect(HARNESS_NAMES.rig).toBe('Happy');
+        expect(HARNESS_NAMES.cursor).toBe('Cursor');
         expect(HARNESS_NAMES.agy).toBe('Antigravity');
     });
 
@@ -12,21 +13,23 @@ describe('harness catalog', () => {
         expect(isRetiredHarness('gemini')).toBe(true);
         expect(isRetiredHarness('openclaw')).toBe(true);
         expect(isRetiredHarness('claude')).toBe(false);
+        expect(isRetiredHarness('cursor')).toBe(false);
         // Antigravity is what Gemini's own error message redirects people to.
         expect(isRetiredHarness('agy')).toBe(false);
     });
 
     it('lists only installed harnesses, in pick order', () => {
         const harnesses = listAvailableHarnesses({
-            availability: { claude: true, codex: true, agy: true },
+            availability: { claude: true, codex: true, cursor: true, agy: true },
             happyAgentAvailable: true,
             selected: 'claude',
         });
 
-        expect(harnesses.map((harness) => harness.key)).toEqual(['claude', 'codex', 'agy', 'rig']);
+        expect(harnesses.map((harness) => harness.key)).toEqual(['claude', 'codex', 'cursor', 'agy', 'rig']);
         expect(harnesses.map((harness) => harness.name)).toEqual([
             'Claude Code',
             'Codex',
+            'Cursor',
             'Antigravity',
             'Happy',
         ]);
@@ -90,7 +93,7 @@ describe('harness catalog', () => {
             availability: null,
             happyAgentAvailable: false,
             selected: 'agy',
-        }).map((harness) => harness.key)).toEqual(['claude', 'codex']);
+        }).map((harness) => harness.key)).toEqual(['claude', 'codex', 'cursor']);
     });
 
     it('falls back to the whole catalog when a machine reports no capabilities', () => {
@@ -98,12 +101,12 @@ describe('harness catalog', () => {
             availability: null,
             happyAgentAvailable: false,
             selected: null,
-        }).map((harness) => harness.key)).toEqual(['claude', 'codex']);
+        }).map((harness) => harness.key)).toEqual(['claude', 'codex', 'cursor']);
 
         expect(listAvailableHarnesses({
             availability: {},
             happyAgentAvailable: false,
             selected: null,
-        }).map((harness) => harness.key)).toEqual(['claude', 'codex', 'rig']);
+        }).map((harness) => harness.key)).toEqual(['claude', 'codex', 'cursor', 'rig']);
     });
 });
