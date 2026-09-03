@@ -396,6 +396,14 @@ class Sync {
         this.pluginCatalogStore.clearConfigurationDraft(pluginId, pluginVersion, expectedDraft, scope);
     };
 
+    setPluginInstallationStatus = (
+        pluginId: string,
+        status: import('@slopus/happy-wire').PluginInstallationStatus,
+        scope?: number,
+    ): void => {
+        this.pluginCatalogStore.setPluginInstallationStatus(pluginId, status, scope);
+    };
+
     subscribePluginCatalog = (listener: () => void): (() => void) => {
         return this.pluginCatalogStore.subscribe(listener);
     }

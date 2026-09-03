@@ -1,4 +1,4 @@
-import type { PluginCatalogItem } from '@slopus/happy-wire';
+import type { PluginCatalogItem, PluginInstallationStatus } from '@slopus/happy-wire';
 
 export type PluginCatalogStatus = 'idle' | 'loading' | 'ready' | 'error';
 
@@ -9,6 +9,11 @@ export interface PluginCatalogSnapshot {
 }
 
 const EMPTY_PLUGIN_CATALOG: readonly PluginCatalogItem[] = [];
+
+type PluginCatalogRefresh = {
+    accountGeneration: number;
+    mutationRevision: number;
+};
 
 function configurationDraftKey(pluginId: string, pluginVersion: string): string {
     return JSON.stringify([pluginId, pluginVersion]);
@@ -33,7 +38,12 @@ export class PluginCatalogStore {
     };
     private readonly listeners = new Set<() => void>();
     private readonly configurationDrafts = new Map<string, Record<string, string>>();
+    private readonly installationStatusOverrides = new Map<string, {
+        revision: number;
+        status: PluginInstallationStatus;
+    }>();
     private accountGeneration = 0;
+    private mutationRevision = 0;
 
     getSnapshot = (): PluginCatalogSnapshot => this.snapshot;
 
@@ -52,7 +62,9 @@ export class PluginCatalogStore {
 
     beginAccount(): void {
         this.accountGeneration += 1;
+        this.mutationRevision = 0;
         this.configurationDrafts.clear();
+        this.installationStatusOverrides.clear();
         this.publish('loading', EMPTY_PLUGIN_CATALOG);
     }
 
@@ -93,20 +105,59 @@ export class PluginCatalogStore {
         this.configurationDrafts.delete(key);
     }
 
-    beginRefresh(): number {
-        const generation = this.accountGeneration;
+    beginRefresh(): PluginCatalogRefresh {
+        const refresh = {
+            accountGeneration: this.accountGeneration,
+            mutationRevision: this.mutationRevision,
+        };
         this.publish('loading', this.snapshot.plugins);
-        return generation;
+        return refresh;
     }
 
-    resolve(plugins: readonly PluginCatalogItem[], generation = this.accountGeneration): void {
-        if (generation !== this.accountGeneration) return;
-        this.publish('ready', [...plugins]);
+    resolve(
+        plugins: readonly PluginCatalogItem[],
+        refresh: PluginCatalogRefresh = {
+            accountGeneration: this.accountGeneration,
+            mutationRevision: this.mutationRevision,
+        },
+    ): void {
+        if (refresh.accountGeneration !== this.accountGeneration) return;
+        const resolved = plugins.map((plugin) => {
+            const override = this.installationStatusOverrides.get(plugin.manifest.id);
+            if (!override) return plugin;
+            if (override.revision <= refresh.mutationRevision) {
+                this.installationStatusOverrides.delete(plugin.manifest.id);
+                return plugin;
+            }
+            return { ...plugin, status: override.status };
+        });
+        this.publish('ready', resolved);
     }
 
-    reject(generation = this.accountGeneration): void {
-        if (generation !== this.accountGeneration) return;
+    reject(refresh: PluginCatalogRefresh = {
+        accountGeneration: this.accountGeneration,
+        mutationRevision: this.mutationRevision,
+    }): void {
+        if (refresh.accountGeneration !== this.accountGeneration) return;
         this.publish('error', this.snapshot.plugins);
+    }
+
+    setPluginInstallationStatus(
+        pluginId: string,
+        status: PluginInstallationStatus,
+        scope = this.accountGeneration,
+    ): void {
+        if (scope !== this.accountGeneration) return;
+        const item = this.snapshot.plugins.find((plugin) => plugin.manifest.id === pluginId);
+        if (!item) return;
+        this.mutationRevision += 1;
+        this.installationStatusOverrides.set(pluginId, {
+            revision: this.mutationRevision,
+            status,
+        });
+        this.publish(this.snapshot.status, this.snapshot.plugins.map((plugin) => (
+            plugin.manifest.id === pluginId ? { ...plugin, status } : plugin
+        )));
     }
 
     private publish(status: PluginCatalogStatus, plugins: readonly PluginCatalogItem[]): void {

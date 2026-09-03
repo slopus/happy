@@ -390,6 +390,7 @@ test('[PLUGIN-INSTALL-LIFECYCLE] 画廊插件通过真实 API 完成安装与卸
 
     try {
         await page.goto(authenticatedRoute('/'));
+        await expect(page.getByTestId('compose-home-creation-rail')).toHaveCount(0);
         const pluginButton = page.getByTestId('sidebar-plugins-button');
         await expect(pluginButton).toBeVisible({ timeout: 120_000 });
         await pluginButton.click();
@@ -423,6 +424,9 @@ test('[PLUGIN-INSTALL-LIFECYCLE] 画廊插件通过真实 API 完成安装与卸
         });
         await expect(page).toHaveURL(/\/generated-images$/);
 
+        await page.goto(authenticatedRoute('/'));
+        await expect(page.getByTestId('compose-home-creation-rail')).toBeVisible();
+
         await pluginButton.click();
         await expect(page.getByTestId('plugin-marketplace-desktop-dialog')).toBeVisible();
         await expect(page.getByTestId('plugin-marketplace-installed-generated-images-gallery')).toBeVisible();
@@ -453,6 +457,13 @@ test('[PLUGIN-INSTALL-LIFECYCLE] 画廊插件通过真实 API 完成安装与卸
         await expect(page.getByTestId('generated-images-gallery-plugin-uninstall')).toHaveCount(0);
         await expect(page.getByTestId('generated-images-gallery-plugin-status'))
             .toContainText(/Not installed|未安装/);
+        await page.getByTestId('plugin-marketplace-close').click();
+        await expect(page.getByTestId('compose-home-creation-rail')).toHaveCount(0);
+
+        const imageModeUrl = new URL(authenticatedRoute('/new'));
+        imageModeUrl.searchParams.set('mode', 'image-styles');
+        await page.goto(imageModeUrl.toString());
+        await expect(page.getByTestId('compose-home-image-agent-panel')).toHaveCount(0);
     } finally {
         await page.close();
     }

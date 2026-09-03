@@ -3,10 +3,18 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { PluginCatalogStore } from './pluginCatalogStore';
 
-function plugin(id: string): PluginCatalogItem {
+function plugin(id: string, installed = false): PluginCatalogItem {
     return {
         manifest: { id },
-        status: { installed: false },
+        status: installed
+            ? {
+                installed: true,
+                version: '1.0.0',
+                grantedPermissions: [],
+                configuration: {},
+                secretHints: {},
+            }
+            : { installed: false },
     } as PluginCatalogItem;
 }
 
@@ -92,6 +100,21 @@ describe('PluginCatalogStore', () => {
 
         store.reject();
         expect(store.getSnapshot()).toMatchObject({ status: 'error', plugins });
+    });
+
+    it('keeps a confirmed uninstall authoritative when the follow-up refresh fails', () => {
+        const store = new PluginCatalogStore();
+        store.resolve([plugin('generated-images-gallery', true)]);
+        const staleRefresh = store.beginRefresh();
+
+        store.setPluginInstallationStatus('generated-images-gallery', { installed: false });
+        store.resolve([plugin('generated-images-gallery', true)], staleRefresh);
+        expect(store.getSnapshot().plugins[0]?.status).toEqual({ installed: false });
+
+        store.beginRefresh();
+        store.reject();
+
+        expect(store.getSnapshot().plugins[0]?.status).toEqual({ installed: false });
     });
 
     it('publishes immutable revisions for subscribers', () => {

@@ -47,7 +47,11 @@ export function createBuiltinImageStyleAgent(): AgentLauncher {
 export function resolveComposeImageAgent(args: {
     routeMode: unknown;
     agent: AgentLauncher | null;
+    imagePluginInstalled: boolean;
 }): AgentLauncher | null {
+    if (!args.imagePluginInstalled) {
+        return null;
+    }
     if (args.agent?.kind === 'image-styles') {
         return args.agent;
     }

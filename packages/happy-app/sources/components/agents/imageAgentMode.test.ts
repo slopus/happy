@@ -41,7 +41,11 @@ describe('imageAgentMode', () => {
     });
 
     it('resolves the built-in image agent from route mode without requiring a saved agent', () => {
-        const resolved = resolveComposeImageAgent({ routeMode: 'image-styles', agent: null });
+        const resolved = resolveComposeImageAgent({
+            routeMode: 'image-styles',
+            agent: null,
+            imagePluginInstalled: true,
+        });
 
         expect(resolved?.id).toBe(createBuiltinImageStyleAgent().id);
         expect(resolved?.kind).toBe('image-styles');
@@ -51,9 +55,23 @@ describe('imageAgentMode', () => {
         const resolved = resolveComposeImageAgent({
             routeMode: 'image-styles',
             agent: savedImageAgent,
+            imagePluginInstalled: true,
         });
 
         expect(resolved).toBe(savedImageAgent);
+    });
+
+    it('does not resolve image mode when the generated-images plugin is unavailable', () => {
+        expect(resolveComposeImageAgent({
+            routeMode: 'image-styles',
+            agent: null,
+            imagePluginInstalled: false,
+        })).toBeNull();
+        expect(resolveComposeImageAgent({
+            routeMode: 'image-styles',
+            agent: savedImageAgent,
+            imagePluginInstalled: false,
+        })).toBeNull();
     });
 
     it('selects one style for the current image generation batch', () => {

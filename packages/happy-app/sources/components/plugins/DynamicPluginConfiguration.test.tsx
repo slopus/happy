@@ -42,6 +42,7 @@ const mocks = vi.hoisted(() => {
             ) => scope === draftScope ? drafts.get(draftKey(pluginId, pluginVersion)) : undefined),
             getPluginConfigurationDraftScope: vi.fn(() => draftScope),
             isPluginConfigurationDraftScopeCurrent: vi.fn((scope: number) => scope === draftScope),
+            setPluginInstallationStatus: vi.fn(),
             setPluginConfigurationDraft: vi.fn((
                 pluginId: string,
                 pluginVersion: string,
@@ -446,6 +447,11 @@ describe('DynamicPluginConfiguration', () => {
         });
 
         expect(mocks.uninstall).toHaveBeenCalledWith('server-plugin');
+        expect(mocks.sync.setPluginInstallationStatus).toHaveBeenCalledWith(
+            'server-plugin',
+            { installed: false },
+            0,
+        );
         expect(renderer.root.findAllByType('TextInput')[0].props.value).toBe('');
         expect(renderer.root.findAllByType('TextInput')[0].props.secureTextEntry).toBe(true);
         act(() => renderer.unmount());

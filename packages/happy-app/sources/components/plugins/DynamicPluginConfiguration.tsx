@@ -210,6 +210,7 @@ export const DynamicPluginConfiguration = React.memo(function DynamicPluginConfi
             [...manifest.permissions],
         );
         if (!sync.isPluginConfigurationDraftScopeCurrent(draftScope)) return installedStatus;
+        sync.setPluginInstallationStatus(manifest.id, installedStatus, draftScope);
         sync.clearPluginConfigurationDraft(manifest.id, manifest.version, submittedDraft, draftScope);
         if (connectionTestVersion.current === expectedVersion) {
             const saved = storedConfiguration(installedStatus);
@@ -230,8 +231,9 @@ export const DynamicPluginConfiguration = React.memo(function DynamicPluginConfi
     const [installing, performInstall] = useHappyAction(install);
 
     const uninstall = React.useCallback(async () => {
-        await uninstallPlugin(manifest.id);
+        const uninstalledStatus = await uninstallPlugin(manifest.id);
         if (!sync.isPluginConfigurationDraftScopeCurrent(draftScope)) return;
+        sync.setPluginInstallationStatus(manifest.id, uninstalledStatus, draftScope);
         sync.clearPluginConfigurationDraft(manifest.id, manifest.version, undefined, draftScope);
         setSavedConfiguration({});
         setValues({});

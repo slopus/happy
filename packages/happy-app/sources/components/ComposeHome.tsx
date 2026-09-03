@@ -71,6 +71,7 @@ import { sync } from '@/sync/sync';
 import { resolveAbsolutePath } from '@/utils/pathUtils';
 import { useDesktopWorkspaceLayout } from '@/hooks/useDesktopWorkspaceLayout';
 import { useDesktopSettingsModal } from './DesktopSettingsModal';
+import { useGeneratedImagesPlugin } from '@/hooks/useGeneratedImagesPlugin';
 
 // Agent display labels for the compose chip. Mirrors the list used in /new.
 const AGENT_LABELS: Record<string, string> = {
@@ -174,6 +175,8 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
     // 用于显示个性化问候 + 预设提示词；查不到（或无该参数）时一切退化为默认行为。
     const { agentId, mode, sidebarListId } = useLocalSearchParams<{ agentId?: string; mode?: string; sidebarListId?: string }>();
     const agents = useLocalSetting('agents');
+    const { status: generatedImagesPluginStatus } = useGeneratedImagesPlugin();
+    const imagePluginInstalled = generatedImagesPluginStatus?.installed === true;
     const [customImageStyles, setCustomImageStyles] = useSettingMutable('customImageStyles');
     const [pendingCustomImageStyleReferences, setPendingCustomImageStyleReferences] = useSettingMutable('pendingCustomImageStyleReferences');
     const customImageStylesRef = React.useRef(customImageStyles);
@@ -185,8 +188,12 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
         [agentId, agents],
     );
     const imageAgent = React.useMemo(
-        () => resolveComposeImageAgent({ routeMode: mode, agent: activeAgent }),
-        [activeAgent, mode],
+        () => resolveComposeImageAgent({
+            routeMode: mode,
+            agent: activeAgent,
+            imagePluginInstalled,
+        }),
+        [activeAgent, imagePluginInstalled, mode],
     );
     const effectiveImageAgent = React.useMemo(
         () => (imageAgent
@@ -271,8 +278,8 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
     // supportsAttachments），其余 runner（gemini / openclaw）会静默丢弃，故不显示。
     // compact horizontal strip keeps the footprint to one row.
     const composeExperience = React.useMemo(
-        () => getComposeHomeExperience({ agentType, activeImageAgent }),
-        [activeImageAgent, agentType],
+        () => getComposeHomeExperience({ agentType, activeImageAgent, imagePluginInstalled }),
+        [activeImageAgent, agentType, imagePluginInstalled],
     );
     const canAttach = composeExperience.canAttach;
     const { selectedImages, pickImages, pickAttachment, removeImage, clearImages, addImages } = useImagePicker();

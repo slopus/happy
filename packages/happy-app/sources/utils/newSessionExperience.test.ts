@@ -31,7 +31,7 @@ describe('new session experience', () => {
     });
 
     it('hides creation tools from the ask home composer', () => {
-        expect(getComposeHomeExperience({ agentType: 'ask', activeImageAgent: false })).toEqual({
+        expect(getComposeHomeExperience({ agentType: 'ask', activeImageAgent: false, imagePluginInstalled: true })).toEqual({
             displayAgentType: 'ask',
             canAttach: false,
             showCreationRail: false,
@@ -39,11 +39,24 @@ describe('new session experience', () => {
     });
 
     it('preserves image-agent routing as a Codex image task', () => {
-        expect(getComposeHomeExperience({ agentType: 'ask', activeImageAgent: true })).toEqual({
+        expect(getComposeHomeExperience({ agentType: 'ask', activeImageAgent: true, imagePluginInstalled: true })).toEqual({
             displayAgentType: 'codex',
             canAttach: true,
             showCreationRail: false,
         });
+    });
+
+    it('shows image creation tools only when the generated-images plugin is installed', () => {
+        expect(getComposeHomeExperience({
+            agentType: 'codex',
+            activeImageAgent: false,
+            imagePluginInstalled: false,
+        }).showCreationRail).toBe(false);
+        expect(getComposeHomeExperience({
+            agentType: 'codex',
+            activeImageAgent: false,
+            imagePluginInstalled: true,
+        }).showCreationRail).toBe(true);
     });
 
     it('drives a compact header mode switch outside image-agent flows', () => {

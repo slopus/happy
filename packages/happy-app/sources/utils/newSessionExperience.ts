@@ -57,13 +57,14 @@ export function getRunningSessionInfoExperience(agentType: string | null | undef
 export function getComposeHomeExperience(args: {
     agentType: NewSessionAgentType;
     activeImageAgent: boolean;
+    imagePluginInstalled: boolean;
 }): ComposeHomeExperience {
-    const { agentType, activeImageAgent } = args;
+    const { agentType, activeImageAgent, imagePluginInstalled } = args;
     const displayAgentType = activeImageAgent ? 'codex' : agentType;
     return {
         displayAgentType,
         canAttach: activeImageAgent || agentType === 'claude' || agentType === 'codex',
-        showCreationRail: !activeImageAgent && agentType !== 'ask',
+        showCreationRail: imagePluginInstalled && !activeImageAgent && agentType !== 'ask',
     };
 }
 
