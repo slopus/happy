@@ -8,6 +8,7 @@ describe('buildAgyArgs', () => {
 
     expect(args).toContain('--sandbox');
     expect(args).not.toContain('--dangerously-skip-permissions');
+    expect(args.slice(-4)).toEqual(['--output-format', 'stream-json', '--print', 'hello world']);
     expect(args.slice(-2)).toEqual(['--print', 'hello world']);
   });
 
