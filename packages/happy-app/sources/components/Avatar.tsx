@@ -29,6 +29,7 @@ const harnessIcons: Record<AvatarHarnessIcon, number> = {
     claude: require('@/assets/images/icon-claude.png'),
     codex: require('@/assets/images/icon-gpt.png'),
     agy: require('@/assets/images/icon-agy.png'),
+    opencode: require('@/assets/images/icon-opencode.png'),
     rig: require('@/assets/images/logo-black.png'),
 };
 
@@ -45,7 +46,7 @@ function harnessBadgeSizes(size: number, harness: AvatarHarnessIcon) {
             ? Math.round(size * 0.3)
             : harness === 'claude'
                 ? Math.round(size * 0.34)
-                : Math.round(size * 0.42);
+                : Math.round(size * 0.32);
     return { circleSize, iconSize };
 }
 

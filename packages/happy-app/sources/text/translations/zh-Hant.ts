@@ -465,6 +465,8 @@ export const zhHant: TranslationStructure = {
             codex: 'Codex',
             gemini: 'Gemini',
             openclaw: 'OpenClaw',
+            agy: 'Antigravity',
+            opencode: 'OpenCode',
         },
         model: {
             title: '模型',

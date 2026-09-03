@@ -485,6 +485,8 @@ export const en = {
             codex: 'Codex',
             gemini: 'Gemini',
             openclaw: 'OpenClaw',
+            agy: 'Antigravity',
+            opencode: 'OpenCode',
         },
         model: {
             title: 'MODEL',

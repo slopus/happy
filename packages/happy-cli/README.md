@@ -32,6 +32,7 @@ This will:
 
 ```
 happy codex
+happy opencode   # OpenCode mode (ACP)
 happy agy        # Antigravity CLI (Gemini's successor)
 happy gemini     # deprecated — use `happy agy`
 happy openclaw
@@ -109,6 +110,7 @@ happy connect status
 |---------|-------------|
 | `happy` | Start Claude Code session (default) |
 | `happy codex` | Start Codex mode |
+| `happy opencode` | Start OpenCode mode (ACP) |
 | `happy agy` | Start agy (Antigravity CLI) session |
 | `happy gemini` | Start Gemini CLI session (**deprecated** — use `happy agy`) |
 | `happy openclaw` | Start OpenClaw session |
@@ -155,6 +157,7 @@ yarn workspace happy cli --help
 - Node.js >= 20.0.0
 - For Claude: `claude` CLI installed & logged in
 - For Codex: `codex` CLI installed & logged in
+- For OpenCode: `opencode` CLI installed (`npm install -g opencode-ai` or `curl -fsSL https://opencode.ai/install | bash`)
 - For agy: install the Antigravity CLI (`agy`) and log in
 - For Gemini (**deprecated** — use agy): `npm install -g @google/gemini-cli` + `happy connect gemini`
 

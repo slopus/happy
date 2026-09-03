@@ -134,19 +134,22 @@ describe('what a computer can actually run', () => {
         const choice = collectMachineChoices([machine('bare', { host: 'old.local' })])[0];
         expect(machineChoiceAgentAvailable(choice, 'claude')).toBe(true);
         expect(machineChoiceAgentAvailable(choice, 'agy')).toBe(false);
+        expect(machineChoiceAgentAvailable(choice, 'opencode')).toBe(false);
         expect(machineChoiceAgentAvailable(choice, 'rig')).toBe(false);
     });
 
-    it('only shows Antigravity and Happy Agent when available on the machine', () => {
+    it('only shows Antigravity, OpenCode, and Happy Agent when available on the machine', () => {
         const absent = collectMachineChoices([cli()])[0];
         const paired = collectMachineChoices([cli(), rig()])[0];
-        const installed = collectMachineChoices([machine('agy-machine', {
+        const installed = collectMachineChoices([machine('custom-machine', {
             host: 'laptop.local',
-            cliAvailability: { claude: true, agy: true },
+            cliAvailability: { claude: true, agy: true, opencode: true },
         })])[0];
 
         expect(machineChoiceAgentVisible(absent, 'agy')).toBe(false);
         expect(machineChoiceAgentVisible(installed, 'agy')).toBe(true);
+        expect(machineChoiceAgentVisible(absent, 'opencode')).toBe(false);
+        expect(machineChoiceAgentVisible(installed, 'opencode')).toBe(true);
         expect(machineChoiceAgentVisible(absent, 'claude')).toBe(true);
         expect(machineChoiceAgentVisible(absent, 'rig')).toBe(false);
         expect(machineChoiceAgentVisible(paired, 'rig')).toBe(true);
