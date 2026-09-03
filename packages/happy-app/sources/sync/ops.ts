@@ -1075,6 +1075,26 @@ export async function sessionArchive(sessionId: string): Promise<{ success: bool
 }
 
 /**
+ * Archive a session, stopping its CLI process first. When the CLI process is
+ * unreachable (killed, crashed, or never registered an RPC handler) the kill
+ * RPC fails, so fall back to the server-side force archive — otherwise an
+ * orphaned session would stay active with no way to archive it (#1739).
+ *
+ * Throws only when both the kill RPC and the server archive fail, so callers
+ * can surface that as a user-facing error.
+ */
+export async function sessionKillOrArchive(sessionId: string): Promise<void> {
+    const killResult = await sessionKill(sessionId);
+    if (killResult.success) {
+        return;
+    }
+    const archiveResult = await sessionArchive(sessionId);
+    if (!archiveResult.success) {
+        throw new Error(archiveResult.message || 'Failed to archive session');
+    }
+}
+
+/**
  * Permanently delete a session from the server
  * This will remove the session and all its associated data (messages, usage reports, access keys)
  * The session should be inactive/archived before deletion

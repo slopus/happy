@@ -13,7 +13,7 @@ import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { useSessionActionAlert } from '@/hooks/useSessionQuickActions';
 import { useHappyAction } from '@/hooks/useHappyAction';
 import { HappyError } from '@/utils/errors';
-import { sessionKill } from '@/sync/ops';
+import { sessionKillOrArchive } from '@/sync/ops';
 import type { FlatSessionRowData } from '@/utils/flatSessionList';
 import { formatSessionListTimestamp } from '@/utils/sessionListTimestamp';
 import type { Theme } from '@/theme';
@@ -106,9 +106,12 @@ export const FlatSessionRow = React.memo(({ row, selected, showBorder, archived 
     );
 
     const [archiving, performArchive] = useHappyAction(async () => {
-        const result = await sessionKill(session.id);
-        if (!result.success) {
-            throw new HappyError(result.message || t('sessionInfo.failedToArchiveSession'), false);
+        // Kill the CLI process; if it's already dead, force-archive via the
+        // server so an orphaned session can't get stuck active (#1739).
+        try {
+            await sessionKillOrArchive(session.id);
+        } catch (error) {
+            throw new HappyError(error instanceof Error ? error.message : t('sessionInfo.failedToArchiveSession'), false);
         }
     });
 

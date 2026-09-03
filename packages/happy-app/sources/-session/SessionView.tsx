@@ -858,7 +858,9 @@ export function SessionViewLoaded({
     const handleAbort = React.useCallback(() => {
         // Stop cancels only the active turn. Permission, model, and effort are
         // session choices and must remain sticky for the next message.
-        sessionAbort(sessionId);
+        // Best-effort: an orphaned session has no RPC target to abort (#1739),
+        // and there is nothing to cancel when the process is already gone.
+        sessionAbort(sessionId).catch(() => {});
     }, [sessionId]);
 
     const handleFileViewerPress = React.useCallback(() => {
