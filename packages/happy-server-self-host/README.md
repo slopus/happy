@@ -22,6 +22,78 @@ happy-server migrate   # apply database migrations
 happy-server serve     # start the server
 ```
 
+## Backup and restore
+
+The supported embedded-PGlite backup boundary is a stopped filesystem snapshot
+of the complete `HAPPY_HOME_DIR`. Stop `happy server` and wait for its successful
+exit before creating the archive. Do not copy only `server-data/pglite`: the
+complete home also contains the server URL configuration, the master secret
+needed to read encrypted state, and local uploads.
+
+```bash
+set -eu
+
+# The server must already be stopped. Use an existing backup directory outside
+# HAPPY_HOME_DIR so the archive can never contain itself.
+happy_home=$(realpath "$HAPPY_HOME_DIR")
+backup_parent=$(realpath /path/to/existing-backup-directory)
+case "$backup_parent/" in
+  "$happy_home/"*) echo "backup directory must be outside HAPPY_HOME_DIR" >&2; exit 1 ;;
+esac
+backup_dir=$(mktemp -d "$backup_parent/happy-home-backup.XXXXXX")
+chmod 700 "$backup_dir"
+backup="$backup_dir/happy-home.tar"
+tar -C "$HAPPY_HOME_DIR" -cf "$backup" .
+sha256sum "$backup" > "$backup.sha256"
+tar -tf "$backup" > "$backup.members"
+
+# Validate in a staging directory on the target filesystem. The final target
+# must not exist, so a failed check cannot partially replace it.
+restore_parent=$(realpath /path/to/existing-restore-parent)
+case "$restore_parent/" in
+  "$happy_home/"*) echo "restore parent must be outside HAPPY_HOME_DIR" >&2; exit 1 ;;
+esac
+restore_target="$restore_parent/new-happy-home"
+test ! -e "$restore_target"
+test ! -L "$restore_target"
+restore_staging=$(mktemp -d "$restore_parent/.happy-restore.XXXXXX")
+sha256sum -c "$backup.sha256"
+tar -tf "$backup" | cmp - "$backup.members"
+tar -C "$restore_staging" -xf "$backup"
+test -f "$restore_staging/settings.json"
+test -d "$restore_staging/server-data/pglite"
+test -f "$restore_staging/server-data/master-secret"
+test "$(stat -c '%a' "$restore_staging/server-data/master-secret")" = 600
+
+# Promote only after every check succeeds. The same parent keeps this rename
+# on one filesystem, and -T treats the target as the exact path so the staging
+# directory can never be nested beneath it.
+mv -T -- "$restore_staging" "$restore_target"
+HAPPY_HOME_DIR="$restore_target" happy server
+```
+
+Treat the archive as sensitive and preserve the `0600` mode of
+`server-data/master-secret`. Keep the checksum and member ledger with
+the backup. Validate the archive in a staging directory before promoting it to
+the final empty restore target; if a check fails, leave the final target absent
+and discard the staging directory only after investigating the failure.
+
+This repository's packaged persistence, migration, recovery, and no-egress
+acceptance test is Linux Native only. That test does not claim the same recovery
+proof for macOS or Windows.
+
+Maintainers with Bun, a C compiler, `unshare`, `ip`, `mount`, `script`, and
+`tar` installed can run the same two-consecutive-run packaged proof used by
+Linux CI with:
+
+```bash
+pnpm --filter happy-server-self-host test:data-safety
+```
+
+Set `HAPPY_DATA_SAFETY_BASELINE_REF` to a local Git ref when the proof must also
+assert that `HEAD` exactly matches a fixed baseline. CI intentionally verifies
+the checked-out push or pull-request revision without assuming a remote name.
+
 ## What this package is
 
 This is the *publishing shell* around `packages/happy-server`, which is private
