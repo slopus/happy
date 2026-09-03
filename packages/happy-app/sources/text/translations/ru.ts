@@ -32,6 +32,7 @@ export const ru: TranslationStructure = {
         placeholder: 'Отправьте её слова, скриншот переписки или ответ, который хотите написать',
         historyTitle: 'История переписок',
         newConversation: 'Новая переписка',
+        selectConversation: 'Выберите переписку на боковой панели или начните новую.',
         deleteConversationAccessibility: 'Удалить переписку',
         deleteConfirmTitle: 'Удалить эту переписку?',
         deleteConfirmMessage: 'Сохранённые сообщения этой переписки с советником по отношениям будут удалены с этого устройства.',
@@ -995,6 +996,7 @@ export const ru: TranslationStructure = {
         timelineTab: 'Хронология',
     },
     sidebarLists: {
+        folder: 'Папка', newFolder: 'Новая папка', folderNamePlaceholder: 'Название папки', noFolder: 'Без папки', tagVisibility: 'Видимость тегов', tagVisibilityOptions: { always: 'Всегда', 'when-populated': 'При наличии содержимого', hidden: 'Скрыто' }, sessionCount: ({ count }: { count: number }) => count % 10 === 1 && count % 100 !== 11 ? `${count} сессия` : count % 10 >= 2 && count % 10 <= 4 && (count % 100 < 12 || count % 100 > 14) ? `${count} сессии` : `${count} сессий`, hideNavigation: 'Скрыть навигацию по спискам', showNavigation: 'Показать навигацию по спискам', resizeNavigation: 'Изменить размер навигации по спискам',
         lists: 'Lists', tags: 'Tags', newList: 'New list', newTag: 'New tag', tagNamePlaceholder: 'Tag name', noTaggedSessions: 'No sessions use this tag yet.', noTags: 'No tags yet', agentList: 'Agent list', workspaceList: 'Workspace list', newSessionInList: 'New session in this list', emptyList: 'No sessions in this list yet.', unassigned: 'Unassigned', unassignedDescription: 'Sessions not in a list', organizeSession: 'Organize session', listName: 'List name', listNamePlaceholder: 'For example: Happy', duplicateListName: 'A list with this name already exists.', listType: 'List type', color: 'Color', defaultMachine: 'Default machine', defaultDirectory: 'Default directory', directoryPlaceholder: '~/projects/happy', defaultAgent: 'Default Agent', noPreset: 'No preset', agentPrompt: 'Agent prompt', agentPromptPlaceholder: 'Prompt applied when starting from this Agent list', belongsToList: 'List', tagsMultiSelect: 'Tags (select multiple)', selectedTags: 'Выбранные теги', tagInputPlaceholder: 'Введите #, чтобы найти или создать тег', createTagNamed: ({ name }: { name: string }) => `Создать ${name}`, tagLimitReached: 'Достигнут лимит тегов', close: 'Close', editList: 'Изменить список', deleteList: 'Удалить список', deleteListConfirm: ({ name }: { name: string }) => `После удаления списка «${name}» его сессии вернутся в «Без списка». Теги не изменятся.`, colors: { blue: 'Blue', green: 'Green', purple: 'Purple', orange: 'Orange', pink: 'Pink' },
     },
     sessionSearch: {

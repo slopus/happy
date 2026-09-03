@@ -81,7 +81,7 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
                     {leftSlot ? leftSlot : (
                         <>
                             {showListButton && (
-                                <Pressable onPress={onListPress} hitSlop={15} style={styles.listButton}>
+                                <Pressable accessibilityRole="button" onPress={onListPress} hitSlop={15} style={styles.listButton} testID="chat-header-list-button">
                                     <Ionicons
                                         name="menu-outline"
                                         size={26}

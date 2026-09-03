@@ -73,14 +73,15 @@ describe('PluginLeftSidebarSlot', () => {
         let renderer: any;
         act(() => {
             renderer = TestRenderer.create(
-                <PluginLeftSidebarSlot desktopDensity onNavigate={vi.fn()} />,
+                <PluginLeftSidebarSlot desktopDensity fill onNavigate={vi.fn()} />,
             );
         });
         expect(renderer.root.findAllByType('RelationshipAdvisorSidebarHistory')).toHaveLength(1);
+        expect(renderer.root.findByType('RelationshipAdvisorSidebarHistory').props.fill).toBe(true);
 
         mocks.plugins = [advisor(false)];
         act(() => {
-            renderer.update(<PluginLeftSidebarSlot desktopDensity onNavigate={vi.fn()} />);
+            renderer.update(<PluginLeftSidebarSlot desktopDensity fill onNavigate={vi.fn()} />);
         });
         expect(renderer.root.findAllByType('RelationshipAdvisorSidebarHistory')).toHaveLength(0);
         act(() => renderer.unmount());

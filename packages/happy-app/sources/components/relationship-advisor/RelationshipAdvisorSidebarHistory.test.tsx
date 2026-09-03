@@ -99,7 +99,7 @@ describe('RelationshipAdvisorSidebarHistory', () => {
         act(() => renderer.unmount());
     });
 
-    it('deletes the current conversation and creates a replacement when it was the last one', async () => {
+    it('deletes the last current conversation and returns to the empty index', async () => {
         const onNavigate = vi.fn();
         let renderer: any;
         act(() => {
@@ -113,10 +113,8 @@ describe('RelationshipAdvisorSidebarHistory', () => {
         await act(async () => deleteButton.props.onPress());
 
         expect(mocks.confirm).toHaveBeenCalledOnce();
-        expect(mocks.conversations).toEqual([
-            expect.objectContaining({ id: 'new-conversation-id' }),
-        ]);
-        expect(onNavigate).toHaveBeenCalledWith('/relationship-advisor?conversationId=new-conversation-id');
+        expect(mocks.conversations).toEqual([]);
+        expect(onNavigate).toHaveBeenCalledWith('/relationship-advisor');
         act(() => renderer.unmount());
     });
 

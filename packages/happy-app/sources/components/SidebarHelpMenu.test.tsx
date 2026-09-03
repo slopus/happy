@@ -295,7 +295,7 @@ describe('SidebarHelpMenu', () => {
         expect(menu.props.accessibilityRole).toBe('menu');
         expect(menu.props.accessibilityLabel).toBe('keyboardShortcuts.help');
         expect(menu.props.accessibilityViewIsModal).toBe(true);
-        expect(menu.props.style).toEqual(expect.objectContaining({
+        expect(menu.props.style).toContainEqual(expect.objectContaining({
             bottom: '100%',
             position: 'absolute',
             right: 10,

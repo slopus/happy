@@ -24,6 +24,7 @@ export const ja: TranslationStructure = {
         placeholder: '相手の言葉、チャット画像、または送りたい返信を入力してください',
         historyTitle: '会話履歴',
         newConversation: '新しい会話',
+        selectConversation: 'サイドバーから会話を選択するか、新しい会話を始めてください。',
         deleteConversationAccessibility: '会話を削除',
         deleteConfirmTitle: 'この会話を削除しますか？',
         deleteConfirmMessage: 'この恋愛相談の保存済みメッセージは、この端末から削除されます。',
@@ -980,6 +981,7 @@ export const ja: TranslationStructure = {
         timelineTab: 'タイムライン',
     },
     sidebarLists: {
+        folder: 'フォルダー', newFolder: '新しいフォルダー', folderNamePlaceholder: 'フォルダー名', noFolder: 'フォルダーなし', tagVisibility: 'タグの表示', tagVisibilityOptions: { always: '常に表示', 'when-populated': '内容がある場合', hidden: '非表示' }, sessionCount: ({ count }: { count: number }) => `${count}件のセッション`, hideNavigation: 'リストナビゲーションを非表示', showNavigation: 'リストナビゲーションを表示', resizeNavigation: 'リストナビゲーションのサイズを変更',
         lists: 'Lists', tags: 'Tags', newList: 'New list', newTag: 'New tag', tagNamePlaceholder: 'Tag name', noTaggedSessions: 'No sessions use this tag yet.', noTags: 'No tags yet', agentList: 'Agent list', workspaceList: 'Workspace list', newSessionInList: 'New session in this list', emptyList: 'No sessions in this list yet.', unassigned: 'Unassigned', unassignedDescription: 'Sessions not in a list', organizeSession: 'Organize session', listName: 'List name', listNamePlaceholder: 'For example: Happy', duplicateListName: 'A list with this name already exists.', listType: 'List type', color: 'Color', defaultMachine: 'Default machine', defaultDirectory: 'Default directory', directoryPlaceholder: '~/projects/happy', defaultAgent: 'Default Agent', noPreset: 'No preset', agentPrompt: 'Agent prompt', agentPromptPlaceholder: 'Prompt applied when starting from this Agent list', belongsToList: 'List', tagsMultiSelect: 'Tags (select multiple)', selectedTags: '選択したタグ', tagInputPlaceholder: '# を入力してタグを検索または作成', createTagNamed: ({ name }: { name: string }) => `${name}を作成`, tagLimitReached: 'タグの上限に達しました', close: 'Close', editList: 'リストを編集', deleteList: 'リストを削除', deleteListConfirm: ({ name }: { name: string }) => `リスト「${name}」を削除すると、そのセッションは未分類に戻ります。タグには影響しません。`, colors: { blue: 'Blue', green: 'Green', purple: 'Purple', orange: 'Orange', pink: 'Pink' },
     },
     sessionSearch: {

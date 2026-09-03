@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { Text, View, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter, useNavigation } from 'expo-router';
+import { useRouter, useNavigation, usePathname } from 'expo-router';
 import { DrawerActions } from '@react-navigation/native';
 import { VoiceAssistantStatusBar } from './VoiceAssistantStatusBar';
 import { useRealtimeStatus, useFriendRequests, useProfile, useLocalSetting } from '@/sync/storage';
@@ -15,12 +15,12 @@ import { AgentSheet } from './agents/AgentSheet';
 import { useAgentSpace } from '@/hooks/useAgentSpace';
 import { AgentSpaceWorkbench } from './agents/AgentSpaceWorkbench';
 import { SidebarAccountMenu } from './SidebarAccountMenu';
-import { SidebarHelpMenu } from './SidebarHelpMenu';
 import { useCommandPaletteLauncher } from './CommandPalette/CommandPaletteProvider';
 import { useDesktopSettingsModal } from './DesktopSettingsModal';
 import { DesktopSidebarSessionsNavigation } from './DesktopSidebarSessionsNavigation';
 import { PluginMarketplaceModal } from './plugins/PluginMarketplaceModal';
 import { PluginLeftSidebarSlot } from './plugins/PluginLeftSidebarSlot';
+import { DesktopSidebarIconRail } from './DesktopSidebarIconRail';
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
@@ -32,7 +32,9 @@ const stylesheet = StyleSheet.create((theme) => ({
     },
     containerDesktop: {
         borderWidth: 0,
+        flexDirection: 'row',
     },
+    desktopLibrary: { flex: 1, minWidth: 0 },
     messagesRow: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -257,6 +259,7 @@ export const SidebarView = React.memo(({
     const styles = stylesheet;
     const safeArea = useSafeAreaInsets();
     const router = useRouter();
+    const pathname = usePathname();
     const navigation = useNavigation();
     const realtimeStatus = useRealtimeStatus();
     const friendRequests = useFriendRequests();
@@ -310,10 +313,6 @@ export const SidebarView = React.memo(({
         setFooterMenu(open ? 'account' : null);
     }, []);
 
-    const setHelpMenuOpen = React.useCallback((open: boolean) => {
-        setFooterMenu(open ? 'help' : null);
-    }, []);
-
     const openPluginMarketplace = React.useCallback(() => {
         setSheetOpen(false);
         setInitialPluginId(null);
@@ -340,6 +339,44 @@ export const SidebarView = React.memo(({
                     onNavigate={go}
                     onCloseDrawer={closeDrawer}
                 />
+            </View>
+        );
+    }
+
+    if (desktopDensity) {
+        return (
+            <View style={[styles.container, styles.containerDesktop]} testID="sidebar-desktop-density">
+                {footerMenu !== null ? (
+                    <Pressable
+                        accessibilityElementsHidden
+                        importantForAccessibility="no"
+                        onPress={() => setFooterMenu(null)}
+                        style={styles.footerMenuDismissLayer}
+                        testID="sidebar-footer-menu-dismiss-layer"
+                    />
+                ) : null}
+                <DesktopSidebarIconRail
+                    displayName={displayName}
+                    footerMenu={footerMenu}
+                    onFooterMenuChange={setFooterMenu}
+                    onNavigate={go}
+                    onOpenAgents={() => setSheetOpen(true)}
+                    onOpenPluginMarketplace={openPluginMarketplace}
+                    onOpenSessionSearch={openSessionSearch}
+                    onOpenSettings={openSettings}
+                    profile={profile}
+                    unreadCount={friendRequests.length}
+                />
+                <View style={[styles.desktopLibrary, { paddingTop: safeArea.top + 4 }]}>
+                    {realtimeStatus !== 'disconnected' ? <VoiceAssistantStatusBar variant="sidebar" /> : null}
+                    {pathname === '/relationship-advisor' ? (
+                        <PluginLeftSidebarSlot desktopDensity fill onNavigate={go} />
+                    ) : (
+                        <DesktopSidebarSessionsNavigation desktopDensity />
+                    )}
+                </View>
+                <AgentSheet visible={sheetOpen} onClose={() => setSheetOpen(false)} />
+                <PluginMarketplaceModal initialPluginId={initialPluginId} onClose={closePluginMarketplace} visible={pluginMarketplaceOpen} />
             </View>
         );
     }
@@ -481,7 +518,7 @@ export const SidebarView = React.memo(({
                 organization layer in both desktop and mobile sidebars. */}
             <DesktopSidebarSessionsNavigation />
 
-            {/* Low-frequency account and system actions stay anchored below the work list. */}
+            {/* Low-frequency account actions stay anchored below the work list on mobile. */}
             <View
                 style={[
                     styles.footerMenuSlot,
@@ -490,39 +527,16 @@ export const SidebarView = React.memo(({
                 ]}
                 testID={desktopDensity ? 'sidebar-footer-menus' : undefined}
             >
-                {desktopDensity ? (
-                    <View style={styles.accountMenuSlot} testID="sidebar-account-menu-slot">
-                        <SidebarAccountMenu
-                            desktopDensity
-                            displayName={displayName}
-                            onNavigate={go}
-                            onOpenSettings={openSettings}
-                            onOpenChange={setAccountMenuOpen}
-                            open={footerMenu === 'account'}
-                            profile={profile}
-                            restoreFocusOnClose={footerMenu !== 'help'}
-                            unreadCount={friendRequests.length}
-                        />
-                    </View>
-                ) : (
-                    <SidebarAccountMenu
-                        desktopDensity={desktopDensity}
-                        displayName={displayName}
-                        onNavigate={go}
-                        onOpenSettings={openSettings}
-                        onOpenChange={setAccountMenuOpen}
-                        open={footerMenu === 'account'}
-                        profile={profile}
-                        unreadCount={friendRequests.length}
-                    />
-                )}
-                {desktopDensity ? (
-                    <SidebarHelpMenu
-                        onOpenChange={setHelpMenuOpen}
-                        open={footerMenu === 'help'}
-                        restoreFocusOnClose={footerMenu !== 'account'}
-                    />
-                ) : null}
+                <SidebarAccountMenu
+                    desktopDensity={false}
+                    displayName={displayName}
+                    onNavigate={go}
+                    onOpenSettings={openSettings}
+                    onOpenChange={setAccountMenuOpen}
+                    open={footerMenu === 'account'}
+                    profile={profile}
+                    unreadCount={friendRequests.length}
+                />
             </View>
 
             {/* Bottom drawer listing the user's agents (RN Modal — placement in tree is irrelevant) */}

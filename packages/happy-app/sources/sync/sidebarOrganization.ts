@@ -6,6 +6,7 @@ export const SIDEBAR_LIST_COLORS = ['blue', 'green', 'purple', 'orange', 'pink']
 export const SIDEBAR_LIST_NAME_MAX_LENGTH = 80;
 export const SIDEBAR_LIST_PATH_MAX_LENGTH = 2_000;
 export const SIDEBAR_LIST_MAX_COUNT = 200;
+export const SIDEBAR_FOLDER_MAX_COUNT = 100;
 export const SIDEBAR_TAG_MAX_COUNT = 500;
 export const SIDEBAR_SESSION_TAG_MAX_COUNT = 100;
 
@@ -19,6 +20,7 @@ export type SidebarWorkspaceList = {
     machineId: string | null;
     path: string | null;
     defaultAgent: NewSessionAgentType | null;
+    folderId?: string | null;
     createdAt: number;
 };
 
@@ -27,10 +29,17 @@ export type SidebarAgentList = {
     name: string;
     kind: 'agent';
     color: SidebarListColor;
+    folderId?: string | null;
     createdAt: number;
 };
 
 export type SidebarList = SidebarWorkspaceList | SidebarAgentList;
+
+export type SidebarFolder = {
+    id: string;
+    name: string;
+    createdAt: number;
+};
 
 export type SidebarTag = {
     id: string;
@@ -45,12 +54,14 @@ export type SidebarSessionOrganization = {
 };
 
 export type SidebarOrganization = {
+    folders: SidebarFolder[];
     lists: SidebarList[];
     tags: SidebarTag[];
     sessions: Record<string, SidebarSessionOrganization>;
 };
 
 export const emptySidebarOrganization: SidebarOrganization = {
+    folders: [],
     lists: [],
     tags: [],
     sessions: {},
@@ -65,6 +76,7 @@ const SidebarWorkspaceListSchema = z.object({
     machineId: z.string().max(200).nullable(),
     path: z.string().max(SIDEBAR_LIST_PATH_MAX_LENGTH).nullable(),
     defaultAgent: z.enum(['ask', 'claude', 'codex', 'gemini', 'opencode', 'openclaw']).nullable(),
+    folderId: z.string().max(100).nullable().optional(),
     createdAt: z.number().finite(),
 }).passthrough();
 const SidebarAgentListSchema = z.object({
@@ -72,9 +84,16 @@ const SidebarAgentListSchema = z.object({
     name: z.string().min(1).max(SIDEBAR_LIST_NAME_MAX_LENGTH),
     kind: z.literal('agent'),
     color: SidebarListColorSchema,
+    folderId: z.string().max(100).nullable().optional(),
     createdAt: z.number().finite(),
 }).passthrough();
 const SidebarListSchema = z.discriminatedUnion('kind', [SidebarWorkspaceListSchema, SidebarAgentListSchema]);
+
+const SidebarFolderSchema = z.object({
+    id: z.string().min(1).max(100),
+    name: z.string().min(1).max(SIDEBAR_LIST_NAME_MAX_LENGTH),
+    createdAt: z.number().finite(),
+}).passthrough();
 
 const SidebarTagSchema = z.object({
     id: z.string().min(1).max(100),
@@ -89,12 +108,17 @@ const SidebarSessionOrganizationSchema = z.object({
 }).passthrough();
 
 const StrictSidebarOrganizationSchema = z.object({
+    folders: z.array(SidebarFolderSchema).optional(),
     lists: z.array(SidebarListSchema),
     tags: z.array(SidebarTagSchema),
     sessions: z.record(z.string(), SidebarSessionOrganizationSchema),
 }).passthrough();
 
 export const SidebarOrganizationSchema = z.object({
+    folders: z.array(z.unknown()).optional().default([]).transform((items) => items.flatMap((item) => {
+        const parsed = SidebarFolderSchema.safeParse(item);
+        return parsed.success ? [parsed.data] : [];
+    })),
     lists: z.array(z.unknown()).transform((items): SidebarList[] => {
         const lists: SidebarList[] = [];
         for (const item of items) {
@@ -135,13 +159,15 @@ export function isValidSidebarOrganizationPayload(value: unknown): boolean {
 }
 
 export function isUsableSidebarOrganizationPayload(value: unknown): value is {
+    folders?: unknown[];
     lists: unknown[];
     tags: unknown[];
     sessions: Record<string, unknown>;
 } {
     if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
-    const candidate = value as { lists?: unknown; tags?: unknown; sessions?: unknown };
+    const candidate = value as { folders?: unknown; lists?: unknown; tags?: unknown; sessions?: unknown };
     return Array.isArray(candidate.lists)
+        && (candidate.folders === undefined || Array.isArray(candidate.folders))
         && Array.isArray(candidate.tags)
         && !!candidate.sessions
         && typeof candidate.sessions === 'object'
@@ -157,6 +183,8 @@ export function serializeSidebarOrganizationWithRaw(
     const unknownLists = rawValue.lists.filter((item) => (
         !SidebarListSchema.safeParse(item).success
     ));
+    const rawFolders = rawValue.folders ?? [];
+    const unknownFolders = rawFolders.filter((item) => !SidebarFolderSchema.safeParse(item).success);
     const unknownTags = rawValue.tags.filter((item) => !SidebarTagSchema.safeParse(item).success);
     const unknownSessions = Object.fromEntries(Object.entries(rawValue.sessions).filter(([, assignment]) => (
         !SidebarSessionOrganizationSchema.safeParse(assignment).success
@@ -164,6 +192,7 @@ export function serializeSidebarOrganizationWithRaw(
 
     return {
         ...rawValue,
+        folders: [...organization.folders, ...unknownFolders],
         lists: [...organization.lists, ...unknownLists],
         tags: [...organization.tags, ...unknownTags],
         sessions: { ...unknownSessions, ...organization.sessions },
@@ -171,7 +200,8 @@ export function serializeSidebarOrganizationWithRaw(
 }
 
 export function isSidebarOrganizationEmpty(value: SidebarOrganization): boolean {
-    return value.lists.length === 0
+    return (value.folders?.length ?? 0) === 0
+        && value.lists.length === 0
         && value.tags.length === 0
         && Object.keys(value.sessions).length === 0;
 }
@@ -266,6 +296,7 @@ export function mergeSidebarOrganizations(
     }
 
     return normalizeSidebarOrganization({
+        folders: mergeEntityList(base.folders ?? [], local.folders ?? [], remote.folders ?? []),
         lists: mergeEntityList(base.lists, local.lists, remote.lists),
         tags: mergeEntityList(base.tags, local.tags, remote.tags),
         sessions,
@@ -306,7 +337,7 @@ export function buildSidebarSessionIndex<T extends { id: string }>(
     return { byListId, byTagId, unassigned };
 }
 
-export function createSidebarOrganizationId(prefix: 'list' | 'tag'): string {
+export function createSidebarOrganizationId(prefix: 'folder' | 'list' | 'tag'): string {
     return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
@@ -315,7 +346,13 @@ export function normalizeSidebarTagName(value: string): string {
 }
 
 export function normalizeSidebarOrganization(value: SidebarOrganization): SidebarOrganization {
-    const listIds = new Set(value.lists.map((list) => list.id));
+    const folders = value.folders ?? [];
+    const folderIds = new Set(folders.map((folder) => folder.id));
+    const lists = value.lists.map((list) => ({
+        ...list,
+        folderId: list.folderId && folderIds.has(list.folderId) ? list.folderId : null,
+    }));
+    const listIds = new Set(lists.map((list) => list.id));
     const tagIds = new Set(value.tags.map((tag) => tag.id));
     const sessions = Object.fromEntries(Object.entries(value.sessions).map(([sessionId, assignment]) => [
         sessionId,
@@ -325,7 +362,7 @@ export function normalizeSidebarOrganization(value: SidebarOrganization): Sideba
         },
     ]));
 
-    return { ...value, sessions };
+    return { ...value, folders, lists, sessions };
 }
 
 export function organizeSession(
@@ -404,6 +441,16 @@ export function removeSidebarList(value: SidebarOrganization, listId: string): S
     return normalizeSidebarOrganization({
         ...value,
         lists: value.lists.filter((list) => list.id !== listId),
+    });
+}
+
+export function removeSidebarFolder(value: SidebarOrganization, folderId: string): SidebarOrganization {
+    return normalizeSidebarOrganization({
+        ...value,
+        folders: (value.folders ?? []).filter((folder) => folder.id !== folderId),
+        lists: value.lists.map((list) => list.folderId === folderId
+            ? { ...list, folderId: null }
+            : list),
     });
 }
 

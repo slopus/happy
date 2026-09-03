@@ -9,6 +9,8 @@ import RelationshipAdvisorScreen from './relationship-advisor';
 
 const mocks = vi.hoisted(() => ({
     router: { setParams: vi.fn(), replace: vi.fn() },
+    params: { conversationId: 'conversation-1' } as { conversationId?: string },
+    isDesktop: true,
     pluginStatus: { installed: true } as { installed: boolean } | null,
     conversations: [{
         id: 'conversation-1',
@@ -35,9 +37,10 @@ vi.mock('@expo/vector-icons', () => ({ Ionicons: 'Ionicons' }));
 vi.mock('expo-crypto', () => ({ randomUUID: () => 'new-conversation-id' }));
 vi.mock('expo-router', () => ({
     Stack: { Screen: 'StackScreen' },
-    useLocalSearchParams: () => ({ conversationId: 'conversation-1' }),
+    useLocalSearchParams: () => mocks.params,
     useRouter: () => mocks.router,
 }));
+vi.mock('@/utils/responsive', () => ({ useIsTablet: () => mocks.isDesktop }));
 vi.mock('react-native-safe-area-context', () => ({
     useSafeAreaInsets: () => ({ bottom: 0, left: 0, right: 0, top: 0 }),
 }));
@@ -113,6 +116,8 @@ describe('RelationshipAdvisorScreen', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         mocks.pluginStatus = { installed: true };
+        mocks.params = { conversationId: 'conversation-1' };
+        mocks.isDesktop = true;
         vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
             callback(0);
             return 1;
@@ -139,6 +144,21 @@ describe('RelationshipAdvisorScreen', () => {
         const avoidingView = renderer.root.findByType('KeyboardControllerAvoidingView');
         expect(avoidingView.props.behavior).toBe('padding');
         expect(avoidingView.props.keyboardVerticalOffset).toBe(0);
+
+        act(() => renderer.unmount());
+    });
+
+    it('keeps the desktop plugin index as a separate level until a conversation is selected', () => {
+        mocks.params = {};
+        let renderer: any;
+        act(() => {
+            renderer = TestRenderer.create(<RelationshipAdvisorScreen />);
+        });
+
+        expect(renderer.root.findAllByProps({ testID: 'relationship-advisor-conversation-selection' })).toHaveLength(1);
+        expect(renderer.root.findAllByType('MessageComposer')).toHaveLength(0);
+        expect(mocks.router.setParams).not.toHaveBeenCalled();
+        expect(mocks.updateConversations).not.toHaveBeenCalled();
 
         act(() => renderer.unmount());
     });

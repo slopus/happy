@@ -26,7 +26,7 @@ import { loadPendingPermissionMessageId } from '@/utils/pendingPermission';
 import { ProjectSectionHeader } from './ProjectSectionHeader';
 import { partitionSessionsByPinnedOrder } from '@/utils/sessionPinning';
 
-const STATUS_CONFIG: Record<SessionState, { color: string; dotColor: string; isPulsing: boolean }> = {
+export const STATUS_CONFIG: Record<SessionState, { color: string; dotColor: string; isPulsing: boolean }> = {
     idle: { color: '#6B7280', dotColor: '#9CA3AF', isPulsing: false },
     running: { color: '#007AFF', dotColor: '#007AFF', isPulsing: true },
     permission_required: { color: '#FF9500', dotColor: '#FF9500', isPulsing: true },
@@ -264,13 +264,15 @@ export function ActiveSessionsGroupCompact({
 
 // Compact Codex-style session row. Runtime status stays visible while actions
 // and richer metadata remain available through hover disclosure.
-export const CompactSessionRow = React.memo(({ session, selected, bulkSelected, selectionMode, showBorder, showLocation = false, onStartSelection, onToggleSelection }: {
+export const CompactSessionRow = React.memo(({ session, selected, bulkSelected, compactActions = false, selectionMode, showBorder, showLocation = false, onOrganize, onStartSelection, onToggleSelection }: {
     session: SessionRowData;
     selected?: boolean;
     bulkSelected?: boolean;
+    compactActions?: boolean;
     selectionMode?: boolean;
     showBorder?: boolean;
     showLocation?: boolean;
+    onOrganize?: (session: SessionRowData) => void;
     onStartSelection?: (sessionId: string) => void;
     onToggleSelection?: (sessionId: string) => void;
 }) => {
@@ -440,8 +442,10 @@ export const CompactSessionRow = React.memo(({ session, selected, bulkSelected, 
             </Pressable>
             {!selectionMode ? (
                 <SessionRowActions
+                    forceMoreAction={compactActions}
                     contextAnchor={actionsAnchor}
                     onContextAnchorChange={setActionsAnchor}
+                    onOrganize={onOrganize ? () => onOrganize(session) : undefined}
                     onStartSelection={onStartSelection ? () => onStartSelection(session.id) : undefined}
                     sessionId={session.id}
                     statusLabel={presentation.status}

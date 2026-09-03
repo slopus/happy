@@ -336,11 +336,11 @@ test('[SIDEBAR-LISTS-TAGS] desktop Lists and Tags organize sessions without repl
         const alphaUrl = page.url();
         const visibleTitle = page.locator('[data-testid="session-header-title"]:visible');
         await expect(visibleTitle).toHaveText('E2E Alpha conversation', { timeout: 120_000 });
-        await expect(page.getByTestId('desktop-sidebar-tab-projects')).toHaveAttribute('aria-selected', 'true');
+        await expect(page.getByTestId('sidebar-organization-pane')).toBeVisible();
+        await expect(page.getByTestId('sidebar-session-pane')).toBeVisible();
+        await expect(page.locator('[data-testid^="desktop-sidebar-tab-"]')).toHaveCount(0);
         await captureEvidenceFrame(page, testInfo, '01-projects-default');
 
-        await page.getByTestId('desktop-sidebar-tab-lists').click();
-        await expect(page.getByTestId('desktop-sidebar-tab-lists')).toHaveAttribute('aria-selected', 'true');
         await expect(page).toHaveURL(alphaUrl);
         await expect(visibleTitle).toHaveText('E2E Alpha conversation');
         await captureEvidenceFrame(page, testInfo, '02-lists-empty');
@@ -382,7 +382,7 @@ test('[SIDEBAR-LISTS-TAGS] desktop Lists and Tags organize sessions without repl
 
         await page.goto(alphaUrl, { timeout: 120_000 });
         await expect(page.locator('[data-testid="session-header-title"]:visible')).toHaveText('E2E Alpha conversation', { timeout: 120_000 });
-        await expect(page.getByTestId('desktop-sidebar-tab-lists')).toHaveAttribute('aria-selected', 'true');
+        await expect(page.getByTestId('sidebar-organization-pane')).toBeVisible();
 
         await page.getByTestId('sidebar-create-tag-button').click();
         await page.getByPlaceholder('Tag name').fill('product');
@@ -392,7 +392,7 @@ test('[SIDEBAR-LISTS-TAGS] desktop Lists and Tags organize sessions without repl
         await captureEvidenceFrame(page, testInfo, '06-tag-created');
 
         await organizeSession(page, { sessionId: alphaId, listName: 'Remote Happy renamed', tagName: 'product' });
-        await expect(page.getByTestId(`organized-session-${alphaId}`)).toBeVisible();
+        await expect(page.getByTestId(`session-row-${alphaId}`)).toBeVisible();
         await expect(page).toHaveURL(alphaUrl);
         await expect(visibleTitle).toHaveText('E2E Alpha conversation');
         await pauseForReview(page);
@@ -414,10 +414,10 @@ test('[SIDEBAR-LISTS-TAGS] desktop Lists and Tags organize sessions without repl
         await captureEvidenceFrame(page, testInfo, '08-lists-reordered');
 
         await page.reload({ timeout: 180_000 });
-        await expect(page.getByTestId('desktop-sidebar-tab-lists')).toHaveAttribute('aria-selected', 'true', { timeout: 120_000 });
+        await expect(page.getByTestId('sidebar-organization-pane')).toBeVisible({ timeout: 120_000 });
         await expectListBefore(advisorDropTarget, remoteDropTarget);
         await expect(page).toHaveURL(alphaUrl);
-        await expect(page.getByTestId(`organized-session-tags-${alphaId}`)).toContainText('#product');
+        await expect(page.getByTestId(`session-row-tags-${alphaId}`)).toContainText('#product');
         await captureEvidenceFrame(page, testInfo, '09-list-order-reloaded');
 
         await dragListToList(page, remoteDropTarget, advisorDropTarget, 'before');
@@ -435,19 +435,19 @@ test('[SIDEBAR-LISTS-TAGS] desktop Lists and Tags organize sessions without repl
         );
         await expect(remoteDropTarget.getByText('0', { exact: true })).toBeVisible();
         await expect(advisorDropTarget.getByText('1', { exact: true })).toBeVisible();
-        await expect(page.getByTestId(`organized-session-tags-${alphaId}`)).toContainText('#product');
+        await expect(page.getByTestId(`session-row-tags-${alphaId}`)).toContainText('#product');
         await expect(page).toHaveURL(alphaUrl);
         await captureEvidenceFrame(page, testInfo, '08-alpha-dragged-to-advisor');
 
         await dragSessionToList(page, page.getByTestId(`sidebar-drag-session-${alphaId}`), unassignedDropTarget);
         await expect(advisorDropTarget.getByText('0', { exact: true })).toBeVisible();
         await expect(unassignedDropTarget.getByText('2', { exact: true })).toBeVisible();
-        await expect(page.getByTestId(`organized-session-tags-${alphaId}`)).toContainText('#product');
+        await expect(page.getByTestId(`session-row-tags-${alphaId}`)).toContainText('#product');
         await expect(page).toHaveURL(alphaUrl);
         await page.screenshot({ path: testInfo.outputPath('06-dragged-to-unassigned.png'), fullPage: true });
         await captureEvidenceFrame(page, testInfo, '09-alpha-dragged-to-unassigned');
 
-        await page.getByTestId(`organized-session-${betaId}`).click();
+        await page.getByTestId(`session-row-${betaId}`).click();
         await expect(page).toHaveURL((url) => url.pathname === `/session/${betaId}`);
         await expect(page.locator('[data-testid="session-header-title"]:visible')).toHaveText('E2E Beta conversation');
         const betaUrl = page.url();
@@ -456,15 +456,15 @@ test('[SIDEBAR-LISTS-TAGS] desktop Lists and Tags organize sessions without repl
         await organizeSession(page, { sessionId: betaId, listName: 'Advisor', tagName: 'product' });
         await expect(page.getByRole('button', { name: /^product 2$/ })).toBeVisible();
         await page.getByRole('button', { name: /^product 2$/ }).click();
-        await expect(page.getByTestId(`organized-session-${alphaId}`)).toBeVisible();
-        await expect(page.getByTestId(`organized-session-${betaId}`)).toBeVisible();
+        await expect(page.getByTestId(`session-row-${alphaId}`)).toBeVisible();
+        await expect(page.getByTestId(`session-row-${betaId}`)).toBeVisible();
         await expect(page).toHaveURL(betaUrl);
         await expect(page.locator('[data-testid="session-header-title"]:visible')).toHaveText('E2E Beta conversation');
         await pauseForReview(page, 1_100);
         await page.screenshot({ path: testInfo.outputPath('02-tag-cross-list-filter.png'), fullPage: true });
         await captureEvidenceFrame(page, testInfo, '09-tag-cross-list-filter');
 
-        await page.getByTestId(`organized-session-${alphaId}`).click();
+        await page.getByTestId(`session-row-${alphaId}`).click();
         await expect(page).toHaveURL((url) => url.pathname === `/session/${alphaId}`);
         await expect(page.locator('[data-testid="session-header-title"]:visible')).toHaveText('E2E Alpha conversation');
 
@@ -475,15 +475,15 @@ test('[SIDEBAR-LISTS-TAGS] desktop Lists and Tags organize sessions without repl
         await page.getByRole('button', { name: 'Delete', exact: true }).click();
         await expect(page.getByText('Advisor', { exact: true })).toHaveCount(0);
         await expect(page.getByRole('button', { name: /^product 2$/ })).toBeVisible();
-        await expect(page.getByTestId(`organized-session-${betaId}`)).toBeVisible();
+        await expect(page.getByTestId(`session-row-${betaId}`)).toBeVisible();
 
         await page.reload({ timeout: 180_000 });
-        await expect(page.getByTestId('desktop-sidebar-tab-lists')).toHaveAttribute('aria-selected', 'true', { timeout: 120_000 });
+        await expect(page.getByTestId('sidebar-organization-pane')).toBeVisible({ timeout: 120_000 });
         await expect(page.getByText('Remote Happy renamed', { exact: true })).toBeVisible();
         await expect(page.getByText('Advisor', { exact: true })).toHaveCount(0);
         await expect(page.getByRole('button', { name: /^product 2$/ })).toBeVisible({ timeout: 120_000 });
         await expect(page.getByTestId('sidebar-drop-list-unassigned').getByText('2', { exact: true })).toBeVisible();
-        await expect(page.getByTestId(`organized-session-tags-${alphaId}`)).toContainText('#product');
+        await expect(page.getByTestId(`session-row-tags-${alphaId}`)).toContainText('#product');
         await page.getByTestId(`sidebar-edit-list-${remoteId}`).click();
         await expect(page.getByText('Edit list', { exact: true })).toBeVisible();
         await expect(page.getByRole('radio', { name: /Sidebar E2E Mac/ })).toHaveAttribute('aria-checked', 'true');
@@ -491,8 +491,8 @@ test('[SIDEBAR-LISTS-TAGS] desktop Lists and Tags organize sessions without repl
         await captureEvidenceFrame(page, testInfo, '10-workspace-picker-reloaded');
         await page.getByTestId('sidebar-create-list-cancel').click();
         await page.getByRole('button', { name: /^product 2$/ }).click();
-        await expect(page.getByTestId(`organized-session-${alphaId}`)).toBeVisible();
-        await expect(page.getByTestId(`organized-session-${betaId}`)).toBeVisible();
+        await expect(page.getByTestId(`session-row-${alphaId}`)).toBeVisible();
+        await expect(page.getByTestId(`session-row-${betaId}`)).toBeVisible();
         await expect(page).toHaveURL((url) => url.pathname === `/session/${alphaId}`);
         await expect(page.locator('[data-testid="session-header-title"]:visible')).toHaveText('E2E Alpha conversation');
         await pauseForReview(page);
@@ -557,9 +557,8 @@ test('[SESSION-TAG-COMBOBOX] title hash creates, searches, and syncs tags outsid
         await expect(page.getByTestId('session-canvas-tags')).toContainText('#product');
         await expect(page.locator('[data-testid^="session-row-tag-"]:visible').filter({ hasText: '#product' }).first()).toBeVisible();
 
-        await page.getByTestId('desktop-sidebar-tab-lists').click();
         await page.getByRole('button', { name: /^product 1$/ }).click();
-        await expect(page.getByTestId(`organized-session-tags-${sessionId}`)).toContainText('#product');
+        await expect(page.getByTestId(`session-row-tags-${sessionId}`)).toContainText('#product');
         await page.screenshot({ path: tagComboboxEvidencePath(testInfo, '04-lists-sidebar-tags.png'), fullPage: true });
         await captureEvidenceFrame(page, testInfo, 'tag-combobox-04-lists-sidebar-tags');
         await page.goto(authenticatedRoute(`/session/${sessionId}`));
@@ -614,7 +613,6 @@ test('[SESSION-TAG-COMBOBOX] title hash creates, searches, and syncs tags outsid
         await expect(page.locator('[data-testid="session-header-title"]:visible')).toHaveText('Tag from the title', { timeout: 120_000 });
         await expect(page.locator('[data-testid="session-header-tags-button"]:visible')).toHaveText('#');
         await expect(page.getByTestId('session-canvas-tags')).toContainText('#product');
-        await page.getByTestId('desktop-sidebar-tab-projects').click();
         await expect(page.locator('[data-testid^="session-row-tag-"]:visible').filter({ hasText: '#product' }).first()).toBeVisible();
 
         await page.setViewportSize({ width: 800, height: 900 });
@@ -671,7 +669,7 @@ test('[SESSION-TAG-COMBOBOX] title hash creates, searches, and syncs tags outsid
     }
 });
 
-test('[SIDEBAR-LISTS-TAGS-MOBILE] mobile drawer exposes Projects and Lists tabs', async ({ page, request }, testInfo: TestInfo) => {
+test('[SIDEBAR-LISTS-TAGS-MOBILE] mobile drawer drills from organization into sessions', async ({ page, request }, testInfo: TestInfo) => {
     page.setDefaultTimeout(120_000);
     page.setDefaultNavigationTimeout(180_000);
     const sessionId = await createSession(request, {
@@ -696,7 +694,7 @@ test('[SIDEBAR-LISTS-TAGS-MOBILE] mobile drawer exposes Projects and Lists tabs'
         await page.getByTestId('compose-home-drawer-button').click();
         const accountFooter = page.getByTestId('sidebar-account-footer');
         await expect.poll(async () => (await accountFooter.boundingBox())?.x ?? -1).toBeGreaterThanOrEqual(0);
-        await expect(page.getByTestId(`session-row-${sessionId}`)).toBeVisible();
+        await expect(page.getByTestId('sidebar-organization-pane')).toBeVisible();
 
         const projectsTab = page.getByTestId('desktop-sidebar-tab-projects');
         const listsTab = page.getByTestId('desktop-sidebar-tab-lists');
@@ -707,21 +705,11 @@ test('[SIDEBAR-LISTS-TAGS-MOBILE] mobile drawer exposes Projects and Lists tabs'
             return;
         }
 
-        await expect(projectsTab).toBeVisible();
-        await expect(listsTab).toBeVisible();
-        await expect(projectsTab).toHaveAttribute('aria-selected', 'true');
-        await expectMobileTouchTarget(projectsTab);
-        await expectMobileTouchTarget(listsTab);
-        const projectsVisual = await page.getByTestId('desktop-sidebar-tab-projects-visual').boundingBox();
-        const listsVisual = await page.getByTestId('desktop-sidebar-tab-lists-visual').boundingBox();
-        expect(projectsVisual?.height).toBeLessThanOrEqual(32);
-        expect(listsVisual?.height).toBeLessThanOrEqual(32);
-        await captureEvidenceFrame(page, testInfo, 'mobile-01-projects');
-        const homeUrl = page.url();
-        await listsTab.click();
-        await expect(listsTab).toHaveAttribute('aria-selected', 'true');
-        await expect(page.getByTestId('sidebar-lists-view')).toBeVisible();
-        await expect(page).toHaveURL(homeUrl);
+        await expect(projectsTab).toHaveCount(0);
+        await expect(listsTab).toHaveCount(0);
+        await expectMobileTouchTarget(page.getByTestId('sidebar-organization-timeline'));
+        await expectMobileTouchTarget(page.getByTestId('sidebar-list-unassigned'));
+        await captureEvidenceFrame(page, testInfo, 'mobile-01-organization');
         await expectMobileTouchTarget(page.getByTestId('sidebar-create-list-button'));
         await expectMobileTouchTarget(page.getByTestId('sidebar-create-tag-button'));
         await expect.poll(async () => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
@@ -737,12 +725,16 @@ test('[SIDEBAR-LISTS-TAGS-MOBILE] mobile drawer exposes Projects and Lists tabs'
         await expect(page.getByText('New list', { exact: true })).toHaveCount(0);
         const removableList = page.getByText('Mobile removable', { exact: true });
         await expect(removableList).toBeVisible();
-        const deleteButton = page.getByRole('button', { name: 'Delete list Mobile removable', exact: true });
-        await expectMobileTouchTarget(deleteButton);
+        const removableListTestId = await removableList.locator('xpath=ancestor::*[@data-testid][1]').getAttribute('data-testid');
+        expect(removableListTestId).toMatch(/^sidebar-list-/);
+        const removableListId = removableListTestId!.replace('sidebar-list-', '');
+        const editButton = page.getByTestId(`sidebar-edit-list-${removableListId}`);
+        await expectMobileTouchTarget(editButton);
         await expect(page.getByText(/cannot contain a nested/i)).toHaveCount(0);
         await pauseForReview(page);
         await captureEvidenceFrame(page, testInfo, 'mobile-02-delete-action');
-        await deleteButton.click();
+        await editButton.click();
+        await page.getByTestId('sidebar-delete-list').click();
         await expect(page.getByText('Delete list', { exact: true })).toBeVisible();
         await pauseForReview(page);
         await captureEvidenceFrame(page, testInfo, 'mobile-03-delete-confirm');
@@ -753,7 +745,7 @@ test('[SIDEBAR-LISTS-TAGS-MOBILE] mobile drawer exposes Projects and Lists tabs'
         await expect(page.getByRole('textbox')).toBeVisible({ timeout: 120_000 });
         await page.getByTestId('compose-home-drawer-button').click();
         await expect.poll(async () => (await accountFooter.boundingBox())?.x ?? -1).toBeGreaterThanOrEqual(0);
-        await expect(listsTab).toHaveAttribute('aria-selected', 'true');
+        await expect(page.getByTestId('sidebar-organization-pane')).toBeVisible();
         await expect(page.getByText('Mobile removable', { exact: true })).toHaveCount(0);
 
         await expect.poll(async () => {
@@ -765,15 +757,15 @@ test('[SIDEBAR-LISTS-TAGS-MOBILE] mobile drawer exposes Projects and Lists tabs'
                 && box.y + box.height <= 844;
         }).toBe(true);
         await pauseForReview(page);
-        await page.screenshot({ path: testInfo.outputPath('mobile-after-lists-tab.png'), fullPage: true });
-        await captureEvidenceFrame(page, testInfo, 'mobile-04-lists');
+        await page.screenshot({ path: testInfo.outputPath('mobile-after-organization.png'), fullPage: true });
+        await captureEvidenceFrame(page, testInfo, 'mobile-04-organization');
     } finally {
         await page.close();
         await deleteSession(request, sessionId);
     }
 });
 
-test('[SIDEBAR-LISTS-TAGS-PERF] 100 unassigned sessions remain responsive when expanded', async ({ page, request }, testInfo: TestInfo) => {
+test('[SIDEBAR-LISTS-TAGS-PERF] 100 unassigned sessions remain responsive when selected', async ({ page, request }, testInfo: TestInfo) => {
     const sessionIds = await Promise.all(Array.from({ length: 100 }, (_, index) => createSession(request, {
         name: `Sidebar performance ${index + 1}`,
         summary: `Performance conversation ${index + 1}`,
@@ -785,19 +777,11 @@ test('[SIDEBAR-LISTS-TAGS-PERF] 100 unassigned sessions remain responsive when e
         await page.goto(authenticatedRoute(`/session/${sessionIds[0]}`));
         page.setDefaultTimeout(15_000);
         await expect(page.locator('[data-testid="session-header-title"]:visible')).toHaveText('Performance conversation 1', { timeout: 120_000 });
-        const listsTab = page.getByTestId('desktop-sidebar-tab-lists');
-        await expect(listsTab).toBeVisible();
-        const listsTabBox = await listsTab.boundingBox();
-        expect(listsTabBox).not.toBeNull();
-        await page.mouse.click(
-            listsTabBox!.x + listsTabBox!.width / 2,
-            listsTabBox!.y + listsTabBox!.height / 2,
-        );
-        await expect(listsTab).toHaveAttribute('aria-selected', 'true', { timeout: 120_000 });
         const unassigned = page.getByTestId('sidebar-list-unassigned');
         await expect(unassigned).toContainText('100', { timeout: 120_000 });
+        await unassigned.click();
 
-        const mountedSessions = page.locator('[data-testid^="organized-session-"]');
+        const mountedSessions = page.locator('[data-testid^="session-row-"]');
         await expect(mountedSessions.first()).toBeVisible({ timeout: 120_000 });
         expect(await mountedSessions.count()).toBeLessThan(100);
 
@@ -808,8 +792,7 @@ test('[SIDEBAR-LISTS-TAGS-PERF] 100 unassigned sessions remain responsive when e
             unassignedBox!.y + unassignedBox!.height / 2,
         );
 
-        await clickUnassigned();
-        await expect(mountedSessions).toHaveCount(0);
+        await page.getByTestId('sidebar-organization-timeline').click();
 
         const startedAt = Date.now();
         await clickUnassigned();
@@ -818,8 +801,6 @@ test('[SIDEBAR-LISTS-TAGS-PERF] 100 unassigned sessions remain responsive when e
         expect(await mountedSessions.count()).toBeLessThan(100);
         await captureEvidenceFrame(page, testInfo, 'desktop-100-sessions-responsive');
 
-        await clickUnassigned();
-        await expect(mountedSessions).toHaveCount(0);
         await page.getByTestId('sidebar-create-tag-button').click();
         await expect(page.getByPlaceholder('Tag name')).toBeVisible();
     } finally {

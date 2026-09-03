@@ -5,6 +5,8 @@ import {
     Pressable,
     ScrollView,
     TextInput,
+    type GestureResponderEvent,
+    type LayoutChangeEvent,
     View,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
@@ -12,7 +14,6 @@ import { usePathname, useRouter } from 'expo-router';
 import { mq, StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Text } from '@/components/StyledText';
 import { Typography } from '@/constants/Typography';
-import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { useNewSessionDraft } from '@/hooks/useNewSessionDraft';
 import { useVisibleSessionListViewData } from '@/hooks/useVisibleSessionListViewData';
 import { Modal } from '@/modal';
@@ -25,7 +26,6 @@ import {
 } from '@/sync/storage';
 import type { NewSessionAgentType } from '@/sync/persistence';
 import { t } from '@/text';
-import { MainView } from './MainView';
 import { DesktopDialogFrame } from './DesktopDialogFrame';
 import { PathPickerContent, PickerContent, type PickerItem } from './SessionConfigPanel';
 import { SessionOrganizerDialog } from './SessionOrganizerDialog';
@@ -44,6 +44,7 @@ import {
     reorderSidebarList,
     removeSidebarList,
     SIDEBAR_LIST_COLORS,
+    SIDEBAR_FOLDER_MAX_COUNT,
     SIDEBAR_LIST_MAX_COUNT,
     SIDEBAR_LIST_NAME_MAX_LENGTH,
     SIDEBAR_TAG_MAX_COUNT,
@@ -53,10 +54,25 @@ import {
     type SidebarTag,
 } from '@/sync/sidebarOrganization';
 import { isMachineOnline } from '@/utils/machineUtils';
-import { formatPathRelativeToHome } from '@/utils/sessionUtils';
-import { CompactSessionRow } from './ActiveSessionsGroupCompact';
+import { formatPathRelativeToHome, getSessionStateLabel } from '@/utils/sessionUtils';
+import { CompactSessionRow, STATUS_CONFIG } from './ActiveSessionsGroupCompact';
+import { ProjectSectionHeader } from './ProjectSectionHeader';
 import { useSessionManagementPreferences } from '@/hooks/useSessionManagementPreferences';
 import { partitionSessionsByPinnedOrder } from '@/utils/sessionPinning';
+import { useIsTablet } from '@/utils/responsive';
+import {
+    buildSidebarLibraryFolderGroups,
+    buildSidebarLibraryProjects,
+    collectSidebarSessions,
+    getSidebarLibrarySessions,
+    type SidebarLibrarySelection,
+} from '@/utils/sidebarLibraryNavigation';
+import { buildSessionNavigationTimeGroups } from '@/utils/sessionNavigationGroups';
+import {
+    clampDesktopSidebarOrganizationWidth,
+    getDesktopSidebarOrganizationMaxWidth,
+    DESKTOP_SIDEBAR_ORGANIZATION_MIN_WIDTH,
+} from '@/utils/desktopNavigationLayout';
 
 const AGENT_TYPES = ['codex', 'claude', 'opencode', 'gemini', 'openclaw'] as const satisfies readonly NewSessionAgentType[];
 const AGENT_LABEL_KEYS = {
@@ -243,6 +259,95 @@ const stylesheet = StyleSheet.create((theme) => ({
     empty: { color: theme.colors.textSecondary, fontSize: 12, paddingHorizontal: 16, paddingVertical: 12, ...Typography.default() },
     filteredHeader: { alignItems: 'center', flexDirection: 'row', paddingHorizontal: 10, paddingBottom: 6 },
     filteredTitle: { color: theme.colors.text, flex: 1, fontSize: 13, ...Typography.default('semiBold') },
+    libraryShell: { flex: 1, flexDirection: 'row', minHeight: 0, position: 'relative' },
+    libraryShellMobile: { flexDirection: 'column' },
+    organizationPane: {
+        borderRightColor: theme.colors.divider,
+        borderRightWidth: StyleSheet.hairlineWidth,
+        flexGrow: 0,
+        flexShrink: 0,
+        minHeight: 0,
+    },
+    organizationPaneMobile: { borderRightWidth: 0, flex: 1, width: '100%' },
+    organizationContent: { paddingBottom: 24, paddingTop: 8 },
+    organizationSectionHeader: {
+        alignItems: 'center',
+        flexDirection: 'row',
+        minHeight: 34,
+        paddingLeft: 10,
+        paddingRight: 6,
+    },
+    organizationSectionTitle: { color: theme.colors.groupped.sectionTitle, flex: 1, fontSize: 12, ...Typography.default('semiBold') },
+    organizationRow: {
+        alignItems: 'center',
+        borderRadius: 8,
+        flexDirection: 'row',
+        gap: 8,
+        marginHorizontal: 6,
+        minHeight: {
+            [mq.only.width(0, 768)]: 48,
+            [mq.only.width(768)]: 38,
+        },
+        paddingHorizontal: 8,
+    },
+    organizationRowNested: { marginLeft: 20 },
+    organizationRowSelected: { backgroundColor: theme.colors.surfaceSelected },
+    organizationRowPressed: { backgroundColor: theme.colors.surfacePressed },
+    organizationRowText: { color: theme.colors.text, flex: 1, fontSize: 13, ...Typography.default('semiBold') },
+    organizationRowMeta: { color: theme.colors.textSecondary, fontSize: 11, ...Typography.default() },
+    organizationCount: { color: theme.colors.textSecondary, fontSize: 11, ...Typography.default() },
+    organizationColorDot: { borderRadius: 4, height: 8, width: 8 },
+    organizationDivider: { backgroundColor: theme.colors.divider, height: StyleSheet.hairlineWidth, marginHorizontal: 10, marginVertical: 6 },
+    folderRow: { position: 'relative' },
+    sessionPane: { flex: 1, minHeight: 0, minWidth: 0 },
+    organizationResizeHandle: {
+        alignItems: 'center',
+        bottom: 0,
+        justifyContent: 'center',
+        position: 'absolute',
+        top: 0,
+        width: 10,
+        zIndex: 24,
+    },
+    organizationResizeLine: {
+        height: '100%',
+        width: 1,
+    },
+    sessionPaneHeader: {
+        alignItems: 'center',
+        borderBottomColor: theme.colors.divider,
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        flexDirection: 'row',
+        gap: 6,
+        minHeight: 54,
+        paddingHorizontal: 10,
+    },
+    sessionPaneTitleWrap: { flex: 1, minWidth: 0 },
+    sessionPaneTitle: { color: theme.colors.text, fontSize: 15, ...Typography.default('semiBold') },
+    sessionPaneSubtitle: { color: theme.colors.textSecondary, fontSize: 11, marginTop: 2, ...Typography.default() },
+    sessionListContent: { paddingBottom: 24, paddingTop: 6 },
+    timeSection: { color: theme.colors.groupped.sectionTitle, fontSize: 11, paddingHorizontal: 12, paddingBottom: 4, paddingTop: 9, ...Typography.default('semiBold') },
+    tagHeaderLabel: { alignItems: 'center', flex: 1, flexDirection: 'row', gap: 7 },
+    tagMenu: {
+        backgroundColor: theme.colors.surface,
+        borderColor: theme.colors.divider,
+        borderRadius: 12,
+        borderWidth: StyleSheet.hairlineWidth,
+        overflow: 'hidden',
+        position: 'absolute',
+        right: 8,
+        top: 34,
+        width: 190,
+        zIndex: 30,
+    },
+    tagMenuMobileScrim: { bottom: 0, left: 0, position: 'absolute', right: 0, top: 0, zIndex: 40 },
+    tagMenuMobileBackdrop: { backgroundColor: theme.colors.shadow.color, bottom: 0, left: 0, opacity: 0.24, position: 'absolute', right: 0, top: 0 },
+    tagMenuMobile: { borderBottomLeftRadius: 0, borderBottomRightRadius: 0, bottom: 0, left: 0, right: 0, top: undefined, width: '100%' },
+    tagMenuTitle: { color: theme.colors.text, fontSize: 13, paddingHorizontal: 14, paddingBottom: 6, paddingTop: 12, ...Typography.default('semiBold') },
+    tagMenuOption: { alignItems: 'center', flexDirection: 'row', gap: 9, minHeight: 44, paddingHorizontal: 14 },
+    tagMenuOptionSelected: { backgroundColor: theme.colors.surfaceSelected },
+    tagMenuOptionText: { color: theme.colors.text, flex: 1, fontSize: 13, ...Typography.default() },
+    tagMenuOptionTextSelected: { color: theme.colors.textLink, ...Typography.default('semiBold') },
     modalRoot: { alignItems: 'center', flex: 1, justifyContent: 'center', padding: 20 },
     modalBackdrop: { backgroundColor: theme.colors.shadow.color, bottom: 0, left: 0, opacity: 0.28, position: 'absolute', right: 0, top: 0 },
     dialog: {
@@ -357,47 +462,625 @@ const stylesheet = StyleSheet.create((theme) => ({
     assignmentLabel: { color: theme.colors.text, flex: 1, fontSize: 13, ...Typography.default() },
 }));
 
-export const DesktopSidebarSessionsNavigation = React.memo(() => {
-    const [mode, setMode] = useLocalSettingMutable('desktopSidebarMode');
+export const DesktopSidebarSessionsNavigation = React.memo(function DesktopSidebarSessionsNavigation({
+    desktopDensity,
+}: {
+    desktopDensity?: boolean;
+}) {
     const styles = stylesheet;
+    const { theme } = useUnistyles();
+    const isTablet = useIsTablet();
+    const isDesktop = desktopDensity ?? isTablet;
+    const pathname = usePathname();
+    const router = useRouter();
+    const data = useVisibleSessionListViewData();
+    const machines = useAllMachines({ includeOffline: true });
+    const organization = useSetting('sidebarOrganization');
+    const updateOrganization = useSettingUpdater('sidebarOrganization');
+    const [tagVisibility, setTagVisibility] = useLocalSettingMutable('sidebarTagsVisibility');
+    const [organizationCollapsed, setOrganizationCollapsed] = useLocalSettingMutable('desktopSidebarOrganizationCollapsed');
+    const [storedOrganizationWidth, setStoredOrganizationWidth] = useLocalSettingMutable('desktopSidebarOrganizationWidth');
+    const [navigationWidth, setNavigationWidth] = React.useState<number | undefined>();
+    const [liveOrganizationWidth, setLiveOrganizationWidth] = React.useState(() => (
+        clampDesktopSidebarOrganizationWidth(storedOrganizationWidth)
+    ));
+    const [resizingOrganization, setResizingOrganization] = React.useState(false);
+    const organizationResizeRef = React.useRef<{ startPointerX: number; startWidth: number } | null>(null);
+    const liveOrganizationWidthRef = React.useRef(liveOrganizationWidth);
+    const sessions = React.useMemo(() => collectSidebarSessions(data), [data]);
+    const sessionManagement = useSessionManagementPreferences(sessions.map((session) => session.id), { prune: false });
+    const projects = React.useMemo(() => buildSidebarLibraryProjects({
+        machines,
+        pinnedOrder: sessionManagement.preferences.pinnedOrder,
+        sessions,
+        unknownLabel: t('common.unknown'),
+    }), [machines, sessionManagement.preferences.pinnedOrder, sessions]);
+    const folderGroups = React.useMemo(() => buildSidebarLibraryFolderGroups(organization), [organization]);
+    const [selection, setSelection] = React.useState<SidebarLibrarySelection>({ kind: 'timeline' });
+    const [mobileStage, setMobileStage] = React.useState<'organization' | 'sessions'>('organization');
+    const [expandedSections, setExpandedSections] = React.useState(() => new Set(['projects', 'lists', 'tags']));
+    const [expandedFolders, setExpandedFolders] = React.useState<Set<string>>(() => new Set());
+    const [tagMenuOpen, setTagMenuOpen] = React.useState(false);
+    const [editorVisible, setEditorVisible] = React.useState(false);
+    const [editingList, setEditingList] = React.useState<SidebarList | null>(null);
+    const [organizingSession, setOrganizingSession] = React.useState<SessionRowData | null>(null);
+    const [draggedSessionId, setDraggedSessionId] = React.useState<string | null>(null);
+    const [draggedListId, setDraggedListId] = React.useState<string | null>(null);
+    const [dropFeedback, setDropFeedback] = React.useState<{
+        entity: SidebarDragData['entity'];
+        listId: string;
+        position: SidebarDropPosition | null;
+    } | null>(null);
+    const selectedSessionId = pathname.startsWith('/session/') ? pathname.split('/')[2] : null;
+    const listColors = getListColors(theme.colors);
+
+    React.useEffect(() => {
+        liveOrganizationWidthRef.current = liveOrganizationWidth;
+    }, [liveOrganizationWidth]);
+    React.useEffect(() => {
+        if (!organizationResizeRef.current) {
+            const nextWidth = clampDesktopSidebarOrganizationWidth(storedOrganizationWidth, navigationWidth);
+            liveOrganizationWidthRef.current = nextWidth;
+            setLiveOrganizationWidth(nextWidth);
+        }
+    }, [navigationWidth, storedOrganizationWidth]);
+
+    const organizationMaxWidth = getDesktopSidebarOrganizationMaxWidth(navigationWidth);
+    const handleNavigationLayout = React.useCallback((event: LayoutChangeEvent) => {
+        const nextWidth = Math.round(event.nativeEvent.layout.width);
+        setNavigationWidth((currentWidth) => currentWidth === nextWidth ? currentWidth : nextWidth);
+    }, []);
+
+    const resizeOrganizationBy = React.useCallback((delta: number) => {
+        const nextWidth = clampDesktopSidebarOrganizationWidth(
+            liveOrganizationWidthRef.current + delta,
+            navigationWidth,
+        );
+        liveOrganizationWidthRef.current = nextWidth;
+        setLiveOrganizationWidth(nextWidth);
+        setStoredOrganizationWidth(nextWidth);
+    }, [navigationWidth, setStoredOrganizationWidth]);
+    const beginOrganizationResize = React.useCallback((event: GestureResponderEvent) => {
+        organizationResizeRef.current = {
+            startPointerX: event.nativeEvent.pageX,
+            startWidth: liveOrganizationWidthRef.current,
+        };
+        setResizingOrganization(true);
+    }, []);
+    const continueOrganizationResize = React.useCallback((event: GestureResponderEvent) => {
+        const resize = organizationResizeRef.current;
+        if (!resize) return;
+        const nextWidth = clampDesktopSidebarOrganizationWidth(
+            resize.startWidth + event.nativeEvent.pageX - resize.startPointerX,
+            navigationWidth,
+        );
+        liveOrganizationWidthRef.current = nextWidth;
+        setLiveOrganizationWidth(nextWidth);
+    }, [navigationWidth]);
+    const endOrganizationResize = React.useCallback(() => {
+        if (!organizationResizeRef.current) return;
+        organizationResizeRef.current = null;
+        setResizingOrganization(false);
+        setStoredOrganizationWidth(liveOrganizationWidthRef.current);
+    }, [setStoredOrganizationWidth]);
+    const handleOrganizationResizeKeyDown = React.useCallback((event: any) => {
+        const key = event.nativeEvent?.key ?? event.key;
+        let delta: number | undefined;
+        if (key === 'ArrowLeft') delta = -16;
+        if (key === 'ArrowRight') delta = 16;
+        if (key === 'Home') delta = DESKTOP_SIDEBAR_ORGANIZATION_MIN_WIDTH - liveOrganizationWidthRef.current;
+        if (key === 'End') delta = organizationMaxWidth - liveOrganizationWidthRef.current;
+        if (delta === undefined) return;
+        event.preventDefault?.();
+        event.stopPropagation?.();
+        resizeOrganizationBy(delta);
+    }, [organizationMaxWidth, resizeOrganizationBy]);
+
+    React.useEffect(() => {
+        if (Platform.OS !== 'web' || !resizingOrganization || typeof document === 'undefined') return;
+        const previousCursor = document.body.style.cursor;
+        const previousUserSelect = document.body.style.userSelect;
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+        return () => {
+            document.body.style.cursor = previousCursor;
+            document.body.style.userSelect = previousUserSelect;
+        };
+    }, [resizingOrganization]);
+
+    React.useEffect(() => {
+        setExpandedFolders((current) => {
+            if (current.size > 0 || (organization.folders?.length ?? 0) === 0) return current;
+            return new Set(organization.folders?.map((folder) => folder.id));
+        });
+    }, [organization.folders]);
+
+    const chooseSelection = React.useCallback((next: SidebarLibrarySelection) => {
+        setSelection(next);
+        if (!isDesktop) setMobileStage('sessions');
+    }, [isDesktop]);
+    const toggleSection = React.useCallback((section: string) => {
+        setExpandedSections((current) => {
+            const next = new Set(current);
+            next.has(section) ? next.delete(section) : next.add(section);
+            return next;
+        });
+    }, []);
+    const toggleFolder = React.useCallback((folderId: string) => {
+        setExpandedFolders((current) => {
+            const next = new Set(current);
+            next.has(folderId) ? next.delete(folderId) : next.add(folderId);
+            return next;
+        });
+    }, []);
+    const startSessionDrag = React.useCallback((data: SidebarDragData) => setDraggedSessionId(data.id), []);
+    const startListDrag = React.useCallback((data: SidebarDragData) => setDraggedListId(data.id), []);
+    const finishSidebarDrag = React.useCallback(() => {
+        setDraggedSessionId(null);
+        setDraggedListId(null);
+        setDropFeedback(null);
+    }, []);
+    const changeDropTarget = React.useCallback((listId: string, data: SidebarDragData, position: SidebarDropPosition | null) => {
+        setDropFeedback({ entity: data.entity, listId, position });
+    }, []);
+    const leaveDropTarget = React.useCallback((listId: string) => {
+        setDropFeedback((current) => current?.listId === listId ? null : current);
+    }, []);
+    const dropOntoList = React.useCallback((listId: string, data: SidebarDragData, position: SidebarDropPosition | null) => {
+        if (data.entity === 'list') {
+            if (position) updateOrganization((current) => reorderSidebarList(current, data.id, listId, position));
+            finishSidebarDrag();
+            return;
+        }
+        updateOrganization((current) => moveSidebarSessionToList(current, data.id, listId === 'unassigned' ? null : listId));
+        finishSidebarDrag();
+    }, [finishSidebarDrag, updateOrganization]);
+    const addTag = React.useCallback(async () => {
+        if (organization.tags.length >= SIDEBAR_TAG_MAX_COUNT) return;
+        const name = normalizeSidebarTagName((await Modal.prompt(t('sidebarLists.newTag'), undefined, {
+            placeholder: t('sidebarLists.tagNamePlaceholder'),
+            cancelText: t('common.cancel'),
+            confirmText: t('common.create'),
+        })) ?? '');
+        if (!name) return;
+        updateOrganization((current) => ({
+            ...current,
+            tags: current.tags.some((tag) => tag.name.toLocaleLowerCase() === name.toLocaleLowerCase())
+                ? current.tags
+                : [...current.tags, {
+                    id: createSidebarOrganizationId('tag'),
+                    name,
+                    color: SIDEBAR_LIST_COLORS[current.tags.length % SIDEBAR_LIST_COLORS.length],
+                    createdAt: Date.now(),
+                }],
+        }));
+    }, [organization.tags.length, updateOrganization]);
+    const addFolder = React.useCallback(async () => {
+        if ((organization.folders?.length ?? 0) >= SIDEBAR_FOLDER_MAX_COUNT) return;
+        const name = (await Modal.prompt(t('sidebarLists.newFolder'), undefined, {
+            placeholder: t('sidebarLists.folderNamePlaceholder'),
+            cancelText: t('common.cancel'),
+            confirmText: t('common.create'),
+        }))?.trim().slice(0, SIDEBAR_LIST_NAME_MAX_LENGTH);
+        if (!name) return;
+        const folderId = createSidebarOrganizationId('folder');
+        updateOrganization((current) => ({
+            ...current,
+            folders: [...(current.folders ?? []), { id: folderId, name, createdAt: Date.now() }],
+        }));
+        setExpandedFolders((current) => new Set(current).add(folderId));
+    }, [organization.folders?.length, updateOrganization]);
+    const openCreate = React.useCallback(() => {
+        setEditingList(null);
+        setEditorVisible(true);
+    }, []);
+    const openEdit = React.useCallback((list: SidebarList) => {
+        setEditingList(list);
+        setEditorVisible(true);
+    }, []);
+    const createSession = React.useCallback((list: SidebarList) => {
+        const draft = useNewSessionDraft.getState();
+        if (list.kind === 'workspace') {
+            if (list.machineId) draft.setMachineId(list.machineId);
+            if (list.path) draft.setPath(list.path);
+            if (list.defaultAgent) draft.setAgentType(list.defaultAgent);
+        } else {
+            draft.setAgentType('ask');
+            draft.setInput('');
+        }
+        router.navigate({ pathname: '/new', params: { sidebarListId: list.id } });
+    }, [router]);
+    const filteredSessions = React.useMemo(() => getSidebarLibrarySessions({
+        organization,
+        pinnedOrder: sessionManagement.preferences.pinnedOrder,
+        projects,
+        selection,
+        sessions,
+    }), [organization, projects, selection, sessionManagement.preferences.pinnedOrder, sessions]);
+    const visibleSessionPartitions = React.useMemo(
+        () => partitionSessionsByPinnedOrder(sessions, sessionManagement.preferences.pinnedOrder),
+        [sessionManagement.preferences.pinnedOrder, sessions],
+    );
+    const selectionList = selection.kind === 'list'
+        ? organization.lists.find((list) => list.id === selection.id) ?? null
+        : null;
+    const selectionTitle = selection.kind === 'timeline'
+        ? t('sidebar.timelineTab')
+        : selection.kind === 'pinned'
+            ? t('sessionSearch.sections.pinned')
+            : selection.kind === 'project'
+                ? projects.find((project) => project.key === selection.key)?.displayPath ?? t('sidebar.projectsTab')
+                : selection.kind === 'list'
+                    ? selectionList?.name ?? t('sidebarLists.lists')
+                    : selection.kind === 'tag'
+                        ? `#${organization.tags.find((tag) => tag.id === selection.id)?.name ?? t('sidebarLists.tags')}`
+                        : t('sidebarLists.unassigned');
+    const selectionSubtitle = selection.kind === 'project'
+        ? projects.find((project) => project.key === selection.key)?.machineName
+        : selection.kind === 'unassigned'
+            ? t('sidebarLists.unassignedDescription')
+            : undefined;
+    const timeGroups = React.useMemo(
+        () => selection.kind === 'timeline' ? buildSessionNavigationTimeGroups(filteredSessions) : [],
+        [filteredSessions, selection.kind],
+    );
+    const sessionRows = React.useMemo(() => selection.kind === 'timeline'
+        ? timeGroups.flatMap((group) => [
+            { key: `time-${group.key}`, type: 'time' as const, label: group.dayOffset === 0 ? t('sessionHistory.today') : t('sessionSearch.sections.recent') },
+            ...group.sessions.map((session) => ({ key: session.id, type: 'session' as const, session })),
+        ])
+        : filteredSessions.map((session) => ({ key: session.id, type: 'session' as const, session })), [filteredSessions, selection.kind, timeGroups]);
+    const showTagRows = expandedSections.has('tags')
+        && tagVisibility !== 'hidden'
+        && (tagVisibility === 'always' || organization.tags.length > 0);
+
+    const renderOrganizationRow = React.useCallback(({
+        count,
+        icon,
+        nested = false,
+        onPress,
+        selected,
+        subtitle,
+        testID,
+        title,
+    }: {
+        count?: number;
+        icon: React.ReactNode;
+        nested?: boolean;
+        onPress: () => void;
+        selected: boolean;
+        subtitle?: string;
+        testID: string;
+        title: string;
+    }) => (
+        <Pressable
+            aria-selected={selected}
+            accessibilityRole="button"
+            accessibilityState={{ selected }}
+            onPress={onPress}
+            style={({ pressed }) => [styles.organizationRow, nested && styles.organizationRowNested, selected && styles.organizationRowSelected, pressed && styles.organizationRowPressed]}
+            testID={testID}
+        >
+            {icon}
+            <View style={styles.listCopy}>
+                <Text numberOfLines={1} style={styles.organizationRowText}>{title}</Text>
+                {subtitle ? <Text numberOfLines={1} style={styles.organizationRowMeta}>{subtitle}</Text> : null}
+            </View>
+            {count !== undefined ? <Text style={styles.organizationCount}>{count}</Text> : null}
+        </Pressable>
+    ), [styles]);
+
+    const organizationPane = (
+        <ScrollView contentContainerStyle={styles.organizationContent} style={styles.listsScroll} testID="sidebar-organization-pane">
+            {renderOrganizationRow({
+                count: visibleSessionPartitions.regular.length,
+                icon: <Feather color={theme.colors.textSecondary} name="clock" size={16} />,
+                onPress: () => chooseSelection({ kind: 'timeline' }),
+                selected: selection.kind === 'timeline',
+                testID: 'sidebar-organization-timeline',
+                title: t('sidebar.timelineTab'),
+            })}
+            {renderOrganizationRow({
+                count: visibleSessionPartitions.pinned.length,
+                icon: <Feather color={theme.colors.textSecondary} name="bookmark" size={16} />,
+                onPress: () => chooseSelection({ kind: 'pinned' }),
+                selected: selection.kind === 'pinned',
+                testID: 'sidebar-organization-pinned',
+                title: t('sessionSearch.sections.pinned'),
+            })}
+            <View style={styles.organizationDivider} />
+            <View style={styles.organizationSectionHeader}>
+                <Pressable accessibilityRole="button" onPress={() => toggleSection('projects')} style={styles.tagHeaderLabel} testID="sidebar-projects-toggle">
+                    <Feather color={theme.colors.textSecondary} name={expandedSections.has('projects') ? 'chevron-down' : 'chevron-right'} size={14} />
+                    <Text style={styles.organizationSectionTitle}>{t('sidebar.projectsTab')}</Text>
+                </Pressable>
+            </View>
+            {expandedSections.has('projects') ? projects.map((project) => {
+                const current = selection.kind === 'project' && selection.key === project.key;
+                const selectedSession = selectedSessionId ? project.sessions.find((session) => session.id === selectedSessionId) : null;
+                const activitySession = selectedSession ?? project.sessions.find((session) => session.state === 'permission_required' || session.state === 'running' || session.hasUnread);
+                const baseStatus = activitySession ? STATUS_CONFIG[activitySession.state] : null;
+                const activity = activitySession && baseStatus ? {
+                    color: activitySession.hasUnread && activitySession.state === 'idle' ? theme.colors.accent : baseStatus.dotColor,
+                    isPulsing: activitySession.hasUnread ? false : baseStatus.isPulsing,
+                    label: `${getSessionStateLabel(activitySession.state)}${activitySession.isConnected ? '' : ` · ${t('status.disconnected')}`}`,
+                    textColor: baseStatus.color,
+                } : null;
+                return (
+                    <ProjectSectionHeader
+                        activity={activity}
+                        current={current}
+                        displayPath={project.displayPath}
+                        expanded={current}
+                        key={project.key}
+                        machineId={project.machineId}
+                        onCreateSession={() => router.navigate('/new')}
+                        onToggle={() => chooseSelection({ kind: 'project', key: project.key, machineId: project.machineId, path: project.path })}
+                        path={project.path}
+                        session={project.sessions[0]!}
+                        testID={`sidebar-project-toggle-${project.key}`}
+                    />
+                );
+            }) : null}
+            <View style={styles.organizationSectionHeader}>
+                <Pressable accessibilityRole="button" onPress={() => toggleSection('lists')} style={styles.tagHeaderLabel} testID="sidebar-lists-toggle">
+                    <Feather color={theme.colors.textSecondary} name={expandedSections.has('lists') ? 'chevron-down' : 'chevron-right'} size={14} />
+                    <Text style={styles.organizationSectionTitle}>{t('sidebarLists.lists')}</Text>
+                </Pressable>
+                <Pressable accessibilityLabel={t('sidebarLists.newFolder')} accessibilityRole="button" onPress={() => void addFolder()} style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]} testID="sidebar-create-folder-button">
+                    <Feather color={theme.colors.textSecondary} name="folder-plus" size={15} />
+                </Pressable>
+                <Pressable accessibilityLabel={t('sidebarLists.newList')} accessibilityRole="button" onPress={openCreate} style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]} testID="sidebar-create-list-button">
+                    <Feather color={theme.colors.textSecondary} name="plus" size={17} />
+                </Pressable>
+            </View>
+            {expandedSections.has('lists') ? folderGroups.flatMap((group) => {
+                const folderExpanded = group.folderId ? expandedFolders.has(group.folderId) : true;
+                return [
+                    group.folderId ? (
+                        <Pressable accessibilityRole="button" accessibilityState={{ expanded: folderExpanded }} key={`folder-${group.folderId}`} onPress={() => toggleFolder(group.folderId!)} style={({ pressed }) => [styles.organizationRow, pressed && styles.organizationRowPressed]} testID={`sidebar-folder-${group.folderId}`}>
+                            <Feather color={theme.colors.textSecondary} name={folderExpanded ? 'chevron-down' : 'chevron-right'} size={14} />
+                            <Feather color={theme.colors.textSecondary} name="folder" size={17} />
+                            <Text numberOfLines={1} style={styles.organizationRowText}>{group.name}</Text>
+                            <Text style={styles.organizationCount}>{group.lists.length}</Text>
+                        </Pressable>
+                    ) : null,
+                    ...(folderExpanded ? group.lists.map((list) => (
+                        <WebDropTarget
+                            active={dropFeedback?.entity === 'session' && dropFeedback.listId === list.id}
+                            draggableEntity="list"
+                            draggableId={list.id}
+                            dropPosition={dropFeedback?.entity === 'list' && dropFeedback.listId === list.id ? dropFeedback.position : null}
+                            key={list.id}
+                            onDragEnd={finishSidebarDrag}
+                            onDragStart={startListDrag}
+                            onDrop={dropOntoList}
+                            onTargetChange={changeDropTarget}
+                            onTargetLeave={leaveDropTarget}
+                            style={[styles.listBlock, styles.folderRow, draggedListId === list.id && styles.sessionRowDragging]}
+                            targetId={list.id}
+                            testID={`sidebar-drop-list-${list.id}`}
+                        >
+                            {renderOrganizationRow({
+                                count: visibleSessionPartitions.regular.filter((session) => organization.sessions[session.id]?.listId === list.id).length,
+                                icon: <View style={[styles.organizationColorDot, { backgroundColor: listColors[list.color] }]} />,
+                                nested: !!group.folderId,
+                                onPress: () => chooseSelection({ kind: 'list', id: list.id }),
+                                selected: selection.kind === 'list' && selection.id === list.id,
+                                testID: `sidebar-list-${list.id}`,
+                                title: list.name,
+                            })}
+                            <Pressable accessibilityLabel={`${t('sidebarLists.editList')} ${list.name}`} accessibilityRole="button" onPress={() => openEdit(list)} style={({ pressed }) => [styles.iconButton, { position: 'absolute', right: 4, top: 5 }, pressed && styles.iconButtonPressed]} testID={`sidebar-edit-list-${list.id}`}>
+                                <Feather color={theme.colors.textSecondary} name="more-horizontal" size={14} />
+                            </Pressable>
+                        </WebDropTarget>
+                    )) : []),
+                ];
+            }) : null}
+            {expandedSections.has('lists') ? (
+                <WebDropTarget
+                    active={dropFeedback?.entity === 'session' && dropFeedback.listId === 'unassigned'}
+                    dropPosition={null}
+                    onDrop={dropOntoList}
+                    onTargetChange={changeDropTarget}
+                    onTargetLeave={leaveDropTarget}
+                    targetId="unassigned"
+                    testID="sidebar-drop-list-unassigned"
+                >
+                    {renderOrganizationRow({
+                        count: visibleSessionPartitions.regular.filter((session) => !organization.sessions[session.id]?.listId).length,
+                        icon: <Feather color={theme.colors.textSecondary} name="inbox" size={16} />,
+                        onPress: () => chooseSelection({ kind: 'unassigned' }),
+                        selected: selection.kind === 'unassigned',
+                        subtitle: t('sidebarLists.unassignedDescription'),
+                        testID: 'sidebar-list-unassigned',
+                        title: t('sidebarLists.unassigned'),
+                    })}
+                </WebDropTarget>
+            ) : null}
+            <View style={[styles.organizationSectionHeader, { zIndex: 31 }]}>
+                <Pressable accessibilityRole="button" accessibilityState={{ expanded: expandedSections.has('tags') }} onPress={() => toggleSection('tags')} style={styles.tagHeaderLabel} testID="sidebar-tags-toggle">
+                    <Feather color={theme.colors.textSecondary} name={expandedSections.has('tags') ? 'chevron-down' : 'chevron-right'} size={14} />
+                    <Feather color={theme.colors.textSecondary} name="tag" size={15} />
+                    <Text style={styles.organizationSectionTitle}>{t('sidebarLists.tags')}</Text>
+                </Pressable>
+                <Pressable accessibilityLabel={t('sidebarLists.tagVisibility')} accessibilityRole="button" onPress={() => setTagMenuOpen((open) => !open)} style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]} testID="sidebar-tags-visibility-button">
+                    <Feather color={theme.colors.textSecondary} name="more-horizontal" size={16} />
+                </Pressable>
+                <Pressable accessibilityLabel={t('sidebarLists.newTag')} accessibilityRole="button" onPress={() => void addTag()} style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]} testID="sidebar-create-tag-button">
+                    <Feather color={theme.colors.textSecondary} name="plus" size={17} />
+                </Pressable>
+                {tagMenuOpen && isDesktop ? <TagVisibilityMenu onChange={(value) => { setTagVisibility(value); setTagMenuOpen(false); }} value={tagVisibility} /> : null}
+            </View>
+            {showTagRows ? organization.tags.map((tag) => (
+                <React.Fragment key={tag.id}>
+                    {renderOrganizationRow({
+                        count: visibleSessionPartitions.regular.filter((session) => organization.sessions[session.id]?.tagIds.includes(tag.id)).length,
+                        icon: <View style={[styles.organizationColorDot, { backgroundColor: listColors[tag.color] }]} />,
+                        onPress: () => chooseSelection({ kind: 'tag', id: tag.id }),
+                        selected: selection.kind === 'tag' && selection.id === tag.id,
+                        testID: `sidebar-tag-${tag.id}`,
+                        title: tag.name,
+                    })}
+                </React.Fragment>
+            )) : null}
+        </ScrollView>
+    );
+
+    const sessionPane = (
+        <View style={styles.sessionPane} testID="sidebar-session-pane">
+            <View style={styles.sessionPaneHeader}>
+                {!isDesktop ? (
+                    <Pressable accessibilityLabel={t('common.back')} accessibilityRole="button" onPress={() => setMobileStage('organization')} style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]} testID="sidebar-session-pane-back">
+                        <Feather color={theme.colors.textSecondary} name="chevron-left" size={20} />
+                    </Pressable>
+                ) : null}
+                {isDesktop ? (
+                    <Pressable
+                        aria-expanded={!organizationCollapsed}
+                        accessibilityLabel={organizationCollapsed ? t('sidebarLists.showNavigation') : t('sidebarLists.hideNavigation')}
+                        accessibilityRole="button"
+                        accessibilityState={{ expanded: !organizationCollapsed }}
+                        onPress={() => setOrganizationCollapsed(!organizationCollapsed)}
+                        style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
+                        testID="sidebar-organization-collapse-button"
+                    >
+                        <Feather color={theme.colors.textSecondary} name="sidebar" size={17} />
+                    </Pressable>
+                ) : null}
+                <View style={styles.sessionPaneTitleWrap}>
+                    <Text numberOfLines={1} style={styles.sessionPaneTitle} testID="sidebar-session-pane-title">{selectionTitle}</Text>
+                    <Text numberOfLines={1} style={styles.sessionPaneSubtitle}>{selectionSubtitle ?? t('sidebarLists.sessionCount', { count: filteredSessions.length })}</Text>
+                </View>
+                {selectionList ? (
+                    <Pressable accessibilityLabel={t('sidebarLists.newSessionInList')} accessibilityRole="button" onPress={() => createSession(selectionList)} style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]} testID={`sidebar-new-session-${selectionList.id}`}>
+                        <Feather color={theme.colors.textSecondary} name="plus" size={18} />
+                    </Pressable>
+                ) : null}
+            </View>
+            <FlatList
+                contentContainerStyle={styles.sessionListContent}
+                data={sessionRows}
+                initialNumToRender={18}
+                keyExtractor={(item) => item.key}
+                maxToRenderPerBatch={12}
+                renderItem={({ item }) => item.type === 'time'
+                    ? <Text style={styles.timeSection}>{item.label}</Text>
+                    : <OrganizedSessionRow dragging={draggedSessionId === item.session.id} onDragEnd={finishSidebarDrag} onDragStart={startSessionDrag} onOrganize={setOrganizingSession} selected={selectedSessionId === item.session.id} session={item.session} />}
+                ListEmptyComponent={<Text style={styles.empty}>{t('sessionSearch.empty')}</Text>}
+                removeClippedSubviews={Platform.OS !== 'web'}
+                style={styles.listsScroll}
+                windowSize={7}
+            />
+        </View>
+    );
 
     return (
-        <View style={styles.container} testID="desktop-sidebar-session-navigation">
-            <View accessibilityRole="tablist" style={styles.tabs}>
-                <View pointerEvents="none" style={styles.tabTrack} />
-                {(['projects', 'lists', 'timeline'] as const).map((value) => {
-                    const selected = mode === value;
-                    return (
-                        <Pressable
-                            aria-selected={selected}
-                            accessibilityRole="tab"
-                            accessibilityState={{ selected }}
-                            key={value}
-                            onPress={() => setMode(value)}
-                            style={styles.tab}
-                            testID={`desktop-sidebar-tab-${value}`}
-                        >
-                            {({ pressed }) => (
-                                <View style={[styles.tabVisual, selected && styles.tabSelected, pressed && styles.tabPressed]} testID={`desktop-sidebar-tab-${value}-visual`}>
-                                    <Text style={[styles.tabText, selected && styles.tabTextSelected]}>
-                                        {value === 'projects'
-                                            ? t('sidebar.projectsTab')
-                                            : value === 'lists'
-                                                ? t('sidebar.listsTab')
-                                                : t('sidebar.timelineTab')}
-                                    </Text>
-                                </View>
-                            )}
-                        </Pressable>
-                    );
-                })}
-            </View>
-            {mode === 'lists'
-                ? <SidebarListsView />
-                : <MainView sessionListLayout={mode === 'timeline' ? 'time' : 'projects'} variant="sidebar" />}
+        <View onLayout={isDesktop ? handleNavigationLayout : undefined} style={[styles.libraryShell, !isDesktop && styles.libraryShellMobile]} testID="desktop-sidebar-session-navigation">
+            {((isDesktop && !organizationCollapsed) || (!isDesktop && mobileStage === 'organization')) ? (
+                <View
+                    style={[
+                        styles.organizationPane,
+                        !isDesktop && styles.organizationPaneMobile,
+                        isDesktop && { width: liveOrganizationWidth },
+                    ]}
+                >
+                    {organizationPane}
+                </View>
+            ) : null}
+            {isDesktop && !organizationCollapsed ? (
+                <View
+                    accessibilityLabel={t('sidebarLists.resizeNavigation')}
+                    accessibilityRole="adjustable"
+                    accessibilityValue={{
+                        min: DESKTOP_SIDEBAR_ORGANIZATION_MIN_WIDTH,
+                        max: organizationMaxWidth,
+                        now: liveOrganizationWidth,
+                        text: `${liveOrganizationWidth} px`,
+                    }}
+                    onMoveShouldSetResponder={() => true}
+                    onResponderGrant={beginOrganizationResize}
+                    onResponderMove={continueOrganizationResize}
+                    onResponderRelease={endOrganizationResize}
+                    onResponderTerminate={endOrganizationResize}
+                    onStartShouldSetResponder={() => true}
+                    {...(Platform.OS === 'web' ? ({
+                        'aria-orientation': 'vertical',
+                        'aria-valuemax': organizationMaxWidth,
+                        'aria-valuemin': DESKTOP_SIDEBAR_ORGANIZATION_MIN_WIDTH,
+                        'aria-valuenow': liveOrganizationWidth,
+                        'aria-valuetext': `${liveOrganizationWidth} px`,
+                        onKeyDown: handleOrganizationResizeKeyDown,
+                        tabIndex: 0,
+                    } as any) : {})}
+                    style={[
+                        styles.organizationResizeHandle,
+                        { left: liveOrganizationWidth - 5 },
+                        Platform.OS === 'web' && ({ cursor: 'col-resize', outlineStyle: 'none', touchAction: 'none' } as any),
+                    ]}
+                    testID="sidebar-organization-resize-handle"
+                >
+                    <View style={[
+                        styles.organizationResizeLine,
+                        { backgroundColor: resizingOrganization ? theme.colors.textLink : theme.colors.divider },
+                    ]} />
+                </View>
+            ) : null}
+            {(isDesktop || mobileStage === 'sessions') ? sessionPane : null}
+            {tagMenuOpen && !isDesktop ? (
+                <View accessibilityViewIsModal style={styles.tagMenuMobileScrim} testID="sidebar-tags-visibility-sheet">
+                    <Pressable accessibilityLabel={t('sidebarLists.close')} onPress={() => setTagMenuOpen(false)} style={styles.tagMenuMobileBackdrop} />
+                    <TagVisibilityMenu mobile onChange={(value) => { setTagVisibility(value); setTagMenuOpen(false); }} value={tagVisibility} />
+                </View>
+            ) : null}
+            <ListEditorDialog
+                list={editingList}
+                onClose={() => setEditorVisible(false)}
+                onDelete={(listId) => updateOrganization((current) => removeSidebarList(current, listId))}
+                onSave={(list) => updateOrganization((current) => ({
+                    ...current,
+                    lists: editingList ? current.lists.map((item) => item.id === list.id ? list : item) : [...current.lists, list],
+                }))}
+                organization={organization}
+                sessions={sessions}
+                visible={editorVisible}
+            />
+            {organizingSession ? (
+                <SessionOrganizerDialog
+                    assignment={organization.sessions[organizingSession.id] ?? { listId: null, tagIds: [] }}
+                    onClose={() => setOrganizingSession(null)}
+                    onSave={(assignment, createdTags) => updateOrganization((current) => organizeSessionWithCreatedTags(current, organizingSession.id, assignment, createdTags))}
+                    organization={organization}
+                    sessionName={organizingSession.name}
+                    visible
+                />
+            ) : null}
         </View>
     );
 });
+
+function TagVisibilityMenu({ mobile = false, onChange, value }: {
+    mobile?: boolean;
+    onChange: (value: 'always' | 'when-populated' | 'hidden') => void;
+    value: 'always' | 'when-populated' | 'hidden';
+}) {
+    const styles = stylesheet;
+    const { theme } = useUnistyles();
+    return (
+        <View accessibilityLabel={t('sidebarLists.tagVisibility')} accessibilityRole="radiogroup" style={[styles.tagMenu, mobile && styles.tagMenuMobile]} testID={mobile ? 'sidebar-tags-visibility-sheet-menu' : 'sidebar-tags-visibility-menu'}>
+            <Text style={styles.tagMenuTitle}>{t('sidebarLists.tagVisibility')}</Text>
+            {(['always', 'when-populated', 'hidden'] as const).map((option) => {
+                const selected = value === option;
+                return (
+                    <Pressable aria-checked={selected} accessibilityRole="radio" accessibilityState={{ checked: selected }} key={option} onPress={() => onChange(option)} style={[styles.tagMenuOption, selected && styles.tagMenuOptionSelected]} testID={`sidebar-tags-visibility-${option}`}>
+                        <Text style={[styles.tagMenuOptionText, selected && styles.tagMenuOptionTextSelected]}>{t(`sidebarLists.tagVisibilityOptions.${option}` as const)}</Text>
+                        {selected ? <Feather color={theme.colors.textLink} name="check" size={17} /> : null}
+                    </Pressable>
+                );
+            })}
+        </View>
+    );
+}
 
 type SidebarVirtualRow =
     | { key: string; type: 'section'; section: 'lists' | 'pinned' | 'tags' }
@@ -466,7 +1149,6 @@ function SidebarListsView() {
     const styles = stylesheet;
     const { theme } = useUnistyles();
     const router = useRouter();
-    const navigateToSession = useNavigateToSession();
     const listColors = getListColors(theme.colors);
     const pathname = usePathname();
     const data = useVisibleSessionListViewData();
@@ -567,7 +1249,6 @@ function SidebarListsView() {
         setEditorVisible(true);
     }, []);
     const closeEditor = React.useCallback(() => setEditorVisible(false), []);
-    const openSession = React.useCallback((session: SessionRowData) => navigateToSession(session.id), [navigateToSession]);
     const openOrganizer = React.useCallback((session: SessionRowData) => setOrganizingSession(session), []);
     const startSessionDrag = React.useCallback((data: SidebarDragData) => {
         setDraggedSessionId(data.id);
@@ -774,10 +1455,7 @@ function SidebarListsView() {
             );
         }
         if (item.type === 'session') {
-            const sessionTags = (organization.sessions[item.session.id]?.tagIds ?? [])
-                .map((tagId) => organization.tags.find((tag) => tag.id === tagId))
-                .filter((tag) => !!tag);
-            return <OrganizedSessionRow dragging={draggedSessionId === item.session.id} nested={item.nested} onDragEnd={finishSidebarDrag} onDragStart={startSessionDrag} onOpen={openSession} onOrganize={openOrganizer} onPin={sessionManagement.moveToPinned} selected={selectedSessionId === item.session.id} session={item.session} tags={sessionTags} />;
+            return <OrganizedSessionRow dragging={draggedSessionId === item.session.id} onDragEnd={finishSidebarDrag} onDragStart={startSessionDrag} onOrganize={openOrganizer} selected={selectedSessionId === item.session.id} session={item.session} />;
         }
         if (item.type === 'empty') {
             return <Text style={[styles.empty, item.nested && styles.sessionRowNested]}>{item.label}</Text>;
@@ -797,7 +1475,7 @@ function SidebarListsView() {
                 {organization.tags.length === 0 ? <Text style={styles.empty}>{t('sidebarLists.noTags')}</Text> : null}
             </View>
         );
-    }, [addTag, changeDropTarget, createSession, deleteList, draggedListId, draggedSessionId, dropFeedback, dropOntoList, expanded, finishSidebarDrag, leaveDropTarget, listColors, openCreate, openEdit, openOrganizer, openSession, organization.lists.length, organization.sessions, organization.tags, selectedSessionId, selectedTagId, sessionIndex, sessionManagement.moveToPinned, startListDrag, startSessionDrag, styles, theme.colors]);
+    }, [addTag, changeDropTarget, createSession, deleteList, draggedListId, draggedSessionId, dropFeedback, dropOntoList, expanded, finishSidebarDrag, leaveDropTarget, listColors, openCreate, openEdit, openOrganizer, organization.lists.length, organization.sessions, organization.tags, selectedSessionId, selectedTagId, sessionIndex, startListDrag, startSessionDrag, styles, theme.colors]);
 
     return (
         <View style={styles.container} testID="sidebar-lists-view">
@@ -841,9 +1519,8 @@ function SidebarListsView() {
     );
 }
 
-const OrganizedSessionRow = React.memo(function OrganizedSessionRow({ dragging, nested, onDragEnd, onDragStart, onOpen, onOrganize, onPin, selected, session, tags }: { dragging: boolean; nested: boolean; onDragEnd: () => void; onDragStart: (data: SidebarDragData) => void; onOpen: (session: SessionRowData) => void; onOrganize: (session: SessionRowData) => void; onPin: (sessionId: string) => void; selected: boolean; session: SessionRowData; tags: SidebarTag[] }) {
+const OrganizedSessionRow = React.memo(function OrganizedSessionRow({ dragging, onDragEnd, onDragStart, onOrganize, selected, session }: { dragging: boolean; onDragEnd: () => void; onDragStart: (data: SidebarDragData) => void; onOrganize: (session: SessionRowData) => void; selected: boolean; session: SessionRowData }) {
     const styles = stylesheet;
-    const { theme } = useUnistyles();
     const ref = React.useRef<View>(null);
 
     React.useEffect(() => {
@@ -861,25 +1538,10 @@ const OrganizedSessionRow = React.memo(function OrganizedSessionRow({ dragging, 
     return (
         <View
             ref={ref}
-            style={[styles.sessionRow, nested && styles.sessionRowNested, selected && styles.sessionRowSelected, dragging && styles.sessionRowDragging]}
+            style={dragging ? styles.sessionRowDragging : undefined}
             testID={`sidebar-drag-session-${session.id}`}
         >
-            <Pressable aria-selected={selected} accessibilityRole="button" accessibilityState={{ selected }} onPress={() => onOpen(session)} style={({ pressed }) => [styles.sessionMain, pressed && styles.sessionRowPressed]} testID={`organized-session-${session.id}`}>
-                <Text numberOfLines={1} style={styles.sessionTitle}>{session.name}</Text>
-                <Text numberOfLines={1} style={styles.sessionMeta}>{session.subtitle}</Text>
-                {tags.length > 0 ? (
-                    <View style={styles.sessionTags} testID={`organized-session-tags-${session.id}`}>
-                        {tags.slice(0, 2).map((tag) => <View key={tag.id} style={styles.sessionTag} testID={`organized-session-tag-${tag.id}`}><Text numberOfLines={1} style={styles.sessionTagText}>#{tag.name}</Text></View>)}
-                        {tags.length > 2 ? <Text style={styles.sessionTagMore}>+{tags.length - 2}</Text> : null}
-                    </View>
-                ) : null}
-            </Pressable>
-            <Pressable accessibilityLabel={t('sessionInfo.pinSession')} onPress={() => onPin(session.id)} style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]} testID={`pin-organized-session-${session.id}`}>
-                <Feather color={theme.colors.textSecondary} name="bookmark" size={14} />
-            </Pressable>
-            <Pressable accessibilityLabel={t('sidebarLists.organizeSession')} onPress={() => onOrganize(session)} style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]} testID={`organize-session-${session.id}`}>
-                <Feather color={theme.colors.textSecondary} name="tag" size={14} />
-            </Pressable>
+            <CompactSessionRow compactActions onOrganize={onOrganize} selected={selected} session={session} showLocation />
         </View>
     );
 });
@@ -903,6 +1565,7 @@ function ListEditorDialog({ list, onClose, onDelete, onSave, organization, sessi
     const [machineId, setMachineId] = React.useState<string | null>(null);
     const [path, setPath] = React.useState('');
     const [defaultAgent, setDefaultAgent] = React.useState<NewSessionAgentType | null>(null);
+    const [folderId, setFolderId] = React.useState<string | null>(null);
     const selectedMachine = React.useMemo(
         () => machines.find((machine) => machine.id === machineId) ?? null,
         [machineId, machines],
@@ -934,6 +1597,7 @@ function ListEditorDialog({ list, onClose, onDelete, onSave, organization, sessi
         setMachineId(list?.kind === 'workspace' ? list.machineId : null);
         setPath(list?.kind === 'workspace' ? list.path ?? '' : '');
         setDefaultAgent(list?.kind === 'workspace' ? list.defaultAgent : null);
+        setFolderId(list?.folderId ?? null);
     }, [list, visible]);
 
     const save = () => {
@@ -942,6 +1606,7 @@ function ListEditorDialog({ list, onClose, onDelete, onSave, organization, sessi
             id: list?.id ?? createSidebarOrganizationId('list'),
             name: name.trim(),
             color,
+            folderId,
             createdAt: list?.createdAt ?? Date.now(),
         };
         onSave(kind === 'agent'
@@ -979,6 +1644,17 @@ function ListEditorDialog({ list, onClose, onDelete, onSave, organization, sessi
                     <Text style={styles.fieldLabel}>{t('sidebarLists.color')}</Text>
                     <View accessibilityLabel={t('sidebarLists.color')} accessibilityRole="radiogroup" style={styles.choices}>{SIDEBAR_LIST_COLORS.map((value) => <Pressable aria-checked={color === value} accessibilityLabel={t(COLOR_LABEL_KEYS[value])} accessibilityRole="radio" accessibilityState={{ checked: color === value }} key={value} onPress={() => setColor(value)} style={styles.colorChoice} testID={`sidebar-list-color-${value}`}><View style={[styles.colorSwatch, { backgroundColor: listColors[value] }, color === value && styles.colorChoiceSelected]} /></Pressable>)}</View>
                 </View>
+                {(organization.folders?.length ?? 0) > 0 ? (
+                    <View style={styles.field}>
+                        <Text style={styles.fieldLabel}>{t('sidebarLists.folder')}</Text>
+                        <View accessibilityLabel={t('sidebarLists.folder')} accessibilityRole="radiogroup" style={styles.choices}>
+                            <Choice label={t('sidebarLists.noFolder')} onPress={() => setFolderId(null)} selected={folderId === null} testID="sidebar-list-folder-none" />
+                            {(organization.folders ?? []).map((folder) => (
+                                <Choice key={folder.id} label={folder.name} onPress={() => setFolderId(folder.id)} selected={folderId === folder.id} testID={`sidebar-list-folder-${folder.id}`} />
+                            ))}
+                        </View>
+                    </View>
+                ) : null}
                 {kind === 'workspace' ? (
                     <>
                         <View style={styles.field} testID="sidebar-list-machine-picker">
@@ -1034,9 +1710,9 @@ function ListEditorDialog({ list, onClose, onDelete, onSave, organization, sessi
                 )}
             </ScrollView>
             <View style={styles.dialogFooter}>
-                {list ? <Pressable onPress={() => void deleteList()} style={[styles.button, styles.destructiveButton]} testID="sidebar-delete-list"><Text style={styles.destructiveButtonText}>{t('common.delete')}</Text></Pressable> : null}
-                <Pressable onPress={onClose} style={[styles.button, styles.secondaryButton]} testID="sidebar-create-list-cancel"><Text style={styles.secondaryButtonText}>{t('common.cancel')}</Text></Pressable>
-                <Pressable disabled={!canSave} onPress={save} style={[styles.button, styles.primaryButton, !canSave && styles.buttonDisabled]} testID={list ? 'sidebar-edit-list-submit' : 'sidebar-create-list-submit'}><Text style={styles.primaryButtonText}>{list ? t('common.save') : t('common.create')}</Text></Pressable>
+                {list ? <Pressable accessibilityRole="button" onPress={() => void deleteList()} style={[styles.button, styles.destructiveButton]} testID="sidebar-delete-list"><Text style={styles.destructiveButtonText}>{t('common.delete')}</Text></Pressable> : null}
+                <Pressable accessibilityRole="button" onPress={onClose} style={[styles.button, styles.secondaryButton]} testID="sidebar-create-list-cancel"><Text style={styles.secondaryButtonText}>{t('common.cancel')}</Text></Pressable>
+                <Pressable accessibilityRole="button" accessibilityState={{ disabled: !canSave }} disabled={!canSave} onPress={save} style={[styles.button, styles.primaryButton, !canSave && styles.buttonDisabled]} testID={list ? 'sidebar-edit-list-submit' : 'sidebar-create-list-submit'}><Text style={styles.primaryButtonText}>{list ? t('common.save') : t('common.create')}</Text></Pressable>
             </View>
         </DesktopDialogFrame>
     );

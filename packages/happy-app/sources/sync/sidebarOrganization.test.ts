@@ -8,12 +8,14 @@ import {
     organizeSession,
     organizeSessionWithCreatedTags,
     reorderSidebarList,
+    removeSidebarFolder,
     removeSidebarList,
     removeSidebarTag,
     type SidebarOrganization,
 } from './sidebarOrganization';
 
 const organization: SidebarOrganization = {
+    folders: [],
     lists: [
         { id: 'workspace', name: 'Happy', kind: 'workspace', color: 'blue', machineId: 'mac', path: '~/happy', defaultAgent: 'codex', createdAt: 1 },
         { id: 'advisor', name: 'Advisor', kind: 'agent', color: 'pink', createdAt: 2 },
@@ -84,6 +86,7 @@ describe('sidebar organization model', () => {
 
     it('creates and assigns draft Tags atomically while reusing case-insensitive matches', () => {
         const next = organizeSessionWithCreatedTags({
+            folders: [],
             lists: [],
             tags: [{ id: 'existing', name: 'product', color: 'green', createdAt: 1 }],
             sessions: {},
@@ -120,6 +123,19 @@ describe('sidebar organization model', () => {
             ...organization,
             sessions: { broken: { listId: 'missing', tagIds: ['missing'] } },
         }).sessions.broken).toEqual({ listId: null, tagIds: [] });
+    });
+
+    it('keeps folder membership valid and releases Lists when a folder is deleted', () => {
+        const withFolder: SidebarOrganization = normalizeSidebarOrganization({
+            ...organization,
+            folders: [{ id: 'folder-work', name: 'Work', createdAt: 1 }],
+            lists: organization.lists.map((list) => ({ ...list, folderId: 'folder-work' })),
+        });
+
+        expect(withFolder.lists.map((list) => list.folderId)).toEqual(['folder-work', 'folder-work']);
+        const released = removeSidebarFolder(withFolder, 'folder-work');
+        expect(released.folders).toEqual([]);
+        expect(released.lists.map((list) => list.folderId)).toEqual([null, null]);
     });
 
     it('indexes a large session set in one pass for Lists and Tags', () => {
@@ -186,6 +202,7 @@ describe('sidebar organization model', () => {
             createdAt: index,
         }));
         const base: SidebarOrganization = {
+            folders: [],
             lists: Array.from({ length: 199 }, (_, index) => ({
                 id: `list-${index}`,
                 name: `List ${index}`,
@@ -197,11 +214,13 @@ describe('sidebar organization model', () => {
             sessions: { 'session-1': { listId: null, tagIds: baseTags.slice(0, 99).map((tag) => tag.id) } },
         };
         const local: SidebarOrganization = {
+            folders: [],
             lists: [...base.lists, { id: 'list-local', name: 'Local', kind: 'agent', color: 'green', createdAt: 200 }],
             tags: [...base.tags, { id: 'tag-local', name: 'local', color: 'green', createdAt: 100 }],
             sessions: { 'session-1': { listId: null, tagIds: [...base.sessions['session-1'].tagIds, 'tag-local'] } },
         };
         const remote: SidebarOrganization = {
+            folders: [],
             lists: [...base.lists, { id: 'list-remote', name: 'Remote', kind: 'agent', color: 'pink', createdAt: 201 }],
             tags: [...base.tags, { id: 'tag-remote', name: 'remote', color: 'pink', createdAt: 101 }],
             sessions: { 'session-1': { listId: null, tagIds: [...base.sessions['session-1'].tagIds, 'tag-remote'] } },

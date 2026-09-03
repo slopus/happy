@@ -253,14 +253,18 @@ export const SessionRowDetails = React.memo(function SessionRowDetails({
 
 export const SessionRowActions = React.memo(function SessionRowActions({
     contextAnchor,
+    forceMoreAction = false,
     onContextAnchorChange,
+    onOrganize,
     onStartSelection,
     sessionId,
     statusLabel,
     visible,
 }: {
     contextAnchor: SessionActionsAnchor | null;
+    forceMoreAction?: boolean;
     onContextAnchorChange: (anchor: SessionActionsAnchor | null) => void;
+    onOrganize?: () => void;
     onStartSelection?: () => void;
     sessionId: string;
     statusLabel: string;
@@ -272,7 +276,7 @@ export const SessionRowActions = React.memo(function SessionRowActions({
     const session = useSession(sessionId);
     const quickActions = useSessionQuickActions(session!);
     const sessionArchived = session ? isSessionArchived(session) : false;
-    const useMoreAction = shouldUseSessionRowMoreAction(Platform.OS, viewportWidth, canHover);
+    const useMoreAction = forceMoreAction || shouldUseSessionRowMoreAction(Platform.OS, viewportWidth, canHover);
     const showInline = !useMoreAction && visible;
     const actionClusterRef = React.useRef<any>(null);
 
@@ -313,6 +317,14 @@ export const SessionRowActions = React.memo(function SessionRowActions({
     return (
         <View ref={actionClusterRef} style={styles.actionCluster}>
             <View style={styles.actions} testID={`session-row-actions-${sessionId}`}>
+                {onOrganize ? (
+                    <SessionRowActionButton
+                        icon="tag"
+                        label={t('sidebarLists.organizeSession')}
+                        onPress={handleAction(onOrganize)}
+                        testID={`organize-session-${sessionId}`}
+                    />
+                ) : null}
                 {showInline ? (
                     <>
                         <Text numberOfLines={1} style={styles.actionStatus} testID="session-row-hover-status">

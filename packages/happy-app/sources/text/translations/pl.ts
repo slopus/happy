@@ -32,6 +32,7 @@ export const pl: TranslationStructure = {
         placeholder: 'Wyślij jej słowa, zrzut rozmowy albo treść odpowiedzi, którą chcesz napisać',
         historyTitle: 'Historia rozmów',
         newConversation: 'Nowa rozmowa',
+        selectConversation: 'Wybierz rozmowę z paska bocznego lub rozpocznij nową.',
         deleteConversationAccessibility: 'Usuń rozmowę',
         deleteConfirmTitle: 'Usunąć tę rozmowę?',
         deleteConfirmMessage: 'Zapisane wiadomości z tej rozmowy z doradcą relacji zostaną usunięte z tego urządzenia.',
@@ -995,6 +996,7 @@ export const pl: TranslationStructure = {
         timelineTab: 'Oś czasu',
     },
     sidebarLists: {
+        folder: 'Folder', newFolder: 'Nowy folder', folderNamePlaceholder: 'Nazwa folderu', noFolder: 'Bez folderu', tagVisibility: 'Widoczność tagów', tagVisibilityOptions: { always: 'Zawsze', 'when-populated': 'Gdy zawiera elementy', hidden: 'Ukryte' }, sessionCount: ({ count }: { count: number }) => count === 1 ? '1 sesja' : count % 10 >= 2 && count % 10 <= 4 && (count % 100 < 12 || count % 100 > 14) ? `${count} sesje` : `${count} sesji`, hideNavigation: 'Ukryj nawigację list', showNavigation: 'Pokaż nawigację list', resizeNavigation: 'Zmień rozmiar nawigacji list',
         lists: 'Lists', tags: 'Tags', newList: 'New list', newTag: 'New tag', tagNamePlaceholder: 'Tag name', noTaggedSessions: 'No sessions use this tag yet.', noTags: 'No tags yet', agentList: 'Agent list', workspaceList: 'Workspace list', newSessionInList: 'New session in this list', emptyList: 'No sessions in this list yet.', unassigned: 'Unassigned', unassignedDescription: 'Sessions not in a list', organizeSession: 'Organize session', listName: 'List name', listNamePlaceholder: 'For example: Happy', duplicateListName: 'A list with this name already exists.', listType: 'List type', color: 'Color', defaultMachine: 'Default machine', defaultDirectory: 'Default directory', directoryPlaceholder: '~/projects/happy', defaultAgent: 'Default Agent', noPreset: 'No preset', agentPrompt: 'Agent prompt', agentPromptPlaceholder: 'Prompt applied when starting from this Agent list', belongsToList: 'List', tagsMultiSelect: 'Tags (select multiple)', selectedTags: 'Wybrane tagi', tagInputPlaceholder: 'Wpisz #, aby wyszukać lub utworzyć tag', createTagNamed: ({ name }: { name: string }) => `Utwórz ${name}`, tagLimitReached: 'Osiągnięto limit tagów', close: 'Close', editList: 'Edytuj listę', deleteList: 'Usuń listę', deleteListConfirm: ({ name }: { name: string }) => `Po usunięciu listy „${name}” jej sesje wrócą do Nieprzypisanych. Tagi pozostaną bez zmian.`, colors: { blue: 'Blue', green: 'Green', purple: 'Purple', orange: 'Orange', pink: 'Pink' },
     },
     sessionSearch: {

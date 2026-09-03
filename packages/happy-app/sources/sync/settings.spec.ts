@@ -101,6 +101,7 @@ describe('settings', () => {
 
         it('validates sidebar organization as an account-synced database setting', () => {
             const organization = {
+                folders: [],
                 lists: [{
                     id: 'list-1',
                     name: 'Happy',
@@ -119,12 +120,14 @@ describe('settings', () => {
 
             expect(settingsParse({ sidebarOrganization: organization }).sidebarOrganization).toEqual(organization);
             expect(settingsParse({ sidebarOrganization: 'device-only' }).sidebarOrganization).toEqual({
+                folders: [],
                 lists: [],
                 tags: [],
                 sessions: {},
             });
             expect(settingsParse({
                 sidebarOrganization: {
+                    folders: [],
                     lists: [...organization.lists, { id: 'broken', kind: 'future-kind' }],
                     tags: organization.tags,
                     sessions: organization.sessions,
@@ -366,7 +369,7 @@ describe('settings', () => {
                 agentDefaultOverrides: {},
                 sessionPinnedOrder: [],
                 sessionPinnedOrderRaw: null,
-                sidebarOrganization: { lists: [], tags: [], sessions: {} },
+                sidebarOrganization: { folders: [], lists: [], tags: [], sessions: {} },
                 sidebarOrganizationRaw: null,
                 dismissedCLIWarnings: { perMachine: {}, global: {} },
                 agents: [],
@@ -525,6 +528,7 @@ describe('settings', () => {
 
         it('preserves sidebar organization when an older server payload omits the field', () => {
             const organization = {
+                folders: [],
                 lists: [],
                 tags: [{ id: 'tag-1', name: '同步', color: 'green' as const, createdAt: 1 }],
                 sessions: { 'session-1': { listId: null, tagIds: ['tag-1'] } },
@@ -603,6 +607,7 @@ describe('settings', () => {
 
     describe('sidebar organization migration', () => {
         const legacyOrganization = {
+            folders: [],
             lists: [],
             tags: [{ id: 'tag-1', name: '本地标签', color: 'blue' as const, createdAt: 1 }],
             sessions: { 'session-1': { listId: null, tagIds: ['tag-1'] } },
@@ -696,7 +701,7 @@ describe('settings', () => {
 
             const payload = settingsToSyncPayload({
                 ...parsed,
-                sidebarOrganization: { lists: [knownList], tags: [], sessions: {} },
+                sidebarOrganization: { folders: [], lists: [knownList], tags: [], sessions: {} },
             });
 
             expect(payload.sidebarOrganization?.lists).toEqual([knownList, futureList]);
@@ -705,6 +710,7 @@ describe('settings', () => {
 
         it('preserves additive future fields on known sidebar records', () => {
             const rawOrganization = {
+                folders: [],
                 lists: [{
                     id: 'known-list',
                     name: 'Known',

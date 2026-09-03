@@ -5,6 +5,7 @@ import {
     isValidSidebarOrganizationPayload,
     serializeSidebarOrganizationWithRaw,
     isSidebarOrganizationEmpty,
+    normalizeSidebarOrganization,
     SidebarOrganizationSchema,
     type SidebarOrganization,
 } from './sidebarOrganization';
@@ -306,9 +307,9 @@ export function resolveSidebarOrganizationMigration(
         return { organization: currentOrganization, shouldUpload: false };
     }
 
-    const organization = isSidebarOrganizationEmpty(currentOrganization)
+    const organization = normalizeSidebarOrganization(isSidebarOrganizationEmpty(currentOrganization)
         ? legacyLocalOrganization
-        : currentOrganization;
+        : currentOrganization);
     return {
         organization,
         shouldUpload: !isSidebarOrganizationEmpty(organization),

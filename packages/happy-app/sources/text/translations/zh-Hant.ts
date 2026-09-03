@@ -23,6 +23,7 @@ export const zhHant: TranslationStructure = {
         placeholder: '把她說的話、聊天截圖或你想回覆的內容傳來',
         historyTitle: '歷史對話',
         newConversation: '新增對話',
+        selectConversation: '從側邊欄選擇對話，或新增對話。',
         deleteConversationAccessibility: '刪除對話',
         deleteConfirmTitle: '刪除這段對話？',
         deleteConfirmMessage: '這段狗頭軍師對話及其中的訊息會從這台裝置刪除。',
@@ -979,6 +980,10 @@ export const zhHant: TranslationStructure = {
         timelineTab: '時間軸',
     },
     sidebarLists: {
+        folder: '資料夾', newFolder: '新增資料夾', folderNamePlaceholder: '資料夾名稱', noFolder: '無資料夾',
+        tagVisibility: 'Tag 顯示', tagVisibilityOptions: { always: '一律顯示', 'when-populated': '有內容時顯示', hidden: '隱藏' },
+        sessionCount: ({ count }: { count: number }) => `${count} 個會話`,
+        hideNavigation: '隱藏清單導覽', showNavigation: '顯示清單導覽', resizeNavigation: '調整清單導覽大小',
         lists: '清單', tags: 'Tag', newList: '新增清單', newTag: '新增 Tag', tagNamePlaceholder: 'Tag 名稱',
         noTaggedSessions: '還沒有會話使用這個 Tag。', noTags: '還沒有 Tag', agentList: 'Agent 清單', workspaceList: '工作區清單',
         newSessionInList: '在此清單新增會話', emptyList: '這個清單還沒有會話。', unassigned: '未分類', unassignedDescription: '尚未加入清單的會話',

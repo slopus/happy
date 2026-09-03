@@ -23,6 +23,7 @@ export const zhHans: TranslationStructure = {
         placeholder: '把她说的话、聊天截图或你想回的内容发来',
         historyTitle: '历史对话',
         newConversation: '新建对话',
+        selectConversation: '从侧边栏选择一个对话，或新建对话。',
         deleteConversationAccessibility: '删除对话',
         deleteConfirmTitle: '删除这段对话？',
         deleteConfirmMessage: '这段狗头军师对话及其中的消息会从这台设备删除。',
@@ -980,6 +981,10 @@ export const zhHans: TranslationStructure = {
         timelineTab: '时间线',
     },
     sidebarLists: {
+        folder: '文件夹', newFolder: '新建文件夹', folderNamePlaceholder: '文件夹名称', noFolder: '无文件夹',
+        tagVisibility: 'Tag 显示', tagVisibilityOptions: { always: '始终显示', 'when-populated': '有内容时显示', hidden: '隐藏' },
+        sessionCount: ({ count }: { count: number }) => `${count} 个会话`,
+        hideNavigation: '隐藏清单导航', showNavigation: '显示清单导航', resizeNavigation: '调整清单导航大小',
         lists: '清单', tags: 'Tag', newList: '新建清单', newTag: '新建 Tag', tagNamePlaceholder: 'Tag 名称',
         noTaggedSessions: '还没有会话使用这个 Tag。', noTags: '还没有 Tag', agentList: 'Agent 清单', workspaceList: '工作区清单',
         newSessionInList: '在此清单中新建会话', emptyList: '这个清单还没有会话。', unassigned: '未归类', unassignedDescription: '尚未加入清单的会话',

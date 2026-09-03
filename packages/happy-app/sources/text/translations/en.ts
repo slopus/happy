@@ -36,6 +36,7 @@ export const en: TranslationStructure = {
         placeholder: 'Send what they said, a chat screenshot, or the reply you want to write',
         historyTitle: 'Conversation history',
         newConversation: 'New conversation',
+        selectConversation: 'Select a conversation from the sidebar, or start a new one.',
         deleteConversationAccessibility: 'Delete conversation',
         deleteConfirmTitle: 'Delete this conversation?',
         deleteConfirmMessage: 'Saved Relationship Advisor messages in this conversation will be deleted from this device.',
@@ -993,6 +994,10 @@ export const en: TranslationStructure = {
         timelineTab: 'Timeline',
     },
     sidebarLists: {
+        folder: 'Folder', newFolder: 'New folder', folderNamePlaceholder: 'Folder name', noFolder: 'No folder',
+        tagVisibility: 'Tag visibility', tagVisibilityOptions: { always: 'Always', 'when-populated': 'When populated', hidden: 'Hidden' },
+        sessionCount: ({ count }: { count: number }) => count === 1 ? '1 session' : `${count} sessions`,
+        hideNavigation: 'Hide list navigation', showNavigation: 'Show list navigation', resizeNavigation: 'Resize list navigation',
         lists: 'Lists', tags: 'Tags', newList: 'New list', newTag: 'New tag', tagNamePlaceholder: 'Tag name',
         noTaggedSessions: 'No sessions use this tag yet.', noTags: 'No tags yet', agentList: 'Agent list', workspaceList: 'Workspace list',
         newSessionInList: 'New session in this list', emptyList: 'No sessions in this list yet.', unassigned: 'Unassigned', unassignedDescription: 'Sessions not in a list',

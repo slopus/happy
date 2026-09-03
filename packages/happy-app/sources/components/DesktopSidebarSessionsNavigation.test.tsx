@@ -17,6 +17,8 @@ const mocks = vi.hoisted(() => ({
     moveToPinned: vi.fn(),
     pinnedOrder: [] as string[],
     organization: null as any,
+    organizationCollapsed: false,
+    organizationWidth: 220,
 }));
 
 vi.mock('react-native', async () => {
@@ -93,22 +95,54 @@ vi.mock('@/sync/storage', async () => {
     const ReactModule = await import('react');
     return {
         useAllMachines: () => [{ id: 'mac', active: true, lastActiveAt: Date.now(), metadata: { displayName: 'Mac mini', homeDir: '/Users/test' } }],
-        useLocalSettingMutable: (name: string) => ReactModule.useState(name === 'desktopSidebarMode' ? 'projects' : mocks.organization),
+        useLocalSettingMutable: (key: string) => {
+            if (key === 'desktopSidebarOrganizationCollapsed') {
+                return ReactModule.useState(mocks.organizationCollapsed);
+            }
+            if (key === 'desktopSidebarOrganizationWidth') {
+                return ReactModule.useState(mocks.organizationWidth);
+            }
+            return ReactModule.useState('when-populated');
+        },
         useSetting: () => mocks.organization,
         useSettingUpdater: () => mocks.updateOrganization,
     };
 });
 vi.mock('@/text', () => ({ t: (key: string) => key }));
 vi.mock('./MainView', () => ({ MainView: 'MainView' }));
-vi.mock('./ActiveSessionsGroupCompact', () => ({ CompactSessionRow: 'CompactSessionRow' }));
+vi.mock('./ActiveSessionsGroupCompact', async () => {
+    const ReactModule = await import('react');
+    return {
+        CompactSessionRow: ({ onOrganize, session }: any) => ReactModule.createElement(
+            'View',
+            { testID: `session-row-${session.id}` },
+            ReactModule.createElement('Pressable', { onPress: () => onOrganize?.(session), testID: `organize-session-${session.id}` }),
+        ),
+        STATUS_CONFIG: {
+            idle: { color: '#666', dotColor: '#999', isPulsing: false },
+            running: { color: '#078', dotColor: '#078', isPulsing: true },
+            permission_required: { color: '#c80', dotColor: '#c80', isPulsing: true },
+            failed: { color: '#c00', dotColor: '#c00', isPulsing: false },
+            completed: { color: '#080', dotColor: '#080', isPulsing: false },
+        },
+    };
+});
+vi.mock('./ProjectSectionHeader', async () => {
+    const ReactModule = await import('react');
+    return {
+        ProjectSectionHeader: ({ onToggle, testID }: any) => ReactModule.createElement('Pressable', { onPress: onToggle, testID }),
+    };
+});
 vi.mock('./SessionConfigPanel', () => ({ PathPickerContent: 'PathPickerContent', PickerContent: 'PickerContent' }));
 vi.mock('@/utils/machineUtils', () => ({ isMachineOnline: () => true }));
-vi.mock('@/utils/sessionUtils', () => ({ formatPathRelativeToHome: (path: string) => path }));
+vi.mock('@/utils/sessionUtils', () => ({ formatPathRelativeToHome: (path: string) => path, getSessionStateLabel: (state: string) => state }));
+vi.mock('@/utils/responsive', () => ({ useIsTablet: () => true }));
 
 describe('DesktopSidebarSessionsNavigation', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         mocks.organization = {
+            folders: [],
             lists: [
                 { id: 'happy', name: 'Happy', kind: 'workspace', color: 'blue', machineId: 'mac', path: '~/happy', defaultAgent: 'codex', createdAt: 1 },
                 { id: 'advisor', name: 'Advisor', kind: 'agent', color: 'pink', createdAt: 2 },
@@ -117,17 +151,17 @@ describe('DesktopSidebarSessionsNavigation', () => {
             sessions: { 'session-1': { listId: 'happy', tagIds: ['product'] } },
         };
         mocks.pinnedOrder = [];
+        mocks.organizationCollapsed = false;
+        mocks.organizationWidth = 220;
     });
 
-    it('keeps Projects as default and does not navigate for sidebar-only organization actions', () => {
+    it('renders the organization and session panes together without legacy mode Tabs', () => {
         let renderer: any;
-        act(() => { renderer = TestRenderer.create(<DesktopSidebarSessionsNavigation />); });
+        act(() => { renderer = TestRenderer.create(<DesktopSidebarSessionsNavigation desktopDensity />); });
 
-        expect(renderer.root.findAllByType('MainView')).toHaveLength(1);
-        expect(renderer.root.findByProps({ testID: 'desktop-sidebar-tab-projects' }).props.accessibilityState).toEqual({ selected: true });
-
-        act(() => renderer.root.findByProps({ testID: 'desktop-sidebar-tab-lists' }).props.onPress());
-        expect(renderer.root.findAllByType('MainView')).toHaveLength(0);
+        expect(renderer.root.findByProps({ testID: 'sidebar-organization-pane' })).toBeDefined();
+        expect(renderer.root.findByProps({ testID: 'sidebar-session-pane' })).toBeDefined();
+        expect(renderer.root.findAllByProps({ testID: 'desktop-sidebar-tab-projects' })).toHaveLength(0);
         expect(renderer.root.findByType('FlatList').props).toMatchObject({
             initialNumToRender: 18,
             maxToRenderPerBatch: 12,
@@ -135,43 +169,87 @@ describe('DesktopSidebarSessionsNavigation', () => {
         });
 
         act(() => renderer.root.findByProps({ testID: 'sidebar-list-happy' }).props.onPress());
+        expect(renderer.root.findByProps({ testID: 'sidebar-list-happy' }).props['aria-selected']).toBe(true);
         act(() => renderer.root.findByProps({ testID: 'sidebar-tag-product' }).props.onPress());
-        act(() => renderer.root.findByProps({ testID: 'pin-organized-session-session-1' }).props.onPress());
-
-        expect(mocks.moveToPinned).toHaveBeenCalledWith('session-1');
+        expect(renderer.root.findByProps({ testID: 'sidebar-tag-product' }).props['aria-selected']).toBe(true);
+        expect(renderer.root.findByProps({ testID: 'organize-session-session-1' })).toBeDefined();
         expect(mocks.navigate).not.toHaveBeenCalled();
         expect(mocks.navigateToSession).not.toHaveBeenCalled();
         act(() => renderer.unmount());
     });
 
-    it('exposes Timeline beside Projects and Lists as a top-level view', () => {
+    it('uses Timeline as a first-class flat organization row', () => {
         let renderer: any;
-        act(() => { renderer = TestRenderer.create(<DesktopSidebarSessionsNavigation />); });
+        act(() => { renderer = TestRenderer.create(<DesktopSidebarSessionsNavigation desktopDensity />); });
 
-        act(() => renderer.root.findByProps({ testID: 'desktop-sidebar-tab-timeline' }).props.onPress());
+        expect(renderer.root.findByProps({ testID: 'sidebar-organization-timeline' }).props['aria-selected']).toBe(true);
+        expect(renderer.root.findByProps({ testID: 'sidebar-session-pane' })).toBeDefined();
+        act(() => renderer.unmount());
+    });
 
-        expect(renderer.root.findByProps({ testID: 'desktop-sidebar-tab-timeline' }).props.accessibilityState).toEqual({ selected: true });
-        expect(renderer.root.findByType('MainView').props.sessionListLayout).toBe('time');
+    it('collapses only the organization pane and keeps the session list available', () => {
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<DesktopSidebarSessionsNavigation desktopDensity />); });
+
+        const collapse = () => renderer.root.findByProps({ testID: 'sidebar-organization-collapse-button' });
+        expect(collapse().props['aria-expanded']).toBe(true);
+        expect(renderer.root.findAllByProps({ testID: 'sidebar-organization-pane' })).toHaveLength(1);
+        expect(renderer.root.findAllByProps({ testID: 'sidebar-session-pane' })).toHaveLength(1);
+
+        act(() => collapse().props.onPress());
+        expect(collapse().props['aria-expanded']).toBe(false);
+        expect(collapse().props.accessibilityLabel).toBe('sidebarLists.showNavigation');
+        expect(renderer.root.findAllByProps({ testID: 'sidebar-organization-pane' })).toHaveLength(0);
+        expect(renderer.root.findAllByProps({ testID: 'sidebar-organization-resize-handle' })).toHaveLength(0);
+        expect(renderer.root.findAllByProps({ testID: 'sidebar-session-pane' })).toHaveLength(1);
+
+        act(() => collapse().props.onPress());
+        expect(renderer.root.findAllByProps({ testID: 'sidebar-organization-pane' })).toHaveLength(1);
+        act(() => renderer.unmount());
+    });
+
+    it('resizes the organization pane by pointer and keyboard within its limits', () => {
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<DesktopSidebarSessionsNavigation desktopDensity />); });
+
+        const handle = () => renderer.root.findByProps({ testID: 'sidebar-organization-resize-handle' });
+        expect(handle().props['aria-valuenow']).toBe(220);
+        act(() => {
+            handle().props.onResponderGrant({ nativeEvent: { pageX: 220 } });
+            handle().props.onResponderMove({ nativeEvent: { pageX: 260 } });
+        });
+        expect(handle().props['aria-valuenow']).toBe(260);
+        act(() => handle().props.onResponderRelease());
+
+        act(() => handle().props.onKeyDown({ key: 'End', preventDefault: vi.fn(), stopPropagation: vi.fn() }));
+        expect(handle().props['aria-valuenow']).toBe(320);
+        act(() => handle().props.onKeyDown({ key: 'Home', preventDefault: vi.fn(), stopPropagation: vi.fn() }));
+        expect(handle().props['aria-valuenow']).toBe(176);
+
         act(() => renderer.unmount());
     });
 
     it('shows pinned conversations in their own Lists section without duplicating them', () => {
         mocks.pinnedOrder = ['session-1'];
         let renderer: any;
-        act(() => { renderer = TestRenderer.create(<DesktopSidebarSessionsNavigation />); });
-        act(() => renderer.root.findByProps({ testID: 'desktop-sidebar-tab-lists' }).props.onPress());
+        act(() => { renderer = TestRenderer.create(<DesktopSidebarSessionsNavigation desktopDensity />); });
 
-        expect(renderer.root.findByProps({ testID: 'sidebar-pinned-section' })).toBeDefined();
-        expect(renderer.root.findAllByType('CompactSessionRow')).toHaveLength(1);
-        expect(renderer.root.findByType('CompactSessionRow').props.session.id).toBe('session-1');
-        expect(renderer.root.findAllByProps({ testID: 'organized-session-session-1' })).toHaveLength(0);
+        expect(renderer.root.findByProps({ testID: 'sidebar-organization-timeline' }).findAllByType('Text').at(-1)?.props.children).toBe(0);
+        expect(renderer.root.findByProps({ testID: 'sidebar-organization-pinned' }).findAllByType('Text').at(-1)?.props.children).toBe(1);
+        expect(renderer.root.findByProps({ testID: 'sidebar-list-happy' }).findAllByType('Text').at(-1)?.props.children).toBe(0);
+        expect(renderer.root.findByProps({ testID: 'sidebar-tag-product' }).findAllByType('Text').at(-1)?.props.children).toBe(0);
+        act(() => renderer.root.findByProps({ testID: 'sidebar-organization-pinned' }).props.onPress());
+
+        expect(renderer.root.findAllByProps({ testID: 'session-row-session-1' }).length).toBeGreaterThan(0);
+        act(() => renderer.root.findByProps({ testID: 'sidebar-list-happy' }).props.onPress());
+        expect(renderer.root.findAllByProps({ testID: 'session-row-session-1' })).toHaveLength(0);
         act(() => renderer.unmount());
     });
 
     it('carries the owning List into the explicit new-session route', () => {
         let renderer: any;
-        act(() => { renderer = TestRenderer.create(<DesktopSidebarSessionsNavigation />); });
-        act(() => renderer.root.findByProps({ testID: 'desktop-sidebar-tab-lists' }).props.onPress());
+        act(() => { renderer = TestRenderer.create(<DesktopSidebarSessionsNavigation desktopDensity />); });
+        act(() => renderer.root.findByProps({ testID: 'sidebar-list-happy' }).props.onPress());
 
         const createButton = renderer.root.findByProps({ testID: 'sidebar-new-session-happy' });
         act(() => createButton.props.onPress());
@@ -188,8 +266,7 @@ describe('DesktopSidebarSessionsNavigation', () => {
 
     it('searches with # and creates a Tag only when the organizer is saved', () => {
         let renderer: any;
-        act(() => { renderer = TestRenderer.create(<DesktopSidebarSessionsNavigation />); });
-        act(() => renderer.root.findByProps({ testID: 'desktop-sidebar-tab-lists' }).props.onPress());
+        act(() => { renderer = TestRenderer.create(<DesktopSidebarSessionsNavigation desktopDensity />); });
         act(() => renderer.root.findByProps({ testID: 'organize-session-session-1' }).props.onPress());
 
         const input = renderer.root.findByProps({ testID: 'organize-tag-input' });
@@ -203,6 +280,7 @@ describe('DesktopSidebarSessionsNavigation', () => {
         act(() => renderer.root.findByProps({ testID: 'organize-session-save' }).props.onPress());
         const save = mocks.updateOrganization.mock.calls.at(-1)?.[0];
         const next = save({
+            folders: [],
             lists: [{ id: 'happy', name: 'Happy', kind: 'workspace', color: 'blue', machineId: 'mac', path: '~/happy', defaultAgent: 'codex', createdAt: 1 }],
             tags: [{ id: 'product', name: 'product', color: 'green', createdAt: 1 }],
             sessions: { 'session-1': { listId: 'happy', tagIds: ['product'] } },
@@ -215,8 +293,7 @@ describe('DesktopSidebarSessionsNavigation', () => {
 
     it('discards a newly drafted Tag when the organizer is cancelled', () => {
         let renderer: any;
-        act(() => { renderer = TestRenderer.create(<DesktopSidebarSessionsNavigation />); });
-        act(() => renderer.root.findByProps({ testID: 'desktop-sidebar-tab-lists' }).props.onPress());
+        act(() => { renderer = TestRenderer.create(<DesktopSidebarSessionsNavigation desktopDensity />); });
         act(() => renderer.root.findByProps({ testID: 'organize-session-session-1' }).props.onPress());
         act(() => renderer.root.findByProps({ testID: 'organize-tag-input' }).props.onChangeText('#temporary'));
         act(() => renderer.root.findByProps({ testID: 'organize-create-tag' }).props.onPress());
@@ -234,13 +311,13 @@ describe('DesktopSidebarSessionsNavigation', () => {
             createdAt: index,
         }));
         mocks.organization = {
+            folders: [],
             lists: [],
             tags: [...selectedTags, { id: 'available', name: 'available', color: 'green', createdAt: 101 }],
             sessions: { 'session-1': { listId: null, tagIds: selectedTags.map((tag) => tag.id) } },
         };
         let renderer: any;
-        act(() => { renderer = TestRenderer.create(<DesktopSidebarSessionsNavigation />); });
-        act(() => renderer.root.findByProps({ testID: 'desktop-sidebar-tab-lists' }).props.onPress());
+        act(() => { renderer = TestRenderer.create(<DesktopSidebarSessionsNavigation desktopDensity />); });
         act(() => renderer.root.findByProps({ testID: 'organize-session-session-1' }).props.onPress());
 
         act(() => renderer.root.findByProps({ testID: 'organize-tag-input' }).props.onChangeText('#available'));
@@ -256,8 +333,7 @@ describe('DesktopSidebarSessionsNavigation', () => {
 
     it('opens the List editor from the pencil and uses remote machine and directory pickers', () => {
         let renderer: any;
-        act(() => { renderer = TestRenderer.create(<DesktopSidebarSessionsNavigation />); });
-        act(() => renderer.root.findByProps({ testID: 'desktop-sidebar-tab-lists' }).props.onPress());
+        act(() => { renderer = TestRenderer.create(<DesktopSidebarSessionsNavigation desktopDensity />); });
         act(() => renderer.root.findByProps({ testID: 'sidebar-edit-list-happy' }).props.onPress());
 
         expect(renderer.root.findByProps({ testID: 'sidebar-list-name-input' }).props.value).toBe('Happy');
@@ -266,7 +342,7 @@ describe('DesktopSidebarSessionsNavigation', () => {
             machineId: 'mac',
             manualInput: false,
         });
-        expect(renderer.root.findByProps({ testID: 'sidebar-delete-list-happy' }).props).toMatchObject({
+        expect(renderer.root.findByProps({ testID: 'sidebar-delete-list' }).props).toMatchObject({
             accessibilityRole: 'button',
         });
         act(() => renderer.root.findByProps({ testID: 'sidebar-list-directory-none' }).props.onPress());
@@ -278,8 +354,7 @@ describe('DesktopSidebarSessionsNavigation', () => {
 
     it('creates a Workspace List from selected machine and remote directory values', () => {
         let renderer: any;
-        act(() => { renderer = TestRenderer.create(<DesktopSidebarSessionsNavigation />); });
-        act(() => renderer.root.findByProps({ testID: 'desktop-sidebar-tab-lists' }).props.onPress());
+        act(() => { renderer = TestRenderer.create(<DesktopSidebarSessionsNavigation desktopDensity />); });
         act(() => renderer.root.findByProps({ testID: 'sidebar-create-list-button' }).props.onPress());
         act(() => renderer.root.findByProps({ testID: 'sidebar-list-name-input' }).props.onChangeText('Remote project'));
         act(() => renderer.root.findByProps({ testID: 'sidebar-list-machine-picker' }).findByType('PickerContent').props.onSelect('mac'));
@@ -287,7 +362,7 @@ describe('DesktopSidebarSessionsNavigation', () => {
         act(() => renderer.root.findByProps({ testID: 'sidebar-create-list-submit' }).props.onPress());
 
         const create = mocks.updateOrganization.mock.calls.at(-1)?.[0];
-        const created = create({ lists: [], tags: [], sessions: {} });
+        const created = create({ folders: [], lists: [], tags: [], sessions: {} });
         expect(created.lists).toEqual([expect.objectContaining({
             kind: 'workspace',
             machineId: 'mac',
@@ -299,14 +374,14 @@ describe('DesktopSidebarSessionsNavigation', () => {
 
     it('renames and deletes Lists without launching a conversation', async () => {
         let renderer: any;
-        act(() => { renderer = TestRenderer.create(<DesktopSidebarSessionsNavigation />); });
-        act(() => renderer.root.findByProps({ testID: 'desktop-sidebar-tab-lists' }).props.onPress());
+        act(() => { renderer = TestRenderer.create(<DesktopSidebarSessionsNavigation desktopDensity />); });
         act(() => renderer.root.findByProps({ testID: 'sidebar-edit-list-happy' }).props.onPress());
         act(() => renderer.root.findByProps({ testID: 'sidebar-list-name-input' }).props.onChangeText('Happy renamed'));
         act(() => renderer.root.findByProps({ testID: 'sidebar-edit-list-submit' }).props.onPress());
 
         const rename = mocks.updateOrganization.mock.calls.at(-1)?.[0];
         const current = {
+            folders: [],
             lists: [
                 { id: 'happy', name: 'Happy', kind: 'workspace', color: 'blue', machineId: 'mac', path: '~/happy', defaultAgent: 'codex', createdAt: 1 },
                 { id: 'advisor', name: 'Advisor', kind: 'agent', color: 'pink', createdAt: 2 },
@@ -318,7 +393,7 @@ describe('DesktopSidebarSessionsNavigation', () => {
 
         mocks.confirm.mockResolvedValueOnce(true);
         await act(async () => {
-            renderer.root.findByProps({ testID: 'sidebar-delete-list-happy' }).props.onPress();
+            renderer.root.findByProps({ testID: 'sidebar-delete-list' }).props.onPress();
             await Promise.resolve();
             await Promise.resolve();
         });
@@ -332,8 +407,7 @@ describe('DesktopSidebarSessionsNavigation', () => {
 
     it('launches Agent Lists in Ask mode without injecting a built-in prompt', () => {
         let renderer: any;
-        act(() => { renderer = TestRenderer.create(<DesktopSidebarSessionsNavigation />); });
-        act(() => renderer.root.findByProps({ testID: 'desktop-sidebar-tab-lists' }).props.onPress());
+        act(() => { renderer = TestRenderer.create(<DesktopSidebarSessionsNavigation desktopDensity />); });
         act(() => renderer.root.findByProps({ testID: 'sidebar-list-advisor' }).props.onPress());
         act(() => renderer.root.findByProps({ testID: 'sidebar-edit-list-advisor' }).props.onPress());
         expect(renderer.root.findAllByProps({ accessibilityLabel: 'newSession.askMode' })[0].props.accessibilityState).toEqual({ checked: true, disabled: true });
@@ -348,6 +422,42 @@ describe('DesktopSidebarSessionsNavigation', () => {
             pathname: '/new',
             params: { sidebarListId: 'advisor' },
         });
+        act(() => renderer.unmount());
+    });
+
+    it('uses organization then sessions as two mobile drawer steps with a working back action', () => {
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<DesktopSidebarSessionsNavigation desktopDensity={false} />); });
+
+        expect(renderer.root.findAllByProps({ testID: 'sidebar-organization-pane' })).toHaveLength(1);
+        expect(renderer.root.findAllByProps({ testID: 'sidebar-session-pane' })).toHaveLength(0);
+        act(() => renderer.root.findByProps({ testID: 'sidebar-list-happy' }).props.onPress());
+        expect(renderer.root.findAllByProps({ testID: 'sidebar-organization-pane' })).toHaveLength(0);
+        expect(renderer.root.findAllByProps({ testID: 'sidebar-session-pane' })).toHaveLength(1);
+        act(() => renderer.root.findByProps({ testID: 'sidebar-session-pane-back' }).props.onPress());
+        expect(renderer.root.findAllByProps({ testID: 'sidebar-organization-pane' })).toHaveLength(1);
+        act(() => renderer.unmount());
+    });
+
+    it('expands folders and renders the Tag visibility controls as a mobile sheet', () => {
+        mocks.organization = {
+            ...mocks.organization,
+            folders: [{ id: 'work', name: 'Work', createdAt: 1 }],
+            lists: mocks.organization.lists.map((list: any) => ({ ...list, folderId: 'work' })),
+        };
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<DesktopSidebarSessionsNavigation desktopDensity={false} />); });
+
+        expect(renderer.root.findAllByProps({ testID: 'sidebar-list-happy' }).length).toBeGreaterThan(0);
+        act(() => renderer.root.findByProps({ testID: 'sidebar-folder-work' }).props.onPress());
+        expect(renderer.root.findAllByProps({ testID: 'sidebar-list-happy' })).toHaveLength(0);
+
+        act(() => renderer.root.findByProps({ testID: 'sidebar-tags-visibility-button' }).props.onPress());
+        expect(renderer.root.findAllByProps({ testID: 'sidebar-tags-visibility-sheet' })).toHaveLength(1);
+        expect(renderer.root.findByProps({ testID: 'sidebar-tags-visibility-when-populated' }).props.accessibilityState)
+            .toEqual({ checked: true });
+        act(() => renderer.root.findByProps({ testID: 'sidebar-tags-visibility-hidden' }).props.onPress());
+        expect(renderer.root.findAllByProps({ testID: 'sidebar-tags-visibility-sheet' })).toHaveLength(0);
         act(() => renderer.unmount());
     });
 

@@ -21,6 +21,7 @@ export const ca: TranslationStructure = {
         placeholder: 'Envia què t\'ha dit, una captura del xat o la resposta que vols escriure',
         historyTitle: 'Historial de converses',
         newConversation: 'Conversa nova',
+        selectConversation: 'Selecciona una conversa a la barra lateral o inicia\'n una de nova.',
         deleteConversationAccessibility: 'Suprimeix la conversa',
         deleteConfirmTitle: 'Voleu suprimir aquesta conversa?',
         deleteConfirmMessage: 'Els missatges desats d’aquesta conversa amb el conseller sentimental se suprimiran d’aquest dispositiu.',
@@ -979,6 +980,7 @@ export const ca: TranslationStructure = {
         timelineTab: 'Cronologia',
     },
     sidebarLists: {
+        folder: 'Carpeta', newFolder: 'Carpeta nova', folderNamePlaceholder: 'Nom de la carpeta', noFolder: 'Sense carpeta', tagVisibility: 'Visibilitat de les etiquetes', tagVisibilityOptions: { always: 'Sempre', 'when-populated': 'Quan hi hagi contingut', hidden: 'Ocult' }, sessionCount: ({ count }: { count: number }) => count === 1 ? '1 sessió' : `${count} sessions`, hideNavigation: 'Amaga la navegació de llistes', showNavigation: 'Mostra la navegació de llistes', resizeNavigation: 'Canvia la mida de la navegació de llistes',
         lists: 'Lists', tags: 'Tags', newList: 'New list', newTag: 'New tag', tagNamePlaceholder: 'Tag name', noTaggedSessions: 'No sessions use this tag yet.', noTags: 'No tags yet', agentList: 'Agent list', workspaceList: 'Workspace list', newSessionInList: 'New session in this list', emptyList: 'No sessions in this list yet.', unassigned: 'Unassigned', unassignedDescription: 'Sessions not in a list', organizeSession: 'Organize session', listName: 'List name', listNamePlaceholder: 'For example: Happy', duplicateListName: 'A list with this name already exists.', listType: 'List type', color: 'Color', defaultMachine: 'Default machine', defaultDirectory: 'Default directory', directoryPlaceholder: '~/projects/happy', defaultAgent: 'Default Agent', noPreset: 'No preset', agentPrompt: 'Agent prompt', agentPromptPlaceholder: 'Prompt applied when starting from this Agent list', belongsToList: 'List', tagsMultiSelect: 'Tags (select multiple)', selectedTags: 'Etiquetes seleccionades', tagInputPlaceholder: 'Escriviu # per cercar o crear una etiqueta', createTagNamed: ({ name }: { name: string }) => `Crea ${name}`, tagLimitReached: "S'ha assolit el límit d'etiquetes", close: 'Close', editList: 'Edita la llista', deleteList: 'Elimina la llista', deleteListConfirm: ({ name }: { name: string }) => `En eliminar la llista «${name}», les seves sessions tornaran a Sense assignar. Les etiquetes no es veuran afectades.`, colors: { blue: 'Blue', green: 'Green', purple: 'Purple', orange: 'Orange', pink: 'Pink' },
     },
     sessionSearch: {

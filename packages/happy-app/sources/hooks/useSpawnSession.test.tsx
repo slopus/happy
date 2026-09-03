@@ -195,9 +195,10 @@ describe('useSpawnSession', () => {
             await hook.current().spawnSession({ ...args, sidebarListId: 'happy-list' });
         });
 
-        const list = { id: 'happy-list', name: 'Happy', kind: 'workspace', color: 'blue', machineId: 'machine-1', path: '~/work', defaultAgent: 'codex', createdAt: 1 };
+        const list = { id: 'happy-list', name: 'Happy', kind: 'workspace', color: 'blue', machineId: 'machine-1', path: '~/work', defaultAgent: 'codex', folderId: null, createdAt: 1 };
         expect(mocks.applySettings).toHaveBeenCalledWith({
             sidebarOrganization: {
+                folders: [],
                 lists: [list],
                 tags: [],
                 sessions: { 'session-1': { listId: 'happy-list', tagIds: [] } },

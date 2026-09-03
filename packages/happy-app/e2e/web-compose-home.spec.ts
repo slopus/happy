@@ -3,6 +3,7 @@ import fs, { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path, { join } from 'node:path';
 import { io } from 'socket.io-client';
+import { pluginPackages } from '@paws/plugins/catalog';
 import { decodeBase64, decryptBlob, decryptLegacy, encodeBase64, encryptLegacy } from '../../happy-cli/src/api/encryption';
 import { deriveKey } from '../../happy-cli/src/utils/deriveKey';
 import {
@@ -2802,20 +2803,65 @@ test('左栏稳定导航、机器项目分组与折叠共同保持当前会话�
 });
 
 test('[RELATIONSHIP-ADVISOR-HISTORY] 军师对话写入左栏且 PC Agent 使用紧凑弹层', async ({ page }, testInfo) => {
+    test.setTimeout(360_000);
     const nestedButtonErrors: string[] = [];
     page.on('console', (message) => {
         const text = message.text();
         if (message.type() === 'error' && text.includes('cannot contain a nested')) nestedButtonErrors.push(text);
     });
+    await page.addInitScript(() => {
+        const key = 'mmkv.default\\local-settings';
+        const current = JSON.parse(window.localStorage.getItem(key) ?? '{}');
+        window.localStorage.setItem(key, JSON.stringify({ ...current, themePreference: 'dark', themePack: 'gingham' }));
+    });
+    await page.emulateMedia({ colorScheme: 'dark' });
     await page.setViewportSize({ width: 1280, height: 900 });
-    await page.goto(authenticatedRoute('/relationship-advisor'));
+    await page.route('**/v1/plugins', async (route) => {
+        await route.fulfill({
+            contentType: 'application/json',
+            status: 200,
+            body: JSON.stringify({
+                plugins: pluginPackages.map(({ manifest }) => ({
+                    manifest,
+                    status: manifest.id === 'relationship-advisor'
+                        ? {
+                            installed: true,
+                            version: manifest.version,
+                            grantedPermissions: [...manifest.permissions],
+                            configuration: {
+                                baseUrl: 'https://api.example.com/v1',
+                                model: 'example/model-mini',
+                            },
+                            secretHints: { apiKey: 'LLPq' },
+                        }
+                        : { installed: false },
+                })),
+            }),
+        });
+    });
+    await page.goto(authenticatedRoute('/'));
+    await expect(page.getByTestId('sidebar-conversation-history-button')).toBeVisible({ timeout: 20_000 });
+    await page.getByTestId('sidebar-conversation-history-button').click();
+    await expect(page).toHaveURL((url) => url.pathname === '/relationship-advisor' && !url.searchParams.has('conversationId'));
 
     const advisorComposer = page.getByRole('textbox', {
         name: 'Send what they said, a chat screenshot, or the reply you want to write',
     });
     const history = page.getByTestId('relationship-advisor-sidebar-history');
-    await expect(advisorComposer).toBeVisible({ timeout: 20_000 });
     await expect(history).toBeVisible();
+    await expect(page.getByTestId('relationship-advisor-conversation-selection')).toBeVisible();
+    await expect(page.getByTestId('sidebar-session-pane')).toHaveCount(0);
+    await expect(advisorComposer).toHaveCount(0);
+    await pauseForRecordedReview(page, 1_000);
+
+    const indexScreenshot = process.env.HAPPY_RELATIONSHIP_HISTORY_EVIDENCE_DIR
+        ? path.join(process.env.HAPPY_RELATIONSHIP_HISTORY_EVIDENCE_DIR, 'case-0-after-plugin-index.png')
+        : testInfo.outputPath('case-0-after-plugin-index.png');
+    fs.mkdirSync(path.dirname(indexScreenshot), { recursive: true });
+    await page.screenshot({ path: indexScreenshot, fullPage: true });
+
+    await page.getByTestId('relationship-advisor-new-conversation').click();
+    await expect(advisorComposer).toBeVisible({ timeout: 20_000 });
     await expect.poll(() => new URL(page.url()).searchParams.get('conversationId')).not.toBeNull();
     const firstUrl = page.url();
     const firstId = new URL(firstUrl).searchParams.get('conversationId');
@@ -2823,7 +2869,7 @@ test('[RELATIONSHIP-ADVISOR-HISTORY] 军师对话写入左栏且 PC Agent 使用
     await expect(page.getByTestId(`relationship-advisor-history-${firstId}`)).toBeVisible();
 
     await page.reload();
-    await expect(advisorComposer).toBeVisible();
+    await expect(advisorComposer).toBeVisible({ timeout: 120_000 });
     await expect(page).toHaveURL(firstUrl);
     await expect(page.getByTestId(`relationship-advisor-history-${firstId}`)).toBeVisible();
 
@@ -2878,7 +2924,7 @@ test('[RELATIONSHIP-ADVISOR-HISTORY] 军师对话写入左栏且 PC Agent 使用
     await page.goto(darkAdvisorUrl.toString());
     await expect(page.getByRole('textbox', {
         name: 'Send what they said, a chat screenshot, or the reply you want to write',
-    })).toBeVisible({ timeout: 20_000 });
+    })).toBeVisible({ timeout: 120_000 });
     const selectedHistoryRow = page.getByTestId(`relationship-advisor-history-${secondId}`);
     await expect(selectedHistoryRow).toBeVisible();
     await expect.poll(() => selectedHistoryRow.evaluate((element) => (
@@ -2921,6 +2967,18 @@ test('[RELATIONSHIP-ADVISOR-HISTORY] 军师对话写入左栏且 PC Agent 使用
 
     await page.keyboard.press('Escape');
     await expect(darkDialog).toHaveCount(0);
+
+    await page.goto(darkAdvisorUrl.toString());
+    await expect(page.getByTestId(`relationship-advisor-history-${firstId}`)).toBeVisible({ timeout: 120_000 });
+    await page.getByTestId(`relationship-advisor-delete-${firstId}`).click();
+    await page.getByRole('button', { name: 'Delete', exact: true }).click();
+    await expect(page.getByTestId(`relationship-advisor-history-${firstId}`)).toHaveCount(0);
+    await page.getByTestId(`relationship-advisor-delete-${secondId}`).click();
+    await page.getByRole('button', { name: 'Delete', exact: true }).click();
+    await expect(page).toHaveURL((url) => url.pathname === '/relationship-advisor' && !url.searchParams.has('conversationId'));
+    await expect(page.getByTestId('relationship-advisor-conversation-selection')).toBeVisible();
+    await expect(history.locator('[data-testid^="relationship-advisor-history-"]')).toHaveCount(0);
+    await expect(advisorComposer).toHaveCount(0);
     expect(nestedButtonErrors).toEqual([]);
 });
 
@@ -3239,27 +3297,23 @@ test('[SESSION-LAYOUT] 项目清单时间线同级、时间线稳定且置顶独
     await page.goto(authenticatedRoute(`/session/${newestSessionId}`));
     expect(await page.evaluate(() => window.devicePixelRatio)).toBe(1);
 
-    const projectsTab = page.getByTestId('desktop-sidebar-tab-projects');
-    const listsTab = page.getByTestId('desktop-sidebar-tab-lists');
-    const timelineTab = page.getByTestId('desktop-sidebar-tab-timeline');
-
     await expect(page.getByTestId('desktop-sidebar-session-navigation')).toBeVisible({ timeout: 30_000 });
-    await expect(projectsTab).toHaveAttribute('aria-selected', 'true');
-    await expect(listsTab).toHaveAttribute('aria-selected', 'false');
-    await expect(timelineTab).toHaveAttribute('aria-selected', 'false');
+    await expect(page.getByTestId('sidebar-organization-pane')).toBeVisible();
+    await expect(page.getByTestId('sidebar-session-pane')).toBeVisible();
+    await expect(page.locator('[data-testid^="desktop-sidebar-tab-"]')).toHaveCount(0);
+    const timelineRow = page.getByTestId('sidebar-organization-timeline');
+    await expect(timelineRow).toHaveAttribute('aria-selected', 'true');
     await expect(page.getByTestId('session-list-layout-toggle')).toHaveCount(0);
-    await expect(page.getByTestId('sidebar-project-toggle-studio-machine--%2Fworkspace%2Fatlas')).toBeVisible();
-    await expect(page.getByTestId('sidebar-project-toggle-studio-machine--%2Fworkspace%2Fbeta')).toBeVisible();
+    const atlasProject = page.getByTestId('sidebar-project-toggle-studio-machine--%2Fworkspace%2Fatlas');
+    const betaProject = page.getByTestId('sidebar-project-toggle-studio-machine--%2Fworkspace%2Fbeta');
+    await expect(atlasProject).toBeVisible();
+    await expect(betaProject).toBeVisible();
     await pauseForRecordedReview(page);
     await page.screenshot({
         path: sessionTimelineScreenshotPath(testInfo, '01-projects.png'),
         fullPage: true,
     });
 
-    await timelineTab.click();
-    await expect(timelineTab).toHaveAttribute('aria-selected', 'true');
-    await expect(page.getByTestId('session-time-group-0')).toBeVisible();
-    await expect(page.getByTestId('sidebar-project-toggle-studio-machine--%2Fworkspace%2Fatlas')).toHaveCount(0);
     await expect(page.getByTestId(`session-row-${newestSessionId}`)).toContainText('~/atlas · studio-machine');
     await expect(page.getByTestId(`session-row-${middleSessionId}`)).toContainText('~/beta · studio-machine');
 
@@ -3286,8 +3340,7 @@ test('[SESSION-LAYOUT] 项目清单时间线同级、时间线稳定且置顶独
     });
     expect(updateTimestamps.afterUpdatedAt).toBeGreaterThan(updateTimestamps.beforeUpdatedAt);
     await page.reload();
-    await expect(timelineTab).toHaveAttribute('aria-selected', 'true');
-    await expect(page.getByTestId('session-time-group-0')).toBeVisible();
+    await expect(timelineRow).toHaveAttribute('aria-selected', 'true');
     const stableOrder = await Promise.all([
         newestSessionId,
         middleSessionId,
@@ -3296,48 +3349,37 @@ test('[SESSION-LAYOUT] 项目清单时间线同级、时间线稳定且置顶独
     expect(stableOrder[0]).toBeLessThan(stableOrder[1]);
     expect(stableOrder[1]).toBeLessThan(stableOrder[2]);
 
-    const middleRow = page.getByTestId(`session-row-${middleSessionId}`);
-    await middleRow.hover();
-    await page.getByTestId(`session-row-actions-${middleSessionId}`).getByTestId('session-row-pin-action').click();
-    await expect(page.getByTestId('session-pinned-group')).toBeVisible();
-    await expect(page.getByTestId('session-pinned-group').getByTestId(`session-row-${middleSessionId}`)).toBeVisible();
-    await expect(page.getByTestId('session-time-group-0').getByTestId(`session-row-${middleSessionId}`)).toHaveCount(0);
+    const toggleMiddlePin = async () => {
+        await page.getByTestId(`session-row-${middleSessionId}`).hover();
+        await page.getByTestId(`session-row-actions-${middleSessionId}`).getByTestId('session-row-pin-action').click();
+    };
+    await toggleMiddlePin();
+    await expect(page.getByTestId(`session-row-${middleSessionId}`)).toHaveCount(0);
+    await page.getByTestId('sidebar-organization-pinned').click();
+    await expect(page.getByTestId(`session-row-${middleSessionId}`)).toBeVisible();
+    await expect(page.getByTestId(`session-row-${newestSessionId}`)).toHaveCount(0);
     await pauseForRecordedReview(page);
     await page.screenshot({
         path: sessionTimelineScreenshotPath(testInfo, '03-timeline-pinned.png'),
         fullPage: true,
     });
 
-    await listsTab.click();
-    await expect(listsTab).toHaveAttribute('aria-selected', 'true');
-    await expect(page.getByTestId('session-pinned-group')).toHaveCount(0);
-    await expect(page.getByTestId('sidebar-pinned-section')).toBeVisible();
-    await expect(page.getByTestId(`session-row-${middleSessionId}`)).toHaveCount(1);
-    await page.getByTestId(`session-row-${middleSessionId}`).hover();
-    await page.getByTestId(`session-row-actions-${middleSessionId}`).getByTestId('session-row-pin-action').click();
-    await expect(page.getByTestId('sidebar-pinned-section')).toHaveCount(0);
-    const unassignedList = page.getByTestId('sidebar-list-unassigned');
-    const listPinAction = page.getByTestId(`pin-organized-session-${middleSessionId}`);
-    await expect.poll(async () => {
-        if (await listPinAction.count() > 0) return true;
-        if (await unassignedList.getAttribute('aria-expanded') !== 'true') await unassignedList.click();
-        return false;
-    }, { timeout: 30_000 }).toBe(true);
-    await listPinAction.click();
-    await expect(page.getByTestId('sidebar-pinned-section')).toBeVisible();
-    await expect(page.getByTestId(`session-row-${middleSessionId}`)).toHaveCount(1);
-    await expect(page.getByTestId(`organized-session-${middleSessionId}`)).toHaveCount(0);
+    await toggleMiddlePin();
+    await expect(page.getByTestId(`session-row-${middleSessionId}`)).toHaveCount(0);
+    await page.getByTestId('sidebar-list-unassigned').click();
+    await expect(page.getByTestId(`session-row-${middleSessionId}`)).toBeVisible();
+    await toggleMiddlePin();
+    await expect(page.getByTestId(`session-row-${middleSessionId}`)).toHaveCount(0);
     await pauseForRecordedReview(page);
     await page.screenshot({
         path: sessionTimelineScreenshotPath(testInfo, '04-lists-pinned.png'),
         fullPage: true,
     });
 
-    await projectsTab.click();
-    await expect(projectsTab).toHaveAttribute('aria-selected', 'true');
-    await expect(page.getByTestId('sidebar-project-toggle-studio-machine--%2Fworkspace%2Fatlas')).toBeVisible();
-    await expect(page.getByTestId('session-pinned-group').getByTestId(`session-row-${middleSessionId}`)).toBeVisible();
-    await expect(page.getByTestId('sidebar-project-sessions-studio-machine--%2Fworkspace%2Fbeta').getByTestId(`session-row-${middleSessionId}`)).toHaveCount(0);
+    await atlasProject.click();
+    await expect(atlasProject).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByTestId(`session-row-${newestSessionId}`)).toBeVisible();
+    await expect(page.getByTestId(`session-row-${middleSessionId}`)).toHaveCount(0);
 });
 
 test('[PROJECT-HOVER-ACTIONS] PC 项目行悬浮仅显示新建会话操作', async ({ page, request }, testInfo) => {
