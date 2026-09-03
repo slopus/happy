@@ -5,11 +5,9 @@ import { usePluginSurfaceViews } from './usePluginSurfaceViews';
 
 export const PluginLeftSidebarSlot = React.memo(function PluginLeftSidebarSlot({
     desktopDensity = false,
-    fill = false,
     onNavigate,
 }: {
     desktopDensity?: boolean;
-    fill?: boolean;
     onNavigate: (path: string) => void;
 }) {
     const views = usePluginSurfaceViews('left-sidebar');
@@ -19,7 +17,6 @@ export const PluginLeftSidebarSlot = React.memo(function PluginLeftSidebarSlot({
         return (
             <RelationshipAdvisorSidebarHistory
                 desktopDensity={desktopDensity}
-                fill={fill}
                 key={`${view.pluginId}:${view.viewId}`}
                 onNavigate={onNavigate}
             />
