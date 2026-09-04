@@ -537,8 +537,6 @@ export const zhHans: TranslationStructure = {
         hideInactiveSessionsSubtitle: '仅在列表中显示未归档的聊天',
         groupToolCalls: '分组工具调用',
         groupToolCallsSubtitle: '将连续的工具调用折叠到一个容器中',
-        desktopScreenshot: '桌面截图',
-        desktopScreenshotSubtitle: '在会话输入框显示相机按钮，可远程截取电脑桌面或浏览器窗口',
         privacy: '隐私',
         privacyDescription: '完全禁用所有分析和遥测。不会向 PostHog 或任何其他跟踪服务发送数据。',
         disableAnalytics: '禁用分析',
@@ -851,16 +849,11 @@ export const zhHans: TranslationStructure = {
             openCamera: '打开相机',
         },
         messageComposer: {
-            // Used by the screenshot button + dropdown in MessageComposer
+            // Used by the direct screenshot button in MessageComposer
             screenshot: '截屏',
-            screenshotDesktop: '桌面整屏',
-            screenshotBrowser: '最前浏览器窗口',
-            screenshotGallery: '图库',
             screenshotFailedTitle: '截屏失败',
             screenshotFailedBody: '无法截取屏幕，请重试。',
             screenshotUnsupportedPlatform: '截屏目前仅支持 macOS。',
-            screenshotBrowserFallbackTitle: '未找到浏览器窗口',
-            screenshotBrowserFallbackBody: '未找到浏览器窗口，已截取整屏。',
             workingDirectory: '工作目录',
             workingDirectoryFutureHint: '切换后会在新会话中延续，并影响下一条及后续消息；当前会话保持不变。',
             workingDirectoryInputPlaceholder: '输入这台机器上的目录',
@@ -874,17 +867,6 @@ export const zhHans: TranslationStructure = {
             workingDirectoryBusy: '请等待当前任务完成后再切换目录。',
             workingDirectoryUnsupported: '当前 Agent 无法在其他目录中延续，请改为新建会话。',
             workingDirectoryContinuationUnavailable: '当前会话缺少服务商会话 ID，Happy 无法在其他目录中安全延续上下文。请重新连接 Agent 后重试，或在目标目录新建会话。',
-        },
-        screenshotGallery: {
-            title: '截图',
-            empty: '暂无截图',
-            emptyHint: '你截取的截图会显示在这里',
-            attach: '添加到输入栏',
-            sourceManual: '手动',
-            sourceAi: 'AI',
-        },
-        desktopScreenshot: {
-            size: ({ size }: { size: string }) => `${size} KB`,
         },
     },
 

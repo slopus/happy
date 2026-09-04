@@ -536,8 +536,6 @@ export const ca: TranslationStructure = {
         hideInactiveSessionsSubtitle: 'Mostra només els xats no arxivats a la llista',
         groupToolCalls: 'Agrupa les crides a eines',
         groupToolCallsSubtitle: 'Replega les crides consecutives a eines en un sol contenidor',
-        desktopScreenshot: 'Captura d\'escriptori',
-        desktopScreenshotSubtitle: 'Mostra un botó de càmera al camp del xat per capturar de manera remota l\'escriptori o la finestra del navegador',
         privacy: 'Privadesa',
         privacyDescription: 'Desactiva completament tota l\'analítica i telemetria. No s\'enviaran dades a PostHog ni a cap altre servei de seguiment.',
         disableAnalytics: 'Desactivar analítica',
@@ -850,16 +848,11 @@ export const ca: TranslationStructure = {
             openCamera: 'Obre la càmera',
         },
         messageComposer: {
-            // Used by the screenshot button + dropdown in MessageComposer
+            // Used by the direct screenshot button in MessageComposer
             screenshot: 'Captura de pantalla',
-            screenshotDesktop: 'Escriptori complet',
-            screenshotBrowser: 'Finestra del navegador en primer pla',
-            screenshotGallery: 'Galeria',
             screenshotFailedTitle: 'La captura de pantalla ha fallat',
             screenshotFailedBody: 'No s\'ha pogut fer la captura de pantalla. Torna-ho a provar.',
             screenshotUnsupportedPlatform: 'De moment, les captures de pantalla només s\'admeten a macOS.',
-            screenshotBrowserFallbackTitle: 'No s\'ha trobat la finestra del navegador',
-            screenshotBrowserFallbackBody: 'No s\'ha pogut trobar cap finestra del navegador; s\'ha capturat tota la pantalla.',
             workingDirectory: 'Directori de treball',
             workingDirectoryFutureHint: 'En canviar-lo es continua en una sessió nova i s\'aplica al missatge següent i als posteriors. Aquesta sessió no canvia.',
             workingDirectoryInputPlaceholder: 'Introdueix un directori d\'aquesta màquina',
@@ -873,17 +866,6 @@ export const ca: TranslationStructure = {
             workingDirectoryBusy: 'Espera que acabi la tasca actual abans de canviar el directori.',
             workingDirectoryUnsupported: 'Aquest Agent no pot continuar en un altre directori. Inicia una sessió nova.',
             workingDirectoryContinuationUnavailable: 'A aquesta sessió li falta l’identificador de conversa del proveïdor, de manera que Happy no pot continuar-ne el context de forma segura en un altre directori. Torna a connectar l’Agent i prova-ho de nou, o inicia-hi una sessió nova.',
-        },
-        screenshotGallery: {
-            title: 'Captures de pantalla',
-            empty: 'Encara no hi ha captures',
-            emptyHint: 'Les captures que facis apareixeran aquí',
-            attach: 'Adjunta a l\'entrada',
-            sourceManual: 'Manual',
-            sourceAi: 'IA',
-        },
-        desktopScreenshot: {
-            size: ({ size }: { size: string }) => `${size} KB`,
         },
     },
 

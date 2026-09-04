@@ -349,7 +349,6 @@ describe('settings', () => {
                 fileDiffsSidebar: false,
                 groupToolCalls: false,
                 expImageUpload: false,
-                expDesktopScreenshot: true,
                 reviewPromptAnswered: false,
                 reviewPromptLikedApp: null,
                 voiceAssistantLanguage: null,

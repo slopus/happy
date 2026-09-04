@@ -534,8 +534,6 @@ export const it: TranslationStructure = {
         hideInactiveSessionsSubtitle: 'Mostra solo le chat non archiviate nell’elenco',
         groupToolCalls: 'Raggruppa chiamate agli strumenti',
         groupToolCallsSubtitle: 'Comprimi le chiamate consecutive agli strumenti in un unico contenitore',
-        desktopScreenshot: 'Screenshot del desktop',
-        desktopScreenshotSubtitle: 'Mostra un pulsante fotocamera nel campo della chat per catturare da remoto il desktop o la finestra del browser',
         privacy: 'Privacy',
         privacyDescription: 'Disabilita completamente tutte le analisi e la telemetria. Nessun dato verrà inviato a PostHog o ad altri servizi di tracciamento.',
         disableAnalytics: 'Disabilita analisi',
@@ -848,16 +846,11 @@ export const it: TranslationStructure = {
             openCamera: 'Apri fotocamera',
         },
         messageComposer: {
-            // Used by the screenshot button + dropdown in MessageComposer
+            // Used by the direct screenshot button in MessageComposer
             screenshot: 'Screenshot',
-            screenshotDesktop: 'Intero desktop',
-            screenshotBrowser: 'Finestra del browser in primo piano',
-            screenshotGallery: 'Galleria',
             screenshotFailedTitle: 'Screenshot non riuscito',
             screenshotFailedBody: 'Impossibile acquisire lo screenshot. Riprova.',
             screenshotUnsupportedPlatform: 'Per ora gli screenshot sono supportati solo su macOS.',
-            screenshotBrowserFallbackTitle: 'Finestra del browser non trovata',
-            screenshotBrowserFallbackBody: 'Impossibile trovare una finestra del browser: acquisito l\'intero schermo.',
             workingDirectory: 'Directory di lavoro',
             workingDirectoryFutureHint: 'La modifica continua in una nuova sessione e si applica al messaggio successivo e a quelli futuri. Questa sessione resta invariata.',
             workingDirectoryInputPlaceholder: 'Inserisci una directory su questa macchina',
@@ -871,17 +864,6 @@ export const it: TranslationStructure = {
             workingDirectoryBusy: 'Attendi il completamento dell\'attività corrente prima di cambiare directory.',
             workingDirectoryUnsupported: 'Questo Agent non può continuare in un\'altra directory. Avvia una nuova sessione.',
             workingDirectoryContinuationUnavailable: 'A questa sessione manca l’identificatore della conversazione del provider, quindi Happy non può continuarne il contesto in modo sicuro in un’altra directory. Riconnetti l’Agent e riprova, oppure avvia lì una nuova sessione.',
-        },
-        screenshotGallery: {
-            title: 'Screenshot',
-            empty: 'Nessuno screenshot',
-            emptyHint: 'Gli screenshot che acquisisci appariranno qui',
-            attach: 'Allega all\'input',
-            sourceManual: 'Manuale',
-            sourceAi: 'IA',
-        },
-        desktopScreenshot: {
-            size: ({ size }: { size: string }) => `${size} KB`,
         },
     },
 

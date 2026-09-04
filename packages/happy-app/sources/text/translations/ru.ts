@@ -516,8 +516,6 @@ export const ru: TranslationStructure = {
         hideInactiveSessionsSubtitle: 'Показывать в списке только неархивированные чаты',
         groupToolCalls: 'Группировать вызовы инструментов',
         groupToolCallsSubtitle: 'Сворачивать подряд идущие вызовы инструментов в один блок',
-        desktopScreenshot: 'Снимок рабочего стола',
-        desktopScreenshotSubtitle: 'Показывать кнопку камеры в поле ввода чата для удалённого снимка рабочего стола или окна браузера',
         privacy: 'Конфиденциальность',
         privacyDescription: 'Полностью отключает всю аналитику и телеметрию. Никакие данные не будут отправляться в PostHog или другие сервисы отслеживания.',
         disableAnalytics: 'Отключить аналитику',
@@ -787,16 +785,11 @@ export const ru: TranslationStructure = {
             openCamera: 'Открыть камеру',
         },
         messageComposer: {
-            // Used by the screenshot button + dropdown in MessageComposer
+            // Used by the direct screenshot button in MessageComposer
             screenshot: 'Снимок экрана',
-            screenshotDesktop: 'Весь рабочий стол',
-            screenshotBrowser: 'Активное окно браузера',
-            screenshotGallery: 'Галерея',
             screenshotFailedTitle: 'Не удалось сделать снимок экрана',
             screenshotFailedBody: 'Не удалось сделать снимок экрана. Попробуйте ещё раз.',
             screenshotUnsupportedPlatform: 'Снимки экрана пока поддерживаются только на macOS.',
-            screenshotBrowserFallbackTitle: 'Окно браузера не найдено',
-            screenshotBrowserFallbackBody: 'Не удалось найти окно браузера, сделан снимок всего экрана.',
             workingDirectory: 'Рабочий каталог',
             workingDirectoryFutureHint: 'После изменения работа продолжится в новом сеансе; каталог будет применён к следующему и последующим сообщениям. Этот сеанс не изменится.',
             workingDirectoryInputPlaceholder: 'Введите каталог на этом компьютере',
@@ -810,17 +803,6 @@ export const ru: TranslationStructure = {
             workingDirectoryBusy: 'Дождитесь завершения текущей задачи перед сменой каталога.',
             workingDirectoryUnsupported: 'Этот Agent не может продолжить работу в другом каталоге. Создайте новый сеанс.',
             workingDirectoryContinuationUnavailable: 'В этом сеансе отсутствует идентификатор диалога провайдера, поэтому Happy не может безопасно продолжить его контекст в другом каталоге. Переподключите Agent и повторите попытку либо создайте там новый сеанс.',
-        },
-        screenshotGallery: {
-            title: 'Снимки экрана',
-            empty: 'Пока нет снимков',
-            emptyHint: 'Сделанные снимки появятся здесь',
-            attach: 'Прикрепить к вводу',
-            sourceManual: 'Вручную',
-            sourceAi: 'ИИ',
-        },
-        desktopScreenshot: {
-            size: ({ size }: { size: string }) => `${size} KB`,
         },
     },
 

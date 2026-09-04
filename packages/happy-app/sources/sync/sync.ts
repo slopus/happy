@@ -2628,25 +2628,6 @@ class Sync {
                     ? await sessionEncryption.decryptMetadata(updateData.body.metadata.version, updateData.body.metadata.value)
                     : session.metadata;
 
-                // 带外图库懒拉取：CLI 端 AI 截图后会把轻量引用写进 metadata。
-                // 仅当 screenshotVersion 较上次变大时触发，避免每次 update 全量重拉
-                // （hasRemoteId 去重已能兜底重复，但版本判断更省）。落盘+入库是 fire-and-forget，
-                // 不阻塞 metadata 应用；失败逐张吞掉不影响会话。screenshotSync 动态 import 以隔离其依赖。
-                // 跟随 expImageUpload 实验开关：UI（按钮/抽屉/红点）都 gated 在此开关，
-                // 懒拉取也必须 gate，否则开关关闭时仍会下载+落盘 PNG 却无 UI 可见，静默占盘。
-                // sync 是非组件类，用 storage.getState() 同步读取 setting（非 hook）。
-                const expImageUpload = storage.getState().settings.expImageUpload;
-                const prevScreenshotVersion = session.metadata?.screenshotVersion ?? 0;
-                const nextScreenshotVersion = metadata?.screenshotVersion ?? 0;
-                if (expImageUpload && metadata?.screenshotRefs && nextScreenshotVersion > prevScreenshotVersion) {
-                    const refs = metadata.screenshotRefs;
-                    const sessionId = updateData.body.id;
-                    import('@/sync/screenshotSync').then(({ syncScreenshotsForSession }) => {
-                        // return 把内层 promise 接回链上，确保其 rejection 也被下面 .catch 捕获（避免 unhandled rejection）
-                        return syncScreenshotsForSession(sessionId, refs);
-                    }).catch((e) => console.warn('[sync] 懒拉取 AI 截图失败', e));
-                }
-
                 this.applySessions([{
                     ...session,
                     agentState,

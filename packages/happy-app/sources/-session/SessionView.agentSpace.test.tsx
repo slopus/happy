@@ -51,6 +51,8 @@ const mocks = vi.hoisted(() => ({
     renameSession: vi.fn(),
     renameSessionToTitle: vi.fn(),
     sessionAbort: vi.fn(),
+    requestScreenshot: vi.fn(),
+    imageViewerOpen: vi.fn(),
     overlayPublish: vi.fn(),
     overlayReset: vi.fn(),
     suspendFileViewPanel: false,
@@ -223,7 +225,6 @@ vi.mock('@/components/subagent/SubagentInspectorPanel', async () => {
 });
 vi.mock('@/components/Deferred', () => ({ Deferred: ({ children }: { children: React.ReactNode }) => children }));
 vi.mock('@/components/EmptyMessages', () => ({ EmptyMessages: 'EmptyMessages' }));
-vi.mock('@/components/ScreenshotGalleryDrawer', () => ({ ScreenshotGalleryDrawer: 'ScreenshotGalleryDrawer' }));
 vi.mock('@/components/FilesSidebar', () => ({ FilesSidebar: 'FilesSidebar' }));
 vi.mock('@/components/DesktopPresenceTransition', async () => {
     const ReactModule = await import('react');
@@ -346,13 +347,8 @@ vi.mock('@/sync/storage', () => ({
 }));
 vi.mock('@/sync/gitStatusSync', () => ({ gitStatusSync: { getSync: vi.fn() } }));
 vi.mock('@/sync/ops', () => ({ sessionAbort: mocks.sessionAbort }));
-vi.mock('@/sync/ops.screenshot', () => ({ requestScreenshot: vi.fn() }));
-vi.mock('@/sync/screenshotGallery', () => ({
-    addScreenshotEntry: vi.fn(),
-    saveBase64Png: vi.fn(),
-    useHasNewScreenshots: () => ({ hasNew: false }),
-}));
-vi.mock('@/sync/imageViewer', () => ({ imageViewer: { open: vi.fn() } }));
+vi.mock('@/sync/ops.screenshot', () => ({ requestScreenshot: mocks.requestScreenshot }));
+vi.mock('@/sync/imageViewer', () => ({ imageViewer: { open: mocks.imageViewerOpen } }));
 vi.mock('@/sync/sync', () => ({ sync: { onSessionVisible: vi.fn(), sendMessage: vi.fn() } }));
 vi.mock('@/modal', () => ({ Modal: { alert: vi.fn(), show: mocks.modalShow } }));
 vi.mock('@/utils/platform', () => ({ isRunningOnMac: () => mocks.runningOnMac }));
@@ -476,6 +472,54 @@ describe('SessionView Agent-space boundary', () => {
         const composer = renderer.root.findByType('MessageComposer');
         expect(composer.props.onAbort()).toBe(pendingAbort);
         expect(mocks.sessionAbort).toHaveBeenCalledWith('session-1');
+
+        act(() => renderer.unmount());
+    });
+
+    it('opens a full-desktop screenshot directly without target or gallery state', async () => {
+        mocks.isDataReady = true;
+        mocks.requestScreenshot.mockResolvedValueOnce({
+            success: true,
+            dataBase64: 'AAA',
+            mimeType: 'image/jpeg',
+        });
+        let renderer: any;
+
+        act(() => {
+            renderer = TestRenderer.create(<SessionView id="session-1" />);
+        });
+
+        const composer = renderer.root.findByType('MessageComposer');
+        await act(async () => {
+            composer.props.onCaptureScreenshot();
+            await Promise.resolve();
+        });
+
+        expect(mocks.requestScreenshot).toHaveBeenCalledWith('session-1');
+        expect(mocks.imageViewerOpen).toHaveBeenCalledWith({
+            uri: 'data:image/jpeg;base64,AAA',
+            filename: expect.stringMatching(/^screenshot-\d+\.jpg$/),
+        });
+
+        act(() => renderer.unmount());
+    });
+
+    it('ignores repeated screenshot requests until the first capture settles', () => {
+        mocks.isDataReady = true;
+        mocks.requestScreenshot.mockReturnValueOnce(new Promise(() => {}));
+        let renderer: any;
+
+        act(() => {
+            renderer = TestRenderer.create(<SessionView id="session-1" />);
+        });
+
+        const composer = renderer.root.findByType('MessageComposer');
+        act(() => {
+            composer.props.onCaptureScreenshot();
+            composer.props.onCaptureScreenshot();
+        });
+
+        expect(mocks.requestScreenshot).toHaveBeenCalledTimes(1);
 
         act(() => renderer.unmount());
     });

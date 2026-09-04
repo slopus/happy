@@ -22,14 +22,6 @@ import { useGlobalKeyboard } from '@/hooks/useGlobalKeyboard';
 import { gitStatusSync } from '@/sync/gitStatusSync';
 import { sessionAbort } from '@/sync/ops';
 import { requestScreenshot } from '@/sync/ops.screenshot';
-import {
-    saveBase64Png,
-    resolveScreenshotUri,
-    addScreenshotEntry,
-    useHasNewScreenshots,
-    type ScreenshotEntry,
-} from '@/sync/screenshotGallery';
-import { ScreenshotGalleryDrawer } from '@/components/ScreenshotGalleryDrawer';
 import { imageViewer } from '@/sync/imageViewer';
 import { Modal } from '@/modal';
 import { storage, useIsDataReady, useLocalSetting, useLocalSettingMutable, useMachine, useSessionMessages, useSessionUsage, useSetting, useSettingUpdater } from '@/sync/storage';
@@ -1331,7 +1323,6 @@ function SessionViewLoaded({
     const agentDefaultOverrides = useSetting('agentDefaultOverrides');
     const experiments = useSetting('experiments');
     const expResumeSession = useSetting('expResumeSession');
-    const desktopScreenshotEnabled = useSetting('expDesktopScreenshot');
     const { canResume, resumeSession, resumingSession } = useSessionQuickActions(session);
     const isDisconnected = !sessionStatus.isConnected;
     const resumeCommandBlock = getResumeCommandBlock(session);
@@ -1394,28 +1385,9 @@ function SessionViewLoaded({
     // 图片/音视频选择器；音视频不支持的 flavor 由 sendMessage 兜底提示。
     const { selectedImages, pickAttachment, removeImage, clearImages, addImages } = useImagePicker();
 
-    // Screenshot gallery drawer (能力 B). Reactive red-dot signal for unseen
-    // screenshots; opening the drawer clears it (handled inside the drawer).
-    const [galleryOpen, setGalleryOpen] = React.useState(false);
-    const { hasNew: galleryHasNew } = useHasNewScreenshots(sessionId);
-
     // 截图进行中标记：点相机后 RPC 往返 1-5 秒静默无反馈，用它把相机按钮切成菊花
     const [screenshotCapturing, setScreenshotCapturing] = React.useState(false);
-    const handleOpenGallery = React.useCallback(() => setGalleryOpen(true), []);
-    const handleCloseGallery = React.useCallback(() => setGalleryOpen(false), []);
-    // Attach a gallery screenshot to the composer input. Intrinsic size is
-    // unknown for screenshots (0/0 is accepted by the upload pipeline).
-    const handleAttachScreenshot = React.useCallback((entry: ScreenshotEntry) => {
-        addImages([{
-            id: entry.id,
-            uri: entry.uri,
-            width: 0,
-            height: 0,
-            mimeType: 'image/png',
-            size: 0,
-            name: entry.id,
-        }]);
-    }, [addImages]);
+    const screenshotCaptureInFlight = React.useRef(false);
 
     // Handle dismissing CLI version warning
     const handleDismissCliWarning = React.useCallback(() => {
@@ -1451,16 +1423,15 @@ function SessionViewLoaded({
         }
     }, [composerHandleRef, sessionId, selectedImages, clearImages]);
 
-    // Manual screenshot: ask the CLI for a capture, persist it to the local
-    // gallery and immediately open it in the fullscreen viewer. Self-contained
-    // try/catch (instead of useHappyAction, which takes a no-arg action) so we
-    // can pass `target` and still surface every failure — including RPC throws —
-    // via Modal (RN Alert is banned). No unhandled rejection escapes.
-    const handleCaptureScreenshot = React.useCallback((target: 'desktop' | 'browser') => {
+    // Manual screenshot: one click asks the CLI for a full-desktop capture and
+    // opens it immediately. No target picker or persistent screenshot gallery.
+    const handleCaptureScreenshot = React.useCallback(() => {
+        if (screenshotCaptureInFlight.current) return;
+        screenshotCaptureInFlight.current = true;
         (async () => {
             setScreenshotCapturing(true);
             try {
-                const res = await requestScreenshot(sessionId, target);
+                const res = await requestScreenshot(sessionId);
                 if (!res.success || !res.dataBase64) {
                     // 平台不支持（如非 macOS）时给本地化文案，否则原样回显 CLI error
                     const body = isUnsupportedPlatformError(res.error)
@@ -1472,28 +1443,19 @@ function SessionViewLoaded({
                     );
                     return;
                 }
-                const persistentUri = await saveBase64Png(res.dataBase64);
-                const entry = addScreenshotEntry(sessionId, {
-                    uri: persistentUri,
-                    source: 'manual',
-                    target,
-                    createdAt: Date.now(),
+                const mimeType = res.mimeType ?? 'image/jpeg';
+                const extension = mimeType === 'image/png' ? 'png' : 'jpg';
+                imageViewer.open({
+                    uri: `data:${mimeType};base64,${res.dataBase64}`,
+                    filename: `screenshot-${Date.now()}.${extension}`,
                 });
-                const displayUri = await resolveScreenshotUri(persistentUri);
-                imageViewer.open({ uri: displayUri, filename: `screenshot-${entry.id}.png` });
-                // 请求了浏览器但 CLI 没找到浏览器窗口、回退成整屏：截图仍打开，只是轻提示一下
-                if (target === 'browser' && res.targetUsed === 'desktop') {
-                    Modal.alert(
-                        t('components.messageComposer.screenshotBrowserFallbackTitle'),
-                        t('components.messageComposer.screenshotBrowserFallbackBody'),
-                    );
-                }
             } catch (e) {
                 Modal.alert(
                     t('components.messageComposer.screenshotFailedTitle'),
                     e instanceof Error ? e.message : t('components.messageComposer.screenshotFailedBody'),
                 );
             } finally {
+                screenshotCaptureInFlight.current = false;
                 setScreenshotCapturing(false);
             }
         })();
@@ -1592,10 +1554,8 @@ function SessionViewLoaded({
             onPickImages={pickAttachment}
             onRemoveImage={removeImage}
             onAddImages={addImages}
-            onCaptureScreenshot={desktopScreenshotEnabled ? handleCaptureScreenshot : undefined}
+            onCaptureScreenshot={handleCaptureScreenshot}
             screenshotCapturing={screenshotCapturing}
-            onOpenGallery={desktopScreenshotEnabled ? handleOpenGallery : undefined}
-            galleryHasNew={galleryHasNew}
             autocompletePrefixes={autocompletePrefixes}
             autocompleteSuggestions={handleAutocompleteSuggestions}
             usageData={usageData}
@@ -1735,13 +1695,6 @@ function SessionViewLoaded({
                 )
             }
 
-            {/* Screenshot gallery bottom drawer (能力 B) */}
-            <ScreenshotGalleryDrawer
-                visible={galleryOpen}
-                onClose={handleCloseGallery}
-                sessionId={sessionId}
-                onAttach={handleAttachScreenshot}
-            />
         </>
     )
 }

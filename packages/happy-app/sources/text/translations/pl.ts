@@ -553,8 +553,6 @@ export const pl: TranslationStructure = {
         hideInactiveSessionsSubtitle: 'Pokazuj na liście tylko niezarchiwizowane czaty',
         groupToolCalls: 'Grupuj wywołania narzędzi',
         groupToolCallsSubtitle: 'Zwijaj kolejne wywołania narzędzi w jeden kontener',
-        desktopScreenshot: 'Zrzut ekranu pulpitu',
-        desktopScreenshotSubtitle: 'Pokaż przycisk aparatu w polu czatu, aby zdalnie przechwycić pulpit lub okno przeglądarki',
         privacy: 'Prywatność',
         privacyDescription: 'Całkowicie wyłącza wszystkie analizy i telemetrię. Żadne dane nie będą wysyłane do PostHog ani żadnego innego serwisu śledzącego.',
         disableAnalytics: 'Wyłącz analitykę',
@@ -866,16 +864,11 @@ export const pl: TranslationStructure = {
             openCamera: 'Otwórz kamerę',
         },
         messageComposer: {
-            // Used by the screenshot button + dropdown in MessageComposer
+            // Used by the direct screenshot button in MessageComposer
             screenshot: 'Zrzut ekranu',
-            screenshotDesktop: 'Cały pulpit',
-            screenshotBrowser: 'Aktywne okno przeglądarki',
-            screenshotGallery: 'Galeria',
             screenshotFailedTitle: 'Nie udało się zrobić zrzutu ekranu',
             screenshotFailedBody: 'Nie udało się przechwycić zrzutu ekranu. Spróbuj ponownie.',
             screenshotUnsupportedPlatform: 'Zrzuty ekranu są obecnie obsługiwane tylko w systemie macOS.',
-            screenshotBrowserFallbackTitle: 'Nie znaleziono okna przeglądarki',
-            screenshotBrowserFallbackBody: 'Nie udało się znaleźć okna przeglądarki, wykonano zrzut całego ekranu.',
             workingDirectory: 'Katalog roboczy',
             workingDirectoryFutureHint: 'Zmiana kontynuuje pracę w nowej sesji i dotyczy następnej oraz kolejnych wiadomości. Ta sesja pozostaje bez zmian.',
             workingDirectoryInputPlaceholder: 'Wpisz katalog na tym komputerze',
@@ -889,17 +882,6 @@ export const pl: TranslationStructure = {
             workingDirectoryBusy: 'Poczekaj na zakończenie bieżącego zadania przed zmianą katalogu.',
             workingDirectoryUnsupported: 'Ten Agent nie może kontynuować w innym katalogu. Rozpocznij nową sesję.',
             workingDirectoryContinuationUnavailable: 'W tej sesji brakuje identyfikatora rozmowy dostawcy, więc Happy nie może bezpiecznie kontynuować jej kontekstu w innym katalogu. Połącz Agenta ponownie i spróbuj jeszcze raz albo rozpocznij tam nową sesję.',
-        },
-        screenshotGallery: {
-            title: 'Zrzuty ekranu',
-            empty: 'Brak zrzutów ekranu',
-            emptyHint: 'Zrobione zrzuty pojawią się tutaj',
-            attach: 'Dołącz do pola tekstowego',
-            sourceManual: 'Ręcznie',
-            sourceAi: 'AI',
-        },
-        desktopScreenshot: {
-            size: ({ size }: { size: string }) => `${size} KB`,
         },
     },
 

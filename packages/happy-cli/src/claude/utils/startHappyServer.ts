@@ -19,8 +19,6 @@ import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import { BROWSER_STEP_TOOL_DESCRIPTION } from "@/browser/browserStepReportingPrompt";
 import { configuration } from "@/configuration";
-import { captureScreenshot, type ScreenshotTarget } from "@/utils/screenshot";
-import { type ScreenshotStore, type ScreenshotRef } from "@/utils/screenshotStore";
 import { fetchFinanceChart } from "@/finance/financeChart";
 
 type HappyMcpHandlers = {
@@ -52,45 +50,7 @@ type BrowserStepInput = {
     label: string;
 };
 
-/** 带外图库三工具的依赖注入接口（便于纯函数单测，且给 Task 2.2/3.1 留注入点） */
-export interface ScreenshotToolDeps {
-    /** 会话内临时缓存（Task 3.1 的会话级 RPC 共享同一实例） */
-    store: ScreenshotStore;
-    /** 真截图，返回 { path: 图片绝对路径, capturedTarget: 实际截取目标 } */
-    capture: (t: ScreenshotTarget) => Promise<{ path: string; capturedTarget: ScreenshotTarget }>;
-    /** 读图为 base64（这一刻才会进上下文） */
-    readBase64: (p: string) => Promise<string>;
-    /** 截图存库后通知 App（Task 2.2 注入真实 updateMetadata；本任务默认 no-op） */
-    signalNewScreenshot: (refs: ScreenshotRef[]) => void;
-    now: () => number;
-}
-
-/**
- * 带外图库核心：把 take/get/list 的逻辑抽成纯工厂，便于单测。
- * take 只返回文本引用（图不进上下文）；get 才把字节作为 image 内容取回。
- */
-export function createScreenshotTools(deps: ScreenshotToolDeps) {
-    return {
-        // 截图 → 存库 → 通知 App → 只返回文本引用（无字节）
-        take: async ({ target, note }: { target?: ScreenshotTarget; note?: string }) => {
-            const { path: filePath } = await deps.capture(target ?? 'desktop');
-            const ref = deps.store.add({ filePath, target: target ?? 'desktop', note, takenAt: deps.now() });
-            deps.signalNewScreenshot(deps.store.list());
-            return `已截图 #${ref.id} [${ref.target}] ${note ? `note:"${note}" ` : ''}` +
-                `已存入图库（未进上下文）。需要分析时调 get_screenshot({ id: "${ref.id}" })。`;
-        },
-        // 按 id 把某张图取进上下文
-        get: async ({ id }: { id: string }) => {
-            const fp = deps.store.getFilePath(id);
-            if (!fp) throw new Error(`screenshot #${id} not found`);
-            return { base64: await deps.readBase64(fp), mimeType: 'image/png' as const };
-        },
-        // 列出轻量引用（不含字节）
-        list: async () => deps.store.list(),
-    };
-}
-
-function createMcpServer(handlers: HappyMcpHandlers, screenshotTools: ReturnType<typeof createScreenshotTools>): McpServer {
+function createMcpServer(handlers: HappyMcpHandlers): McpServer {
     const mcp = new McpServer({
         name: "Happy MCP",
         version: "1.0.0",
@@ -212,45 +172,6 @@ function createMcpServer(handlers: HappyMcpHandlers, screenshotTools: ReturnType
                 isError: true,
             };
     });
-
-    // 带外图库：take 只回文本引用、图不进上下文；get 才把字节取进上下文
-    mcp.registerTool('take_screenshot', {
-        description: '截取桌面或最前浏览器窗口的截图，存入“带外图库”。图片不会进入对话上下文，只返回一个轻量文本引用；需要真正查看/分析某张时再调 get_screenshot。',
-        title: 'Take Screenshot',
-        inputSchema: {
-            target: z.enum(['desktop', 'browser']).describe('desktop=整屏, browser=最前浏览器窗口'),
-            note: z.string().optional().describe('给这张截图的备注，便于以后引用'),
-        },
-    }, async (args) => ({
-        content: [{ type: 'text', text: await screenshotTools.take(args) }],
-    }));
-
-    mcp.registerTool('get_screenshot', {
-        description: '按 id 把图库里某张截图取进当前上下文以供分析（这一刻才消耗上下文）。',
-        title: 'Get Screenshot',
-        inputSchema: {
-            id: z.string().describe('图库里截图的 id（来自 take_screenshot / list_screenshots）'),
-        },
-    }, async (args) => {
-        // 与 change_title/send_image 一致：捕获错误返回 isError 文本，给 AI 干净的错误而非 HTTP 500
-        try {
-            const { base64, mimeType } = await screenshotTools.get(args);
-            return { content: [{ type: 'image', data: base64, mimeType }] };
-        } catch (error) {
-            return {
-                content: [{ type: 'text', text: error instanceof Error ? error.message : String(error) }],
-                isError: true,
-            };
-        }
-    });
-
-    mcp.registerTool('list_screenshots', {
-        description: '列出当前会话图库里已有截图的轻量引用（id/来源/时间/备注），不含图片本身。',
-        title: 'List Screenshots',
-        inputSchema: {},
-    }, async () => ({
-        content: [{ type: 'text', text: JSON.stringify(await screenshotTools.list()) }],
-    }));
 
     mcp.registerTool('archive_session', {
         description: 'Archive and stop the current Happy chat session. Only use this when the user explicitly asks to archive, close, or end the current session after finishing the task.',
@@ -420,32 +341,8 @@ export async function startHappyServer(
         },
     };
 
-    // 会话内截图临时缓存：复用 client 持有的同一实例（构造时已 new），
-    // 这样 MCP take 工具与会话级 RPC getScreenshotById 共享同一 store，时序无忧。
-    const screenshotStore = client.screenshotStore;
-    // Task 2.2：每次 take 后，把当前所有截图的轻量引用 + 版本号写进 session metadata。
-    // CLI 不能直接 push 给 App，但服务器会把 metadata 更新自动推给 App，App 据此懒拉取（Task 3.1）。
-    // 只写轻量引用（id/来源/备注/时间），不写图片字节——几十条无体积压力。
-    const signalNewScreenshot = (refs: ScreenshotRef[]) => {
-        client.updateMetadata((prev) => ({
-            ...prev,
-            screenshotRefs: refs,
-            // 版本号在上次值基础上 +1，不依赖 refs.length。prev 来自服务端当前
-            // metadata，天然跨进程单调——CLI 重启/续接同一 session 时不会回退，
-            // 避免 App 误判「版本没变大」而永不拉新图。
-            screenshotVersion: (prev.screenshotVersion ?? 0) + 1,
-        }));
-    };
-    const screenshotTools = createScreenshotTools({
-        store: screenshotStore,
-        capture: captureScreenshot,
-        readBase64: (p: string) => fs.readFile(p, 'base64'),
-        signalNewScreenshot,
-        now: () => Date.now(),
-    });
-
     const server = createServer(async (req, res) => {
-        const mcp = createMcpServer(handlers, screenshotTools);
+        const mcp = createMcpServer(handlers);
         try {
             const transport = new StreamableHTTPServerTransport({
                 sessionIdGenerator: undefined
@@ -481,14 +378,9 @@ export async function startHappyServer(
             'send_image',
             'send_file',
             'report_browser_step',
-            'take_screenshot',
-            'get_screenshot',
-            'list_screenshots',
             'archive_session',
             'finance_chart',
         ],
-        // 暴露给 Task 3.1：会话级 RPC 的 getScreenshotById 复用同一实例
-        screenshotStore,
         stop: () => {
             logger.debug(`[happyMCP] server:stop sessionId=${client.sessionId}`);
             server.close();

@@ -550,8 +550,6 @@ export const en: TranslationStructure = {
         hideInactiveSessionsSubtitle: 'Show only unarchived chats in your list',
         groupToolCalls: 'Group Tool Calls',
         groupToolCallsSubtitle: 'Collapse consecutive tool calls into one container',
-        desktopScreenshot: 'Desktop Screenshot',
-        desktopScreenshotSubtitle: 'Show a camera button in the chat input to remotely capture your desktop or browser window',
         privacy: 'Privacy',
         privacyDescription: 'Completely disables all analytics and telemetry. No data will be sent to PostHog or any other tracking service.',
         disableAnalytics: 'Disable Analytics',
@@ -864,16 +862,11 @@ export const en: TranslationStructure = {
             openCamera: 'Open Camera',
         },
         messageComposer: {
-            // Used by the screenshot button + dropdown in MessageComposer
+            // Used by the direct screenshot button in MessageComposer
             screenshot: 'Screenshot',
-            screenshotDesktop: 'Full desktop',
-            screenshotBrowser: 'Frontmost browser window',
-            screenshotGallery: 'Gallery',
             screenshotFailedTitle: 'Screenshot failed',
             screenshotFailedBody: 'Could not capture the screenshot. Please try again.',
             screenshotUnsupportedPlatform: 'Screenshots are only supported on macOS for now.',
-            screenshotBrowserFallbackTitle: 'Browser window not found',
-            screenshotBrowserFallbackBody: 'Could not find a browser window, captured the full screen instead.',
             workingDirectory: 'Working directory',
             workingDirectoryFutureHint: 'Changing it continues in a new session and affects the next and future messages. This session stays unchanged.',
             workingDirectoryInputPlaceholder: 'Enter a directory on this machine',
@@ -887,17 +880,6 @@ export const en: TranslationStructure = {
             workingDirectoryBusy: 'Wait for the current task to finish before changing directories.',
             workingDirectoryUnsupported: 'This Agent cannot be continued in another directory. Start a new session instead.',
             workingDirectoryContinuationUnavailable: 'This session is missing its provider conversation ID, so Happy cannot safely continue its context in another directory. Reconnect the Agent and try again, or start a new session there.',
-        },
-        screenshotGallery: {
-            title: 'Screenshots',
-            empty: 'No screenshots yet',
-            emptyHint: 'Screenshots you capture will show up here',
-            attach: 'Attach to input',
-            sourceManual: 'Manual',
-            sourceAi: 'AI',
-        },
-        desktopScreenshot: {
-            size: ({ size }: { size: string }) => `${size} KB`,
         },
     },
 

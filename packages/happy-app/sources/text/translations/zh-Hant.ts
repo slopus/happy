@@ -536,8 +536,6 @@ export const zhHant: TranslationStructure = {
         hideInactiveSessionsSubtitle: '僅在清單中顯示未封存的聊天',
         groupToolCalls: '分組工具呼叫',
         groupToolCallsSubtitle: '將連續的工具呼叫摺疊到單一容器中',
-        desktopScreenshot: '桌面截圖',
-        desktopScreenshotSubtitle: '在對話輸入框顯示相機按鈕，可遠端截取電腦桌面或瀏覽器視窗',
         privacy: '隱私',
         privacyDescription: '完全停用所有分析和遙測。不會向 PostHog 或任何其他追蹤服務傳送資料。',
         disableAnalytics: '停用分析',
@@ -850,16 +848,11 @@ export const zhHant: TranslationStructure = {
             openCamera: '開啟相機',
         },
         messageComposer: {
-            // Used by the screenshot button + dropdown in MessageComposer
+            // Used by the direct screenshot button in MessageComposer
             screenshot: '截圖',
-            screenshotDesktop: '桌面整螢幕',
-            screenshotBrowser: '最前瀏覽器視窗',
-            screenshotGallery: '圖庫',
             screenshotFailedTitle: '截圖失敗',
             screenshotFailedBody: '無法擷取截圖，請再試一次。',
             screenshotUnsupportedPlatform: '截圖目前僅支援 macOS。',
-            screenshotBrowserFallbackTitle: '未找到瀏覽器視窗',
-            screenshotBrowserFallbackBody: '未找到瀏覽器視窗，已改為擷取整個螢幕。',
             workingDirectory: '工作目錄',
             workingDirectoryFutureHint: '切換後會在新工作階段中延續，並影響下一則及後續訊息；目前工作階段保持不變。',
             workingDirectoryInputPlaceholder: '輸入這台機器上的目錄',
@@ -873,17 +866,6 @@ export const zhHant: TranslationStructure = {
             workingDirectoryBusy: '請等待目前任務完成後再切換目錄。',
             workingDirectoryUnsupported: '目前 Agent 無法在其他目錄中延續，請改為建立新工作階段。',
             workingDirectoryContinuationUnavailable: '目前工作階段缺少服務商對話 ID，Happy 無法在其他目錄中安全延續上下文。請重新連線 Agent 後再試，或在目標目錄建立新工作階段。',
-        },
-        screenshotGallery: {
-            title: '截圖',
-            empty: '尚無截圖',
-            emptyHint: '你擷取的截圖會顯示在這裡',
-            attach: '加入輸入欄',
-            sourceManual: '手動',
-            sourceAi: 'AI',
-        },
-        desktopScreenshot: {
-            size: ({ size }: { size: string }) => `${size} KB`,
         },
     },
 

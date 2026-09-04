@@ -11,43 +11,33 @@ function fakeRpc() {
 }
 
 describe('registerScreenshotHandler', () => {
-    it('截图成功：返回 success + base64 jpeg + targetUsed', async () => {
+    it('captures the full desktop without accepting target configuration', async () => {
         const rpc = fakeRpc();
+        const capture = vi.fn(async () => ({ path: '/tmp/x.jpg' }));
         registerScreenshotHandler(rpc as any, {
-            capture: async () => ({ path: '/tmp/x.jpg', capturedTarget: 'desktop' }),
+            capture,
             readBase64: async () => 'AAA',
             removeFile: async () => {},
         });
-        const res = await rpc.call('screenshot', { target: 'desktop' });
+        const res = await rpc.call('screenshot', {});
         expect(res.success).toBe(true);
         expect(res.dataBase64).toBe('AAA');
-        // captureScreenshot 现在返回 sips 压缩后的 JPEG，handler 统一上报 image/jpeg
         expect(res.mimeType).toBe('image/jpeg');
-        expect(res.targetUsed).toBe('desktop');
+        expect(res).not.toHaveProperty('targetUsed');
+        expect(capture).toHaveBeenCalledWith();
     });
 
-    it('请求 browser 命中浏览器：targetUsed=browser', async () => {
+    it('reports PNG when compression falls back to the original capture', async () => {
         const rpc = fakeRpc();
         registerScreenshotHandler(rpc as any, {
-            capture: async () => ({ path: '/tmp/x.jpg', capturedTarget: 'browser' }),
+            capture: async () => ({ path: '/tmp/x.png' }),
             readBase64: async () => 'AAA',
             removeFile: async () => {},
         });
-        const res = await rpc.call('screenshot', { target: 'browser' });
-        expect(res.success).toBe(true);
-        expect(res.targetUsed).toBe('browser');
-    });
 
-    it('请求 browser 回退整屏：targetUsed=desktop', async () => {
-        const rpc = fakeRpc();
-        registerScreenshotHandler(rpc as any, {
-            capture: async () => ({ path: '/tmp/x.jpg', capturedTarget: 'desktop' }),
-            readBase64: async () => 'AAA',
-            removeFile: async () => {},
-        });
-        const res = await rpc.call('screenshot', { target: 'browser' });
-        expect(res.success).toBe(true);
-        expect(res.targetUsed).toBe('desktop');
+        const res = await rpc.call('screenshot', {});
+
+        expect(res.mimeType).toBe('image/png');
     });
 
     it('截图失败：success=false + error 包含原始信息', async () => {
@@ -57,33 +47,20 @@ describe('registerScreenshotHandler', () => {
             readBase64: async () => '',
             removeFile: async () => {},
         });
-        const res = await rpc.call('screenshot', { target: 'desktop' });
+        const res = await rpc.call('screenshot', {});
         expect(res.success).toBe(false);
         expect(res.error).toContain('boom');
-    });
-
-    it('未传 target 时默认 desktop', async () => {
-        const rpc = fakeRpc();
-        let captured: string | undefined;
-        registerScreenshotHandler(rpc as any, {
-            capture: async (t) => { captured = t; return { path: '/tmp/x.png', capturedTarget: 'desktop' }; },
-            readBase64: async () => 'AAA',
-            removeFile: async () => {},
-        });
-        const res = await rpc.call('screenshot', {});
-        expect(res.success).toBe(true);
-        expect(captured).toBe('desktop');
     });
 
     it('读完 base64 后删除临时文件（清理泄漏）', async () => {
         const rpc = fakeRpc();
         const removeFile = vi.fn(async () => {});
         registerScreenshotHandler(rpc as any, {
-            capture: async () => ({ path: '/tmp/happy-shot-123.jpg', capturedTarget: 'desktop' }),
+            capture: async () => ({ path: '/tmp/happy-shot-123.jpg' }),
             readBase64: async () => 'AAA',
             removeFile,
         });
-        const res = await rpc.call('screenshot', { target: 'desktop' });
+        const res = await rpc.call('screenshot', {});
         expect(res.success).toBe(true);
         // 读完 base64 必须把这个临时文件删掉，避免堆积
         expect(removeFile).toHaveBeenCalledTimes(1);
@@ -94,11 +71,11 @@ describe('registerScreenshotHandler', () => {
         const rpc = fakeRpc();
         const removeFile = vi.fn(async () => {});
         registerScreenshotHandler(rpc as any, {
-            capture: async () => ({ path: '/tmp/happy-shot-456.jpg', capturedTarget: 'desktop' }),
+            capture: async () => ({ path: '/tmp/happy-shot-456.jpg' }),
             readBase64: async () => { throw new Error('read fail'); },
             removeFile,
         });
-        const res = await rpc.call('screenshot', { target: 'desktop' });
+        const res = await rpc.call('screenshot', {});
         // 读失败走 catch → success=false，但临时文件仍必须被清理
         expect(res.success).toBe(false);
         expect(removeFile).toHaveBeenCalledTimes(1);

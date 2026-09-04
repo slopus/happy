@@ -535,8 +535,6 @@ export const pt: TranslationStructure = {
         hideInactiveSessionsSubtitle: 'Mostrar apenas conversas não arquivadas na lista',
         groupToolCalls: 'Agrupar chamadas de ferramentas',
         groupToolCallsSubtitle: 'Recolher chamadas consecutivas de ferramentas em um único contêiner',
-        desktopScreenshot: 'Captura da área de trabalho',
-        desktopScreenshotSubtitle: 'Mostra um botão de câmera no campo do chat para capturar remotamente sua área de trabalho ou janela do navegador',
         privacy: 'Privacidade',
         privacyDescription: 'Desativa completamente toda a análise e telemetria. Nenhum dado será enviado ao PostHog ou qualquer outro serviço de rastreamento.',
         disableAnalytics: 'Desativar análises',
@@ -849,16 +847,11 @@ export const pt: TranslationStructure = {
             openCamera: 'Abrir câmera',
         },
         messageComposer: {
-            // Used by the screenshot button + dropdown in MessageComposer
+            // Used by the direct screenshot button in MessageComposer
             screenshot: 'Captura de tela',
-            screenshotDesktop: 'Área de trabalho inteira',
-            screenshotBrowser: 'Janela do navegador em primeiro plano',
-            screenshotGallery: 'Galeria',
             screenshotFailedTitle: 'Falha na captura de tela',
             screenshotFailedBody: 'Não foi possível capturar a tela. Tente novamente.',
             screenshotUnsupportedPlatform: 'Por enquanto, as capturas de tela só são compatíveis com macOS.',
-            screenshotBrowserFallbackTitle: 'Janela do navegador não encontrada',
-            screenshotBrowserFallbackBody: 'Não foi possível encontrar uma janela do navegador; a tela inteira foi capturada.',
             workingDirectory: 'Diretório de trabalho',
             workingDirectoryFutureHint: 'A alteração continua em uma nova sessão e vale para a próxima mensagem e as seguintes. Esta sessão permanece inalterada.',
             workingDirectoryInputPlaceholder: 'Digite um diretório nesta máquina',
@@ -872,17 +865,6 @@ export const pt: TranslationStructure = {
             workingDirectoryBusy: 'Aguarde a tarefa atual terminar antes de alterar o diretório.',
             workingDirectoryUnsupported: 'Este Agent não pode continuar em outro diretório. Inicie uma nova sessão.',
             workingDirectoryContinuationUnavailable: 'Esta sessão não tem o identificador de conversa do provedor, então o Happy não pode continuar seu contexto com segurança em outro diretório. Reconecte o Agent e tente novamente ou inicie uma nova sessão nesse diretório.',
-        },
-        screenshotGallery: {
-            title: 'Capturas de tela',
-            empty: 'Ainda não há capturas',
-            emptyHint: 'As capturas que você fizer aparecerão aqui',
-            attach: 'Anexar à entrada',
-            sourceManual: 'Manual',
-            sourceAi: 'IA',
-        },
-        desktopScreenshot: {
-            size: ({ size }: { size: string }) => `${size} KB`,
         },
     },
 

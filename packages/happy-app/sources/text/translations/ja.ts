@@ -537,8 +537,6 @@ export const ja: TranslationStructure = {
         hideInactiveSessionsSubtitle: '未アーカイブのチャットのみをリストに表示',
         groupToolCalls: 'ツール呼び出しをグループ化',
         groupToolCallsSubtitle: '連続するツール呼び出しを1つのコンテナにまとめる',
-        desktopScreenshot: 'デスクトップのスクリーンショット',
-        desktopScreenshotSubtitle: 'チャット入力欄にカメラボタンを表示し、デスクトップやブラウザウィンドウをリモートで撮影できます',
         privacy: 'プライバシー',
         privacyDescription: 'すべての分析とテレメトリを完全に無効にします。PostHogやその他のトラッキングサービスにデータは送信されません。',
         disableAnalytics: '分析を無効化',
@@ -851,16 +849,11 @@ export const ja: TranslationStructure = {
             openCamera: 'カメラを開く',
         },
         messageComposer: {
-            // Used by the screenshot button + dropdown in MessageComposer
+            // Used by the direct screenshot button in MessageComposer
             screenshot: 'スクリーンショット',
-            screenshotDesktop: 'デスクトップ全体',
-            screenshotBrowser: '最前面のブラウザウィンドウ',
-            screenshotGallery: 'ギャラリー',
             screenshotFailedTitle: 'スクリーンショットに失敗しました',
             screenshotFailedBody: 'スクリーンショットを撮影できませんでした。もう一度お試しください。',
             screenshotUnsupportedPlatform: 'スクリーンショットは現在 macOS のみ対応しています。',
-            screenshotBrowserFallbackTitle: 'ブラウザウィンドウが見つかりません',
-            screenshotBrowserFallbackBody: 'ブラウザウィンドウが見つからなかったため、画面全体をキャプチャしました。',
             workingDirectory: '作業ディレクトリ',
             workingDirectoryFutureHint: '変更すると新しいセッションで続行し、次回以降のメッセージに適用されます。現在のセッションは変更されません。',
             workingDirectoryInputPlaceholder: 'このマシン上のディレクトリを入力',
@@ -874,17 +867,6 @@ export const ja: TranslationStructure = {
             workingDirectoryBusy: '現在のタスクが完了してからディレクトリを変更してください。',
             workingDirectoryUnsupported: 'この Agent は別のディレクトリで続行できません。新しいセッションを開始してください。',
             workingDirectoryContinuationUnavailable: 'このセッションにはプロバイダーの会話 ID がないため、Happy は別のディレクトリでコンテキストを安全に継続できません。Agent を再接続して再試行するか、そのディレクトリで新しいセッションを開始してください。',
-        },
-        screenshotGallery: {
-            title: 'スクリーンショット',
-            empty: 'スクリーンショットはまだありません',
-            emptyHint: '撮影したスクリーンショットがここに表示されます',
-            attach: '入力欄に添付',
-            sourceManual: '手動',
-            sourceAi: 'AI',
-        },
-        desktopScreenshot: {
-            size: ({ size }: { size: string }) => `${size} KB`,
         },
     },
 

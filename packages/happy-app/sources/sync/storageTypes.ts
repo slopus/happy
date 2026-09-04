@@ -81,18 +81,6 @@ export const MetadataSchema = z.object({
      */
     parentSessionId: z.string().optional(),
     forkedFromMessageId: z.string().optional(),
-    /**
-     * 带外图库：CLI 端 MCP take_screenshot 后写入的轻量截图引用（无字节）。
-     * App 监听到 screenshotVersion 变大时，按 id 走 getScreenshotById RPC 懒拉取图片字节。
-     * 注意：MetadataSchema 默认会 strip 未知字段，这两个键必须显式声明，否则解密后会被丢弃。
-     */
-    screenshotRefs: z.array(z.object({
-        id: z.string(),
-        target: z.string(),
-        note: z.string().optional(),
-        takenAt: z.number(),
-    })).optional(),
-    screenshotVersion: z.number().optional(),
 });
 
 export type Metadata = z.infer<typeof MetadataSchema>;

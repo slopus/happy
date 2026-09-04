@@ -10,23 +10,19 @@ export interface ScreenshotRpcResponse {
     success: boolean;
     dataBase64?: string;
     mimeType?: string;
-    /** 实际截取目标：请求 browser 命中浏览器窗口=‘browser’，回退整屏=‘desktop’ */
-    targetUsed?: 'desktop' | 'browser';
     error?: string;
 }
 
 /**
  * 请求 CLI 截图（手动截屏路径）。
  * @param sessionId 目标会话 id
- * @param target desktop=整屏，browser=最前浏览器窗口
  */
 export async function requestScreenshot(
     sessionId: string,
-    target: 'desktop' | 'browser',
 ): Promise<ScreenshotRpcResponse> {
-    return apiSocket.sessionRPC<ScreenshotRpcResponse, { target: string }>(
+    return apiSocket.sessionRPC<ScreenshotRpcResponse, Record<string, never>>(
         sessionId,
         'screenshot',
-        { target },
+        {},
     );
 }

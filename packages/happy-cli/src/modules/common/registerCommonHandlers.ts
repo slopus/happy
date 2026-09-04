@@ -10,8 +10,6 @@ import { run as runDifftastic } from '@/modules/difftastic/index';
 import { RpcHandlerManager } from '../../api/rpc/RpcHandlerManager';
 import { validatePath, validateReadPath } from './pathSecurity';
 import { registerScreenshotHandler } from './registerScreenshotHandler';
-import { registerGetScreenshotByIdHandler } from './registerGetScreenshotByIdHandler';
-import type { ScreenshotStore } from '@/utils/screenshotStore';
 import { browseHomeDirectory } from './browseHomeDirectory';
 
 const execAsync = promisify(exec);
@@ -170,15 +168,13 @@ export type SpawnSessionResult =
 /**
  * Register all RPC handlers with the session
  */
-export function registerCommonHandlers(rpcHandlerManager: RpcHandlerManager, workingDirectory: string, screenshotStore?: ScreenshotStore) {
-
-    // 截图相关 handler 只在会话级注册：机器级（apiMachine）调用本函数时不传
-    // screenshotStore，没有带外图库，注册了也永不会被调用，故统一 gate 在此条件下。
-    // - 'screenshot'：手动截屏（App 截屏按钮走这里，自身不依赖 store）
-    // - 'getScreenshotById'：按 id 懒拉取 AI 截图字节（与 MCP take 工具共享同一 store）
-    if (screenshotStore) {
+export function registerCommonHandlers(
+    rpcHandlerManager: RpcHandlerManager,
+    workingDirectory: string,
+    options: { registerScreenshot?: boolean } = {},
+) {
+    if (options.registerScreenshot) {
         registerScreenshotHandler(rpcHandlerManager);
-        registerGetScreenshotByIdHandler(rpcHandlerManager, screenshotStore);
     }
 
     // Shell command handler - executes commands in the default shell

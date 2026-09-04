@@ -411,14 +411,6 @@ export type Metadata = {
   /** Lineage for sessions created via the fork / duplicate flow. */
   parentSessionId?: string
   forkedFromMessageId?: string
-  /**
-   * 带外图库信号（Task 2.2）：AI 调 take_screenshot 后，CLI 把当前会话所有截图的
-   * 轻量引用写进 metadata，服务器自动把 metadata 更新推给 App，App 据此懒拉取展示（Task 3.1）。
-   * 只放轻量引用（id/来源/备注/时间），不放图片字节。
-   */
-  screenshotRefs?: Array<{ id: string; target: string; note?: string; takenAt: number }>
-  /** 截图版本号/计数，便于 App 检测「有新图」这一变化 */
-  screenshotVersion?: number
 };
 
 export type AgentState = {

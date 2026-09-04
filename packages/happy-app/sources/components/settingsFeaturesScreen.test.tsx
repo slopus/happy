@@ -52,7 +52,6 @@ describe('FeaturesSettingsScreen 可访问语义', () => {
                 'settingsFeatures.markdownCopyV2',
                 'settingsFeatures.hideInactiveSessions',
                 'featuresInterface.resumeSession',
-                'settingsFeatures.desktopScreenshot',
                 'settingsFeatures.disableAnalytics',
                 'settingsFeatures.enterToSend',
             ]);

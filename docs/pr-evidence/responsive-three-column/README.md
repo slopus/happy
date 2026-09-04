@@ -10,7 +10,7 @@ Visible UI cases: 2
 - Case 2 viewport: 1024 × 768.
 - Both phases used the same `HAPPY_E2E_WEB_NO_DEV=1` harness. The environment runner starts Expo with `--no-dev --clear`, so evidence has neither Fast Refresh UI nor a stale `EXPO_PUBLIC_*` server port compiled from Metro cache.
 - The harness requires the Expo Fast Refresh indicator to remain absent for at least 1 second, and rechecks the indicator, LogBox, console diagnostics, and bottom-left warning geometry after each screenshot.
-- The exact baseline alone permits the complete known React Native Animated `useNativeDriver` console warning. This PR fixes that baseline defect in `Shaker` and `ScreenshotGalleryDrawer`; after evidence has no warning exemption.
+- The exact baseline alone permits the complete known React Native Animated `useNativeDriver` console warning; after evidence has no warning exemption.
 - The baseline worktree contained no product-source differences. Its uncommitted overlay was limited to this T08 Playwright specification and the no-dev/clear environment switch.
 
 ## Files
