@@ -180,6 +180,7 @@ const client = new PawsAgentClient({
   credentials: createDefaultFileCredentialProvider(),
 });
 
+await client.connect();
 const machines = await client.machines.list({ active: true });
 const root = await client.machines.browseDirectory({
   machineId: machines[0].id,
