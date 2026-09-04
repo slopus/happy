@@ -480,9 +480,9 @@ Runtime and channel mapping:
 
 | `APP_ENV` | OTA channel | Runtime version |
 |-----------|-------------|-----------------|
-| `development` | `preview` | `22` |
-| `preview` | `preview` | `22` |
-| `production` | `production` | `23` |
+| `development` | `preview` | `23` |
+| `preview` | `preview` | `23` |
+| `production` | `production` | `24` |
 
 Only JavaScript-compatible changes should be delivered by OTA. Native
 dependencies, permissions, Expo plugins, package IDs, update URLs, and runtime

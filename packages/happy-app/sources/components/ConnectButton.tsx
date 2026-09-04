@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { View, TextInput, Text, TouchableOpacity } from 'react-native';
 import { RoundButton } from './RoundButton';
-import { useConnectTerminal } from '@/hooks/useConnectTerminal';
+import { useUnifiedAuthQrCode } from '@/hooks/useUnifiedAuthQrCode';
 import { trackConnectAttempt } from '@/track';
 import { Ionicons } from '@expo/vector-icons';
 import { useUnistyles } from 'react-native-unistyles';
@@ -9,13 +9,13 @@ import { t } from '@/text';
 
 export const ConnectButton = React.memo(() => {
     const { theme } = useUnistyles();
-    const { connectTerminal, connectWithUrl, isLoading } = useConnectTerminal();
+    const { connectAuthQrCode, connectWithUrl, isLoading } = useUnifiedAuthQrCode();
     const [manualUrl, setManualUrl] = React.useState('');
     const [showManualEntry, setShowManualEntry] = React.useState(false);
 
     const handleConnect = async () => {
         trackConnectAttempt();
-        connectTerminal();
+        connectAuthQrCode();
     };
 
     const handleManualConnect = async () => {

@@ -16,9 +16,9 @@ This document is the source copy for release listings and future store submissio
 
 | Build | Package | OTA channel | runtimeVersion |
 |---|---|---|---|
-| Production | `build.paws` | `production` | `23` |
-| Preview | `build.paws.preview` | `preview` | `22` |
-| Development / test | `build.paws.dev` | `preview` | `22` |
+| Production | `build.paws` | `production` | `24` |
+| Preview | `build.paws.preview` | `preview` | `23` |
+| Development / test | `build.paws.dev` | `preview` | `23` |
 
 This table mirrors `scripts/ota-runtime-config.js` and `ota-runtime-versions.json`. APK release notes and filenames must identify the variant and runtime explicitly.
 

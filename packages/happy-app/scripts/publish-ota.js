@@ -4,7 +4,7 @@
 //   --variant  构建变体 development/preview/production；提供后会强制校验 channel/runtime 契约
 //   --channel  发布到哪个频道，缺省 production；预览发 preview（仅装了 preview 包的设备会拉到）
 //   --platform 平台，缺省 android
-//   --runtime-version  覆盖默认 runtime；默认 preview/development=22，production=23
+//   --runtime-version  覆盖默认 runtime；默认 preview/development=23，production=24
 //   --skip-latest 只发布时间戳版本和 meta，不覆盖频道 latest.json。PR 自动预览用它避免互相覆盖。
 //   人类可读展示信息可通过环境变量传入，或在 GitHub Actions 中从 GITHUB_EVENT_PATH 自动读取：
 //     OTA_DISPLAY_TITLE / OTA_DISPLAY_MESSAGE / OTA_SOURCE_TYPE / OTA_SOURCE_NUMBER / OTA_SOURCE_URL

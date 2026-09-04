@@ -38,24 +38,24 @@ const BUILD_VARIANT_CONTRACT_EXPECTED = {
         name: 'Paws (dev)',
         androidPackage: 'build.paws.dev',
         otaChannel: 'preview',
-        runtimeVersion: '22',
+        runtimeVersion: '23',
     },
     preview: {
         name: 'Paws (preview)',
         androidPackage: 'build.paws.preview',
         otaChannel: 'preview',
-        runtimeVersion: '22',
+        runtimeVersion: '23',
     },
     production: {
         name: 'Paws',
         androidPackage: 'build.paws',
         otaChannel: 'production',
-        runtimeVersion: '23',
+        runtimeVersion: '24',
     },
 } as const;
 
 describe('OTA native runtime isolation', () => {
-    it('moves every build variant off the runtime used before expo-media-library', () => {
+    it('moves every build variant off the runtime used before the native scanner patch', () => {
         const {
             BUILD_VARIANT_CONTRACT,
             OTA_RUNTIME_VERSION_BY_VARIANT,
@@ -65,36 +65,36 @@ describe('OTA native runtime isolation', () => {
         } = require('../../scripts/ota-runtime-config.js');
 
         expect(OTA_RUNTIME_VERSION_BY_VARIANT).toEqual({
-            development: '22',
-            preview: '22',
-            production: '23',
+            development: '23',
+            preview: '23',
+            production: '24',
         });
-        expect(defaultRuntimeVersion('preview')).toBe('22');
-        expect(defaultRuntimeVersion('production')).toBe('23');
+        expect(defaultRuntimeVersion('preview')).toBe('23');
+        expect(defaultRuntimeVersion('production')).toBe('24');
         expect(BUILD_VARIANT_CONTRACT).toEqual({
             development: {
                 appName: 'Paws (dev)',
                 androidPackage: 'build.paws.dev',
                 otaChannel: 'preview',
-                runtimeVersion: '22',
+                runtimeVersion: '23',
             },
             preview: {
                 appName: 'Paws (preview)',
                 androidPackage: 'build.paws.preview',
                 otaChannel: 'preview',
-                runtimeVersion: '22',
+                runtimeVersion: '23',
             },
             production: {
                 appName: 'Paws',
                 androidPackage: 'build.paws',
                 otaChannel: 'production',
-                runtimeVersion: '23',
+                runtimeVersion: '24',
             },
         });
         expect(getBuildVariantConfig('preview')).toBe(BUILD_VARIANT_CONTRACT.preview);
         expect(() => getBuildVariantConfig('staging')).toThrow('Unknown APP_ENV variant');
-        expect(() => assertVariantOtaTarget('preview', 'preview', '22')).not.toThrow();
-        expect(() => assertVariantOtaTarget('preview', 'production', '23')).toThrow('OTA target mismatch');
+        expect(() => assertVariantOtaTarget('preview', 'preview', '23')).not.toThrow();
+        expect(() => assertVariantOtaTarget('preview', 'production', '24')).toThrow('OTA target mismatch');
 
         const appConfig = readFileSync(new URL('../../app.config.js', import.meta.url), 'utf8');
         expect(appConfig).toContain('getBuildVariantConfig');
@@ -102,7 +102,7 @@ describe('OTA native runtime isolation', () => {
         expect(appConfig).toContain('runtimeVersion: otaRuntimeVersion');
 
         const otaSite = readFileSync(new URL('../../ota-server/site/index.html', import.meta.url), 'utf8');
-        expect(otaSite).toContain("const PREFIX = 'meta/android/22/preview/';");
+        expect(otaSite).toContain("const PREFIX = 'meta/android/23/preview/';");
     });
 
     it.each([
@@ -128,10 +128,25 @@ describe('OTA native runtime isolation', () => {
 
         expect(previewWorkflow).not.toContain('github.event.inputs.channel');
         expect(previewWorkflow).toContain('--variant preview --channel preview');
+        expect(previewWorkflow).toContain('patches/fix-expo-camera-scanner-transitions.cjs');
+        expect(previewWorkflow).toContain('scripts/postinstall.cjs');
         expect(previewWorkflow).toContain("github.head_ref != 'automation/sync-image-effects'");
         expect(productionWorkflow).not.toContain('github.event.inputs.channel');
         expect(productionWorkflow).toContain('--variant production --channel production');
+        expect(productionWorkflow).toContain('patches/fix-expo-camera-scanner-transitions.cjs');
+        expect(productionWorkflow).toContain('scripts/postinstall.cjs');
         expect(packageJson.scripts['ota:selfhost:preview']).toContain('--variant preview --channel preview');
         expect(packageJson.scripts['ota:selfhost']).toContain('--variant production --channel production');
+    });
+
+    it('runs the Expo Camera native patch contract in App CI', () => {
+        const typecheckWorkflow = readFileSync(
+            new URL('../../../../.github/workflows/typecheck.yml', import.meta.url),
+            'utf8'
+        );
+
+        expect(typecheckWorkflow).toContain("'patches/fix-expo-camera-scanner-transitions.cjs'");
+        expect(typecheckWorkflow).toContain("'scripts/postinstall.cjs'");
+        expect(typecheckWorkflow).toContain('pnpm test:expo-camera-patch');
     });
 });

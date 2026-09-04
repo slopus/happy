@@ -16,7 +16,7 @@ import { useSettingMutable, useProfile } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { useUnistyles } from 'react-native-unistyles';
 import { Switch } from '@/components/Switch';
-import { useConnectAccount } from '@/hooks/useConnectAccount';
+import { useUnifiedAuthQrCode } from '@/hooks/useUnifiedAuthQrCode';
 import { getDisplayName } from '@/sync/profile';
 import { Image } from 'expo-image';
 import { useHappyAction } from '@/hooks/useHappyAction';
@@ -110,7 +110,7 @@ export default React.memo(() => {
     const [showSecret, setShowSecret] = useState(false);
     const [copiedRecently, setCopiedRecently] = useState(false);
     const [analyticsOptOut, setAnalyticsOptOut] = useSettingMutable('analyticsOptOut');
-    const { connectAccount, isLoading: isConnecting } = useConnectAccount();
+    const { connectAuthQrCode, isLoading: isConnecting } = useUnifiedAuthQrCode();
     const profile = useProfile();
     const currentPushDevice = useMemo(() => getCurrentPushDeviceMetadata(), []);
     const [pushTokens, setPushTokens] = useState<PushToken[]>([]);
@@ -349,7 +349,7 @@ export default React.memo(() => {
                             title={t('settingsAccount.linkNewDevice')}
                             subtitle={isConnecting ? t('common.scanning') : t('settingsAccount.linkNewDeviceSubtitle')}
                             icon={<Ionicons name="qr-code-outline" size={29} color={theme.colors.accent} />}
-                            onPress={connectAccount}
+                            onPress={connectAuthQrCode}
                             disabled={isConnecting}
                             showChevron={false}
                         />

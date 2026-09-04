@@ -260,7 +260,7 @@ FC 根据 `expo-runtime-version`、`expo-platform`、`expo-channel-name` 和 pre
 FC 可以替换为任意能稳定运行同一 Node HTTP 服务的容器/函数平台，但要注意：
 
 - `updates.url` 在原生基础包里构建时固化，换地址必须重新构建并安装基础包。
-- preview/development 当前 runtimeVersion 为 `22`，production 为 `23`；发布脚本、回滚脚本和基础包必须一致。机器可读的唯一来源是 `scripts/ota-runtime-config.js` 与 `ota-runtime-versions.json`。
+- preview/development 当前 runtimeVersion 为 `23`，production 为 `24`；发布脚本、回滚脚本和基础包必须一致。机器可读的唯一来源是 `scripts/ota-runtime-config.js` 与 `ota-runtime-versions.json`。
 - FC 不可用时，已安装 App 仍可运行内置/已下载 Bundle，但无法检查和切换 OTA。
 - 匿名公网入口应增加函数指标、错误告警、调用量/带宽告警，必要时加 WAF 或限流。
 

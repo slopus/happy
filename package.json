@@ -13,6 +13,7 @@
         "pnpm:devPreinstall": "node ./scripts/mark-node-modules-noindex.cjs --ensure-root",
         "postinstall": "node ./scripts/postinstall.cjs",
         "test:spotlight-exclusion": "node --test ./scripts/mark-node-modules-noindex.test.cjs",
+        "test:expo-camera-patch": "node --test ./patches/fix-expo-camera-scanner-transitions.test.cjs",
         "env:new": "tsx environments/environments.ts new",
         "env:list": "tsx environments/environments.ts list",
         "env:use": "tsx environments/environments.ts use",

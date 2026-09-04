@@ -21,6 +21,8 @@ on:
             - main
         paths:
             - 'packages/happy-app/**'
+            - 'patches/fix-expo-camera-scanner-transitions.cjs'
+            - 'scripts/postinstall.cjs'
             # Documentation and tests do not change the shipped Expo bundle.
             - '!packages/happy-app/**/*.md'
             - '!packages/happy-app/**/*.test.*'
@@ -69,6 +71,8 @@ jobs:
                       packages/happy-app/android/*|\
                       packages/happy-app/ios/*|\
                       packages/happy-app/plugins/*|\
+                      patches/fix-expo-camera-scanner-transitions.cjs|\
+                      scripts/postinstall.cjs|\
                       pnpm-lock.yaml)
                         native_changed=true
                         echo "Native-sensitive OTA path: $file"

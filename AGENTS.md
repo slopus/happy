@@ -45,9 +45,9 @@ Treat the Android package, OTA channel, and runtime as one release contract:
 
 | Variant | Android package | OTA channel | runtimeVersion |
 |---|---|---|---|
-| `development` (test) | `build.paws.dev` | `preview` | `22` |
-| `preview` | `build.paws.preview` | `preview` | `22` |
-| `production` | `build.paws` | `production` | `23` |
+| `development` (test) | `build.paws.dev` | `preview` | `23` |
+| `preview` | `build.paws.preview` | `preview` | `23` |
+| `production` | `build.paws` | `production` | `24` |
 
 The machine-readable source of truth is
 `packages/happy-app/scripts/ota-runtime-config.js` plus

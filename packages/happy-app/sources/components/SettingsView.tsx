@@ -10,7 +10,7 @@ import { Typography } from "@/constants/Typography";
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
-import { useConnectTerminal } from '@/hooks/useConnectTerminal';
+import { useUnifiedAuthQrCode } from '@/hooks/useUnifiedAuthQrCode';
 import { useLocalSettingMutable, useSetting } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { isUsingCustomServer } from '@/sync/serverConfig';
@@ -137,7 +137,7 @@ export const SettingsView = React.memo(function SettingsView() {
     const profile = useProfile();
     const displayName = getDisplayName(profile);
 
-    const { connectTerminal, connectWithUrl, isLoading } = useConnectTerminal();
+    const { connectAuthQrCode, connectWithUrl, isLoading } = useUnifiedAuthQrCode();
     const repositoryUrl = typeof buildConfig.repositoryUrl === 'string'
         ? buildConfig.repositoryUrl
         : 'https://github.com/wangjs-jacky/happy';
@@ -277,7 +277,7 @@ export const SettingsView = React.memo(function SettingsView() {
                     <Item
                         title={t('settings.scanQrCodeToAuthenticate')}
                         icon={<Ionicons name="qr-code-outline" size={29} color={theme.colors.accent} />}
-                        onPress={connectTerminal}
+                        onPress={connectAuthQrCode}
                         loading={isLoading}
                         showChevron={false}
                     />

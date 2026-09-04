@@ -328,9 +328,9 @@ lsof -nP -iTCP:10802 -sTCP:LISTEN
 
 | APP_ENV | 显示名称 | Android package | OTA channel | runtimeVersion |
 |---|---|---|---|---|
-| `development` | `Paws (dev)` | `build.paws.dev` | `preview` | `22` |
-| `preview` | `Paws (preview)` | `build.paws.preview` | `preview` | `22` |
-| `production` | `Paws` | `build.paws` | `production` | `23` |
+| `development` | `Paws (dev)` | `build.paws.dev` | `preview` | `23` |
+| `preview` | `Paws (preview)` | `build.paws.preview` | `preview` | `23` |
+| `production` | `Paws` | `build.paws` | `production` | `24` |
 
 - 机器可读的唯一来源是 `packages/happy-app/scripts/ota-runtime-config.js` 和 `ota-runtime-versions.json`；`app.config.js`、OTA 发布脚本和 CI 都必须消费/验证这份契约，不得另写一套映射。
 - 改 package、channel、runtimeVersion、原生依赖、权限或 Expo plugin 都必须重新构建对应 APK。只发布 OTA 不能跨 runtime 补齐原生能力。
@@ -374,7 +374,7 @@ NODE_ENV=production APP_ENV="$VARIANT" \
 ### 发布到 GitHub Release
 
 - 同一代码 revision 的三包优先放在一个 GitHub Release，三个 asset 文件名必须包含 `production|development|preview`、runtime 和短 SHA。
-- tag 必须以 `android-` 开头，并包含 App version 与 revision，例如 `android-v1.7.1-runtimes22-23-eb5c1a999`；不得覆盖已有 tag/release。
+- tag 必须以 `android-` 开头，并包含 App version 与 revision，例如 `android-v1.7.1-runtimes23-24-eb5c1a999`；不得覆盖已有 tag/release。
 - Release notes 必须列出每个 asset 的 package/channel/runtime、签名性质、大小和 SHA-256。production sideload APK 仍是 debug 签名，不等于 Play Store 正式签名包。
 - 发布后用 GitHub API 核对 `state=uploaded`、asset size/digest，并对 browser download URL 做最终 HTTP 200 检查。
 
@@ -403,7 +403,7 @@ NODE_ENV=production APP_ENV="$VARIANT" \
 ### 机制速记
 
 - 自建 OTA 把 `expo export` 的产物上传到**阿里云 OSS 桶 `happy-app-ota-jacky`**（`oss-cn-hangzhou`），脚本 `scripts/publish-ota.js`。
-- 当前 production 使用 **`runtimeVersion: 23`**，development/preview 使用 **runtime 22**（见 `scripts/ota-runtime-config.js`）。2026-08-08 因新增 `expo-media-library` 原生模块，分别从旧 runtime 22/21 前移；旧二进制因此不会收到引用该模块的 OTA。**runtimeVersion 必须和装机包完全一致**，否则该机器永远跳过这次更新——各 runtime 是互不相通的独立通道 `manifests/<platform>/<runtime>/<channel>/`。改 runtime 只改共享配置，并运行 `pnpm test:image-batch-native-config` 与对应测试；必须先出包含新原生模块的安装包，不能把此变更发布到旧 runtime。
+- 当前 production 使用 **`runtimeVersion: 24`**，development/preview 使用 **runtime 23**（见 `scripts/ota-runtime-config.js`）。2026-09-04 因修正 `expo-camera` iOS 扫描器的原生转场 Promise，两个频道分别从 runtime 23/22 前移；旧二进制因此不会收到依赖新 Promise 语义的 OTA。**runtimeVersion 必须和装机包完全一致**，否则该机器永远跳过这次更新——各 runtime 是互不相通的独立通道 `manifests/<platform>/<runtime>/<channel>/`。改 runtime 只改共享配置，并运行对应契约测试；必须先出包含原生补丁的安装包，不能把此变更发布到旧 runtime。
 - **频道（channel）分流**：App 端 `updates.url` 指向 FC 服务 `happy-oa-server-...fcapp.run`，请求头 `expo-channel-name` **按构建变体注入**（`app.config.js` 的 `otaChannel` 映射）：
   - **dev / preview 包 → `preview` 频道**（给开发在真机预览 PR）
   - **production 包 → `production` 频道**（线上正式用户）
@@ -433,14 +433,14 @@ pnpm ota:selfhost:preview    # 发到 preview 频道（= ... --channel preview�
 - **OTA 回复格式**：只要这次交付里实际发布了 Paws OTA，给用户的回复里除人类可读说明外，还要额外附上一段结构化的
   `<happy-ota-preview> ... </happy-ota-preview>` 元数据块（标签名是兼容协议），方便客户端右侧面板直接提取和展示。
 - 发布成功会打印「频道 / 新版本 id（UUID）/ manifest 地址」。OSS 上版本结构（按频道分层）：
-  - `manifests/android/23/<channel>/latest.json` —— production 频道当前线上指针（preview 使用 runtime 22）
-  - `manifests/android/23/<channel>/<毫秒时间戳>.json` —— 每次发布留的历史备份（JS 包从不删，故任意历史版本可回滚）
+  - `manifests/android/24/<channel>/latest.json` —— production 频道当前线上指针（preview 使用 runtime 23）
+  - `manifests/android/24/<channel>/<毫秒时间戳>.json` —— 每次发布留的历史备份（JS 包从不删，故任意历史版本可回滚）
 
 ### 列出全部 OTA 版本 / 看当前线上
 
 ```bash
 # 注意带上频道段（production / preview）
-aliyun ossutil ls oss://happy-app-ota-jacky/manifests/android/23/production/ | grep -E '\.json'
+aliyun ossutil ls oss://happy-app-ota-jacky/manifests/android/24/production/ | grep -E '\.json'
 ```
 
 - `latest.json` 与某个 `<时间戳>.json` 的 **ETag 相同** → 那个时间戳就是当前线上版本。
@@ -456,7 +456,7 @@ App 内 `useUpdates`（`sources/hooks/useUpdates.ts`）在**每次启动 + 每�
 2. **看 Update ID**（最准）：
    - **设置 → 连点底部「版本号」那一行好几下** 解锁开发者模式（多击 hook 在 `SettingsView.tsx`，切 `devModeEnabled`）。
    - 出现 **Developer** 分组 → `/dev` → **Expo Constants**（`/dev/expo-constants`）。
-   - **Update ID** 应等于发布时打印的那个 UUID；新 production 原生包的 **Runtime Version** 必须是 `23`（preview 为 `22`）。对上即真机正跑该 OTA。
+   - **Update ID** 应等于发布时打印的那个 UUID；新 production 原生包的 **Runtime Version** 必须是 `24`（preview 为 `23`）。对上即真机正跑该 OTA。
 
 > 服务端侧无法直接确认设备是否来拉（OSS 未开访问日志）；以真机上的 **Update ID / 行为** 为准。PostHog 有 `ota_update_available` / `ota_update_applied` 事件（带 `ota_version`）可作旁证。
 
@@ -476,7 +476,7 @@ App 内 `useUpdates`（`sources/hooks/useUpdates.ts`）在**每次启动 + 每�
   页面底部有「诊断」分组（HTTP 状态/字节数/解析结果），排查真机拉不到版本时用。
 - **机制**：App 用 `Updates.setExtraParamAsync('ota-target-stamp', <stamp>)` 把目标版本时间戳随
   `Expo-Extra-Params` 头发给 FC；FC（`ota-server/code/index.js`）仅在 preview 频道按该 stamp 取
-  `manifests/android/22/preview/<stamp>.json`，取不到静默回退 latest。stamp 纯数字白名单防路径穿越。
+  `manifests/android/23/preview/<stamp>.json`，取不到静默回退 latest。stamp 纯数字白名单防路径穿越。
   改 FC 后 `cd ota-server && s deploy --use-local -y` 重新部署。
 - **依赖**：OSS 桶 `happy-app-ota-jacky` 对 `meta/` + `manifests/` 前缀开了匿名 `ListObjects`/`GetObject`
   （bucket policy，用 `oss:Prefix` 条件锁死只能列这两个前缀，不暴露 `updates/` 下 bundle）+ 一条 CORS 规则

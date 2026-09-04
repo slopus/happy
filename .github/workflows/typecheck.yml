@@ -4,12 +4,16 @@ on:
     pull_request:
         paths:
             - 'packages/happy-app/**'
+            - 'patches/fix-expo-camera-scanner-transitions.cjs'
+            - 'scripts/postinstall.cjs'
             - '.github/workflows/typecheck.yml'
     push:
         branches:
             - main
         paths:
             - 'packages/happy-app/**'
+            - 'patches/fix-expo-camera-scanner-transitions.cjs'
+            - 'scripts/postinstall.cjs'
             - '.github/workflows/typecheck.yml'
 
 jobs:
@@ -34,6 +38,9 @@ jobs:
 
             - name: TypeScript typecheck
               run: pnpm --filter happy-app typecheck
+
+            - name: Verify Expo Camera scanner transition patch
+              run: pnpm test:expo-camera-patch
 
             - name: Verify Android build variant contract
               run: pnpm --filter happy-app exec vitest run sources/utils/otaRuntimeConfig.test.ts

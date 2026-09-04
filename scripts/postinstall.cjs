@@ -13,6 +13,7 @@ require('../patches/expose-pierre-diffs-style.cjs');
 require('../patches/force-preact-cjs.cjs');
 require('../patches/fix-pierre-trees-preact-hooks.cjs');
 require('../patches/skip-expo-notifications-web-token-listener.cjs');
+require('../patches/fix-expo-camera-scanner-transitions.cjs').applyExpoCameraScannerTransitionPatch();
 require('../patches/fix-react-navigation-web-pointer-events.cjs');
 
 if (process.env.SKIP_HAPPY_WIRE_BUILD === '1') {

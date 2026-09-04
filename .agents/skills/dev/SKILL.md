@@ -99,9 +99,9 @@ pnpm --filter happy-app tauri:dev       # macOS desktop app
 
 Variants:
 
-    development    build.paws.dev       preview OTA / runtime 22 / test package
-    preview        build.paws.preview   preview OTA / runtime 22 / beta testing
-    production     build.paws           production OTA / runtime 23 / sideload production
+    development    build.paws.dev       preview OTA / runtime 23 / test package
+    preview        build.paws.preview   preview OTA / runtime 23 / beta testing
+    production     build.paws           production OTA / runtime 24 / sideload production
 
 The source of truth is `packages/happy-app/scripts/ota-runtime-config.js`; run
 `pnpm --filter happy-app exec vitest run sources/utils/otaRuntimeConfig.test.ts`

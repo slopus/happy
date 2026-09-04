@@ -7,7 +7,7 @@ name: Self-hosted OTA production (on merge to main)
 #
 # 前提（不满足则本次 OTA 对线上无效，但不会报错）：
 # - 必须是纯 JS 改动（无原生变更）。原生变了应重新出 APK，OTA 推不动。
-# - runtimeVersion 必须仍与线上装机包一致（当前 production=23，见 ota-runtime-versions.json）。
+# - runtimeVersion 必须仍与线上装机包一致（当前 production=24，见 ota-runtime-versions.json）。
 #
 # 安全：只在本仓库 push 到 main 时运行。需在仓库 Secrets 配置
 # ALIYUN_OSS_ACCESS_KEY_ID / ALIYUN_OSS_ACCESS_KEY_SECRET（与 preview 共用）。
@@ -18,6 +18,8 @@ on:
       - main
     paths:
       - 'packages/happy-app/**'
+      - 'patches/fix-expo-camera-scanner-transitions.cjs'
+      - 'scripts/postinstall.cjs'
       # Documentation and tests do not change the shipped Expo bundle. Keep
       # them from publishing a production OTA merely because they live under
       # packages/happy-app.
@@ -67,6 +69,8 @@ jobs:
               packages/happy-app/android/*|\
               packages/happy-app/ios/*|\
               packages/happy-app/plugins/*|\
+              patches/fix-expo-camera-scanner-transitions.cjs|\
+              scripts/postinstall.cjs|\
               pnpm-lock.yaml)
                 native_changed=true
                 echo "Native-sensitive OTA path: $file"

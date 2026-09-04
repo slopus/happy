@@ -3,7 +3,7 @@ import { View, Text, Platform } from 'react-native';
 import { Image } from 'expo-image';
 import { Typography } from '@/constants/Typography';
 import { RoundButton } from '@/components/RoundButton';
-import { useConnectTerminal } from '@/hooks/useConnectTerminal';
+import { useUnifiedAuthQrCode } from '@/hooks/useUnifiedAuthQrCode';
 import { Modal } from '@/modal';
 import { t } from '@/text';
 import { useLocalSettingMutable } from '@/sync/storage';
@@ -89,7 +89,7 @@ const stylesheet = StyleSheet.create((theme) => ({
 }));
 
 export function EmptyMainScreen() {
-    const { connectTerminal, connectWithUrl, isLoading } = useConnectTerminal();
+    const { connectAuthQrCode, connectWithUrl, isLoading } = useUnifiedAuthQrCode();
     const { theme } = useUnistyles();
     const styles = stylesheet;
     // 用户在「设置 → 外观 → 吉祥物」选中的形象，空状态页实时跟随
@@ -149,7 +149,7 @@ export function EmptyMainScreen() {
                                 title={t('components.emptyMainScreen.openCamera')}
                                 size="large"
                                 loading={isLoading}
-                                onPress={connectTerminal}
+                                onPress={connectAuthQrCode}
                             />
                         </View>
                         <View style={styles.buttonWrapperSecondary}>

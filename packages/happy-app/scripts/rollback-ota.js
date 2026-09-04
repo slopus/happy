@@ -3,7 +3,7 @@
 // 用法：pnpm ota:rollback [--channel <channel>] [--platform <platform>] [--runtime-version <runtime>]
 //   --channel  回退哪个频道，缺省 production
 //   --platform 平台，缺省 android
-//   --runtime-version  覆盖默认 runtime；默认 preview/development=22，production=23
+//   --runtime-version  覆盖默认 runtime；默认 preview/development=23，production=24
 //
 // 原理：每次 publish-ota.js 发布都会在 OSS 留一份按时间戳命名的 manifest 备份
 //（manifests/<platform>/<runtime>/<channel>/<时间戳>.json），而 latest.json 只是「当前线上」指针。
