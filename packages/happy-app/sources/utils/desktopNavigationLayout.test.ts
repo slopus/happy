@@ -75,6 +75,20 @@ describe('desktopNavigationLayout', () => {
         expect(widths.right).toBeGreaterThanOrEqual(280);
     });
 
+    it('reserves the fixed primary navigation width before sizing the resizable side panels', () => {
+        const widths = getDesktopWorkspacePanelWidths({
+            leftVisible: true,
+            requestedLeftWidth: 480,
+            requestedRightWidth: 480,
+            reservedWidth: 60,
+            rightVisible: true,
+            windowWidth: 1280,
+        } as any);
+
+        expect(widths.left + widths.main + widths.right).toBe(1220);
+        expect(widths.main).toBe(DESKTOP_MAIN_MIN_WIDTH);
+    });
+
     it('caps one visible panel when the opposite panel is hidden', () => {
         expect(getDesktopWorkspacePanelWidths({
             leftVisible: true,

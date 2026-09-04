@@ -207,6 +207,7 @@ describe('SidebarNavigator drawer behavior', () => {
         const sidebar = drawer.props.drawerContent().props.children;
         expect(sidebar.props.closeDrawerOnNavigate).toBe(expected);
         expect(sidebar.props.desktopDensity).toBe(isTablet);
+        expect(sidebar.props.desktopPrimaryNavigation).toBe(isTablet);
         act(() => renderer.unmount());
     });
 
@@ -217,7 +218,10 @@ describe('SidebarNavigator drawer behavior', () => {
         });
 
         const drawer = renderer.root.findByType('Drawer');
-        expect(drawer.props.screenOptions.drawerStyle.width).toBe(360);
+        expect(drawer.props.screenOptions.drawerStyle.width).toBe(420);
+        expect(renderer.root.findByProps({ testID: 'desktop-left-panel-resize-handle' }).props.style)
+            .toContainEqual({ left: 415 });
+        expect(renderer.root.findByProps({ testID: 'desktop-navigation-controls' }).parent.props.style.left).toBe(436);
         const sidebarToggle = renderer.root.findByProps({ testID: 'desktop-navigation-sidebar-button' });
         expect(sidebarToggle.props['aria-expanded']).toBe(true);
         expect(sidebarToggle.props.accessibilityState).toEqual({ expanded: true });
@@ -252,7 +256,7 @@ describe('SidebarNavigator drawer behavior', () => {
             happyMotionSide: 'left',
             happyMotionState: 'closed',
         });
-        expect(drawerContent.props.style).toContainEqual(expect.objectContaining({ width: 360 }));
+        expect(drawerContent.props.style).toContainEqual(expect.objectContaining({ width: 420 }));
         expect(drawerContent.props.style).toContainEqual(expect.objectContaining({ pointerEvents: 'none' }));
         expect(drawerContent.props.style).not.toContainEqual({ display: 'none' });
 

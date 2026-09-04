@@ -4,6 +4,7 @@ import { usePathname } from 'expo-router';
 import { useLocalSettingMutable } from '@/sync/storage';
 import { useGlobalKeyboard } from '@/hooks/useGlobalKeyboard';
 import {
+    DESKTOP_PRIMARY_NAVIGATION_WIDTH,
     type DesktopPanelSide,
     getDesktopPanelResizeWidth,
     getDesktopWorkspacePanelWidths,
@@ -109,12 +110,15 @@ export const DesktopWorkspaceLayoutProvider = React.memo(function DesktopWorkspa
             supportsPersistentPanel: Platform.OS === 'web' || isRunningOnMac(),
             windowWidth,
         });
+    const reservedWidth = enabled && Platform.OS === 'web' ? DESKTOP_PRIMARY_NAVIGATION_WIDTH : 0;
+    const layoutWindowWidth = Math.max(0, windowWidth - reservedWidth);
     const leftVisible = enabled && !zenMode && !leftCollapsed;
     const rightVisible = rightPanelAvailable && !zenMode && !rightCollapsed;
     const panelWidths = React.useMemo(() => getDesktopWorkspacePanelWidths({
         leftVisible,
         requestedLeftWidth: liveLeftWidth,
         requestedRightWidth: liveRightWidth,
+        reservedWidth,
         rightVisible,
         windowWidth,
     }), [leftVisible, liveLeftWidth, liveRightWidth, rightVisible, windowWidth]);
@@ -123,6 +127,7 @@ export const DesktopWorkspaceLayoutProvider = React.memo(function DesktopWorkspa
             leftVisible: true,
             requestedLeftWidth: liveLeftWidth,
             requestedRightWidth: liveRightWidth,
+            reservedWidth,
             rightVisible,
             windowWidth,
         }).left
@@ -132,6 +137,7 @@ export const DesktopWorkspaceLayoutProvider = React.memo(function DesktopWorkspa
             leftVisible,
             requestedLeftWidth: liveLeftWidth,
             requestedRightWidth: liveRightWidth,
+            reservedWidth,
             rightVisible: true,
             windowWidth,
         }).right
@@ -141,14 +147,14 @@ export const DesktopWorkspaceLayoutProvider = React.memo(function DesktopWorkspa
         oppositePanelVisible: rightVisible,
         oppositePanelWidth: panelWidths.right,
         side: 'left',
-        windowWidth,
+        windowWidth: layoutWindowWidth,
     });
     const rightMaximumWidth = getDesktopPanelResizeWidth({
         desiredWidth: Number.MAX_SAFE_INTEGER,
         oppositePanelVisible: leftVisible,
         oppositePanelWidth: panelWidths.left,
         side: 'right',
-        windowWidth,
+        windowWidth: layoutWindowWidth,
     });
 
     const toggleLeftSidebar = React.useCallback(() => {
@@ -184,10 +190,10 @@ export const DesktopWorkspaceLayoutProvider = React.memo(function DesktopWorkspa
             side,
             startPointerX: pointerX,
             startWidth: side === 'left' ? panelWidths.left : panelWidths.right,
-            windowWidth,
+            windowWidth: layoutWindowWidth,
         };
         setResizingSide(side);
-    }, [enabled, leftVisible, panelWidths.left, panelWidths.right, rightVisible, windowWidth]);
+    }, [enabled, layoutWindowWidth, leftVisible, panelWidths.left, panelWidths.right, rightVisible]);
 
     const continuePanelResize = React.useCallback((pointerX: number) => {
         const session = resizeSessionRef.current;
@@ -231,7 +237,7 @@ export const DesktopWorkspaceLayoutProvider = React.memo(function DesktopWorkspa
             oppositePanelVisible: side === 'left' ? rightVisible : leftVisible,
             oppositePanelWidth: side === 'left' ? panelWidths.right : panelWidths.left,
             side,
-            windowWidth,
+            windowWidth: layoutWindowWidth,
         });
         if (side === 'left') {
             liveLeftWidthRef.current = nextWidth;
@@ -244,13 +250,13 @@ export const DesktopWorkspaceLayoutProvider = React.memo(function DesktopWorkspa
         }
     }, [
         enabled,
+        layoutWindowWidth,
         leftVisible,
         panelWidths.left,
         panelWidths.right,
         rightVisible,
         setStoredLeftWidth,
         setStoredRightWidth,
-        windowWidth,
     ]);
 
     React.useEffect(() => {

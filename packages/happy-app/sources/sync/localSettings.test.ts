@@ -104,6 +104,7 @@ describe('localSettings desktop Lists and Tags', () => {
         expect(localSettingsParse({}).desktopSidebarMode).toBe('projects');
         expect(localSettingsParse({ desktopSidebarMode: 'lists' }).desktopSidebarMode).toBe('lists');
         expect(localSettingsParse({ desktopSidebarMode: 'timeline' }).desktopSidebarMode).toBe('timeline');
+        expect(localSettingsParse({ desktopSidebarMode: 'history' }).desktopSidebarMode).toBe('history');
     });
 
     it('persists one List and multiple Tags for a session', () => {

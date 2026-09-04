@@ -57,7 +57,7 @@ export const LocalSettingsSchema = z.object({
     desktopLeftSidebarWidth: z.number().finite().describe('Preferred width of the desktop session sidebar'),
     desktopRightPanelWidth: z.number().finite().describe('Preferred width of the desktop capability panel'),
     sessionListLayout: z.enum(['projects', 'time']).describe('Preferred session sidebar grouping'),
-    desktopSidebarMode: z.enum(['projects', 'lists', 'timeline']).describe('Desktop session sidebar primary mode'),
+    desktopSidebarMode: z.enum(['projects', 'lists', 'timeline', 'history']).describe('Desktop session sidebar primary mode'),
     sidebarOrganization: SidebarOrganizationSchema.describe('Legacy device-local session Lists and Tags, retained for account-sync migration'),
     // 「Agent 空间模式」：进入某个「我的 Agent」后，左侧侧栏收敛为该 Agent 的专属工作台
     // （仅本空间会话 + 预设快捷指令 + 退出空间）。存 agent id；null 为全局视图。刻意放设备本地、

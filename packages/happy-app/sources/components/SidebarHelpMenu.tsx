@@ -13,6 +13,7 @@ const SUPPORT_URL = 'https://github.com/wangjs-jacky/happy/issues';
 type SidebarHelpMenuProps = {
     onOpenChange: (open: boolean) => void;
     open: boolean;
+    railMode?: boolean;
     restoreFocusOnClose?: boolean;
 };
 
@@ -50,6 +51,7 @@ const MenuAction = React.forwardRef<any, MenuActionProps>(function MenuAction({
 export const SidebarHelpMenu = React.memo(function SidebarHelpMenu({
     onOpenChange,
     open,
+    railMode = false,
     restoreFocusOnClose = true,
 }: SidebarHelpMenuProps) {
     const { theme } = useUnistyles();
@@ -59,6 +61,8 @@ export const SidebarHelpMenu = React.memo(function SidebarHelpMenu({
     const firstActionRef = React.useRef<any>(null);
     const wasOpenRef = React.useRef(false);
     const skipNextClosedFocusRef = React.useRef(false);
+    const label = t('keyboardShortcuts.help');
+    const webTitle = Platform.OS === 'web' && railMode ? { title: label } as any : {};
 
     React.useEffect(() => {
         if (Platform.OS !== 'web' || !launcherAvailable) {
@@ -129,13 +133,13 @@ export const SidebarHelpMenu = React.memo(function SidebarHelpMenu({
     }
 
     return (
-        <View style={styles.footer} testID="sidebar-help-footer">
+        <View style={[styles.footer, railMode && styles.footerRail]} testID="sidebar-help-footer">
             {open ? (
                 <View
-                    accessibilityLabel={t('keyboardShortcuts.help')}
+                    accessibilityLabel={label}
                     accessibilityRole="menu"
                     accessibilityViewIsModal
-                    style={styles.menu}
+                    style={railMode ? [styles.menu, styles.menuRail] : styles.menu}
                     testID="sidebar-help-menu"
                 >
                     <MenuAction
@@ -157,10 +161,11 @@ export const SidebarHelpMenu = React.memo(function SidebarHelpMenu({
             ) : null}
 
             <Pressable
+                {...webTitle}
                 ref={triggerRef}
                 aria-expanded={open}
                 aria-haspopup="menu"
-                accessibilityLabel={t('keyboardShortcuts.help')}
+                accessibilityLabel={label}
                 accessibilityRole="button"
                 accessibilityState={{ expanded: open }}
                 onPress={() => onOpenChange(!open)}
@@ -182,6 +187,13 @@ const styles = StyleSheet.create((theme) => ({
         paddingBottom: 4,
         alignItems: 'flex-end',
         backgroundColor: theme.colors.groupped.background,
+    },
+    footerRail: {
+        alignItems: 'center',
+        paddingBottom: 2,
+        paddingRight: 0,
+        paddingTop: 2,
+        width: 60,
     },
     trigger: {
         width: 44,
@@ -214,6 +226,9 @@ const styles = StyleSheet.create((theme) => ({
         shadowRadius: 18,
         shadowOffset: { width: 0, height: 8 },
         elevation: 10,
+    },
+    menuRail: {
+        right: -224,
     },
     menuAction: {
         minHeight: 42,

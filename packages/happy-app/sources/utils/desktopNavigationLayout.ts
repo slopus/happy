@@ -5,6 +5,7 @@ export const DESKTOP_MAIN_MIN_WIDTH = 480;
 export const DESKTOP_LEFT_PANEL_MIN_WIDTH = 250;
 export const DESKTOP_LEFT_PANEL_DEFAULT_WIDTH = 360;
 export const DESKTOP_LEFT_PANEL_MAX_WIDTH = 480;
+export const DESKTOP_PRIMARY_NAVIGATION_WIDTH = 60;
 export const DESKTOP_RIGHT_PANEL_MIN_WIDTH = 280;
 export const DESKTOP_RIGHT_PANEL_DEFAULT_WIDTH = 320;
 export const DESKTOP_RIGHT_PANEL_MAX_WIDTH = 480;
@@ -83,16 +84,19 @@ export function getDesktopWorkspacePanelWidths({
     leftVisible,
     requestedLeftWidth,
     requestedRightWidth,
+    reservedWidth = 0,
     rightVisible,
     windowWidth,
 }: {
     leftVisible: boolean;
     requestedLeftWidth: number;
     requestedRightWidth: number;
+    reservedWidth?: number;
     rightVisible: boolean;
     windowWidth: number;
 }): { left: number; main: number; right: number } {
-    const availableForPanels = Math.max(0, windowWidth - DESKTOP_MAIN_MIN_WIDTH);
+    const workspaceWidth = Math.max(0, windowWidth - reservedWidth);
+    const availableForPanels = Math.max(0, workspaceWidth - DESKTOP_MAIN_MIN_WIDTH);
     let left = leftVisible ? clampDesktopPanelWidth('left', requestedLeftWidth) : 0;
     let right = rightVisible ? clampDesktopPanelWidth('right', requestedRightWidth) : 0;
 
@@ -121,7 +125,7 @@ export function getDesktopWorkspacePanelWidths({
 
     return {
         left,
-        main: Math.max(DESKTOP_MAIN_MIN_WIDTH, windowWidth - left - right),
+        main: Math.max(DESKTOP_MAIN_MIN_WIDTH, workspaceWidth - left - right),
         right,
     };
 }

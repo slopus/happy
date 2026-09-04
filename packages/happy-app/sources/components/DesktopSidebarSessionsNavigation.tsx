@@ -57,6 +57,7 @@ import { formatPathRelativeToHome } from '@/utils/sessionUtils';
 import { CompactSessionRow } from './ActiveSessionsGroupCompact';
 import { useSessionManagementPreferences } from '@/hooks/useSessionManagementPreferences';
 import { partitionSessionsByPinnedOrder } from '@/utils/sessionPinning';
+import { SessionHistoryList } from './SessionHistoryList';
 
 const AGENT_TYPES = ['codex', 'claude', 'opencode', 'gemini', 'openclaw'] as const satisfies readonly NewSessionAgentType[];
 const AGENT_LABEL_KEYS = {
@@ -392,7 +393,9 @@ export const DesktopSidebarSessionsNavigation = React.memo(() => {
                     );
                 })}
             </View>
-            {mode === 'lists'
+            {mode === 'history'
+                ? <SessionHistoryList variant="sidebar" />
+                : mode === 'lists'
                 ? <SidebarListsView />
                 : <MainView sessionListLayout={mode === 'timeline' ? 'time' : 'projects'} variant="sidebar" />}
         </View>

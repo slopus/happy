@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
     helpTriggerFocus: vi.fn(),
     navigate: vi.fn(),
     openCommandPalette: vi.fn(),
+    setDesktopSidebarMode: vi.fn(),
     commandPaletteAvailable: false,
     spaceAgent: {
         id: 'health',
@@ -74,7 +75,9 @@ vi.mock('@/sync/storage', () => ({
     useFriendRequests: () => [],
     useProfile: () => null,
     useLocalSetting: () => [],
-    useLocalSettingMutable: () => [[], vi.fn()],
+    useLocalSettingMutable: (name: string) => name === 'desktopSidebarMode'
+        ? ['projects', mocks.setDesktopSidebarMode]
+        : [[], vi.fn()],
     useLocalSettingUpdater: () => vi.fn(),
 }));
 vi.mock('@/sync/profile', () => ({ getDisplayName: () => null }));
@@ -399,30 +402,52 @@ describe('SidebarView Agent space exit', () => {
         act(() => renderer.unmount());
     });
 
-    it('keeps primary work and plugin destinations contiguous and Agents secondary', () => {
+    it('renders the six desktop destinations as a narrow icon rail with hover labels beside the independent session list', () => {
         mocks.spaceAgent = null;
         let renderer: any;
 
         act(() => {
             renderer = TestRenderer.create(
-                <SidebarView closeDrawerOnNavigate={false} desktopDensity />,
+                <SidebarView closeDrawerOnNavigate={false} desktopDensity desktopPrimaryNavigation />,
             );
         });
 
-        const primary = renderer.root.findByProps({ testID: 'sidebar-primary-navigation' });
-        expect(primary.findAllByType('Pressable').map((node: any) => node.props.testID)).toEqual([
+        const primaryColumn = renderer.root.findByProps({ testID: 'desktop-primary-navigation-column' });
+        expect(primaryColumn.props.style).toEqual(expect.objectContaining({ width: 60, zIndex: 100 }));
+        expect(primaryColumn.findAllByType('Pressable').map((node: any) => node.props.testID)).toEqual(expect.arrayContaining([
             'sidebar-new-session-button',
             'sidebar-inbox-button',
             'sidebar-command-palette-button',
             'sidebar-plugins-button',
-        ]);
-        expect(primary.findAllByProps({ testID: 'sidebar-my-agents-button' })).toHaveLength(0);
+            'sidebar-my-agents-button',
+            'sidebar-history-button',
+        ]));
+        expect(primaryColumn.findAllByType('DesktopSidebarSessionsNavigation')).toHaveLength(0);
+        expect(primaryColumn.findAllByProps({ testID: 'desktop-navigation-rail' })).toHaveLength(1);
+        expect(primaryColumn.findAllByProps({ testID: 'desktop-navigation-rail-tooltip-new-session' })).toHaveLength(0);
 
-        const secondary = renderer.root.findByProps({ testID: 'sidebar-secondary-navigation' });
-        expect(secondary.findAllByProps({ testID: 'sidebar-my-agents-button' })).toHaveLength(1);
-        const addAgent = secondary.findByProps({ testID: 'sidebar-add-agent-button' });
-        expect(addAgent.props.accessibilityLabel).toBe('agents.add');
-        expect(addAgent.findAllByType('Text')).toHaveLength(0);
+        const newSession = primaryColumn.findAllByType('Pressable')
+            .find((node: any) => node.props.testID === 'sidebar-new-session-button')!;
+        expect(newSession).toBeDefined();
+        expect(newSession.findAllByType('Text')).toHaveLength(0);
+        act(() => newSession.props.onHoverIn());
+        const tooltip = primaryColumn.findByProps({ testID: 'desktop-navigation-rail-tooltip-new-session' });
+        expect(tooltip.props.style).toEqual(expect.objectContaining({ minWidth: 92 }));
+        expect(tooltip.findByType('Text').props).toMatchObject({
+            children: 'sidebar.newSession',
+            numberOfLines: 1,
+        });
+        act(() => newSession.props.onHoverOut());
+        expect(primaryColumn.findAllByProps({ testID: 'desktop-navigation-rail-tooltip-new-session' })).toHaveLength(0);
+
+        const secondaryColumn = renderer.root.findByProps({ testID: 'desktop-secondary-navigation-column' });
+        expect(secondaryColumn.findAllByType('DesktopSidebarSessionsNavigation')).toHaveLength(1);
+        expect(secondaryColumn.findAllByProps({ testID: 'sidebar-my-agents-button' })).toHaveLength(0);
+
+        expect(primaryColumn.findAllByProps({ testID: 'sidebar-add-agent-button' })).toHaveLength(0);
+
+        act(() => primaryColumn.findByProps({ testID: 'sidebar-history-button' }).props.onPress());
+        expect(mocks.setDesktopSidebarMode).toHaveBeenCalledWith('history');
 
         act(() => renderer.unmount());
     });

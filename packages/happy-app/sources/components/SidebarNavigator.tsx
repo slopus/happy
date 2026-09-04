@@ -30,6 +30,7 @@ import {
     PERSISTENT_NAVIGATION_SIDEBAR_CONTROL_WIDTH,
     PERSISTENT_NAVIGATION_ZEN_CONTROL_WIDTH,
     TAURI_HEADER_CONTROL_LEFT,
+    DESKTOP_PRIMARY_NAVIGATION_WIDTH,
 } from '@/utils/desktopNavigationLayout';
 
 export const SidebarNavigator = React.memo(() => {
@@ -62,7 +63,7 @@ const SidebarNavigatorContent = React.memo(() => {
     // Calculate target drawer width
     const fullDrawerWidth = React.useMemo(() => {
         if (!isDesktopLayout) return 320;
-        return leftExpandedWidth;
+        return leftExpandedWidth + (Platform.OS === 'web' ? DESKTOP_PRIMARY_NAVIGATION_WIDTH : 0);
     }, [isDesktopLayout, leftExpandedWidth]);
     const drawerWidth = showSidebar ? fullDrawerWidth : 0;
 
@@ -179,6 +180,7 @@ const SidebarNavigatorContent = React.memo(() => {
                 <SidebarView
                     closeDrawerOnNavigate={!isDesktopLayout}
                     desktopDensity={isDesktopLayout}
+                    desktopPrimaryNavigation={isDesktopLayout && Platform.OS === 'web'}
                 />
             </View>
         ),
@@ -200,7 +202,7 @@ const SidebarNavigatorContent = React.memo(() => {
                     accessibilityLabel={t('desktopWorkspace.resizePanel', {
                         panel: t('desktopWorkspace.sessions'),
                     })}
-                    offset={leftWidth - 5}
+                    offset={leftWidth + (Platform.OS === 'web' ? DESKTOP_PRIMARY_NAVIGATION_WIDTH : 0) - 5}
                     side="left"
                 />
             )}
@@ -278,7 +280,9 @@ const PersistentHeader = React.memo(() => {
             style={{
                 position: 'absolute',
                 top: 0,
-                left: sidebarWidth + 16,
+                left: (sidebarVisible
+                    ? sidebarWidth + (Platform.OS === 'web' ? DESKTOP_PRIMARY_NAVIGATION_WIDTH : 0)
+                    : 0) + 16,
                 right: 0,
                 paddingTop: safeArea.top,
                 paddingLeft: isMacTauri ? TAURI_HEADER_CONTROL_LEFT : 16,

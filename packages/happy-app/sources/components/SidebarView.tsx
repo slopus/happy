@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useNavigation } from 'expo-router';
 import { DrawerActions } from '@react-navigation/native';
 import { VoiceAssistantStatusBar } from './VoiceAssistantStatusBar';
-import { useRealtimeStatus, useFriendRequests, useProfile, useLocalSetting } from '@/sync/storage';
+import { useRealtimeStatus, useFriendRequests, useProfile, useLocalSetting, useLocalSettingMutable } from '@/sync/storage';
 import { getDisplayName } from '@/sync/profile';
 import { StyleSheet } from 'react-native-unistyles';
 import { t } from '@/text';
@@ -21,6 +21,7 @@ import { useDesktopSettingsModal } from './DesktopSettingsModal';
 import { DesktopSidebarSessionsNavigation } from './DesktopSidebarSessionsNavigation';
 import { PluginMarketplaceModal } from './plugins/PluginMarketplaceModal';
 import { PluginLeftSidebarSlot } from './plugins/PluginLeftSidebarSlot';
+import { DESKTOP_PRIMARY_NAVIGATION_WIDTH } from '@/utils/desktopNavigationLayout';
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
@@ -32,6 +33,71 @@ const stylesheet = StyleSheet.create((theme) => ({
     },
     containerDesktop: {
         borderWidth: 0,
+        flexDirection: 'row',
+    },
+    desktopPrimaryColumn: {
+        backgroundColor: theme.colors.groupped.background,
+        borderRightColor: theme.colors.divider,
+        borderRightWidth: StyleSheet.hairlineWidth,
+        overflow: 'visible',
+        width: DESKTOP_PRIMARY_NAVIGATION_WIDTH,
+        zIndex: 100,
+    },
+    desktopSecondaryColumn: {
+        backgroundColor: theme.colors.groupped.background,
+        flex: 1,
+        minWidth: 0,
+    },
+    desktopPrimarySpacer: {
+        flex: 1,
+    },
+    desktopRail: {
+        alignItems: 'center',
+        gap: 4,
+        paddingTop: 4,
+        zIndex: 30,
+    },
+    desktopRailDivider: {
+        backgroundColor: theme.colors.divider,
+        height: StyleSheet.hairlineWidth,
+        marginVertical: 3,
+        width: 32,
+    },
+    desktopRailItem: {
+        position: 'relative',
+        zIndex: 30,
+    },
+    desktopRailButton: {
+        alignItems: 'center',
+        borderRadius: 10,
+        height: 44,
+        justifyContent: 'center',
+        width: 44,
+    },
+    desktopRailButtonActive: {
+        backgroundColor: theme.colors.surfacePressed,
+    },
+    desktopRailButtonSelected: {
+        backgroundColor: theme.colors.surfaceSelected,
+    },
+    desktopRailTooltip: {
+        alignItems: 'center',
+        backgroundColor: theme.colors.text,
+        borderRadius: 8,
+        flexDirection: 'row',
+        left: 52,
+        minHeight: 30,
+        minWidth: 92,
+        paddingHorizontal: 10,
+        position: 'absolute',
+        top: 7,
+        zIndex: 1500,
+    },
+    desktopRailTooltipText: {
+        ...Typography.default('semiBold'),
+        color: theme.colors.surface,
+        flexShrink: 0,
+        fontSize: 12,
     },
     messagesRow: {
         flexDirection: 'row',
@@ -92,6 +158,9 @@ const stylesheet = StyleSheet.create((theme) => ({
     },
     newSessionButtonPressed: {
         backgroundColor: theme.colors.surfacePressed,
+    },
+    navigationRowSelected: {
+        backgroundColor: theme.colors.surfaceSelected,
     },
     newSessionButtonDesktop: {
         marginHorizontal: 10,
@@ -224,6 +293,10 @@ const stylesheet = StyleSheet.create((theme) => ({
         flexDirection: 'row',
         alignItems: 'stretch',
     },
+    footerMenusRail: {
+        alignItems: 'center',
+        flexDirection: 'column',
+    },
     accountMenuSlot: {
         flex: 1,
         minWidth: 0,
@@ -245,13 +318,76 @@ const stylesheet = StyleSheet.create((theme) => ({
 interface SidebarViewProps {
     closeDrawerOnNavigate?: boolean;
     desktopDensity?: boolean;
+    desktopPrimaryNavigation?: boolean;
 }
 
 type FooterMenu = 'account' | 'help' | null;
 
+function DesktopRailItem({
+    badge,
+    icon,
+    label,
+    onPress,
+    selected = false,
+    testID,
+}: {
+    badge?: number;
+    icon: React.ComponentProps<typeof Ionicons>['name'];
+    label: string;
+    onPress: () => void;
+    selected?: boolean;
+    testID: string;
+}) {
+    const styles = stylesheet;
+    const [active, setActive] = React.useState(false);
+    const itemKey = testID.replace('sidebar-', '').replace('-button', '');
+
+    return (
+        <View style={styles.desktopRailItem}>
+            <Pressable
+                accessibilityLabel={label}
+                accessibilityRole="button"
+                accessibilityState={{ selected }}
+                onBlur={() => setActive(false)}
+                onFocus={() => setActive(true)}
+                onHoverIn={() => setActive(true)}
+                onHoverOut={() => setActive(false)}
+                onPress={onPress}
+                style={({ pressed }) => [
+                    styles.desktopRailButton,
+                    selected && styles.desktopRailButtonSelected,
+                    (active || pressed) && styles.desktopRailButtonActive,
+                ]}
+                testID={testID}
+            >
+                <Ionicons
+                    color={selected ? stylesheet.newSessionText.color : stylesheet.pluginsChevron.color}
+                    name={icon}
+                    size={21}
+                />
+                {badge && badge > 0 ? (
+                    <View style={[styles.badge, { position: 'absolute', right: 2, top: 2 }]}>
+                        <Text style={styles.badgeText}>{badge > 99 ? '99+' : badge}</Text>
+                    </View>
+                ) : null}
+            </Pressable>
+            {active ? (
+                <View
+                    pointerEvents="none"
+                    style={styles.desktopRailTooltip}
+                    testID={`desktop-navigation-rail-tooltip-${itemKey}`}
+                >
+                    <Text numberOfLines={1} style={styles.desktopRailTooltipText}>{label}</Text>
+                </View>
+            ) : null}
+        </View>
+    );
+}
+
 export const SidebarView = React.memo(({
     closeDrawerOnNavigate = true,
     desktopDensity = false,
+    desktopPrimaryNavigation = false,
 }: SidebarViewProps) => {
     useDrawerHaptics();
     const styles = stylesheet;
@@ -262,6 +398,7 @@ export const SidebarView = React.memo(({
     const friendRequests = useFriendRequests();
     const profile = useProfile();
     const agents = useLocalSetting('agents');
+    const [desktopSidebarMode, setDesktopSidebarMode] = useLocalSettingMutable('desktopSidebarMode');
     const [sheetOpen, setSheetOpen] = React.useState(false);
     const [pluginMarketplaceOpen, setPluginMarketplaceOpen] = React.useState(false);
     const [initialPluginId, setInitialPluginId] = React.useState<string | null>(null);
@@ -344,28 +481,8 @@ export const SidebarView = React.memo(({
         );
     }
 
-    return (
-        <View
-            style={[
-                styles.container,
-                desktopDensity && styles.containerDesktop,
-                { paddingTop: safeArea.top + (desktopDensity ? 4 : 12) },
-            ]}
-            testID={desktopDensity ? 'sidebar-desktop-density' : undefined}
-        >
-            {footerMenu !== null ? (
-                <Pressable
-                    accessibilityElementsHidden
-                    importantForAccessibility="no"
-                    onPress={() => setFooterMenu(null)}
-                    style={styles.footerMenuDismissLayer}
-                    testID="sidebar-footer-menu-dismiss-layer"
-                />
-            ) : null}
-
-            {/* Stable primary work navigation. Keep these entries contiguous so
-                machines, Agents, and sessions remain context rather than peers. */}
-            <View style={styles.primaryNavigation} testID="sidebar-primary-navigation">
+    const primaryNavigation = (
+        <View style={styles.primaryNavigation} testID="sidebar-primary-navigation">
                 <Pressable
                     onPress={() => go('/new')}
                     testID="sidebar-new-session-button"
@@ -420,9 +537,11 @@ export const SidebarView = React.memo(({
                     <Text style={styles.pluginsText}>{t('relationshipAdvisorPlugin.marketTitle')}</Text>
                     <Ionicons name="chevron-forward" size={15} color={stylesheet.pluginsChevron.color} />
                 </Pressable>
-            </View>
+        </View>
+    );
 
-            <View style={styles.secondaryNavigation} testID="sidebar-secondary-navigation">
+    const agentAndHistoryNavigation = (
+        <View style={styles.secondaryNavigation} testID="sidebar-secondary-navigation">
                 <View
                     style={styles.secondaryNavigationDivider}
                     testID="sidebar-secondary-navigation-divider"
@@ -466,26 +585,82 @@ export const SidebarView = React.memo(({
                         <Text style={styles.agentsEmpty} numberOfLines={1}>{t('agents.empty')}</Text>
                     ) : null}
                 </Pressable>
-            </View>
+                <Pressable
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: desktopPrimaryNavigation && desktopSidebarMode === 'history' }}
+                    onPress={() => desktopPrimaryNavigation ? setDesktopSidebarMode('history') : go('/session/recent')}
+                    style={({ pressed }) => [
+                        styles.newSessionButton,
+                        desktopDensity && styles.newSessionButtonDesktop,
+                        desktopPrimaryNavigation && desktopSidebarMode === 'history' && styles.navigationRowSelected,
+                        pressed && styles.newSessionButtonPressed,
+                    ]}
+                    testID="sidebar-history-button"
+                >
+                    <Ionicons name="time-outline" size={16} color={stylesheet.newSessionText.color} />
+                    <Text style={styles.newSessionText}>{t('relationshipAdvisor.historyTitle')}</Text>
+                </Pressable>
+        </View>
+    );
 
-            <PluginLeftSidebarSlot
-                desktopDensity={desktopDensity}
-                onNavigate={go}
+    const desktopNavigationRail = (
+        <View style={styles.desktopRail} testID="desktop-navigation-rail">
+            <DesktopRailItem
+                icon="create-outline"
+                label={t('sidebar.newSession')}
+                onPress={() => go('/new')}
+                testID="sidebar-new-session-button"
             />
+            <DesktopRailItem
+                badge={friendRequests.length}
+                icon="chatbubble-ellipses-outline"
+                label={t('tabs.inbox')}
+                onPress={() => go('/inbox')}
+                testID="sidebar-inbox-button"
+            />
+            <DesktopRailItem
+                icon="search-outline"
+                label={t('sidebar.searchSessions')}
+                onPress={openSessionSearch}
+                testID="sidebar-command-palette-button"
+            />
+            <View style={styles.desktopRailDivider} />
+            <DesktopRailItem
+                icon="extension-puzzle-outline"
+                label={t('relationshipAdvisorPlugin.marketTitle')}
+                onPress={openPluginMarketplace}
+                testID="sidebar-plugins-button"
+            />
+            <DesktopRailItem
+                icon="people-outline"
+                label={t('agents.cardTitle')}
+                onPress={() => setSheetOpen(true)}
+                testID="sidebar-my-agents-button"
+            />
+            <DesktopRailItem
+                icon="time-outline"
+                label={t('relationshipAdvisor.historyTitle')}
+                onPress={() => setDesktopSidebarMode('history')}
+                selected={desktopSidebarMode === 'history'}
+                testID="sidebar-history-button"
+            />
+        </View>
+    );
 
-            {realtimeStatus !== 'disconnected' && (
-                <VoiceAssistantStatusBar variant="sidebar" />
-            )}
+    const pluginNavigation = (
+        <PluginLeftSidebarSlot desktopDensity={desktopDensity} onNavigate={go} />
+    );
 
-            {/* Projects preserves the existing session list; Lists adds the same
-                organization layer in both desktop and mobile sidebars. */}
-            <DesktopSidebarSessionsNavigation />
+    const voiceStatus = realtimeStatus !== 'disconnected'
+        ? <VoiceAssistantStatusBar variant="sidebar" />
+        : null;
 
-            {/* Low-frequency account and system actions stay anchored below the work list. */}
-            <View
+    const footerNavigation = (
+        <View
                 style={[
                     styles.footerMenuSlot,
                     desktopDensity && styles.footerMenusDesktop,
+                    desktopPrimaryNavigation && styles.footerMenusRail,
                     { paddingBottom: safeArea.bottom },
                 ]}
                 testID={desktopDensity ? 'sidebar-footer-menus' : undefined}
@@ -494,6 +669,7 @@ export const SidebarView = React.memo(({
                     <View style={styles.accountMenuSlot} testID="sidebar-account-menu-slot">
                         <SidebarAccountMenu
                             desktopDensity
+                            railMode={desktopPrimaryNavigation}
                             displayName={displayName}
                             onNavigate={go}
                             onOpenSettings={openSettings}
@@ -518,14 +694,17 @@ export const SidebarView = React.memo(({
                 )}
                 {desktopDensity ? (
                     <SidebarHelpMenu
+                        railMode={desktopPrimaryNavigation}
                         onOpenChange={setHelpMenuOpen}
                         open={footerMenu === 'help'}
                         restoreFocusOnClose={footerMenu !== 'account'}
                     />
                 ) : null}
-            </View>
+        </View>
+    );
 
-            {/* Bottom drawer listing the user's agents (RN Modal — placement in tree is irrelevant) */}
+    const overlays = (
+        <>
             <AgentSheet
                 visible={sheetOpen}
                 onClose={() => setSheetOpen(false)}
@@ -535,6 +714,50 @@ export const SidebarView = React.memo(({
                 onClose={closePluginMarketplace}
                 visible={pluginMarketplaceOpen}
             />
+        </>
+    );
+
+    return (
+        <View
+            style={[
+                styles.container,
+                desktopDensity && styles.containerDesktop,
+                { paddingTop: safeArea.top + (desktopDensity ? 4 : 12) },
+            ]}
+            testID={desktopDensity ? 'sidebar-desktop-density' : undefined}
+        >
+            {footerMenu !== null ? (
+                <Pressable
+                    accessibilityElementsHidden
+                    importantForAccessibility="no"
+                    onPress={() => setFooterMenu(null)}
+                    style={styles.footerMenuDismissLayer}
+                    testID="sidebar-footer-menu-dismiss-layer"
+                />
+            ) : null}
+
+            {desktopPrimaryNavigation ? (
+                <>
+                    <View style={styles.desktopPrimaryColumn} testID="desktop-primary-navigation-column">
+                        {desktopNavigationRail}
+                        <View style={styles.desktopPrimarySpacer} />
+                        {footerNavigation}
+                    </View>
+                    <View style={styles.desktopSecondaryColumn} testID="desktop-secondary-navigation-column">
+                        <DesktopSidebarSessionsNavigation />
+                    </View>
+                </>
+            ) : (
+                <>
+                    {primaryNavigation}
+                    {agentAndHistoryNavigation}
+                    {pluginNavigation}
+                    {voiceStatus}
+                    <DesktopSidebarSessionsNavigation />
+                    {footerNavigation}
+                </>
+            )}
+            {overlays}
         </View>
     );
 });

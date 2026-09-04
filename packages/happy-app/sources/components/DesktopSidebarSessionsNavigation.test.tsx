@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
     moveToPinned: vi.fn(),
     pinnedOrder: [] as string[],
     organization: null as any,
+    desktopSidebarMode: 'projects',
 }));
 
 vi.mock('react-native', async () => {
@@ -93,13 +94,19 @@ vi.mock('@/sync/storage', async () => {
     const ReactModule = await import('react');
     return {
         useAllMachines: () => [{ id: 'mac', active: true, lastActiveAt: Date.now(), metadata: { displayName: 'Mac mini', homeDir: '/Users/test' } }],
-        useLocalSettingMutable: (name: string) => ReactModule.useState(name === 'desktopSidebarMode' ? 'projects' : mocks.organization),
+        useLocalSettingMutable: (name: string) => ReactModule.useState(name === 'desktopSidebarMode' ? mocks.desktopSidebarMode : mocks.organization),
         useSetting: () => mocks.organization,
         useSettingUpdater: () => mocks.updateOrganization,
     };
 });
 vi.mock('@/text', () => ({ t: (key: string) => key }));
 vi.mock('./MainView', () => ({ MainView: 'MainView' }));
+vi.mock('./SessionHistoryList', () => ({
+    SessionHistoryList: ({ variant }: { variant: string }) => React.createElement('SessionHistoryList', {
+        testID: variant === 'sidebar' ? 'desktop-sidebar-history-list' : 'session-history-list',
+        variant,
+    }),
+}));
 vi.mock('./ActiveSessionsGroupCompact', () => ({ CompactSessionRow: 'CompactSessionRow' }));
 vi.mock('./SessionConfigPanel', () => ({ PathPickerContent: 'PathPickerContent', PickerContent: 'PickerContent' }));
 vi.mock('@/utils/machineUtils', () => ({ isMachineOnline: () => true }));
@@ -117,6 +124,7 @@ describe('DesktopSidebarSessionsNavigation', () => {
             sessions: { 'session-1': { listId: 'happy', tagIds: ['product'] } },
         };
         mocks.pinnedOrder = [];
+        mocks.desktopSidebarMode = 'projects';
     });
 
     it('keeps Projects as default and does not navigate for sidebar-only organization actions', () => {
@@ -152,6 +160,23 @@ describe('DesktopSidebarSessionsNavigation', () => {
 
         expect(renderer.root.findByProps({ testID: 'desktop-sidebar-tab-timeline' }).props.accessibilityState).toEqual({ selected: true });
         expect(renderer.root.findByType('MainView').props.sessionListLayout).toBe('time');
+        act(() => renderer.unmount());
+    });
+
+    it('renders history in the list column without adding it to the Projects / Lists / Timeline tabs', () => {
+        mocks.desktopSidebarMode = 'history';
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<DesktopSidebarSessionsNavigation />); });
+
+        expect(renderer.root.findAllByProps({ testID: 'desktop-sidebar-tab-projects' }).length).toBeGreaterThan(0);
+        expect(renderer.root.findAllByProps({ testID: 'desktop-sidebar-tab-lists' }).length).toBeGreaterThan(0);
+        expect(renderer.root.findAllByProps({ testID: 'desktop-sidebar-tab-timeline' }).length).toBeGreaterThan(0);
+        expect(renderer.root.findAllByProps({ testID: 'desktop-sidebar-tab-history' })).toHaveLength(0);
+        expect(renderer.root.findAllByType('MainView')).toHaveLength(0);
+        expect(renderer.root.findByProps({ testID: 'desktop-sidebar-history-list' })).toBeDefined();
+
+        act(() => renderer.root.findByProps({ testID: 'desktop-sidebar-tab-projects' }).props.onPress());
+        expect(renderer.root.findByType('MainView').props.sessionListLayout).toBe('projects');
         act(() => renderer.unmount());
     });
 

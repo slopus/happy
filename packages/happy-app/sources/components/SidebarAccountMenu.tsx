@@ -17,6 +17,7 @@ type SidebarAccountMenuProps = {
     onOpenChange: (open: boolean) => void;
     open: boolean;
     profile: Profile;
+    railMode?: boolean;
     restoreFocusOnClose?: boolean;
     unreadCount?: number;
 };
@@ -63,6 +64,7 @@ export const SidebarAccountMenu = React.memo(function SidebarAccountMenu({
     onOpenChange,
     open,
     profile,
+    railMode = false,
     restoreFocusOnClose = true,
     unreadCount = 0,
 }: SidebarAccountMenuProps) {
@@ -72,6 +74,7 @@ export const SidebarAccountMenu = React.memo(function SidebarAccountMenu({
     const firstActionRef = React.useRef<any>(null);
     const wasOpenRef = React.useRef(false);
     const avatarUrl = getAvatarUrl(profile);
+    const webTitle = Platform.OS === 'web' && railMode ? { title: displayName } as any : {};
 
     React.useEffect(() => {
         if (Platform.OS !== 'web') {
@@ -135,6 +138,7 @@ export const SidebarAccountMenu = React.memo(function SidebarAccountMenu({
             style={[
                 styles.footer,
                 desktopDensity ? styles.footerDesktop : styles.footerRegular,
+                railMode && styles.footerRail,
             ]}
             testID="sidebar-account-footer"
         >
@@ -144,6 +148,7 @@ export const SidebarAccountMenu = React.memo(function SidebarAccountMenu({
                     style={[
                         styles.menu,
                         desktopDensity ? styles.menuDesktop : styles.menuRegular,
+                        railMode && styles.menuRail,
                     ]}
                     testID="sidebar-account-menu"
                 >
@@ -186,6 +191,7 @@ export const SidebarAccountMenu = React.memo(function SidebarAccountMenu({
             ) : null}
 
             <Pressable
+                {...webTitle}
                 ref={triggerRef}
                 aria-expanded={open}
                 aria-haspopup="menu"
@@ -197,6 +203,7 @@ export const SidebarAccountMenu = React.memo(function SidebarAccountMenu({
                 style={({ pressed }) => [
                     styles.trigger,
                     desktopDensity && styles.triggerDesktop,
+                    railMode && styles.triggerRail,
                     pressed && styles.pressed,
                 ]}
                 testID="sidebar-account-trigger"
@@ -207,19 +214,17 @@ export const SidebarAccountMenu = React.memo(function SidebarAccountMenu({
                     size={desktopDensity ? 30 : 38}
                     thumbhash={profile.avatar?.thumbhash}
                 />
-                <Text numberOfLines={1} style={styles.displayName}>
-                    {displayName}
-                </Text>
+                {!railMode ? <Text numberOfLines={1} style={styles.displayName}>{displayName}</Text> : null}
                 {unreadCount > 0 ? (
-                    <View style={styles.badge}>
+                    <View style={[styles.badge, railMode && styles.badgeRail]}>
                         <Text style={styles.badgeText}>{unreadCount > 99 ? '99+' : unreadCount}</Text>
                     </View>
                 ) : null}
-                <Ionicons
+                {!railMode ? <Ionicons
                     color={theme.colors.textSecondary}
                     name={open ? 'chevron-down' : 'chevron-up'}
                     size={15}
-                />
+                /> : null}
             </Pressable>
         </View>
     );
@@ -241,6 +246,13 @@ const styles = StyleSheet.create((theme) => ({
         paddingTop: 3,
         paddingBottom: 4,
     },
+    footerRail: {
+        alignItems: 'center',
+        paddingBottom: 2,
+        paddingHorizontal: 0,
+        paddingTop: 2,
+        width: 60,
+    },
     trigger: {
         minHeight: 58,
         paddingHorizontal: 12,
@@ -257,6 +269,13 @@ const styles = StyleSheet.create((theme) => ({
         borderRadius: 10,
         paddingHorizontal: 9,
         gap: 8,
+    },
+    triggerRail: {
+        gap: 0,
+        justifyContent: 'center',
+        minHeight: 44,
+        paddingHorizontal: 0,
+        width: 44,
     },
     pressed: {
         backgroundColor: theme.colors.surfacePressed,
@@ -282,6 +301,11 @@ const styles = StyleSheet.create((theme) => ({
         fontSize: 10,
         ...Typography.default('semiBold'),
     },
+    badgeRail: {
+        position: 'absolute',
+        right: 1,
+        top: 1,
+    },
     menu: {
         position: 'absolute',
         bottom: '100%',
@@ -304,6 +328,10 @@ const styles = StyleSheet.create((theme) => ({
     menuDesktop: {
         left: 10,
         right: 10,
+    },
+    menuRail: {
+        left: 60,
+        right: -224,
     },
     menuAction: {
         minHeight: 42,
