@@ -115,7 +115,7 @@ Inverted needs no answer at all: offset 0 is the newest message *and* the edge
 the keyboard moves, so a viewport resize changes nothing. History lands at the
 far end, off-screen, where it cannot shift anything.
 
-Measured in `dev/chat-scroll`, raising the keyboard:
+Measured on device, raising the keyboard:
 
 | | peak drift from newest |
 |---|---|
@@ -189,152 +189,60 @@ mistake**, and the ecosystem built tools to replace them.
 So the expand-in-place problem is not a FlashList defect. It is the state of the
 art.
 
-## Experimental: `ChatListLegend.tsx`
+## The non-inverted Legend List attempt (tried, reverted)
 
-A non-inverted Legend List variant, **on by default**, with the `legendChatList`
-local setting (Settings → Developer → "Legend List chat") to switch back to the
-inverted FlashList. Same props either way, swapped at the call site in
-`SessionView.tsx`.
+A full non-inverted `ChatListLegend.tsx` was built and run on device, because
+reading downward makes expand-in-place free. **It was reverted and the code
+deleted** — it needed a Legend List v3 upgrade (v2, which we pin, crashes on
+React 19.2 inside its own `StateProvider`), and the orientation it bought
+traded one class of jump for another. Do not resurrect it without reading this
+section; the API details are deliberately not recorded, since they belong to a
+version we do not install.
 
-**Requires Legend List v3.** We were pinned at `2.0.0-beta.3` — a beta of an
-already-superseded major — and it crashes immediately on React 19.2 with
-"Rendered fewer hooks than expected" / "Do not call Hooks inside useEffect(...)"
-thrown from inside `LegendListInner2`/`StateProvider`, i.e. the library's own
-internals. v3.3.10 fixes it. Do not downgrade.
+Three findings from it are real, orientation-independent, and one of them is
+**shipped in `ChatList.tsx` today**:
 
-v3 migration notes that bit us:
+### 1. Collapsed-by-default, or you paint what you are about to throw away
 
-- The root `@legendapp/list` export is **removed**; import from
-  `@legendapp/list/react-native`.
-- `maintainVisibleContentPosition` defaults to `{ size: true, data: false }`, so
-  a bare `true` means something different than it did in v2. We pass
-  `{ size: true, data: true }` explicitly.
-- Imperative scrolls return `Promise<void>`.
-- `keyExtractor` is no longer inferred from `data` in all positions.
+*This is the one that shipped.* Track which groups the reader **opened**, never
+which are closed. Seeding a "collapsed" set at mount means a group arriving
+later — paged-in history, or a turn that just completed — is absent from that
+set, renders **fully expanded for one painted frame** (30-50 tool rows, roughly
+2,000-8,000pt), and is only closed by an effect on the next commit.
 
-### The keyboard shrinks the viewport in a second step
-
-This is the one that matters, and it is invisible until you read
-`AgentContentView.ios.tsx:45-57`. Raising the keyboard is **two** changes:
-
-1. A Reanimated `translateY` lifts the whole content view. Content moves up.
-2. On `onEnd`, a matching positive `paddingTop` is applied to the same view.
-   That **shrinks the list's viewport** by the keyboard's height, so the list
-   ends above the keyboard instead of behind it.
-
-An inverted list is immune to step 2 — its origin is the bottom edge, so the
-newest message holds and the far end absorbs the change. A list that reads
-downward measures from the top, so losing ~306pt of viewport leaves it exactly
-306pt short of the end. The symptom is unmistakable: **content rises with the
-keyboard, then instantly drops back down behind it, as if the keyboard was never
-presented.**
-
-**The fix is to not resize.** Step 1 alone already puts the list's bottom edge on
-the keyboard's top edge, which is everything a chat needs; step 2 only exists so
-the list re-lays out instead of hanging off the top of the screen, which an
-inverted list does not notice. `AgentContentView.ios.tsx` now skips the padding
-when the non-inverted list is active, and the list never sees a size change at
-all.
-
-Two failed attempts are worth recording, because both looked reasonable:
-
-1. **Turning the `layout` trigger off.** It is the only trigger that can correct
-   a viewport resize, so this made the drop permanent instead of transient.
-2. **Turning it on and raising the threshold to 1.** The correction then fires,
-   but it necessarily runs *after* the resize is painted — so the drop still
-   shows for one frame and springs back. A visible flash instead of a visible
-   drop. No threshold value removes it, because the ordering is the problem.
-
-The general lesson: a correction that runs after a layout change cannot hide
-that layout change. Remove the change instead.
-
-Two more traps in the same area, for whoever tunes this next:
-`maintainScrollAtEnd={true}` silently enables all four triggers
-(`normalizeMaintainScrollAtEnd`, `react-native.mjs:7081`), and
-`state.pendingMaintainScrollAtEnd` (`react-native.mjs:752`) keeps the
-within-threshold test true once set — a latch of the same shape as FlashList's
-`pendingAutoscrollToBottom`.
-
-### Legend List sets the same native anchor
-
-`react-native.mjs:6145` puts `{ minIndexForVisible: 0 }` on the underlying
-ScrollView whenever `maintainVisibleContentPosition.size || .data` is set — the
-identical top anchor FlashList hardcodes. Legend List's advantage is not that it
-avoids it, but that its own JS layer is keyed by item rather than subview index,
-and that the triggers are separable.
-
-### The collapsed-by-default race (caused the scroll-up jump)
-
-Track which groups the reader **opened**, never which are closed. Seeding a
-"collapsed" set once at mount means a group arriving from a newly paged-in page
-is absent from it, renders **fully expanded** for one painted frame — 30-50 tool
-rows, roughly 2,000-8,000pt — and is only collapsed by an effect on the next
-commit. Inverted, that happened off-screen past the far end. Non-inverted, it
-happens directly above the reader, once per page.
+Inverted, that happened off-screen past the far end, which is why it hid for so
+long. Non-inverted it happens directly above the reader, once per page — the
+scroll-up jump. Either way it mounts a turn's worth of the heaviest rows in the
+app to discard them a frame later.
 
 Default-closed makes a new group collapsed by construction: no effect, no second
-commit, nothing to compensate.
+commit, nothing to compensate for.
 
-The point is expand-in-place: in a non-inverted list, a group's rows are inserted
-*below* the ribbon, pushing content down and leaving the ribbon where it was —
-no measuring, no correction, no scroll call. It therefore needs only **one**
-header row rather than the leading/trailing pair.
+### 2. A correction that runs after a layout change cannot hide it
 
-What inversion was buying is replaced by real props: `alignItemsAtEnd`,
-`maintainScrollAtEnd` + `maintainScrollAtEndThreshold`, `initialScrollAtEnd`,
-and `maintainVisibleContentPosition`.
+The keyboard is **two** changes, and the second is invisible until you read
+`AgentContentView.ios.tsx`: a Reanimated `translateY` lifts the content view,
+then `onEnd` applies a positive `paddingTop` that **shrinks the list's
+viewport**. An inverted list ignores step 2 — its origin is the bottom edge. A
+downward-reading list measures from the top and lands exactly the keyboard's
+height short of the newest message.
 
-Note `maintainScrollAtEnd` also accepts an options object:
+Two fixes were tried and both failed, for the same reason: turning the resize
+*correction* off made the drop permanent, and tuning its threshold so it fires
+made the drop show for one frame and spring back. No value works, because the
+correction necessarily runs after the resize paints. **Remove the change
+instead of correcting it** — which for an inverted list means doing nothing,
+since it never sees the resize.
 
-```ts
-interface MaintainScrollAtEndOptions {
-    onLayout?: boolean;      // viewport resized (the keyboard)
-    onItemLayout?: boolean;  // a row changed size (streaming)
-    onDataChange?: boolean;  // a message arrived
-}
-```
+### 3. Follow-the-newest and expand-in-place are the same event
 
-That is **exactly the distinction FlashList collapses into one threshold** — the
-root cause of the keyboard catch-22 above. Legend List lets the three events be
-answered separately, which is the strongest argument for it over FlashList for
-chat.
+No library can separate "a message arrived" from "the reader opened a group":
+both are data changes, and a newly inserted row also reports a size change.
+Only the toggle handler knows why the data changed, so any stick-to-bottom
+behaviour has to be suppressed *by the handler*, not inferred from the trigger.
 
-### Follow-the-newest fights expand-in-place
-
-Splitting the triggers does **not** separate "a message arrived" from "the reader
-opened a group": both are data changes, and a newly inserted row also fires
-`onItemLayout` (`react-native.mjs:4919` — an item whose size was previously
-unknown counts as a size change). Reading the flag off the trigger is therefore
-impossible; only the toggle handler knows why the data changed.
-
-Symptom: parked at the bottom, tap the last ribbon, and Legend scrolls to the
-new end — carrying the ribbon off the top, so the second tap that would close it
-again has nothing to aim at.
-
-Fix: `maintainScrollAtEnd={toggledAt !== messages}`, where `toggledAt` is the
-message array captured when the reader last toggled. Following is off from the
-toggle until the next message arrives — one commit in a live session, the whole
-reading session in an idle one, and no timer to unwind. It only has to hold near
-the bottom; a reader further back is already covered by
-`maintainScrollAtEndThreshold`.
-
-### Do not group a turn the reader watched run
-
-A running turn is not grouped at all (`collectAgentWorkGroups` skips turn 0 when
-`collapseCurrentTurn` is false), so it reads as flat rows while it streams.
-Grouping it the instant it finishes folds it up under a reader who is halfway
-through it — a layout shift at the one moment they are certain to be looking.
-
-`sawLiveTurn` latches once the screen has seen the session thinking, and keeps
-`collapseCurrentTurn` false for the rest of the visit. Sending the next message
-makes it an ordinary past turn, which groups and closes like any other; leaving
-the screen unmounts the component and forgets it. Note this is deliberately
-*not* wired to `AppState`: `inactive` fires for notification centre and app
-switching, and collapsing there would fold the turn for a momentary glance away.
-
-Keep `currentTurnComplete` separate from `collapseCurrentTurn` —
-`buildAgentTurnCopyTextByMessageId` wants the real completeness, not the
-grouping decision.
+An inverted list sidesteps this entirely — the anchor is already the newest
+message, so expansion and arrival cannot fight.
 
 ## Testing methodology (learned the hard way)
 
@@ -345,14 +253,14 @@ the bug.
 
 Two things that work:
 
-1. **Peak tracking.** `dev/chat-scroll` records `peakGap` — the worst distance
+1. **Peak tracking.** Record the worst distance
    from the newest message since the last reset — not the settled distance.
 2. **Video frames.** Record with maestro, then
    `ffmpeg -i out.mp4 -vf "fps=12,scale=200:-1" frames/f%03d.png` and tile them
    into a contact sheet. This is how the keyboard rebound (frames 58-60) and the
    single-frame collapse were both confirmed.
 
-Also: a harness can give a **false pass**. The first version of `dev/chat-scroll`
+Also: a harness can give a **false pass**. Our first scroll harness
 simulated the keyboard by growing `contentContainerStyle.paddingBottom` — a
 *content-height* change, which is not the same event as the keyboard shrinking
 the *viewport*. It reported success on a case that was broken in the app.
@@ -363,7 +271,12 @@ too.
 
 ## Files
 
-- `sources/components/ChatList.tsx` — shipped, inverted FlashList
-- `sources/components/ChatListLegend.tsx` — experimental, non-inverted Legend List
+- `sources/components/ChatList.tsx` — the chat list, inverted FlashList
 - `sources/components/AgentWorkGroupHeader.tsx` — the ribbon; leading + trailing
-- `sources/app/(app)/dev/chat-scroll.tsx` — harness, `happy://dev/chat-scroll`
+- `scripts/perf-e2e.mjs` — budget gate over real sessions on a real simulator
+- `docs/chat-list-acceptance.md` — the bar this has to clear
+
+The scroll-drift harness that produced the measurements above
+(`dev/chat-scroll.tsx`, peak-gap tracking) was scaffolding for the concluded
+Legend experiment and has been deleted. Recover it from git history if you need
+to re-measure: `git log --diff-filter=D -- '*chat-scroll.tsx'`.

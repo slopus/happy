@@ -49,8 +49,8 @@ const DOCK_DETAILS_HIDE_OFFSET = 48;
  * where they cannot shift anything. The only case left needing a rule is a new
  * message arriving, which inserts at offset 0 — handled below.
  *
- * Measured in dev/chat-scroll, raising the keyboard: normal ends 582pt off the
- * newest message and stays there; inverted does not move at all.
+ * Measured on device, raising the keyboard: a non-inverted list ends 582pt off
+ * the newest message and stays there; inverted does not move at all.
  */
 const MAINTAIN_VISIBLE_CONTENT_POSITION = {
     /**
