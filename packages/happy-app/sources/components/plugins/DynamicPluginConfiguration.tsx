@@ -153,6 +153,7 @@ export const DynamicPluginConfiguration = React.memo(function DynamicPluginConfi
     const installed = status.installed;
     const currentInstallation = isCurrentPluginInstallation(plugin);
     const reviewRequired = installed && !currentInstallation;
+    const configurationFieldsRevision = JSON.stringify(manifest.configuration.fields);
     const statusRevision = JSON.stringify(status);
     const latestStatusRef = React.useRef(status);
     const statusRevisionRef = React.useRef(statusRevision);
@@ -195,7 +196,7 @@ export const DynamicPluginConfiguration = React.memo(function DynamicPluginConfi
             field.key,
             field.type === 'secret' ? '' : current[field.key] ?? '',
         ])));
-    }, [manifest.configuration.fields, status]);
+    }, [configurationFieldsRevision]);
 
     const saveConfiguration = React.useCallback(async (
         configuration: Record<string, string>,

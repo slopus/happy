@@ -74,8 +74,13 @@ describe('Paws plugin host client adapters', () => {
     it('exposes installed contributions on left, right, and modal surfaces', () => {
         const plugins = [catalogItem('relationship-advisor'), catalogItem('generated-images-gallery')];
 
-        expect(resolveInstalledPluginSurfaceViews(plugins, 'left-sidebar').map((view) => view.viewId))
-            .toEqual(['relationship-advisor.history']);
+        expect(resolveInstalledPluginSurfaceViews(plugins, 'left-sidebar')).toEqual([
+            expect.objectContaining({
+                icon: 'chatbubbles-outline',
+                path: '/relationship-advisor',
+                viewId: 'relationship-advisor.history',
+            }),
+        ]);
         expect(resolveInstalledPluginSurfaceViews(plugins, 'right-panel').map((view) => view.viewId))
             .toEqual(['generated-images-gallery.session-images']);
         expect(resolveInstalledPluginSurfaceViews(plugins, 'modal').map((view) => view.viewId))

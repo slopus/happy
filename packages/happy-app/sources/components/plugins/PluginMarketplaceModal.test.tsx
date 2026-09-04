@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import TestRenderer from 'react-test-renderer';
 
 const mocks = vi.hoisted(() => ({
+    loading: false,
     navigate: vi.fn(),
     refresh: vi.fn(),
     plugins: [] as any[],
@@ -120,7 +121,7 @@ vi.mock('react-native-unistyles', () => {
 vi.mock('@/constants/Typography', () => ({ Typography: { default: () => ({}) } }));
 vi.mock('@/text', () => ({ getCurrentLanguage: () => 'en', t: (key: string) => key }));
 vi.mock('@/hooks/usePlugins', () => ({
-    usePlugins: () => ({ loading: false, plugins: mocks.plugins, refresh: mocks.refresh }),
+    usePlugins: () => ({ loading: mocks.loading, plugins: mocks.plugins, refresh: mocks.refresh }),
 }));
 vi.mock('./DynamicPluginConfiguration', () => ({
     DynamicPluginConfiguration: 'DynamicPluginConfiguration',
@@ -135,6 +136,7 @@ describe('PluginMarketplaceModal', () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
+        mocks.loading = false;
         setPlugins();
         (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
         consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation((...values: unknown[]) => {
@@ -158,6 +160,23 @@ describe('PluginMarketplaceModal', () => {
         expect(renderer.root.findByType('DynamicPluginConfiguration').props.plugin.manifest.id)
             .toBe('relationship-advisor');
         expect(renderer.root.findByProps({ testID: 'plugin-marketplace-back' })).toBeTruthy();
+        act(() => renderer.unmount());
+    });
+
+    it('keeps an existing catalog row navigable while a background refresh is pending', () => {
+        mocks.loading = true;
+        setPlugins(true, false);
+        let renderer: any;
+        act(() => {
+            renderer = TestRenderer.create(<PluginMarketplaceModal visible onClose={vi.fn()} />);
+        });
+
+        const row = renderer.root.findByProps({
+            testID: 'plugin-marketplace-plugin-relationship-advisor',
+        });
+        expect(Boolean(row.props.disabled)).toBe(false);
+        act(() => row.props.onPress());
+        expect(renderer.root.findAllByType('PluginModalSlot')).toHaveLength(1);
         act(() => renderer.unmount());
     });
 

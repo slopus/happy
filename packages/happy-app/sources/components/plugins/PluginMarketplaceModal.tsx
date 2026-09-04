@@ -32,12 +32,10 @@ type Props = {
 
 function PluginRow({
     installed,
-    loading,
     onPress,
     plugin,
 }: {
     installed: boolean;
-    loading: boolean;
     onPress: () => void;
     plugin: PluginCatalogItem;
 }) {
@@ -46,7 +44,6 @@ function PluginRow({
     return (
         <Pressable
             accessibilityRole="button"
-            disabled={loading}
             onPress={onPress}
             style={({ pressed }) => [styles.pluginRow, pressed && styles.pressed]}
             testID={`plugin-marketplace-plugin-${plugin.manifest.id}`}
@@ -85,7 +82,7 @@ export const PluginMarketplaceModal = React.memo(function PluginMarketplaceModal
     const isDesktop = Platform.OS === 'web' && windowDimensions.width >= 900;
     const [activePluginId, setActivePluginId] = React.useState<string | null>(initialPluginId);
     const [query, setQuery] = React.useState('');
-    const { loading, plugins, refresh } = usePlugins(visible);
+    const { plugins, refresh } = usePlugins(visible);
 
     React.useEffect(() => {
         if (!visible) return;
@@ -268,7 +265,6 @@ export const PluginMarketplaceModal = React.memo(function PluginMarketplaceModal
                                                 <PluginRow
                                                     installed={plugin.status.installed}
                                                     key={plugin.manifest.id}
-                                                    loading={loading}
                                                     onPress={() => setActivePluginId(plugin.manifest.id)}
                                                     plugin={plugin}
                                                 />

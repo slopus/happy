@@ -29,6 +29,7 @@ export interface PluginClientRegistrationDisposable {
 }
 
 export interface ResolvedPluginClientView {
+    icon: string;
     pluginId: string;
     viewId: string;
     contribution: PluginViewContribution;
@@ -52,6 +53,7 @@ const bundledPluginAdapters: readonly PluginClientAdapterRegistration[] = [{
         },
         'relationship-advisor.history': {
             surface: 'left-sidebar',
+            path: '/relationship-advisor',
             componentId: 'relationship-advisor-history',
         },
         'relationship-advisor.configuration': {
@@ -126,6 +128,7 @@ export function createPluginClientHost(initialAdapters: readonly PluginClientAda
             }
         }
         return {
+            icon: plugin.manifest.icon,
             pluginId: plugin.manifest.id,
             viewId,
             contribution,

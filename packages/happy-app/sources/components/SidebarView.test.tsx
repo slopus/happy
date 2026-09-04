@@ -19,6 +19,15 @@ const mocks = vi.hoisted(() => ({
     openCommandPalette: vi.fn(),
     setDesktopSidebarMode: vi.fn(),
     commandPaletteAvailable: false,
+    pluginSurfaceViews: [{
+        componentId: 'relationship-advisor-history',
+        contribution: { title: { default: 'Relationship Advisor', translations: { 'zh-Hans': '狗头军师' } } },
+        icon: 'chatbubbles-outline',
+        path: '/relationship-advisor',
+        pluginId: 'relationship-advisor',
+        surface: 'left-sidebar',
+        viewId: 'relationship-advisor.history',
+    }],
     spaceAgent: {
         id: 'health',
         name: 'Health',
@@ -152,6 +161,14 @@ vi.mock('./CommandPalette/CommandPaletteProvider', () => ({
 }));
 vi.mock('./plugins/PluginLeftSidebarSlot', () => ({
     PluginLeftSidebarSlot: 'PluginLeftSidebarSlot',
+}));
+vi.mock('./plugins/usePluginSurfaceViews', () => ({
+    usePluginSurfaceViews: () => mocks.pluginSurfaceViews,
+}));
+vi.mock('./plugins/pluginText', () => ({
+    resolvePluginText: (value: { default: string; translations?: Record<string, string> }) => (
+        value.translations?.['zh-Hans'] ?? value.default
+    ),
 }));
 vi.mock('./DesktopSidebarSessionsNavigation', () => ({
     DesktopSidebarSessionsNavigation: 'DesktopSidebarSessionsNavigation',
@@ -402,7 +419,7 @@ describe('SidebarView Agent space exit', () => {
         act(() => renderer.unmount());
     });
 
-    it('renders the six desktop destinations as a narrow icon rail with hover labels beside the independent session list', () => {
+    it('renders fixed and installed plugin destinations in the narrow desktop icon rail', () => {
         mocks.spaceAgent = null;
         let renderer: any;
 
@@ -421,6 +438,7 @@ describe('SidebarView Agent space exit', () => {
             'sidebar-plugins-button',
             'sidebar-my-agents-button',
             'sidebar-history-button',
+            'sidebar-plugin-relationship-advisor-button',
         ]));
         expect(primaryColumn.findAllByType('DesktopSidebarSessionsNavigation')).toHaveLength(0);
         expect(primaryColumn.findAllByProps({ testID: 'desktop-navigation-rail' })).toHaveLength(1);
@@ -448,6 +466,11 @@ describe('SidebarView Agent space exit', () => {
 
         act(() => primaryColumn.findByProps({ testID: 'sidebar-history-button' }).props.onPress());
         expect(mocks.setDesktopSidebarMode).toHaveBeenCalledWith('history');
+
+        act(() => primaryColumn.findByProps({
+            testID: 'sidebar-plugin-relationship-advisor-button',
+        }).props.onPress());
+        expect(mocks.navigate).toHaveBeenCalledWith('/relationship-advisor');
 
         act(() => renderer.unmount());
     });

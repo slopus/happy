@@ -143,6 +143,6 @@ export async function testRelationshipAdvisorConnection(
         return { success: false, code: 'provider_unreachable' };
     } finally {
         clearTimeout(timeout);
-        await dispatcher?.close().catch(() => undefined);
+        await dispatcher?.destroy().catch(() => undefined);
     }
 }

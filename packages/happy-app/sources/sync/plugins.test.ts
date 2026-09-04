@@ -30,7 +30,10 @@ const manifest = {
 };
 
 describe('dynamic plugin client', () => {
-    beforeEach(() => vi.clearAllMocks());
+    beforeEach(() => {
+        vi.clearAllMocks();
+        vi.useRealTimers();
+    });
 
     it('loads the server-owned catalog instead of a bundled list', async () => {
         request.mockResolvedValue(new Response(JSON.stringify({
@@ -76,7 +79,7 @@ describe('dynamic plugin client', () => {
             token: 'secret',
         }, ['paws.secrets.use'])).resolves.toEqual({ success: true, latencyMs: 27 });
 
-        expect(request).toHaveBeenCalledWith('/v1/plugins/sample-plugin/test-connection', {
+        expect(request).toHaveBeenCalledWith('/v1/plugins/sample-plugin/test-connection', expect.objectContaining({
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -84,7 +87,27 @@ describe('dynamic plugin client', () => {
                 grantedPermissions: ['paws.secrets.use'],
                 configuration: { token: 'secret' },
             }),
-        });
+            signal: expect.any(AbortSignal),
+        }));
+    });
+
+    it('returns a timed-out connection result when the server request does not settle', async () => {
+        vi.useFakeTimers();
+        request.mockImplementation((_path: string, options?: RequestInit) => new Promise((_resolve, reject) => {
+            options?.signal?.addEventListener('abort', () => {
+                const error = new Error('Aborted');
+                error.name = 'AbortError';
+                reject(error);
+            });
+        }));
+
+        const pending = testPluginConnection('sample-plugin', '2.1.0', {
+            token: 'secret',
+        }, ['paws.secrets.use']);
+        await vi.runAllTimersAsync();
+
+        await expect(pending).resolves.toEqual({ success: false, code: 'timed_out' });
+        vi.useRealTimers();
     });
 
     it('requests one stored plugin secret from the no-store reveal endpoint', async () => {

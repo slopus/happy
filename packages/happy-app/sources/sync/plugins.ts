@@ -15,6 +15,8 @@ import type {
 
 import { apiSocket } from './apiSocket';
 
+export const PLUGIN_CONNECTION_TEST_TIMEOUT_MS = 20_000;
+
 async function readResponse<T>(response: Response, parse: (value: unknown) => T): Promise<T> {
     if (!response.ok) throw new Error(`Plugin request failed: ${response.status}`);
     return parse(await response.json());
@@ -74,12 +76,24 @@ export async function testPluginConnection(
     configuration: Record<string, string>,
     grantedPermissions: PluginPermission[],
 ): Promise<PluginConnectionTestResult> {
-    return readResponse(
-        await apiSocket.request(`/v1/plugins/${encodeURIComponent(pluginId)}/test-connection`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ version, grantedPermissions, configuration }),
-        }),
-        (value) => PluginConnectionTestResultSchema.parse(value),
-    );
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), PLUGIN_CONNECTION_TEST_TIMEOUT_MS);
+    try {
+        return await readResponse(
+            await apiSocket.request(`/v1/plugins/${encodeURIComponent(pluginId)}/test-connection`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ version, grantedPermissions, configuration }),
+                signal: controller.signal,
+            }),
+            (value) => PluginConnectionTestResultSchema.parse(value),
+        );
+    } catch (error) {
+        if (controller.signal.aborted || (error as { name?: unknown })?.name === 'AbortError') {
+            return { success: false, code: 'timed_out' };
+        }
+        throw error;
+    } finally {
+        clearTimeout(timeout);
+    }
 }

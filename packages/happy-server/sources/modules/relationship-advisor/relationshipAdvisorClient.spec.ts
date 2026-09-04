@@ -160,7 +160,7 @@ describe('testRelationshipAdvisorConnection', () => {
         const lookup = vi.fn()
             .mockResolvedValueOnce(publicAnswer)
             .mockResolvedValueOnce(privateAnswer);
-        const dispatcher = { close: vi.fn(async () => undefined) };
+        const dispatcher = { destroy: vi.fn(async () => undefined) };
         const createDispatcher = vi.fn(() => dispatcher);
         const fetchImpl = vi.fn(async (..._args: Parameters<typeof fetch>) => new Response(JSON.stringify({
             choices: [{ message: { content: 'OK' } }],
@@ -179,7 +179,28 @@ describe('testRelationshipAdvisorConnection', () => {
         expect(lookup).toHaveBeenCalledTimes(1);
         expect(createDispatcher).toHaveBeenCalledWith(publicAnswer);
         expect(fetchImpl.mock.calls[0]?.[1]).toEqual(expect.objectContaining({ dispatcher }));
-        expect(dispatcher.close).toHaveBeenCalledTimes(1);
+        expect(dispatcher.destroy).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not wait for graceful dispatcher shutdown after the provider request settles', async () => {
+        const publicAnswer = [{ address: '93.184.216.34', family: 4 as const }];
+        const dispatcher = {
+            close: vi.fn(() => new Promise<void>(() => undefined)),
+            destroy: vi.fn(async () => undefined),
+        };
+
+        await expect(relationshipAdvisorClient.testRelationshipAdvisorConnection({
+            apiKey: 'server-only-key',
+            baseUrl: 'https://provider.example/v1',
+            model: 'fast-model',
+        }, {
+            fetchImpl: vi.fn(async () => new Response('', { status: 401 })) as typeof fetch,
+            lookup: vi.fn(async () => publicAnswer),
+            createDispatcher: vi.fn(() => dispatcher) as never,
+        })).resolves.toEqual({ success: false, code: 'authentication_failed' });
+
+        expect(dispatcher.destroy).toHaveBeenCalledOnce();
+        expect(dispatcher.close).not.toHaveBeenCalled();
     });
 
     it.each([

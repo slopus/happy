@@ -583,6 +583,55 @@ describe('DynamicPluginConfiguration', () => {
         act(() => renderer.unmount());
     });
 
+    it('keeps an in-flight connection test alive across an equivalent catalog refresh', async () => {
+        let resolveTest: ((value: { success: false; code: 'timed_out' }) => void) | undefined;
+        mocks.testConnection.mockReturnValue(new Promise((resolve) => {
+            resolveTest = resolve;
+        }));
+        const installedStatus = {
+            installed: true as const,
+            version: '2.3.0',
+            grantedPermissions: ['paws.ai.provider.invoke' as const],
+            configuration: { endpoint: 'https://example.com/saved' },
+            secretHints: { token: '1234' },
+        };
+        const refreshManifest = {
+            ...manifest,
+            id: 'equivalent-refresh-plugin',
+            permissions: ['paws.ai.provider.invoke' as const],
+        };
+        let renderer: any;
+        await act(async () => {
+            renderer = TestRenderer.create(<DynamicPluginConfiguration plugin={{
+                manifest: refreshManifest,
+                status: installedStatus,
+            }} />);
+        });
+
+        let pendingTest: Promise<void> | undefined;
+        await act(async () => {
+            pendingTest = renderer.root.findByProps({
+                testID: 'equivalent-refresh-plugin-plugin-test-connection',
+            }).props.onPress();
+            await Promise.resolve();
+        });
+        await act(async () => {
+            renderer.update(<DynamicPluginConfiguration plugin={{
+                manifest: refreshManifest,
+                status: { ...installedStatus },
+            }} />);
+        });
+        await act(async () => {
+            resolveTest?.({ success: false, code: 'timed_out' });
+            await pendingTest;
+        });
+
+        expect(renderer.root.findByProps({
+            testID: 'equivalent-refresh-plugin-plugin-test-connection-result',
+        }).props.title).toBe('relationshipAdvisorPlugin.connectionTimedOut');
+        act(() => renderer.unmount());
+    });
+
     it('keeps a failed connection test as an unsaved draft', async () => {
         mocks.testConnection.mockResolvedValue({ success: false, code: 'authentication_failed' });
         let renderer: any;
