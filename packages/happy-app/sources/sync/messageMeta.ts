@@ -91,14 +91,12 @@ export function resolveMessageModeMeta(
         return mode;
     };
 
-    // Codex app-server turns always run with a concrete permission, model, and
+    // Codex and Agy turns always run with a concrete permission, model, and
     // effort. Send the same effective defaults the composer displays instead
-    // of omitting them: the CLI resets permission to its launch mode during an
-    // abort safety window, and legacy/unset session fields previously made a
-    // visible app fallback silently execute as a different mode or effort.
-    // Keep this Codex-only so fixing that app-server invariant does not change
-    // the established default semantics of other harnesses.
-    if (flavor === 'codex') {
+    // of omitting them: Codex can reset to its launch mode during an abort, and
+    // Agy maps its model + effort pair independently at the provider boundary.
+    // In either case an omitted fallback could execute differently from the UI.
+    if (flavor === 'codex' || flavor === 'agy') {
         const defaults = resolveAgentDefaultConfig(settings?.agentDefaultOverrides, flavor, cliVersion);
         meta.permissionMode = supported(retirePermissionMode(session.permissionMode ?? defaults.permissionMode));
 

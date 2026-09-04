@@ -1,10 +1,10 @@
 /**
  * Agy (Antigravity CLI) Constants
  *
- * Centralized constants for the agy integration: the binary name, the available
- * model display names (from `agy models`), the default model, and the print-mode
- * timeout. agy is a plain-text streaming CLI, so there are no env-var-based API
- * keys or MCP wiring like the Gemini ACP integration.
+ * Centralized constants for the agy integration: the binary name, Happy's
+ * logical model choices, their agy display-name mapping, defaults, and the
+ * print-mode timeout. agy is a plain-text streaming CLI, so there are no
+ * env-var-based API keys or MCP wiring like the Gemini ACP integration.
  */
 
 import os from 'node:os';
@@ -62,28 +62,48 @@ export function resolveAgyBin(): string {
 }
 
 /**
- * Model display names accepted by `agy --model`, as printed by `agy models`.
- * agy expects the full display string, not a slug.
+ * Logical model names shown in Happy. Gemini thinking variants are one model
+ * here and are resolved from the independent effort selection below.
  */
 export const AGY_MODELS = [
-  'Gemini 3.6 Flash (Medium)',
-  'Gemini 3.6 Flash (High)',
-  'Gemini 3.6 Flash (Low)',
-  'Gemini 3.5 Flash (Medium)',
-  'Gemini 3.5 Flash (High)',
-  'Gemini 3.5 Flash (Low)',
-  'Gemini 3.1 Pro (Low)',
-  'Gemini 3.1 Pro (High)',
+  'Gemini 3.8 Flash',
   'Claude Sonnet 4.6 (Thinking)',
   'Claude Opus 4.6 (Thinking)',
   'GPT-OSS 120B (Medium)',
 ] as const;
 
+export const AGY_GEMINI_3_8_FLASH_MODEL = 'Gemini 3.8 Flash';
+export const AGY_EFFORTS = ['low', 'medium', 'high'] as const;
+export type AgyEffort = typeof AGY_EFFORTS[number];
+
 /**
  * Default agy model. A Gemini model on purpose: this backend exists as a fallback
  * for when Claude Code is rate-limited, so we should not default onto a Claude model.
  */
-export const DEFAULT_AGY_MODEL = 'Gemini 3.1 Pro (High)';
+export const DEFAULT_AGY_MODEL = AGY_GEMINI_3_8_FLASH_MODEL;
+export const DEFAULT_AGY_EFFORT: AgyEffort = 'medium';
+
+export function normalizeAgyEffort(effort: string | null | undefined): AgyEffort {
+  return AGY_EFFORTS.includes(effort as AgyEffort)
+    ? effort as AgyEffort
+    : DEFAULT_AGY_EFFORT;
+}
+
+/**
+ * Resolve Happy's model + effort picks to the exact display name accepted by
+ * `agy --model`. Non-Gemini choices and saved legacy display names pass through.
+ */
+export function resolveAgyModelName(
+  model: string,
+  effort: string | null | undefined,
+): string {
+  if (model !== AGY_GEMINI_3_8_FLASH_MODEL) {
+    return model;
+  }
+  const resolvedEffort = normalizeAgyEffort(effort);
+  const effortLabel = resolvedEffort[0].toUpperCase() + resolvedEffort.slice(1);
+  return `${AGY_GEMINI_3_8_FLASH_MODEL} (${effortLabel})`;
+}
 
 /** Timeout passed to `agy --print-timeout` for a single print turn. */
 export const AGY_PRINT_TIMEOUT = '10m';

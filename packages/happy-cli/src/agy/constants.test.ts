@@ -1,6 +1,12 @@
 import { execSync } from 'node:child_process';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { findAgyBin, resolveAgyBin } from './constants';
+import {
+  DEFAULT_AGY_EFFORT,
+  DEFAULT_AGY_MODEL,
+  findAgyBin,
+  resolveAgyBin,
+  resolveAgyModelName,
+} from './constants';
 
 vi.mock('node:child_process', () => ({ execSync: vi.fn() }));
 
@@ -43,5 +49,30 @@ describe('resolveAgyBin', () => {
       expect.stringMatching(/^(where|command -v) agy$/),
       { stdio: 'ignore', windowsHide: true },
     );
+  });
+});
+
+describe('resolveAgyModelName', () => {
+  it('maps Gemini 3.8 Flash and Happy effort to agy display names', () => {
+    expect(resolveAgyModelName(DEFAULT_AGY_MODEL, DEFAULT_AGY_EFFORT))
+      .toBe('Gemini 3.8 Flash (Medium)');
+    expect(resolveAgyModelName(DEFAULT_AGY_MODEL, 'low'))
+      .toBe('Gemini 3.8 Flash (Low)');
+    expect(resolveAgyModelName(DEFAULT_AGY_MODEL, 'high'))
+      .toBe('Gemini 3.8 Flash (High)');
+  });
+
+  it('uses Medium for an absent or unsupported saved effort', () => {
+    expect(resolveAgyModelName(DEFAULT_AGY_MODEL, undefined))
+      .toBe('Gemini 3.8 Flash (Medium)');
+    expect(resolveAgyModelName(DEFAULT_AGY_MODEL, 'ultra'))
+      .toBe('Gemini 3.8 Flash (Medium)');
+  });
+
+  it('passes non-Gemini and saved legacy model names through', () => {
+    expect(resolveAgyModelName('Claude Opus 4.6 (Thinking)', 'high'))
+      .toBe('Claude Opus 4.6 (Thinking)');
+    expect(resolveAgyModelName('Gemini 3.6 Flash (High)', 'medium'))
+      .toBe('Gemini 3.6 Flash (High)');
   });
 });

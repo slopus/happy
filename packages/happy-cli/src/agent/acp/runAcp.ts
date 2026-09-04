@@ -552,6 +552,7 @@ export async function runAcp(opts: {
   let shouldExit = false;
   let abortController = new AbortController();
   let pendingTurn: PendingTurn | null = null;
+  let errorReportedForCurrentTurn = false;
 
   const clearPendingTurn = (error?: Error) => {
     if (!pendingTurn) {
@@ -825,7 +826,17 @@ export async function runAcp(opts: {
       logAcp(frontendMessage.kind, frontendMessage.text);
     }
 
-    sendEnvelopes(sessionManager.mapMessage(msg));
+    const envelopes = sessionManager.mapMessage(msg);
+    sendEnvelopes(envelopes);
+    if (msg.type === 'status' && msg.status === 'error' && envelopes.length === 0) {
+      session.sendSessionEvent({
+        type: 'message',
+        message: `${opts.agentName} error: ${msg.detail?.trim() || 'The agent stopped because of an unknown error.'}`,
+      });
+    }
+    if (msg.type === 'status' && msg.status === 'error') {
+      errorReportedForCurrentTurn = true;
+    }
   };
 
   backend.onMessage(onBackendMessage);
@@ -911,6 +922,7 @@ export async function runAcp(opts: {
       }
 
       logAcp('incoming', `Incoming prompt: ${formatUnknownForConsole(batch.message, ACP_EVENT_PREVIEW_CHARS)}`);
+      errorReportedForCurrentTurn = false;
       sendEnvelopes(sessionManager.startTurn());
       const turnEnded = waitForTurnEnd();
       try {
@@ -928,10 +940,19 @@ export async function runAcp(opts: {
           logAcp('muted', `Outgoing prompt completion from ${opts.agentName}`);
         }
       } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        if (!errorReportedForCurrentTurn) {
+          session.sendSessionEvent({
+            type: 'message',
+            message: `${opts.agentName} error: ${detail}`,
+          });
+          errorReportedForCurrentTurn = true;
+        }
         sendEnvelopes(sessionManager.endTurn('failed'));
         session.sendSessionEvent({ type: 'ready' });
-        logAcp('error', `Prompt error from ${opts.agentName}: ${error instanceof Error ? error.message : String(error)}`);
+        logAcp('error', `Prompt error from ${opts.agentName}: ${detail}`);
         clearPendingTurn(error instanceof Error ? error : new Error(String(error)));
+        await turnEnded.catch(() => {});
         throw error;
       }
     }

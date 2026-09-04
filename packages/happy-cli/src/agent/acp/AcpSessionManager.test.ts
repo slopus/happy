@@ -91,9 +91,28 @@ describe('AcpSessionManager turn lifecycle', () => {
     const mapper = new AcpSessionManager();
     expect(mapper.mapMessage({ type: 'status', status: 'running' })).toHaveLength(0);
     expect(mapper.mapMessage({ type: 'status', status: 'idle' })).toHaveLength(0);
+    // An agent envelope without a turn is invalid, so pre-turn errors remain a
+    // runner-level concern and must use the legacy session event fallback.
     expect(mapper.mapMessage({ type: 'status', status: 'error' })).toHaveLength(0);
     expect(mapper.mapMessage({ type: 'status', status: 'stopped' })).toHaveLength(0);
     expect(mapper.mapMessage({ type: 'status', status: 'starting' })).toHaveLength(0);
+  });
+
+  it('maps an in-turn error to a visible service message', () => {
+    const mapper = new AcpSessionManager();
+    const started = mapper.startTurn();
+    const envelopes = mapper.mapMessage({
+      type: 'status',
+      status: 'error',
+      detail: 'model is not available',
+    });
+
+    expect(envelopes).toHaveLength(1);
+    expect(envelopes[0].turn).toBe(started[0].turn);
+    expect(envelopes[0].ev).toEqual({
+      t: 'service',
+      text: 'Error: model is not available',
+    });
   });
 
   it('flushes pending text on endTurn()', () => {

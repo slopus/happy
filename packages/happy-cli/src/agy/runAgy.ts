@@ -32,7 +32,12 @@ import { AgyDisplay } from '@/ui/ink/AgyDisplay';
 import type { AgentMessage } from '@/agent/core';
 import { normalizeRemotePermissionMode } from '@/claude/utils/permissionMode';
 import { AgyBackend } from './AgyBackend';
-import { DEFAULT_AGY_MODEL } from './constants';
+import {
+  DEFAULT_AGY_EFFORT,
+  DEFAULT_AGY_MODEL,
+  normalizeAgyEffort,
+  resolveAgyModelName,
+} from './constants';
 
 export interface RunAgyOptions {
   credentials: Credentials;
@@ -105,13 +110,17 @@ export async function runAgy(opts: RunAgyOptions): Promise<void> {
   let shouldExit = false;
   let abortController = new AbortController();
   let thinking = false;
+  let errorReportedForCurrentTurn = false;
 
-  let displayedModel = DEFAULT_AGY_MODEL;
+  let selectedModel = DEFAULT_AGY_MODEL;
+  let selectedEffort = DEFAULT_AGY_EFFORT;
+  let displayedModel = resolveAgyModelName(selectedModel, selectedEffort);
 
   const backend = new AgyBackend({
     cwd: process.cwd(),
     permissionMode: 'default',
-    model: DEFAULT_AGY_MODEL,
+    model: selectedModel,
+    effort: selectedEffort,
     log,
   });
 
@@ -144,7 +153,17 @@ export async function runAgy(opts: RunAgyOptions): Promise<void> {
       }
     }
 
-    sendEnvelopes(sessionManager.mapMessage(msg));
+    const envelopes = sessionManager.mapMessage(msg);
+    sendEnvelopes(envelopes);
+    if (msg.type === 'status' && msg.status === 'error' && envelopes.length === 0) {
+      session.sendSessionEvent({
+        type: 'message',
+        message: `Antigravity error: ${msg.detail?.trim() || 'The agent stopped because of an unknown error.'}`,
+      });
+    }
+    if (msg.type === 'status' && msg.status === 'error') {
+      errorReportedForCurrentTurn = true;
+    }
   };
 
   backend.onMessage(onBackendMessage);
@@ -184,9 +203,19 @@ export async function runAgy(opts: RunAgyOptions): Promise<void> {
         backend.setPermissionMode(mode);
       }
     }
+    let selectionChanged = false;
     if (message.meta?.hasOwnProperty('model') && message.meta.model) {
-      backend.setModel(message.meta.model);
-      displayedModel = message.meta.model;
+      selectedModel = message.meta.model;
+      backend.setModel(selectedModel);
+      selectionChanged = true;
+    }
+    if (message.meta?.hasOwnProperty('effort')) {
+      selectedEffort = normalizeAgyEffort(message.meta.effort);
+      backend.setEffort(selectedEffort);
+      selectionChanged = true;
+    }
+    if (selectionChanged) {
+      displayedModel = resolveAgyModelName(selectedModel, selectedEffort);
       if (hasTTY) {
         messageBuffer.addMessage(`[MODEL:${displayedModel}]`, 'system');
       }
@@ -235,12 +264,17 @@ export async function runAgy(opts: RunAgyOptions): Promise<void> {
       }
 
       log(`Incoming prompt: ${batch.message.slice(0, 200)}`);
+      errorReportedForCurrentTurn = false;
       sendEnvelopes(sessionManager.startTurn());
       try {
         await backend.sendPrompt(process.cwd(), batch.message);
         sendEnvelopes(sessionManager.endTurn('completed'));
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
+        if (!errorReportedForCurrentTurn) {
+          session.sendSessionEvent({ type: 'message', message: `Antigravity error: ${msg}` });
+          errorReportedForCurrentTurn = true;
+        }
         log(`Turn ended: ${msg}`);
         sendEnvelopes(sessionManager.endTurn('failed'));
       }

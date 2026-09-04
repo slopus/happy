@@ -37,6 +37,35 @@ export type ModelMode = ModeOption & {
     unavailable?: boolean;
 };
 
+export type ModelModeProviderGroup = {
+    key: string;
+    title: string | null;
+    models: ModelMode[];
+};
+
+/**
+ * Group models without sorting them. Provider groups keep the order in which
+ * the backend first publishes each provider, and rows keep their wire order.
+ */
+export function groupModelModesByProvider(models: readonly ModelMode[]): ModelModeProviderGroup[] {
+    const groups = new Map<string, ModelModeProviderGroup>();
+    for (const model of models) {
+        const providerId = model.providerId?.trim() || null;
+        const key = providerId ?? '__models__';
+        let group = groups.get(key);
+        if (!group) {
+            group = {
+                key,
+                title: model.providerName?.trim() || providerId,
+                models: [],
+            };
+            groups.set(key, group);
+        }
+        group.models.push(model);
+    }
+    return [...groups.values()];
+}
+
 export type EffortLevel = ModeOption;
 export type PermissionModeKey = string;
 export type ModelModeKey = string;
@@ -138,18 +167,19 @@ export function getGeminiPermissionModes(translate: Translate): PermissionMode[]
 // suffix is honored rather than silently dropped (#1721).
 export function getClaudeModelModes(): ModelMode[] {
     return [
-        { key: 'claude-fable-5', name: 'Fable 5', description: null },
-        { key: 'claude-opus-5', name: 'Opus 5', description: null },
-        { key: 'claude-opus-5[1m]', name: 'Opus 5 [1M]', description: '1M context' },
-        { key: 'claude-sonnet-5', name: 'Sonnet 5', description: null },
+        { key: 'claude-fable-5-1', name: 'Fable 5.1', description: '1M context', providerId: 'anthropic', providerName: 'Anthropic' },
+        { key: 'claude-fable-5', name: 'Fable 5', description: null, providerId: 'anthropic', providerName: 'Anthropic' },
+        { key: 'claude-opus-5', name: 'Opus 5', description: null, providerId: 'anthropic', providerName: 'Anthropic' },
+        { key: 'claude-opus-5[1m]', name: 'Opus 5 [1M]', description: '1M context', providerId: 'anthropic', providerName: 'Anthropic' },
+        { key: 'claude-sonnet-5', name: 'Sonnet 5', description: null, providerId: 'anthropic', providerName: 'Anthropic' },
     ];
 }
 
 export function getCodexModelModes(): ModelMode[] {
     return [
-        { key: 'gpt-5.6-sol', name: 'GPT-5.6 Sol', description: null },
-        { key: 'gpt-5.6-terra', name: 'GPT-5.6 Terra', description: null },
-        { key: 'gpt-5.6-luna', name: 'GPT-5.6 Luna', description: null },
+        { key: 'gpt-5.6-sol', name: 'GPT-5.6 Sol', description: null, providerId: 'openai', providerName: 'OpenAI' },
+        { key: 'gpt-5.6-terra', name: 'GPT-5.6 Terra', description: null, providerId: 'openai', providerName: 'OpenAI' },
+        { key: 'gpt-5.6-luna', name: 'GPT-5.6 Luna', description: null, providerId: 'openai', providerName: 'OpenAI' },
     ];
 }
 
@@ -159,7 +189,7 @@ export function includeConfiguredModel(
     configuredModelKey: string | null | undefined,
 ): ModelMode[] {
     if (
-        flavor !== 'codex'
+        (flavor !== 'codex' && flavor !== 'agy')
         || !configuredModelKey
         || configuredModelKey === 'default'
         || models.some((model) => model.key === configuredModelKey)
@@ -171,7 +201,7 @@ export function includeConfiguredModel(
         {
             key: configuredModelKey,
             name: configuredModelKey,
-            description: 'custom model',
+            description: flavor === 'agy' ? 'saved model' : 'custom model',
         },
     ];
 }
@@ -296,20 +326,15 @@ export function getOpenClawModelModes(): ModelMode[] {
     ];
 }
 
-// Keys are the exact display names `agy --model` accepts (as printed by `agy models`).
+// Gemini effort is deliberately not encoded into separate model rows. Happy's
+// existing effort picker carries `low`/`medium`/`high` independently, and happy-cli
+// resolves the pair to the exact display name `agy --model` accepts.
 export function getAgyModelModes(): ModelMode[] {
     return [
-        { key: 'Gemini 3.6 Flash (High)', name: 'Gemini 3.6 Flash (High)', description: null },
-        { key: 'Gemini 3.6 Flash (Medium)', name: 'Gemini 3.6 Flash (Medium)', description: null },
-        { key: 'Gemini 3.6 Flash (Low)', name: 'Gemini 3.6 Flash (Low)', description: null },
-        { key: 'Gemini 3.1 Pro (High)', name: 'Gemini 3.1 Pro (High)', description: null },
-        { key: 'Gemini 3.1 Pro (Low)', name: 'Gemini 3.1 Pro (Low)', description: null },
-        { key: 'Gemini 3.5 Flash (High)', name: 'Gemini 3.5 Flash (High)', description: null },
-        { key: 'Gemini 3.5 Flash (Medium)', name: 'Gemini 3.5 Flash (Medium)', description: null },
-        { key: 'Gemini 3.5 Flash (Low)', name: 'Gemini 3.5 Flash (Low)', description: null },
-        { key: 'Claude Opus 4.6 (Thinking)', name: 'Claude Opus 4.6 (Thinking)', description: null },
-        { key: 'Claude Sonnet 4.6 (Thinking)', name: 'Claude Sonnet 4.6 (Thinking)', description: null },
-        { key: 'GPT-OSS 120B (Medium)', name: 'GPT-OSS 120B (Medium)', description: null },
+        { key: 'Gemini 3.8 Flash', name: 'Gemini 3.8 Flash', description: null, providerId: 'google', providerName: 'Google' },
+        { key: 'Claude Sonnet 4.6 (Thinking)', name: 'Claude Sonnet 4.6 (Thinking)', description: null, providerId: 'anthropic', providerName: 'Anthropic' },
+        { key: 'Claude Opus 4.6 (Thinking)', name: 'Claude Opus 4.6 (Thinking)', description: null, providerId: 'anthropic', providerName: 'Anthropic' },
+        { key: 'GPT-OSS 120B (Medium)', name: 'GPT-OSS 120B (Medium)', description: null, providerId: 'openai', providerName: 'OpenAI' },
     ];
 }
 
@@ -351,7 +376,7 @@ export function getAvailableModels(
         }));
         const current = getRigCurrentModel(metadata);
         if (current?.unavailable && !models.some((model) => model.key === current.key)) {
-            models.unshift({
+            models.push({
                 key: current.key,
                 name: current.name,
                 description: `${current.providerName} · unavailable`,
@@ -370,7 +395,7 @@ export function getAvailableModels(
             const separator = locallySelectedKey.indexOf(':');
             const providerId = locallySelectedKey.slice(0, separator);
             const modelId = locallySelectedKey.slice(separator + 1);
-            models.unshift({
+            models.push({
                 key: locallySelectedKey,
                 name: modelId,
                 description: `${providerId} · unavailable`,
@@ -492,6 +517,13 @@ function effortLevels(keys: readonly string[]): EffortLevel[] {
 // `off`: Claude's floor is `low`.
 const CLAUDE_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
 
+// Antigravity exposes Gemini 3.8 Flash's three selectable thinking variants as
+// separate model display names. Happy presents them through its effort picker;
+// happy-cli performs the final model-name mapping at the provider boundary.
+const AGY_EFFORTS_BY_MODEL: Record<string, readonly string[]> = {
+    'Gemini 3.8 Flash': ['low', 'medium', 'high'],
+};
+
 // Exactly what each model publishes in Codex's own registry, in its order
 // (codex-rs/models-manager/models.json, min client 0.144). This really is
 // per-model: sol and terra reach `ultra`, luna stops at `max`. `ultra` is
@@ -509,6 +541,10 @@ export function getClaudeEffortLevels(): EffortLevel[] {
     return effortLevels(CLAUDE_EFFORTS);
 }
 
+export function getAgyEffortLevels(modelKey?: string | null): EffortLevel[] {
+    return effortLevels((modelKey ? AGY_EFFORTS_BY_MODEL[modelKey] : undefined) ?? []);
+}
+
 /**
  * Codex efforts for one model. An unknown model — a workspace's own, or one
  * newer than this table — gets the conservative set every gpt-5 accepts rather
@@ -523,6 +559,7 @@ export function getCodexEffortLevels(modelKey?: string | null): EffortLevel[] {
 export function getHardcodedEffortLevels(flavor: AgentFlavor): EffortLevel[] {
     if (flavor === 'claude') return getClaudeEffortLevels();
     if (flavor === 'codex') return getCodexEffortLevels();
+    if (flavor === 'agy') return getAgyEffortLevels(getDefaultModelKey('agy'));
     return [];
 }
 
@@ -552,6 +589,9 @@ export function getEffortLevelsForModel(
     }
     if (flavor === 'codex') {
         return getCodexEffortLevels(modelKey);
+    }
+    if (flavor === 'agy') {
+        return getAgyEffortLevels(modelKey);
     }
     return [];
 }

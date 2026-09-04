@@ -18,6 +18,21 @@ describe('resolveMessageModeMeta', () => {
         });
     });
 
+    it('always sends the displayed Agy model and effort pair', () => {
+        const meta = resolveMessageModeMeta({
+            permissionMode: null,
+            modelMode: null,
+            effortLevel: null,
+            metadata: { flavor: 'agy' },
+        } as any);
+
+        expect(meta).toEqual({
+            permissionMode: 'default',
+            model: 'Gemini 3.8 Flash',
+            effort: 'medium',
+        });
+    });
+
     it('uses Default for an unset Codex code default on an old CLI', () => {
         const meta = resolveMessageModeMeta({
             permissionMode: null,

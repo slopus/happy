@@ -127,6 +127,17 @@ export class AcpSessionManager {
     }
 
     if (msg.type === 'status') {
+      if (msg.status === 'error' && this.currentTurnId) {
+        const detail = msg.detail?.trim() || 'The agent stopped because of an unknown error.';
+        return [
+          ...this.flush(),
+          createEnvelope(
+            'agent',
+            { t: 'service', text: `Error: ${detail}` },
+            { turn: this.currentTurnId, time: this.nextTime() },
+          ),
+        ];
+      }
       return [];
     }
 

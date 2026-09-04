@@ -21,4 +21,16 @@ describe('new session picker items', () => {
             { key: 'opus', label: 'opus 4.7', subtitle: 'larger context' },
         ]);
     });
+
+    it('groups provider models in first-seen provider and wire order', () => {
+        expect(getModePickerItems([
+            { key: 'codex:sol', name: 'Sol', description: 'OpenAI Codex', providerId: 'codex', providerName: 'OpenAI Codex' },
+            { key: 'claude:opus', name: 'Opus', description: 'Anthropic Claude', providerId: 'claude', providerName: 'Anthropic Claude' },
+            { key: 'codex:terra', name: 'Terra', description: 'OpenAI Codex', providerId: 'codex', providerName: 'OpenAI Codex' },
+        ])).toEqual([
+            { key: 'codex:sol', label: 'Sol', section: 'OpenAI Codex' },
+            { key: 'codex:terra', label: 'Terra', section: 'OpenAI Codex' },
+            { key: 'claude:opus', label: 'Opus', section: 'Anthropic Claude' },
+        ]);
+    });
 });

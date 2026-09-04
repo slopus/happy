@@ -48,6 +48,7 @@ import {
     getHardcodedPermissionModes,
     filterPermissionModesForCli,
     getSupportsWorktree,
+    groupModelModesByProvider,
     includeConfiguredModel,
     type ModeOption,
 } from './modelModeOptions';
@@ -487,6 +488,14 @@ const styles = StyleSheet.create((theme) => ({
     },
     optionList: {
         flexGrow: 0,
+    },
+    optionSectionTitle: {
+        color: theme.colors.textSecondary,
+        fontSize: 12,
+        paddingHorizontal: 8,
+        paddingTop: 8,
+        paddingBottom: 4,
+        ...Typography.default('semiBold'),
     },
     option: {
         minHeight: 48,
@@ -1292,19 +1301,26 @@ export const HomeDock = React.memo(({
         return { title: t('agentInput.effort.title'), options: effortOptions, selectedKey: currentEffort?.key, onSelect: setEffortLevel };
     };
 
-    const agentSettingsGroups: NativeSettingsMenuGroup[] = agentRows.map((row) => {
+    const agentSettingsGroups: NativeSettingsMenuGroup[] = agentRows.flatMap((row) => {
         const config = getAgentPickerConfig(row.page as AgentSetting);
-        return {
-            key: row.page,
+        const sections = row.page === 'model'
+            ? groupModelModesByProvider(modelOptions).map((providerGroup) => ({
+                key: `model:${providerGroup.key}`,
+                title: providerGroup.title ?? config.title,
+                options: providerGroup.models,
+            }))
+            : [{ key: row.page, title: config.title, options: config.options }];
+        return sections.map((section) => ({
+            key: section.key,
             label: row.value || config.title,
-            title: config.title,
+            title: section.title,
             systemImage: {
                 agent: 'cpu',
                 model: 'cube',
                 permission: 'shield',
                 effort: 'bolt',
             }[row.page],
-            options: config.options.map((option) => ({
+            options: section.options.map((option) => ({
                 key: option.key,
                 // The permission menu spells the mode out; only its chip is
                 // short on space. Model and effort read fine on their own.
@@ -1313,9 +1329,9 @@ export const HomeDock = React.memo(({
             })),
             selectedKey: config.selectedKey,
             onSelect: config.onSelect,
-        };
+        }));
     });
-    const modelSettingsGroup = agentSettingsGroups.find((group) => group.key === 'model');
+    const modelSettingsGroups = agentSettingsGroups.filter((group) => group.key.startsWith('model:'));
     const effortSettingsGroup = agentSettingsGroups.find((group) => group.key === 'effort');
     const permissionSettingsGroup = agentSettingsGroups.find((group) => group.key === 'permission');
 
@@ -1487,6 +1503,13 @@ export const HomeDock = React.memo(({
     // Only reached with a page selected: `sheetVisible` gates the whole sheet.
     const renderSettingsSheet = (page: PickerPage) => {
         const config = getPickerConfig(page);
+        const optionSections = page === 'model'
+            ? groupModelModesByProvider(modelOptions).map((providerGroup) => ({
+                key: providerGroup.key,
+                title: providerGroup.title,
+                options: providerGroup.models,
+            }))
+            : [{ key: page, title: null, options: config.options }];
         return (
             <View style={styles.settingsStack}>
                 <MobileGlassSurface
@@ -1509,10 +1532,15 @@ export const HomeDock = React.memo(({
                         </Text>
                     </View>
                     <ScrollView style={styles.optionList} keyboardShouldPersistTaps="always">
-                        {config.options.map((option) => {
-                            const selectable = isHomeDockOptionSelectable(option.disabled);
-                            const selected = option.key === config.selectedKey;
-                            return (
+                        {optionSections.map((section) => (
+                            <React.Fragment key={section.key}>
+                                {section.title ? (
+                                    <Text style={styles.optionSectionTitle}>{section.title}</Text>
+                                ) : null}
+                                {section.options.map((option) => {
+                                    const selectable = isHomeDockOptionSelectable(option.disabled);
+                                    const selected = option.key === config.selectedKey;
+                                    return (
                                 <Pressable
                                     key={option.key}
                                     disabled={!selectable}
@@ -1543,8 +1571,10 @@ export const HomeDock = React.memo(({
                                         )}
                                     </View>
                                 </Pressable>
-                            );
-                        })}
+                                    );
+                                })}
+                            </React.Fragment>
+                        ))}
                     </ScrollView>
                 </MobileGlassSurface>
             </View>
@@ -1749,11 +1779,10 @@ export const HomeDock = React.memo(({
                         {/* Pushes model/effort right so the pair sits against the
                             send button instead of drifting when a label changes. */}
                         <View style={{ flex: 1 }} />
-                        {modelSettingsGroup ? (
+                        {modelSettingsGroups.length > 0 ? (
                             renderMenuControl({
                                 page: 'model',
-                                groups: [modelSettingsGroup],
-                                flat: true,
+                                groups: modelSettingsGroups,
                                 style: styles.nativeModeMenu,
                                 accessibilityLabel: t('agentInput.model.title'),
                                 triggerLabel: currentModel?.name ?? currentAgent.name,

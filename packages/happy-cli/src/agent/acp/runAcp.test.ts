@@ -33,6 +33,7 @@ const mocks = vi.hoisted(() => {
     setModeCalls: [] as string[],
     setModelCalls: [] as string[],
     startSessionMessages: [] as any[],
+    sendPromptError: null as Error | null,
     startSessionCalls: 0,
     cancelCalls: [] as string[],
     disposeCalls: 0,
@@ -144,6 +145,9 @@ vi.mock('./AcpBackend', () => ({
 
     async sendPrompt(sessionId: string, prompt: string) {
       mocks.backendState.prompts.push({ sessionId, prompt });
+      if (mocks.backendState.sendPromptError) {
+        throw mocks.backendState.sendPromptError;
+      }
       for (const listener of mocks.backendState.listeners) {
         listener({ type: 'status', status: 'running' });
         listener({ type: 'model-output', textDelta: 'hello' });
@@ -201,6 +205,7 @@ describe('runAcp', () => {
     mocks.backendState.setModeCalls = [];
     mocks.backendState.setModelCalls = [];
     mocks.backendState.startSessionMessages = [];
+    mocks.backendState.sendPromptError = null;
     mocks.backendState.startSessionCalls = 0;
     mocks.backendState.cancelCalls = [];
     mocks.backendState.disposeCalls = 0;
@@ -439,8 +444,40 @@ describe('runAcp', () => {
     });
 
     expect(consoleLines()).toContain('Status: error: spawn opencode ENOENT');
+    expect(mocks.mockSession.sendSessionEvent).toHaveBeenCalledWith({
+      type: 'message',
+      message: 'opencode error: spawn opencode ENOENT',
+    });
     expect(mocks.mockSession.close).toHaveBeenCalled();
     expect(mocks.backendState.disposeCalls).toBe(1);
+  });
+
+  it('surfaces a prompt exception when no backend error status was emitted', async () => {
+    mocks.backendState.sendPromptError = new Error('model switch failed');
+    const runPromise = runAcp({
+      credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } },
+      agentName: 'opencode',
+      command: 'opencode',
+      args: ['acp'],
+    });
+    const runOutcome = runPromise.then(
+      () => null,
+      (error: unknown) => error,
+    );
+
+    await vi.waitFor(() => {
+      expect(mocks.getUserMessageHandler()).toBeTypeOf('function');
+    });
+    mocks.getUserMessageHandler()!({
+      role: 'user',
+      content: { type: 'text', text: 'Use that model' },
+    });
+
+    expect(await runOutcome).toMatchObject({ message: 'model switch failed' });
+    expect(mocks.mockSession.sendSessionEvent).toHaveBeenCalledWith({
+      type: 'message',
+      message: 'opencode error: model switch failed',
+    });
   });
 
   it('updates session metadata with ACP config options (models and operating modes)', async () => {

@@ -24,7 +24,7 @@ const SKIP_PERMISSION_MODES: ReadonlySet<PermissionMode> = new Set<PermissionMod
 export interface BuildAgyArgsOptions {
   /** The user prompt for this turn. */
   prompt: string;
-  /** Model display name passed to `--model` (e.g. "Gemini 3.1 Pro (High)"). */
+  /** Model display name passed to `--model` (e.g. "Gemini 3.8 Flash (Medium)"). */
   model?: string;
   /** Conversation id to resume via `--conversation`; omit/null for a fresh conversation. */
   conversationId?: string | null;

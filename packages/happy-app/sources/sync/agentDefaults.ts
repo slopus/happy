@@ -36,7 +36,7 @@ const codeAgentDefaults: Record<AgentKey, AgentDefaultConfig> = {
     codex: { permissionMode: 'auto', modelMode: 'gpt-5.6-sol', effortLevel: 'medium' },
     gemini: { permissionMode: 'default', modelMode: 'gemini-2.5-pro', effortLevel: null },
     openclaw: { permissionMode: 'default', modelMode: 'default', effortLevel: null },
-    agy: { permissionMode: 'default', modelMode: 'Gemini 3.1 Pro (High)', effortLevel: null },
+    agy: { permissionMode: 'default', modelMode: 'Gemini 3.8 Flash', effortLevel: 'medium' },
 };
 
 // `auto` first shipped in happy-cli 1.2.1-beta.2, for Claude and Codex alike.

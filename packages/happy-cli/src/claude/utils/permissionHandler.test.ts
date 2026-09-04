@@ -61,7 +61,7 @@ describe('PermissionHandler', () => {
             'Bash',
             { command: 'pwd' },
             mode,
-            { signal: controller.signal, toolUseID: 'toolu_yolo' },
+            { signal: controller.signal, toolUseID: 'toolu_yolo', requestId: 'request_yolo' },
         );
 
         expect(result).toMatchObject({ behavior: 'allow' });
@@ -79,7 +79,7 @@ describe('PermissionHandler', () => {
             'Write',
             { file_path: '/tmp/x', content: 'y' },
             mode,
-            { signal: controller.signal, toolUseID: 'toolu_bypass' },
+            { signal: controller.signal, toolUseID: 'toolu_bypass', requestId: 'request_bypass' },
         );
 
         expect(result).toMatchObject({ behavior: 'allow' });
@@ -105,7 +105,7 @@ describe('PermissionHandler', () => {
             'Bash',
             { command: 'pwd' },
             mode,
-            { signal: controller.signal, toolUseID: 'toolu_main' },
+            { signal: controller.signal, toolUseID: 'toolu_main', requestId: 'request_main' },
         );
 
         expect(getState().requests.toolu_main).toMatchObject({
@@ -127,13 +127,13 @@ describe('PermissionHandler', () => {
             'Bash',
             { command: 'pwd' },
             mode,
-            { signal: firstController.signal, toolUseID: 'toolu_shared', agentID: 'agent-a' },
+            { signal: firstController.signal, toolUseID: 'toolu_shared', agentID: 'agent-a', requestId: 'request_a' },
         );
         const secondPending = handler.handleToolCall(
             'Bash',
             { command: 'whoami' },
             mode,
-            { signal: secondController.signal, toolUseID: 'toolu_shared', agentID: 'agent-b' },
+            { signal: secondController.signal, toolUseID: 'toolu_shared', agentID: 'agent-b', requestId: 'request_b' },
         );
 
         expect(getState().requests).toMatchObject({
@@ -192,7 +192,7 @@ describe('PermissionHandler', () => {
             'Bash',
             { command: 'pwd' },
             mode,
-            { signal: controller.signal, toolUseID: 'toolu_result', agentID: 'agent-a' },
+            { signal: controller.signal, toolUseID: 'toolu_result', agentID: 'agent-a', requestId: 'request_result' },
         );
 
         await getPermissionResponseHandler(handlers)({

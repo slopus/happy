@@ -22,6 +22,28 @@ function makeFakeChild() {
 }
 
 describe('AgyBackend', () => {
+  it('maps the logical Gemini model and effort to the agy model display name', async () => {
+    const { child } = makeFakeChild();
+    const spawnFn = vi.fn(() => child) as unknown as SpawnFn;
+    const backend = new AgyBackend({
+      cwd: '/work',
+      permissionMode: 'default',
+      model: 'Gemini 3.8 Flash',
+      effort: 'medium',
+      spawnFn,
+      resolveConversationId: () => null,
+    });
+
+    backend.setEffort('high');
+    const turn = backend.sendPrompt('/work', 'hi');
+    child.emit('close', 0);
+    await turn;
+
+    const args = (spawnFn as unknown as ReturnType<typeof vi.fn>).mock.calls[0][1] as string[];
+    const modelIndex = args.indexOf('--model');
+    expect(args[modelIndex + 1]).toBe('Gemini 3.8 Flash (High)');
+  });
+
   it('maps a successful turn: running → model-output(s) → idle', async () => {
     const { child, stdout } = makeFakeChild();
     const spawnFn = vi.fn(() => child) as unknown as SpawnFn;
@@ -62,7 +84,7 @@ describe('AgyBackend', () => {
   });
 
   it('emits an error status and rejects on non-zero exit', async () => {
-    const { child } = makeFakeChild();
+    const { child, stderr } = makeFakeChild();
     const spawnFn = vi.fn(() => child) as unknown as SpawnFn;
 
     const backend = new AgyBackend({
@@ -76,10 +98,15 @@ describe('AgyBackend', () => {
 
     await backend.startSession();
     const turn = backend.sendPrompt('/work', 'hi');
+    stderr.emit('data', '\u001b[31mUnknown model Gemini 3.8 Flash\u001b[0m\n');
     child.emit('close', 1);
 
-    await expect(turn).rejects.toThrow(/exited with code 1/);
-    expect(messages.at(-1)).toMatchObject({ type: 'status', status: 'error' });
+    await expect(turn).rejects.toThrow(/exited with code 1: Unknown model Gemini 3\.8 Flash/);
+    expect(messages.at(-1)).toMatchObject({
+      type: 'status',
+      status: 'error',
+      detail: 'agy exited with code 1: Unknown model Gemini 3.8 Flash',
+    });
   });
 
   it('resumes the captured conversation id on the next turn', async () => {

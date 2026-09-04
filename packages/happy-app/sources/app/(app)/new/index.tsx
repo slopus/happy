@@ -120,7 +120,7 @@ const ALL_AGENTS: { key: AgentKey; label: string }[] = [
     { key: 'rig', label: 'happy' },
 ];
 
-type PickerItem = { key: string; label: string; subtitle?: string; dimmed?: boolean };
+type PickerItem = { key: string; label: string; subtitle?: string; dimmed?: boolean; section?: string };
 
 type PickerType = 'machine' | 'path' | 'worktree' | 'agent' | 'model' | 'effort' | 'permission' | 'settings';
 
@@ -381,7 +381,16 @@ function PickerContent({
                 {fixedItems && fixedItems.length > 0 && filtered.length > 0 && (
                     <View style={[pickerStyles.divider, { backgroundColor: theme.colors.divider }]} />
                 )}
-                {filtered.map(renderOption)}
+                {filtered.map((item, index) => (
+                    <React.Fragment key={item.key}>
+                        {item.section && item.section !== filtered[index - 1]?.section ? (
+                            <Text style={[pickerStyles.sectionLabel, { color: theme.colors.textSecondary }]}>
+                                {item.section}
+                            </Text>
+                        ) : null}
+                        {renderOption(item)}
+                    </React.Fragment>
+                ))}
                 {filtered.length === 0 && search.length > 0 && (
                     <Text style={[pickerStyles.emptyText, { color: theme.colors.textSecondary }]}>
                         no results
