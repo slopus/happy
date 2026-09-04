@@ -35,7 +35,7 @@ export class PawsAgentClient {
         this.events = new PawsAgentEvents(options.logger);
         const http = new PawsHttpTransport(options);
         this.http = http;
-        const machines = new MachinesResourceImpl(http, this.encryption);
+        let machines!: MachinesResourceImpl;
         let sessions!: SessionsResourceImpl;
         this.realtime = new PawsRealtimeTransport({
             serverUrl: options.serverUrl,
@@ -49,6 +49,7 @@ export class PawsAgentClient {
             },
             onUpdate: update => { void this.handleUpdate(update); },
         });
+        machines = new MachinesResourceImpl(http, this.realtime, this.encryption);
         sessions = new SessionsResourceImpl(
             http,
             this.realtime,
@@ -159,7 +160,8 @@ export class PawsAgentClient {
                     this.events.emit({ type: 'request', sessionId: session.id, request });
                 }
             } else if (record.t === 'update-machine' || record.t === 'new-machine') {
-                await this.machines.list();
+                const machines = await this.machines.list();
+                this.events.emit({ type: 'machines', machines });
             }
         } catch (cause) {
             const error = cause instanceof PawsAgentError

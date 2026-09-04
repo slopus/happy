@@ -180,9 +180,22 @@ const client = new PawsAgentClient({
   credentials: createDefaultFileCredentialProvider(),
 });
 
+await client.connect();
 const machines = await client.machines.list({ active: true });
+const root = await client.machines.browseDirectory({
+  machineId: machines[0].id,
+});
+
+if (root.success) {
+  console.log(root.home, root.directories);
+}
 await client.dispose();
 ```
+
+`machines.browseDirectory()` delegates to the selected machine's encrypted
+machine RPC. The daemon resolves symlinks, rejects paths outside the canonical
+home directory, and returns directories only; it does not expose file contents
+or command execution through this SDK method.
 
 ## Release status
 

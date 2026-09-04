@@ -780,7 +780,7 @@ describe('paws-agent integration', { timeout: 180_000 }, () => {
         await waitForHistoryMessage(sessionId, prompt, agentEnv);
     });
 
-    it('links browser credentials and lists machines through the browser SDK entrypoint', async () => {
+    it('links browser credentials, lists machines, and browses the remote home through the browser SDK', async () => {
         if (!integrationConfig || !integrationEnvDir) {
             throw new Error('Integration environment not initialized');
         }
@@ -805,6 +805,15 @@ describe('paws-agent integration', { timeout: 180_000 }, () => {
         try {
             const browserMachines = await browserClient.machines.list({ active: true });
             expect(browserMachines.length).toBeGreaterThan(0);
+            const listing = await browserClient.machines.browseDirectory({
+                machineId: browserMachines[0].id,
+            });
+            expect(listing.success).toBe(true);
+            if (listing.success) {
+                expect(listing.path).toBe(listing.home);
+                expect(listing.parent).toBeNull();
+                expect(listing.directories.every(item => item.path.startsWith(`${listing.home}/`))).toBe(true);
+            }
         } finally {
             await browserClient.dispose();
         }

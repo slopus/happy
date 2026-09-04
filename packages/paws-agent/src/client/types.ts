@@ -49,6 +49,28 @@ export type Machine = {
     daemonStateVersion: number;
 };
 
+export type BrowseDirectoryInput = {
+    machineId: string;
+    /** Empty or omitted starts at the remote machine's home directory. */
+    path?: string;
+};
+
+export type BrowseDirectoryEntry = {
+    name: string;
+    path: string;
+    isProjectRoot: boolean;
+};
+
+export type BrowseDirectoryResult =
+    | {
+        success: true;
+        path: string;
+        parent: string | null;
+        home: string;
+        directories: BrowseDirectoryEntry[];
+    }
+    | { success: false; error: string };
+
 export type Session = {
     id: string;
     seq: number;
@@ -115,6 +137,8 @@ export type ResolveRequestInput = {
 
 export interface MachinesResource {
     list(options?: { active?: boolean }): Promise<Machine[]>;
+    /** Browse visible directories below the remote machine's canonical home directory. */
+    browseDirectory(input: BrowseDirectoryInput): Promise<BrowseDirectoryResult>;
 }
 
 export interface SessionsResource {
@@ -137,6 +161,7 @@ export interface RequestsResource {
 
 export type PawsAgentEvent =
     | { type: 'connection'; state: ConnectionState }
+    | { type: 'machines'; machines: Machine[] }
     | { type: 'message'; sessionId: string; message: Message }
     | { type: 'session'; session: Session }
     | { type: 'request'; sessionId: string; request: AgentRequest }
