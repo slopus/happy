@@ -28,7 +28,10 @@ export interface BuildOptions {
 
 const DEFAULTS: Required<BuildOptions> = {
     contextLines: 3,
-    syntax: true,
+    // Off while highlight colors don't actually render in chat: Prism
+    // tokenization is ~10x of the whole build (see benchmark.spec.ts), and
+    // right now it buys nothing. Flip back once highlighting works.
+    syntax: false,
     intraline: true,
     tabWidth: 4,
     maxHighlightLines: 8000,
@@ -105,7 +108,15 @@ function finish(files: DiffFile[], started: number): DiffDocument {
         additions += f.additions;
         deletions += f.deletions;
     }
-    return { files, additions, deletions, buildMs: now() - started };
+    const doc = { files, additions, deletions, buildMs: now() - started };
+    // Only reached on cache misses, so this logs each expensive document once
+    // rather than on every render.
+    if (doc.buildMs > 4) {
+        const rows = files.reduce((n, f) => n + f.rows.length, 0);
+        const paths = files.slice(0, 3).map((f) => f.path).join(', ');
+        console.log(`[perf] diff build ${doc.buildMs.toFixed(1)}ms rows=${rows} ${paths}`);
+    }
+    return doc;
 }
 
 function buildFile(raw: RawFile, opts: Required<BuildOptions>): DiffFile {

@@ -2,6 +2,7 @@ import { Metadata, TodoItemsSchema } from '@/sync/storageTypes';
 import { ToolCall, Message } from '@/sync/typesMessage';
 import { resolvePath } from '@/utils/pathUtils';
 import { stringifyToolCommand } from '@/utils/toolCommand';
+import type { ToolSummaryCategory } from '@/utils/toolDisplay';
 import * as z from 'zod';
 import { Ionicons, Octicons } from '@expo/vector-icons';
 import React from 'react';
@@ -18,6 +19,23 @@ const ICON_EXIT = (size: number = 24, color: string = '#000') => <Ionicons name=
 const ICON_TODO = (size: number = 24, color: string = '#000') => <Ionicons name="bulb-outline" size={size} color={color} />;
 const ICON_REASONING = (size: number = 24, color: string = '#000') => <Octicons name="light-bulb" size={size} color={color} />;
 const ICON_QUESTION = (size: number = 24, color: string = '#000') => <Ionicons name="help-circle-outline" size={size} color={color} />;
+
+/**
+ * Icon for tools without a knownTools entry, chosen by what the tool does.
+ * Keeps provider/rig tool names (exec_command, read_file, ...) from falling
+ * back to the generic construct icon.
+ */
+export function getToolCategoryIcon(category: ToolSummaryCategory, size: number, color: string): React.ReactElement | null {
+    switch (category) {
+        case 'terminal': return ICON_TERMINAL(size, color);
+        case 'read': return ICON_READ(size, color);
+        case 'edit': return ICON_EDIT(size, color);
+        case 'search': return ICON_SEARCH(size, color);
+        case 'web': return ICON_WEB(size, color);
+        case 'task': return ICON_TASK(size, color);
+        default: return null;
+    }
+}
 
 function getPatchFiles(input: any): string[] {
     if (input?.changes && typeof input.changes === 'object' && !Array.isArray(input.changes)) {

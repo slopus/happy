@@ -578,14 +578,14 @@ export const en: TranslationStructure = {
     },
 
     toolGroup: {
-        editedFiles: ({ count }: { count: number }) => count === 1 ? 'Edited 1 file' : `Edited ${count} files`,
-        readFiles: ({ count }: { count: number }) => count === 1 ? 'Read 1 file' : `Read ${count} files`,
-        ranCommands: ({ count }: { count: number }) => count === 1 ? 'Ran 1 command' : `Ran ${count} commands`,
-        searched: ({ count }: { count: number }) => count === 1 ? 'Searched 1 time' : `Searched ${count} times`,
-        fetchedUrls: ({ count }: { count: number }) => count === 1 ? 'Fetched 1 URL' : `Fetched ${count} URLs`,
-        ranTasks: ({ count }: { count: number }) => count === 1 ? 'Ran 1 task' : `Ran ${count} tasks`,
-        usedTools: ({ count }: { count: number }) => count === 1 ? 'Used 1 tool' : `Used ${count} tools`,
+        ran: 'Ran',
+        edited: 'Edited',
+        read: 'Read',
+        searched: 'Searched',
+        fetched: 'Fetched',
+        ranTask: 'Ran task',
         workedFor: ({ duration }: { duration: string }) => `Worked ${duration}`,
+        hide: 'Hide',
     },
 
     tools: {

@@ -565,14 +565,14 @@ export const ja: TranslationStructure = {
     },
 
     toolGroup: {
-        editedFiles: ({ count }: { count: number }) => `${count}個のファイルを編集`,
-        readFiles: ({ count }: { count: number }) => `${count}個のファイルを読み取り`,
-        ranCommands: ({ count }: { count: number }) => `${count}個のコマンドを実行`,
-        searched: ({ count }: { count: number }) => `${count}回検索`,
-        fetchedUrls: ({ count }: { count: number }) => `${count}個のURLを取得`,
-        ranTasks: ({ count }: { count: number }) => `${count}個のタスクを実行`,
-        usedTools: ({ count }: { count: number }) => `${count}個のツールを使用`,
+        ran: '実行',
+        edited: '編集',
+        read: '読み取り',
+        searched: '検索',
+        fetched: '取得',
+        ranTask: 'タスク実行',
         workedFor: ({ duration }: { duration: string }) => `Worked ${duration}`,
+        hide: '非表示',
     },
 
     tools: {

@@ -11,7 +11,7 @@ import {
 } from './toolDisplay';
 
 vi.mock('@/text', () => ({
-    t: (key: string, params?: { count?: number }) => `${key}:${params?.count ?? ''}`,
+    t: (key: string) => key,
 }));
 
 function tool(name: string, input: unknown): ToolCall {
@@ -106,11 +106,11 @@ describe('terminal tool display helpers', () => {
         expect(getToolActivityLabel(tool('CodexBash', {
             command: ['/usr/bin/zsh', '-lc', 'git status --short'],
             parsed_cmd: [{ type: 'bash', cmd: 'git status --short' }],
-        }))).toBe('toolGroup.ranCommands:1: git status --short');
+        }))).toBe('toolGroup.ran: git status --short');
 
         expect(getToolActivityLabel(tool('Read', {
             file_path: '/repo/src/app.tsx',
-        }))).toBe('toolGroup.readFiles:1: /repo/src/app.tsx');
+        }))).toBe('toolGroup.read: /repo/src/app.tsx');
 
         const describedTool = tool('CodexPatch', {
             changes: { 'README.md': { kind: { type: 'update' } } },
@@ -124,7 +124,7 @@ describe('terminal tool display helpers', () => {
         const rigCommand = tool('exec_command', { cmd: 'git status --short' });
         rigCommand.description = 'Running Exec Command';
         expect(getToolActivityLabel(rigCommand))
-            .toBe('toolGroup.ranCommands:1: git status --short');
+            .toBe('toolGroup.ran: git status --short');
 
         const rigCoordination = tool('spawn_agent', {});
         rigCoordination.description = 'Running Spawn Agent';

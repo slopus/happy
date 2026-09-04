@@ -10,6 +10,7 @@
     "submit": "eas submit --platform ios",
     "web": "expo start --web",
     "test": "vitest",
+    "perf:e2e": "node scripts/perf-e2e.mjs",
     "release": "node ./release.cjs",
     "release:build:developer": "eas build --profile development --platform ios --no-wait --non-interactive && eas build --profile development --platform android --no-wait --non-interactive && eas build --profile preview --platform ios --no-wait --non-interactive && eas build --profile preview --platform android --no-wait --non-interactive && eas build --profile development-store --platform ios --auto-submit-with-profile=production --no-wait --non-interactive && eas build --profile preview-store --platform ios --auto-submit-with-profile=production --no-wait --non-interactive",
     "release:build:developer:interactive": "eas build --profile development --platform ios --no-wait && eas build --profile development --platform android --no-wait && eas build --profile preview --platform ios --no-wait && eas build --profile preview --platform android --no-wait && eas build --profile development-store --platform ios --auto-submit-with-profile=production --no-wait && eas build --profile preview-store --platform ios --auto-submit-with-profile=production --no-wait",

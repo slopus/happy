@@ -285,18 +285,18 @@ function getProviderActivityDescription(
 function getToolActivityAction(category: ToolSummaryCategory, toolName: string): string {
     switch (category) {
         case 'terminal':
-            return t('toolGroup.ranCommands', { count: 1 });
+            return t('toolGroup.ran');
         case 'edit':
-            return t('toolGroup.editedFiles', { count: 1 });
+            return t('toolGroup.edited');
         case 'read':
-            return t('toolGroup.readFiles', { count: 1 });
+            return t('toolGroup.read');
         case 'search':
-            return t('toolGroup.searched', { count: 1 });
+            return t('toolGroup.searched');
         case 'web':
-            return t('toolGroup.fetchedUrls', { count: 1 });
+            return t('toolGroup.fetched');
         case 'task':
             return toolName === 'Task' || toolName === 'Agent'
-                ? t('toolGroup.ranTasks', { count: 1 })
+                ? t('toolGroup.ranTask')
                 : formatToolName(toolName);
         default:
             return toolName.startsWith('mcp__')

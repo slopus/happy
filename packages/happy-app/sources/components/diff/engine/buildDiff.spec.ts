@@ -308,15 +308,20 @@ describe('buildDiffFromPatch', () => {
         expect(rows.every((r) => r.spans.every((s) => s.k === 'plain' && s.e === 0))).toBe(true);
     });
 
-    it('still highlights when options carry undefined fields', () => {
-        // Regression: a spread merge let `{ syntax: undefined }` overwrite the
-        // default and silently disabled highlighting for every hook caller.
+    it('keeps defaults when options carry undefined fields', () => {
+        // Regression: a spread merge let `{ intraline: undefined }` overwrite
+        // the default and silently disabled word diffing for every hook caller.
+        // (Syntax is default-off for now, so intraline is the default-on field
+        // this guards; explicit `syntax: true` still opts in below.)
         clearDiffCache();
         const patch = ['--- a/a.ts', '+++ b/a.ts', '@@ -1 +1 @@', '-const a = 1;', '+const a = 2;'].join('\n');
         const file = buildDiffFromPatch(patch, { syntax: undefined, intraline: undefined, contextLines: undefined }).files[0];
         const rows = lineRows(file.rows);
-        expect(rows.some((r) => r.spans.some((s) => s.k === 'keyword'))).toBe(true);
         expect(rows.some((r) => r.spans.some((s) => s.e !== 0))).toBe(true);
+
+        clearDiffCache();
+        const highlighted = buildDiffFromPatch(patch, { syntax: true }).files[0];
+        expect(lineRows(highlighted.rows).some((r) => r.spans.some((s) => s.k === 'keyword'))).toBe(true);
     });
 
     it('tolerates junk input', () => {

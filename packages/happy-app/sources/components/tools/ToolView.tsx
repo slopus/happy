@@ -8,7 +8,7 @@ import { CodeView } from '../CodeView';
 import { ToolSectionView } from './ToolSectionView';
 import { useElapsedTime } from '@/hooks/useElapsedTime';
 import { ToolError } from './ToolError';
-import { knownTools } from '@/components/tools/knownTools';
+import { getToolCategoryIcon, knownTools } from '@/components/tools/knownTools';
 import { Metadata } from '@/sync/storageTypes';
 import { useRouter } from 'expo-router';
 import { PermissionFooter } from './PermissionFooter';
@@ -17,6 +17,7 @@ import { t } from '@/text';
 import {
     formatMCPTitle,
     getToolActivityLabel,
+    getToolSummaryCategory,
     getTerminalToolCommand,
     shouldRenderToolCardHeader,
     shouldUseCompactToolRow,
@@ -67,7 +68,8 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
     let description: string | null = null;
     let status: string | null = null;
     let minimal = false;
-    let icon = <Ionicons name="construct-outline" size={18} color={theme.colors.textSecondary} />;
+    let icon = getToolCategoryIcon(getToolSummaryCategory(tool.name), 18, theme.colors.text)
+        ?? <Ionicons name="construct-outline" size={18} color={theme.colors.textSecondary} />;
     let noStatus = false;
     let hideDefaultError = false;
     

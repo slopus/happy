@@ -1,8 +1,7 @@
 import * as React from 'react';
 import { Message } from '@/sync/typesMessage';
 import { knownTools } from '@/components/tools/knownTools';
-import { getToolSummaryCategory, isInteractiveQuestionToolName } from '@/utils/toolDisplay';
-import { t } from '@/text';
+import { isInteractiveQuestionToolName } from '@/utils/toolDisplay';
 
 // Display item types for the grouped message list
 export type TextItem = {
@@ -11,17 +10,10 @@ export type TextItem = {
     message: Message;
 };
 
-export type ToolGroupItem = {
-    type: 'tool-group';
-    id: string;
-    messages: Message[];
-    hasRunning: boolean;
-    hasPendingPermission: boolean;
-};
-
 export type AgentWorkGroupItem = {
     type: 'agent-work-group';
     id: string;
+    /** Hidden intermediate messages, in chronological (render) order. */
     messages: Message[];
     hasRunning: boolean;
     hasPendingPermission: boolean;
@@ -29,16 +21,17 @@ export type AgentWorkGroupItem = {
     completedAt: number | null;
 };
 
-export type ToolDisplayItem = TextItem | ToolGroupItem;
-export type DisplayItem = TextItem | ToolGroupItem | AgentWorkGroupItem;
+export type DisplayItem = TextItem | AgentWorkGroupItem;
 
 /**
- * The messages array is newest-first for the inverted FlatList.
+ * The messages array arrives newest-first (that is how sync stores it); the
+ * returned display items are chronological, ready for a top-to-bottom list.
  *
- * When enabled, intermediate agent work in a turn is collapsed into an
- * AgentWorkGroupItem while the final agent text remains visible. Tool calls
- * that remain outside a work group are collapsed only when adjacent visible
- * tool calls form a run. When disabled, every message passes through.
+ * Grouping is single-level on purpose: while a turn is streaming every message
+ * renders flat, and once the turn completes its intermediate work collapses
+ * into one AgentWorkGroupItem above the final answer. There is no grouping of
+ * adjacent tool calls — an expanded work group renders its members exactly as
+ * they looked while streaming. When disabled, every message passes through.
  */
 export function useGroupedMessages(
     messages: Message[],
@@ -57,7 +50,11 @@ export function groupMessagesForDisplay(
     options: { collapseCurrentTurn?: boolean } = {},
 ): DisplayItem[] {
     if (!enabled) {
-        return messages.map((msg) => ({ type: 'message', id: msg.id, message: msg } as TextItem));
+        const flat = messages
+            .filter((msg) => !isInvisibleMessage(msg))
+            .map((msg) => ({ type: 'message', id: msg.id, message: msg } as TextItem));
+        flat.reverse();
+        return flat;
     }
 
     const collapseCurrentTurn = options.collapseCurrentTurn ?? true;
@@ -73,20 +70,9 @@ export function groupMessagesForDisplay(
         }
     }
 
-    const visibleForToolGrouping = (msg: Message, index: number): boolean => {
-        // Keep every current-turn tool call visible while the agent is still
-        // working. Once the turn completes, its intermediate work is folded
-        // into one AgentWorkGroupItem above the final response.
-        if (!collapseCurrentTurn && turnOf[index] === 0) return false;
-        if (hiddenWorkIndexes.has(index)) return false;
-        if (isInvisibleMessage(msg) || isUserAttachment(msg)) return false;
-        return msg.kind === 'tool-call' && !isInteractiveQuestionToolName(msg.tool.name);
-    };
-
-    const toolRuns = collectToolRuns(messages, visibleForToolGrouping);
-
-    // Build display items — groups are emitted at their oldest hidden member
-    // so the visual order remains user message → collapsed work → final answer.
+    // Build newest-first, matching the input order, then reverse once at the
+    // end. Groups are emitted at their oldest hidden member so the final order
+    // reads user message → collapsed work → final answer.
     const result: DisplayItem[] = [];
     for (let i = 0; i < messages.length; i++) {
         const msg = messages[i];
@@ -101,97 +87,10 @@ export function groupMessagesForDisplay(
             continue;
         }
 
-        if (isUserAttachment(msg)) {
-            result.push({ type: 'message', id: msg.id, message: msg });
-            continue;
-        }
-
-        if (msg.kind === 'tool-call') {
-            const info = toolRuns.get(i);
-            if (info && info.msgs.length > 1 && i === info.oldestIdx) {
-                let hasRunning = false;
-                for (const m of info.msgs) {
-                    if (m.kind === 'tool-call' && m.tool.state === 'running') {
-                        hasRunning = true;
-                        break;
-                    }
-                }
-                const chronologicalMessages = [...info.msgs].reverse();
-                result.push({
-                    type: 'tool-group',
-                    id: `group-${chronologicalMessages[0].id}`,
-                    messages: chronologicalMessages,
-                    hasRunning,
-                    hasPendingPermission: hasPendingPermission(info.msgs),
-                });
-            }
-            if (info && info.msgs.length > 1) {
-                continue;
-            }
-        }
-
-        // Standalone messages (user text, agent text, events)
         result.push({ type: 'message', id: msg.id, message: msg });
     }
 
-    return result;
-}
-
-export function groupToolCallsForDisplay(
-    messages: Message[],
-    enabled: boolean = true,
-    options: { groupSingleToolCalls?: boolean } = {},
-): ToolDisplayItem[] {
-    if (!enabled) {
-        return messages.map((msg) => ({ type: 'message', id: msg.id, message: msg } as TextItem));
-    }
-
-    const groupSingleToolCalls = options.groupSingleToolCalls ?? false;
-    const toolRuns = collectToolRuns(messages, (msg) => {
-        if (msg.kind !== 'tool-call' || isInteractiveQuestionToolName(msg.tool.name)) return false;
-        if (isInvisibleMessage(msg) || isUserAttachment(msg)) return false;
-        return true;
-    });
-
-    const result: ToolDisplayItem[] = [];
-    for (let i = 0; i < messages.length; i++) {
-        const msg = messages[i];
-
-        if (isInvisibleMessage(msg)) continue;
-
-        if (isUserAttachment(msg)) {
-            result.push({ type: 'message', id: msg.id, message: msg });
-            continue;
-        }
-
-        if (msg.kind === 'tool-call') {
-            const info = toolRuns.get(i);
-            const shouldGroupRun = info && (info.msgs.length > 1 || groupSingleToolCalls);
-            if (shouldGroupRun && i === info.oldestIdx) {
-                let hasRunning = false;
-                for (const m of info.msgs) {
-                    if (m.kind === 'tool-call' && m.tool.state === 'running') {
-                        hasRunning = true;
-                        break;
-                    }
-                }
-                const chronologicalMessages = [...info.msgs].reverse();
-                result.push({
-                    type: 'tool-group',
-                    id: `group-${chronologicalMessages[0].id}`,
-                    messages: chronologicalMessages,
-                    hasRunning,
-                    hasPendingPermission: hasPendingPermission(info.msgs),
-                });
-            }
-            if (shouldGroupRun) {
-                continue;
-            }
-        }
-
-        result.push({ type: 'message', id: msg.id, message: msg });
-    }
-
+    result.reverse();
     return result;
 }
 
@@ -204,45 +103,6 @@ function getTurnAssignments(messages: Message[]): number[] {
         if (messages[i].kind === 'user-text') turn++;
     }
     return turnOf;
-}
-
-function collectToolRuns(
-    messages: Message[],
-    shouldInclude: (msg: Message, index: number) => boolean,
-): Map<number, { msgs: Message[]; oldestIdx: number }> {
-    const runsByIndex = new Map<number, { msgs: Message[]; oldestIdx: number }>();
-    let current: { indexes: number[]; msgs: Message[] } | null = null;
-
-    const flush = () => {
-        if (!current || current.msgs.length === 0) {
-            current = null;
-            return;
-        }
-        const oldestIdx = current.indexes[current.indexes.length - 1];
-        const run = { msgs: current.msgs, oldestIdx };
-        for (const index of current.indexes) {
-            runsByIndex.set(index, run);
-        }
-        current = null;
-    };
-
-    for (let i = 0; i < messages.length; i++) {
-        const msg = messages[i];
-        if (!shouldInclude(msg, i)) {
-            if (!isInvisibleMessage(msg)) {
-                flush();
-            }
-            continue;
-        }
-        if (!current) {
-            current = { indexes: [], msgs: [] };
-        }
-        current.indexes.push(i);
-        current.msgs.push(msg);
-    }
-    flush();
-
-    return runsByIndex;
 }
 
 function collectAgentWorkGroups(messages: Message[], turnOf: number[], collapseCurrentTurn: boolean): Array<{
@@ -288,6 +148,9 @@ function collectAgentWorkGroups(messages: Message[], turnOf: number[], collapseC
         const hiddenMessages = hiddenIndexes.map((index) => messages[index]);
         const startedAt = Math.min(...hiddenMessages.map((msg) => msg.createdAt));
         const completedAt = messages[finalTextIndex].createdAt;
+        // Members render flat when the group expands, so they are stored in
+        // the order they will be drawn.
+        hiddenMessages.reverse();
 
         groups.push({
             hiddenIndexes,
@@ -332,30 +195,6 @@ function hasPendingPermission(messages: Message[]): boolean {
         msg.kind === 'tool-call'
         && msg.tool.permission?.status === 'pending'
     ));
-}
-
-/** Generate a human-readable summary of tools in a group */
-export function generateGroupSummary(messages: Message[]): string {
-    const counts: Record<string, number> = {};
-
-    for (const msg of messages) {
-        if (msg.kind === 'tool-call') {
-            const category = getToolSummaryCategory(msg.tool.name);
-            counts[category] = (counts[category] || 0) + 1;
-        }
-    }
-
-    const parts: string[] = [];
-
-    if (counts.edit) parts.push(t('toolGroup.editedFiles', { count: counts.edit }));
-    if (counts.read) parts.push(t('toolGroup.readFiles', { count: counts.read }));
-    if (counts.terminal) parts.push(t('toolGroup.ranCommands', { count: counts.terminal }));
-    if (counts.search) parts.push(t('toolGroup.searched', { count: counts.search }));
-    if (counts.web) parts.push(t('toolGroup.fetchedUrls', { count: counts.web }));
-    if (counts.task) parts.push(t('toolGroup.ranTasks', { count: counts.task }));
-    if (counts.other) parts.push(t('toolGroup.usedTools', { count: counts.other }));
-
-    return parts.join(', ') || t('toolGroup.usedTools', { count: messages.length });
 }
 
 export function formatWorkDuration(durationMs: number): string {

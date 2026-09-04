@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { generateGroupSummary, groupMessagesForDisplay, groupToolCallsForDisplay } from './useGroupedMessages';
+import { groupMessagesForDisplay } from './useGroupedMessages';
 import { Message, ToolCallMessage } from '@/sync/typesMessage';
 
 vi.mock('@/components/tools/knownTools', () => ({
@@ -40,103 +40,9 @@ function toolMessage(id: string, createdAt: number, options: { pendingPermission
     };
 }
 
-function namedToolMessage(id: string, name: string, createdAt: number): ToolCallMessage {
-    const message = toolMessage(id, createdAt);
-    return {
-        ...message,
-        tool: {
-            ...message.tool,
-            name,
-        },
-    };
-}
-
 describe('useGroupedMessages', () => {
-    it('classifies Rig tool families in group summaries', () => {
-        const messages = [
-            namedToolMessage('terminal', 'exec_command', 1),
-            namedToolMessage('edit', 'apply_patch', 2),
-            namedToolMessage('read', 'read_agent_history', 3),
-            namedToolMessage('search', 'list_workspaces', 4),
-            namedToolMessage('task', 'spawn_agent', 5),
-        ];
-
-        expect(generateGroupSummary(messages)).toBe([
-            'toolGroup.editedFiles:1',
-            'toolGroup.readFiles:1',
-            'toolGroup.ranCommands:1',
-            'toolGroup.searched:1',
-            'toolGroup.ranTasks:1',
-        ].join(', '));
-    });
-
-    it('stores grouped tools in chronological render order', () => {
-        const messages: Message[] = [
-            {
-                kind: 'agent-text',
-                id: 'agent-after-tools',
-                localId: null,
-                createdAt: 5,
-                text: 'done',
-            },
-            toolMessage('tool-latest', 4),
-            toolMessage('tool-middle', 3),
-            toolMessage('tool-earliest', 2),
-            {
-                kind: 'user-text',
-                id: 'user',
-                localId: null,
-                createdAt: 1,
-                text: 'run tools',
-            },
-        ];
-
-        const group = groupToolCallsForDisplay(messages, true).find((item) => item.type === 'tool-group');
-
-        expect(group?.messages.map((message) => message.id)).toEqual([
-            'tool-earliest',
-            'tool-middle',
-            'tool-latest',
-        ]);
-    });
-
-    it('groups only adjacent tool calls between text messages', () => {
-        const messages: Message[] = [
-            {
-                kind: 'agent-text',
-                id: 'agent-final',
-                localId: null,
-                createdAt: 7,
-                text: 'done',
-            },
-            toolMessage('tool-4', 6),
-            toolMessage('tool-3', 5),
-            {
-                kind: 'agent-text',
-                id: 'agent-middle',
-                localId: null,
-                createdAt: 4,
-                text: 'next step',
-            },
-            toolMessage('tool-2', 3),
-            toolMessage('tool-1', 2),
-            {
-                kind: 'user-text',
-                id: 'user',
-                localId: null,
-                createdAt: 1,
-                text: 'run tools',
-            },
-        ];
-
-        const groups = groupToolCallsForDisplay(messages, true).filter((item) => item.type === 'tool-group');
-
-        expect(groups).toHaveLength(2);
-        expect(groups[0]?.messages.map((message) => message.id)).toEqual(['tool-3', 'tool-4']);
-        expect(groups[1]?.messages.map((message) => message.id)).toEqual(['tool-1', 'tool-2']);
-    });
-
-    it('keeps the final agent message visible and collapses earlier agent work', () => {
+    it('returns chronological items with earlier agent work collapsed into one group', () => {
+        // Input is newest-first, as sync stores it.
         const messages: Message[] = [
             {
                 kind: 'agent-text',
@@ -166,15 +72,17 @@ describe('useGroupedMessages', () => {
         const items = groupMessagesForDisplay(messages, true);
 
         expect(items.map((item) => item.type)).toEqual(['message', 'agent-work-group', 'message']);
-        expect(items[0]).toMatchObject({ type: 'message', id: 'agent-final' });
+        expect(items[0]).toMatchObject({ type: 'message', id: 'user' });
         expect(items[1]).toMatchObject({ type: 'agent-work-group', id: 'work-tool-earliest' });
+        expect(items[2]).toMatchObject({ type: 'message', id: 'agent-final' });
         if (items[1].type !== 'agent-work-group') {
             throw new Error('Expected an agent work group');
         }
+        // Members are stored in chronological render order for flat expansion.
         expect(items[1].messages.map((message) => message.id)).toEqual([
-            'tool-latest',
-            'agent-progress',
             'tool-earliest',
+            'agent-progress',
+            'tool-latest',
         ]);
     });
 
@@ -244,48 +152,19 @@ describe('useGroupedMessages', () => {
             'message',
         ]);
         expect(items.map((item) => item.id)).toEqual([
-            'agent-streaming',
-            'tool-latest',
+            'user',
+            'tool-earliest',
             'agent-progress',
-            'tool-earliest',
-            'user',
-        ]);
-    });
-
-    it('keeps adjacent current-turn tools separate while the agent is working', () => {
-        const messages: Message[] = [
-            {
-                kind: 'agent-text',
-                id: 'agent-streaming',
-                localId: null,
-                createdAt: 5,
-                text: 'still working',
-            },
-            toolMessage('tool-latest', 4),
-            toolMessage('tool-earliest', 3),
-            {
-                kind: 'user-text',
-                id: 'user',
-                localId: null,
-                createdAt: 1,
-                text: 'run tools',
-            },
-        ];
-
-        const items = groupMessagesForDisplay(messages, true, { collapseCurrentTurn: false });
-
-        expect(items.map((item) => item.type)).toEqual(['message', 'message', 'message', 'message']);
-        expect(items.map((item) => item.id)).toEqual([
-            'agent-streaming',
             'tool-latest',
-            'tool-earliest',
-            'user',
+            'agent-streaming',
         ]);
     });
 
-    it('marks a tool group when it contains a pending permission', () => {
+    it('never groups adjacent tool calls outside a work group', () => {
+        // A turn without a final agent text has no work group; its tools stay
+        // flat instead of being folded into a run.
         const messages: Message[] = [
-            toolMessage('tool-latest', 3, { pendingPermission: true }),
+            toolMessage('tool-latest', 3),
             toolMessage('tool-earliest', 2),
             {
                 kind: 'user-text',
@@ -293,72 +172,29 @@ describe('useGroupedMessages', () => {
                 localId: null,
                 createdAt: 1,
                 text: 'run tools',
-            },
-        ];
-
-        const group = groupMessagesForDisplay(messages, true).find((item) => item.type === 'tool-group');
-
-        expect(group).toMatchObject({
-            type: 'tool-group',
-            id: 'group-tool-earliest',
-            hasPendingPermission: true,
-        });
-    });
-
-    it('does not collapse a single standalone tool call into a tool group', () => {
-        const messages: Message[] = [
-            toolMessage('tool-only', 2),
-            {
-                kind: 'user-text',
-                id: 'user',
-                localId: null,
-                createdAt: 1,
-                text: 'run one tool',
             },
         ];
 
         const items = groupMessagesForDisplay(messages, true);
 
-        expect(items.map((item) => item.type)).toEqual(['message', 'message']);
-        expect(items[0]).toMatchObject({ type: 'message', id: 'tool-only' });
-    });
-
-    it('keeps interactive questions expanded and out of tool groups', () => {
-        const messages: Message[] = [
-            toolMessage('tool-latest', 4),
-            namedToolMessage('question', 'request_user_input', 3),
-            toolMessage('tool-earliest', 2),
-            {
-                kind: 'user-text',
-                id: 'user',
-                localId: null,
-                createdAt: 1,
-                text: 'run tools',
-            },
-        ];
-
-        const items = groupToolCallsForDisplay(messages, true, { groupSingleToolCalls: true });
-
-        expect(items.map(item => item.id)).toEqual([
-            'group-tool-latest',
-            'question',
-            'group-tool-earliest',
+        expect(items.map((item) => item.type)).toEqual(['message', 'message', 'message']);
+        expect(items.map((item) => item.id)).toEqual([
             'user',
+            'tool-earliest',
+            'tool-latest',
         ]);
-        expect(items[1]).toMatchObject({ type: 'message', id: 'question' });
     });
 
-    it('keeps an answered interactive question out of collapsed agent work', () => {
+    it('marks a work group when it contains a pending permission', () => {
         const messages: Message[] = [
             {
                 kind: 'agent-text',
                 id: 'agent-final',
                 localId: null,
-                createdAt: 5,
+                createdAt: 4,
                 text: 'done',
             },
-            toolMessage('tool-latest', 4),
-            namedToolMessage('question', 'request_user_input', 3),
+            toolMessage('tool-pending', 3, { pendingPermission: true }),
             toolMessage('tool-earliest', 2),
             {
                 kind: 'user-text',
@@ -369,14 +205,41 @@ describe('useGroupedMessages', () => {
             },
         ];
 
-        const items = groupMessagesForDisplay(messages, true);
+        const group = groupMessagesForDisplay(messages, true).find((item) => item.type === 'agent-work-group');
 
-        expect(items.some(item => item.id === 'question' && item.type === 'message')).toBe(true);
-        const workGroup = items.find(item => item.type === 'agent-work-group');
-        expect(workGroup?.messages.some(message => message.id === 'question')).toBe(false);
+        expect(group).toMatchObject({
+            type: 'agent-work-group',
+            hasPendingPermission: true,
+        });
     });
 
-    it('hides Claude Skill tool calls from the display list', () => {
+    it('excludes hidden tools from display entirely', () => {
+        const hidden: ToolCallMessage = {
+            ...toolMessage('tool-hidden', 3),
+            tool: {
+                ...toolMessage('tool-hidden', 3).tool,
+                name: 'Skill',
+            },
+        };
+        const messages: Message[] = [
+            hidden,
+            {
+                kind: 'user-text',
+                id: 'user',
+                localId: null,
+                createdAt: 1,
+                text: 'hi',
+            },
+        ];
+
+        const items = groupMessagesForDisplay(messages, true);
+        expect(items.map((item) => item.id)).toEqual(['user']);
+
+        const flat = groupMessagesForDisplay(messages, false);
+        expect(flat.map((item) => item.id)).toEqual(['user']);
+    });
+
+    it('passes messages through chronologically when grouping is disabled', () => {
         const messages: Message[] = [
             {
                 kind: 'agent-text',
@@ -385,44 +248,19 @@ describe('useGroupedMessages', () => {
                 createdAt: 3,
                 text: 'done',
             },
-            namedToolMessage('skill-tool', 'Skill', 2),
+            toolMessage('tool', 2),
             {
                 kind: 'user-text',
                 id: 'user',
                 localId: null,
                 createdAt: 1,
-                text: 'run skill',
+                text: 'run tools',
             },
         ];
 
-        const items = groupMessagesForDisplay(messages, true);
+        const items = groupMessagesForDisplay(messages, false);
 
-        expect(items.map((item) => item.id)).toEqual(['agent-final', 'user']);
-    });
-
-    it('can collapse single standalone tool calls for nested work details', () => {
-        const messages: Message[] = [
-            toolMessage('tool-only', 2),
-            {
-                kind: 'user-text',
-                id: 'user',
-                localId: null,
-                createdAt: 1,
-                text: 'run one tool',
-            },
-        ];
-
-        const items = groupToolCallsForDisplay(messages, true, { groupSingleToolCalls: true });
-
-        expect(items.map((item) => item.type)).toEqual(['tool-group', 'message']);
-        expect(items[0]).toMatchObject({
-            type: 'tool-group',
-            id: 'group-tool-only',
-            hasPendingPermission: false,
-        });
-        if (items[0].type !== 'tool-group') {
-            throw new Error('Expected a tool group');
-        }
-        expect(items[0].messages.map((message) => message.id)).toEqual(['tool-only']);
+        expect(items.map((item) => item.id)).toEqual(['user', 'tool', 'agent-final']);
+        expect(items.every((item) => item.type === 'message')).toBe(true);
     });
 });

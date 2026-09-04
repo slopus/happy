@@ -563,14 +563,14 @@ export const pt: TranslationStructure = {
     },
 
     toolGroup: {
-        editedFiles: ({ count }: { count: number }) => count === 1 ? 'Editou 1 arquivo' : `Editou ${count} arquivos`,
-        readFiles: ({ count }: { count: number }) => count === 1 ? 'Leu 1 arquivo' : `Leu ${count} arquivos`,
-        ranCommands: ({ count }: { count: number }) => count === 1 ? 'Executou 1 comando' : `Executou ${count} comandos`,
-        searched: ({ count }: { count: number }) => count === 1 ? 'Pesquisou 1 vez' : `Pesquisou ${count} vezes`,
-        fetchedUrls: ({ count }: { count: number }) => count === 1 ? 'Obteve 1 URL' : `Obteve ${count} URLs`,
-        ranTasks: ({ count }: { count: number }) => count === 1 ? 'Executou 1 tarefa' : `Executou ${count} tarefas`,
-        usedTools: ({ count }: { count: number }) => count === 1 ? 'Usou 1 ferramenta' : `Usou ${count} ferramentas`,
+        ran: 'Executado',
+        edited: 'Editado',
+        read: 'Lido',
+        searched: 'Busca',
+        fetched: 'Obtido',
+        ranTask: 'Tarefa executada',
         workedFor: ({ duration }: { duration: string }) => `Worked ${duration}`,
+        hide: 'Ocultar',
     },
 
     tools: {
