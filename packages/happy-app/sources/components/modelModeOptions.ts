@@ -138,6 +138,7 @@ export function getGeminiPermissionModes(translate: Translate): PermissionMode[]
 // suffix is honored rather than silently dropped (#1721).
 export function getClaudeModelModes(): ModelMode[] {
     return [
+        { key: 'claude-fable-5-1', name: 'Fable 5.1', description: null },
         { key: 'claude-fable-5', name: 'Fable 5', description: null },
         { key: 'claude-opus-5', name: 'Opus 5', description: null },
         { key: 'claude-opus-5[1m]', name: 'Opus 5 [1M]', description: '1M context' },
@@ -145,8 +146,17 @@ export function getClaudeModelModes(): ModelMode[] {
     ];
 }
 
+// GPT-6 Astra leads because it is the newest and most capable of these, and
+// it is the one row here that can fail for reasons the picker cannot see.
+// Codex's own registry marks it `visibility: hide` (it is configurable but
+// absent from Codex's picker) and `minimal_client_version: 0.153.0`, and access
+// rolls out per plan — so an older Codex CLI, or an account without Astra yet,
+// gets an error from Codex rather than a different model. There is no version
+// gate for it here: sinceCliVersion tags the happy-cli version, and nothing in
+// session metadata reports the Codex CLI's own version.
 export function getCodexModelModes(): ModelMode[] {
     return [
+        { key: 'gpt-6-astra', name: 'GPT-6 Astra', description: null },
         { key: 'gpt-5.6-sol', name: 'GPT-5.6 Sol', description: null },
         { key: 'gpt-5.6-terra', name: 'GPT-5.6 Terra', description: null },
         { key: 'gpt-5.6-luna', name: 'GPT-5.6 Luna', description: null },
@@ -493,12 +503,14 @@ function effortLevels(keys: readonly string[]): EffortLevel[] {
 const CLAUDE_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
 
 // Exactly what each model publishes in Codex's own registry, in its order
-// (codex-rs/models-manager/models.json, min client 0.144). This really is
-// per-model: sol and terra reach `ultra`, luna stops at `max`. `ultra` is
-// documented as maximum reasoning with automatic task delegation, so it is a
-// different kind of run rather than one more notch — but it is a level these
-// two models accept, so the picker offers it rather than deciding for you.
+// (codex-rs/models-manager/models.json; min client 0.153 for astra, 0.144 for
+// the gpt-5.6 family). This really is per-model: astra, sol and terra reach
+// `ultra`, luna stops at `max`. `ultra` is documented as maximum reasoning with
+// automatic task delegation, so it is a different kind of run rather than one
+// more notch — but it is a level these models accept, so the picker offers it
+// rather than deciding for you.
 const CODEX_EFFORTS_BY_MODEL: Record<string, readonly string[]> = {
+    'gpt-6-astra': ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
     'gpt-5.6-sol': ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
     'gpt-5.6-terra': ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
     'gpt-5.6-luna': ['low', 'medium', 'high', 'xhigh', 'max'],
