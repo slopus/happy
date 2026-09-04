@@ -8,7 +8,6 @@ import { isRunningOnMac } from '@/utils/platform';
 import { useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
 import { CardStackScene } from '@/components/CardStackScene';
-import { UnifiedAuthQrCodeProvider } from '@/hooks/useUnifiedAuthQrCode';
 
 export const unstable_settings = {
     initialRouteName: 'index',
@@ -21,7 +20,6 @@ export default function RootLayout() {
 
     return (
         <CardStackScene>
-        <UnifiedAuthQrCodeProvider>
         <Stack
             initialRouteName='index'
             screenOptions={{
@@ -383,7 +381,6 @@ export default function RootLayout() {
                 }}
             />
         </Stack>
-        </UnifiedAuthQrCodeProvider>
         </CardStackScene>
     );
 }

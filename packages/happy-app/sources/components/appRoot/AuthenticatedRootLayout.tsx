@@ -42,6 +42,7 @@ import { loadAppRootFonts } from './appRootFonts';
 import { shouldPresentNotification } from '@/utils/notificationPresentation';
 import { PublicSessionShareJobResumer } from '@/components/PublicSessionShareJobResumer';
 import { retryPublicSessionShareJob } from '@/sync/publicSessionShareQueueRuntime';
+import { UnifiedAuthQrCodeProvider } from '@/hooks/useUnifiedAuthQrCode';
 
 Notifications.setNotificationHandler({
     handleNotification: async (notification) => {
@@ -223,19 +224,21 @@ export default function AuthenticatedRootLayout() {
                             <ThemeProvider value={navigationTheme}>
                                 <StatusBarProvider />
                                 <ModalProvider>
-                                    <DesktopSettingsModalProvider>
-                                        <BrowserNavigationShortcuts />
-                                        <CommandPaletteProvider>
-                                            <RealtimeProvider>
-                                                <PublicSessionShareJobResumer />
-                                                <HorizontalSafeAreaWrapper>
-                                                    <SidebarNavigator />
-                                                </HorizontalSafeAreaWrapper>
-                                                <OtaPreviewFloatingButton visible={showOtaFloatingSwitcher} />
-                                            </RealtimeProvider>
-                                        </CommandPaletteProvider>
-                                        <ImageViewerHost />
-                                    </DesktopSettingsModalProvider>
+                                    <UnifiedAuthQrCodeProvider>
+                                        <DesktopSettingsModalProvider>
+                                            <BrowserNavigationShortcuts />
+                                            <CommandPaletteProvider>
+                                                <RealtimeProvider>
+                                                    <PublicSessionShareJobResumer />
+                                                    <HorizontalSafeAreaWrapper>
+                                                        <SidebarNavigator />
+                                                    </HorizontalSafeAreaWrapper>
+                                                    <OtaPreviewFloatingButton visible={showOtaFloatingSwitcher} />
+                                                </RealtimeProvider>
+                                            </CommandPaletteProvider>
+                                            <ImageViewerHost />
+                                        </DesktopSettingsModalProvider>
+                                    </UnifiedAuthQrCodeProvider>
                                 </ModalProvider>
                             </ThemeProvider>
                         </AuthProvider>
