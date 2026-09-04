@@ -6,6 +6,8 @@ import {
     buildCodexTurnPrompt,
     CODEX_HAPPY_SYSTEM_PROMPT_END,
     CODEX_HAPPY_SYSTEM_PROMPT_START,
+    CODEX_SKILL_PATH_RESOLUTION_INSTRUCTION,
+    createCodexSkillPathResolutionPromptLifecycle,
     hashCodexEnhancedMode,
     markPawsTurnOrigin,
     readPawsTurnOrigin,
@@ -14,6 +16,53 @@ import {
 } from './codexPrompt';
 
 describe('buildCodexTurnPrompt', () => {
+    it('tells Codex that namespaced Skill identifiers are not filesystem paths', () => {
+        const prompt = buildCodexTurnPrompt({
+            message: 'inspect the installed WebSearch Skill',
+            mode: {},
+            includeAppendSystemPrompt: false,
+            includeBrowserStepInstruction: false,
+            includeSkillPathResolutionInstruction: true,
+            includeTitleInstruction: false,
+        });
+
+        expect(prompt).toBe(
+            `${CODEX_HAPPY_SYSTEM_PROMPT_START}\n\n` +
+            `${CODEX_SKILL_PATH_RESOLUTION_INSTRUCTION}\n\n` +
+            `${CODEX_HAPPY_SYSTEM_PROMPT_END}\n\n` +
+            'inspect the installed WebSearch Skill',
+        );
+    });
+
+    it('does not repeat the Skill path rule on an existing Codex thread', () => {
+        const prompt = buildCodexTurnPrompt({
+            message: 'continue the task',
+            mode: {},
+            includeAppendSystemPrompt: false,
+            includeBrowserStepInstruction: false,
+            includeSkillPathResolutionInstruction: false,
+            includeTitleInstruction: false,
+        });
+
+        expect(prompt).toBe('continue the task');
+    });
+
+    it('injects the Skill path rule for initial, reset, and recovered threads only once each', () => {
+        const lifecycle = createCodexSkillPathResolutionPromptLifecycle();
+
+        expect(lifecycle.shouldIncludeInPrompt()).toBe(true);
+        lifecycle.markPromptSent();
+        expect(lifecycle.shouldIncludeInPrompt()).toBe(false);
+
+        lifecycle.onThreadReset();
+        expect(lifecycle.shouldIncludeInPrompt()).toBe(true);
+        lifecycle.markPromptSent();
+        expect(lifecycle.shouldIncludeInPrompt()).toBe(false);
+
+        lifecycle.onThreadStarted();
+        expect(lifecycle.shouldIncludeInPrompt()).toBe(true);
+    });
+
     it('prepends Happy append system prompt before the first Codex user message', () => {
         const prompt = buildCodexTurnPrompt({
             message: 'pick an option',

@@ -60,6 +60,7 @@ import { emitReadyIfIdle } from './emitReadyIfIdle';
 import { enqueueCodexUserText } from './codexClearCommand';
 import {
     buildCodexTurnPrompt,
+    createCodexSkillPathResolutionPromptLifecycle,
     hashCodexEnhancedMode,
     markPawsTurnOrigin,
     type CodexEnhancedMode,
@@ -1135,6 +1136,7 @@ export async function runCodex(opts: {
     let first = true;
     let appendSystemPromptInjected = false;
     let browserStepPromptInjected = false;
+    const skillPathResolutionInstruction = createCodexSkillPathResolutionPromptLifecycle();
 
     try {
         await reconnectMetadataReady;
@@ -1287,6 +1289,7 @@ export async function runCodex(opts: {
                     mode.model ?? startedThread.model,
                     mode.effort ?? startedThread.reasoningEffort ?? undefined,
                 );
+                skillPathResolutionInstruction.onThreadStarted();
             }
 
             const threadId = client.threadId ?? session.getMetadata()?.codexThreadId;
@@ -1415,6 +1418,7 @@ export async function runCodex(opts: {
             diffProcessor.reset();
             appendSystemPromptInjected = false;
             browserStepPromptInjected = false;
+            skillPathResolutionInstruction.onThreadReset();
             if (opts?.resetFirst) {
                 first = true;
             }
@@ -1502,6 +1506,7 @@ export async function runCodex(opts: {
         }) => {
             try {
                 const { executionPolicy } = await ensureCodexThread(opts.mode);
+                const includeSkillPathResolutionInstruction = skillPathResolutionInstruction.shouldIncludeInPrompt();
 
                 const includeAppendSystemPrompt = Boolean(
                     opts.mode.appendSystemPrompt && !appendSystemPromptInjected,
@@ -1511,6 +1516,7 @@ export async function runCodex(opts: {
                     mode: opts.mode,
                     includeAppendSystemPrompt,
                     includeBrowserStepInstruction: !browserStepPromptInjected,
+                    includeSkillPathResolutionInstruction,
                     includeTitleInstruction: first,
                 });
 
@@ -1529,6 +1535,9 @@ export async function runCodex(opts: {
                     effort: opts.mode.effort,
                     images: turnPayload.images,
                 });
+                if (includeSkillPathResolutionInstruction) {
+                    skillPathResolutionInstruction.markPromptSent();
+                }
                 first = false;
                 browserStepPromptInjected = true;
                 if (includeAppendSystemPrompt) {
