@@ -6,7 +6,7 @@ import { AuthCredentials } from '@/auth/tokenStorage';
 import { Encryption } from '@/sync/encryption/encryption';
 import { decodeBase64, encodeBase64 } from '@/encryption/base64';
 import { storage } from './storage';
-import { ApiEphemeralUpdateSchema, ApiMessage, ApiUpdateContainerSchema } from './apiTypes';
+import { ApiEphemeralUpdateSchema, ApiMessage, ApiUpdateContainerSchema, type ApiSessionSnapshot } from './apiTypes';
 import type { ApiEphemeralActivityUpdate } from './apiTypes';
 import { Session, Machine } from './storageTypes';
 import { InvalidateSync } from '@/utils/sync';
@@ -97,22 +97,6 @@ import { PluginCatalogStore, type PluginCatalogSnapshot } from './pluginCatalogS
 type V3GetSessionMessagesResponse = {
     messages: ApiMessage[];
     hasMore: boolean;
-};
-
-type ApiSessionSnapshot = {
-    id: string;
-    tag: string;
-    seq: number;
-    metadata: string;
-    metadataVersion: number;
-    agentState: string | null;
-    agentStateVersion: number;
-    dataEncryptionKey: string | null;
-    active: boolean;
-    activeAt: number;
-    createdAt: number;
-    updatedAt: number;
-    lastMessage: ApiMessage | null;
 };
 
 // Sentinel used as `before_seq` for the very first backward fetch of a

@@ -22,11 +22,25 @@ export type { ApiMessage };
 // Updates
 //
 
-export const ApiUpdateNewSessionSchema = z.object({
-    t: z.literal('new-session'),
-    id: z.string(), // Session ID
+export const ApiSessionSnapshotSchema = z.object({
+    id: z.string(),
+    seq: z.number(),
+    metadata: z.string(),
+    metadataVersion: z.number(),
+    agentState: z.string().nullable(),
+    agentStateVersion: z.number(),
+    dataEncryptionKey: z.string().nullable(),
+    active: z.boolean(),
+    activeAt: z.number(),
     createdAt: z.number(),
     updatedAt: z.number(),
+    lastMessage: ApiMessageSchema.nullable().optional(),
+});
+
+export type ApiSessionSnapshot = z.infer<typeof ApiSessionSnapshotSchema>;
+
+export const ApiUpdateNewSessionSchema = ApiSessionSnapshotSchema.extend({
+    t: z.literal('new-session'),
 });
 
 export const ApiDeleteSessionSchema = z.object({

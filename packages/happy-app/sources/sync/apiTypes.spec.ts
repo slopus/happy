@@ -10,14 +10,51 @@ describe('ApiUpdateSchema', () => {
         expect(parsed.success).toBe(true);
     });
 
-    it('accepts app-local new-session payload', () => {
+    it('accepts a canonical new-session payload', () => {
         const parsed = ApiUpdateSchema.safeParse({
             t: 'new-session',
             id: 'session-2',
+            seq: 1,
+            metadata: 'encrypted-metadata',
+            metadataVersion: 1,
+            agentState: null,
+            agentStateVersion: 0,
+            dataEncryptionKey: null,
+            active: true,
+            activeAt: 1,
             createdAt: 1,
             updatedAt: 1,
         });
         expect(parsed.success).toBe(true);
+    });
+
+    it('retains the complete new-session snapshot', () => {
+        const parsed = ApiUpdateContainerSchema.parse({
+            id: 'update-1',
+            seq: 42,
+            createdAt: 1_700_000_000_000,
+            body: {
+                t: 'new-session',
+                id: 'session-1',
+                seq: 3,
+                metadata: 'encrypted-metadata',
+                metadataVersion: 4,
+                agentState: null,
+                agentStateVersion: 0,
+                dataEncryptionKey: 'encrypted-key',
+                active: true,
+                activeAt: 1_700_000_000_001,
+                createdAt: 1_700_000_000_000,
+                updatedAt: 1_700_000_000_001,
+            },
+        });
+
+        expect(parsed.body).toMatchObject({
+            t: 'new-session',
+            id: 'session-1',
+            metadata: 'encrypted-metadata',
+            dataEncryptionKey: 'encrypted-key',
+        });
     });
 
     // Regression: cold-onboarding "machine never shows up / can't start a new
@@ -69,4 +106,3 @@ describe('ApiUpdateSchema', () => {
         expect(parsed.success).toBe(true);
     });
 });
-

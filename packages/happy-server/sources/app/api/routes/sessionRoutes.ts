@@ -8,6 +8,42 @@ import { randomKeyNaked } from "@/utils/randomKeyNaked";
 import { allocateUserSeq } from "@/storage/seq";
 import { sessionDelete } from "@/app/session/sessionDelete";
 
+const sessionSnapshotSelect = {
+    id: true,
+    seq: true,
+    createdAt: true,
+    updatedAt: true,
+    metadata: true,
+    metadataVersion: true,
+    agentState: true,
+    agentStateVersion: true,
+    dataEncryptionKey: true,
+    active: true,
+    lastActiveAt: true,
+} satisfies Prisma.SessionSelect;
+
+type SessionSnapshotRow = Prisma.SessionGetPayload<{ select: typeof sessionSnapshotSelect }>;
+
+function serializeSessionSnapshot(
+    session: SessionSnapshotRow,
+    options: { includeLastMessage?: boolean } = {},
+) {
+    return {
+        id: session.id,
+        seq: session.seq,
+        metadata: session.metadata,
+        metadataVersion: session.metadataVersion,
+        agentState: session.agentState,
+        agentStateVersion: session.agentStateVersion,
+        dataEncryptionKey: session.dataEncryptionKey ? Buffer.from(session.dataEncryptionKey).toString('base64') : null,
+        active: session.active,
+        activeAt: session.lastActiveAt.getTime(),
+        createdAt: session.createdAt.getTime(),
+        updatedAt: session.updatedAt.getTime(),
+        ...(options.includeLastMessage ? { lastMessage: null } : {}),
+    };
+}
+
 export function sessionRoutes(app: Fastify) {
 
     // Sessions API
@@ -20,53 +56,11 @@ export function sessionRoutes(app: Fastify) {
             where: { accountId: userId },
             orderBy: { updatedAt: 'desc' },
             take: 150,
-            select: {
-                id: true,
-                seq: true,
-                createdAt: true,
-                updatedAt: true,
-                metadata: true,
-                metadataVersion: true,
-                agentState: true,
-                agentStateVersion: true,
-                dataEncryptionKey: true,
-                active: true,
-                lastActiveAt: true,
-                // messages: {
-                //     orderBy: { seq: 'desc' },
-                //     take: 1,
-                //     select: {
-                //         id: true,
-                //         seq: true,
-                //         content: true,
-                //         localId: true,
-                //         createdAt: true
-                //     }
-                // }
-            }
+            select: sessionSnapshotSelect,
         });
 
         return reply.send({
-            sessions: sessions.map((v) => {
-                // const lastMessage = v.messages[0];
-                const sessionUpdatedAt = v.updatedAt.getTime();
-                // const lastMessageCreatedAt = lastMessage ? lastMessage.createdAt.getTime() : 0;
-
-                return {
-                    id: v.id,
-                    seq: v.seq,
-                    createdAt: v.createdAt.getTime(),
-                    updatedAt: sessionUpdatedAt,
-                    active: v.active,
-                    activeAt: v.lastActiveAt.getTime(),
-                    metadata: v.metadata,
-                    metadataVersion: v.metadataVersion,
-                    agentState: v.agentState,
-                    agentStateVersion: v.agentStateVersion,
-                    dataEncryptionKey: v.dataEncryptionKey ? Buffer.from(v.dataEncryptionKey).toString('base64') : null,
-                    lastMessage: null
-                };
-            })
+            sessions: sessions.map((session) => serializeSessionSnapshot(session, { includeLastMessage: true }))
         });
     });
 
@@ -90,35 +84,11 @@ export function sessionRoutes(app: Fastify) {
             },
             orderBy: { lastActiveAt: 'desc' },
             take: limit,
-            select: {
-                id: true,
-                seq: true,
-                createdAt: true,
-                updatedAt: true,
-                metadata: true,
-                metadataVersion: true,
-                agentState: true,
-                agentStateVersion: true,
-                dataEncryptionKey: true,
-                active: true,
-                lastActiveAt: true,
-            }
+            select: sessionSnapshotSelect,
         });
 
         return reply.send({
-            sessions: sessions.map((v) => ({
-                id: v.id,
-                seq: v.seq,
-                createdAt: v.createdAt.getTime(),
-                updatedAt: v.updatedAt.getTime(),
-                active: v.active,
-                activeAt: v.lastActiveAt.getTime(),
-                metadata: v.metadata,
-                metadataVersion: v.metadataVersion,
-                agentState: v.agentState,
-                agentStateVersion: v.agentStateVersion,
-                dataEncryptionKey: v.dataEncryptionKey ? Buffer.from(v.dataEncryptionKey).toString('base64') : null,
-            }))
+            sessions: sessions.map((session) => serializeSessionSnapshot(session))
         });
     });
 
@@ -170,19 +140,7 @@ export function sessionRoutes(app: Fastify) {
             where,
             orderBy,
             take: limit + 1, // Fetch one extra to determine if there are more
-            select: {
-                id: true,
-                seq: true,
-                createdAt: true,
-                updatedAt: true,
-                metadata: true,
-                metadataVersion: true,
-                agentState: true,
-                agentStateVersion: true,
-                dataEncryptionKey: true,
-                active: true,
-                lastActiveAt: true,
-            }
+            select: sessionSnapshotSelect,
         });
 
         // Check if there are more results
@@ -197,22 +155,33 @@ export function sessionRoutes(app: Fastify) {
         }
 
         return reply.send({
-            sessions: resultSessions.map((v) => ({
-                id: v.id,
-                seq: v.seq,
-                createdAt: v.createdAt.getTime(),
-                updatedAt: v.updatedAt.getTime(),
-                active: v.active,
-                activeAt: v.lastActiveAt.getTime(),
-                metadata: v.metadata,
-                metadataVersion: v.metadataVersion,
-                agentState: v.agentState,
-                agentStateVersion: v.agentStateVersion,
-                dataEncryptionKey: v.dataEncryptionKey ? Buffer.from(v.dataEncryptionKey).toString('base64') : null,
-            })),
+            sessions: resultSessions.map((session) => serializeSessionSnapshot(session)),
             nextCursor,
             hasNext
         });
+    });
+
+    app.get('/v2/sessions/:sessionId', {
+        preHandler: app.authenticate,
+        schema: {
+            params: z.object({
+                sessionId: z.string()
+            })
+        }
+    }, async (request, reply) => {
+        const session = await db.session.findFirst({
+            where: {
+                id: request.params.sessionId,
+                accountId: request.userId
+            },
+            select: sessionSnapshotSelect,
+        });
+
+        if (!session) {
+            return reply.code(404).send({ error: 'Session not found' });
+        }
+
+        return reply.send({ session: serializeSessionSnapshot(session) });
     });
 
     // Create or load session by tag
@@ -238,22 +207,7 @@ export function sessionRoutes(app: Fastify) {
         });
         if (session) {
             log({ module: 'session-create', sessionId: session.id, userId, tag }, `Found existing session: ${session.id} for tag ${tag}`);
-            return reply.send({
-                session: {
-                    id: session.id,
-                    seq: session.seq,
-                    metadata: session.metadata,
-                    metadataVersion: session.metadataVersion,
-                    agentState: session.agentState,
-                    agentStateVersion: session.agentStateVersion,
-                    dataEncryptionKey: session.dataEncryptionKey ? Buffer.from(session.dataEncryptionKey).toString('base64') : null,
-                    active: session.active,
-                    activeAt: session.lastActiveAt.getTime(),
-                    createdAt: session.createdAt.getTime(),
-                    updatedAt: session.updatedAt.getTime(),
-                    lastMessage: null
-                }
-            });
+            return reply.send({ session: serializeSessionSnapshot(session, { includeLastMessage: true }) });
         } else {
 
             // Resolve seq
@@ -286,22 +240,7 @@ export function sessionRoutes(app: Fastify) {
                 recipientFilter: { type: 'user-scoped-only' }
             });
 
-            return reply.send({
-                session: {
-                    id: session.id,
-                    seq: session.seq,
-                    metadata: session.metadata,
-                    metadataVersion: session.metadataVersion,
-                    agentState: session.agentState,
-                    agentStateVersion: session.agentStateVersion,
-                    dataEncryptionKey: session.dataEncryptionKey ? Buffer.from(session.dataEncryptionKey).toString('base64') : null,
-                    active: session.active,
-                    activeAt: session.lastActiveAt.getTime(),
-                    createdAt: session.createdAt.getTime(),
-                    updatedAt: session.updatedAt.getTime(),
-                    lastMessage: null
-                }
-            });
+            return reply.send({ session: serializeSessionSnapshot(session, { includeLastMessage: true }) });
         }
     });
 
