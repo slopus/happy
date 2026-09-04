@@ -535,12 +535,20 @@ export class ApiMachineClient {
         const resumeSupportChanged = !prevResume
             || prevResume.rpcAvailable !== newResumeSupport.rpcAvailable
             || prevResume.happyAgentAuthenticated !== newResumeSupport.happyAgentAuthenticated;
+        // POST /v1/machines returns the stored encrypted metadata when the
+        // machine already exists. After a CLI upgrade that can leave the app
+        // looking at the version from the machine's first registration even
+        // though this daemon is newer. Repair it through the normal versioned
+        // metadata update so fields owned by the app (for example displayName)
+        // are preserved.
+        const cliVersionChanged = this.machine.metadata?.happyCliVersion !== configuration.currentCliVersion;
 
-        if (cliAvailabilityChanged || resumeSupportChanged) {
+        if (cliAvailabilityChanged || resumeSupportChanged || cliVersionChanged) {
             this.lastKnownCLIAvailability = newAvailability;
             this.lastKnownResumeSupport = newResumeSupport;
             this.updateMachineMetadata((metadata) => ({
                 ...(metadata || {} as any),
+                happyCliVersion: configuration.currentCliVersion,
                 cliAvailability: newAvailability,
                 resumeSupport: { ...newResumeSupport, rpcAvailable: !!this.resumeSessionHandler },
             })).catch((err) => {

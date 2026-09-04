@@ -175,4 +175,32 @@ describe('ApiMachineClient socket reconnection', () => {
 
         client.shutdown();
     });
+
+    it('republishes the running CLI version without dropping stored machine fields', () => {
+        vi.useFakeTimers();
+        mockSocket.emitWithAck.mockImplementation(() => new Promise(() => {}));
+        const machine = makeMachine();
+        machine.metadata.happyCliVersion = '1.0.0';
+        const storedMetadata = machine.metadata as Machine['metadata'] & { displayName?: string };
+        storedMetadata.displayName = 'My Mac';
+        const client = new ApiMachineClient('fake-token', machine);
+        let publishedMetadata: (Machine['metadata'] & { displayName?: string }) | null = null;
+        vi.spyOn(client, 'updateMachineMetadata').mockImplementation(async (handler) => {
+            publishedMetadata = handler(storedMetadata);
+        });
+        client.connect();
+
+        emitSocketEvent('connect');
+
+        expect(publishedMetadata).toEqual(expect.objectContaining({
+            displayName: 'My Mac',
+            happyCliVersion: 'test',
+            cliAvailability: expect.objectContaining({
+                claude: false,
+                codex: false,
+            }),
+        }));
+
+        client.shutdown();
+    });
 });
