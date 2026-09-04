@@ -823,7 +823,18 @@ export function SessionViewLoaded({
     // need to re-create on every keystroke.
     const handleSend = React.useCallback(() => {
         const liveMessage = composerHandleRef.current?.getMessage() ?? '';
-        if (liveMessage.trim() || selectedImages.length > 0) {
+        // !-prefix bash mode: a message starting with `!` runs as a one-off
+        // shell command in the session's cwd instead of being sent to the agent.
+        const trimmed = liveMessage.trim();
+        if (trimmed.startsWith('!')) {
+            const command = trimmed.slice(1).trim();
+            if (command) {
+                composerHandleRef.current?.clearMessage();
+                sync.runBashCommand(sessionId, command);
+                return;
+            }
+        }
+        if (trimmed || selectedImages.length > 0) {
             const attachments = selectedImages.length > 0 ? selectedImages : undefined;
             const communicationsToDismiss = [...pendingCommunications];
             composerHandleRef.current?.clearMessage();

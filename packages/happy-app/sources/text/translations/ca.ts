@@ -239,6 +239,12 @@ export const ca: TranslationStructure = {
         groupToolCallsSubtitle: 'Replega les crides consecutives a eines en un sol contenidor',
     },
 
+    bashMode: {
+        noOutput: 'sense sortida',
+        exitCode: ({ code }: { code: number }) => `ha finalitzat amb el codi ${code}`,
+        failed: ({ error }: { error: string }) => `No s'ha pogut executar la comanda: ${error}`,
+    },
+
     errors: {
         networkError: 'Error de connexió',
         serverError: 'Error del servidor',
