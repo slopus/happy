@@ -160,7 +160,8 @@ export class PawsAgentClient {
                     this.events.emit({ type: 'request', sessionId: session.id, request });
                 }
             } else if (record.t === 'update-machine' || record.t === 'new-machine') {
-                await this.machines.list();
+                const machines = await this.machines.list();
+                this.events.emit({ type: 'machines', machines });
             }
         } catch (cause) {
             const error = cause instanceof PawsAgentError

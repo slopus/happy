@@ -161,6 +161,7 @@ export interface RequestsResource {
 
 export type PawsAgentEvent =
     | { type: 'connection'; state: ConnectionState }
+    | { type: 'machines'; machines: Machine[] }
     | { type: 'message'; sessionId: string; message: Message }
     | { type: 'session'; session: Session }
     | { type: 'request'; sessionId: string; request: AgentRequest }
