@@ -7,6 +7,29 @@ import type { ReasoningEffort } from './codexAppServerTypes';
 
 export const CODEX_HAPPY_SYSTEM_PROMPT_START = '<!-- happy:system-prompt:start -->';
 export const CODEX_HAPPY_SYSTEM_PROMPT_END = '<!-- happy:system-prompt:end -->';
+export const CODEX_SKILL_PATH_RESOLUTION_INSTRUCTION =
+    'Skill identifiers such as `plugin:skill` are labels, not filesystem paths. Never turn `:` into a directory separator. ' +
+    'Read the exact path supplied in the Skills catalog. For an installed Codex Skill without a catalog path, first check the flat entry ' +
+    '`$CODEX_HOME/skills/<skill-name>/SKILL.md` (usually `~/.codex/skills/<skill-name>/SKILL.md`); do not guess nested ' +
+    '`.../skills/<plugin>/<skill>/SKILL.md` paths.';
+
+export function createCodexSkillPathResolutionPromptLifecycle() {
+    let injected = false;
+
+    return {
+        shouldIncludeInPrompt: () => !injected,
+        markPromptSent: () => {
+            injected = true;
+        },
+        onThreadStarted: () => {
+            injected = false;
+        },
+        onThreadReset: () => {
+            injected = false;
+        },
+    };
+}
+
 const CODEX_PAWS_ORIGIN_PREFIX = '<!-- happy:paws-origin:';
 const CODEX_PAWS_ORIGIN_SUFFIX = ' -->';
 
@@ -73,6 +96,7 @@ export function buildCodexTurnPrompt(opts: {
     mode: Pick<CodexEnhancedMode, 'appendSystemPrompt' | 'model' | 'effort' | 'fast'>;
     includeAppendSystemPrompt: boolean;
     includeBrowserStepInstruction: boolean;
+    includeSkillPathResolutionInstruction?: boolean;
     includeTitleInstruction: boolean;
 }): string {
     const parts: string[] = [];
@@ -89,6 +113,14 @@ export function buildCodexTurnPrompt(opts: {
         parts.push(
             CODEX_HAPPY_SYSTEM_PROMPT_START,
             BROWSER_STEP_REPORTING_INSTRUCTION,
+            CODEX_HAPPY_SYSTEM_PROMPT_END,
+        );
+    }
+
+    if (opts.includeSkillPathResolutionInstruction) {
+        parts.push(
+            CODEX_HAPPY_SYSTEM_PROMPT_START,
+            CODEX_SKILL_PATH_RESOLUTION_INSTRUCTION,
             CODEX_HAPPY_SYSTEM_PROMPT_END,
         );
     }
