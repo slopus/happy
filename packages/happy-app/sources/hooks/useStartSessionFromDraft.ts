@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useAllMachines, useSessions, useSetting } from '@/sync/storage';
+import { useAllMachines, useSetting, getPlaceSessions } from '@/sync/storage';
 import { getCodeAgentDefaults, resolveAgentDefaultConfig } from '@/sync/agentDefaults';
 import {
     machineSpawnNewSession,
@@ -98,7 +98,6 @@ function resolveOption<T extends { key: string }>(
 
 export function useStartSessionFromDraft() {
     const machines = useAllMachines({ includeOffline: true });
-    const sessions = useSessions();
     const defaultOverrides = useSetting('agentDefaultOverrides');
     const navigateToSession = useNavigateToSession();
     // The composer stays on screen for the whole flow, so what it is waiting on
@@ -227,7 +226,12 @@ export function useStartSessionFromDraft() {
         const attachments = draft.attachments;
         const selectedPath = draft.selectedPath?.trim() || '~';
         const absolutePath = resolveAbsolutePath(selectedPath, machine.metadata?.homeDir);
-        const sessionList = (sessions ?? []).filter((item): item is Session => typeof item !== 'string');
+        // Read once, here, rather than subscribed at the top. This hook lives in
+        // the composer, which is mounted on every screen, and the session list
+        // gets a fresh identity on every inbound message from a running agent.
+        // Subscribing re-rendered the whole composer at the agent's message rate
+        // for a value only Start ever looks at.
+        const sessionList = getPlaceSessions();
         const places = collectSessionPlaces({
             machineIds: choice.machineIds,
             selectedPath,
@@ -474,7 +478,7 @@ export function useStartSessionFromDraft() {
                 if (isMountedRef.current) setPhase(null);
             }
         }
-    }, [defaultOverrides, machines, navigateToSession, sessions]);
+    }, [defaultOverrides, machines, navigateToSession]);
 
     return { isStarting: phase !== null, phase, startSession, cancelStart };
 }

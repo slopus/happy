@@ -33,7 +33,7 @@ import { KeyboardAvoidingView, KeyboardStickyView } from 'react-native-keyboard-
 import Constants from 'expo-constants';
 import { useHeaderHeight } from '@/utils/responsive';
 import { t } from '@/text';
-import { useAllMachines, useLocalSetting, useSessions, useSetting, storage } from '@/sync/storage';
+import { useAllMachines, useLocalSetting, useSessionPlaces, useSessionWorkspaces, useSetting, storage } from '@/sync/storage';
 import type { NewSessionAgentType } from '@/sync/persistence';
 import { sync } from '@/sync/sync';
 import { isMachineOnline } from '@/utils/machineUtils';
@@ -46,8 +46,6 @@ import { useNewSessionDraft } from '@/hooks/useNewSessionDraft';
 import { useShallow } from 'zustand/react/shallow';
 import type { MultiTextInputHandle } from '@/components/MultiTextInput';
 import { Modal } from '@/modal';
-import type { Session } from '@/sync/storageTypes';
-import { collectSessionPlaces, collectSessionWorkspaces } from '@/sync/agentSessionPlaces';
 import {
     collectMachineChoices,
     findMachineChoice,
@@ -735,7 +733,6 @@ function NewSessionScreen() {
 
     // Real data sources
     const allMachines = useAllMachines({ includeOffline: true });
-    const sessions = useSessions();
     const agentInputEnterToSend = useSetting('agentInputEnterToSend');
     const agentDefaultOverrides = useSetting('agentDefaultOverrides');
     const fileDiffsSidebarEnabled = useSetting('fileDiffsSidebar');
@@ -874,34 +871,19 @@ function NewSessionScreen() {
 
     // Both daemons on the computer contribute places, so choosing Happy Agent does not hide the
     // projects that Happy CLI sessions already established (or vice versa).
-    const sessionList = React.useMemo<Session[]>(
-        () => (sessions ?? []).filter((item): item is Session => typeof item !== 'string'),
-        [sessions],
-    );
     const placeMachineIds = React.useMemo(
         () => selectedChoice?.machineIds ?? [],
         [selectedChoice],
     );
-    const places = React.useMemo(
-        () => collectSessionPlaces({
-            machineIds: placeMachineIds,
-            selectedPath,
-            sessions: sessionList,
-        }),
-        [placeMachineIds, selectedPath, sessionList],
-    );
+    const places = useSessionPlaces({ machineIds: placeMachineIds, selectedPath });
     const selectedProjectId = React.useMemo(
         () => places.find((place) => place.path === selectedPath)?.projectId ?? null,
         [places, selectedPath],
     );
-    const agentWorkspaces = React.useMemo(
-        () => collectSessionWorkspaces({
-            machineIds: placeMachineIds,
-            projectId: selectedProjectId,
-            sessions: sessionList,
-        }),
-        [placeMachineIds, selectedProjectId, sessionList],
-    );
+    const agentWorkspaces = useSessionWorkspaces({
+        machineIds: placeMachineIds,
+        projectId: selectedProjectId,
+    });
     const pathItems = React.useMemo<PickerItem[]>(() => {
         return places.map((place) => ({
             key: place.key,

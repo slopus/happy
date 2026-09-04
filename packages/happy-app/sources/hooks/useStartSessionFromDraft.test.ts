@@ -36,8 +36,9 @@ vi.mock('react', () => ({
 
 vi.mock('@/sync/storage', () => ({
     useAllMachines: () => mocks.machines,
-    useSessions: () => mocks.sessions,
     useSetting: () => mocks.defaultOverrides,
+    // Start reads the session list off the store instead of subscribing to it.
+    getPlaceSessions: () => mocks.sessions,
 }));
 
 vi.mock('@/sync/agentDefaults', () => ({

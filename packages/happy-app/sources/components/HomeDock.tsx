@@ -26,13 +26,12 @@ import { Typography } from '@/constants/Typography';
 import { layout } from './layout';
 import { t } from '@/text';
 import { useNewSessionDraft } from '@/hooks/useNewSessionDraft';
-import { useAllMachines, useSessions, useSetting } from '@/sync/storage';
+import { useAllMachines, useSessionPlaces, useSessionWorkspaces, useSetting } from '@/sync/storage';
 import { getCodeAgentDefaults, resolveAgentDefaultConfig } from '@/sync/agentDefaults';
 import { formatLastSeen, formatPathRelativeToHome } from '@/utils/sessionUtils';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { resolveAbsolutePath } from '@/utils/pathUtils';
 import { listWorktrees } from '@/utils/worktree';
-import { collectSessionPlaces, collectSessionWorkspaces } from '@/sync/agentSessionPlaces';
 import {
     collectMachineChoices,
     findMachineChoice,
@@ -41,7 +40,6 @@ import {
     resolveChoiceAgent,
     resolveWorktreeCreationMachine,
 } from '@/sync/machineChoices';
-import type { Session } from '@/sync/storageTypes';
 import {
     getEffortLevelsForModel,
     getHardcodedModelModes,
@@ -687,7 +685,6 @@ export const HomeDock = React.memo(({
     const setEffortLevel = useNewSessionDraft((state) => state.setEffortLevel);
     const defaultOverrides = useSetting('agentDefaultOverrides');
     const machines = useAllMachines({ includeOffline: true });
-    const sessions = useSessions();
     // A person picks a computer, not a daemon. Happy CLI and Happy Agent each register a machine
     // for the same laptop, so the pair is offered once and the agent settles which one runs.
     const machineChoices = React.useMemo(() => collectMachineChoices(machines), [machines]);
@@ -728,18 +725,10 @@ export const HomeDock = React.memo(({
         () => selectedChoice?.machineIds ?? [],
         [selectedChoice],
     );
-    const sessionList = React.useMemo<Session[]>(
-        () => (sessions ?? []).filter((item): item is Session => typeof item !== 'string'),
-        [sessions],
-    );
-    const places = React.useMemo(
-        () => collectSessionPlaces({
-            machineIds: placeMachineIds,
-            selectedPath: selectedPath ?? '~',
-            sessions: sessionList,
-        }),
-        [placeMachineIds, selectedPath, sessionList],
-    );
+    const places = useSessionPlaces({
+        machineIds: placeMachineIds,
+        selectedPath: selectedPath ?? '~',
+    });
     const projectOptions = React.useMemo<ModeOption[]>(() => {
         const homeDir = selectedHomeDir;
         return places.map((place) => {
@@ -773,14 +762,10 @@ export const HomeDock = React.memo(({
         ? worktreeKey ?? '__new__'
         : '__none__';
     const [existingWorktrees, setExistingWorktrees] = React.useState<ModeOption[]>([]);
-    const agentWorkspaces = React.useMemo(
-        () => collectSessionWorkspaces({
-            machineIds: placeMachineIds,
-            projectId: selectedProjectId,
-            sessions: sessionList,
-        }),
-        [placeMachineIds, selectedProjectId, sessionList],
-    );
+    const agentWorkspaces = useSessionWorkspaces({
+        machineIds: placeMachineIds,
+        projectId: selectedProjectId,
+    });
 
     React.useEffect(() => {
         const path = resolveAbsolutePath(selectedPath ?? '~', selectedHomeDir);

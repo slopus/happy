@@ -17,6 +17,12 @@ import { NormalizedMessage } from "./typesRaw";
 import { isMachineOnline } from '@/utils/machineUtils';
 import { getSessionName, getSessionSubtitle, getSessionAvatarId } from '@/utils/sessionUtils';
 import { resolveSessionState, type SessionState } from './sessionState';
+import {
+    collectSessionPlaces,
+    collectSessionWorkspaces,
+    type SessionPlace,
+    type SessionWorkspace,
+} from './agentSessionPlaces';
 import { getSessionActivityAt } from '@/utils/sessionActivity';
 import { applySettings, Settings } from "./settings";
 import { LocalSettings, applyLocalSettings } from "./localSettings";
@@ -1491,6 +1497,81 @@ export const storage = create<StorageState>()((set, get) => {
 
 export function useSessions() {
     return storage(useShallow((state) => state.isDataReady ? state.sessionsData : null));
+}
+
+/**
+ * The directories the new-session pickers offer, derived inside the selector.
+ *
+ * `useSessions` hands back `sessionsData`, which holds the Session objects
+ * themselves. Every inbound message calls `applySessions`, which rebuilds the
+ * session it names so it can carry the new `updatedAt`/`seq`. `useShallow`
+ * then sees a changed element and re-renders every subscriber. Measured on the
+ * composer while an agent streamed: 1.00 React commits per inbound socket
+ * frame, 87 component renders per frame, and zero DOM mutations for any of it.
+ *
+ * `collectSessionPlaces` reads `session.metadata` only, and those bumps never
+ * touch it. Deriving here and comparing the result deeply means the identity
+ * changes when the set of directories changes, not when an agent speaks.
+ */
+export function useSessionPlaces(options: {
+    machineIds: readonly string[];
+    selectedPath?: string | null;
+}): SessionPlace[] {
+    const { machineIds, selectedPath } = options;
+    return storage(useDeepEqual((state) => {
+        if (!state.isDataReady) return emptyArray as SessionPlace[];
+        return collectSessionPlaces({
+            machineIds,
+            selectedPath,
+            sessions: visiblePlaceSessions(state),
+        });
+    }));
+}
+
+/** The workspaces of one project, derived under the same rule as {@link useSessionPlaces}. */
+export function useSessionWorkspaces(options: {
+    machineIds: readonly string[];
+    projectId?: string | null;
+}): SessionWorkspace[] {
+    const { machineIds, projectId } = options;
+    return storage(useDeepEqual((state) => {
+        if (!state.isDataReady) return emptyArray as SessionWorkspace[];
+        return collectSessionWorkspaces({
+            machineIds,
+            projectId,
+            sessions: visiblePlaceSessions(state),
+        });
+    }));
+}
+
+/**
+ * The sessions the place collectors read, in the order that settles ties.
+ *
+ * Side chats are hidden children and are never somewhere to start new work,
+ * which is the same reason `sessionsData` leaves them out.
+ *
+ * The order matters as much as the contents. Both collectors keep the first
+ * entry they meet for a path or a workspace id, and `sessionsData` handed them
+ * active sessions first and newest activity first. Reading the map in its own
+ * insertion order instead would let a stale session win, so a project that was
+ * renamed or recreated would keep its old name and id.
+ */
+function visiblePlaceSessions(state: StorageState): Session[] {
+    return Object.values(state.sessions)
+        .filter((session) => !session.metadata?.isSideChat)
+        .sort((a, b) => {
+            const activeDelta = Number(isSessionActive(b)) - Number(isSessionActive(a));
+            return activeDelta !== 0 ? activeDelta : getSessionActivityAt(b) - getSessionActivityAt(a);
+        });
+}
+
+/**
+ * The same list, read once, for a caller that acts on a press rather than
+ * rendering. Sharing it keeps the imperative path on the same tie-break as the
+ * hooks above.
+ */
+export function getPlaceSessions(): Session[] {
+    return visiblePlaceSessions(storage.getState());
 }
 
 export function useSession(id: string): Session | null {
