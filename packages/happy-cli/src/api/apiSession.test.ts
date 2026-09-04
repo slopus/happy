@@ -543,6 +543,99 @@ describe('ApiSessionClient v3 messages API migration', () => {
         expect(decryptBlob(new Uint8Array(uploadBody), blobKey)).toEqual(pngBytes);
     });
 
+    it('uploads image blocks nested inside tool results as file events', async () => {
+        const client = new ApiSessionClient('fake-token', session);
+        const pngBytes = new Uint8Array([0x89, 0x50, 0x4E, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 4, 5, 6]);
+
+        mockAxiosPost.mockImplementation(async (url: string, payload: any) => {
+            if (url.endsWith('/attachments/request-upload')) {
+                expect(payload).toMatchObject({
+                    filename: 'tool-image-1.png',
+                });
+                expect(payload.size).toBeGreaterThan(pngBytes.length);
+                return {
+                    data: {
+                        ref: 'sessions/test-session-id/attachments/tool-image.enc',
+                        uploadUrl: 'https://server.test/v1/sessions/test-session-id/attachments/tool-image.enc',
+                        method: 'PUT',
+                    },
+                };
+            }
+
+            return {
+                data: {
+                    messages: payload.messages.map((_message: unknown, index: number) => ({
+                        id: `msg-${index + 1}`,
+                        seq: index + 1,
+                        localId: `local-${index + 1}`,
+                        createdAt: 1,
+                        updatedAt: 1,
+                    })),
+                },
+            };
+        });
+        mockAxiosPut.mockResolvedValueOnce({ data: { ok: true } });
+
+        client.sendClaudeSessionMessage({
+            type: 'user',
+            uuid: 'u-tool-1',
+            isSidechain: false,
+            isMeta: false,
+            message: {
+                role: 'user',
+                content: [
+                    {
+                        type: 'tool_result',
+                        tool_use_id: 'toolu_screenshot_1',
+                        content: [
+                            { type: 'text', text: 'Screenshot captured: 1152x648' },
+                            {
+                                type: 'image',
+                                source: {
+                                    type: 'base64',
+                                    media_type: 'image/png',
+                                    data: Buffer.from(pngBytes).toString('base64'),
+                                },
+                            },
+                        ],
+                    },
+                ],
+            },
+        } as any);
+
+        await waitForCheck(() => {
+            expect(mockAxiosPut).toHaveBeenCalledTimes(1);
+        });
+
+        const uploadBody = mockAxiosPut.mock.calls[0][1];
+        const blobKey = await client.getBlobKey();
+        expect(decryptBlob(new Uint8Array(uploadBody), blobKey)).toEqual(pngBytes);
+
+        const fileMessage = mockAxiosPost.mock.calls
+            .filter(([url]) => url === 'https://server.test/v3/sessions/test-session-id/messages')
+            .flatMap(([, payload]) => payload.messages as { content: string }[])
+            .map((message) => decrypt(
+                session.encryptionKey,
+                session.encryptionVariant,
+                decodeBase64(message.content),
+            ))
+            .find((decrypted: any) => decrypted?.content?.ev?.t === 'file');
+
+        expect(fileMessage).toMatchObject({
+            role: 'session',
+            content: {
+                role: 'user',
+                ev: {
+                    t: 'file',
+                    ref: 'sessions/test-session-id/attachments/tool-image.enc',
+                    name: 'tool-image-1.png',
+                    size: pngBytes.length,
+                    mimeType: 'image/png',
+                },
+            },
+        });
+    });
+
     it('sends session protocol messages through enqueueMessage with session envelope', async () => {
         const client = new ApiSessionClient('fake-token', session);
         mockAxiosPost.mockResolvedValueOnce({
