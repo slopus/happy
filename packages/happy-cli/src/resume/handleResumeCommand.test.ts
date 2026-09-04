@@ -109,6 +109,7 @@ describe('parseResumeCommandArgs', () => {
         expect(parseResumeCommandArgs(['cmmij8olq00dp5jcxr3wtbpau'])).toEqual({
             showHelp: false,
             sessionId: 'cmmij8olq00dp5jcxr3wtbpau',
+            passthroughArgs: [],
         });
     });
 
@@ -116,12 +117,27 @@ describe('parseResumeCommandArgs', () => {
         expect(parseResumeCommandArgs(['--help'])).toEqual({
             showHelp: true,
             sessionId: '',
+            passthroughArgs: [],
         });
     });
 
     it('rejects missing session ids', () => {
         expect(() => parseResumeCommandArgs([])).toThrow(
             'Happy session ID is required: happy resume <session-id>',
+        );
+    });
+
+    it('collects passthrough args for headless resume', () => {
+        expect(parseResumeCommandArgs(['cmmij8', '--yolo', '--model', 'opus', '-p', 'continua'])).toEqual({
+            showHelp: false,
+            sessionId: 'cmmij8',
+            passthroughArgs: ['--yolo', '--model', 'opus', '-p', 'continua'],
+        });
+    });
+
+    it('still rejects unknown extra args', () => {
+        expect(() => parseResumeCommandArgs(['cmmij8', '--unknown-flag'])).toThrow(
+            'Unexpected arguments for happy resume: --unknown-flag',
         );
     });
 });
@@ -164,6 +180,26 @@ describe('buildResumeLaunch', () => {
         })).toEqual({
             cwd: '/tmp/repo',
             args: ['claude', '--resume', '93a9705e-bc6a-406d-8dce-8acc014dedbd'],
+        });
+    });
+
+    it('forwards passthrough args to the resumed claude agent', () => {
+        expect(buildResumeLaunch({
+            id: 'session-2b',
+            active: false,
+            metadata: {
+                path: '/tmp/repo',
+                flavor: 'claude',
+                claudeSessionId: '93a9705e-bc6a-406d-8dce-8acc014dedbd',
+                host: 'localhost',
+                homeDir: '/tmp',
+                happyHomeDir: '/tmp/.happy',
+                happyLibDir: '/tmp/happy',
+                happyToolsDir: '/tmp/happy/tools',
+            },
+        }, { passthroughArgs: ['--yolo', '-p', 'continua dal punto in cui eri'] })).toEqual({
+            cwd: '/tmp/repo',
+            args: ['claude', '--resume', '93a9705e-bc6a-406d-8dce-8acc014dedbd', '--yolo', '-p', 'continua dal punto in cui eri'],
         });
     });
 
