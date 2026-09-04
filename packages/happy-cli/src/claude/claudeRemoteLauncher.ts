@@ -20,6 +20,13 @@ import { launchFailureMessage } from "./utils/launchFailureMessage";
 import { cleanupStdinAfterInk } from "@/utils/terminalStdinCleanup";
 import type { MessageParam, ContentBlockParam } from '@anthropic-ai/sdk/resources';
 
+const TOOL_CALL_DELAY_MS = (() => {
+    const raw = process.env.HAPPY_TOOL_CALL_DELAY_MS;
+    if (raw === undefined || raw === '') return 250;
+    const n = Number(raw);
+    return Number.isFinite(n) && n >= 0 ? n : 250;
+})();
+
 interface PermissionsField {
     date: number;
     result: 'approved' | 'denied';
@@ -245,12 +252,16 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                     const isSidechain = assistantMsg.parent_tool_use_id !== undefined;
 
                     if (!isSidechain) {
-                        // Top-level tool call - queue with delay
-                        messageQueue.enqueue(logMessage, {
-                            delay: 250,
-                            toolCallIds
-                        });
-                        return; // Don't queue again below
+                        // Top-level tool call - queue with delay so a fast tool result
+                        // can be released together with its tool_use. Configurable via
+                        // HAPPY_TOOL_CALL_DELAY_MS (default 250; 0 = send immediately).
+                        if (TOOL_CALL_DELAY_MS > 0) {
+                            messageQueue.enqueue(logMessage, {
+                                delay: TOOL_CALL_DELAY_MS,
+                                toolCallIds
+                            });
+                            return; // Don't queue again below
+                        }
                     }
                 }
             }
