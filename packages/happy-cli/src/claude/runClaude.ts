@@ -8,6 +8,7 @@ import { AgentGoalStatus, AgentState, Metadata } from '@/api/types';
 import packageJson from '../../package.json';
 import { Credentials, readSettings } from '@/persistence';
 import { EnhancedMode, PermissionMode } from './loop';
+import { createAppPromptDedupe } from './appPromptDedupe';
 import { MessageQueue2 } from '@/utils/MessageQueue2';
 import { hashObject } from '@/utils/deterministicJson';
 import { parseSpecialCommand } from '@/parsers/specialCommands';
@@ -342,38 +343,10 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         session.updateMetadata((meta) => ({ ...meta, claudeSessionId: forkClaudeSessionId }));
     }
 
-    // Ring buffer of user prompts that just arrived from the app via the
-    // legacy `sentFrom: 'web'` channel. The remote-mode session scanner
-    // (started below) walks the on-disk Claude JSONL looking for prompts
-    // that landed in the file but never reached the server — i.e. the
-    // ones the user typed in a `claude --resume <id>` terminal sitting
-    // alongside this Happy session. App-sent prompts also land in the
-    // JSONL once the SDK writes them, so we'd double-forward them
-    // without this dedupe. Match by content within a short time window;
-    // entries older than 5 minutes roll off so unrelated future prompts
-    // with identical text still get through from the terminal side.
-    const recentAppPromptsMaxAgeMs = 5 * 60 * 1000;
-    const recentAppPrompts: Array<{ text: string; addedAt: number }> = [];
-    const recordAppPrompt = (text: string) => {
-        const now = Date.now();
-        recentAppPrompts.push({ text, addedAt: now });
-        const cutoff = now - recentAppPromptsMaxAgeMs;
-        while (recentAppPrompts.length > 0 && recentAppPrompts[0].addedAt < cutoff) {
-            recentAppPrompts.shift();
-        }
-    };
-    const consumeAppPrompt = (text: string): boolean => {
-        const cutoff = Date.now() - recentAppPromptsMaxAgeMs;
-        for (let i = 0; i < recentAppPrompts.length; i++) {
-            const entry = recentAppPrompts[i];
-            if (entry.addedAt < cutoff) continue;
-            if (entry.text === text) {
-                recentAppPrompts.splice(i, 1);
-                return true;
-            }
-        }
-        return false;
-    };
+    // Dedupe ring buffer for app-sent prompts, consumed by the remote-mode
+    // session scanner below. Prompts are trimmed before comparison — see
+    // appPromptDedupe.ts for the full rationale and matching semantics.
+    const appPromptDedupe = createAppPromptDedupe();
 
     let currentRunMode: 'local' | 'remote' = options.startingMode ?? 'local';
     let latestClaudeGoalStatus: AgentGoalStatus | null = null;
@@ -457,7 +430,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             if (content.trim().length === 0) return;
             // App-sent prompts will show up here because the SDK
             // writes them to the JSONL — dedupe by content.
-            if (consumeAppPrompt(content)) return;
+            if (appPromptDedupe.consume(content)) return;
             session.sendClaudeSessionMessage(raw);
         },
         onTranscriptEvent: updateClaudeGoalState,
@@ -659,7 +632,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         // it later — the SDK is about to write this same text to disk
         // with a real Claude uuid, and we don't want to re-forward it.
         if (message?.content?.text) {
-            recordAppPrompt(message.content.text);
+            appPromptDedupe.record(message.content.text);
         }
 
         // Claim every file attachment that arrived strictly before this text.
