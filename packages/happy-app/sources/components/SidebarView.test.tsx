@@ -17,8 +17,10 @@ const mocks = vi.hoisted(() => ({
     helpTriggerFocus: vi.fn(),
     navigate: vi.fn(),
     openCommandPalette: vi.fn(),
+    openSettings: vi.fn(),
     setDesktopSidebarMode: vi.fn(),
     commandPaletteAvailable: false,
+    settingsModalIsDesktop: false,
     pluginSurfaceViews: [{
         componentId: 'relationship-advisor-history',
         contribution: { title: { default: 'Relationship Advisor', translations: { 'zh-Hans': '狗头军师' } } },
@@ -94,7 +96,10 @@ vi.mock('@/text', () => ({ t: (key: string) => key }));
 vi.mock('@/constants/Typography', () => ({ Typography: { default: () => ({}) } }));
 vi.mock('./useDrawerHaptics', () => ({ useDrawerHaptics: () => undefined }));
 vi.mock('./DesktopSettingsModal', () => ({
-    useDesktopSettingsModal: () => ({ openSettings: vi.fn() }),
+    useDesktopSettingsModal: () => ({
+        isDesktop: mocks.settingsModalIsDesktop,
+        openSettings: mocks.openSettings,
+    }),
 }));
 vi.mock('./VoiceAssistantStatusBar', () => ({ VoiceAssistantStatusBar: 'VoiceAssistantStatusBar' }));
 vi.mock('./MainView', () => ({ MainView: 'MainView' }));
@@ -195,6 +200,7 @@ describe('SidebarView Agent space exit', () => {
             presets: [],
         };
         mocks.commandPaletteAvailable = false;
+        mocks.settingsModalIsDesktop = false;
         (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
         consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation((...values: unknown[]) => {
             if (values[0] === 'react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer') return;
@@ -305,6 +311,24 @@ describe('SidebarView Agent space exit', () => {
         act(() => pluginsButton.props.onPress());
         expect(renderer.root.findByType('PluginMarketplaceModal').props.visible).toBe(true);
         expect(renderer.root.findByType('PluginMarketplaceModal').props.initialPluginId).toBeNull();
+
+        act(() => renderer.unmount());
+    });
+
+    it('closes the mobile drawer before opening settings', () => {
+        mocks.spaceAgent = null;
+        let renderer: any;
+
+        act(() => {
+            renderer = TestRenderer.create(<SidebarView closeDrawerOnNavigate />);
+        });
+
+        const accountMenu = renderer.root.findByType('SidebarAccountMenu');
+        act(() => accountMenu.props.onOpenSettings());
+
+        expect(mocks.dispatch).toHaveBeenCalledWith({ type: 'CLOSE_DRAWER' });
+        expect(mocks.navigate).toHaveBeenCalledWith('/settings');
+        expect(mocks.openSettings).not.toHaveBeenCalled();
 
         act(() => renderer.unmount());
     });

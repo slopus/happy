@@ -421,7 +421,7 @@ export const SidebarView = React.memo(({
     const [footerMenu, setFooterMenu] = React.useState<FooterMenu>(null);
     const { agent: spaceAgent, exit: exitSpace } = useAgentSpace();
     const commandPaletteLauncher = useCommandPaletteLauncher();
-    const { openSettings } = useDesktopSettingsModal();
+    const { isDesktop, openSettings } = useDesktopSettingsModal();
     const displayName = getDisplayName(profile) ?? t('settings.title');
 
     React.useEffect(() => {
@@ -444,6 +444,14 @@ export const SidebarView = React.memo(({
         closeDrawer();
         router.navigate(path as any);
     }, [closeDrawer, router]);
+
+    const openSettingsFromSidebar = React.useCallback(() => {
+        if (isDesktop) {
+            openSettings();
+            return;
+        }
+        go('/settings');
+    }, [go, isDesktop, openSettings]);
 
     const exitAgentSpace = React.useCallback(() => {
         exitSpace();
@@ -689,7 +697,7 @@ export const SidebarView = React.memo(({
                             railMode={desktopPrimaryNavigation}
                             displayName={displayName}
                             onNavigate={go}
-                            onOpenSettings={openSettings}
+                            onOpenSettings={openSettingsFromSidebar}
                             onOpenChange={setAccountMenuOpen}
                             open={footerMenu === 'account'}
                             profile={profile}
@@ -702,7 +710,7 @@ export const SidebarView = React.memo(({
                         desktopDensity={desktopDensity}
                         displayName={displayName}
                         onNavigate={go}
-                        onOpenSettings={openSettings}
+                        onOpenSettings={openSettingsFromSidebar}
                         onOpenChange={setAccountMenuOpen}
                         open={footerMenu === 'account'}
                         profile={profile}
