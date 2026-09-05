@@ -1,3 +1,10 @@
+# September 5 - New models, clearer changes
+
+- **New models** - GPT-6 Astra in Codex and Fable 5.1 in Claude.
+- **Review changes on your phone** - Session info → View changes, with a file list, before/after images, expandable context, and whitespace filtering.
+- **Cleaner diffs** - tap a file in a patch to open it full-screen. Added and deleted files now display correctly.
+- **Steadier chats** - the chat holds its place when the keyboard opens, and older messages load more reliably.
+
 # August 25.5 - Quick fixes
 
 - **Auto by default** — new Claude and Codex sessions start in Auto permission mode.

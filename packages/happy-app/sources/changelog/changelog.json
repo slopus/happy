@@ -1,6 +1,11 @@
 {
   "entries": [
     {
+      "title": "September 5 - New models, clearer changes",
+      "summary": "",
+      "markdown": "- **New models** - GPT-6 Astra in Codex and Fable 5.1 in Claude.\n- **Review changes on your phone** - Session info → View changes, with a file list, before/after images, expandable context, and whitespace filtering.\n- **Cleaner diffs** - tap a file in a patch to open it full-screen. Added and deleted files now display correctly.\n- **Steadier chats** - the chat holds its place when the keyboard opens, and older messages load more reliably."
+    },
+    {
       "title": "August 25.5 - Quick fixes",
       "summary": "",
       "markdown": "- **Auto by default** — new Claude and Codex sessions start in Auto permission mode.\n- **Better backwards compatibility** — older CLIs work better, but for the best experience we recommend running `npm i -g happy` on your machines."
@@ -96,5 +101,5 @@
       "markdown": "- E2E encrypted sessions.\n- Voice assistant.\n- File manager with syntax highlighting.\n- Real-time sync across devices."
     }
   ],
-  "latestTitle": "August 25.5 - Quick fixes"
+  "latestTitle": "September 5 - New models, clearer changes"
 }
