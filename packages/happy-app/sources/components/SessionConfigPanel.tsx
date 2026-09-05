@@ -691,8 +691,9 @@ export interface SessionConfigPanelProps {
      * inline, while regular desktop Web pickers open in a bounded modal.
      * 'sidebar' — desktop: config box with embedded popovers; the host owns the
      * shell-level click-away backdrop (see onPickerOpenChange/closePickers).
+     * 'composer' — compact controls inside the new-session message composer.
      */
-    layout?: 'inline' | 'sidebar';
+    layout?: 'inline' | 'sidebar' | 'composer';
     /**
      * When false the box stays fully expanded and the collapse chevron is hidden —
      * used when the host (ComposeHome) controls show/hide itself. Defaults to true.
@@ -716,6 +717,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
         const { theme } = useUnistyles();
         const viewport = useWindowDimensions();
         const isSidebar = layout === 'sidebar';
+        const isComposer = layout === 'composer';
 
         // Real data sources
         const allMachines = useAllMachines({ includeOffline: true });
@@ -752,7 +754,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
         );
         React.useEffect(() => {
             draft.setSessionType(worktreeKey !== '__none__' ? 'worktree' : 'simple');
-            draft.setWorktreeKey(worktreeKey === '__none__' || worktreeKey === '__new__' ? null : worktreeKey);
+            draft.setWorktreeKey(worktreeKey === '__none__' ? null : worktreeKey);
         }, [worktreeKey]);
 
         // Picker indices are local UI state; selected values that affect sends
@@ -765,6 +767,8 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
         const activePickerRef = React.useRef<PickerType | null>(null);
         const previousPickerRef = React.useRef<PickerType | null>(null);
         const pickerTriggerRefs = React.useRef<Partial<Record<PickerType, HTMLElement>>>({});
+        const webPickerDialogRef = React.useRef<any>(null);
+        const webPickerCloseRef = React.useRef<any>(null);
         activePickerRef.current = activePicker;
 
         const capturePickerTrigger = React.useCallback((type: PickerType, node: unknown) => {
@@ -847,6 +851,14 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
             return normalizePathForComparison(selectedPath, selectedHomeDir);
         }, [selectedHomeDir, selectedPath]);
 
+        const handleSelectedPathChange = React.useCallback((nextPath: string) => {
+            const nextResolvedPath = normalizePathForComparison(nextPath, selectedHomeDir);
+            if (nextResolvedPath !== resolvedSelectedPath) {
+                setWorktreeKey('__none__');
+            }
+            setSelectedPath(nextPath);
+        }, [resolvedSelectedPath, selectedHomeDir, setSelectedPath]);
+
         const [debouncedResolvedSelectedPath, setDebouncedResolvedSelectedPath] = React.useState<string | null>(resolvedSelectedPath);
 
         React.useEffect(() => {
@@ -863,14 +875,18 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
         }, [resolvedSelectedPath]);
 
         // Fetch existing worktrees from the selected machine/path
-        const [worktreeItems, setWorktreeItems] = React.useState<PickerItem[]>([]);
+        const [worktreeItems, setWorktreeItems] = React.useState<PickerItem[] | null>(null);
         React.useEffect(() => {
             if (!selectedMachineId || !debouncedResolvedSelectedPath) {
-                setWorktreeItems([]);
+                setWorktreeItems(null);
                 return;
             }
             if (!selectedMachine || !isMachineOnline(selectedMachine)) {
-                setWorktreeItems([]);
+                setWorktreeItems(null);
+                return;
+            }
+            const needsExistingWorktreeLabel = worktreeKey !== '__none__' && worktreeKey !== '__new__';
+            if (activePicker !== 'worktree' && !needsExistingWorktreeLabel) {
                 return;
             }
             let cancelled = false;
@@ -883,10 +899,14 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                 })));
             });
             return () => { cancelled = true; };
-        }, [debouncedResolvedSelectedPath, selectedMachineId, selectedMachine]);
+        }, [activePicker, debouncedResolvedSelectedPath, selectedMachineId, selectedMachine, worktreeKey]);
 
         React.useEffect(() => {
             if (worktreeKey === '__none__' || worktreeKey === '__new__') {
+                return;
+            }
+
+            if (worktreeItems === null) {
                 return;
             }
 
@@ -1092,6 +1112,46 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
             return () => window.removeEventListener('keydown', handleKeyDown, true);
         }, [activePicker, dismissPicker, isSidebar]);
 
+        React.useEffect(() => {
+            if (Platform.OS !== 'web' || isSidebar || !activePicker) return;
+
+            const focusTimer = setTimeout(() => webPickerCloseRef.current?.focus?.(), 0);
+            if (typeof window === 'undefined' || typeof document === 'undefined') {
+                return () => clearTimeout(focusTimer);
+            }
+
+            const handleTabKey = (event: KeyboardEvent) => {
+                if (event.key !== 'Tab') return;
+                const dialog = webPickerDialogRef.current as unknown as HTMLElement | null;
+                if (!dialog) return;
+                const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(
+                    'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+                )).filter((element) => !element.hasAttribute('disabled') && element.getAttribute('aria-hidden') !== 'true');
+                if (focusable.length === 0) {
+                    event.preventDefault();
+                    return;
+                }
+                const first = focusable[0];
+                const last = focusable[focusable.length - 1];
+                const current = document.activeElement;
+                if (!dialog.contains(current)) {
+                    event.preventDefault();
+                    first.focus();
+                } else if (event.shiftKey && current === first) {
+                    event.preventDefault();
+                    last.focus();
+                } else if (!event.shiftKey && current === last) {
+                    event.preventDefault();
+                    first.focus();
+                }
+            };
+            window.addEventListener('keydown', handleTabKey, true);
+            return () => {
+                clearTimeout(focusTimer);
+                window.removeEventListener('keydown', handleTabKey, true);
+            };
+        }, [activePicker, isSidebar]);
+
         const isOffline = selectedMachine ? !isMachineOnline(selectedMachine) : false;
         const agent = availableAgents.find(a => a.key === selectedAgent) ?? ALL_AGENTS.find(a => a.key === selectedAgent) ?? availableAgents[0] ?? ALL_AGENTS[0];
         const currentPermission = permissionModes[permissionIndex] ?? permissionModes[0];
@@ -1107,7 +1167,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
             ? 'no worktree'
             : worktreeKey === '__new__'
                 ? 'new worktree'
-                : worktreeItems.find(wt => wt.key === worktreeKey)?.label || worktreeKey;
+            : worktreeItems?.find(wt => wt.key === worktreeKey)?.label || worktreeKey;
 
         // Picker data derived from active picker type
         const pickerData = React.useMemo(() => {
@@ -1115,7 +1175,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                 case 'machine':
                     return { title: 'Machine', items: machineItems, selectedKey: selectedMachineId, searchPlaceholder: 'search machines...' };
                 case 'worktree':
-                    return { title: 'Worktree', fixedItems: WORKTREE_FIXED_ITEMS, items: worktreeItems, selectedKey: worktreeKey, searchPlaceholder: 'search worktrees...' };
+                    return { title: 'Worktree', fixedItems: WORKTREE_FIXED_ITEMS, items: worktreeItems ?? [], selectedKey: worktreeKey, searchPlaceholder: 'search worktrees...' };
                 case 'agent':
                     return { title: 'Agent', items: getAgentPickerItems(availableAgents), selectedKey: selectedAgent === 'ask' ? null : selectedAgent, searchPlaceholder: 'search agents...' };
                 case 'model':
@@ -1146,6 +1206,9 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
         const handlePickerSelect = React.useCallback((key: string) => {
             switch (activePicker) {
                 case 'machine':
+                    if (key !== selectedMachineId) {
+                        setWorktreeKey('__none__');
+                    }
                     setSelectedMachineId(key);
                     break;
                 case 'worktree':
@@ -1192,6 +1255,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
             effortLevels,
             modelModes,
             permissionModes,
+            selectedMachineId,
             setSelectedAgent,
             setSelectedMachineId,
             setWorktreeKey,
@@ -1222,7 +1286,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                     homeDir={selectedHomeDir}
                     machineId={selectedMachineId}
                     machineOnline={selectedMachine ? isMachineOnline(selectedMachine) : false}
-                    onChangeValue={setSelectedPath}
+                    onChangeValue={handleSelectedPathChange}
                     onDone={dismissPicker}
                     embedded={embedded}
                 />
@@ -1235,6 +1299,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
             ) : null
         ), [
             dismissPicker,
+            handleSelectedPathChange,
             handlePickerSelect,
             pathItems,
             pickerData,
@@ -1242,7 +1307,6 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
             selectedMachine,
             selectedMachineId,
             selectedPath,
-            setSelectedPath,
         ]);
 
         const renderActivePickerPopover = React.useCallback((type: PickerType) => {
@@ -1270,6 +1334,218 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
             renderPickerContent,
             theme.colors.header.background,
         ]);
+
+        if (isComposer) {
+            return (
+                <>
+                    <View
+                        testID="new-session-composer-config"
+                        style={[
+                            styles.composerConfigBox,
+                            activePicker && isWeb && styles.configBoxWithPopover,
+                        ]}
+                    >
+                        <ScrollView
+                            horizontal
+                            showsHorizontalScrollIndicator={false}
+                            keyboardShouldPersistTaps="always"
+                            style={styles.composerConfigScroll}
+                            contentContainerStyle={styles.composerConfigContent}
+                        >
+                            <Pressable
+                                ref={(node) => capturePickerTrigger('machine', node)}
+                                testID="session-config-machine-trigger"
+                                accessibilityRole="button"
+                                accessibilityLabel={`${t('devTools.machine')}: ${machineName}`}
+                                accessibilityState={{ expanded: activePicker === 'machine' }}
+                                aria-expanded={activePicker === 'machine'}
+                                onPress={(event) => togglePicker('machine', event)}
+                                style={(p) => [styles.composerConfigChip, p.pressed && styles.composerConfigChipPressed]}
+                            >
+                                <View style={[styles.composerStatusDot, {
+                                    backgroundColor: isOffline ? theme.colors.status.disconnected : theme.colors.status.connected,
+                                }]} />
+                                <Text style={styles.composerConfigChipText} numberOfLines={1}>{machineName}</Text>
+                                <Ionicons name="chevron-down" size={11} color={theme.colors.textSecondary} />
+                            </Pressable>
+
+                            {!isOffline && configExperience.showPath && (
+                                <Pressable
+                                    ref={(node) => capturePickerTrigger('path', node)}
+                                    testID="session-config-path-trigger"
+                                    accessibilityRole="button"
+                                    accessibilityLabel={`Project: ${pathName}`}
+                                    accessibilityState={{ expanded: activePicker === 'path' }}
+                                    aria-expanded={activePicker === 'path'}
+                                    onPress={(event) => togglePicker('path', event)}
+                                    style={(p) => [styles.composerConfigChip, p.pressed && styles.composerConfigChipPressed]}
+                                >
+                                    <Ionicons name="folder-outline" size={14} color={theme.colors.textSecondary} />
+                                    <Text style={styles.composerConfigChipText} numberOfLines={1}>{pathName}</Text>
+                                    <Ionicons name="chevron-down" size={11} color={theme.colors.textSecondary} />
+                                </Pressable>
+                            )}
+
+                            {!isOffline && !configExperience.isAskMode && (
+                                <Pressable
+                                    ref={(node) => capturePickerTrigger('agent', node)}
+                                    testID="session-config-agent-trigger"
+                                    accessibilityRole="button"
+                                    accessibilityLabel={`${t('agents.title')}: ${agent.label}`}
+                                    accessibilityState={{ expanded: activePicker === 'agent' }}
+                                    aria-expanded={activePicker === 'agent'}
+                                    onPress={(event) => togglePicker('agent', event)}
+                                    style={(p) => [styles.composerConfigChip, p.pressed && styles.composerConfigChipPressed]}
+                                >
+                                    <RNImage
+                                        source={agentIcons[agent.key]}
+                                        style={[styles.composerAgentIcon, { tintColor: theme.colors.textSecondary }]}
+                                        resizeMode="contain"
+                                    />
+                                    <Text style={styles.composerConfigChipText} numberOfLines={1}>{agent.label}</Text>
+                                    <Ionicons name="chevron-down" size={11} color={theme.colors.textSecondary} />
+                                </Pressable>
+                            )}
+
+                            {!isOffline && supportsWorktree && (
+                                <Pressable
+                                    ref={(node) => capturePickerTrigger('worktree', node)}
+                                    testID="session-config-worktree-trigger"
+                                    accessibilityRole="button"
+                                    accessibilityLabel={`Worktree: ${worktreeLabel}`}
+                                    accessibilityState={{ expanded: activePicker === 'worktree' }}
+                                    aria-expanded={activePicker === 'worktree'}
+                                    onPress={(event) => togglePicker('worktree', event)}
+                                    style={(p) => [styles.composerConfigChip, p.pressed && styles.composerConfigChipPressed]}
+                                >
+                                    <MaterialCommunityIcons name="tree" size={14} color={theme.colors.textSecondary} />
+                                    <Text style={styles.composerConfigChipText} numberOfLines={1}>{worktreeLabel}</Text>
+                                    <Ionicons name="chevron-down" size={11} color={theme.colors.textSecondary} />
+                                </Pressable>
+                            )}
+
+                            {!isOffline && showPermission && (
+                                <Pressable
+                                    ref={(node) => capturePickerTrigger('permission', node)}
+                                    testID="session-config-permission-trigger"
+                                    accessibilityRole="button"
+                                    accessibilityLabel={`Permissions: ${currentPermission?.name}`}
+                                    accessibilityState={{ expanded: activePicker === 'permission' }}
+                                    aria-expanded={activePicker === 'permission'}
+                                    onPress={(event) => togglePicker('permission', event)}
+                                    style={(p) => [styles.composerConfigCompactTrigger, p.pressed && styles.composerConfigChipPressed]}
+                                >
+                                    <Ionicons
+                                        name={permissionStyle?.icon ?? 'shield-outline'}
+                                        size={14}
+                                        color={permissionStyle?.color ?? theme.colors.textSecondary}
+                                    />
+                                    <Text style={styles.composerConfigCompactText} numberOfLines={1}>{currentPermission?.name}</Text>
+                                    <Ionicons name="chevron-down" size={11} color={theme.colors.textSecondary} />
+                                </Pressable>
+                            )}
+
+                            {!isOffline && showModel && (
+                                <Pressable
+                                    ref={(node) => capturePickerTrigger('model', node)}
+                                    testID="session-config-model-trigger"
+                                    accessibilityRole="button"
+                                    accessibilityLabel={currentModel.name}
+                                    accessibilityState={{ expanded: activePicker === 'model' }}
+                                    aria-expanded={activePicker === 'model'}
+                                    onPress={(event) => togglePicker('model', event)}
+                                    style={(p) => [styles.composerConfigCompactTrigger, p.pressed && styles.composerConfigChipPressed]}
+                                >
+                                    <Text style={styles.composerConfigCompactText} numberOfLines={1}>{currentModel.name}</Text>
+                                    <Ionicons name="chevron-down" size={11} color={theme.colors.textSecondary} />
+                                </Pressable>
+                            )}
+
+                            {!isOffline && showEffort && (
+                                <Pressable
+                                    ref={(node) => capturePickerTrigger('effort', node)}
+                                    testID="session-config-effort-trigger"
+                                    accessibilityRole="button"
+                                    accessibilityLabel={`Effort: ${currentEffort?.name}`}
+                                    accessibilityState={{ expanded: activePicker === 'effort' }}
+                                    aria-expanded={activePicker === 'effort'}
+                                    onPress={(event) => togglePicker('effort', event)}
+                                    style={(p) => [styles.composerConfigCompactTrigger, p.pressed && styles.composerConfigChipPressed]}
+                                >
+                                    <Text style={styles.composerConfigCompactText} numberOfLines={1}>{currentEffort?.name}</Text>
+                                    <Ionicons name="chevron-down" size={11} color={theme.colors.textSecondary} />
+                                </Pressable>
+                            )}
+
+                            {!isOffline && supportsFast && (
+                                <Pressable
+                                    accessibilityRole="switch"
+                                    accessibilityLabel="Fast"
+                                    accessibilityState={{ checked: fastMode }}
+                                    testID="session-config-fast-toggle"
+                                    onPress={() => setFastMode((enabled) => !enabled)}
+                                    style={(p) => [styles.composerFastToggle, p.pressed && styles.composerConfigChipPressed]}
+                                >
+                                    <Ionicons name="flash-outline" size={14} color={fastMode ? theme.colors.accent : theme.colors.textSecondary} />
+                                </Pressable>
+                            )}
+                        </ScrollView>
+
+                        {renderActivePickerPopover('machine')}
+                        {configExperience.showPath && renderActivePickerPopover('path')}
+                        {!configExperience.isAskMode && renderActivePickerPopover('agent')}
+                        {renderActivePickerPopover('worktree')}
+                        {renderActivePickerPopover('permission')}
+                        {renderActivePickerPopover('model')}
+                        {renderActivePickerPopover('effort')}
+                    </View>
+
+                    {isWeb && activePicker && (
+                        <Modal
+                            visible
+                            transparent
+                            animationType="fade"
+                            onRequestClose={dismissPicker}
+                        >
+                            <View style={styles.webPickerModalRoot}>
+                                <Pressable
+                                    testID="session-config-picker-scrim"
+                                    style={styles.webPickerScrim}
+                                    onPress={dismissPicker}
+                                    accessibilityRole="button"
+                                    accessibilityLabel={t('devTools.close')}
+                                />
+                                <View
+                                    ref={webPickerDialogRef}
+                                    role="dialog"
+                                    accessibilityViewIsModal
+                                    testID={`session-config-picker-${activePicker}`}
+                                    style={[
+                                        styles.webPickerDialog,
+                                        {
+                                            width: Math.min(520, Math.max(0, viewport.width - 64)),
+                                            maxHeight: Math.min(560, Math.max(0, viewport.height - 64)),
+                                        },
+                                    ]}
+                                >
+                                    <Pressable
+                                        ref={webPickerCloseRef}
+                                        testID="session-config-picker-close"
+                                        onPress={dismissPicker}
+                                        accessibilityRole="button"
+                                        accessibilityLabel={t('devTools.close')}
+                                        style={({ pressed }) => [styles.webPickerClose, pressed && styles.configRowPressed]}
+                                    >
+                                        <Ionicons name="close" size={18} color={theme.colors.textSecondary} />
+                                    </Pressable>
+                                    {renderPickerContent(activePicker, false)}
+                                </View>
+                            </View>
+                        </Modal>
+                    )}
+                </>
+            );
+        }
 
         return (
             <>
@@ -1596,7 +1872,9 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                                 accessibilityLabel={t('devTools.close')}
                             />
                             <View
+                                ref={webPickerDialogRef}
                                 role="dialog"
+                                accessibilityViewIsModal
                                 testID={`session-config-picker-${activePicker}`}
                                 style={[
                                     styles.webPickerDialog,
@@ -1607,6 +1885,8 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                                 ]}
                             >
                                 <Pressable
+                                    ref={webPickerCloseRef}
+                                    testID="session-config-picker-close"
                                     onPress={dismissPicker}
                                     accessibilityRole="button"
                                     accessibilityLabel={t('devTools.close')}
@@ -1666,6 +1946,76 @@ const styles = StyleSheet.create((theme) => ({
         alignItems: 'center',
         justifyContent: 'center',
         backgroundColor: theme.colors.surface,
+    },
+    composerConfigBox: {
+        minWidth: 0,
+        flex: 1,
+        flexShrink: 1,
+        overflow: 'hidden',
+    },
+    composerConfigScroll: {
+        minWidth: 0,
+        flexGrow: 0,
+    },
+    composerConfigContent: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        paddingRight: 4,
+    },
+    composerConfigChip: {
+        height: 32,
+        maxWidth: 190,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        paddingHorizontal: 9,
+        borderRadius: 16,
+        backgroundColor: theme.colors.surfaceHigh,
+    },
+    composerConfigCompactTrigger: {
+        height: 32,
+        maxWidth: 168,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        paddingHorizontal: 7,
+        borderRadius: 9,
+    },
+    composerFastToggle: {
+        width: 32,
+        height: 32,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderRadius: 9,
+    },
+    composerConfigChipPressed: {
+        backgroundColor: theme.colors.surfacePressed,
+    },
+    composerStatusDot: {
+        width: 8,
+        height: 8,
+        borderRadius: 4,
+        flexShrink: 0,
+    },
+    composerAgentIcon: {
+        width: 14,
+        height: 14,
+        flexShrink: 0,
+    },
+    composerConfigChipText: {
+        minWidth: 0,
+        flexShrink: 1,
+        color: theme.colors.button.secondary.tint,
+        fontSize: 13,
+        ...Typography.default('semiBold'),
+    },
+    composerConfigCompactText: {
+        minWidth: 0,
+        flexShrink: 1,
+        color: theme.colors.textSecondary,
+        fontSize: 12,
+        ...Typography.default('semiBold'),
     },
     configBox: {
         backgroundColor: theme.colors.input.background,

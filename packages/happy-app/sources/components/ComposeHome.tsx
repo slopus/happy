@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { View, Text, Pressable, LayoutAnimation, Platform, ScrollView, useWindowDimensions } from 'react-native';
+import { View, Text, Pressable, Platform, ScrollView, useWindowDimensions } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useRouter, useNavigation, useLocalSearchParams } from 'expo-router';
 import { DrawerActions } from '@react-navigation/native';
@@ -12,7 +12,7 @@ import { MessageComposer } from './MessageComposer';
 import type { MultiTextInputHandle } from './MultiTextInput';
 import { SessionConfigPanel, type SessionConfigPanelHandle } from './SessionConfigPanel';
 import { ComposeHomeParticles } from './ComposeHomeParticles';
-import { useHeaderHeight, useIsTablet } from '@/utils/responsive';
+import { useIsTablet } from '@/utils/responsive';
 import {
     DESKTOP_MAIN_MIN_WIDTH,
     getPersistentHeaderContentInset,
@@ -36,6 +36,7 @@ import { SessionCapabilityHub } from './rightPanel/SessionCapabilityHub';
 import { DesktopRightPanel, DesktopRightPanelToggleButton } from './DesktopRightPanel';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { resolveNewSessionModeSelection } from '@/utils/newSessionModeSelection';
+import { resolveNewSessionSpawnSettings } from '@/utils/newSessionSpawnSettings';
 import {
     getCodingAgentPickerItems,
     getComposeHomeExperience,
@@ -43,7 +44,6 @@ import {
     selectAgentForTopLevelMode,
     type NewSessionTopLevelMode,
 } from '@/utils/newSessionExperience';
-import type { Machine } from '@/sync/storageTypes';
 import type { NewSessionAgentType } from '@/sync/persistence';
 import { useShallow } from 'zustand/react/shallow';
 import { hapticsLight } from './haptics';
@@ -97,15 +97,10 @@ const HEADER_MODE_SWITCH_ITEMS: { key: NewSessionTopLevelMode; icon: keyof typeo
     { key: 'agent', icon: 'terminal-outline' },
 ];
 
-function getMachineName(machine: Machine | undefined): string | null {
-    if (!machine) return null;
-    return machine.metadata?.displayName || machine.metadata?.host || null;
-}
-
 /**
- * Compose-first new-session page. A greeting, the current machine/agent shown as
- * a chip (tap to drop the inline config panel), and a real text input. Sending
- * spawns a session inline via useSpawnSession. It only spawns when the target is
+ * Compose-first new-session page. A greeting and a real text input with every
+ * editable launch setting kept in its footer. Sending spawns a session inline
+ * via useSpawnSession. It only spawns when the target is
  * actually reachable — a selected, online machine and no fresh-worktree request;
  * otherwise the send button stays disabled (greyed) rather than bouncing
  * elsewhere. Creating a new worktree / spawning on an offline machine is not
@@ -151,12 +146,10 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
     const router = useRouter();
     const navigation = useNavigation();
     const insets = useSafeAreaInsets();
-    const headerHeight = useHeaderHeight();
     const isTablet = useIsTablet();
     const { width: windowWidth } = useWindowDimensions();
     const inTauri = isTauri();
     const isMacTauri = inTauri && typeof navigator !== 'undefined' && /Mac/.test(navigator.platform);
-    const useDesktopComposerConfig = Platform.OS === 'web' && isTablet;
     const profile = useProfile();
     const machines = useAllMachines();
     const isDataReady = useIsDataReady();
@@ -354,7 +347,6 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
         if (!agentId) return null;
         return agents.find((a) => a.id === agentId) ?? (builtinAppAgent?.id === agentId ? builtinAppAgent : null);
     }, [agentId, agents, builtinAppAgent]);
-    const machineName = getMachineName(selectedMachine);
     const online = selectedMachine ? isMachineOnline(selectedMachine) : false;
     const headerModeSwitchExperience = React.useMemo(
         () => getHeaderModeSwitchExperience({
@@ -644,20 +636,6 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
         setSelectedImageStyleIds((current) => current.filter((id) => id !== style.id));
     }, [customImageStyles, setCustomImageStyles]);
 
-    // The machine/agent chip drops the full session-config panel down in place
-    // (instead of navigating to /new). Tapping the chip again — or anywhere
-    // outside — collapses it. The panel writes straight to the shared draft
-    // store, so the chip label and the inline-spawn config stay in sync.
-    const [panelOpen, setPanelOpen] = React.useState(false);
-    const togglePanel = React.useCallback(() => {
-        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-        setPanelOpen(v => !v);
-    }, []);
-    const closePanel = React.useCallback(() => {
-        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-        setPanelOpen(false);
-    }, []);
-
     const handleHeaderModeSelect = React.useCallback((mode: NewSessionTopLevelMode) => {
         const nextAgent = selectAgentForTopLevelMode({
             mode,
@@ -728,6 +706,11 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
             effortLevel: draft.effortLevel,
             agentDefaultOverrides,
         });
+        const spawnSettings = resolveNewSessionSpawnSettings({
+            draftWorktreeKey: draft.worktreeKey,
+            resolvedModes,
+            liveSelection,
+        });
 
         // Spawnable only when a machine is selected, online, and we're not asked to
         // create a fresh worktree. The send button is disabled in every other case
@@ -735,7 +718,7 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
         const canSpawn = !!draft.selectedMachineId
             && !!machine
             && isMachineOnline(machine)
-            && draft.worktreeKey !== '__new__';
+            && spawnSettings.worktreeKey !== '__new__';
         if (!canSpawn) return;
 
         // Clear only after the encrypted first message reaches the local outbox.
@@ -751,11 +734,7 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
             machine: machine!,
             path: draft.selectedPath,
             agent: spawnAgent,
-            worktreeKey: draft.worktreeKey,
-            permissionMode: liveSelection?.permissionKey ?? resolvedModes.permissionMode,
-            modelMode: liveSelection?.modelKey ?? resolvedModes.modelMode,
-            effortLevel: liveSelection?.effortKey ?? resolvedModes.effortLevel,
-            fastMode: liveSelection?.fastMode,
+            ...spawnSettings,
             prompt,
             images,
             environmentVariables: spawnAgent === 'ask' ? buildAskApiEnvironment(askApi) : undefined,
@@ -802,8 +781,8 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
         })
         : 0;
 
-    const modelChip = (
-        <View style={styles.modelChip}>
+    const composerConfigControls = (
+        <View style={styles.newSessionComposerControls} testID="new-session-composer-controls">
             {headerModeSwitchExperience.visible && (
                 <View style={styles.headerModeSwitch}>
                     {HEADER_MODE_SWITCH_ITEMS.map((item) => {
@@ -831,18 +810,7 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
                     })}
                 </View>
             )}
-            <Pressable
-                onPress={togglePanel}
-                hitSlop={8}
-                style={styles.modelChipTarget}
-                testID="compose-home-model-chip"
-            >
-                <View style={[styles.dot, { backgroundColor: online ? theme.colors.status.connected : theme.colors.status.disconnected }]} />
-                <Text style={styles.modelChipMachine} numberOfLines={1}>
-                    {machineName ?? t('agentInput.noMachinesAvailable')}
-                </Text>
-                <Ionicons name={panelOpen ? 'chevron-up' : 'chevron-down'} size={13} color={theme.colors.textSecondary} />
-            </Pressable>
+            <SessionConfigPanel ref={configPanelRef} layout="composer" collapsible={false} />
         </View>
     );
 
@@ -861,7 +829,7 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
     const composeContent = (
         <View style={styles.container}>
             <Header
-                title={useDesktopComposerConfig ? undefined : modelChip}
+                title={undefined}
                 headerShadowVisible={false}
                 headerTransparent={true}
                 headerContentLeftInset={persistentHeaderContentInset}
@@ -1138,32 +1106,12 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
                         onPickImages={canAttach ? (activeImageAgent ? pickImages : pickAttachment) : undefined}
                         onRemoveImage={canAttach ? removeImage : undefined}
                         onAddImages={canAttach ? addImages : undefined}
-                        leadingControls={useDesktopComposerConfig ? (
-                            <View testID="new-session-composer-controls">
-                                {modelChip}
-                            </View>
-                        ) : undefined}
+                        leadingControls={composerConfigControls}
                     />
                     <Text style={styles.byline}>{t('composeHome.byline')}</Text>
                 </View>
             </KeyboardAvoidingView>
 
-            {/* In-place config dropdown anchored under the header chip. The
-                backdrop starts below the header so the chip itself stays tappable
-                (tap again to collapse); tapping anywhere else dismisses it. */}
-            {panelOpen && (
-                <>
-                    <Pressable
-                        style={[styles.panelBackdrop, { top: insets.top + headerHeight }]}
-                        onPress={closePanel}
-                    />
-                    <View style={[styles.panelDropdown, { top: insets.top + headerHeight }]}>
-                        <View style={styles.panelDropdownContent} testID="compose-home-config-panel">
-                            <SessionConfigPanel ref={configPanelRef} layout="inline" collapsible={false} />
-                        </View>
-                    </View>
-                </>
-            )}
             {activeImageAgent && (
                 <ImageStyleGallerySheet
                     visible={imageGalleryOpen}
@@ -1288,37 +1236,13 @@ const styles = StyleSheet.create((theme) => ({
         alignItems: 'center',
         justifyContent: 'center',
     },
-    panelBackdrop: {
-        position: 'absolute',
-        left: 0,
-        right: 0,
-        bottom: 0,
-        zIndex: 10,
-    },
-    panelDropdown: {
-        position: 'absolute',
-        left: 0,
-        right: 0,
-        alignItems: 'center',
-        paddingHorizontal: 12,
-        paddingTop: 8,
-        zIndex: 11,
-    },
-    panelDropdownContent: {
-        width: '100%',
-        maxWidth: layout.maxWidth,
-    },
-    modelChip: {
+    newSessionComposerControls: {
+        minWidth: 0,
+        flex: 1,
         flexDirection: 'row',
         alignItems: 'center',
-        maxWidth: 246,
-        paddingVertical: 4,
-        paddingLeft: 4,
-        paddingRight: 9,
-        borderRadius: 999,
-        backgroundColor: theme.colors.surface,
-        borderWidth: StyleSheet.hairlineWidth,
-        borderColor: theme.colors.divider,
+        gap: 4,
+        overflow: 'hidden',
     },
     headerModeSwitch: {
         flexDirection: 'row',
@@ -1340,26 +1264,6 @@ const styles = StyleSheet.create((theme) => ({
     },
     headerModeButtonPressed: {
         opacity: 0.78,
-    },
-    modelChipTarget: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 7,
-        minWidth: 0,
-        flexShrink: 1,
-        paddingLeft: 8,
-        paddingVertical: 5,
-    },
-    modelChipMachine: {
-        ...Typography.mono(),
-        fontSize: 11,
-        color: theme.colors.textSecondary,
-        flexShrink: 1,
-    },
-    dot: {
-        width: 6,
-        height: 6,
-        borderRadius: 3,
     },
     body: {
         flex: 1,
