@@ -36,6 +36,7 @@ describe('modelModeOptions', () => {
         const models = getCodexModelModes();
         expect(models.map((model) => model.key)).toEqual([
             'default',
+            'gpt-6-astra',
             'gpt-5.6-sol',
             'gpt-5.6-terra',
             'gpt-5.6-luna',
@@ -45,7 +46,8 @@ describe('modelModeOptions', () => {
             'gpt-5.3-codex-spark',
         ]);
         expect(models[0].name).toBe('default model');
-        expect(models[1].name).toBe('gpt-5.6-sol');
+        expect(models[1].name).toBe('gpt-6-astra');
+        expect(models[2].name).toBe('gpt-5.6-sol');
     });
 
     it('only exposes Gemini permission modes that the CLI accepts', () => {

@@ -100,6 +100,7 @@ export function getAskModelModes(): ModelMode[] {
 export function getCodexModelModes(): ModelMode[] {
     return [
         { key: 'default', name: DEFAULT_MODEL_LABEL, description: null },
+        { key: 'gpt-6-astra', name: 'gpt-6-astra', description: null },
         { key: 'gpt-5.6-sol', name: 'gpt-5.6-sol', description: null },
         { key: 'gpt-5.6-terra', name: 'gpt-5.6-terra', description: null },
         { key: 'gpt-5.6-luna', name: 'gpt-5.6-luna', description: null },

@@ -50,6 +50,7 @@ const forkTranscriptEvidenceDirectory = process.env.HAPPY_FORK_TRANSCRIPT_EVIDEN
 const motionPhotoEvidenceDirectory = process.env.HAPPY_MOTION_PHOTO_EVIDENCE_DIR;
 const motionPhotoEvidencePhase = process.env.HAPPY_MOTION_PHOTO_EVIDENCE_PHASE === 'before' ? 'before' : 'after';
 const sessionTimelineEvidenceDirectory = process.env.HAPPY_SESSION_TIMELINE_EVIDENCE_DIR;
+const codexModelEvidenceDirectory = process.env.HAPPY_CODEX_MODEL_EVIDENCE_DIR;
 
 function sessionTimelineScreenshotPath(
     testInfo: { outputPath: (filename: string) => string },
@@ -136,6 +137,13 @@ function motionPhotoScreenshotPath(
     if (!motionPhotoEvidenceDirectory) return testInfo.outputPath(filename);
     fs.mkdirSync(motionPhotoEvidenceDirectory, { recursive: true });
     return path.join(motionPhotoEvidenceDirectory, filename);
+}
+
+function codexModelScreenshotPath(testInfo: { outputPath: (filename: string) => string }): string {
+    const filename = 'case-1-after-gpt-6-astra.png';
+    if (!codexModelEvidenceDirectory) return testInfo.outputPath(filename);
+    fs.mkdirSync(codexModelEvidenceDirectory, { recursive: true });
+    return path.join(codexModelEvidenceDirectory, filename);
 }
 
 function authenticatedRoute(pathname: string): string {
@@ -930,7 +938,10 @@ async function createConnectedE2EAbortSession(request: APIRequestContext): Promi
     };
 }
 
-async function createConnectedE2EComposerModeSession(request: APIRequestContext): Promise<{
+async function createConnectedE2EComposerModeSession(
+    request: APIRequestContext,
+    options: Pick<CreateE2ESessionOptions, 'models' | 'currentModelCode'> = {},
+): Promise<{
     client: {
         close: () => Promise<void>;
         goOffline: () => Promise<void>;
@@ -994,7 +1005,7 @@ async function createConnectedE2EComposerModeSession(request: APIRequestContext)
             machineId,
             homeDir: '/tmp',
             currentOperatingModeCode: 'acceptEdits',
-            models: [
+            models: options.models ?? [
                 { code: 'gpt-5.5', value: 'gpt-5.5', description: 'Stable coding model' },
                 {
                     code: 'gpt-5.6-sol',
@@ -1003,7 +1014,7 @@ async function createConnectedE2EComposerModeSession(request: APIRequestContext)
                     serviceTiers: [{ id: 'priority', name: 'Fast', description: '1.5x speed, increased usage' }],
                 },
             ],
-            currentModelCode: 'gpt-5.6-sol',
+            currentModelCode: options.currentModelCode ?? 'gpt-5.6-sol',
             thoughtLevels: [
                 { code: 'medium', value: 'medium', description: 'Balanced reasoning' },
                 { code: 'high', value: 'high', description: 'Deep reasoning' },
@@ -3423,6 +3434,33 @@ test('[PC-TITLE-TOOLTIP] PC 标题悬浮和聚焦不再重复显示标题提示'
 
     await title.focus();
     await expect(page.getByTestId('session-header-title-tooltip')).toHaveCount(0);
+});
+
+test('[CODEX-MODEL-01] 缺少运行时模型元数据时，PC Web 模型菜单仍提供 GPT-6 Astra', async ({ page, request }, testInfo) => {
+    test.setTimeout(300_000);
+    const fixture = await createConnectedE2EComposerModeSession(request, {
+        models: [],
+        currentModelCode: 'gpt-6-astra',
+    });
+
+    try {
+        await page.setViewportSize({ width: 1280, height: 900 });
+        await page.goto(authenticatedRoute(`/session/${fixture.sessionId}`));
+        await expect(page.getByTestId('session-message-input')).toBeVisible({ timeout: 280_000 });
+
+        const selector = page.getByTestId('session-composer-mode-selector');
+        const modelTrigger = selector.getByTestId('session-composer-model-trigger');
+        await expect(modelTrigger).toContainText('gpt-6-astra');
+        await modelTrigger.click();
+
+        const modelPicker = page.getByTestId('session-composer-model-picker');
+        const gpt6AstraOption = modelPicker.getByRole('radio', { name: 'gpt-6-astra' });
+        await expect(gpt6AstraOption).toBeVisible();
+        await expect(gpt6AstraOption).toBeChecked();
+        await page.screenshot({ path: codexModelScreenshotPath(testInfo), fullPage: true });
+    } finally {
+        await fixture.client.close();
+    }
 });
 
 test('[R10-01] 每轮权限、模型与推理强度经 UI 发送并在离线重连后保持一致', async ({ page, request }, testInfo) => {
