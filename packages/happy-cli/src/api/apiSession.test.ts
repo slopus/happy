@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiSessionClient } from './apiSession';
+import { ApiClient } from './api';
+import { WorkerSessionStartupLifecycle } from './sessionStartupTrace';
 import { decodeBase64, decrypt, encodeBase64, encrypt } from './encryption';
 import type { Update } from './types';
 
@@ -9,7 +11,8 @@ const {
     mockAxiosPost,
     mockBackoff,
     mockDelay,
-    mockShouldReconnect
+    mockShouldReconnect,
+    mockLoggerDebug,
 } = vi.hoisted(() => ({
     mockIo: vi.fn(),
     mockAxiosGet: vi.fn(),
@@ -26,7 +29,8 @@ const {
         throw lastError;
     }),
     mockDelay: vi.fn(async () => undefined),
-    mockShouldReconnect: vi.fn(() => true)
+    mockShouldReconnect: vi.fn(() => true),
+    mockLoggerDebug: vi.fn(),
 }));
 
 vi.mock('socket.io-client', () => ({
@@ -48,7 +52,7 @@ vi.mock('@/configuration', () => ({
 
 vi.mock('@/ui/logger', () => ({
     logger: {
-        debug: vi.fn(),
+        debug: mockLoggerDebug,
         debugLargeJson: vi.fn()
     }
 }));
@@ -82,6 +86,7 @@ function makeSession() {
         id: 'test-session-id',
         seq: 0,
         metadata: {
+            machineId: 'machine-1',
             path: '/tmp',
             host: 'localhost',
             homeDir: '/home/user',
@@ -124,6 +129,13 @@ function createNewMessageUpdate(seq: number, encryptedContent: string): Update {
     };
 }
 
+function createBoundStartupLifecycle(session: ReturnType<typeof makeSession>) {
+    const lifecycle = new WorkerSessionStartupLifecycle('00000000-0000-4000-8000-000000000001');
+    lifecycle.bindCreatedSession(session.id, session.metadata.machineId);
+    mockLoggerDebug.mockClear();
+    return lifecycle;
+}
+
 async function waitForCheck(check: () => void, timeoutMs = 2000) {
     const startedAt = Date.now();
     let lastError: unknown;
@@ -149,8 +161,38 @@ describe('ApiSessionClient v3 messages API migration', () => {
         handlers.forEach((handler) => handler(...args));
     };
 
+    const createApiWithBoundStartupSession = async (traceId?: string) => {
+        if (traceId) process.env.HAPPY_SESSION_STARTUP_TRACE_ID = traceId;
+        else delete process.env.HAPPY_SESSION_STARTUP_TRACE_ID;
+        const api = await ApiClient.create({
+            token: 'fake-token',
+            encryption: { type: 'legacy', secret: session.encryptionKey },
+        });
+        mockAxiosPost.mockResolvedValueOnce({
+            data: {
+                session: {
+                    id: session.id,
+                    seq: session.seq,
+                    metadata: encryptContent(session, session.metadata),
+                    metadataVersion: session.metadataVersion,
+                    agentState: null,
+                    agentStateVersion: session.agentStateVersion,
+                },
+            },
+        });
+        const created = await api.getOrCreateSession({
+            tag: 'startup-test',
+            metadata: session.metadata,
+            state: null,
+        });
+        if (!created) throw new Error('Expected startup test session');
+        mockLoggerDebug.mockClear();
+        return { api, created };
+    };
+
     beforeEach(() => {
         vi.clearAllMocks();
+        mockLoggerDebug.mockReset();
         mockShouldReconnect.mockReturnValue(true);
         socketHandlers = {};
         session = makeSession();
@@ -176,6 +218,7 @@ describe('ApiSessionClient v3 messages API migration', () => {
     });
 
     afterEach(() => {
+        delete process.env.HAPPY_SESSION_STARTUP_TRACE_ID;
         vi.useRealTimers();
         vi.restoreAllMocks();
     });
@@ -187,6 +230,101 @@ describe('ApiSessionClient v3 messages API migration', () => {
         expect(mockSocket.on).toHaveBeenCalledWith('disconnect', expect.any(Function));
         expect(mockSocket.on).toHaveBeenCalledWith('update', expect.any(Function));
         expect(mockSocket.connect).toHaveBeenCalledTimes(1);
+    });
+
+    it('records worker socket readiness only at the first real socket connect boundary', () => {
+        mockAxiosGet.mockResolvedValue({ data: { messages: [], hasMore: false } });
+        new ApiSessionClient('fake-token', session, createBoundStartupLifecycle(session));
+
+        expect(mockLoggerDebug.mock.calls.some(([label]) => label === '[SESSION STARTUP]')).toBe(false);
+        emitSocketEvent('connect');
+        emitSocketEvent('connect');
+
+        const stageEvents = mockLoggerDebug.mock.calls
+            .filter(([label]) => label === '[SESSION STARTUP]')
+            .map(([, event]) => event);
+        expect(stageEvents).toEqual([
+            expect.objectContaining({
+                traceId: '00000000-0000-4000-8000-000000000001',
+                stage: 'worker.socket.ready',
+                sessionId: 'test-session-id',
+                machineId: 'machine-1',
+                outcome: 'success',
+            }),
+        ]);
+    });
+
+    it('shares socket-ready idempotence across reconstructed clients for the bound session', async () => {
+        mockAxiosGet.mockResolvedValue({ data: { messages: [], hasMore: false } });
+        const { api, created } = await createApiWithBoundStartupSession('00000000-0000-4000-8000-000000000001');
+        api.sessionSyncClient(created);
+        api.sessionSyncClient(created);
+
+        for (const connect of socketHandlers.connect ?? []) {
+            connect();
+            connect();
+        }
+
+        const readyEvents = mockLoggerDebug.mock.calls
+            .filter(([, event]) => event?.stage === 'worker.socket.ready')
+            .map(([, event]) => event);
+        expect(readyEvents).toEqual([
+            expect.objectContaining({ sessionId: 'test-session-id' }),
+        ]);
+    });
+
+    it('does not let an unrelated session steal or repeat socket readiness before or after the bound session', async () => {
+        mockAxiosGet.mockResolvedValue({ data: { messages: [], hasMore: false } });
+        const { api, created } = await createApiWithBoundStartupSession('00000000-0000-4000-8000-000000000001');
+        const unrelated = { ...created, id: 'unrelated-session-id' };
+
+        api.sessionSyncClient(unrelated);
+        socketHandlers.connect?.[0]?.();
+        expect(mockLoggerDebug.mock.calls.some(([, event]) => event?.stage === 'worker.socket.ready')).toBe(false);
+
+        api.sessionSyncClient(created);
+        socketHandlers.connect?.[1]?.();
+        api.sessionSyncClient(unrelated);
+        socketHandlers.connect?.[2]?.();
+
+        const readyEvents = mockLoggerDebug.mock.calls
+            .filter(([, event]) => event?.stage === 'worker.socket.ready')
+            .map(([, event]) => event);
+        expect(readyEvents).toEqual([
+            expect.objectContaining({ sessionId: 'test-session-id' }),
+        ]);
+    });
+
+    it('keeps reconstructed session clients trace-free for legacy startup', async () => {
+        mockAxiosGet.mockResolvedValue({ data: { messages: [], hasMore: false } });
+        const { api, created } = await createApiWithBoundStartupSession();
+        api.sessionSyncClient(created);
+        api.sessionSyncClient(created);
+
+        for (const connect of socketHandlers.connect ?? []) connect();
+
+        expect(mockLoggerDebug.mock.calls.some(([, event]) => event?.stage === 'worker.socket.ready')).toBe(false);
+    });
+
+    it('continues socket setup when startup telemetry logging throws', () => {
+        mockAxiosGet.mockResolvedValue({ data: { messages: [], hasMore: false } });
+        mockLoggerDebug.mockImplementation((label) => {
+            if (label === '[SESSION STARTUP]') throw new Error('logger-canary');
+        });
+        new ApiSessionClient('fake-token', session, createBoundStartupLifecycle(session));
+
+        expect(() => emitSocketEvent('connect')).not.toThrow();
+    });
+
+    it('does not include raw socket error values in logs', () => {
+        vi.useFakeTimers();
+        mockSocket.connected = false;
+        new ApiSessionClient('fake-token', session);
+
+        emitSocketEvent('connect_error', new Error('connect-secret-canary'));
+        emitSocketEvent('error', new Error('socket-secret-canary'));
+
+        expect(JSON.stringify(mockLoggerDebug.mock.calls)).not.toContain('secret-canary');
     });
 
     it('retries after initial socket connection error', async () => {

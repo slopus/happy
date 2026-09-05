@@ -600,6 +600,7 @@ export const es: TranslationStructure = {
         askMode: 'Preguntar',
         agentMode: 'Agente',
         machineOffline: 'La máquina está desconectada',
+        sessionHydrationFailed: 'La sesión se creó, pero la página aún no terminó de sincronizarse. Reintenta para entrar.',
         switchMachinesHint: '• Cambia de máquina haciendo clic en la máquina de arriba',
     },
 

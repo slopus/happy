@@ -1,4 +1,5 @@
 import { MMKV } from 'react-native-mmkv';
+import { clearComposeDraft } from './composeDraft';
 import { Settings, settingsDefaults, settingsParse, settingsToSyncPayload, SettingsSchema } from './settings';
 import { LocalSettings, localSettingsDefaults, localSettingsParse } from './localSettings';
 import { Purchases, purchasesDefaults, purchasesParse } from './purchases';
@@ -505,6 +506,7 @@ export function resetVoiceLocalCounters() {
 }
 
 export function clearPersistence() {
+    clearComposeDraft();
     mmkv.clearAll();
     clearPublicSessionShareQueueStorage();
 }

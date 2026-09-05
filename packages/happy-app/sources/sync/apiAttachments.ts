@@ -54,6 +54,11 @@ export type AttachmentDownloadSource = {
     headers: Record<string, string>;
 };
 
+const downloadSourceInFlight = new Map<
+    string,
+    Map<string, Map<string, Promise<AttachmentDownloadSource>>>
+>();
+
 /**
  * Request a presigned (or server-hosted) upload URL for an attachment.
  * Returns the storage ref and the correct upload method for its lane.
@@ -213,16 +218,17 @@ export async function downloadEncryptedAttachment(
 }
 
 /** Resolve an authenticated local URL or a presigned object-storage URL. */
-export async function requestAttachmentDownloadSource(
+async function requestAttachmentDownloadSourceUncached(
     credentials: AuthCredentials,
     sessionId: string,
     ref: string,
 ): Promise<AttachmentDownloadSource> {
+    const token = credentials.token;
     const API_ENDPOINT = getServerUrl();
     const requestRes = await fetch(`${API_ENDPOINT}/v1/sessions/${sessionId}/attachments/request-download`, {
         method: 'POST',
         headers: {
-            'Authorization': `Bearer ${credentials.token}`,
+            'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json',
         },
         body: JSON.stringify({ ref }),
@@ -236,7 +242,41 @@ export async function requestAttachmentDownloadSource(
     const isServerUrl = downloadUrl.startsWith(API_ENDPOINT);
     const headers: Record<string, string> = {};
     if (isServerUrl) {
-        headers['Authorization'] = `Bearer ${credentials.token}`;
+        headers['Authorization'] = `Bearer ${token}`;
     }
     return { uri: downloadUrl, headers };
+}
+
+export function requestAttachmentDownloadSource(
+    credentials: AuthCredentials,
+    sessionId: string,
+    ref: string,
+): Promise<AttachmentDownloadSource> {
+    let byRef = downloadSourceInFlight.get(sessionId);
+    if (!byRef) {
+        byRef = new Map();
+        downloadSourceInFlight.set(sessionId, byRef);
+    }
+
+    let byToken = byRef.get(ref);
+    if (!byToken) {
+        byToken = new Map();
+        byRef.set(ref, byToken);
+    }
+
+    const token = credentials.token;
+    const existing = byToken.get(token);
+    if (existing) return existing;
+
+    const request = requestAttachmentDownloadSourceUncached(credentials, sessionId, ref)
+        .finally(() => {
+            if (byToken.get(token) !== request) return;
+            byToken.delete(token);
+            if (byToken.size === 0) {
+                byRef.delete(ref);
+                if (byRef.size === 0) downloadSourceInFlight.delete(sessionId);
+            }
+        });
+    byToken.set(token, request);
+    return request;
 }

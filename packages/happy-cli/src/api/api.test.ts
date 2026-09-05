@@ -4,9 +4,10 @@ import axios from 'axios';
 import { connectionState } from '@/utils/serverConnectionErrors';
 
 // Use vi.hoisted to ensure mock functions are available when vi.mock factory runs
-const { mockPost, mockIsAxiosError } = vi.hoisted(() => ({
+const { mockPost, mockIsAxiosError, mockLoggerDebug } = vi.hoisted(() => ({
     mockPost: vi.fn(),
-    mockIsAxiosError: vi.fn(() => true)
+    mockIsAxiosError: vi.fn(() => true),
+    mockLoggerDebug: vi.fn(),
 }));
 
 vi.mock('axios', () => ({
@@ -19,7 +20,7 @@ vi.mock('axios', () => ({
 
 vi.mock('@/ui/logger', () => ({
     logger: {
-        debug: vi.fn()
+        debug: mockLoggerDebug,
     }
 }));
 
@@ -67,6 +68,7 @@ describe('Api server error handling', () => {
 
     beforeEach(async () => {
         vi.clearAllMocks();
+        mockLoggerDebug.mockReset();
         connectionState.reset(); // Reset offline state between tests
 
         // Create a mock credential
@@ -81,7 +83,119 @@ describe('Api server error handling', () => {
         api = await ApiClient.create(mockCredential);
     });
 
+    afterEach(() => {
+        delete process.env.HAPPY_SESSION_STARTUP_TRACE_ID;
+    });
+
     describe('getOrCreateSession', () => {
+        it('records worker session creation at the successful HTTP boundary with only allowlisted fields', async () => {
+            process.env.HAPPY_SESSION_STARTUP_TRACE_ID = '00000000-0000-4000-8000-000000000001';
+            api = await ApiClient.create({
+                token: 'fake-token',
+                encryption: { type: 'legacy', secret: new Uint8Array(32) },
+            });
+            expect(process.env.HAPPY_SESSION_STARTUP_TRACE_ID).toBeUndefined();
+            mockPost.mockResolvedValue({
+                data: {
+                    session: {
+                        id: 'session-1',
+                        seq: 0,
+                        metadata: 'encrypted-metadata',
+                        metadataVersion: 0,
+                        agentState: null,
+                        agentStateVersion: 0,
+                    },
+                },
+            });
+
+            await api.getOrCreateSession({
+                tag: 'tag-canary',
+                metadata: { ...testMetadata, machineId: 'machine-1' },
+                state: null,
+            });
+            await api.getOrCreateSession({
+                tag: 'retry-tag-canary',
+                metadata: { ...testMetadata, machineId: 'machine-1' },
+                state: null,
+            });
+
+            const stageEvents = mockLoggerDebug.mock.calls
+                .filter(([label]) => label === '[SESSION STARTUP]')
+                .map(([, event]) => event);
+            expect(stageEvents).toEqual([
+                expect.objectContaining({
+                    traceId: '00000000-0000-4000-8000-000000000001',
+                    stage: 'worker.session.created',
+                    sessionId: 'session-1',
+                    machineId: 'machine-1',
+                    outcome: 'success',
+                }),
+            ]);
+            expect(JSON.stringify(stageEvents)).not.toContain('canary');
+        });
+
+        it('consumes an invalid inherited startup trace without emitting telemetry', async () => {
+            process.env.HAPPY_SESSION_STARTUP_TRACE_ID = 'legacy-or-invalid-trace';
+
+            api = await ApiClient.create({
+                token: 'fake-token',
+                encryption: { type: 'legacy', secret: new Uint8Array(32) },
+            });
+
+            expect(process.env.HAPPY_SESSION_STARTUP_TRACE_ID).toBeUndefined();
+            expect(mockLoggerDebug.mock.calls.some(([label]) => label === '[SESSION STARTUP]')).toBe(false);
+        });
+
+        it.each([undefined, '', '   ', 42])('does not emit session-created telemetry for invalid session id %j', async (sessionId) => {
+            process.env.HAPPY_SESSION_STARTUP_TRACE_ID = '00000000-0000-4000-8000-000000000001';
+            api = await ApiClient.create({
+                token: 'fake-token',
+                encryption: { type: 'legacy', secret: new Uint8Array(32) },
+            });
+            mockPost.mockResolvedValue({
+                data: {
+                    session: {
+                        id: sessionId,
+                        seq: 0,
+                        metadata: 'encrypted-metadata',
+                        metadataVersion: 0,
+                        agentState: null,
+                        agentStateVersion: 0,
+                    },
+                },
+            });
+
+            await api.getOrCreateSession({ tag: 'tag', metadata: testMetadata, state: null });
+
+            expect(mockLoggerDebug.mock.calls.some(([label]) => label === '[SESSION STARTUP]')).toBe(false);
+        });
+
+        it('returns the created session when startup telemetry logging throws', async () => {
+            process.env.HAPPY_SESSION_STARTUP_TRACE_ID = '00000000-0000-4000-8000-000000000001';
+            api = await ApiClient.create({
+                token: 'fake-token',
+                encryption: { type: 'legacy', secret: new Uint8Array(32) },
+            });
+            mockLoggerDebug.mockImplementation((label) => {
+                if (label === '[SESSION STARTUP]') throw new Error('logger-canary');
+            });
+            mockPost.mockResolvedValue({
+                data: {
+                    session: {
+                        id: 'session-1',
+                        seq: 0,
+                        metadata: 'encrypted-metadata',
+                        metadataVersion: 0,
+                        agentState: null,
+                        agentStateVersion: 0,
+                    },
+                },
+            });
+
+            await expect(api.getOrCreateSession({ tag: 'tag', metadata: testMetadata, state: null }))
+                .resolves.toMatchObject({ id: 'session-1' });
+        });
+
         it('should return null when Happy server is unreachable (ECONNREFUSED)', async () => {
             const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 

@@ -32,6 +32,7 @@ import type { PendingAttachment } from '@/utils/MessageQueue2';
 import axios from 'axios';
 import { resolveMediaArtifact } from './mediaArtifact';
 import { applyPersistedTurnStatus, clearStaleRunningTurnStatus } from './sessionTurnStatus';
+import type { WorkerSessionStartupLifecycle } from './sessionStartupTrace';
 
 function redactPresignedUrl(url: string): string {
     return url.replace(/([?&](?:X-Amz-Signature|Signature)=)[^&]+/g, '$1<redacted>');
@@ -142,6 +143,7 @@ type V3PostSessionMessagesResponse = {
 };
 
 export class ApiSessionClient extends EventEmitter {
+    private readonly startupLifecycle: WorkerSessionStartupLifecycle | undefined;
     private readonly token: string;
     readonly sessionId: string;
     private metadata: Metadata | null;
@@ -187,8 +189,9 @@ export class ApiSessionClient extends EventEmitter {
     private readonly sendSync: InvalidateSync;
     private readonly receiveSync: InvalidateSync;
 
-    constructor(token: string, session: Session) {
+    constructor(token: string, session: Session, startupLifecycle?: WorkerSessionStartupLifecycle) {
         super()
+        this.startupLifecycle = startupLifecycle;
         this.token = token;
         this.sessionId = session.id;
         this.metadata = session.metadata;
@@ -233,6 +236,7 @@ export class ApiSessionClient extends EventEmitter {
 
         this.socket.on('connect', () => {
             logger.debug('Socket connected successfully');
+            this.startupLifecycle?.socketReady(this.sessionId, this.metadata?.machineId);
             if (this.reconnectInterval) {
                 clearInterval(this.reconnectInterval);
                 this.reconnectInterval = null;
@@ -252,8 +256,8 @@ export class ApiSessionClient extends EventEmitter {
             this.startSmartReconnect();
         })
 
-        this.socket.on('connect_error', (error) => {
-            logger.debug('[API] Socket connection error:', error);
+        this.socket.on('connect_error', () => {
+            logger.debug('[API] Socket connection error', { errorCode: 'session-socket-connect-error' });
             this.rpcHandlerManager.onSocketDisconnect();
             this.startSmartReconnect();
         })
@@ -309,14 +313,14 @@ export class ApiSessionClient extends EventEmitter {
                     // If not a user message, it might be a permission response or other message type
                     this.emit('message', data.body);
                 }
-            } catch (error) {
-                logger.debug('[SOCKET] [UPDATE] [ERROR] Error handling update', { error });
+            } catch {
+                logger.debug('[SOCKET] [UPDATE] [ERROR] Error handling update', { errorCode: 'session-update-handler-error' });
             }
         });
 
         // DEATH
-        this.socket.on('error', (error) => {
-            logger.debug('[API] Socket error:', error);
+        this.socket.on('error', () => {
+            logger.debug('[API] Socket error', { errorCode: 'session-socket-error' });
         });
 
         //

@@ -55,6 +55,9 @@ const mocks = vi.hoisted(() => ({
     imageViewerOpen: vi.fn(),
     overlayPublish: vi.fn(),
     overlayReset: vi.fn(),
+    abandonSessionRoute: vi.fn(),
+    openSession: vi.fn(),
+    sessionRouteBecameInteractive: vi.fn(),
     suspendFileViewPanel: false,
     fileViewPanelSuspender: null as Promise<void> | null,
     sessionMessages: [] as Message[],
@@ -349,7 +352,13 @@ vi.mock('@/sync/gitStatusSync', () => ({ gitStatusSync: { getSync: vi.fn() } }))
 vi.mock('@/sync/ops', () => ({ sessionAbort: mocks.sessionAbort }));
 vi.mock('@/sync/ops.screenshot', () => ({ requestScreenshot: mocks.requestScreenshot }));
 vi.mock('@/sync/imageViewer', () => ({ imageViewer: { open: mocks.imageViewerOpen } }));
-vi.mock('@/sync/sync', () => ({ sync: { onSessionVisible: vi.fn(), sendMessage: vi.fn() } }));
+vi.mock('@/sync/sync', () => ({ sync: {
+    abandonSessionRoute: mocks.abandonSessionRoute,
+    onSessionVisible: vi.fn(),
+    openSession: mocks.openSession,
+    sendMessage: vi.fn(),
+    sessionRouteBecameInteractive: mocks.sessionRouteBecameInteractive,
+} }));
 vi.mock('@/modal', () => ({ Modal: { alert: vi.fn(), show: mocks.modalShow } }));
 vi.mock('@/utils/platform', () => ({ isRunningOnMac: () => mocks.runningOnMac }));
 vi.mock('@/utils/responsive', () => ({
@@ -429,6 +438,7 @@ describe('SessionView Agent-space boundary', () => {
         mocks.globalRightSidebarShortcut = undefined;
         mocks.spaceAgent = null;
         mocks.useSpaceAgentForSession.mockImplementation(() => mocks.spaceAgent);
+        mocks.openSession.mockImplementation(async () => mocks.sessionAvailable ? 'ready' : 'not-found');
         (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
         consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation((...values: unknown[]) => {
             if (values[0] === 'react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer') return;
@@ -459,13 +469,13 @@ describe('SessionView Agent-space boundary', () => {
         act(() => renderer.unmount());
     });
 
-    it('keeps the composer abort pending until the session RPC settles', () => {
+    it('keeps the composer abort pending until the session RPC settles', async () => {
         mocks.isDataReady = true;
         const pendingAbort = new Promise<void>(() => {});
         mocks.sessionAbort.mockReturnValueOnce(pendingAbort);
         let renderer: any;
 
-        act(() => {
+        await act(async () => {
             renderer = TestRenderer.create(<SessionView id="session-1" />);
         });
 
@@ -485,7 +495,7 @@ describe('SessionView Agent-space boundary', () => {
         });
         let renderer: any;
 
-        act(() => {
+        await act(async () => {
             renderer = TestRenderer.create(<SessionView id="session-1" />);
         });
 
@@ -504,12 +514,12 @@ describe('SessionView Agent-space boundary', () => {
         act(() => renderer.unmount());
     });
 
-    it('ignores repeated screenshot requests until the first capture settles', () => {
+    it('ignores repeated screenshot requests until the first capture settles', async () => {
         mocks.isDataReady = true;
         mocks.requestScreenshot.mockReturnValueOnce(new Promise(() => {}));
         let renderer: any;
 
-        act(() => {
+        await act(async () => {
             renderer = TestRenderer.create(<SessionView id="session-1" />);
         });
 
@@ -805,7 +815,7 @@ describe('SessionView Agent-space boundary', () => {
         act(() => renderer.unmount());
     });
 
-    it('animates file overlay history without remounting chat or accepting stale header cleanup', () => {
+    it('animates file overlay history without remounting chat or accepting stale header cleanup', async () => {
         mocks.isDataReady = true;
         mocks.fileDiffsSidebarEnabled = true;
         mocks.windowWidth = 1400;
@@ -813,7 +823,7 @@ describe('SessionView Agent-space boundary', () => {
         mocks.platformOS = 'web';
         let renderer: any;
 
-        act(() => {
+        await act(async () => {
             renderer = TestRenderer.create(<SessionView id="session-1" />);
         });
 
@@ -1180,14 +1190,14 @@ describe('SessionView Agent-space boundary', () => {
         act(() => renderer.unmount());
     });
 
-    it('edits the desktop title inline while keeping status and the More menu', () => {
+    it('edits the desktop title inline while keeping status and the More menu', async () => {
         mocks.isDataReady = true;
         mocks.windowWidth = 1400;
         mocks.isTablet = true;
         mocks.platformOS = 'web';
         let renderer: any;
 
-        act(() => {
+        await act(async () => {
             renderer = TestRenderer.create(<SessionView id="session-1" />);
         });
 
@@ -1261,14 +1271,14 @@ describe('SessionView Agent-space boundary', () => {
         act(() => renderer.unmount());
     });
 
-    it('reveals a desktop canvas Tag remove button on hover and only unassigns it from the session', () => {
+    it('reveals a desktop canvas Tag remove button on hover and only unassigns it from the session', async () => {
         mocks.isDataReady = true;
         mocks.windowWidth = 1400;
         mocks.isTablet = true;
         mocks.platformOS = 'web';
         let renderer: any;
 
-        act(() => {
+        await act(async () => {
             renderer = TestRenderer.create(<SessionView id="session-1" />);
         });
 

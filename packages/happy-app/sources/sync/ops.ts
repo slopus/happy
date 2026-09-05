@@ -5,6 +5,7 @@
 
 import { apiSocket } from './apiSocket';
 import { sync } from './sync';
+import { ensureSessionHydratedWithRetry } from './ensureSessionHydratedWithRetry';
 import type { MachineMetadata, Metadata, Session } from './storageTypes';
 import { markSessionArchiveRequested, markSessionRestored } from '@/utils/sessionLifecycle';
 import { updateEncryptedSessionMetadata } from './sessionMetadata';
@@ -168,10 +169,18 @@ export type SessionRegenerateTitleResponse =
     | { success: false; message: string };
 
 // Response types for spawn session
+export type SpawnSessionHydrationError = {
+    type: 'error';
+    errorCode: 'session-hydration-failed';
+    errorMessage: 'session-hydration-failed';
+    sessionId: string;
+};
+
 export type SpawnSessionResult =
     | { type: 'success'; sessionId: string }
     | { type: 'requestToApproveDirectoryCreation'; directory: string }
-    | { type: 'error'; errorMessage: string };
+    | { type: 'error'; errorMessage: string }
+    | SpawnSessionHydrationError;
 
 function normalizeSpawnSessionResult(result: unknown): SpawnSessionResult {
     if (!result || typeof result !== 'object') {
@@ -201,6 +210,7 @@ function normalizeSpawnSessionResult(result: unknown): SpawnSessionResult {
 export interface SpawnSessionOptions {
     machineId: string;
     directory: string;
+    traceId?: string;
     approvedNewDirectoryCreation?: boolean;
     token?: string;
     agent?: 'ask' | 'codex' | 'claude' | 'gemini' | 'opencode' | 'openclaw';
@@ -281,12 +291,13 @@ export interface ResumeSessionOptions {
  */
 export async function machineSpawnNewSession(options: SpawnSessionOptions): Promise<SpawnSessionResult> {
 
-    const { machineId, directory, approvedNewDirectoryCreation = false, token, agent, environmentVariables, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, forkedFromMessageId } = options;
+    const { machineId, directory, traceId, approvedNewDirectoryCreation = false, token, agent, environmentVariables, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, forkedFromMessageId } = options;
 
     try {
         const result = await apiSocket.machineRPC<SpawnSessionResult, {
             type: 'spawn-in-directory'
             directory: string
+            traceId?: string,
             approvedNewDirectoryCreation?: boolean,
             token?: string,
             agent?: 'ask' | 'codex' | 'claude' | 'gemini' | 'opencode' | 'openclaw',
@@ -298,7 +309,7 @@ export async function machineSpawnNewSession(options: SpawnSessionOptions): Prom
         }>(
             machineId,
             'spawn-happy-session',
-            { type: 'spawn-in-directory', directory, approvedNewDirectoryCreation, token, agent, environmentVariables, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, forkedFromMessageId },
+            { type: 'spawn-in-directory', directory, traceId, approvedNewDirectoryCreation, token, agent, environmentVariables, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, forkedFromMessageId },
             { timeoutMs: SESSION_START_RPC_TIMEOUT_MS },
         );
         return normalizeSpawnSessionResult(result);
@@ -982,16 +993,16 @@ type ForkOptions = {
     targetDirectory?: string;
 };
 
-async function hydrateSpawnedSession(sessionId: string): Promise<void> {
-    try {
-        const hydrated = await sync.refreshSession(sessionId);
-        if (!hydrated) {
-            await sync.refreshSessions();
-        }
-    } catch {
-        // Hydration is best-effort; the new-session broadcast will still
-        // populate local state if either fetch path flakes.
+async function hydrateSpawnedSession(sessionId: string): Promise<SpawnSessionHydrationError | null> {
+    if (await ensureSessionHydratedWithRetry(sessionId)) {
+        return null;
     }
+    return {
+        type: 'error',
+        errorCode: 'session-hydration-failed',
+        errorMessage: 'session-hydration-failed',
+        sessionId,
+    };
 }
 
 /**
@@ -1041,7 +1052,8 @@ export async function forkAndSpawn(
         });
 
         if (spawnResult.type === 'success') {
-            await hydrateSpawnedSession(spawnResult.sessionId);
+            const hydrationError = await hydrateSpawnedSession(spawnResult.sessionId);
+            if (hydrationError) return hydrationError;
         }
 
         return spawnResult;
@@ -1076,11 +1088,11 @@ export async function forkAndSpawn(
     });
 
     // Pull only the newly-created session row into local sync state before we
-    // hand control back to the caller. A full account refresh can decrypt up
-    // to 150 sessions and may be queued twice by the concurrent broadcast,
-    // unnecessarily blocking navigation after the fork already succeeded.
+    // hand control back to the caller. Success means callers may safely apply
+    // local configuration and navigate to the hydrated row.
     if (spawnResult.type === 'success') {
-        await hydrateSpawnedSession(spawnResult.sessionId);
+        const hydrationError = await hydrateSpawnedSession(spawnResult.sessionId);
+        if (hydrationError) return hydrationError;
     }
 
     return spawnResult;

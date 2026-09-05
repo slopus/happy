@@ -13,6 +13,7 @@
     "test": "vitest",
     "test:android-media-permissions": "expo config --type introspect --json | node scripts/check-android-media-permissions.js",
     "test:image-batch-native-config": "expo config --type introspect --json | node scripts/check-android-media-permissions.js",
+    "perf:session-critical-path": "node scripts/check-session-critical-path.mjs",
     "release": "node ./release.cjs",
     "release:build:developer": "eas build --profile development --platform ios --no-wait --non-interactive && eas build --profile development --platform android --no-wait --non-interactive && eas build --profile preview --platform ios --no-wait --non-interactive && eas build --profile preview --platform android --no-wait --non-interactive && eas build --profile development-store --platform ios --auto-submit-with-profile=production --no-wait --non-interactive && eas build --profile preview-store --platform ios --auto-submit-with-profile=production --no-wait --non-interactive",
     "release:build:developer:interactive": "eas build --profile development --platform ios --no-wait && eas build --profile development --platform android --no-wait && eas build --profile preview --platform ios --no-wait && eas build --profile preview --platform android --no-wait && eas build --profile development-store --platform ios --auto-submit-with-profile=production --no-wait && eas build --profile preview-store --platform ios --auto-submit-with-profile=production --no-wait",

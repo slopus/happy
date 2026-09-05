@@ -645,6 +645,7 @@ export const en = {
         askMode: 'Ask',
         agentMode: 'Agent',
         machineOffline: 'Machine is offline',
+        sessionHydrationFailed: 'The session was created, but the page has not finished syncing. Retry to enter.',
         switchMachinesHint: '• Switch machines by clicking on the machine above',
     },
 

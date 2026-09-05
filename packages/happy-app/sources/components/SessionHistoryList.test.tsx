@@ -1,11 +1,13 @@
 import * as React from 'react';
 import { act } from 'react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // @ts-expect-error react-test-renderer does not publish declarations.
 import TestRenderer from 'react-test-renderer';
 import { SessionHistoryList } from './SessionHistoryList';
 
 const mocks = vi.hoisted(() => ({
+    loadNextSessionHistoryPage: vi.fn(),
+    sessionRouteBecameInteractive: vi.fn(),
     navigateToSession: vi.fn(),
     pathname: '/session/older',
     sessions: [
@@ -50,7 +52,7 @@ vi.mock('react-native-unistyles', () => ({
 vi.mock('@/components/StyledText', () => ({ Text: 'Text' }));
 vi.mock('@/components/Avatar', () => ({ Avatar: 'Avatar' }));
 vi.mock('@/constants/Typography', () => ({ Typography: { default: () => ({}) } }));
-vi.mock('@/sync/storage', () => ({ useAllSessions: () => mocks.sessions }));
+vi.mock('@/sync/storage', () => ({ useAllSessions: () => mocks.sessions, useIsDataReady: () => true }));
 vi.mock('@/hooks/useNavigateToSession', () => ({ useNavigateToSession: () => mocks.navigateToSession }));
 vi.mock('@/utils/sessionUtils', () => ({
     getSessionAvatarId: (session: any) => `avatar-${session.id}`,
@@ -64,13 +66,30 @@ vi.mock('@/components/EmptySessionsTablet', () => ({
     EmptySessionsTablet: 'EmptySessionsTablet',
     shouldShowSessionEmptyState: (count: number) => count === 0,
 }));
+vi.mock('@/sync/sync', () => ({
+    sync: { loadNextSessionHistoryPage: mocks.loadNextSessionHistoryPage, sessionRouteBecameInteractive: mocks.sessionRouteBecameInteractive },
+}));
 
 describe('SessionHistoryList', () => {
+    const originalConsoleError = console.error;
+    let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
+
     beforeEach(() => {
         vi.clearAllMocks();
         vi.useFakeTimers();
         vi.setSystemTime(new Date(2026, 8, 4, 12));
         mocks.pathname = '/session/older';
+        (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+        consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation((...values: unknown[]) => {
+            if (values[0] === 'react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer') return;
+            originalConsoleError(...values);
+        });
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+        consoleErrorSpy.mockRestore();
+        delete (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT;
     });
 
     it('groups newest conversations first and opens the selected conversation in the existing session route', () => {
@@ -90,6 +109,39 @@ describe('SessionHistoryList', () => {
         expect(mocks.navigateToSession).toHaveBeenCalledWith('newest');
 
         act(() => renderer.unmount());
-        vi.useRealTimers();
+    });
+
+    it('requests the next history page only when the sidebar reaches its near-end threshold', () => {
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<SessionHistoryList variant="sidebar" />); });
+
+        const list = renderer.root.findByType('FlatList');
+        expect(list.props.onEndReachedThreshold).toBe(0.5);
+        expect(mocks.loadNextSessionHistoryPage).not.toHaveBeenCalled();
+        act(() => list.props.onScrollBeginDrag());
+        act(() => list.props.onEndReached());
+        expect(mocks.loadNextSessionHistoryPage).toHaveBeenCalledTimes(1);
+
+        act(() => renderer.unmount());
+    });
+
+    it.each(['page', 'sidebar'] as const)('starts empty/history-only %s once interactive and pages only after explicit scroll', async variant => {
+        const previous = mocks.sessions;
+        mocks.sessions = [];
+        mocks.pathname = '/new';
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<SessionHistoryList variant={variant} />); });
+        await act(async () => { await vi.runAllTimersAsync(); });
+        expect(mocks.sessionRouteBecameInteractive.mock.calls.length).toBe(1);
+        mocks.sessions = previous;
+        act(() => { renderer.update(<SessionHistoryList variant={variant} key="history-arrived" />); });
+        const list = renderer.root.findByType('FlatList');
+        act(() => list.props.onEndReached?.());
+        expect(mocks.loadNextSessionHistoryPage.mock.calls.length).toBe(0);
+        act(() => { list.props.onScrollBeginDrag?.(); list.props.onEndReached?.(); });
+        expect(mocks.loadNextSessionHistoryPage.mock.calls.length).toBe(1);
+        act(() => list.props.onEndReached?.());
+        expect(mocks.loadNextSessionHistoryPage.mock.calls.length).toBe(1);
+        act(() => renderer.unmount());
     });
 });

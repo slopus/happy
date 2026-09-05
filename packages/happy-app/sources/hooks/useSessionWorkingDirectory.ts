@@ -3,7 +3,6 @@ import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { machineBrowseDirectory, forkAndSpawn, machineSpawnNewSession } from '@/sync/ops';
 import { storage, useAllSessions, useMachine } from '@/sync/storage';
 import type { Session } from '@/sync/storageTypes';
-import { sync } from '@/sync/sync';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { getSessionForkSource } from '@/utils/sessionFork';
 import {
@@ -12,6 +11,7 @@ import {
     resolveWorkingDirectoryAgent,
     resolveWorkingDirectorySwitchStrategy,
 } from '@/utils/sessionWorkingDirectory';
+import { ensureSessionHydratedWithRetry } from '@/sync/ensureSessionHydratedWithRetry';
 
 export type WorkingDirectorySwitchResult =
     | { success: true; changed: boolean; path: string }
@@ -21,7 +21,7 @@ export type WorkingDirectorySwitchResult =
  * Orchestrates a next-turn working-directory switch without mutating the
  * source session: validate the canonical target on its Agent, select the
  * flavor capability, fork provider context or spawn a same-type session,
- * attempt to hydrate it (falling back to a sessions refresh), preserve
+ * attempt to hydrate it with bounded single-session retries, preserve
  * permission/model/effort/draft state, then navigate. Validation, capability,
  * fork, or spawn failures return before navigation; no branch rewrites the
  * historical source session.
@@ -98,15 +98,12 @@ export function useSessionWorkingDirectory(
                 };
             }
 
-            // forkAndSpawn already hydrates context continuations on its normal
-            // path. Retry only when that row is still absent (for example after
-            // a transient targeted-sync failure), because the local overrides
-            // below are intentionally no-ops until the session exists.
-            const spawnedSessionMissing = !storage.getState().sessions[result.sessionId];
-            if (switchStrategy === 'new-session' || spawnedSessionMissing) {
-                const hydrated = await sync.refreshSession(result.sessionId);
+            // forkAndSpawn returns success only after its own bounded hydration.
+            // Fresh-session Agents still need the same single targeted schedule.
+            if (switchStrategy === 'new-session') {
+                const hydrated = await ensureSessionHydratedWithRetry(result.sessionId);
                 if (!hydrated) {
-                    await sync.refreshSessions();
+                    return { success: false, error: 'session-hydration-failed' };
                 }
             }
 

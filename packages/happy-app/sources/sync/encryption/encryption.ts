@@ -98,6 +98,41 @@ export class Encryption {
         }
     }
 
+    async prepareSessionEncryption(sessionId: string, dataKey: Uint8Array | null): Promise<{
+        sessionEncryption: SessionEncryption;
+        commit: () => boolean;
+    }> {
+        const existing = this.sessionEncryptions.get(sessionId);
+        if (existing) {
+            return {
+                sessionEncryption: existing.createDetached(),
+                commit: () => this.sessionEncryptions.get(sessionId) === existing,
+            };
+        }
+
+        const encryptor = await this.openEncryption(dataKey);
+        const sessionEncryption = new SessionEncryption(sessionId, encryptor, new EncryptionCache());
+        const committedSessionEncryption = new SessionEncryption(sessionId, encryptor, this.cache);
+        const blobKey = dataKey
+            ? await deriveKey(dataKey, 'Happy Blobs', ['session'])
+            : this.masterBlobKey;
+        let committed = false;
+
+        return {
+            sessionEncryption,
+            commit: () => {
+                if (committed) {
+                    return this.sessionEncryptions.get(sessionId) === committedSessionEncryption;
+                }
+                committed = true;
+                if (this.sessionEncryptions.has(sessionId)) return false;
+                this.sessionEncryptions.set(sessionId, committedSessionEncryption);
+                this.sessionBlobKeys.set(sessionId, blobKey);
+                return true;
+            },
+        };
+    }
+
     /**
      * Get session encryption if it has been initialized
      * Returns null if not initialized (should never happen in normal flow)

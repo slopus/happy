@@ -15,6 +15,7 @@ import {
 } from '@/sync/ops';
 import { getSessionForkSource } from '@/utils/sessionFork';
 import { resolveInitialForkRewindPointId } from '@/utils/messageForkPoint';
+import { describeSpawnSessionError } from '@/utils/spawnSessionError';
 import { hapticsSuccess } from './haptics';
 
 export interface DuplicateSheetProps {
@@ -165,7 +166,7 @@ export const DuplicateSheet = React.memo(function DuplicateSheet(props: Duplicat
             return;
         }
 
-        const message = result.type === 'error' ? result.errorMessage : t('session.forkErrorGeneric');
+        const message = describeSpawnSessionError(result, t('session.forkErrorGeneric'));
         Modal.alert(t('common.error'), message);
     });
 

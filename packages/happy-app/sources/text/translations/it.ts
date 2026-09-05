@@ -598,6 +598,7 @@ export const it: TranslationStructure = {
         askMode: 'Chiedi',
         agentMode: 'Agente',
         machineOffline: 'La macchina è offline',
+        sessionHydrationFailed: 'La sessione è stata creata, ma la pagina non ha ancora terminato la sincronizzazione. Riprova per entrare.',
         switchMachinesHint: '• Cambia macchina cliccando sulla macchina sopra',
     },
 

@@ -12,7 +12,7 @@ const mocks = vi.hoisted(() => ({
     forkAndSpawn: vi.fn(),
     machineSpawnNewSession: vi.fn(),
     navigateToSession: vi.fn(),
-    refreshSession: vi.fn(),
+    ensureSessionHydrated: vi.fn(),
     refreshSessions: vi.fn(),
     updatePermission: vi.fn(),
     updateModel: vi.fn(),
@@ -33,7 +33,7 @@ vi.mock('@/hooks/useNavigateToSession', () => ({
 }));
 vi.mock('@/sync/sync', () => ({
     sync: {
-        refreshSession: mocks.refreshSession,
+        ensureSessionHydrated: mocks.ensureSessionHydrated,
         refreshSessions: mocks.refreshSessions,
     },
 }));
@@ -133,7 +133,7 @@ describe('useSessionWorkingDirectory continuation safety', () => {
             home: '/Users/test',
             directories: [],
         });
-        mocks.refreshSession.mockResolvedValue(true);
+        mocks.ensureSessionHydrated.mockResolvedValue(true);
         (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
         consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation((...values: unknown[]) => {
             if (values[0] === 'react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer') return;
@@ -154,7 +154,7 @@ describe('useSessionWorkingDirectory continuation safety', () => {
         expect(result).toEqual({ success: false, error: 'continuation-unavailable' });
         expect(mocks.forkAndSpawn).not.toHaveBeenCalled();
         expect(mocks.machineSpawnNewSession).not.toHaveBeenCalled();
-        expect(mocks.refreshSession).not.toHaveBeenCalled();
+        expect(mocks.ensureSessionHydrated).not.toHaveBeenCalled();
         expect(mocks.refreshSessions).not.toHaveBeenCalled();
         expect(mocks.navigateToSession).not.toHaveBeenCalled();
         hook.unmount();
@@ -188,7 +188,7 @@ describe('useSessionWorkingDirectory continuation safety', () => {
             expect.objectContaining({ kind: flavor }),
             { targetDirectory: '/Users/test/next' },
         );
-        expect(mocks.refreshSession).not.toHaveBeenCalled();
+        expect(mocks.ensureSessionHydrated).not.toHaveBeenCalled();
         expect(mocks.refreshSessions).not.toHaveBeenCalled();
         expect(mocks.navigateToSession).toHaveBeenCalledWith('session-continued');
         hook.unmount();
@@ -197,35 +197,40 @@ describe('useSessionWorkingDirectory continuation safety', () => {
     it.each([
         ['codex', 'codexThreadId', 'codex-thread-1'],
         ['claude', 'claudeSessionId', 'claude-session-1'],
-    ] as const)('recovers a missing %s continuation row before preserving local state', async (
+    ] as const)('does not start a second hydration schedule after an exhausted %s continuation', async (
         flavor,
         providerIdKey,
         providerId,
     ) => {
         const session = makeSession(flavor);
         session.metadata![providerIdKey] = providerId;
-        session.permissionMode = 'acceptEdits';
-        session.modelMode = 'model-1';
-        session.effortLevel = 'high';
-        mocks.forkAndSpawn.mockResolvedValue({ type: 'success', sessionId: 'session-recovered' });
-        mocks.refreshSession.mockImplementation(async (sessionId: string) => {
-            mocks.sessionsById[sessionId] = makeSession(flavor);
-            return true;
+        mocks.ensureSessionHydrated.mockResolvedValue(false);
+        mocks.forkAndSpawn.mockImplementation(async () => {
+            for (let attempt = 0; attempt < 4; attempt += 1) {
+                await mocks.ensureSessionHydrated('session-delayed');
+            }
+            return {
+                type: 'error',
+                errorCode: 'session-hydration-failed',
+                errorMessage: 'session-hydration-failed',
+                sessionId: 'session-delayed',
+            };
         });
         const hook = renderHook(session);
+        let result;
 
         await act(async () => {
-            await hook.current().switchDirectory('/Users/test/next');
+            result = await hook.current().switchDirectory('/Users/test/next');
         });
 
-        expect(mocks.refreshSession).toHaveBeenCalledTimes(1);
-        expect(mocks.refreshSession).toHaveBeenCalledWith('session-recovered');
+        expect(result).toEqual({ success: false, error: 'session-hydration-failed' });
+        expect(mocks.ensureSessionHydrated).toHaveBeenCalledTimes(4);
         expect(mocks.refreshSessions).not.toHaveBeenCalled();
-        expect(mocks.updatePermission).toHaveBeenCalledWith('session-recovered', 'acceptEdits');
-        expect(mocks.updateModel).toHaveBeenCalledWith('session-recovered', 'model-1');
-        expect(mocks.updateEffort).toHaveBeenCalledWith('session-recovered', 'high');
-        expect(mocks.updateDraft).toHaveBeenCalledWith('session-recovered', 'preserved draft');
-        expect(mocks.navigateToSession).toHaveBeenCalledWith('session-recovered');
+        expect(mocks.updatePermission).not.toHaveBeenCalled();
+        expect(mocks.updateModel).not.toHaveBeenCalled();
+        expect(mocks.updateEffort).not.toHaveBeenCalled();
+        expect(mocks.updateDraft).not.toHaveBeenCalled();
+        expect(mocks.navigateToSession).not.toHaveBeenCalled();
         hook.unmount();
     });
 
@@ -247,5 +252,30 @@ describe('useSessionWorkingDirectory continuation safety', () => {
         expect(mocks.forkAndSpawn).not.toHaveBeenCalled();
         expect(mocks.navigateToSession).toHaveBeenCalledWith('session-next');
         hook.unmount();
+    });
+
+    it('bounds targeted hydration and never refreshes the account for a fresh-session switch', async () => {
+        vi.useFakeTimers();
+        mocks.machineSpawnNewSession.mockResolvedValue({ type: 'success', sessionId: 'session-delayed' });
+        mocks.ensureSessionHydrated.mockResolvedValue(false);
+        const hook = renderHook(makeSession('gemini'));
+
+        try {
+            let result;
+            await act(async () => {
+                const switchPromise = hook.current().switchDirectory('/Users/test/next');
+                await vi.runAllTimersAsync();
+                result = await switchPromise;
+            });
+
+            expect(result).toEqual({ success: false, error: 'session-hydration-failed' });
+            expect(mocks.ensureSessionHydrated).toHaveBeenCalledTimes(4);
+            expect(mocks.refreshSessions).not.toHaveBeenCalled();
+            expect(mocks.updateDraft).not.toHaveBeenCalled();
+            expect(mocks.navigateToSession).not.toHaveBeenCalled();
+        } finally {
+            hook.unmount();
+            vi.useRealTimers();
+        }
     });
 });

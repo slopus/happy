@@ -599,6 +599,7 @@ export const pt: TranslationStructure = {
         askMode: 'Perguntar',
         agentMode: 'Agente',
         machineOffline: 'A máquina está offline',
+        sessionHydrationFailed: 'A sessão foi criada, mas a página ainda não terminou de sincronizar. Tente novamente para entrar.',
         switchMachinesHint: '• Troque de máquina clicando na máquina acima',
     },
 

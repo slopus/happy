@@ -79,6 +79,8 @@ export const SessionComposerDirectorySelector = React.memo(function SessionCompo
                 return t('components.messageComposer.workingDirectoryUnsupported');
             case 'continuation-unavailable':
                 return t('components.messageComposer.workingDirectoryContinuationUnavailable');
+            case 'session-hydration-failed':
+                return t('newSession.sessionHydrationFailed');
             default:
                 return t('components.messageComposer.workingDirectoryError', { reason });
         }

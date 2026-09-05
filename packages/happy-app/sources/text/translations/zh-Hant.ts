@@ -600,6 +600,7 @@ export const zhHant: TranslationStructure = {
         askMode: '問答',
         agentMode: 'Agent',
         machineOffline: '裝置離線',
+        sessionHydrationFailed: '工作階段已建立，但頁面尚未同步完成。請重試進入。',
         switchMachinesHint: '• 點擊上方的裝置來切換裝置',
     },
 

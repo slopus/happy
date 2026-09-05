@@ -414,12 +414,13 @@ export const storage = create<StorageState>()((set, get) => {
             return Object.values(state.sessions).filter(s => s.active);
         },
         applySessions: (sessions: (Omit<Session, 'presence'> & { presence?: "online" | number })[], options?: SessionApplyOptions) => set((state) => {
-            // Load drafts and permission modes if sessions are empty (initial load)
-            const isInitialLoad = Object.keys(state.sessions).length === 0;
-            const savedDrafts = isInitialLoad ? sessionDrafts : {};
-            const savedPermissionModes = isInitialLoad ? sessionPermissionModes : {};
-            const savedModelModes = isInitialLoad ? sessionModelModes : {};
-            const savedEffortLevels = isInitialLoad ? sessionEffortLevels : {};
+            // Each page can introduce sessions for the first time. Persistence
+            // also contains sessions that have not arrived in this process yet.
+            const savedDrafts = loadSessionDrafts();
+            const savedPermissionModes = loadSessionPermissionModes();
+            const savedModelModes = loadSessionModelModes();
+            const savedEffortLevels = loadSessionEffortLevels();
+            const savedFastModes = loadSessionFastModes();
 
             const incomingSessionIds = new Set(sessions.map((session) => session.id));
             const { sessions: mergedSessions, removedIds } = createSessionApplyBase(
@@ -447,7 +448,8 @@ export const storage = create<StorageState>()((set, get) => {
                 // Preserve explicit local overrides if they exist, or load from
                 // saved data. Missing/null means "no user override"; the UI and
                 // CLI resolve code defaults later.
-                const existingDraft = state.sessions[session.id]?.draft;
+                const existingSession = state.sessions[session.id];
+                const existingDraft = existingSession?.draft;
                 const savedDraft = savedDrafts[session.id];
                 const resolvedPermissionMode = resolveRestoredSessionPermissionMode({
                     existingPermissionMode: state.sessions[session.id]?.permissionMode ?? null,
@@ -465,15 +467,15 @@ export const storage = create<StorageState>()((set, get) => {
                 const resolvedModelMode = existingModelMode ?? savedModelMode ?? session.modelMode ?? null;
                 const existingEffortLevel = state.sessions[session.id]?.effortLevel ?? null;
                 const resolvedEffortLevel = existingEffortLevel ?? savedEffortLevels[session.id] ?? session.effortLevel ?? null;
-                const resolvedFastMode = state.sessions[session.id]?.fastMode ?? sessionFastModes[session.id] ?? null;
+                const resolvedFastMode = existingSession ? existingSession.fastMode ?? null : savedFastModes[session.id] ?? null;
 
                 mergedSessions[session.id] = {
                     ...session,
                     presence,
-                    draft: existingDraft || savedDraft || session.draft || null,
-                    permissionMode: resolvedPermissionMode,
-                    modelMode: resolvedModelMode,
-                    effortLevel: resolvedEffortLevel,
+                    draft: existingSession ? existingDraft ?? null : savedDraft ?? session.draft ?? null,
+                    permissionMode: existingSession ? existingSession.permissionMode ?? null : resolvedPermissionMode,
+                    modelMode: existingSession ? existingSession.modelMode ?? null : resolvedModelMode,
+                    effortLevel: existingSession ? existingSession.effortLevel ?? null : resolvedEffortLevel,
                     fastMode: resolvedFastMode,
                 };
             });
@@ -774,7 +776,10 @@ export const storage = create<StorageState>()((set, get) => {
 
             // Persist plan mode change
             if (shouldEnterPlanMode) {
-                saveSessionPermissionModes(collectPersistedSessionPermissionModes(get().sessions));
+                const sessions = get().sessions;
+                const persistedModes = loadSessionPermissionModes();
+                for (const id of Object.keys(sessions)) delete persistedModes[id];
+                saveSessionPermissionModes({ ...persistedModes, ...collectPersistedSessionPermissionModes(sessions) });
             }
 
             return { changed: Array.from(changed), hasReadyEvent };
@@ -1050,8 +1055,9 @@ export const storage = create<StorageState>()((set, get) => {
             const normalizedDraft = draft?.trim() ? draft : null;
 
             // Collect all drafts for persistence
-            const allDrafts: Record<string, string> = {};
+            const allDrafts = loadSessionDrafts();
             Object.entries(state.sessions).forEach(([id, sess]) => {
+                delete allDrafts[id];
                 if (id === sessionId) {
                     if (normalizedDraft) {
                         allDrafts[id] = normalizedDraft;
@@ -1095,7 +1101,9 @@ export const storage = create<StorageState>()((set, get) => {
             // Persist only durable explicit overrides. `default` is a per-turn
             // reset to CLI settings; keeping it across OTA/restarts would mask
             // the agent default (Codex uses yolo).
-            saveSessionPermissionModes(collectPersistedSessionPermissionModes(updatedSessions));
+            const persistedModes = loadSessionPermissionModes();
+            for (const id of Object.keys(updatedSessions)) delete persistedModes[id];
+            saveSessionPermissionModes({ ...persistedModes, ...collectPersistedSessionPermissionModes(updatedSessions) });
 
             // No need to rebuild sessionListViewData since permission mode doesn't affect the list display
             return {
@@ -1117,8 +1125,9 @@ export const storage = create<StorageState>()((set, get) => {
             };
 
             // Persist only explicit overrides; null/missing means code default.
-            const allModes: Record<string, string> = {};
+            const allModes = loadSessionModelModes();
             Object.entries(updatedSessions).forEach(([id, sess]) => {
+                delete allModes[id];
                 if (sess.modelMode) {
                     allModes[id] = sess.modelMode;
                 }
@@ -1144,8 +1153,9 @@ export const storage = create<StorageState>()((set, get) => {
             };
 
             // Persist effort levels so the selection survives app restart (#1028).
-            const allLevels: Record<string, string> = {};
+            const allLevels = loadSessionEffortLevels();
             Object.entries(updatedSessions).forEach(([id, sess]) => {
+                delete allLevels[id];
                 if (sess.effortLevel) {
                     allLevels[id] = sess.effortLevel;
                 }
@@ -1161,8 +1171,9 @@ export const storage = create<StorageState>()((set, get) => {
             const session = state.sessions[sessionId];
             if (!session) return state;
             const updatedSessions = { ...state.sessions, [sessionId]: { ...session, fastMode: enabled } };
-            const modes: Record<string, boolean> = {};
+            const modes = loadSessionFastModes();
             Object.entries(updatedSessions).forEach(([id, entry]) => {
+                delete modes[id];
                 if (entry.fastMode !== undefined && entry.fastMode !== null) modes[id] = entry.fastMode;
             });
             saveSessionFastModes(modes);
@@ -1183,16 +1194,18 @@ export const storage = create<StorageState>()((set, get) => {
                 }
             };
 
-            const modelModes: Record<string, string> = {};
-            const effortLevels: Record<string, string> = {};
-            Object.entries(updatedSessions).forEach(([id, sess]) => {
-                if (sess.modelMode) modelModes[id] = sess.modelMode;
-                if (sess.effortLevel) effortLevels[id] = sess.effortLevel;
-            });
-            saveSessionPermissionModes(collectPersistedSessionPermissionModes(updatedSessions));
+            const permissionModes = loadSessionPermissionModes();
+            const modelModes = loadSessionModelModes();
+            const effortLevels = loadSessionEffortLevels();
+            const fastModes = loadSessionFastModes();
+            delete permissionModes[sessionId];
+            delete modelModes[sessionId];
+            delete effortLevels[sessionId];
+            delete fastModes[sessionId];
+            saveSessionPermissionModes(permissionModes);
             saveSessionModelModes(modelModes);
             saveSessionEffortLevels(effortLevels);
-            saveSessionFastModes({});
+            saveSessionFastModes(fastModes);
 
             return {
                 ...state,

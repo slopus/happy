@@ -31,7 +31,8 @@ export const realtimeClientTools = {
 
         const { sessionId, message } = parsed.data;
         console.log('📤 Sending message to session:', sessionId);
-        await sync.sendMessage(sessionId, message, { source: 'voice' });
+        try { await sync.sendMessage(sessionId, message, { source: 'voice' }); }
+        catch { return 'error (message was not queued; retry is available)'; }
         incrementVoiceMessageCount();
         const voiceMessageCount = getVoiceMessageCount();
         if (isVoiceSessionStarted()) {

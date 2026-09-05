@@ -25,6 +25,7 @@ import { buildSessionQuickActionItems } from './sessionQuickActionItems';
 import { useSessionManagementPreferences } from './useSessionManagementPreferences';
 import { isSessionArchived } from '@/utils/sessionLifecycle';
 import { buildDirectMessageForkOptions, resolveCodexMessageForkRewindPointId, type MessageForkTarget } from '@/utils/messageForkPoint';
+import { describeSpawnSessionError } from '@/utils/spawnSessionError';
 
 export interface SessionActionItem {
     id: string;
@@ -409,7 +410,7 @@ export function useSessionQuickActions(
         }
         const result = await forkAndSpawn(forkSource as ForkSource);
         if (result.type !== 'success') {
-            throw new HappyError(result.type === 'error' ? result.errorMessage : t('session.forkErrorGeneric'), false);
+            throw new HappyError(describeSpawnSessionError(result, t('session.forkErrorGeneric')), false);
         }
         hapticsSuccess();
         navigateToSession(result.sessionId);
@@ -447,7 +448,7 @@ export function useSessionQuickActions(
         }
         const result = await forkAndSpawn(forkSource as ForkSource, forkOptions);
         if (result.type !== 'success') {
-            throw new HappyError(result.type === 'error' ? result.errorMessage : t('session.forkErrorGeneric'), false);
+            throw new HappyError(describeSpawnSessionError(result, t('session.forkErrorGeneric')), false);
         }
         hapticsSuccess();
         navigateToSession(result.sessionId);

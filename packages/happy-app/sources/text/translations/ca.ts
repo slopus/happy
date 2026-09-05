@@ -600,6 +600,7 @@ export const ca: TranslationStructure = {
         askMode: 'Pregunta',
         agentMode: 'Agent',
         machineOffline: 'La màquina està fora de línia',
+        sessionHydrationFailed: 'La sessió s’ha creat, però la pàgina encara no ha acabat de sincronitzar-se. Torna-ho a provar per entrar.',
         switchMachinesHint: '• Canvia de màquina fent clic a la màquina de dalt',
     },
 

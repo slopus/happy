@@ -9,6 +9,15 @@ import { configuration } from '@/configuration';
 import chalk from 'chalk';
 import { Credentials } from '@/persistence';
 import { connectionState, isNetworkError } from '@/utils/serverConnectionErrors';
+import { WorkerSessionStartupLifecycle } from './sessionStartupTrace';
+
+const SESSION_STARTUP_TRACE_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function takeSessionStartupTraceId(): string | undefined {
+  const traceId = process.env.HAPPY_SESSION_STARTUP_TRACE_ID;
+  delete process.env.HAPPY_SESSION_STARTUP_TRACE_ID;
+  return traceId && SESSION_STARTUP_TRACE_ID_RE.test(traceId) ? traceId : undefined;
+}
 
 export class ApiClient {
 
@@ -18,10 +27,15 @@ export class ApiClient {
 
   private readonly credential: Credentials;
   private readonly pushClient: PushNotificationClient;
+  private readonly startupLifecycle: WorkerSessionStartupLifecycle | undefined;
 
   private constructor(credential: Credentials) {
     this.credential = credential
     this.pushClient = new PushNotificationClient(credential.token, configuration.serverUrl)
+    const startupTraceId = takeSessionStartupTraceId();
+    this.startupLifecycle = startupTraceId
+      ? new WorkerSessionStartupLifecycle(startupTraceId)
+      : undefined;
   }
 
   /**
@@ -77,6 +91,7 @@ export class ApiClient {
 
       logger.debug(`Session created/loaded: ${response.data.session.id} (tag: ${opts.tag})`)
       let raw = response.data.session;
+      this.startupLifecycle?.bindCreatedSession(raw.id, opts.metadata.machineId);
       let session: Session = {
         id: raw.id,
         seq: raw.seq,
@@ -89,7 +104,7 @@ export class ApiClient {
       }
       return session;
     } catch (error) {
-      logger.debug('[API] [ERROR] Failed to get or create session:', error);
+      logger.debug('[API] [ERROR] Failed to get or create session', { errorCode: 'session-create-failed' });
 
       // Check if it's a connection error
       if (error && typeof error === 'object' && 'code' in error) {
@@ -276,7 +291,7 @@ export class ApiClient {
   }
 
   sessionSyncClient(session: Session): ApiSessionClient {
-    return new ApiSessionClient(this.credential.token, session);
+    return new ApiSessionClient(this.credential.token, session, this.startupLifecycle);
   }
 
   machineSyncClient(machine: Machine): ApiMachineClient {

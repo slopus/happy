@@ -4,10 +4,14 @@ import type { Machine } from './types';
 
 const {
     mockIo,
-    mockShouldReconnect
+    mockShouldReconnect,
+    rpcHandlers,
+    mockLoggerDebug,
 } = vi.hoisted(() => ({
     mockIo: vi.fn(),
-    mockShouldReconnect: vi.fn(() => true)
+    mockShouldReconnect: vi.fn(() => true),
+    rpcHandlers: new Map<string, (params: any) => any>(),
+    mockLoggerDebug: vi.fn(),
 }));
 
 vi.mock('socket.io-client', () => ({
@@ -24,7 +28,7 @@ vi.mock('@/configuration', () => ({
 
 vi.mock('@/ui/logger', () => ({
     logger: {
-        debug: vi.fn(),
+        debug: mockLoggerDebug,
         debugLargeJson: vi.fn()
     }
 }));
@@ -38,7 +42,10 @@ vi.mock('@/api/rpc/RpcHandlerManager', () => ({
         onSocketConnect = vi.fn();
         onSocketDisconnect = vi.fn();
         handleRequest = vi.fn(async () => '');
-        registerHandler = vi.fn();
+        hasHandler = vi.fn(() => false);
+        registerHandler = vi.fn((method: string, handler: (params: any) => any) => {
+            rpcHandlers.set(method, handler);
+        });
         unregisterHandler = vi.fn();
     }
 }));
@@ -91,6 +98,7 @@ function makeMachine(): Machine {
 
 describe('ApiMachineClient socket reconnection', () => {
     let socketHandlers: SocketHandlers;
+    let managerHandlers: SocketHandlers;
     let mockSocket: any;
 
     const emitSocketEvent = (event: string, ...args: any[]) => {
@@ -100,8 +108,10 @@ describe('ApiMachineClient socket reconnection', () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
+        rpcHandlers.clear();
         mockShouldReconnect.mockReturnValue(true);
         socketHandlers = {};
+        managerHandlers = {};
         mockSocket = {
             connected: false,
             connect: vi.fn(),
@@ -115,7 +125,10 @@ describe('ApiMachineClient socket reconnection', () => {
             emitWithAck: vi.fn(),
             close: vi.fn(),
             io: {
-                on: vi.fn()
+                on: vi.fn((event: string, handler: SocketHandler) => {
+                    if (!managerHandlers[event]) managerHandlers[event] = [];
+                    managerHandlers[event].push(handler);
+                })
             }
         };
 
@@ -146,6 +159,62 @@ describe('ApiMachineClient socket reconnection', () => {
         await vi.advanceTimersByTimeAsync(3000);
         expect(mockSocket.connect).toHaveBeenCalledTimes(2);
 
+        client.shutdown();
+    });
+
+    it('propagates a startup trace into the daemon spawn without logging sensitive params', async () => {
+        const spawnSession = vi.fn().mockResolvedValue({ type: 'success', sessionId: 'session-1' });
+        const client = new ApiMachineClient('fake-token', makeMachine());
+        client.setRPCHandlers({
+            spawnSession,
+            stopSession: vi.fn(),
+            requestShutdown: vi.fn(),
+        });
+
+        const handler = rpcHandlers.get('spawn-happy-session');
+        expect(handler).toBeDefined();
+        await handler?.({
+            directory: '/private/project',
+            agent: 'codex',
+            traceId: '00000000-0000-4000-8000-000000000001',
+            token: 'token-canary',
+            prompt: 'prompt-canary',
+        });
+
+        expect(spawnSession).toHaveBeenCalledWith(expect.objectContaining({
+            directory: '/private/project',
+            agent: 'codex',
+            traceId: '00000000-0000-4000-8000-000000000001',
+            machineId: 'test-machine-id',
+        }));
+        expect(JSON.stringify(mockLoggerDebug.mock.calls)).not.toContain('canary');
+    });
+
+    it('does not log an absolute directory when approval is required', async () => {
+        const spawnSession = vi.fn().mockResolvedValue({
+            type: 'requestToApproveDirectoryCreation',
+            directory: '/private/approval-directory-canary',
+        });
+        const client = new ApiMachineClient('fake-token', makeMachine());
+        client.setRPCHandlers({ spawnSession, stopSession: vi.fn(), requestShutdown: vi.fn() });
+
+        await rpcHandlers.get('spawn-happy-session')?.({
+            directory: '/private/approval-directory-canary',
+            agent: 'codex',
+        });
+
+        expect(JSON.stringify(mockLoggerDebug.mock.calls)).not.toContain('approval-directory-canary');
+    });
+
+    it('does not include raw socket error values in logs', () => {
+        vi.useFakeTimers();
+        const client = new ApiMachineClient('fake-token', makeMachine());
+        client.connect();
+
+        emitSocketEvent('connect_error', new Error('connect-secret-canary'));
+        managerHandlers.error?.forEach((handler) => handler(new Error('socket-secret-canary')));
+
+        expect(JSON.stringify(mockLoggerDebug.mock.calls)).not.toContain('secret-canary');
         client.shutdown();
     });
 });

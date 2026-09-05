@@ -601,6 +601,7 @@ export const ja: TranslationStructure = {
         askMode: 'Ask',
         agentMode: 'Agent',
         machineOffline: 'マシンがオフラインです',
+        sessionHydrationFailed: 'セッションは作成されましたが、ページの同期が完了していません。再試行して入ってください。',
         switchMachinesHint: '• 上のマシンをクリックしてマシンを切り替えてください',
     },
 

@@ -72,19 +72,12 @@ export function spawnHappyCLI(args: string[], options: SpawnOptions = {}): Child
   const projectRoot = projectPath();
   const entrypoint = join(projectRoot, 'dist', 'index.mjs');
 
-  let directory: string | URL | undefined;
-  if ('cwd' in options) {
-    directory = options.cwd
-  } else {
-    directory = process.cwd()
-  }
-  // Note: We're actually executing 'node' with the calculated entrypoint path below,
-  // bypassing the 'happy' wrapper that would normally be found in the shell's PATH.
-  // However, we log it as 'happy' here because other engineers are typically looking
-  // for when "happy" was started and don't care about the underlying node process
-  // details and flags we use to achieve the same result.
-  const fullCommand = `happy ${args.join(' ')}`;
-  logger.debug(`[SPAWN HAPPY CLI] Spawning: ${fullCommand} in ${directory}`);
+  // Arguments, paths and raw spawn errors may contain private session data.
+  // Diagnostics are best effort and must not prevent starting the worker.
+  const log = (code: string) => {
+    try { logger.debug(`[SPAWN HAPPY CLI] ${code}`); } catch { /* best effort */ }
+  };
+  log('WORKER_SPAWN_STARTED');
   
   // Use the same Node.js flags that the wrapper script uses
   const nodeArgs = [
@@ -96,17 +89,21 @@ export function spawnHappyCLI(args: string[], options: SpawnOptions = {}): Child
 
   // Sanity check of the entrypoint path exists
   if (!existsSync(entrypoint)) {
-    const errorMessage = `Entrypoint ${entrypoint} does not exist`;
-    logger.debug(`[SPAWN HAPPY CLI] ${errorMessage}`);
-    throw new Error(errorMessage);
+    log('WORKER_ENTRYPOINT_MISSING');
+    throw new Error('WORKER_ENTRYPOINT_MISSING');
   }
   
   const runtime = isBun() ? 'bun' : process.execPath;
   // Use the current Node executable instead of resolving "node" through PATH.
   // Daemons often run with a broader login PATH than the shell that started Happy,
   // and resolving a different Node can make spawned sessions behave differently.
-  return crossSpawn(runtime, nodeArgs, {
-    windowsHide: true,
-    ...options,
-  });
+  try {
+    return crossSpawn(runtime, nodeArgs, {
+      windowsHide: true,
+      ...options,
+    });
+  } catch {
+    log('WORKER_SPAWN_FAILED');
+    throw new Error('WORKER_SPAWN_FAILED');
+  }
 }

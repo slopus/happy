@@ -61,6 +61,14 @@ interface RawEncryption {
     decryptRaw(encrypted: string): Promise<unknown>;
 }
 
+const STARTUP_TRACE_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function startupTraceIdFromParams(params: unknown): string | undefined {
+    if (!params || typeof params !== 'object' || Array.isArray(params)) return undefined;
+    const traceId = (params as { traceId?: unknown }).traceId;
+    return typeof traceId === 'string' && STARTUP_TRACE_ID_RE.test(traceId) ? traceId : undefined;
+}
+
 //
 // Main Class
 //
@@ -75,6 +83,7 @@ export class ApiSocket {
     private reconnectedListeners: Set<() => void> = new Set();
     private statusListeners: Set<(status: 'disconnected' | 'connecting' | 'connected' | 'error') => void> = new Set();
     private currentStatus: 'disconnected' | 'connecting' | 'connected' | 'error' = 'disconnected';
+    private hasConnectedOnce = false;
 
     //
     // Initialization
@@ -120,6 +129,7 @@ export class ApiSocket {
             this.socket.disconnect();
             this.socket = null;
         }
+        this.hasConnectedOnce = false;
         this.updateStatus('disconnected');
     }
 
@@ -303,6 +313,7 @@ export class ApiSocket {
         };
 
         const encryption = getEncryption();
+        const traceId = startupTraceIdFromParams(params);
         const encryptedParams = await withinOverallDeadline(encryption.encryptRaw(params));
 
         if (this.socket !== rpcSocket || !rpcSocket.connected) {
@@ -320,6 +331,7 @@ export class ApiSocket {
             rpcSocket.timeout(remainingOverallMs).emitWithAck('rpc-call', {
                 method,
                 params: encryptedParams,
+                ...(traceId ? { traceId } : {}),
             }),
         );
 
@@ -362,12 +374,14 @@ export class ApiSocket {
 
         // Connection events
         this.socket.on('connect', () => {
+            const isReconnect = this.hasConnectedOnce;
+            this.hasConnectedOnce = true;
             if (this.isVerboseLogging()) {
                 console.log('🔌 SyncSocket: Connected, recovered: ' + this.socket?.recovered);
                 console.log('🔌 SyncSocket: Socket ID:', this.socket?.id);
             }
             this.updateStatus('connected');
-            if (!this.socket?.recovered) {
+            if (isReconnect && !this.socket?.recovered) {
                 this.reconnectedListeners.forEach(listener => listener());
             }
         });

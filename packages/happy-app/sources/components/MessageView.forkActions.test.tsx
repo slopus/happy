@@ -24,6 +24,7 @@ vi.mock('./ConversationActivityStrip', () => ({ ConversationActivityStrip: 'Conv
 vi.mock('./DesktopShortcutTooltip', () => ({ DesktopShortcutTooltip: 'DesktopShortcutTooltip' }));
 vi.mock('./layout', () => ({ layout: { maxWidth: 900 } }));
 vi.mock('@/sync/sync', () => ({ sync: { sendMessage: vi.fn() } }));
+vi.mock('@/modal', () => ({ Modal: { alert: vi.fn() } }));
 vi.mock('@/utils/autoFoldPrompt', () => ({
     getAutoFoldPromptBodyRenderState: () => ({ collapsed: false }),
     getAutoFoldPromptInfo: () => null,

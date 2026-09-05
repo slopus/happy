@@ -601,6 +601,7 @@ export const zhHans: TranslationStructure = {
         askMode: '问答',
         agentMode: 'Agent',
         machineOffline: '设备离线',
+        sessionHydrationFailed: '会话已创建，但页面尚未同步完成。请重试进入。',
         switchMachinesHint: '• 点击上方的设备来切换设备',
     },
 

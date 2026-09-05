@@ -34,6 +34,43 @@ const RPC_PRESENCE_FETCH_TIMEOUT_MS = 500;
 // starts a wait that extends beyond its 15-second budget.
 const RPC_RECONNECT_GRACE_MS = 15_000;
 const RPC_RECONNECT_POLL_MS = 200;
+const STARTUP_TRACE_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+type ServerStartupTraceStage = 'server.rpc.received' | 'server.rpc.daemon_found';
+
+function startupTraceId(value: unknown): string | undefined {
+    return typeof value === 'string' && STARTUP_TRACE_ID_RE.test(value) ? value : undefined;
+}
+
+function machineIdFromMethod(method: string): string | undefined {
+    const lastColon = method.lastIndexOf(':');
+    return lastColon > 0 ? method.slice(0, lastColon) : undefined;
+}
+
+function logServerStartupStage(event: {
+    traceId: string;
+    stage: ServerStartupTraceStage;
+    timestamp: number;
+    duration?: number;
+    outcome: 'success' | 'error';
+    machineId?: string;
+    errorCode?: string;
+}): void {
+    const sanitized = {
+        traceId: event.traceId,
+        stage: event.stage,
+        timestamp: event.timestamp,
+        ...(event.duration !== undefined ? { duration: event.duration } : {}),
+        outcome: event.outcome,
+        ...(event.machineId ? { machineId: event.machineId } : {}),
+        ...(event.errorCode ? { errorCode: event.errorCode } : {}),
+    };
+    try {
+        log(sanitized, 'session startup stage');
+    } catch {
+        // Startup telemetry must never interfere with RPC routing.
+    }
+}
 
 const rpcCallCounter = new Counter({
     name: 'rpc_calls_total',
@@ -103,7 +140,7 @@ async function fetchRoomSockets(io: Server, room: string, timeoutMs: number, con
             .fetchSockets();
     } catch (error) {
         rpcFetchSocketsTimeouts.inc({ context });
-        log({ module: 'websocket' }, `fetchSockets failed for ${room} (timeout=${timeoutMs}ms): ${error}`);
+        log({ module: 'websocket', context, errorCode: 'fetch-sockets-failed' }, 'fetchSockets failed');
         return [];
     }
 }
@@ -176,6 +213,8 @@ export function rpcHandler(userId: string, socket: Socket, io: Server) {
     socket.on('rpc-call', async (data: any, callback: (response: any) => void) => {
         const startTime = Date.now();
         const { method, params } = data ?? {};
+        const traceId = startupTraceId(data?.traceId);
+        const machineId = typeof method === 'string' ? machineIdFromMethod(method) : undefined;
 
         const finish = (result: string) => {
             const durationSec = (Date.now() - startTime) / 1000;
@@ -191,6 +230,16 @@ export function rpcHandler(userId: string, socket: Socket, io: Server) {
                 return;
             }
 
+            if (traceId && baseMethodName(method) === 'spawn-happy-session') {
+                logServerStartupStage({
+                    traceId,
+                    stage: 'server.rpc.received',
+                    timestamp: startTime,
+                    outcome: 'success',
+                    machineId,
+                });
+            }
+
             // 1. Find the daemon socket(s) cross-replica via the adapter.
             // If the room is empty OR fetchSockets fails (peer replica
             // unresponsive — fetchRoomSockets logs and returns []) fall
@@ -202,6 +251,18 @@ export function rpcHandler(userId: string, socket: Socket, io: Server) {
             }
 
             if (targets.length === 0) {
+                if (traceId && baseMethodName(method) === 'spawn-happy-session') {
+                    const timestamp = Date.now();
+                    logServerStartupStage({
+                        traceId,
+                        stage: 'server.rpc.daemon_found',
+                        timestamp,
+                        duration: timestamp - startTime,
+                        outcome: 'error',
+                        machineId,
+                        errorCode: 'daemon-not-available',
+                    });
+                }
                 finish('not_available');
                 callback?.({ ok: false, error: 'RPC method not available' });
                 return;
@@ -212,6 +273,17 @@ export function rpcHandler(userId: string, socket: Socket, io: Server) {
             }
 
             const target = targets[0];
+            if (traceId && baseMethodName(method) === 'spawn-happy-session') {
+                const timestamp = Date.now();
+                logServerStartupStage({
+                    traceId,
+                    stage: 'server.rpc.daemon_found',
+                    timestamp,
+                    duration: timestamp - startTime,
+                    outcome: 'success',
+                    machineId,
+                });
+            }
             if (target.id === socket.id) {
                 finish('self_call');
                 callback?.({ ok: false, error: 'Cannot call RPC on the same socket' });
@@ -233,7 +305,7 @@ export function rpcHandler(userId: string, socket: Socket, io: Server) {
             // Requires 2 consecutive empty polls before declaring disconnect
             // to avoid false positives from transient Redis/adapter timeouts.
             const ackPromise = target.timeout(rpcCallTimeoutMs(method))
-                .emitWithAck('rpc-request', { method, params });
+                .emitWithAck('rpc-request', { method, params, ...(traceId ? { traceId } : {}) });
 
             let presenceAlive = true;
             const presencePoll = (async () => {
@@ -266,7 +338,7 @@ export function rpcHandler(userId: string, socket: Socket, io: Server) {
             }
         } catch (error) {
             finish('internal_error');
-            log({ module: 'websocket', level: 'error' }, `Error in rpc-call: ${error}`);
+            log({ module: 'websocket', level: 'error', errorCode: 'rpc-call-internal-error' }, 'Error in rpc-call');
             callback?.({ ok: false, error: 'Internal error' });
         }
     });

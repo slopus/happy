@@ -8,7 +8,8 @@ import { EmptySessionsTablet, shouldShowSessionEmptyState } from '@/components/E
 import { Text } from '@/components/StyledText';
 import { Typography } from '@/constants/Typography';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
-import { useAllSessions } from '@/sync/storage';
+import { useAllSessions, useIsDataReady } from '@/sync/storage';
+import { sync } from '@/sync/sync';
 import type { Session } from '@/sync/storageTypes';
 import { t } from '@/text';
 import { getSessionAvatarId, getSessionName, getSessionSubtitle } from '@/utils/sessionUtils';
@@ -109,10 +110,22 @@ export const SessionHistoryList = React.memo(function SessionHistoryList({
     const styles = stylesheet;
     const safeArea = useSafeAreaInsets();
     const allSessions = useAllSessions();
+    const isDataReady = useIsDataReady();
     const navigateToSession = useNavigateToSession();
     const pathname = usePathname();
     const sidebar = variant === 'sidebar';
+    const scrollRequested = React.useRef(false);
+    React.useEffect(() => {
+        if (!isDataReady || (sidebar && pathname !== '/new' && pathname !== '/')) return;
+        const timer = setTimeout(() => { void sync.sessionRouteBecameInteractive(); }, 0);
+        return () => clearTimeout(timer);
+    }, [isDataReady, pathname, sidebar]);
     const groupedItems = React.useMemo(() => groupSessionsByDate(allSessions ?? []), [allSessions]);
+    const loadNextHistoryPage = React.useCallback(() => {
+        if (!scrollRequested.current) return;
+        scrollRequested.current = false;
+        void sync.loadNextSessionHistoryPage();
+    }, []);
 
     const renderItem = React.useCallback(({ item, index }: { item: SessionHistoryItem; index: number }) => {
         if (item.type === 'date-header') {
@@ -173,6 +186,9 @@ export const SessionHistoryList = React.memo(function SessionHistoryList({
                 ]}
                 data={groupedItems}
                 keyExtractor={(item) => item.key}
+                onScrollBeginDrag={() => { scrollRequested.current = true; }}
+                onEndReached={loadNextHistoryPage}
+                onEndReachedThreshold={0.5}
                 renderItem={renderItem}
             />
         );

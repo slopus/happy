@@ -617,6 +617,7 @@ export const pl: TranslationStructure = {
         askMode: 'Pytaj',
         agentMode: 'Agent',
         machineOffline: 'Maszyna jest offline',
+        sessionHydrationFailed: 'Sesja została utworzona, ale strona nie zakończyła synchronizacji. Spróbuj ponownie, aby wejść.',
         switchMachinesHint: '• Przełącz maszynę, klikając na nią powyżej',
     },
 

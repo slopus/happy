@@ -1,4 +1,8 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const { log } = vi.hoisted(() => ({ log: vi.fn() }));
+
+vi.mock('@/utils/log', () => ({ log }));
 
 import { rpcHandler } from '@/app/api/socket/rpcHandler';
 
@@ -109,6 +113,79 @@ async function callRpc(
 }
 
 describe('rpcHandler', () => {
+    beforeEach(() => {
+        log.mockReset();
+    });
+
+    it('forwards a startup trace and records only receipt and daemon-found stages', async () => {
+        const target = new FakeTargetSocket();
+        const caller = new FakeCallerSocket();
+        const io = createIo(target);
+        rpcHandler('user-1', caller as any, io as any);
+        const acknowledge = vi.fn();
+
+        await caller.receive('rpc-call', {
+            method: 'machine-1:spawn-happy-session',
+            params: 'encrypted-params',
+            traceId: '00000000-0000-4000-8000-000000000001',
+            token: 'token-canary',
+            prompt: 'prompt-canary',
+        }, acknowledge);
+
+        const emitWithAck = target.timeout.mock.results[0]?.value.emitWithAck;
+        expect(emitWithAck).toHaveBeenCalledWith('rpc-request', {
+            method: 'machine-1:spawn-happy-session',
+            params: 'encrypted-params',
+            traceId: '00000000-0000-4000-8000-000000000001',
+        });
+        const stageEvents = log.mock.calls
+            .map(([event]) => event)
+            .filter((event) => event?.traceId === '00000000-0000-4000-8000-000000000001');
+        expect(stageEvents).toEqual([
+            expect.objectContaining({
+                traceId: '00000000-0000-4000-8000-000000000001',
+                stage: 'server.rpc.received',
+                machineId: 'machine-1',
+                outcome: 'success',
+            }),
+            expect.objectContaining({
+                traceId: '00000000-0000-4000-8000-000000000001',
+                stage: 'server.rpc.daemon_found',
+                machineId: 'machine-1',
+                outcome: 'success',
+            }),
+        ]);
+        expect(JSON.stringify(stageEvents)).not.toContain('canary');
+    });
+
+    it('keeps legacy calls trace-free', async () => {
+        const target = new FakeTargetSocket();
+
+        await callRpc('machine-1:spawn-happy-session', target);
+
+        expect(log.mock.calls.some(([event]) => event?.stage?.startsWith('server.rpc.'))).toBe(false);
+    });
+
+    it('forwards a startup RPC even when startup telemetry logging throws', async () => {
+        log.mockImplementation((event) => {
+            if (event?.stage?.startsWith('server.rpc.')) throw new Error('logger-canary');
+        });
+        const target = new FakeTargetSocket();
+        const caller = new FakeCallerSocket();
+        const io = createIo(target);
+        rpcHandler('user-1', caller as any, io as any);
+        const acknowledge = vi.fn();
+
+        await caller.receive('rpc-call', {
+            method: 'machine-1:spawn-happy-session',
+            params: 'encrypted-params',
+            traceId: '00000000-0000-4000-8000-000000000001',
+        }, acknowledge);
+
+        expect(target.timeout).toHaveBeenCalledTimes(1);
+        expect(acknowledge).toHaveBeenCalledWith({ ok: true, result: 'encrypted-response' });
+    });
+
     it('keeps ordinary RPC calls on the 30-second target acknowledgement timeout', async () => {
         const target = new FakeTargetSocket();
 

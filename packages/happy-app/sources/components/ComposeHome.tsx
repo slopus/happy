@@ -24,9 +24,10 @@ import {
 import { isTauri } from '@/utils/isTauri';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
-import { storage, useProfile, useAllMachines, useLocalSetting, useLocalSettingMutable, useSetting, useSettingMutable } from '@/sync/storage';
+import { storage, useProfile, useAllMachines, useIsDataReady, useLocalSetting, useLocalSettingMutable, useSetting, useSettingMutable } from '@/sync/storage';
 import { useNewSessionDraft } from '@/hooks/useNewSessionDraft';
 import { useSpawnSession } from '@/hooks/useSpawnSession';
+import { useComposeDraft } from '@/sync/composeDraft';
 import { useImagePicker } from '@/hooks/useImagePicker';
 import { getDisplayName, getAvatarUrl } from '@/sync/profile';
 import { Avatar } from './Avatar';
@@ -118,6 +119,12 @@ type ComposeHomeProps = {
     variant?: 'home' | 'screen';
 };
 
+type SubmittedComposeSnapshot = {
+    text: string;
+    textRevision: number;
+    userAttachmentIds: string[];
+};
+
 const CompactRightPanelToggleButton = React.memo(function CompactRightPanelToggleButton({
     panelLabel,
 }: {
@@ -152,6 +159,12 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
     const useDesktopComposerConfig = Platform.OS === 'web' && isTablet;
     const profile = useProfile();
     const machines = useAllMachines();
+    const isDataReady = useIsDataReady();
+    React.useEffect(() => {
+        if (!isDataReady) return;
+        const timer = setTimeout(() => { void sync.sessionRouteBecameInteractive(); }, 0);
+        return () => clearTimeout(timer);
+    }, [isDataReady]);
     const askApi = useLocalSetting('askApi');
     const zenMode = useLocalSetting('zenMode');
     const [desktopRightPanelCollapsed, setDesktopRightPanelCollapsed] = useLocalSettingMutable('desktopRightPanelCollapsed');
@@ -163,8 +176,9 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
         rightWidth: desktopRightPanelWidth,
     } = useDesktopWorkspaceLayout();
     const agentDefaultOverrides = useSetting('agentDefaultOverrides');
-    const { sending, spawn } = useSpawnSession();
-    const [text, setText] = React.useState('');
+    const { sending, hydrationError, retryHydration, spawn } = useSpawnSession();
+    const { text, setText, images: draftImages, setImages: setDraftImages } = useComposeDraft();
+    const pendingSubmissionRef = React.useRef<SubmittedComposeSnapshot | null>(null);
     const [imageGalleryOpen, setImageGalleryOpen] = React.useState(false);
     const [selectedImageStyleIds, setSelectedImageStyleIds] = React.useState<string[]>([]);
     const [selectedImageVariantCount, setSelectedImageVariantCount] = React.useState(1);
@@ -282,7 +296,11 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
         [activeImageAgent, agentType, imagePluginInstalled],
     );
     const canAttach = composeExperience.canAttach;
-    const { selectedImages, pickImages, pickAttachment, removeImage, clearImages, addImages } = useImagePicker();
+    const { selectedImages, pickImages, pickAttachment, removeImage, clearImages, addImages } = useImagePicker({
+        selection: { images: draftImages, setImages: setDraftImages },
+    });
+    const selectedImagesRef = React.useRef(selectedImages);
+    selectedImagesRef.current = selectedImages;
     const hasImages = canAttach && selectedImages.length > 0;
     const pendingStyleImageRestoreState = React.useRef<'idle' | 'restoring' | 'done'>('idle');
 
@@ -663,13 +681,30 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
         }));
     }, [activeImageAgent, agentType, askApi, availableCodingAgents, setAgentType]);
 
+    const handleTextChange = React.useCallback((nextText: string) => {
+        setText(nextText);
+    }, []);
+
+    const clearQueuedSubmission = React.useCallback((snapshot: SubmittedComposeSnapshot) => {
+        if (useComposeDraft.getState().revision === snapshot.textRevision) {
+            composerInputRef.current?.setTextAndSelection('', { start: 0, end: 0 });
+            setText('');
+        }
+        const currentAttachmentIds = new Set(selectedImagesRef.current.map((image) => image.id));
+        for (const attachmentId of snapshot.userAttachmentIds) {
+            if (currentAttachmentIds.has(attachmentId)) {
+                removeImage(attachmentId);
+            }
+        }
+    }, [removeImage]);
+
     const handleSend = React.useCallback(() => {
         const trimmed = text.trim();
         const userImages = hasImages ? selectedImages : [];
         const images = activeImageAgent
             ? [...selectedCustomReferenceImages, ...userImages]
             : userImages.length > 0 ? userImages : undefined;
-        if ((!trimmed && !images) || sending) return;
+        if ((!trimmed && !images) || sending || hydrationError) return;
         if (activeImageAgent && (!effectiveImageAgent || activeImageStyles.length === 0)) return;
         const prompt = activeImageAgent && effectiveImageAgent
             ? buildImageAgentPrompt({
@@ -703,8 +738,14 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
             && draft.worktreeKey !== '__new__';
         if (!canSpawn) return;
 
-        // Clear the input only once a session was actually created, so the prompt
-        // and attachments aren't lost if spawning fails or directory creation is declined.
+        // Clear only after the encrypted first message reaches the local outbox.
+        // A hydration failure keeps the draft available for the retry action.
+        const submittedSnapshot: SubmittedComposeSnapshot = {
+            text,
+            textRevision: useComposeDraft.getState().revision,
+            userAttachmentIds: userImages.map((image) => image.id),
+        };
+        pendingSubmissionRef.current = submittedSnapshot;
         spawn({
             machineId: draft.selectedMachineId!,
             machine: machine!,
@@ -719,17 +760,17 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
             images,
             environmentVariables: spawnAgent === 'ask' ? buildAskApiEnvironment(askApi) : undefined,
             sidebarListId,
-        }).then((ok) => {
-            if (ok) {
-                composerInputRef.current?.setTextAndSelection('', { start: 0, end: 0 });
-                setText('');
-                if (activeImageAgent) {
-                    setPendingCustomImageStyleReferences([]);
-                }
-                clearImages();
+        }, false, () => {
+            clearQueuedSubmission(submittedSnapshot);
+            if (pendingSubmissionRef.current === submittedSnapshot) {
+                pendingSubmissionRef.current = null;
             }
         });
-    }, [activeImageAgent, effectiveImageAgent, activeImageStyles.length, agentDefaultOverrides, text, sending, machines, spawn, hasImages, selectedImages, setPendingCustomImageStyleReferences, clearImages, askApi, customImageStyles, selectedCustomReferenceImages, sidebarListId]);
+    }, [activeImageAgent, effectiveImageAgent, activeImageStyles.length, agentDefaultOverrides, text, sending, hydrationError, machines, spawn, hasImages, selectedImages, askApi, customImageStyles, selectedCustomReferenceImages, sidebarListId, clearQueuedSubmission]);
+
+    const handleRetryHydration = React.useCallback(async () => {
+        await retryHydration();
+    }, [retryHydration]);
 
     // The send target must be reachable: an online machine and no fresh-worktree
     // request. When it isn't, MessageComposer's send button greys out (via
@@ -1055,6 +1096,28 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
                             ))}
                         </View>
                     )}
+                    {hydrationError && (
+                        <View
+                            style={styles.sessionHydrationError}
+                            testID="compose-home-session-hydration-error"
+                        >
+                            <Text style={styles.sessionHydrationErrorText}>
+                                {t('newSession.sessionHydrationFailed')}
+                            </Text>
+                            <Pressable
+                                accessibilityRole="button"
+                                onPress={handleRetryHydration}
+                                disabled={sending}
+                                style={({ pressed }) => [
+                                    styles.sessionHydrationRetry,
+                                    pressed && styles.sessionHydrationRetryPressed,
+                                ]}
+                                testID="compose-home-session-hydration-retry"
+                            >
+                                <Text style={styles.sessionHydrationRetryText}>{t('common.retry')}</Text>
+                            </Pressable>
+                        </View>
+                    )}
                     <MessageComposer
                         ref={composerInputRef}
                         mode="home"
@@ -1064,10 +1127,10 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
                                 ? t('composeHome.askPlaceholder')
                                 : t('composeHome.placeholder')}
                         initialValue={text}
-                        onChangeText={setText}
+                        onChangeText={handleTextChange}
                         onSend={handleSend}
                         isSending={sending}
-                        isSendDisabled={!canSubmit}
+                        isSendDisabled={!canSubmit || Boolean(hydrationError)}
                         selectedImages={hasImages ? selectedImages : undefined}
                         selectedImagesPresentation={activeImageAgent ? 'featured' : 'compact'}
                         // Image agent needs images only; the normal composer
@@ -1325,6 +1388,43 @@ const styles = StyleSheet.create((theme) => ({
     composer: {
         paddingHorizontal: 14,
         paddingTop: 8,
+    },
+    sessionHydrationError: {
+        width: '100%',
+        maxWidth: layout.maxWidth,
+        alignSelf: 'center',
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+        marginBottom: 10,
+        paddingVertical: 9,
+        paddingHorizontal: 12,
+        borderRadius: 12,
+        backgroundColor: theme.colors.surface,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: theme.colors.status.error,
+    },
+    sessionHydrationErrorText: {
+        ...Typography.default(),
+        flex: 1,
+        fontSize: 13,
+        lineHeight: 18,
+        color: theme.colors.textDestructive,
+    },
+    sessionHydrationRetry: {
+        minHeight: 32,
+        justifyContent: 'center',
+        paddingHorizontal: 12,
+        borderRadius: 999,
+        backgroundColor: theme.colors.surfacePressed,
+    },
+    sessionHydrationRetryPressed: {
+        opacity: 0.72,
+    },
+    sessionHydrationRetryText: {
+        ...Typography.default('semiBold'),
+        fontSize: 12,
+        color: theme.colors.text,
     },
     imageAgentPanel: {
         width: '100%',

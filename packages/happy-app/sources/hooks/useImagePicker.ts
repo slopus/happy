@@ -32,6 +32,10 @@ export { MAX_PDF_FILE_SIZE };
 interface UseImagePickerOptions {
     maxAttachments?: number;
     maxImageSizeBytes?: number;
+    selection?: {
+        images: AttachmentPreview[];
+        setImages: (update: AttachmentPreview[] | ((current: AttachmentPreview[]) => AttachmentPreview[])) => void;
+    };
 }
 
 export type { AttachmentPreview };
@@ -79,7 +83,9 @@ export function useImagePicker(options: UseImagePickerOptions = {}): UseImagePic
     const maxAttachments = Math.max(1, Math.min(MAX_IMAGES_PER_MESSAGE, options.maxAttachments ?? MAX_IMAGES_PER_MESSAGE));
     const maxImageSizeBytes = Math.max(1, Math.min(MAX_FILE_SIZE, options.maxImageSizeBytes ?? MAX_FILE_SIZE));
     const maxImageSizeMb = Math.max(1, Math.floor(maxImageSizeBytes / 1024 / 1024));
-    const [selectedImages, setSelectedImages] = useState<AttachmentPreview[]>([]);
+    const [localImages, setLocalImages] = useState<AttachmentPreview[]>([]);
+    const selectedImages = options.selection?.images ?? localImages;
+    const setSelectedImages = options.selection?.setImages ?? setLocalImages;
     const mountedRef = useRef(true);
     useEffect(() => {
         mountedRef.current = true;

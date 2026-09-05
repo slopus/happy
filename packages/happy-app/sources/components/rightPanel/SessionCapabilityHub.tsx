@@ -146,8 +146,9 @@ const SessionCapabilityHubLoaded = React.memo(function SessionCapabilityHubLoade
 
     const runQuickPrompt = React.useCallback((item: QuickPromptCapabilityItem) => {
         hapticsLight();
-        sync.sendMessage(sessionId, item.prompt, { source: 'chat' });
-        panel?.closePanel();
+        void sync.sendMessage(sessionId, item.prompt, { source: 'chat' })
+            .then(() => panel?.closePanel())
+            .catch(() => Modal.alert(t('common.error'), t('common.retry')));
     }, [panel, sessionId]);
 
     const insertQuickPrompt = React.useCallback((item: QuickPromptCapabilityItem) => {

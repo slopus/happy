@@ -20,6 +20,10 @@ export class SessionEncryption {
         this.cache = cache;
     }
 
+    createDetached(): SessionEncryption {
+        return new SessionEncryption(this.sessionId, this.encryptor, new EncryptionCache());
+    }
+
     /**
      * Batch-first API for decrypting messages
      */

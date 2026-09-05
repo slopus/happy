@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { MarkdownView } from "./markdown/MarkdownView";
 import { t } from '@/text';
+import { Modal } from '@/modal';
 import { Message, UserTextMessage, AgentTextMessage, ToolCallMessage, ModeSwitchMessage } from "@/sync/typesMessage";
 import { Metadata } from "@/sync/storageTypes";
 import { ToolView } from "./tools/ToolView";
@@ -159,7 +160,8 @@ function UserTextBlock(props: {
   const [isCopied, setIsCopied] = React.useState(false);
   const copyFeedbackTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleOptionPress = React.useCallback((option: Option) => {
-    if (props.sessionId) sync.sendMessage(props.sessionId, option.title, { source: 'option' });
+    if (props.sessionId) void sync.sendMessage(props.sessionId, option.title, { source: 'option' })
+      .catch(() => Modal.alert(t('common.error'), t('common.retry')));
   }, [props.sessionId]);
 
   const rewindPointId = getUserMessageForkRewindPointId(
@@ -411,7 +413,8 @@ function AgentTextBlock(props: {
   const [isCopied, setIsCopied] = React.useState(false);
   const copyFeedbackTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleOptionPress = React.useCallback((option: Option) => {
-    if (props.sessionId) sync.sendMessage(props.sessionId, option.title, { source: 'option' });
+    if (props.sessionId) void sync.sendMessage(props.sessionId, option.title, { source: 'option' })
+      .catch(() => Modal.alert(t('common.error'), t('common.retry')));
   }, [props.sessionId]);
   const copyMessage = React.useCallback(async () => {
     try {

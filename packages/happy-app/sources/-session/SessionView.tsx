@@ -433,7 +433,7 @@ function SessionHeaderMoreAction({
 
 export const SessionView = React.memo((props: { id: string }) => (
     <SubagentInspectorProvider sessionId={props.id}>
-        <SessionViewContent {...props} />
+        <SessionViewContent key={props.id} {...props} />
     </SubagentInspectorProvider>
 ));
 
@@ -443,6 +443,10 @@ const SessionViewContent = React.memo((props: { id: string }) => {
     const navigation = useNavigation();
     const session = useSession(sessionId);
     const isDataReady = useIsDataReady();
+    const [retryGeneration, setRetryGeneration] = React.useState(0);
+    const [sessionResolution, setSessionResolution] = React.useState<'loading' | 'retrying' | 'error' | 'ready' | 'not-found'>(
+        session ? 'ready' : 'loading',
+    );
     const { theme } = useUnistyles();
     const safeArea = useSafeAreaInsets();
     const isLandscape = useIsLandscape();
@@ -469,6 +473,41 @@ const SessionViewContent = React.memo((props: { id: string }) => {
     const sessionComposerHandleRef = React.useRef<ChatComposerHandle | null>(null);
     const subagentInspector = useSubagentInspector();
     const subagentSelection = subagentInspector?.selection ?? null;
+
+    React.useEffect(() => {
+        let cancelled = false;
+        let opening: ReturnType<typeof sync.openSession> | undefined;
+        let retryTimer: ReturnType<typeof setTimeout> | undefined;
+        const delays = [100, 250, 500];
+        setSessionResolution('loading');
+        const attempt = (index: number) => {
+            opening = sync.openSession(sessionId);
+            void opening.then((resolution) => {
+                if (cancelled) return;
+                setSessionResolution(resolution);
+                if (resolution === 'ready') void sync.sessionRouteBecameInteractive();
+            }).catch(() => {
+                if (cancelled) return;
+                if (opening) sync.abandonSessionRoute(sessionId, opening);
+                if (index === delays.length) {
+                    setSessionResolution('error');
+                    return;
+                }
+                setSessionResolution('retrying');
+                retryTimer = setTimeout(() => attempt(index + 1), delays[index]);
+            });
+        };
+        attempt(0);
+        return () => {
+            cancelled = true;
+            if (retryTimer) clearTimeout(retryTimer);
+            if (opening) sync.abandonSessionRoute(sessionId, opening);
+        };
+        // `session` intentionally is not a dependency: hydration inserts the
+        // target into the store before its concurrently-started message page
+        // completes, and restarting here would abandon that valid first load.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [sessionId, retryGeneration]);
 
     // The capability hub is a first-class desktop panel. File browsing is an
     // optional mode inside that same panel instead of a separate fourth column.
@@ -662,7 +701,7 @@ const SessionViewContent = React.memo((props: { id: string }) => {
 
     // Compute header props based on session state
     const headerProps = useMemo(() => {
-        if (!isDataReady) {
+        if (!session && sessionResolution !== 'not-found') {
             return { title: '', folderName: undefined, isConnected: false };
         }
         if (!session) {
@@ -677,7 +716,7 @@ const SessionViewContent = React.memo((props: { id: string }) => {
             folderName,
             isConnected,
         };
-    }, [session, isDataReady]);
+    }, [session, sessionResolution]);
 
     // Header chip (replaces the breadcrumb title): shows the running session's
     // agent + machine + connection state. The dropdown keeps runtime identity
@@ -956,12 +995,21 @@ const SessionViewContent = React.memo((props: { id: string }) => {
 
             {/* Content based on state */}
             <View style={{ flex: 1, paddingTop: !(isLandscape && deviceType === 'phone' && Platform.OS !== 'web') ? safeArea.top + headerHeight : 0 }}>
-                {!isDataReady ? (
-                    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                {sessionResolution === 'error' ? (
+                    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', gap: 12 }} testID="session-load-error">
+                        <Text style={{ color: theme.colors.textSecondary }}>{t('common.error')}</Text>
+                        <Pressable testID="session-retry" onPress={() => setRetryGeneration(value => value + 1)}
+                            style={({ pressed }) => ({ padding: 12, borderRadius: 8, backgroundColor: pressed ? theme.colors.surfacePressed : theme.colors.surface })}>
+                            <Text style={{ color: theme.colors.text }}>{t('common.retry')}</Text>
+                        </Pressable>
+                    </View>
+                ) : sessionResolution === 'loading' || sessionResolution === 'retrying' || (!session && sessionResolution !== 'not-found') ? (
+                    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }} testID="session-loading">
                         <ActivityIndicator size="small" color={theme.colors.textSecondary} />
+                        {sessionResolution === 'retrying' && <Text testID="session-retrying" style={{ color: theme.colors.textSecondary }}>{t('common.retry')}</Text>}
                     </View>
                 ) : !session ? (
-                    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }} testID="session-not-found">
                         <Ionicons name="trash-outline" size={48} color={theme.colors.textSecondary} />
                         <Text style={{ color: theme.colors.text, fontSize: 20, marginTop: 16, fontWeight: '600' }}>{t('errors.sessionDeleted')}</Text>
                         <Text style={{ color: theme.colors.textSecondary, fontSize: 15, marginTop: 8, textAlign: 'center', paddingHorizontal: 32 }}>{t('errors.sessionDeletedDescription')}</Text>
@@ -1413,15 +1461,26 @@ function SessionViewLoaded({
 
     // handleSend reads the live message via the composer ref, so it doesn't
     // need to re-create on every keystroke.
+    const sendInFlight = React.useRef(false);
     const handleSend = React.useCallback(() => {
-        const liveMessage = composerHandleRef.current?.getMessage() ?? '';
+        if (sendInFlight.current) return;
+        const composer = composerHandleRef.current;
+        const liveMessage = composer?.getMessage() ?? '';
         if (liveMessage.trim() || selectedImages.length > 0) {
             const attachments = selectedImages.length > 0 ? selectedImages : undefined;
-            composerHandleRef.current?.clearMessage();
-            if (attachments) clearImages();
-            sync.sendMessage(sessionId, liveMessage, { source: 'chat', attachments });
+            sendInFlight.current = true;
+            void (async () => {
+                try {
+                    await sync.sendMessage(sessionId, liveMessage, { source: 'chat', attachments });
+                    if (composerHandleRef.current !== composer) return;
+                    if (composer?.getMessage() === liveMessage) composer.clearMessage();
+                    for (const attachment of attachments ?? []) removeImage(attachment.id);
+                } catch {
+                    Modal.alert(t('common.error'), t('common.retry'));
+                } finally { sendInFlight.current = false; }
+            })();
         }
-    }, [composerHandleRef, sessionId, selectedImages, clearImages]);
+    }, [composerHandleRef, sessionId, selectedImages, removeImage]);
 
     // Manual screenshot: one click asks the CLI for a full-desktop capture and
     // opens it immediately. No target picker or persistent screenshot gallery.
@@ -1502,7 +1561,7 @@ function SessionViewLoaded({
     React.useLayoutEffect(() => {
 
         // Trigger session sync
-        sync.onSessionVisible(sessionId);
+        sync.onSessionVisible(sessionId, { loadMessages: false });
 
         // Mark session as currently being viewed (clears unread)
         storage.getState().setCurrentViewingSession(sessionId);
