@@ -27,13 +27,7 @@ export function perfSince(name: string, label: string): void {
     console.log(`[perf] ${label} +${Math.round(now() - started)}ms since ${name}`);
 }
 
-/**
- * Logs how long each of a component's first commits blocked the JS thread:
- * from this render's start (the hook call) to its layout effect, which fires
- * after the whole subtree has rendered and committed. Only the first
- * `maxCommits` commits log, so a streaming session doesn't spam forever.
- */
-export function useCommitPerf(tag: string, detail?: string, maxCommits: number = 12, resetKey?: unknown): void {
+function useCommitPerfImpl(tag: string, detail?: string, maxCommits: number = 12, resetKey?: unknown): void {
     const renderStart = now();
     const commitCountRef = React.useRef(0);
     const resetKeyRef = React.useRef(resetKey);
@@ -48,3 +42,20 @@ export function useCommitPerf(tag: string, detail?: string, maxCommits: number =
         console.log(`[perf] ${tag} commit #${commitCountRef.current} ${ms.toFixed(1)}ms${detail ? ` ${detail}` : ''}`);
     });
 }
+
+function useCommitPerfNoop(_tag: string, _detail?: string, _maxCommits?: number, _resetKey?: unknown): void {
+    // Intentionally empty.
+}
+
+/**
+ * Logs how long each of a component's first commits blocked the JS thread:
+ * from this render's start (the hook call) to its layout effect, which fires
+ * after the whole subtree has rendered and committed. Only the first
+ * `maxCommits` commits log, so a streaming session doesn't spam forever.
+ *
+ * Dev builds only — the perf-e2e harness runs against the dev client, and a
+ * release build should not pay for the ref bookkeeping or the effect at all.
+ * `__DEV__` is fixed for the lifetime of a bundle, so which implementation is
+ * chosen never changes at runtime and the hook order stays consistent.
+ */
+export const useCommitPerf = __DEV__ ? useCommitPerfImpl : useCommitPerfNoop;
