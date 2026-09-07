@@ -1060,9 +1060,10 @@ export class AcpBackend implements AgentBackend {
     this.waitingForResponse = true;
 
     try {
-      logger.debug(`[AcpBackend] Sending prompt (length: ${prompt.length}): ${prompt.substring(0, 100)}...`);
-      logger.debug(`[AcpBackend] Full prompt: ${prompt}`);
-      
+      // Log only the prompt length, never the contents, to avoid leaking
+      // user/system prompts (secrets, PII, internal instructions) into log files.
+      logger.debug(`[AcpBackend] Sending prompt (length: ${prompt.length})`);
+
       const contentBlock: ContentBlock = {
         type: 'text',
         text: prompt,
@@ -1073,7 +1074,9 @@ export class AcpBackend implements AgentBackend {
         prompt: [contentBlock],
       };
 
-      logger.debug(`[AcpBackend] Prompt request:`, JSON.stringify(promptRequest, null, 2));
+      logger.debug(
+        `[AcpBackend] Prompt request sessionId=${promptRequest.sessionId} blocks=${promptRequest.prompt.length}`,
+      );
       await this.connection.prompt(promptRequest);
       logger.debug('[AcpBackend] Prompt request sent to ACP connection');
       
