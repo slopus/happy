@@ -2223,8 +2223,17 @@ class Sync {
 
     private fetchOlderMessagesInBackground = async (sessionId: string) => {
         const SLEEP_BETWEEN_PAGES_MS = 250;
+        // Bound the background prefetch to a small page budget: enough to keep a
+        // scroll buffer ready, leaving the rest of the history to on-demand
+        // loadOlderMessages (already wired to FlatList.onEndReached). Without a
+        // bound, opening a long session walks every older page into memory, and
+        // because applyMessages rebuilds and re-sorts the whole message map on
+        // every page, the cost of a full prefetch is quadratic in history length
+        // — the web client freezes and stays sluggish on re-entry (#1453).
+        const MAX_PAGES = 5;
         // While loadOlderMessages handles the actual work, this loop is what
         // keeps it going without user input. We keep stepping until either:
+        //   - the page budget is exhausted (rest loads lazily on scroll), or
         //   - the server says there is no more older history, or
         //   - the session is no longer present in the store (user navigated
         //     away and the session was unloaded), or
@@ -2232,7 +2241,7 @@ class Sync {
         //   - the encryption key is gone (logged out).
         // The loop yields between pages to keep the UI thread responsive
         // and to spread out server load.
-        while (true) {
+        for (let page = 0; page < MAX_PAGES; page++) {
             const sessionMessages = storage.getState().sessionMessages[sessionId];
             if (!sessionMessages || !sessionMessages.hasMoreOlder) {
                 return;
