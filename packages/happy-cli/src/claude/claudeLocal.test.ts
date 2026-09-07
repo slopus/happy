@@ -157,6 +157,25 @@ describe('claudeLocal --continue handling', () => {
         expect(spawnArgs).not.toContain('--resume');
     });
 
+    it('should inject Happy base system prompt once in local mode', async () => {
+        await claudeLocal({
+            abort: new AbortController().signal,
+            sessionId: null,
+            path: '/tmp',
+            onSessionFound,
+            claudeArgs: [],
+            hookSettingsPath: '/tmp/happy-test-settings.json'
+        });
+
+        const spawnArgs = mockSpawn.mock.calls[0][1];
+        const appendPromptIndexes = spawnArgs
+            .map((arg: string, index: number) => arg === '--append-system-prompt' ? index : -1)
+            .filter((index: number) => index >= 0);
+
+        expect(appendPromptIndexes).toHaveLength(1);
+        expect(spawnArgs[appendPromptIndexes[0] + 1]).toBe('test-system-prompt');
+    });
+
     it('should handle --resume with specific session ID without conflict', async () => {
         mockClaudeFindLastSession.mockReturnValue(null);
 

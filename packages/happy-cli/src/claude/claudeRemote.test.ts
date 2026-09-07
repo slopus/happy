@@ -8,13 +8,96 @@ vi.mock('@/claude/sdk', () => ({
     AbortError: class AbortError extends Error {},
 }));
 
+vi.mock('./utils/systemPrompt', () => ({
+    systemPrompt: 'happy-base-system-prompt',
+}));
+
 const mode: EnhancedMode = {
     permissionMode: 'default',
 };
 
+const asyncResult = () => ({
+    setPermissionMode: vi.fn(),
+    async *[Symbol.asyncIterator]() {
+        yield {
+            type: 'result',
+            subtype: 'success',
+        };
+    },
+}) as any;
+
 describe('claudeRemote', () => {
     beforeEach(() => {
         vi.mocked(query).mockReset();
+    });
+
+    it('combines message append prompt with Happy base prompt for remote SDK sessions', async () => {
+        vi.mocked(query).mockReturnValue(asyncResult());
+        let messageCount = 0;
+
+        await claudeRemote({
+            sessionId: null,
+            path: process.cwd(),
+            allowedTools: [],
+            hookSettingsPath: '/tmp/happy-test-settings.json',
+            nextMessage: async () => {
+                messageCount += 1;
+                return messageCount === 1
+                    ? {
+                        message: 'hello',
+                        mode: {
+                            ...mode,
+                            appendSystemPrompt: '# Options\n\nPick one.',
+                        },
+                    }
+                    : null;
+            },
+            onReady: vi.fn(),
+            canCallTool: async () => ({ behavior: 'allow' }) as any,
+            isAborted: () => false,
+            onSessionFound: vi.fn(),
+            onThinkingChange: vi.fn(),
+            onMessage: vi.fn(),
+        });
+
+        expect(query).toHaveBeenCalledWith(expect.objectContaining({
+            options: expect.objectContaining({
+                appendSystemPrompt: '# Options\n\nPick one.\n\nhappy-base-system-prompt',
+            }),
+        }));
+    });
+
+    it('uses Happy base prompt for remote SDK sessions without a message append prompt', async () => {
+        vi.mocked(query).mockReturnValue(asyncResult());
+        let messageCount = 0;
+
+        await claudeRemote({
+            sessionId: null,
+            path: process.cwd(),
+            allowedTools: [],
+            hookSettingsPath: '/tmp/happy-test-settings.json',
+            nextMessage: async () => {
+                messageCount += 1;
+                return messageCount === 1
+                    ? {
+                        message: 'hello',
+                        mode,
+                    }
+                    : null;
+            },
+            onReady: vi.fn(),
+            canCallTool: async () => ({ behavior: 'allow' }) as any,
+            isAborted: () => false,
+            onSessionFound: vi.fn(),
+            onThinkingChange: vi.fn(),
+            onMessage: vi.fn(),
+        });
+
+        expect(query).toHaveBeenCalledWith(expect.objectContaining({
+            options: expect.objectContaining({
+                appendSystemPrompt: 'happy-base-system-prompt',
+            }),
+        }));
     });
 
     it('marks /clear as a completed reset turn', async () => {
@@ -51,6 +134,7 @@ describe('claudeRemote', () => {
         expect(onCompletionEvent).toHaveBeenCalledWith('Context was reset');
         expect(onSessionReset).toHaveBeenCalledOnce();
         expect(onReady).toHaveBeenCalledOnce();
+        expect(query).not.toHaveBeenCalled();
         expect(callbackOrder).toEqual(['event:Context was reset', 'reset', 'ready']);
     });
 
@@ -86,7 +170,10 @@ describe('claudeRemote', () => {
                 return messageCount === 1
                     ? {
                         message: '/compact',
-                        mode,
+                        mode: {
+                            ...mode,
+                            appendSystemPrompt: '# Options\n\nCompact choices.',
+                        },
                     }
                     : null;
             },
@@ -103,6 +190,11 @@ describe('claudeRemote', () => {
         expect(onMessage).toHaveBeenCalledWith(expect.objectContaining({
             type: 'assistant',
             isCompactSummary: true,
+        }));
+        expect(query).toHaveBeenCalledWith(expect.objectContaining({
+            options: expect.objectContaining({
+                appendSystemPrompt: '# Options\n\nCompact choices.\n\nhappy-base-system-prompt',
+            }),
         }));
     });
 });
