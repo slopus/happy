@@ -248,6 +248,48 @@ describe('claudeLocal --continue handling', () => {
         expect(spawnArgs).toContain('-r');
     });
 
+    it('should not leak --continue when sessionId is already set (retry scenario)', async () => {
+        mockClaudeFindLastSession.mockReturnValue(null);
+
+        // Simulate retry: sessionId is already set from a previous hook notification
+        await claudeLocal({
+            abort: new AbortController().signal,
+            sessionId: 'existing-session-from-hook',
+            path: '/tmp',
+            onSessionFound,
+            claudeArgs: ['--continue']
+        });
+
+        const spawnArgs = mockSpawn.mock.calls[0][1];
+
+        // --continue must be stripped to prevent conflict with --resume
+        expect(spawnArgs).not.toContain('--continue');
+
+        // Should resume the existing session
+        expect(spawnArgs).toContain('--resume');
+        expect(spawnArgs).toContain('existing-session-from-hook');
+
+        // Should NOT have --session-id (which would conflict with --resume)
+        expect(spawnArgs).not.toContain('--session-id');
+    });
+
+    it('should not leak -c when sessionId is already set (retry scenario)', async () => {
+        mockClaudeFindLastSession.mockReturnValue(null);
+
+        await claudeLocal({
+            abort: new AbortController().signal,
+            sessionId: 'existing-session-from-hook',
+            path: '/tmp',
+            onSessionFound,
+            claudeArgs: ['-c']
+        });
+
+        const spawnArgs = mockSpawn.mock.calls[0][1];
+        expect(spawnArgs).not.toContain('-c');
+        expect(spawnArgs).toContain('--resume');
+        expect(spawnArgs).toContain('existing-session-from-hook');
+    });
+
     it('should initialize sandbox, wrap command, and cleanup on exit', async () => {
         await claudeLocal({
             abort: new AbortController().signal,
