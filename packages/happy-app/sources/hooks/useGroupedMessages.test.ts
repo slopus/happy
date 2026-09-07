@@ -41,6 +41,34 @@ function toolMessage(id: string, createdAt: number, options: { pendingPermission
 }
 
 describe('useGroupedMessages', () => {
+    it.each([true, false])('preserves each completed answer across automatic turns (collapse current: %s)', collapseCurrentTurn => {
+        const text = (id: string, createdAt: number, turn: string): Message => ({
+            kind: 'agent-text', id, localId: null, createdAt, text: id,
+            meta: { sessionTurnId: turn },
+        });
+        const tool = (id: string, createdAt: number, turn: string): Message => ({
+            ...toolMessage(id, createdAt), meta: { sessionTurnId: turn },
+        });
+        const messages: Message[] = [
+            text('continuation-reply', 7, 'turn-b'),
+            tool('continuation-tool', 6, 'turn-b'),
+            text('installation-complete', 5, 'turn-a'),
+            tool('installation-tool', 4, 'turn-a'),
+            text('installation-progress', 3, 'turn-a'),
+            { kind: 'user-text', id: 'user', localId: null, createdAt: 1, text: 'Install' },
+        ];
+        const items = groupMessagesForDisplay(messages, true, { collapseCurrentTurn });
+        const visibleIds = items.filter(item => item.type === 'message').map(item => item.id);
+        expect(visibleIds).toContain('installation-complete');
+        expect(visibleIds).toContain('continuation-reply');
+        const installationWork = items.find(item => item.type === 'agent-work-group' && item.messages.some(m => m.id === 'installation-tool'));
+        expect(installationWork).toBeDefined();
+        if (installationWork?.type === 'agent-work-group') {
+            expect(installationWork.messages.map(m => m.id)).toEqual(['installation-progress', 'installation-tool']);
+        }
+        if (!collapseCurrentTurn) expect(visibleIds).toContain('continuation-tool');
+    });
+
     it('returns chronological items with earlier agent work collapsed into one group', () => {
         // Input is newest-first, as sync stores it.
         const messages: Message[] = [

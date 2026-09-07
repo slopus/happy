@@ -563,6 +563,10 @@ function normalizeSessionEnvelope(
         return null;
     }
 
+    // Retain provider turn boundaries through normalization and the reducer.
+    // A goal can start another turn without a new user message.
+    if (envelope.turn) meta = { ...meta, sessionTurnId: envelope.turn };
+
     const messageId = envelope.id;
     const messageCreatedAt = envelope.time;
     const parentUUID = envelope.subagent ?? null;
