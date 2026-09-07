@@ -693,6 +693,21 @@ const ChatListInternal = React.memo((props: {
             if (e.shiftKey && Math.abs(e.deltaX) > 0 && Math.abs(e.deltaY) < 1) {
                 node.scrollTop += e.deltaX;
                 e.preventDefault();
+                return;
+            }
+            // `inverted` flips the content with CSS scaleY(-1) but leaves the
+            // scroll node untransformed, so the browser's native wheel drives
+            // scrollTop the wrong way on web (wheel down scrolls up). Take over
+            // vertical-dominant wheels and drive scrollTop by the negated
+            // deltaY — the exact inverse of the native default that is wrong
+            // here. Shopify/flash-list#558/#1351/#1511; unfixed, `inverted` is
+            // deprecated in v2. Horizontal-dominant gestures (code blocks,
+            // tables) are left to the browser.
+            // ponytail: if FlashList ever compensates the wheel itself this
+            // double-inverts — delete this branch then.
+            if (Math.abs(e.deltaY) >= Math.abs(e.deltaX)) {
+                node.scrollTop -= e.deltaY;
+                e.preventDefault();
             }
         };
         node.addEventListener('wheel', handler, { passive: false });
