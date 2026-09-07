@@ -4,6 +4,8 @@ import { Session } from "./session";
 import { Future } from "@/utils/future";
 import { createSessionScanner } from "./utils/sessionScanner";
 import { launchFailureMessage } from "./utils/launchFailureMessage";
+import { startClaudeStatusWatcher } from "./utils/claudeStatusWatcher";
+import { startLocalQuestionBridge } from "./utils/localQuestionBridge";
 
 export type LauncherResult = { type: 'switch' } | { type: 'exit', code: number };
 
@@ -36,6 +38,19 @@ export async function claudeLocalLauncher(session: Session): Promise<LauncherRes
     };
     session.addSessionFoundCallback(scannerSessionCallback);
 
+    // Surfaces a question the terminal is blocked on, and takes the answer back
+    // from the phone — see localQuestionBridge.ts for why the answer becomes a
+    // handoff to remote mode rather than a tool result.
+    const questionBridge = startLocalQuestionBridge(session);
+
+    // Where local-mode thinking state comes from: the session status file
+    // Claude Code maintains itself. The in-process fetch patch does not work
+    // against the 2.x native binary — see claudeStatusWatcher.ts.
+    const stopStatusWatcher = startClaudeStatusWatcher({
+        getSessionId: () => session.sessionId,
+        onThinkingChange: session.onThinkingChange,
+        onWaitingForInputChange: questionBridge.onWaitingForInputChange,
+    });
 
     // Handle abort
     let exitReason: LauncherResult | null = null;
@@ -173,6 +188,14 @@ export async function claudeLocalLauncher(session: Session): Promise<LauncherRes
         
         // Remove session found callback
         session.removeSessionFoundCallback(scannerSessionCallback);
+
+        // Stop status tracking. This resets thinking to false internally, so
+        // shutdown cannot leave the session stuck at "working". It also emits a
+        // final waitingForInput=false, which withdraws any published question
+        // through the bridge — so stop it before disposing the bridge, or one
+        // last poll could republish what we just withdrew.
+        stopStatusWatcher();
+        questionBridge.dispose();
 
         // Cleanup
         await scanner.cleanup();
