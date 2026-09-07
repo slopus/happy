@@ -1,3 +1,4 @@
+import { nextCodexThinkingState } from './codexThinkingState';
 import { render } from "ink";
 import React from "react";
 import { ApiClient } from '@/api/api';
@@ -722,19 +723,13 @@ export async function runCodex(opts: {
             }
         }
 
-        if (msg.type === 'task_started') {
-            if (!thinking) {
-                logger.debug('thinking started');
-                thinking = true;
-                session.keepAlive(thinking, 'remote');
-            }
+        const nextThinking = nextCodexThinkingState(thinking, msg.type, isSubagentScopedEvent);
+        if (nextThinking !== thinking) {
+            thinking = nextThinking;
+            logger.debug(thinking ? 'thinking started' : 'thinking completed');
+            session.keepAlive(thinking, 'remote');
         }
         if (msg.type === 'task_complete' || msg.type === 'turn_aborted') {
-            if (thinking) {
-                logger.debug('thinking completed');
-                thinking = false;
-                session.keepAlive(thinking, 'remote');
-            }
             // Reset diff processor on task end or abort
             diffProcessor.reset();
         }
