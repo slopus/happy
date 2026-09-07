@@ -7,6 +7,7 @@ import { log } from "@/utils/log";
 import { randomKeyNaked } from "@/utils/randomKeyNaked";
 import { allocateUserSeq } from "@/storage/seq";
 import { buildNewMachineUpdate, buildUpdateMachineUpdate, buildDeleteMachineUpdate } from "@/app/events/eventRouter";
+import * as privacyKit from "privacy-kit";
 
 export function machinesRoutes(app: Fastify) {
     app.post('/v1/machines', {
@@ -41,7 +42,7 @@ export function machinesRoutes(app: Fastify) {
                     metadataVersion: machine.metadataVersion,
                     daemonState: machine.daemonState,
                     daemonStateVersion: machine.daemonStateVersion,
-                    dataEncryptionKey: machine.dataEncryptionKey ? Buffer.from(machine.dataEncryptionKey).toString('base64') : null,
+                    dataEncryptionKey: machine.dataEncryptionKey ? privacyKit.encodeBase64(machine.dataEncryptionKey) : null,
                     active: machine.active,
                     activeAt: machine.lastActiveAt.getTime(),  // Return as activeAt for API consistency
                     createdAt: machine.createdAt.getTime(),
@@ -52,43 +53,49 @@ export function machinesRoutes(app: Fastify) {
             // Create new machine
             log({ module: 'machines', machineId: id, userId }, 'Creating new machine');
 
-            const newMachine = await db.machine.create({
-                data: {
-                    id,
-                    accountId: userId,
-                    metadata,
-                    metadataVersion: 1,
-                    daemonState: daemonState || null,
-                    daemonStateVersion: daemonState ? 1 : 0,
-                    dataEncryptionKey: dataEncryptionKey ? new Uint8Array(Buffer.from(dataEncryptionKey, 'base64')) : undefined,
-                    // Default to offline - in case the user does not start daemon
-                    active: false,
-                    // lastActiveAt and activeAt defaults to now() in schema
-                }
-            });
+            const newMachine = await inTx(async (tx) => {
+                const created = await tx.machine.create({
+                    data: {
+                        id,
+                        accountId: userId,
+                        metadata,
+                        metadataVersion: 1,
+                        daemonState: daemonState || null,
+                        daemonStateVersion: daemonState ? 1 : 0,
+                        dataEncryptionKey: dataEncryptionKey ? privacyKit.decodeBase64(dataEncryptionKey) : undefined,
+                        // Default to offline - in case the user does not start daemon
+                        active: false,
+                        // lastActiveAt and activeAt defaults to now() in schema
+                    }
+                });
 
-            // Emit both new-machine and update-machine events for backward compatibility
-            const updSeq1 = await allocateUserSeq(userId);
-            const updSeq2 = await allocateUserSeq(userId);
-            
-            // Emit new-machine event with all data including dataEncryptionKey
-            const newMachinePayload = buildNewMachineUpdate(newMachine, updSeq1, randomKeyNaked(12));
-            eventRouter.emitUpdate({
-                userId,
-                payload: newMachinePayload,
-                recipientFilter: { type: 'user-scoped-only' }
-            });
+                afterTx(tx, async () => {
+                    // Emit both new-machine and update-machine events for backward compatibility
+                    const updSeq1 = await allocateUserSeq(userId);
+                    const updSeq2 = await allocateUserSeq(userId);
 
-            // Emit update-machine event for backward compatibility (without dataEncryptionKey)
-            const machineMetadata = {
-                version: 1,
-                value: metadata
-            };
-            const updatePayload = buildUpdateMachineUpdate(newMachine.id, updSeq2, randomKeyNaked(12), machineMetadata);
-            eventRouter.emitUpdate({
-                userId,
-                payload: updatePayload,
-                recipientFilter: { type: 'machine-scoped-only', machineId: newMachine.id }
+                    // Emit new-machine event with all data including dataEncryptionKey
+                    const newMachinePayload = buildNewMachineUpdate(created, updSeq1, randomKeyNaked(12));
+                    eventRouter.emitUpdate({
+                        userId,
+                        payload: newMachinePayload,
+                        recipientFilter: { type: 'user-scoped-only' }
+                    });
+
+                    // Emit update-machine event for backward compatibility (without dataEncryptionKey)
+                    const machineMetadata = {
+                        version: 1,
+                        value: metadata
+                    };
+                    const updatePayload = buildUpdateMachineUpdate(created.id, updSeq2, randomKeyNaked(12), machineMetadata);
+                    eventRouter.emitUpdate({
+                        userId,
+                        payload: updatePayload,
+                        recipientFilter: { type: 'machine-scoped-only', machineId: created.id }
+                    });
+                });
+
+                return created;
             });
 
             return reply.send({
@@ -98,7 +105,7 @@ export function machinesRoutes(app: Fastify) {
                     metadataVersion: newMachine.metadataVersion,
                     daemonState: newMachine.daemonState,
                     daemonStateVersion: newMachine.daemonStateVersion,
-                    dataEncryptionKey: newMachine.dataEncryptionKey ? Buffer.from(newMachine.dataEncryptionKey).toString('base64') : null,
+                    dataEncryptionKey: newMachine.dataEncryptionKey ? privacyKit.encodeBase64(newMachine.dataEncryptionKey) : null,
                     active: newMachine.active,
                     activeAt: newMachine.lastActiveAt.getTime(),  // Return as activeAt for API consistency
                     createdAt: newMachine.createdAt.getTime(),
@@ -126,7 +133,7 @@ export function machinesRoutes(app: Fastify) {
             metadataVersion: m.metadataVersion,
             daemonState: m.daemonState,
             daemonStateVersion: m.daemonStateVersion,
-            dataEncryptionKey: m.dataEncryptionKey ? Buffer.from(m.dataEncryptionKey).toString('base64') : null,
+            dataEncryptionKey: m.dataEncryptionKey ? privacyKit.encodeBase64(m.dataEncryptionKey) : null,
             seq: m.seq,
             active: m.active,
             activeAt: m.lastActiveAt.getTime(),
@@ -165,7 +172,7 @@ export function machinesRoutes(app: Fastify) {
                 metadataVersion: machine.metadataVersion,
                 daemonState: machine.daemonState,
                 daemonStateVersion: machine.daemonStateVersion,
-                dataEncryptionKey: machine.dataEncryptionKey ? Buffer.from(machine.dataEncryptionKey).toString('base64') : null,
+                dataEncryptionKey: machine.dataEncryptionKey ? privacyKit.encodeBase64(machine.dataEncryptionKey) : null,
                 seq: machine.seq,
                 active: machine.active,
                 activeAt: machine.lastActiveAt.getTime(),
