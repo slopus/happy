@@ -171,6 +171,14 @@ export interface AcpPermissionHandler {
     toolName: string,
     input: unknown
   ): Promise<{ decision: 'approved' | 'approved_for_session' | 'denied' | 'abort' }>;
+
+  /**
+   * Optional reset hook called from `AcpBackend.dispose()` so any in-flight
+   * permission Promise (awaiting the user) can be rejected synchronously.
+   * Both `GeminiPermissionHandler` and `CodexPermissionHandler` inherit this
+   * from `BasePermissionHandler`.
+   */
+  reset?(reason?: string): void;
 }
 
 /**
@@ -325,8 +333,6 @@ export class AcpBackend implements AgentBackend {
   private toolCallTimeouts = new Map<string, NodeJS.Timeout>();
   /** Track tool call start times for performance monitoring */
   private toolCallStartTimes = new Map<string, number>();
-  /** Pending permission requests that need response */
-  private pendingPermissions = new Map<string, (response: RequestPermissionResponse) => void>();
 
   /** Map from permission request ID to real tool call ID for tracking */
   private permissionToToolCallMap = new Map<string, string>();
@@ -879,7 +885,17 @@ export class AcpBackend implements AgentBackend {
       idleTimeout: this.idleTimeout,
       toolCallCountSincePrompt: this.toolCallCountSincePrompt,
       emit: (msg) => this.emit(msg),
-      emitIdleStatus: () => this.emitIdleStatus(),
+      // The four callbacks below all gate on `this.disposed` so that
+      // sessionUpdateHandlers' tool-call timeouts (which are bare Node
+      // setTimeouts, not tracked by `idleTimeout`) cannot mutate backend
+      // state after dispose. Without these guards, a tool-call timeout
+      // firing within milliseconds of `dispose()` would emit `idle` on a
+      // dead backend — that ghost emission could pollute a follow-up
+      // backend recreated by the Gemini mode-switch flow.
+      emitIdleStatus: () => {
+        if (this.disposed) return;
+        this.emitIdleStatus();
+      },
       clearIdleTimeout: () => {
         if (this.idleTimeout) {
           clearTimeout(this.idleTimeout);
@@ -887,9 +903,11 @@ export class AcpBackend implements AgentBackend {
         }
       },
       setIdleTimeout: (callback, ms) => {
+        if (this.disposed) return;
         this.idleTimeout = setTimeout(() => {
-          callback();
           this.idleTimeout = null;
+          if (this.disposed) return;
+          callback();
         }, ms);
       },
     };
@@ -1320,6 +1338,16 @@ export class AcpBackend implements AgentBackend {
       this.idleTimeout = null;
     }
 
+    // Reject any in-flight permission requests so the `requestPermission`
+    // RPC handler (which `await`s `options.permissionHandler.handleToolCall`)
+    // doesn't deadlock the ACP SDK's reader thread when the backend goes
+    // away while a permission dialog is still open on the mobile app.
+    try {
+      this.options.permissionHandler?.reset?.('AcpBackend disposed');
+    } catch (err) {
+      logger.debug('[AcpBackend] permissionHandler.reset threw during dispose:', err);
+    }
+
     // Clear state
     this.listeners = [];
     this.connection = null;
@@ -1331,6 +1359,5 @@ export class AcpBackend implements AgentBackend {
     }
     this.toolCallTimeouts.clear();
     this.toolCallStartTimes.clear();
-    this.pendingPermissions.clear();
   }
 }
