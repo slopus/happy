@@ -44,6 +44,11 @@ export class RpcHandlerManager {
 
         if (this.socket) {
             this.socket.emit('rpc-register', { method: prefixedMethod });
+            // Best-effort: fire-and-forget is acceptable here because
+            // onSocketConnect already awaits acks for the bulk registration.
+            // Late single-method registrations are rare (only resume-happy-session
+            // via syncResumeSessionRpcRegistration) and will be re-registered
+            // on the next reconnect.
         }
     }
 
@@ -97,9 +102,25 @@ export class RpcHandlerManager {
 
     onSocketConnect(socket: Socket): void {
         this.socket = socket;
-        for (const [prefixedMethod] of this.handlers) {
-            socket.emit('rpc-register', { method: prefixedMethod });
+        void this.registerAllHandlers(socket);
+    }
+
+    /**
+     * Register all handlers with the server, awaiting ack for each.
+     * Ensures room membership is committed before RPC calls can arrive.
+     */
+    private async registerAllHandlers(socket: Socket): Promise<void> {
+        const methods = [...this.handlers.keys()];
+        for (const prefixedMethod of methods) {
+            // Abort if socket was replaced by a reconnect
+            if (this.socket !== socket) return;
+            try {
+                await socket.timeout(5_000).emitWithAck('rpc-register', { method: prefixedMethod });
+            } catch {
+                this.logger('[RPC] Registration ack timeout or error', { method: prefixedMethod });
+            }
         }
+        this.logger(`[RPC] Registered ${methods.length} handlers`);
     }
 
     onSocketDisconnect(): void {
