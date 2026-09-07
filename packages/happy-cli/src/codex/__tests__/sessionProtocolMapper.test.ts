@@ -7,6 +7,39 @@ import {
 } from '../utils/sessionProtocolMapper';
 
 describe('mapCodexMcpMessageToSessionEnvelopes', () => {
+    it('keeps replies visible across repeated continuations without task_started', () => {
+        let state = mapCodexMcpMessageToSessionEnvelopes({ type: 'task_started' }, { currentTurnId: null });
+        const turns = new Set([state.currentTurnId]);
+        for (let i = 0; i < 2; i++) {
+            state = mapCodexMcpMessageToSessionEnvelopes({ type: 'task_complete' }, state);
+            expect(state.currentTurnId).toBeNull();
+            state = mapCodexMcpMessageToSessionEnvelopes({ type: 'agent_message', message: 'Continuing' }, state);
+            expect(state.envelopes.map(e => e.ev.t)).toEqual(['turn-start', 'text']);
+            expect(state.envelopes.every(e => e.turn === state.currentTurnId)).toBe(true);
+            expect(turns.has(state.currentTurnId)).toBe(false);
+            turns.add(state.currentTurnId);
+            const next = mapCodexMcpMessageToSessionEnvelopes({ type: 'agent_message', message: 'More work' }, state);
+            expect(next.envelopes.map(e => e.ev.t)).toEqual(['text']);
+            expect(next.currentTurnId).toBe(state.currentTurnId);
+            state = next;
+        }
+        const ended = mapCodexMcpMessageToSessionEnvelopes({ type: 'turn_aborted' }, state);
+        expect(ended.envelopes.at(-1)?.turn).toBe(state.currentTurnId);
+        expect(ended.currentTurnId).toBeNull();
+    });
+
+    it('opens a turn for orphan tool output but not ignored events or usage updates', () => {
+        const state = { currentTurnId: null };
+        expect(mapCodexMcpMessageToSessionEnvelopes({ type: 'unknown' }, state).envelopes).toEqual([]);
+        const usage = mapCodexMcpMessageToSessionEnvelopes({ type: 'token_count', info: { total_token_usage: { input_tokens: 10, output_tokens: 2 } } }, state);
+        expect(usage.currentTurnId).toBeNull();
+        expect(usage.envelopes.every(e => !e.turn)).toBe(true);
+        const tool = mapCodexMcpMessageToSessionEnvelopes({ type: 'exec_command_begin', call_id: 'orphan-call', command: ['echo', 'ok'] }, state);
+        expect(tool.envelopes[0].ev.t).toBe('turn-start');
+        expect(tool.envelopes.some(e => e.ev.t === 'tool-call-start')).toBe(true);
+        expect(tool.envelopes.every(e => e.turn === tool.currentTurnId)).toBe(true);
+    });
+
     it('starts and ends turns for task lifecycle events', () => {
         const started = mapCodexMcpMessageToSessionEnvelopes({ type: 'task_started' }, { currentTurnId: null });
 

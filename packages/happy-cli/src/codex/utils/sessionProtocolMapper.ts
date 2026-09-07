@@ -934,6 +934,26 @@ function pickTurnEndStatus(message: Record<string, unknown>, type: unknown): Tur
 }
 
 export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unknown>, state: CodexTurnState): CodexMapperResult {
+    const result = mapCodexMcpMessageToSessionEnvelopesInner(message, state);
+    // Automatic continuations may deliver content without a task_started event.
+    // Keep usage-only service envelopes turn-less for older client compatibility.
+    const requiresTurn = (envelope: SessionEnvelope) => envelope.role === 'agent'
+        && !envelope.turn
+        && !(envelope.ev.t === 'service' && !envelope.ev.text.trim() && envelope.usage);
+    if (!result.envelopes.some(requiresTurn)) return result;
+
+    const turn = state.currentTurnId ?? createId();
+    result.envelopes = result.envelopes.map((envelope) => requiresTurn(envelope)
+        ? { ...envelope, turn }
+        : envelope);
+    if (!state.currentTurnId) {
+        result.envelopes.unshift(createEnvelope('agent', { t: 'turn-start' }, { turn }));
+    }
+    result.currentTurnId = turn;
+    return result;
+}
+
+function mapCodexMcpMessageToSessionEnvelopesInner(message: Record<string, unknown>, state: CodexTurnState): CodexMapperResult {
     const type = message.type;
     const startedSubagents = getStartedSubagents(state);
     const activeSubagents = getActiveSubagents(state);
