@@ -3,6 +3,7 @@
  * Maps internal QueryOptions to official SDK Options
  */
 
+import { existsSync } from 'node:fs'
 import { query as sdkQuery, type Options, type Query } from '@anthropic-ai/claude-agent-sdk'
 import type { QueryOptions, QueryPrompt, SDKMessage } from './types'
 import type { SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
@@ -44,6 +45,16 @@ export function query(params: { prompt: QueryPrompt; options?: QueryOptions }): 
         strictMcpConfig: opts?.strictMcpConfig,
         sessionId: undefined,
         effort: opts?.effort,
+    }
+
+    // Respect the explicit Claude Code binary override. The local and remote
+    // launchers already honor HAPPY_CLAUDE_PATH (see
+    // scripts/claude_version_utils.cjs); without this, SDK-driven sessions
+    // always run the SDK's bundled executable, which can be older than the
+    // user's installed Claude Code and out of sync with local sessions.
+    const claudePathOverride = process.env.HAPPY_CLAUDE_PATH
+    if (claudePathOverride && existsSync(claudePathOverride)) {
+        sdkOptions.pathToClaudeCodeExecutable = claudePathOverride
     }
 
     // Map abort signal -> AbortController
