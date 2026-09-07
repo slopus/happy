@@ -55,6 +55,7 @@ import {
     parseCodexGoalCommand,
     type CodexGoalCommand,
 } from './codexGoalStatus';
+import { readConfiguredCodexMcpServers } from './codexMcpConfig';
 
 /**
  * Extracts a human-readable error from a codex task_complete/turn_aborted event.
@@ -813,6 +814,7 @@ export async function runCodex(opts: {
     // not be visible to the model, and the model would improvise with shell echoes.
     const bridgeEntrypoint = join(projectPath(), 'bin', 'happy-mcp.mjs');
     const mcpServers = {
+        ...readConfiguredCodexMcpServers(),
         happy: {
             command: process.execPath,
             args: ['--no-warnings', '--no-deprecation', bridgeEntrypoint, '--url', happyServer.url]
