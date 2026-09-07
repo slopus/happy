@@ -19,6 +19,15 @@ import { normalizeRawMessage } from './typesRaw';
 import { RawRecordSchema } from './typesRaw';
 
 describe('Zod Transform - WOLOG Content Normalization', () => {
+    it('retains session turn IDs in metadata for display grouping', () => {
+        const turn = createId();
+        for (const ev of [{ t: 'text', text: 'Installation complete' }, { t: 'tool-call-start', call: createId(), name: 'Bash', title: 'Run', description: 'Run command', args: {} }] as const) {
+            const result = normalizeRawMessage(createId(), null, 100, { role: 'session', content: { type: 'session', data: { id: createId(), time: 100, role: 'agent', turn, ev } }, meta: { sentFrom: 'cli' } });
+            expect(result).not.toBeNull();
+            expect(result?.meta).toMatchObject({ sentFrom: 'cli', sessionTurnId: turn });
+        }
+    });
+
 
     describe('Accepts and transforms hyphenated types', () => {
         it('transforms tool-call to tool_use with field remapping', () => {

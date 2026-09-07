@@ -98,9 +98,20 @@ function getTurnAssignments(messages: Message[]): number[] {
     // Newest-first → turn 0 is the current assistant turn.
     const turnOf = new Array<number>(messages.length);
     let turn = 0;
+    let sessionTurnId: string | undefined;
     for (let i = 0; i < messages.length; i++) {
+        const message = messages[i];
+        if (message.kind !== 'user-text' && message.meta?.sessionTurnId) {
+            const nextTurnId = message.meta.sessionTurnId;
+            if (sessionTurnId && sessionTurnId !== nextTurnId) turn++;
+            sessionTurnId = nextTurnId;
+        }
         turnOf[i] = turn;
-        if (messages[i].kind === 'user-text') turn++;
+        // Keep user boundaries for legacy messages without protocol metadata.
+        if (message.kind === 'user-text') {
+            turn++;
+            sessionTurnId = undefined;
+        }
     }
     return turnOf;
 }

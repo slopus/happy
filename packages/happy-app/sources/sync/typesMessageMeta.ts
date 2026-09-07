@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 // Shared message metadata schema
 export const MessageMetaSchema = z.object({
+    sessionTurnId: z.string().optional(), // Session-protocol turn boundary for display grouping
     sentFrom: z.string().optional(), // Source identifier
     permissionMode: z.string().optional(), // Permission mode key for this message
     model: z.string().nullable().optional(), // Model name for this message (null = reset)
