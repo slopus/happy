@@ -1233,60 +1233,77 @@ class Sync {
         }
         await this.encryption.initializeSessions(sessionKeys);
 
-        // Decrypt sessions
-        let decryptedSessions: (Omit<Session, 'presence'> & { presence?: "online" | number })[] = [];
-        for (const session of sessions) {
-            // Get session encryption (should always exist after initialization)
-            const sessionEncryption = this.encryption.getSessionEncryption(session.id);
-            if (!sessionEncryption) {
-                console.error(`Session encryption not found for ${session.id} - this should never happen`);
-                continue;
+        // Decrypt and apply sessions in chunks, newest first. Decrypting every
+        // session's metadata + agentState up front and applying once blocks the
+        // main thread until the whole dataset is done — on web (JS crypto, no
+        // native offload) that is seconds of freeze before anything paints, and
+        // it grows with the account. applySessions merges (it never replaces the
+        // list), so chunked applies accumulate: the newest sessions — the ones
+        // in the viewport — paint after the first chunk, and the rest fill in
+        // while the event loop stays responsive to paint/input between chunks.
+        const CHUNK_SIZE = 24;
+        const ordered = [...sessions].sort((a, b) => b.updatedAt - a.updatedAt);
+        let processedCount = 0;
+        for (let i = 0; i < ordered.length; i += CHUNK_SIZE) {
+            const chunk = ordered.slice(i, i + CHUNK_SIZE);
+            const decryptedChunk: (Omit<Session, 'presence'> & { presence?: "online" | number })[] = [];
+            for (const session of chunk) {
+                // Get session encryption (should always exist after initialization)
+                const sessionEncryption = this.encryption.getSessionEncryption(session.id);
+                if (!sessionEncryption) {
+                    console.error(`Session encryption not found for ${session.id} - this should never happen`);
+                    continue;
+                }
+
+                // Decrypt metadata using session-specific encryption
+                let metadata = await sessionEncryption.decryptMetadata(session.metadataVersion, session.metadata);
+
+                // Decrypt agent state using session-specific encryption
+                let agentState = await sessionEncryption.decryptAgentState(session.agentStateVersion, session.agentState);
+
+                // Put it all together. Thinking placeholders are overwritten just
+                // before applySessions below.
+                decryptedChunk.push({
+                    ...session,
+                    thinking: false,
+                    thinkingAt: 0,
+                    metadata,
+                    agentState
+                });
             }
 
-            // Decrypt metadata using session-specific encryption
-            let metadata = await sessionEncryption.decryptMetadata(session.metadataVersion, session.metadata);
+            // Thinking state exists only in activity ephemerals — the server
+            // session record has no such field, so preserve whatever we already
+            // know. Hardcoding false wipes the live state of every running session
+            // on any full refetch (notably the one `new-session` triggers), which
+            // both freezes the pulsing dot and trips the "agent just finished"
+            // unread detector in applySessions. Two deliberate details:
+            // - Resolved here, synchronously with this chunk's apply, rather than
+            //   inside the decrypt loop above: the loop awaits per session, so a
+            //   snapshot taken there can be overtaken by an activity ephemeral
+            //   clearing thinking in the meantime.
+            // - Gated on `active`: a dead session can never send the clearing
+            //   ephemeral, so a preserved `true` would otherwise be immortal.
+            const current = storage.getState().sessions;
+            this.applySessions(decryptedChunk.map(s => ({
+                ...s,
+                thinking: s.active ? (current[s.id]?.thinking ?? false) : false,
+                thinkingAt: s.active ? (current[s.id]?.thinkingAt ?? 0) : 0,
+            })));
+            processedCount += decryptedChunk.length;
 
-            // Decrypt agent state using session-specific encryption
-            let agentState = await sessionEncryption.decryptAgentState(session.agentStateVersion, session.agentState);
-
-            // Put it all together. Thinking placeholders are overwritten just
-            // before applySessions below.
-            const processedSession = {
-                ...session,
-                thinking: false,
-                thinkingAt: 0,
-                metadata,
-                agentState
-            };
-            decryptedSessions.push(processedSession);
+            // Yield between chunks so paint and input can run. Skipped after the
+            // last chunk — nothing left to overlap with.
+            if (i + CHUNK_SIZE < ordered.length) {
+                await new Promise<void>((resolve) => setTimeout(resolve, 0));
+            }
         }
 
-        // Thinking state exists only in activity ephemerals — the server
-        // session record has no such field, so preserve whatever we already
-        // know. Hardcoding false wipes the live state of every running session
-        // on any full refetch (notably the one `new-session` triggers), which
-        // both freezes the pulsing dot and trips the "agent just finished"
-        // unread detector in applySessions. Two deliberate details:
-        // - Resolved here, synchronously with the apply, rather than inside
-        //   the decrypt loop above: the loop awaits per session, so a snapshot
-        //   taken there can be overtaken by an activity ephemeral clearing
-        //   thinking in the meantime.
-        // - Gated on `active`: a dead session can never send the clearing
-        //   ephemeral, so a preserved `true` would otherwise be immortal.
-        const current = storage.getState().sessions;
-        this.applySessions(decryptedSessions.map(s => ({
-            ...s,
-            thinking: s.active ? (current[s.id]?.thinking ?? false) : false,
-            thinkingAt: s.active ? (current[s.id]?.thinkingAt ?? 0) : 0,
-        })));
         this.projectsSync.invalidate();
-        log.log(`📥 fetchSessions completed - processed ${decryptedSessions.length} sessions`);
+        log.log(`📥 fetchSessions completed - processed ${processedCount} sessions`);
         // Machine-readable for scripts/perf-e2e.mjs, which deep-links through
         // the most recent real sessions and reads [perf] timings off Metro.
-        const recent = [...decryptedSessions]
-            .sort((a, b) => b.updatedAt - a.updatedAt)
-            .slice(0, 12)
-            .map((s) => s.id);
+        const recent = ordered.slice(0, 12).map((s) => s.id);
         console.log(`[perf] recent-sessions ${recent.join(',')}`);
     }
 
