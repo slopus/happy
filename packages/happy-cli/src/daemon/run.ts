@@ -912,9 +912,11 @@ export async function startDaemon(): Promise<void> {
           // Check if process is still alive (signal 0 doesn't kill, just checks)
           process.kill(pid, 0);
         } catch (error) {
-          // Process is dead, remove from tracking
+          // Process is dead. Go through the same path as a child exit so that
+          // externally-started sessions (terminal, `happy --resume`) keep their
+          // encryption data and stay resumable from the app, like daemon-spawned ones.
           logger.debug(`[DAEMON RUN] Removing stale session with PID ${pid} (process no longer exists)`);
-          pidToTrackedSession.delete(pid);
+          onChildExited(pid);
         }
       }
 
