@@ -2,7 +2,15 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { acquireDaemonLock, releaseDaemonLock, SandboxConfigSchema } from './persistence';
+import {
+    acquireDaemonLock,
+    markSessionStopped,
+    persistSession,
+    readPersistedSessions,
+    releaseDaemonLock,
+    SandboxConfigSchema,
+    type PersistedSession,
+} from './persistence';
 
 const mockConfiguration = vi.hoisted(() => ({
     daemonLockFile: '',
@@ -15,6 +23,17 @@ const mockConfiguration = vi.hoisted(() => ({
 vi.mock('@/configuration', () => ({
     configuration: mockConfiguration,
 }));
+
+// Records written before the current boot cannot be probed for liveness (PIDs
+// are reused across reboots), so the machine's real uptime would decide these
+// tests. Pin it.
+const mockOs = vi.hoisted(() => ({ uptimeSeconds: 365 * 24 * 60 * 60 }));
+
+vi.mock('node:os', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('node:os')>();
+    const uptime = () => mockOs.uptimeSeconds;
+    return { ...actual, uptime, default: { ...actual, uptime } };
+});
 
 describe('SandboxConfigSchema', () => {
     it('applies defaults when values are omitted', () => {
@@ -132,5 +151,103 @@ describe('acquireDaemonLock', () => {
 
         expect(lockHandle).toBeNull();
         expect(readFileSync(mockConfiguration.daemonLockFile, 'utf-8')).toBe(String(process.pid));
+    });
+});
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function sessionRecord(overrides: Partial<PersistedSession> & { hostPid?: number } = {}): PersistedSession {
+    const { hostPid, ...rest } = overrides;
+    return {
+        encryptionKey: 'a2V5',
+        encryptionVariant: 'dataKey',
+        seq: 1,
+        metadataVersion: 1,
+        agentStateVersion: 1,
+        metadata: { path: '/tmp/project', hostPid } as PersistedSession['metadata'],
+        savedAt: Date.now(),
+        ...rest,
+    };
+}
+
+function writeSessions(sessions: Record<string, PersistedSession>): void {
+    writeFileSync(mockConfiguration.sessionsFile, JSON.stringify({ sessions }, null, 2), 'utf-8');
+}
+
+describe('persisted session retention', () => {
+    let dir: string;
+
+    beforeEach(() => {
+        dir = mkdtempSync(join(tmpdir(), 'happy-sessions-'));
+        mockConfiguration.sessionsFile = join(dir, 'sessions.json');
+        mockOs.uptimeSeconds = 365 * 24 * 60 * 60;
+    });
+
+    afterEach(() => {
+        rmSync(dir, { recursive: true, force: true });
+    });
+
+    it('keeps a session that was in use yesterday but started long ago', () => {
+        // A session used daily for months: it started 60 days ago and stopped
+        // yesterday. Measuring age from when it STARTED would throw it away.
+        writeSessions({
+            's1': sessionRecord({ savedAt: Date.now() - 60 * DAY_MS, lastAliveAt: Date.now() - DAY_MS }),
+        });
+
+        expect(Object.keys(readPersistedSessions())).toEqual(['s1']);
+    });
+
+    it('keeps a session whose process is still running, however old the record', () => {
+        writeSessions({
+            's1': sessionRecord({
+                savedAt: Date.now() - 60 * DAY_MS,
+                lastAliveAt: Date.now() - 60 * DAY_MS,
+                hostPid: process.pid,
+            }),
+        });
+
+        expect(Object.keys(readPersistedSessions())).toEqual(['s1']);
+    });
+
+    it('drops a session that stopped more than the retention window ago', () => {
+        writeSessions({
+            's1': sessionRecord({ savedAt: Date.now() - 90 * DAY_MS, lastAliveAt: Date.now() - 20 * DAY_MS }),
+        });
+
+        expect(readPersistedSessions()).toEqual({});
+    });
+
+    it('treats a record with no lastAliveAt as dating from when it was written', () => {
+        writeSessions({
+            'fresh': sessionRecord({ savedAt: Date.now() - DAY_MS }),
+            'stale': sessionRecord({ savedAt: Date.now() - 20 * DAY_MS }),
+        });
+
+        expect(Object.keys(readPersistedSessions())).toEqual(['fresh']);
+    });
+
+    it('does not resurrect a dead process whose PID a new process now reuses', () => {
+        // Record predates the current boot, so its PID says nothing about what
+        // is running now.
+        mockOs.uptimeSeconds = 60 * 60;
+        writeSessions({
+            's1': sessionRecord({
+                savedAt: Date.now() - 30 * DAY_MS,
+                lastAliveAt: Date.now() - 30 * DAY_MS,
+                hostPid: process.pid,
+            }),
+        });
+
+        expect(readPersistedSessions()).toEqual({});
+    });
+
+    it('restarts the retention window when a session stops', () => {
+        persistSession('s1', sessionRecord({ savedAt: Date.now() - 60 * DAY_MS, lastAliveAt: Date.now() - 60 * DAY_MS, hostPid: process.pid }));
+
+        markSessionStopped('s1');
+
+        const stored = JSON.parse(readFileSync(mockConfiguration.sessionsFile, 'utf-8')).sessions.s1;
+        expect(stored.lastAliveAt).toBeGreaterThan(Date.now() - 5000);
+        expect(stored.savedAt).toBeLessThan(Date.now() - 59 * DAY_MS);
     });
 });

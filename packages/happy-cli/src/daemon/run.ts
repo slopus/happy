@@ -14,7 +14,7 @@ import { startCaffeinate, stopCaffeinate } from '@/utils/caffeinate';
 import packageJson from '../../package.json';
 import { getEnvironmentInfo } from '@/ui/doctor';
 import { spawnHappyCLI } from '@/utils/spawnHappyCLI';
-import { writeDaemonState, DaemonLocallyPersistedState, readDaemonState, acquireDaemonLock, releaseDaemonLock, readPersistedSessions, persistSession } from '@/persistence';
+import { writeDaemonState, DaemonLocallyPersistedState, readDaemonState, acquireDaemonLock, releaseDaemonLock, readPersistedSessions, persistSession, markSessionStopped } from '@/persistence';
 import type { PersistedSession } from '@/persistence';
 
 import { cleanupDaemonState, isDaemonRunningCurrentlyInstalledHappyVersion, stopDaemon } from './controlClient';
@@ -226,6 +226,7 @@ export async function startDaemon(): Promise<void> {
           agentStateVersion: encryption.agentStateVersion,
           metadata: sessionMetadata,
           savedAt: Date.now(),
+          lastAliveAt: Date.now(),
         });
       }
 
@@ -813,6 +814,9 @@ export async function startDaemon(): Promise<void> {
       const session = pidToTrackedSession.get(pid);
       if (session?.happySessionId && session.encryption) {
         sessionIdToFinishedSession.set(session.happySessionId, session);
+        // Expiry is measured from here on, so a session used for months stays
+        // resumable for the full retention window after it stops.
+        markSessionStopped(session.happySessionId);
         logger.debug(`[DAEMON RUN] Process PID ${pid} exited, preserved session ${session.happySessionId} for resume`);
       } else {
         logger.debug(`[DAEMON RUN] Removing exited process PID ${pid} from tracking`);
