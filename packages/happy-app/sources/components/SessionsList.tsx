@@ -20,6 +20,7 @@ import { getHarnessName } from '@/utils/harnessCatalog';
 import { requestReview } from '@/utils/requestReview';
 import { UpdateBanner } from './UpdateBanner';
 import { SessionSearchInput } from './SessionSearchInput';
+import { setSessionSearchQuery, useSessionSearchStore } from './sessionSearchStore';
 import { layout } from './layout';
 import { useSessionPressHandlers } from '@/hooks/useNavigateToSession';
 import { SessionActionsAnchor, SessionActionsPopover } from './SessionActionsPopover';
@@ -326,6 +327,7 @@ export function SessionsList({
     onScroll,
     searchQuery: controlledQuery,
     onSearchQueryChange,
+    searchOpen: controlledOpen,
 }: {
     topContentInset?: number;
     scrollIndicatorTopInset?: number;
@@ -335,12 +337,18 @@ export function SessionsList({
      *  for direct mounts (MainView's phone layout). */
     searchQuery?: string;
     onSearchQueryChange?: (text: string) => void;
+    /** Whether the box is shown. Uncontrolled mounts read the shared store. */
+    searchOpen?: boolean;
 } = {}) {
     const styles = stylesheet;
     const safeArea = useSafeAreaInsets();
-    const [localSearchQuery, setLocalSearchQuery] = React.useState('');
-    const searchQuery = controlledQuery ?? localSearchQuery;
-    const setSearchQuery = onSearchQueryChange ?? setLocalSearchQuery;
+    // Direct mounts (MainView's phone layout) share the same store the
+    // header icon toggles; the wrapper passes the values down explicitly.
+    const storeOpen = useSessionSearchStore((state) => state.open);
+    const storeQuery = useSessionSearchStore((state) => state.query);
+    const searchOpen = controlledOpen ?? storeOpen;
+    const searchQuery = controlledQuery ?? storeQuery;
+    const setSearchQuery = onSearchQueryChange ?? setSessionSearchQuery;
     const sourceData = useVisibleSessionListViewData(searchQuery);
     const hasArchivedSessions = useHasArchivedSessions();
     // Stored under its original `hideInactiveSessions` key — synced settings
@@ -612,11 +620,13 @@ export function SessionsList({
     return (
         <View style={[styles.container, flatSessionList && styles.containerFlat]}>
             <View style={styles.contentContainer}>
-                <SessionSearchInput
-                    value={searchQuery}
-                    onChangeText={setSearchQuery}
-                    topInset={topContentInset}
-                />
+                {searchOpen && (
+                    <SessionSearchInput
+                        value={searchQuery}
+                        onChangeText={setSearchQuery}
+                        topInset={topContentInset}
+                    />
+                )}
                 {noResults && (
                     <View style={styles.noResultsContainer}>
                         <Text style={styles.noResultsText}>
