@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { View, TextInput } from 'react-native';
+import { View, TextInput, ActivityIndicator } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
@@ -13,10 +13,17 @@ const styles = StyleSheet.create((theme) => ({
         height: 36,
         borderRadius: 10,
         paddingHorizontal: 12,
+        paddingRight: 36,
         backgroundColor: theme.colors.surface,
         color: theme.colors.text,
         fontSize: 14,
         ...Typography.default(),
+    },
+    // Sits inside the box's right padding while history pages in.
+    spinner: {
+        position: 'absolute',
+        right: 28,
+        top: 10,
     },
 }));
 
@@ -28,10 +35,13 @@ export const SessionSearchInput = React.memo(({
     value,
     onChangeText,
     topInset = 0,
+    loading = false,
 }: {
     value: string;
     onChangeText: (text: string) => void;
     topInset?: number;
+    /** Older sessions are still being fetched; results may grow. */
+    loading?: boolean;
 }) => {
     const { theme } = useUnistyles();
     return (
@@ -46,6 +56,13 @@ export const SessionSearchInput = React.memo(({
                 returnKeyType="search"
                 autoCorrect={false}
             />
+            {loading && (
+                <ActivityIndicator
+                    size="small"
+                    color={theme.colors.textSecondary}
+                    style={[styles.spinner, { top: 10 + topInset }]}
+                />
+            )}
         </View>
     );
 });

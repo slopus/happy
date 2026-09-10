@@ -346,6 +346,7 @@ export function SessionsList({
     // header icon toggles; the wrapper passes the values down explicitly.
     const storeOpen = useSessionSearchStore((state) => state.open);
     const storeQuery = useSessionSearchStore((state) => state.query);
+    const loadingHistory = useSessionSearchStore((state) => state.loadingHistory);
     const searchOpen = controlledOpen ?? storeOpen;
     const searchQuery = controlledQuery ?? storeQuery;
     const setSearchQuery = onSearchQueryChange ?? setSessionSearchQuery;
@@ -625,6 +626,7 @@ export function SessionsList({
                         value={searchQuery}
                         onChangeText={setSearchQuery}
                         topInset={topContentInset}
+                        loading={loadingHistory}
                     />
                 )}
                 {noResults && (
