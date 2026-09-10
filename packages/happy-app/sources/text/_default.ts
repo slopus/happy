@@ -214,6 +214,8 @@ export const en = {
         flatList: 'Flat List',
         groupByProject: 'Group by Project',
         appearanceSettings: 'Appearance Settings',
+        searchPlaceholder: 'Search sessions…',
+        noResultsPlaceholder: 'No sessions found',
     },
 
     settingsFeatures: {
