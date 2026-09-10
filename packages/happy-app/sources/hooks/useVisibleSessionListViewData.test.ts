@@ -168,3 +168,66 @@ describe('useVisibleSessionListViewData', () => {
         expect(useVisibleSessionListViewData()).toEqual(mocks.data);
     });
 });
+
+describe('useVisibleSessionListViewData search', () => {
+    beforeEach(() => {
+        mocks.data = null;
+        mocks.hideArchivedSessions = false;
+    });
+
+    it('returns the list unchanged for a blank query', () => {
+        mocks.data = mixedListData();
+        expect(useVisibleSessionListViewData('   ')).toEqual(mocks.data);
+    });
+
+    it('filters flat rows by title, case-insensitively', () => {
+        mocks.data = mixedListData();
+        const result = useVisibleSessionListViewData('deploy')!;
+        expect(flatSessionIds(result)).toEqual(['flat-Deploy fix']);
+        expect(projectSessionIds(result)).toEqual(['project-Deploy fix']);
+    });
+
+    it('filters sessions inside project cards and drops emptied cards and headers', () => {
+        mocks.data = mixedListData();
+        const result = useVisibleSessionListViewData('cooking')!;
+        expect(result).toEqual([
+            { type: 'projects-header', source: 'rig' },
+            project('p1', [row('project-Cooking pasta')]),
+        ]);
+    });
+
+    it('matches an untitled session by its working path', () => {
+        mocks.data = mixedListData();
+        const result = useVisibleSessionListViewData('ambrogio')!;
+        expect(flatSessionIds(result)).toEqual(['flat-New chat']);
+    });
+
+    it('filters bots and active-session groups and drops them when empty', () => {
+        mocks.data = [
+            { type: 'bots', sessions: [row('Bot One'), row('Bot Two')] },
+            { type: 'active-sessions', sessions: [row('live-a', { active: true }), row('live-b', { active: true })] },
+        ];
+        expect(useVisibleSessionListViewData('one')).toEqual([{ type: 'bots', sessions: [row('Bot One')] }]);
+        expect(useVisibleSessionListViewData('nomatch')).toEqual([]);
+    });
+
+    it('still applies the archive rule while searching', () => {
+        mocks.data = mixedListData();
+        mocks.hideArchivedSessions = true;
+        const result = useVisibleSessionListViewData('pasta')!;
+        expect(projectSessionIds(result)).toEqual(['project-Cooking pasta']);
+        expect(result.some((item) => item.type === 'session' && item.session.id === 'flat-archived-pasta')).toBe(false);
+    });
+});
+
+function mixedListData(): SessionListViewItem[] {
+    return [
+        { type: 'bots', sessions: [row('Bot One')] },
+        { type: 'projects-header', source: 'rig' },
+        project('p1', [row('project-Deploy fix'), row('project-Cooking pasta')]),
+        { type: 'header', title: 'Today' },
+        { type: 'session', session: { ...row('flat-Deploy fix'), path: '/home/x/repo' } as SessionRowData },
+        { type: 'session', session: { ...row('flat-New chat'), path: '/home/fede9/Progetti/ambrogio' } as SessionRowData },
+        { type: 'session', session: row('flat-archived-pasta', { archived: true }) },
+    ];
+}
