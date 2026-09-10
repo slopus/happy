@@ -212,6 +212,24 @@ describe('ApiSessionClient v3 messages API migration', () => {
         await client.close();
     });
 
+    it('never reconnects after close, including from an already scheduled retry', async () => {
+        vi.useFakeTimers();
+        mockSocket.connected = false;
+
+        const client = new ApiSessionClient('fake-token', session);
+        emitSocketEvent('connect_error', new Error('ECONNREFUSED'));
+        emitSocketEvent('connect_error', new Error('ECONNREFUSED'));
+
+        await client.close();
+        await vi.advanceTimersByTimeAsync(10_000);
+        emitSocketEvent('disconnect', 'transport close');
+        emitSocketEvent('connect_error', new Error('ECONNREFUSED'));
+        await vi.advanceTimersByTimeAsync(10_000);
+
+        expect(mockSocket.connect).toHaveBeenCalledTimes(1);
+        expect(mockSocket.close).toHaveBeenCalledOnce();
+    });
+
     it('queues codex message to v3 outbox, sends once, and drains outbox', async () => {
         const client = new ApiSessionClient('fake-token', session);
         mockAxiosPost.mockResolvedValueOnce({
