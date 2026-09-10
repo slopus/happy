@@ -56,6 +56,7 @@ export const SessionsListWrapper = React.memo(({
     const { theme } = useUnistyles();
     const searchOpen = useSessionSearchStore((state) => state.open);
     const searchQuery = useSessionSearchStore((state) => state.query);
+    const loadingHistory = useSessionSearchStore((state) => state.loadingHistory);
     const sessionListViewData = useVisibleSessionListViewData(searchQuery);
     const hasArchivedSessions = useHasArchivedSessions();
     const machines = useAllMachines({ includeOffline: true });
@@ -84,6 +85,7 @@ export const SessionsListWrapper = React.memo(({
             value={searchQuery}
             onChangeText={setSessionSearchQuery}
             topInset={topContentInset}
+            loading={loadingHistory}
         />
     ) : null;
 
