@@ -3,6 +3,7 @@ import { View, ActivityIndicator, NativeScrollEvent, NativeSyntheticEvent } from
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { SessionsList } from './SessionsList';
 import { SessionSearchInput } from './SessionSearchInput';
+import { setSessionSearchQuery, useSessionSearchStore } from './sessionSearchStore';
 import { Text } from '@/components/StyledText';
 import { t } from '@/text';
 import { StyleSheet as RNStyleSheet } from 'react-native';
@@ -53,7 +54,8 @@ export const SessionsListWrapper = React.memo(({
     onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
 }) => {
     const { theme } = useUnistyles();
-    const [searchQuery, setSearchQuery] = React.useState('');
+    const searchOpen = useSessionSearchStore((state) => state.open);
+    const searchQuery = useSessionSearchStore((state) => state.query);
     const sessionListViewData = useVisibleSessionListViewData(searchQuery);
     const hasArchivedSessions = useHasArchivedSessions();
     const machines = useAllMachines({ includeOffline: true });
@@ -77,13 +79,13 @@ export const SessionsListWrapper = React.memo(({
     // The search box stays mounted across every list state so the entry point
     // never disappears; a query swaps the empty screen for a no-results note.
     const trimmedQuery = searchQuery.trim();
-    const searchBox = (
+    const searchBox = searchOpen ? (
         <SessionSearchInput
             value={searchQuery}
-            onChangeText={setSearchQuery}
+            onChangeText={setSessionSearchQuery}
             topInset={topContentInset}
         />
-    );
+    ) : null;
 
     // With an online machine, an archive-only account renders SessionsList's inline archive
     // control. With no reachable machine, the connection problem is the useful primary state and
@@ -121,7 +123,8 @@ export const SessionsListWrapper = React.memo(({
                 bottomContentInset={bottomContentInset}
                 onScroll={onScroll}
                 searchQuery={searchQuery}
-                onSearchQueryChange={setSearchQuery}
+                onSearchQueryChange={setSessionSearchQuery}
+                searchOpen={searchOpen}
             />
         </View>
     );
