@@ -217,6 +217,8 @@ export const ja: TranslationStructure = {
         flatList: 'フラットリスト',
         groupByProject: 'プロジェクト別にグループ化',
         appearanceSettings: '外観設定',
+        searchPlaceholder: 'セッションを検索…',
+        noResultsPlaceholder: 'セッションが見つかりません',
     },
 
     settingsFeatures: {

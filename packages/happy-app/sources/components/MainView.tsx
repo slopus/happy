@@ -33,6 +33,7 @@ import { MOBILE_GLASS_HEADER_HEIGHT } from './navigation/headerMetrics';
 import { useNewSessionDraft } from '@/hooks/useNewSessionDraft';
 import { useStartSessionFromDraft } from '@/hooks/useStartSessionFromDraft';
 import { shouldShowHomeConnectionStatus } from './homeConnectionStatus';
+import { toggleSessionSearch, useSessionSearchStore } from './sessionSearchStore';
 
 interface MainViewProps {
     variant: 'phone' | 'sidebar';
@@ -237,6 +238,7 @@ const HeaderRight = React.memo(({ activeTab }: { activeTab: ActiveTabType }) => 
     const { theme } = useUnistyles();
     const isCustomServer = isUsingCustomServer();
     const [sessionListGrouping, setSessionListGrouping] = useSettingMutable('sessionListGrouping');
+    const searchOpen = useSessionSearchStore((state) => state.open);
 
     if (activeTab === 'sessions') {
         if (Platform.OS !== 'web') {
@@ -293,6 +295,16 @@ const HeaderRight = React.memo(({ activeTab }: { activeTab: ActiveTabType }) => 
         }
         return (
             <View style={styles.headerActions}>
+                <Pressable
+                    onPress={toggleSessionSearch}
+                    hitSlop={15}
+                    accessibilityLabel={t('sessionsFilter.searchPlaceholder')}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: searchOpen }}
+                    style={styles.headerButton}
+                >
+                    <Ionicons name={searchOpen ? 'search' : 'search-outline'} size={22} color={theme.colors.header.tint} />
+                </Pressable>
                 <Pressable
                     onPress={() => router.navigate('/new')}
                     hitSlop={15}

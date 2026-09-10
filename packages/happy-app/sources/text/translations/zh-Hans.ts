@@ -217,6 +217,8 @@ export const zhHans: TranslationStructure = {
         flatList: '平铺列表',
         groupByProject: '按项目分组',
         appearanceSettings: '外观设置',
+        searchPlaceholder: '搜索会话…',
+        noResultsPlaceholder: '未找到会话',
     },
 
     settingsFeatures: {

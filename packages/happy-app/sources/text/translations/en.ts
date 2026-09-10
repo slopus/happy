@@ -230,6 +230,8 @@ export const en: TranslationStructure = {
         flatList: 'Flat List',
         groupByProject: 'Group by Project',
         appearanceSettings: 'Appearance Settings',
+        searchPlaceholder: 'Search sessions…',
+        noResultsPlaceholder: 'No sessions found',
     },
 
     settingsFeatures: {
