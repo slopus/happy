@@ -339,7 +339,7 @@ describe('CodexAppServerClient sandbox integration', () => {
             sandbox: 'read-only',
         });
 
-        const pendingTurn = client.sendTurnAndWait('hang forever', { turnTimeoutMs: 5000 });
+        const pendingTurn = client.sendTurnAndWait('hang forever', { turnIdleTimeoutMs: 5000 });
         await waitFor(() => firstProcessRequests.some((msg) => msg.method === 'turn/start'));
 
         const abortResult = await client.abortTurnWithFallback({
@@ -457,7 +457,7 @@ describe('CodexAppServerClient sandbox integration', () => {
             sandbox: 'read-only',
         });
 
-        const pendingTurn = client.sendTurnAndWait('hang on interrupt', { turnTimeoutMs: 5000 });
+        const pendingTurn = client.sendTurnAndWait('hang on interrupt', { turnIdleTimeoutMs: 5000 });
         await waitFor(() => firstProcessRequests.some((msg) => msg.method === 'turn/start'));
         await waitFor(() => client.turnId === 'turn-stuck-interrupt');
 
@@ -1765,6 +1765,256 @@ describe('CodexAppServerClient sandbox integration', () => {
                 },
             }),
         ]));
+
+        await client.disconnect();
+    });
+
+    it('keeps waiting on a long turn that is still producing output', async () => {
+        // Heartbeats keep arriving for 5x the idle window. A wall-clock cap
+        // would abort here even though Codex is working normally.
+        const IDLE_MS = 100;
+        let heartbeat: ReturnType<typeof setInterval> | null = null;
+
+        const proc = createMockProcess({
+            pid: 3101,
+            onRequest: (msg, stdout) => {
+                if (msg.method === 'thread/start' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: {
+                                thread: { id: 'thread-idle-1', path: '/tmp/thread-idle-1' },
+                                model: 'gpt-test',
+                                modelProvider: 'openai',
+                                cwd: '/tmp/project',
+                                approvalPolicy: 'never',
+                                sandbox: { type: 'dangerFullAccess' },
+                                reasoningEffort: null,
+                            },
+                        });
+                    }, 0);
+                }
+
+                if (msg.method === 'turn/start' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: {
+                                turn: { id: 'turn-idle-1', items: [], status: 'inProgress', error: null },
+                            },
+                        });
+                        pushJsonLine(stdout, {
+                            method: 'turn/started',
+                            params: {
+                                threadId: 'thread-idle-1',
+                                turn: { id: 'turn-idle-1', items: [], status: 'inProgress', error: null },
+                            },
+                        });
+
+                        let beats = 0;
+                        heartbeat = setInterval(() => {
+                            beats += 1;
+                            if (beats <= 10) {
+                                pushJsonLine(stdout, {
+                                    method: 'thread/tokenUsage/updated',
+                                    params: { threadId: 'thread-idle-1', turnId: 'turn-idle-1' },
+                                });
+                                return;
+                            }
+                            if (heartbeat) clearInterval(heartbeat);
+                            heartbeat = null;
+                            pushJsonLine(stdout, {
+                                method: 'turn/completed',
+                                params: {
+                                    threadId: 'thread-idle-1',
+                                    turn: { id: 'turn-idle-1', items: [], status: 'completed', error: null },
+                                },
+                            });
+                        }, IDLE_MS / 2);
+                    }, 0);
+                }
+            },
+        });
+
+        mockSpawn.mockImplementation(() => proc);
+
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+
+        await client.connect();
+        await client.startThread({
+            model: 'gpt-test',
+            cwd: '/tmp/project',
+            approvalPolicy: 'never',
+            sandbox: 'danger-full-access',
+        });
+
+        const startedAt = Date.now();
+        await expect(
+            client.sendTurnAndWait('take your time', { turnIdleTimeoutMs: IDLE_MS }),
+        ).resolves.toEqual({ aborted: false });
+        // Proves the turn outlived the idle window instead of being cut at it.
+        expect(Date.now() - startedAt).toBeGreaterThan(IDLE_MS * 2);
+
+        if (heartbeat) clearInterval(heartbeat);
+        await client.disconnect();
+    });
+
+    it('aborts a turn that goes silent for the whole idle window', async () => {
+        const IDLE_MS = 100;
+
+        const proc = createMockProcess({
+            pid: 3102,
+            onRequest: (msg, stdout) => {
+                if (msg.method === 'thread/start' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: {
+                                thread: { id: 'thread-idle-2', path: '/tmp/thread-idle-2' },
+                                model: 'gpt-test',
+                                modelProvider: 'openai',
+                                cwd: '/tmp/project',
+                                approvalPolicy: 'never',
+                                sandbox: { type: 'dangerFullAccess' },
+                                reasoningEffort: null,
+                            },
+                        });
+                    }, 0);
+                }
+
+                if (msg.method === 'turn/start' && msg.id != null) {
+                    // Acknowledge the turn, then go silent — a wedged Codex.
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: {
+                                turn: { id: 'turn-idle-2', items: [], status: 'inProgress', error: null },
+                            },
+                        });
+                    }, 0);
+                }
+            },
+        });
+
+        mockSpawn.mockImplementation(() => proc);
+
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+
+        await client.connect();
+        await client.startThread({
+            model: 'gpt-test',
+            cwd: '/tmp/project',
+            approvalPolicy: 'never',
+            sandbox: 'danger-full-access',
+        });
+
+        await expect(
+            client.sendTurnAndWait('hang forever', { turnIdleTimeoutMs: IDLE_MS }),
+        ).resolves.toEqual({ aborted: true });
+
+        await client.disconnect();
+    });
+
+    it('does not abort a turn that is blocked on an unanswered approval', async () => {
+        // Nothing arrives while the user reads the approval, so a plain idle
+        // window would expire on them.
+        const IDLE_MS = 100;
+
+        const proc = createMockProcess({
+            pid: 3103,
+            onRequest: (msg, stdout) => {
+                // Codex resumes the turn the moment the approval is answered.
+                if (msg.id === 91 && msg.result !== undefined) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            method: 'turn/completed',
+                            params: {
+                                threadId: 'thread-idle-3',
+                                turn: { id: 'turn-idle-3', items: [], status: 'completed', error: null },
+                            },
+                        });
+                    }, 0);
+                }
+
+                if (msg.method === 'thread/start' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: {
+                                thread: { id: 'thread-idle-3', path: '/tmp/thread-idle-3' },
+                                model: 'gpt-test',
+                                modelProvider: 'openai',
+                                cwd: '/tmp/project',
+                                approvalPolicy: 'on-request',
+                                sandbox: { type: 'readOnly' },
+                                reasoningEffort: null,
+                            },
+                        });
+                    }, 0);
+                }
+
+                if (msg.method === 'turn/start' && msg.id != null) {
+                    setTimeout(() => {
+                        pushJsonLine(stdout, {
+                            id: msg.id,
+                            result: {
+                                turn: { id: 'turn-idle-3', items: [], status: 'inProgress', error: null },
+                            },
+                        });
+                        pushJsonLine(stdout, {
+                            method: 'turn/started',
+                            params: {
+                                threadId: 'thread-idle-3',
+                                turn: { id: 'turn-idle-3', items: [], status: 'inProgress', error: null },
+                            },
+                        });
+                        pushJsonLine(stdout, {
+                            id: 91,
+                            method: 'item/commandExecution/requestApproval',
+                            params: {
+                                threadId: 'thread-idle-3',
+                                turnId: 'turn-idle-3',
+                                itemId: 'cmd-1',
+                                command: ['rm', '-rf', 'build'],
+                                cwd: '/tmp/project',
+                            },
+                        });
+                    }, 0);
+                }
+            },
+        });
+
+        mockSpawn.mockImplementation(() => proc);
+
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        let approvalAsked = false;
+        client.setApprovalHandler(async () => {
+            approvalAsked = true;
+            // A human takes 3 idle windows to decide.
+            await new Promise((resolve) => setTimeout(resolve, IDLE_MS * 3));
+            return 'approved';
+        });
+
+        await client.connect();
+        await client.startThread({
+            model: 'gpt-test',
+            cwd: '/tmp/project',
+            approvalPolicy: 'on-request',
+            sandbox: 'read-only',
+        });
+
+        const startedAt = Date.now();
+        const pendingTurn = client.sendTurnAndWait('delete the build dir', {
+            turnIdleTimeoutMs: IDLE_MS,
+        });
+
+        await expect(pendingTurn).resolves.toEqual({ aborted: false });
+        expect(approvalAsked).toBe(true);
+        // Proves the wait spanned several idle windows of total silence.
+        expect(Date.now() - startedAt).toBeGreaterThan(IDLE_MS * 2);
 
         await client.disconnect();
     });

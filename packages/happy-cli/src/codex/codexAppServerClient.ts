@@ -239,6 +239,24 @@ export class CodexAppServerClient {
         turnId: string | null;
     } | null = null;
 
+    /**
+     * How long a turn may go with NO activity from the app-server before we
+     * treat it as wedged (ms). 10 minutes.
+     *
+     * This is an IDLE window, not a cap on turn length: every message Codex
+     * sends re-arms it. A wall-clock cap would abort long-but-healthy turns,
+     * and since the abort is local (we stop waiting; Codex keeps running) the
+     * session would keep streaming while the client reported it as finished.
+     */
+    private static readonly TURN_IDLE_TIMEOUT_MS = 10 * 60 * 1000;
+
+    // Idle watchdog for the pending turn. Re-armed by every message the
+    // app-server sends, so it only fires when Codex has genuinely gone quiet.
+    private turnIdleTimer: ReturnType<typeof setTimeout> | null = null;
+    private turnIdleTimeoutMs = CodexAppServerClient.TURN_IDLE_TIMEOUT_MS;
+    // Approvals awaiting an answer. A turn blocked on one is not idle.
+    private outstandingApprovals = 0;
+
     // Tracks in-flight interruptTurn() RPCs so sendTurnAndWait can wait for them
     // before starting a new turn (prevents stale turn/interrupt from aborting the next turn).
     private pendingInterrupt: Promise<void> | null = null;
@@ -985,8 +1003,48 @@ export class CodexAppServerClient {
 
     private resolvePendingTurn(aborted: boolean): void {
         if (!this.pendingTurnCompletion) return;
+        this.clearTurnIdleTimer();
         this.pendingTurnCompletion.resolve(aborted);
         this.pendingTurnCompletion = null;
+    }
+
+    private clearTurnIdleTimer(): void {
+        if (!this.turnIdleTimer) return;
+        clearTimeout(this.turnIdleTimer);
+        this.turnIdleTimer = null;
+    }
+
+    /** (Re)start the idle window for the pending turn. No-op with no turn pending. */
+    private armTurnIdleTimer(): void {
+        this.clearTurnIdleTimer();
+        if (!this.pendingTurnCompletion) return;
+
+        this.turnIdleTimer = setTimeout(() => {
+            this.turnIdleTimer = null;
+            if (!this.pendingTurnCompletion) return;
+
+            // An approval nobody has answered yet is the turn waiting on US, not
+            // a wedged Codex — keep waiting rather than aborting the user's turn
+            // out from under the dialog they are still looking at.
+            if (this.outstandingApprovals > 0) {
+                this.armTurnIdleTimer();
+                return;
+            }
+
+            logger.warn(
+                `[CodexAppServer] Turn idle for ${this.turnIdleTimeoutMs}ms — treating as abort`,
+            );
+            this.resolvePendingTurn(true);
+        }, this.turnIdleTimeoutMs);
+    }
+
+    /**
+     * Any message from the app-server means Codex is still working on our turn,
+     * so the idle window starts over.
+     */
+    private touchTurnActivity(): void {
+        if (!this.pendingTurnCompletion) return;
+        this.armTurnIdleTimer();
     }
 
     private markPendingTurnStarted(turnId?: string | null): void {
@@ -1136,9 +1194,6 @@ export class CodexAppServerClient {
         }
     }
 
-    /** Default timeout for waiting on turn completion (ms). 10 minutes. */
-    private static readonly TURN_TIMEOUT_MS = 10 * 60 * 1000;
-
     /**
      * Send a user turn and wait for it to complete (task_complete or turn_aborted).
      * Returns { aborted: true } if the turn was aborted (user cancel, permission reject, etc.).
@@ -1150,7 +1205,7 @@ export class CodexAppServerClient {
         sandbox?: SandboxMode;
         effort?: ReasoningEffort;
         extraInputItems?: InputItem[];
-        turnTimeoutMs?: number;
+        turnIdleTimeoutMs?: number;
     }): Promise<{ aborted: boolean }> {
         // Wait for any in-flight interruptTurn() to complete before starting a new
         // turn. Otherwise the stale turn/interrupt RPC can reach Codex after our
@@ -1163,34 +1218,25 @@ export class CodexAppServerClient {
             await new Promise(resolve => setTimeout(resolve, 0));
         }
 
-        const timeoutMs = opts?.turnTimeoutMs ?? CodexAppServerClient.TURN_TIMEOUT_MS;
-        let timer: ReturnType<typeof setTimeout> | null = null;
+        this.turnIdleTimeoutMs = opts?.turnIdleTimeoutMs ?? CodexAppServerClient.TURN_IDLE_TIMEOUT_MS;
 
         const completion = new Promise<boolean>((resolve) => {
             this.pendingTurnCompletion = {
                 resolve,
                 turnId: null,
             };
-
-            timer = setTimeout(() => {
-                if (this.pendingTurnCompletion) {
-                    logger.warn(`[CodexAppServer] Turn timed out after ${timeoutMs}ms — treating as abort`);
-                    this.resolvePendingTurn(true);
-                }
-            }, timeoutMs);
+            this.armTurnIdleTimer();
         });
 
         try {
             await this.sendTurn(prompt, opts);
         } catch (err) {
-            if (timer) clearTimeout(timer);
+            this.clearTurnIdleTimer();
             this.pendingTurnCompletion = null;
             throw err;
         }
 
-        const aborted = await completion;
-        if (timer) clearTimeout(timer);
-        return { aborted };
+        return { aborted: await completion };
     }
 
     async interruptTurn(opts?: { timeoutMs?: number }): Promise<void> {
@@ -1296,6 +1342,8 @@ export class CodexAppServerClient {
             logger.debug('[CodexAppServer] Non-JSON line:', line.substring(0, 200));
             return;
         }
+
+        this.touchTurnActivity();
 
         // Response to our request
         if (msg.id != null && (msg.result !== undefined || msg.error !== undefined)) {
@@ -1513,15 +1561,24 @@ export class CodexAppServerClient {
     }
 
     private async handleApproval(params: Parameters<ApprovalHandler>[0]): Promise<ReviewDecision> {
-        if (this.approvalHandler) {
-            try {
-                return await this.approvalHandler(params);
-            } catch (err) {
-                logger.debug('[CodexAppServer] Approval handler error:', err);
-                return 'denied';
+        // Every exec / patch / MCP approval funnels through here, and while one
+        // is open the turn is waiting on a human — see armTurnIdleTimer().
+        this.outstandingApprovals += 1;
+        try {
+            if (this.approvalHandler) {
+                try {
+                    return await this.approvalHandler(params);
+                } catch (err) {
+                    logger.debug('[CodexAppServer] Approval handler error:', err);
+                    return 'denied';
+                }
             }
+            return 'denied'; // default: deny if no handler
+        } finally {
+            this.outstandingApprovals -= 1;
+            // The answer restarts the clock: Codex resumes from here.
+            this.touchTurnActivity();
         }
-        return 'denied'; // default: deny if no handler
     }
 
     private handleNotification(method: string, params: any): void {
