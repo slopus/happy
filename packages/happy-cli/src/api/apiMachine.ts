@@ -4,6 +4,7 @@
  */
 
 import { io, Socket } from 'socket.io-client';
+import { z } from 'zod';
 import { logger } from '@/ui/logger';
 import { configuration } from '@/configuration';
 import { MachineMetadata, DaemonState, Machine, Update, UpdateMachineBody } from './types';
@@ -88,9 +89,29 @@ interface DaemonToServerEvents {
     }) => void) => void;
 }
 
+/**
+ * Session state supplied by the client so the daemon can resume a session it
+ * never tracked (started before this daemon, or on a daemon that has since
+ * restarted). The daemon cannot reconstruct this on its own: reattaching needs
+ * the per-session data key, and the daemon only holds the account public key.
+ * The payload arrives over the machine-encrypted RPC channel.
+ */
+export const ResumeFallbackSchema = z.object({
+    metadata: z.object({ path: z.string().min(1) }).passthrough(),
+    metadataVersion: z.number().int().nonnegative(),
+    agentStateVersion: z.number().int().nonnegative(),
+    seq: z.number().int().nonnegative(),
+    encryptionKey: z.string().min(1),
+    encryptionVariant: z.literal('dataKey'),
+});
+
+export type ResumeFallback = z.infer<typeof ResumeFallbackSchema>;
+
+export type ResumeSessionOptions = { model?: string; permissionMode?: string; fallback?: ResumeFallback };
+
 type MachineRpcHandlers = {
     spawnSession: (options: SpawnSessionOptions) => Promise<SpawnSessionResult>;
-    resumeSession?: (sessionId: string, options?: { model?: string; permissionMode?: string }) => Promise<SpawnSessionResult>;
+    resumeSession?: (sessionId: string, options?: ResumeSessionOptions) => Promise<SpawnSessionResult>;
     stopSession: (sessionId: string) => boolean;
     requestShutdown: () => void;
 }
@@ -118,7 +139,7 @@ export class ApiMachineClient {
     private lastKnownCLIAvailability: CLIAvailability | null = null;
     private lastKnownResumeSupport: ResumeSupport | null = null;
     private rpcHandlerManager: RpcHandlerManager;
-    private resumeSessionHandler: ((sessionId: string, options?: { model?: string; permissionMode?: string }) => Promise<SpawnSessionResult>) | null = null;
+    private resumeSessionHandler: ((sessionId: string, options?: ResumeSessionOptions) => Promise<SpawnSessionResult>) | null = null;
     private reconnectInterval: NodeJS.Timeout | null = null;
 
     constructor(
@@ -337,7 +358,7 @@ export class ApiMachineClient {
         if (this.resumeSessionHandler) {
             if (!this.rpcHandlerManager.hasHandler(method)) {
                 this.rpcHandlerManager.registerHandler(method, async (params: any) => {
-                    const { sessionId, model, permissionMode } = params || {};
+                    const { sessionId, model, permissionMode, fallback } = params || {};
 
                     if (!sessionId || typeof sessionId !== 'string') {
                         throw new Error('Session ID is required');
@@ -348,7 +369,15 @@ export class ApiMachineClient {
                         throw new Error('Resume session handler not available');
                     }
 
-                    const result = await handler(sessionId, { model, permissionMode });
+                    // Older clients send no fallback, and a malformed one is
+                    // not worth failing the call over: the tracked-session path
+                    // may still succeed.
+                    const parsedFallback = fallback ? ResumeFallbackSchema.safeParse(fallback) : null;
+                    const result = await handler(sessionId, {
+                        model,
+                        permissionMode,
+                        fallback: parsedFallback?.success ? parsedFallback.data : undefined,
+                    });
                     switch (result.type) {
                         case 'success':
                             return { type: 'success', sessionId: result.sessionId };

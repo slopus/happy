@@ -28,6 +28,7 @@ import { detectCLIAvailability } from '@/utils/detectCLI';
 import { buildResumeLaunch } from '@/resume/handleResumeCommand';
 import { detectResumeSupport } from '@/resume/localHappyAgentAuth';
 import { encodeBase64, decodeBase64, decrypt } from '@/api/encryption';
+import type { ResumeSessionOptions } from '@/api/apiMachine';
 import {
   buildSessionChildEnvironment,
   sanitizeSessionEnvironment,
@@ -685,27 +686,42 @@ export async function startDaemon(): Promise<void> {
       }
     };
 
-    const resumeSession = async (happySessionId: string, options?: { model?: string; permissionMode?: string }): Promise<SpawnSessionResult> => {
+    const resumeSession = async (happySessionId: string, options?: ResumeSessionOptions): Promise<SpawnSessionResult> => {
       try {
         const tracked = findTrackedSessionById(happySessionId);
-        if (!tracked) {
-          return { type: 'error', errorMessage: `Session ${happySessionId} is not tracked by this daemon. It may have been started before the daemon or on another machine.` };
+        // The daemon only remembers sessions it saw during this lifetime, so a
+        // session started before it (or before its last restart) is unknown
+        // here. That is not a reason to refuse: the client can supply the
+        // session's own key and metadata, which is everything the child needs
+        // to reattach. Tracked state wins when present because it is live.
+        const fallback = options?.fallback;
+        const encryption = tracked?.encryption ?? (fallback
+          ? {
+            encryptionKey: decodeBase64(fallback.encryptionKey),
+            encryptionVariant: fallback.encryptionVariant,
+            seq: fallback.seq,
+            metadataVersion: fallback.metadataVersion,
+            agentStateVersion: fallback.agentStateVersion,
+          }
+          : undefined);
+        if (!encryption) {
+          return { type: 'error', errorMessage: `Session ${happySessionId} is not tracked by this daemon and the app sent no session key. Legacy sessions (no per-session data key) can only be resumed while tracked.` };
         }
-        if (!tracked.happySessionMetadataFromLocalWebhook) {
+
+        let metadata = tracked?.happySessionMetadataFromLocalWebhook ?? (fallback?.metadata as Metadata | undefined);
+        if (!metadata) {
           return { type: 'error', errorMessage: `Session ${happySessionId} has no metadata. Cannot resume.` };
-        }
-        if (!tracked.encryption) {
-          return { type: 'error', errorMessage: `Session ${happySessionId} has no stored encryption data. It was likely started before this feature was available. Restart the daemon and start a new session to enable resume.` };
         }
 
         // Webhook metadata may be stale (missing claudeSessionId/codexThreadId set after startup).
-        // Fetch fresh metadata from server if needed.
-        let metadata = tracked.happySessionMetadataFromLocalWebhook;
-        const needsFetch = (!metadata.claudeSessionId && (!metadata.flavor || metadata.flavor === 'claude'))
-          || (!metadata.codexThreadId && metadata.flavor === 'codex');
-        if (needsFetch) {
+        // Fetch fresh metadata from server if needed. Client-supplied metadata
+        // is already the server's current copy, so it never needs this.
+        const needsFetch = !fallback
+          && ((!metadata.claudeSessionId && (!metadata.flavor || metadata.flavor === 'claude'))
+            || (!metadata.codexThreadId && metadata.flavor === 'codex'));
+        if (needsFetch && tracked) {
           logger.debug(`[DAEMON RUN] Session ${happySessionId} missing agent session ID in webhook metadata, fetching from server`);
-          const serverMetadata = await fetchServerSessionMetadata(happySessionId, tracked.encryption.encryptionKey, tracked.encryption.encryptionVariant);
+          const serverMetadata = await fetchServerSessionMetadata(happySessionId, encryption.encryptionKey, encryption.encryptionVariant);
           if (serverMetadata) {
             metadata = serverMetadata;
             tracked.happySessionMetadataFromLocalWebhook = serverMetadata;
@@ -732,11 +748,11 @@ export async function startDaemon(): Promise<void> {
           cwd: launch.cwd,
           env: buildSessionChildEnvironment(ambientEnvironment, {
             HAPPY_RECONNECT_SESSION_ID: happySessionId,
-            HAPPY_RECONNECT_ENCRYPTION_KEY: encodeBase64(tracked.encryption.encryptionKey),
-            HAPPY_RECONNECT_ENCRYPTION_VARIANT: tracked.encryption.encryptionVariant,
-            HAPPY_RECONNECT_SEQ: String(tracked.encryption.seq),
-            HAPPY_RECONNECT_METADATA_VERSION: String(tracked.encryption.metadataVersion),
-            HAPPY_RECONNECT_AGENT_STATE_VERSION: String(tracked.encryption.agentStateVersion),
+            HAPPY_RECONNECT_ENCRYPTION_KEY: encodeBase64(encryption.encryptionKey),
+            HAPPY_RECONNECT_ENCRYPTION_VARIANT: encryption.encryptionVariant,
+            HAPPY_RECONNECT_SEQ: String(encryption.seq),
+            HAPPY_RECONNECT_METADATA_VERSION: String(encryption.metadataVersion),
+            HAPPY_RECONNECT_AGENT_STATE_VERSION: String(encryption.agentStateVersion),
           }),
         });
       } catch (error) {

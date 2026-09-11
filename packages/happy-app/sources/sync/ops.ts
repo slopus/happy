@@ -18,6 +18,7 @@ import {
     rigHasRpcMethod,
 } from './rig';
 import type { HappyAgentSpawnTarget } from './happyAgentSpawn';
+import { encodeBase64 } from '@/encryption/base64';
 
 export type { SessionAgentModesPatch };
 
@@ -493,14 +494,51 @@ export async function codexListRewindPoints(
     }
 }
 
+/**
+ * Everything the daemon needs to revive a session it has no memory of. The
+ * daemon cannot build this itself: reconnecting requires the per-session data
+ * key, and ~/.happy/access.key only holds the account *public* key, so a
+ * session the daemon did not create is undecryptable to it. The client is the
+ * only party holding the account secret, so it ships the key and the already
+ * decrypted metadata over the machine RPC — which is end-to-end encrypted with
+ * the machine key (apiSocket.machineRPC), the same key the daemon already has.
+ */
+function buildResumeFallback(sessionId: string): {
+    metadata: unknown;
+    metadataVersion: number;
+    agentStateVersion: number;
+    seq: number;
+    encryptionKey: string;
+    encryptionVariant: 'dataKey';
+} | undefined {
+    const session = storage.getState().sessions[sessionId];
+    if (!session || !session.metadata) {
+        return undefined;
+    }
+    // Legacy sessions encrypt with the account master secret; that never
+    // leaves this device, so they stay resumable only while tracked.
+    const dataKey = sync.encryption.getSessionDataKey(sessionId);
+    if (!dataKey) {
+        return undefined;
+    }
+    return {
+        metadata: session.metadata,
+        metadataVersion: session.metadataVersion,
+        agentStateVersion: session.agentStateVersion,
+        seq: session.seq,
+        encryptionKey: encodeBase64(dataKey),
+        encryptionVariant: 'dataKey',
+    };
+}
+
 export async function machineResumeSession(options: ResumeSessionOptions & { model?: string; permissionMode?: string }): Promise<SpawnSessionResult> {
     const { machineId, sessionId, model, permissionMode } = options;
 
     try {
-        const result = await apiSocket.machineRPC<SpawnSessionResult, { sessionId: string; model?: string; permissionMode?: string }>(
+        const result = await apiSocket.machineRPC<SpawnSessionResult, { sessionId: string; model?: string; permissionMode?: string; fallback?: unknown }>(
             machineId,
             'resume-happy-session',
-            { sessionId, model, permissionMode },
+            { sessionId, model, permissionMode, fallback: buildResumeFallback(sessionId) },
         );
         return result;
     } catch (error) {
