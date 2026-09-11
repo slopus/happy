@@ -107,7 +107,7 @@ export const ResumeFallbackSchema = z.object({
 
 export type ResumeFallback = z.infer<typeof ResumeFallbackSchema>;
 
-export type ResumeSessionOptions = { model?: string; permissionMode?: string; fallback?: ResumeFallback };
+export type ResumeSessionOptions = { model?: string; permissionMode?: string; fallback?: ResumeFallback; fallbackReason?: string };
 
 type MachineRpcHandlers = {
     spawnSession: (options: SpawnSessionOptions) => Promise<SpawnSessionResult>;
@@ -358,7 +358,7 @@ export class ApiMachineClient {
         if (this.resumeSessionHandler) {
             if (!this.rpcHandlerManager.hasHandler(method)) {
                 this.rpcHandlerManager.registerHandler(method, async (params: any) => {
-                    const { sessionId, model, permissionMode, fallback } = params || {};
+                    const { sessionId, model, permissionMode, fallback, fallbackReason } = params || {};
 
                     if (!sessionId || typeof sessionId !== 'string') {
                         throw new Error('Session ID is required');
@@ -377,6 +377,9 @@ export class ApiMachineClient {
                         model,
                         permissionMode,
                         fallback: parsedFallback?.success ? parsedFallback.data : undefined,
+                        // Free-form, client-supplied and only ever echoed back
+                        // in an error message, so it is bounded, not trusted.
+                        fallbackReason: typeof fallbackReason === 'string' ? fallbackReason.slice(0, 64) : undefined,
                     });
                     switch (result.type) {
                         case 'success':

@@ -503,31 +503,42 @@ export async function codexListRewindPoints(
  * decrypted metadata over the machine RPC — which is end-to-end encrypted with
  * the machine key (apiSocket.machineRPC), the same key the daemon already has.
  */
-function buildResumeFallback(sessionId: string): {
+type ResumeFallbackPayload = {
     metadata: unknown;
     metadataVersion: number;
     agentStateVersion: number;
     seq: number;
     encryptionKey: string;
     encryptionVariant: 'dataKey';
-} | undefined {
+};
+
+/**
+ * `fallback: undefined` disappears in JSON, so a client that cannot build one
+ * is indistinguishable on the wire from a client too old to know about it.
+ * The reason is always sent: the daemon puts it in the error message, which is
+ * the only place a user can see why an untracked session refused to resume.
+ */
+function buildResumeFallback(sessionId: string): { fallback?: ResumeFallbackPayload; reason: string } {
     const session = storage.getState().sessions[sessionId];
     if (!session || !session.metadata) {
-        return undefined;
+        return { reason: 'client-has-no-session-row' };
     }
     // Legacy sessions encrypt with the account master secret; that never
     // leaves this device, so they stay resumable only while tracked.
     const dataKey = sync.encryption.getSessionDataKey(sessionId);
     if (!dataKey) {
-        return undefined;
+        return { reason: 'client-has-no-data-key' };
     }
     return {
-        metadata: session.metadata,
-        metadataVersion: session.metadataVersion,
-        agentStateVersion: session.agentStateVersion,
-        seq: session.seq,
-        encryptionKey: encodeBase64(dataKey),
-        encryptionVariant: 'dataKey',
+        reason: 'ok',
+        fallback: {
+            metadata: session.metadata,
+            metadataVersion: session.metadataVersion,
+            agentStateVersion: session.agentStateVersion,
+            seq: session.seq,
+            encryptionKey: encodeBase64(dataKey),
+            encryptionVariant: 'dataKey',
+        },
     };
 }
 
@@ -535,10 +546,11 @@ export async function machineResumeSession(options: ResumeSessionOptions & { mod
     const { machineId, sessionId, model, permissionMode } = options;
 
     try {
-        const result = await apiSocket.machineRPC<SpawnSessionResult, { sessionId: string; model?: string; permissionMode?: string; fallback?: unknown }>(
+        const { fallback, reason } = buildResumeFallback(sessionId);
+        const result = await apiSocket.machineRPC<SpawnSessionResult, { sessionId: string; model?: string; permissionMode?: string; fallback?: unknown; fallbackReason?: string }>(
             machineId,
             'resume-happy-session',
-            { sessionId, model, permissionMode, fallback: buildResumeFallback(sessionId) },
+            { sessionId, model, permissionMode, fallback, fallbackReason: reason },
         );
         return result;
     } catch (error) {

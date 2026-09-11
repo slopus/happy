@@ -705,7 +705,10 @@ export async function startDaemon(): Promise<void> {
           }
           : undefined);
         if (!encryption) {
-          return { type: 'error', errorMessage: `Session ${happySessionId} is not tracked by this daemon and the app sent no session key. Legacy sessions (no per-session data key) can only be resumed while tracked.` };
+          const why = options?.fallbackReason
+            ? `client reason: ${options.fallbackReason}`
+            : 'the client did not report why (a client too old to send one)';
+          return { type: 'error', errorMessage: `Session ${happySessionId} is not tracked by this daemon and no session key came with the request (${why}). Legacy sessions (no per-session data key) can only be resumed while tracked.` };
         }
 
         let metadata = tracked?.happySessionMetadataFromLocalWebhook ?? (fallback?.metadata as Metadata | undefined);
