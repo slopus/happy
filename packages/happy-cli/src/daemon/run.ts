@@ -716,18 +716,24 @@ export async function startDaemon(): Promise<void> {
           return { type: 'error', errorMessage: `Session ${happySessionId} has no metadata. Cannot resume.` };
         }
 
-        // Webhook metadata may be stale (missing claudeSessionId/codexThreadId set after startup).
-        // Fetch fresh metadata from server if needed. Client-supplied metadata
-        // is already the server's current copy, so it never needs this.
-        const needsFetch = !fallback
-          && ((!metadata.claudeSessionId && (!metadata.flavor || metadata.flavor === 'claude'))
-            || (!metadata.codexThreadId && metadata.flavor === 'codex'));
-        if (needsFetch && tracked) {
-          logger.debug(`[DAEMON RUN] Session ${happySessionId} missing agent session ID in webhook metadata, fetching from server`);
+        // The agent session ID lands in metadata only once the agent reports it
+        // (for Claude, the SessionStart hook), so the webhook snapshot taken at
+        // spawn never has it — and neither does a client row that was ingested
+        // before the update reached it. Either source can therefore be missing
+        // the one field resume cannot do without, so the refresh is driven by
+        // the field being absent, not by which side supplied the metadata.
+        // The fetch is best effort: it reads the server's 150 most recent
+        // sessions, and an older session simply keeps what the client sent.
+        const needsFetch = (!metadata.claudeSessionId && (!metadata.flavor || metadata.flavor === 'claude'))
+          || (!metadata.codexThreadId && metadata.flavor === 'codex');
+        if (needsFetch) {
+          logger.debug(`[DAEMON RUN] Session ${happySessionId} has no agent session ID in the metadata at hand, fetching from server`);
           const serverMetadata = await fetchServerSessionMetadata(happySessionId, encryption.encryptionKey, encryption.encryptionVariant);
           if (serverMetadata) {
             metadata = serverMetadata;
-            tracked.happySessionMetadataFromLocalWebhook = serverMetadata;
+            if (tracked) {
+              tracked.happySessionMetadataFromLocalWebhook = serverMetadata;
+            }
           }
         }
 
