@@ -295,13 +295,14 @@ export async function claudeRemote(opts: {
                     const found = await awaitFileExist(join(projectDir, `${systemInit.session_id}.jsonl`), 30000);
                     logger.debug(`[claudeRemote] Session file found: ${systemInit.session_id} ${found}`);
                     if (!found) {
-                        // The transcript never landed on disk within the grace
-                        // window. We still register the id so the (now
-                        // bounded) scanner watcher can pick it up if it shows
-                        // up late and otherwise drops it cleanly instead of
-                        // wedging — but surface the anomaly so a stuck remote
-                        // launch is visible in the app rather than a silent
-                        // "dead instance".
+                        // The transcript has not landed on disk yet. We still
+                        // register the id: the scanner's watcher waits for the
+                        // file indefinitely (it no longer gives up on a
+                        // deadline — see startFileWatcher), so a late
+                        // transcript is still picked up cleanly. This wait is
+                        // therefore only about surfacing the anomaly, so a
+                        // genuinely stuck remote launch is visible in the app
+                        // rather than a silent "dead instance".
                         logger.debug(`[claudeRemote] WARNING: session transcript ${systemInit.session_id} never appeared after 30s`);
                         opts.onCompletionEvent?.('⚠️ Claude session did not produce a transcript — the agent may be unresponsive. Try sending your message again.');
                     }
