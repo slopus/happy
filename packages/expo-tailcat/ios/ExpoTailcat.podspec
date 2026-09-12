@@ -11,7 +11,7 @@ Pod::Spec.new do |s|
   s.author = 'Happy contributors'
   s.homepage = 'https://github.com/slopus/happy/tree/main/packages/expo-tailcat'
   s.platforms = { :ios => '15.1' }
-  s.swift_version = '5.9'
+  s.swift_version = '5.0'
   s.source = { :git => 'https://github.com/slopus/happy.git' }
   s.static_framework = true
   s.dependency 'ExpoModulesCore'

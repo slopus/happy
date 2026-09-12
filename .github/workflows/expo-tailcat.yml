@@ -82,6 +82,11 @@ jobs:
         with:
           go-version-file: packages/expo-tailcat/go/go.mod
           cache-dependency-path: packages/expo-tailcat/go/go.sum
+      - name: Select installed Xcode 26.2 for Expo SDK 55
+        if: matrix.platform == 'ios'
+        run: |
+          test -d /Applications/Xcode_26.2.app/Contents/Developer
+          echo 'DEVELOPER_DIR=/Applications/Xcode_26.2.app/Contents/Developer' >> "$GITHUB_ENV"
       - uses: actions/setup-java@v4
         if: matrix.platform == 'android'
         with:
@@ -131,7 +136,7 @@ jobs:
       - name: Build Android release test APK
         if: matrix.platform == 'android'
         working-directory: packages/expo-tailcat/example/android
-        run: ./gradlew :app:assembleRelease -PreactNativeArchitectures=x86_64 --max-workers=2
+        run: ./gradlew :app:assembleRelease -PreactNativeArchitectures=x86_64 --max-workers=2 --build-cache
       - name: Prepare iOS simulator
         if: matrix.platform == 'ios'
         run: |

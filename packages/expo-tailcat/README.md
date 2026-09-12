@@ -105,7 +105,8 @@ still need testing beyond the simulator gates.
   behavior. HTML/JS bodies, cookie domains/paths and absolute URLs inside JSON
   are not rewritten. Prefer bearer-header auth to browser cookie workflows.
 - The Expo plugin permits local cleartext for the proxy, not arbitrary remote
-  HTTP. Android apps with an existing `networkSecurityConfig` must merge the
+  HTTP, and raises Android's minimum SDK to 26 (preserving higher minimums).
+  Android apps with an existing `networkSecurityConfig` must merge the
   loopback exception themselves instead of using this plugin; it refuses to
   silently overwrite their security policy. Bare apps can configure equivalent
   ATS/Android settings manually and use native autolinking without the plugin.
@@ -119,7 +120,8 @@ still need testing beyond the simulator gates.
 ## Development and local checks
 
 Requirements: Node 22+, pnpm 10.11.0, Go matching `go.mod`. Native builds also
-need Xcode on macOS or an Android SDK/NDK (CI pins NDK 27.2.12479018).
+need Xcode 26+ on macOS or an Android SDK/NDK (CI selects installed Xcode 26.2
+and pins NDK 27.2.12479018).
 
 ```sh
 cd packages/expo-tailcat

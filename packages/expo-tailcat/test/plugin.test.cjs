@@ -12,6 +12,7 @@ function loadPlugin() {
       withInfoPlist: (config, mod) => { mods.ios = mod; return config; },
       withAndroidManifest: (config, mod) => { mods.android = mod; return config; },
       withDangerousMod: (config, [, mod]) => { mods.files = mod; return config; },
+      withGradleProperties: (config, mod) => { mods.gradle = mod; return config; },
     };
     if (name === 'node:fs/promises') return { mkdir: async () => {}, writeFile: async (...args) => writes.push(args) };
     return require(name);
@@ -48,4 +49,14 @@ test('Android cleartext exception is loopback-only and idempotent', async () => 
   assert.match(writes[0][1], /base-config cleartextTrafficPermitted="false"/);
   assert.match(writes[0][1], /<domain>127\.0\.0\.1<\/domain>/);
   assert.doesNotMatch(writes[0][1], /includeSubdomains|cleartextTrafficPermitted="true"\s*\/>/);
+});
+
+test('Android requires API 26 while preserving a higher app minimum', () => {
+  const { mods } = loadPlugin();
+  for (const minimum of [undefined, '24', '26', '30']) {
+    const config = { modResults: minimum === undefined ? [] : [{ type: 'property', key: 'android.minSdkVersion', value: minimum }] };
+    mods.gradle(config); mods.gradle(config);
+    assert.equal(config.modResults.length, 1);
+    assert.equal(config.modResults[0].value, minimum === '30' ? '30' : '26');
+  }
 });

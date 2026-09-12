@@ -1,6 +1,6 @@
 'use strict';
 
-const { withInfoPlist, withAndroidManifest, withDangerousMod } = require('expo/config-plugins');
+const { withInfoPlist, withAndroidManifest, withDangerousMod, withGradleProperties } = require('expo/config-plugins');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 
@@ -25,6 +25,15 @@ module.exports = function withTailcat(config) {
       throw new Error('expo-tailcat: an existing Android networkSecurityConfig must be merged manually; allow cleartext for 127.0.0.1 only.');
     }
     app.$['android:networkSecurityConfig'] = '@xml/expo_tailcat_network_security';
+    return config;
+  });
+  config = withGradleProperties(config, config => {
+    const minimum = config.modResults.find(property => property.type === 'property' && property.key === 'android.minSdkVersion');
+    if (!minimum) {
+      config.modResults.push({ type: 'property', key: 'android.minSdkVersion', value: '26' });
+    } else if (Number(minimum.value) < 26) {
+      minimum.value = '26';
+    }
     return config;
   });
   return withDangerousMod(config, ['android', async config => {
