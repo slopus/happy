@@ -136,7 +136,8 @@ jobs:
         if: matrix.platform == 'ios'
         run: |
           node scripts/select-simulator.cjs >> "$GITHUB_ENV"
-          pod install --project-directory=example/ios
+          cd example/ios
+          pod install
       - name: Build iOS release test app
         if: matrix.platform == 'ios'
         run: >-

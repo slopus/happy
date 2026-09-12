@@ -5,5 +5,5 @@ const simulator = Object.entries(devices)
   .flatMap(([, devices]) => devices)
   .find(device => device.isAvailable && device.name.startsWith('iPhone'));
 if (!simulator) throw new Error('No available iPhone simulator installed');
-if (simulator.state !== 'Booted') execFileSync('xcrun', ['simctl', 'boot', simulator.udid]);
+// Do not boot while compiling the app; e2e-ios.sh boots immediately before use.
 console.log(`TAILCAT_SIMULATOR_ID=${simulator.udid}`);
