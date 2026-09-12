@@ -251,6 +251,9 @@ func open(parent context.Context, o options) (_ *tunnel, err error) {
 				http.NotFound(w, r)
 				return
 			}
+			// The upstream may respond while the upload is still in progress.
+			// Prevent net/http from draining the request behind Transport's reader.
+			http.NewResponseController(w).EnableFullDuplex()
 			proxy.ServeHTTP(w, r)
 		}),
 	}

@@ -67,3 +67,8 @@ test('mobile builds retain the OS DNS resolver', () => {
   assert.ok(!tags.includes('netgo'), 'Android and Apple must use the OS resolver');
   assert.ok(tags.includes('ts_omit_portmapper') && tags.includes('ts_omit_captiveportal'));
 });
+
+test('Android forwards gomobile JNI keep rules to release consumers', () => {
+  const gradle = fs.readFileSync(path.join(__dirname, '../android/build.gradle'), 'utf8');
+  assert.match(gradle, /consumerProguardFiles .*tailcat-aar\/proguard\.txt/);
+});

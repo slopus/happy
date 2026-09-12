@@ -10,6 +10,9 @@ android {
     versionCode 1
     versionName '0.1.0'
     minSdkVersion 26
+    // Keep gomobile's JNI/reflection entry points when the host app enables R8.
+    // preBuild unpacks these upstream-generated rules alongside classes.jar.
+    consumerProguardFiles layout.buildDirectory.file('tailcat-aar/proguard.txt').get().asFile
   }
 }
 

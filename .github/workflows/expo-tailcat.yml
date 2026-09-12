@@ -44,7 +44,7 @@ jobs:
         run: bash scripts/test-go.sh
       - name: Check Go formatting and module checksums
         run: |
-          test -z "$(gofmt -l go/mobile go/internal go/cmd)"
+          test -z "$(gofmt -l go/mobile go/internal go/cmd go/integration)"
           cd go
           go mod verify
 
@@ -136,7 +136,7 @@ jobs:
       - name: Build Android release test APK
         if: matrix.platform == 'android'
         working-directory: packages/expo-tailcat/example/android
-        run: ./gradlew :app:assembleRelease -PreactNativeArchitectures=x86_64 --max-workers=2 --build-cache
+        run: ./gradlew :app:assembleRelease -PreactNativeArchitectures=x86_64 -Pandroid.enableMinifyInReleaseBuilds=true --max-workers=2 --build-cache
       - name: Prepare iOS simulator
         if: matrix.platform == 'ios'
         run: |

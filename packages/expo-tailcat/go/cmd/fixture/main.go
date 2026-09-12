@@ -35,6 +35,8 @@ func run(relay, control string) error {
 	var mu sync.Mutex
 	var result json.RawMessage
 	mux := http.NewServeMux()
+	// Native fetch baseline, to distinguish HTTP client issues from the tunnel.
+	mux.HandleFunc("POST /echo", testpeer.Handler)
 	mux.HandleFunc("GET /config", func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]any{"address": p.Address, "port": testpeer.Port})
 	})
