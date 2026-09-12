@@ -17,7 +17,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: expo-tailcat-${{ github.ref }}-${{ github.event.inputs.platform || 'checks' }}
+  group: expo-tailcat-${{ github.ref }}-${{ github.event.inputs.platform || (contains(github.event.head_commit.message, '[expo-tailcat android]') && 'android') || (contains(github.event.head_commit.message, '[expo-tailcat ios]') && 'ios') || 'checks' }}
   cancel-in-progress: true
 
 jobs:
@@ -53,12 +53,14 @@ jobs:
     # on a new branch before workflow_dispatch is registered on the default branch.
     if: >-
       github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'push' && contains(github.event.head_commit.message, '[expo-tailcat native]'))
+      (github.event_name == 'push' && (contains(github.event.head_commit.message, '[expo-tailcat native]') ||
+      contains(github.event.head_commit.message, '[expo-tailcat android]') ||
+      contains(github.event.head_commit.message, '[expo-tailcat ios]')))
     needs: checks
     strategy:
       fail-fast: false
       matrix:
-        platform: ${{ fromJSON(github.event.inputs.platform == 'ios' && '["ios"]' || github.event.inputs.platform == 'android' && '["android"]' || '["ios","android"]') }}
+        platform: ${{ fromJSON((github.event.inputs.platform == 'ios' || contains(github.event.head_commit.message, '[expo-tailcat ios]')) && '["ios"]' || (github.event.inputs.platform == 'android' || contains(github.event.head_commit.message, '[expo-tailcat android]')) && '["android"]' || '["ios","android"]') }}
     runs-on: ${{ matrix.platform == 'ios' && 'macos-15' || 'ubuntu-latest' }}
     timeout-minutes: 45
     env:
@@ -87,12 +89,18 @@ jobs:
           java-version: '17'
       - uses: gradle/actions/setup-gradle@v4
         if: matrix.platform == 'android'
+        with:
+          cache-read-only: false
+      - uses: android-actions/setup-android@v3
+        if: matrix.platform == 'android'
+        with:
+          packages: ''
       - name: Install pinned Android NDK
         if: matrix.platform == 'android'
         run: sdkmanager 'ndk;27.2.12479018'
       - name: Cache Go native library
         id: native-cache
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: |
             packages/expo-tailcat/ios/Frameworks
@@ -103,6 +111,14 @@ jobs:
         run: |
           if [[ '${{ matrix.platform }}' == android ]]; then export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/27.2.12479018"; fi
           bash scripts/build-native.sh '${{ matrix.platform }}'
+      - name: Save native library before app compilation
+        if: steps.native-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            packages/expo-tailcat/ios/Frameworks
+            packages/expo-tailcat/android/libs
+          key: ${{ steps.native-cache.outputs.cache-primary-key }}
       - name: Install standalone test app (not the Happy monorepo)
         run: pnpm --dir example install --ignore-workspace --frozen-lockfile --ignore-scripts
       - name: Generate native test project
@@ -159,5 +175,7 @@ jobs:
           path: |
             packages/expo-tailcat/ios/Frameworks/Tailcat.xcframework
             packages/expo-tailcat/android/libs/ExpoTailcat.aar
+            packages/expo-tailcat/LICENSE
+            packages/expo-tailcat/THIRD_PARTY_NOTICES.md
           if-no-files-found: error
           retention-days: 7

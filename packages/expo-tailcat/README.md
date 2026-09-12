@@ -151,7 +151,8 @@ it shares an ephemeral address and intentionally uses a test relay certificate.
 `.github/workflows/expo-tailcat.yml` runs inexpensive JS and Go checks on
 package changes. Native E2E is **opt-in**, via `workflow_dispatch` (`ios`,
 `android`, or `both`) or a push whose commit message includes
-`[expo-tailcat native]` (initial branch workflow bootstrap).
+`[expo-tailcat native]` (both platforms), `[expo-tailcat ios]`, or
+`[expo-tailcat android]` (initial branch workflow bootstrap and targeted retries).
 
 The native gate builds a release test app, launches an iOS simulator on macOS
 or Android emulator on Linux, and waits for seven explicit HTTP/WS/lifecycle
