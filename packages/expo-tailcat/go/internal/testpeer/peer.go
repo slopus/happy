@@ -59,7 +59,9 @@ func Start(relayAddr string) (*Peer, error) {
 	p.relayHTTP.StartTLS()
 	region := &tailcfg.DERPRegion{
 		RegionID: 1, RegionCode: "private-test",
-		Nodes: []*tailcfg.DERPNode{{Name: "test", RegionID: 1, HostName: "127.0.0.1", IPv4: "127.0.0.1", IPv6: "none",
+		// A hostname (without a fixed IPv4 override) exercises the mobile OS
+		// resolver too, without depending on external DNS or a public relay.
+		Nodes: []*tailcfg.DERPNode{{Name: "test", RegionID: 1, HostName: "localhost", IPv6: "none",
 			DERPPort: ln.Addr().(*net.TCPAddr).Port, STUNPort: -1, InsecureForTests: true}},
 	}
 	p.Server = &tailcat.Server{

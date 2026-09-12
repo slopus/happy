@@ -46,13 +46,19 @@ const tunnel = await openTunnel({ address: pairedAddress, port: 8080 });
 try {
   const response = await fetch(tunnel.httpUrl + 'api/status');
   const status = await response.json();
-
-  const socket = new WebSocket(tunnel.wsUrl + 'events');
-  // Use socket.onopen/onmessage/onerror as usual.
-  // Keep the tunnel alive for as long as the socket is needed.
 } finally {
   await tunnel.close(); // Also closes in-flight HTTP requests and WebSockets.
 }
+```
+
+For a long-lived WebSocket, keep its tunnel open until the socket is finished:
+
+```ts
+const tunnel = await openTunnel({ address: pairedAddress, port: 8080 });
+const socket = new WebSocket(tunnel.wsUrl + 'events');
+socket.onmessage = event => handleMessage(event.data);
+socket.onclose = () => { void tunnel.close(); };
+// Later, on unmount/disconnect, call socket.close() and tunnel.close().
 ```
 
 Both base URLs end with `/` and contain a **secret path**. Append relative
@@ -166,7 +172,7 @@ cached. Tested libraries are retained for seven days. There is no publish step.
 ## Before publishing (separate, explicit workflow)
 
 Build and pass both platform gates at the same commit. Retrieve both native
-artifacts into `ios/Frameworks/` and `android/libs/`. Run `go mod download all`
+artifacts into `ios/Frameworks/` and `android/libs/`. Run `go mod download`
 and `pnpm licenses`, review notices, then check and inspect the package tarball.
 `prepack` refuses to create a package missing either native artifact or notices.
 Also review privacy/export-compliance declarations for the host app. This

@@ -9,7 +9,11 @@ public final class ExpoTailcatModule: Module {
     Events("onTunnelsClosed")
 
     AsyncFunction("openTunnel") { (options: String) throws -> String in
-      return try self.manager.openTunnel(options)
+      // gomobile's nonnull string result keeps NSError as an explicit out parameter.
+      var error: NSError?
+      let result = self.manager.openTunnel(options, error: &error)
+      if let error { throw error }
+      return result
     }.runOnQueue(.global(qos: .userInitiated))
 
     AsyncFunction("closeTunnel") { (id: String) in

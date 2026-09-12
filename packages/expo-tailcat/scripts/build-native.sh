@@ -9,7 +9,9 @@ mkdir -p "$GOBIN"
 # Versions are tool dependencies pinned in go.mod/go.sum.
 go install golang.org/x/mobile/cmd/gobind golang.org/x/mobile/cmd/gomobile
 # Build only the transport. Do not link CLI tools or the private test fixture.
-tags='netgo,osusergo,ts_omit_portmapper,ts_omit_captiveportal,ts_omit_logtail'
+# Keep the OS resolver: forcing netgo breaks Android system DNS and bypasses
+# Apple's native resolver. The desktop Tailcat release tags are not mobile-safe.
+tags="$(tr -d '\n' < "$package_dir/native-tags.txt")"
 case "$platform" in
   ios)
     if [[ "$(uname -s)" != Darwin ]]; then

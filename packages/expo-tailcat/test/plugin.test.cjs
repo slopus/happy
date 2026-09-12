@@ -47,8 +47,9 @@ test('Android cleartext exception is loopback-only and idempotent', async () => 
   await mods.files({ modRequest: { platformProjectRoot: '/test-project' } });
   assert.equal(writes.length, 1);
   assert.match(writes[0][1], /base-config cleartextTrafficPermitted="false"/);
-  assert.match(writes[0][1], /<domain>127\.0\.0\.1<\/domain>/);
-  assert.doesNotMatch(writes[0][1], /includeSubdomains|cleartextTrafficPermitted="true"\s*\/>/);
+  assert.match(writes[0][1], /<domain includeSubdomains="false">127\.0\.0\.1<\/domain>/);
+  assert.match(writes[0][1], /<domain includeSubdomains="false">localhost<\/domain>/);
+  assert.doesNotMatch(writes[0][1], /includeSubdomains="true"|cleartextTrafficPermitted="true"\s*\/>/);
 });
 
 test('Android requires API 26 while preserving a higher app minimum', () => {
@@ -59,4 +60,10 @@ test('Android requires API 26 while preserving a higher app minimum', () => {
     assert.equal(config.modResults.length, 1);
     assert.equal(config.modResults[0].value, minimum === '30' ? '30' : '26');
   }
+});
+
+test('mobile builds retain the OS DNS resolver', () => {
+  const tags = fs.readFileSync(path.join(__dirname, '../native-tags.txt'), 'utf8').trim().split(',');
+  assert.ok(!tags.includes('netgo'), 'Android and Apple must use the OS resolver');
+  assert.ok(tags.includes('ts_omit_portmapper') && tags.includes('ts_omit_captiveportal'));
 });

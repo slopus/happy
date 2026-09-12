@@ -110,7 +110,7 @@ jobs:
           path: |
             packages/expo-tailcat/ios/Frameworks
             packages/expo-tailcat/android/libs
-          key: expo-tailcat-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('packages/expo-tailcat/go/go.*', 'packages/expo-tailcat/go/mobile/*.go', 'packages/expo-tailcat/scripts/build-native.sh') }}
+          key: expo-tailcat-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('packages/expo-tailcat/go/go.*', 'packages/expo-tailcat/go/mobile/*.go', 'packages/expo-tailcat/scripts/build-native.sh', 'packages/expo-tailcat/native-tags.txt') }}
       - name: Build native library
         if: steps.native-cache.outputs.cache-hit != 'true'
         run: |
@@ -149,7 +149,7 @@ jobs:
           xcodebuild -workspace example/ios/TailcatE2E.xcworkspace -scheme TailcatE2E
           -configuration Release -sdk iphonesimulator
           -destination "id=$TAILCAT_SIMULATOR_ID"
-          -derivedDataPath build/ios -jobs 4 CODE_SIGNING_ALLOWED=NO build
+          -derivedDataPath build/ios -jobs 4 CODE_SIGNING_ALLOWED=NO ONLY_ACTIVE_ARCH=YES build
       - name: Start private fixture
         run: |
           ./build/fixture > build/fixture.log 2>&1 &

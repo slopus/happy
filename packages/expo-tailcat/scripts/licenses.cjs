@@ -6,7 +6,7 @@ const path = require('node:path');
 const root = path.resolve(__dirname, '..');
 const options = { cwd: path.join(root, 'go'), encoding: 'utf8', maxBuffer: 20 * 1024 * 1024 };
 const modulesByName = new Map();
-const tags = 'netgo,osusergo,ts_omit_portmapper,ts_omit_captiveportal,ts_omit_logtail';
+const tags = fs.readFileSync(path.join(root, 'native-tags.txt'), 'utf8').trim();
 for (const target of ['ios/arm64', 'ios/amd64', 'android/arm64', 'android/amd64']) {
   const [GOOS, GOARCH] = target.split('/');
   const output = execFileSync('go', ['list', '-deps', `-tags=${tags}`, '-f',

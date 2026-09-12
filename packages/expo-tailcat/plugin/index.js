@@ -43,8 +43,8 @@ module.exports = function withTailcat(config) {
 <network-security-config>
   <base-config cleartextTrafficPermitted="false" />
   <domain-config cleartextTrafficPermitted="true">
-    <domain>127.0.0.1</domain>
-    <domain>localhost</domain>
+    <domain includeSubdomains="false">127.0.0.1</domain>
+    <domain includeSubdomains="false">localhost</domain>
   </domain-config>
   <debug-overrides><trust-anchors><certificates src="user" /></trust-anchors></debug-overrides>
 </network-security-config>
