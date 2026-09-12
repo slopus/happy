@@ -338,6 +338,21 @@ importers:
         specifier: ^4.1.5
         version: 4.1.5(@opentelemetry/api@1.9.1)(@types/node@24.12.2)(vite@8.0.9(@types/node@24.12.2)(esbuild@0.27.2)(jiti@2.6.1)(terser@5.46.0)(tsx@4.21.0)(yaml@2.8.2))
 
+  packages/expo-tailcat:
+    dependencies:
+      expo:
+        specifier: '>=55.0.0 <56'
+        version: 55.0.8(@babel/core@7.28.6)(@expo/dom-webview@55.0.3)(@expo/metro-runtime@55.0.6)(expo-router@55.0.7)(react-dom@19.2.0(react@19.2.0))(react-native-webview@13.15.0(react-native@0.83.1(@babel/core@7.28.6)(@types/react@19.1.17)(react@19.2.0))(react@19.2.0))(react-native@0.83.1(@babel/core@7.28.6)(@types/react@19.1.17)(react@19.2.0))(react@19.2.0)(typescript@5.9.3)
+      expo-modules-core:
+        specifier: '>=55.0.0 <56'
+        version: 55.0.17(react-native@0.83.1(@babel/core@7.28.6)(@types/react@19.1.17)(react@19.2.0))(react@19.2.0)
+      react:
+        specifier: '>=19.0.0'
+        version: 19.2.0
+      react-native:
+        specifier: '>=0.83.0 <0.84'
+        version: 0.83.1(@babel/core@7.28.6)(@types/react@19.1.17)(react@19.2.0)
+
   packages/happy-agent:
     dependencies:
       '@slopus/happy-wire':

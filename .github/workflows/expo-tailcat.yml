@@ -1,0 +1,163 @@
+name: expo-tailcat
+
+on:
+  pull_request:
+    paths: ['packages/expo-tailcat/**', '.github/workflows/expo-tailcat.yml']
+  push:
+    paths: ['packages/expo-tailcat/**', '.github/workflows/expo-tailcat.yml']
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: Native simulator E2E platform (build only when needed)
+        type: choice
+        options: [both, ios, android]
+        default: both
+
+permissions:
+  contents: read
+
+concurrency:
+  group: expo-tailcat-${{ github.ref }}-${{ github.event.inputs.platform || 'checks' }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: packages/expo-tailcat
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: packages/expo-tailcat/go/go.mod
+          cache-dependency-path: packages/expo-tailcat/go/go.sum
+      - name: Dependency-free package and JS tests
+        run: |
+          node scripts/check-package.cjs
+          node --test test/*.test.cjs
+      - name: Real HTTP and WebSocket tests through private DERP (race detector)
+        run: bash scripts/test-go.sh
+      - name: Check Go formatting and module checksums
+        run: |
+          test -z "$(gofmt -l go/mobile go/internal go/cmd)"
+          cd go
+          go mod verify
+
+  native:
+    # Native builds are explicitly opt-in. A commit marker allows the first run
+    # on a new branch before workflow_dispatch is registered on the default branch.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'push' && contains(github.event.head_commit.message, '[expo-tailcat native]'))
+    needs: checks
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: ${{ fromJSON(github.event.inputs.platform == 'ios' && '["ios"]' || github.event.inputs.platform == 'android' && '["android"]' || '["ios","android"]') }}
+    runs-on: ${{ matrix.platform == 'ios' && 'macos-15' || 'ubuntu-latest' }}
+    timeout-minutes: 45
+    env:
+      CI: '1'
+      GOMAXPROCS: '4'
+      EXPO_NO_TELEMETRY: '1'
+    defaults:
+      run:
+        working-directory: packages/expo-tailcat
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+          cache-dependency-path: packages/expo-tailcat/example/pnpm-lock.yaml
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: packages/expo-tailcat/go/go.mod
+          cache-dependency-path: packages/expo-tailcat/go/go.sum
+      - uses: actions/setup-java@v4
+        if: matrix.platform == 'android'
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        if: matrix.platform == 'android'
+      - name: Install pinned Android NDK
+        if: matrix.platform == 'android'
+        run: sdkmanager 'ndk;27.2.12479018'
+      - name: Cache Go native library
+        id: native-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            packages/expo-tailcat/ios/Frameworks
+            packages/expo-tailcat/android/libs
+          key: expo-tailcat-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('packages/expo-tailcat/go/go.*', 'packages/expo-tailcat/go/mobile/*.go', 'packages/expo-tailcat/scripts/build-native.sh') }}
+      - name: Build native library
+        if: steps.native-cache.outputs.cache-hit != 'true'
+        run: |
+          if [[ '${{ matrix.platform }}' == android ]]; then export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/27.2.12479018"; fi
+          bash scripts/build-native.sh '${{ matrix.platform }}'
+      - name: Install standalone test app (not the Happy monorepo)
+        run: pnpm --dir example install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - name: Generate native test project
+        run: pnpm --dir example exec expo prebuild --platform '${{ matrix.platform }}' --no-install
+      - name: Build private relay fixture
+        run: |
+          mkdir -p build
+          cd go
+          go build -o ../build/fixture ./cmd/fixture
+      - name: Build Android release test APK
+        if: matrix.platform == 'android'
+        working-directory: packages/expo-tailcat/example/android
+        run: ./gradlew :app:assembleRelease -PreactNativeArchitectures=x86_64 --max-workers=2
+      - name: Prepare iOS simulator
+        if: matrix.platform == 'ios'
+        run: |
+          node scripts/select-simulator.cjs >> "$GITHUB_ENV"
+          pod install --project-directory=example/ios
+      - name: Build iOS release test app
+        if: matrix.platform == 'ios'
+        run: >-
+          xcodebuild -workspace example/ios/TailcatE2E.xcworkspace -scheme TailcatE2E
+          -configuration Release -sdk iphonesimulator
+          -destination "id=$TAILCAT_SIMULATOR_ID"
+          -derivedDataPath build/ios -jobs 4 CODE_SIGNING_ALLOWED=NO build
+      - name: Start private fixture
+        run: |
+          ./build/fixture > build/fixture.log 2>&1 &
+          echo "TAILCAT_FIXTURE_PID=$!" >> "$GITHUB_ENV"
+      - name: iOS real HTTP and WS E2E
+        if: matrix.platform == 'ios'
+        run: bash scripts/e2e-ios.sh
+      - name: Enable KVM access
+        if: matrix.platform == 'android'
+        run: sudo chmod 666 /dev/kvm
+      - name: Android real HTTP and WS E2E
+        if: matrix.platform == 'android'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: bash packages/expo-tailcat/scripts/e2e-android.sh
+      - name: Stop fixture
+        if: always()
+        run: |
+          if [[ -n "${TAILCAT_FIXTURE_PID:-}" ]]; then kill "$TAILCAT_FIXTURE_PID" || true; fi
+      - name: Retain tested native library (no publishing)
+        uses: actions/upload-artifact@v4
+        with:
+          name: expo-tailcat-${{ matrix.platform }}-${{ github.sha }}
+          path: |
+            packages/expo-tailcat/ios/Frameworks/Tailcat.xcframework
+            packages/expo-tailcat/android/libs/ExpoTailcat.aar
+          if-no-files-found: error
+          retention-days: 7
