@@ -29,7 +29,9 @@ async function runTests(progress) {
       body: bytes.buffer,
     });
     const echoed = new Uint8Array(await echo.arrayBuffer());
-    assert(echo.status === 201 && echoed.length === bytes.length && echoed.every((b, i) => b === bytes[i]), 'Binary POST failed');
+    assert(echo.status === 201, `Binary POST status ${echo.status}`);
+    assert(echoed.length === bytes.length, `Binary POST length ${echoed.length}, expected ${bytes.length}`);
+    assert(echoed.every((b, i) => b === bytes[i]), 'Binary POST bytes changed');
     assert(echo.headers.get('x-upstream-auth') === 'Bearer test-only', 'Application authorization was not preserved');
     assert(echo.headers.get('x-upstream-query') === 'x=1%2F2', 'Query encoding changed');
     completed.push('Binary POST, status, auth and query');

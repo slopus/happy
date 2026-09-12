@@ -91,6 +91,9 @@ func Start(relayAddr string) (*Peer, error) {
 func Handler(w http.ResponseWriter, r *http.Request) {
 	switch r.URL.Path {
 	case "/echo":
+		// Echo streams request and response concurrently. Without this, Go's
+		// HTTP/1 server drains small/chunked request bodies after the first write.
+		http.NewResponseController(w).EnableFullDuplex()
 		w.Header().Set("Content-Type", "application/octet-stream")
 		w.Header().Set("X-Upstream-Host", r.Host)
 		w.Header().Set("X-Upstream-Query", r.URL.RawQuery)
