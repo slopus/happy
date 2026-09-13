@@ -1,0 +1,229 @@
+name: Release Happy CLI
+run-name: Release Happy CLI v${{ inputs.version }}
+
+# Matches happy-agent's manual build -> artifact -> npm/GitHub publication flow.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Stable X.Y.Z or beta X.Y.Z-beta.N, without the leading v
+        required: true
+        type: string
+      release_notes:
+        description: Markdown change notes for the GitHub Release
+        required: true
+        type: string
+      prerelease:
+        description: Must be true for beta versions and false for stable versions
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-happy-cli
+  cancel-in-progress: false
+
+env:
+  RELEASE_TAG: cli-${{ inputs.version }}
+  RELEASE_VERSION: ${{ inputs.version }}
+  RELEASE_PRERELEASE: ${{ inputs.prerelease }}
+  RELEASE_CHANNEL: ${{ inputs.prerelease && 'beta' || 'latest' }}
+
+jobs:
+  build:
+    name: Verify and build the npm package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Check out main
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
+      - name: Set up Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - name: Validate release inputs and source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_NOTES: ${{ inputs.release_notes }}
+        run: |
+          if [[ "$GITHUB_REPOSITORY" != 'slopus/happy' || "$GITHUB_REF" != 'refs/heads/main' ]]; then
+            echo 'Happy CLI releases must be dispatched from slopus/happy main.' >&2
+            exit 1
+          fi
+          node --test scripts/cli-release.test.cjs
+          node scripts/cli-release.cjs validate
+          if [[ -z "${RELEASE_NOTES//[[:space:]]/}" ]]; then
+            echo 'Release notes must not be blank.' >&2
+            exit 1
+          fi
+          git fetch origin main --tags
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+          if git rev-parse --verify --quiet "refs/tags/$RELEASE_TAG" >/dev/null; then
+            echo "Tag $RELEASE_TAG already exists." >&2
+            exit 1
+          fi
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "Release $RELEASE_TAG already exists." >&2
+            exit 1
+          fi
+          npm view happy name --registry https://registry.npmjs.org/
+          if npm view "happy@$RELEASE_VERSION" version --registry https://registry.npmjs.org/ >/dev/null 2>&1; then
+            echo "happy@$RELEASE_VERSION is already published." >&2
+            exit 1
+          fi
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Apply the requested package version before building
+        run: node scripts/cli-release.cjs prepare packages/happy-cli/package.json
+      - name: Build wire and run CLI type checks, build, and unit tests
+        run: |
+          pnpm --filter @slopus/happy-wire --fail-if-no-match build
+          pnpm --filter happy --fail-if-no-match run prepublishOnly
+      - name: Pack the exact npm artifact
+        run: |
+          mkdir -p release-assets "$RUNNER_TEMP/happy-unpacked"
+          pnpm --filter happy --fail-if-no-match pack --pack-destination "$GITHUB_WORKSPACE/release-assets"
+          tarball="release-assets/happy-$RELEASE_VERSION.tgz"
+          shasum -a 256 "$tarball" > "$tarball.sha256"
+          cp packages/happy-cli/package.json release-assets/package.json
+          tar -xzf "$tarball" -C "$RUNNER_TEMP/happy-unpacked"
+          node scripts/cli-release.cjs check-package "$RUNNER_TEMP/happy-unpacked/package"
+      - name: Smoke test the packed package outside the monorepo
+        run: |
+          smoke_root="$(mktemp -d "$RUNNER_TEMP/happy-packed-smoke.XXXXXX")"
+          npm install --prefix "$smoke_root" "$GITHUB_WORKSPACE/release-assets/happy-$RELEASE_VERSION.tgz" --no-audit --no-fund
+          node scripts/cli-release.cjs smoke "$smoke_root"
+      - name: Upload the npm artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: happy-cli-npm-${{ inputs.version }}
+          path: release-assets/*
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+
+  publish:
+    name: Publish npm and GitHub releases
+    needs: build
+    runs-on: ubuntu-24.04
+    environment: npm
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - name: Check out the verified commit
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+      - name: Download the verified npm artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: happy-cli-npm-${{ inputs.version }}
+          path: release-assets
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
+      - name: Set up Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+          package-manager-cache: false
+          registry-url: https://registry.npmjs.org
+      - name: Install an npm that speaks trusted publishing
+        run: |
+          pnpm add --global npm@11.18.0
+          npm_cli="$(pnpm root --global)/npm/bin/npm-cli.js"
+          test "$(node "$npm_cli" --version)" = '11.18.0'
+          echo "NPM_CLI=$npm_cli" >> "$GITHUB_ENV"
+      - name: Confirm the release target and npm package
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git fetch origin main --tags
+          if [[ "$(git rev-parse "$GITHUB_SHA")" != "$(git rev-parse origin/main)" ]]; then
+            echo 'Main changed while building. Rerun the release from current main.' >&2
+            exit 1
+          fi
+          if git rev-parse --verify --quiet "refs/tags/$RELEASE_TAG" >/dev/null; then
+            echo "Tag $RELEASE_TAG already exists." >&2
+            exit 1
+          fi
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "Release $RELEASE_TAG already exists." >&2
+            exit 1
+          fi
+          node "$NPM_CLI" view happy name --registry https://registry.npmjs.org/
+          if node "$NPM_CLI" view "happy@$RELEASE_VERSION" version --registry https://registry.npmjs.org/ >/dev/null 2>&1; then
+            echo "happy@$RELEASE_VERSION is already published. Verify it before retrying." >&2
+            exit 1
+          fi
+          shasum -a 256 -c "release-assets/happy-$RELEASE_VERSION.tgz.sha256"
+          artifact_version="$(node -p "require('./release-assets/package.json').version")"
+          test "$artifact_version" = "$RELEASE_VERSION"
+      - name: Persist stable package versions on main
+        # Beta identity is embedded only in the artifact, leaving main's stable base intact.
+        run: |
+          release_commit="$GITHUB_SHA"
+          if [[ "$RELEASE_PRERELEASE" == 'false' ]]; then
+            cp release-assets/package.json packages/happy-cli/package.json
+            if ! git diff --quiet -- packages/happy-cli/package.json; then
+              git config user.name 'github-actions[bot]'
+              git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+              git add packages/happy-cli/package.json
+              git commit -m "Release Happy CLI v$RELEASE_VERSION"
+              git push origin HEAD:main
+              release_commit="$(git rev-parse HEAD)"
+            fi
+          fi
+          echo "RELEASE_COMMIT=$release_commit" >> "$GITHUB_ENV"
+      - name: Publish with npm trusted publishing
+        # pnpm produced and tested this tarball. Upload it from outside the
+        # checkout so npm cannot substitute the workspace's package.json.
+        working-directory: ${{ runner.temp }}
+        run: |
+          node "$NPM_CLI" publish "$GITHUB_WORKSPACE/release-assets/happy-$RELEASE_VERSION.tgz" \
+            --access public --tag "$RELEASE_CHANNEL" --provenance --registry https://registry.npmjs.org/
+      - name: Verify npm publication
+        run: |
+          published_version=''
+          published_tag=''
+          for attempt in {1..30}; do
+            published_version="$(node "$NPM_CLI" view "happy@$RELEASE_VERSION" version --registry https://registry.npmjs.org/ 2>/dev/null || true)"
+            published_tag="$(node "$NPM_CLI" view happy "dist-tags.$RELEASE_CHANNEL" --registry https://registry.npmjs.org/ 2>/dev/null || true)"
+            if [[ "$published_version" == "$RELEASE_VERSION" && "$published_tag" == "$RELEASE_VERSION" ]]; then break; fi
+            sleep 2
+          done
+          test "$published_version" = "$RELEASE_VERSION"
+          test "$published_tag" = "$RELEASE_VERSION"
+          expected_integrity="sha512-$(openssl dgst -sha512 -binary "release-assets/happy-$RELEASE_VERSION.tgz" | openssl base64 -A)"
+          test "$(node "$NPM_CLI" view "happy@$RELEASE_VERSION" dist.integrity)" = "$expected_integrity"
+          test -n "$(node "$NPM_CLI" view "happy@$RELEASE_VERSION" dist.attestations.url)"
+      - name: Verify a fresh npm installation
+        run: |
+          smoke_root="$(mktemp -d "$RUNNER_TEMP/happy-registry-smoke.XXXXXX")"
+          node "$NPM_CLI" install --prefix "$smoke_root" "happy@$RELEASE_VERSION" --registry https://registry.npmjs.org/ --no-audit --no-fund
+          node scripts/cli-release.cjs smoke "$smoke_root"
+      - name: Create the release tag and GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_NOTES: ${{ inputs.release_notes }}
+        run: |
+          notes_file="$RUNNER_TEMP/happy-release-notes.md"
+          printf '%s\n' "$RELEASE_NOTES" > "$notes_file"
+          release_args=()
+          if [[ "$RELEASE_PRERELEASE" == 'true' ]]; then release_args+=(--prerelease); fi
+          # Native/OTA releases share this repo: do not replace GitHub's latest release.
+          gh release create "$RELEASE_TAG" --target "$RELEASE_COMMIT" \
+            --title "Happy CLI v$RELEASE_VERSION" --notes-file "$notes_file" \
+            --latest=false "${release_args[@]}"
+          release_url="$(gh release view "$RELEASE_TAG" --json url --jq .url)"
+          printf 'Published [happy@%s](%s) to npm tag %s.\n' "$RELEASE_VERSION" "$release_url" "$RELEASE_CHANNEL" >> "$GITHUB_STEP_SUMMARY"
