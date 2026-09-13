@@ -6,7 +6,7 @@ import path from 'node:path';
 import { readFile } from 'node:fs/promises';
 const root = fileURLToPath(new URL('../../../', import.meta.url));
 const dir = fileURLToPath(new URL('.', import.meta.url));
-const replacements = new Set(['react-native-unistyles', '@expo/vector-icons', '@/text', '@/modal', '@/auth/AuthContext', '@/sync/storage', '@/sync/serverConfig', '@/environment/environmentOps']);
+const replacements = new Set(['react-native-unistyles', '@expo/vector-icons', 'expo-clipboard', '@/text', '@/modal', '@/auth/AuthContext', '@/sync/storage', '@/sync/serverConfig', '@/environment/environmentOps', '@/hooks/useCodexAccounts']);
 const output = await build({ absWorkingDir: root, entryPoints: [path.join(dir, 'fixture.tsx')], bundle: true, write: false,
     platform: 'browser', format: 'iife', jsx: 'automatic', define: { __DEV__: 'false', 'process.env.NODE_ENV': '"production"' },
     alias: { 'react-native': 'react-native-web' },
