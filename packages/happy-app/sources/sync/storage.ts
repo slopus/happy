@@ -12,8 +12,8 @@ import {
     selectPendingCommunications,
     type PendingAgentCommunication,
 } from "./agentCommunications";
-import { createReducer, reducer, ReducerState } from "./reducer/reducer";
-import { Message } from "./typesMessage";
+import { createReducer, reducer, ReducerState, registerUserMessageServerIds } from "./reducer/reducer";
+import { Message, messageSortKey } from "./typesMessage";
 import { NormalizedMessage } from "./typesRaw";
 import { isMachineOnline } from '@/utils/machineUtils';
 import { getSessionName, getSessionSubtitle, getSessionAvatarId } from '@/utils/sessionUtils';
@@ -34,7 +34,7 @@ import { getCurrentRealtimeSessionId, getVoiceSession } from '@/realtime/Realtim
 import { isMutableTool } from "@/components/tools/knownTools";
 import { DecryptedArtifact } from "./artifactTypes";
 import { FeedItem } from "./feedTypes";
-import { getRigActivityIndicators, getRigGitSummary, getRigIdentity, isRigMetadata } from './rig';
+import { getRigActivityIndicators, getRigGitSummary, getRigIdentity, isRigMetadata, rigSendsMessageReceipts } from './rig';
 import { indexSessionsById } from './sessionIdentity';
 import { t } from '@/text';
 import type { Project } from './projectTypes';
@@ -285,7 +285,8 @@ interface StorageState {
     deleteMachine: (machineId: string) => void;
     applyLoaded: () => void;
     applyReady: () => void;
-    applyMessages: (sessionId: string, messages: NormalizedMessage[], source?: 'sync' | 'preload') => { changed: string[], hasReadyEvent: boolean, enteredPlanMode: boolean };
+    applyMessages: (sessionId: string, messages: NormalizedMessage[], source?: 'sync' | 'preload') => { changed: string[], settledMessageIds: string[], hasReadyEvent: boolean, enteredPlanMode: boolean };
+    applyUserMessageServerIds: (sessionId: string, pairs: readonly { serverId: string; localId: string }[]) => void;
     applyMessagesLoaded: (sessionId: string) => void;
     applyOlderMessagesPagination: (sessionId: string, info: { hasMore: boolean }) => void;
     applyOlderMessagesLoading: (sessionId: string, isLoading: boolean) => void;
@@ -676,7 +677,7 @@ export const storage = create<StorageState>()((set, get) => {
                         });
 
                         const messagesArray = Object.values(mergedMessagesMap)
-                            .sort((a, b) => b.createdAt - a.createdAt);
+                            .sort((a, b) => messageSortKey(b) - messageSortKey(a));
 
                         updatedSessionMessages[session.id] = {
                             messages: messagesArray,
@@ -750,6 +751,7 @@ export const storage = create<StorageState>()((set, get) => {
         })),
         applyMessages: (sessionId: string, messages: NormalizedMessage[], source = 'sync') => {
             let changed = new Set<string>();
+            let settledMessageIds: string[] = [];
             let hasReadyEvent = false;
 
             // Track plan mode transitions through the batch in order.
@@ -782,11 +784,20 @@ export const storage = create<StorageState>()((set, get) => {
                 // Messages are already normalized, no need to process them again
                 const normalizedMessages = messages;
 
-                // Run reducer with agentState
-                const reducerResult = reducer(existingSession.reducerState, normalizedMessages, agentState);
+                // Run reducer with agentState. A Happy Agent daemon that advertises
+                // receipts reports when a message actually reaches the agent, so
+                // there a just-sent message waits rather than claiming a place the
+                // agent has not read yet. Daemons without the capability commit
+                // messages at send time, exactly as before.
+                const reducerResult = reducer(existingSession.reducerState, normalizedMessages, agentState, {
+                    holdUserMessagesUntilAccepted: rigSendsMessageReceipts(session?.metadata),
+                });
                 const processedMessages = reducerResult.messages;
                 for (let message of processedMessages) {
                     changed.add(message.id);
+                }
+                if (reducerResult.settledMessageIds) {
+                    settledMessageIds = reducerResult.settledMessageIds;
                 }
                 if (reducerResult.hasReadyEvent) {
                     hasReadyEvent = true;
@@ -800,7 +811,7 @@ export const storage = create<StorageState>()((set, get) => {
 
                 // Convert to array and sort by createdAt
                 const messagesArray = Object.values(mergedMessagesMap)
-                    .sort((a, b) => b.createdAt - a.createdAt);
+                    .sort((a, b) => messageSortKey(b) - messageSortKey(a));
 
                 // Update session with todos and latestUsage
                 // IMPORTANT: We extract latestUsage from the mutable reducerState and copy it to the Session object
@@ -840,8 +851,45 @@ export const storage = create<StorageState>()((set, get) => {
                 };
             });
 
-            return { changed: Array.from(changed), hasReadyEvent, enteredPlanMode };
+            return { changed: Array.from(changed), settledMessageIds, hasReadyEvent, enteredPlanMode };
         },
+        applyUserMessageServerIds: (sessionId: string, pairs: readonly { serverId: string; localId: string }[]) => set((state) => {
+            if (pairs.length === 0) {
+                return state;
+            }
+            const existingSession: SessionMessages = state.sessionMessages[sessionId] || {
+                messages: [],
+                messagesMap: {},
+                reducerState: createReducer(),
+                isLoaded: false,
+                hasMoreOlder: false,
+                isLoadingOlder: false,
+            };
+            // The joins land in the mutable reducer state either way; a state
+            // update is only owed when a held message settled and must re-render.
+            const settled = registerUserMessageServerIds(existingSession.reducerState, pairs);
+            if (settled.length === 0 && state.sessionMessages[sessionId]) {
+                return state;
+            }
+            const mergedMessagesMap = { ...existingSession.messagesMap };
+            for (const message of settled) {
+                mergedMessagesMap[message.id] = message;
+            }
+            const messagesArray = Object.values(mergedMessagesMap)
+                .sort((a, b) => messageSortKey(b) - messageSortKey(a));
+            return {
+                ...state,
+                sessionMessages: {
+                    ...state.sessionMessages,
+                    [sessionId]: {
+                        ...existingSession,
+                        messages: messagesArray,
+                        messagesMap: mergedMessagesMap,
+                        reducerState: existingSession.reducerState,
+                    }
+                }
+            };
+        }),
         applyMessagesLoaded: (sessionId: string) => set((state) => {
             const existingSession = state.sessionMessages[sessionId];
             let result: StorageState;
@@ -868,7 +916,7 @@ export const storage = create<StorageState>()((set, get) => {
                     });
 
                     messages = Object.values(messagesMap)
-                        .sort((a, b) => b.createdAt - a.createdAt);
+                        .sort((a, b) => messageSortKey(b) - messageSortKey(a));
                 }
 
                 // Extract latestUsage from reducerState if available and update session

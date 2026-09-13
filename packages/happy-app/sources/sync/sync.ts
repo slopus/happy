@@ -68,7 +68,7 @@ import { encryptBlob } from '@/encryption/blob';
 import { readFileBytes } from '@/utils/readFileBytes';
 import { Modal } from '@/modal';
 import { t } from '@/text';
-import { isRigMetadataV1, rigCanUseAttachments, usesControlledSessionUi } from './rig';
+import { isRigMetadataV1, rigCanUseAttachments, rigSendsMessageReceipts, usesControlledSessionUi } from './rig';
 import { fetchProjects as fetchProjectRecords } from './apiProjects';
 import { decryptProjectRecord, loadProjectAvatar, type DecryptedProjectRecord } from './projects';
 import type { Project, ProjectAvatar } from './projectTypes';
@@ -98,6 +98,7 @@ type V3PostSessionMessagesResponse = {
 };
 
 type OutboxMessage = {
+    kind: 'user' | 'attachment';
     localId: string;
     content: string;
 };
@@ -805,7 +806,7 @@ class Sync {
                     if (fileNormalized) {
                         this.enqueueMessages(sessionId, [fileNormalized]);
                     }
-                    pending.push({ localId: fileLocalId, content: encryptedFileRecord });
+                    pending.push({ kind: 'attachment', localId: fileLocalId, content: encryptedFileRecord });
                 }
             }
         }
@@ -839,6 +840,7 @@ class Sync {
             },
             meta: {
                 sentFrom,
+                ...(rigSendsMessageReceipts(session.metadata) ? { expectsAcceptance: true } : {}),
                 appendSystemPrompt: systemPrompt,
                 ...(modeMeta.permissionMode !== undefined ? { permissionMode: modeMeta.permissionMode } : {}),
                 ...(modeMeta.model !== undefined ? { model: modeMeta.model } : {}),
@@ -862,6 +864,7 @@ class Sync {
             this.pendingOutbox.set(sessionId, pending);
         }
         pending.push({
+            kind: 'user',
             localId,
             content: encryptedRawRecord
         });
@@ -2131,14 +2134,18 @@ class Sync {
             const data = await response.json() as V3PostSessionMessagesResponse;
             pending.splice(0, batch.length);
             if (Array.isArray(data.messages) && data.messages.length > 0) {
-                const currentLastSeq = this.sessionLastSeq.get(sessionId) ?? 0;
-                let maxSeq = currentLastSeq;
-                for (const message of data.messages) {
-                    if (message.seq > maxSeq) {
-                        maxSeq = message.seq;
-                    }
+                // Join our local rows even if the socket echo is delayed or lost.
+                const userLocalIds = new Set(batch.filter((message) => message.kind === 'user').map((message) => message.localId));
+                const serverIdPairs = data.messages.flatMap((message) =>
+                    message.localId && userLocalIds.has(message.localId) ? [{ serverId: message.id, localId: message.localId }] : []);
+                if (serverIdPairs.length > 0) {
+                    storage.getState().applyUserMessageServerIds(sessionId, serverIdPairs);
                 }
-                this.sessionLastSeq.set(sessionId, maxSeq);
+
+                // An acknowledgement proves only that our messages were stored.
+                // Receipts or other participants' messages can precede them but
+                // remain unread. Only stream consumption may advance the cursor.
+                this.getMessagesSync(sessionId).invalidate();
             }
         } catch (error) {
             this.maybeStartBackgroundSendWatchdog();
@@ -3106,8 +3113,14 @@ class Sync {
             }
             return;
         }
+        // Settle-only changes re-render an existing row; announcing one to
+        // voice would repeat "User sent message" when its receipt arrives.
+        const settledOnly = new Set(result.settledMessageIds);
         let m: Message[] = [];
         for (let messageId of result.changed) {
+            if (settledOnly.has(messageId)) {
+                continue;
+            }
             const message = storage.getState().sessionMessages[sessionId].messagesMap[messageId];
             if (message) {
                 m.push(message);

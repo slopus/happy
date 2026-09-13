@@ -7,6 +7,7 @@ const state = vi.hoisted(() => ({
     appState: 'active' as 'active' | 'inactive' | 'background',
     appStateListeners: [] as Array<(next: 'active' | 'inactive' | 'background') => void>,
     messages: [] as any[],
+    hasMoreOlder: false,
     session: null as any,
 }));
 vi.hoisted(() => {
@@ -79,7 +80,7 @@ vi.mock('@expo/vector-icons', async () => {
 });
 vi.mock('@/sync/storage', () => ({
     useSession: () => state.session,
-    useSessionMessages: () => ({ messages: state.messages, hasMoreOlder: false, isLoadingOlder: false }),
+    useSessionMessages: () => ({ messages: state.messages, hasMoreOlder: state.hasMoreOlder, isLoadingOlder: false }),
     useSetting: () => true,
 }));
 vi.mock('@/sync/storageTypes', () => ({}));
@@ -186,10 +187,40 @@ afterEach(() => {
     state.appState = 'active';
     state.appStateListeners = [];
     state.messages = [];
+    state.hasMoreOlder = false;
     state.session = null;
 });
 
 describe('ChatList work-group folding', () => {
+    it.each(['accepted', 'rejected'])('keeps the watched turn expanded when a pending prompt is %s', (outcome) => {
+        const pending = { ...userMessage('pending', 6), pending: true };
+        state.messages = [pending, ...completedTurnMessages()];
+        state.session = { id: 'session', metadata: null, thinking: true, agentState: { requests: {} } };
+        const renderer = renderChat(undefined);
+
+        state.session = { ...state.session, thinking: false, metadata: { revision: 2 } };
+        renderChat(renderer);
+        expect(messageIds(renderer)).toContain('tool-earliest');
+        expect(renderer.root.findAllByType('AgentWorkGroupHeader')[0].props.group.turnUserMessageId).toBe('user');
+
+        state.messages = [{ ...pending, pending: false, ...(outcome === 'rejected' ? { sendError: 'Not available.' } : {}) }, ...completedTurnMessages()];
+        renderChat(renderer);
+        expect(messageIds(renderer)).toContain('tool-earliest');
+    });
+
+    it.each([{ pending: true }, { sendError: 'Not available.' }])('does not trim the running turn at an unaccepted prompt while older history loads (%j)', (status) => {
+        state.messages = [
+            { ...userMessage('pending', 6), ...status },
+            agentMessage('streaming', 5),
+            toolMessage('tool', 4),
+        ];
+        state.hasMoreOlder = true;
+        state.session = { id: 'session', metadata: null, thinking: true, agentState: { requests: {} } };
+
+        const renderer = renderChat(undefined);
+        expect(messageIds(renderer)).toEqual(['pending', 'streaming', 'tool']);
+    });
+
     it('keeps a turn expanded when it finishes while the reader is watching', () => {
         state.messages = completedTurnMessages();
         state.session = { id: 'session', metadata: null, thinking: true, agentState: { requests: {} } };

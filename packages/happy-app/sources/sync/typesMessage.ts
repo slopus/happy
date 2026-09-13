@@ -1,4 +1,4 @@
-import { AgentEvent } from "./typesRaw";
+import { AgentEvent, SessionAuthor } from "./typesRaw";
 import { MessageMeta } from "./typesMessageMeta";
 
 export type ToolCall = {
@@ -45,12 +45,34 @@ export type UserTextMessage = {
      * the rewind point when duplicating/forking Codex threads.
      */
     codexItemId?: string;
+    /**
+     * Sent, but the agent has not taken it into context yet. Shown faded and
+     * pinned to the bottom of the chat until an acceptance receipt arrives,
+     * so a turn that has not seen this message still streams above it.
+     */
+    pending?: boolean;
+    /** Terminal refusal from the daemon; this message never started a turn. */
+    sendError?: string;
+    /**
+     * Position in the chat, when that differs from when the message was made.
+     * `createdAt` is immutable by reducer contract, and a pending message has
+     * to sit below newer rows, so ordering reads this and falls back to
+     * `createdAt` for every message that never waited.
+     */
+    sortAt?: number;
+    /**
+     * Who sent this message, for Happy sessions with more than one participant.
+     * Absent on this account's own messages from daemons that predate it, so
+     * "no author" and "author.owner" both render as the reader's own bubble.
+     */
+    author?: SessionAuthor;
 }
 
 export type ModeSwitchMessage = {
     kind: 'agent-event';
     id: string;
     createdAt: number;
+    turn?: string;
     event: AgentEvent;
     meta?: MessageMeta;
 }
@@ -60,6 +82,7 @@ export type AgentTextMessage = {
     id: string;
     localId: string | null;
     createdAt: number;
+    turn?: string;
     text: string;
     isThinking?: boolean;
     meta?: MessageMeta;
@@ -70,9 +93,31 @@ export type ToolCallMessage = {
     id: string;
     localId: string | null;
     createdAt: number;
+    turn?: string;
     tool: ToolCall;
     children: Message[];
     meta?: MessageMeta;
 }
 
+/** True for a user message that was not sent from this account. */
+export function isOtherParticipantMessage(message: Pick<UserTextMessage, 'author'>): boolean {
+    return message.author !== undefined && message.author.owner !== true;
+}
+
 export type Message = UserTextMessage | AgentTextMessage | ToolCallMessage | ModeSwitchMessage;
+
+/**
+ * Added to a pending message's own timestamp to park it past every real one,
+ * which keeps pending messages at the bottom of the chat and in send order
+ * among themselves. Far enough above wall-clock milliseconds to never collide,
+ * far enough below Number.MAX_SAFE_INTEGER to stay exact.
+ */
+export const PENDING_SORT_OFFSET = 8_000_000_000_000_000;
+
+/** Where a message sits in the chat: its settled position, or when it was made. */
+export function messageSortKey(message: Message): number {
+    if (message.kind === 'user-text' && message.sortAt !== undefined) {
+        return message.sortAt;
+    }
+    return message.createdAt;
+}
