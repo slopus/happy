@@ -5,7 +5,7 @@
  * - Functions with typed object parameters for dynamic text
  */
 
-import { TranslationStructure } from "../_default";
+import { en, type TranslationStructure } from "../_default";
 
 /**
  * Japanese plural helper function
@@ -430,6 +430,7 @@ export const ja: TranslationStructure = {
 
     components: {
         emptyMainScreen: {
+            ...en.components.emptyMainScreen,
             // Used by EmptyMainScreen component
             readyToCode: 'コーディングを始めますか？',
             installCli: 'Happy CLIをインストール',

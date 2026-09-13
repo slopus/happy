@@ -1,4 +1,4 @@
-import type { TranslationStructure } from '../_default';
+import { en, type TranslationStructure } from '../_default';
 
 /**
  * Portuguese plural helper function
@@ -428,6 +428,7 @@ export const pt: TranslationStructure = {
 
     components: {
         emptyMainScreen: {
+            ...en.components.emptyMainScreen,
             // Used by EmptyMainScreen component
             readyToCode: 'Pronto para programar?',
             installCli: 'Instale o Happy CLI',

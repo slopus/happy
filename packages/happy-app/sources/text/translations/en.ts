@@ -444,6 +444,11 @@ export const en: TranslationStructure = {
     components: {
         emptyMainScreen: {
             // Used by EmptyMainScreen component
+            connectComputer: 'Connect your computer',
+            desktopSetupInstructions: 'Install Happy Desktop from happy.engineering. In desktop setup, choose “I have the app open,” then scan the device-linking QR code here.',
+            harnessDescription: 'Use Claude Code or Codex, or try Happy Harness. Your account stays linked across your computer and phone.',
+            getDesktop: 'Get Happy Desktop',
+            terminalAlternative: 'Prefer the terminal? Set up Happy CLI',
             readyToCode: 'Ready to code?',
             installCli: 'Install the Happy CLI',
             runIt: 'Run it',

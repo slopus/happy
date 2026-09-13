@@ -215,13 +215,13 @@ export function EmptyMainScreen({
 
     return (
         <ScrollView contentContainerStyle={[styles.container, { flexGrow: 1, flex: undefined, paddingVertical: 24 }]}>
-            <Text style={styles.title}>Connect your computer</Text>
+            <Text style={styles.title}>{t('components.emptyMainScreen.connectComputer')}</Text>
             <Text style={styles.stateDescription}>
-                Install Happy Desktop from happy.engineering. In desktop setup, choose “I have the app open,” then scan the device-linking QR code here.
-                {'\n\n'}Use Claude Code or Codex, or try Happy Harness. Your account stays linked across your computer and phone.
+                {t('components.emptyMainScreen.desktopSetupInstructions')}
+                {'\n\n'}{t('components.emptyMainScreen.harnessDescription')}
             </Text>
             <RoundButton
-                title="Get Happy Desktop"
+                title={t('components.emptyMainScreen.getDesktop')}
                 action={async () => { await Linking.openURL('https://happy.engineering'); }}
             />
             <Pressable
@@ -230,14 +230,17 @@ export function EmptyMainScreen({
                 accessibilityState={{ expanded: showManualSetup }}
                 style={styles.secondaryAction}
             >
-                <Text style={styles.secondaryActionText}>Prefer the terminal? Set up Happy CLI</Text>
+                <Text style={styles.secondaryActionText}>{t('components.emptyMainScreen.terminalAlternative')}</Text>
             </Pressable>
             {showManualSetup && <View style={styles.terminalBlock}>
                 <Text style={[styles.terminalText, styles.terminalTextFirst]}>
                     $ npm i -g happy
                 </Text>
+                <Text style={[styles.terminalText, styles.terminalTextFirst]}>
+                    $ happy claude
+                </Text>
                 <Text style={styles.terminalText}>
-                    $ happy claude  # or happy codex
+                    $ happy codex
                 </Text>
             </View>}
 
