@@ -3,6 +3,9 @@ import { z } from 'zod';
 // Shared message metadata schema
 export const MessageMetaSchema = z.object({
     sentFrom: z.string().optional(), // Source identifier
+    // Capability at send time, inside the encrypted payload. New history can
+    // resume waiting after reconnect without holding pre-receipt-era messages.
+    expectsAcceptance: z.boolean().optional(),
     permissionMode: z.string().optional(), // Permission mode key for this message
     model: z.string().nullable().optional(), // Model name for this message (null = reset)
     modelProviderId: z.string().optional(), // Provider qualifier for metadata-driven clients such as Rig

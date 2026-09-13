@@ -86,6 +86,52 @@ describe('useGroupedMessages', () => {
         ]);
     });
 
+    it('keeps the previous answer out of the next turn when its user message is missing', () => {
+        // Seen in a shared session: another participant's message never reached
+        // this device, so nothing separated the earlier reply from the later
+        // turn's tool work and it was folded into that turn's "Worked" group.
+        // The session protocol's turn ids still tell the two turns apart.
+        const messages: Message[] = [
+            {
+                kind: 'agent-text',
+                id: 'later-final',
+                localId: null,
+                createdAt: 6,
+                text: 'posted the tweet',
+                turn: 'turn-b',
+            },
+            { ...toolMessage('later-tool', 5), turn: 'turn-b' },
+            {
+                kind: 'agent-text',
+                id: 'earlier-final',
+                localId: null,
+                createdAt: 4,
+                text: 'Hey Kirill :) What is on your mind?',
+                turn: 'turn-a',
+            },
+            { ...toolMessage('earlier-tool', 3), turn: 'turn-a' },
+            {
+                kind: 'user-text',
+                id: 'user',
+                localId: null,
+                createdAt: 1,
+                text: 'hi',
+            },
+        ];
+
+        const items = groupMessagesForDisplay(messages, true);
+
+        // Each turn folds its own work under its own final answer; the earlier
+        // answer stays visible instead of vanishing into the later group.
+        expect(items.map((item) => item.id)).toEqual([
+            'user',
+            'work-earlier-tool',
+            'earlier-final',
+            'work-later-tool',
+            'later-final',
+        ]);
+    });
+
     it('does not mark completed agent work as running when a hidden tool is stale', () => {
         const messages: Message[] = [
             {
@@ -158,6 +204,50 @@ describe('useGroupedMessages', () => {
             'tool-latest',
             'agent-streaming',
         ]);
+    });
+
+    it('keeps the running turn expanded under a pending message', () => {
+        // Steering mid-turn parks the new message below the work still streaming
+        // above it. That work is the live turn — the message has not started one
+        // yet — so it must not collapse the way a finished turn would.
+        const messages: Message[] = [
+            {
+                kind: 'user-text',
+                id: 'user-pending',
+                localId: 'local-1',
+                createdAt: 2,
+                text: 'actually, do this instead',
+                pending: true,
+                sortAt: Number.MAX_SAFE_INTEGER,
+            },
+            {
+                kind: 'agent-text',
+                id: 'agent-streaming',
+                localId: null,
+                createdAt: 5,
+                text: 'still working',
+            },
+            toolMessage('tool-latest', 4),
+            toolMessage('tool-earliest', 3),
+            {
+                kind: 'user-text',
+                id: 'user',
+                localId: null,
+                createdAt: 1,
+                text: 'run tools',
+            },
+        ];
+
+        const items = groupMessagesForDisplay(messages, true, { collapseCurrentTurn: false });
+
+        expect(items.map((item) => item.id)).toEqual([
+            'user',
+            'tool-earliest',
+            'tool-latest',
+            'agent-streaming',
+            'user-pending',
+        ]);
+        expect(items.every((item) => item.type === 'message')).toBe(true);
     });
 
     it('never groups adjacent tool calls outside a work group', () => {

@@ -952,6 +952,9 @@ export const en = {
         unknownEvent: 'Unknown event',
         usageLimitUntil: ({ time }: { time: string }) => `Usage limit reached until ${time}`,
         sentAsGoal: 'Sent as goal',
+        sendsAfterThisTurn: 'Sends after this turn',
+        sending: 'Sending…',
+        sendFailed: ({ reason }: { reason: string }) => `Not sent: ${reason}`,
         unknownTime: 'unknown time',
     },
 

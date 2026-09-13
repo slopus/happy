@@ -930,6 +930,9 @@ export const ru: TranslationStructure = {
         unknownEvent: 'Неизвестное событие',
         usageLimitUntil: ({ time }: { time: string }) => `Лимит использования достигнут до ${time}`,
         sentAsGoal: 'Отправлено в качестве цели',
+        sendsAfterThisTurn: 'Будет отправлено после текущего ответа',
+        sending: 'Отправка…',
+        sendFailed: ({ reason }: { reason: string }) => `Не отправлено: ${reason}`,
         unknownTime: 'неизвестное время',
     },
 

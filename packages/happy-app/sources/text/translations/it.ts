@@ -922,6 +922,9 @@ export const it: TranslationStructure = {
         unknownEvent: 'Evento sconosciuto',
         usageLimitUntil: ({ time }: { time: string }) => `Limite di utilizzo raggiunto fino a ${time}`,
         sentAsGoal: 'Sent as goal',
+        sendsAfterThisTurn: 'Sends after this turn',
+        sending: 'Sending…',
+        sendFailed: ({ reason }: { reason: string }) => `Non inviato: ${reason}`,
         unknownTime: 'ora sconosciuta',
     },
 

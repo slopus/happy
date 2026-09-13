@@ -925,6 +925,9 @@ export const ja: TranslationStructure = {
         unknownEvent: '不明なイベント',
         usageLimitUntil: ({ time }: { time: string }) => `${time}まで使用制限中`,
         sentAsGoal: 'Sent as goal',
+        sendsAfterThisTurn: 'Sends after this turn',
+        sending: 'Sending…',
+        sendFailed: ({ reason }: { reason: string }) => `未送信: ${reason}`,
         unknownTime: '不明な時間',
     },
 

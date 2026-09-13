@@ -5,14 +5,15 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { MarkdownView } from "./markdown/MarkdownView";
 import { t } from '@/text';
-import { Message, UserTextMessage, AgentTextMessage, ToolCallMessage } from "@/sync/typesMessage";
+import { Message, UserTextMessage, AgentTextMessage, ToolCallMessage, isOtherParticipantMessage } from "@/sync/typesMessage";
 import { Metadata } from "@/sync/storageTypes";
 import { ToolView } from "./tools/ToolView";
-import { AgentEvent } from "@/sync/typesRaw";
+import { AgentEvent, SessionAuthor } from "@/sync/typesRaw";
 import { sync } from '@/sync/sync';
-import { useSetting } from '@/sync/storage';
+import { useSession, useSetting } from '@/sync/storage';
 import { Option } from './markdown/MarkdownView';
 import { layout } from "./layout";
+import { Typography } from '@/constants/Typography';
 import { parseLocalCommandMessage, isUserSlashCommandEcho } from './parseLocalCommandMessage';
 import { resolveUserMessageBubbleColor } from '@/utils/userMessageBubbleColor';
 import { LongPressCopyable } from './LongPressCopyable';
@@ -83,6 +84,66 @@ function RenderBlock(props: {
   }
 }
 
+/**
+ * The frame every user message sits in. While a message is pending the agent
+ * has not read it yet, so it is dimmed and says what it is waiting for; the
+ * chat keeps it at the bottom until then, letting the turn it interrupted
+ * finish streaming above it.
+ *
+ * A message from another participant of a shared session sits on the left,
+ * the side that is not "you", with the sender's name under it — the same
+ * attribution the desktop shows, in the space this layout has for it.
+ */
+function UserMessageFrame(props: {
+  pending?: boolean;
+  sendError?: string;
+  author?: SessionAuthor;
+  sessionId: string;
+  children: React.ReactNode;
+}) {
+  const fromOther = isOtherParticipantMessage(props);
+  // The tree here must keep the same shape in both states. Settling flips
+  // `pending` while the row is on screen, and a structural change — a wrapper
+  // that exists in one state only, or a different component type — makes React
+  // remount the bubble and its markdown, which shows up as a relayout flash at
+  // the exact moment the message should simply stop looking dimmed. Only style
+  // values and the trailing status line may differ.
+  return (
+    <View style={[styles.userMessageContainer, fromOther && styles.userMessageContainerOther]}>
+      {/* collapsable={false}: Fabric materialises a native view for opacity != 1
+          and may flatten it away at 1 — settling would then reparent the native
+          subtree even though the React tree is stable. Pin the view instead. */}
+      <View
+        collapsable={false}
+        style={[
+          styles.userMessageBody,
+          fromOther && styles.userMessageBodyOther,
+          props.pending && styles.userMessageBodyPending,
+        ]}
+      >
+        {props.children}
+      </View>
+      {fromOther ? <Text numberOfLines={1} style={styles.userMessageAuthorText}>{props.author!.name}</Text> : null}
+      {props.pending ? <PendingStatusLine sessionId={props.sessionId} /> : null}
+      {props.sendError !== undefined ? (
+        <Text style={[styles.pendingStatusText, styles.sendErrorText]}>{t('message.sendFailed', { reason: props.sendError })}</Text>
+      ) : null}
+    </View>
+  );
+}
+
+function PendingStatusLine(props: { sessionId: string }) {
+  // Kept in its own component so the session subscription exists only while a
+  // message is waiting. Held on the frame above, every settled message in the
+  // chat would re-render on each thinking / agentState tick while streaming.
+  const session = useSession(props.sessionId);
+  return (
+    <Text style={styles.pendingStatusText}>
+      {session?.thinking ? t('message.sendsAfterThisTurn') : t('message.sending')}
+    </Text>
+  );
+}
+
 function UserTextBlock(props: {
   message: UserTextMessage;
   metadata: Metadata | null;
@@ -99,6 +160,9 @@ function UserTextBlock(props: {
     backgroundColor: bubblePalette.background,
     borderColor: bubblePalette.border,
   };
+  const copyTargetStyle = isOtherParticipantMessage(props.message)
+    ? styles.userCopyTargetOther
+    : styles.userCopyTarget;
   // Claude Agent SDK emits synthetic user messages wrapped in tags like
   // <local-command-caveat>…</local-command-caveat> and
   // <command-message>…</command-message><command-name>/foo</command-name>
@@ -125,8 +189,8 @@ function UserTextBlock(props: {
   }
   if (parsed.kind === 'goal-run') {
     return (
-      <View style={styles.userMessageContainer}>
-        <LongPressCopyable style={styles.userCopyTarget} text={parsed.goal}>
+      <UserMessageFrame pending={props.message.pending} sendError={props.message.sendError} author={props.message.author} sessionId={props.sessionId}>
+        <LongPressCopyable style={copyTargetStyle} text={parsed.goal}>
           <View style={[styles.userMessageBubble, styles.userMessageBubbleSolid, bubbleStyle, styles.goalMessageBubble]}>
             <MarkdownView externalCopyHandler markdown={parsed.goal} onOptionPress={handleOptionPress} sessionId={props.sessionId} />
           </View>
@@ -135,14 +199,14 @@ function UserTextBlock(props: {
             <Text style={styles.goalSentText}>{t('message.sentAsGoal')}</Text>
           </View>
         </LongPressCopyable>
-      </View>
+      </UserMessageFrame>
     );
   }
   if (parsed.kind === 'command-run') {
     const commandText = parsed.args ? `/${parsed.commandName} ${parsed.args}` : `/${parsed.commandName}`;
     return (
-      <View style={styles.userMessageContainer}>
-        <LongPressCopyable style={styles.userCopyTarget} text={commandText}>
+      <UserMessageFrame pending={props.message.pending} sendError={props.message.sendError} author={props.message.author} sessionId={props.sessionId}>
+        <LongPressCopyable style={copyTargetStyle} text={commandText}>
           {parsed.args ? (
             <View style={[styles.userMessageBubble, styles.userMessageBubbleSolid, bubbleStyle, styles.commandMessageBubble]}>
               <MarkdownView externalCopyHandler markdown={parsed.args} onOptionPress={handleOptionPress} sessionId={props.sessionId} />
@@ -152,20 +216,20 @@ function UserTextBlock(props: {
             <Text style={styles.commandChipText}>/{parsed.commandName}</Text>
           </View>
         </LongPressCopyable>
-      </View>
+      </UserMessageFrame>
     );
   }
 
   return (
-    <View style={styles.userMessageContainer}>
+    <UserMessageFrame pending={props.message.pending} sendError={props.message.sendError} author={props.message.author} sessionId={props.sessionId}>
       {/* Long-press copies the whole message through our own menu rather than the
           OS selection callout. Rewind remains in session actions. */}
-      <LongPressCopyable style={styles.userCopyTarget} text={parsed.text}>
+      <LongPressCopyable style={copyTargetStyle} text={parsed.text}>
         <View style={[styles.userMessageBubble, styles.userMessageBubbleSolid, bubbleStyle]}>
           <MarkdownView externalCopyHandler markdown={parsed.text} onOptionPress={handleOptionPress} sessionId={props.sessionId} />
         </View>
       </LongPressCopyable>
-    </View>
+    </UserMessageFrame>
   );
 }
 
@@ -393,6 +457,47 @@ const styles = StyleSheet.create((theme) => ({
   userCopyTarget: {
     alignItems: 'flex-end',
     maxWidth: '100%',
+  },
+  userCopyTargetOther: {
+    alignItems: 'flex-start',
+    maxWidth: '100%',
+  },
+  userMessageBody: {
+    alignItems: 'flex-end',
+    maxWidth: '100%',
+  },
+  // Another participant's message: everything on the reader's side is on the
+  // right, so the other side of the chat is the left, like any messenger.
+  userMessageContainerOther: {
+    alignItems: 'flex-start',
+  },
+  userMessageBodyOther: {
+    alignItems: 'flex-start',
+  },
+  userMessageAuthorText: {
+    color: theme.colors.agentEventText,
+    fontSize: 11,
+    marginBottom: 4,
+    marginTop: 2,
+    maxWidth: '100%',
+    ...Typography.default(),
+  },
+  userMessageBodyPending: {
+    // Dimmed rather than greyed: the bubble keeps its own color, so the message
+    // reads as the user's own and merely not arrived yet.
+    opacity: 0.45,
+  },
+  pendingStatusText: {
+    color: theme.colors.agentEventText,
+    // Matches the status line above the composer, the app's other place for
+    // saying what the session is doing right now.
+    fontSize: 11,
+    marginBottom: 4,
+    marginTop: 2,
+    ...Typography.default(),
+  },
+  sendErrorText: {
+    color: theme.colors.textDestructive,
   },
   agentEventContainer: {
     marginHorizontal: 8,

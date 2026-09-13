@@ -924,6 +924,9 @@ export const zhHant: TranslationStructure = {
         unknownEvent: '未知事件',
         usageLimitUntil: ({ time }: { time: string }) => `使用限制到 ${time}`,
         sentAsGoal: 'Sent as goal',
+        sendsAfterThisTurn: 'Sends after this turn',
+        sending: 'Sending…',
+        sendFailed: ({ reason }: { reason: string }) => `未傳送：${reason}`,
         unknownTime: '未知時間',
     },
 
