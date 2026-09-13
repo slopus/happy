@@ -1102,6 +1102,11 @@ export const pl: TranslationStructure = {
             : `Nie udało się przesłać ${count} zdjęć i nie zostały wysłane.`,
         notSupportedTitle: 'Obrazy nieobsługiwane',
         notSupportedMessage: 'Ten agent nie obsługuje załączników obrazów. Obrazy nie zostały wysłane.',
+        sourceTitle: 'Dodaj zdjęcie',
+        sourceLibrary: 'Biblioteka zdjęć',
+        sourceCamera: 'Zrób zdjęcie',
+        cameraPermissionTitle: 'Dostęp do aparatu',
+        cameraPermissionMessage: 'Zezwól na dostęp do aparatu, aby robić zdjęcia w wiadomościach.',
     },
 
     feed: {

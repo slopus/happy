@@ -1071,6 +1071,11 @@ export const it: TranslationStructure = {
             : `Non è stato possibile caricare ${count} immagini e non sono state inviate.`,
         notSupportedTitle: 'Immagini non supportate',
         notSupportedMessage: 'Questo agente non supporta gli allegati immagine. Le immagini non sono state inviate.',
+        sourceTitle: 'Aggiungi foto',
+        sourceLibrary: 'Libreria foto',
+        sourceCamera: 'Scatta foto',
+        cameraPermissionTitle: 'Accesso fotocamera',
+        cameraPermissionMessage: "Consenti l'accesso alla fotocamera per scattare foto nei messaggi.",
     },
 
     feed: {

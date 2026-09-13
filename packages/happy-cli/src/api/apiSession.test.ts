@@ -193,6 +193,113 @@ describe('ApiSessionClient v3 messages API migration', () => {
         expect(mockSocket.connect).toHaveBeenCalledTimes(1);
     });
 
+    it.each([
+        {
+            userText: '  Fix chat naming automatically  ',
+            expectedTitle: 'Fix chat naming automatically'
+        },
+        {
+            userText: 'This user prompt is deliberately longer than sixty characters so it needs truncation',
+            expectedTitle: 'This user prompt is deliberately longer than sixty character...'
+        }
+    ])('derives a fallback title from the first user message', ({ userText, expectedTitle }) => {
+        const client = new ApiSessionClient('fake-token', session);
+        const updateMetadata = vi.spyOn(client, 'updateMetadata').mockImplementation(() => undefined);
+
+        (client as any).applyClaudeSessionMessageSideEffects({
+            type: 'user',
+            isMeta: false,
+            isSidechain: false,
+            message: { content: userText }
+        });
+        (client as any).applyClaudeSessionMessageSideEffects({
+            type: 'assistant',
+            message: { content: 'Working on it' }
+        });
+
+        expect(updateMetadata).toHaveBeenCalledTimes(1);
+        const metadataHandler = updateMetadata.mock.calls[0][0];
+        expect(metadataHandler(session.metadata).summary).toMatchObject({
+            text: expectedTitle
+        });
+    });
+
+    it('does not overwrite an existing summary with a fallback title', () => {
+        (session.metadata as any).summary = {
+            text: 'Agent-provided title',
+            updatedAt: 1
+        };
+        const client = new ApiSessionClient('fake-token', session);
+        const updateMetadata = vi.spyOn(client, 'updateMetadata').mockImplementation(() => undefined);
+
+        (client as any).applyClaudeSessionMessageSideEffects({
+            type: 'user',
+            isMeta: false,
+            isSidechain: false,
+            message: { content: 'Fallback candidate' }
+        });
+        (client as any).applyClaudeSessionMessageSideEffects({
+            type: 'assistant',
+            message: { content: 'First response' }
+        });
+
+        expect(updateMetadata).not.toHaveBeenCalled();
+    });
+
+    it('applies the fallback title only once even when metadata remains unchanged', () => {
+        const client = new ApiSessionClient('fake-token', session);
+        const updateMetadata = vi.spyOn(client, 'updateMetadata').mockImplementation(() => undefined);
+
+        (client as any).applyClaudeSessionMessageSideEffects({
+            type: 'user',
+            isMeta: false,
+            isSidechain: false,
+            message: { content: 'Only apply this once' }
+        });
+        (client as any).applyClaudeSessionMessageSideEffects({
+            type: 'assistant',
+            message: { content: 'First response' }
+        });
+        (client as any).applyClaudeSessionMessageSideEffects({
+            type: 'assistant',
+            message: { content: 'Second response' }
+        });
+
+        expect(updateMetadata).toHaveBeenCalledTimes(1);
+    });
+
+    it.each([
+        { isMeta: true, isSidechain: false, content: 'Meta content' },
+        { isMeta: false, isSidechain: true, content: 'Sidechain content' },
+        { isMeta: false, isSidechain: false, content: [{ type: 'text', text: 'Block content' }] }
+    ])('ignores non-human first user content before capturing a genuine prompt', (ignoredMessage) => {
+        const client = new ApiSessionClient('fake-token', session);
+        const updateMetadata = vi.spyOn(client, 'updateMetadata').mockImplementation(() => undefined);
+
+        (client as any).applyClaudeSessionMessageSideEffects({
+            type: 'user',
+            message: { content: ignoredMessage.content },
+            isMeta: ignoredMessage.isMeta,
+            isSidechain: ignoredMessage.isSidechain
+        });
+        (client as any).applyClaudeSessionMessageSideEffects({
+            type: 'user',
+            isMeta: false,
+            isSidechain: false,
+            message: { content: 'Genuine user prompt' }
+        });
+        (client as any).applyClaudeSessionMessageSideEffects({
+            type: 'assistant',
+            message: { content: 'First response' }
+        });
+
+        expect(updateMetadata).toHaveBeenCalledTimes(1);
+        const metadataHandler = updateMetadata.mock.calls[0][0];
+        expect(metadataHandler(session.metadata).summary).toMatchObject({
+            text: 'Genuine user prompt'
+        });
+    });
+
     it('retries after initial socket connection error', async () => {
         vi.useFakeTimers();
         mockSocket.connected = false;

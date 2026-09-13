@@ -1073,6 +1073,11 @@ export const zhHans: TranslationStructure = {
             : `${count} 张图片上传失败，未发送。`,
         notSupportedTitle: '不支持图片',
         notSupportedMessage: '此代理不支持图片附件。图片未发送。',
+        sourceTitle: '添加照片',
+        sourceLibrary: '照片图库',
+        sourceCamera: '拍照',
+        cameraPermissionTitle: '相机访问',
+        cameraPermissionMessage: '允许访问相机以在消息中拍摄照片。',
     },
 
     feed: {

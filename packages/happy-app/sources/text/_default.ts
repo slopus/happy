@@ -250,6 +250,11 @@ export const en = {
             : `${count} images could not be uploaded and were not sent.`,
         notSupportedTitle: 'Images Not Supported',
         notSupportedMessage: 'This agent does not support image attachments. Images were not sent.',
+        sourceTitle: 'Add Photo',
+        sourceLibrary: 'Photo Library',
+        sourceCamera: 'Take Photo',
+        cameraPermissionTitle: 'Camera Access',
+        cameraPermissionMessage: 'Allow access to your camera to take photos for messages.',
     },
 
     errors: {

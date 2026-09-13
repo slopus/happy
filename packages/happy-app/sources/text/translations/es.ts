@@ -1073,6 +1073,11 @@ export const es: TranslationStructure = {
             : `No se pudieron subir ${count} imágenes y no se enviaron.`,
         notSupportedTitle: 'Imágenes no compatibles',
         notSupportedMessage: 'Este agente no admite archivos adjuntos de imagen. Las imágenes no se enviaron.',
+        sourceTitle: 'Añadir foto',
+        sourceLibrary: 'Biblioteca de fotos',
+        sourceCamera: 'Tomar foto',
+        cameraPermissionTitle: 'Acceso a la cámara',
+        cameraPermissionMessage: 'Permite el acceso a tu cámara para tomar fotos en los mensajes.',
     },
 
     feed: {

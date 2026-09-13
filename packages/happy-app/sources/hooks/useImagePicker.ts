@@ -24,6 +24,11 @@ const IOS_ATTACHMENT_JPEG_QUALITY = 0.92;
 
 export type { AttachmentPreview };
 
+/** Accepted media library permission statuses. 'limited' = iOS 14+ user-selected photos; PHPickerViewController still works. */
+export function isPermissionAccepted(status: string): boolean {
+    return status === 'granted' || status === 'limited';
+}
+
 type UseImagePickerResult = {
     selectedImages: AttachmentPreview[];
     pickImages: () => Promise<void>;
@@ -79,11 +84,11 @@ export function useImagePicker(): UseImagePickerResult {
         selectedCountRef.current = selectedImages.length;
     }, [selectedImages]);
 
-    const requestPermission = useCallback(async (): Promise<boolean> => {
+    const requestLibraryPermission = useCallback(async (): Promise<boolean> => {
         if (Platform.OS === 'web') return true;
 
         const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (status !== 'granted') {
+        if (!isPermissionAccepted(status)) {
             Modal.alert(
                 t('imageUpload.permissionTitle'),
                 t('imageUpload.permissionMessage'),
@@ -94,32 +99,22 @@ export function useImagePicker(): UseImagePickerResult {
         return true;
     }, []);
 
-    const pickImages = useCallback(async () => {
-        const hasPermission = await requestPermission();
-        if (!hasPermission) return;
-
-        const remaining = MAX_IMAGES_PER_MESSAGE - selectedCountRef.current;
-        if (remaining <= 0) {
+    const requestCameraPermission = useCallback(async (): Promise<boolean> => {
+        const { status } = await ImagePicker.requestCameraPermissionsAsync();
+        if (status !== 'granted') {
             Modal.alert(
-                t('imageUpload.limitTitle'),
-                t('imageUpload.limitMessage', { max: MAX_IMAGES_PER_MESSAGE }),
+                t('imageUpload.cameraPermissionTitle'),
+                t('imageUpload.cameraPermissionMessage'),
                 [{ text: t('common.ok') }],
             );
-            return;
+            return false;
         }
+        return true;
+    }, []);
 
-        const result = await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ['images'], // expo-image-picker ~55: MediaTypeOptions deprecated
-            allowsMultipleSelection: true,
-            selectionLimit: remaining,
-            quality: 1, // request full-resolution source; iOS upload is normalized below
-            exif: false,
-        });
-
-        if (result.canceled || !result.assets.length) return;
-
-        // On web, selectionLimit is not enforced by the browser — clamp here.
-        const assets = result.assets.slice(0, remaining);
+    const processAssets = useCallback(async (
+        assets: ImagePicker.ImagePickerAsset[],
+    ): Promise<AttachmentPreview[]> => {
         const previews: AttachmentPreview[] = [];
 
         for (const asset of assets) {
@@ -153,10 +148,96 @@ export function useImagePicker(): UseImagePickerResult {
             });
         }
 
+        return previews;
+    }, []);
+
+    const openLibrary = useCallback(async () => {
+        const hasPermission = await requestLibraryPermission();
+        if (!hasPermission) return;
+
+        const remaining = MAX_IMAGES_PER_MESSAGE - selectedCountRef.current;
+        if (remaining <= 0) {
+            Modal.alert(
+                t('imageUpload.limitTitle'),
+                t('imageUpload.limitMessage', { max: MAX_IMAGES_PER_MESSAGE }),
+                [{ text: t('common.ok') }],
+            );
+            return;
+        }
+
+        const result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ['images'], // expo-image-picker ~55: MediaTypeOptions deprecated
+            allowsMultipleSelection: true,
+            selectionLimit: remaining,
+            quality: 1, // request full-resolution source; iOS upload is normalized below
+            exif: false,
+        });
+
+        if (result.canceled || !result.assets.length) return;
+
+        // On web, selectionLimit is not enforced by the browser — clamp here.
+        const previews = await processAssets(result.assets.slice(0, remaining));
+
         if (previews.length > 0) {
             setSelectedImages(prev => [...prev, ...previews].slice(0, MAX_IMAGES_PER_MESSAGE));
         }
-    }, [requestPermission]);
+    }, [processAssets, requestLibraryPermission]);
+
+    const openCamera = useCallback(async () => {
+        const hasPermission = await requestCameraPermission();
+        if (!hasPermission) return;
+
+        if (selectedCountRef.current >= MAX_IMAGES_PER_MESSAGE) {
+            Modal.alert(
+                t('imageUpload.limitTitle'),
+                t('imageUpload.limitMessage', { max: MAX_IMAGES_PER_MESSAGE }),
+                [{ text: t('common.ok') }],
+            );
+            return;
+        }
+
+        const result = await ImagePicker.launchCameraAsync({
+            mediaTypes: ['images'],
+            quality: 1,
+            exif: false,
+        });
+
+        if (result.canceled || !result.assets.length) return;
+
+        const previews = await processAssets(result.assets);
+        if (previews.length > 0) {
+            setSelectedImages(prev => [...prev, ...previews].slice(0, MAX_IMAGES_PER_MESSAGE));
+        }
+    }, [processAssets, requestCameraPermission]);
+
+    const pickImages = useCallback(async () => {
+        if (Platform.OS === 'web') {
+            await openLibrary();
+            return;
+        }
+
+        await new Promise<void>((resolve) => {
+            Modal.alert(
+                t('imageUpload.sourceTitle'),
+                '',
+                [
+                    {
+                        text: t('imageUpload.sourceLibrary'),
+                        onPress: () => { openLibrary().finally(resolve); },
+                    },
+                    {
+                        text: t('imageUpload.sourceCamera'),
+                        onPress: () => { openCamera().finally(resolve); },
+                    },
+                    {
+                        text: t('common.cancel'),
+                        style: 'cancel',
+                        onPress: () => resolve(),
+                    },
+                ],
+            );
+        });
+    }, [openCamera, openLibrary]);
 
     const removeImage = useCallback((id: string) => {
         setSelectedImages(prev => prev.filter(img => img.id !== id));

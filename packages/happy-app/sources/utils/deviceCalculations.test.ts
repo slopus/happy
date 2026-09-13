@@ -137,7 +137,7 @@ describe('responsive utilities', () => {
 
         it('should handle edge case at exact threshold', () => {
             const result = determineDeviceType({
-                diagonalInches: 9.0,
+                diagonalInches: 8.6,
                 platform: 'android'
             });
 
@@ -165,6 +165,23 @@ describe('responsive utilities', () => {
     });
 
     describe('integration scenarios', () => {
+        it('should correctly identify iPad Pro 11" as tablet', () => {
+            // iPad Pro 11" and iPad Air 11" share the same 834x1194 logical point resolution
+            const dimensions = calculateDeviceDimensions({
+                widthPoints: 834,
+                heightPoints: 1194,
+                pointsPerInch: 163
+            });
+
+            const deviceType = determineDeviceType({
+                diagonalInches: dimensions.diagonalInches,
+                platform: 'ios',
+                isPad: true
+            });
+
+            expect(deviceType).toBe('tablet');
+        });
+
         it('should correctly identify iPhone 13 Pro Max as phone', () => {
             // iPhone 13 Pro Max: 428x926 points
             const dimensions = calculateDeviceDimensions({

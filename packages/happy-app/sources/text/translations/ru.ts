@@ -1103,6 +1103,11 @@ export const ru: TranslationStructure = {
             : `${count} изображений не удалось загрузить — они не были отправлены.`,
         notSupportedTitle: 'Изображения не поддерживаются',
         notSupportedMessage: 'Этот агент не поддерживает вложения изображений. Изображения не были отправлены.',
+        sourceTitle: 'Добавить фото',
+        sourceLibrary: 'Библиотека фото',
+        sourceCamera: 'Сделать фото',
+        cameraPermissionTitle: 'Доступ к камере',
+        cameraPermissionMessage: 'Разрешите доступ к камере для съёмки фото в сообщениях.',
     },
 
     feed: {

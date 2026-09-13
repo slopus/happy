@@ -198,7 +198,7 @@ function RenderCodeBlock(props: { content: string, language: string | null, firs
                 />
             </HorizontalScrollView>
             <View
-                style={[style.copyButtonWrapper, isHovered && style.copyButtonWrapperVisible]}
+                style={[style.copyButtonWrapper, (isHovered || Platform.OS !== 'web') && style.copyButtonWrapperVisible]}
                 {...(Platform.OS === 'web' ? ({ className: 'copy-button-wrapper' } as any) : {})}
             >
                 <Pressable

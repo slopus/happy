@@ -1074,6 +1074,11 @@ export const ja: TranslationStructure = {
             : `${count}枚の画像をアップロードできず、送信されませんでした。`,
         notSupportedTitle: '画像はサポートされていません',
         notSupportedMessage: 'このエージェントは画像の添付に対応していません。画像は送信されませんでした。',
+        sourceTitle: '写真を追加',
+        sourceLibrary: 'フォトライブラリ',
+        sourceCamera: '写真を撮る',
+        cameraPermissionTitle: 'カメラアクセス',
+        cameraPermissionMessage: 'メッセージに写真を撮るためにカメラへのアクセスを許可してください。',
     },
 
     feed: {

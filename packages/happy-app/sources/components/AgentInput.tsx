@@ -33,6 +33,7 @@ import { MobileGlassSurface } from './MobileGlass';
 import { AnimatedClickAwayBackdrop, AnimatedFade } from './AnimatedOverlay';
 import { BubblePressable } from './BubblePressable';
 import { resolveAgentInputPrimaryAction } from './agentInputPrimaryAction';
+import { resolveComposerReturnKeyType, resolveComposerSubmitBehavior } from './agentInputComposerBehavior';
 import { NativeSettingsMenu, type NativeSettingsMenuGroup, type NativeSettingsMenuOption } from './NativeSettingsMenu';
 import { ProviderIcon } from './ProviderIcon';
 import { isRigMetadata } from '@/sync/rig';
@@ -1335,6 +1336,13 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         <Ionicons name="shield-outline" size={18} color={theme.colors.text} />
     ));
 
+    // On native, onSubmitEditing fires after onKeyPress regardless of e.preventDefault(),
+    // so guard against sending when autocomplete is consuming the Enter key.
+    const handleNativeSubmit = React.useCallback(() => {
+        if (suggestions.length > 0) return;
+        handleSendPress();
+    }, [suggestions.length, handleSendPress]);
+
     // Handle keyboard navigation
     const handleKeyPress = React.useCallback((event: KeyPressEvent): boolean => {
         // Handle autocomplete navigation first
@@ -2097,6 +2105,9 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                             onStateChange={handleInputStateChange}
                             maxHeight={Platform.OS === 'web' ? 480 : MOBILE_COMPOSER_METRICS.inputMaxHeight}
                             lineHeight={compactMobileComposer ? MOBILE_COMPOSER_METRICS.inputLineHeight : undefined}
+                            submitBehavior={resolveComposerSubmitBehavior(agentInputEnterToSend)}
+                            returnKeyType={resolveComposerReturnKeyType(agentInputEnterToSend)}
+                            onSubmitEditing={agentInputEnterToSend && Platform.OS !== 'web' ? handleNativeSubmit : undefined}
                         />
                     </View>
 

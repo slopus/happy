@@ -29,7 +29,7 @@ export const SettingsSchema = z.object({
     analyticsOptOut: z.boolean().describe('Whether to opt out of anonymous analytics'),
     experiments: z.boolean().describe('Enable current experiments: the Rig session file browser and the Usage settings page'),
     alwaysShowContextSize: z.boolean().describe('Always show context size in agent input'),
-    agentInputEnterToSend: z.boolean().describe('Whether pressing Enter submits/sends in the agent input (web)'),
+    agentInputEnterToSend: z.boolean().describe('Whether pressing Enter submits/sends in the agent input'),
     // Kept as a free string for cross-version sync; normalized on read by
     // normalizeAvatarStyle so unknown values fall back to brutalist.
     avatarStyle: z.string().describe('Generated avatar style: brutalist, pixelated, or gradient'),

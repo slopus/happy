@@ -224,6 +224,8 @@ export class ApiSessionClient extends EventEmitter {
         startedSubagents: new Set<string>(),
         activeSubagents: new Set<string>(),
     };
+    private firstUserMessageText: string | null = null;
+    private fallbackTitleApplied = false;
     /**
      * How far this client has consumed the session's message log.
      *
@@ -702,6 +704,24 @@ export class ApiSessionClient extends EventEmitter {
     }
 
     private applyClaudeSessionMessageSideEffects(body: RawJSONLines) {
+        // Capture the first real user prompt so a fallback title can be derived
+        // from it if the agent never calls change_title. Skip synthetic/side
+        // content: isMeta messages are system-injected context, isSidechain
+        // messages are subagent-internal, and non-string content is a tool
+        // result or content-block array, not something a human typed.
+        if (
+            body.type === 'user' &&
+            !body.isMeta &&
+            !body.isSidechain &&
+            this.firstUserMessageText === null &&
+            typeof body.message?.content === 'string'
+        ) {
+            const trimmed = body.message.content.trim();
+            if (trimmed.length > 0) {
+                this.firstUserMessageText = trimmed;
+            }
+        }
+
         // Track usage from assistant messages
         if (body.type === 'assistant' && body.message?.usage) {
             try {
@@ -709,6 +729,27 @@ export class ApiSessionClient extends EventEmitter {
             } catch (error) {
                 logger.debug('[SOCKET] Failed to send usage data:', error);
             }
+        }
+
+        if (
+            body.type === 'assistant' &&
+            !this.fallbackTitleApplied &&
+            !this.metadata?.summary &&
+            this.firstUserMessageText
+        ) {
+            this.fallbackTitleApplied = true;
+            const FALLBACK_TITLE_MAX_LENGTH = 60;
+            const text = this.firstUserMessageText;
+            const fallbackTitle = text.length > FALLBACK_TITLE_MAX_LENGTH
+                ? `${text.slice(0, FALLBACK_TITLE_MAX_LENGTH).trimEnd()}...`
+                : text;
+            this.updateMetadata((metadata) => ({
+                ...metadata,
+                summary: {
+                    text: fallbackTitle,
+                    updatedAt: Date.now()
+                }
+            }));
         }
 
         // Update metadata with summary if this is a summary message

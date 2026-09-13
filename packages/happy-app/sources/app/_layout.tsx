@@ -325,7 +325,7 @@ export default function RootLayout() {
                 }
             })();
             console.log(`[PUSH ROUTING] Navigating to session: ${sessionId}`);
-            navigateToSession(router, sessionId);
+            setTimeout(() => { navigateToSession(router, sessionId); }, 0);
         } finally {
             try {
                 await Notifications.clearLastNotificationResponseAsync();

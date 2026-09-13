@@ -8,7 +8,7 @@ const name = {
 }[variant];
 const bundleId = {
     development: "com.slopus.happy.dev",
-    preview: "com.slopus.happy.preview",
+    preview: "com.dohertykariann.happy.preview",
     production: "com.ex3ndr.happy"
 }[variant];
 // const stagingElevenLabsAgentId = 'agent_7801k2c0r5hjfraa1kdbytpvs6yt';
@@ -208,7 +208,7 @@ export default {
             ]
         ],
         updates: {
-            url: "https://u.expo.dev/4558dd3d-cd5a-47cd-bad9-e591a241cc06",
+            url: "https://u.expo.dev/5f386575-cee2-470b-a808-9b7487071c6f",
             requestHeaders: {
                 "expo-channel-name": "production"
             }
@@ -221,7 +221,7 @@ export default {
                 root: "./sources/app"
             },
             eas: {
-                projectId: "4558dd3d-cd5a-47cd-bad9-e591a241cc06"
+                projectId: "5f386575-cee2-470b-a808-9b7487071c6f"
             },
             app: {
                 postHogKey: process.env.EXPO_PUBLIC_POSTHOG_API_KEY,
@@ -234,6 +234,6 @@ export default {
                 buildCommitTimestamp: buildMetadata.commitTimestamp,
             }
         },
-        owner: "bulkacorp"
+        owner: "karidoherty"
     }
 };

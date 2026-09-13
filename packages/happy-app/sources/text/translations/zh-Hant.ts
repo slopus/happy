@@ -1072,6 +1072,11 @@ export const zhHant: TranslationStructure = {
             : `${count} 張圖片上傳失敗，未傳送。`,
         notSupportedTitle: '不支援圖片',
         notSupportedMessage: '此代理不支援圖片附件。圖片未傳送。',
+        sourceTitle: '新增照片',
+        sourceLibrary: '照片圖庫',
+        sourceCamera: '拍照',
+        cameraPermissionTitle: '相機存取',
+        cameraPermissionMessage: '允許存取相機以在訊息中拍攝照片。',
     },
 
     feed: {
