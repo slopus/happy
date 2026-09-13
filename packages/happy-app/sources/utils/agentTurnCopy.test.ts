@@ -25,6 +25,16 @@ describe('buildAgentTurnCopyTextByMessageId', () => {
         expect(buildAgentTurnCopyTextByMessageId(messages, { currentTurnComplete: false }).size).toBe(0);
     });
 
+    it('does not add a copy button to streaming work when a pending prompt appears below it', () => {
+        const messages: AgentTurnCopyMessage[] = [
+            { kind: 'user-text', id: 'pending', text: 'One more thing', pending: true },
+            { kind: 'agent-text', id: 'streaming', text: 'Still working', turn: 'current' },
+            { kind: 'user-text', id: 'user', text: 'Do it' },
+        ];
+
+        expect(buildAgentTurnCopyTextByMessageId(messages, { currentTurnComplete: false }).size).toBe(0);
+    });
+
     it('still offers copy for completed historical turns', () => {
         const messages: AgentTurnCopyMessage[] = [
             { kind: 'user-text', id: 'current-user', text: 'Next task' },

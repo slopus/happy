@@ -61,7 +61,7 @@ export function runDiffBenchmark(): void {
         const doc = buildDiffFromPatch(patch);
         const rows = doc.files.reduce((n, f) => n + f.rows.length, 0);
 
-        const full = timed(undefined);
+        const full = timed({ syntax: true });
         const noSyntax = timed({ syntax: false });
         const plain = timed({ syntax: false, intraline: false });
         const cached = median(Array.from({ length: REPEATS }, () => measure(() => buildDiffFromPatch(patch))));

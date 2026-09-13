@@ -12,11 +12,12 @@ import { useFocusEffect } from 'expo-router';
 import { getGitStatusFiles, GitStatusFiles } from '@/sync/gitStatusFiles';
 import { storage, useSessionGitStatusFiles } from '@/sync/storage';
 
-export function useGitStatusFiles(sessionId: string) {
+export function useGitStatusFiles(sessionId: string, enabled = true) {
     const cached = useSessionGitStatusFiles(sessionId);
     const [isFetching, setIsFetching] = React.useState(false);
 
     const refresh = React.useCallback(async () => {
+        if (!enabled) return;
         const pathKey = storage.getState().getSessionPathKey(sessionId);
         if (!pathKey) return;
         setIsFetching(true);
@@ -28,7 +29,7 @@ export function useGitStatusFiles(sessionId: string) {
         } finally {
             setIsFetching(false);
         }
-    }, [sessionId]);
+    }, [sessionId, enabled]);
 
     // Refresh on mount and every time the screen is focused
     useFocusEffect(
@@ -40,6 +41,6 @@ export function useGitStatusFiles(sessionId: string) {
     return {
         data: cached,
         // Only show loading spinner when there's no cached data yet
-        isLoading: !cached && isFetching,
+        isLoading: enabled && !cached && isFetching,
     };
 }

@@ -424,6 +424,14 @@ export class ApiMachineClient {
         });
     }
 
+    private registeredRpcMethods = new Set<string>();
+
+    isReady(): boolean {
+        return this.socket?.connected === true
+            && this.registeredRpcMethods.has(`${this.machine.id}:spawn-happy-session`)
+            && (!this.resumeSessionHandler || this.registeredRpcMethods.has(`${this.machine.id}:resume-happy-session`));
+    }
+
     connect() {
         const serverUrl = configuration.serverUrl.replace(/^http/, 'ws');
         logger.debug(`[API MACHINE] Connecting to ${serverUrl}`);
@@ -441,6 +449,7 @@ export class ApiMachineClient {
         });
 
         this.socket.on('connect', () => {
+            this.registeredRpcMethods.clear();
             logger.debug('[API MACHINE] Connected to server');
 
             if (this.reconnectInterval) {
@@ -462,10 +471,18 @@ export class ApiMachineClient {
         });
 
         this.socket.on('disconnect', (reason) => {
+            this.registeredRpcMethods.clear();
             logger.debug(`[API MACHINE] Disconnected from server — reason: ${reason}`);
             this.rpcHandlerManager.onSocketDisconnect();
             this.stopKeepAlive();
             this.startSmartReconnect();
+        });
+
+        this.socket.on('rpc-registered', (data: { method?: unknown } | null) => {
+            if (typeof data?.method === 'string') this.registeredRpcMethods.add(data.method);
+        });
+        this.socket.on('rpc-unregistered', (data: { method?: unknown } | null) => {
+            if (typeof data?.method === 'string') this.registeredRpcMethods.delete(data.method);
         });
 
         // Single consolidated RPC handler

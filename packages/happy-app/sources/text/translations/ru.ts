@@ -1,4 +1,4 @@
-import type { TranslationStructure } from '../_default';
+import { en, type TranslationStructure } from '../_default';
 
 /**
  * Russian plural helper function
@@ -383,6 +383,7 @@ export const ru: TranslationStructure = {
 
     components: {
         emptyMainScreen: {
+            ...en.components.emptyMainScreen,
             // Used by EmptyMainScreen component
             readyToCode: 'Готовы к программированию?',
             installCli: 'Установите Happy CLI',
@@ -930,6 +931,9 @@ export const ru: TranslationStructure = {
         unknownEvent: 'Неизвестное событие',
         usageLimitUntil: ({ time }: { time: string }) => `Лимит использования достигнут до ${time}`,
         sentAsGoal: 'Отправлено в качестве цели',
+        sendsAfterThisTurn: 'Будет отправлено после текущего ответа',
+        sending: 'Отправка…',
+        sendFailed: ({ reason }: { reason: string }) => `Не отправлено: ${reason}`,
         unknownTime: 'неизвестное время',
     },
 

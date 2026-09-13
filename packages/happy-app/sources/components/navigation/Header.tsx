@@ -41,6 +41,8 @@ interface HeaderProps {
     headerBackdropVariant?: MobileHeaderScrimVariant;
     mobileTitleSurface?: 'glass' | 'plain';
     mobileTitleAlignment?: 'start' | 'center';
+    /** Navigation's explicit alignment applies on phones, tablets and desktop. */
+    titleAlignment?: 'start' | 'center';
     safeAreaEnabled?: boolean;
 }
 
@@ -66,6 +68,7 @@ export const Header = React.memo((props: HeaderProps) => {
         headerBackdropVariant = 'subtle',
         mobileTitleSurface = 'glass',
         mobileTitleAlignment = 'start',
+        titleAlignment,
         safeAreaEnabled = true,
     } = props;
 
@@ -80,7 +83,7 @@ export const Header = React.memo((props: HeaderProps) => {
     const headerLeftUsesGlass = headerLeftGlass && glassControlsEnabled;
     const headerRightUsesGlass = headerRightGlass && glassControlsEnabled;
     const contentHeight = glassControlsEnabled ? Math.max(headerHeight, MOBILE_GLASS_HEADER_HEIGHT) : headerHeight;
-    const centerMobileTitle = isNativePhone && mobileTitleAlignment === 'center';
+    const centerTitle = (titleAlignment ?? (isNativePhone ? mobileTitleAlignment : 'start')) === 'center';
     const homeBackdrop = headerBackdropVariant === 'home';
     const strongBackdrop = headerBackdropVariant !== 'subtle';
     // Mount/unmount fade only - it must land on exactly 1, because a
@@ -175,7 +178,7 @@ export const Header = React.memo((props: HeaderProps) => {
                 <View style={[
                     styles.content,
                     isDesktop && styles.desktopContent,
-                    centerMobileTitle && styles.mobileCenteredContent,
+                    centerTitle && styles.centeredContent,
                     { height: contentHeight },
                 ]}>
                     <View style={styles.leftContainer}>
@@ -202,7 +205,7 @@ export const Header = React.memo((props: HeaderProps) => {
                     <View style={[
                         styles.centerContainer,
                         isDesktop && styles.desktopCenterContainer,
-                        centerMobileTitle && styles.mobileCenteredTitleContainer,
+                        centerTitle && styles.centeredTitleContainer,
                     ]}>
                         {glassControlsEnabled && mobileTitleSurface === 'glass' ? (
                             <MobileGlassSurface
@@ -390,6 +393,7 @@ const NavigationHeaderComponent: React.FC<NavigationHeaderComponentProps> = Reac
             headerBackdropVariant="strong"
             mobileTitleSurface={props.mobileTitleSurfaceOverride}
             mobileTitleAlignment={titleAlign === 'center' ? 'center' : 'start'}
+            titleAlignment={titleAlign === 'center' ? 'center' : 'start'}
         />
     );
 });
@@ -449,7 +453,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         width: '100%',
         maxWidth: layout.headerMaxWidth,
     },
-    mobileCenteredContent: {
+    centeredContent: {
         justifyContent: 'space-between',
     },
     desktopContent: {
@@ -471,13 +475,14 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         paddingHorizontal: Platform.OS === 'web' ? 12 : 0,
         minWidth: Platform.OS === 'web' ? undefined : 0,
     },
-    mobileCenteredTitleContainer: {
+    centeredTitleContainer: {
         position: 'absolute',
         top: 0,
         bottom: 0,
         left: 64,
         right: 64,
         alignItems: 'center',
+        justifyContent: 'center',
         paddingHorizontal: 0,
     },
     desktopCenterContainer: {

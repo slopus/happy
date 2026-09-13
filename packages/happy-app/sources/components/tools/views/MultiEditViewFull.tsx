@@ -5,7 +5,6 @@ import { Metadata } from '@/sync/storageTypes';
 import { knownTools } from '@/components/tools/knownTools';
 import { toolFullViewStyles } from '../ToolFullView';
 import { ToolDiffView } from '@/components/tools/ToolDiffView';
-import { trimIdent } from '@/utils/trimIdent';
 import { t } from '@/text';
 
 interface MultiEditViewFullProps {
@@ -30,8 +29,8 @@ export const MultiEditViewFull = React.memo<MultiEditViewFullProps>(({ tool, met
     return (
         <View style={toolFullViewStyles.sectionFullWidth}>
             {edits.map((edit, index) => {
-                const oldString = trimIdent(edit.old_string || '');
-                const newString = trimIdent(edit.new_string || '');
+                const oldString = edit.old_string || '';
+                const newString = edit.new_string || '';
                 return (
                     <View key={index}>
                         <View style={styles.editHeader}>
@@ -44,7 +43,7 @@ export const MultiEditViewFull = React.memo<MultiEditViewFullProps>(({ tool, met
                                 </View>
                             )}
                         </View>
-                        <ToolDiffView oldText={oldString} newText={newString} showLineNumbers />
+                        <ToolDiffView oldText={oldString} newText={newString} fileName={parsed.success ? parsed.data.file_path : undefined} showLineNumbers />
                         {index < edits.length - 1 && <View style={styles.separator} />}
                     </View>
                 );

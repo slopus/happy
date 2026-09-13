@@ -12,7 +12,8 @@ import { Avatar } from './Avatar';
 import { requestHomeDockFocus } from './homeDockFocus';
 import { useNewSessionDraft } from '@/hooks/useNewSessionDraft';
 import { formatPathRelativeToHome } from '@/utils/sessionUtils';
-import { compactCount, visibleRigGitLineChanges } from '@/utils/rigGitLineChanges';
+import { visibleRigGitLineChanges } from '@/utils/rigGitLineChanges';
+import { GitLineChanges } from './GitLineChanges';
 import { getRepoPath, isWorktreePath } from '@/utils/worktreePaths';
 
 // Tall enough to span the name and branch lines together.
@@ -120,19 +121,7 @@ const WorkspaceSection = React.memo(({ project, workspace, selectedSessionId }: 
                         <Text style={styles.branchText} numberOfLines={1}>
                             {branchName}
                         </Text>
-                        {changes && (
-                            <View style={styles.branchChanges}>
-                                {changes.approximate && (
-                                    <Text style={styles.approximateText}>≈</Text>
-                                )}
-                                {changes.insertions > 0 && (
-                                    <Text style={styles.addedText}>+{compactCount(changes.insertions)}</Text>
-                                )}
-                                {changes.deletions > 0 && (
-                                    <Text style={styles.removedText}>-{compactCount(changes.deletions)}</Text>
-                                )}
-                            </View>
-                        )}
+                        <GitLineChanges changes={changes} />
                     </View>
                 </View>
                 <Pressable
@@ -205,26 +194,6 @@ const stylesheet = StyleSheet.create((theme) => ({
         lineHeight: 16,
         color: theme.colors.textSecondary,
         ...Typography.default('regular'),
-    },
-    branchChanges: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 4,
-    },
-    approximateText: {
-        fontSize: 11,
-        color: theme.colors.textSecondary,
-        ...Typography.default('regular'),
-    },
-    addedText: {
-        fontSize: 11,
-        fontWeight: '600',
-        color: theme.colors.gitAddedText,
-    },
-    removedText: {
-        fontSize: 11,
-        fontWeight: '600',
-        color: theme.colors.gitRemovedText,
     },
     // Filled like the composer's resting send button so it reads as a control,
     // not an ornament.

@@ -151,6 +151,16 @@ export function rigHasRpcMethod(metadata: Metadata | null | undefined, method: s
     return !isRigMetadataV1(metadata) || metadata?.capabilities?.rpcMethods.includes(method) === true;
 }
 
+/**
+ * Whether this session's daemon sends `user-message-accepted` receipts.
+ * Deliberately strict — capability present and true, never a default — unlike
+ * the permissive rigCan* helpers: holding a sent message on the strength of a
+ * receipt that will never come would leave it looking unsent forever.
+ */
+export function rigSendsMessageReceipts(metadata: Metadata | null | undefined): boolean {
+    return isRigMetadataV1(metadata) && metadata?.capabilities?.messageReceipts === true;
+}
+
 export function rigCanAbort(metadata: Metadata | null | undefined): boolean {
     return !isRigMetadataV1(metadata)
         || (metadata?.capabilities?.abort === true && rigHasRpcMethod(metadata, 'abort'));

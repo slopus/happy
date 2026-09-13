@@ -1,9 +1,10 @@
 import * as React from 'react';
-import { View, Text } from 'react-native';
+import { View } from 'react-native';
 import { StyleSheet } from 'react-native-unistyles';
 import { ToolCall } from '@/sync/typesMessage';
 import { ToolSectionView } from '../ToolSectionView';
 import { ToolDiffView } from '@/components/tools/ToolDiffView';
+import { DiffFileHeader } from '@/components/diff/DiffFileHeader';
 import { Metadata } from '@/sync/storageTypes';
 import { parseUnifiedDiff } from '@/utils/codexUnifiedDiff';
 import { countPatchStats } from '@/components/diff/engine/stats';
@@ -28,19 +29,12 @@ export const CodexDiffView = React.memo<CodexDiffViewProps>(({ tool, metadata })
     if (!patch) return null;
 
     return (
-        <>
+        <ToolSectionView fullWidth>
             {fileName ? (
-                <View style={styles.fileHeader}>
-                    <Text style={styles.fileName} numberOfLines={1}>{fileName}</Text>
-                    {stats && (stats.additions > 0 || stats.deletions > 0) ? (
-                        <DiffStats additions={stats.additions} deletions={stats.deletions} />
-                    ) : null}
-                </View>
+                <DiffFileHeader file={{ path: fileName, kind: 'modified', additions: stats?.additions ?? 0, deletions: stats?.deletions ?? 0 }} />
             ) : null}
-            <ToolSectionView fullWidth>
-                <ToolDiffView patch={patch} fileName={fileName} />
-            </ToolSectionView>
-        </>
+            <ToolDiffView patch={patch} fileName={fileName} />
+        </ToolSectionView>
     );
 });
 
@@ -62,25 +56,13 @@ export const CodexDiffViewFull = React.memo<CodexDiffViewProps>(({ tool }) => {
         <View style={styles.fullViewContainer}>
             <View style={styles.fullViewCard}>
                 {fileName ? (
-                    <View style={styles.fileHeader}>
-                        <Text style={styles.fileName} numberOfLines={1}>{fileName}</Text>
-                        {stats && (stats.additions > 0 || stats.deletions > 0) ? (
-                            <DiffStats additions={stats.additions} deletions={stats.deletions} />
-                        ) : null}
-                    </View>
+                    <DiffFileHeader file={{ path: fileName, kind: 'modified', additions: stats?.additions ?? 0, deletions: stats?.deletions ?? 0 }} />
                 ) : null}
                 <ToolDiffView patch={patch} fileName={fileName} />
             </View>
         </View>
     );
 });
-
-const DiffStats = React.memo<{ additions: number; deletions: number }>(({ additions, deletions }) => (
-    <View style={styles.stats}>
-        {additions > 0 ? <Text style={styles.added}>+{additions}</Text> : null}
-        {deletions > 0 ? <Text style={styles.removed}>-{deletions}</Text> : null}
-    </View>
-));
 
 const styles = StyleSheet.create((theme) => ({
     fullViewContainer: {
@@ -93,35 +75,5 @@ const styles = StyleSheet.create((theme) => ({
         borderRadius: 8,
         borderWidth: 1,
         borderColor: theme.colors.divider,
-    },
-    fileHeader: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 8,
-        paddingHorizontal: 16,
-        paddingVertical: 8,
-        backgroundColor: theme.colors.surfaceHigh,
-        borderBottomWidth: 1,
-        borderBottomColor: theme.colors.divider,
-    },
-    fileName: {
-        flex: 1,
-        fontSize: 13,
-        color: theme.colors.textSecondary,
-        fontFamily: 'monospace',
-    },
-    stats: {
-        flexDirection: 'row',
-        gap: 8,
-    },
-    added: {
-        fontSize: 12,
-        fontFamily: 'monospace',
-        color: '#34C759',
-    },
-    removed: {
-        fontSize: 12,
-        fontFamily: 'monospace',
-        color: '#FF3B30',
     },
 }));

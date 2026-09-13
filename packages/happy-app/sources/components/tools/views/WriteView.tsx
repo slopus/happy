@@ -20,6 +20,7 @@ export const WriteView = React.memo<ToolViewProps>(({ tool }) => {
                 <ToolDiffView 
                     oldText={''} 
                     newText={contents} 
+                    fileName={parsed.success ? parsed.data.file_path : undefined}
                     showLineNumbers={showLineNumbersInToolViews}
                     showPlusMinusSymbols={showLineNumbersInToolViews}
                 />

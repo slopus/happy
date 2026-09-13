@@ -1,4 +1,4 @@
-import type { TranslationStructure } from '../_default';
+import { en, type TranslationStructure } from '../_default';
 
 /**
  * Spanish plural helper function
@@ -429,6 +429,7 @@ export const es: TranslationStructure = {
 
     components: {
         emptyMainScreen: {
+            ...en.components.emptyMainScreen,
             // Used by EmptyMainScreen component
             readyToCode: '¿Listo para programar?',
             installCli: 'Instale el Happy CLI',
@@ -924,6 +925,9 @@ export const es: TranslationStructure = {
         unknownEvent: 'Evento desconocido',
         usageLimitUntil: ({ time }: { time: string }) => `Límite de uso alcanzado hasta ${time}`,
         sentAsGoal: 'Sent as goal',
+        sendsAfterThisTurn: 'Sends after this turn',
+        sending: 'Sending…',
+        sendFailed: ({ reason }: { reason: string }) => `No enviado: ${reason}`,
         unknownTime: 'tiempo desconocido',
     },
 

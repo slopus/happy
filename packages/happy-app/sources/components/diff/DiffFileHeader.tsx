@@ -45,8 +45,6 @@ export const DiffFileHeader = React.memo(function DiffFileHeader({
                 paddingHorizontal: 12,
                 paddingVertical: 9,
                 backgroundColor: palette.hunkBg,
-                borderBottomWidth: 1,
-                borderBottomColor: palette.divider,
             }}
         >
             {onToggle ? (

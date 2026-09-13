@@ -2,6 +2,7 @@ import * as React from 'react';
 import { Message } from '@/sync/typesMessage';
 import { knownTools } from '@/components/tools/knownTools';
 import { isInteractiveQuestionToolName } from '@/utils/toolDisplay';
+import { assignTurns } from '@/utils/agentTurns';
 
 // Display item types for the grouped message list
 export type TextItem = {
@@ -13,6 +14,8 @@ export type TextItem = {
 export type AgentWorkGroupItem = {
     type: 'agent-work-group';
     id: string;
+    /** Stable identity of the user prompt that opened this turn. */
+    turnUserMessageId: string | null;
     /** Hidden intermediate messages, in chronological (render) order. */
     messages: Message[];
     hasRunning: boolean;
@@ -58,7 +61,8 @@ export function groupMessagesForDisplay(
     }
 
     const collapseCurrentTurn = options.collapseCurrentTurn ?? true;
-    const turnOf = getTurnAssignments(messages);
+    // Newest-first → turn 0 is the current assistant turn.
+    const turnOf = assignTurns(messages);
     const workGroups = collectAgentWorkGroups(messages, turnOf, collapseCurrentTurn);
     const hiddenWorkIndexes = new Set<number>();
     const workGroupByOldestIndex = new Map<number, AgentWorkGroupItem>();
@@ -92,17 +96,6 @@ export function groupMessagesForDisplay(
 
     result.reverse();
     return result;
-}
-
-function getTurnAssignments(messages: Message[]): number[] {
-    // Newest-first → turn 0 is the current assistant turn.
-    const turnOf = new Array<number>(messages.length);
-    let turn = 0;
-    for (let i = 0; i < messages.length; i++) {
-        turnOf[i] = turn;
-        if (messages[i].kind === 'user-text') turn++;
-    }
-    return turnOf;
 }
 
 function collectAgentWorkGroups(messages: Message[], turnOf: number[], collapseCurrentTurn: boolean): Array<{
@@ -146,6 +139,9 @@ function collectAgentWorkGroups(messages: Message[], turnOf: number[], collapseC
 
         const oldestIdx = Math.max(...hiddenIndexes);
         const hiddenMessages = hiddenIndexes.map((index) => messages[index]);
+        const turnUserMessageId = indexes
+            .map((index) => messages[index])
+            .find((message) => message.kind === 'user-text' && !message.pending && message.sendError === undefined)?.id ?? null;
         const startedAt = Math.min(...hiddenMessages.map((msg) => msg.createdAt));
         const completedAt = messages[finalTextIndex].createdAt;
         // Members render flat when the group expands, so they are stored in
@@ -158,6 +154,7 @@ function collectAgentWorkGroups(messages: Message[], turnOf: number[], collapseC
             item: {
                 type: 'agent-work-group',
                 id: `work-${messages[oldestIdx].id}`,
+                turnUserMessageId,
                 messages: hiddenMessages,
                 hasRunning: false,
                 hasPendingPermission: hasPendingPermission(hiddenMessages),

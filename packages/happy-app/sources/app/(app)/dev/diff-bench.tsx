@@ -22,6 +22,8 @@ import type { DiffDocument } from '@/components/diff/engine/types';
 import { generateFiles, generatePatch } from '@/components/diff/fixtures';
 import { countPatchStats } from '@/components/diff/engine/stats';
 import type { DiffFileItem } from '@/components/diff/DiffFilesList';
+import { DiffSyntaxEnabled } from '@/components/diff/syntax/usePreparedSyntax';
+import { diffSyntax } from '@/components/diff/syntax/shared';
 
 type Preset = { label: string; files: number; lines: number };
 
@@ -40,6 +42,7 @@ export default function DiffBenchScreen() {
     const [preset, setPreset] = React.useState(0);
     const [mode, setMode] = React.useState<Mode>('file');
     const [syntax, setSyntax] = React.useState(true);
+    const [background, setBackground] = React.useState(true);
     const [intraline, setIntraline] = React.useState(true);
     const [wrap, setWrap] = React.useState(false);
     const [split, setSplit] = React.useState(false);
@@ -69,11 +72,11 @@ export default function DiffBenchScreen() {
         if (!patch) return;
         clearDiffCache();
         setMountMs(null);
-        const built = buildDiffFromPatch(patch, { syntax, intraline });
+        const built = buildDiffFromPatch(patch, { syntax: syntax && !background, intraline });
         mountStart.current = performance.now();
         setDoc(built);
         setContentKey((k) => k + 1);
-    }, [patch, syntax, intraline, mode, wrap, split, run]);
+    }, [patch, syntax, background, intraline, mode, wrap, split, run]);
 
     const onContentLaidOut = React.useCallback(() => {
         if (mountStart.current === 0) return;
@@ -99,6 +102,7 @@ export default function DiffBenchScreen() {
     }, [preset]);
 
     const frames = useFrameStats();
+    const syntaxStats = diffSyntax.getStats();
 
     return (
         <View style={{ flex: 1, backgroundColor: theme.colors.groupped.background }}>
@@ -115,10 +119,12 @@ export default function DiffBenchScreen() {
                 </Row>
                 <Row label="renderer">
                     <Chip label="syntax" active={syntax} onPress={() => setSyntax((v) => !v)} />
+                    <Chip label="worker" active={background} onPress={() => setBackground((v) => !v)} />
                     <Chip label="words" active={intraline} onPress={() => setIntraline((v) => !v)} />
                     <Chip label="wrap" active={wrap} onPress={() => setWrap((v) => !v)} />
                     <Chip label="split" active={split} onPress={() => setSplit((v) => !v)} />
                     <Chip label="rerun" active={false} onPress={() => setRun((v) => v + 1)} />
+                    <Chip label="cold cache" active={false} onPress={() => { diffSyntax.clearCache(); setRun((v) => v + 1); }} />
                 </Row>
 
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
@@ -130,27 +136,32 @@ export default function DiffBenchScreen() {
                     <Stat label="js fps" value={frames.jsFps.toFixed(0)} />
                     <Stat label="ui fps" value={frames.uiFps.toFixed(0)} />
                     <Stat label="worst" value={`${frames.worstMs.toFixed(0)}ms`} />
+                    <Stat label="syntax hits" value={String(syntaxStats.hits)} />
+                    <Stat label="queued" value={String(syntaxStats.queued)} />
+                    <Stat label="timeouts" value={String(syntaxStats.timeouts)} />
                 </View>
             </View>
 
-            <View key={contentKey} style={{ flex: 1 }} onLayout={onContentLaidOut}>
-                {!doc ? null : mode === 'pr' ? (
-                    <DiffFilesList items={prItems} wrap={wrap} split={split} autoCollapseAbove={100000} />
-                ) : (
-                    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 48 }}>
-                        {mode === 'chat' ? (
-                            <ChatSimulation doc={doc} wrap={wrap} split={split} />
-                        ) : (
-                            doc.files.map((file, i) => (
-                                <View key={`${file.path}:${i}`} style={{ marginBottom: 12 }}>
-                                    <DiffFileHeader file={file} />
-                                    <DiffFileView file={file} wrap={wrap} split={split} collapseAfter={100000} />
-                                </View>
-                            ))
-                        )}
-                    </ScrollView>
-                )}
-            </View>
+            <DiffSyntaxEnabled.Provider value={syntax && background}>
+                <View key={contentKey} style={{ flex: 1 }} onLayout={onContentLaidOut}>
+                    {!doc ? null : mode === 'pr' ? (
+                        <DiffFilesList items={prItems} wrap={wrap} split={split} autoCollapseAbove={100000} />
+                    ) : (
+                        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 48 }}>
+                            {mode === 'chat' ? (
+                                <ChatSimulation doc={doc} wrap={wrap} split={split} />
+                            ) : (
+                                doc.files.map((file, i) => (
+                                    <View key={`${file.path}:${i}`} style={{ marginBottom: 12 }}>
+                                        <DiffFileHeader file={file} />
+                                        <DiffFileView file={file} wrap={wrap} split={split} collapseAfter={100000} />
+                                    </View>
+                                ))
+                            )}
+                        </ScrollView>
+                    )}
+                </View>
+            </DiffSyntaxEnabled.Provider>
         </View>
     );
 }

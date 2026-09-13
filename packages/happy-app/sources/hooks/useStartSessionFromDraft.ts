@@ -162,12 +162,17 @@ export function useStartSessionFromDraft() {
                 t('common.error'),
                 agentType === 'rig'
                     ? 'Happy Agent is not running on this computer'
-                    : 'This computer has no Happy CLI daemon to start that agent',
+                    : 'Happy CLI is not available on your computer. Run `happy daemon start` on your computer, then try again.',
             );
             return false;
         }
         if (!isMachineOnline(machine)) {
-            Modal.alert(t('common.error'), 'Machine is offline');
+            Modal.alert(
+                t('common.error'),
+                agentType === 'rig'
+                    ? 'Machine is offline'
+                    : 'Happy CLI is offline on your computer. Run `happy daemon start` on your computer, then try again.',
+            );
             return false;
         }
         const rigCreation = agentType === 'rig'

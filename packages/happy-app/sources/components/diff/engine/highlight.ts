@@ -109,6 +109,10 @@ function loadGrammar(lang: string): void {
             case 'bash':
                 require('prismjs/components/prism-bash');
                 break;
+            case 'shell-session':
+                loadGrammar('bash');
+                require('prismjs/components/prism-shell-session');
+                break;
             case 'powershell':
                 require('prismjs/components/prism-powershell');
                 break;

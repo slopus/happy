@@ -86,7 +86,7 @@ function pushRange(ranges: Range[], start: number, end: number): void {
  * how edits actually land, and a similarity gate throws away pairs that would
  * produce confetti.
  */
-export function computeEmphasis(lines: RawLine[]): EmphasisMap {
+export function computeEmphasis(lines: RawLine[], deadline?: number): EmphasisMap {
     const map: EmphasisMap = new Map();
 
     let i = 0;
@@ -106,6 +106,7 @@ export function computeEmphasis(lines: RawLine[]): EmphasisMap {
         if (delCount <= MAX_BLOCK_FOR_PAIRING && addCount <= MAX_BLOCK_FOR_PAIRING) {
             const pairs = Math.min(delCount, addCount);
             for (let p = 0; p < pairs; p++) {
+                if (deadline !== undefined && Date.now() >= deadline) return map;
                 const delIdx = i + p;
                 const addIdx = delEnd + p;
                 const oldLine = lines[delIdx].text;

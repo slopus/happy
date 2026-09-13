@@ -1,13 +1,16 @@
 import * as React from 'react';
-import { View, ActivityIndicator, Pressable, Platform } from 'react-native';
+import { View, ActivityIndicator, Platform } from 'react-native';
 import { Text } from '@/components/StyledText';
 import { Typography } from '@/constants/Typography';
 import { DiffFilesList, type DiffFileItem } from '@/components/diff/DiffFilesList';
+import { DiffHeaderRight } from '@/components/diff/DiffHeaderRight';
+import { HappyAgentDiffView } from '@/components/HappyAgentDiffView';
 import { countPatchStats } from '@/components/diff/engine/stats';
 import { buildGitDiffCommand, buildGitShowBase64Command, FULL_FILE_CONTEXT } from '@/utils/gitDiffCommand';
 import { imageDataUri, isImagePath } from '@/utils/imageFiles';
 import { sessionBash, sessionReadFile } from '@/sync/ops';
-import { storage, useSessionGitStatusFiles, useSettingMutable } from '@/sync/storage';
+import { storage, useSession, useSessionGitStatusFiles, useSettingMutable } from '@/sync/storage';
+import { isRigMetadata } from '@/sync/rig';
 import { resolveSessionFilePath } from '@/utils/sessionFileLinks';
 import { GitFileStatus } from '@/sync/gitStatusFiles';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
@@ -17,8 +20,8 @@ interface AllFilesDiffViewProps {
     sessionId: string;
     /** When set, auto-scroll to this file */
     scrollToFile?: string | null;
-    /** Publishes the right-side controls (file count + diff style toggle) into the chat header. */
-    onHeaderRightSlotChange: (slot: React.ReactNode) => void;
+    /** Optional toolbar for the desktop overlay. The standalone route has none. */
+    onHeaderRightSlotChange?: (slot: React.ReactNode) => void;
 }
 
 type DiffContent =
@@ -38,11 +41,18 @@ type FileDiffResult = {
     error: string | null;
 };
 
-/**
- * Loads all diffs in parallel, then renders them in a single ScrollView.
- * Shows a global loading spinner until all diffs are fetched to prevent layout jumps.
- */
-export const AllFilesDiffView = React.memo(function AllFilesDiffView({
+/** Native sessions use their workspace comparison; legacy CLI sessions keep their patch path. */
+export const AllFilesDiffView = React.memo(function AllFilesDiffView(props: AllFilesDiffViewProps) {
+    const session = useSession(props.sessionId);
+    if (!session?.metadata) {
+        return <View style={styles.centered}><ActivityIndicator size="small" /></View>;
+    }
+    return isRigMetadata(session.metadata)
+        ? <HappyAgentDiffView key={props.sessionId} {...props} metadata={session.metadata} />
+        : <LegacyAllFilesDiffView key={props.sessionId} {...props} />;
+});
+
+const LegacyAllFilesDiffView = React.memo(function LegacyAllFilesDiffView({
     sessionId,
     scrollToFile,
     onHeaderRightSlotChange,
@@ -276,6 +286,7 @@ export const AllFilesDiffView = React.memo(function AllFilesDiffView({
 
     // Publish header right-slot controls (file count + diff style toggle) into the chat header.
     React.useEffect(() => {
+        if (!onHeaderRightSlotChange) return;
         onHeaderRightSlotChange(
             <DiffHeaderRight
                 fileCount={files.length}
@@ -320,105 +331,9 @@ export const AllFilesDiffView = React.memo(function AllFilesDiffView({
     );
 });
 
-/** Right-side header controls for the diff overlay: file count + (web-only) Unified | Split toggle. */
-const DiffHeaderRight = React.memo(function DiffHeaderRight({
-    fileCount,
-    diffStyle,
-    onDiffStyleChange,
-    ignoreWhitespace,
-    onIgnoreWhitespaceChange,
-}: {
-    fileCount: number;
-    diffStyle: 'unified' | 'split';
-    onDiffStyleChange: (v: 'unified' | 'split') => void;
-    ignoreWhitespace: boolean;
-    onIgnoreWhitespaceChange: (v: boolean) => void;
-}) {
-    const { theme } = useUnistyles();
-    return (
-        <>
-            <Pressable
-                onPress={() => onIgnoreWhitespaceChange(!ignoreWhitespace)}
-                hitSlop={8}
-                accessibilityLabel={t('diff.ignoreWhitespace')}
-                style={({ pressed }) => [
-                    styles.whitespaceToggle,
-                    {
-                        backgroundColor: ignoreWhitespace ? theme.colors.surfaceHigh : 'transparent',
-                        borderColor: theme.colors.divider,
-                        opacity: pressed ? 0.6 : 1,
-                    },
-                ]}
-            >
-                <Text style={[
-                    styles.whitespaceToggleText,
-                    { color: ignoreWhitespace ? theme.colors.text : theme.colors.textSecondary },
-                ]}>
-                    {'\u00B7\u2192'}
-                </Text>
-            </Pressable>
-            <Text style={[styles.headerRightCount, { color: theme.colors.textSecondary }]}>
-                {t('files.changedFiles', { count: fileCount })}
-            </Text>
-            {Platform.OS === 'web' && (
-                <DiffStyleToggle value={diffStyle} onChange={onDiffStyleChange} />
-            )}
-        </>
-    );
-});
-
-const DiffStyleToggle = React.memo<{ value: 'unified' | 'split'; onChange: (v: 'unified' | 'split') => void }>(({ value, onChange }) => {
-    const { theme } = useUnistyles();
-    const buttonStyle = (active: boolean) => ({
-        paddingHorizontal: 10,
-        paddingVertical: 4,
-        borderRadius: 6,
-        backgroundColor: active ? theme.colors.surface : 'transparent',
-    });
-    const textStyle = (active: boolean) => ({
-        fontSize: 12,
-        ...Typography.default(active ? 'semiBold' : undefined),
-        color: active ? theme.colors.text : theme.colors.textSecondary,
-    });
-    return (
-        <View style={[toggleStyles.container, { backgroundColor: theme.colors.groupped.background, borderColor: theme.colors.divider }]}>
-            <Pressable onPress={() => onChange('unified')} style={buttonStyle(value === 'unified')}>
-                <Text style={textStyle(value === 'unified')}>Unified</Text>
-            </Pressable>
-            <Pressable onPress={() => onChange('split')} style={buttonStyle(value === 'split')}>
-                <Text style={textStyle(value === 'split')}>Split</Text>
-            </Pressable>
-        </View>
-    );
-});
-
-const toggleStyles = StyleSheet.create({
-    container: {
-        flexDirection: 'row',
-        gap: 2,
-        padding: 2,
-        borderRadius: 8,
-        borderWidth: StyleSheet.hairlineWidth,
-    },
-});
-
 const styles = StyleSheet.create({
     outer: {
         flex: 1,
-    },
-    headerRightCount: {
-        fontSize: 13,
-        ...Typography.default(),
-    },
-    whitespaceToggle: {
-        paddingHorizontal: 8,
-        paddingVertical: 3,
-        borderRadius: 6,
-        borderWidth: StyleSheet.hairlineWidth,
-    },
-    whitespaceToggleText: {
-        fontSize: 13,
-        ...Typography.mono(),
     },
     centered: {
         flex: 1,

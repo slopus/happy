@@ -84,4 +84,38 @@ describe('useProgressiveRows', () => {
         expect(() => drain()).not.toThrow();
         expect(vi.getTimerCount()).toBe(0);
     });
+
+    it('does not truncate mounted rows when only syntax decoration changes', () => {
+        const identity = {};
+        let length = 0;
+        const Probe = ({ rows }: { rows: number[] }) => {
+            length = useProgressiveRows(rows, 120, 200, identity).length;
+            return null;
+        };
+        let renderer: TestRenderer.ReactTestRenderer;
+        act(() => { renderer = TestRenderer.create(React.createElement(Probe, { rows: rowsOf(500) })); });
+        act(() => { vi.advanceTimersByTime(1); });
+        act(() => { vi.advanceTimersByTime(1); });
+        expect(length).toBe(500);
+        act(() => { renderer.update(React.createElement(Probe, { rows: rowsOf(500) })); });
+        expect(length).toBe(500);
+        act(() => renderer.unmount());
+    });
+
+    it('starts a different document at the initial window on its very first render', () => {
+        const lengths: number[] = [];
+        const Probe = ({ rows }: { rows: number[] }) => {
+            lengths.push(useProgressiveRows(rows, 120, 200).length);
+            return null;
+        };
+        let renderer: TestRenderer.ReactTestRenderer;
+        act(() => { renderer = TestRenderer.create(React.createElement(Probe, { rows: rowsOf(500) })); });
+        act(() => { vi.advanceTimersByTime(1); });
+        act(() => { vi.advanceTimersByTime(1); });
+        expect(lengths.at(-1)).toBe(500);
+        lengths.length = 0;
+        act(() => { renderer.update(React.createElement(Probe, { rows: rowsOf(700) })); });
+        expect(lengths.every((length) => length === 120)).toBe(true);
+        act(() => renderer.unmount());
+    });
 });

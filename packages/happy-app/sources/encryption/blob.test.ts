@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll } from 'vitest';
-import sodium from 'libsodium-wrappers';
+import sodium from '@/encryption/libsodium.lib';
 
 // Mock expo-crypto to use Node.js crypto
 vi.mock('expo-crypto', () => ({

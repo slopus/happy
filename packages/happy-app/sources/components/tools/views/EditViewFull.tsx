@@ -5,7 +5,6 @@ import { Metadata } from '@/sync/storageTypes';
 import { knownTools } from '@/components/tools/knownTools';
 import { toolFullViewStyles } from '../ToolFullView';
 import { ToolDiffView } from '@/components/tools/ToolDiffView';
-import { trimIdent } from '@/utils/trimIdent';
 
 interface EditViewFullProps {
     tool: ToolCall;
@@ -20,8 +19,8 @@ export const EditViewFull = React.memo<EditViewFullProps>(({ tool, metadata }) =
     let newString = '';
     const parsed = knownTools.Edit.input.safeParse(input);
     if (parsed.success) {
-        oldString = trimIdent(parsed.data.old_string || '');
-        newString = trimIdent(parsed.data.new_string || '');
+        oldString = parsed.data.old_string || '';
+        newString = parsed.data.new_string || '';
     }
 
     return (
@@ -29,6 +28,7 @@ export const EditViewFull = React.memo<EditViewFullProps>(({ tool, metadata }) =
             <ToolDiffView 
                 oldText={oldString} 
                 newText={newString} 
+                fileName={parsed.success ? parsed.data.file_path : undefined}
                 style={{ width: '100%' }}
                 showLineNumbers={true}
                 showPlusMinusSymbols={true}

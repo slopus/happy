@@ -6,8 +6,8 @@ import { sync } from '@/sync/sync';
 import { Deferred } from "@/components/Deferred";
 import { ToolFullView } from '@/components/tools/ToolFullView';
 import { ToolHeader } from '@/components/tools/ToolHeader';
-import { ToolStatusIndicator } from '@/components/tools/ToolStatusIndicator';
 import { Message } from '@/sync/typesMessage';
+import type { Metadata } from '@/sync/storageTypes';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
 
@@ -37,6 +37,11 @@ export default React.memo(() => {
     const message = useMessage(sessionId!, messageId!);
     const { theme } = useUnistyles();
     const styles = stylesheet;
+    const tool = message?.kind === 'tool-call' ? message.tool : undefined;
+    const headerTitle = React.useCallback(
+        () => <ToolHeader tool={tool} metadata={session?.metadata} />,
+        [tool, session?.metadata],
+    );
     
     // Trigger session visibility when component mounts
     React.useEffect(() => {
@@ -52,57 +57,27 @@ export default React.memo(() => {
         }
     }, [messagesLoaded, message, router]);
     
-    // Configure header for tool messages
-    React.useLayoutEffect(() => {
-        if (message && message.kind === 'tool-call' && message.tool) {
-            // Header is configured in the Stack.Screen options
-        }
-    }, [message]);
-    
-    // Show loader while waiting for session and messages to load
-    if (!session || !messagesLoaded) {
-        return (
-            <View style={styles.loadingContainer}>
-                <ActivityIndicator size="small" color={theme.colors.textSecondary} />
-            </View>
-        );
-    }
-    
-    // If messages are loaded but specific message not found, show loader briefly
-    // The useEffect above will navigate back
-    if (!message) {
-        return (
-            <View style={styles.loadingContainer}>
-                <ActivityIndicator size="small" color={theme.colors.textSecondary} />
-            </View>
-        );
-    }
-    
     return (
         <>
-            {message && message.kind === 'tool-call' && message.tool && (
-                <Stack.Screen
-                    options={{
-                        headerTitle: () => <ToolHeader tool={message.tool} />,
-                        headerRight: () => <ToolStatusIndicator tool={message.tool} />,
-                        headerTintColor: theme.colors.header.tint,
-                        headerShadowVisible: false,
-                    }}
-                />
+            <Stack.Screen options={{ headerTitle, headerRight: undefined }} />
+            {!session || !messagesLoaded || !message ? (
+                <View style={styles.loadingContainer}>
+                    <ActivityIndicator size="small" color={theme.colors.textSecondary} />
+                </View>
+            ) : (
+                <Deferred>
+                    <FullView message={message} metadata={session.metadata} focusFile={file ? decodeURIComponent(file) : undefined} />
+                </Deferred>
             )}
-            <Deferred>
-                <FullView message={message} focusFile={file ? decodeURIComponent(file) : undefined} />
-            </Deferred>
         </>
     );
 });
 
-function FullView(props: { message: Message; focusFile?: string }) {
-    const { theme } = useUnistyles();
+function FullView(props: { message: Message; metadata: Metadata | null; focusFile?: string }) {
     const styles = stylesheet;
     
     if (props.message.kind === 'tool-call') {
-        return <ToolFullView tool={props.message.tool} messages={props.message.children} focusFile={props.focusFile} />
+        return <ToolFullView tool={props.message.tool} metadata={props.metadata} messages={props.message.children} focusFile={props.focusFile} />
     }
     if (props.message.kind === 'agent-text') {
         return (

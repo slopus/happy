@@ -1171,6 +1171,9 @@ function NewSessionScreen() {
     }, [activePicker, cancelPendingPickerOpen, closePicker, isDesktop, refreshWorktrees]);
 
     const isOffline = selectedMachine ? !isMachineOnline(selectedMachine) : false;
+    const offlineHelp = selectedAgent === 'rig'
+        ? 'Happy Agent is offline on this computer'
+        : t('machine.offlineHelp');
     const agent = availableAgents.find(a => a.key === selectedAgent)
         ?? ALL_AGENTS.find((candidate) => candidate.key === selectedAgent)
         ?? ALL_AGENTS[0];
@@ -1396,12 +1399,17 @@ function NewSessionScreen() {
                 t('common.error'),
                 agentType === 'rig'
                     ? 'Happy Agent is not running on this computer'
-                    : 'This computer has no Happy CLI daemon to start that agent',
+                    : 'Happy CLI is not available on your computer. Run `happy daemon start` on your computer, then try again.',
             );
             return;
         }
         if (!isMachineOnline(machine)) {
-            Modal.alert(t('common.error'), 'Machine is offline');
+            Modal.alert(
+                t('common.error'),
+                agentType === 'rig'
+                    ? 'Machine is offline'
+                    : 'Happy CLI is offline on your computer. Run `happy daemon start` on your computer, then try again.',
+            );
             return;
         }
         const spawnRigCreation = agentType === 'rig'
@@ -1839,7 +1847,7 @@ function NewSessionScreen() {
                                         {t('newSession.machineOffline')}
                                     </Text>
                                     <Text style={[styles.offlineHelpText, { color: theme.colors.textSecondary }]}>
-                                        {t('machine.offlineHelp')}
+                                        {offlineHelp}
                                         {'\n'}{t('newSession.switchMachinesHint')}
                                     </Text>
                                 </View>
@@ -2031,7 +2039,7 @@ function NewSessionScreen() {
                                         {t('newSession.machineOffline')}
                                     </Text>
                                     <Text style={[styles.offlineHelpText, { color: theme.colors.textSecondary }]}>
-                                        {t('machine.offlineHelp')}
+                                        {offlineHelp}
                                         {'\n'}{t('newSession.switchMachinesHint')}
                                     </Text>
                                 </View>

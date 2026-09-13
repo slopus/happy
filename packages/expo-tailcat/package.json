@@ -1,0 +1,38 @@
+{
+  "name": "expo-tailcat",
+  "version": "0.1.0",
+  "description": "Native Tailcat HTTP and WebSocket endpoints for Expo on iOS and Android",
+  "main": "src/index.js",
+  "types": "src/index.d.ts",
+  "react-native": "src/index.js",
+  "sideEffects": false,
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/slopus/happy.git",
+    "directory": "packages/expo-tailcat"
+  },
+  "files": [
+    "src", "app.plugin.js", "plugin", "expo-module.config.json",
+    "android/build.gradle", "android/src/main", "android/libs/ExpoTailcat.aar",
+    "ios/ExpoTailcat.podspec", "ios/ExpoTailcatModule.swift", "ios/Frameworks/Tailcat.xcframework",
+    "README.md", "LICENSE", "THIRD_PARTY_NOTICES.md"
+  ],
+  "scripts": {
+    "test": "node --test test/*.test.cjs",
+    "check": "node scripts/check-package.cjs",
+    "build:ios": "bash scripts/build-native.sh ios",
+    "build:android": "bash scripts/build-native.sh android",
+    "test:go": "bash scripts/test-go.sh",
+    "licenses": "node scripts/licenses.cjs",
+    "prepack": "node scripts/check-package.cjs --artifacts"
+  },
+  "peerDependencies": {
+    "expo": ">=55.0.0 <56",
+    "expo-modules-core": ">=55.0.0 <56",
+    "react": ">=19.0.0",
+    "react-native": ">=0.83.0 <0.84"
+  },
+  "engines": { "node": ">=22" },
+  "publishConfig": { "access": "public" }
+}

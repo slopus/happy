@@ -25,21 +25,24 @@ const INITIAL = 120;
 /** Rows added per frame afterwards. */
 const CHUNK = 200;
 
-export function useProgressiveRows<T>(rows: T[], initial: number = INITIAL, chunk: number = CHUNK): T[] {
-    const [count, setCount] = React.useState(() => Math.min(rows.length, initial));
-
-    // A new document starts over: whatever was mounted belongs to the old one.
-    React.useEffect(() => {
-        setCount(Math.min(rows.length, initial));
-    }, [rows, initial]);
+export function useProgressiveRows<T>(rows: T[], initial: number = INITIAL, chunk: number = CHUNK, resetKey: unknown = rows): T[] {
+    const [progress, setProgress] = React.useState(() => ({ key: resetKey, initial, count: Math.min(rows.length, initial) }));
+    const reset = progress.key !== resetKey || progress.initial !== initial;
+    const count = reset ? Math.min(rows.length, initial) : progress.count;
+    // Reset before committing a new document, not in an effect that briefly
+    // paints the old large window then shrinks it. Decoration-only updates
+    // pass the same base-row key and retain their mounted count.
+    if (reset) setProgress({ key: resetKey, initial, count });
 
     React.useEffect(() => {
         if (count >= rows.length) return;
         const id = setTimeout(() => {
-            setCount((current) => Math.min(rows.length, current + chunk));
+            setProgress((current) => current.key === resetKey
+                ? { ...current, count: Math.min(rows.length, current.count + chunk) }
+                : current);
         }, 0);
         return () => clearTimeout(id);
-    }, [count, rows.length, chunk]);
+    }, [count, rows.length, chunk, resetKey]);
 
     return React.useMemo(
         () => (count >= rows.length ? rows : rows.slice(0, count)),

@@ -3,11 +3,18 @@ import * as React from 'react';
 import { act, create } from 'react-test-renderer';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { Session } from '@/sync/storageTypes';
+import type { Message, ToolCall } from '@/sync/typesMessage';
 
 const state = vi.hoisted(() => ({
     platform: 'ios',
+    tablet: false,
     session: null as Session | null,
+    message: null as Message | null,
+    messagesLoaded: false,
+    params: { id: 'session-id' } as Record<string, string>,
     push: vi.fn(),
+    back: vi.fn(),
+    sessionVisible: vi.fn(),
 }));
 
 vi.mock('react-native', async () => {
@@ -19,6 +26,7 @@ vi.mock('react-native', async () => {
             select: (values: any) => values[state.platform] ?? values.default,
         },
         View: host('View'), Text: host('Text'), Pressable: host('Pressable'),
+        ActivityIndicator: host('ActivityIndicator'), TouchableOpacity: host('TouchableOpacity'), Image: host('Image'),
         Animated: {
             Value: class { constructor(public value: number) {} },
             timing: () => ({ start: (callback?: (result: { finished: boolean }) => void) => callback?.({ finished: true }) }),
@@ -27,10 +35,10 @@ vi.mock('react-native', async () => {
     };
 });
 vi.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0 }) }));
+vi.mock('react-native-reanimated', () => ({}));
 vi.mock('@/utils/platform', () => ({ isRunningOnMac: () => false }));
-vi.mock('@/utils/responsive', () => ({ useHeaderHeight: () => 52, useIsTablet: () => false }));
+vi.mock('@/utils/responsive', () => ({ useHeaderHeight: () => 52, useIsTablet: () => state.tablet }));
 vi.mock('@/components/layout', () => ({ layout: { maxWidth: 800, headerMaxWidth: 800 } }));
-vi.mock('@/constants/Typography', () => ({ Typography: { default: () => ({}), mono: () => ({}) } }));
 vi.mock('react-native-unistyles', () => {
     const theme = {
         dark: false,
@@ -45,7 +53,7 @@ vi.mock('react-native-unistyles', () => {
     };
     return {
         useUnistyles: () => ({ theme }),
-        StyleSheet: { create: (factory: any) => factory(theme, { insets: { top: 0 } }), hairlineWidth: 1 },
+        StyleSheet: { create: (factory: any) => typeof factory === 'function' ? factory(theme, { insets: { top: 0 } }) : factory, hairlineWidth: 1 },
     };
 });
 vi.mock('@expo/vector-icons', async () => {
@@ -55,7 +63,10 @@ vi.mock('@expo/vector-icons', async () => {
 });
 vi.mock('@/components/MobileGlass', async () => {
     const ReactModule = await import('react');
-    return { MobileGlassSurface: (props: any) => ReactModule.createElement('Glass', props, props.children) };
+    return {
+        MobileGlassSurface: (props: any) => ReactModule.createElement('Glass', props, props.children),
+        MobileGlassBackdrop: () => null,
+    };
 });
 vi.mock('@/components/BubblePressable', async () => {
     const ReactModule = await import('react');
@@ -70,17 +81,30 @@ vi.mock('@/components/navigation/MobileHeaderScrim', () => ({
 vi.mock('expo-router', async () => {
     const ReactModule = await import('react');
     return {
-        Stack: { Screen: (props: any) => ReactModule.createElement('StackScreen', props) },
-        useRouter: () => ({ push: state.push }),
-        useLocalSearchParams: () => ({ id: 'session-id' }),
+        Stack: Object.assign((props: any) => ReactModule.createElement('Stack', props, props.children), {
+            Screen: (props: any) => ReactModule.createElement('StackScreen', props),
+        }),
+        useRouter: () => ({ push: state.push, back: state.back }),
+        useLocalSearchParams: () => state.params,
     };
 });
 vi.mock('@/sync/storage', () => ({
     useSession: () => state.session,
+    useMessage: () => state.message,
+    useSessionMessages: () => ({ isLoaded: state.messagesLoaded }),
     useIsDataReady: () => true,
     useSessionGitStatus: () => null,
     useSessionGitStatusFiles: () => null,
 }));
+vi.mock('@/sync/sync', () => ({ sync: { onSessionVisible: state.sessionVisible } }));
+vi.mock('@/components/Deferred', async () => {
+    const ReactModule = await import('react');
+    return { Deferred: (props: any) => ReactModule.createElement('Deferred', props, props.children) };
+});
+vi.mock('@/components/tools/ToolFullView', async () => {
+    const ReactModule = await import('react');
+    return { ToolFullView: (props: any) => ReactModule.createElement('ToolFullView', props) };
+});
 vi.mock('@/utils/sessionUtils', () => ({
     getSessionName: () => 'A long session title that needs the available header width',
     useSessionStatus: () => ({ isConnected: true, isPulsing: true, statusText: 'Working' }),
@@ -114,7 +138,11 @@ vi.mock('@/utils/versionUtils', () => ({ isVersionSupported: () => true, MINIMUM
 
 import { ChatHeaderView } from './ChatHeaderView';
 import { Header, createPlainHeader } from './navigation/Header';
+import { GitLineChanges } from './GitLineChanges';
+import { RigGitLineChanges } from './RigGitLineChanges';
 import SessionInfo from '@/app/(app)/session/[id]/info';
+import MessageDetails from '@/app/(app)/session/[id]/message/[messageId]';
+import RootLayout from '@/app/(app)/_layout';
 
 const renderers: ReturnType<typeof create>[] = [];
 const originalConsoleError = console.error;
@@ -129,7 +157,13 @@ beforeAll(() => {
 afterEach(() => {
     act(() => renderers.splice(0).forEach((renderer) => renderer.unmount()));
     state.platform = 'ios';
+    state.tablet = false;
+    state.message = null;
+    state.messagesLoaded = false;
+    state.params = { id: 'session-id' };
     state.push.mockClear();
+    state.back.mockClear();
+    state.sessionVisible.mockClear();
 });
 afterAll(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
@@ -196,7 +230,8 @@ describe('session details', () => {
         expect(texts(renderer)).toEqual(['5 changed files', '+120', '-34']);
         expect(items.some((item: any) => item.props.title === 'sessionInfo.connectionStatus')).toBe(true);
         expect(renderer.root.findAllByType('Glass')).toHaveLength(0);
-        expect(renderer.root.findByType('StackScreen').props.options.headerTitleAlign).toBe('left');
+        expect(renderer.root.findByType('StackScreen').props.options.headerTitleAlign).toBe('center');
+        expectCountTypography(renderer);
         act(() => items[0].props.onPress());
         expect(state.push).toHaveBeenCalledWith('/session/session-id/changes');
     });
@@ -213,6 +248,25 @@ describe('session details', () => {
         expect(texts(renderer)).toEqual(['Long session title']);
     });
 
+    it.each(['ios', 'android', 'web', 'ipad'])('centers the detail title between symmetric insets on %s', (platform) => {
+        state.platform = platform === 'ipad' ? 'ios' : platform;
+        state.tablet = platform === 'ipad';
+        const renderer = render(createPlainHeader({
+            options: { headerTitle: 'Long session title', headerTitleAlign: 'center' },
+            route: { name: 'session/[id]/info' }, back: { title: 'Chat' },
+            navigation: { goBack: vi.fn() },
+        } as any)!);
+        const header = renderer.root.findByType((Header as any).type);
+        expect(header.props.mobileTitleAlignment).toBe('center');
+        expect(header.props.titleAlignment).toBe('center');
+        const centered = renderer.root.findAllByType('View').map((node: any) => flattenStyle(node.props.style))
+            .find((style: any) => style.position === 'absolute' && style.alignItems === 'center');
+        expect(centered.left).toBe(centered.right);
+        const title = renderer.root.findByType('Text');
+        expect(flattenStyle(title.props.style).textAlign).toBe('center');
+        expect(title.props.numberOfLines).toBe(1);
+    });
+
     it('keeps Changes available for a legacy session without cached statistics', () => {
         state.session = {
             id: 'session-id', createdAt: 1, updatedAt: 1, seq: 1,
@@ -225,5 +279,121 @@ describe('session details', () => {
         expect(firstItem.props.disabled).not.toBe(true);
         act(() => firstItem.props.onPress());
         expect(state.push).toHaveBeenCalledWith('/session/session-id/changes');
+    });
+});
+
+function flattenStyle(style: any): Record<string, unknown> {
+    return Array.isArray(style) ? Object.assign({}, ...style.map(flattenStyle)) : style || {};
+}
+
+function expectCountTypography(renderer: ReturnType<typeof create>) {
+    const counts = renderer.root.findAllByType('Text').filter((node: any) => /^[+\-]\d/.test(node.children.join('')));
+    expect(counts.length).toBeGreaterThan(0);
+    for (const count of counts) {
+        expect(flattenStyle(count.props.style)).toMatchObject({
+            fontFamily: 'IBMPlexSans-Regular', fontSize: 11, fontWeight: '600',
+        });
+    }
+}
+
+describe('shared git-count typography', () => {
+    const changes = { approximate: false, insertions: 120, deletions: 34 };
+
+    it('uses the grouped project font in the shared counts and flat-list adapter', () => {
+        expectCountTypography(render(React.createElement(GitLineChanges, { changes })));
+        expectCountTypography(render(React.createElement(RigGitLineChanges, {
+            changedFiles: 2, countsExact: true, insertions: 120, deletions: 34,
+        })));
+    });
+
+    it('keeps the same font in the chat subtitle', () => {
+        expectCountTypography(render(React.createElement(ChatHeaderView, {
+            title: 'Session', subtitle: 'main', gitChanges: changes,
+        })));
+    });
+});
+
+describe('tool-detail navigation', () => {
+    // The storage mock is not a subscription. Exercise the memo's render
+    // function so updates model the real hooks notifying their consumer.
+    const MessageDetailContent = (MessageDetails as any).type;
+    function message(tool: Partial<ToolCall> = {}): Message {
+        return {
+            id: 'tool-message', kind: 'tool-call', createdAt: 1, localId: null, children: [],
+            tool: { name: 'apply_patch', input: {}, description: null, createdAt: 1, state: 'running', ...tool },
+        } as Message;
+    }
+
+    function rootOptions() {
+        const root = render(React.createElement(RootLayout));
+        return root.root.findAllByType('StackScreen')
+            .find((node: any) => node.props.name === 'session/[id]/message/[messageId]').props.options;
+    }
+
+    function navElement(options: any) {
+        return options.header({
+            options, route: { name: 'session/[id]/message/[messageId]' },
+            back: { title: 'Session' }, navigation: { goBack: state.back },
+        });
+    }
+
+    it('chooses a plain, non-interactive title in the root route before hydration', () => {
+        expect(rootOptions()).toMatchObject({ header: createPlainHeader, headerTitleAlign: 'center', headerShown: true });
+    });
+
+    it('keeps the same header geometry through loading, tool updates and text messages', () => {
+        state.session = null;
+        state.params = { id: 'session-id', messageId: 'tool-message' };
+        const defaults = rootOptions();
+        const screen = render(React.createElement(MessageDetailContent));
+        const currentOptions = () => ({ ...defaults, ...screen.root.findByType('StackScreen').props.options });
+        const nav = render(navElement(currentOptions()));
+        const originalHeader = nav.root.findByType((Header as any).type);
+        const geometry = () => nav.root.findAllByType('View').map((node: any) => flattenStyle(node.props.style))
+            .filter((style: any) => style.height === 52 || style.position === 'absolute');
+        const originalGeometry = geometry();
+
+        expect(screen.root.findAllByType('ActivityIndicator')).toHaveLength(1);
+        expect(nav.root.findAllByType('Glass')).toHaveLength(1); // Only Back is a glass control, never the title.
+        expect(originalHeader.props.mobileTitleSurface).toBe('plain');
+        expect(nav.root.findAllByType('Pressable')).toHaveLength(1);
+        expect(texts(nav)).toEqual(['common.message']);
+        expect(state.sessionVisible).toHaveBeenCalledWith('session-id');
+
+        for (const toolState of ['running', 'completed', 'error'] as const) {
+            state.session = { id: 'session-id', metadata: { path: '/repo', host: 'machine' } } as Session;
+            state.messagesLoaded = true;
+            state.message = message({ state: toolState, title: 'A very long tool title '.repeat(20) });
+            act(() => screen.update(React.createElement(MessageDetailContent)));
+            act(() => nav.update(navElement(currentOptions())));
+
+            expect(nav.root.findByType((Header as any).type)).toBe(originalHeader);
+            expect(geometry()).toEqual(originalGeometry);
+            expect(nav.root.findAllByType('Glass')).toHaveLength(1);
+            expect(nav.root.findAllByType('Pressable')).toHaveLength(1);
+            expect(currentOptions().headerRight).toBeUndefined();
+            expect(texts(nav)).toHaveLength(1);
+            expect(nav.root.findByType('Text').props).toMatchObject({ numberOfLines: 1, ellipsizeMode: 'middle' });
+            expect(nav.root.findByType('Text').props.onPress).toBeUndefined();
+            expect(screen.root.findByType('ToolFullView').props.metadata).toBe(state.session.metadata);
+        }
+
+        state.message = { id: 'text', kind: 'agent-text', text: 'Response', createdAt: 1, localId: null } as Message;
+        act(() => screen.update(React.createElement(MessageDetailContent)));
+        act(() => nav.update(navElement(currentOptions())));
+        expect(texts(nav)).toEqual(['common.message']);
+        expect(geometry()).toEqual(originalGeometry);
+        expect(currentOptions().headerRight).toBeUndefined();
+        act(() => nav.root.findByType('Pressable').props.onPress());
+        expect(state.back).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps navigation available while a missing loaded message returns to the session', () => {
+        state.messagesLoaded = true;
+        state.message = null;
+        const screen = render(React.createElement(MessageDetails));
+        expect(screen.root.findAllByType('StackScreen')).toHaveLength(1);
+        expect(screen.root.findAllByType('ActivityIndicator')).toHaveLength(1);
+        expect(state.back).toHaveBeenCalledTimes(1);
     });
 });

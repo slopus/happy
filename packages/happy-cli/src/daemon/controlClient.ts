@@ -8,7 +8,7 @@ import { clearDaemonState, readDaemonState } from '@/persistence';
 import { Metadata } from '@/api/types';
 import { configuration } from '@/configuration';
 
-async function daemonPost(path: string, body?: any): Promise<{ error?: string } | any> {
+async function daemonPost(path: string, body?: any, timeoutMs?: number): Promise<{ error?: string } | any> {
   const state = await readDaemonState();
   if (!state?.httpPort) {
     const errorMessage = 'No daemon running, no state file found';
@@ -29,7 +29,7 @@ async function daemonPost(path: string, body?: any): Promise<{ error?: string } 
   }
 
   try {
-    const timeout = process.env.HAPPY_DAEMON_HTTP_TIMEOUT ? parseInt(process.env.HAPPY_DAEMON_HTTP_TIMEOUT) : 10_000;
+    const timeout = timeoutMs ?? (process.env.HAPPY_DAEMON_HTTP_TIMEOUT ? parseInt(process.env.HAPPY_DAEMON_HTTP_TIMEOUT) : 10_000);
     const response = await fetch(`http://127.0.0.1:${state.httpPort}${path}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -93,6 +93,17 @@ export async function notifyDaemonSessionStarted(
 export async function listDaemonSessions(): Promise<any[]> {
   const result = await daemonPost('/list');
   return result.children || [];
+}
+
+/** Cloud/RPC readiness, distinct from the local control server's health. */
+export type DaemonConnectionStatus = { machineId: string; cliVersion: string; serverUrl: string; connected: boolean };
+
+export async function getDaemonConnectionStatus(timeoutMs = 1000): Promise<DaemonConnectionStatus | null> {
+  const result = await daemonPost('/status', undefined, Math.max(1, timeoutMs));
+  return typeof result?.machineId === 'string' && typeof result?.connected === 'boolean'
+    && typeof result?.cliVersion === 'string' && typeof result?.serverUrl === 'string'
+    ? { machineId: result.machineId, cliVersion: result.cliVersion, serverUrl: result.serverUrl, connected: result.connected }
+    : null;
 }
 
 export async function stopDaemonSession(sessionId: string): Promise<boolean> {
@@ -159,7 +170,7 @@ export async function checkIfDaemonRunningAndCleanupStaleState(): Promise<boolea
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: '{}',
-        signal: AbortSignal.timeout(2000)
+        signal: AbortSignal.timeout(5000)
       });
       if (response.ok) {
         return true;

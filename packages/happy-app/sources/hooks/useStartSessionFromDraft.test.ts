@@ -369,6 +369,76 @@ describe('useStartSessionFromDraft', () => {
         }));
     });
 
+    it('explains how to restart an offline legacy daemon when its paired Happy Agent is online', async () => {
+        const legacyMachine = {
+            id: 'machine-cli',
+            online: false,
+            metadata: {
+                homeDir: '/Users/dev',
+                siblingMachineId: 'machine-rig',
+                cliAvailability: { codex: true },
+            },
+        };
+        const rigMachine = {
+            ...createRigMachine({ siblingMachineId: 'machine-cli' }),
+            id: 'machine-rig',
+        };
+        mocks.machines = [legacyMachine, rigMachine];
+        mocks.draft = createDraft({
+            selectedMachineId: 'machine-cli',
+            agentType: 'codex',
+        });
+
+        const { startSession } = useStartSessionFromDraft();
+
+        await expect(startSession()).resolves.toBe(false);
+
+        expect(mocks.alert).toHaveBeenCalledWith(
+            'common.error',
+            'Happy CLI is offline on your computer. Run `happy daemon start` on your computer, then try again.',
+        );
+        expect(mocks.machineSpawnNewSession).not.toHaveBeenCalled();
+    });
+
+    it('uses an online Happy Agent when the selected computer has no legacy daemon', async () => {
+        mocks.machines = [createRigMachine()];
+        mocks.draft = createDraft({ agentType: 'claude' });
+
+        const { startSession } = useStartSessionFromDraft();
+
+        await expect(startSession()).resolves.toBe(true);
+
+        expect(mocks.machineSpawnNewSession).toHaveBeenCalledWith(expect.objectContaining({
+            machineId: 'machine-1',
+            agent: 'rig',
+        }));
+        expect(mocks.alert).not.toHaveBeenCalledWith(
+            'common.error',
+            expect.stringContaining('happy daemon start'),
+        );
+    });
+
+    it('continues to launch an online legacy CLI target', async () => {
+        mocks.machines = [{
+            id: 'machine-1',
+            online: true,
+            metadata: {
+                homeDir: '/Users/dev',
+                cliAvailability: { codex: true },
+            },
+        }];
+
+        const { startSession } = useStartSessionFromDraft();
+
+        await expect(startSession()).resolves.toBe(true);
+
+        expect(mocks.machineSpawnNewSession).toHaveBeenCalledWith(expect.objectContaining({
+            machineId: 'machine-1',
+            agent: 'codex',
+        }));
+        expect(mocks.alert).not.toHaveBeenCalled();
+    });
+
     it('retries creation after the user approves a new directory', async () => {
         mocks.machineSpawnNewSession
             .mockResolvedValueOnce({ type: 'requestToApproveDirectoryCreation', directory: '/absolute/project' })

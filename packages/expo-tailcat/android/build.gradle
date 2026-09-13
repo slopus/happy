@@ -1,0 +1,39 @@
+apply plugin: 'com.android.library'
+apply plugin: 'expo-module-gradle-plugin'
+
+group = 'expo.modules.tailcat'
+version = '0.1.0'
+
+android {
+  namespace 'expo.modules.tailcat'
+  defaultConfig {
+    versionCode 1
+    versionName '0.1.0'
+    minSdkVersion 26
+    // Keep gomobile's JNI/reflection entry points when the host app enables R8.
+    // preBuild unpacks these upstream-generated rules alongside classes.jar.
+    consumerProguardFiles layout.buildDirectory.file('tailcat-aar/proguard.txt').get().asFile
+  }
+}
+
+// Publish the prebuilt AAR beside this module; never download code at install time.
+// The AAR is unpacked so AGP can package it in this library without its
+// unsupported direct-local-AAR dependency path.
+def tailcatAar = file('libs/ExpoTailcat.aar')
+def extracted = layout.buildDirectory.dir('tailcat-aar')
+def unpackTailcat = tasks.register('unpackTailcat', Sync) {
+  inputs.file(tailcatAar)
+  from { zipTree(tailcatAar) }
+  into extracted
+  doFirst {
+    if (!tailcatAar.exists()) {
+      throw new GradleException('Missing ExpoTailcat.aar. Run pnpm build:android in expo-tailcat before building the app.')
+    }
+  }
+}
+
+android.sourceSets.main.jniLibs.srcDir(extracted.map { it.dir('jni') })
+dependencies {
+  implementation files(extracted.map { it.file('classes.jar') }).builtBy(unpackTailcat)
+}
+tasks.named('preBuild').configure { dependsOn unpackTailcat }

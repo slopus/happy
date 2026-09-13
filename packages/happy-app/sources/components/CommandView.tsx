@@ -1,6 +1,8 @@
 import * as React from 'react';
-import { Text, View, StyleSheet, Platform } from 'react-native';
+import { Text, View, StyleSheet, Platform, type TextStyle } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
+import { darkTheme } from '@/theme';
+import { SyntaxText } from './SyntaxText';
 
 interface CommandViewProps {
     command: string;
@@ -13,6 +15,10 @@ interface CommandViewProps {
     maxHeight?: number;
     fullWidth?: boolean;
     hideEmptyOutput?: boolean;
+    /** Detail-only: compact chat rows never enqueue tokenization. */
+    syntaxHighlighting?: boolean;
+    /** null for activity labels (waiting, stopping), which are not shell code. */
+    commandLanguage?: 'bash' | 'powershell' | null;
 }
 
 export const CommandView = React.memo<CommandViewProps>(({
@@ -25,12 +31,14 @@ export const CommandView = React.memo<CommandViewProps>(({
     maxHeight,
     fullWidth,
     hideEmptyOutput,
+    syntaxHighlighting = false,
+    commandLanguage = 'bash',
 }) => {
     const { theme } = useUnistyles();
     // Use legacy output if new props aren't provided
     const hasNewProps = stdout !== undefined || stderr !== undefined || error !== undefined;
 
-    const styles = StyleSheet.create({
+    const styles = React.useMemo(() => StyleSheet.create({
         container: {
             backgroundColor: theme.colors.terminal.background,
             borderRadius: 8,
@@ -87,7 +95,13 @@ export const CommandView = React.memo<CommandViewProps>(({
             marginTop: 8,
             fontStyle: 'italic',
         },
-    });
+    }), [theme]);
+
+    // The terminal surface stays dark in both themes. Plain runs inherit the
+    // command/stdout/stderr color; classified tokens use the dark diff palette.
+    const terminalText = (code: string, style: TextStyle, language: string | null) => syntaxHighlighting && language ? (
+        <SyntaxText code={code} language={language} style={style} colors={darkTheme.colors.diff.syntax} />
+    ) : <Text style={style} selectable={syntaxHighlighting}>{code}</Text>;
 
     return (
         <View style={[
@@ -97,20 +111,20 @@ export const CommandView = React.memo<CommandViewProps>(({
         ]}>
             {/* Command Line */}
             <View style={styles.line}>
-                <Text style={styles.promptText}>{prompt} </Text>
-                <Text style={styles.commandText}>{command}</Text>
+                {prompt ? <Text style={styles.promptText}>{prompt} </Text> : null}
+                {terminalText(command, styles.commandText, commandLanguage)}
             </View>
 
             {hasNewProps ? (
                 <>
                     {/* Standard Output */}
                     {stdout && stdout.trim() && (
-                        <Text style={styles.stdout}>{stdout}</Text>
+                        terminalText(stdout, styles.stdout, 'shell-session')
                     )}
 
                     {/* Standard Error */}
                     {stderr && stderr.trim() && (
-                        <Text style={styles.stderr}>{stderr}</Text>
+                        terminalText(stderr, styles.stderr, 'shell-session')
                     )}
 
                     {/* Error Message */}
@@ -126,7 +140,7 @@ export const CommandView = React.memo<CommandViewProps>(({
             ) : (
                 /* Legacy output format */
                 output && (
-                    <Text style={styles.commandText}>{'\n---\n' + output}</Text>
+                    terminalText('\n---\n' + output, styles.commandText, 'shell-session')
                 )
             )}
         </View>

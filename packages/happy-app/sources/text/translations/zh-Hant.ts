@@ -5,7 +5,7 @@
  * - Functions with typed object parameters for dynamic text
  */
 
-import { TranslationStructure } from "../_default";
+import { en, type TranslationStructure } from "../_default";
 
 /**
  * Chinese plural helper function
@@ -429,6 +429,7 @@ export const zhHant: TranslationStructure = {
 
     components: {
         emptyMainScreen: {
+            ...en.components.emptyMainScreen,
             // Used by EmptyMainScreen component
             readyToCode: '準備開始寫程式？',
             installCli: '安裝 Happy CLI',
@@ -924,6 +925,9 @@ export const zhHant: TranslationStructure = {
         unknownEvent: '未知事件',
         usageLimitUntil: ({ time }: { time: string }) => `使用限制到 ${time}`,
         sentAsGoal: 'Sent as goal',
+        sendsAfterThisTurn: 'Sends after this turn',
+        sending: 'Sending…',
+        sendFailed: ({ reason }: { reason: string }) => `未傳送：${reason}`,
         unknownTime: '未知時間',
     },
 

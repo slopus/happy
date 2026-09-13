@@ -16,7 +16,7 @@
  */
 
 import * as React from 'react';
-import { LayoutChangeEvent, Platform, Pressable, Text, View } from 'react-native';
+import { ActivityIndicator, LayoutChangeEvent, Platform, Pressable, Text, View } from 'react-native';
 import { HorizontalScrollView } from '@/components/HorizontalScrollView';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
@@ -26,6 +26,8 @@ import { buildSplitRows, type DiffLineRow, type SplitRow } from './engine/splitR
 import type { DiffFile, DiffRow, DiffSpan } from './engine/types';
 import { selectVisibleRows } from './layout';
 import { useProgressiveRows } from './useProgressiveRows';
+import { DiffSyntaxEnabled, DiffSyntaxPriority, usePreparedSyntax } from './syntax/usePreparedSyntax';
+import { useSyntaxExpansion } from './syntax/useSyntaxExpansion';
 
 /**
  * Indentation is content in a diff. react-native-web collapses runs of spaces
@@ -62,7 +64,7 @@ export interface DiffFileViewProps {
      * source for a wider diff pass this; without it the separators are inert.
      */
     onExpandContext?: () => void;
-    /** Extra rows of breathing room above and below the code. */
+    /** Optional breathing room; file headers and code meet flush by default. */
     paddingVertical?: number;
     onLineLongPress?: (row: Extract<DiffRow, { kind: 'line' }>) => void;
 }
@@ -76,7 +78,7 @@ export const DiffFileView = React.memo(function DiffFileView({
     showHunkHeaders = true,
     collapseAfter = 400,
     selectable = false,
-    paddingVertical = 4,
+    paddingVertical = 0,
     onLineLongPress,
     onExpandContext,
 }: DiffFileViewProps) {
@@ -90,8 +92,13 @@ export const DiffFileView = React.memo(function DiffFileView({
         [file.rows, showHunkHeaders, expanded, collapseAfter],
     );
 
-    // Paint a screenful now, mount the remainder over the next few frames.
-    const rows = useProgressiveRows(selectedRows);
+    const syntaxPriority = React.useContext(DiffSyntaxPriority);
+    const syntaxEnabled = React.useContext(DiffSyntaxEnabled);
+    const revealExpanded = React.useCallback(() => setExpanded(true), []);
+    const expansion = useSyntaxExpansion(file, syntaxEnabled && syntaxPriority > 0, revealExpanded);
+    const prepared = usePreparedSyntax(file, selectedRows, syntaxEnabled ? syntaxPriority : 0);
+    // Syntax changes decoration only; never restart mounting or lose height.
+    const rows = useProgressiveRows(prepared.rows, 120, 200, selectedRows);
 
     const gutterWidth = metrics.gutterWidth(file.maxLineNo, showLineNumbers);
     const onLayout = React.useCallback((e: LayoutChangeEvent) => {
@@ -145,18 +152,35 @@ export const DiffFileView = React.memo(function DiffFileView({
     return (
         <View style={{ backgroundColor: palette.surface }} onLayout={onLayout}>
             <MonoProbe fontSize={fontSize} />
-            {body}
+            <View
+                // Reserve exact layout even in wrap/split mode. Invisible rows
+                // cannot be selected or reached by a screen reader. First
+                // visible paint is colored, or plain at the one-second cap.
+                style={prepared.pending ? { opacity: 0 } : undefined}
+                pointerEvents={prepared.pending ? 'none' : 'auto'}
+                accessibilityElementsHidden={prepared.pending}
+                importantForAccessibility={prepared.pending ? 'no-hide-descendants' : 'auto'}
+                testID={prepared.pending ? 'diff-syntax-pending' : 'diff-syntax-ready'}
+            >
+                {body}
+            </View>
             {hiddenRowCount > 0 ? (
                 <Pressable
-                    onPress={() => setExpanded(true)}
+                    onPress={expansion.expand}
+                    disabled={expansion.busy}
+                    accessibilityState={{ busy: expansion.busy, disabled: expansion.busy }}
                     style={{
                         paddingVertical: 10,
                         alignItems: 'center',
+                        flexDirection: 'row',
+                        justifyContent: 'center',
+                        gap: 8,
                         backgroundColor: palette.hunkBg,
                         borderTopWidth: 1,
                         borderTopColor: palette.divider,
                     }}
                 >
+                    {expansion.busy ? <ActivityIndicator size="small" color={palette.hunkText} /> : null}
                     <Text style={{ ...Typography.default('semiBold'), fontSize: 13, color: palette.hunkText }}>
                         {t('diff.showMoreLines', { count: hiddenRowCount })}
                     </Text>

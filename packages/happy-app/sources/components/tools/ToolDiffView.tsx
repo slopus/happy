@@ -25,7 +25,6 @@ export const ToolDiffView = React.memo<ToolDiffViewProps>(({
     style,
     showLineNumbers,
 }) => {
-    const wrapLines = useSetting('wrapLinesInDiffs');
     const showLineNumbersInToolViews = useSetting('showLineNumbersInToolViews');
 
     return (
@@ -35,7 +34,10 @@ export const ToolDiffView = React.memo<ToolDiffViewProps>(({
                 oldText={patch ? undefined : oldText ?? ''}
                 newText={patch ? undefined : newText ?? ''}
                 fileName={fileName ?? 'file.txt'}
-                wrap={wrapLines}
+                // Match View Changes: preserve code lines and scroll them
+                // under a pinned gutter. The retired wrapping preference
+                // must not silently select a different mobile renderer.
+                wrap={false}
                 showLineNumbers={showLineNumbers ?? showLineNumbersInToolViews}
             />
         </View>

@@ -17,10 +17,29 @@ import {
     rigCanSearchFiles,
     rigCanUseShell,
     rigCanWriteFiles,
+    rigSendsMessageReceipts,
     usesControlledSessionUi,
 } from './rig';
 
 describe('Rig metadata', () => {
+    it('holds messages only when a Happy Agent daemon explicitly advertises receipts', () => {
+        const supported = MetadataSchema.parse({
+            ...rigMetadataFixture,
+            capabilities: { ...rigMetadataFixture.capabilities!, messageReceipts: true },
+        });
+        expect(rigSendsMessageReceipts(supported)).toBe(true);
+        expect(rigSendsMessageReceipts(rigMetadataFixture)).toBe(false);
+        expect(rigSendsMessageReceipts({
+            ...supported,
+            capabilities: { ...supported.capabilities!, messageReceipts: false },
+        })).toBe(false);
+        expect(rigSendsMessageReceipts({
+            ...supported,
+            client: { id: 'other', name: 'Other', version: '1' },
+        })).toBe(false);
+        expect(rigSendsMessageReceipts(null)).toBe(false);
+    });
+
     it('recognizes Rig by client id rather than provider flavor', () => {
         expect(isRigMetadata(rigMetadataFixture)).toBe(true);
         expect(isRigMetadata({ ...rigMetadataFixture, client: { id: 'other', name: 'Other', version: '1' } })).toBe(false);

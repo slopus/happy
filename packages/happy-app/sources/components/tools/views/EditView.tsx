@@ -3,7 +3,6 @@ import { ToolSectionView } from '../../tools/ToolSectionView';
 import { ToolViewProps } from './_all';
 import { ToolDiffView } from '@/components/tools/ToolDiffView';
 import { knownTools } from '../../tools/knownTools';
-import { trimIdent } from '@/utils/trimIdent';
 import { useSetting } from '@/sync/storage';
 
 
@@ -14,8 +13,8 @@ export const EditView = React.memo<ToolViewProps>(({ tool }) => {
     let newString = '';
     const parsed = knownTools.Edit.input.safeParse(tool.input);
     if (parsed.success) {
-        oldString = trimIdent(parsed.data.old_string || '');
-        newString = trimIdent(parsed.data.new_string || '');
+        oldString = parsed.data.old_string || '';
+        newString = parsed.data.new_string || '';
     }
 
     return (
@@ -24,6 +23,7 @@ export const EditView = React.memo<ToolViewProps>(({ tool }) => {
                 <ToolDiffView 
                     oldText={oldString} 
                     newText={newString} 
+                    fileName={parsed.success ? parsed.data.file_path : undefined}
                     showLineNumbers={showLineNumbersInToolViews}
                     showPlusMinusSymbols={showLineNumbersInToolViews}
                 />

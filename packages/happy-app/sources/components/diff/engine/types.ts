@@ -95,4 +95,6 @@ export interface DiffDocument {
     deletions: number;
     /** Wall-clock milliseconds spent building this document. Used by the bench page. */
     buildMs: number;
+    /** Informational build failure, such as an optional native diff budget abort. */
+    error?: string;
 }

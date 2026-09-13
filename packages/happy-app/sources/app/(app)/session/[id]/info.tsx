@@ -617,7 +617,7 @@ export default React.memo(() => {
         : isDataReady
             ? t('errors.sessionDeleted')
             : '';
-    const screenOptions = <Stack.Screen options={{ headerTitle: screenTitle, headerTitleAlign: 'left' }} />;
+    const screenOptions = <Stack.Screen options={{ headerTitle: screenTitle, headerTitleAlign: 'center' }} />;
 
     // Handle three states: loading, deleted, and exists
     if (!isDataReady) {

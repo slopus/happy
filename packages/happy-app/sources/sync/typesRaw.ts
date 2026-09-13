@@ -30,6 +30,16 @@ const agentEventSchema = z.discriminatedUnion('type', [z.object({
     endsAt: z.number(),
 }), z.object({
     type: z.literal('ready'),
+}), z.object({
+    // A receipt for a message this device sent: the agent has taken it into
+    // context. `ref` is the server message id the receipt names. Consumed by
+    // the reducer to settle the pending message; never rendered as a row.
+    type: z.literal('user-message-accepted'),
+    ref: z.string(),
+}), z.object({
+    type: z.literal('user-message-rejected'),
+    ref: z.string(),
+    reason: z.string(),
 })]);
 export type AgentEvent = z.infer<typeof agentEventSchema>;
 
@@ -93,6 +103,23 @@ const sessionStopEventSchema = z.object({
     t: z.literal('stop'),
 });
 
+// A content-free receipt for a message this device already sent. `ref` is the
+// server message id of that message, and the receipt's own place in the stream
+// is where the agent actually took it into context — which is what lets the
+// chat show the message in run order instead of arrival order.
+const sessionUserMessageAcceptedEventSchema = z.object({
+    t: z.literal('user-message-accepted'),
+    id: z.string(),
+    ref: z.string(),
+    runId: z.string(),
+});
+
+const sessionUserMessageRejectedEventSchema = z.object({
+    t: z.literal('user-message-rejected'),
+    ref: z.string(),
+    reason: z.string(),
+});
+
 const sessionEventSchema = z.discriminatedUnion('t', [
     sessionTextEventSchema,
     sessionServiceMessageEventSchema,
@@ -103,13 +130,28 @@ const sessionEventSchema = z.discriminatedUnion('t', [
     sessionStartEventSchema,
     sessionTurnEndEventSchema,
     sessionStopEventSchema,
+    sessionUserMessageAcceptedEventSchema,
+    sessionUserMessageRejectedEventSchema,
 ]);
+
+// Who wrote a user-role envelope, when the producer knows. Travels inside the
+// encrypted session blob like everything else here. `owner` marks the account
+// this Happy session belongs to — the one reading it on this device — so the
+// app can tell its own messages from another participant's without having to
+// reconcile user-id spaces.
+const sessionAuthorSchema = z.object({
+    id: z.string(),
+    name: z.string(),
+    owner: z.boolean().optional(),
+}).passthrough();
+export type SessionAuthor = z.infer<typeof sessionAuthorSchema>;
 
 const sessionEnvelopeSchema = z.object({
     id: z.string(),
     time: z.number(),
     role: z.enum(['user', 'agent']),
     turn: z.string().optional(),
+    author: sessionAuthorSchema.optional(),
     subagent: z.string().refine((value) => isCuid(value), {
         message: 'subagent must be a cuid2 value',
     }).optional(),
@@ -543,6 +585,17 @@ export type NormalizedMessage = ({
      */
     claudeUuid?: string,
     codexItemId?: string,
+    /**
+     * Session-protocol turn id (Happy sessions only). Agent rows that share a
+     * turn id belong to the same answer; a change of id is a turn boundary even
+     * when the user row that started the new turn is missing from this device.
+     */
+    turn?: string,
+    /**
+     * Who sent a user-role envelope (Happy sessions only). Absent on the
+     * device owner's own messages from older daemons; see `SessionAuthor`.
+     */
+    author?: SessionAuthor,
 };
 
 function normalizeSessionEnvelope(
@@ -556,10 +609,13 @@ function normalizeSessionEnvelope(
         && envelope.ev.text.trim().length === 0
         && !!envelope.usage;
 
+    // Send outcomes belong to the user message, not an assistant turn.
+    const isMessageReceipt = envelope.ev.t === 'user-message-accepted' || envelope.ev.t === 'user-message-rejected';
+
     // Session protocol requires turn id on all agent-originated envelopes.
     // Usage-only updates may arrive after turn-end, when the producer no longer has
     // an active turn to attach to; they update status bars without rendering rows.
-    if (envelope.role === 'agent' && !envelope.turn && !isUsageOnlyServiceEvent) {
+    if (envelope.role === 'agent' && !envelope.turn && !isUsageOnlyServiceEvent && !isMessageReceipt) {
         return null;
     }
 
@@ -578,6 +634,30 @@ function normalizeSessionEnvelope(
         return null;
     }
 
+    if (envelope.ev.t === 'user-message-accepted') {
+        return {
+            id: messageId,
+            localId,
+            createdAt: messageCreatedAt,
+            role: 'event',
+            isSidechain: false,
+            content: { type: 'user-message-accepted', ref: envelope.ev.ref },
+            meta
+        } satisfies NormalizedMessage;
+    }
+
+    if (envelope.ev.t === 'user-message-rejected') {
+        return {
+            id: messageId,
+            localId,
+            createdAt: messageCreatedAt,
+            role: 'event',
+            isSidechain: false,
+            content: { type: 'user-message-rejected', ref: envelope.ev.ref, reason: envelope.ev.reason },
+            meta,
+        } satisfies NormalizedMessage;
+    }
+
     if (envelope.ev.t === 'turn-end') {
         return {
             id: messageId,
@@ -586,7 +666,8 @@ function normalizeSessionEnvelope(
             role: 'event',
             isSidechain: false,
             content: { type: 'ready' },
-            meta
+            meta,
+            turn: envelope.turn,
         } satisfies NormalizedMessage;
     }
 
@@ -611,6 +692,7 @@ function normalizeSessionEnvelope(
                 }],
             meta,
             usage: envelope.usage,
+            turn: envelope.turn,
         } satisfies NormalizedMessage;
     }
 
@@ -634,6 +716,7 @@ function normalizeSessionEnvelope(
                 meta,
                 claudeUuid: envelope.claudeUuid,
                 codexItemId: envelope.codexItemId,
+                author: envelope.author,
             } satisfies NormalizedMessage;
         }
 
@@ -660,6 +743,7 @@ function normalizeSessionEnvelope(
             claudeUuid: envelope.claudeUuid,
             codexItemId: envelope.codexItemId,
             usage: envelope.usage,
+            turn: envelope.turn,
         } satisfies NormalizedMessage;
     }
 
@@ -682,6 +766,7 @@ function normalizeSessionEnvelope(
             }],
             meta,
             usage: envelope.usage,
+            turn: envelope.turn,
         } satisfies NormalizedMessage;
     }
 
@@ -702,6 +787,7 @@ function normalizeSessionEnvelope(
             }],
             meta,
             usage: envelope.usage,
+            turn: envelope.turn,
         } satisfies NormalizedMessage;
     }
 
@@ -756,6 +842,7 @@ function normalizeSessionEnvelope(
             ],
             meta,
             usage: envelope.usage,
+            turn: envelope.turn,
         } satisfies NormalizedMessage;
     }
 

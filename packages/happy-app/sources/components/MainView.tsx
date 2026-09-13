@@ -2,13 +2,12 @@ import * as React from 'react';
 import {
     View,
     ActivityIndicator,
-    Text,
     Pressable,
     Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
-import { useFriendRequests, useSocketStatus, useRealtimeStatus, useSettingMutable } from '@/sync/storage';
+import { useFriendRequests, useRealtimeStatus, useSettingMutable } from '@/sync/storage';
 import { NativeSettingsMenu, type NativeSettingsMenuGroup } from './NativeSettingsMenu';
 import { useVisibleSessionListViewData } from '@/hooks/useVisibleSessionListViewData';
 import { useIsTablet } from '@/utils/responsive';
@@ -23,16 +22,14 @@ import { SessionsListWrapper } from './SessionsListWrapper';
 import { Header } from './navigation/Header';
 import { HeaderLogo } from './HeaderLogo';
 import { VoiceAssistantStatusBar } from './VoiceAssistantStatusBar';
-import { StatusDot } from './StatusDot';
 import { Ionicons } from '@expo/vector-icons';
-import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
 import { isUsingCustomServer } from '@/sync/serverConfig';
 import { trackFriendsSearch } from '@/track';
 import { MOBILE_GLASS_HEADER_HEIGHT } from './navigation/headerMetrics';
 import { useNewSessionDraft } from '@/hooks/useNewSessionDraft';
 import { useStartSessionFromDraft } from '@/hooks/useStartSessionFromDraft';
-import { shouldShowHomeConnectionStatus } from './homeConnectionStatus';
+import { HomeHeaderTitle } from './HomeHeaderTitle';
 
 interface MainViewProps {
     variant: 'phone' | 'sidebar';
@@ -109,28 +106,6 @@ const styles = StyleSheet.create((theme) => ({
         flexBasis: 0,
         flexGrow: 1,
     },
-    titleContainer: {
-        flex: 1,
-        alignItems: 'center',
-        justifyContent: Platform.OS === 'web' ? 'flex-start' : 'center',
-    },
-    titleText: {
-        fontSize: Platform.OS === 'web' ? 17 : 16,
-        color: theme.colors.header.tint,
-        fontWeight: '600',
-        ...Typography.default('semiBold'),
-    },
-    statusContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginTop: -2,
-    },
-    statusText: {
-        fontSize: Platform.OS === 'web' ? 12 : 11,
-        fontWeight: '500',
-        lineHeight: 16,
-        ...Typography.default(),
-    },
     headerButton: {
         width: 32,
         height: 32,
@@ -167,69 +142,6 @@ const TAB_TITLES = {
 
 // Active tabs
 type ActiveTabType = TabType;
-
-// Header title component with connection status
-const HeaderTitle = React.memo(({ activeTab }: { activeTab: ActiveTabType }) => {
-    const { theme } = useUnistyles();
-    const socketStatus = useSocketStatus();
-
-    const connectionStatus = React.useMemo(() => {
-        const { status } = socketStatus;
-        switch (status) {
-            case 'connected':
-                return {
-                    color: theme.colors.status.connected,
-                    isPulsing: false,
-                    text: t('status.connected'),
-                };
-            case 'connecting':
-                return {
-                    color: theme.colors.status.connecting,
-                    isPulsing: true,
-                    text: t('status.connecting'),
-                };
-            case 'disconnected':
-                return {
-                    color: theme.colors.status.disconnected,
-                    isPulsing: false,
-                    text: t('status.disconnected'),
-                };
-            case 'error':
-                return {
-                    color: theme.colors.status.error,
-                    isPulsing: false,
-                    text: t('status.error'),
-                };
-            default:
-                return {
-                    color: theme.colors.status.default,
-                    isPulsing: false,
-                    text: '',
-                };
-        }
-    }, [socketStatus, theme]);
-
-    return (
-        <View style={styles.titleContainer}>
-            <Text style={styles.titleText}>
-                {t(TAB_TITLES[activeTab])}
-            </Text>
-            {shouldShowHomeConnectionStatus(socketStatus.status) && connectionStatus.text && (
-                <View style={styles.statusContainer}>
-                    <StatusDot
-                        color={connectionStatus.color}
-                        isPulsing={connectionStatus.isPulsing}
-                        size={6}
-                        style={{ marginRight: 4 }}
-                    />
-                    <Text style={[styles.statusText, { color: connectionStatus.color }]}>
-                        {connectionStatus.text}
-                    </Text>
-                </View>
-            )}
-        </View>
-    );
-});
 
 // Header right button - varies by tab
 const HeaderRight = React.memo(({ activeTab }: { activeTab: ActiveTabType }) => {
@@ -444,7 +356,7 @@ export const MainView = React.memo(({ variant }: MainViewProps) => {
     const phoneHeader = (
         <View style={[styles.phoneHeader, Platform.OS !== 'web' && styles.phoneHeaderOverlay]}>
             <Header
-                title={<HeaderTitle activeTab={activeTab} />}
+                title={<HomeHeaderTitle title={t(TAB_TITLES[activeTab])} />}
                 headerRight={showHeaderRight ? () => (
                     <HeaderRight activeTab={activeTab} />
                 ) : undefined}

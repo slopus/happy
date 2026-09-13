@@ -3,7 +3,7 @@ import { useSession, useSessionMessages, useSetting } from "@/sync/storage";
 import { sync } from '@/sync/sync';
 import { ActivityIndicator, AppState, NativeScrollEvent, NativeSyntheticEvent, Platform, Pressable, View } from 'react-native';
 import { useCallback } from 'react';
-import { FlashList, FlashListRef } from '@shopify/flash-list';
+import { FlashList, FlashListRef, type ListRenderItemInfo } from '@shopify/flash-list';
 import { useHeaderHeight } from '@/utils/responsive';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MessageView } from './MessageView';
@@ -18,6 +18,7 @@ import { resolveControlMode } from '@/sync/controlHandoff';
 import { usesControlledSessionUi } from '@/sync/rig';
 import { buildAgentTurnCopyTextByMessageId } from '@/utils/agentTurnCopy';
 import { perfSince, useCommitPerf } from '@/utils/perfLog';
+import { DiffSyntaxCell, SyntaxViewport, SYNTAX_VIEWABILITY } from './diff/syntax/viewport';
 
 const SCROLL_THRESHOLD = 300;
 const DOCK_DETAILS_SHOW_OFFSET = 16;
@@ -114,6 +115,15 @@ const EMPTY_GROUP_TOGGLES = {
     /** Suppresses the pending-permission auto-open in isGroupExpanded. */
     closed: new Set<string>() as ReadonlySet<string>,
 } as const;
+const EMPTY_WATCHED_TURN_IDS = new Set<string>() as ReadonlySet<string>;
+
+function stringSetsEqual(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {
+    if (a.size !== b.size) return false;
+    for (const value of a) {
+        if (!b.has(value)) return false;
+    }
+    return true;
+}
 
 /**
  * How many messages the list renders for a requested window size.
@@ -128,16 +138,20 @@ const EMPTY_GROUP_TOGGLES = {
  */
 function windowEndForTurn(messages: Message[], desiredEnd: number, hasMoreOlder: boolean): number {
     let end = Math.min(desiredEnd, messages.length);
-    while (end < messages.length && messages[end - 1].kind !== 'user-text') {
+    while (end < messages.length) {
+        const message = messages[end - 1];
+        if (message.kind === 'user-text' && !message.pending && message.sendError === undefined) break;
         end++;
     }
     // The store's tail is itself a mid-turn cut while older pages are still on
     // the server, so rendering it has the same reshape problem. Hold the
     // incomplete turn back until its opener arrives; the reader reaching the
     // top sees it via the loading spinner, not a lurch.
-    if (end === messages.length && hasMoreOlder && messages[end - 1].kind !== 'user-text') {
+    const oldest = messages[end - 1];
+    if (end === messages.length && hasMoreOlder && (oldest.kind !== 'user-text' || oldest.pending || oldest.sendError !== undefined)) {
         for (let i = end - 1; i >= 0; i--) {
-            if (messages[i].kind === 'user-text') return i + 1;
+            const message = messages[i];
+            if (message.kind === 'user-text' && !message.pending && message.sendError === undefined) return i + 1;
         }
     }
     return end;
@@ -223,6 +237,7 @@ const ChatListInternal = React.memo((props: {
 }) => {
     const { theme } = useUnistyles();
     const listRef = React.useRef<FlashListRef<ListItem>>(null);
+    const syntaxViewport = React.useMemo(() => new SyntaxViewport(), [props.sessionId]);
     const [showScrollButton, setShowScrollButton] = React.useState(false);
     const [handoffListRevision, setHandoffListRevision] = React.useState(0);
     // Tracks whether the scroll-button is currently shown, so we only call
@@ -265,15 +280,20 @@ const ChatListInternal = React.memo((props: {
 
     // Collapse agent work between a user prompt and the final answer. While
     // the turn is streaming everything renders flat; expansion re-inserts the
-    // same flat messages below the header.
+    // same flat messages below the header. A turn the reader watched live keeps
+    // its work visible when it finishes, while a completed turn first seen on
+    // open keeps the historic collapsed-by-default behavior.
     const groupToolCalls = useSetting('groupToolCalls');
     const hasPendingPermission = Boolean(
         session?.agentState?.requests && Object.keys(session.agentState.requests).length > 0,
     );
-    const collapseCurrentTurn = session?.thinking !== true && !hasPendingPermission;
+    const [appState, setAppState] = React.useState(AppState.currentState);
+    const sessionInForeground = props.active && appState !== 'background';
+    const currentTurnComplete = session?.thinking !== true
+        && !hasPendingPermission;
     const groupingOptions = React.useMemo(
-        () => ({ collapseCurrentTurn }),
-        [collapseCurrentTurn],
+        () => ({ collapseCurrentTurn: currentTurnComplete }),
+        [currentTurnComplete],
     );
 
     // Messages arrive newest-first, so the window is a prefix of the array and
@@ -324,51 +344,81 @@ const ChatListInternal = React.memo((props: {
 
     const displayItems = useGroupedMessages(windowedMessages, groupToolCalls, groupingOptions);
     const agentCopyTextByMessageId = React.useMemo(
-        () => buildAgentTurnCopyTextByMessageId(windowedMessages, { currentTurnComplete: collapseCurrentTurn }),
-        [collapseCurrentTurn, windowedMessages],
+        () => buildAgentTurnCopyTextByMessageId(windowedMessages, { currentTurnComplete }),
+        [currentTurnComplete, windowedMessages],
     );
 
-    // Which groups the reader has opened, and which they have deliberately
-    // closed. Tracking toggles rather than "what is collapsed" is the
-    // load-bearing choice: a group arriving later — from a paged-in chunk of
-    // history or a turn that just completed — is absent from both sets and
-    // therefore collapsed by construction on the first commit it exists. The
-    // old shape (seed a collapsed-set at mount, reconcile newcomers in an
-    // effect) rendered every such group fully expanded for one commit,
-    // mounting a turn's worth of heavy rows just to throw them away.
-    const [groupToggles, setGroupToggles] = React.useState(EMPTY_GROUP_TOGGLES);
-
-    // Derived, not stored: a group that wants attention opens itself unless
-    // the reader has closed it, and is correct on the first render it appears.
-    const isGroupExpanded = useCallback((group: AgentWorkGroupItem) => (
-        groupToggles.expanded.has(group.id)
-        || ((group.hasPendingPermission || group.hasRunning) && !groupToggles.closed.has(group.id))
-    ), [groupToggles]);
-
-    // Sending a new message closes everything from previous turns. During
-    // render, not in an effect: React re-runs this component before painting,
-    // so the list never shows the stale expansion.
-    const latestUserMsgId = React.useMemo(() => {
-        for (const msg of props.messages) {
-            if (msg.kind === 'user-text') return msg.id;
+    const currentTurnUserMessageId = React.useMemo(() => {
+        for (const message of windowedMessages) {
+            if (message.kind === 'user-text' && !message.pending && message.sendError === undefined) return message.id;
         }
         return null;
-    }, [props.messages]);
-    const [seenUserMsgId, setSeenUserMsgId] = React.useState(latestUserMsgId);
-    if (latestUserMsgId !== seenUserMsgId) {
-        setSeenUserMsgId(latestUserMsgId);
-        if (latestUserMsgId !== null) setGroupToggles(EMPTY_GROUP_TOGGLES);
+    }, [windowedMessages]);
+    const displayedUserMessageIds = React.useMemo(() => {
+        const ids = new Set<string>();
+        for (const message of windowedMessages) {
+            if (message.kind === 'user-text') ids.add(message.id);
+        }
+        return ids;
+    }, [windowedMessages]);
+
+    // Which groups the reader has opened and which they have deliberately
+    // closed. Watched prompt IDs are local view state: they are added while a
+    // turn is visibly in progress, so completed history never auto-opens, and
+    // survive later prompts because the prompt identity is stable.
+    const [groupToggles, setGroupToggles] = React.useState(EMPTY_GROUP_TOGGLES);
+    const [watchedTurns, setWatchedTurns] = React.useState(() => ({
+        sessionId: props.sessionId,
+        ids: EMPTY_WATCHED_TURN_IDS,
+    }));
+    const sessionChanged = watchedTurns.sessionId !== props.sessionId;
+    const nextWatchedTurnIds = new Set<string>();
+    if (!sessionChanged && sessionInForeground) {
+        for (const id of watchedTurns.ids) {
+            if (displayedUserMessageIds.has(id)) nextWatchedTurnIds.add(id);
+        }
+        if (!currentTurnComplete && currentTurnUserMessageId !== null) {
+            nextWatchedTurnIds.add(currentTurnUserMessageId);
+        }
     }
+    if (sessionChanged || !stringSetsEqual(watchedTurns.ids, nextWatchedTurnIds)) {
+        // A session switch resets before considering the new session's rows;
+        // this prevents stale messages from being recorded under the new ID.
+        setWatchedTurns({
+            sessionId: props.sessionId,
+            ids: nextWatchedTurnIds.size === 0 ? EMPTY_WATCHED_TURN_IDS : nextWatchedTurnIds,
+        });
+        if (sessionChanged && groupToggles !== EMPTY_GROUP_TOGGLES) {
+            setGroupToggles(EMPTY_GROUP_TOGGLES);
+        }
+    }
+
+    // A watched turn and a pending/running group open themselves unless the
+    // reader explicitly closed them.
+    const isGroupExpanded = useCallback((group: AgentWorkGroupItem) => (
+        groupToggles.expanded.has(group.id)
+        || (group.turnUserMessageId !== null
+            && sessionInForeground
+            && watchedTurns.sessionId === props.sessionId
+            && watchedTurns.ids.has(group.turnUserMessageId)
+            && !groupToggles.closed.has(group.id))
+        || ((group.hasPendingPermission || group.hasRunning) && !groupToggles.closed.has(group.id))
+    ), [groupToggles, props.sessionId, sessionInForeground, watchedTurns]);
 
     // Ref so the AppState handler reads fresh items without re-subscribing
     const displayItemsRef = React.useRef(displayItems);
     displayItemsRef.current = displayItems;
 
-    // Leaving the app closes any group whose work has finished, so returning
-    // to a long-idle session does not land on a wall of expanded tool calls.
+    // Backgrounding closes any group whose work has finished, so returning to
+    // a long-idle session does not land on a wall of expanded tool calls.
+    // `inactive` is transient on iOS and must not fold a session being viewed.
     React.useEffect(() => {
         const sub = AppState.addEventListener('change', (state) => {
-            if (state === 'active') return;
+            setAppState(state);
+            if (state !== 'background') return;
+            setWatchedTurns((prev) => prev.ids.size === 0
+                ? prev
+                : { sessionId: prev.sessionId, ids: EMPTY_WATCHED_TURN_IDS });
             setGroupToggles((prev) => {
                 const stillRunning = new Set<string>();
                 for (const item of displayItemsRef.current) {
@@ -390,8 +440,13 @@ const ChatListInternal = React.memo((props: {
         // move and the expansion grows upward from the header.
         userTookOverRef.current = true;
         setGroupToggles((prev) => {
+            const watched = group.turnUserMessageId !== null
+                && sessionInForeground
+                && watchedTurns.sessionId === props.sessionId
+                && watchedTurns.ids.has(group.turnUserMessageId);
             const wasExpanded = prev.expanded.has(group.id)
-                || ((group.hasPendingPermission || group.hasRunning) && !prev.closed.has(group.id));
+                || (watched || group.hasPendingPermission || group.hasRunning)
+                    && !prev.closed.has(group.id);
             const expanded = new Set(prev.expanded);
             const closed = new Set(prev.closed);
             if (wasExpanded) {
@@ -403,7 +458,7 @@ const ChatListInternal = React.memo((props: {
             }
             return { expanded, closed };
         });
-    }, []);
+    }, [props.sessionId, sessionInForeground, watchedTurns]);
 
     // Expanded groups contribute their members as ordinary list items right
     // after the header, so the list itself virtualizes them and an expansion
@@ -520,7 +575,7 @@ const ChatListInternal = React.memo((props: {
         setBottomDockVisibility(true);
     }, [props.onHeaderBackdropVisibilityChange, setBottomDockVisibility]);
 
-    const renderItem = useCallback(({ item }: { item: ListItem }) => {
+    const renderItem = useCallback(({ item, target }: ListRenderItemInfo<ListItem>) => {
         // The inner `key` opts out of FlashList's cell recycling for the row
         // content: rows carry local state (expanded diffs, collapsed output)
         // that must never leak into a different message via a recycled cell.
@@ -538,15 +593,16 @@ const ChatListInternal = React.memo((props: {
             );
         }
         return (
-            <MessageView
-                key={item.message.id}
-                message={item.message}
-                metadata={props.metadata}
-                sessionId={props.sessionId}
-                copyText={agentCopyTextByMessageId.get(item.message.id)}
-            />
+            <DiffSyntaxCell key={item.message.id} viewport={syntaxViewport} itemKey={item.id} enabled={target !== 'Measurement'}>
+                <MessageView
+                    message={item.message}
+                    metadata={props.metadata}
+                    sessionId={props.sessionId}
+                    copyText={agentCopyTextByMessageId.get(item.message.id)}
+                />
+            </DiffSyntaxCell>
         );
-    }, [agentCopyTextByMessageId, props.metadata, props.sessionId, isGroupExpanded, handleToggleGroup]);
+    }, [agentCopyTextByMessageId, props.metadata, props.sessionId, syntaxViewport, isGroupExpanded, handleToggleGroup]);
 
     // The list is inverted, so offset 0 is the newest message and growing
     // offsets walk back through history.
@@ -720,6 +776,8 @@ const ChatListInternal = React.memo((props: {
                 // of the screen.
                 contentContainerStyle={{ paddingTop: 8 + (props.bottomContentInset ?? 0) }}
                 renderItem={renderItem}
+                viewabilityConfig={SYNTAX_VIEWABILITY}
+                onViewableItemsChanged={syntaxViewport.update}
                 onScroll={handleScroll}
                 onScrollBeginDrag={handleScrollBeginDrag}
                 scrollEventThrottle={16}

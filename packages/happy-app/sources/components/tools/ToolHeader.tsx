@@ -1,100 +1,47 @@
 import * as React from 'react';
-import { Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Platform, Text } from 'react-native';
 import { ToolCall } from '@/sync/typesMessage';
-import { getToolCategoryIcon, knownTools } from '@/components/tools/knownTools';
-import { getToolActivityLabel, getToolDisplayTitle, getToolSummaryCategory, isTerminalToolName } from '@/utils/toolDisplay';
-import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import type { Metadata } from '@/sync/storageTypes';
+import { knownTools } from '@/components/tools/knownTools';
+import { getToolActivityLabel, getToolDisplayTitle, isTerminalToolName } from '@/utils/toolDisplay';
+import { Typography } from '@/constants/Typography';
+import { t } from '@/text';
+import { StyleSheet } from 'react-native-unistyles';
 
 interface ToolHeaderProps {
-    tool: ToolCall;
+    tool?: ToolCall;
+    metadata?: Metadata | null;
 }
 
-export function ToolHeader({ tool }: ToolHeaderProps) {
-    const { theme } = useUnistyles();
-    const knownTool = knownTools[tool.name as keyof typeof knownTools] as any;
-
-    // Extract status first for Bash tool to potentially use as title
-    let status: string | null = null;
-    if (knownTool && typeof knownTool.extractStatus === 'function') {
-        const extractedStatus = knownTool.extractStatus({ tool, metadata: null });
-        if (typeof extractedStatus === 'string' && extractedStatus) {
-            status = extractedStatus;
+/** One bounded, non-interactive navigation title, including while loading. */
+export function ToolHeader({ tool, metadata = null }: ToolHeaderProps) {
+    let title = t('common.message');
+    if (tool) {
+        const knownTool = knownTools[tool.name as keyof typeof knownTools];
+        title = getToolDisplayTitle(tool);
+        if (!tool.title?.trim() && knownTool && 'title' in knownTool && knownTool.title) {
+            title = typeof knownTool.title === 'function'
+                ? knownTool.title({ tool, metadata })
+                : knownTool.title;
         }
+        if (isTerminalToolName(tool.name)) title = getToolActivityLabel(tool);
     }
-
-    // Handle optional title and function type
-    let toolTitle = getToolDisplayTitle(tool);
-    if (knownTool?.title) {
-        if (typeof knownTool.title === 'function') {
-            toolTitle = knownTool.title({ tool, metadata: null });
-        } else {
-            toolTitle = knownTool.title;
-        }
-    }
-    if (isTerminalToolName(tool.name)) toolTitle = getToolActivityLabel(tool);
-
-    const icon = knownTool?.icon
-        ? knownTool.icon(18, theme.colors.header.tint)
-        : (getToolCategoryIcon(getToolSummaryCategory(tool.name), 18, theme.colors.header.tint)
-            ?? <Ionicons name="construct-outline" size={18} color={theme.colors.header.tint} />);
-
-    // Extract subtitle using the same logic as ToolView
-    let subtitle = null;
-    if (knownTool && typeof knownTool.extractSubtitle === 'function') {
-        const extractedSubtitle = knownTool.extractSubtitle({ tool, metadata: null });
-        if (typeof extractedSubtitle === 'string' && extractedSubtitle) {
-            subtitle = extractedSubtitle;
-        }
-    }
-    // Terminal titles already contain the command/control action.
-    if (isTerminalToolName(tool.name)) subtitle = null;
 
     return (
-        <View style={styles.container}>
-            <View style={styles.titleContainer}>
-                <View style={styles.titleRow}>
-                    {icon}
-                    <Text style={styles.title} numberOfLines={1}>{toolTitle}</Text>
-                </View>
-                {subtitle && (
-                    <Text style={styles.subtitle} numberOfLines={1}>{subtitle}</Text>
-                )}
-            </View>
-        </View>
+        <Text style={styles.title} numberOfLines={1} ellipsizeMode="middle" accessibilityRole="header">
+            {title}
+        </Text>
     );
 }
 
 const styles = StyleSheet.create((theme) => ({
-    container: {
-        flexDirection: 'row',
-        justifyContent: 'center',
-        alignItems: 'center',
-        flexGrow: 1,
-        flexBasis: 0,
-        paddingHorizontal: 4,
-    },
-    titleContainer: {
-        flexDirection: 'column',
-        alignItems: 'center',
-        flexGrow: 1,
-        flexBasis: 0
-    },
-    titleRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 6,
-    },
     title: {
-        fontSize: 14,
-        fontWeight: '500',
-        color: theme.colors.text,
+        ...Typography.default('semiBold'),
+        fontSize: Platform.OS === 'web' ? 17 : 16,
+        lineHeight: 20,
+        color: theme.colors.header.tint,
         textAlign: 'center',
-    },
-    subtitle: {
-        fontSize: 11,
-        color: theme.colors.textSecondary,
-        textAlign: 'center',
-        marginTop: 2,
+        maxWidth: '100%',
+        flexShrink: 1,
     },
 }));

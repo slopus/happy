@@ -444,6 +444,11 @@ export const en = {
     components: {
         emptyMainScreen: {
             // Used by EmptyMainScreen component
+            connectComputer: 'Connect your computer',
+            desktopSetupInstructions: 'Install Happy Desktop from happy.engineering. In desktop setup, choose “I have the app open,” then scan the device-linking QR code here.',
+            harnessDescription: 'Use Claude Code or Codex, or try Happy Harness. Your account stays linked across your computer and phone.',
+            getDesktop: 'Get Happy Desktop',
+            terminalAlternative: 'Prefer the terminal? Set up Happy CLI',
             readyToCode: 'Ready to code?',
             installCli: 'Install the Happy CLI',
             runIt: 'Run it',
@@ -913,7 +918,7 @@ export const en = {
     machine: {
         launchNewSessionInDirectory: 'Launch New Session in Directory',
         offlineUnableToSpawn: 'Launcher disabled while machine is offline',
-        offlineHelp: '• Make sure your computer is online\n• Run `happy daemon status` to diagnose\n• Are you running the latest CLI version? Upgrade with `npm install -g happy@latest`',
+        offlineHelp: '• Run `happy daemon start` on your computer\n• Make sure your computer is online\n• Run `happy daemon status` to diagnose\n• Are you running the latest CLI version? Upgrade with `npm install -g happy@latest`',
         daemon: 'Daemon',
         status: 'Status',
         stopDaemon: 'Stop Daemon',
@@ -952,6 +957,9 @@ export const en = {
         unknownEvent: 'Unknown event',
         usageLimitUntil: ({ time }: { time: string }) => `Usage limit reached until ${time}`,
         sentAsGoal: 'Sent as goal',
+        sendsAfterThisTurn: 'Sends after this turn',
+        sending: 'Sending…',
+        sendFailed: ({ reason }: { reason: string }) => `Not sent: ${reason}`,
         unknownTime: 'unknown time',
     },
 

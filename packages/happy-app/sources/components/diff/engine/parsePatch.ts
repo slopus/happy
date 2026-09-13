@@ -33,6 +33,14 @@ export interface RawFile {
     hunks: RawHunk[];
 }
 
+/** Raised when an optional contents diff budget aborts the underlying diff. */
+export class DiffBudgetExceededError extends Error {
+    constructor() {
+        super('Diff budget exceeded');
+        this.name = 'DiffBudgetExceededError';
+    }
+}
+
 const HUNK_HEADER = /^@@+ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@+ ?(.*)$/;
 
 /** Strips git's `a/` and `b/` prefixes, and unquotes `core.quotepath` output. */
@@ -204,6 +212,8 @@ export function rawFileFromContents(
     oldText: string,
     newText: string,
     contextLines: number,
+    ignoreWhitespace = false,
+    diffBudget?: { timeoutMs: number; maxEditLength: number },
 ): RawFile {
     const kind: FileChangeKind =
         oldText === '' && newText !== '' ? 'added' :
@@ -212,7 +222,7 @@ export function rawFileFromContents(
     return {
         path,
         kind,
-        hunks: hunksFromContents(oldText, newText, contextLines),
+        hunks: hunksFromContents(oldText, newText, contextLines, ignoreWhitespace, diffBudget),
     };
 }
 
@@ -220,9 +230,15 @@ export function rawFileFromContents(
  * Myers line diff via the `diff` package, folded into hunks with N lines of
  * context. Kept here so the renderer has exactly one input shape to deal with.
  */
-export function hunksFromContents(oldText: string, newText: string, contextLines: number): RawHunk[] {
+export function hunksFromContents(
+    oldText: string,
+    newText: string,
+    contextLines: number,
+    ignoreWhitespace = false,
+    diffBudget?: { timeoutMs: number; maxEditLength: number },
+): RawHunk[] {
     // Imported lazily to keep the parser tree-shakeable for the patch-only path.
-    const { diffLines } = require('diff') as typeof import('diff');
+    const { diffArrays, diffLines } = require('diff') as typeof import('diff');
 
     const splitKeep = (v: string): string[] => {
         const parts = v.split('\n');
@@ -233,8 +249,46 @@ export function hunksFromContents(oldText: string, newText: string, contextLines
     const all: RawLine[] = [];
     let oldNo = 1;
     let newNo = 1;
-    for (const change of diffLines(oldText, newText)) {
-        for (const text of splitKeep(change.value)) {
+    const oldLines = splitKeep(oldText);
+    const newLines = splitKeep(newText);
+
+    // A one-sided file does not need Myers' edit search. Besides being
+    // simpler, this keeps a large added/deleted file from consuming a
+    // two-sided edit budget even though its rows are trivial to construct.
+    if (oldLines.length === 0 || newLines.length === 0) {
+        for (const text of oldLines) all.push({ type: 'del', text, oldNo: oldNo++ });
+        for (const text of newLines) all.push({ type: 'add', text, newNo: newNo++ });
+        return foldHunks(all, contextLines);
+    }
+
+    const changes = ignoreWhitespace
+        ? diffBudget
+            ? diffArrays(oldLines, newLines, {
+                // Compare non-whitespace characters, but keep each original
+                // line in the change value so the renderer never displays a
+                // normalized copy of the source.
+                comparator: (left: string, right: string) => stripWhitespace(left) === stripWhitespace(right),
+                timeout: diffBudget.timeoutMs,
+                maxEditLength: diffBudget.maxEditLength,
+            })
+            : diffArrays(oldLines, newLines, {
+                // Compare non-whitespace characters, but keep each original
+                // line in the change value so the renderer never displays a
+                // normalized copy of the source.
+                comparator: (left: string, right: string) => stripWhitespace(left) === stripWhitespace(right),
+            })
+        : diffBudget
+            ? diffLines(oldText, newText, {
+                timeout: diffBudget.timeoutMs,
+                maxEditLength: diffBudget.maxEditLength,
+            })
+            : diffLines(oldText, newText);
+
+    if (changes === undefined) throw new DiffBudgetExceededError();
+
+    for (const change of changes) {
+        const values = Array.isArray(change.value) ? change.value : splitKeep(change.value);
+        for (const text of values) {
             if (change.added) {
                 all.push({ type: 'add', text, newNo: newNo++ });
             } else if (change.removed) {
@@ -248,17 +302,26 @@ export function hunksFromContents(oldText: string, newText: string, contextLines
     return foldHunks(all, contextLines);
 }
 
+function stripWhitespace(text: string): string {
+    return text.replace(/\s/g, '');
+}
+
 /** Groups a full line list into hunks, dropping unchanged runs longer than 2*context. */
 export function foldHunks(all: RawLine[], contextLines: number): RawHunk[] {
     const changed: boolean[] = all.map((l) => l.type !== 'ctx');
     if (!changed.some(Boolean)) return [];
 
     const keep = new Array<boolean>(all.length).fill(false);
+    let lastFilledIndex = -1;
     for (let i = 0; i < all.length; i++) {
         if (!changed[i]) continue;
-        for (let j = Math.max(0, i - contextLines); j <= Math.min(all.length - 1, i + contextLines); j++) {
+        const from = Math.max(0, i - contextLines);
+        const to = Math.min(all.length - 1, i + contextLines);
+        if (from > to) continue;
+        for (let j = Math.max(from, lastFilledIndex + 1); j <= to; j++) {
             keep[j] = true;
         }
+        if (to > lastFilledIndex) lastFilledIndex = to;
     }
 
     const hunks: RawHunk[] = [];

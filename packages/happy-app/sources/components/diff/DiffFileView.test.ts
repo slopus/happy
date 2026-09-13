@@ -23,6 +23,7 @@ vi.mock('react-native', async () => {
         View: host('View'),
         Text: host('Text'),
         Pressable: host('Pressable'),
+        ActivityIndicator: host('ActivityIndicator'),
         ScrollView: host('ScrollView'),
     };
 });
@@ -67,6 +68,8 @@ vi.mock('@/components/HorizontalScrollView', async () => {
 vi.mock('@/constants/Typography', () => ({
     Typography: { default: () => ({}), mono: () => ({}) },
 }));
+vi.mock('@/components/FileIcon', () => ({ FileIcon: () => null }));
+vi.mock('@expo/vector-icons', () => ({ Ionicons: () => null }));
 
 vi.mock('@/text', () => ({
     // Keys, not prose — the assertions should not depend on the app language.
@@ -74,7 +77,14 @@ vi.mock('@/text', () => ({
         params ? `${key}:${JSON.stringify(params)}` : key,
 }));
 
+// These tests exercise row layout. The async gate/runtime has its own tests.
+vi.mock('./syntax/shared', () => ({ diffSyntax: {
+    peek: () => ({ status: 'unsupported' }),
+    recordCacheUse: () => {},
+} }));
+
 import { DiffFileView } from './DiffFileView';
+import { DiffFileHeader } from './DiffFileHeader';
 import { buildDiffFromPatch } from './engine/buildDiff';
 import type { DiffFile } from './engine/types';
 
@@ -130,6 +140,29 @@ const SIMPLE = [
 ].join('\n');
 
 describe('DiffFileView — scroll layout', () => {
+    it('places the shared file header directly against the code without a rule or padding strip', () => {
+        const file = fileFromPatch(SIMPLE);
+        let tree!: ReactTestRenderer;
+        act(() => {
+            tree = create(React.createElement(React.Fragment, null,
+                React.createElement(DiffFileHeader, { file }),
+                React.createElement(DiffFileView, { file, showHunkHeaders: false }),
+            ));
+        });
+        const header = tree.root.findByType((DiffFileHeader as any).type);
+        expect(header.findByType('View').props.style.borderBottomWidth ?? 0).toBe(0);
+        expect(tree.root.findByType('HorizontalScrollView').props.contentContainerStyle.paddingVertical).toBe(0);
+    });
+
+    it('maps syntax classes to colored native Text children', () => {
+        const file = buildDiffFromPatch(SIMPLE, { syntax: true }).files[0];
+        const tree = render({ file });
+        const keywords = tree.root.findAllByType('Text').filter((node: any) =>
+            node.props.style?.color === PALETTE.syntax.keyword && flatten(node.props.children) === 'const');
+        expect(keywords.length).toBeGreaterThan(0);
+        expect(tree.root.findAllByProps({ testID: 'diff-syntax-pending' })).toHaveLength(0);
+    });
+
     it('draws one code row and one gutter row per line', () => {
         const file = fileFromPatch(SIMPLE);
         const tree = render({ file, showHunkHeaders: false });
