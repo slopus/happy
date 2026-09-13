@@ -9,7 +9,7 @@ import { Modal } from '@/modal';
 import { t } from '@/text';
 
 const UPLOAD_COMMAND = 'paws codex account upload';
-type Machine = { id: string; name: string };
+type Machine = { id: string; name: string; active?: boolean };
 const statusText = (status: CodexAccountProfile['status']) => t(status === 'available' ? 'codexAccounts.available' : status === 'invalid' ? 'codexAccounts.invalid' : 'codexAccounts.needsRefresh');
 function errorText(code: CodexAccountErrorCode): string {
     switch (code) {
@@ -90,6 +90,14 @@ export function CodexAccountSection({ controller, machines }: { controller: Code
             if (approved) await controller.remove(profile.id);
         } finally { setConfirming(false); }
     }
+    async function refresh(profile: CodexAccountProfile) {
+        const machine = machines.find(candidate => candidate.active !== false && controller.bindings.some(binding => binding.machineId === candidate.id && binding.profileId === profile.id));
+        if (!machine) return;
+        const approved = await Modal.confirm(t('codexAccounts.refreshQuotaConfirmTitle'), t('codexAccounts.refreshQuotaConfirm'), {
+            confirmText: t('codexAccounts.refreshQuota'), cancelText: t('common.cancel'),
+        });
+        if (approved) await controller.refresh(profile.id, machine.id);
+    }
     return <View style={styles.section} testID="codex-account-section">
         <Text accessibilityRole="header" style={styles.title}>{t('codexAccounts.title')}</Text>
         <Text style={styles.secondary}>{t('codexAccounts.description')}</Text>
@@ -108,6 +116,13 @@ export function CodexAccountSection({ controller, machines }: { controller: Code
             <Quota profile={profile} />
             <Text style={styles.secondary}>{t('codexAccounts.updated', { time: new Date(profile.updatedAt).toLocaleString() })}</Text>
             <View style={styles.actions}>
+                {(() => {
+                    const refreshable = machines.some(machine => machine.active !== false && controller.bindings.some(binding => binding.machineId === machine.id && binding.profileId === profile.id));
+                    return <AccountButton testID={`codex-account-refresh-${profile.id}`} label={`${t('codexAccounts.refreshQuota')} · ${profile.displayName}`}
+                        disabled={disabled || !refreshable || profile.status !== 'available'} onPress={() => { void refresh(profile); }}>
+                        <Text style={styles.link}>{controller.busy ? t('codexAccounts.refreshingQuota') : t('codexAccounts.refreshQuota')}</Text>
+                    </AccountButton>;
+                })()}
                 <AccountButton testID={`codex-account-rename-${profile.id}`} label={`${t('codexAccounts.rename')} · ${profile.displayName}`} disabled={disabled} onPress={() => { void rename(profile); }}><Text style={styles.link}>{t('codexAccounts.rename')}</Text></AccountButton>
                 <AccountButton testID={`codex-account-delete-${profile.id}`} label={`${t('codexAccounts.delete')} · ${profile.displayName}`} disabled={disabled} onPress={() => { void remove(profile); }}><Text style={styles.destructive}>{t('codexAccounts.delete')}</Text></AccountButton>
             </View>

@@ -6,7 +6,7 @@ import { decryptString, encryptString } from '@/modules/encrypt';
 import {
     CODEX_AUTH_MAX_BYTES, CODEX_GRANT_TTL_MS, codexAuthSchema,
     type CodexAuth, type CodexAccountProfileView, type CodexMachineBinding, type CodexQuotaView,
-    type BindCodexAccountRequest, type UpdateCodexCredentialRequest, type ReportCodexQuotaRequest, type ReportCodexStatusRequest,
+    type BindCodexAccountRequest, type UpdateCodexCredentialRequest, type ReportCodexQuotaRequest, type ReportCodexQuotaProbeRequest, type ReportCodexStatusRequest,
     type CreateCodexGrantResponse, type RedeemCodexGrantResponse, type ListCodexAccountsResponse,
 } from './codexAccountTypes';
 
@@ -237,6 +237,28 @@ export const codexAccountStore = {
             if (profile.quota && profile.quota.observedAt >= observedAt) return { accepted: false };
             const data = { weeklyUsedPercent: input.weeklyUsedPercent, weeklyResetsAt, observedAt, credentialVersion: input.credentialVersion, sourceSessionId: input.sourceSessionId };
             await tx.codexQuotaSnapshot.upsert({ where: { codexAccountProfileId: id }, create: { codexAccountProfileId: id, ...data }, update: data });
+            return { accepted: true };
+        });
+    },
+    async reportQuotaProbe(accountId: string, id: string, input: ReportCodexQuotaProbeRequest) {
+        const observedAt = new Date(input.observedAt);
+        const weeklyResetsAt = new Date(input.weeklyResetsAt);
+        if (observedAt.getTime() > Date.now() + 60_000 || weeklyResetsAt <= observedAt || weeklyResetsAt.getTime() - observedAt.getTime() > 8 * 86400_000) return fail(400, 'invalid-quota-time');
+        return transaction(accountId, async (tx) => {
+            const profile = await ownedProfile(tx, accountId, id);
+            // A probe may only report through the one-time grant that redeemed this
+            // exact account on this exact bound machine. A normal conversation uses
+            // reportQuota instead, where sourceSessionId is mandatory.
+            const launch = await tx.codexSessionGrant.findFirst({ where: {
+                id: input.launchId, accountId, machineId: input.machineId, codexAccountProfileId: id,
+                credentialVersion: input.credentialVersion, sourceSessionId: null, redeemedAt: { not: null },
+            } });
+            if (!launch) return fail(409, 'quota-attribution-mismatch');
+            await ownedMachine(tx, accountId, input.machineId);
+            if (profile.quota && profile.quota.observedAt >= observedAt) return { accepted: false };
+            const data = { weeklyUsedPercent: input.weeklyUsedPercent, weeklyResetsAt, observedAt, credentialVersion: input.credentialVersion, sourceSessionId: `quota-probe:${launch.id}` };
+            await tx.codexQuotaSnapshot.upsert({ where: { codexAccountProfileId: id }, create: { codexAccountProfileId: id, ...data }, update: data });
+            await audit(tx, accountId, 'quota-probe', id, input.machineId, input.credentialVersion);
             return { accepted: true };
         });
     },

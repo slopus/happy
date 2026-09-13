@@ -40,6 +40,14 @@ export const reportCodexQuotaSchema = z.object({
     weeklyResetsAt: z.string().datetime({ offset: true }), observedAt: z.string().datetime({ offset: true }),
 }).strict();
 export type ReportCodexQuotaRequest = z.infer<typeof reportCodexQuotaSchema>;
+// A quota probe is an explicitly user-requested, short-lived Codex invocation.
+// It deliberately has no Happy conversation to attach to.
+export const reportCodexQuotaProbeSchema = z.object({
+    machineId: opaqueId, launchId: z.string().uuid(), credentialVersion: version.positive(),
+    weeklyUsedPercent: z.number().min(0).max(100),
+    weeklyResetsAt: z.string().datetime({ offset: true }), observedAt: z.string().datetime({ offset: true }),
+}).strict();
+export type ReportCodexQuotaProbeRequest = z.infer<typeof reportCodexQuotaProbeSchema>;
 export const reportCodexStatusSchema = z.object({
     machineId: opaqueId, launchId: z.string().uuid(), credentialVersion: version.positive(),
     status: z.enum(['needs-refresh', 'invalid']),

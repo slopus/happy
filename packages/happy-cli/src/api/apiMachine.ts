@@ -115,6 +115,7 @@ type MachineRpcHandlers = {
     stopSession: (sessionId: string) => boolean;
     requestShutdown: () => void;
     refreshCodexUsage?: () => Promise<void>;
+    refreshCodexAccountQuota?: (grant: string) => Promise<{ type: 'success'; accepted: boolean } | { type: 'error'; errorMessage: string }>;
 }
 
 function requireNonEmptyString(value: unknown, name: string): string {
@@ -219,6 +220,7 @@ export class ApiMachineClient {
         stopSession,
         requestShutdown,
         refreshCodexUsage,
+        refreshCodexAccountQuota,
     }: MachineRpcHandlers) {
         this.resumeSessionHandler = resumeSession ?? null;
 
@@ -284,6 +286,13 @@ export class ApiMachineClient {
             this.rpcHandlerManager.registerHandler('refresh-codex-usage', async () => {
                 await refreshCodexUsage();
                 return { type: 'success' };
+            });
+        }
+        if (refreshCodexAccountQuota) {
+            this.rpcHandlerManager.registerHandler('refresh-codex-account-quota', async (params: unknown) => {
+                const grant = typeof (params as { grant?: unknown } | null)?.grant === 'string' ? (params as { grant: string }).grant : '';
+                if (!/^[A-Za-z0-9_-]{43}$/.test(grant)) throw new Error('A valid Codex quota probe grant is required');
+                return refreshCodexAccountQuota(grant);
             });
         }
 

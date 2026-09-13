@@ -23,6 +23,7 @@ No network RPC, package commands, real credentials, or persisted machine configu
 | ENV-4 unknown | `/?scenario=uncertain`; update device 1 GitHub, then scan | Only one write; all device 1 changes remain disabled; explicit unresolved explanation is visible |
 | ENV-5 | During ENV-3 close via `fixture-close`, reopen via `fixture-open` | Same running batch; final nine-success result remains visible |
 | ENV-6 | `/?theme=gingham`, desktop and 390 × 844; scroll `environment-device-columns` | Semantic theme colors; fixed tool identity, device 3 reachable, footer and page remain in viewport |
+| CQ-1 | `/`, 1440 × 900 or 1024 × 768; click `codex-account-refresh-fixture-codex-account` and accept the confirmation | The fixture account changes from unknown to a current 7-day remaining percentage; a synthetic `quota-refreshed` event is recorded with no network or Codex process |
 
 `window.fixture.calls` contains allowlisted fixture events (`inspect`, `start`, `end`, `failed`, `uncertain`) with machine/tool/time. Use it only as an assertion boundary alongside visible state. Reloading starts a fresh synthetic scenario.
 

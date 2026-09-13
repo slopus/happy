@@ -7,7 +7,7 @@ import type { CodexAccountProfile, ListCodexAccountsResponse } from '@/sync/apiC
 
 const mocks = vi.hoisted(() => ({
     credentials: { token: 'paws-test', secret: 'test-secret' }, server: 'https://test',
-    copy: vi.fn(), prompt: vi.fn(), confirm: vi.fn(), authReady: true,
+    copy: vi.fn(), prompt: vi.fn(), confirm: vi.fn(), rpc: vi.fn(), authReady: true,
 }));
 vi.mock('react-native', () => ({ View: 'View', Text: 'Text', Pressable: 'Pressable', ScrollView: 'ScrollView',
     Platform: { OS: 'web', select: (v: any) => v.web ?? v.default } }));
@@ -18,7 +18,7 @@ vi.mock('@/constants/Typography', () => ({ Typography: { default: () => ({}), mo
 vi.mock('expo-clipboard', () => ({ setStringAsync: mocks.copy }));
 vi.mock('@/auth/AuthContext', () => ({ useAuth: () => ({ credentials: mocks.credentials }), getCurrentAuth: () => mocks.authReady ? { credentials: mocks.credentials } : null }));
 vi.mock('@/sync/serverConfig', () => ({ getServerUrl: () => mocks.server }));
-vi.mock('@/sync/apiSocket', () => ({ getHappyClientId: () => 'web' }));
+vi.mock('@/sync/apiSocket', () => ({ getHappyClientId: () => 'web', apiSocket: { machineRPC: mocks.rpc } }));
 vi.mock('@/modal', () => ({ Modal: { prompt: mocks.prompt, confirm: mocks.confirm } }));
 vi.mock('@/text', async () => { const { en } = await import('@/text/_default'); return { t: (key: string, params: unknown) => {
     const value = key.split('.').reduce((v: any, part) => v?.[part], en); return typeof value === 'function' ? value(params) : value ?? key;
@@ -59,6 +59,7 @@ describe('Codex account UI with real metadata API and controller', () => {
             requests.push({ url, method, body });
             if (method === 'GET') return Response.json(data);
             if (fail) return Response.json({ error: fail }, { status: 409 });
+            if (method === 'POST') return Response.json({ grant: 'a'.repeat(43), expiresAt: '2026-09-11T10:01:00.000Z', profile: { id, displayName: 'Codex · A7F2', credentialVersion: 1 } });
             if (method === 'PATCH') { data.profiles[0].displayName = body.displayName; return Response.json({ profile: data.profiles[0] }); }
             if (method === 'DELETE') { data.profiles = data.profiles.filter(p => p.id !== id); data.bindings[0] = { machineId: 'a', profileId: null, version: 4 }; return Response.json({ success: true }); }
             const machineId = url.split('/').at(-2)!;
@@ -82,6 +83,13 @@ describe('Codex account UI with real metadata API and controller', () => {
         await act(async () => { vi.advanceTimersByTime(2000); });
         expect(textOf(renderer.root.findByProps({ testID: 'codex-account-copy' }))).not.toContain('Copied');
         expect(mocks.confirm).not.toHaveBeenCalled(); expect(requests).toHaveLength(1);
+    });
+    it('refreshes only through an explicitly confirmed opaque grant on the account-bound device', async () => {
+        mocks.confirm.mockResolvedValue(true); mocks.rpc.mockResolvedValue({ type: 'success', accepted: true }); await render();
+        await press(`codex-account-refresh-${id}`);
+        expect(mocks.confirm).toHaveBeenCalledWith('Refresh Codex quota?', expect.stringContaining('small amount'), expect.objectContaining({ confirmText: 'Refresh quota' }));
+        expect(requests.filter(request => request.method === 'POST')).toEqual([{ url: 'https://test/v1/codex-session-grants', method: 'POST', body: { machineId: 'a' } }]);
+        expect(mocks.rpc).toHaveBeenCalledWith('a', 'refresh-codex-account-quota', { grant: 'a'.repeat(43) }, expect.objectContaining({ timeoutMs: 60_000 }));
     });
     it.each([
         ['unknown', null, null, null, '7d quota unknown', false],

@@ -9,12 +9,41 @@ export const theme = appThemes[params.get('theme') === 'gingham' ? 'ginghamDark'
 export const StyleSheet = { hairlineWidth: 1, create: (fn: any) => fn(theme) };
 export const useUnistyles = () => ({ theme });
 export const Ionicons = ({ name, color, size }: any) => <Text aria-hidden style={{color,fontSize:size}}>{name === 'refresh-outline' ? '↻' : '◇'}</Text>;
+export const setStringAsync = async () => undefined;
 export const t = (key: string, args: any) => { const value = key.split('.').reduce((o: any, k) => o?.[k], zhHans); return typeof value === 'function' ? value(args) : value ?? key; };
 export const Modal = { confirm: async (title: string, message: string) => window.confirm(`${title}\n\n${message}`), alert: (title: string, message: string) => window.alert(`${title}\n${message}`) };
 const credentials = { token: 'fixture-only', secret: 'fixture-only' };
 export const useAuth = () => ({ credentials });
 export const getCurrentAuth = () => ({ credentials });
 export const getServerUrl = () => 'fixture://no-network';
+const codexListeners = new Set<() => void>();
+let codexBusy = false;
+let codexProfiles = [{
+    id: 'fixture-codex-account', displayName: 'Codex · Fixture', status: 'available', updatedAt: '2026-09-14T02:00:00.000Z', credentialVersion: 1,
+    quota: { state: 'unknown', remainingPercent: null, weeklyResetsAt: null, observedAt: null },
+}];
+const codexBindings = fleetBindings();
+function fleetBindings() { return ['device-1', 'device-2', 'device-3'].map(machineId => ({ machineId, profileId: 'fixture-codex-account', version: 1 })); }
+let codexSnapshot: any;
+function refreshCodexSnapshot() { codexSnapshot = {
+    profiles: codexProfiles, bindings: codexBindings, migration: 'none', loading: false, busy: codexBusy, error: null,
+    rename: async () => true, remove: async () => true, bind: async () => true,
+    refresh: async () => {
+        codexBusy = true; refreshCodexSnapshot(); notifyCodex();
+        await delay(900);
+        codexProfiles = codexProfiles.map(profile => ({ ...profile, updatedAt: '2026-09-14T02:15:00.000Z', quota: {
+            state: 'current', remainingPercent: 87, weeklyResetsAt: '2026-09-19T08:15:00.000Z', observedAt: '2026-09-14T02:15:00.000Z',
+        } }));
+        codexBusy = false; refreshCodexSnapshot(); notifyCodex();
+        calls.push({ machineId: 'device-1', componentId: 'codex-account', event: 'quota-refreshed', at: Date.now() });
+        return true;
+    },
+}; }
+function notifyCodex() { codexListeners.forEach(listener => listener()); }
+refreshCodexSnapshot();
+export function useCodexAccounts() {
+    return useSyncExternalStore(listener => { codexListeners.add(listener); return () => codexListeners.delete(listener); }, () => codexSnapshot, () => codexSnapshot);
+}
 const listeners = new Set<() => void>();
 let fleet = ['MacBook Pro', 'Mac mini', 'Linux 工作站'].map((displayName, i) => ({ id: `device-${i+1}`, active: true, createdAt: 3-i, metadata: { displayName } })) as Machine[];
 export const storage = { getState: () => ({ machines: Object.fromEntries(fleet.map(m => [m.id, m])), socketStatus: 'connected' }) };

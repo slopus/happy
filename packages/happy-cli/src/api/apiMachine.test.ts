@@ -386,6 +386,16 @@ describe('ApiMachineClient socket reconnection', () => {
         expect(refreshCodexUsage).toHaveBeenCalledTimes(1);
     });
 
+    it('accepts only an opaque grant for an explicitly requested account quota probe', async () => {
+        const refreshCodexAccountQuota = vi.fn().mockResolvedValue({ type: 'success', accepted: true });
+        const client = new ApiMachineClient('fake-token', makeMachine());
+        client.setRPCHandlers({ spawnSession: vi.fn(), stopSession: vi.fn(), requestShutdown: vi.fn(), refreshCodexAccountQuota });
+        const handler = rpcHandlers.get('refresh-codex-account-quota');
+        await expect(handler?.({ grant: 'a'.repeat(43) })).resolves.toEqual({ type: 'success', accepted: true });
+        await expect(handler?.({ grant: 'not-a-grant' })).rejects.toThrow(/valid Codex quota probe grant/i);
+        expect(refreshCodexAccountQuota).toHaveBeenCalledWith('a'.repeat(43));
+    });
+
     it('does not log an absolute directory when approval is required', async () => {
         const spawnSession = vi.fn().mockResolvedValue({
             type: 'requestToApproveDirectoryCreation',

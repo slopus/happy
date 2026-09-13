@@ -14,6 +14,10 @@ export interface CodexQuotaReport extends CodexLaunchAttribution {
   sourceSessionId: string; credentialVersion: number;
   weeklyUsedPercent: number; weeklyResetsAt: string; observedAt: string;
 }
+export interface CodexQuotaProbeReport extends CodexLaunchAttribution {
+  credentialVersion: number;
+  weeklyUsedPercent: number; weeklyResetsAt: string; observedAt: string;
+}
 export class CodexAccountRequestError extends Error {
   constructor(readonly code: string) { super(code); this.name = 'CodexAccountRequestError'; }
 }
