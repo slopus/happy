@@ -536,6 +536,152 @@ describe('mapClaudeLogMessageToSessionEnvelopes', () => {
         expect(result.envelopes).toHaveLength(0);
     });
 
+    it('does not attribute a main-loop message to a subagent via the parent uuid chain', () => {
+        const state = { currentTurnId: null };
+
+        // Main loop spawns a background Agent.
+        mapClaudeLogMessageToSessionEnvelopes({
+            type: 'assistant',
+            uuid: 'main-spawn-1',
+            message: {
+                role: 'assistant',
+                content: [{
+                    type: 'tool_use',
+                    id: 'agent-chain-1',
+                    name: 'Agent',
+                    input: { description: 'background work', prompt: 'go' },
+                }],
+            },
+        } as any, state);
+
+        // The subagent streams a message of its own.
+        const side = mapClaudeLogMessageToSessionEnvelopes({
+            type: 'assistant',
+            uuid: 'side-chain-1',
+            isSidechain: true,
+            parent_tool_use_id: 'agent-chain-1',
+            message: {
+                role: 'assistant',
+                content: [{ type: 'text', text: 'subagent working' }],
+            },
+        } as any, state);
+        expect(side.envelopes.length).toBeGreaterThan(0);
+
+        // SDKToLogConverter advances lastUuid for sidechain messages too, so the
+        // next main-loop message gets a parentUuid pointing into subagent history.
+        // It must still be mapped as a main-loop message.
+        const main = mapClaudeLogMessageToSessionEnvelopes({
+            type: 'assistant',
+            uuid: 'main-reply-1',
+            isSidechain: false,
+            parentUuid: 'side-chain-1',
+            message: {
+                role: 'assistant',
+                content: [{ type: 'text', text: 'answer for the user' }],
+            },
+        } as any, state);
+
+        expect(main.envelopes).toHaveLength(1);
+        expect(main.envelopes[0].subagent).toBeUndefined();
+        expect(main.envelopes[0].ev).toEqual({ t: 'text', text: 'answer for the user' });
+    });
+
+    it('keeps mapping background subagent messages after the spawning turn closed', () => {
+        const state: any = { currentTurnId: null };
+
+        mapClaudeLogMessageToSessionEnvelopes({
+            type: 'assistant',
+            uuid: 'main-spawn-2',
+            message: {
+                role: 'assistant',
+                content: [{
+                    type: 'tool_use',
+                    id: 'agent-outlives-1',
+                    name: 'Agent',
+                    input: { description: 'long job', prompt: 'go' },
+                }],
+            },
+        } as any, state);
+
+        // The turn ends while the background subagent is still running.
+        const closed = closeClaudeTurnWithStatus(state, 'completed');
+        state.currentTurnId = closed.currentTurnId;
+
+        const late = mapClaudeLogMessageToSessionEnvelopes({
+            type: 'assistant',
+            uuid: 'side-late-1',
+            isSidechain: true,
+            parent_tool_use_id: 'agent-outlives-1',
+            message: {
+                role: 'assistant',
+                content: [{ type: 'text', text: 'still running' }],
+            },
+        } as any, state);
+
+        expect(late.envelopes.some((envelope) => {
+            return envelope.ev.t === 'text' && envelope.ev.text === 'still running';
+        })).toBe(true);
+    });
+
+    it('still emits a main-loop reply while background subagents keep streaming', () => {
+        const state: any = { currentTurnId: null };
+
+        mapClaudeLogMessageToSessionEnvelopes({
+            type: 'assistant',
+            uuid: 'main-spawn-3',
+            message: {
+                role: 'assistant',
+                content: [{
+                    type: 'tool_use',
+                    id: 'agent-live-1',
+                    name: 'Agent',
+                    input: { description: 'long job', prompt: 'go' },
+                }],
+            },
+        } as any, state);
+
+        const closed = closeClaudeTurnWithStatus(state, 'completed');
+        state.currentTurnId = closed.currentTurnId;
+
+        // Subagent keeps streaming across the turn boundary.
+        mapClaudeLogMessageToSessionEnvelopes({
+            type: 'assistant',
+            uuid: 'side-live-1',
+            isSidechain: true,
+            parent_tool_use_id: 'agent-live-1',
+            message: {
+                role: 'assistant',
+                content: [{ type: 'text', text: 'progress' }],
+            },
+        } as any, state);
+
+        // New user turn, then the agent's reply - chained off the subagent message.
+        mapClaudeLogMessageToSessionEnvelopes({
+            type: 'user',
+            uuid: 'user-ask-1',
+            isSidechain: false,
+            parentUuid: 'side-live-1',
+            message: { role: 'user', content: 'how is it going?' },
+        } as any, state);
+
+        const reply = mapClaudeLogMessageToSessionEnvelopes({
+            type: 'assistant',
+            uuid: 'main-reply-3',
+            isSidechain: false,
+            parentUuid: 'user-ask-1',
+            message: {
+                role: 'assistant',
+                content: [{ type: 'text', text: 'going well' }],
+            },
+        } as any, state);
+
+        expect(reply.envelopes.some((envelope) => {
+            return envelope.ev.t === 'text' && envelope.ev.text === 'going well';
+        })).toBe(true);
+        const replyText = reply.envelopes.find((envelope) => envelope.ev.t === 'text');
+        expect(replyText?.subagent).toBeUndefined();
+    });
+
     it('does not emit envelopes for compact summary assistant messages', () => {
         const result = mapClaudeLogMessageToSessionEnvelopes({
             type: 'assistant',
