@@ -912,9 +912,13 @@ export async function startDaemon(): Promise<void> {
           // Check if process is still alive (signal 0 doesn't kill, just checks)
           process.kill(pid, 0);
         } catch (error) {
-          // Process is dead, remove from tracking
-          logger.debug(`[DAEMON RUN] Removing stale session with PID ${pid} (process no longer exists)`);
-          pidToTrackedSession.delete(pid);
+          // Process is dead. Go through the same path as a child exit so the
+          // session is preserved in `sessionIdToFinishedSession` and stays
+          // resumable — sessions started from a terminal are not our children,
+          // so `onChildExited` never fires for them and dropping them here
+          // silently made them unresumable until the next daemon restart.
+          logger.debug(`[DAEMON RUN] Reaping stale session with PID ${pid} (process no longer exists)`);
+          onChildExited(pid);
         }
       }
 
