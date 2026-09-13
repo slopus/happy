@@ -211,6 +211,23 @@ describe('Codex account security against migrated PostgreSQL and real encryption
         expect(list.body).not.toContain(launchId);
     });
 
+    it('accepts a quota probe only from the redeemed bound-account grant, without creating a session', async () => {
+        const profile = await upload();
+        expect((await bind(profile.id)).statusCode).toBe(200);
+        const issued = await issue();
+        const redeemed = await redeem(issued.grant);
+        expect(redeemed.statusCode).toBe(200);
+        const now = Date.now();
+        const body = { launchId: redeemed.json().launchId, machineId, credentialVersion: 1, weeklyUsedPercent: 19,
+            weeklyResetsAt: new Date(now + 7 * 86400_000).toISOString(), observedAt: new Date(now - 1000).toISOString() };
+        const report = (override = {}) => request('PUT', `/v1/codex-accounts/${profile.id}/quota-probe`, { ...body, ...override });
+        expect((await report()).json()).toEqual({ accepted: true });
+        expect((await report({ launchId: '00000000-0000-4000-8000-000000000001' })).statusCode).toBe(409);
+        const list = await request('GET', '/v1/codex-accounts');
+        expect(list.json().profiles[0].quota).toMatchObject({ state: 'current', remainingPercent: 81 });
+        expect(list.body).not.toContain('quota-probe:');
+    });
+
     it('renders unknown, stale, reset and invalid-profile quota without inventing fresh remaining values', async () => {
         const { profile, launchId, sourceSessionId } = await launch();
         const get = async () => (await request('GET', '/v1/codex-accounts')).json().profiles[0];

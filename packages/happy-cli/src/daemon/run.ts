@@ -30,6 +30,7 @@ import { buildResumeLaunch } from '@/resume/handleResumeCommand';
 import { detectResumeSupport } from '@/resume/localHappyAgentAuth';
 import { encodeBase64, decodeBase64, decrypt } from '@/api/encryption';
 import { CODEX_ACCOUNT_UNSET_ENV, withCodexAccountLaunch, type CodexAccountLaunch } from './codexAccountLaunch';
+import { refreshCodexAccountQuota } from './codexQuotaProbe';
 import { collectCodexUsageSnapshot, codexUsageSignature, mergeRecentCodexUsageSnapshot } from '@/codex/codexUsage';
 import { AsyncLock } from '@/utils/lock';
 import {
@@ -1083,6 +1084,7 @@ export async function startDaemon(): Promise<void> {
         };
       });
     });
+    const refreshBoundCodexAccountQuota = async (grant: string) => refreshCodexAccountQuota(api, machineId, grant);
 
     // Set RPC handlers
     apiMachine.setRPCHandlers({
@@ -1091,6 +1093,7 @@ export async function startDaemon(): Promise<void> {
       stopSession,
       requestShutdown: () => requestShutdown('happy-app'),
       refreshCodexUsage,
+      refreshCodexAccountQuota: refreshBoundCodexAccountQuota,
     });
 
     // Connect to server

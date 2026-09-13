@@ -153,7 +153,7 @@ const EnvironmentContent = React.memo(({ controller }: { controller: Environment
                 disabled={busy || !controller.rows.length} onPress={() => { void controller.scan(); }} />
         </View>
         <ScrollView ref={scroll} style={styles.scroller} contentContainerStyle={styles.scrollContent}>
-            <CodexAccountSection controller={accounts} machines={controller.rows.map(row => ({ id: row.machine.id, name: machineName(row) }))} />
+            <CodexAccountSection controller={accounts} machines={controller.rows.map(row => ({ id: row.machine.id, name: machineName(row), active: row.machine.active }))} />
             {!controller.rows.length ? <Text style={styles.empty}>{t('deviceEnvironment.emptyFleet')}</Text> : <>
                 {narrow ? <Text style={styles.hint}>{t('deviceEnvironmentDashboard.horizontalHint')}</Text> : null}
                 <View style={styles.matrix} testID="environment-matrix">

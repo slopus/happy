@@ -13,8 +13,9 @@ import { CODEX_ACCOUNT_UNSET_ENV } from '@/codex/codexAccountConfig';
 import { writeCodexAccountLaunchState, type CodexAccountLaunchState } from '@/codex/codexAccountLaunchState';
 export { CODEX_ACCOUNT_UNSET_ENV } from '@/codex/codexAccountConfig';
 
-export type AccountApi = Pick<ApiClient, 'redeemCodexSessionGrant' | 'attachCodexSession' | 'updateCodexAccountCredential' | 'reportCodexAccountQuota' | 'reportCodexAccountStatus'>;
-type PrepareOptions = NonNullable<Parameters<typeof prepareCodexHomeWithAuth>[1]> & { historyRoot?: string; sourceSessionId?: string; sourceThreadId?: string };
+export type AccountApi = Pick<ApiClient, 'redeemCodexSessionGrant' | 'attachCodexSession' | 'updateCodexAccountCredential' | 'reportCodexAccountQuota' | 'reportCodexAccountStatus'>
+  & Partial<Pick<ApiClient, 'reportCodexAccountQuotaProbe'>>;
+type PrepareOptions = NonNullable<Parameters<typeof prepareCodexHomeWithAuth>[1]> & { historyRoot?: string; sourceSessionId?: string; sourceThreadId?: string; skipHistory?: boolean };
 const fingerprint = (auth: CodexAccountAuth) => createHash('sha256').update(JSON.stringify(auth)).digest('hex');
 const identityFingerprint = (launchId: string, accountId: string) => createHash('sha256').update(`${launchId}\0${accountId}`).digest('hex');
 
@@ -72,8 +73,10 @@ export class CodexAccountLaunch {
     const home = await prepareCodexHomeWithAuth(JSON.stringify(parsed.data), options);
     const historyRoot = options?.historyRoot ?? join(configuration.happyHomeDir, 'codex-session-cache');
     try {
-      await restoreCodexAccountHistory(historyRoot, redeemed.profile.id, home);
-      if (options?.sourceThreadId) await copyCodexSourceThread(historyRoot, options.sourceSessionId ?? '', options.sourceThreadId, home);
+      if (!options?.skipHistory) {
+        await restoreCodexAccountHistory(historyRoot, redeemed.profile.id, home);
+        if (options?.sourceThreadId) await copyCodexSourceThread(historyRoot, options.sourceSessionId ?? '', options.sourceThreadId, home);
+      }
       const launch = new CodexAccountLaunch(api, machineId, home, {
         schemaVersion: 1, daemonPid: process.pid, machineId, profileId: redeemed.profile.id, launchId: redeemed.launchId,
         credentialVersion: redeemed.profile.credentialVersion, currentVersion: redeemed.profile.credentialVersion,
@@ -92,6 +95,41 @@ export class CodexAccountLaunch {
     };
     for (const key of CODEX_ACCOUNT_UNSET_ENV) delete env[key];
     return env;
+  }
+
+  /** Publish the rate-limit event produced by an explicit, no-history quota probe. */
+  async reportQuotaProbe(): Promise<{ accepted: boolean }> {
+    const snapshot = await collectCodexUsageSnapshot({ codexHome: this.home, maxDays: 1 });
+    const event = snapshot.latestEvent;
+    const secondary = event?.rateLimits?.secondary;
+    const observed = event?.rateLimitsTimestamp;
+    if (typeof secondary?.usedPercent !== 'number' || !Number.isFinite(secondary.usedPercent) || secondary.usedPercent < 0 || secondary.usedPercent > 100 ||
+        typeof secondary.resetsAt !== 'number' || !Number.isFinite(secondary.resetsAt) || !observed || !Number.isFinite(Date.parse(observed)) || Date.parse(observed) < this.startedAt ||
+        (secondary.windowMinutes !== undefined && secondary.windowMinutes !== 10080)) {
+      throw new Error('Codex did not return a current weekly quota snapshot');
+    }
+    const reset = new Date(secondary.resetsAt * 1000);
+    if (!Number.isFinite(reset.getTime()) || reset.getTime() <= Date.parse(observed)) throw new Error('Codex returned an invalid weekly quota reset time');
+    if (!this.api.reportCodexAccountQuotaProbe) throw new Error('This Paws daemon does not support quota probes');
+    return this.api.reportCodexAccountQuotaProbe(this.profileId, {
+      machineId: this.machineId, launchId: this.launchId, credentialVersion: this.credentialVersion,
+      weeklyUsedPercent: secondary.usedPercent, weeklyResetsAt: reset.toISOString(), observedAt: observed,
+    });
+  }
+
+  /** A probe has no Happy session, but Codex may still rotate its OAuth token. */
+  async syncProbeCredential(): Promise<void> {
+    const auth = await readCodexAccountAuth(this.home).catch(() => undefined);
+    if (!auth) throw new Error('Codex quota probe could not read its refreshed login');
+    if (identityFingerprint(this.launchId, auth.tokens.account_id) !== this.accountFingerprint) throw new Error('Codex quota probe identity changed unexpectedly');
+    if (fingerprint(auth) === this.authFingerprint) return;
+    if (!this.api.updateCodexAccountCredential) throw new Error('This Paws daemon cannot save a refreshed Codex login');
+    const result = await this.api.updateCodexAccountCredential(this.profileId, {
+      machineId: this.machineId, launchId: this.launchId, expectedVersion: this.currentVersion, auth,
+    });
+    this.currentVersion = result.profile.credentialVersion;
+    this.authFingerprint = fingerprint(auth);
+    await this.checkpoint();
   }
 
   trackProcess(pid: number): void { this.pid = pid; }

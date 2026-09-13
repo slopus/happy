@@ -11,7 +11,7 @@ import { Credentials } from '@/persistence';
 import { connectionState, isNetworkError } from '@/utils/serverConnectionErrors';
 import type { WorkerSessionStartupLifecycle } from './sessionStartupTrace';
 import type { CodexAccountAuth } from '@/codex/codexAccountAuth';
-import { codexAccountServerUrl, CodexAccountRequestError, type CodexAccountProfile, type CodexGrantRedemption, type CodexLaunchAttribution, type CodexQuotaReport } from './codexAccountTypes';
+import { codexAccountServerUrl, CodexAccountRequestError, type CodexAccountProfile, type CodexGrantRedemption, type CodexLaunchAttribution, type CodexQuotaReport, type CodexQuotaProbeReport } from './codexAccountTypes';
 
 export class ApiClient {
 
@@ -328,6 +328,9 @@ export class ApiClient {
   }
   reportCodexAccountQuota(profileId: string, request: CodexQuotaReport): Promise<{ accepted: boolean }> {
     return this.codexAccountRequest('PUT', `codex-accounts/${encodeURIComponent(profileId)}/quota-snapshot`, request);
+  }
+  reportCodexAccountQuotaProbe(profileId: string, request: CodexQuotaProbeReport): Promise<{ accepted: boolean }> {
+    return this.codexAccountRequest('PUT', `codex-accounts/${encodeURIComponent(profileId)}/quota-probe`, request);
   }
   reportCodexAccountStatus(profileId: string, request: CodexLaunchAttribution & { credentialVersion: number; status: 'needs-refresh' | 'invalid' }): Promise<{ profile: CodexAccountProfile }> {
     return this.codexAccountRequest('PUT', `codex-accounts/${encodeURIComponent(profileId)}/status`, request);
