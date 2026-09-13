@@ -2,7 +2,7 @@ import chalk from 'chalk';
 import { readCredentials, clearCredentials, clearMachineId, readSettings } from '@/persistence';
 import { authAndSetupMachineIfNeeded } from '@/ui/auth';
 import { configuration } from '@/configuration';
-import { existsSync, rmSync } from 'node:fs';
+import { handleDesktopAuth } from './desktopAuth';
 import { createInterface } from 'node:readline';
 import { stopDaemon, checkIfDaemonRunningAndCleanupStaleState } from '@/daemon/controlClient';
 import { logger } from '@/ui/logger';
@@ -17,6 +17,9 @@ export async function handleAuthCommand(args: string[]): Promise<void> {
   }
 
   switch (subcommand) {
+    case 'desktop':
+      await handleDesktopAuth(args.slice(1));
+      break;
     case 'login':
       await handleAuthLogin(args.slice(1));
       break;
@@ -116,8 +119,6 @@ async function handleAuthLogin(args: string[]): Promise<void> {
 
 async function handleAuthLogout(): Promise<void> {
   // "auth logout will essentially clear the private key that originally came from the phone"
-  const happyDir = configuration.happyHomeDir;
-
   // Check if authenticated
   const credentials = await readCredentials();
   if (!credentials) {
@@ -148,10 +149,10 @@ async function handleAuthLogout(): Promise<void> {
         console.log(chalk.gray('Stopped daemon'));
       } catch { }
 
-      // Remove entire happy directory (as current logout does)
-      if (existsSync(happyDir)) {
-        rmSync(happyDir, { recursive: true, force: true });
-      }
+      // The home is shared with Happy Agent. Logout owns only CLI authentication,
+      // never the Agent runtime/database or the local history used for resume.
+      await clearCredentials();
+      await clearMachineId();
 
       console.log(chalk.green('✓ Successfully logged out'));
       console.log(chalk.gray('  Run "happy auth login" to authenticate again'));

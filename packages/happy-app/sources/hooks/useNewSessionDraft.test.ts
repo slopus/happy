@@ -55,6 +55,13 @@ describe('useNewSessionDraft', () => {
         expect(useNewSessionDraft.getState().permissionMode).toBeNull();
         expect(useNewSessionDraft.getState().modelMode).toBeNull();
         expect(useNewSessionDraft.getState().effortLevel).toBeNull();
+        expect(useNewSessionDraft.getState().agentType).toBe('claude');
+    });
+
+    it.each(['claude', 'codex', 'rig'] as const)('preserves the saved %s selection', async (agentType) => {
+        mockPersistence.draft = persistedDraft({ agentType });
+        const { useNewSessionDraft } = await import('./useNewSessionDraft');
+        expect(useNewSessionDraft.getState().agentType).toBe(agentType);
     });
 
     it('loads persisted permission, model, and effort defaults', async () => {

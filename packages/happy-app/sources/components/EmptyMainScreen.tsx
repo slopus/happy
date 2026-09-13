@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, Platform, Pressable } from 'react-native';
+import { View, Text, Platform, Pressable, Linking, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Typography } from '@/constants/Typography';
 import { RoundButton } from '@/components/RoundButton';
@@ -153,6 +153,7 @@ export function EmptyMainScreen({
     const { theme } = useUnistyles();
     const styles = stylesheet;
     const router = useRouter();
+    const [showManualSetup, setShowManualSetup] = React.useState(false);
     const machines = useAllMachines({ includeOffline: true });
     const machineChoices = React.useMemo(() => collectMachineChoices(machines), [machines]);
     const hasOnlineMachines = machineChoices.some((machine) => machine.online);
@@ -213,22 +214,37 @@ export function EmptyMainScreen({
     }
 
     return (
-        <View style={styles.container}>
-            {/* Terminal-style code block */}
-            <Text style={styles.title}>{t('components.emptyMainScreen.readyToCode')}</Text>
-            <View style={styles.terminalBlock}>
+        <ScrollView contentContainerStyle={[styles.container, { flexGrow: 1, flex: undefined, paddingVertical: 24 }]}>
+            <Text style={styles.title}>Connect your computer</Text>
+            <Text style={styles.stateDescription}>
+                Install Happy Desktop from happy.engineering. In desktop setup, choose “I have the app open,” then scan the device-linking QR code here.
+                {'\n\n'}Use Claude Code or Codex, or try Happy Harness. Your account stays linked across your computer and phone.
+            </Text>
+            <RoundButton
+                title="Get Happy Desktop"
+                action={async () => { await Linking.openURL('https://happy.engineering'); }}
+            />
+            <Pressable
+                onPress={() => setShowManualSetup(value => !value)}
+                accessibilityRole="button"
+                accessibilityState={{ expanded: showManualSetup }}
+                style={styles.secondaryAction}
+            >
+                <Text style={styles.secondaryActionText}>Prefer the terminal? Set up Happy CLI</Text>
+            </Pressable>
+            {showManualSetup && <View style={styles.terminalBlock}>
                 <Text style={[styles.terminalText, styles.terminalTextFirst]}>
                     $ npm i -g happy
                 </Text>
                 <Text style={styles.terminalText}>
-                    $ happy
+                    $ happy claude  # or happy codex
                 </Text>
-            </View>
+            </View>}
 
 
             {Platform.OS !== 'web' && (
                 <>
-                    <View style={styles.stepsContainer}>
+                    {showManualSetup && <View style={styles.stepsContainer}>
                         <View style={styles.stepRow}>
                             <View style={styles.stepNumber}>
                                 <Text style={styles.stepNumberText}>1</Text>
@@ -253,7 +269,7 @@ export function EmptyMainScreen({
                                 {t('components.emptyMainScreen.scanQrCode')}
                             </Text>
                         </View>
-                    </View>
+                    </View>}
                     <View style={styles.buttonsContainer}>
                         <View style={styles.buttonWrapper}>
                             <RoundButton
@@ -281,6 +297,6 @@ export function EmptyMainScreen({
                 </>
             )}
             {showArchivedAction}
-        </View>
+        </ScrollView>
     );
 }

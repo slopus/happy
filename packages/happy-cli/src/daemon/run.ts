@@ -820,13 +820,20 @@ export async function startDaemon(): Promise<void> {
       pidToTrackedSession.delete(pid);
     };
 
+    let connectionReady = () => false;
     // Start control server
     const { port: controlPort, stop: stopControlServer } = await startDaemonControlServer({
       getChildren: getCurrentChildren,
       stopSession,
       spawnSession,
       requestShutdown: () => requestShutdown('happy-cli'),
-      onHappySessionWebhook
+      onHappySessionWebhook,
+      getConnectionStatus: () => ({
+        machineId,
+        cliVersion: configuration.currentCliVersion,
+        serverUrl: new URL(configuration.serverUrl).toString().replace(/\/+$/, ''),
+        connected: connectionReady(),
+      }),
     });
 
     // Write initial daemon state (no lock needed for state file)
@@ -877,6 +884,7 @@ export async function startDaemon(): Promise<void> {
 
     // Create realtime machine session
     const apiMachine = api.machineSyncClient(machine);
+    connectionReady = () => apiMachine.isReady();
 
     // Set RPC handlers
     apiMachine.setRPCHandlers({
