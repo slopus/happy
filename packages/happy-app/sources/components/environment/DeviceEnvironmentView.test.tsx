@@ -105,6 +105,15 @@ describe('DeviceEnvironment matrix', () => {
         const columns = renderer.root.findByProps({ testID: 'environment-device-columns' });
         expect(columns.props.horizontal).toBe(true); expect(columns.findAllByProps({ testID: 'environment-tool-github-cli' })).toHaveLength(0);
     });
+    it('lets a narrow screen identify and focus every device without relying on an undiscoverable swipe', async () => {
+        mocks.width = 390; render(controller());
+        const picker = renderer.root.findByProps({ testID: 'environment-device-picker' });
+        expect(textOf(picker)).toContain('a'); expect(textOf(picker)).toContain('b'); expect(textOf(picker)).toContain('c');
+        const b = renderer.root.findByProps({ testID: 'environment-device-picker-b' });
+        expect(b.props.accessibilityState.selected).toBe(false);
+        await act(async () => { b.props.onPress(); });
+        expect(renderer.root.findByProps({ testID: 'environment-device-picker-b' }).props.accessibilityState.selected).toBe(true);
+    });
     it('places account cards above the matrix and aligns the default account cells inside each device column', () => {
         mocks.width = 390; render(controller());
         const scroller = renderer.root.findAllByType('ScrollView').find((node: any) => !node.props.horizontal);

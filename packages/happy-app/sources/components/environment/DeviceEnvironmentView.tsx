@@ -68,6 +68,8 @@ const EnvironmentContent = React.memo(({ controller }: { controller: Environment
     const [contentWidth, setContentWidth] = React.useState(Math.min(width, 1040));
     const [selected, setSelected] = React.useState<{ machineId: string; componentId: EnvironmentComponentId } | null>(null);
     const scroll = React.useRef<ScrollView>(null);
+    const deviceScroll = React.useRef<ScrollView>(null);
+    const [visibleMachineId, setVisibleMachineId] = React.useState<string | null>(null);
     const latest = React.useRef(controller); latest.current = controller;
     const narrow = contentWidth < 740;
     const labelWidth = narrow ? 112 : 180;
@@ -82,6 +84,15 @@ const EnvironmentContent = React.memo(({ controller }: { controller: Environment
         .filter(cell => { const action = describeEnvironmentCell(cell).action; return action && action !== 'upgrade'; }).length;
     const selectedRow = controller.rows.find(row => row.machine.id === selected?.machineId);
     const selectedCell = selected && selectedRow?.cells[selected.componentId];
+    const selectedDeviceId = controller.rows.some(row => row.machine.id === visibleMachineId)
+        ? visibleMachineId
+        : controller.rows[0]?.machine.id ?? null;
+    function focusDevice(machineId: string) {
+        const index = controller.rows.findIndex(row => row.machine.id === machineId);
+        if (index < 0) return;
+        setVisibleMachineId(machineId);
+        requestAnimationFrame(() => deviceScroll.current?.scrollTo({ x: index * cellWidth, animated: true }));
+    }
     function showDetails(row: EnvironmentRow, componentId: EnvironmentComponentId) {
         setSelected({ machineId: row.machine.id, componentId });
         requestAnimationFrame(() => scroll.current?.scrollToEnd({ animated: false }));
@@ -156,6 +167,16 @@ const EnvironmentContent = React.memo(({ controller }: { controller: Environment
             <CodexAccountSection controller={accounts} machines={controller.rows.map(row => ({ id: row.machine.id, name: machineName(row), active: row.machine.active }))} />
             {!controller.rows.length ? <Text style={styles.empty}>{t('deviceEnvironment.emptyFleet')}</Text> : <>
                 {narrow ? <Text style={styles.hint}>{t('deviceEnvironmentDashboard.horizontalHint')}</Text> : null}
+                {narrow && controller.rows.length > 1 ? <ScrollView horizontal showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.devicePicker} testID="environment-device-picker">
+                    {controller.rows.map(row => <Pressable key={row.machine.id} testID={`environment-device-picker-${row.machine.id}`}
+                        accessibilityRole="button" accessibilityState={{ selected: selectedDeviceId === row.machine.id }}
+                        accessibilityLabel={machineName(row)} onPress={() => focusDevice(row.machine.id)}
+                        style={({ pressed }) => [styles.devicePickerItem, selectedDeviceId === row.machine.id && styles.devicePickerItemSelected, pressed && styles.pressed]}>
+                        <Text numberOfLines={1} style={[styles.devicePickerText, selectedDeviceId === row.machine.id && styles.devicePickerTextSelected]}>{machineName(row)}</Text>
+                        <Text style={[styles.devicePickerStatus, connected && row.machine.active && styles.ready]}>{t(!connected ? 'deviceEnvironmentDashboard.previousResult' : row.machine.active ? 'deviceEnvironmentDashboard.online' : 'deviceEnvironmentDashboard.offline')}</Text>
+                    </Pressable>)}
+                </ScrollView> : null}
                 <View style={styles.matrix} testID="environment-matrix">
                     <View style={{ width: labelWidth }}>
                         <View style={styles.columnHeader}><Text style={styles.secondary}>{t('deviceEnvironmentDashboard.tools')}</Text></View>
@@ -170,7 +191,11 @@ const EnvironmentContent = React.memo(({ controller }: { controller: Environment
                             </View>;
                         })}
                     </View>
-                    <ScrollView horizontal style={styles.deviceScroller} contentContainerStyle={styles.devices} testID="environment-device-columns">
+                    <ScrollView ref={deviceScroll} horizontal style={styles.deviceScroller} contentContainerStyle={styles.devices} testID="environment-device-columns"
+                        onMomentumScrollEnd={event => {
+                            const index = Math.round(event.nativeEvent.contentOffset.x / cellWidth);
+                            setVisibleMachineId(controller.rows[index]?.machine.id ?? null);
+                        }}>
                         <View>
                             <View style={styles.tableRow}>{controller.rows.map(row => <View key={row.machine.id} style={[styles.columnHeader, { width: cellWidth }]} testID={`environment-device-${row.machine.id}`}>
                                 <Text numberOfLines={1} style={styles.deviceName}>{machineName(row)}</Text>
@@ -242,6 +267,9 @@ const styles = StyleSheet.create(theme => ({
     primaryText: { color: theme.colors.button.primary.tint }, pressed: { backgroundColor: theme.colors.surfacePressed }, focused: { backgroundColor: theme.colors.surfaceSelected, outlineWidth: 1, outlineColor: theme.colors.textLink }, disabled: { opacity: 0.45 },
     footer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: 16, borderTopWidth: StyleSheet.hairlineWidth, borderColor: theme.colors.divider },
     footerCopy: { flex: 1, gap: 4 }, hint: { color: theme.colors.textSecondary, fontSize: 12, paddingVertical: 4 }, empty: { color: theme.colors.textSecondary, padding: 20 },
+    devicePicker: { gap: 8, paddingBottom: 10 }, devicePickerItem: { minWidth: 132, maxWidth: 196, minHeight: 50, paddingHorizontal: 10, paddingVertical: 7, justifyContent: 'center', gap: 2, borderRadius: 8, backgroundColor: theme.colors.surfaceHigh },
+    devicePickerItemSelected: { backgroundColor: theme.colors.surfaceSelected }, devicePickerText: { color: theme.colors.text, fontSize: 12, lineHeight: 17, ...Typography.default('semiBold') },
+    devicePickerTextSelected: { color: theme.colors.textLink }, devicePickerStatus: { color: theme.colors.textSecondary, fontSize: 11, lineHeight: 15, ...Typography.default() },
     details: { padding: 14, marginTop: 12, borderRadius: 8, gap: 6, backgroundColor: theme.colors.surfaceHigh }, detailHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
     detailTitle: { flex: 1, color: theme.colors.text, fontSize: 13, ...Typography.default('semiBold') }, detailCopy: { color: theme.colors.textSecondary, fontSize: 12, lineHeight: 19 },
     command: { color: theme.colors.text, backgroundColor: theme.colors.surfaceSelected, padding: 8, borderRadius: 4, fontSize: 12, ...Typography.mono() },
