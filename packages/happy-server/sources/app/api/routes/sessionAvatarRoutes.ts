@@ -39,7 +39,10 @@ function baseUrl(request: { headers: Record<string, string | string[] | undefine
   if (process.env.PUBLIC_URL) return process.env.PUBLIC_URL;
   const host = request.headers["x-forwarded-host"] ?? request.headers.host;
   const proto = request.headers["x-forwarded-proto"] ?? "http";
-  return `${Array.isArray(proto) ? proto[0] : proto}://${Array.isArray(host) ? host[0] : host}`;
+  const hostname = Array.isArray(host) ? host[0] : host;
+  if (typeof hostname === "string" && hostname.length > 0)
+    return `${Array.isArray(proto) ? proto[0] : proto}://${hostname}`;
+  return `http://localhost:${process.env.PORT || "3005"}`;
 }
 
 export function sessionAvatarRoutes(app: Fastify) {
@@ -72,12 +75,18 @@ export function sessionAvatarRoutes(app: Fastify) {
           avatarVersion: { increment: 1 },
         },
       });
+      // Commit the descriptor, removal revision and event sequence together. Serializable
+      // contention uses inTx's bounded retry; a failed transaction publishes no update.
       const account = await tx.account.update({
         where: { id: accountId },
         data: { seq: { increment: 1 } },
         select: { seq: true },
       });
-      return { avatar: sessionAvatar(updated), seq: account.seq };
+      return {
+        avatar: sessionAvatar(updated),
+        seq: account.seq,
+        avatarVersion: updated.avatarVersion,
+      };
     });
     if (result && "seq" in result) {
       eventRouter.emitUpdate({
@@ -90,6 +99,7 @@ export function sessionAvatarRoutes(app: Fastify) {
           undefined,
           undefined,
           result.avatar,
+          result.avatarVersion,
         ),
         recipientFilter: { type: "all-interested-in-session", sessionId: id },
       });

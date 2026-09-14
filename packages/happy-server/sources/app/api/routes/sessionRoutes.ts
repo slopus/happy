@@ -74,6 +74,7 @@ export function sessionRoutes(app: Fastify) {
                     dataEncryptionKey: v.dataEncryptionKey ? Buffer.from(v.dataEncryptionKey).toString('base64') : null,
                     projectId: v.projectId,
                     avatar: sessionAvatar(v),
+                    avatarVersion: v.avatarVersion,
                     lastMessage: null
                 };
             })
@@ -134,6 +135,7 @@ export function sessionRoutes(app: Fastify) {
                 dataEncryptionKey: v.dataEncryptionKey ? Buffer.from(v.dataEncryptionKey).toString('base64') : null,
                 projectId: v.projectId,
                 avatar: sessionAvatar(v),
+                avatarVersion: v.avatarVersion,
             }))
         });
     });
@@ -231,6 +233,7 @@ export function sessionRoutes(app: Fastify) {
                 dataEncryptionKey: v.dataEncryptionKey ? Buffer.from(v.dataEncryptionKey).toString('base64') : null,
                 projectId: v.projectId,
                 avatar: sessionAvatar(v),
+                avatarVersion: v.avatarVersion,
             })),
             nextCursor,
             hasNext
@@ -298,6 +301,7 @@ export function sessionRoutes(app: Fastify) {
                     dataEncryptionKey: sessionForResponse.dataEncryptionKey ? Buffer.from(sessionForResponse.dataEncryptionKey).toString('base64') : null,
                     projectId: sessionForResponse.projectId,
                     avatar: sessionAvatar(sessionForResponse),
+                    avatarVersion: sessionForResponse.avatarVersion,
                     active: sessionForResponse.active,
                     activeAt: sessionForResponse.lastActiveAt.getTime(),
                     createdAt: sessionForResponse.createdAt.getTime(),
@@ -349,6 +353,7 @@ export function sessionRoutes(app: Fastify) {
                     dataEncryptionKey: session.dataEncryptionKey ? Buffer.from(session.dataEncryptionKey).toString('base64') : null,
                     projectId: session.projectId,
                     avatar: sessionAvatar(session),
+                    avatarVersion: session.avatarVersion,
                     active: session.active,
                     activeAt: session.lastActiveAt.getTime(),
                     createdAt: session.createdAt.getTime(),

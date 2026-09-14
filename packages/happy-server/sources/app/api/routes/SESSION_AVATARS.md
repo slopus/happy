@@ -3,7 +3,10 @@
 Session responses (v1 list/create-or-load and v2 lists) and `new-session` events
 include optional, nullable `avatar: { ref, preview, version }`. Old servers may omit
 it. `update-session` events include it only on change; `null` explicitly clears it.
-The existing account event sequence orders changes, including removals.
+The existing account event sequence orders events. Snapshots and avatar-change events also
+carry optional `avatarVersion`, the per-session revision even when `avatar` is null. Clients
+compare this revision across REST snapshots and events so a delayed update cannot resurrect
+a removed picture. With an image it matches `avatar.version`; it starts at zero without one.
 
 Under `/v1/sessions/:sessionId/avatar`:
 
@@ -32,3 +35,26 @@ The additive database migration adds `Session.avatarRef`, `avatarPreview`, and
 `avatarVersion`; existing sessions default to no picture. Project sessions do not need a
 session avatar. Mobile chooses session artwork, then project artwork, then its fallback.
 Bot producers publish the bot's picture here without creating a synthetic project.
+
+## Why sessions
+
+An avatar belongs to the conversation being displayed, not necessarily to its project.
+The session-level field also leaves room for distinct conversation pictures later, without
+requiring independently editable avatars in Happy Agent's direct API today.
+
+We considered a relay-only project for each bot to reuse project avatar storage. Older
+clients would treat those records as normal projects and offer invalid new-session/worktree
+actions. Avoiding that would require capability filtering. File viewers can already use the
+bot's dedicated workspace without a fake project; tracking changes needs its own baseline.
+A future direct Agent API client can consume the existing bot image directly.
+
+The transport follows project avatars. Small resource checks and error strings remain local
+so failures clearly identify a session picture rather than a project picture; encryption is
+shared. The complete route set is not a trivial copy: session events, immutable local uploads,
+rate-limit lifetime and deletion races have their own ownership here. We intentionally avoid
+introducing a generic callback-based route framework in this change.
+
+The descriptor, avatar revision and account sequence commit together. This deliberately
+accepts Serializable transaction contention (with bounded retries) to preserve atomic event
+ordering. Public-file protection in this change covers new session avatars only; it does not
+change the existing project-avatar or attachment transport policy.

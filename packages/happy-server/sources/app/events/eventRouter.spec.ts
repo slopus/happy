@@ -30,6 +30,8 @@ describe('session avatar events', () => {
         expect(buildUpdateSessionUpdate('s1', 2, 'u2').body).not.toHaveProperty('avatar');
         expect(buildUpdateSessionUpdate('s1', 3, 'u3', undefined, undefined, undefined, avatar).body.avatar).toEqual(avatar);
         expect(buildUpdateSessionUpdate('s1', 4, 'u4', undefined, undefined, undefined, null).body.avatar).toBeNull();
+        expect(buildUpdateSessionUpdate('s1', 5, 'u5', undefined, undefined, undefined, null, 2).body).toMatchObject({ avatar: null, avatarVersion: 2 });
+        expect(event.body.avatarVersion).toBe(1);
     });
 });
 

@@ -44,7 +44,8 @@ vi.mock("@/app/events/eventRouter", () => ({
     _s: unknown,
     _p: unknown,
     avatar: unknown,
-  ) => ({ id: updateId, seq, body: { t: "update-session", id, avatar } }),
+    avatarVersion: number,
+  ) => ({ id: updateId, seq, body: { t: "update-session", id, avatar, avatarVersion } }),
 }));
 vi.mock("@/storage/files", () => ({
   isLocalStorage: () => fixture.local,
@@ -88,6 +89,9 @@ describe("session avatar transport", () => {
       (_request, body, done) => done(null, body),
     );
     app = instance.withTypeProvider<ZodTypeProvider>() as unknown as Fastify;
+    app.addHook("onRequest", async (request) => {
+      if (request.headers["x-hostless"]) delete request.headers.host;
+    });
     app.decorate("authenticate", async (request: any, reply: any) => {
       if (!request.headers["x-user"]) return reply.code(401).send({ error: "Unauthorized" });
       request.userId = request.headers["x-user"];
@@ -96,11 +100,26 @@ describe("session avatar transport", () => {
     await app.ready();
   });
   afterEach(async () => {
+    vi.unstubAllEnvs();
     await app.close();
     await rm(fixture.directory, { recursive: true, force: true });
   });
   const headers = { "x-user": "u1" };
   const base = "/v1/sessions/s1/avatar";
+
+  it("uses the configured local port when the request has no usable host", async () => {
+    fixture.local = true;
+    vi.stubEnv("PUBLIC_URL", "");
+    vi.stubEnv("PORT", "4321");
+    const upload = await app.inject({
+      method: "POST",
+      url: `${base}/request-upload`,
+      headers: { ...headers, "x-hostless": "true" },
+      payload: { size: 42 },
+    });
+    expect(upload.statusCode).toBe(200);
+    expect(upload.json().uploadUrl).toMatch(/^http:\/\/localhost:4321\//);
+  });
 
   it("activates an encrypted upload, publishes it once, and explicitly clears it", async () => {
     const upload = await app.inject({
@@ -129,6 +148,7 @@ describe("session avatar transport", () => {
       avatar: null,
     });
     expect(fixture.emitUpdate.mock.calls.at(-1)?.[0].payload.body.avatar).toBeNull();
+    expect(fixture.emitUpdate.mock.calls.at(-1)?.[0].payload.body.avatarVersion).toBe(2);
     await app.inject({ method: "DELETE", url: base, headers });
     expect(fixture.emitUpdate).toHaveBeenCalledTimes(2);
     expect(
