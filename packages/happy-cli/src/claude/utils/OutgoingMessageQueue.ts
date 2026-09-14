@@ -119,11 +119,13 @@ export class OutgoingMessageQueue {
                 break;
             }
             
-            // Send if not already sent
+            // Send if not already sent. The downstream session-protocol mapper
+            // decides which subtypes produce envelopes (e.g. `init` produces
+            // none, `hook_response` with a `systemMessage` produces a service
+            // envelope). Don't drop system messages here — that masked the
+            // mapper's hook_response path entirely before this fix.
             if (!item.sent) {
-                if (item.logMessage.type !== 'system') {
-                    this.sendFunction(item.logMessage);
-                }
+                this.sendFunction(item.logMessage);
                 item.sent = true;
             }
             
