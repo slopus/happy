@@ -8,6 +8,7 @@ import { FileHandle } from 'node:fs/promises'
 import { readFile, writeFile, mkdir, open, unlink, rename, stat } from 'node:fs/promises'
 import { existsSync, writeFileSync, readFileSync, unlinkSync, renameSync, linkSync } from 'node:fs'
 import { constants } from 'node:fs'
+import os from 'node:os'
 import { configuration } from '@/configuration'
 import * as z from 'zod';
 import { encodeBase64, decodeBase64 } from '@/api/encryption';
@@ -422,7 +423,18 @@ export type PersistedSession = {
   metadataVersion: number;
   agentStateVersion: number;
   metadata: Metadata;
+  /** When this record was written. Used to reason about PID reuse across boots. */
   savedAt: number;
+  /**
+   * Last time the session's process was known to be running: stamped when it
+   * reports in, and again when it exits. Absent on records written by older
+   * versions, which fall back to `savedAt`.
+   *
+   * This is what expiry is measured from. `savedAt` cannot serve — it is only
+   * ever written once, when the session starts, so measuring age from it
+   * expires a session on its 14th birthday no matter how heavily it is used.
+   */
+  lastAliveAt?: number;
 };
 
 type SessionsFile = {
@@ -430,6 +442,31 @@ type SessionsFile = {
 };
 
 const SESSION_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
+
+/** Last time this session was known to be running (older records: when it started). */
+function lastAliveAt(session: PersistedSession): number {
+  return session.lastAliveAt ?? session.savedAt;
+}
+
+/**
+ * Is the process that was running this session still up?
+ *
+ * A record written before the current boot cannot be trusted to answer this:
+ * a reboot resets the PID space, so an unrelated process may now hold that PID.
+ * Records from before the boot are therefore reported as not running — which is
+ * true, since nothing survives a reboot.
+ */
+function isSessionProcessRunning(session: PersistedSession): boolean {
+  const pid = session.metadata?.hostPid;
+  if (!pid) return false;
+  if (session.savedAt < Date.now() - os.uptime() * 1000) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export function readPersistedSessions(): Record<string, PersistedSession> {
   try {
@@ -440,7 +477,15 @@ export function readPersistedSessions(): Record<string, PersistedSession> {
     const now = Date.now();
     const sessions: Record<string, PersistedSession> = {};
     for (const [id, session] of Object.entries(data.sessions)) {
-      if (now - session.savedAt < SESSION_MAX_AGE_MS) {
+      // Never drop a session that is still running: its record holds the only
+      // copy of the encryption key, so dropping it makes a live session
+      // permanently unreachable — the daemon can no longer re-adopt it after a
+      // restart, and resume cannot find it either.
+      if (isSessionProcessRunning(session)) {
+        sessions[id] = session;
+        continue;
+      }
+      if (now - lastAliveAt(session) < SESSION_MAX_AGE_MS) {
         sessions[id] = session;
       }
     }
@@ -450,13 +495,35 @@ export function readPersistedSessions(): Record<string, PersistedSession> {
   }
 }
 
+/**
+ * Record that a session's process has stopped, so its expiry is measured from
+ * now rather than from whenever it started.
+ */
+export function markSessionStopped(sessionId: string): void {
+  try {
+    // The process has already exited, so expiry filtering could hide the very
+    // record whose retention window needs to start now.
+    if (!existsSync(configuration.sessionsFile)) return;
+    const data: SessionsFile = JSON.parse(readFileSync(configuration.sessionsFile, 'utf-8'));
+    const session = data.sessions?.[sessionId];
+    if (!session) return;
+    persistSession(sessionId, { ...session, lastAliveAt: Date.now() });
+  } catch (error) {
+    logger.debug(`[PERSISTENCE] Failed to mark session ${sessionId} stopped:`, error);
+  }
+}
+
+function writeSessionsFile(sessions: Record<string, PersistedSession>): void {
+  const tmpFile = configuration.sessionsFile + '.tmp';
+  writeFileSync(tmpFile, JSON.stringify({ sessions }, null, 2), 'utf-8');
+  renameSync(tmpFile, configuration.sessionsFile);
+}
+
 export function persistSession(sessionId: string, session: PersistedSession): void {
   try {
     const existing = readPersistedSessions();
     existing[sessionId] = session;
-    const tmpFile = configuration.sessionsFile + '.tmp';
-    writeFileSync(tmpFile, JSON.stringify({ sessions: existing }, null, 2), 'utf-8');
-    renameSync(tmpFile, configuration.sessionsFile);
+    writeSessionsFile(existing);
   } catch (error) {
     logger.debug(`[PERSISTENCE] Failed to persist session ${sessionId}:`, error);
   }
