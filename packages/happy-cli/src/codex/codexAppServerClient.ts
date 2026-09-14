@@ -874,7 +874,7 @@ export class CodexAppServerClient {
         this.mcpUiCapability = null;
 
         const codexCommand = this.connection.type === 'spawn'
-            ? resolveCodexExecutablePath()
+            ? resolveCodexExecutablePath(this.processEnv)
             : undefined;
         if (codexCommand && !isAppServerAvailable(codexCommand)) {
             throw new Error(

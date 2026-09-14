@@ -1,10 +1,9 @@
-import { spawn, type ChildProcess } from 'node:child_process';
 import { tmpdir } from 'node:os';
+import { CodexAppServerClient } from '@/codex/codexAppServerClient';
 import type { AccountApi } from './codexAccountLaunch';
 import { CodexAccountLaunch } from './codexAccountLaunch';
 
 const PROBE_TIMEOUT_MS = 45_000;
-const TERMINATION_GRACE_MS = 5_000;
 const PROBE_PROMPT = 'Reply with exactly: ok';
 
 function applyCodexNetworkEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
@@ -12,44 +11,23 @@ function applyCodexNetworkEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   return proxyUrl ? { ...env, HTTP_PROXY: proxyUrl, HTTPS_PROXY: proxyUrl, http_proxy: proxyUrl, https_proxy: proxyUrl } : env;
 }
 
-function terminate(child: ChildProcess, signal: NodeJS.Signals): void {
+async function runProbeTurn(environment: NodeJS.ProcessEnv): Promise<void> {
+  // App-server is the same protocol used by Paws Codex sessions. Unlike
+  // `codex exec`, it persists the token-count notification (including the
+  // weekly rate-limit snapshot) in this temporary CODEX_HOME.
+  const client = new CodexAppServerClient(undefined, { type: 'spawn' }, environment);
   try {
-    if (process.platform !== 'win32' && child.pid) process.kill(-child.pid, signal);
-    else child.kill(signal);
-  } catch { /* Already stopped. */ }
-}
-
-function runProbeProcess(environment: NodeJS.ProcessEnv, onStart: (pid: number) => void, timeoutMs = PROBE_TIMEOUT_MS): Promise<void> {
-  return new Promise((resolve, reject) => {
-    let child: ChildProcess;
-    let timedOut = false;
-    let forceTimer: NodeJS.Timeout | undefined;
-    let finalTimer: NodeJS.Timeout | undefined;
-    try {
-      // `codex exec` is the supported local Codex entry point. Its first model
-      // event carries the same rate-limit snapshot used by ordinary sessions.
-      child = spawn('codex', ['exec', '--skip-git-repo-check', PROBE_PROMPT], {
-        cwd: tmpdir(), env: environment, stdio: ['ignore', 'ignore', 'ignore'], windowsHide: true, detached: process.platform !== 'win32',
-      });
-    } catch { reject(new Error('Unable to start the Codex quota probe')); return; }
-    if (child.pid) onStart(child.pid);
-    const clear = () => { clearTimeout(timer); if (forceTimer) clearTimeout(forceTimer); if (finalTimer) clearTimeout(finalTimer); };
-    const timer = setTimeout(() => {
-      timedOut = true;
-      terminate(child, 'SIGTERM');
-      forceTimer = setTimeout(() => {
-        terminate(child, 'SIGKILL');
-        finalTimer = setTimeout(() => { reject(new Error('Codex quota probe timed out')); }, TERMINATION_GRACE_MS);
-      }, TERMINATION_GRACE_MS);
-    }, timeoutMs);
-    child.once('error', () => { clear(); reject(new Error('Unable to start the Codex quota probe')); });
-    child.once('exit', (code) => {
-      clear();
-      if (timedOut) reject(new Error('Codex quota probe timed out'));
-      else if (code === 0) resolve();
-      else reject(new Error('Codex quota probe did not complete'));
+    await client.connect();
+    await client.startThread({ cwd: tmpdir(), approvalPolicy: 'never', sandbox: 'read-only' });
+    const { aborted } = await client.sendTurnAndWait(PROBE_PROMPT, {
+      approvalPolicy: 'never',
+      sandbox: 'read-only',
+      turnTimeoutMs: PROBE_TIMEOUT_MS,
     });
-  });
+    if (aborted) throw new Error('Codex quota probe did not complete');
+  } finally {
+    await client.disconnect().catch(() => undefined);
+  }
 }
 
 export type CodexQuotaProbeResult = { type: 'success'; accepted: boolean } | { type: 'error'; errorMessage: string };
@@ -60,7 +38,7 @@ export async function refreshCodexAccountQuota(api: AccountApi, machineId: strin
   let processFinished = false;
   try {
     launch = await CodexAccountLaunch.prepare(api, machineId, grant, { skipHistory: true });
-    await runProbeProcess(applyCodexNetworkEnv(launch.environment(process.env)), (pid) => launch!.trackProcess(pid));
+    await runProbeTurn(applyCodexNetworkEnv(launch.environment(process.env)));
     processFinished = true;
     await launch.syncProbeCredential();
     const { accepted } = await launch.reportQuotaProbe();
