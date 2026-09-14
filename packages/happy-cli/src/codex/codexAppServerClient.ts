@@ -1136,9 +1136,6 @@ export class CodexAppServerClient {
         }
     }
 
-    /** Default timeout for waiting on turn completion (ms). 10 minutes. */
-    private static readonly TURN_TIMEOUT_MS = 10 * 60 * 1000;
-
     /**
      * Send a user turn and wait for it to complete (task_complete or turn_aborted).
      * Returns { aborted: true } if the turn was aborted (user cancel, permission reject, etc.).
@@ -1150,7 +1147,6 @@ export class CodexAppServerClient {
         sandbox?: SandboxMode;
         effort?: ReasoningEffort;
         extraInputItems?: InputItem[];
-        turnTimeoutMs?: number;
     }): Promise<{ aborted: boolean }> {
         // Wait for any in-flight interruptTurn() to complete before starting a new
         // turn. Otherwise the stale turn/interrupt RPC can reach Codex after our
@@ -1163,33 +1159,21 @@ export class CodexAppServerClient {
             await new Promise(resolve => setTimeout(resolve, 0));
         }
 
-        const timeoutMs = opts?.turnTimeoutMs ?? CodexAppServerClient.TURN_TIMEOUT_MS;
-        let timer: ReturnType<typeof setTimeout> | null = null;
-
         const completion = new Promise<boolean>((resolve) => {
             this.pendingTurnCompletion = {
                 resolve,
                 turnId: null,
             };
-
-            timer = setTimeout(() => {
-                if (this.pendingTurnCompletion) {
-                    logger.warn(`[CodexAppServer] Turn timed out after ${timeoutMs}ms — treating as abort`);
-                    this.resolvePendingTurn(true);
-                }
-            }, timeoutMs);
         });
 
         try {
             await this.sendTurn(prompt, opts);
         } catch (err) {
-            if (timer) clearTimeout(timer);
             this.pendingTurnCompletion = null;
             throw err;
         }
 
         const aborted = await completion;
-        if (timer) clearTimeout(timer);
         return { aborted };
     }
 
