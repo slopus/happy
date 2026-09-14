@@ -240,6 +240,12 @@ export const zhHans: TranslationStructure = {
         groupToolCallsSubtitle: '将连续的工具调用折叠到一个容器中',
     },
 
+    bashMode: {
+        noOutput: '无输出',
+        exitCode: ({ code }: { code: number }) => `已退出，退出码 ${code}`,
+        failed: ({ error }: { error: string }) => `无法运行命令：${error}`,
+    },
+
     errors: {
         networkError: '发生网络错误',
         serverError: '发生服务器错误',

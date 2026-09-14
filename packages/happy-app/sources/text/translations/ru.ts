@@ -224,6 +224,12 @@ export const ru: TranslationStructure = {
         groupToolCallsSubtitle: 'Сворачивать подряд идущие вызовы инструментов в один блок',
     },
 
+    bashMode: {
+        noOutput: 'нет вывода',
+        exitCode: ({ code }: { code: number }) => `завершено с кодом ${code}`,
+        failed: ({ error }: { error: string }) => `Не удалось выполнить команду: ${error}`,
+    },
+
     errors: {
         networkError: 'Произошла ошибка сети',
         serverError: 'Произошла ошибка сервера',

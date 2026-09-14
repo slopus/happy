@@ -252,6 +252,13 @@ export const en = {
         notSupportedMessage: 'This agent does not support image attachments. Images were not sent.',
     },
 
+    bashMode: {
+        // !-prefix bash command mode in the chat input
+        noOutput: 'no output',
+        exitCode: ({ code }: { code: number }) => `exited with code ${code}`,
+        failed: ({ error }: { error: string }) => `Could not run command: ${error}`,
+    },
+
     errors: {
         networkError: 'Network error occurred',
         serverError: 'Server error occurred',

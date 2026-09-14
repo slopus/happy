@@ -239,6 +239,12 @@ export const es: TranslationStructure = {
         groupToolCallsSubtitle: 'Contrae las llamadas consecutivas a herramientas en un solo contenedor',
     },
 
+    bashMode: {
+        noOutput: 'sin salida',
+        exitCode: ({ code }: { code: number }) => `terminó con el código ${code}`,
+        failed: ({ error }: { error: string }) => `No se pudo ejecutar el comando: ${error}`,
+    },
+
     errors: {
         networkError: 'Error de conexión',
         serverError: 'Error del servidor',

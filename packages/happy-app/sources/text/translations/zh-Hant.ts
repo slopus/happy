@@ -239,6 +239,12 @@ export const zhHant: TranslationStructure = {
         groupToolCallsSubtitle: '將連續的工具呼叫摺疊到單一容器中',
     },
 
+    bashMode: {
+        noOutput: '無輸出',
+        exitCode: ({ code }: { code: number }) => `結束，退出碼為 ${code}`,
+        failed: ({ error }: { error: string }) => `無法執行命令：${error}`,
+    },
+
     errors: {
         networkError: '發生網路錯誤',
         serverError: '發生伺服器錯誤',
