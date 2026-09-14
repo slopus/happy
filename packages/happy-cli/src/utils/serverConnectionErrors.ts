@@ -247,7 +247,12 @@ export function startOfflineReconnection<TSession>(
 /** All network error codes that trigger offline mode */
 export const NETWORK_ERROR_CODES = [
     'ECONNREFUSED', 'ENOTFOUND', 'ETIMEDOUT',
-    'ECONNRESET', 'EHOSTUNREACH', 'ENETUNREACH'
+    'ECONNRESET', 'EHOSTUNREACH', 'ENETUNREACH',
+    // Transient egress / DNS / mid-request codes seen during daemon startup on
+    // laptops (VPN toggles, sleep/wake, network switches). Treating these as
+    // "server unreachable" lets the daemon degrade to offline mode and
+    // auto-reconnect instead of crashing on a momentary blip.
+    'EADDRNOTAVAIL', 'EAI_AGAIN', 'EPIPE'
 ] as const;
 
 /** Check if error code indicates server unreachable */
@@ -264,6 +269,9 @@ export const ERROR_DESCRIPTIONS: Record<string, string> = {
     ECONNRESET: 'connection reset by server',
     EHOSTUNREACH: 'server host unreachable',
     ENETUNREACH: 'network unreachable',
+    EADDRNOTAVAIL: 'local egress address temporarily unavailable',
+    EAI_AGAIN: 'DNS lookup temporarily failed',
+    EPIPE: 'connection closed by server mid-request',
     // HTTP errors
     '401': 'authentication failed - run `happy auth`',
     '403': 'access forbidden',
