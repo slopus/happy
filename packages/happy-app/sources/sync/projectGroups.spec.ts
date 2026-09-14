@@ -4,6 +4,7 @@ import {
     buildPathProjectGroups,
     buildProjectGroups,
     filterProjectGroupSessions,
+    projectWorkspaceCollapseKey,
 } from './projectGroups';
 import type { ProjectGroupData } from './projectGroups';
 import type { Session } from './storageTypes';
@@ -247,5 +248,22 @@ describe('filterProjectGroupSessions', () => {
             activeCount: 0,
             workspaces: [{ sessions: [{ id: 'disconnected' }] }],
         });
+    });
+});
+
+describe('projectWorkspaceCollapseKey', () => {
+    it('keys the primary checkout on the project alone, so existing state survives', () => {
+        expect(projectWorkspaceCollapseKey('path:["m1","/repo"]', '')).toBe('path:["m1","/repo"]');
+    });
+
+    it('gives every worktree its own key', () => {
+        const primary = projectWorkspaceCollapseKey('p', '');
+        const a = projectWorkspaceCollapseKey('p', '/repo-wt-a');
+        const b = projectWorkspaceCollapseKey('p', '/repo-wt-b');
+        expect(new Set([primary, a, b]).size).toBe(3);
+    });
+
+    it('does not collide across projects that share a worktree path', () => {
+        expect(projectWorkspaceCollapseKey('p1', '/wt')).not.toBe(projectWorkspaceCollapseKey('p2', '/wt'));
     });
 });
