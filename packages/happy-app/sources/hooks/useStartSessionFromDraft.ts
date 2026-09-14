@@ -40,6 +40,8 @@ import {
 import {
     buildSpawnRequestSignature,
     completeSpawnRequest,
+    getSpawnedSessionId,
+    rememberSpawnedSession,
     resolveSpawnRequestId,
 } from '@/sync/spawnRequestId';
 import type { NewSessionStartPhase } from '@/components/newSessionProgress';
@@ -66,6 +68,8 @@ const CANCELED = Symbol('canceled');
  */
 type StartRun = {
     canceled: boolean;
+    controller: AbortController;
+    accepted: boolean;
     signal: Promise<typeof CANCELED>;
     cancel: () => void;
 };
@@ -75,9 +79,12 @@ function beginRun(): StartRun {
     const signal = new Promise<typeof CANCELED>((r) => { resolve = r; });
     const run: StartRun = {
         canceled: false,
+        controller: new AbortController(),
+        accepted: false,
         signal,
         cancel: () => {
             run.canceled = true;
+            run.controller.abort();
             resolve(CANCELED);
         },
     };
@@ -121,7 +128,7 @@ export function useStartSessionFromDraft() {
 
     const cancelStart = React.useCallback(() => {
         const run = activeRunRef.current;
-        if (!run) return;
+        if (!run || run.accepted) return;
         run.cancel();
         // Spent here, synchronously, and not when the canceled flow eventually
         // resumes. Stop hands the composer back on this same tick, so a new
@@ -230,6 +237,12 @@ export function useStartSessionFromDraft() {
 
         const prompt = draft.input.trim();
         const attachments = draft.attachments;
+        let ownsCreatedSession = true;
+        const isCurrentTarget = () => {
+            const current = useNewSessionDraft.getState();
+            return ownsCreatedSession && (['selectedMachineId', 'selectedPath', 'agentType', 'permissionMode', 'modelMode', 'effortLevel', 'sessionType', 'worktreeKey'] as const)
+                .every(key => current[key] === draft[key]);
+        };
         const selectedPath = draft.selectedPath?.trim() || '~';
         const absolutePath = resolveAbsolutePath(selectedPath, machine.metadata?.homeDir);
         const sessionList = (sessions ?? []).filter((item): item is Session => typeof item !== 'string');
@@ -307,6 +320,10 @@ export function useStartSessionFromDraft() {
         // A session that arrives after Stop still has to be put down, and by
         // then nobody is on this screen to do it, so this runs unattended.
         const stopAbandonedSession = async (createdSessionId: string) => {
+            // Every cleanup route shares this ownership, including late async
+            // completions. Opening/using the session elsewhere revokes it.
+            if (!ownsCreatedSession) return;
+            ownsCreatedSession = false;
             // The daemon first: it holds the child process and its socket is the
             // one this session was spawned through. The session's own kill RPC
             // is tried after, for a session already up and detached from the
@@ -322,8 +339,9 @@ export function useStartSessionFromDraft() {
             await sync.refreshSessions().catch(() => { /* the list catches up on its own */ });
         };
         try {
+            const existingSessionId = getSpawnedSessionId(clientRequestId);
             let spawnDirectory = absolutePath;
-            if (worktreeSelection === '__new__' && !happyAgentTarget) {
+            if (!existingSessionId && worktreeSelection === '__new__' && !happyAgentTarget) {
                 // `worktreeSelection` can only remain `__new__` when a creation
                 // machine was resolved above.
                 const worktreeResult = await untilCanceled(createWorktree(worktreeCreationMachine!.id, absolutePath));
@@ -405,7 +423,7 @@ export function useStartSessionFromDraft() {
                 return approved ? spawn(true) : null;
             };
 
-            const spawning = spawn();
+            const spawning = existingSessionId ? Promise.resolve(existingSessionId) : spawn();
             const spawned = await untilCanceled(spawning);
             if (spawned === CANCELED) {
                 // The key was already spent by cancelStart, on the tick Stop
@@ -418,11 +436,21 @@ export function useStartSessionFromDraft() {
             }
             const sessionId = spawned;
             if (!sessionId) return false;
-            // The idempotency key did its job; the next Start is a new session.
-            completeSpawnRequest();
+            rememberSpawnedSession(clientRequestId, sessionId, () => {
+                run.cancel();
+                void stopAbandonedSession(sessionId).catch(error => console.error('Failed to stop abandoned session:', error));
+            }, () => { ownsCreatedSession = false; });
             showPhase('opening');
 
-            if (await untilCanceled(sync.refreshSessions()) === CANCELED) {
+            if (await untilCanceled(sync.ensureSessionReady(sessionId)) === CANCELED) {
+                void stopAbandonedSession(sessionId);
+                return false;
+            }
+
+            // Ownership must still hold before changing modes as well as before
+            // sending: a session adopted elsewhere is no longer this attempt's.
+            if (run.canceled || !isCurrentTarget()) {
+                completeSpawnRequest(clientRequestId);
                 void stopAbandonedSession(sessionId);
                 return false;
             }
@@ -438,28 +466,33 @@ export function useStartSessionFromDraft() {
                 });
             }
 
-            // Last look before anything becomes irreversible. Past this line the
-            // prompt is cleared, the screen changes, and the message goes out —
-            // a Stop that lands a moment too late must not do all three anyway.
-            if (run.canceled) {
-                void stopAbandonedSession(sessionId);
-                return false;
-            }
-
-            draft.setInput('');
-            draft.setAttachments([]);
-            navigateToSession(sessionId);
             if (prompt || attachments.length > 0) {
-                // The session is ready at this point. Open it immediately and
-                // let the first message enqueue without keeping the user on Home
-                // during image upload or a slower network round-trip.
-                void sync.sendMessage(sessionId, prompt, { source: 'new_session', attachments }).catch((error) => {
-                    Modal.alert(
-                        t('common.error'),
-                        error instanceof Error ? error.message : 'Failed to send the first message',
-                    );
-                });
+                const accepted = await untilCanceled(sync.sendMessage(sessionId, prompt, {
+                    source: 'new_session', attachments, signal: run.controller.signal,
+                    isCurrent: isCurrentTarget,
+                    onAccepted: () => {
+                        run.accepted = true;
+                        completeSpawnRequest(clientRequestId);
+                    },
+                }));
+                if (accepted === CANCELED) {
+                    void stopAbandonedSession(sessionId);
+                    return false;
+                }
+                if (!accepted) {
+                    if (!isCurrentTarget()) {
+                        completeSpawnRequest(clientRequestId);
+                        void stopAbandonedSession(sessionId);
+                    }
+                    return false;
+                }
             }
+            completeSpawnRequest(clientRequestId);
+            // Do not erase edits made while hydration or attachment upload ran.
+            const currentDraft = useNewSessionDraft.getState();
+            if (currentDraft.input === draft.input) currentDraft.setInput('');
+            if (currentDraft.attachments === attachments) currentDraft.setAttachments([]);
+            navigateToSession(sessionId);
             return true;
         } catch (error) {
             // A failure the user already walked away from is not news.
