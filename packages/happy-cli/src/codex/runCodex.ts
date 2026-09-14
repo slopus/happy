@@ -561,14 +561,16 @@ export async function runCodex(opts: {
     // call in claudeRemoteLauncher for the full rationale.
     permissionHandler.reset('Previous CLI process exited before responding');
     reasoningProcessor = new ReasoningProcessor((message) => {
-        const envelopes = mapCodexProcessorMessageToSessionEnvelopes(message, { currentTurnId });
-        for (const envelope of envelopes) {
+        const mapped = mapCodexProcessorMessageToSessionEnvelopes(message, { currentTurnId });
+        currentTurnId = mapped.currentTurnId;
+        for (const envelope of mapped.envelopes) {
             session.sendSessionProtocolMessage(envelope);
         }
     });
     const diffProcessor = new DiffProcessor((message) => {
-        const envelopes = mapCodexProcessorMessageToSessionEnvelopes(message, { currentTurnId });
-        for (const envelope of envelopes) {
+        const mapped = mapCodexProcessorMessageToSessionEnvelopes(message, { currentTurnId });
+        currentTurnId = mapped.currentTurnId;
+        for (const envelope of mapped.envelopes) {
             session.sendSessionProtocolMessage(envelope);
         }
     });
