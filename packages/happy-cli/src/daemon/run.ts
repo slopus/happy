@@ -36,6 +36,7 @@ import {
 } from './sessionEnvironment';
 import { startHappyTerminalDaemon } from './happyTerminalBoot';
 import { appendDaemonSpawnModeArgs, shouldForwardDaemonPermissionMode } from './spawnModeArgs';
+import { hasPersistedProcessConflict, isPidAlive, machineBootTimeMs } from './sessionLiveness';
 
 /** Shell-escape a string for safe interpolation into tmux commands. */
 function shellescape(s: string): string {
@@ -174,6 +175,9 @@ export async function startDaemon(): Promise<void> {
 
     // Setup state - key by PID
     const pidToTrackedSession = new Map<number, TrackedSession>();
+    const bootTimeMs = machineBootTimeMs(os.uptime(), Date.now());
+    const stoppingPids = new Set<number>();
+    const registeringPids = new Set<number>();
 
     // Retain session data after process exits so resume can still find it.
     // Pre-populate from disk so sessions survive daemon restarts.
@@ -200,6 +204,7 @@ export async function startDaemon(): Promise<void> {
 
     // Session spawning awaiter system
     const pidToAwaiter = new Map<number, (session: TrackedSession) => void>();
+    const pidToSpawnFailure = new Map<number, (message: string) => void>();
 
     // Helper functions
     const getCurrentChildren = () => Array.from(pidToTrackedSession.values());
@@ -217,6 +222,14 @@ export async function startDaemon(): Promise<void> {
       logger.debug(`[DAEMON RUN] Session webhook: ${sessionId}, PID: ${pid}, started by: ${sessionMetadata.startedBy || 'unknown'}, hasEncryption: ${!!encryption}`);
       logger.debug(`[DAEMON RUN] Current tracked sessions before webhook: ${Array.from(pidToTrackedSession.keys()).join(', ')}`);
 
+      const existingSession = pidToTrackedSession.get(pid);
+      // A reconnect child is reserved for one identity before it reports in.
+      // Reject mismatches before persisting any metadata or key material.
+      if (existingSession?.startedBy === 'daemon' && existingSession.happySessionId && existingSession.happySessionId !== sessionId) {
+        logger.debug(`[DAEMON RUN] Ignoring webhook for unexpected session ${sessionId} from reconnect PID ${pid}`);
+        return;
+      }
+
       // Persist encryption data to disk so it survives daemon restarts
       if (encryption) {
         persistSession(sessionId, {
@@ -232,13 +245,12 @@ export async function startDaemon(): Promise<void> {
       }
 
       // Check if we already have this PID (daemon-spawned)
-      const existingSession = pidToTrackedSession.get(pid);
-
       if (existingSession && existingSession.startedBy === 'daemon') {
         // Update daemon-spawned session with reported data
         existingSession.happySessionId = sessionId;
         existingSession.happySessionMetadataFromLocalWebhook = sessionMetadata;
-        existingSession.encryption = encryption;
+        existingSession.encryption = encryption ?? existingSession.encryption;
+        registeringPids.delete(pid);
         logger.debug(`[DAEMON RUN] Updated daemon-spawned session ${sessionId} with metadata`);
 
         // Resolve any awaiter for this PID
@@ -592,18 +604,26 @@ export async function startDaemon(): Promise<void> {
       env,
       directoryCreated = false,
       message,
+      reconnect,
     }: {
       args: string[];
       cwd: string;
       env: NodeJS.ProcessEnv;
       directoryCreated?: boolean;
       message?: string;
+      reconnect?: Pick<TrackedSession, 'happySessionId' | 'happySessionMetadataFromLocalWebhook' | 'encryption'>;
     }): Promise<SpawnSessionResult> => {
       const happyProcess = spawnHappyCLI(args, {
         cwd,
         detached: true,
         stdio: 'ignore',
         env,
+      });
+
+      // A failed spawn can emit error even when no PID was assigned.
+      happyProcess.on('error', (error) => {
+        logger.debug('[DAEMON RUN] Child process error:', error);
+        if (happyProcess.pid && !isPidAlive(happyProcess.pid)) onChildExited(happyProcess.pid);
       });
 
       if (!happyProcess.pid) {
@@ -622,19 +642,25 @@ export async function startDaemon(): Promise<void> {
         childProcess: happyProcess,
         directoryCreated,
         message,
+        ...reconnect,
       };
 
       pidToTrackedSession.set(happyProcess.pid, trackedSession);
+      if (reconnect) registeringPids.add(happyProcess.pid);
+      if (reconnect?.happySessionId && reconnect.encryption && reconnect.happySessionMetadataFromLocalWebhook) {
+        // A daemon restart before the webhook must still see this detached
+        // child as a possible owner. Use the existing persisted record format.
+        persistSession(reconnect.happySessionId, {
+          ...reconnect.encryption,
+          encryptionKey: encodeBase64(reconnect.encryption.encryptionKey),
+          metadata: { ...reconnect.happySessionMetadataFromLocalWebhook, hostPid: happyProcess.pid },
+          savedAt: Date.now(),
+          lastAliveAt: Date.now(),
+        });
+      }
 
       happyProcess.on('exit', (code, signal) => {
         logger.debug(`[DAEMON RUN] Child PID ${happyProcess.pid} exited with code ${code}, signal ${signal}`);
-        if (happyProcess.pid) {
-          onChildExited(happyProcess.pid);
-        }
-      });
-
-      happyProcess.on('error', (error) => {
-        logger.debug(`[DAEMON RUN] Child process error:`, error);
         if (happyProcess.pid) {
           onChildExited(happyProcess.pid);
         }
@@ -645,6 +671,7 @@ export async function startDaemon(): Promise<void> {
       return new Promise((resolve) => {
         const timeout = setTimeout(() => {
           pidToAwaiter.delete(happyProcess.pid!);
+          pidToSpawnFailure.delete(happyProcess.pid!);
           logger.debug(`[DAEMON RUN] Session webhook timeout for PID ${happyProcess.pid}`);
           resolve({
             type: 'error',
@@ -652,8 +679,16 @@ export async function startDaemon(): Promise<void> {
           });
         }, 15_000);
 
+        pidToSpawnFailure.set(happyProcess.pid!, (errorMessage) => {
+          clearTimeout(timeout);
+          pidToAwaiter.delete(happyProcess.pid!);
+          pidToSpawnFailure.delete(happyProcess.pid!);
+          resolve({ type: 'error', errorMessage });
+        });
+
         pidToAwaiter.set(happyProcess.pid!, (completedSession) => {
           clearTimeout(timeout);
+          pidToSpawnFailure.delete(happyProcess.pid!);
           logger.debug(`[DAEMON RUN] Session ${completedSession.happySessionId} fully spawned with webhook`);
           resolve({
             type: 'success',
@@ -687,8 +722,48 @@ export async function startDaemon(): Promise<void> {
       }
     };
 
-    const resumeSession = async (happySessionId: string, options?: ResumeSessionOptions): Promise<SpawnSessionResult> => {
+    // PR #1715's single-flight guard: independent sessions still start in parallel.
+    const resumesInFlight = new Map<string, Promise<SpawnSessionResult>>();
+    const cancelledResumes = new Set<string>();
+    const resumeSession = (happySessionId: string, options?: ResumeSessionOptions): Promise<SpawnSessionResult> => {
+      const inFlight = resumesInFlight.get(happySessionId);
+      if (inFlight) return inFlight;
+      const attempt = resumeSessionAttempt(happySessionId, options).finally(() => {
+        resumesInFlight.delete(happySessionId);
+        cancelledResumes.delete(happySessionId);
+      });
+      resumesInFlight.set(happySessionId, attempt);
+      return attempt;
+    };
+
+    const resumeConflict = (happySessionId: string): SpawnSessionResult | undefined => {
+      for (const [pid, session] of pidToTrackedSession) {
+        if (session.happySessionId !== happySessionId) continue;
+        if (!isPidAlive(pid)) {
+          onChildExited(pid);
+          continue;
+        }
+        if (stoppingPids.has(pid)) {
+          return { type: 'error', errorMessage: `Session ${happySessionId} is still stopping. Try again after its process exits.` };
+        }
+        if (registeringPids.has(pid)) {
+          return { type: 'error', errorMessage: `Session ${happySessionId} is still starting. Wait for it to connect before trying again.` };
+        }
+        return { type: 'success', sessionId: happySessionId };
+      }
+      // Detached owners can outlive a daemon restart. A saved PID may have been
+      // reused, so neither adopt nor signal it. Refuse a duplicate until exit or
+      // a local registration establishes ownership in this daemon.
+      if (hasPersistedProcessConflict(readPersistedSessions()[happySessionId], bootTimeMs)) {
+        return { type: 'error', errorMessage: `Session ${happySessionId} may still have a running process from a previous daemon. Its ownership cannot be verified. Wait for that process to exit before retrying. If the session is still active, archive it from the session view.` };
+      }
+      return undefined;
+    };
+
+    const resumeSessionAttempt = async (happySessionId: string, options?: ResumeSessionOptions): Promise<SpawnSessionResult> => {
       try {
+        const conflict = resumeConflict(happySessionId);
+        if (conflict) return conflict;
         const tracked = findTrackedSessionById(happySessionId);
         // The daemon only remembers sessions it saw during this lifetime, so a
         // session started before it (or before its last restart) is unknown
@@ -764,9 +839,17 @@ export async function startDaemon(): Promise<void> {
 
         await fs.access(launch.cwd);
 
+        if (cancelledResumes.has(happySessionId)) {
+          return { type: 'error', errorMessage: `Resume of session ${happySessionId} was cancelled by a stop request.` };
+        }
+        // A webhook or stop can arrive while metadata/directory checks await.
+        const lateConflict = resumeConflict(happySessionId);
+        if (lateConflict) return lateConflict;
+
         return spawnTrackedHappyProcess({
           args: launch.args,
           cwd: launch.cwd,
+          reconnect: { happySessionId, happySessionMetadataFromLocalWebhook: metadata, encryption },
           env: buildSessionChildEnvironment(ambientEnvironment, {
             HAPPY_RECONNECT_SESSION_ID: happySessionId,
             HAPPY_RECONNECT_ENCRYPTION_KEY: encodeBase64(encryption.encryptionKey),
@@ -789,11 +872,20 @@ export async function startDaemon(): Promise<void> {
     // Stop a session by sessionId or PID fallback
     const stopSession = (sessionId: string): boolean => {
       logger.debug(`[DAEMON RUN] Attempting to stop session ${sessionId}`);
+      const cancellingResume = resumesInFlight.has(sessionId);
+      if (cancellingResume) cancelledResumes.add(sessionId);
 
       // Try to find by sessionId first
       for (const [pid, session] of pidToTrackedSession.entries()) {
         if (session.happySessionId === sessionId ||
           (sessionId.startsWith('PID-') && pid === parseInt(sessionId.replace('PID-', '')))) {
+
+          if (!isPidAlive(pid)) {
+            onChildExited(pid);
+            return true;
+          }
+          stoppingPids.add(pid);
+          pidToSpawnFailure.get(pid)?.(`Session ${sessionId} was stopped before connecting.`);
 
           if (session.startedBy === 'daemon' && session.childProcess) {
             // Signal the whole process group, not just the Happy CLI parent.
@@ -835,18 +927,22 @@ export async function startDaemon(): Promise<void> {
             }
           }
 
-          onChildExited(pid);
-          logger.debug(`[DAEMON RUN] Removed session ${sessionId} from tracking`);
+          // SIGTERM requests exit; it does not prove it. Keep ownership until
+          // the exit event or a liveness check confirms the process is gone.
+          if (!isPidAlive(pid)) onChildExited(pid);
           return true;
         }
       }
 
       logger.debug(`[DAEMON RUN] Session ${sessionId} not found`);
-      return false;
+      return cancellingResume;
     };
 
     // Handle child process exit — preserve session data for resume
     const onChildExited = (pid: number) => {
+      pidToSpawnFailure.get(pid)?.(`Session process ${pid} exited before connecting.`);
+      stoppingPids.delete(pid);
+      registeringPids.delete(pid);
       const session = pidToTrackedSession.get(pid);
       if (session?.happySessionId && session.encryption) {
         sessionIdToFinishedSession.set(session.happySessionId, session);
@@ -956,10 +1052,7 @@ export async function startDaemon(): Promise<void> {
 
       // Prune stale sessions
       for (const [pid, _] of pidToTrackedSession.entries()) {
-        try {
-          // Check if process is still alive (signal 0 doesn't kill, just checks)
-          process.kill(pid, 0);
-        } catch (error) {
+        if (!isPidAlive(pid)) {
           // Process is dead, remove from tracking
           logger.debug(`[DAEMON RUN] Removing stale session with PID ${pid} (process no longer exists)`);
           onChildExited(pid);

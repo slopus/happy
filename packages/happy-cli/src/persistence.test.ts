@@ -212,6 +212,18 @@ describe('persisted session retention', () => {
         expect(Object.keys(readPersistedSessions())).toEqual(['s1']);
     });
 
+    it.each(['EPERM', 'EACCES'])('keeps an old session when liveness is unknown (%s)', (code) => {
+        writeSessions({ s1: sessionRecord({ savedAt: Date.now() - 60 * DAY_MS, hostPid: 12345 }) });
+        vi.spyOn(process, 'kill').mockImplementation(() => { throw Object.assign(new Error('probe failed'), { code }); });
+        expect(Object.keys(readPersistedSessions())).toEqual(['s1']);
+    });
+
+    it('drops an expired session when ESRCH proves its process is absent', () => {
+        writeSessions({ s1: sessionRecord({ savedAt: Date.now() - 60 * DAY_MS, hostPid: 12345 }) });
+        vi.spyOn(process, 'kill').mockImplementation(() => { throw Object.assign(new Error('gone'), { code: 'ESRCH' }); });
+        expect(readPersistedSessions()).toEqual({});
+    });
+
     it('drops a session that stopped more than the retention window ago', () => {
         writeSessions({
             's1': sessionRecord({ savedAt: Date.now() - 90 * DAY_MS, lastAliveAt: Date.now() - 20 * DAY_MS }),
