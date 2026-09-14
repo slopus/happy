@@ -12,6 +12,13 @@ import { getProjectPath } from "./path";
  * These are written to session JSONL files by Claude Code but are not 
  * actual conversation messages - they're internal state/tracking events.
  */
+/**
+ * How often a session's unchanged scan summary is re-logged. The scan itself
+ * runs every 3s for the session's whole life; logging each one wrote ~1200
+ * identical lines per hour per session (32% of all log bytes on one machine).
+ */
+const SUMMARY_HEARTBEAT_MS = 60_000;
+
 const INTERNAL_CLAUDE_EVENT_TYPES = new Set([
     'file-history-snapshot',
     'change',
@@ -46,6 +53,11 @@ export async function createSessionScanner(opts: {
     let currentSessionId: string | null = null;
     let watchers = new Map<string, (() => void)>();
     let processedEntryKeys = new Set<string>();
+    // Sessions whose transcript is currently absent and already reported once,
+    // so the 3s poll reports the absence on transition rather than every tick.
+    let absenceLogged = new Set<string>();
+    // Last time each session's steady-state scan summary was written.
+    let lastSummaryLoggedAt = new Map<string, number>();
     // Sessions whose transcript file never appeared. Their watcher gave up,
     // so we must stop re-reading them and never re-create a watcher for them
     // — otherwise a phantom session id (e.g. a remote launch whose .jsonl is
@@ -55,7 +67,7 @@ export async function createSessionScanner(opts: {
 
     // Mark existing entries as processed and start watching the initial session
     if (opts.sessionId) {
-        let entries = await readSessionEntries(projectDir, opts.sessionId);
+        let entries = await readSessionEntries(projectDir, opts.sessionId) ?? [];
         logger.debug(`[SESSION_SCANNER] Marking ${entries.length} existing entries as processed from session ${opts.sessionId}`);
         for (let entry of entries) {
             processedEntryKeys.add(entry.key);
@@ -89,7 +101,18 @@ export async function createSessionScanner(opts: {
 
         // Process sessions
         for (let session of sessions) {
-            const sessionEntries = await readSessionEntries(projectDir, session);
+            const readResult = await readSessionEntries(projectDir, session);
+            // Log the transition, not every poll: "still absent" repeated every
+            // 3s is what filled these logs, and it carries no new information.
+            if (readResult === null) {
+                if (!absenceLogged.has(session)) {
+                    absenceLogged.add(session);
+                    logger.debug(`[SESSION_SCANNER] Transcript not on disk yet for ${session} — waiting for it to be created`);
+                }
+            } else if (absenceLogged.delete(session)) {
+                logger.debug(`[SESSION_SCANNER] Transcript appeared for ${session}`);
+            }
+            const sessionEntries = readResult ?? [];
             let skipped = 0;
             let sentMessages = 0;
             let sentTranscriptEvents = 0;
@@ -109,7 +132,13 @@ export async function createSessionScanner(opts: {
                     sentTranscriptEvents++;
                 }
             }
-            if (sessionEntries.length > 0) {
+            // Log when this poll actually did something; otherwise at most once
+            // per heartbeat, so "the scanner is alive and reading N entries"
+            // stays observable without writing the same line 1200 times an hour.
+            const movedSomething = sentMessages > 0 || sentTranscriptEvents > 0;
+            const now = Date.now();
+            if (sessionEntries.length > 0 && (movedSomething || now - (lastSummaryLoggedAt.get(session) ?? 0) >= SUMMARY_HEARTBEAT_MS)) {
+                lastSummaryLoggedAt.set(session, now);
                 logger.debug(`[SESSION_SCANNER] Session ${session}: found=${sessionEntries.length}, skipped=${skipped}, sentMessages=${sentMessages}, sentTranscriptEvents=${sentTranscriptEvents}`);
             }
         }
@@ -190,7 +219,7 @@ export async function createSessionScanner(opts: {
             // file as fresh user prompts. Without this, every previous
             // user message re-appears in the chat after reconnect.
             if (options?.treatExistingAsProcessed) {
-                const existing = await readSessionEntries(projectDir, sessionId);
+                const existing = await readSessionEntries(projectDir, sessionId) ?? [];
                 logger.debug(`[SESSION_SCANNER] Pre-marking ${existing.length} existing entries as processed for new session ${sessionId}`);
                 for (const entry of existing) {
                     processedEntryKeys.add(entry.key);
@@ -236,15 +265,22 @@ function transcriptEventKey(event: ScannerTranscriptEvent): string {
  * Returns only valid conversation messages and recognized side-channel events,
  * silently skipping internal events.
  */
-async function readSessionEntries(projectDir: string, sessionId: string): Promise<SessionLogEntry[]> {
+/**
+ * Returns null when the transcript could not be read at all (it is created
+ * lazily on the first prompt, so "absent" is a normal early state), and the
+ * parsed entries otherwise.
+ *
+ * Deliberately silent: this runs on the 3s poll for the whole life of a
+ * session, so a line per call is written thousands of times per hour and says
+ * nothing new. The caller logs state *changes* instead.
+ */
+async function readSessionEntries(projectDir: string, sessionId: string): Promise<SessionLogEntry[] | null> {
     const expectedSessionFile = join(projectDir, `${sessionId}.jsonl`);
-    logger.debug(`[SESSION_SCANNER] Reading session file: ${expectedSessionFile}`);
     let file: string;
     try {
         file = await readFile(expectedSessionFile, 'utf-8');
     } catch (error) {
-        logger.debug(`[SESSION_SCANNER] Session file not found: ${expectedSessionFile}`);
-        return [];
+        return null;
     }
     let lines = file.split('\n');
     let entries: SessionLogEntry[] = [];
