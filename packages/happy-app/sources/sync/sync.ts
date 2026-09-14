@@ -74,6 +74,9 @@ import { decryptProjectRecord, loadProjectAvatar, type DecryptedProjectRecord } 
 import type { Project, ProjectAvatar } from './projectTypes';
 import { SessionMessagePreloader } from './sessionMessagePreloader';
 import { messagePlanMode } from './messagePlanMode';
+import { loadSessionAvatar } from './sessionAvatars';
+import { SessionAvatarHydrator } from './SessionAvatarHydrator';
+import { sessionAvatarDescriptorSchema, sessionAvatarRevisionSchema, sameSessionAvatar } from './sessionAvatarTypes';
 
 type V3GetSessionMessagesResponse = {
     messages: ApiMessage[];
@@ -158,6 +161,16 @@ class Sync {
     // Project data keys are account secrets and remain private to Sync. They
     // are intentionally never copied into Zustand or row/display data.
     private projectDataKeys = new Map<string, Uint8Array | null>();
+    private readonly sessionAvatars = new SessionAvatarHydrator({
+        read: (id) => storage.getState().sessions[id],
+        load: async (id, descriptor, signal) => this.credentials
+            ? await loadSessionAvatar(this.credentials, this.encryption, id, descriptor, signal)
+            : null,
+        publish: (id, avatar) => {
+            const session = storage.getState().sessions[id];
+            if (session) storage.getState().applySessions([{ ...session, avatar }]);
+        },
+    });
     private projectAvatarCache = new Map<string, ProjectAvatar>();
     private projectAvatarInFlight = new Map<string, Promise<ProjectAvatar | null>>();
     private projectAvatarDescriptors = new Map<string, string>();
@@ -271,6 +284,7 @@ class Sync {
     }
 
     async create(credentials: AuthCredentials, encryption: Encryption) {
+        this.sessionAvatars.clear();
         this.credentials = credentials;
         this.encryption = encryption;
         this.anonID = encryption.anonID;
@@ -288,6 +302,7 @@ class Sync {
     }
 
     async restore(credentials: AuthCredentials, encryption: Encryption) {
+        this.sessionAvatars.clear();
         // NOTE: No awaiting anything here, we're restoring from a disk (ie app restarted)
         // Purchases sync is invalidated in #init() and will complete asynchronously
         this.credentials = credentials;
@@ -1188,6 +1203,7 @@ class Sync {
 
     private fetchSessions = async () => {
         if (!this.credentials) return;
+        const avatarsBeforeFetch = storage.getState().sessions;
 
         const API_ENDPOINT = getServerUrl();
         const response = await fetch(`${API_ENDPOINT}/v1/sessions`, {
@@ -1213,6 +1229,8 @@ class Sync {
             agentStateVersion: number;
             dataEncryptionKey: string | null;
             projectId?: string | null;
+            avatar?: unknown;
+            avatarVersion?: unknown;
             active: boolean;
             activeAt: number;
             createdAt: number;
@@ -1256,6 +1274,9 @@ class Sync {
             // before applySessions below.
             const processedSession = {
                 ...session,
+                avatarDescriptor: sessionAvatarDescriptorSchema.safeParse(session.avatar).data ?? null,
+                avatarRevision: sessionAvatarRevisionSchema.safeParse(session.avatarVersion).data,
+                avatar: null,
                 thinking: false,
                 thinkingAt: 0,
                 metadata,
@@ -1279,6 +1300,13 @@ class Sync {
         const current = storage.getState().sessions;
         this.applySessions(decryptedSessions.map(s => ({
             ...s,
+            // A live replacement or removal received during this fetch wins over its snapshot.
+            ...((current[s.id]?.avatarRevision !== undefined && s.avatarRevision !== undefined
+                ? current[s.id].avatarRevision! > s.avatarRevision
+                : current[s.id]?.avatarUpdateSeq !== avatarsBeforeFetch[s.id]?.avatarUpdateSeq)
+                ? { avatarDescriptor: current[s.id]?.avatarDescriptor, avatar: current[s.id]?.avatar, avatarRevision: current[s.id]?.avatarRevision }
+                : { avatar: sameSessionAvatar(s.avatarDescriptor, current[s.id]?.avatarDescriptor) ? current[s.id]?.avatar ?? null : null }),
+            avatarUpdateSeq: current[s.id]?.avatarUpdateSeq,
             thinking: s.active ? (current[s.id]?.thinking ?? false) : false,
             thinkingAt: s.active ? (current[s.id]?.thinkingAt ?? 0) : 0,
         })));
@@ -2587,6 +2615,7 @@ class Sync {
         } else if (updateData.body.t === 'delete-session') {
             log.log('🗑️ Delete session update received');
             const sessionId = updateData.body.sid;
+            this.sessionAvatars.cancel(sessionId);
 
             // Remove session from storage
             storage.getState().deleteSession(sessionId);
@@ -2640,8 +2669,19 @@ class Sync {
                 const nextProjectId = updateData.body.projectId !== undefined
                     ? updateData.body.projectId
                     : session.projectId;
+                const latestAvatar = storage.getState().sessions[session.id] ?? session;
+                const incomingAvatarRevision = updateData.body.avatarVersion ?? updateData.body.avatar?.version;
+                const avatarChanged = updateData.body.avatar !== undefined && (incomingAvatarRevision !== undefined && latestAvatar.avatarRevision !== undefined
+                    ? incomingAvatarRevision > latestAvatar.avatarRevision
+                    : updateData.seq > (latestAvatar.avatarUpdateSeq ?? -1));
+                if (updateData.body.avatar !== undefined && !avatarChanged && !updateData.body.metadata && !updateData.body.agentState && updateData.body.projectId === undefined) return;
+                const nextAvatarDescriptor = avatarChanged ? updateData.body.avatar : latestAvatar.avatarDescriptor;
                 this.applySessions([{
                     ...session,
+                    avatarDescriptor: nextAvatarDescriptor,
+                    avatar: sameSessionAvatar(nextAvatarDescriptor, latestAvatar.avatarDescriptor) ? latestAvatar.avatar : null,
+                    avatarUpdateSeq: avatarChanged ? updateData.seq : latestAvatar.avatarUpdateSeq,
+                    avatarRevision: avatarChanged ? incomingAvatarRevision : latestAvatar.avatarRevision,
                     agentState,
                     agentStateVersion: updateData.body.agentState
                         ? updateData.body.agentState.version
@@ -3145,6 +3185,7 @@ class Sync {
     })[]) => {
         const active = storage.getState().getActiveSessions();
         storage.getState().applySessions(sessions);
+        for (const session of sessions) this.sessionAvatars.refresh(session.id);
         const newActive = storage.getState().getActiveSessions();
         this.applySessionDiff(active, newActive);
     }

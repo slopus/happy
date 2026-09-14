@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { messagePlanMode } from './messagePlanMode';
 
 const mocks = vi.hoisted(() => ({
@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
     voiceFocus: vi.fn(),
     voiceMessages: vi.fn(),
     voiceReady: vi.fn(),
+    loadAvatar: vi.fn(async () => null),
 }));
 
 // Exercise the real Sync orchestration, locking and pagination with only the
@@ -22,13 +23,18 @@ vi.mock('expo-crypto', () => ({ randomUUID: () => 'id' }));
 vi.mock('expo-notifications', () => ({}));
 vi.mock('react-native', () => ({ Platform: { OS: 'ios' }, AppState: { currentState: 'active', addEventListener: vi.fn() } }));
 vi.mock('@/utils/platform', () => ({ isRunningOnMac: () => false }));
-vi.mock('@/sync/apiSocket', () => ({ apiSocket: { request: mocks.request }, getCurrentAppState: () => 'active' }));
+vi.mock('@/sync/apiSocket', () => ({ apiSocket: { request: mocks.request }, getCurrentAppState: () => 'active', getHappyClientId: () => 'test' }));
 vi.mock('@/sync/webTabTitle', () => ({ notifyUnreadMessage: vi.fn() }));
 vi.mock('@/sync/encryption/encryption', () => ({ Encryption: class {} }));
 vi.mock('@/sync/encryption/artifactEncryption', () => ({ ArtifactEncryption: class {} }));
 vi.mock('@/sync/encryption/encryptionCache', () => ({ EncryptionCache: class {} }));
 vi.mock('@/sync/storage', () => ({ storage: { getState: () => ({
     ...mocks.state,
+    getActiveSessions: () => [],
+    applySessions: (sessions: any[]) => {
+        mocks.state.sessions = { ...mocks.state.sessions };
+        for (const session of sessions) mocks.state.sessions[session.id] = session;
+    },
     applyMessages: mocks.applyMessages,
     applyMessagesLoaded: mocks.applyMessagesLoaded,
     applyOlderMessagesPagination: mocks.applyOlderMessagesPagination,
@@ -44,6 +50,7 @@ vi.mock('@/sync/apiFeed', () => ({ fetchFeed: vi.fn() }));
 vi.mock('@/sync/apiAttachments', () => ({ requestAttachmentUpload: vi.fn(), uploadEncryptedBlob: vi.fn() }));
 vi.mock('@/sync/apiProjects', () => ({ fetchProjects: vi.fn() }));
 vi.mock('@/sync/projects', () => ({ decryptProjectRecord: vi.fn(), loadProjectAvatar: vi.fn() }));
+vi.mock('@/sync/sessionAvatars', () => ({ loadSessionAvatar: mocks.loadAvatar }));
 vi.mock('@/sync/typesRaw', () => ({ normalizeRawMessage: (_id: string, _localId: string, _time: number, content: unknown) => content }));
 vi.mock('@/config', () => ({ config: {} }));
 vi.mock('@/log', () => ({ log: { log: vi.fn() } }));
@@ -61,6 +68,7 @@ import { sync } from './sync';
 
 let engine: any;
 let encryption: { decryptMessages: ReturnType<typeof vi.fn> };
+afterEach(() => { engine?.sessionAvatars.clear(); vi.unstubAllGlobals(); });
 function response(messages: any[], hasMore = false) {
     return { ok: true, json: async () => ({ messages, hasMore }) };
 }
@@ -96,6 +104,55 @@ beforeEach(() => {
     engine = new (sync.constructor as new () => typeof sync)();
     encryption = { decryptMessages: vi.fn(async (messages: any[]) => messages) };
     engine.encryption = { getSessionEncryption: (id: string) => mocks.state.sessions[id] ? encryption : undefined };
+});
+
+describe('session avatar sync integration', () => {
+    const avatar = { ref: 'sessions/a/avatar/a.enc', preview: 'opaque', version: 1 };
+    const update = (seq: number, value: unknown) => ({ id: `u${seq}`, seq, createdAt: seq, body: { t: 'update-session', id: 'a', avatar: value } });
+
+    it('applies artwork events and prevents reordered updates from undoing removal', async () => {
+        engine.projectsSync = { invalidate: vi.fn() };
+        await engine.handleUpdate(update(10, avatar));
+        expect(mocks.state.sessions.a.avatarDescriptor).toEqual(avatar);
+        await engine.handleUpdate(update(12, null));
+        await engine.handleUpdate(update(11, { ...avatar, version: 2 }));
+        expect(mocks.state.sessions.a.avatarDescriptor).toBeNull();
+        expect(mocks.state.sessions.a.avatar).toBeNull();
+        expect(mocks.state.sessions.a.avatarUpdateSeq).toBe(12);
+        expect(mocks.state.sessions.a.seq).toBe(12);
+    });
+
+    it('does not resurrect an image when an old event arrives after a removal snapshot', async () => {
+        engine.projectsSync = { invalidate: vi.fn() };
+        engine.credentials = { token: 'test', secret: 'secret' };
+        engine.encryption = {
+            initializeSessions: vi.fn(),
+            getSessionEncryption: () => ({ decryptMetadata: async () => ({}), decryptAgentState: async () => null }),
+        };
+        vi.stubGlobal('fetch', vi.fn(async () => Response.json({ sessions: [{ id: 'a', seq: 0, metadata: 'opaque', metadataVersion: 1, agentState: null, agentStateVersion: 0, dataEncryptionKey: null, active: false, updatedAt: 10, createdAt: 1, avatar: null, avatarVersion: 3 }] })));
+        await engine.fetchSessions();
+        await engine.handleUpdate({ ...update(100, { ...avatar, version: 2 }), body: { t: 'update-session', id: 'a', avatar: { ...avatar, version: 2 }, avatarVersion: 2 } });
+        expect(mocks.state.sessions.a.avatarDescriptor).toBeNull();
+        expect(mocks.state.sessions.a.avatarRevision).toBe(3);
+    });
+
+    it('preserves a removal delivered while a stale session snapshot is downloading', async () => {
+        engine.projectsSync = { invalidate: vi.fn() };
+        engine.credentials = { token: 'test', secret: 'secret' };
+        engine.encryption = {
+            initializeSessions: vi.fn(),
+            getSessionEncryption: () => ({ decryptMetadata: async () => ({}), decryptAgentState: async () => null }),
+        };
+        await engine.handleUpdate(update(10, avatar));
+        let finish!: (value: Response) => void;
+        vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>((resolve) => { finish = resolve; })));
+        const fetching = engine.fetchSessions();
+        await engine.handleUpdate(update(11, null));
+        finish(Response.json({ sessions: [{ id: 'a', seq: 0, metadata: 'opaque', metadataVersion: 1, agentState: null, agentStateVersion: 0, dataEncryptionKey: null, active: false, updatedAt: 1, createdAt: 1, avatar }] }));
+        await fetching;
+        expect(mocks.state.sessions.a.avatarDescriptor).toBeNull();
+        expect(mocks.state.sessions.a.avatarUpdateSeq).toBe(11);
+    });
 });
 
 describe('chat preload sync integration', () => {

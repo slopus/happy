@@ -39,6 +39,7 @@ import { indexSessionsById } from './sessionIdentity';
 import { t } from '@/text';
 import type { Project } from './projectTypes';
 import { getSessionProjectId, isHappyAgentSession } from './projectTypes';
+import { resolveSessionAvatar } from './resolveSessionAvatar';
 
 // Debounce timer for realtimeMode changes
 let realtimeModeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -161,6 +162,8 @@ export interface SessionRowData {
     // Private project art is already materialized as a local/data URI by sync.
     projectAvatarUri?: string | null;
     projectAvatarThumbhash?: string | null;
+    avatarUri?: string | null;
+    avatarThumbhash?: string | null;
 }
 
 function buildSessionRowData(
@@ -185,6 +188,7 @@ function buildSessionRowData(
     const linkedProject = projectId ? projects[projectId] : undefined;
     const metadataProject = session.metadata?.project;
     const projectAvatar = isHappyAgentSession(session) ? linkedProject?.avatar : null;
+    const avatar = resolveSessionAvatar(session, projects);
     return {
         id: session.id,
         botId: session.metadata?.bot?.id ?? null,
@@ -225,6 +229,8 @@ function buildSessionRowData(
         workspaceName: session.metadata?.workspace?.name ?? null,
         projectAvatarUri: projectAvatar?.uri || null,
         projectAvatarThumbhash: projectAvatar?.thumbhash || null,
+        avatarUri: avatar?.uri || null,
+        avatarThumbhash: avatar?.thumbhash || null,
     };
 }
 
@@ -1570,6 +1576,13 @@ export function useSessionProjectAvatar(sessionId: string): Project['avatar'] {
         if (!session || !isHappyAgentSession(session)) return null;
         const projectId = getSessionProjectId(session);
         return projectId ? state.projects[projectId]?.avatar ?? null : null;
+    }));
+}
+
+export function useSessionAvatar(sessionId: string): Project['avatar'] {
+    return storage(useShallow((state) => {
+        const session = state.sessions[sessionId];
+        return session ? resolveSessionAvatar(session, state.projects) : null;
     }));
 }
 

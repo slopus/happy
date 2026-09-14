@@ -3,7 +3,7 @@ import { Platform, View, FlatList } from 'react-native';
 import { Text } from '@/components/StyledText';
 import { useAllSessions, useProjects } from '@/sync/storage';
 import { Session } from '@/sync/storageTypes';
-import { getSessionProjectId, isHappyAgentSession } from '@/sync/projectTypes';
+import { resolveSessionAvatar } from '@/sync/resolveSessionAvatar';
 import { Avatar } from '@/components/Avatar';
 import { getSessionName, getSessionSubtitle, getSessionAvatarId } from '@/utils/sessionUtils';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -194,10 +194,7 @@ export default function SessionHistory() {
             const sessionName = getSessionName(session);
             const sessionSubtitle = getSessionSubtitle(session);
             const avatarId = getSessionAvatarId(session);
-            const projectId = getSessionProjectId(session);
-            const projectAvatar = isHappyAgentSession(session)
-                ? (projectId ? projects[projectId]?.avatar : null)
-                : null;
+            const avatar = resolveSessionAvatar(session, projects);
             
             // Determine card styling based on position within date group
             const prevItem = index > 0 ? groupedItems[index - 1] : null;
@@ -223,10 +220,11 @@ export default function SessionHistory() {
                     onPress={() => navigateToSession(session.id)}
                 >
                     <Avatar
+                        bot={!!session.metadata?.bot}
                         id={avatarId}
                         size={48}
-                        imageUrl={projectAvatar?.uri}
-                        thumbhash={projectAvatar?.thumbhash}
+                        imageUrl={avatar?.uri}
+                        thumbhash={avatar?.thumbhash}
                     />
                     <View style={styles.sessionContent}>
                         <Text style={styles.sessionTitle} numberOfLines={1}>

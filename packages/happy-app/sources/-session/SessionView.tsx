@@ -28,7 +28,7 @@ import { Modal } from '@/modal';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { getCurrentVoiceConversationId, getCurrentVoiceSessionDurationSeconds, startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSession';
 import { sessionAbort, sessionCancelCommunication, sessionGoalAction, sessionSetAgentModes, spawnSideChat, sessionKill, sessionArchive } from '@/sync/ops';
-import { storage, useIsDataReady, useLocalSetting, useRealtimeStatus, useSessionGitStatus, useSessionMessages, useSessionPendingCommunications, useSessionProjectAvatar, useSessionUsage, useSetting, useSideChatSessions } from '@/sync/storage';
+import { storage, useIsDataReady, useLocalSetting, useRealtimeStatus, useSessionGitStatus, useSessionMessages, useSessionPendingCommunications, useSessionAvatar, useSessionUsage, useSetting, useSideChatSessions } from '@/sync/storage';
 import { useSession } from '@/sync/storage';
 import { getSessionForkSource } from '@/utils/sessionFork';
 import { useHappyAction } from '@/hooks/useHappyAction';
@@ -85,7 +85,7 @@ export const SessionView = React.memo((props: { id: string }) => {
     const router = useRouter();
     const isFocused = useIsFocused();
     const session = useSession(sessionId);
-    const projectAvatar = useSessionProjectAvatar(sessionId);
+    const avatar = useSessionAvatar(sessionId);
     const gitStatus = useSessionGitStatus(sessionId);
     const headerGit = React.useMemo(
         () => resolveSessionGitPresentation(session?.metadata, gitStatus),
@@ -375,8 +375,8 @@ export const SessionView = React.memo((props: { id: string }) => {
                     flavor={session.metadata?.flavor}
                     clientId={session.metadata?.client?.id}
                     badgeLocation="sessionHeader"
-                    imageUrl={projectAvatar?.uri}
-                    thumbhash={projectAvatar?.thumbhash}
+                    imageUrl={avatar?.uri}
+                    thumbhash={avatar?.thumbhash}
                 />
             </Pressable>
         )
