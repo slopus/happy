@@ -119,7 +119,7 @@ describe('Codex account launch lifecycle', () => {
     await withCodexAccountLaunch({ agent: 'claude', token: 'claude-secret' }, a, 'machine-1', spawn);
     expect(spawn).toHaveBeenCalledWith(undefined); expect(a.redeemCodexSessionGrant).not.toHaveBeenCalled();
   });
-  it('reports only secondary weekly quota from its private JSONL with immutable launch-start version and exact observation time', async () => {
+  it('prefers secondary weekly quota from its private JSONL with immutable launch-start version and exact observation time', async () => {
     const a = api(); const sourceHome = await home();
     const launch = await CodexAccountLaunch.prepare(a, 'machine-1', 'g'.repeat(43), { sourceHome });
     await launch.attach('session-1');
@@ -130,6 +130,17 @@ describe('Codex account launch lifecycle', () => {
     await launch.sync();
     expect(a.updateCodexAccountCredential).toHaveBeenCalledOnce();
     expect(a.reportCodexAccountQuota).toHaveBeenCalledWith('profile-1', { machineId: 'machine-1', launchId: 'launch-1', sourceSessionId: 'session-1', credentialVersion: 3, weeklyUsedPercent: 23, weeklyResetsAt: new Date(reset * 1000).toISOString(), observedAt: observed });
+    await launch.finish();
+  });
+  it('reports a weekly primary quota when newer Codex clients omit secondary', async () => {
+    const a = api(); const sourceHome = await home();
+    const launch = await CodexAccountLaunch.prepare(a, 'machine-1', 'g'.repeat(43), { sourceHome });
+    await launch.attach('session-1');
+    const observed = new Date().toISOString(); const reset = Math.floor(Date.now() / 1000) + 86400;
+    await mkdir(join(launch.home, 'sessions'), { recursive: true });
+    await writeFile(join(launch.home, 'sessions', 'usage.jsonl'), JSON.stringify({ timestamp: observed, type: 'event_msg', payload: { type: 'token_count', info: { total_token_usage: { input_tokens: 1 } }, rate_limits: { primary: { used_percent: 20, resets_at: reset, window_minutes: 10080 } } } }) + '\n');
+    await launch.sync();
+    expect(a.reportCodexAccountQuota).toHaveBeenCalledWith('profile-1', expect.objectContaining({ weeklyUsedPercent: 20 }));
     await launch.finish();
   });
   it('advances only successful CAS versions, never retries a conflicted writer, and reports status at the latest successful version', async () => {

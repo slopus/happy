@@ -5,7 +5,7 @@ import type { ApiClient } from '@/api/api';
 import { CodexAccountRequestError } from '@/api/codexAccountTypes';
 import { codexAccountAuthSchema, readCodexAccountAuth, type CodexAccountAuth } from '@/codex/codexAccountAuth';
 import { prepareCodexHomeWithAuth } from '@/codex/codexHome';
-import { collectCodexUsageSnapshot } from '@/codex/codexUsage';
+import { collectCodexUsageSnapshot, type CodexUsageRateLimitWindow, type CodexUsageRateLimits } from '@/codex/codexUsage';
 import { retainCodexAccountHistory, restoreCodexAccountHistory, rememberCodexAccountSession, copyCodexSourceThread, CodexSourceHistoryUnavailableError } from '@/codex/codexAccountHistory';
 import { configuration } from '@/configuration';
 import type { SpawnSessionOptions, SpawnSessionResult } from '@/modules/common/registerCommonHandlers';
@@ -18,6 +18,14 @@ export type AccountApi = Pick<ApiClient, 'redeemCodexSessionGrant' | 'attachCode
 type PrepareOptions = NonNullable<Parameters<typeof prepareCodexHomeWithAuth>[1]> & { historyRoot?: string; sourceSessionId?: string; sourceThreadId?: string; skipHistory?: boolean };
 const fingerprint = (auth: CodexAccountAuth) => createHash('sha256').update(JSON.stringify(auth)).digest('hex');
 const identityFingerprint = (launchId: string, accountId: string) => createHash('sha256').update(`${launchId}\0${accountId}`).digest('hex');
+
+/** Codex currently emits the weekly window as secondary, but newer clients can emit it as primary. */
+function weeklyRateLimit(rateLimits: CodexUsageRateLimits | undefined): CodexUsageRateLimitWindow | undefined {
+  const secondary = rateLimits?.secondary;
+  if (secondary && (secondary.windowMinutes === undefined || secondary.windowMinutes === 10080)) return secondary;
+  const primary = rateLimits?.primary;
+  return primary?.windowMinutes === 10080 ? primary : undefined;
+}
 
 /** One redeemed launch owns one home and immutable quota attribution. */
 export class CodexAccountLaunch {
@@ -101,19 +109,18 @@ export class CodexAccountLaunch {
   async reportQuotaProbe(): Promise<{ accepted: boolean }> {
     const snapshot = await collectCodexUsageSnapshot({ codexHome: this.home, maxDays: 1 });
     const event = snapshot.latestEvent;
-    const secondary = event?.rateLimits?.secondary;
+    const weekly = weeklyRateLimit(event?.rateLimits);
     const observed = event?.rateLimitsTimestamp;
-    if (typeof secondary?.usedPercent !== 'number' || !Number.isFinite(secondary.usedPercent) || secondary.usedPercent < 0 || secondary.usedPercent > 100 ||
-        typeof secondary.resetsAt !== 'number' || !Number.isFinite(secondary.resetsAt) || !observed || !Number.isFinite(Date.parse(observed)) || Date.parse(observed) < this.startedAt ||
-        (secondary.windowMinutes !== undefined && secondary.windowMinutes !== 10080)) {
+    if (typeof weekly?.usedPercent !== 'number' || !Number.isFinite(weekly.usedPercent) || weekly.usedPercent < 0 || weekly.usedPercent > 100 ||
+        typeof weekly.resetsAt !== 'number' || !Number.isFinite(weekly.resetsAt) || !observed || !Number.isFinite(Date.parse(observed)) || Date.parse(observed) < this.startedAt) {
       throw new Error('Codex did not return a current weekly quota snapshot');
     }
-    const reset = new Date(secondary.resetsAt * 1000);
+    const reset = new Date(weekly.resetsAt * 1000);
     if (!Number.isFinite(reset.getTime()) || reset.getTime() <= Date.parse(observed)) throw new Error('Codex returned an invalid weekly quota reset time');
     if (!this.api.reportCodexAccountQuotaProbe) throw new Error('This Paws daemon does not support quota probes');
     return this.api.reportCodexAccountQuotaProbe(this.profileId, {
       machineId: this.machineId, launchId: this.launchId, credentialVersion: this.credentialVersion,
-      weeklyUsedPercent: secondary.usedPercent, weeklyResetsAt: reset.toISOString(), observedAt: observed,
+      weeklyUsedPercent: weekly.usedPercent, weeklyResetsAt: reset.toISOString(), observedAt: observed,
     });
   }
 
@@ -185,18 +192,17 @@ export class CodexAccountLaunch {
     try {
       const snapshot = await collectCodexUsageSnapshot({ codexHome: this.home, maxDays: 8 });
       const event = snapshot.latestEvent;
-      const secondary = event?.rateLimits?.secondary;
+      const weekly = weeklyRateLimit(event?.rateLimits);
       const observed = event?.rateLimitsTimestamp;
-      if (typeof secondary?.usedPercent !== 'number' || !Number.isFinite(secondary.usedPercent) || secondary.usedPercent < 0 || secondary.usedPercent > 100 ||
-          typeof secondary.resetsAt !== 'number' || !Number.isFinite(secondary.resetsAt) || !observed || !Number.isFinite(Date.parse(observed)) || Date.parse(observed) < this.startedAt) return;
-      if (secondary.windowMinutes !== undefined && secondary.windowMinutes !== 10080) return;
-      const reset = new Date(secondary.resetsAt * 1000);
+      if (typeof weekly?.usedPercent !== 'number' || !Number.isFinite(weekly.usedPercent) || weekly.usedPercent < 0 || weekly.usedPercent > 100 ||
+          typeof weekly.resetsAt !== 'number' || !Number.isFinite(weekly.resetsAt) || !observed || !Number.isFinite(Date.parse(observed)) || Date.parse(observed) < this.startedAt) return;
+      const reset = new Date(weekly.resetsAt * 1000);
       if (!Number.isFinite(reset.getTime()) || reset.getTime() <= Date.parse(observed)) return;
-      const signature = JSON.stringify([secondary.usedPercent, secondary.resetsAt, observed]);
+      const signature = JSON.stringify([weekly.usedPercent, weekly.resetsAt, observed]);
       if (signature === this.lastQuota) return;
       await this.api.reportCodexAccountQuota(this.profileId, {
         machineId: this.machineId, launchId: this.launchId, sourceSessionId: this.sourceSessionId,
-        credentialVersion: this.credentialVersion, weeklyUsedPercent: secondary.usedPercent,
+        credentialVersion: this.credentialVersion, weeklyUsedPercent: weekly.usedPercent,
         weeklyResetsAt: reset.toISOString(), observedAt: observed,
       });
       this.lastQuota = signature;
