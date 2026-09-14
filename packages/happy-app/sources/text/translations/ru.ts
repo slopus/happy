@@ -201,6 +201,8 @@ export const ru: TranslationStructure = {
         flatList: 'Общий список',
         groupByProject: 'Группировать по проектам',
         appearanceSettings: 'Настройки внешнего вида',
+        searchPlaceholder: 'Поиск сессий…',
+        noResultsPlaceholder: 'Сессии не найдены',
     },
 
     settingsFeatures: {

@@ -19,6 +19,7 @@ import { useIsTablet } from '@/utils/responsive';
 import { getHarnessName } from '@/utils/harnessCatalog';
 import { requestReview } from '@/utils/requestReview';
 import { UpdateBanner } from './UpdateBanner';
+import { SessionSearchInput } from './SessionSearchInput';
 import { layout } from './layout';
 import { useSessionPressHandlers } from '@/hooks/useNavigateToSession';
 import { SessionActionsAnchor, SessionActionsPopover } from './SessionActionsPopover';
@@ -72,6 +73,15 @@ const stylesheet = StyleSheet.create((theme) => ({
     headerSectionFlat: {
         backgroundColor: flatListBackgroundColor(theme),
         paddingHorizontal: 16,
+    },
+    noResultsContainer: {
+        alignItems: 'center',
+        paddingVertical: 32,
+    },
+    noResultsText: {
+        fontSize: 14,
+        color: theme.colors.textSecondary,
+        ...Typography.default(),
     },
     archiveToggle: {
         flexDirection: 'row',
@@ -314,15 +324,24 @@ export function SessionsList({
     scrollIndicatorTopInset = 0,
     bottomContentInset = 128,
     onScroll,
+    searchQuery: controlledQuery,
+    onSearchQueryChange,
 }: {
     topContentInset?: number;
     scrollIndicatorTopInset?: number;
     bottomContentInset?: number;
     onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
+    /** Controlled search box, owned by the wrapper. Falls back to local state
+     *  for direct mounts (MainView's phone layout). */
+    searchQuery?: string;
+    onSearchQueryChange?: (text: string) => void;
 } = {}) {
     const styles = stylesheet;
     const safeArea = useSafeAreaInsets();
-    const sourceData = useVisibleSessionListViewData();
+    const [localSearchQuery, setLocalSearchQuery] = React.useState('');
+    const searchQuery = controlledQuery ?? localSearchQuery;
+    const setSearchQuery = onSearchQueryChange ?? setLocalSearchQuery;
+    const sourceData = useVisibleSessionListViewData(searchQuery);
     const hasArchivedSessions = useHasArchivedSessions();
     // Stored under its original `hideInactiveSessions` key — synced settings
     // have no rename migration — but it hides archived sessions only.
@@ -351,6 +370,7 @@ export function SessionsList({
         }
     }, [sourceData && sourceData.length > 0]);
 
+    const trimmedQuery = searchQuery.trim();
     const data = React.useMemo<SessionListDisplayItem[] | null>(() => {
         if (!sourceData) return sourceData;
 
@@ -363,7 +383,9 @@ export function SessionsList({
         const groupedRows = sourceData.filter((item) => (
             item.type !== 'header' && item.type !== 'session'
         ));
-        const archiveToggle: SessionListDisplayItem[] = hasArchivedSessions
+        // The toggle's own click cannot bring anything back while a search
+        // is filtering, so it hides with the rest of the chrome.
+        const archiveToggle: SessionListDisplayItem[] = hasArchivedSessions && !trimmedQuery
             ? [{ type: 'archive-toggle', hidden: hideArchivedSessions }]
             : [];
 
@@ -582,9 +604,26 @@ export function SessionsList({
 
     // Footer removed - all sessions now shown inline
 
+    // The archive toggle survives a fruitless search (it keys off the
+    // unfiltered list), so `data` is never empty — read the hook's filtered
+    // output instead.
+    const noResults = searchQuery.trim() !== '' && (sourceData?.length ?? 1) === 0;
+
     return (
         <View style={[styles.container, flatSessionList && styles.containerFlat]}>
             <View style={styles.contentContainer}>
+                <SessionSearchInput
+                    value={searchQuery}
+                    onChangeText={setSearchQuery}
+                    topInset={topContentInset}
+                />
+                {noResults && (
+                    <View style={styles.noResultsContainer}>
+                        <Text style={styles.noResultsText}>
+                            {t('sessionsFilter.noResultsPlaceholder')}
+                        </Text>
+                    </View>
+                )}
                 <FlatList
                     data={data}
                     renderItem={renderItem}

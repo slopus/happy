@@ -216,6 +216,8 @@ export const zhHant: TranslationStructure = {
         flatList: '平鋪列表',
         groupByProject: '按專案分組',
         appearanceSettings: '外觀設定',
+        searchPlaceholder: '搜尋工作階段…',
+        noResultsPlaceholder: '未找到工作階段',
     },
 
     settingsFeatures: {
