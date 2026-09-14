@@ -25,6 +25,7 @@ import { v3SessionRoutes } from "./routes/v3SessionRoutes";
 import { attachmentRoutes } from "./routes/attachmentRoutes";
 import { projectRoutes } from "./routes/projectRoutes";
 import { isLocalStorage, getLocalFilesDir } from "@/storage/files";
+import { publicLocalFilePath } from './publicLocalFilePath';
 import * as path from "path";
 import * as fs from "fs";
 
@@ -83,8 +84,8 @@ export async function startApi(opts: StartApiOptions = {}) {
         app.get('/files/*', function (request, reply) {
             const filePath = (request.params as any)['*'];
             const baseDir = path.resolve(getLocalFilesDir());
-            const fullPath = path.resolve(baseDir, filePath);
-            if (!fullPath.startsWith(baseDir + path.sep)) {
+            const fullPath = publicLocalFilePath(baseDir, filePath);
+            if (fullPath === null) {
                 reply.code(403).send('Forbidden');
                 return;
             }

@@ -8,8 +8,11 @@ import { randomKeyNaked } from "@/utils/randomKeyNaked";
 import { allocateUserSeq } from "@/storage/seq";
 import { sessionDelete } from "@/app/session/sessionDelete";
 import { activityCache } from "@/app/presence/sessionCache";
+import { sessionAvatar } from '@/app/session/sessionAvatar';
+import { sessionAvatarRoutes } from './sessionAvatarRoutes';
 
 export function sessionRoutes(app: Fastify) {
+    sessionAvatarRoutes(app);
 
     // Sessions API
     app.get('/v1/sessions', {
@@ -32,6 +35,9 @@ export function sessionRoutes(app: Fastify) {
                 agentStateVersion: true,
                 dataEncryptionKey: true,
                 projectId: true,
+                avatarRef: true,
+                avatarPreview: true,
+                avatarVersion: true,
                 active: true,
                 lastActiveAt: true,
                 // messages: {
@@ -67,6 +73,7 @@ export function sessionRoutes(app: Fastify) {
                     agentStateVersion: v.agentStateVersion,
                     dataEncryptionKey: v.dataEncryptionKey ? Buffer.from(v.dataEncryptionKey).toString('base64') : null,
                     projectId: v.projectId,
+                    avatar: sessionAvatar(v),
                     lastMessage: null
                 };
             })
@@ -104,6 +111,9 @@ export function sessionRoutes(app: Fastify) {
                 agentStateVersion: true,
                 dataEncryptionKey: true,
                 projectId: true,
+                avatarRef: true,
+                avatarPreview: true,
+                avatarVersion: true,
                 active: true,
                 lastActiveAt: true,
             }
@@ -123,6 +133,7 @@ export function sessionRoutes(app: Fastify) {
                 agentStateVersion: v.agentStateVersion,
                 dataEncryptionKey: v.dataEncryptionKey ? Buffer.from(v.dataEncryptionKey).toString('base64') : null,
                 projectId: v.projectId,
+                avatar: sessionAvatar(v),
             }))
         });
     });
@@ -186,6 +197,9 @@ export function sessionRoutes(app: Fastify) {
                 agentStateVersion: true,
                 dataEncryptionKey: true,
                 projectId: true,
+                avatarRef: true,
+                avatarPreview: true,
+                avatarVersion: true,
                 active: true,
                 lastActiveAt: true,
             }
@@ -216,6 +230,7 @@ export function sessionRoutes(app: Fastify) {
                 agentStateVersion: v.agentStateVersion,
                 dataEncryptionKey: v.dataEncryptionKey ? Buffer.from(v.dataEncryptionKey).toString('base64') : null,
                 projectId: v.projectId,
+                avatar: sessionAvatar(v),
             })),
             nextCursor,
             hasNext
@@ -282,6 +297,7 @@ export function sessionRoutes(app: Fastify) {
                     agentStateVersion: sessionForResponse.agentStateVersion,
                     dataEncryptionKey: sessionForResponse.dataEncryptionKey ? Buffer.from(sessionForResponse.dataEncryptionKey).toString('base64') : null,
                     projectId: sessionForResponse.projectId,
+                    avatar: sessionAvatar(sessionForResponse),
                     active: sessionForResponse.active,
                     activeAt: sessionForResponse.lastActiveAt.getTime(),
                     createdAt: sessionForResponse.createdAt.getTime(),
@@ -332,6 +348,7 @@ export function sessionRoutes(app: Fastify) {
                     agentStateVersion: session.agentStateVersion,
                     dataEncryptionKey: session.dataEncryptionKey ? Buffer.from(session.dataEncryptionKey).toString('base64') : null,
                     projectId: session.projectId,
+                    avatar: sessionAvatar(session),
                     active: session.active,
                     activeAt: session.lastActiveAt.getTime(),
                     createdAt: session.createdAt.getTime(),
