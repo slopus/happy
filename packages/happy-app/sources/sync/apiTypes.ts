@@ -9,6 +9,7 @@ import {
 import { GitHubProfileSchema, ImageRefSchema } from './profile';
 import { RelationshipStatusSchema, UserProfileSchema } from './friendTypes';
 import { FeedBodySchema } from './feedTypes';
+import { sessionAvatarDescriptorSchema, sessionAvatarRevisionSchema } from './sessionAvatarTypes';
 
 export {
     ApiMessageSchema,
@@ -24,6 +25,8 @@ export type { ApiMessage };
 export const ApiUpdateNewSessionSchema = z.object({
     t: z.literal('new-session'),
     id: z.string(), // Session ID
+    avatar: sessionAvatarDescriptorSchema.nullable().optional().catch(undefined),
+    avatarVersion: sessionAvatarRevisionSchema.optional().catch(undefined),
     projectId: z.string().nullable().optional(),
     createdAt: z.number(),
     updatedAt: z.number(),
@@ -32,6 +35,8 @@ export const ApiUpdateNewSessionSchema = z.object({
 // The shared wire schema predates the account-scoped project link. Extend it
 // here so Zod does not strip projectId before Sync can apply it.
 export const ApiUpdateSessionStateSchema = SharedApiUpdateSessionStateSchema.extend({
+    avatar: sessionAvatarDescriptorSchema.nullable().optional().catch(undefined),
+    avatarVersion: sessionAvatarRevisionSchema.optional().catch(undefined),
     projectId: z.string().nullable().optional(),
 });
 

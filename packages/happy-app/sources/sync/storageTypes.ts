@@ -1,5 +1,7 @@
 import { z } from "zod";
 import { RigBotSchema } from '@slopus/happy-wire';
+import type { SessionAvatarDescriptor } from './sessionAvatarTypes';
+import type { ProjectAvatar } from './projectTypes';
 
 //
 // Agent states
@@ -393,6 +395,12 @@ export interface SessionAgentModesPatch {
 
 export interface Session {
     id: string,
+    avatarDescriptor?: SessionAvatarDescriptor | null,
+    avatar?: ProjectAvatar | null,
+    /** Local account-event watermark; not the session message sequence. */
+    avatarUpdateSeq?: number,
+    /** Server avatar revision, including explicit removal snapshots. */
+    avatarRevision?: number,
     seq: number,
     createdAt: number,
     updatedAt: number,
