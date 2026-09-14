@@ -159,16 +159,14 @@ export function machineChoiceAgentAvailable(
 }
 
 /**
- * Whether the Home picker should contain this harness at all.
- *
- * Common harnesses stay visible but disabled when unavailable. Antigravity and
- * Happy Agent stay absent until this computer reports them available.
+ * Every non-retired harness this computer can actually run, in picker order.
+ * An empty result is meaningful: the UI can offer setup help instead of
+ * advertising harnesses that cannot be started from the selected computer.
  */
-export function machineChoiceAgentVisible(
+export function listMachineChoiceAvailableAgents(
     choice: MachineChoice | null,
-    agent: NewSessionAgentType,
-): boolean {
-    return (agent !== 'agy' && agent !== 'rig') || machineChoiceAgentAvailable(choice, agent);
+): NewSessionAgentType[] {
+    return NEW_SESSION_AGENT_ORDER.filter((agent) => machineChoiceAgentAvailable(choice, agent));
 }
 
 /**

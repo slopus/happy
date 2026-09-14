@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
     collectMachineChoices,
     findMachineChoice,
+    listMachineChoiceAvailableAgents,
     machineChoiceAgentAvailable,
-    machineChoiceAgentVisible,
     resolveAgentMachine,
     resolveChoiceAgent,
     resolveWorktreeCreationMachine,
@@ -137,7 +137,7 @@ describe('what a computer can actually run', () => {
         expect(machineChoiceAgentAvailable(choice, 'rig')).toBe(false);
     });
 
-    it('only shows Antigravity and Happy Agent when available on the machine', () => {
+    it('lists only harnesses available on the machine', () => {
         const absent = collectMachineChoices([cli()])[0];
         const paired = collectMachineChoices([cli(), rig()])[0];
         const installed = collectMachineChoices([machine('agy-machine', {
@@ -145,11 +145,39 @@ describe('what a computer can actually run', () => {
             cliAvailability: { claude: true, agy: true },
         })])[0];
 
-        expect(machineChoiceAgentVisible(absent, 'agy')).toBe(false);
-        expect(machineChoiceAgentVisible(installed, 'agy')).toBe(true);
-        expect(machineChoiceAgentVisible(absent, 'claude')).toBe(true);
-        expect(machineChoiceAgentVisible(absent, 'rig')).toBe(false);
-        expect(machineChoiceAgentVisible(paired, 'rig')).toBe(true);
+        expect(listMachineChoiceAvailableAgents(absent)).toEqual(['claude', 'codex']);
+        expect(listMachineChoiceAvailableAgents(installed)).toEqual(['claude', 'agy']);
+        expect(listMachineChoiceAvailableAgents(paired)).toEqual(['claude', 'codex', 'rig']);
+    });
+
+    it('omits Codex when its CLI is not installed', () => {
+        const choice = collectMachineChoices([machine('no-codex', {
+            host: 'laptop.local',
+            cliAvailability: {
+                claude: true,
+                codex: false,
+                agy: false,
+                gemini: false,
+                openclaw: false,
+            },
+        })])[0];
+
+        expect(listMachineChoiceAvailableAgents(choice)).toEqual(['claude']);
+    });
+
+    it('returns an empty list when no harness is set up', () => {
+        const choice = collectMachineChoices([machine('no-harnesses', {
+            host: 'laptop.local',
+            cliAvailability: {
+                claude: false,
+                codex: false,
+                agy: false,
+                gemini: false,
+                openclaw: false,
+            },
+        })])[0];
+
+        expect(listMachineChoiceAvailableAgents(choice)).toEqual([]);
     });
 
     it('keeps a stale draft from starting an agent this computer cannot run', () => {

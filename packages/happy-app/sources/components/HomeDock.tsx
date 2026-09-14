@@ -36,8 +36,7 @@ import { collectSessionPlaces, collectSessionWorkspaces } from '@/sync/agentSess
 import {
     collectMachineChoices,
     findMachineChoice,
-    machineChoiceAgentAvailable,
-    machineChoiceAgentVisible,
+    listMachineChoiceAvailableAgents,
     resolveChoiceAgent,
     resolveWorktreeCreationMachine,
 } from '@/sync/machineChoices';
@@ -74,9 +73,10 @@ import {
 import { StatusDot } from './StatusDot';
 import { Shaker, type ShakeInstance } from './Shaker';
 import { hapticsError } from './haptics';
-import { HARNESS_ORDER, getHarnessName } from '@/utils/harnessCatalog';
+import { getHarnessName } from '@/utils/harnessCatalog';
 import { getPermissionModeMenuLabel, getPermissionModeShortLabel } from '@/utils/permissionModeLabels';
 import { getRigMachineSessionCreation } from '@/sync/rigSessionCreation';
+import { openExternalUrl } from '@/utils/openExternalUrl';
 import {
     MobileHeaderScrim,
     MOBILE_HOME_SCRIM_OVERLAY_OPACITY,
@@ -110,6 +110,7 @@ const MOBILE_HOME_DOCK_TOP_PADDING = 8;
 // Sits in the gap the focused dock already leaves above the composer, so it
 // costs no layout: showing it must not move the pickers or the composer.
 const START_PROGRESS_ROW_HEIGHT = 18;
+const HARNESS_SETUP_HELP_URL = 'https://happy.engineering/docs/quick-start/';
 // Matches Shaker's own keyframes so a refused picker reads the same as every
 // other refusal in the app.
 const SHAKE_KEYFRAMES = [3, -3, 3, -3, 0];
@@ -860,27 +861,13 @@ export const HomeDock = React.memo(({
         return options;
     }, [agentType, canCreateWorktree, existingWorktrees, picksWorkspaces, supportsWorktree, worktreeKey]);
     const currentWorktree = resolveOption(worktreeOptions, [selectedWorktreeKey]);
-    // Common harnesses stay listed but disabled when unavailable, so the picker
-    // still reads as a choice. Antigravity is niche and stays entirely absent
-    // until this computer explicitly reports it installed.
-    const harnessKeys = React.useMemo<NewSessionAgentType[]>(() => (
-        (HARNESS_ORDER.includes(agentType) ? [...HARNESS_ORDER] : [agentType, ...HARNESS_ORDER])
-            .filter((key) => machineChoiceAgentVisible(selectedChoice, key))
-    ), [agentType, selectedChoice]);
     const availableAgents = React.useMemo<ModeOption[]>(() => (
-        harnessKeys.map((key) => {
-            const agent = { key, name: getHarnessName(key) };
-            return machineChoiceAgentAvailable(selectedChoice, key)
-                ? agent
-                : {
-                    ...agent,
-                    disabled: true,
-                    description: key === 'rig'
-                        ? 'Happy Agent is not running on this computer'
-                        : 'Not installed on this machine',
-                };
-        })
-    ), [harnessKeys, selectedChoice]);
+        listMachineChoiceAvailableAgents(selectedChoice).map((key) => ({
+            key,
+            name: getHarnessName(key),
+        }))
+    ), [selectedChoice]);
+    const hasAvailableHarness = availableAgents.length > 0;
     const resolvedAgentType = resolveChoiceAgent(selectedChoice, agentType);
     const defaults = React.useMemo(() => rigCreation
         ? {
@@ -1200,13 +1187,18 @@ export const HomeDock = React.memo(({
             value: currentWorktree?.name ?? (picksWorkspaces ? 'Main' : 'No worktree'),
             icon: 'git-branch-outline',
         },
-        { page: 'agent', label: 'HARNESS', value: currentAgent.name, icon: 'hardware-chip-outline' },
+        {
+            page: 'agent',
+            label: 'HARNESS',
+            value: hasAvailableHarness ? currentAgent.name : 'Help',
+            icon: hasAvailableHarness ? 'hardware-chip-outline' : 'help-circle-outline',
+        },
     ];
-    const agentRows: SettingsRow[] = [
+    const agentRows: SettingsRow[] = hasAvailableHarness ? [
         ...(currentModel ? [{ page: 'model', label: t('agentInput.model.title'), value: currentModel.name, icon: 'cube-outline' as const }] : []),
         ...(currentPermission ? [{ page: 'permission', label: t('agentInput.permissionMode.title'), value: permissionLabel ?? currentPermission.name, icon: 'shield-outline' as const }] : []),
         ...(currentEffort ? [{ page: 'effort', label: t('agentInput.effort.title'), value: currentEffort.name, icon: 'speedometer-outline' as const }] : []),
-    ];
+    ] : [];
 
     type PickerConfig = {
         title: string;
@@ -1235,6 +1227,11 @@ export const HomeDock = React.memo(({
                 setPath(selectedCustomPath);
             }
         })();
+    };
+
+    const openHarnessSetupHelp = () => {
+        Keyboard.dismiss();
+        void openExternalUrl(HARNESS_SETUP_HELP_URL);
     };
 
     const getEnvironmentPickerConfig = (setting: EnvironmentSetting): PickerConfig => {
@@ -1378,6 +1375,18 @@ export const HomeDock = React.memo(({
     );
 
     const renderPickerRow = (row: SettingsRow, config: PickerConfig, compact: boolean) => {
+        if (row.page === 'agent' && !hasAvailableHarness) {
+            return (
+                <Pressable
+                    key={row.page}
+                    onPress={openHarnessSetupHelp}
+                    accessibilityRole="link"
+                    accessibilityLabel="Harness setup help"
+                >
+                    {renderPickerRowContent(row, compact)}
+                </Pressable>
+            );
+        }
         if (!useNativeMenus) {
             return (
                 <Pressable
