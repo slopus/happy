@@ -935,22 +935,26 @@ function pickTurnEndStatus(message: Record<string, unknown>, type: unknown): Tur
 
 export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unknown>, state: CodexTurnState): CodexMapperResult {
     const result = mapCodexMcpMessageToSessionEnvelopesInner(message, state);
+    ensureCodexEnvelopeTurn(result);
+    return result;
+}
+
+function ensureCodexEnvelopeTurn(result: Pick<CodexMapperResult, 'currentTurnId' | 'envelopes'>): void {
     // Automatic continuations may deliver content without a task_started event.
     // Keep usage-only service envelopes turn-less for older client compatibility.
     const requiresTurn = (envelope: SessionEnvelope) => envelope.role === 'agent'
         && !envelope.turn
         && !(envelope.ev.t === 'service' && !envelope.ev.text.trim() && envelope.usage);
-    if (!result.envelopes.some(requiresTurn)) return result;
+    if (!result.envelopes.some(requiresTurn)) return;
 
-    const turn = state.currentTurnId ?? createId();
+    const turn = result.currentTurnId ?? createId();
     result.envelopes = result.envelopes.map((envelope) => requiresTurn(envelope)
         ? { ...envelope, turn }
         : envelope);
-    if (!state.currentTurnId) {
+    if (!result.currentTurnId) {
         result.envelopes.unshift(createEnvelope('agent', { t: 'turn-start' }, { turn }));
     }
     result.currentTurnId = turn;
-    return result;
 }
 
 function mapCodexMcpMessageToSessionEnvelopesInner(message: Record<string, unknown>, state: CodexTurnState): CodexMapperResult {
@@ -1338,6 +1342,18 @@ function mapCodexMcpMessageToSessionEnvelopesInner(message: Record<string, unkno
 }
 
 export function mapCodexProcessorMessageToSessionEnvelopes(
+    message: ReasoningOutput | DiffToolCall | DiffToolResult,
+    state: CodexTurnState,
+): Pick<CodexMapperResult, 'currentTurnId' | 'envelopes'> {
+    const result = {
+        currentTurnId: state.currentTurnId,
+        envelopes: mapCodexProcessorMessageToSessionEnvelopesInner(message, state),
+    };
+    ensureCodexEnvelopeTurn(result);
+    return result;
+}
+
+function mapCodexProcessorMessageToSessionEnvelopesInner(
     message: ReasoningOutput | DiffToolCall | DiffToolResult,
     state: CodexTurnState,
 ): SessionEnvelope[] {
