@@ -126,12 +126,6 @@ export class Encryption {
     }
 
     /**
-     * Get the 32-byte NaCl secretbox key for encrypting binary blobs
-     * (image attachments) in a session. Distinct from the message encryption
-     * key to maintain cryptographic separation.
-     * Returns null if the session has not been initialized.
-     */
-    /**
      * Raw per-session AES key. Only present for sessions that carry their own
      * dataEncryptionKey; legacy sessions encrypt with the account master
      * secret, which must never leave the client.
@@ -140,6 +134,12 @@ export class Encryption {
         return this.sessionDataKeys.get(sessionId) ?? null;
     }
 
+    /**
+     * Get the 32-byte NaCl secretbox key for encrypting binary blobs
+     * (image attachments) in a session. Distinct from the message encryption
+     * key to maintain cryptographic separation.
+     * Returns null if the session has not been initialized.
+     */
     getSessionBlobKey(sessionId: string): Uint8Array | null {
         return this.sessionBlobKeys.get(sessionId) ?? null;
     }

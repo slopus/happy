@@ -97,11 +97,18 @@ interface DaemonToServerEvents {
  * The payload arrives over the machine-encrypted RPC channel.
  */
 export const ResumeFallbackSchema = z.object({
-    metadata: z.object({ path: z.string().min(1) }).passthrough(),
+    metadata: z.object({
+        path: z.string().min(1),
+        machineId: z.string().min(1),
+        flavor: z.string().nullish(),
+        claudeSessionId: z.string().optional(),
+        codexThreadId: z.string().optional(),
+    }).passthrough(),
     metadataVersion: z.number().int().nonnegative(),
     agentStateVersion: z.number().int().nonnegative(),
     seq: z.number().int().nonnegative(),
-    encryptionKey: z.string().min(1),
+    encryptionKey: z.string().base64().length(44)
+        .refine(key => decodeBase64(key).length === 32),
     encryptionVariant: z.literal('dataKey'),
 });
 
@@ -376,7 +383,8 @@ export class ApiMachineClient {
                     const result = await handler(sessionId, {
                         model,
                         permissionMode,
-                        fallback: parsedFallback?.success ? parsedFallback.data : undefined,
+                        fallback: parsedFallback?.success && parsedFallback.data.metadata.machineId === this.machine.id
+                            ? parsedFallback.data : undefined,
                         // Free-form, client-supplied and only ever echoed back
                         // in an error message, so it is bounded, not trusted.
                         fallbackReason: typeof fallbackReason === 'string' ? fallbackReason.slice(0, 64) : undefined,

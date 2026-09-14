@@ -716,6 +716,17 @@ export async function startDaemon(): Promise<void> {
           return { type: 'error', errorMessage: `Session ${happySessionId} has no metadata. Cannot resume.` };
         }
 
+        // Persisted startup metadata may lack the provider ID even though the
+        // client has it. Fill only that gap; keep the tracked path and live IDs.
+        const flavor = metadata.flavor ?? 'claude';
+        if (fallback && (fallback.metadata.flavor ?? 'claude') === flavor) {
+          if (flavor === 'claude' && !metadata.claudeSessionId && fallback.metadata.claudeSessionId) {
+            metadata = { ...metadata, claudeSessionId: fallback.metadata.claudeSessionId };
+          } else if (flavor === 'codex' && !metadata.codexThreadId && fallback.metadata.codexThreadId) {
+            metadata = { ...metadata, codexThreadId: fallback.metadata.codexThreadId };
+          }
+        }
+
         // The agent session ID lands in metadata only once the agent reports it
         // (for Claude, the SessionStart hook), so the webhook snapshot taken at
         // spawn never has it — and neither does a client row that was ingested
