@@ -99,6 +99,9 @@ model Session {
     account           Account          @relation(fields: [accountId], references: [id])
     projectId         String?
     project           Project?         @relation(fields: [projectId], references: [id], onDelete: SetNull)
+    avatarRef         String?
+    avatarPreview     String?
+    avatarVersion     Int              @default(0)
     metadata          String
     metadataVersion   Int              @default(0)
     agentState        String?
