@@ -154,7 +154,10 @@ export const DuplicateSheet = React.memo(function DuplicateSheet(props: Duplicat
 
         if (result.type === 'success') {
             onClose?.();
-            router.replace(`/session/${result.sessionId}`);
+            // Use push (not replace) so the source screen stays on the back
+            // stack — replace leaves an empty stack, so on Android hardware-back
+            // exits the app instead of returning to where the fork started.
+            router.push(`/session/${encodeURIComponent(result.sessionId)}`);
             return;
         }
 
