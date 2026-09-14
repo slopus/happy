@@ -9,6 +9,9 @@ vi.mock('expo-crypto', () => ({
 import {
     buildSpawnRequestSignature,
     completeSpawnRequest,
+    getSpawnedSessionId,
+    rememberSpawnedSession,
+    releaseSpawnedSession,
     resolveSpawnRequestId,
 } from './spawnRequestId';
 
@@ -54,5 +57,37 @@ describe('spawn request id', () => {
             ...baseInput,
             directory: '~/other',
         }))).toBe('request-3');
+    });
+
+    it('retains a created session for the same attempt, and abandons it only on configuration change', () => {
+        const id = resolveSpawnRequestId(buildSpawnRequestSignature(baseInput));
+        const abandon = vi.fn();
+        rememberSpawnedSession(id, 'created-session', abandon);
+        expect(resolveSpawnRequestId(buildSpawnRequestSignature(baseInput))).toBe(id);
+        expect(getSpawnedSessionId(id)).toBe('created-session');
+        expect(abandon).not.toHaveBeenCalled();
+        const replacement = resolveSpawnRequestId(buildSpawnRequestSignature({ ...baseInput, machineId: 'other' }));
+        expect(abandon).toHaveBeenCalledOnce();
+        expect(getSpawnedSessionId(replacement)).toBeUndefined();
+        completeSpawnRequest(id); // Late completion cannot erase the newer attempt.
+        expect(resolveSpawnRequestId(buildSpawnRequestSignature({ ...baseInput, machineId: 'other' }))).toBe(replacement);
+    });
+
+    it('never abandons an accepted session when the next request changes', () => {
+        const id = resolveSpawnRequestId(buildSpawnRequestSignature(baseInput));
+        const abandon = vi.fn();
+        rememberSpawnedSession(id, 'accepted-session', abandon);
+        completeSpawnRequest(id);
+        resolveSpawnRequestId(buildSpawnRequestSignature({ ...baseInput, directory: '/different' }));
+        expect(abandon).not.toHaveBeenCalled();
+    });
+
+    it('never stops a retained session the user has adopted from the session list', () => {
+        const id = resolveSpawnRequestId(buildSpawnRequestSignature(baseInput));
+        const abandon = vi.fn();
+        rememberSpawnedSession(id, 'adopted-session', abandon);
+        releaseSpawnedSession('adopted-session');
+        resolveSpawnRequestId(buildSpawnRequestSignature({ ...baseInput, directory: '/different' }));
+        expect(abandon).not.toHaveBeenCalled();
     });
 });

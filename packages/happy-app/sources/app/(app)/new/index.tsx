@@ -37,7 +37,7 @@ import { useAllMachines, useLocalSetting, useSessions, useSetting, storage } fro
 import type { NewSessionAgentType } from '@/sync/persistence';
 import { sync } from '@/sync/sync';
 import { isMachineOnline } from '@/utils/machineUtils';
-import { machineSpawnNewSession, sessionSetAgentModes } from '@/sync/ops';
+import { machineSpawnNewSession, machineStopSession, sessionArchive, sessionKill, sessionSetAgentModes } from '@/sync/ops';
 import { createWorktree } from '@/utils/worktree';
 import { resolveAbsolutePath } from '@/utils/pathUtils';
 import { formatPathRelativeToHome, formatLastSeen } from '@/utils/sessionUtils';
@@ -86,6 +86,8 @@ import {
 import {
     buildSpawnRequestSignature,
     completeSpawnRequest,
+    getSpawnedSessionId,
+    rememberSpawnedSession,
     resolveSpawnRequestId,
 } from '@/sync/spawnRequestId';
 import { resolvePermissionStyle, resolveSelectedOption } from '@/utils/newSessionModeSelection';
@@ -799,6 +801,7 @@ function NewSessionScreen() {
     const [modelIndex, setModelIndex] = React.useState(0);
     const [effortIndex, setEffortIndex] = React.useState(0);
     const [isSpawning, setIsSpawning] = React.useState(false);
+    const sendingRef = React.useRef<AbortController | null>(null);
     const [activePicker, setActivePicker] = React.useState<PickerType | null>(null);
     const [composerSettingsPage, setComposerSettingsPage] = React.useState<ComposerSettingPickerType | null>(null);
     const [mobileComposerHeight, setMobileComposerHeight] = React.useState(NATIVE_COMPOSER_RESERVED_HEIGHT);
@@ -1385,6 +1388,14 @@ function NewSessionScreen() {
     const handleSend = React.useCallback(async (
         approvedNewDirectoryCreation: boolean = false,
     ) => {
+        if (sendingRef.current) return;
+        const draftState = useNewSessionDraft.getState();
+        let ownsCreatedSession = true;
+        const isCurrentTarget = () => {
+            const current = useNewSessionDraft.getState();
+            return ownsCreatedSession && (['selectedMachineId', 'selectedPath', 'agentType', 'permissionMode', 'modelMode', 'effortLevel', 'sessionType', 'worktreeKey'] as const)
+                .every(key => current[key] === draftState[key]);
+        };
         const choice = findMachineChoice(collectMachineChoices(allMachines), selectedMachineId);
         if (!choice) {
             Modal.alert(t('common.error'), 'Please select a machine');
@@ -1451,6 +1462,8 @@ function NewSessionScreen() {
             ? '__none__'
             : requestedWorktree;
 
+        const controller = new AbortController();
+        sendingRef.current = controller;
         setIsSpawning(true);
         try {
             const pathToUse = trimPathInput(selectedPath) || '~';
@@ -1472,8 +1485,9 @@ function NewSessionScreen() {
             }));
 
             // Handle worktree selection
+            const existingSessionId = getSpawnedSessionId(clientRequestId);
             let spawnDirectory = absolutePath;
-            if (worktreeSelection === '__new__' && !happyAgentTarget) {
+            if (!existingSessionId && worktreeSelection === '__new__' && !happyAgentTarget) {
                 if (!creationMachine) {
                     Modal.alert(t('common.error'), picksWorkspaces
                         ? 'This computer cannot create a new workspace'
@@ -1518,7 +1532,9 @@ function NewSessionScreen() {
                     modelMode: currentModelKey !== 'default' ? currentModelKey : undefined,
                     effortLevel: currentEffort?.key,
                 };
-            let result = await machineSpawnNewSession(spawnOptions);
+            let result = existingSessionId
+                ? { type: 'success' as const, sessionId: existingSessionId }
+                : await machineSpawnNewSession(spawnOptions);
             let pendingResults = 0;
             while (result.type === 'pending' && pendingResults < MAX_RIG_PENDING_RESULTS) {
                 pendingResults += 1;
@@ -1533,9 +1549,27 @@ function NewSessionScreen() {
 
             switch (result.type) {
                 case 'success':
-                    // The idempotency key did its job; the next Start is a new session.
-                    completeSpawnRequest();
-                    await sync.refreshSessions();
+                    const createdSessionId = result.sessionId;
+                    const abandonSession = () => {
+                        controller.abort();
+                        if (!ownsCreatedSession) return;
+                        ownsCreatedSession = false;
+                        void (async () => {
+                            const stopped = await machineStopSession(machine.id, createdSessionId);
+                            if (!stopped.success && !(await sessionKill(createdSessionId)).success) {
+                                await sessionArchive(createdSessionId);
+                            }
+                        })().catch(error => console.error('Failed to stop abandoned session:', error));
+                    };
+                    rememberSpawnedSession(clientRequestId, createdSessionId, abandonSession, () => { ownsCreatedSession = false; });
+                    if (controller.signal.aborted) return;
+                    await sync.ensureSessionReady(result.sessionId);
+                    if (controller.signal.aborted) return;
+                    if (!isCurrentTarget()) {
+                        completeSpawnRequest(clientRequestId);
+                        abandonSession();
+                        return;
+                    }
 
                     const currentEffortKey = currentEffort?.key ?? null;
                     // Pin the actual launch selection to this session. A
@@ -1549,19 +1583,31 @@ function NewSessionScreen() {
                         });
                     }
 
-                    // Pull live prompt and clear it. We read via getState() so this
-                    // callback doesn't have to subscribe to `input` (which would
-                    // re-render the screen on every keystroke).
-                    const draftState = useNewSessionDraft.getState();
+                    // Send the prompt captured for this attempt, never a newer
+                    // draft the user composed while its session was spawning.
                     const trimmedPrompt = draftState.input.trim();
                     const attachments = draftState.attachments;
-                    draftState.setInput('');
-                    draftState.setAttachments([]);
 
                     // Send initial message if provided
                     if (trimmedPrompt || attachments.length > 0) {
-                        await sync.sendMessage(result.sessionId, trimmedPrompt, { source: 'new_session', attachments });
+                        const accepted = await sync.sendMessage(result.sessionId, trimmedPrompt, {
+                            source: 'new_session', attachments, signal: controller.signal,
+                            isCurrent: isCurrentTarget,
+                            onAccepted: () => completeSpawnRequest(clientRequestId),
+                        });
+                        if (!accepted) {
+                            if (!isCurrentTarget()) {
+                                completeSpawnRequest(clientRequestId);
+                                abandonSession();
+                            }
+                            return;
+                        }
                     }
+
+                    completeSpawnRequest(clientRequestId);
+                    const currentDraft = useNewSessionDraft.getState();
+                    if (currentDraft.input === draftState.input) currentDraft.setInput('');
+                    if (currentDraft.attachments === attachments) currentDraft.setAttachments([]);
 
                     router.back();
                     navigateToSession(result.sessionId);
@@ -1575,6 +1621,7 @@ function NewSessionScreen() {
                     if (approved) {
                         // The request is unchanged, so the retry resolves to the
                         // same clientRequestId.
+                        sendingRef.current = null;
                         await handleSend(true);
                     }
                     break;
@@ -1595,6 +1642,7 @@ function NewSessionScreen() {
                 : 'Failed to start session';
             Modal.alert(t('common.error'), errorMessage);
         } finally {
+            if (sendingRef.current === controller) sendingRef.current = null;
             if (isMountedRef.current) setIsSpawning(false);
         }
     }, [agentWorkspaces, allMachines, canPickWorktree, currentEffort?.key, currentModelKey, currentPermission?.key, effectiveAgentDefaults.effortLevel, effectiveAgentDefaults.modelMode, effectiveAgentDefaults.permissionMode, navigateToSession, picksWorkspaces, router, selectedAgent, selectedMachineId, selectedPath, selectedProjectId, worktreeKey]);

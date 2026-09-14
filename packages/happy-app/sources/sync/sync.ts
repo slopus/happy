@@ -77,6 +77,7 @@ import { messagePlanMode } from './messagePlanMode';
 import { loadSessionAvatar } from './sessionAvatars';
 import { SessionAvatarHydrator } from './SessionAvatarHydrator';
 import { sessionAvatarDescriptorSchema, sessionAvatarRevisionSchema, sameSessionAvatar } from './sessionAvatarTypes';
+import { releaseSpawnedSession } from './spawnRequestId';
 
 type V3GetSessionMessagesResponse = {
     messages: ApiMessage[];
@@ -113,6 +114,12 @@ type SendMessageOptions = {
     attachments?: AttachmentPreview[];
     /** Wait until the outbox reaches the server before resolving. */
     awaitDelivery?: boolean;
+    /** Cancel before outbox acceptance; queued messages are not recalled. */
+    signal?: AbortSignal;
+    /** Synchronous commit notification, before a caller can cancel its UI flow. */
+    onAccepted?: () => void;
+    /** Re-check the composer's destination after asynchronous preparation. */
+    isCurrent?: () => boolean;
 };
 
 function sameBytes(a: Uint8Array | null | undefined, b: Uint8Array | null): boolean {
@@ -356,6 +363,7 @@ class Sync {
 
 
     onSessionVisible = (sessionId: string) => {
+        releaseSpawnedSession(sessionId);
         this.historyPrefetchSessions.add(sessionId);
         this.refreshSessionData(sessionId);
         // Also cover focus arriving while the speculative first page is still
@@ -686,37 +694,38 @@ class Sync {
         return { uploaded, failed };
     }
 
-    async sendMessage(sessionId: string, text: string, options?: SendMessageOptions) {
-
-        // The session and its encryption key both come from the sessions list.
-        // A session spawned seconds ago can still be missing from the last
-        // fetch, and awaitQueue() returns at once when no sync is in flight —
-        // so waiting on it dropped the first message of a new session without a
-        // word. Force real refetches instead, then say so if it is still absent.
-        let encryption = this.encryption.getSessionEncryption(sessionId);
-        let session = storage.getState().sessions[sessionId];
-        for (let attempt = 0; (!encryption || !session) && attempt < 3; attempt++) {
-            if (attempt > 0) {
-                await delay(300 * attempt);
-            }
-            // The sessions sync retries a failed fetch forever, so each wait is
-            // bounded: a message that cannot be placed has to say so rather
-            // than leave the send hanging on a network that is not coming back.
+    /** A visible row alone is not enough to place a message safely. */
+    async ensureSessionReady(sessionId: string): Promise<void> {
+        const isReady = () => !!(storage.getState().sessions[sessionId]?.metadata
+            && this.encryption.getSessionEncryption(sessionId)
+            && this.encryption.getSessionBlobKey(sessionId));
+        for (let attempt = 0; !isReady() && attempt < 3; attempt++) {
+            if (attempt > 0) await delay(300 * attempt);
+            // The shared sync retries network failures indefinitely. Keep the
+            // existing send budget, and require both the row and its own key.
             await Promise.race([this.sessionsSync.invalidateAndAwait(), delay(4000)]);
-            encryption = this.encryption.getSessionEncryption(sessionId);
-            session = storage.getState().sessions[sessionId];
         }
-        if (!encryption || !session) {
-            console.error(`Session ${sessionId} not found after sync`, {
-                hasEncryption: !!encryption,
-                hasSession: !!session,
-            });
-            Modal.alert(
-                t('common.error'),
-                'The message was not sent: this session has not finished syncing. Please try again.',
-            );
-            return;
+        if (!isReady()) {
+            throw new Error('The message was not sent: this session has not finished syncing. Please try again.');
         }
+    }
+
+    /** True means accepted into the outbox, not necessarily delivered to the agent. */
+    async sendMessage(sessionId: string, text: string, options?: SendMessageOptions): Promise<boolean> {
+        const accountEncryption = this.encryption;
+        const canSend = () => !options?.signal?.aborted && this.encryption === accountEncryption
+            && (options?.isCurrent?.() ?? true);
+        if (!canSend()) return false;
+        try {
+            await this.ensureSessionReady(sessionId);
+        } catch (error) {
+            if (!canSend()) return false;
+            Modal.alert(t('common.error'), error instanceof Error ? error.message : 'Failed to sync session');
+            return false;
+        }
+        if (!canSend()) return false;
+        const encryption = this.encryption.getSessionEncryption(sessionId)!;
+        const session = storage.getState().sessions[sessionId];
 
         let modeMeta: ReturnType<typeof resolveMessageModeMeta>;
         try {
@@ -726,7 +735,7 @@ class Sync {
                 // Refuse loudly instead of substituting a mode: swapping in a
                 // default would silently change what the agent may do.
                 Modal.alert(t('common.error'), error.message);
-                return;
+                return false;
             }
             throw error;
         }
@@ -759,11 +768,13 @@ class Sync {
                 [{ text: t('common.ok'), style: 'cancel' }],
             );
             if (!attachmentPlan.shouldSendText || (!text.trim() && (effectiveAttachments?.length ?? 0) === 0)) {
-                return;
+                return false;
             }
         }
 
-        // Upload attachments and queue file events before the text message.
+        // Stage all records first. Cancellation/encryption failure must not
+        // leave file events in the outbox for a retry to send twice.
+        const stagedAttachments: { pending: OutboxMessage; normalized: NormalizedMessage | null }[] = [];
         if (effectiveAttachments && effectiveAttachments.length > 0) {
             const { uploaded, failed } = await this.uploadAttachmentsForSession(sessionId, effectiveAttachments);
 
@@ -776,12 +787,6 @@ class Sync {
             }
 
             if (uploaded.length > 0) {
-                let pending = this.pendingOutbox.get(sessionId);
-                if (!pending) {
-                    pending = [];
-                    this.pendingOutbox.set(sessionId, pending);
-                }
-
                 for (const att of uploaded) {
                     const fileRecord: RawRecord = {
                         role: 'session',
@@ -818,10 +823,10 @@ class Sync {
                     const encryptedFileRecord = await encryption.encryptRawRecord(fileRecord);
                     const fileLocalId = randomUUID();
                     const fileNormalized = normalizeRawMessage(fileLocalId, fileLocalId, Date.now(), fileRecord);
-                    if (fileNormalized) {
-                        this.enqueueMessages(sessionId, [fileNormalized]);
-                    }
-                    pending.push({ kind: 'attachment', localId: fileLocalId, content: encryptedFileRecord });
+                    stagedAttachments.push({
+                        pending: { kind: 'attachment', localId: fileLocalId, content: encryptedFileRecord },
+                        normalized: fileNormalized,
+                    });
                 }
             }
         }
@@ -866,6 +871,16 @@ class Sync {
         };
         const encryptedRawRecord = await encryption.encryptRawRecord(content);
 
+        // No await between this check and acceptance. A navigation, account
+        // change, deletion, or Stop must never redirect or replay this send.
+        if (!canSend()
+            || !storage.getState().sessions[sessionId]
+            || this.encryption.getSessionEncryption(sessionId) !== encryption) return false;
+
+        for (const attachment of stagedAttachments) {
+            if (attachment.normalized) this.enqueueMessages(sessionId, [attachment.normalized]);
+        }
+
         // Add to messages - normalize the raw record
         const createdAt = Date.now();
         const normalizedMessage = normalizeRawMessage(localId, localId, createdAt, content);
@@ -878,11 +893,13 @@ class Sync {
             pending = [];
             this.pendingOutbox.set(sessionId, pending);
         }
-        pending.push({
+        pending.push(...stagedAttachments.map(attachment => attachment.pending), {
             kind: 'user',
             localId,
             content: encryptedRawRecord
         });
+        releaseSpawnedSession(sessionId);
+        options?.onAccepted?.();
         trackMessageSent(source, session.metadata);
 
         // Stamp local activity time so the (opt-in) activity sort bubbles this session
@@ -895,6 +912,7 @@ class Sync {
             this.getSendSync(sessionId).invalidate();
         }
         this.maybeStartBackgroundSendWatchdog();
+        return true;
     }
 
     /** Server sent us settings — merge any pending local changes on top, then apply as one update. */
@@ -1265,10 +1283,17 @@ class Sync {
             }
 
             // Decrypt metadata using session-specific encryption
-            let metadata = await sessionEncryption.decryptMetadata(session.metadataVersion, session.metadata);
-
-            // Decrypt agent state using session-specific encryption
-            let agentState = await sessionEncryption.decryptAgentState(session.agentStateVersion, session.agentState);
+            let metadata: Session['metadata'];
+            let agentState: Session['agentState'];
+            try {
+                metadata = await sessionEncryption.decryptMetadata(session.metadataVersion, session.metadata);
+                agentState = await sessionEncryption.decryptAgentState(session.agentStateVersion, session.agentState);
+            } catch {
+                // One malformed record must not prevent every valid session
+                // (including a just-created one) from becoming visible.
+                console.error(`Failed to decrypt session ${session.id}`);
+                continue;
+            }
 
             // Put it all together. Thinking placeholders are overwritten just
             // before applySessions below.

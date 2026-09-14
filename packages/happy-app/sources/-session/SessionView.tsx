@@ -789,6 +789,12 @@ export function SessionViewLoaded({
     // clear it without subscribing to it (which would re-render the whole
     // SessionViewLoaded tree on every keystroke).
     const composerHandleRef = React.useRef<ChatComposerHandle | null>(null);
+    const sendingSessionsRef = React.useRef(new Set<string>());
+    const currentSessionIdRef = React.useRef<string | null>(sessionId);
+    React.useEffect(() => {
+        currentSessionIdRef.current = sessionId;
+        return () => { currentSessionIdRef.current = null; };
+    }, [sessionId]);
 
     // Handle dismissing CLI version warning
     const handleDismissCliWarning = React.useCallback(() => {
@@ -835,12 +841,13 @@ export function SessionViewLoaded({
     // handleSend reads the live message via the composer ref, so it doesn't
     // need to re-create on every keystroke.
     const handleSend = React.useCallback(() => {
-        const liveMessage = composerHandleRef.current?.getMessage() ?? '';
+        if (sendingSessionsRef.current.has(sessionId)) return;
+        const composer = composerHandleRef.current;
+        const liveMessage = composer?.getMessage() ?? '';
         if (liveMessage.trim() || selectedImages.length > 0) {
             const attachments = selectedImages.length > 0 ? selectedImages : undefined;
             const communicationsToDismiss = [...pendingCommunications];
-            composerHandleRef.current?.clearMessage();
-            clearImages();
+            sendingSessionsRef.current.add(sessionId);
 
             void (async () => {
                 try {
@@ -848,11 +855,20 @@ export function SessionViewLoaded({
                     // blocked, then dismiss the forms. This keeps the regular text
                     // available as the user's custom response before the agent is
                     // allowed to continue its turn.
-                    await sync.sendMessage(sessionId, liveMessage, {
+                    const accepted = await sync.sendMessage(sessionId, liveMessage, {
                         source: 'chat',
                         attachments,
                         awaitDelivery: communicationsToDismiss.length > 0,
+                        onAccepted: () => {
+                            if (currentSessionIdRef.current === sessionId) {
+                                if (composerHandleRef.current === composer && composer?.getMessage() === liveMessage) {
+                                    composer.clearMessage();
+                                }
+                                for (const attachment of attachments ?? []) removeImage(attachment.id);
+                            }
+                        },
                     });
+                    if (!accepted) return;
                     const dismissals = await Promise.allSettled(communicationsToDismiss.map(communication => (
                         sessionCancelCommunication(sessionId, communication.id, communication.kind)
                     )));
@@ -863,10 +879,12 @@ export function SessionViewLoaded({
                     }
                 } catch (error) {
                     console.error('Failed to send message while dismissing agent questions:', error);
+                } finally {
+                    sendingSessionsRef.current.delete(sessionId);
                 }
             })();
         }
-    }, [sessionId, selectedImages, clearImages, pendingCommunications]);
+    }, [sessionId, selectedImages, removeImage, pendingCommunications]);
 
     const handleAbort = React.useCallback(() => {
         // Stop cancels only the active turn. Permission, model, and effort are
