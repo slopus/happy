@@ -501,11 +501,13 @@ export function readPersistedSessions(): Record<string, PersistedSession> {
  */
 export function markSessionStopped(sessionId: string): void {
   try {
-    const existing = readPersistedSessions();
-    const session = existing[sessionId];
+    // The process has already exited, so expiry filtering could hide the very
+    // record whose retention window needs to start now.
+    if (!existsSync(configuration.sessionsFile)) return;
+    const data: SessionsFile = JSON.parse(readFileSync(configuration.sessionsFile, 'utf-8'));
+    const session = data.sessions?.[sessionId];
     if (!session) return;
-    existing[sessionId] = { ...session, lastAliveAt: Date.now() };
-    writeSessionsFile(existing);
+    persistSession(sessionId, { ...session, lastAliveAt: Date.now() });
   } catch (error) {
     logger.debug(`[PERSISTENCE] Failed to mark session ${sessionId} stopped:`, error);
   }

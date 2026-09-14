@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -11,6 +12,7 @@ import {
     SandboxConfigSchema,
     type PersistedSession,
 } from './persistence';
+import { resolveLocalReconnectableSession } from './resume/localResumeStore';
 
 const mockConfiguration = vi.hoisted(() => ({
     daemonLockFile: '',
@@ -184,6 +186,7 @@ describe('persisted session retention', () => {
     });
 
     afterEach(() => {
+        vi.restoreAllMocks();
         rmSync(dir, { recursive: true, force: true });
     });
 
@@ -242,12 +245,76 @@ describe('persisted session retention', () => {
     });
 
     it('restarts the retention window when a session stops', () => {
-        persistSession('s1', sessionRecord({ savedAt: Date.now() - 60 * DAY_MS, lastAliveAt: Date.now() - 60 * DAY_MS, hostPid: process.pid }));
+        const child = spawnSync(process.execPath, ['-e', ''], { timeout: 5000 });
+        expect(child.status).toBe(0);
+        const record = sessionRecord({ savedAt: Date.now() - 60 * DAY_MS, lastAliveAt: Date.now() - 60 * DAY_MS, hostPid: child.pid });
+        persistSession('s1', record);
 
         markSessionStopped('s1');
 
         const stored = JSON.parse(readFileSync(mockConfiguration.sessionsFile, 'utf-8')).sessions.s1;
         expect(stored.lastAliveAt).toBeGreaterThan(Date.now() - 5000);
         expect(stored.savedAt).toBeLessThan(Date.now() - 59 * DAY_MS);
+        expect(readPersistedSessions().s1).toEqual({ ...record, lastAliveAt: stored.lastAliveAt });
+    });
+
+    it.each([
+        [14 * DAY_MS - 1, true],
+        [14 * DAY_MS, false],
+        [14 * DAY_MS + 1, false],
+    ])('retains an idle session aged %i ms: %s', (age, retained) => {
+        const now = Date.now();
+        vi.spyOn(Date, 'now').mockReturnValue(now);
+        writeSessions({ s1: sessionRecord({ savedAt: now - 60 * DAY_MS, lastAliveAt: now - age }) });
+
+        expect(Boolean(readPersistedSessions().s1)).toBe(retained);
+    });
+
+    it('preserves a live session and its key when another session is persisted', async () => {
+        const record = sessionRecord({ savedAt: Date.now() - 60 * DAY_MS, hostPid: process.pid });
+        record.metadata.claudeSessionId = 'claude-session-1';
+        writeSessions({ s1: record, stale: sessionRecord({ savedAt: Date.now() - 20 * DAY_MS }) });
+
+        persistSession('s2', sessionRecord());
+
+        const stored = JSON.parse(readFileSync(mockConfiguration.sessionsFile, 'utf-8')).sessions;
+        expect(stored.s1).toEqual(record);
+        expect(stored.stale).toBeUndefined();
+        const resumed = await resolveLocalReconnectableSession('s1');
+        expect(resumed.encryptionKey).toEqual(new Uint8Array(Buffer.from(record.encryptionKey, 'base64')));
+        expect(resumed).toMatchObject({
+            id: 's1',
+            encryptionVariant: record.encryptionVariant,
+            seq: record.seq,
+            metadataVersion: record.metadataVersion,
+            agentStateVersion: record.agentStateVersion,
+            metadata: record.metadata,
+        });
+    });
+
+    it('keeps the stop timestamp across a reboot, then expires the idle record', () => {
+        const now = Date.now();
+        vi.spyOn(Date, 'now').mockReturnValue(now);
+        writeSessions({ s1: sessionRecord({ savedAt: now - 60 * DAY_MS, hostPid: process.pid }) });
+        markSessionStopped('s1');
+
+        // A new boot invalidates old PIDs but must not discard recent activity.
+        mockOs.uptimeSeconds = 60;
+        vi.spyOn(Date, 'now').mockReturnValue(now + DAY_MS);
+        expect(readPersistedSessions().s1.lastAliveAt).toBe(now);
+        vi.spyOn(Date, 'now').mockReturnValue(now + 14 * DAY_MS);
+        expect(readPersistedSessions()).toEqual({});
+    });
+
+    it('does not recreate missing sessions or refresh unrelated stale records', () => {
+        markSessionStopped('missing');
+        expect(existsSync(mockConfiguration.sessionsFile)).toBe(false);
+        writeSessions({ stale: sessionRecord({ savedAt: Date.now() - 20 * DAY_MS }) });
+        const before = readFileSync(mockConfiguration.sessionsFile, 'utf-8');
+
+        markSessionStopped('missing');
+
+        expect(readFileSync(mockConfiguration.sessionsFile, 'utf-8')).toBe(before);
+        expect(readPersistedSessions()).toEqual({});
     });
 });
