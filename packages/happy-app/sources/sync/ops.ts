@@ -316,8 +316,16 @@ async function machineStartSession(
         if (isCodex) {
             const { TokenStorage } = await import('@/auth/tokenStorage');
             const credentials = await TokenStorage.getCredentials().catch(() => null);
-            if (!credentials) throw new CodexAccountError('authentication-required');
-            grant = (await createCodexSessionGrant(credentials, machineId)).grant;
+            // A bound account deliberately overrides the machine-local login.
+            // An unbound machine falls through to its own Codex auth.json, so
+            // normal Paws use does not require duplicating an existing login.
+            if (credentials) {
+                try {
+                    grant = (await createCodexSessionGrant(credentials, machineId)).grant;
+                } catch (error) {
+                    if (!(error instanceof CodexAccountError) || error.code !== 'codex-account-unbound') throw error;
+                }
+            }
         }
         const result = normalizeSpawnSessionResult(await apiSocket.machineRPC<SpawnSessionResult, Record<string, unknown>>(
             machineId, method,

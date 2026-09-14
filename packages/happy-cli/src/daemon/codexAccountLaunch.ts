@@ -234,6 +234,10 @@ export async function withCodexAccountLaunch(
   prepareOptions?: PrepareOptions,
 ): Promise<SpawnSessionResult> {
   if (options.agent !== 'codex') return spawn(undefined);
+  // An account binding is an explicit override, not a prerequisite for a
+  // machine that already has a local Codex login. This preserves the natural
+  // terminal behaviour and keeps isolated runners self-contained.
+  if (options.codexSessionGrant === undefined) return spawn(undefined);
   let launch: CodexAccountLaunch | undefined;
   try {
     launch = await CodexAccountLaunch.prepare(api, machineId, options.codexSessionGrant, prepareOptions);

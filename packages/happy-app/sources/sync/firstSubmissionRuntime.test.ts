@@ -34,10 +34,9 @@ beforeEach(() => {
 afterEach(() => { clearFirstSubmissionScope(); vi.unstubAllGlobals(); });
 
 describe('first submission launch errors', () => {
-    it.each([
-        ['codex-account-unbound', /bind.*machine/i],
-        ['codex-account-unavailable', /paws codex account upload/i],
-    ])('surfaces actionable %s through the actual owner/runtime/ops flow without persisting it', async (error, instruction) => {
+    it('surfaces an unavailable bound account through the actual owner/runtime/ops flow without persisting it', async () => {
+        const error = 'codex-account-unavailable';
+        const instruction = /paws codex account upload/i;
         vi.stubGlobal('fetch', async () => new Response(JSON.stringify({ error, auth: 'must-not-escape' }), { status: 409 }));
 
         expect(await firstSubmission.submit(input, { images: [] })).toBe(false);
@@ -52,15 +51,6 @@ describe('first submission launch errors', () => {
         expect([...saved.values()].join('')).not.toContain(error);
         expect([...saved.values()].join('')).not.toContain('must-not-escape');
         expect(JSON.stringify(firstSubmission.getSnapshot())).not.toContain(error);
-    });
-
-    it('keeps the failed submission when account recovery is cancelled', async () => {
-        confirm.mockResolvedValue(false);
-        vi.stubGlobal('fetch', async () => Response.json({ error: 'codex-account-unbound' }, { status: 409 }));
-        expect(await firstSubmission.submit(input, { images: [] })).toBe(false);
-        expect(confirm).toHaveBeenCalledOnce();
-        expect(push).not.toHaveBeenCalled();
-        expect(firstSubmission.getSnapshot()).toMatchObject({ phase: 'failed', text: 'hello' });
     });
 
     it('ignores a recovery confirmation after its account scope changes', async () => {
