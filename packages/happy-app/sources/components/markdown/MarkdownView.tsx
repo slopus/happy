@@ -17,6 +17,7 @@ import { MermaidRenderer } from './MermaidRenderer';
 import { t } from '@/text';
 import { isHttpMarkdownLink } from './linkUtils';
 import { openExternalUrl } from '@/utils/openExternalUrl';
+import { useImageIntrinsicSize } from '@/hooks/useImageIntrinsicSize';
 
 // Option type for callback
 export type Option = {
@@ -212,14 +213,28 @@ function RenderCodeBlock(props: { content: string, language: string | null, firs
     );
 }
 
+// Ratio used to reserve space before an image's real dimensions are known, so
+// the block does not start at zero height and then snap open.
+const DEFAULT_IMAGE_ASPECT_RATIO = 4 / 3;
+
 function RenderImageBlock(props: { url: string, alt: string, first: boolean, last: boolean }) {
     const accessibleLabel = props.alt || 'Markdown image';
+    const intrinsicSize = useImageIntrinsicSize(props.url);
+    // Size the image from its own aspect ratio rather than a fixed height: with
+    // a fixed height, `contain` makes height the binding constraint for any
+    // image taller than it is wide, so a portrait image is shrunk to a fraction
+    // of the message width. `maxWidth` caps the image at its source resolution
+    // so a small one is never upscaled to full bleed.
+    const sizing = React.useMemo(() => ({
+        aspectRatio: intrinsicSize ? intrinsicSize.width / intrinsicSize.height : DEFAULT_IMAGE_ASPECT_RATIO,
+        maxWidth: intrinsicSize?.width,
+    }), [intrinsicSize]);
 
     return (
         <View style={[style.imageBlock, props.first && style.first, props.last && style.last]}>
             <Image
                 source={{ uri: props.url }}
-                style={style.image}
+                style={[style.image, sizing]}
                 accessibilityLabel={accessibleLabel}
                 resizeMode="contain"
             />
@@ -544,8 +559,6 @@ const style = StyleSheet.create((theme) => ({
     },
     image: {
         width: '100%',
-        minHeight: 160,
-        height: 240,
         borderRadius: 12,
         backgroundColor: theme.colors.surfaceHighest,
     },
