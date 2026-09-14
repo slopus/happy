@@ -212,6 +212,78 @@ describe('ApiSessionClient v3 messages API migration', () => {
         await client.close();
     });
 
+    it('never reconnects after close, including from an already scheduled retry', async () => {
+        vi.useFakeTimers();
+        mockSocket.connected = false;
+
+        const client = new ApiSessionClient('fake-token', session);
+        emitSocketEvent('connect_error', new Error('ECONNREFUSED'));
+        emitSocketEvent('connect_error', new Error('ECONNREFUSED'));
+        expect(vi.getTimerCount()).toBe(2);
+
+        await client.close();
+        await client.close();
+        expect(vi.getTimerCount()).toBe(0);
+        await vi.advanceTimersByTimeAsync(10_000);
+        emitSocketEvent('disconnect', 'transport close');
+        emitSocketEvent('connect_error', new Error('ECONNREFUSED'));
+        await vi.advanceTimersByTimeAsync(10_000);
+
+        expect(vi.getTimerCount()).toBe(0);
+        expect(mockSocket.connect).toHaveBeenCalledTimes(1);
+        expect(mockSocket.close).toHaveBeenCalledOnce();
+    });
+
+    it('closes a late connection without registering RPC handlers or fetching messages', async () => {
+        vi.useFakeTimers();
+        mockSocket.connected = false;
+        const client = new ApiSessionClient('fake-token', session);
+        await client.close();
+
+        mockSocket.close.mockImplementation(() => {
+            mockSocket.connected = false;
+            emitSocketEvent('disconnect', 'io client disconnect');
+        });
+        mockSocket.connected = true;
+        emitSocketEvent('connect');
+        await vi.advanceTimersByTimeAsync(10_000);
+
+        expect(mockSocket.close).toHaveBeenCalledTimes(2);
+        expect(mockSocket.connected).toBe(false);
+        expect(mockSocket.connect).toHaveBeenCalledOnce();
+        expect(client.rpcHandlerManager.onSocketConnect).not.toHaveBeenCalled();
+        expect(mockAxiosGet).not.toHaveBeenCalled();
+        expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('clears both retries on connect and can reconnect after a later disconnect', async () => {
+        vi.useFakeTimers();
+        mockSocket.connected = false;
+        mockAxiosGet.mockResolvedValueOnce({ data: { messages: [], hasMore: false } });
+        const client = new ApiSessionClient('fake-token', session);
+        emitSocketEvent('connect_error', new Error('ECONNREFUSED'));
+        expect(vi.getTimerCount()).toBe(2);
+
+        mockSocket.connected = true;
+        emitSocketEvent('connect');
+        expect(vi.getTimerCount()).toBe(0);
+        expect(client.rpcHandlerManager.onSocketConnect).toHaveBeenCalledWith(mockSocket);
+        expect(mockAxiosGet).toHaveBeenCalledOnce();
+        await vi.advanceTimersByTimeAsync(10_000);
+        expect(mockSocket.connect).toHaveBeenCalledOnce();
+
+        mockSocket.connected = false;
+        emitSocketEvent('disconnect', 'transport close');
+        expect(vi.getTimerCount()).toBe(2);
+        await vi.advanceTimersByTimeAsync(1000);
+        expect(mockSocket.connect).toHaveBeenCalledTimes(2);
+        await vi.advanceTimersByTimeAsync(2000);
+        expect(mockSocket.connect).toHaveBeenCalledTimes(3);
+
+        await client.close();
+        expect(vi.getTimerCount()).toBe(0);
+    });
+
     it('queues codex message to v3 outbox, sends once, and drains outbox', async () => {
         const client = new ApiSessionClient('fake-token', session);
         mockAxiosPost.mockResolvedValueOnce({
