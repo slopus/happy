@@ -237,6 +237,94 @@ describe('CodexAppServerClient sandbox integration', () => {
         await client.disconnect();
     });
 
+    it.each([
+        ['silent work', 'completion'],
+        ['silent work', 'Stop'],
+        ['silent work', 'process exit'],
+        ['approval wait', 'completion'],
+        ['approval wait', 'Stop'],
+        ['approval wait', 'process exit'],
+    ])('keeps %s pending past ten minutes until %s', async (work, ending) => {
+        const requests: MockRpcMessage[] = [];
+        const proc = createMockProcess({
+            pid: 0,
+            onRequest: (msg, stdout) => {
+                requests.push(msg);
+                if (msg.method === 'thread/start') {
+                    pushJsonLine(stdout, { id: msg.id, result: {
+                        thread: { id: 'thread-long', path: '/tmp/thread-long' },
+                        model: 'gpt-test', modelProvider: 'openai', cwd: '/tmp/project',
+                        approvalPolicy: 'on-request', sandbox: { type: 'readOnly' }, reasoningEffort: null,
+                    } });
+                }
+                if (msg.method === 'turn/start') {
+                    pushJsonLine(stdout, { id: msg.id, result: { turn: { id: 'turn-long' } } });
+                    if (work === 'approval wait') {
+                        pushJsonLine(stdout, { id: 99, method: 'item/commandExecution/requestApproval', params: {
+                            threadId: 'thread-long', turnId: 'turn-long', itemId: 'command-long', command: 'pwd',
+                        } });
+                    }
+                }
+                if (msg.method === 'turn/interrupt') {
+                    pushJsonLine(stdout, { id: msg.id, result: {} });
+                    pushJsonLine(stdout, { method: 'turn/completed', params: {
+                        threadId: 'thread-long', turn: { id: 'turn-long', status: 'interrupted' },
+                    } });
+                }
+            },
+        });
+        mockSpawn.mockImplementation(() => proc);
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        let approve!: (decision: 'approved') => void;
+        const approval = new Promise<'approved'>((resolve) => { approve = resolve; });
+        const approvalHandler = vi.fn(() => approval);
+        const onSettled = vi.fn();
+        const events = vi.fn();
+        client.setApprovalHandler(approvalHandler);
+        client.setEventHandler(events);
+        try {
+            await client.connect();
+            await client.startThread({ cwd: '/tmp/project', approvalPolicy: 'on-request', sandbox: 'read-only' });
+            vi.useFakeTimers();
+            const pendingTurn = client.sendTurnAndWait('take your time').then(onSettled);
+            await vi.advanceTimersByTimeAsync(600_001);
+
+            expect(client.turnId).toBe('turn-long');
+            expect(approvalHandler).toHaveBeenCalledTimes(work === 'approval wait' ? 1 : 0);
+            expect(requests.some((msg) => msg.id === 99)).toBe(false);
+            expect(onSettled).not.toHaveBeenCalled();
+            expect(events).not.toHaveBeenCalled();
+            expect(requests.some((msg) => msg.method === 'turn/interrupt')).toBe(false);
+            expect(proc.kill).not.toHaveBeenCalled();
+            expect(mockSpawn).toHaveBeenCalledTimes(1);
+
+            approve('approved');
+            await vi.advanceTimersByTimeAsync(0);
+            if (ending === 'completion') {
+                pushJsonLine(proc.stdout, { method: 'turn/completed', params: {
+                    threadId: 'thread-long', turn: { id: 'turn-long', status: 'completed' },
+                } });
+            } else if (ending === 'Stop') {
+                const stopped = client.abortTurnWithFallback();
+                await vi.advanceTimersByTimeAsync(25);
+                await expect(stopped).resolves.toEqual({
+                    hadActiveTurn: true, aborted: true, forcedRestart: false, resumedThread: false,
+                });
+                expect(requests.filter((msg) => msg.method === 'turn/interrupt')).toHaveLength(1);
+            } else {
+                proc.emit('exit', 1, null);
+            }
+            await pendingTurn;
+            expect(onSettled).toHaveBeenCalledExactlyOnceWith({ aborted: ending !== 'completion' });
+        } finally {
+            approve('approved');
+            await client.disconnect();
+            vi.clearAllTimers();
+            vi.useRealTimers();
+        }
+    });
+
     it('reconnects and resumes the same thread after forced restart timeout', async () => {
         const firstProcessRequests: MockRpcMessage[] = [];
         const secondProcessRequests: MockRpcMessage[] = [];
@@ -339,7 +427,7 @@ describe('CodexAppServerClient sandbox integration', () => {
             sandbox: 'read-only',
         });
 
-        const pendingTurn = client.sendTurnAndWait('hang forever', { turnTimeoutMs: 5000 });
+        const pendingTurn = client.sendTurnAndWait('hang forever');
         await waitFor(() => firstProcessRequests.some((msg) => msg.method === 'turn/start'));
 
         const abortResult = await client.abortTurnWithFallback({
@@ -457,7 +545,7 @@ describe('CodexAppServerClient sandbox integration', () => {
             sandbox: 'read-only',
         });
 
-        const pendingTurn = client.sendTurnAndWait('hang on interrupt', { turnTimeoutMs: 5000 });
+        const pendingTurn = client.sendTurnAndWait('hang on interrupt');
         await waitFor(() => firstProcessRequests.some((msg) => msg.method === 'turn/start'));
         await waitFor(() => client.turnId === 'turn-stuck-interrupt');
 

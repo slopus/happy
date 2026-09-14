@@ -7,6 +7,41 @@ import {
 } from '../utils/sessionProtocolMapper';
 
 describe('mapCodexMcpMessageToSessionEnvelopes', () => {
+    it('keeps replies visible across repeated continuations without task_started', () => {
+        let state = mapCodexMcpMessageToSessionEnvelopes({ type: 'task_started' }, { currentTurnId: null });
+        const turns = new Set([state.currentTurnId]);
+        for (let i = 0; i < 2; i++) {
+            state = mapCodexMcpMessageToSessionEnvelopes({ type: 'task_complete' }, state);
+            expect(state.currentTurnId).toBeNull();
+            state = mapCodexMcpMessageToSessionEnvelopes({ type: 'agent_message', message: 'Continuing' }, state);
+            expect(state.envelopes.map(e => e.ev.t)).toEqual(['turn-start', 'text']);
+            expect(state.envelopes.every(e => e.turn === state.currentTurnId)).toBe(true);
+            expect(turns.has(state.currentTurnId)).toBe(false);
+            turns.add(state.currentTurnId);
+            const next = mapCodexMcpMessageToSessionEnvelopes({ type: 'agent_message', message: 'More work' }, state);
+            expect(next.envelopes.map(e => e.ev.t)).toEqual(['text']);
+            expect(next.currentTurnId).toBe(state.currentTurnId);
+            state = next;
+        }
+        const ended = mapCodexMcpMessageToSessionEnvelopes({ type: 'turn_aborted' }, state);
+        expect(ended.envelopes.at(-1)?.turn).toBe(state.currentTurnId);
+        expect(ended.currentTurnId).toBeNull();
+    });
+
+    it('opens a turn for orphan tool output but not ignored events or usage updates', () => {
+        const state = { currentTurnId: null };
+        expect(mapCodexMcpMessageToSessionEnvelopes({ type: 'unknown' }, state).envelopes).toEqual([]);
+        const usage = mapCodexMcpMessageToSessionEnvelopes({ type: 'token_count', total: { input_tokens: 10, output_tokens: 2 } }, state);
+        expect(usage.currentTurnId).toBeNull();
+        expect(usage.envelopes).toHaveLength(1);
+        expect(usage.envelopes[0].usage).toMatchObject({ input_tokens: 10, output_tokens: 2 });
+        expect(usage.envelopes.every(e => !e.turn)).toBe(true);
+        const tool = mapCodexMcpMessageToSessionEnvelopes({ type: 'exec_command_begin', call_id: 'orphan-call', command: ['echo', 'ok'] }, state);
+        expect(tool.envelopes[0].ev.t).toBe('turn-start');
+        expect(tool.envelopes.some(e => e.ev.t === 'tool-call-start')).toBe(true);
+        expect(tool.envelopes.every(e => e.turn === tool.currentTurnId)).toBe(true);
+    });
+
     it('starts and ends turns for task lifecycle events', () => {
         const started = mapCodexMcpMessageToSessionEnvelopes({ type: 'task_started' }, { currentTurnId: null });
 
@@ -511,8 +546,45 @@ describe('mapCodexMcpMessageToSessionEnvelopes', () => {
 });
 
 describe('mapCodexProcessorMessageToSessionEnvelopes', () => {
+    it.each(['task_complete', 'turn_aborted'])('retains one synthetic turn for processor output until %s', (endType) => {
+        const started = mapCodexMcpMessageToSessionEnvelopes({ type: 'task_started' }, { currentTurnId: null });
+        const ended = mapCodexMcpMessageToSessionEnvelopes({ type: 'task_complete' }, started);
+        const reasoning = mapCodexProcessorMessageToSessionEnvelopes({
+            type: 'reasoning', message: 'Continuing', id: 'reasoning-1',
+        }, ended);
+        expect(reasoning.currentTurnId).toEqual(expect.any(String));
+        expect(reasoning.currentTurnId).not.toBe(started.currentTurnId);
+        expect(reasoning.envelopes.map(envelope => envelope.ev.t)).toEqual(['turn-start', 'text']);
+
+        const diff = mapCodexProcessorMessageToSessionEnvelopes({
+            type: 'tool-call', name: 'CodexDiff', callId: 'diff-1',
+            input: { unified_diff: '+continued' }, id: 'diff-start',
+        }, reasoning);
+        const result = mapCodexProcessorMessageToSessionEnvelopes({
+            type: 'tool-call-result', callId: 'diff-1', output: { status: 'completed' }, id: 'diff-end',
+        }, diff);
+        const reply = mapCodexMcpMessageToSessionEnvelopes({ type: 'agent_message', message: 'Done' }, result);
+        const completed = mapCodexMcpMessageToSessionEnvelopes({ type: endType }, reply);
+        const envelopes = [...reasoning.envelopes, ...diff.envelopes, ...result.envelopes, ...reply.envelopes, ...completed.envelopes];
+        expect(envelopes.map(envelope => envelope.ev.t)).toEqual([
+            'turn-start', 'text', 'tool-call-start', 'tool-call-end', 'text', 'turn-end',
+        ]);
+        expect(envelopes.every(envelope => envelope.turn === reasoning.currentTurnId)).toBe(true);
+        expect(completed.currentTurnId).toBeNull();
+    });
+
+    it('opens a synthetic turn when a diff is the first continuation output', () => {
+        const result = mapCodexProcessorMessageToSessionEnvelopes({
+            type: 'tool-call', name: 'CodexDiff', callId: 'diff-1',
+            input: { unified_diff: '+continued' }, id: 'diff-start',
+        }, { currentTurnId: null });
+        expect(result.currentTurnId).toEqual(expect.any(String));
+        expect(result.envelopes.map(envelope => envelope.ev.t)).toEqual(['turn-start', 'tool-call-start']);
+        expect(result.envelopes.every(envelope => envelope.turn === result.currentTurnId)).toBe(true);
+    });
+
     it('maps reasoning tool lifecycle to start/text/end session events', () => {
-        const startEvents = mapCodexProcessorMessageToSessionEnvelopes({
+        const { envelopes: startEvents } = mapCodexProcessorMessageToSessionEnvelopes({
             type: 'tool-call',
             callId: 'reasoning-1',
             name: 'CodexReasoning',
@@ -523,7 +595,7 @@ describe('mapCodexProcessorMessageToSessionEnvelopes', () => {
         expect(startEvents).toHaveLength(1);
         expect(startEvents[0].ev.t).toBe('tool-call-start');
 
-        const endEvents = mapCodexProcessorMessageToSessionEnvelopes({
+        const { envelopes: endEvents } = mapCodexProcessorMessageToSessionEnvelopes({
             type: 'tool-call-result',
             callId: 'reasoning-1',
             output: { content: 'Step 1, Step 2', status: 'completed' },
@@ -539,7 +611,7 @@ describe('mapCodexProcessorMessageToSessionEnvelopes', () => {
     });
 
     it('maps reasoning text to thinking text event', () => {
-        const events = mapCodexProcessorMessageToSessionEnvelopes({
+        const { envelopes: events } = mapCodexProcessorMessageToSessionEnvelopes({
             type: 'reasoning',
             message: 'Working through options',
             id: 'legacy-id-3',

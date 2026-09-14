@@ -1,3 +1,15 @@
+# September 14 - First messages
+
+- First message — a new session's first message no longer fails when an unrelated session can't be read.
+- Your draft — text and images stay in the composer when a message doesn't go through.
+- Retry — starting again reuses the session already created instead of leaving a spare behind.
+
+# September 14 - Photo uploads and session resume
+
+- Large iPhone photos — resized before upload, with size checks on the converted image. Reported by [@Jtome46](https://github.com/Jtome46).
+- Session resume — resume sessions already in your app, even if your machine no longer remembers them. Requires the updated Happy CLI.
+- Community Credits: [@chphch](https://github.com/chphch), [@a37836323](https://github.com/a37836323), [@suntaoathome](https://github.com/suntaoathome), [@f-liva](https://github.com/f-liva).
+
 # September 5 - New models, clearer changes
 
 - **New models** - GPT-6 Astra in Codex and Fable 5.1 in Claude.

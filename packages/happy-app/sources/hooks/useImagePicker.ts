@@ -4,14 +4,13 @@
  * Wraps expo-image-picker with permission handling and thumbhash generation.
  * Enforces limits: max 20 images per message, 10MB per file.
  *
- * Note: fileSize from expo-image-picker is optional — some platforms do not
- * provide it (returns undefined → size=0). Such files pass the client-side
- * size check; the server enforces the limit on upload. Phase 5 should handle
- * 413 responses gracefully.
+ * iOS images are downscaled and measured after JPEG conversion. Other
+ * platforms retain the picker's optional fileSize (0 when unavailable).
  */
 import { useState, useCallback, useRef, useEffect } from 'react';
 import * as ImagePicker from 'expo-image-picker';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
+import { getInfoAsync } from 'expo-file-system/legacy';
 import { Platform } from 'react-native';
 import { Modal } from '@/modal';
 import { generateThumbhash } from '@/utils/thumbhash';
@@ -21,6 +20,9 @@ import type { AttachmentPreview } from '@/sync/attachmentTypes';
 export const MAX_IMAGES_PER_MESSAGE = 20;
 export const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 const IOS_ATTACHMENT_JPEG_QUALITY = 0.92;
+const IOS_ATTACHMENT_MAX_DIMENSION = 3072;
+// encryptBlob adds a 24-byte nonce and 16-byte authentication tag.
+const IOS_ATTACHMENT_MAX_FILE_SIZE = MAX_FILE_SIZE - 40;
 
 export type { AttachmentPreview };
 
@@ -46,6 +48,7 @@ export async function normalizePickedAssetForUpload(asset: ImagePicker.ImagePick
     height: number;
     mimeType: string;
     name: string;
+    size: number;
 }> {
     if (Platform.OS !== 'ios') {
         return {
@@ -54,13 +57,26 @@ export async function normalizePickedAssetForUpload(asset: ImagePicker.ImagePick
             height: asset.height,
             mimeType: asset.mimeType ?? 'image/jpeg',
             name: asset.fileName ?? `image_${Date.now()}.jpg`,
+            size: asset.fileSize ?? 0,
         };
     }
 
-    const converted = await manipulateAsync(asset.uri, [], {
+    // Supply only the long edge: Expo preserves aspect ratio without cropping.
+    const resize = asset.width >= asset.height
+        ? { width: IOS_ATTACHMENT_MAX_DIMENSION }
+        : { height: IOS_ATTACHMENT_MAX_DIMENSION };
+    const actions = Math.max(asset.width, asset.height) > IOS_ATTACHMENT_MAX_DIMENSION
+        ? [{ resize }]
+        : [];
+    const converted = await manipulateAsync(asset.uri, actions, {
         compress: IOS_ATTACHMENT_JPEG_QUALITY,
         format: SaveFormat.JPEG,
     });
+
+    const info = await getInfoAsync(converted.uri);
+    if (!info.exists || info.isDirectory || !Number.isFinite(info.size) || info.size <= 0) {
+        throw new Error('Could not determine normalized image size');
+    }
 
     return {
         uri: converted.uri,
@@ -68,6 +84,7 @@ export async function normalizePickedAssetForUpload(asset: ImagePicker.ImagePick
         height: converted.height || asset.height,
         mimeType: 'image/jpeg',
         name: withJpegExtension(asset.fileName),
+        size: info.size,
     };
 }
 
@@ -123,9 +140,21 @@ export function useImagePicker(): UseImagePickerResult {
         const previews: AttachmentPreview[] = [];
 
         for (const asset of assets) {
-            const size = asset.fileSize ?? 0;
+            let normalized: Awaited<ReturnType<typeof normalizePickedAssetForUpload>>;
+            try {
+                normalized = await normalizePickedAssetForUpload(asset);
+            } catch {
+                Modal.alert(
+                    t('imageUpload.uploadFailedTitle'),
+                    t('imageUpload.uploadFailedMessage', { count: 1 }),
+                    [{ text: t('common.ok') }],
+                );
+                continue;
+            }
+            const size = normalized.size;
+            const maxSize = Platform.OS === 'ios' ? IOS_ATTACHMENT_MAX_FILE_SIZE : MAX_FILE_SIZE;
 
-            if (size > MAX_FILE_SIZE) {
+            if (size > maxSize) {
                 Modal.alert(
                     t('imageUpload.fileTooLargeTitle'),
                     t('imageUpload.fileTooLargeMessage', { name: asset.fileName ?? 'image', maxMb: 10 }),
@@ -133,8 +162,6 @@ export function useImagePicker(): UseImagePickerResult {
                 );
                 continue;
             }
-
-            const normalized = await normalizePickedAssetForUpload(asset);
 
             // Skip thumbhash if dimensions are unavailable (prevents divide-by-zero).
             const thumbhash = (normalized.width > 0 && normalized.height > 0)

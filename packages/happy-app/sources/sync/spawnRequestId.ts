@@ -12,7 +12,7 @@
  *
  * The key therefore lives here, keyed by a signature of what the user asked
  * for. It is reused for every retry of that same request and replaced only once
- * a spawn actually produced a session, or once the user changed the request.
+ * opening/first-message placement succeeds, or once the user changes the request.
  *
  * It is deliberately in-memory only. The new session draft persists to MMKV,
  * but this key is like the draft's attachments: it is only meaningful while the
@@ -32,7 +32,7 @@ export type SpawnRequestSignatureInput = {
     effort: string | null;
 };
 
-let pendingRequest: { signature: string; clientRequestId: string } | null = null;
+let pendingRequest: { signature: string; clientRequestId: string; sessionId?: string; abandon?: () => void; release?: () => void } | null = null;
 
 /** Stable description of "the same spawn the user is asking for". */
 export function buildSpawnRequestSignature(input: SpawnRequestSignatureInput): string {
@@ -55,14 +55,36 @@ export function resolveSpawnRequestId(signature: string): string {
     if (pendingRequest?.signature === signature) {
         return pendingRequest.clientRequestId;
     }
+    const previous = pendingRequest;
     pendingRequest = { signature, clientRequestId: randomUUID() };
+    previous?.abandon?.();
     return pendingRequest.clientRequestId;
 }
 
+/** A failed first-message placement retries the session already created, including on CLI. */
+export function getSpawnedSessionId(clientRequestId: string): string | undefined {
+    return pendingRequest?.clientRequestId === clientRequestId ? pendingRequest.sessionId : undefined;
+}
+
+export function rememberSpawnedSession(clientRequestId: string, sessionId: string, abandon: () => void, release?: () => void): void {
+    if (pendingRequest?.clientRequestId === clientRequestId) {
+        pendingRequest.sessionId = sessionId;
+        pendingRequest.abandon = abandon;
+        pendingRequest.release = release;
+    } else abandon();
+}
+
 /**
- * Called once a spawn produced a session, so the next spawn of an identical
- * request is treated as a new one rather than deduped into the finished session.
+ * Called once opening/first-message placement succeeds, or the user cancels.
  */
-export function completeSpawnRequest(): void {
-    pendingRequest = null;
+export function completeSpawnRequest(clientRequestId?: string): void {
+    if (!clientRequestId || pendingRequest?.clientRequestId === clientRequestId) pendingRequest = null;
+}
+
+/** An explicitly opened/used session is no longer an abandoned creation attempt. */
+export function releaseSpawnedSession(sessionId: string): void {
+    if (pendingRequest?.sessionId === sessionId) {
+        pendingRequest.release?.();
+        pendingRequest = null;
+    }
 }
