@@ -9,11 +9,14 @@ import { ConversationTranscript } from './ConversationTranscript';
 import { ChatList } from './ChatList';
 import type { ReadingState } from '@/sync/localHistoryStore';
 import type { Message } from '@/sync/typesMessage';
+import type { SessionTextPreview } from '@/sync/sessionTextStream';
 
 const sessionState = vi.hoisted(() => ({
     messages: [] as Message[], isLoaded: true, hasMoreOlder: true, isLoadingOlder: false,
     hasMoreNewer: false, isLoadingNewer: false, isAtLatest: true,
 }));
+const liveState = vi.hoisted(() => ({ previews: [] as SessionTextPreview[], renderEdges: false }));
+vi.mock('@/sync/sessionTextStream', () => ({ useSessionTextPreviews: () => liveState.previews }));
 const grouped = vi.hoisted(() => ({ items: null as any[] | null, renderRows: false,
     renders: [] as Array<{ id: string; expanded: boolean }> }));
 vi.mock('@/sync/storage', () => ({
@@ -26,12 +29,15 @@ vi.mock('@/hooks/useSessionQuickActions', () => ({ useSessionQuickActions: () =>
 vi.mock('@/utils/responsive', () => ({ useHeaderHeight: () => 0 }));
 vi.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0 }) }));
 vi.mock('./ChatFooter', () => ({ ChatFooter: 'ChatFooter' }));
+vi.mock('./layout', () => ({ layout: { maxWidth: 800 } }));
 
 vi.mock('react-native', () => ({
     AppState: { addEventListener: () => ({ remove: vi.fn() }) },
     ActivityIndicator: 'ActivityIndicator',
     FlatList: React.forwardRef((props: any, ref: any) => React.createElement('FlatList', { ...props, ref },
-        grouped.renderRows ? props.data.map((item: any) => React.cloneElement(props.renderItem({ item }), { key: item.renderKey })) : null)),
+        liveState.renderEdges ? props.ListHeaderComponent : null,
+        grouped.renderRows ? props.data.map((item: any) => React.cloneElement(props.renderItem({ item }), { key: item.renderKey })) : null,
+        liveState.renderEdges ? props.ListFooterComponent : null)),
     Platform: { OS: 'web' },
     Pressable: 'Pressable',
     Text: 'Text',
@@ -106,6 +112,7 @@ describe('ConversationTranscript older history pagination', () => {
 
     beforeEach(() => {
         flushFrame = installFrameQueue();
+        liveState.previews = []; liveState.renderEdges = false;
         grouped.items = null;
         grouped.renders = [];
         grouped.renderRows = false;
@@ -954,6 +961,40 @@ describe('ConversationTranscript older history pagination', () => {
         expect(scrollToEnd).not.toHaveBeenCalled();
         await flushFrame();
         expect(scrollToEnd).toHaveBeenCalledTimes(1);
+        act(() => renderer.unmount());
+    });
+
+    it.each(['web', 'android'])('updates the real ChatList live edge without pulling an older reader to latest (%s)', async platform => {
+        (Platform as any).OS = platform;
+        liveState.renderEdges = true;
+        sessionState.messages = [userMessage('stream-user')];
+        sessionState.isAtLatest = true;
+        sessionState.isLoaded = true;
+        sessionState.hasMoreOlder = false;
+        liveState.previews = [{ sessionId: 'session', turnId: 'turn', itemId: 'item', createdAt: 2, text: 'First' }];
+        const scrollToEnd = vi.fn(); const scrollToOffset = vi.fn(); let renderer: any;
+        const render = () => <ChatList session={{ id: 'session', metadata: null } as any} />;
+        await act(async () => { renderer = TestRenderer.create(render(), {
+            createNodeMock: (element: any) => element.type === 'FlatList' ? { scrollToEnd, scrollToOffset } : null,
+        }); });
+        expect(renderer.root.findByProps({ testID: 'session-stream-preview-text' }).props.children).toBe('First');
+        const list = byId(renderer, 'conversation-transcript-list');
+        const historyRows = list.props.data;
+        act(() => {
+            list.props.onScrollBeginDrag();
+            list.props.onScroll({ nativeEvent: {
+                contentOffset: { y: 1000 }, contentSize: { height: 5000 }, layoutMeasurement: { height: 800 },
+            } });
+        });
+        scrollToEnd.mockClear(); scrollToOffset.mockClear();
+        liveState.previews = [{ ...liveState.previews[0], text: 'First second third' }];
+        await act(async () => renderer.update(render()));
+        act(() => byId(renderer, 'conversation-transcript-list').props.onContentSizeChange(800, 5100));
+        await flushFrame();
+        expect(renderer.root.findByProps({ testID: 'session-stream-preview-text' }).props.children).toBe('First second third');
+        expect(byId(renderer, 'conversation-transcript-list').props.data).toEqual(historyRows);
+        expect(scrollToEnd).not.toHaveBeenCalled();
+        expect(scrollToOffset).not.toHaveBeenCalled();
         act(() => renderer.unmount());
     });
 

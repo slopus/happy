@@ -11,11 +11,19 @@ import { useSessionQuickActions } from '@/hooks/useSessionQuickActions';
 import { ChatFooter } from './ChatFooter';
 import { ConversationTranscript } from './ConversationTranscript';
 import type { TranscriptReadingAdapter } from './transcriptReading';
+import { useSessionTextPreviews } from '@/sync/sessionTextStream';
+import { selectVisibleTextPreviews } from './sessionTextPreviewProjection';
+import { StreamingTextPreviews } from './StreamingTextPreviews';
 
 export const ChatList = React.memo((props: { session: Session; followLatestRequest?: number }) => {
     const { messages, isLoaded, hasMoreOlder, isLoadingOlder, hasMoreNewer, isLoadingNewer, isAtLatest,
         olderError, newerError } = useSessionMessages(props.session.id);
     const session = useSession(props.session.id);
+    const textPreviews = useSessionTextPreviews(props.session.id);
+    const visibleTextPreviews = React.useMemo(
+        () => selectVisibleTextPreviews(props.session.id, isAtLatest, messages, textPreviews),
+        [props.session.id, isAtLatest, messages, textPreviews],
+    );
     const groupToolCalls = useSetting('groupToolCalls');
     const hasPendingPermission = Boolean(
         session?.agentState?.requests && Object.keys(session.agentState.requests).length > 0,
@@ -94,7 +102,10 @@ export const ChatList = React.memo((props: { session: Session; followLatestReque
             olderError={olderError}
             newerError={newerError}
             visualTop={<ListHeader />}
-            visualBottom={isAtLatest ? <ListFooter sessionId={props.session.id} /> : null}
+            visualBottom={isAtLatest ? <>
+                <StreamingTextPreviews previews={visibleTextPreviews} />
+                <ListFooter sessionId={props.session.id} />
+            </> : null}
             showMessageActions={Platform.OS === 'web'}
             canEditLatestUserMessage={isAtLatest && session?.thinking !== true}
             onEditUserMessage={handleEditUserMessage}

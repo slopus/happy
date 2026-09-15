@@ -586,6 +586,8 @@ export type NormalizedMessage = ({
      */
     claudeUuid?: string,
     codexItemId?: string,
+    /** Display-only correlation with transient root-agent text; never a cursor. */
+    streamKey?: { turnId: string; itemId?: string },
 };
 
 function normalizeSessionEnvelope(
@@ -641,7 +643,8 @@ function normalizeSessionEnvelope(
             role: 'event',
             isSidechain: false,
             content: { type: 'ready', terminal: true },
-            meta
+            meta,
+            ...(!envelope.subagent && envelope.turn ? { streamKey: { turnId: envelope.turn } } : {}),
         } satisfies NormalizedMessage;
     }
 
@@ -719,6 +722,8 @@ function normalizeSessionEnvelope(
             meta,
             claudeUuid: envelope.claudeUuid,
             codexItemId: envelope.codexItemId,
+            ...(!isSidechain && !envelope.ev.thinking && envelope.turn && envelope.codexItemId
+                ? { streamKey: { turnId: envelope.turn, itemId: envelope.codexItemId } } : {}),
         } satisfies NormalizedMessage;
     }
 

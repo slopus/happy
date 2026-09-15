@@ -131,6 +131,7 @@ type ReducerMessage = {
     meta?: MessageMeta;
     claudeUuid?: string;
     codexItemId?: string;
+    streamKey?: { turnId: string; itemId?: string };
 }
 
 type StoredPermission = {
@@ -840,6 +841,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                         createdAt: msg.createdAt,
                         text: isThinking ? `*${c.thinking}*` : c.text,
                         isThinking,
+                        ...(!isThinking && msg.streamKey && { streamKey: msg.streamKey }),
                         tool: null,
                         event: null,
                         meta: msg.meta,
@@ -1313,6 +1315,7 @@ function convertReducerMessageToMessage(reducerMsg: ReducerMessage, state: Reduc
             kind: 'agent-text',
             text: reducerMsg.text,
             ...(reducerMsg.isThinking && { isThinking: true }),
+            ...(reducerMsg.streamKey && { streamKey: reducerMsg.streamKey }),
             meta: reducerMsg.meta
         };
     } else if (reducerMsg.role === 'agent' && reducerMsg.tool !== null) {

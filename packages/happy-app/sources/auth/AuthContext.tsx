@@ -10,6 +10,7 @@ import { clearPublicSessionShareJobs } from '@/sync/publicSessionShareQueueRunti
 import { clearSessionWarmCache } from '@/sync/sessionWarmCache';
 import { clearLocalHistoryCaches } from '@/sync/localHistoryStore';
 import { clearFirstSubmissionScope } from '@/sync/firstSubmissionScope';
+import { sessionTextStream } from '@/sync/sessionTextStream';
 
 interface AuthContextType {
     isAuthenticated: boolean;
@@ -42,6 +43,7 @@ export function AuthProvider({ children, initialCredentials }: { children: React
     };
 
     const logout = async () => {
+        sessionTextStream.activate(null);
         clearFirstSubmissionScope();
         const clearingHistory = clearLocalHistoryCaches();
         trackLogout();

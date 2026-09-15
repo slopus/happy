@@ -16,6 +16,8 @@ import { createReducer } from './reducer/reducer';
 import { installPhase2Probe } from './phase2Probe.testSupport';
 import { markSessionCriticalPathAppStage } from './sessionCriticalPathProbeBridge';
 import { normalizeRawMessage, type RawRecord } from './typesRaw';
+import { apiSocket } from './apiSocket';
+import { sessionTextStream, useSessionTextPreviews } from './sessionTextStream';
 import { clearSessionWarmCache, loadSessionWarmCache, saveSessionWarmLatestPage, saveSessionWarmSnapshots } from './sessionWarmCache';
 import { IDBFactory, IDBKeyRange } from 'fake-indexeddb';
 import { openLocalHistory, clearLocalHistoryCaches, type HistoryWindow } from './localHistoryStore';
@@ -152,6 +154,7 @@ vi.mock('./apiSocket', () => ({
     apiSocket: {
         onMessage: vi.fn(),
         onReconnected: vi.fn(),
+        onStatusChange: vi.fn(),
         request: mocks.apiRequest,
         sendAppState: vi.fn(),
     },
@@ -475,6 +478,73 @@ async function localHistoryViewHarness(options: { historical?: boolean; holdLoca
 }
 
 describe('message visibility synchronization', () => {
+    it.each(['projection', 'historical-receipt', 'native-compaction-receipt'] as const)('renders socket text previews and retires them on %s', async completion => {
+        const id = 'live-preview';
+        const encryption = { decryptRaw: async () => ({ type: 'text-delta', turnId: 'turn', itemId: 'item', delta: 'Hello', text: 'Hello' }) };
+        mocks.sessionEncryptions.set(id, encryption);
+        mocks.state.sessions[id] = hydrated(snapshot(id));
+        const owner = sync.beginSessionRoute(id);
+        sync.promoteSessionRoute(owner);
+        syncForTest.subscribeToUpdates();
+        const receive = vi.mocked(apiSocket.onMessage).mock.calls.find(([event]) => event === 'session-stream')?.[1];
+        expect(typeof receive).toBe('function');
+        (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+        function PreviewProbe() { return JSON.stringify(useSessionTextPreviews(id).map(p => p.text)); }
+        let view: any;
+        const cleanups: Array<() => void> = [];
+        try {
+            await act(async () => { view = TestRenderer.create(React.createElement(PreviewProbe)); });
+            await act(async () => { await receive!({ sid: id, content: { t: 'encrypted', c: 'cipher' } }); });
+            expect(view.toJSON()).toBe('["Hello"]');
+            const raw = { role: 'session', content: { type: 'session', data: {
+                id: 'final', role: 'agent', time: 100, turn: 'turn', codexItemId: 'item', ev: { t: 'text', text: 'Hello final' },
+            } } } as RawRecord;
+            if (completion === 'projection') {
+                const message = normalizeRawMessage('wire', null, 100, raw)!;
+                await act(async () => { syncForTest.applyMessages(id, [message]); });
+            } else {
+                Object.assign(encryption, { createDetached: () => ({ decryptMessage: async () => ({
+                    id: 'wire', localId: null, createdAt: 100, content: raw,
+                }) }) });
+                if (completion === 'native-compaction-receipt') {
+                    Platform.OS = 'android';
+                    const bounded = { messages: [apiMessage(1)], oldestSeq: 1, newestSeq: 1, isAtLatest: false };
+                    const ownerSpy = vi.spyOn(syncForTest, 'captureHistoryOwner').mockReturnValue({
+                        isCurrent: () => true,
+                        history: { appendMessages: async () => true,
+                            readWindow: async (_sid: string, options: { anchorSeq?: number }) => options.anchorSeq ? bounded : {
+                                messages: Array.from({ length: 300 }, (_, i) => apiMessage(i + 2)), oldestSeq: 2,
+                                newestSeq: 301, isAtLatest: true,
+                            }, readReadingState: async () => ({ anchorSeq: 1 }) },
+                    });
+                    const projectionSpy = vi.spyOn(syncForTest, 'applyHistoryWindow').mockImplementation(async () => {
+                        mocks.state.sessionMessages[id] = { messages: [], isAtLatest: false };
+                        return true;
+                    });
+                    cleanups.push(() => ownerSpy.mockRestore(), () => projectionSpy.mockRestore());
+                    syncForTest.historyWindows.set(id, { messages: Array.from({ length: 300 }, (_, i) => apiMessage(i + 1)),
+                        oldestSeq: 1, newestSeq: 300, isAtLatest: true });
+                    seedProjectedFrontier(id, { latestSeq: 300, olderBeforeSeq: null, hasMoreOlder: false });
+                    syncForTest.sessionMessageLoadGate.enter(id);
+                    await act(async () => { await syncForTest.handleUpdate(newMessageUpdate(id, 301)); });
+                    expect(projectionSpy).toHaveBeenCalledWith(id, bounded, expect.anything());
+                } else {
+                    syncForTest.historyWindows.set(id, { messages: [], isAtLatest: false });
+                    mocks.state.sessionMessages[id] = { messages: [], isAtLatest: false };
+                    await act(async () => { await syncForTest.handleUpdate(newMessageUpdate(id, 100)); });
+                }
+                // Receipt must retire previews even though no latest projection is applied.
+                expect(mocks.state.sessionMessages[id].isAtLatest).toBe(false);
+            }
+            expect(view.toJSON()).toBe('[]');
+            await act(async () => { await receive!({ sid: id, content: { t: 'encrypted', c: 'late' } }); });
+            expect(view.toJSON()).toBe('[]');
+        } finally {
+            cleanups.forEach(cleanup => cleanup());
+            act(() => { view?.unmount(); sync.leaveSessionRoute(owner); sessionTextStream.activate(null); });
+            delete (globalThis as any).IS_REACT_ACT_ENVIRONMENT;
+        }
+    });
     let consoleError: ReturnType<typeof vi.spyOn>;
     beforeEach(() => {
         mocks.useRealStorage(null);

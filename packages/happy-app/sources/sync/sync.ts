@@ -2,6 +2,8 @@ import type { HistoryViewportReader, HistoryViewportRange } from './historyWindo
 import Constants from 'expo-constants';
 import { refreshNativeUpdateStatus } from './nativeUpdate';
 import type { PluginCatalogResponse } from '@slopus/happy-wire';
+import { SessionStreamEnvelopeSchema } from '@slopus/happy-wire';
+import { sessionTextStream } from './sessionTextStream';
 import { apiSocket, getCurrentAppState, getHappyClientId } from '@/sync/apiSocket';
 import { notifyUnreadMessage } from '@/sync/webTabTitle';
 import { AuthCredentials } from '@/auth/tokenStorage';
@@ -579,6 +581,7 @@ class Sync {
     }
 
     async create(credentials: AuthCredentials, encryption: Encryption) {
+        sessionTextStream.activate(null);
         this.credentials = credentials;
         this.encryption = encryption;
         this.anonID = encryption.anonID;
@@ -599,6 +602,7 @@ class Sync {
     }
 
     async restore(credentials: AuthCredentials, encryption: Encryption) {
+        sessionTextStream.activate(null);
         // NOTE: No awaiting anything here, we're restoring from a disk (ie app restarted)
         // Purchases sync is invalidated in #init() and will complete asynchronously
         this.credentials = credentials;
@@ -701,6 +705,7 @@ class Sync {
     };
 
     public resetLocalHistory = async (): Promise<void> => {
+        sessionTextStream.activate(null);
         this.historyPrefetch.stop();
         clearSessionWarmCache();
         const clearing = clearLocalHistoryCaches();
@@ -863,6 +868,7 @@ class Sync {
             hasMoreNewer: window.hasMoreNewer, isLoadingNewer: false, isAtLatest: window.isAtLatest,
             latestVerifiedOwnerEpoch: null,
         } } }));
+        sessionTextStream.observeDurable(id, normalized);
         this.recordRoutePageCommit(operation, window.newestSeq ?? 0);
         return true;
     };
@@ -1346,6 +1352,7 @@ class Sync {
     }
 
     private releaseSessionMessageCache(sessionId: string, removeFromRetention = true): void {
+        if (this.sessionRouteOwnership.ownsSession(sessionId)) sessionTextStream.activate(null);
         if (this.sessionRouteOwnership.ownsSession(sessionId)) this.historyPrefetch.stop();
         this.historyWindows.delete(sessionId);
         this.historyWireProvenance.delete(sessionId);
@@ -2614,6 +2621,7 @@ class Sync {
         const previous = this.sessionRouteOwnership.current();
         if (previous) this.leaveSessionRoute(previous);
         const owner = this.sessionRouteOwnership.enter(sessionId);
+        sessionTextStream.activate(sessionId);
         this.retainSessionMessageCache(sessionId);
         return owner;
     }
@@ -2668,6 +2676,7 @@ class Sync {
 
     public leaveSessionRoute = (owner: SessionRouteOwner): boolean => {
         if (!this.sessionRouteOwnership.leave(owner)) return false;
+        sessionTextStream.activate(null);
         this.historyPrefetch.stop();
         const operation = this.activeOpenSession;
         if (operation?.owner.ownerEpoch === owner.ownerEpoch) {
@@ -4215,10 +4224,31 @@ class Sync {
         }
     }
 
+    private stopTextStreamStatus: (() => void) | undefined;
+
+    private handleSessionTextStream = async (data: unknown): Promise<void> => {
+        const parsed = SessionStreamEnvelopeSchema.safeParse(data);
+        if (!parsed.success) return;
+        const { sid } = parsed.data;
+        const route = this.sessionRouteOwnership.current();
+        const credentials = this.credentials;
+        const encryption = this.encryption.getSessionEncryption(sid);
+        if (!route || route.phase !== 'interactive' || route.sessionId !== sid || !encryption) return;
+        await sessionTextStream.receive(parsed.data, value => encryption.decryptRaw(value), () =>
+            this.credentials === credentials && this.sessionRouteOwnership.owns(route)
+            && this.sessionRouteOwnership.current()?.phase === 'interactive'
+            && this.encryption.getSessionEncryption(sid) === encryption);
+    };
+
     private subscribeToUpdates = () => {
         // Subscribe to message updates
         apiSocket.onMessage('update', this.handleUpdate.bind(this));
         apiSocket.onMessage('ephemeral', this.handleEphemeralUpdate.bind(this));
+        apiSocket.onMessage('session-stream', this.handleSessionTextStream);
+        this.stopTextStreamStatus?.();
+        this.stopTextStreamStatus = apiSocket.onStatusChange(status => {
+            if (status !== 'connected') sessionTextStream.interrupt();
+        });
 
         // Subscribe to connection state changes
         apiSocket.onReconnected(() => {
@@ -4357,6 +4387,10 @@ class Sync {
                     const historyWindow = this.historyWindows.get(updateData.body.sid);
                     if (historyWindow && !historyWindow.isAtLatest) {
                         const sid = updateData.body.sid;
+                        // This receipt will not be projected while reading old
+                        // history, and may fall outside the next latest window.
+                        // Retire its preview now so it cannot reappear on jump.
+                        if (lastMessage) sessionTextStream.observeDurable(sid, [lastMessage]);
                         storage.setState(state => ({ sessionMessages: { ...state.sessionMessages,
                             [sid]: { ...state.sessionMessages[sid], hasMoreNewer: true, isAtLatest: false },
                         } }));
@@ -4374,6 +4408,7 @@ class Sync {
                         // Duplicate or out-of-order delivery. The cache already
                         // owns this sequence, so neither history nor Git needs
                         // to be refreshed.
+                        if (lastMessage) sessionTextStream.observeDurable(updateData.body.sid, [lastMessage]);
                     } else if (lastMessage && currentLastSeq !== null && incomingSeq === currentLastSeq + 1) {
                         // Inspect tool ownership before replay can evict the tool
                         // row, and preserve the live refresh on compaction returns.
@@ -4411,6 +4446,12 @@ class Sync {
                                 assertCurrent();
                                 const lease = this.sessionMessageLoadGate.currentLease(sid);
                                 if (bounded && lease) await this.applyHistoryWindow(sid, bounded, this.sessionMessageLoadGate.begin(lease));
+                                assertCurrent();
+                                // Compaction can retain an older reading anchor
+                                // instead of projecting this completion record.
+                                if (!bounded?.messages.some(message => message.seq === incomingSeq)) {
+                                    sessionTextStream.observeDurable(sid, [lastMessage]);
+                                }
                                 return;
                             }
                             this.historyWindows.set(updateData.body.sid, appended);
@@ -4914,6 +4955,7 @@ class Sync {
 
     private applyMessages = (sessionId: string, messages: NormalizedMessage[], latestAppliedSeq?: number) => {
         const result = storage.getState().applyMessages(sessionId, messages, latestAppliedSeq);
+        sessionTextStream.observeDurable(sessionId, messages);
         const hasCompletedTurn = messages.some((message) => (
             message.role === 'event'
             && message.content.type === 'ready'

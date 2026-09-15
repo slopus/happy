@@ -102,6 +102,7 @@ vi.mock('./storage', () => ({ storage: mocks.storage }));
 vi.mock('./apiSocket', () => ({
     apiSocket: {
         onMessage: vi.fn(),
+        onStatusChange: vi.fn(),
         onReconnected: vi.fn(),
         request: mocks.apiRequest,
         sendAppState: vi.fn(),

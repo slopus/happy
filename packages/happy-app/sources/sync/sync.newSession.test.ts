@@ -34,6 +34,7 @@ const { apiSocket, fetchSessionSnapshot, hydrateSessionSnapshots, reconcileSessi
     return {
         apiSocket: {
             onMessage: vi.fn(),
+            onStatusChange: vi.fn(),
             onReconnected: vi.fn(),
             sendAppState: vi.fn(),
         },

@@ -69,6 +69,8 @@ export type AgentTextMessage = {
     createdAt: number;
     text: string;
     isThinking?: boolean;
+    /** Root provider identity used only to reconcile transient text previews. */
+    streamKey?: { turnId: string; itemId?: string };
     meta?: MessageMeta;
 }
 
