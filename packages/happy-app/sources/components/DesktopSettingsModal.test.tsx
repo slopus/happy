@@ -82,6 +82,21 @@ describe('DesktopSettingsModalProvider', () => {
         expect(mocks.routerPush).toHaveBeenCalledWith({ pathname: '/inbox', params: { desktopModal: '1' } });
     });
 
+    it('opens an arbitrary destination inside the desktop modal and preserves route params', () => {
+        act(() => {
+            renderer = TestRenderer.create(
+                <DesktopSettingsModalProvider><ControllerProbe /></DesktopSettingsModalProvider>,
+            );
+        });
+
+        act(() => controller?.openRoute('/session/abc/files', { focus: 'search' }));
+
+        expect(mocks.routerPush).toHaveBeenCalledWith({
+            pathname: '/session/abc/files',
+            params: { focus: 'search', desktopModal: '1' },
+        });
+    });
+
     it('keeps route navigation for narrow web', () => {
         mocks.isTablet = false;
         act(() => {
@@ -92,6 +107,15 @@ describe('DesktopSettingsModalProvider', () => {
 
         act(() => controller?.openSettings());
         expect(mocks.routerPush).toHaveBeenCalledWith('/settings');
+
+        act(() => controller?.openRoute('/session/recent'));
+        expect(mocks.routerPush).toHaveBeenCalledWith('/session/recent');
+
+        act(() => controller?.openRoute('/session/abc/files', { focus: 'search' }));
+        expect(mocks.routerPush).toHaveBeenCalledWith({
+            pathname: '/session/abc/files',
+            params: { focus: 'search' },
+        });
         expect(renderer!.root.findAllByProps({ testID: 'settings-modal-panel' })).toHaveLength(0);
     });
 });

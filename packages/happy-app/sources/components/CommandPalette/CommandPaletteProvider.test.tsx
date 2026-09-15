@@ -18,7 +18,9 @@ const mocks = vi.hoisted(() => ({
     },
     keyboardHandler: undefined as (() => void) | undefined,
     keyboardOptions: undefined as { onOpenSettings?: () => void } | undefined,
+    isDesktop: true,
     openSettings: vi.fn(),
+    openRoute: vi.fn(),
     state: {
         sessions: {
             abc123456: {
@@ -64,12 +66,16 @@ const mocks = vi.hoisted(() => ({
         },
         localSettings: {
             commandPaletteEnabled: false,
+            themePreference: 'dark',
             agents: [{
                 id: 'agent-1',
                 name: 'Release Agent',
                 machineId: 'machine-1',
                 path: '~/projects/alpha',
             }],
+        },
+        settings: {
+            preferredLanguage: 'zh-Hans',
         },
         currentViewingSessionId: 'abc123456',
     },
@@ -120,7 +126,11 @@ vi.mock('@/hooks/useGlobalKeyboard', () => ({
     },
 }));
 vi.mock('@/components/DesktopSettingsModal', () => ({
-    useDesktopSettingsModal: () => ({ openSettings: mocks.openSettings }),
+    useDesktopSettingsModal: () => ({
+        isDesktop: mocks.isDesktop,
+        openSettings: mocks.openSettings,
+        openRoute: mocks.openRoute,
+    }),
 }));
 
 vi.mock('@/text', () => ({
@@ -131,6 +141,10 @@ vi.mock('@/text', () => ({
             'sessionHistory.viewAll': '全部会话',
             'settings.title': '设置',
             'settings.account': '账户',
+            'settings.appearance': '外观',
+            'settings.appearanceSubtitle': '自定义应用外观',
+            'settings.theme': '主题设置',
+            'settings.language': '语言切换',
             'settings.developerTools': '开发者工具',
             'settings.developer': '开发',
             'settingsAccount.linkNewDevice': '连接新设备',
@@ -143,9 +157,19 @@ vi.mock('@/text', () => ({
             'commandPalette.system': '系统',
             'rightPanelCapabilityHub.blocks.folderBrowser': '文件夹',
             'tools.names.searchFiles': '搜索文件',
+            'deviceEnvironment.title': '设备环境',
+            'deviceEnvironment.subtitle': '检查并统一各台机器上的开发工具',
+            'settingsAppearance.themeOptions.adaptive': '跟随系统',
+            'settingsAppearance.themeOptions.light': '浅色',
+            'settingsAppearance.themeOptions.dark': '深色',
         };
         return translations[key] ?? `译文：${key}`;
     },
+    SUPPORTED_LANGUAGES: {
+        en: { code: 'en', nativeName: 'English', englishName: 'English' },
+        'zh-Hans': { code: 'zh-Hans', nativeName: '中文(简体)', englishName: 'Chinese (Simplified)' },
+    },
+    getLanguageNativeName: (code: 'en' | 'zh-Hans') => code === 'zh-Hans' ? '中文(简体)' : 'English',
 }));
 
 vi.mock('./CommandPalette', () => ({
@@ -182,7 +206,9 @@ describe('CommandPaletteProvider', () => {
         mocks.router.push.mockReset();
         mocks.keyboardHandler = undefined;
         mocks.keyboardOptions = undefined;
+        mocks.isDesktop = true;
         mocks.openSettings.mockReset();
+        mocks.openRoute.mockReset();
         latestLauncher = null;
         consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation((...values: unknown[]) => {
             if (values[0] === 'react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer') return;
@@ -253,10 +279,41 @@ describe('CommandPaletteProvider', () => {
             subtitle: '/Users/jacky/projects/archive',
         });
 
+        expect(byId.has('connect')).toBe(false);
+        expect(byId.get('device-environment')).toMatchObject({
+            title: '设备环境',
+            subtitle: '检查并统一各台机器上的开发工具',
+            showWhenEmpty: false,
+        });
+        expect(byId.get('theme-settings')).toMatchObject({
+            title: '主题设置',
+            subtitle: '深色',
+            showWhenEmpty: false,
+            keywords: expect.arrayContaining(['外观', '自定义应用外观', '深色']),
+        });
+        expect(byId.get('language-settings')).toMatchObject({
+            title: '语言切换',
+            subtitle: '中文(简体)',
+            showWhenEmpty: false,
+            keywords: expect.arrayContaining(['中文(简体)']),
+        });
+
+        act(() => byId.get('sessions')?.action());
+        expect(mocks.openRoute).toHaveBeenLastCalledWith('/session/search');
+        act(() => byId.get('account')?.action());
+        expect(mocks.openRoute).toHaveBeenLastCalledWith('/settings/account');
         act(() => byId.get('open-project-folder')?.action());
-        expect(mocks.router.push).toHaveBeenCalledWith('/session/abc123456/files');
+        expect(mocks.openRoute).toHaveBeenLastCalledWith('/session/abc123456/files');
         act(() => byId.get('search-project-files')?.action());
-        expect(mocks.router.push).toHaveBeenCalledWith('/session/abc123456/files?focus=search');
+        expect(mocks.openRoute).toHaveBeenLastCalledWith('/session/abc123456/files', { focus: 'search' });
+        act(() => byId.get('device-environment')?.action());
+        expect(mocks.openRoute).toHaveBeenLastCalledWith('/settings/device-environment');
+        act(() => byId.get('theme-settings')?.action());
+        expect(mocks.openRoute).toHaveBeenLastCalledWith('/settings/appearance');
+        act(() => byId.get('language-settings')?.action());
+        expect(mocks.openRoute).toHaveBeenLastCalledWith('/settings/language');
+
+        expect(mocks.router.push).not.toHaveBeenCalled();
     });
 
     it('keeps Command+P available when stale local storage contains the removed opt-out', () => {
@@ -272,6 +329,25 @@ describe('CommandPaletteProvider', () => {
         expect(latestLauncher?.isAvailable).toBe(true);
         act(() => mocks.keyboardHandler?.());
         expect(mocks.modalShow).toHaveBeenCalledOnce();
+    });
+
+    it('keeps Link New Device available and actionable on narrow web', () => {
+        mocks.isDesktop = false;
+        act(() => {
+            renderer = TestRenderer.create(
+                <CommandPaletteProvider>
+                    <></>
+                </CommandPaletteProvider>,
+            );
+        });
+
+        act(() => mocks.keyboardHandler?.());
+        const commands = mocks.modalShow.mock.calls[0][0].props.commands as Command[];
+        const connect = commands.find((command) => command.id === 'connect');
+
+        expect(connect).toMatchObject({ title: '连接新设备' });
+        act(() => connect?.action());
+        expect(mocks.router.push).toHaveBeenCalledWith('/terminal/connect');
     });
 
     it('opens app settings from the global settings shortcut', () => {

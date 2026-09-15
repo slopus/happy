@@ -10,7 +10,7 @@ import { storage } from '@/sync/storage';
 import { useShallow } from 'zustand/react/shallow';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { useDesktopSettingsModal } from '@/components/DesktopSettingsModal';
-import { t } from '@/text';
+import { getLanguageNativeName, SUPPORTED_LANGUAGES, t } from '@/text';
 import { formatLastSeen } from '@/utils/sessionUtils';
 import type { Message } from '@/sync/typesMessage';
 
@@ -56,7 +56,7 @@ export function firstUserMessageSummary(messages: Message[] | undefined): string
 
 export function CommandPaletteProvider({ children }: { children: React.ReactNode }) {
     const router = useRouter();
-    const { openSettings } = useDesktopSettingsModal();
+    const { isDesktop, openRoute, openSettings } = useDesktopSettingsModal();
     const { logout } = useAuth();
     const { state: modalState, showModal } = useModal();
     const paletteOpeningRef = useRef(false);
@@ -70,6 +70,8 @@ export function CommandPaletteProvider({ children }: { children: React.ReactNode
         return summaries;
     }));
     const machines = storage(useShallow((state) => state.machines));
+    const themePreference = storage(useShallow((state) => state.localSettings.themePreference));
+    const preferredLanguage = storage(useShallow((state) => state.settings.preferredLanguage));
     const currentViewingSessionId = storage(useShallow((state) => state.currentViewingSessionId));
     const navigateToSession = useNavigateToSession();
     const paletteIsOpen = modalState.modals.some((modal) => (
@@ -113,7 +115,7 @@ export function CommandPaletteProvider({ children }: { children: React.ReactNode
                 icon: 'chatbubbles-outline',
                 category: t('sessionHistory.title'),
                 action: () => {
-                    router.push('/');
+                    openRoute('/session/search');
                 }
             },
             {
@@ -132,18 +134,63 @@ export function CommandPaletteProvider({ children }: { children: React.ReactNode
                 icon: 'person-circle-outline',
                 category: t('commandPalette.navigation'),
                 action: () => {
-                    router.push('/settings/account');
+                    openRoute('/settings/account');
                 }
             },
-            {
+            ...(!isDesktop ? [{
                 id: 'connect',
                 title: t('settingsAccount.linkNewDevice'),
                 subtitle: t('settingsAccount.linkNewDeviceSubtitle'),
-                icon: 'link-outline',
+                icon: 'link-outline' as const,
                 category: t('commandPalette.navigation'),
                 action: () => {
                     router.push('/terminal/connect');
                 }
+            }] : []),
+            {
+                id: 'device-environment',
+                title: t('deviceEnvironment.title'),
+                subtitle: t('deviceEnvironment.subtitle'),
+                keywords: [t('settings.machines')],
+                icon: 'desktop-outline',
+                category: t('commandPalette.navigation'),
+                showWhenEmpty: false,
+                action: () => openRoute('/settings/device-environment'),
+            },
+            {
+                id: 'theme-settings',
+                title: t('settings.theme'),
+                subtitle: themePreference === 'light'
+                    ? t('settingsAppearance.themeOptions.light')
+                    : themePreference === 'dark'
+                        ? t('settingsAppearance.themeOptions.dark')
+                        : t('settingsAppearance.themeOptions.adaptive'),
+                keywords: [
+                    t('settings.appearance'),
+                    t('settings.appearanceSubtitle'),
+                    t('settingsAppearance.themeOptions.adaptive'),
+                    t('settingsAppearance.themeOptions.light'),
+                    t('settingsAppearance.themeOptions.dark'),
+                ],
+                icon: 'contrast-outline',
+                category: t('commandPalette.navigation'),
+                showWhenEmpty: false,
+                action: () => openRoute('/settings/appearance'),
+            },
+            {
+                id: 'language-settings',
+                title: t('settings.language'),
+                subtitle: preferredLanguage && preferredLanguage in SUPPORTED_LANGUAGES
+                    ? getLanguageNativeName(preferredLanguage as keyof typeof SUPPORTED_LANGUAGES)
+                    : t('settingsLanguage.automatic'),
+                keywords: Object.values(SUPPORTED_LANGUAGES).flatMap((language) => [
+                    language.nativeName,
+                    language.englishName,
+                ]),
+                icon: 'language-outline',
+                category: t('commandPalette.navigation'),
+                showWhenEmpty: false,
+                action: () => openRoute('/settings/language'),
             },
         ];
 
@@ -164,7 +211,7 @@ export function CommandPaletteProvider({ children }: { children: React.ReactNode
                     subtitle: projectPath,
                     icon: 'folder-open-outline',
                     category: t('commandPalette.navigation'),
-                    action: () => router.push(filesRoute as any),
+                    action: () => openRoute(filesRoute),
                 },
                 {
                     id: 'search-project-files',
@@ -172,7 +219,7 @@ export function CommandPaletteProvider({ children }: { children: React.ReactNode
                     subtitle: projectPath,
                     icon: 'search-outline',
                     category: t('commandPalette.navigation'),
-                    action: () => router.push(`${filesRoute}?focus=search` as any),
+                    action: () => openRoute(filesRoute, { focus: 'search' }),
                 },
             );
         }
@@ -247,7 +294,7 @@ export function CommandPaletteProvider({ children }: { children: React.ReactNode
         }
 
         return cmds;
-    }, [router, sessions, firstUserMessageSummaries, machines, currentViewingSessionId, navigateToSession, confirmLogout, openSettings]);
+    }, [router, sessions, firstUserMessageSummaries, machines, themePreference, preferredLanguage, currentViewingSessionId, navigateToSession, confirmLogout, isDesktop, openRoute, openSettings]);
 
     const showCommandPalette = useCallback(() => {
         if (Platform.OS !== 'web' || paletteOpeningRef.current) return;

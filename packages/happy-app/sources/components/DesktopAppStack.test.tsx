@@ -21,7 +21,7 @@ vi.mock('react-native-unistyles', () => {
     const theme = { colors: { surface: 'surface', surfacePressed: 'pressed', divider: 'divider', shadow: { color: 'shadow' }, header: { tint: 'tint', background: 'header' } } };
     return { StyleSheet: { create: (f: any) => f(theme), absoluteFill: {}, hairlineWidth: 1 }, useUnistyles: () => ({ theme }) };
 });
-import { DesktopStackNavigator } from './DesktopAppStack';
+import { DesktopStackNavigator, focusDesktopModalInitialTarget } from './DesktopAppStack';
 import { navigateDesktopModalBack } from '@/navigation/desktopModalNavigation';
 let renderer: any;
 afterEach(() => {
@@ -32,6 +32,35 @@ afterEach(() => {
 });
 
 describe('desktop app stack presentation', () => {
+    it('preserves focus already placed inside modal content before applying the close-button fallback', () => {
+        const focus = vi.fn();
+        const activeElement = {} as HTMLElement;
+        const panel = {
+            contains: vi.fn(() => true),
+            querySelector: vi.fn(() => ({ focus })),
+        } as unknown as HTMLElement;
+
+        focusDesktopModalInitialTarget(panel, activeElement);
+
+        expect(panel.contains).toHaveBeenCalledWith(activeElement);
+        expect(panel.querySelector).not.toHaveBeenCalled();
+        expect(focus).not.toHaveBeenCalled();
+    });
+
+    it('focuses the modal close button when content has not claimed focus', () => {
+        const focus = vi.fn();
+        const activeElement = {} as HTMLElement;
+        const panel = {
+            contains: vi.fn(() => false),
+            querySelector: vi.fn(() => ({ focus })),
+        } as unknown as HTMLElement;
+
+        focusDesktopModalInitialTarget(panel, activeElement);
+
+        expect(panel.querySelector).toHaveBeenCalledWith('[data-testid="desktop-modal-close"]');
+        expect(focus).toHaveBeenCalledOnce();
+    });
+
     it('renders only background outside and only descendants inside, including during close animation', () => {
         (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
         const background = { key: 'background', name: 'session/[id]', params: { id: 'original' } };

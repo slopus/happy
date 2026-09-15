@@ -12,6 +12,14 @@ import { DesktopWorkspaceLayoutIsolation } from '@/hooks/useDesktopWorkspaceLayo
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
 
+export function focusDesktopModalInitialTarget(
+    panel: HTMLElement | null,
+    activeElement: Element | null = typeof document === 'undefined' ? null : document.activeElement,
+) {
+    if (!panel || (activeElement && panel.contains(activeElement))) return;
+    panel.querySelector<HTMLElement>('[data-testid="desktop-modal-close"]')?.focus();
+}
+
 /** A real Expo-compatible stack, rendered in one desktop dialog after a modal entry. */
 export function DesktopStackNavigator({ children, initialRouteName, screenOptions, screenListeners, ...rest }: NativeStackNavigatorProps) {
     const { state, descriptors, navigation, describe, NavigationContent } = useNavigationBuilder<
@@ -38,7 +46,7 @@ export function DesktopStackNavigator({ children, initialRouteName, screenOption
     React.useEffect(() => {
         if (!visible || typeof document === 'undefined') return;
         const previous = document.activeElement as HTMLElement | null;
-        const frame = requestAnimationFrame(() => panelRef.current?.querySelector('[data-testid="desktop-modal-close"]')?.focus());
+        const frame = requestAnimationFrame(() => focusDesktopModalInitialTarget(panelRef.current));
         return () => { cancelAnimationFrame(frame); if (previous?.isConnected) previous.focus(); };
     }, [visible]);
 
