@@ -1122,6 +1122,7 @@ export async function runCodex(opts: {
             }
         }
     };
+    client.setTextStreamHandler((event) => session.sendSessionTextDelta(event));
     client.setEventHandler((msg) => {
         if (bufferCodexEvents) {
             bufferedCodexEvents.push(msg);

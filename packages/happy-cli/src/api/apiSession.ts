@@ -9,7 +9,7 @@ import { io, Socket } from 'socket.io-client'
 import { AgentState, ClientToServerEvents, FileEventMessage, FileEventMessageSchema, Metadata, ServerToClientEvents, Session, Update, UserMessage, UserMessageSchema, Usage } from './types'
 import { decodeBase64, decryptBlob, encryptBlob, decrypt, encodeBase64, encrypt } from './encryption';
 import { requestAttachmentUpload, uploadEncryptedBlob, uploadMediaFile } from './attachmentUpload';
-import { detectHonorMotionPhoto, type MotionPhotoVideo } from '@slopus/happy-wire';
+import { detectHonorMotionPhoto, SessionTextDeltaSchema, SESSION_STREAM_MAX_CIPHERTEXT_LENGTH, type SessionTextDelta, type MotionPhotoVideo } from '@slopus/happy-wire';
 import { backoff, delay } from '@/utils/time';
 import { configuration } from '@/configuration';
 import { RawJSONLines } from '@/claude/types';
@@ -684,12 +684,11 @@ export class ApiSessionClient extends EventEmitter {
 
     private async flushOutbox() {
         await this.outboxLock.inLock(async () => {
-            // Send latest messages first so the user sees recent live activity
-            // immediately, then backfill older queued messages.
+            // Server seq follows persistence order. Keep turn-start, text/tools,
+            // and turn-end in producer order even when a reconnect built a backlog.
             while (this.pendingOutbox.length > 0) {
                 const batchSize = Math.min(this.pendingOutbox.length, ApiSessionClient.MAX_OUTBOX_BATCH_SIZE);
-                const batchStart = this.pendingOutbox.length - batchSize;
-                const batch = this.pendingOutbox.slice(batchStart);
+                const batch = this.pendingOutbox.slice(0, batchSize);
 
                 await this.postOutboxBatch(batch);
 
@@ -698,7 +697,7 @@ export class ApiSessionClient extends EventEmitter {
                 // app-sent user message with a lower seq is still in flight on the
                 // socket. Advancing here would make the next catch-up fetch start
                 // after that queued user message, so Codex would never read it.
-                this.pendingOutbox.splice(batchStart, batch.length);
+                this.pendingOutbox.splice(0, batch.length);
             }
         });
     }
@@ -765,6 +764,14 @@ export class ApiSessionClient extends EventEmitter {
         for (const envelope of mapped.envelopes) {
             this.sendSessionProtocolMessage(envelope);
         }
+    }
+
+    /** Best-effort encrypted preview; never enqueue or replay across disconnects. */
+    sendSessionTextDelta(event: SessionTextDelta): void {
+        if (!this.socket.connected || !SessionTextDeltaSchema.safeParse(event).success) return;
+        const ciphertext = encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, event));
+        if (ciphertext.length > SESSION_STREAM_MAX_CIPHERTEXT_LENGTH) return;
+        this.socket.volatile.emit('session-stream', { sid: this.sessionId, content: { t: 'encrypted', c: ciphertext } });
     }
 
     sendCodexMessage(body: any) {
@@ -862,10 +869,9 @@ export class ApiSessionClient extends EventEmitter {
     }
 
     /**
-     * Persist a reconstructed transcript in chronological order. Historical
-     * replay must not use the live outbox's newest-first drain: server seq is
-     * also the pagination cursor, so reversing it makes the app's latest page
-     * contain the oldest conversation content.
+     * Persist a reconstructed transcript in chronological order using larger
+     * history batches. Server seq is also the pagination cursor, so replay and
+     * live delivery both preserve producer order.
      */
     async sendSessionProtocolHistoryAndAwait(envelopes: readonly SessionEnvelope[], timeoutMs = 60_000): Promise<void> {
         if (envelopes.length === 0) {

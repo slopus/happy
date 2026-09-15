@@ -179,6 +179,71 @@ const sandboxConfig: SandboxConfig = {
 };
 
 describe('CodexAppServerClient sandbox integration', () => {
+    it('streams root text before completion, preserves whitespace and discards stale deltas', async () => {
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        vi.useFakeTimers();
+        const client = new CodexAppServerClient();
+        const raw = client as any;
+        raw._threadId = 'root';
+        const streamed: any[] = [];
+        const persisted: any[] = [];
+        client.setEventHandler(event => persisted.push(event));
+        client.setTextStreamHandler(event => streamed.push(event));
+        raw.handleRawNotification('turn/started', { threadId: 'root', turn: { id: 'turn' } });
+        const delta = (text: string, scope = {}) => raw.handleRawNotification('item/agentMessage/delta', {
+            threadId: 'root', turnId: 'turn', itemId: 'item', delta: text, ...scope,
+        });
+        delta('  Hello');
+        expect(streamed).toEqual([{ type: 'text-delta', turnId: 'turn', itemId: 'item', delta: '  Hello', text: '  Hello' }]);
+        expect(persisted.filter(event => event.type === 'agent_message')).toHaveLength(0);
+        delta('bad', { threadId: 'child' });
+        delta('bad', { turnId: 'old' });
+        delta('bad', { threadId: undefined });
+        delta('\n');
+        delta(' world  ');
+        await vi.advanceTimersByTimeAsync(50);
+        expect(streamed.at(-1)).toMatchObject({ text: '  Hello\n world  ', delta: '\n world  ' });
+        delta('\t');
+        const completed = { threadId: 'root', turnId: 'turn', item: { type: 'agentMessage', id: 'item', text: '  Hello\n world  \t' } };
+        raw.handleRawNotification('item/completed', completed);
+        raw.handleRawNotification('item/completed', completed);
+        expect(streamed.at(-1).text).toBe('  Hello\n world  \t');
+        expect(streamed.map(event => event.delta).join('')).toBe('  Hello\n world  \t');
+        expect(persisted.filter(event => event.type === 'agent_message')).toHaveLength(1);
+        delta('stale');
+        raw.handleRawNotification('turn/completed', { threadId: 'root', turn: { id: 'turn', status: 'completed' } });
+        delta('stale');
+        raw.handleRawNotification('item/completed', completed);
+        await vi.advanceTimersByTimeAsync(100);
+        expect(streamed).toHaveLength(3);
+        expect(persisted.filter(event => event.type === 'agent_message')).toHaveLength(1);
+        await client.disconnect();
+        expect(vi.getTimerCount()).toBe(0);
+        vi.useRealTimers();
+    });
+
+    it('drops pending text streams on disconnect and stops oversized items until completion', async () => {
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        vi.useFakeTimers();
+        const client = new CodexAppServerClient();
+        const raw = client as any;
+        raw._threadId = 'root';
+        const streamed: any[] = [];
+        client.setTextStreamHandler(event => streamed.push(event));
+        raw.handleRawNotification('turn/started', { threadId: 'root', turn: { id: 'turn' } });
+        const delta = (text: string, itemId = 'item') => raw.handleRawNotification('item/agentMessage/delta', {
+            threadId: 'root', turnId: 'turn', itemId, delta: text,
+        });
+        delta('first');
+        delta('pending');
+        delta('中'.repeat(400_000), 'huge');
+        delta('tail', 'huge');
+        await client.disconnect();
+        await vi.advanceTimersByTimeAsync(100);
+        expect(streamed.map(event => event.text)).toEqual(['first']);
+        expect(vi.getTimerCount()).toBe(0);
+        vi.useRealTimers();
+    });
     const cleanupTasks: Array<() => Promise<void>> = [];
     const originalRustLog = process.env.RUST_LOG;
     const proxyEnvKeys = [
@@ -220,6 +285,7 @@ describe('CodexAppServerClient sandbox integration', () => {
     });
 
     afterEach(async () => {
+        vi.useRealTimers();
         while (cleanupTasks.length > 0) {
             await cleanupTasks.pop()?.();
         }

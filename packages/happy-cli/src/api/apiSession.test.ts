@@ -280,6 +280,24 @@ describe('ApiSessionClient v3 messages API migration', () => {
         expect(mockSocket.connect).toHaveBeenCalledTimes(1);
     });
 
+    it('encrypts volatile text previews without persisting them and drops disconnected or oversized sends', () => {
+        const client = new ApiSessionClient('fake-token', session);
+        const preview = { type: 'text-delta' as const, turnId: 'turn', itemId: 'item', delta: '\n ', text: 'Hello\n ' };
+        client.sendSessionTextDelta(preview);
+        const [event, envelope] = mockSocket.volatile.emit.mock.calls[0];
+        expect(event).toBe('session-stream');
+        expect(envelope.sid).toBe(session.id);
+        expect(envelope.content.t).toBe('encrypted');
+        expect(decrypt(session.encryptionKey, session.encryptionVariant, decodeBase64(envelope.content.c))).toEqual(preview);
+        expect(mockAxiosPost).not.toHaveBeenCalled();
+        mockSocket.connected = false;
+        client.sendSessionTextDelta(preview);
+        mockSocket.connected = true;
+        client.sendSessionTextDelta({ ...preview, text: '\u0000'.repeat(1024 * 1024) });
+        expect(mockSocket.volatile.emit).toHaveBeenCalledTimes(1);
+        expect(mockSocket.emit).not.toHaveBeenCalledWith('session-stream', expect.anything());
+    });
+
     it('records worker socket readiness only at the first real socket connect boundary', () => {
         mockAxiosGet.mockResolvedValue({ data: { messages: [], hasMore: false } });
         new ApiSessionClient('fake-token', session, createBoundStartupLifecycle(session));
@@ -519,6 +537,25 @@ describe('ApiSessionClient v3 messages API migration', () => {
         expect(secondPayload.messages).toHaveLength(2);
         expect((client as any).pendingOutbox).toHaveLength(0);
         expect((client as any).lastSeq).toBe(0);
+    });
+
+    it('persists a large live backlog in order so turn-end cannot overtake older text', async () => {
+        const client = new ApiSessionClient('fake-token', session);
+        let releaseFirst!: (value: unknown) => void;
+        mockAxiosPost.mockImplementationOnce(() => new Promise(resolve => { releaseFirst = resolve; }))
+            .mockResolvedValue({ data: { messages: [] } });
+        client.sendSessionProtocolMessage({ id: 'start', time: 1, role: 'agent', turn: 'turn', ev: { t: 'turn-start' } });
+        await waitForCheck(() => expect(mockAxiosPost).toHaveBeenCalledTimes(1));
+        for (let index = 0; index < 105; index++) {
+            client.sendSessionProtocolMessage({ id: `text-${index}`, time: index + 2, role: 'agent', turn: 'turn', ev: { t: 'text', text: `part ${index}` } });
+        }
+        client.sendSessionProtocolMessage({ id: 'end', time: 108, role: 'agent', turn: 'turn', ev: { t: 'turn-end', status: 'completed' } });
+        releaseFirst({ data: { messages: [] } });
+        await client.flushOutboxAndAwait();
+        const ids = mockAxiosPost.mock.calls.flatMap(([, payload]) => payload.messages.map((message: { content: string }) => (
+            decrypt(session.encryptionKey, session.encryptionVariant, decodeBase64(message.content)) as { content: { id: string } }
+        ).content.id));
+        expect(ids).toEqual(['start', ...Array.from({ length: 105 }, (_, index) => `text-${index}`), 'end']);
     });
 
     it('retries failed POST and succeeds without dropping queued messages', async () => {

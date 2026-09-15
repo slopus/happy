@@ -9,6 +9,26 @@ export const SessionMessageContentSchema = z.object({
 });
 export type SessionMessageContent = z.infer<typeof SessionMessageContentSchema>;
 
+/** Transient encrypted previews; these never enter durable message history. */
+export const SESSION_STREAM_MAX_TEXT_BYTES = 1024 * 1024;
+export const SESSION_STREAM_MAX_CIPHERTEXT_LENGTH = 900 * 1024;
+const streamIdSchema = z.string().min(1).max(512);
+const streamTextSchema = z.string().max(SESSION_STREAM_MAX_TEXT_BYTES)
+  .refine(value => new TextEncoder().encode(value).byteLength <= SESSION_STREAM_MAX_TEXT_BYTES);
+export const SessionTextDeltaSchema = z.object({
+  type: z.literal('text-delta'),
+  turnId: streamIdSchema,
+  itemId: streamIdSchema,
+  delta: streamTextSchema,
+  text: streamTextSchema,
+});
+export type SessionTextDelta = z.infer<typeof SessionTextDeltaSchema>;
+export const SessionStreamEnvelopeSchema = z.object({
+  sid: streamIdSchema,
+  content: z.object({ t: z.literal('encrypted'), c: z.string().min(1).max(SESSION_STREAM_MAX_CIPHERTEXT_LENGTH) }),
+});
+export type SessionStreamEnvelope = z.infer<typeof SessionStreamEnvelopeSchema>;
+
 export const SessionMessageSchema = z.object({
   id: z.string(),
   seq: z.number(),

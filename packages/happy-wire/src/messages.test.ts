@@ -6,6 +6,8 @@ import {
   CoreUpdateContainerSchema,
   MessageContentSchema,
   SessionProtocolMessageSchema,
+  SessionStreamEnvelopeSchema,
+  SessionTextDeltaSchema,
 } from './messages';
 import {
   AgentMessageSchema,
@@ -14,6 +16,14 @@ import {
 } from './legacyProtocol';
 
 describe('shared wire message schemas', () => {
+  it('validates ephemeral text separately from durable messages without trimming whitespace', () => {
+    const data = { type: 'text-delta', turnId: 'turn', itemId: 'item', delta: '\n ', text: 'Hello\n ' };
+    expect(SessionTextDeltaSchema.parse(data)).toEqual(data);
+    expect(SessionTextDeltaSchema.safeParse({ ...data, turnId: '' }).success).toBe(false);
+    expect(SessionTextDeltaSchema.safeParse({ ...data, text: '中'.repeat(400_000) }).success).toBe(false);
+    expect(SessionStreamEnvelopeSchema.safeParse({ sid: 'session', content: { t: 'text', c: 'private' } }).success).toBe(false);
+    expect(SessionStreamEnvelopeSchema.safeParse({ sid: 'session', content: { t: 'encrypted', c: 'x'.repeat(1024 * 1024) } }).success).toBe(false);
+  });
   it('parses a new-message update', () => {
     const parsed = ApiUpdateNewMessageSchema.safeParse({
       t: 'new-message',

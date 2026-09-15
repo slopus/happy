@@ -205,6 +205,56 @@ machine RPC. The daemon resolves symlinks, rejects paths outside the canonical
 home directory, and returns directories only; it does not expose file contents
 or command execution through this SDK method.
 
+### Reliable message subscriptions (source changes, not yet published)
+
+`client.subscribe()` provides best-effort live events. A `message` event can be
+the last row of a stored batch and has no replay guarantee. Use `messages.watch`
+for durable message consumption:
+
+```ts
+await client.connect();
+let afterSeq = 0; // Restore your last successfully processed sequence when resuming.
+const subscription = await client.messages.watch(sessionId, {
+  afterSeq,
+  onMessage(message) {
+    renderDurableMessage(message); // Synchronous callback; delivery is ordered by seq.
+    afterSeq = message.seq;
+  },
+  onError(error) { console.error(error.code, error.message); },
+  signal: controller.signal,
+});
+// The initial catch-up is complete and live hints are already registered.
+await client.messages.send({ sessionId, text: 'Hello' });
+await subscription.sync(); // Explicit catch-up/retry from the current cursor.
+subscription.unsubscribe();
+```
+
+Each watch fetches forward in pages of 500 from its exclusive `afterSeq`, deduplicates
+overlapping rows, and delivers ascending consecutive sequences. Live events only
+advance a watermark; the HTTP message log supplies every durable row, including
+batch gaps. Reconnection catches up active watches before `connection: ready`.
+`watch` works before `connect` for history; call `connect` to receive live hints.
+
+Invalid/missing sequences, sequence gaps, unreadable ciphertext, or a throwing
+message callback stop that watch without advancing past the failed row/page. Fix
+the cause and create a new watch using the last processed cursor. HTTP reads retry
+transient failures twice with short backoff. Exhausted failures are surfaced through
+`onError` and the client's `error` event; use `sync()` to retry, or let the next
+notification/reconnect retry. Failed reconnect synchronization automatically retries
+transient failures while staying `syncing`. Abort, unsubscribe, and dispose stop
+delivery and cancel the watch's outstanding reads. Cursors are not persisted by the SDK.
+
+`history(sessionId, { limit })` keeps the previous latest-message behavior and creation
+time ordering. Explicit `afterSeq` or `beforeSeq` is exclusive and returns ascending
+sequence order. `historyPage` also returns `hasMore`; continue forward with the largest
+returned sequence, or backward with the smallest. The two cursors are mutually exclusive.
+
+`client.subscribe()` also emits encrypted, validated `text-delta` previews:
+`{ type: 'text-delta', sessionId, turnId, itemId, delta, text }`. Replace the provisional
+text for that item with cumulative `text`; a later snapshot repairs dropped chunks.
+These previews are not stored/replayed and do not mean that a turn succeeded. Durable
+messages from the watch remain authoritative for final text and turn completion.
+
 ### 源码新增：SDK 图片输入（尚未发布）
 
 `messages.send` 接收原始 `Uint8Array`，不依赖 React、DOM、文件选择器或平台文件路径。

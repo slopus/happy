@@ -621,7 +621,7 @@ export function mapCodexThreadToSessionEnvelopes(
                     break;
                 }
                 case 'agentMessage': {
-                    const text = typeof item.text === 'string' ? item.text.trim() : '';
+                    const text = typeof item.text === 'string' ? item.text : '';
                     if (text.length > 0) {
                         const textIdentity = { turn: turn.id, role: 'agent' as const, text };
                         envelopes.push(createEnvelope('agent', { t: 'text', text }, {
@@ -1091,7 +1091,7 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
             };
         }
 
-        const text = message.message.trim();
+        const text = message.message;
         const itemId = typeof message.item_id === 'string' ? message.item_id : undefined;
         const textIdentity = { ...opts, role: 'agent' as const, text };
         const envelopeId = stableTextEnvelopeId(

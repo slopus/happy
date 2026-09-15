@@ -20,6 +20,21 @@ function stripEnvelopeIdentity(envelopes: ReturnType<typeof mapCodexThreadToSess
 }
 
 describe('mapCodexMcpMessageToSessionEnvelopes', () => {
+    it('preserves final assistant whitespace consistently with the live stream and thread replay', () => {
+        const text = '  Hello\n world  \t';
+        const live = mapCodexMcpMessageToSessionEnvelopes({
+            type: 'agent_message', message: text, turn_id: 'turn', item_id: 'item',
+        }, { currentTurnId: 'turn' }).envelopes;
+        const replay = mapCodexThreadToSessionEnvelopes({
+            id: 'thread', turns: [{ id: 'turn', status: 'completed', error: null, items: [
+                { type: 'agentMessage', id: 'item', text },
+            ] }],
+        } as any, { dialogueOnly: true });
+        expect(live[0].ev).toEqual({ t: 'text', text });
+        const replayedText = replay.find(envelope => envelope.ev.t === 'text');
+        expect(replayedText?.ev).toEqual({ t: 'text', text });
+        expect(live[0].id).toBe(replayedText?.id);
+    });
     it('binds live MCP App start and successful completion to the current thread', () => {
         const registry = new McpAppBindingRegistry();
         const normalizedCall = {

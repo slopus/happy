@@ -163,9 +163,28 @@ export interface SessionsResource {
 }
 
 export interface MessagesResource {
-    history(sessionId: string, options?: { limit?: number }): Promise<Message[]>;
+    /** Latest messages by creation time by default; explicit cursors return ascending seq. */
+    history(sessionId: string, options?: MessageHistoryOptions): Promise<Message[]>;
+    /** Exclusive cursors. Continue forwards with the largest seq, backwards with the smallest. */
+    historyPage(sessionId: string, options?: MessageHistoryOptions): Promise<MessagePage>;
+    /** Register before catch-up, then deliver durable messages exactly once in ascending seq per watch. */
+    watch(sessionId: string, options: MessageWatchOptions): Promise<MessageSubscription>;
     send(input: SendMessageInput): Promise<SendMessageReceipt>;
 }
+
+export type MessageHistoryOptions = { limit?: number; afterSeq?: number; beforeSeq?: number; signal?: AbortSignal };
+export type MessagePage = { messages: Message[]; hasMore: boolean };
+export type MessageWatchOptions = {
+    afterSeq: number;
+    onMessage: (message: Message) => void;
+    onError?: (error: PawsAgentError) => void;
+    signal?: AbortSignal;
+};
+export type MessageSubscription = {
+    unsubscribe(): void;
+    /** Retry transport failures or explicitly catch up. Protocol/decryption failures require a new watch. */
+    sync(): Promise<void>;
+};
 
 export interface RequestsResource {
     approve(input: ResolveRequestInput): Promise<void>;
@@ -177,6 +196,8 @@ export type PawsAgentEvent =
     | { type: 'snapshot'; machines: Machine[]; sessions: Session[] }
     | { type: 'machines'; machines: Machine[] }
     | { type: 'message'; sessionId: string; message: Message }
+    /** Provisional cumulative item snapshot; durable messages remain authoritative. */
+    | { type: 'text-delta'; sessionId: string; turnId: string; itemId: string; delta: string; text: string }
     | { type: 'session'; session: Session }
     | { type: 'request'; sessionId: string; request: AgentRequest }
     | { type: 'error'; error: PawsAgentError };

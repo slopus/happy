@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import type { Update, UpdateMachineBody } from '@slopus/happy-wire';
+import type { Update, UpdateMachineBody, SessionStreamEnvelope } from '@slopus/happy-wire';
 import { UsageSchema } from '@/claude/types'
 import type { SandboxConfig } from '@/persistence'
 
@@ -58,6 +58,7 @@ export interface ServerToClientEvents {
  * Socket events from client to server
  */
 export interface ClientToServerEvents {
+  'session-stream': (data: SessionStreamEnvelope) => void
   message: (data: { sid: string, message: any }) => void
   'session-alive': (data: {
     sid: string;

@@ -22,6 +22,7 @@ import { spawn as crossSpawn } from 'cross-spawn';
 import { createInterface, type Interface as ReadlineInterface } from 'node:readline';
 import WebSocket from 'ws';
 import { logger } from '@/ui/logger';
+import { SESSION_STREAM_MAX_TEXT_BYTES, type SessionTextDelta } from '@slopus/happy-wire';
 import type {
     InitializeParams,
     NewConversationParams,
@@ -378,6 +379,12 @@ export class CodexAppServerClient {
 
     // Handlers set by the consumer (runCodex.ts)
     private eventHandler: ((msg: EventMsg) => void) | null = null;
+    private textStreamHandler: ((event: SessionTextDelta) => void) | null = null;
+    private textStreams = new Map<string, { text: string; delta: string; dirty: boolean }>();
+    private closedTextItems = new Set<string>();
+    private completedTextItems = new Set<string>();
+    private textStreamBytes = 0;
+    private textStreamTimer: ReturnType<typeof setTimeout> | null = null;
     private approvalHandler: ApprovalHandler | null = null;
 
     constructor(
@@ -398,6 +405,58 @@ export class CodexAppServerClient {
 
     setEventHandler(handler: (msg: EventMsg) => void): void {
         this.eventHandler = handler;
+    }
+
+    setTextStreamHandler(handler: (event: SessionTextDelta) => void): void {
+        this.textStreamHandler = handler;
+    }
+
+    private clearTextStreams(): void {
+        if (this.textStreamTimer) clearTimeout(this.textStreamTimer);
+        this.textStreamTimer = null;
+        this.textStreams.clear();
+        this.closedTextItems.clear();
+        this.completedTextItems.clear();
+        this.textStreamBytes = 0;
+    }
+
+    private flushTextStreams(): void {
+        if (this.textStreamTimer) clearTimeout(this.textStreamTimer);
+        this.textStreamTimer = null;
+        if (!this._turnId) return;
+        for (const [itemId, state] of this.textStreams) {
+            if (!state.dirty) continue;
+            state.dirty = false;
+            this.textStreamHandler?.({ type: 'text-delta', turnId: this._turnId, itemId, delta: state.delta, text: state.text });
+            state.delta = '';
+        }
+    }
+
+    private handleTextDelta(params: any): void {
+        const turnId = this.extractTurnId(params);
+        const itemId = params?.itemId;
+        const delta = params?.delta;
+        if (!this._threadId || this.extractThreadId(params) !== this._threadId
+            || !turnId || turnId !== this._turnId || this.completedTurnIds.has(turnId)
+            || typeof itemId !== 'string' || !itemId || itemId.length > 512 || turnId.length > 512
+            || typeof delta !== 'string' || !delta || this.closedTextItems.has(itemId)) return;
+        const previous = this.textStreams.get(itemId);
+        // Bound both text bytes and item bookkeeping for long or malformed turns.
+        if (!previous && this.textStreams.size + this.closedTextItems.size >= 256) return;
+        const bytes = Buffer.byteLength(delta, 'utf8');
+        if (this.textStreamBytes + bytes > SESSION_STREAM_MAX_TEXT_BYTES) {
+            this.closedTextItems.add(itemId);
+            if (previous) this.textStreamBytes -= Buffer.byteLength(previous.text, 'utf8');
+            this.textStreams.delete(itemId);
+            return;
+        }
+        this.textStreamBytes += bytes;
+        this.textStreams.set(itemId, { text: (previous?.text ?? '') + delta, delta: (previous?.delta ?? '') + delta, dirty: true });
+        if (!previous) this.flushTextStreams();
+        if (!this.textStreamTimer) {
+            this.textStreamTimer = setTimeout(() => this.flushTextStreams(), 50);
+            this.textStreamTimer.unref();
+        }
     }
 
     setApprovalHandler(handler: ApprovalHandler): void {
@@ -506,6 +565,10 @@ export class CodexAppServerClient {
     ): void {
         const aborted = status === 'cancelled' || status === 'canceled' || status === 'aborted' || status === 'interrupted';
 
+        if (turnId && this._turnId && turnId !== this._turnId) return;
+        this.flushTextStreams();
+        this.clearTextStreams();
+
         this.tryResolvePendingTurn(aborted, turnId, source);
         this._turnId = null;
 
@@ -542,6 +605,7 @@ export class CodexAppServerClient {
             return;
         }
         if (turnId) {
+            if (this._turnId !== turnId) this.clearTextStreams();
             this._turnId = turnId;
             this.startedTurnIds.add(turnId);
         }
@@ -630,6 +694,11 @@ export class CodexAppServerClient {
                     ...tokenUsage,
                 });
             }
+            return true;
+        }
+
+        if (method === 'item/agentMessage/delta') {
+            this.handleTextDelta(params);
             return true;
         }
 
@@ -828,6 +897,19 @@ export class CodexAppServerClient {
         if (method === 'item/completed' && item.type === 'agentMessage') {
             const text = typeof item.text === 'string' ? item.text : '';
             const turnId = this.extractTurnId(params);
+            if (this.isRootThreadNotification(params) && turnId && this.completedTurnIds.has(turnId)) return true;
+            if (this.isRootThreadNotification(params) && turnId === this._turnId && typeof item.id === 'string') {
+                const state = this.textStreams.get(item.id);
+                // A size-suppressed preview still needs its authoritative final.
+                if (this.completedTextItems.has(item.id)) return true;
+                this.flushTextStreams();
+                if (state) this.textStreamBytes -= Buffer.byteLength(state.text, 'utf8');
+                this.textStreams.delete(item.id);
+                if (this.closedTextItems.size < 512) {
+                    this.closedTextItems.add(item.id);
+                    this.completedTextItems.add(item.id);
+                }
+            }
             if (text.length > 0) {
                 this.eventHandler?.({
                     type: 'agent_message',
@@ -1095,6 +1177,7 @@ export class CodexAppServerClient {
     }
 
     private async disconnectInternal(opts?: { preserveThreadState?: boolean }): Promise<void> {
+        this.clearTextStreams();
         if (!this.connected && !this.process && !this.socket) return;
 
         const proc = this.process;
@@ -1499,6 +1582,7 @@ export class CodexAppServerClient {
     }
 
     private resolvePendingTurn(aborted: boolean): void {
+        if (aborted) this.clearTextStreams();
         if (!this.pendingTurnCompletion) return;
         if (this.pendingTurnCompletion.timer) {
             clearTimeout(this.pendingTurnCompletion.timer);
@@ -1561,6 +1645,7 @@ export class CodexAppServerClient {
         logger.warn(`[CodexAppServer] ${error} — treating as failed abort`);
 
         this.resolvePendingTurn(true);
+        this.clearTextStreams();
         this._turnId = null;
         if (turnId) {
             this.completedTurnIds.add(turnId);

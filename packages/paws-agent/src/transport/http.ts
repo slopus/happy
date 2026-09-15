@@ -35,20 +35,24 @@ export class PawsHttpTransport {
         return credentials;
     }
 
-    async get<T>(path: string): Promise<T> {
-        return (await this.getWithCredentials<T>(path)).data;
+    async get<T>(path: string, options: { signal?: AbortSignal } = {}): Promise<T> {
+        return (await this.getWithCredentials<T>(path, options)).data;
     }
 
-    async getWithCredentials<T>(path: string): Promise<{ data: T; credentials: PawsCredentials }> {
+    async getWithCredentials<T>(path: string, options: { signal?: AbortSignal } = {}): Promise<{ data: T; credentials: PawsCredentials }> {
+        const signal = options.signal ? AbortSignal.any([options.signal, this.abortController.signal]) : this.abortController.signal;
         try {
+            signal.throwIfAborted();
             const credentials = await this.getCredentials();
+            signal.throwIfAborted();
             const response = await this.client.get(this.url(path), {
                 headers: this.headers(credentials),
-                signal: this.abortController.signal,
+                signal,
             });
             return { data: response.data as T, credentials };
         } catch (error) {
             if (this.disposed) throw new PawsAgentError('CONNECTION_LOST', 'HTTP transport disposed');
+            if (signal.aborted) throw new PawsAgentError('CONNECTION_LOST', 'Request cancelled');
             throw normalizeHttpError(error, `GET ${path}`);
         }
     }

@@ -11,6 +11,7 @@ import { usageHandler } from "./socket/usageHandler";
 import { rpcHandler } from "./socket/rpcHandler";
 import { pingHandler } from "./socket/pingHandler";
 import { sessionUpdateHandler } from "./socket/sessionUpdateHandler";
+import { sessionStreamHandler } from "@/app/api/socket/sessionStreamHandler";
 import { machineUpdateHandler } from "./socket/machineUpdateHandler";
 import { artifactUpdateHandler } from "./socket/artifactUpdateHandler";
 import { accessKeyHandler } from "./socket/accessKeyHandler";
@@ -209,6 +210,7 @@ export function startSocket(app: Fastify) {
         rpcHandler(userId, socket, io);
         usageHandler(userId, socket);
         sessionUpdateHandler(userId, socket, connection);
+        sessionStreamHandler(userId, socket, connection);
         pingHandler(socket);
         machineUpdateHandler(userId, socket);
         artifactUpdateHandler(userId, socket);

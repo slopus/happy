@@ -3,7 +3,7 @@ import { log } from "@/utils/log";
 import { GitHubProfile } from "@/app/api/types";
 import { AccountProfile } from "@/types";
 import { getPublicUrl } from "@/storage/files";
-import type { SessionMessageContent } from "@slopus/happy-wire";
+import type { SessionMessageContent, SessionStreamEnvelope } from "@slopus/happy-wire";
 
 // === CONNECTION TYPES ===
 
@@ -279,6 +279,12 @@ class EventRouter {
     }
 
     // === PRESENCE QUERIES ===
+
+    /** Ephemeral text uses volatile delivery so slow receivers do not queue snapshots. */
+    emitSessionStream(params: { userId: string; payload: SessionStreamEnvelope; sender: ClientConnection }): void {
+        const rooms = this.getRoomsForFilter(params.userId, { type: 'all-interested-in-session', sessionId: params.payload.sid });
+        params.sender.socket.broadcast.volatile.to(rooms).emit('session-stream', params.payload);
+    }
 
     /**
      * Returns true if the user has any non-machine socket that hasn't

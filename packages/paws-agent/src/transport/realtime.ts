@@ -22,6 +22,9 @@ export class PawsRealtimeTransport {
     private socket: RealtimeSocket | null = null;
     private readonly serverUrl: string;
     private disposed = false;
+    private generation = 0;
+    private ready = false;
+    private retryTimer: ReturnType<typeof setTimeout> | null = null;
     private manualDisconnect = false;
     private initialReady: Promise<void> | null = null;
     private resolveInitial: (() => void) | null = null;
@@ -34,6 +37,7 @@ export class PawsRealtimeTransport {
         events: PawsAgentEvents;
         resync: () => Promise<unknown>;
         onUpdate?: (update: unknown) => void;
+        onSessionStream?: (update: unknown) => void;
         logger?: AgentLogger;
         reconnect?: ReconnectPolicy;
         socketFactory?: RealtimeSocketFactory;
@@ -45,14 +49,20 @@ export class PawsRealtimeTransport {
         if (this.disposed) {
             throw new PawsAgentError('CONNECTION_LOST', 'Client has been disposed');
         }
-        if (this.socket?.connected && !this.initialReady) {
+        if (this.socket?.connected && this.ready) {
             return;
         }
         if (this.initialReady) {
             return this.initialReady;
         }
+        if (this.socket?.connected) {
+            await this.handleConnect();
+            if (!this.ready) throw new PawsAgentError('CONNECTION_LOST', 'Realtime synchronization is not ready');
+            return;
+        }
 
         const credentials = await this.options.credentials.getCredentials();
+        if (this.disposed) throw new PawsAgentError('CONNECTION_LOST', 'Client has been disposed');
         if (!credentials) {
             throw new PawsAgentError('AUTH_REQUIRED', 'Authentication required');
         }
@@ -83,27 +93,38 @@ export class PawsRealtimeTransport {
         });
         this.socket = socket;
 
-        socket.on('connect', () => { void this.handleConnect(); });
+        socket.on('connect', () => { if (socket === this.socket) void this.handleConnect(); });
         socket.on('disconnect', () => {
+            if (socket !== this.socket) return;
+            this.generation++;
+            this.ready = false;
             if (!this.disposed && !this.manualDisconnect) {
                 this.options.events.emit({ type: 'connection', state: 'reconnecting' });
             }
         });
         socket.on('connect_error', () => {
+            if (this.disposed || this.manualDisconnect || socket !== this.socket) return;
             const error = new PawsAgentError('CONNECTION_LOST', 'Unable to connect to Paws server');
             this.options.events.emit({ type: 'error', error });
             this.rejectInitial?.(error);
             this.clearInitial();
         });
         socket.on('update', update => {
-            if (!this.disposed) this.options.onUpdate?.(update);
+            if (!this.disposed && !this.manualDisconnect && socket === this.socket) this.options.onUpdate?.(update);
+        });
+        socket.on('session-stream', update => {
+            if (!this.disposed && !this.manualDisconnect && socket === this.socket) this.options.onSessionStream?.(update);
         });
         socket.connect();
         return this.initialReady;
     }
 
     async disconnect(): Promise<void> {
+        if (this.retryTimer) clearTimeout(this.retryTimer);
         this.manualDisconnect = true;
+        this.generation++;
+        this.ready = false;
+        this.rejectInitial?.(new PawsAgentError('CONNECTION_LOST', 'Client disconnected'));
         this.socket?.disconnect();
         this.socket = null;
         this.clearInitial();
@@ -115,6 +136,7 @@ export class PawsRealtimeTransport {
     async dispose(): Promise<void> {
         if (this.disposed) return;
         this.disposed = true;
+        if (this.retryTimer) clearTimeout(this.retryTimer);
         this.manualDisconnect = true;
         this.rejectInitial?.(new PawsAgentError('CONNECTION_LOST', 'Client has been disposed'));
         this.socket?.close();
@@ -141,20 +163,30 @@ export class PawsRealtimeTransport {
 
     private async handleConnect(): Promise<void> {
         if (this.disposed || this.manualDisconnect) return;
+        if (this.retryTimer) clearTimeout(this.retryTimer);
+        const generation = ++this.generation;
+        this.ready = false;
         try {
             this.options.events.emit({ type: 'connection', state: 'syncing' });
             await this.options.resync();
-            if (this.disposed || this.manualDisconnect) return;
+            if (this.disposed || this.manualDisconnect || generation !== this.generation || !this.socket?.connected) return;
+            this.ready = true;
             this.options.events.emit({ type: 'connection', state: 'ready' });
             this.resolveInitial?.();
             this.clearInitial();
         } catch (cause) {
+            if (this.disposed || this.manualDisconnect || generation !== this.generation) return;
             const error = cause instanceof PawsAgentError
                 ? cause
                 : new PawsAgentError('UNKNOWN', 'Snapshot synchronization failed', { cause });
             this.options.events.emit({ type: 'error', error });
             this.rejectInitial?.(error);
             this.clearInitial();
+            if (['UNKNOWN', 'CONNECTION_LOST', 'RPC_TIMEOUT'].includes(error.code)) {
+                this.retryTimer = setTimeout(() => {
+                    if (generation === this.generation && this.socket?.connected) void this.handleConnect();
+                }, this.options.reconnect?.initialDelayMs ?? 1000);
+            }
         }
     }
 
