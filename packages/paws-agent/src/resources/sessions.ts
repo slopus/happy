@@ -72,13 +72,20 @@ export class SessionsResourceImpl implements SessionsResource {
         await this.ensureMachine(input.machineId);
         let codexSessionGrant: string | undefined;
         if (input.agent === 'codex') {
-            const response = await this.transport.post<{ grant?: unknown } | null>(
-                '/v1/codex-session-grants', { machineId: input.machineId },
-            );
-            if (typeof response?.grant !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(response.grant)) {
-                throw new PawsAgentError('PROTOCOL_UNSUPPORTED', 'Invalid Codex session grant response');
+            try {
+                const response = await this.transport.post<{ grant?: unknown } | null>(
+                    '/v1/codex-session-grants', { machineId: input.machineId },
+                );
+                if (typeof response?.grant !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(response.grant)) {
+                    throw new PawsAgentError('PROTOCOL_UNSUPPORTED', 'Invalid Codex session grant response');
+                }
+                codexSessionGrant = response.grant;
+            } catch (error) {
+                // Match App/daemon behavior: only an explicitly unbound machine
+                // uses its local Codex login. Every other grant failure is fatal.
+                if (!(error instanceof PawsAgentError) || error.details?.status !== 409
+                    || error.details.errorCode !== 'codex-account-unbound') throw error;
             }
-            codexSessionGrant = response.grant;
         }
         const result = await this.realtime.machineRpc<unknown>(input.machineId, 'spawn-happy-session', {
             type: 'spawn-in-directory',

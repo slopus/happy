@@ -279,7 +279,7 @@ async function sendImage(client: PawsAgentClient, sessionId: string, image: Imag
 - 所有图片上传成功后，将文件事件与正文按顺序提交到同一批次；仅图片也保留空正文，供 CLI 领取附件并触发本轮处理。
 - 上传失败时不会发送部分附件或正文，但此前已上传的未引用密文不会自动删除。重试可复用同一个 `localId` 来去重消息；重试仍可能产生未引用的上传对象。
 - `signal` 可中断图片上传与最终消息请求，`client.dispose()` 也会终止传输；单个图片上传最多等待 15 秒。服务器已经接受的消息不能通过取消撤回。
-- Codex `sessions.spawn` 会按 `machineId` 申请新的会话授权，不缓存、不复用；授权失败会直接返回错误，不回退为未授权启动。
+- Codex `sessions.spawn` 会按 `machineId` 申请新的会话授权，不缓存、不复用；已绑定账号使用该授权。仅当服务端明确返回 HTTP 409 / `codex-account-unbound` 时，使用目标机器已有的本地 Codex 登录（不上传或复制凭据）；机器必须已完成本地登录。其他授权失败、网络错误和畸形授权响应均直接报错，不降级。
 
 这次只修改 SDK 源码，不新增 CLI 选图参数、不修改 Happy 服务端、不发布 npm。
 Chrome 插件 0.0.8 仍使用已发布 beta.2 的补丁；新版 SDK 正式发布并由插件完成集成验证后再移除补丁。
