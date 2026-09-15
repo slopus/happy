@@ -179,11 +179,38 @@ describe('sidebar organization model', () => {
 
         expect(groups.map((group) => ({
             id: group.id,
+            kind: group.kind,
             listName: group.list?.name ?? null,
             sessionIds: group.sessions.map((session) => session.id),
         }))).toEqual([
-            { id: 'workspace', listName: 'Happy', sessionIds: ['session-happy'] },
-            { id: 'unassigned', listName: null, sessionIds: ['session-unassigned', 'session-missing-list'] },
+            { id: 'workspace', kind: 'list', listName: 'Happy', sessionIds: ['session-happy'] },
+            { id: 'unassigned', kind: 'unassigned', listName: null, sessionIds: ['session-unassigned', 'session-missing-list'] },
+        ]);
+    });
+
+    it('removes archived tagged sessions from their Lists and collects them in one final group', () => {
+        const groups = buildSidebarTagSessionGroups([
+            { id: 'active-happy', archived: false },
+            { id: 'archived-happy', archived: true },
+            { id: 'archived-unassigned', archived: true },
+            { id: 'archived-other-tag', archived: true },
+        ], {
+            ...organization,
+            sessions: {
+                'active-happy': { listId: 'workspace', tagIds: ['product'] },
+                'archived-happy': { listId: 'workspace', tagIds: ['product'] },
+                'archived-unassigned': { listId: null, tagIds: ['product'] },
+                'archived-other-tag': { listId: 'advisor', tagIds: ['research'] },
+            },
+        }, 'product');
+
+        expect(groups.map((group) => ({
+            id: group.id,
+            kind: group.kind,
+            sessionIds: group.sessions.map((session) => session.id),
+        }))).toEqual([
+            { id: 'workspace', kind: 'list', sessionIds: ['active-happy'] },
+            { id: 'archived', kind: 'archived', sessionIds: ['archived-happy', 'archived-unassigned'] },
         ]);
     });
 

@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 // @ts-expect-error react-test-renderer does not publish declarations.
 import TestRenderer from 'react-test-renderer';
 import { DesktopSidebarSessionsNavigation } from './DesktopSidebarSessionsNavigation';
-import { DesktopTagActionsPopover } from './DesktopTagDialog';
+import { DesktopTagActionsPopover, DesktopTagDetailDialog } from './DesktopTagDialog';
 import { useSessionListSyncState } from '@/sync/sessionListSyncState';
 
 const mocks = vi.hoisted(() => {
@@ -23,12 +23,15 @@ const mocks = vi.hoisted(() => {
         setDesktopSidebarListMode: vi.fn(),
         setDesktopSidebarMode: vi.fn(),
         setSidebarGroupExpansion: vi.fn(),
+        setTagDetailsHideArchived: vi.fn(),
         pinnedOrder: [] as string[],
         organization: null as any,
         desktopSidebarListMode: 'projects',
         desktopSidebarMode: 'projects',
         sidebarGroupExpansion: {} as Record<string, boolean>,
+        tagDetailsHideArchived: false,
         sessions: [] as any[],
+        archivedSessions: [] as any[],
         renderSidebarGroupExpansion: null as null | ((next: Record<string, boolean>) => void),
         renderOrganization: null as null | ((next: any) => void),
         sidebarUnassignedExpanded: false,
@@ -130,6 +133,8 @@ vi.mock('@/sync/storage', async () => {
                     ? mocks.desktopSidebarListMode
                     : name === 'sidebarGroupExpansion'
                         ? mocks.sidebarGroupExpansion
+                        : name === 'tagDetailsHideArchived'
+                            ? mocks.tagDetailsHideArchived
                         : name === 'sidebarUnassignedExpanded'
                             ? mocks.sidebarUnassignedExpanded
                         : mocks.organization;
@@ -141,15 +146,22 @@ vi.mock('@/sync/storage', async () => {
                     ? mocks.setDesktopSidebarListMode
                     : name === 'sidebarGroupExpansion'
                         ? mocks.setSidebarGroupExpansion
+                        : name === 'tagDetailsHideArchived'
+                            ? mocks.setTagDetailsHideArchived
                         : undefined;
             return [value, (next: any) => {
                 spy?.(next);
                 if (name === 'sidebarGroupExpansion') mocks.sidebarGroupExpansion = next;
+                if (name === 'tagDetailsHideArchived') mocks.tagDetailsHideArchived = next;
                 if (name === 'sidebarUnassignedExpanded') mocks.sidebarUnassignedExpanded = next;
                 setValue(next);
             }];
         },
         useLocalSettingUpdater: () => mocks.updateSidebarGroupExpansion,
+        useSessionListViewData: () => [
+            { type: 'active-sessions', sessions: mocks.sessions },
+            ...mocks.archivedSessions.map((session) => ({ type: 'session', session })),
+        ],
         useSetting: () => {
             const [value, setValue] = ReactModule.useState(mocks.organization);
             mocks.renderOrganization = setValue;
@@ -185,10 +197,12 @@ describe('DesktopSidebarSessionsNavigation', () => {
             sessions: { 'session-1': { listId: 'happy', tagIds: ['product'] } },
         };
         mocks.sessions = [sessionFixture('session-1', 'Sidebar work')];
+        mocks.archivedSessions = [];
         mocks.pinnedOrder = [];
         mocks.desktopSidebarListMode = 'projects';
         mocks.desktopSidebarMode = 'projects';
         mocks.sidebarGroupExpansion = {};
+        mocks.tagDetailsHideArchived = false;
         mocks.renderSidebarGroupExpansion = null;
         mocks.renderOrganization = null;
         mocks.sidebarUnassignedExpanded = false;
@@ -278,6 +292,150 @@ describe('DesktopSidebarSessionsNavigation', () => {
         act(() => renderer.root.findByProps({ testID: 'tag-detail-toggle-happy' }).props.onPress());
         expect(renderer.root.findByProps({ testID: 'tag-detail-toggle-happy' }).props.accessibilityState).toEqual({ expanded: false });
         expect(renderer.root.findAllByProps({ testID: 'tag-detail-session-session-1' })).toHaveLength(0);
+        act(() => renderer.unmount());
+    });
+
+    it('collects archived Tag sessions at the bottom and persists the dialog-only hide setting', () => {
+        mocks.sessions = [sessionFixture('session-1', 'Happy work')];
+        mocks.archivedSessions = [
+            { ...sessionFixture('session-2', 'Archived Happy work'), archived: true },
+            { ...sessionFixture('session-3', 'Archived loose work'), archived: true },
+        ];
+        mocks.organization = {
+            ...mocks.organization,
+            sessions: {
+                'session-1': { listId: 'happy', tagIds: ['product'] },
+                'session-2': { listId: 'happy', tagIds: ['product'] },
+                'session-3': { listId: null, tagIds: ['product'] },
+                'session-not-loaded': { listId: null, tagIds: ['product'] },
+            },
+        };
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<DesktopSidebarSessionsNavigation />); });
+        act(() => renderer.root.findByProps({ testID: 'desktop-sidebar-tab-lists' }).props.onPress());
+
+        expect(renderer.root.findByProps({ testID: 'sidebar-tag-count-product' }).props.children).toBe(4);
+        act(() => renderer.root.findByProps({ testID: 'sidebar-tag-product' }).props.onPress());
+        expect(renderer.root.findByType(DesktopTagDetailDialog).props.sessionCount).toBe(4);
+        expect(renderer.root.findByProps({ testID: 'tag-detail-partially-loaded' }).props.children).toBe('sidebarLists.tagSessionsPartiallyLoaded');
+        expect(renderer.root.findAll((node: any) => typeof node.props.testID === 'string' && node.props.testID.startsWith('tag-detail-group-')).map((node: any) => node.props.testID)).toEqual([
+            'tag-detail-group-happy',
+            'tag-detail-group-archived',
+        ]);
+        expect(renderer.root.findAllByProps({ testID: 'tag-detail-session-session-2' })).toHaveLength(1);
+        expect(renderer.root.findAllByProps({ testID: 'tag-detail-session-session-3' })).toHaveLength(1);
+
+        act(() => renderer.root.findByProps({ testID: 'tag-detail-menu-product' }).props.onPress({
+            currentTarget: { getBoundingClientRect: () => ({ bottom: 140, right: 1010 }) },
+            nativeEvent: {},
+        }));
+        expect(renderer.root.findByProps({ testID: 'tag-detail-actions-popover-product' })).toBeDefined();
+        expect(renderer.root.findByProps({ testID: 'tag-detail-toggle-archived-visibility' }).props.accessibilityLabel).toBe('sidebarLists.hideArchived');
+        act(() => renderer.root.findByProps({ testID: 'tag-detail-toggle-archived-visibility' }).props.onPress());
+
+        expect(mocks.setTagDetailsHideArchived).toHaveBeenCalledWith(true);
+        expect(renderer.root.findAllByProps({ testID: 'tag-detail-group-archived' })).toHaveLength(0);
+        expect(renderer.root.findByProps({ testID: 'sidebar-tag-count-product' }).props.children).toBe(4);
+        expect(renderer.root.findAllByProps({ testID: 'tag-detail-actions-popover-product' })).toHaveLength(0);
+        act(() => renderer.unmount());
+
+        act(() => { renderer = TestRenderer.create(<DesktopSidebarSessionsNavigation />); });
+        act(() => renderer.root.findByProps({ testID: 'desktop-sidebar-tab-lists' }).props.onPress());
+        act(() => renderer.root.findByProps({ testID: 'sidebar-tag-product' }).props.onPress());
+        expect(renderer.root.findAllByProps({ testID: 'tag-detail-group-archived' })).toHaveLength(0);
+        act(() => renderer.root.findByProps({ testID: 'tag-detail-menu-product' }).props.onPress({
+            currentTarget: { getBoundingClientRect: () => ({ bottom: 140, right: 1010 }) },
+            nativeEvent: {},
+        }));
+        expect(renderer.root.findByProps({ testID: 'tag-detail-toggle-archived-visibility' }).props.accessibilityLabel).toBe('sidebarLists.showArchived');
+        act(() => renderer.unmount());
+    });
+
+    it('explains when Tag associations exist before their historical sessions load', () => {
+        mocks.sessions = [];
+        mocks.archivedSessions = [];
+        mocks.organization = {
+            ...mocks.organization,
+            sessions: { 'session-not-loaded': { listId: 'happy', tagIds: ['product'] } },
+        };
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<DesktopSidebarSessionsNavigation />); });
+        act(() => renderer.root.findByProps({ testID: 'desktop-sidebar-tab-lists' }).props.onPress());
+        act(() => renderer.root.findByProps({ testID: 'sidebar-tag-product' }).props.onPress());
+
+        expect(renderer.root.findByProps({ testID: 'sidebar-tag-count-product' }).props.children).toBe(1);
+        expect(renderer.root.findByProps({ testID: 'tag-detail-sessions-not-loaded' }).props.children).toBe('sidebarLists.tagSessionsNotLoaded');
+        expect(renderer.root.findAllByProps({ children: 'sidebarLists.noTaggedSessions' })).toHaveLength(0);
+        act(() => renderer.unmount());
+    });
+
+    it('explains when an archive-only Tag is hidden instead of claiming it has no sessions', () => {
+        mocks.sessions = [];
+        mocks.archivedSessions = [{ ...sessionFixture('session-2', 'Archived work'), archived: true }];
+        mocks.organization = {
+            ...mocks.organization,
+            sessions: { 'session-2': { listId: 'happy', tagIds: ['product'] } },
+        };
+        mocks.tagDetailsHideArchived = true;
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<DesktopSidebarSessionsNavigation />); });
+        act(() => renderer.root.findByProps({ testID: 'desktop-sidebar-tab-lists' }).props.onPress());
+        act(() => renderer.root.findByProps({ testID: 'sidebar-tag-product' }).props.onPress());
+
+        expect(renderer.root.findByProps({ testID: 'tag-detail-archived-hidden' }).props.children).toBe('sidebarLists.archivedSessionsHidden');
+        expect(renderer.root.findAllByProps({ children: 'sidebarLists.noTaggedSessions' })).toHaveLength(0);
+        act(() => renderer.unmount());
+    });
+
+    it('does not carry an open detail menu to a different Tag after remote deletion', () => {
+        mocks.organization = {
+            ...mocks.organization,
+            tags: [
+                ...mocks.organization.tags,
+                { id: 'research', name: 'research', color: 'purple', createdAt: 2 },
+            ],
+        };
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<DesktopSidebarSessionsNavigation />); });
+        act(() => renderer.root.findByProps({ testID: 'desktop-sidebar-tab-lists' }).props.onPress());
+        act(() => renderer.root.findByProps({ testID: 'sidebar-tag-product' }).props.onPress());
+        act(() => renderer.root.findByProps({ testID: 'tag-detail-menu-product' }).props.onPress({
+            currentTarget: { getBoundingClientRect: () => ({ bottom: 140, right: 1010 }) },
+            nativeEvent: {},
+        }));
+        expect(renderer.root.findByProps({ testID: 'tag-detail-actions-popover-product' })).toBeDefined();
+
+        act(() => mocks.renderOrganization?.({
+            ...mocks.organization,
+            tags: mocks.organization.tags.filter((tag: any) => tag.id !== 'product'),
+        }));
+        act(() => renderer.root.findByProps({ testID: 'sidebar-tag-research' }).props.onPress());
+
+        expect(renderer.root.findAllByProps({ testID: 'tag-detail-actions-popover-research' })).toHaveLength(0);
+        act(() => renderer.unmount());
+    });
+
+    it('closes the Tag detail actions menu before asking to delete the Tag', async () => {
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<DesktopSidebarSessionsNavigation />); });
+        act(() => renderer.root.findByProps({ testID: 'desktop-sidebar-tab-lists' }).props.onPress());
+        act(() => renderer.root.findByProps({ testID: 'sidebar-tag-product' }).props.onPress());
+        act(() => renderer.root.findByProps({ testID: 'tag-detail-menu-product' }).props.onPress({
+            currentTarget: { getBoundingClientRect: () => ({ bottom: 140, right: 1010 }) },
+            nativeEvent: {},
+        }));
+
+        let resolveConfirm: ((value: boolean) => void) | undefined;
+        mocks.confirm.mockReturnValueOnce(new Promise<boolean>((resolve) => { resolveConfirm = resolve; }));
+        act(() => renderer.root.findByProps({ testID: 'tag-detail-delete-product' }).props.onPress());
+
+        expect(renderer.root.findAllByProps({ testID: 'tag-detail-actions-popover-product' })).toHaveLength(0);
+        expect(mocks.confirm).toHaveBeenCalledOnce();
+        await act(async () => {
+            resolveConfirm?.(false);
+            await Promise.resolve();
+        });
+        expect(mocks.updateOrganization).not.toHaveBeenCalled();
         act(() => renderer.unmount());
     });
 

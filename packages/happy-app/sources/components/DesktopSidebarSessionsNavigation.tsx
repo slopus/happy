@@ -20,6 +20,7 @@ import {
     useAllMachines,
     useLocalSettingMutable,
     useLocalSettingUpdater,
+    useSessionListViewData,
     useSetting,
     useSettingUpdater,
     type SessionRowData,
@@ -491,10 +492,12 @@ function SidebarListsView() {
     const listColors = getListColors(theme.colors);
     const pathname = usePathname();
     const data = useVisibleSessionListViewData();
+    const tagData = useSessionListViewData();
     const organization = useSetting('sidebarOrganization');
     const updateOrganization = useSettingUpdater('sidebarOrganization');
     const [sidebarGroupExpansion] = useLocalSettingMutable('sidebarGroupExpansion');
     const updateSidebarGroupExpansion = useLocalSettingUpdater('sidebarGroupExpansion');
+    const [tagDetailsHideArchived, setTagDetailsHideArchived] = useLocalSettingMutable('tagDetailsHideArchived');
     const [selectedTagId, setSelectedTagId] = React.useState<string | null>(null);
     const [tagActionsAnchor, setTagActionsAnchor] = React.useState<DesktopTagActionsAnchor | null>(null);
     const [editorVisible, setEditorVisible] = React.useState(false);
@@ -517,6 +520,15 @@ function SidebarListsView() {
         });
         return Array.from(byId.values());
     }, [data]);
+    const tagSessions = React.useMemo(() => {
+        if (!tagData) return [];
+        const byId = new Map<string, SessionRowData>();
+        tagData.forEach((item) => {
+            if (item.type === 'active-sessions') item.sessions.forEach((session) => byId.set(session.id, session));
+            if (item.type === 'session') byId.set(item.session.id, item.session);
+        });
+        return Array.from(byId.values());
+    }, [tagData]);
     const sessionManagement = useSessionManagementPreferences(sessions.map((session) => session.id), { prune: false });
     const partitionedSessions = React.useMemo(() => partitionSessionsByPinnedOrder(
         sessions,
@@ -526,17 +538,20 @@ function SidebarListsView() {
         () => buildSidebarSessionIndex(partitionedSessions.regular, organization.sessions),
         [organization.sessions, partitionedSessions.regular],
     );
-    const tagSessionIndex = React.useMemo(
-        () => buildSidebarSessionIndex(sessions, organization.sessions),
-        [organization.sessions, sessions],
-    );
+    const tagAssociationCounts = React.useMemo(() => {
+        const counts = new Map<string, number>();
+        Object.values(organization.sessions).forEach((assignment) => {
+            assignment.tagIds.forEach((tagId) => counts.set(tagId, (counts.get(tagId) ?? 0) + 1));
+        });
+        return counts;
+    }, [organization.sessions]);
     const selectedTag = React.useMemo(
         () => organization.tags.find((tag) => tag.id === selectedTagId) ?? null,
         [organization.tags, selectedTagId],
     );
     const selectedTagGroups = React.useMemo(
-        () => selectedTagId ? buildSidebarTagSessionGroups(sessions, organization, selectedTagId) : [],
-        [organization, selectedTagId, sessions],
+        () => selectedTagId ? buildSidebarTagSessionGroups(tagSessions, organization, selectedTagId) : [],
+        [organization, selectedTagId, tagSessions],
     );
     const tagActionsTag = React.useMemo(
         () => organization.tags.find((tag) => tag.id === tagActionsAnchor?.tagId) ?? null,
@@ -835,7 +850,7 @@ function SidebarListsView() {
             <View style={styles.tags}>
                 {organization.tags.map((tag) => {
                     const selected = tag.id === selectedTagId;
-                    const count = tagSessionIndex.byTagId.get(tag.id)?.length ?? 0;
+                    const count = tagAssociationCounts.get(tag.id) ?? 0;
                     return (
                         <View key={tag.id} style={[styles.tagRow, selected && styles.tagRowSelected]} testID={`sidebar-tag-row-${tag.id}`}>
                             <Pressable
@@ -866,7 +881,7 @@ function SidebarListsView() {
                 {organization.tags.length === 0 ? <Text style={styles.empty}>{t('sidebarLists.noTags')}</Text> : null}
             </View>
         );
-    }, [addTag, changeDropTarget, createSession, deleteList, draggedListId, draggedSessionId, dropFeedback, dropOntoList, finishSidebarDrag, leaveDropTarget, listColors, openCreate, openEdit, openOrganizer, openSession, openTagActions, organization.lists.length, organization.sessions, organization.tags, selectedSessionId, selectedTagId, sessionIndex, sessionManagement.moveToPinned, sidebarGroupExpansion, startListDrag, startSessionDrag, styles, tagSessionIndex, theme.colors]);
+    }, [addTag, changeDropTarget, createSession, deleteList, draggedListId, draggedSessionId, dropFeedback, dropOntoList, finishSidebarDrag, leaveDropTarget, listColors, openCreate, openEdit, openOrganizer, openSession, openTagActions, organization.lists.length, organization.sessions, organization.tags, selectedSessionId, selectedTagId, sessionIndex, sessionManagement.moveToPinned, sidebarGroupExpansion, startListDrag, startSessionDrag, styles, tagAssociationCounts, theme.colors]);
 
     return (
         <View style={styles.container} testID="sidebar-lists-view">
@@ -918,10 +933,13 @@ function SidebarListsView() {
             />
             <DesktopTagDetailDialog
                 groups={selectedTagGroups}
+                hideArchived={tagDetailsHideArchived}
                 listColors={listColors}
                 onClose={() => setSelectedTagId(null)}
                 onDelete={(tag) => void deleteTag(tag)}
+                onHideArchivedChange={setTagDetailsHideArchived}
                 selectedSessionId={selectedSessionId}
+                sessionCount={selectedTagId ? tagAssociationCounts.get(selectedTagId) ?? 0 : 0}
                 tag={selectedTag}
             />
         </View>

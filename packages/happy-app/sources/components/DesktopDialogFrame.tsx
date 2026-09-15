@@ -6,8 +6,9 @@ import { Text } from '@/components/StyledText';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
 
-export function DesktopDialogFrame({ children, maxWidth = 520, onClose, testID, title, visible }: {
+export function DesktopDialogFrame({ children, headerActions, maxWidth = 520, onClose, testID, title, visible }: {
     children: React.ReactNode;
+    headerActions?: React.ReactNode;
     maxWidth?: number;
     onClose: () => void;
     testID?: string;
@@ -37,6 +38,7 @@ export function DesktopDialogFrame({ children, maxWidth = 520, onClose, testID, 
                 <View accessibilityViewIsModal style={[styles.dialog, { maxWidth }]} testID={testID}>
                     <View style={styles.dialogHeader}>
                         <Text style={styles.dialogTitle}>{title}</Text>
+                        {headerActions}
                         <Pressable
                             accessibilityLabel={t('sidebarLists.close')}
                             accessibilityRole="button"

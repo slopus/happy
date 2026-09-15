@@ -2,13 +2,23 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Replace PC Tag pills with native Paws rows, open a list-grouped Tag detail dialog, and allow deleting only the Tag and its session associations.
+**Goal:** Replace PC Tag pills with native Paws rows, open a list-grouped Tag detail dialog with a standalone archive group and persistent archive visibility, and allow deleting only the Tag and its session associations.
 
 **Architecture:** Keep `SidebarOrganization` as the source of truth. Add one pure grouping function beside the existing sidebar indexes, render a focused desktop Tag dialog from the existing list/session data, and let the current setting updater persist deletion through `removeSidebarTag`. Reuse `CompactSessionRow`, `DesktopDialogFrame`, translations, and semantic theme tokens.
 
 **Tech Stack:** React Native Web, Expo Router, TypeScript, Unistyles, Vitest, react-test-renderer.
 
 **Spec:** `docs/design/pc-tag-list-groups.md`
+
+## Follow-up: archived Tag sessions
+
+- [x] Add a final `archived` group to `buildSidebarTagSessionGroups`; archived sessions never remain inside their previous List group.
+- [x] Build Tag details from the complete session data source while leaving ordinary sidebar Lists on the visible-only source.
+- [x] Add device-local `tagDetailsHideArchived`, defaulting to showing archived sessions and independent from the main List view.
+- [x] Move archive visibility and Delete Tag into the Tag detail header menu; close the menu before either action continues.
+- [x] Cover archive ordering, total counts, setting persistence, menu behavior, and delete handoff with model/component tests.
+- [x] Keep association totals stable across paginated history and explain partial/not-yet-loaded historical rows without presenting a false empty state.
+- [x] Remove synced List/Tag assignments when a session is permanently deleted so stable totals cannot become ghost counts.
 
 ## Global Constraints
 

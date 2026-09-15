@@ -109,6 +109,12 @@ describe('localSettings session list layout', () => {
 });
 
 describe('localSettings desktop Lists and Tags', () => {
+    it('shows archived Tag sessions by default and restores the independent hidden preference', () => {
+        expect(localSettingsDefaults.tagDetailsHideArchived).toBe(false);
+        expect(localSettingsParse({}).tagDetailsHideArchived).toBe(false);
+        expect(localSettingsParse({ tagDetailsHideArchived: true }).tagDetailsHideArchived).toBe(true);
+    });
+
     it('keeps Projects as the default desktop sidebar mode', () => {
         expect(localSettingsDefaults.desktopSidebarMode).toBe('projects');
         expect(localSettingsDefaults.desktopSidebarListMode).toBe('projects');

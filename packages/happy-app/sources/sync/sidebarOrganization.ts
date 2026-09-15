@@ -280,6 +280,7 @@ export type SidebarSessionIndex<T extends { id: string }> = {
 
 export type SidebarTagSessionGroup<T extends { id: string }> = {
     id: string;
+    kind: 'list' | 'unassigned' | 'archived';
     list: SidebarList | null;
     sessions: T[];
 };
@@ -312,7 +313,7 @@ export function buildSidebarSessionIndex<T extends { id: string }>(
     return { byListId, byTagId, unassigned };
 }
 
-export function buildSidebarTagSessionGroups<T extends { id: string }>(
+export function buildSidebarTagSessionGroups<T extends { id: string; archived?: boolean }>(
     sessions: readonly T[],
     organization: SidebarOrganization,
     tagId: string,
@@ -320,10 +321,15 @@ export function buildSidebarTagSessionGroups<T extends { id: string }>(
     const listById = new Map(organization.lists.map((list) => [list.id, list]));
     const sessionsByListId = new Map<string, T[]>();
     const unassigned: T[] = [];
+    const archived: T[] = [];
 
     for (const session of sessions) {
         const assignment = organization.sessions[session.id];
         if (!assignment?.tagIds.includes(tagId)) continue;
+        if (session.archived) {
+            archived.push(session);
+            continue;
+        }
         const list = assignment.listId ? listById.get(assignment.listId) : undefined;
         if (!list) {
             unassigned.push(session);
@@ -336,9 +342,10 @@ export function buildSidebarTagSessionGroups<T extends { id: string }>(
 
     const groups = organization.lists.flatMap((list): SidebarTagSessionGroup<T>[] => {
         const grouped = sessionsByListId.get(list.id);
-        return grouped?.length ? [{ id: list.id, list, sessions: grouped }] : [];
+        return grouped?.length ? [{ id: list.id, kind: 'list', list, sessions: grouped }] : [];
     });
-    if (unassigned.length) groups.push({ id: 'unassigned', list: null, sessions: unassigned });
+    if (unassigned.length) groups.push({ id: 'unassigned', kind: 'unassigned', list: null, sessions: unassigned });
+    if (archived.length) groups.push({ id: 'archived', kind: 'archived', list: null, sessions: archived });
     return groups;
 }
 
@@ -386,6 +393,15 @@ export function moveSidebarSessionToList(
     const assignment = value.sessions[sessionId] ?? { listId: null, tagIds: [] };
     if (assignment.listId === listId) return value;
     return organizeSession(value, sessionId, { ...assignment, listId });
+}
+
+export function removeSidebarSession(
+    value: SidebarOrganization,
+    sessionId: string,
+): SidebarOrganization {
+    if (!Object.prototype.hasOwnProperty.call(value.sessions, sessionId)) return value;
+    const { [sessionId]: _removed, ...sessions } = value.sessions;
+    return { ...value, sessions };
 }
 
 export function reorderSidebarList(
