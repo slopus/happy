@@ -1311,6 +1311,11 @@ export const en = {
         editList: 'Edit list',
         deleteList: 'Delete list',
         deleteListConfirm: ({ name }: { name: string }) => `Deleting the list "${name}" will move its sessions back to Unassigned. Tags will not be affected.`,
+        tagActions: 'Tag actions',
+        groupedByList: 'Grouped by list',
+        tagDetailsMeta: ({ sessionCount, listCount }: { sessionCount: number; listCount: number }) => `${sessionCount} sessions · ${listCount} lists`,
+        deleteTag: 'Delete tag',
+        deleteTagConfirm: ({ name }: { name: string }) => `Deleting the tag "${name}" removes it from every session, but does not delete any sessions.`,
         colors: { blue: 'Blue', green: 'Green', purple: 'Purple', orange: 'Orange', pink: 'Pink' },
     },
     sessionSearch: {

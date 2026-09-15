@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 // @ts-expect-error react-test-renderer does not publish declarations.
 import TestRenderer from 'react-test-renderer';
 import { DesktopSidebarSessionsNavigation } from './DesktopSidebarSessionsNavigation';
+import { DesktopTagActionsPopover } from './DesktopTagDialog';
 import { useSessionListSyncState } from '@/sync/sessionListSyncState';
 
 const mocks = vi.hoisted(() => {
@@ -27,6 +28,7 @@ const mocks = vi.hoisted(() => {
         desktopSidebarListMode: 'projects',
         desktopSidebarMode: 'projects',
         sidebarGroupExpansion: {} as Record<string, boolean>,
+        sessions: [] as any[],
         renderSidebarGroupExpansion: null as null | ((next: Record<string, boolean>) => void),
         renderOrganization: null as null | ((next: any) => void),
         sidebarUnassignedExpanded: false,
@@ -64,6 +66,7 @@ vi.mock('react-native', async () => {
         ),
         ScrollView: 'ScrollView',
         TextInput: 'TextInput',
+        useWindowDimensions: () => ({ height: 900, width: 1440 }),
         View: 'View',
     };
 });
@@ -100,12 +103,15 @@ vi.mock('@/hooks/useNewSessionDraft', () => ({ useNewSessionDraft: { getState: (
     setPath: mocks.setPath,
 }) } }));
 vi.mock('@/hooks/useVisibleSessionListViewData', () => ({
-    useVisibleSessionListViewData: () => [{ type: 'active-sessions', sessions: [{
-        id: 'session-1', name: 'Sidebar work', subtitle: 'Happy', avatarId: 'a', flavor: 'codex', state: 'idle',
+    useVisibleSessionListViewData: () => [{ type: 'active-sessions', sessions: mocks.sessions }],
+}));
+
+const sessionFixture = (id: string, name: string) => ({
+        id, name, subtitle: 'Happy', avatarId: 'a', flavor: 'codex', state: 'idle',
         isConnected: true, hasDraft: false, active: true, archived: false, machineId: 'mac', path: '~/happy', homeDir: '~',
         completedTodosCount: 0, totalTodosCount: 0, hasUnread: false,
-    }] }],
-}));
+    });
+
 vi.mock('@/hooks/useSessionManagementPreferences', () => ({
     useSessionManagementPreferences: () => ({
         preferences: { pinnedOrder: mocks.pinnedOrder, focusOrder: [] },
@@ -178,6 +184,7 @@ describe('DesktopSidebarSessionsNavigation', () => {
             tags: [{ id: 'product', name: 'product', color: 'green', createdAt: 1 }],
             sessions: { 'session-1': { listId: 'happy', tagIds: ['product'] } },
         };
+        mocks.sessions = [sessionFixture('session-1', 'Sidebar work')];
         mocks.pinnedOrder = [];
         mocks.desktopSidebarListMode = 'projects';
         mocks.desktopSidebarMode = 'projects';
@@ -221,10 +228,93 @@ describe('DesktopSidebarSessionsNavigation', () => {
 
         act(() => renderer.root.findByProps({ testID: 'sidebar-list-happy' }).props.onPress());
         act(() => renderer.root.findByProps({ testID: 'sidebar-tag-product' }).props.onPress());
-        act(() => renderer.root.findByProps({ testID: 'pin-organized-session-session-1' }).props.onPress());
 
-        expect(mocks.moveToPinned).toHaveBeenCalledWith('session-1');
+        expect(renderer.root.findByProps({ testID: 'tag-detail-dialog-product' })).toBeDefined();
+        expect(mocks.moveToPinned).not.toHaveBeenCalled();
         expect(mocks.navigate).not.toHaveBeenCalled();
+        expect(mocks.navigateToSession).not.toHaveBeenCalled();
+        act(() => renderer.unmount());
+    });
+
+    it('opens a Tag detail dialog and groups every tagged session by its List', () => {
+        mocks.sessions = [
+            sessionFixture('session-1', 'Happy work'),
+            sessionFixture('session-2', 'Advisor work'),
+            sessionFixture('session-3', 'Loose work'),
+        ];
+        mocks.organization = {
+            ...mocks.organization,
+            sessions: {
+                'session-1': { listId: 'happy', tagIds: ['product'] },
+                'session-2': { listId: 'advisor', tagIds: ['product'] },
+                'session-3': { listId: null, tagIds: ['product'] },
+            },
+        };
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<DesktopSidebarSessionsNavigation />); });
+        act(() => renderer.root.findByProps({ testID: 'desktop-sidebar-tab-lists' }).props.onPress());
+
+        expect(renderer.root.findByProps({ testID: 'sidebar-tag-row-product' })).toBeDefined();
+        expect(renderer.root.findByProps({ testID: 'sidebar-tag-count-product' }).props.children).toBe(3);
+        act(() => renderer.root.findByProps({ testID: 'sidebar-tag-product' }).props.onPress());
+
+        expect(renderer.root.findByProps({ testID: 'tag-detail-dialog-product' })).toBeDefined();
+        expect(renderer.root.findAllByType('Modal').find((node: any) => node.props.visible)?.props.accessibilityLabel).toBe('#product');
+        expect(renderer.root.findAllByProps({ testID: 'desktop-dialog-backdrop' }).every((node: any) => node.props.accessible === false)).toBe(true);
+        expect(renderer.root.findAllByProps({ accessibilityLabel: 'sidebarLists.close' }).every((node: any) => node.props.accessibilityRole === 'button')).toBe(true);
+        expect(renderer.root.findAllByProps({ testID: 'sidebar-close-tag-filter' })).toHaveLength(0);
+        expect(renderer.root.findByProps({ testID: 'sidebar-list-happy' })).toBeDefined();
+        expect(renderer.root.findAll((node: any) => typeof node.props.testID === 'string' && node.props.testID.startsWith('tag-detail-group-')).map((node: any) => node.props.testID)).toEqual([
+            'tag-detail-group-happy',
+            'tag-detail-group-advisor',
+            'tag-detail-group-unassigned',
+        ]);
+        expect(renderer.root.findAllByType('CompactSessionRow').map((node: any) => node.props.session.id)).toEqual([
+            'session-1',
+            'session-2',
+            'session-3',
+        ]);
+
+        act(() => renderer.root.findByProps({ testID: 'tag-detail-toggle-happy' }).props.onPress());
+        expect(renderer.root.findByProps({ testID: 'tag-detail-toggle-happy' }).props.accessibilityState).toEqual({ expanded: false });
+        expect(renderer.root.findAllByProps({ testID: 'tag-detail-session-session-1' })).toHaveLength(0);
+        act(() => renderer.unmount());
+    });
+
+    it('deletes only a Tag and its associations from the Tag actions menu', async () => {
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<DesktopSidebarSessionsNavigation />); });
+        act(() => renderer.root.findByProps({ testID: 'desktop-sidebar-tab-lists' }).props.onPress());
+        act(() => renderer.root.findByProps({ testID: 'sidebar-tag-menu-product' }).props.onPress({
+            currentTarget: { getBoundingClientRect: () => ({ bottom: 260, right: 410 }) },
+            nativeEvent: {},
+        }));
+
+        expect(renderer.root.findByProps({ testID: 'tag-actions-popover-product' })).toBeDefined();
+        expect(renderer.root.findByType(DesktopTagActionsPopover).props.anchor).toEqual({ tagId: 'product', x: 410, y: 260 });
+        expect(renderer.root.findAllByType('Modal').find((node: any) => node.props.visible)?.props.accessibilityLabel).toBe('sidebarLists.tagActions product');
+        expect(renderer.root.findByProps({ testID: 'tag-actions-backdrop' }).props.accessible).toBe(false);
+        expect(renderer.root.findAllByProps({ testID: 'tag-detail-dialog-product' })).toHaveLength(0);
+        let resolveConfirm: ((value: boolean) => void) | undefined;
+        mocks.confirm.mockReturnValueOnce(new Promise<boolean>((resolve) => { resolveConfirm = resolve; }));
+        act(() => renderer.root.findByProps({ testID: 'sidebar-delete-tag-product' }).props.onPress());
+        expect(renderer.root.findAllByProps({ testID: 'tag-actions-popover-product' })).toHaveLength(0);
+        await act(async () => {
+            resolveConfirm?.(true);
+            await Promise.resolve();
+            await Promise.resolve();
+        });
+
+        expect(mocks.confirm).toHaveBeenCalledWith(
+            'sidebarLists.deleteTag',
+            'sidebarLists.deleteTagConfirm',
+            expect.objectContaining({ destructive: true }),
+        );
+        const remove = mocks.updateOrganization.mock.calls.at(-1)?.[0];
+        const removed = remove(mocks.organization);
+        expect(removed.tags).toEqual([]);
+        expect(removed.sessions['session-1']).toEqual({ listId: 'happy', tagIds: [] });
+        expect(mocks.sessions.map((session) => session.id)).toEqual(['session-1']);
         expect(mocks.navigateToSession).not.toHaveBeenCalled();
         act(() => renderer.unmount());
     });
