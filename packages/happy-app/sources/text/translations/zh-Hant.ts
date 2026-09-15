@@ -1128,6 +1128,8 @@ export const zhHant: TranslationStructure = {
         belongsToList: '所屬清單', tagsMultiSelect: 'Tag（可多選）', selectedTags: '已選取的 Tag', tagInputPlaceholder: '輸入 # 搜尋或新增 Tag',
         createTagNamed: ({ name }: { name: string }) => `建立 ${name}`, tagLimitReached: '已達 Tag 數量上限', close: '關閉', editList: '編輯清單', deleteList: '刪除清單',
         deleteListConfirm: ({ name }: { name: string }) => `刪除清單「${name}」後，其中的會話會回到未分類，Tag 不受影響。`,
+        tagActions: 'Tag 操作', groupedByList: '依清單分組', tagDetailsMeta: ({ sessionCount, listCount }: { sessionCount: number; listCount: number }) => `${sessionCount} 個會話 · ${listCount} 個清單`, archived: '已封存', showArchived: '顯示已封存', hideArchived: '隱藏已封存', archivedSessionsHidden: '已封存會話已隱藏。', tagSessionsNotLoaded: '關聯的歷史會話尚未載入。', tagSessionsPartiallyLoaded: ({ loadedCount, sessionCount }: { loadedCount: number; sessionCount: number }) => `已載入 ${loadedCount} 個，共 ${sessionCount} 個關聯會話。`, deleteTag: '刪除 Tag',
+        deleteTagConfirm: ({ name }: { name: string }) => `刪除 Tag「${name}」後，該 Tag 會從所有會話中移除，但不會刪除任何會話。`,
         colors: { blue: '藍色', green: '綠色', purple: '紫色', orange: '橙色', pink: '粉色' },
     },
     sessionSearch: {

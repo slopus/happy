@@ -278,6 +278,13 @@ export type SidebarSessionIndex<T extends { id: string }> = {
     unassigned: T[];
 };
 
+export type SidebarTagSessionGroup<T extends { id: string }> = {
+    id: string;
+    kind: 'list' | 'unassigned' | 'archived';
+    list: SidebarList | null;
+    sessions: T[];
+};
+
 export function buildSidebarSessionIndex<T extends { id: string }>(
     sessions: readonly T[],
     assignments: SidebarOrganization['sessions'],
@@ -304,6 +311,42 @@ export function buildSidebarSessionIndex<T extends { id: string }>(
     }
 
     return { byListId, byTagId, unassigned };
+}
+
+export function buildSidebarTagSessionGroups<T extends { id: string; archived?: boolean }>(
+    sessions: readonly T[],
+    organization: SidebarOrganization,
+    tagId: string,
+): SidebarTagSessionGroup<T>[] {
+    const listById = new Map(organization.lists.map((list) => [list.id, list]));
+    const sessionsByListId = new Map<string, T[]>();
+    const unassigned: T[] = [];
+    const archived: T[] = [];
+
+    for (const session of sessions) {
+        const assignment = organization.sessions[session.id];
+        if (!assignment?.tagIds.includes(tagId)) continue;
+        if (session.archived) {
+            archived.push(session);
+            continue;
+        }
+        const list = assignment.listId ? listById.get(assignment.listId) : undefined;
+        if (!list) {
+            unassigned.push(session);
+            continue;
+        }
+        const grouped = sessionsByListId.get(list.id);
+        if (grouped) grouped.push(session);
+        else sessionsByListId.set(list.id, [session]);
+    }
+
+    const groups = organization.lists.flatMap((list): SidebarTagSessionGroup<T>[] => {
+        const grouped = sessionsByListId.get(list.id);
+        return grouped?.length ? [{ id: list.id, kind: 'list', list, sessions: grouped }] : [];
+    });
+    if (unassigned.length) groups.push({ id: 'unassigned', kind: 'unassigned', list: null, sessions: unassigned });
+    if (archived.length) groups.push({ id: 'archived', kind: 'archived', list: null, sessions: archived });
+    return groups;
 }
 
 export function createSidebarOrganizationId(prefix: 'list' | 'tag'): string {
@@ -350,6 +393,15 @@ export function moveSidebarSessionToList(
     const assignment = value.sessions[sessionId] ?? { listId: null, tagIds: [] };
     if (assignment.listId === listId) return value;
     return organizeSession(value, sessionId, { ...assignment, listId });
+}
+
+export function removeSidebarSession(
+    value: SidebarOrganization,
+    sessionId: string,
+): SidebarOrganization {
+    if (!Object.prototype.hasOwnProperty.call(value.sessions, sessionId)) return value;
+    const { [sessionId]: _removed, ...sessions } = value.sessions;
+    return { ...value, sessions };
 }
 
 export function reorderSidebarList(
@@ -408,8 +460,15 @@ export function removeSidebarList(value: SidebarOrganization, listId: string): S
 }
 
 export function removeSidebarTag(value: SidebarOrganization, tagId: string): SidebarOrganization {
-    return normalizeSidebarOrganization({
+    const sessions = Object.fromEntries(Object.entries(value.sessions).map(([sessionId, assignment]) => [
+        sessionId,
+        assignment.tagIds.includes(tagId)
+            ? { ...assignment, tagIds: assignment.tagIds.filter((candidate) => candidate !== tagId) }
+            : assignment,
+    ]));
+    return {
         ...value,
         tags: value.tags.filter((tag) => tag.id !== tagId),
-    });
+        sessions,
+    };
 }

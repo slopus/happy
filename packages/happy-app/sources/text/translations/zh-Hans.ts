@@ -1174,6 +1174,8 @@ export const zhHans: TranslationStructure = {
         belongsToList: '所属清单', tagsMultiSelect: 'Tag（可多选）', selectedTags: '已选择的 Tag', tagInputPlaceholder: '输入 # 搜索或新建 Tag',
         createTagNamed: ({ name }: { name: string }) => `创建 ${name}`, tagLimitReached: '已达到 Tag 数量上限', close: '关闭', editList: '编辑清单', deleteList: '删除清单',
         deleteListConfirm: ({ name }: { name: string }) => `删除清单“${name}”后，其中的会话会回到未归类，Tag 不受影响。`,
+        tagActions: 'Tag 操作', groupedByList: '按清单分组', tagDetailsMeta: ({ sessionCount, listCount }: { sessionCount: number; listCount: number }) => `${sessionCount} 个会话 · ${listCount} 个清单`, archived: '已归档', showArchived: '显示已归档', hideArchived: '隐藏已归档', archivedSessionsHidden: '已归档会话已隐藏。', tagSessionsNotLoaded: '关联的历史会话尚未加载。', tagSessionsPartiallyLoaded: ({ loadedCount, sessionCount }: { loadedCount: number; sessionCount: number }) => `已加载 ${loadedCount} 个，共 ${sessionCount} 个关联会话。`, deleteTag: '删除 Tag',
+        deleteTagConfirm: ({ name }: { name: string }) => `删除 Tag“${name}”后，该 Tag 会从所有会话中移除，但不会删除任何会话。`,
         colors: { blue: '蓝色', green: '绿色', purple: '紫色', orange: '橙色', pink: '粉色' },
     },
     sessionSearch: {

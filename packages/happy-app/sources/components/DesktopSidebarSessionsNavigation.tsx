@@ -20,6 +20,7 @@ import {
     useAllMachines,
     useLocalSettingMutable,
     useLocalSettingUpdater,
+    useSessionListViewData,
     useSetting,
     useSettingUpdater,
     type SessionRowData,
@@ -29,6 +30,11 @@ import { t } from '@/text';
 import { MainView } from './MainView';
 import { SidebarScrollProvider, useSidebarScrollState } from './SidebarScrollState';
 import { DesktopDialogFrame } from './DesktopDialogFrame';
+import {
+    DesktopTagActionsPopover,
+    DesktopTagDetailDialog,
+    type DesktopTagActionsAnchor,
+} from './DesktopTagDialog';
 import { PathPickerContent, PickerContent, type PickerItem } from './SessionConfigPanel';
 import { SessionOrganizerDialog } from './SessionOrganizerDialog';
 import {
@@ -39,12 +45,14 @@ import {
 } from './sidebarDrag';
 import {
     buildSidebarSessionIndex,
+    buildSidebarTagSessionGroups,
     createSidebarOrganizationId,
     normalizeSidebarTagName,
     moveSidebarSessionToList,
     organizeSessionWithCreatedTags,
     reorderSidebarList,
     removeSidebarList,
+    removeSidebarTag,
     SIDEBAR_LIST_COLORS,
     SIDEBAR_LIST_MAX_COUNT,
     SIDEBAR_LIST_NAME_MAX_LENGTH,
@@ -227,27 +235,21 @@ const stylesheet = StyleSheet.create((theme) => ({
     },
     newSessionText: { color: theme.colors.textSecondary, flex: 1, fontSize: 12, ...Typography.default('semiBold') },
     tagSection: { marginTop: 10 },
-    tags: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, paddingHorizontal: 10 },
-    tag: {
+    tags: { gap: 2, paddingHorizontal: 8 },
+    tagRow: {
         alignItems: 'center',
-        backgroundColor: theme.colors.surface,
-        borderColor: theme.colors.divider,
-        borderRadius: 14,
-        borderWidth: StyleSheet.hairlineWidth,
+        borderRadius: 8,
         flexDirection: 'row',
-        gap: 5,
-        minHeight: {
-            [mq.only.width(0, 768)]: 44,
-            [mq.only.width(768)]: 28,
-        },
-        paddingHorizontal: 9,
+        minHeight: 40,
+        paddingHorizontal: 4,
     },
-    tagSelected: { backgroundColor: theme.colors.surfaceSelected },
-    tagText: { color: theme.colors.textSecondary, fontSize: 11, ...Typography.default('semiBold') },
+    tagRowSelected: { backgroundColor: theme.colors.surfaceSelected },
+    tagRowMain: { alignItems: 'center', alignSelf: 'stretch', flex: 1, flexDirection: 'row', gap: 9, minWidth: 0, paddingHorizontal: 7 },
+    tagRowPressed: { backgroundColor: theme.colors.surfacePressed },
+    tagText: { color: theme.colors.text, flex: 1, fontSize: 13, ...Typography.default('semiBold') },
     tagDot: { borderRadius: 3, height: 6, width: 6 },
+    tagCount: { color: theme.colors.textSecondary, fontSize: 12, minWidth: 20, textAlign: 'right', ...Typography.default() },
     empty: { color: theme.colors.textSecondary, fontSize: 12, paddingHorizontal: 16, paddingVertical: 12, ...Typography.default() },
-    filteredHeader: { alignItems: 'center', flexDirection: 'row', paddingHorizontal: 10, paddingBottom: 6 },
-    filteredTitle: { color: theme.colors.text, flex: 1, fontSize: 13, ...Typography.default('semiBold') },
     modalRoot: { alignItems: 'center', flex: 1, justifyContent: 'center', padding: 20 },
     modalBackdrop: { backgroundColor: theme.colors.shadow.color, bottom: 0, left: 0, opacity: 0.28, position: 'absolute', right: 0, top: 0 },
     dialog: {
@@ -427,7 +429,6 @@ type SidebarVirtualRow =
     | { key: string; type: 'new-session'; list: SidebarList }
     | { key: string; type: 'session'; session: SessionRowData; nested: boolean }
     | { key: string; type: 'empty'; label: string; nested: boolean }
-    | { key: string; type: 'filtered-header'; tagName: string }
     | { key: string; type: 'tags' };
 
 function WebDropTarget({ active, children, draggableEntity, draggableId, dropPosition, onDragEnd, onDragStart, onDrop, onTargetChange, onTargetLeave, style, targetId, testID }: {
@@ -491,11 +492,14 @@ function SidebarListsView() {
     const listColors = getListColors(theme.colors);
     const pathname = usePathname();
     const data = useVisibleSessionListViewData();
+    const tagData = useSessionListViewData();
     const organization = useSetting('sidebarOrganization');
     const updateOrganization = useSettingUpdater('sidebarOrganization');
     const [sidebarGroupExpansion] = useLocalSettingMutable('sidebarGroupExpansion');
     const updateSidebarGroupExpansion = useLocalSettingUpdater('sidebarGroupExpansion');
+    const [tagDetailsHideArchived, setTagDetailsHideArchived] = useLocalSettingMutable('tagDetailsHideArchived');
     const [selectedTagId, setSelectedTagId] = React.useState<string | null>(null);
+    const [tagActionsAnchor, setTagActionsAnchor] = React.useState<DesktopTagActionsAnchor | null>(null);
     const [editorVisible, setEditorVisible] = React.useState(false);
     const [editingList, setEditingList] = React.useState<SidebarList | null>(null);
     const [organizingSession, setOrganizingSession] = React.useState<SessionRowData | null>(null);
@@ -516,6 +520,15 @@ function SidebarListsView() {
         });
         return Array.from(byId.values());
     }, [data]);
+    const tagSessions = React.useMemo(() => {
+        if (!tagData) return [];
+        const byId = new Map<string, SessionRowData>();
+        tagData.forEach((item) => {
+            if (item.type === 'active-sessions') item.sessions.forEach((session) => byId.set(session.id, session));
+            if (item.type === 'session') byId.set(item.session.id, item.session);
+        });
+        return Array.from(byId.values());
+    }, [tagData]);
     const sessionManagement = useSessionManagementPreferences(sessions.map((session) => session.id), { prune: false });
     const partitionedSessions = React.useMemo(() => partitionSessionsByPinnedOrder(
         sessions,
@@ -524,6 +537,25 @@ function SidebarListsView() {
     const sessionIndex = React.useMemo(
         () => buildSidebarSessionIndex(partitionedSessions.regular, organization.sessions),
         [organization.sessions, partitionedSessions.regular],
+    );
+    const tagAssociationCounts = React.useMemo(() => {
+        const counts = new Map<string, number>();
+        Object.values(organization.sessions).forEach((assignment) => {
+            assignment.tagIds.forEach((tagId) => counts.set(tagId, (counts.get(tagId) ?? 0) + 1));
+        });
+        return counts;
+    }, [organization.sessions]);
+    const selectedTag = React.useMemo(
+        () => organization.tags.find((tag) => tag.id === selectedTagId) ?? null,
+        [organization.tags, selectedTagId],
+    );
+    const selectedTagGroups = React.useMemo(
+        () => selectedTagId ? buildSidebarTagSessionGroups(tagSessions, organization, selectedTagId) : [],
+        [organization, selectedTagId, tagSessions],
+    );
+    const tagActionsTag = React.useMemo(
+        () => organization.tags.find((tag) => tag.id === tagActionsAnchor?.tagId) ?? null,
+        [organization.tags, tagActionsAnchor?.tagId],
     );
     const selectedListId = React.useMemo(() => {
         if (!selectedSessionId) return null;
@@ -637,6 +669,28 @@ function SidebarListsView() {
         if (!confirmed) return;
         updateOrganization((current) => removeSidebarList(current, list.id));
     }, [updateOrganization]);
+    const deleteTag = React.useCallback(async (tag: SidebarTag) => {
+        const confirmed = await Modal.confirm(
+            t('sidebarLists.deleteTag'),
+            t('sidebarLists.deleteTagConfirm', { name: tag.name }),
+            { cancelText: t('common.cancel'), confirmText: t('common.delete'), destructive: true },
+        );
+        if (!confirmed) return;
+        updateOrganization((current) => removeSidebarTag(current, tag.id));
+        setTagActionsAnchor(null);
+        setSelectedTagId((current) => current === tag.id ? null : current);
+    }, [updateOrganization]);
+    const openTagActions = React.useCallback((tagId: string, event: any) => {
+        const nativeEvent = event?.nativeEvent ?? {};
+        const triggerBounds = typeof event?.currentTarget?.getBoundingClientRect === 'function'
+            ? event.currentTarget.getBoundingClientRect()
+            : null;
+        setTagActionsAnchor({
+            tagId,
+            x: triggerBounds?.right ?? nativeEvent.pageX ?? nativeEvent.clientX ?? 0,
+            y: triggerBounds?.bottom ?? nativeEvent.pageY ?? nativeEvent.clientY ?? 0,
+        });
+    }, []);
 
     const rows = React.useMemo<SidebarVirtualRow[]>(() => {
         const next: SidebarVirtualRow[] = [];
@@ -648,37 +702,26 @@ function SidebarListsView() {
                 session,
             }));
         }
-        if (selectedTagId) {
-            const tag = organization.tags.find((item) => item.id === selectedTagId);
-            next.push({ key: 'filtered-header', type: 'filtered-header', tagName: tag?.name ?? '' });
-            const filteredSessions = sessionIndex.byTagId.get(selectedTagId) ?? [];
-            if (filteredSessions.length > 0) {
-                filteredSessions.forEach((session) => next.push({ key: `filtered-${session.id}`, type: 'session', session, nested: false }));
+        next.push({ key: 'lists-section', type: 'section', section: 'lists' });
+        for (const list of organization.lists) {
+            next.push({ key: `list-${list.id}`, type: 'list', list });
+            if (!isSidebarGroupExpanded(sidebarGroupExpansion, 'lists', list.id, false)) continue;
+            next.push({ key: `new-session-${list.id}`, type: 'new-session', list });
+            const listSessions = sessionIndex.byListId.get(list.id) ?? [];
+            if (listSessions.length > 0) {
+                listSessions.forEach((session) => next.push({ key: `list-${list.id}-${session.id}`, type: 'session', session, nested: true }));
             } else {
-                next.push({ key: 'filtered-empty', type: 'empty', label: t('sidebarLists.noTaggedSessions'), nested: false });
+                next.push({ key: `empty-${list.id}`, type: 'empty', label: t('sidebarLists.emptyList'), nested: true });
             }
-        } else {
-            next.push({ key: 'lists-section', type: 'section', section: 'lists' });
-            for (const list of organization.lists) {
-                next.push({ key: `list-${list.id}`, type: 'list', list });
-                if (!isSidebarGroupExpanded(sidebarGroupExpansion, 'lists', list.id, false)) continue;
-                next.push({ key: `new-session-${list.id}`, type: 'new-session', list });
-                const listSessions = sessionIndex.byListId.get(list.id) ?? [];
-                if (listSessions.length > 0) {
-                    listSessions.forEach((session) => next.push({ key: `list-${list.id}-${session.id}`, type: 'session', session, nested: true }));
-                } else {
-                    next.push({ key: `empty-${list.id}`, type: 'empty', label: t('sidebarLists.emptyList'), nested: true });
-                }
-            }
-            next.push({ key: 'unassigned', type: 'unassigned' });
-            if (isSidebarGroupExpanded(sidebarGroupExpansion, 'lists', 'unassigned', false)) {
-                sessionIndex.unassigned.forEach((session) => next.push({ key: `unassigned-${session.id}`, type: 'session', session, nested: true }));
-            }
+        }
+        next.push({ key: 'unassigned', type: 'unassigned' });
+        if (isSidebarGroupExpanded(sidebarGroupExpansion, 'lists', 'unassigned', false)) {
+            sessionIndex.unassigned.forEach((session) => next.push({ key: `unassigned-${session.id}`, type: 'session', session, nested: true }));
         }
         next.push({ key: 'tags-section', type: 'section', section: 'tags' });
         next.push({ key: 'tags', type: 'tags' });
         return next;
-    }, [organization.lists, organization.tags, partitionedSessions.pinned, selectedTagId, sessionIndex, sidebarGroupExpansion]);
+    }, [organization.lists, partitionedSessions.pinned, sessionIndex, sidebarGroupExpansion]);
 
     const renderRow = React.useCallback(({ item }: { item: SidebarVirtualRow }) => {
         if (item.type === 'section') {
@@ -714,16 +757,6 @@ function SidebarListsView() {
                     selected={selectedSessionId === item.session.id}
                     showLocation
                 />
-            );
-        }
-        if (item.type === 'filtered-header') {
-            return (
-                <View style={styles.filteredHeader}>
-                    <Text style={styles.filteredTitle} numberOfLines={1}>#{item.tagName}</Text>
-                    <Pressable accessibilityLabel={t('sidebarLists.close')} accessibilityRole="button" onPress={() => setSelectedTagId(null)} style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]} testID="sidebar-close-tag-filter">
-                        <Feather color={theme.colors.textSecondary} name="x" size={16} />
-                    </Pressable>
-                </View>
             );
         }
         if (item.type === 'list') {
@@ -817,18 +850,38 @@ function SidebarListsView() {
             <View style={styles.tags}>
                 {organization.tags.map((tag) => {
                     const selected = tag.id === selectedTagId;
-                    const count = sessionIndex.byTagId.get(tag.id)?.length ?? 0;
+                    const count = tagAssociationCounts.get(tag.id) ?? 0;
                     return (
-                        <Pressable aria-selected={selected} accessibilityRole="button" accessibilityState={{ selected }} key={tag.id} onPress={() => setSelectedTagId(selected ? null : tag.id)} style={({ pressed }) => [styles.tag, selected && styles.tagSelected, pressed && styles.tagSelected]} testID={`sidebar-tag-${tag.id}`}>
+                        <View key={tag.id} style={[styles.tagRow, selected && styles.tagRowSelected]} testID={`sidebar-tag-row-${tag.id}`}>
+                            <Pressable
+                                aria-selected={selected}
+                                accessibilityRole="button"
+                                accessibilityState={{ selected }}
+                                onPress={() => { setTagActionsAnchor(null); setSelectedTagId(tag.id); }}
+                                style={({ pressed }) => [styles.tagRowMain, pressed && styles.tagRowPressed]}
+                                testID={`sidebar-tag-${tag.id}`}
+                            >
+                                <Feather color={theme.colors.textSecondary} name="tag" size={15} />
+                                <Text numberOfLines={1} style={styles.tagText}>{tag.name}</Text>
+                            </Pressable>
                             <View style={[styles.tagDot, { backgroundColor: listColors[tag.color] }]} />
-                            <Text style={styles.tagText}>{tag.name} {count}</Text>
-                        </Pressable>
+                            <Text style={styles.tagCount} testID={`sidebar-tag-count-${tag.id}`}>{count}</Text>
+                            <Pressable
+                                accessibilityLabel={`${t('sidebarLists.tagActions')} ${tag.name}`}
+                                accessibilityRole="button"
+                                onPress={(event) => openTagActions(tag.id, event)}
+                                style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
+                                testID={`sidebar-tag-menu-${tag.id}`}
+                            >
+                                <Feather color={theme.colors.textSecondary} name="more-horizontal" size={16} />
+                            </Pressable>
+                        </View>
                     );
                 })}
                 {organization.tags.length === 0 ? <Text style={styles.empty}>{t('sidebarLists.noTags')}</Text> : null}
             </View>
         );
-    }, [addTag, changeDropTarget, createSession, deleteList, draggedListId, draggedSessionId, dropFeedback, dropOntoList, finishSidebarDrag, leaveDropTarget, listColors, openCreate, openEdit, openOrganizer, openSession, organization.lists.length, organization.sessions, organization.tags, selectedSessionId, selectedTagId, sessionIndex, sessionManagement.moveToPinned, sidebarGroupExpansion, startListDrag, startSessionDrag, styles, theme.colors]);
+    }, [addTag, changeDropTarget, createSession, deleteList, draggedListId, draggedSessionId, dropFeedback, dropOntoList, finishSidebarDrag, leaveDropTarget, listColors, openCreate, openEdit, openOrganizer, openSession, openTagActions, organization.lists.length, organization.sessions, organization.tags, selectedSessionId, selectedTagId, sessionIndex, sessionManagement.moveToPinned, sidebarGroupExpansion, startListDrag, startSessionDrag, styles, tagAssociationCounts, theme.colors]);
 
     return (
         <View style={styles.container} testID="sidebar-lists-view">
@@ -869,6 +922,26 @@ function SidebarListsView() {
                     visible
                 />
             ) : null}
+            <DesktopTagActionsPopover
+                anchor={tagActionsAnchor}
+                onClose={() => setTagActionsAnchor(null)}
+                onDelete={(tag) => {
+                    setTagActionsAnchor(null);
+                    void deleteTag(tag);
+                }}
+                tag={tagActionsTag}
+            />
+            <DesktopTagDetailDialog
+                groups={selectedTagGroups}
+                hideArchived={tagDetailsHideArchived}
+                listColors={listColors}
+                onClose={() => setSelectedTagId(null)}
+                onDelete={(tag) => void deleteTag(tag)}
+                onHideArchivedChange={setTagDetailsHideArchived}
+                selectedSessionId={selectedSessionId}
+                sessionCount={selectedTagId ? tagAssociationCounts.get(selectedTagId) ?? 0 : 0}
+                tag={selectedTag}
+            />
         </View>
     );
 }

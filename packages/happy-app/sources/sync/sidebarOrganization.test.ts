@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
     buildSidebarSessionIndex,
+    buildSidebarTagSessionGroups,
     mergeSidebarOrganizations,
     moveSidebarSessionToList,
     normalizeSidebarTagName,
@@ -115,6 +116,25 @@ describe('sidebar organization model', () => {
         });
     });
 
+    it('removes only the selected Tag reference and preserves future assignment metadata', () => {
+        const withFutureMetadata = {
+            ...organization,
+            sessions: {
+                'session-1': {
+                    listId: 'workspace',
+                    tagIds: ['product', 'research'],
+                    futureMetadata: { retained: true },
+                },
+            },
+        } as SidebarOrganization;
+
+        expect(removeSidebarTag(withFutureMetadata, 'product').sessions['session-1']).toEqual({
+            listId: 'workspace',
+            tagIds: ['research'],
+            futureMetadata: { retained: true },
+        });
+    });
+
     it('drops references to records that do not exist', () => {
         expect(normalizeSidebarOrganization({
             ...organization,
@@ -139,6 +159,59 @@ describe('sidebar organization model', () => {
         expect(index.unassigned).toHaveLength(30);
         expect(index.byTagId.get('product')).toHaveLength(50);
         expect(index.byTagId.get('research')).toHaveLength(50);
+    });
+
+    it('groups tagged sessions by stored List order and puts missing Lists in Unassigned', () => {
+        const groups = buildSidebarTagSessionGroups([
+            { id: 'session-unassigned' },
+            { id: 'session-happy' },
+            { id: 'session-other-tag' },
+            { id: 'session-missing-list' },
+        ], {
+            ...organization,
+            sessions: {
+                'session-unassigned': { listId: null, tagIds: ['product'] },
+                'session-happy': { listId: 'workspace', tagIds: ['product'] },
+                'session-other-tag': { listId: 'advisor', tagIds: ['research'] },
+                'session-missing-list': { listId: 'missing', tagIds: ['product'] },
+            },
+        }, 'product');
+
+        expect(groups.map((group) => ({
+            id: group.id,
+            kind: group.kind,
+            listName: group.list?.name ?? null,
+            sessionIds: group.sessions.map((session) => session.id),
+        }))).toEqual([
+            { id: 'workspace', kind: 'list', listName: 'Happy', sessionIds: ['session-happy'] },
+            { id: 'unassigned', kind: 'unassigned', listName: null, sessionIds: ['session-unassigned', 'session-missing-list'] },
+        ]);
+    });
+
+    it('removes archived tagged sessions from their Lists and collects them in one final group', () => {
+        const groups = buildSidebarTagSessionGroups([
+            { id: 'active-happy', archived: false },
+            { id: 'archived-happy', archived: true },
+            { id: 'archived-unassigned', archived: true },
+            { id: 'archived-other-tag', archived: true },
+        ], {
+            ...organization,
+            sessions: {
+                'active-happy': { listId: 'workspace', tagIds: ['product'] },
+                'archived-happy': { listId: 'workspace', tagIds: ['product'] },
+                'archived-unassigned': { listId: null, tagIds: ['product'] },
+                'archived-other-tag': { listId: 'advisor', tagIds: ['research'] },
+            },
+        }, 'product');
+
+        expect(groups.map((group) => ({
+            id: group.id,
+            kind: group.kind,
+            sessionIds: group.sessions.map((session) => session.id),
+        }))).toEqual([
+            { id: 'workspace', kind: 'list', sessionIds: ['active-happy'] },
+            { id: 'archived', kind: 'archived', sessionIds: ['archived-happy', 'archived-unassigned'] },
+        ]);
     });
 
     it('three-way merges concurrent additions from different clients without losing data', () => {

@@ -1199,6 +1199,8 @@ export const en: TranslationStructure = {
         belongsToList: 'List', tagsMultiSelect: 'Tags (select multiple)', selectedTags: 'Selected Tags', tagInputPlaceholder: 'Type # to search or create a Tag',
         createTagNamed: ({ name }: { name: string }) => `Create ${name}`, tagLimitReached: 'Tag limit reached', close: 'Close', editList: 'Edit list', deleteList: 'Delete list',
         deleteListConfirm: ({ name }: { name: string }) => `Deleting the list "${name}" will move its sessions back to Unassigned. Tags will not be affected.`,
+        tagActions: 'Tag actions', groupedByList: 'Grouped by list', tagDetailsMeta: ({ sessionCount, listCount }: { sessionCount: number; listCount: number }) => `${sessionCount} sessions · ${listCount} lists`, archived: 'Archived', showArchived: 'Show archived', hideArchived: 'Hide archived', archivedSessionsHidden: 'Archived sessions are hidden.', tagSessionsNotLoaded: 'Linked historical sessions have not loaded yet.', tagSessionsPartiallyLoaded: ({ loadedCount, sessionCount }: { loadedCount: number; sessionCount: number }) => `Showing ${loadedCount} loaded sessions out of ${sessionCount} linked sessions.`, deleteTag: 'Delete tag',
+        deleteTagConfirm: ({ name }: { name: string }) => `Deleting the tag "${name}" removes it from every session, but does not delete any sessions.`,
         colors: { blue: 'Blue', green: 'Green', purple: 'Purple', orange: 'Orange', pink: 'Pink' },
     },
     sessionSearch: {

@@ -130,6 +130,8 @@ beforeEach(() => {
     subject.sessionHydrations?.clear();
     subject.sessionEventCursors?.clear();
     subject.pendingOutbox.clear();
+    subject.pendingSettings = {};
+    subject.pendingSidebarOrganizationBase = null;
     subject.sessionMessageLoadGate = new SessionMessageLoadGate();
     subject.sessionMessageRetention = new SessionMessageRetention(3);
     subject.sessionMessageFrontiers.clear();
@@ -416,6 +418,30 @@ describe('real session writer composition', () => {
         sync.removeSessionLocally('writer-session');
         expect(invalidated).toHaveBeenCalledWith({ scope: 'https://test|account', sessionId: 'writer-session', kind: 'session-deleted' });
         unsubscribe();
+    });
+
+    it('removes the deleted session from synced List and Tag assignments', async () => {
+        vi.spyOn(subject.settingsSync, 'invalidate').mockImplementation(() => undefined);
+        const settings = storage.getState().settings;
+        storage.setState({
+            settings: {
+                ...settings,
+                sidebarOrganization: {
+                    lists: [],
+                    tags: [{ id: 'product', name: 'product', color: 'green', createdAt: 1 }],
+                    sessions: {
+                        'writer-session': { listId: null, tagIds: ['product'] },
+                        'kept-session': { listId: null, tagIds: ['product'] },
+                    },
+                },
+            },
+        });
+
+        sync.removeSessionLocally('writer-session');
+
+        expect(storage.getState().settings.sidebarOrganization.sessions).toEqual({
+            'kept-session': { listId: null, tagIds: ['product'] },
+        });
     });
 
     it('an explicit latest jump waits out an older load, then actually selects latest', async () => {

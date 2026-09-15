@@ -15,6 +15,7 @@ vi.hoisted(() => {
 
 const { apiSocket, fetchSessionSnapshot, hydrateSessionSnapshots, reconcileSessionHistory, storage, storageState } = vi.hoisted(() => {
     const storageState = {
+        settings: { sidebarOrganization: { lists: [], tags: [], sessions: {} } },
         sessions: {} as Record<string, HydratedSession>,
         sessionMessages: {} as Record<string, unknown>,
         getActiveSessions: () => [],

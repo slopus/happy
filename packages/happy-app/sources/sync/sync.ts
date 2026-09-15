@@ -44,7 +44,14 @@ import {
     savePendingSettings,
     savePendingSidebarOrganizationBase,
 } from './persistence';
-import { emptySidebarOrganization, isSidebarOrganizationEmpty, isUsableSidebarOrganizationPayload, isValidSidebarOrganizationPayload, mergeSidebarOrganizations } from './sidebarOrganization';
+import {
+    emptySidebarOrganization,
+    isSidebarOrganizationEmpty,
+    isUsableSidebarOrganizationPayload,
+    isValidSidebarOrganizationPayload,
+    mergeSidebarOrganizations,
+    removeSidebarSession,
+} from './sidebarOrganization';
 import {
     initializeTracking,
     trackGitHubConnected,
@@ -5037,6 +5044,9 @@ class Sync {
         if (!this.localHistory && this.sessionWarmCacheAccountKey) invalidateLocalHistorySession(this.sessionWarmCacheAccountKey, sessionId);
         const deletionMutationGeneration = ++this.sessionMutationGeneration;
         this.sessionDeletionMutationGenerations.set(sessionId, deletionMutationGeneration);
+        const organization = storage.getState().settings.sidebarOrganization;
+        const nextOrganization = removeSidebarSession(organization, sessionId);
+        if (nextOrganization !== organization) this.applySettings({ sidebarOrganization: nextOrganization });
         storage.getState().deleteSession(sessionId);
         if (this.sessionWarmCacheAccountKey) removeSessionFromWarmCache(this.sessionWarmCacheAccountKey, sessionId);
         this.clearSessionRuntimeState(sessionId);

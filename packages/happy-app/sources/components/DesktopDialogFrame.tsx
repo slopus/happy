@@ -6,23 +6,44 @@ import { Text } from '@/components/StyledText';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
 
-export function DesktopDialogFrame({ children, onClose, title, visible }: {
+export function DesktopDialogFrame({ children, headerActions, maxWidth = 520, onClose, testID, title, visible }: {
     children: React.ReactNode;
+    headerActions?: React.ReactNode;
+    maxWidth?: number;
     onClose: () => void;
+    testID?: string;
     title: string;
     visible: boolean;
 }) {
     const { theme } = useUnistyles();
+    const closeButtonRef = React.useRef<any>(null);
     return (
-        <Modal animationType="fade" onRequestClose={onClose} transparent visible={visible}>
+        <Modal
+            accessibilityLabel={title}
+            animationType="fade"
+            onRequestClose={onClose}
+            onShow={() => closeButtonRef.current?.focus?.()}
+            transparent
+            visible={visible}
+        >
             <View style={styles.modalRoot}>
-                <Pressable accessibilityElementsHidden onPress={onClose} style={styles.modalBackdrop} />
-                <View accessibilityViewIsModal style={styles.dialog}>
+                <View
+                    accessible={false}
+                    importantForAccessibility="no-hide-descendants"
+                    onResponderRelease={onClose}
+                    onStartShouldSetResponder={() => true}
+                    style={styles.modalBackdrop}
+                    testID="desktop-dialog-backdrop"
+                />
+                <View accessibilityViewIsModal style={[styles.dialog, { maxWidth }]} testID={testID}>
                     <View style={styles.dialogHeader}>
                         <Text style={styles.dialogTitle}>{title}</Text>
+                        {headerActions}
                         <Pressable
                             accessibilityLabel={t('sidebarLists.close')}
+                            accessibilityRole="button"
                             onPress={onClose}
+                            ref={closeButtonRef}
                             style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
                         >
                             <Feather color={theme.colors.textSecondary} name="x" size={18} />
@@ -44,7 +65,6 @@ const styles = StyleSheet.create((theme) => ({
         borderRadius: 8,
         borderWidth: StyleSheet.hairlineWidth,
         maxHeight: '86%',
-        maxWidth: 520,
         overflow: 'hidden',
         shadowColor: theme.colors.shadow.color,
         shadowOffset: { width: 0, height: 10 },
