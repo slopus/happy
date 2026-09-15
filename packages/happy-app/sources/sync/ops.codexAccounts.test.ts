@@ -76,7 +76,7 @@ describe('transparent Codex grants', () => {
         expect(requests).toHaveLength(0);
     });
 
-    it.each(['codex-account-unbound', 'codex-account-unavailable', 'profile-not-found'])('blocks RPC on %s and keeps safe machine/RPC context', async (error) => {
+    it.each(['codex-account-unavailable', 'profile-not-found'])('blocks RPC on bound-account error %s and keeps safe machine/RPC context', async (error) => {
         vi.stubGlobal('fetch', async () => new Response(JSON.stringify({ error, auth: 'must-not-escape' }), { status: 409 }));
         for (const result of [
             await machineSpawnNewSession({ machineId: 'm1', directory: '/repo', agent: 'codex' }),
@@ -89,12 +89,19 @@ describe('transparent Codex grants', () => {
         expect(machineRPC).not.toHaveBeenCalled();
     });
 
-    it('blocks signed-out Codex starts before network or RPC', async () => {
+    it('uses local machine Codex when no account is bound', async () => {
+        vi.stubGlobal('fetch', async () => new Response(JSON.stringify({ error: 'codex-account-unbound' }), { status: 409 }));
+        const result = await machineSpawnNewSession({ machineId: 'm1', directory: '/repo', agent: 'codex' });
+        expect(result).toEqual({ type: 'success', sessionId: 'paws-new' });
+        expect(machineRPC).toHaveBeenCalledWith('m1', 'spawn-happy-session', expect.not.objectContaining({ codexSessionGrant: expect.anything() }), expect.anything());
+    });
+
+    it('uses local machine Codex when the app is signed out', async () => {
         getCredentials.mockResolvedValue(null);
         expect(await machineSpawnNewSession({ machineId: 'm1', directory: '/repo', agent: 'codex' }))
-            .toMatchObject({ type: 'error', errorMessage: expect.stringMatching(/sign in/i) });
+            .toEqual({ type: 'success', sessionId: 'paws-new' });
         expect(requests).toHaveLength(0);
-        expect(machineRPC).not.toHaveBeenCalled();
+        expect(machineRPC).toHaveBeenCalledWith('m1', 'spawn-happy-session', expect.not.objectContaining({ codexSessionGrant: expect.anything() }), expect.anything());
     });
 
     it.each(['throw', 'envelope'])('redacts the one-time grant from %s RPC errors', async (mode) => {

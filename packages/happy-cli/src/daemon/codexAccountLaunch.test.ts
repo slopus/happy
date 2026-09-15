@@ -105,9 +105,16 @@ describe('Codex account launch lifecycle', () => {
     await expect(stat(launched!.home)).rejects.toThrow();
     expect(await readFile(join(sourceHome, 'auth.json'), 'utf8')).toBe('global');
   });
-  it.each(['regular', 'tmux'] as const)('fails closed before %s spawn for absent, malformed and rejected grants', async () => {
+  it('uses the machine local Codex login when no account binding grant is supplied', async () => {
+    const a = api(); const spawn = vi.fn(async () => ({ type: 'success' as const, sessionId: 'local-session' }));
+    const result = await withCodexAccountLaunch({ agent: 'codex' }, a, 'machine-1', spawn);
+    expect(result).toEqual({ type: 'success', sessionId: 'local-session' });
+    expect(spawn).toHaveBeenCalledWith(undefined);
+    expect(a.redeemCodexSessionGrant).not.toHaveBeenCalled();
+  });
+  it.each(['regular', 'tmux'] as const)('fails closed before %s spawn for malformed and rejected grants', async () => {
     const a = api(); const spawn = vi.fn();
-    for (const grant of [undefined, '', 'bad']) {
+    for (const grant of ['', 'bad']) {
       expect((await withCodexAccountLaunch({ agent: 'codex', codexSessionGrant: grant, token: 'legacy-secret' }, a, 'machine-1', spawn)).type).toBe('error');
     }
     a.redeemCodexSessionGrant.mockRejectedValue(new Error('secret-canary'));
