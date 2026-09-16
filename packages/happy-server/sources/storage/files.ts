@@ -90,6 +90,26 @@ export async function deleteSessionAttachments(sessionId: string): Promise<void>
     }
 }
 
+/** Retired avatar uploads live until session deletion, like its attachments. */
+export async function deleteSessionAvatars(sessionId: string): Promise<void> {
+    if (!/^[a-zA-Z0-9_-]+$/.test(sessionId)) throw new Error('Invalid session identifier');
+    const prefix = `sessions/${sessionId}/avatar/`;
+    if (useLocalStorage) {
+        await fs.promises.rm(path.join(localFilesDir, prefix), { recursive: true, force: true });
+        return;
+    }
+    const stream = s3client.listObjects(s3bucket, prefix, true);
+    let keys: string[] = [];
+    for await (const object of stream) {
+        if (typeof object.name === 'string' && object.name.startsWith(prefix)) keys.push(object.name);
+        if (keys.length >= 100) {
+            await s3client.removeObjects(s3bucket, keys);
+            keys = [];
+        }
+    }
+    if (keys.length) await s3client.removeObjects(s3bucket, keys);
+}
+
 /**
  * Delete all avatar blobs for a project. Avatar refs are deliberately kept
  * outside the database: the encrypted bytes are opaque and the active ref is

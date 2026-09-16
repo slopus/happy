@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { Server } from 'socket.io';
-import { eventRouter } from './eventRouter';
+import { eventRouter, buildNewSessionUpdate, buildUpdateSessionUpdate } from './eventRouter';
 
 // hasActiveUiClient only touches `io.in(room).timeout(ms).fetchSockets()`, so a
 // tiny stub is enough — it ignores the room and returns the provided sockets.
@@ -15,6 +15,25 @@ function socket(clientType: string | undefined, appState?: string): { data: Reco
     if (appState !== undefined) data.appState = appState;
     return { data };
 }
+
+describe('session avatar events', () => {
+    it('projects artwork on creation and distinguishes omitted updates from removal', () => {
+        const avatar = { ref: 'sessions/s1/avatar/a.enc', preview: 'ciphertext', version: 1 };
+        const event = buildNewSessionUpdate({
+            id: 's1', seq: 0, metadata: 'opaque', metadataVersion: 1,
+            agentState: null, agentStateVersion: 0, dataEncryptionKey: null,
+            projectId: null, active: false, lastActiveAt: new Date(0),
+            createdAt: new Date(0), updatedAt: new Date(0),
+            avatarRef: avatar.ref, avatarPreview: avatar.preview, avatarVersion: avatar.version,
+        }, 1, 'u1');
+        expect(event.body.avatar).toEqual(avatar);
+        expect(buildUpdateSessionUpdate('s1', 2, 'u2').body).not.toHaveProperty('avatar');
+        expect(buildUpdateSessionUpdate('s1', 3, 'u3', undefined, undefined, undefined, avatar).body.avatar).toEqual(avatar);
+        expect(buildUpdateSessionUpdate('s1', 4, 'u4', undefined, undefined, undefined, null).body.avatar).toBeNull();
+        expect(buildUpdateSessionUpdate('s1', 5, 'u5', undefined, undefined, undefined, null, 2).body).toMatchObject({ avatar: null, avatarVersion: 2 });
+        expect(event.body.avatarVersion).toBe(1);
+    });
+});
 
 describe('EventRouter.hasActiveUiClient', () => {
     it('counts a foreground UI client as present', async () => {

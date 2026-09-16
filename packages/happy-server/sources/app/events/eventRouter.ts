@@ -4,6 +4,7 @@ import { GitHubProfile } from "@/app/api/types";
 import { AccountProfile } from "@/types";
 import { getPublicUrl } from "@/storage/files";
 import type { SessionMessageContent } from "@slopus/happy-wire";
+import { sessionAvatar, type SessionAvatar } from '@/app/session/sessionAvatar';
 
 /**
  * Cross-replica presence lookups must stay well inside the CLI's 15s push
@@ -365,6 +366,9 @@ export const eventRouter = new EventRouter();
 
 export function buildNewSessionUpdate(session: {
     id: string;
+    avatarRef?: string | null;
+    avatarPreview?: string | null;
+    avatarVersion?: number;
     seq: number;
     metadata: string;
     metadataVersion: number;
@@ -390,6 +394,8 @@ export function buildNewSessionUpdate(session: {
             agentStateVersion: session.agentStateVersion,
             dataEncryptionKey: session.dataEncryptionKey ? Buffer.from(session.dataEncryptionKey).toString('base64') : null,
             projectId: session.projectId,
+            avatar: sessionAvatar(session),
+            avatarVersion: session.avatarVersion ?? 0,
             active: session.active,
             activeAt: session.lastActiveAt.getTime(),
             createdAt: session.createdAt.getTime(),
@@ -462,7 +468,7 @@ export function buildNewMessageUpdate(message: {
     };
 }
 
-export function buildUpdateSessionUpdate(sessionId: string, updateSeq: number, updateId: string, metadata?: { value: string; version: number }, agentState?: { value: string; version: number }, projectId?: string | null): UpdatePayload {
+export function buildUpdateSessionUpdate(sessionId: string, updateSeq: number, updateId: string, metadata?: { value: string; version: number }, agentState?: { value: string; version: number }, projectId?: string | null, avatar?: SessionAvatar | null, avatarVersion?: number): UpdatePayload {
     return {
         id: updateId,
         seq: updateSeq,
@@ -471,6 +477,8 @@ export function buildUpdateSessionUpdate(sessionId: string, updateSeq: number, u
             id: sessionId,
             metadata,
             agentState,
+            ...(avatar !== undefined ? { avatar } : {}),
+            ...(avatarVersion !== undefined ? { avatarVersion } : {}),
             ...(projectId !== undefined ? { projectId } : {})
         },
         createdAt: Date.now()

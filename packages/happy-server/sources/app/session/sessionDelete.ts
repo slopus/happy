@@ -4,7 +4,7 @@ import { eventRouter, buildDeleteSessionUpdate } from "@/app/events/eventRouter"
 import { allocateUserSeq } from "@/storage/seq";
 import { randomKeyNaked } from "@/utils/randomKeyNaked";
 import { log } from "@/utils/log";
-import { deleteSessionAttachments } from "@/storage/files";
+import { deleteSessionAttachments, deleteSessionAvatars } from "@/storage/files";
 
 /**
  * Delete a session and all its related data.
@@ -104,6 +104,11 @@ export async function sessionDelete(ctx: Context, sessionId: string): Promise<bo
             });
 
             // Delete attachment blobs (local dir or S3 prefix)
+            try {
+                await deleteSessionAvatars(sessionId);
+            } catch (err) {
+                log({ module: 'session-delete', userId: ctx.uid, sessionId, err }, 'Failed to delete session avatars (non-fatal)');
+            }
             try {
                 await deleteSessionAttachments(sessionId);
                 log({ module: 'session-delete', userId: ctx.uid, sessionId }, `Attachment blobs deleted`);
