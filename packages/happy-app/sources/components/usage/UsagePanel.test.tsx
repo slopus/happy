@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
     credentials: { token: 'test' } as { token: string } | null,
     currentMachineId: null as string | null,
     currentCodexProfileId: null as string | null,
+    extraSessions: {} as Record<string, { metadata: { machineId: string } }>,
     getUsageForPeriod: vi.fn(),
     language: 'en',
     machineRPC: vi.fn(),
@@ -70,9 +71,9 @@ vi.mock('@/auth/AuthContext', () => ({
 vi.mock('@/sync/storage', () => ({
     storage: (selector: (state: unknown) => unknown) => selector({
         currentViewingSessionId: mocks.currentMachineId ? 'current-session' : null,
-        sessions: mocks.currentMachineId ? {
+        sessions: { ...mocks.extraSessions, ...(mocks.currentMachineId ? {
             'current-session': { metadata: { machineId: mocks.currentMachineId, codexAccountProfileId: mocks.currentCodexProfileId } },
-        } : {},
+        } : {}) },
     }),
     useAllMachines: () => mocks.machines,
 }));
@@ -138,6 +139,7 @@ describe('UsagePanel', () => {
     beforeEach(() => {
         mocks.credentials = { token: 'test' };
         mocks.currentMachineId = null;
+        mocks.extraSessions = {};
         mocks.currentCodexProfileId = null;
         mocks.language = 'en';
         mocks.machines = [];
@@ -168,9 +170,9 @@ describe('UsagePanel', () => {
             .filter((node: any) => node.props.accessibilityRole === 'tab');
         const texts = renderer.root.findAllByType('Text').map(textValue);
 
-        expect(tablists).toHaveLength(1);
-        expect(tabs).toHaveLength(1);
-        expect(texts).toContain('machine.codexUsageWaitingForDaemon');
+        expect(tablists).toHaveLength(0);
+        expect(tabs).toHaveLength(0);
+        expect(texts).toContain('codexAccounts.quotaUnknown');
         expect(texts).not.toContain('usage.noData');
 
         act(() => renderer.unmount());
@@ -196,13 +198,13 @@ describe('UsagePanel', () => {
         const renderer = await renderUsagePanel();
         const texts = renderer.root.findAllByType('Text').map(textValue);
 
-        expect(texts).toContain('51%');
+        expect(texts).not.toContain('51%');
         expect(renderer.root.findAllByType('ActivityIndicator')).toHaveLength(0);
 
         act(() => renderer.unmount());
     });
 
-    it('switches quota and activity between explicitly attributed Codex accounts', async () => {
+    it('switches account quota while preserving the current machine local activity', async () => {
         mocks.getUsageForPeriod.mockResolvedValue({ usage: [] });
         mocks.codexProfiles = [
             {
@@ -223,7 +225,9 @@ describe('UsagePanel', () => {
             totalTokens, tokenCountEvents: 1, sessions: 1, totalOnlyTokens: 0,
         });
         mocks.machines = [{
+            id: 'current-machine',
             daemonState: {
+                codexUsage: { source: 'codex-session-jsonl', scannedAt: Date.UTC(2026, 8, 14), days: [day('2026-09-14', 300)] },
                 codexAccountUsage: [
                     { profileId: mocks.codexProfiles[0].id, usage: { source: 'codex-session-jsonl', scannedAt: Date.UTC(2026, 8, 14), days: [day('2026-09-14', 100)] } },
                     { profileId: mocks.codexProfiles[1].id, usage: { source: 'codex-session-jsonl', scannedAt: Date.UTC(2026, 8, 14), days: [day('2026-09-14', 900)] } },
@@ -234,28 +238,28 @@ describe('UsagePanel', () => {
         const renderer = await renderUsagePanel();
         expect(renderer.root.findAllByType('Text').map(textValue)).toContain('98%');
 
-        const allAccounts = renderer.root.findByProps({ testID: 'codex-usage-scope-all' });
-        act(() => allAccounts.props.onPress());
-        expect(renderer.root.findAllByType('Text').map(textValue)).toContain('machine.codexUsageSelectAccount');
-
+        expect(renderer.root.findAllByProps({ testID: 'codex-usage-scope-all' })).toHaveLength(0);
+        expect(renderer.root.findAllByProps({ testID: 'codex-usage-scope-unattributed' })).toHaveLength(0);
+        const initialLabel = renderer.root.findByProps({ testID: 'codex-usage-day-2026-09-14' }).props.accessibilityLabel;
+        expect(initialLabel).toContain('"tokens":"300"');
         const firstAccount = renderer.root.findByProps({ testID: `codex-usage-scope-${mocks.codexProfiles[0].id}` });
         act(() => firstAccount.props.onPress());
         let texts = renderer.root.findAllByType('Text').map(textValue);
         expect(texts).toContain('77%');
         expect(texts).toContain('Codex · 5C7D');
-        expect(texts.some((value: string) => value.includes('"tokens":"100"'))).toBe(true);
+        expect(texts.some((value: string) => value.includes('"tokens":"300"'))).toBe(true);
 
         const secondAccount = renderer.root.findByProps({ testID: `codex-usage-scope-${mocks.codexProfiles[1].id}` });
         act(() => secondAccount.props.onPress());
         texts = renderer.root.findAllByType('Text').map(textValue);
         expect(texts).toContain('98%');
         expect(texts).toContain('Codex · 8A6C');
-        expect(texts.some((value: string) => value.includes('"tokens":"900"'))).toBe(true);
+        expect(texts.some((value: string) => value.includes('"tokens":"300"'))).toBe(true);
 
         act(() => renderer.unmount());
     });
 
-    it('never presents an unattributed quota as the combined All-accounts quota when profile metadata is unavailable', async () => {
+    it('shows only local activity and no log-derived quota when account metadata is unavailable', async () => {
         mocks.getUsageForPeriod.mockResolvedValue({ usage: [] });
         const day = (totalTokens: number) => ({
             date: '2026-09-14', inputTokens: totalTokens, cachedInputTokens: 0, outputTokens: 0, reasoningOutputTokens: 0,
@@ -275,13 +279,11 @@ describe('UsagePanel', () => {
         }];
 
         const renderer = await renderUsagePanel();
-        const allAccounts = renderer.root.findByProps({ testID: 'codex-usage-scope-all' });
-        act(() => allAccounts.props.onPress());
         const texts = renderer.root.findAllByType('Text').map(textValue);
 
         expect(texts).not.toContain('51%');
         expect(renderer.root.findByProps({ testID: 'codex-usage-day-2026-09-14' }).props.accessibilityLabel)
-            .toContain('"tokens":"400"');
+            .toContain('"tokens":"300"');
 
         act(() => renderer.unmount());
     });
@@ -295,18 +297,17 @@ describe('UsagePanel', () => {
         }];
 
         const renderer = await renderUsagePanel();
-        const allAccounts = renderer.root.findByProps({ testID: 'codex-usage-scope-all' });
         const selectedAccount = renderer.root.findByProps({ testID: `codex-usage-scope-${mocks.codexProfiles[0].id}` });
 
-        expect(typeof allAccounts.props.style).toBe('function');
-        expect(allAccounts.props.style({ pressed: false })).toContainEqual(expect.objectContaining({ backgroundColor: appThemes.ginghamDark.colors.surface }));
-        expect(allAccounts.props.style({ pressed: true })).toContainEqual(expect.objectContaining({ backgroundColor: appThemes.ginghamDark.colors.surfacePressed }));
+        expect(typeof selectedAccount.props.style).toBe('function');
+        expect(selectedAccount.props.style({ pressed: false })).toContainEqual(expect.objectContaining({ backgroundColor: appThemes.ginghamDark.colors.surface }));
+        expect(selectedAccount.props.style({ pressed: true })).toContainEqual(expect.objectContaining({ backgroundColor: appThemes.ginghamDark.colors.surfacePressed }));
         expect(selectedAccount.props.style({ pressed: false })).toContainEqual(expect.objectContaining({ backgroundColor: appThemes.ginghamDark.colors.surfaceSelected }));
 
         act(() => renderer.unmount());
     });
 
-    it('keeps legacy local sessions in an explicit unattributed scope', async () => {
+    it('keeps local history visible even when the selected account quota is unknown', async () => {
         mocks.getUsageForPeriod.mockResolvedValue({ usage: [] });
         mocks.codexProfiles = [{
             id: '00000000-0000-4000-8000-000000000001', displayName: 'Codex · 5C7D', status: 'available', credentialVersion: 1,
@@ -326,13 +327,62 @@ describe('UsagePanel', () => {
         }];
 
         const renderer = await renderUsagePanel();
-        const unattributed = renderer.root.findByProps({ testID: 'codex-usage-scope-unattributed' });
-        act(() => unattributed.props.onPress());
         const texts = renderer.root.findAllByType('Text').map(textValue);
 
-        expect(texts).toContain('machine.codexUsageUnattributedHint');
+        expect(texts).toContain('codexAccounts.quotaUnknown');
         expect(texts.some((value: string) => value.includes('"tokens":"300"'))).toBe(true);
 
+        act(() => renderer.unmount());
+    });
+
+    it.each([
+        ['current', 'current', true, '100'],
+        ['missing', 'missing', false, null],
+        ['ambiguous', null, true, null],
+    ] as const)('isolates local history with %s machine context', async (_, currentId, active, expected) => {
+        mocks.getUsageForPeriod.mockResolvedValue({ usage: [] });
+        mocks.currentMachineId = currentId;
+        mocks.machines = ['current', 'other'].map((id, index) => ({
+            id, active,
+            daemonState: { codexUsage: {
+                source: 'codex-session-jsonl', scannedAt: Date.UTC(2026, 8, 14),
+                days: [{ date: '2026-09-14', totalTokens: (index + 1) * 100, sessions: 1 }],
+            } },
+        }));
+        const renderer = await renderUsagePanel();
+        const cells = renderer.root.findAllByProps({ testID: 'codex-usage-day-2026-09-14' });
+        if (expected) {
+            expect(cells).toHaveLength(1);
+            expect(cells[0].props.accessibilityLabel).toContain(`"tokens":"${expected}"`);
+            expect(mocks.machineRPC).toHaveBeenCalledTimes(1);
+            expect(mocks.machineRPC.mock.calls[0][0]).toBe('current');
+        } else {
+            expect(cells).toHaveLength(0);
+            expect(mocks.machineRPC).not.toHaveBeenCalled();
+        }
+        act(() => renderer.unmount());
+    });
+
+    it('uses explicit session context and resets the selected day when changing machines', async () => {
+        mocks.getUsageForPeriod.mockResolvedValue({ usage: [] });
+        mocks.currentMachineId = 'current';
+        mocks.extraSessions = { explicit: { metadata: { machineId: 'other' } } };
+        mocks.machines = ['current', 'other'].map((id, index) => ({
+            id, active: true,
+            daemonState: { codexUsage: {
+                source: 'codex-session-jsonl', scannedAt: Date.UTC(2026, 8, 14),
+                days: [{ date: '2026-09-14', totalTokens: (index + 1) * 100, sessions: 1 }],
+            } },
+        }));
+        const renderer = await renderUsagePanel();
+        act(() => renderer.root.findByProps({ testID: 'codex-usage-day-2026-09-13' }).props.onPress());
+        mocks.machineRPC.mockClear();
+        await act(async () => renderer.update(<UsagePanel sessionId="explicit" />));
+        const day = renderer.root.findByProps({ testID: 'codex-usage-day-2026-09-14' });
+        expect(day.props.accessibilityLabel).toContain('"tokens":"200"');
+        expect(day.props.accessibilityState.selected).toBe(true);
+        expect(mocks.machineRPC).toHaveBeenCalledTimes(1);
+        expect(mocks.machineRPC.mock.calls[0][0]).toBe('other');
         act(() => renderer.unmount());
     });
 
@@ -420,7 +470,7 @@ describe('UsagePanel', () => {
         const renderer = await renderUsagePanel();
         const texts = renderer.root.findAllByType('Text').map(textValue);
 
-        expect(texts).toContain('51%');
+        expect(texts).not.toContain('51%');
         expect(texts).toContain('Failed to load usage data');
 
         act(() => renderer.unmount());
@@ -451,7 +501,7 @@ describe('UsagePanel', () => {
                 return text.includes('usage.tokens') || text.includes('usage.cost');
             });
 
-        expect(tablists).toHaveLength(3);
+        expect(tablists).toHaveLength(2);
         expect(metricTabs.map((node: any) => node.props['aria-selected'])).toEqual([true, false]);
 
         act(() => metricTabs[1].props.onPress());
@@ -477,196 +527,7 @@ describe('UsagePanel', () => {
         act(() => renderer.unmount());
     });
 
-    it('shows the Codex rate limit from the freshest usage event', async () => {
-        mocks.getUsageForPeriod.mockResolvedValue({ usage: [] });
-        mocks.machines = [
-            {
-                daemonState: {
-                    codexUsage: {
-                        source: 'codex-session-jsonl',
-                        scannedAt: 100,
-                        latestEvent: {
-                            timestamp: '2026-08-30T03:00:00.000Z',
-                            rateLimits: {
-                                planType: 'pro',
-                                primary: {
-                                    usedPercent: 83,
-                                    windowMinutes: 10080,
-                                    resetsAt: 1_788_452_692,
-                                },
-                            },
-                        },
-                    },
-                },
-            },
-            {
-                daemonState: {
-                    codexUsage: {
-                        source: 'codex-session-jsonl',
-                        scannedAt: 200,
-                        latestEvent: {
-                            timestamp: '2026-08-30T02:00:00.000Z',
-                            rateLimits: {
-                                planType: 'pro',
-                                primary: {
-                                    usedPercent: 49,
-                                    windowMinutes: 10080,
-                                    resetsAt: 1_788_452_692,
-                                },
-                            },
-                        },
-                    },
-                },
-            },
-        ];
-
-        const renderer = await renderUsagePanel();
-        const texts = renderer.root.findAllByType('Text').map(textValue);
-
-        expect(texts).toContain('17%');
-        expect(texts).toContain('PRO');
-        expect(texts.some((text: string) => text.startsWith('machine.codexUsageResetsAt:'))).toBe(true);
-
-        act(() => renderer.unmount());
-    });
-
-    it('uses the current viewing session machine quota instead of a newer quota from another machine', async () => {
-        mocks.getUsageForPeriod.mockResolvedValue({ usage: [] });
-        mocks.currentMachineId = 'current-machine';
-        mocks.machines = [
-            {
-                id: 'current-machine',
-                active: true,
-                activeAt: 100,
-                daemonState: {
-                    codexUsage: {
-                        source: 'codex-session-jsonl',
-                        scannedAt: 100,
-                        latestEvent: {
-                            timestamp: '2026-09-06T15:02:00.000Z',
-                            rateLimits: {
-                                planType: 'pro',
-                                primary: { usedPercent: 35, windowMinutes: 10080 },
-                            },
-                        },
-                    },
-                },
-            },
-            {
-                id: 'other-machine',
-                active: true,
-                activeAt: 200,
-                daemonState: {
-                    codexUsage: {
-                        source: 'codex-session-jsonl',
-                        scannedAt: 200,
-                        latestEvent: {
-                            timestamp: '2026-09-06T15:23:28.000Z',
-                            rateLimits: {
-                                planType: 'plus',
-                                primary: { usedPercent: 0, windowMinutes: 300 },
-                            },
-                        },
-                    },
-                },
-            },
-        ];
-
-        const renderer = await renderUsagePanel();
-        const texts = renderer.root.findAllByType('Text').map(textValue);
-
-        expect(texts).toContain('65%');
-        expect(texts).toContain('PRO');
-        expect(texts).not.toContain('100%');
-
-        act(() => renderer.unmount());
-    });
-
-    it('uses an older valid quota when the newest machine event has no rate limits', async () => {
-        mocks.getUsageForPeriod.mockResolvedValue({ usage: [] });
-        mocks.machines = [
-            {
-                daemonState: {
-                    codexUsage: {
-                        source: 'codex-session-jsonl',
-                        scannedAt: 300,
-                        latestEvent: { timestamp: '2026-08-30T04:00:00.000Z' },
-                    },
-                },
-            },
-            {
-                daemonState: {
-                    codexUsage: {
-                        source: 'codex-session-jsonl',
-                        scannedAt: 200,
-                        latestEvent: {
-                            timestamp: '2026-08-30T03:00:00.000Z',
-                            rateLimits: {
-                                planType: 'pro',
-                                primary: { usedPercent: 83, windowMinutes: 10080 },
-                            },
-                        },
-                    },
-                },
-            },
-        ];
-
-        const renderer = await renderUsagePanel();
-        const texts = renderer.root.findAllByType('Text').map(textValue);
-
-        expect(texts).toContain('17%');
-        expect(texts).toContain('PRO');
-
-        act(() => renderer.unmount());
-    });
-
-    it('compares the source timestamps of retained quotas across machines', async () => {
-        mocks.getUsageForPeriod.mockResolvedValue({ usage: [] });
-        mocks.machines = [
-            {
-                daemonState: {
-                    codexUsage: {
-                        source: 'codex-session-jsonl',
-                        scannedAt: 300,
-                        latestEvent: {
-                            timestamp: '2026-08-30T05:00:00.000Z',
-                            rateLimitsTimestamp: '2026-08-30T03:00:00.000Z',
-                            rateLimits: {
-                                planType: 'pro',
-                                primary: { usedPercent: 83, windowMinutes: 10080 },
-                            },
-                        },
-                    },
-                },
-            },
-            {
-                daemonState: {
-                    codexUsage: {
-                        source: 'codex-session-jsonl',
-                        scannedAt: 200,
-                        latestEvent: {
-                            timestamp: '2026-08-30T04:00:00.000Z',
-                            rateLimitsTimestamp: '2026-08-30T04:00:00.000Z',
-                            rateLimits: {
-                                planType: 'plus',
-                                primary: { usedPercent: 49, windowMinutes: 10080 },
-                            },
-                        },
-                    },
-                },
-            },
-        ];
-
-        const renderer = await renderUsagePanel();
-        const texts = renderer.root.findAllByType('Text').map(textValue);
-
-        expect(texts).toContain('51%');
-        expect(texts).toContain('PLUS');
-
-        act(() => renderer.unmount());
-    });
-
-    it('prioritizes the Codex balance and hides empty API usage metrics', async () => {
+    it('does not present a local log quota as an account balance', async () => {
         mocks.getUsageForPeriod.mockResolvedValue({ usage: [] });
         mocks.machines = [{
             daemonState: {
@@ -690,7 +551,7 @@ describe('UsagePanel', () => {
         const renderer = await renderUsagePanel();
         const texts = renderer.root.findAllByType('Text').map(textValue);
 
-        expect(texts).toContain('51%');
+        expect(texts).not.toContain('51%');
         expect(texts).not.toContain('usage.totalTokens');
         expect(texts).not.toContain('usage.noData');
 
@@ -1020,63 +881,6 @@ describe('UsagePanel', () => {
         });
 
         expect(opacities).toEqual([0.28, 0.5, 0.72, 1]);
-
-        act(() => renderer.unmount());
-    });
-
-    it('merges Codex activity from every machine without changing the freshest rate limit', async () => {
-        mocks.getUsageForPeriod.mockResolvedValue({ usage: [] });
-        const usageDay = (totalTokens: number, sessions: number) => ({
-            date: '2026-08-30',
-            inputTokens: totalTokens - 20,
-            cachedInputTokens: 10,
-            outputTokens: 20,
-            reasoningOutputTokens: 5,
-            totalTokens,
-            tokenCountEvents: sessions,
-            sessions,
-            totalOnlyTokens: 0,
-        });
-        mocks.machines = [
-            {
-                daemonState: {
-                    codexUsage: {
-                        source: 'codex-session-jsonl',
-                        scannedAt: Date.UTC(2026, 7, 30, 12),
-                        days: [usageDay(200, 2)],
-                        latestEvent: {
-                            timestamp: '2026-08-30T03:00:00.000Z',
-                            rateLimits: {
-                                planType: 'pro',
-                                primary: { usedPercent: 60, windowMinutes: 10080 },
-                            },
-                        },
-                    },
-                },
-            },
-            {
-                daemonState: {
-                    codexUsage: {
-                        source: 'codex-session-jsonl',
-                        scannedAt: Date.UTC(2026, 7, 30, 13),
-                        days: [usageDay(300, 3)],
-                        latestEvent: {
-                            timestamp: '2026-08-30T02:00:00.000Z',
-                            rateLimits: {
-                                planType: 'pro',
-                                primary: { usedPercent: 20, windowMinutes: 10080 },
-                            },
-                        },
-                    },
-                },
-            },
-        ];
-
-        const renderer = await renderUsagePanel();
-        const texts = renderer.root.findAllByType('Text').map(textValue);
-
-        expect(texts).toContain('40%');
-        expect(texts).toContain('machine.codexUsageHeatmapDay:{"date":"2026-08-30","tokens":"500","sessions":5}');
 
         act(() => renderer.unmount());
     });
