@@ -216,6 +216,8 @@ export const es: TranslationStructure = {
         flatList: 'Lista plana',
         groupByProject: 'Agrupar por proyecto',
         appearanceSettings: 'Configuración de apariencia',
+        searchPlaceholder: 'Buscar sesiones…',
+        noResultsPlaceholder: 'No se encontraron sesiones',
     },
 
     settingsFeatures: {

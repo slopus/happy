@@ -216,6 +216,8 @@ export const ca: TranslationStructure = {
         flatList: 'Llista plana',
         groupByProject: 'Agrupa per projecte',
         appearanceSettings: 'Configuració d\'aparença',
+        searchPlaceholder: 'Cerca sessions…',
+        noResultsPlaceholder: 'No s\'han trobat sessions',
     },
 
     settingsFeatures: {

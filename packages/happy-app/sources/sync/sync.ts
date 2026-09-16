@@ -16,6 +16,26 @@ import {
     getAttachmentDiagnostic,
 } from './attachmentDiagnostics';
 import { ApiEphemeralUpdateSchema, ApiMessage, ApiUpdateContainerSchema } from './apiTypes';
+
+// One session row as the /v1 and /v2 session list endpoints return it.
+type ApiSessionRow = {
+    id: string;
+    tag: string;
+    seq: number;
+    metadata: string;
+    metadataVersion: number;
+    agentState: string | null;
+    agentStateVersion: number;
+    dataEncryptionKey: string | null;
+    projectId?: string | null;
+    avatar?: unknown;
+    avatarVersion?: unknown;
+    active: boolean;
+    activeAt: number;
+    createdAt: number;
+    updatedAt: number;
+    lastMessage: ApiMessage | null;
+};
 import type { ApiEphemeralActivityUpdate } from './apiTypes';
 import { Session, Machine } from './storageTypes';
 import { InvalidateSync } from '@/utils/sync';
@@ -1221,7 +1241,6 @@ class Sync {
 
     private fetchSessions = async () => {
         if (!this.credentials) return;
-        const avatarsBeforeFetch = storage.getState().sessions;
 
         const API_ENDPOINT = getServerUrl();
         const response = await fetch(`${API_ENDPOINT}/v1/sessions`, {
@@ -1237,24 +1256,29 @@ class Sync {
         }
 
         const data = await response.json();
-        const sessions = data.sessions as Array<{
-            id: string;
-            tag: string;
-            seq: number;
-            metadata: string;
-            metadataVersion: number;
-            agentState: string | null;
-            agentStateVersion: number;
-            dataEncryptionKey: string | null;
-            projectId?: string | null;
-            avatar?: unknown;
-            avatarVersion?: unknown;
-            active: boolean;
-            activeAt: number;
-            createdAt: number;
-            updatedAt: number;
-            lastMessage: ApiMessage | null;
-        }>;
+        const sessions = data.sessions as ApiSessionRow[];
+        const decryptedSessions = await this.ingestSessions(sessions);
+
+        this.projectsSync.invalidate();
+        log.log(`📥 fetchSessions completed - processed ${decryptedSessions.length} sessions`);
+        // Machine-readable for scripts/perf-e2e.mjs, which deep-links through
+        // the most recent real sessions and reads [perf] timings off Metro.
+        const recent = [...decryptedSessions]
+            .sort((a, b) => b.updatedAt - a.updatedAt)
+            .slice(0, 12)
+            .map((s) => s.id);
+        console.log(`[perf] recent-sessions ${recent.join(',')}`);
+    }
+
+    /**
+     * Decrypts a batch of server session rows and merges them into the store.
+     * Shared by the boot fetch (150 most recent) and the on-demand history
+     * load behind the search box.
+     */
+    private ingestSessions = async (sessions: ApiSessionRow[]) => {
+        // Avatars already in the store when this batch started: an update that
+        // lands while we decrypt must win over the snapshot we are applying.
+        const avatarsBeforeFetch = storage.getState().sessions;
 
         // Initialize all session encryptions first
         const sessionKeys = new Map<string, Uint8Array | null>();
@@ -1335,15 +1359,51 @@ class Sync {
             thinking: s.active ? (current[s.id]?.thinking ?? false) : false,
             thinkingAt: s.active ? (current[s.id]?.thinkingAt ?? 0) : 0,
         })));
-        this.projectsSync.invalidate();
-        log.log(`📥 fetchSessions completed - processed ${decryptedSessions.length} sessions`);
-        // Machine-readable for scripts/perf-e2e.mjs, which deep-links through
-        // the most recent real sessions and reads [perf] timings off Metro.
-        const recent = [...decryptedSessions]
-            .sort((a, b) => b.updatedAt - a.updatedAt)
-            .slice(0, 12)
-            .map((s) => s.id);
-        console.log(`[perf] recent-sessions ${recent.join(',')}`);
+        return decryptedSessions;
+    }
+
+    // The boot fetch stops at the server's 150 most recent sessions, so the
+    // search box would silently miss everything older. Paging the rest costs
+    // one decrypt per session on the main thread, so it runs only when someone
+    // actually opens the search, and only once per app run: later opens see
+    // the already-merged store.
+    private allSessionsLoaded: Promise<void> | null = null;
+
+    public loadAllSessionsForSearch = (): Promise<void> => {
+        if (this.allSessionsLoaded) return this.allSessionsLoaded;
+        this.allSessionsLoaded = (async () => {
+            if (!this.credentials) return;
+            const API_ENDPOINT = getServerUrl();
+            const headers = {
+                'Authorization': `Bearer ${this.credentials.token}`,
+                'Content-Type': 'application/json',
+                'X-Happy-Client': getHappyClientId(),
+            };
+            let cursor: string | null = null;
+            let total = 0;
+            do {
+                const url = `${API_ENDPOINT}/v2/sessions?limit=200${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
+                const response = await fetch(url, { headers });
+                if (!response.ok) {
+                    throw new Error(`Failed to fetch session history: ${response.status}`);
+                }
+                const data = await response.json() as { sessions: ApiSessionRow[]; nextCursor: string | null };
+                // Skip rows the boot fetch already merged — no point decrypting
+                // them twice; applySessions would only overwrite equal data.
+                const known = storage.getState().sessions;
+                const fresh = data.sessions.filter((row) => !known[row.id]);
+                if (fresh.length > 0) {
+                    total += (await this.ingestSessions(fresh)).length;
+                }
+                cursor = data.nextCursor;
+            } while (cursor);
+            log.log(`📥 loadAllSessionsForSearch completed - added ${total} older sessions`);
+        })().catch((error) => {
+            // Let a later open retry instead of pinning a failed promise.
+            this.allSessionsLoaded = null;
+            throw error;
+        });
+        return this.allSessionsLoaded;
     }
 
     public refreshMachines = async () => {

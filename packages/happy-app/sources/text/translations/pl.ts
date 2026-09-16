@@ -233,6 +233,8 @@ export const pl: TranslationStructure = {
         flatList: 'Płaska lista',
         groupByProject: 'Grupuj według projektu',
         appearanceSettings: 'Ustawienia wyglądu',
+        searchPlaceholder: 'Szukaj sesji…',
+        noResultsPlaceholder: 'Nie znaleziono sesji',
     },
 
     settingsFeatures: {

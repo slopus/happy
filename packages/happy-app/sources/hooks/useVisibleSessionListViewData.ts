@@ -1,9 +1,10 @@
 import * as React from 'react';
-import { SessionListViewItem, useSessionListViewData, useSetting } from '@/sync/storage';
+import { SessionListViewItem, SessionRowData, useSessionListViewData, useSetting } from '@/sync/storage';
 import { filterProjectGroupSessions } from '@/sync/projectGroups';
 
 /**
- * Applies the persistent archive-visibility preference to the session list.
+ * Applies the persistent archive-visibility preference and the live search
+ * query to the session list.
  *
  * The rule is `session.archived`, never `!session.active`: a Rig session that
  * merely lost its connection is still live work and stays on screen, while a
@@ -18,22 +19,38 @@ import { filterProjectGroupSessions } from '@/sync/projectGroups';
  * server-synced settings field (see sync/settings.ts) with no per-field rename
  * migration, so the key stays put and only the local naming reflects what it
  * actually does.
+ *
+ * The search query matches the row title (`session.name` — bot name or the
+ * agent's summary) with the working path as fallback: sessions without a
+ * summary all share the "New chat" title, and the path is what tells them
+ * apart. Matching is a case-insensitive substring over data the client has
+ * already decrypted: session metadata is E2EE, so the server cannot run this
+ * query for us.
  */
-export function useVisibleSessionListViewData(): SessionListViewItem[] | null {
+export function useVisibleSessionListViewData(searchQuery = ''): SessionListViewItem[] | null {
     const data = useSessionListViewData();
     const hideArchivedSessions = useSetting('hideInactiveSessions');
+    const query = searchQuery.trim().toLowerCase();
 
     return React.useMemo(() => {
         if (!data) {
             return data;
         }
 
+        const matchesSearch = (session: Pick<SessionRowData, 'name' | 'path'>) => {
+            if (!query) return true;
+            return session.name.toLowerCase().includes(query)
+                || (session.path ?? '').toLowerCase().includes(query);
+        };
+        const keep = (session: SessionRowData) =>
+            (!hideArchivedSessions || !session.archived) && matchesSearch(session);
+
         const visibleProjects = new Map<number, SessionListViewItem>();
         const visibleProjectSources = new Set<'rig' | 'happy'>();
         data.forEach((item, index) => {
             if (item.type !== 'project') return;
-            const project = hideArchivedSessions
-                ? filterProjectGroupSessions(item.project, (session) => !session.archived)
+            const project = hideArchivedSessions || query
+                ? filterProjectGroupSessions(item.project, keep)
                 : item.project;
             if (project) {
                 visibleProjects.set(index, { ...item, project });
@@ -52,7 +69,15 @@ export function useVisibleSessionListViewData(): SessionListViewItem[] | null {
                 if (project) result.push(project);
                 return;
             }
-            if (item.type === 'active-sessions' || item.type === 'bots') result.push(item);
+            if (item.type === 'active-sessions' || item.type === 'bots') {
+                if (!query) {
+                    result.push(item);
+                    return;
+                }
+                const sessions = item.sessions.filter(matchesSearch);
+                if (sessions.length > 0) result.push({ ...item, sessions });
+                return;
+            }
         });
 
         // Flat, date-grouped rows trail the project cards. A date header is
@@ -65,7 +90,7 @@ export function useVisibleSessionListViewData(): SessionListViewItem[] | null {
                 continue;
             }
             if (item.type !== 'session') continue;
-            if (hideArchivedSessions && item.session.archived) continue;
+            if (!keep(item.session)) continue;
             if (pendingHeader) {
                 result.push(pendingHeader);
                 pendingHeader = null;
@@ -74,7 +99,7 @@ export function useVisibleSessionListViewData(): SessionListViewItem[] | null {
         }
 
         return result;
-    }, [data, hideArchivedSessions]);
+    }, [data, hideArchivedSessions, query]);
 }
 
 /**
