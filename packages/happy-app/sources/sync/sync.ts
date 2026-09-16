@@ -2283,8 +2283,20 @@ class Sync {
 
     private fetchOlderMessagesInBackground = async (sessionId: string) => {
         const SLEEP_BETWEEN_PAGES_MS = 250;
+        // Cap how much history we prefetch without the user asking. Each page
+        // is ~100 messages, so this buffers ~500 messages ahead of the initial
+        // window — enough for smooth scroll-back — instead of pulling the ENTIRE
+        // session history into the store. On long sessions the unbounded loop
+        // was a memory leak: every message (plus its decrypted objects, closures
+        // and strings) stayed resident, growing the heap for hours until the tab
+        // OOM'd. Past this budget the on-demand loadOlderMessages() path
+        // (triggered by ChatList when the reader scrolls to the oldest loaded
+        // message) keeps fetching older pages with no cap, so nothing is lost.
+        const MAX_PREFETCH_PAGES = 5;
+        let pagesFetched = 0;
         // While loadOlderMessages handles the actual work, this loop is what
         // keeps it going without user input. We keep stepping until either:
+        //   - we hit the prefetch page budget (see above), or
         //   - the server says there is no more older history, or
         //   - the session is no longer present in the store (user navigated
         //     away and the session was unloaded), or
@@ -2292,7 +2304,7 @@ class Sync {
         //   - the encryption key is gone (logged out).
         // The loop yields between pages to keep the UI thread responsive
         // and to spread out server load.
-        while (true) {
+        while (pagesFetched < MAX_PREFETCH_PAGES) {
             const sessionMessages = storage.getState().sessionMessages[sessionId];
             if (!sessionMessages || !sessionMessages.hasMoreOlder) {
                 return;
@@ -2307,6 +2319,7 @@ class Sync {
 
             try {
                 await this.loadOlderMessages(sessionId);
+                pagesFetched++;
             } catch (error) {
                 log.log(`💬 prefetchOlderMessagesInBackground: error for ${sessionId}, stopping: ${String(error)}`);
                 return;
