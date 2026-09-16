@@ -392,7 +392,7 @@ export const SidebarView = React.memo(({
     const [initialPluginId, setInitialPluginId] = React.useState<string | null>(null);
     const [footerMenu, setFooterMenu] = React.useState<FooterMenu>(null);
     const commandPaletteLauncher = useCommandPaletteLauncher();
-    const { isDesktop, openSettings, openActivity } = useDesktopSettingsModal();
+    const { isDesktop, openSettings, openActivity, openRoute } = useDesktopSettingsModal();
     const displayName = getDisplayName(profile) ?? t('settings.title');
 
     React.useEffect(() => {
@@ -435,6 +435,14 @@ export const SidebarView = React.memo(({
         }
         go('/settings');
     }, [go, isDesktop, openSettings]);
+
+    const openAccountManagement = React.useCallback((add = false) => {
+        if (isDesktop) {
+            openRoute('/accounts', add ? { add: '1' } : undefined);
+            return;
+        }
+        go(add ? '/accounts?add=1' : '/accounts');
+    }, [go, isDesktop, openRoute]);
 
     const openSessionSearch = React.useCallback(() => {
         if (commandPaletteLauncher?.isAvailable) {
@@ -630,6 +638,7 @@ export const SidebarView = React.memo(({
                             railMode={desktopPrimaryNavigation}
                             displayName={displayName}
                             onNavigate={go}
+                            onOpenAccounts={openAccountManagement}
                             onOpenSettings={openSettingsFromSidebar}
                             onOpenChange={setAccountMenuOpen}
                             open={footerMenu === 'account'}
@@ -644,6 +653,7 @@ export const SidebarView = React.memo(({
                         mobileRail={mobileNavigation}
                         displayName={displayName}
                         onNavigate={go}
+                        onOpenAccounts={openAccountManagement}
                         onOpenSettings={openSettingsFromSidebar}
                         onOpenChange={setAccountMenuOpen}
                         open={footerMenu === 'account'}

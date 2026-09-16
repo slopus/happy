@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Text, TextInput, View } from 'react-native';
-import { useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useAuth } from '@/auth/AuthContext';
 import { addSavedAccount, listSavedAccounts, removeSavedAccount, type SavedAccount } from '@/auth/accounts';
@@ -13,12 +13,14 @@ import { layout } from '@/components/layout';
 import { Modal } from '@/modal';
 import { t } from '@/text';
 import { parseAccountSessionTarget } from '@/auth/accountLink';
+import { AccountVault } from '@/auth/tokenStorage';
+import { formatSecretKeyForBackup } from '@/auth/secretKeyBackup';
 import Animated, { FadeIn, FadeOut, LinearTransition, ReduceMotion } from 'react-native-reanimated';
 
 export default React.memo(function AccountsPage() {
     const auth = useAuth();
     const { theme } = useUnistyles();
-    const params = useLocalSearchParams<{ accountId?: string; serverUrl?: string; sessionId?: string; add?: string }>();
+    const params = useLocalSearchParams<{ accountId?: string; serverUrl?: string; sessionId?: string; add?: string; accountKey?: string }>();
     const [adding, setAdding] = useState(params.add === '1');
     useEffect(() => { if (params.add === '1') setAdding(true); }, [params.add]);
     const hasTarget = params.accountId !== undefined || params.serverUrl !== undefined || params.sessionId !== undefined;
@@ -30,6 +32,8 @@ export default React.memo(function AccountsPage() {
     const [busy, setBusy] = useState(false);
     const actionInFlight = useRef(false);
     const [failed, setFailed] = useState(false);
+    const [detailSecret, setDetailSecret] = useState<string | null>(null);
+    const [showDetailSecret, setShowDetailSecret] = useState(false);
     const activeKey = getActiveAccountKey();
     const reload = async () => setAccounts(await listSavedAccounts());
     useEffect(() => { reload().catch(() => setFailed(true)); }, []);
@@ -41,17 +45,52 @@ export default React.memo(function AccountsPage() {
         try { await action(); } catch { setFailed(true); } finally { actionInFlight.current = false; setBusy(false); }
     };
     const matches = (account: SavedAccount) => !target || (account.accountId === target.accountId && canonicalAccountServer(account.serverUrl) === target.serverUrl);
+    const detailAccount = params.accountKey ? accounts.find(account => account.key === params.accountKey) : undefined;
+    useEffect(() => {
+        setShowDetailSecret(false);
+        setDetailSecret(null);
+        if (!detailAccount) return;
+        AccountVault.read(detailAccount.key)
+            .then(credentials => setDetailSecret(credentials?.secret ?? null))
+            .catch(() => setDetailSecret(null));
+    }, [detailAccount]);
+
+    if (params.accountKey) {
+        return <ItemList>
+            {detailAccount ? <>
+                <ItemGroup title={detailAccount.label || detailAccount.accountId}>
+                    <Item title={t('settingsAccount.status')} detail={detailAccount.key === activeKey ? t('accounts.active') : undefined} showChevron={false} />
+                    <Item title={t('settingsAccount.publicId')} detail={detailAccount.accountId} showChevron={false} copy />
+                    <Item title={t('accounts.server')} detail={detailAccount.serverUrl} showChevron={false} copy />
+                </ItemGroup>
+                <ItemGroup title={t('settingsAccount.secretKey')} footer={t('accounts.secretHint')}>
+                    <Item
+                        title={t('settingsAccount.secretKey')}
+                        subtitle={showDetailSecret && detailSecret ? formatSecretKeyForBackup(detailSecret) : t('settingsAccount.tapToReveal')}
+                        onPress={() => setShowDetailSecret(current => !current)}
+                    />
+                </ItemGroup>
+            </> : <ItemGroup><Item title={t('accounts.invalidLink')} showChevron={false} /></ItemGroup>}
+        </ItemList>;
+    }
+
     return <ItemList>
         {hasTarget && <ItemGroup title={t('accounts.target')} footer={t('accounts.targetHint')}>
             <Item title={target ? target.accountId : t('accounts.invalidLink')} subtitle={target?.serverUrl} showChevron={false} />
         </ItemGroup>}
-        <ItemGroup title={t('accounts.title')} footer={t('accounts.description')}>
+        <ItemGroup title={t('accounts.title')}>
             {accounts.length === 0 && <Item title={t('accounts.empty')} showChevron={false} />}
             {accounts.map(account => <View key={account.key}>
                 <Item title={account.label || account.accountId} subtitle={`${account.serverUrl}\n${account.accountId}`}
-                    detail={activeKey === account.key ? t('accounts.active') : t('accounts.switch')}
+                    detail={activeKey === account.key ? t('accounts.active') : undefined}
                     disabled={busy || (hasTarget && (!target || !matches(account)))}
-                    onPress={() => void run(() => auth.switchAccount(account.key, target && matches(account) ? target.sessionId : undefined))} />
+                    onPress={() => {
+                        if (hasTarget) {
+                            void run(() => auth.switchAccount(account.key, target && matches(account) ? target.sessionId : undefined));
+                            return;
+                        }
+                        router.push({ pathname: '/accounts', params: { accountKey: account.key } } as any);
+                    }} />
                 {activeKey !== account.key && <Item title={t('accounts.remove')} disabled={busy} onPress={() => void run(async () => {
                     if (await Modal.confirm(t('accounts.remove'), t('accounts.removeHint'), { destructive: true, confirmText: t('accounts.remove') })) {
                         await removeSavedAccount(account.key);
