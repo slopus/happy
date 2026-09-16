@@ -48,7 +48,6 @@ import {
     isTerminalCodexTurn,
     mapCodexMcpMessageToSessionEnvelopes,
     mapCodexProcessorMessageToSessionEnvelopes,
-    mapCodexThreadToSessionEnvelopes,
     rebuildCodexMcpAppBindings,
 } from './utils/sessionProtocolMapper';
 import { McpAppBindingRegistry } from './mcpApps/McpAppBindingRegistry';
@@ -56,6 +55,7 @@ import { registerMcpAppRpcHandlers } from './mcpApps/registerMcpAppRpcHandlers';
 import { rebindMcpAppRpcHandlersOnSessionSwap } from './mcpApps/mcpAppRpcSessionLifecycle';
 import { formatCodexEventForLog } from './codexEventLog';
 import { resumeExistingThread } from './resumeExistingThread';
+import { mapCodexHistoryWithImages } from './codexHistoryImages';
 import { emitReadyIfIdle } from './emitReadyIfIdle';
 import { enqueueCodexUserText } from './codexClearCommand';
 import {
@@ -1239,12 +1239,6 @@ export async function runCodex(opts: {
                     threadId: forkCodexThreadId,
                     mcpAppBindingRegistry,
                 });
-                const envelopes = mapCodexThreadToSessionEnvelopes(thread, {
-                    omitPawsUserMessagesFromOriginToken: codexPawsOriginToken,
-                    // Match the normal resume path so a durable retry rebuilds
-                    // the exact same envelope set for an in-progress Turn.
-                    activeTurnsUserOnly: true,
-                });
                 await session.updateMetadataAndAwait((currentMetadata) => ({
                     ...currentMetadata,
                     codexThreadId: forkCodexThreadId,
@@ -1252,6 +1246,10 @@ export async function runCodex(opts: {
                         ? currentMetadata.codexHistoryReplay
                         : { threadId: forkCodexThreadId, startedAt: Date.now() },
                 }));
+                const envelopes = await mapCodexHistoryWithImages(thread, session, {
+                    omitPawsUserMessagesFromOriginToken: codexPawsOriginToken,
+                    activeTurnsUserOnly: true,
+                });
                 await session.sendSessionProtocolHistoryAndAwait(envelopes);
                 const lastReplayedTurn = (thread.turns ?? []).filter(isTerminalCodexTurn).at(-1);
                 await session.updateMetadataAndAwait((currentMetadata) => {

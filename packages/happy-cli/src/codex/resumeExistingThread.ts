@@ -3,10 +3,10 @@ import { trimIdent } from '@/utils/trimIdent';
 import type { ReasoningEffort, Thread } from './codexAppServerTypes';
 import {
     isTerminalCodexTurn,
-    mapCodexThreadToSessionEnvelopes,
     rebuildCodexMcpAppBindings,
 } from './utils/sessionProtocolMapper';
 import type { McpAppBindingRegistry } from './mcpApps/McpAppBindingRegistry';
+import { mapCodexHistoryWithImages, type HistoryImageSession } from './codexHistoryImages';
 
 type ResumeThreadClient = {
     resumeThread: (opts: {
@@ -20,7 +20,7 @@ type ResumeThreadClient = {
     }) => Promise<{ thread: Pick<Thread, 'turns'> }>;
 };
 
-type ResumeThreadSession = {
+type ResumeThreadSession = HistoryImageSession & {
     sessionId: string;
     getMetadata: () => {
         codexThreadId?: string;
@@ -112,8 +112,9 @@ export async function resumeExistingThread(opts: {
         }
         activeTurnId = turns.filter((turn) => !isTerminalCodexTurn(turn)).at(-1)?.id ?? null;
 
-        const historicalEnvelopes = mapCodexThreadToSessionEnvelopes(
+        const historicalEnvelopes = await mapCodexHistoryWithImages(
             { turns: turnsToReplay },
+            opts.session,
             {
                 omitPawsUserMessagesFromOriginToken: opts.session.getMetadata()?.codexPawsOriginToken,
                 // A reconnect normally catches up durable dialogue only, but

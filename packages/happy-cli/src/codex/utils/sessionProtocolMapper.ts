@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { buildCodexImageAttachmentNotice } from '../codexImageInput';
 import { createId } from '@paralleldrive/cuid2';
 import type { ReasoningOutput } from './reasoningProcessor';
 import type { DiffToolCall, DiffToolResult } from './diffProcessor';
@@ -396,7 +397,7 @@ function nextTextEnvelopeOccurrence(
     return occurrence;
 }
 
-function textFromInputItems(items: unknown, omitPawsOriginToken?: string): string | null {
+function textFromInputItems(items: unknown, omitPawsOriginToken?: string, stripImageNotice = true): string | null {
     if (!Array.isArray(items)) {
         return null;
     }
@@ -412,7 +413,13 @@ function textFromInputItems(items: unknown, omitPawsOriginToken?: string): strin
     if (omitPawsOriginToken && readPawsTurnOrigin(text) === omitPawsOriginToken) {
         return null;
     }
-    const visibleText = stripPawsTurnOrigin(stripHappySystemPromptBlocks(text)).trim();
+    const images = items.filter((item): item is { type: 'localImage'; path: string } => (
+        item?.type === 'localImage' && typeof item.path === 'string'
+    ));
+    const imageNotice = buildCodexImageAttachmentNotice(images);
+    const visibleText = stripPawsTurnOrigin(stripHappySystemPromptBlocks(
+        stripImageNotice && imageNotice ? text.replace(imageNotice, '') : text,
+    )).trim();
     // Modern first-turn prompts wrap runtime instructions alongside the real
     // request. Apply the legacy context heuristic only after removing those
     // blocks, otherwise the Options instructions discard the entire request.
@@ -576,6 +583,7 @@ export function mapCodexThreadToSessionEnvelopes(
         /** For an active Turn, replay only its user request. Agent output may
          * still be streaming and is handled by the live notification path. */
         activeTurnsUserOnly?: boolean;
+        historicalUserImages?: (turnId: string, itemId: string) => readonly SessionEnvelope['ev'][];
     },
 ): SessionEnvelope[] {
     const envelopes: SessionEnvelope[] = [];
@@ -608,9 +616,19 @@ export function mapCodexThreadToSessionEnvelopes(
             }
             switch (item.type) {
                 case 'userMessage': {
+                    const images = opts?.historicalUserImages?.(turn.id, item.id) ?? [];
+                    images.forEach((event, index) => envelopes.push(createEnvelope('user', event, {
+                        id: `codex-image:${hashObject({ turn: turn.id, item: item.id, index }, undefined, 'base64url')}`,
+                        turn: turn.id,
+                        time: startedAt - images.length + index - 1,
+                        codexItemId: `${item.id}:image:${index}`,
+                    })));
                     const text = textFromInputItems(item.content, opts?.omitPawsUserMessagesFromOriginToken);
                     if (text) {
-                        const textIdentity = { turn: turn.id, role: 'user' as const, text };
+                        // Keep identities compatible with partial replays acknowledged
+                        // before attachment notices were hidden from the transcript.
+                        const identityText = textFromInputItems(item.content, opts?.omitPawsUserMessagesFromOriginToken, false) ?? text;
+                        const textIdentity = { turn: turn.id, role: 'user' as const, text: identityText };
                         envelopes.push(createEnvelope('user', { t: 'text', text }, {
                             id: stableTextEnvelopeId(
                                 textIdentity,
@@ -1065,7 +1083,8 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
         }
 
         const itemId = typeof message.item_id === 'string' ? message.item_id : undefined;
-        const textIdentity = { ...opts, role: 'user' as const, text };
+        const identityText = textFromInputItems(message.content, undefined, false) ?? text;
+        const textIdentity = { ...opts, role: 'user' as const, text: identityText };
         const envelopeId = stableTextEnvelopeId(
             textIdentity,
             nextTextEnvelopeOccurrence(state.textEnvelopeOccurrences, textIdentity),
