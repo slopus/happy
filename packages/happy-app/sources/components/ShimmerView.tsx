@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { View, StyleSheet, ViewStyle } from 'react-native';
 import Animated, {
+    cancelAnimation,
     useSharedValue,
     useAnimatedStyle,
     withRepeat,
@@ -42,6 +43,14 @@ export const ShimmerView = React.memo<ShimmerViewProps>(({
             -1,
             false
         );
+        // Stop the infinite repeat on unmount. Without this the animation driver
+        // stays live after the component is gone and, through useAnimatedStyle,
+        // keeps the Animated gradient and its MaskedView subtree referenced — on
+        // web that subtree is an <svg> mask, so every unmounted shimmer leaks a
+        // detached SVG tree (and pins a driver), growing the heap over time.
+        return () => {
+            cancelAnimation(shimmerTranslate);
+        };
     }, [duration]);
 
     const animatedStyle = useAnimatedStyle(() => {
