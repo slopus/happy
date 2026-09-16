@@ -1,6 +1,11 @@
 {
   "entries": [
     {
+      "title": "September 14 - Harness setup",
+      "summary": "",
+      "markdown": "- The harness picker now lists only harnesses your computer can actually run — and offers setup help when none are installed yet."
+    },
+    {
       "title": "September 14 - First messages",
       "summary": "",
       "markdown": "- First message — a new session's first message no longer fails when an unrelated session can't be read.\n- Your draft — text and images stay in the composer when a message doesn't go through.\n- Retry — starting again reuses the session already created instead of leaving a spare behind."
@@ -111,5 +116,5 @@
       "markdown": "- E2E encrypted sessions.\n- Voice assistant.\n- File manager with syntax highlighting.\n- Real-time sync across devices."
     }
   ],
-  "latestTitle": "September 14 - First messages"
+  "latestTitle": "September 14 - Harness setup"
 }

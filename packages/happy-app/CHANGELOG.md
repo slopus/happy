@@ -1,3 +1,7 @@
+# September 14 - Harness setup
+
+- The harness picker now lists only harnesses your computer can actually run — and offers setup help when none are installed yet.
+
 # September 14 - First messages
 
 - First message — a new session's first message no longer fails when an unrelated session can't be read.

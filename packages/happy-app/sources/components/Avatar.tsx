@@ -89,7 +89,7 @@ export const Avatar = React.memo((props: AvatarProps) => {
             : false;
     const effectiveHarness = resolveAvatarHarness(flavor, clientId);
 
-    if (bot) {
+    if (bot && !imageUrl) {
         return (
             <View style={{
                 width: size,
