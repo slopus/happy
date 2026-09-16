@@ -9,6 +9,7 @@ type MediaListener = (event: { matches: boolean }) => void;
 
 const mocks = vi.hoisted(() => ({
     getSnapshot: vi.fn(),
+    pathname: '/share/public-id',
     rootBackground: vi.fn(),
     setTheme: vi.fn(),
     themeName: 'caramelDark',
@@ -29,6 +30,7 @@ vi.mock('react-native', () => ({
 vi.mock('expo-router', () => ({
     Stack: { Screen: 'StackScreen' },
     useLocalSearchParams: () => ({ publicId: 'public-id' }),
+    usePathname: () => mocks.pathname,
 }));
 vi.mock('@expo/vector-icons', () => ({ Ionicons: 'Ionicons' }));
 vi.mock('react-native-unistyles', () => ({
@@ -107,7 +109,7 @@ function createLocalStorage() {
     const values = new Map<string, string>();
     return {
         getItem: (key: string) => values.get(key) ?? null,
-        setItem: (key: string, value: string) => values.set(key, value),
+        setItem: vi.fn((key: string, value: string) => values.set(key, value)),
     };
 }
 
@@ -131,6 +133,7 @@ describe('PublicSessionSharePage appearance integration', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         mocks.themeName = 'caramelDark';
+        mocks.pathname = '/share/public-id';
         mocks.transcriptMounts = 0;
         mocks.transcriptSequence = 0;
         mocks.transcriptUnmounts = 0;
@@ -148,6 +151,49 @@ describe('PublicSessionSharePage appearance integration', () => {
         renderer = undefined;
         delete (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT;
         vi.unstubAllGlobals();
+    });
+
+    it.each(['/', '/settings/appearance', '/session/session-1'])(
+        'does not override the saved app theme when eagerly mounted at %s',
+        async (pathname) => {
+            mocks.pathname = pathname;
+            mocks.themeName = 'terminalLight';
+            mediaQuery.matches = true;
+            const settingsKey = 'mmkv.default\\local-settings';
+            const savedSettings = JSON.stringify({ themePreference: 'light', themePack: 'terminal' });
+            window.localStorage.setItem(settingsKey, savedSettings);
+            vi.mocked(window.localStorage.setItem).mockClear();
+
+            await act(async () => {
+                renderer = TestRenderer.create(<PublicSessionSharePage />);
+            });
+
+            expect(mocks.themeName).toBe('terminalLight');
+            expect(mocks.setTheme).not.toHaveBeenCalled();
+            expect(mocks.rootBackground).not.toHaveBeenCalled();
+            expect(mocks.getSnapshot).not.toHaveBeenCalled();
+            expect(window.localStorage.setItem).not.toHaveBeenCalled();
+            expect(window.localStorage.getItem(settingsKey)).toBe(savedSettings);
+            expect(mediaQuery.listeners.size).toBe(0);
+            expect(renderer.toJSON()).toBeNull();
+        },
+    );
+
+    it('restores the app theme on leaving a share even if the route remains mounted', async () => {
+        mocks.themeName = 'terminalLight';
+        mediaQuery.matches = true;
+        await act(async () => {
+            renderer = TestRenderer.create(<PublicSessionSharePage />);
+        });
+        expect(mocks.themeName).toBe('ginghamDark');
+
+        mocks.pathname = '/';
+        act(() => renderer.update(<PublicSessionSharePage />));
+        expect(mocks.themeName).toBe('terminalLight');
+        expect(mediaQuery.listeners.size).toBe(0);
+        act(() => mediaQuery.dispatch(false));
+        expect(mocks.themeName).toBe('terminalLight');
+        expect(renderer.toJSON()).toBeNull();
     });
 
     it('keeps the long transcript list and scroll state mounted across visitor and system mode changes', async () => {

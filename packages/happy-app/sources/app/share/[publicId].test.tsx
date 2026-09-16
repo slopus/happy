@@ -23,6 +23,7 @@ vi.mock('react-native', () => ({
 vi.mock('expo-router', () => ({
     Stack: { Screen: 'StackScreen' },
     useLocalSearchParams: () => ({ publicId: 'public-id' }),
+    usePathname: () => '/share/public-id',
 }));
 vi.mock('@expo/vector-icons', () => ({ Ionicons: 'Ionicons' }));
 vi.mock('react-native-unistyles', () => ({

@@ -1,12 +1,13 @@
 import * as React from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
-import { Stack, useLocalSearchParams } from 'expo-router';
+import { Stack, useLocalSearchParams, usePathname } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet } from 'react-native-unistyles';
 import { PublicSessionTranscript } from '@/components/PublicSessionTranscript';
 import { usePublicSessionAppearance } from '@/hooks/usePublicSessionAppearance';
 import { getPublicSessionShareSnapshot } from '@/sync/publicSessionShareViewer';
 import type { PublicSessionSnapshot } from '@/sync/publicSessionShareTypes';
+import { isPublicSessionSharePath } from '@/utils/publicSessionShareRouting';
 import { publicSessionShareText as t } from '@/text/publicSessionShareText';
 
 type PublicShareLoadState =
@@ -15,6 +16,14 @@ type PublicShareLoadState =
     | { status: 'unavailable' };
 
 export default function PublicSessionSharePage() {
+    const pathname = usePathname();
+    // The app drawer eagerly mounts inactive routes (lazy: false). Only the
+    // active public page may override the global theme or write visitor settings.
+    if (!isPublicSessionSharePath(pathname)) return null;
+    return <PublicSessionShareContent />;
+}
+
+function PublicSessionShareContent() {
     const params = useLocalSearchParams<{ publicId?: string | string[] }>();
     const publicId = Array.isArray(params.publicId) ? params.publicId[0] : params.publicId;
     const [state, setState] = React.useState<PublicShareLoadState>({ status: 'loading' });
