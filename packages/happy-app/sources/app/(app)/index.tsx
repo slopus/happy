@@ -8,14 +8,16 @@ import { authGetToken } from "@/auth/authGetToken";
 import { useRouter } from "expo-router";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { getRandomBytesAsync } from "expo-crypto";
-import { useIsLandscape, useIsTablet } from "@/utils/responsive";
+import { useIsLandscape } from "@/utils/responsive";
 import { Typography } from "@/constants/Typography";
 import { trackAccountCreated, trackAccountRestored } from '@/track';
 import { HomeHeaderNotAuth } from "@/components/HomeHeader";
 import { MainView } from "@/components/MainView";
 import { OnboardingInstall } from "@/components/onboarding/OnboardingInstall";
+import { shouldShowFirstRunInstall } from "@/components/onboarding/firstRunOnboarding";
 import { useAllMachines, useIsDataReady } from "@/sync/storage";
 import { t } from '@/text';
+import { isRunningOnMac } from '@/utils/platform';
 
 export default function Home() {
     const auth = useAuth();
@@ -28,17 +30,19 @@ export default function Home() {
 }
 
 function Authenticated() {
-    const isTablet = useIsTablet();
     const isDataReady = useIsDataReady();
     const machines = useAllMachines({ includeOffline: true });
     // Until a computer is linked there is nothing for the home chrome to do:
-    // the dock, the filter, and the session list all need a machine. Phones
-    // get the install step instead. Tablet, web, and desktop keep their
-    // existing empty screen.
-    const showInstallStep = Platform.OS !== 'web'
-        && !isTablet
-        && isDataReady
-        && machines.length === 0;
+    // the dock, filters, session list, and tablet sidebar all need a machine.
+    // Native phones and tablets therefore share the same install step. Web
+    // and desktop retain their existing account-linking flow.
+    const showInstallStep = shouldShowFirstRunInstall({
+        isAuthenticated: true,
+        isDataReady,
+        machineCount: machines.length,
+        isWeb: Platform.OS === 'web',
+        isRunningOnMac: isRunningOnMac(),
+    });
     if (showInstallStep) {
         return <OnboardingInstall />;
     }

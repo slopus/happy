@@ -137,7 +137,7 @@ vi.mock('@/utils/copySessionMetadataToClipboard', () => ({
 vi.mock('@/utils/versionUtils', () => ({ isVersionSupported: () => true, MINIMUM_CLI_VERSION: '1' }));
 
 import { ChatHeaderView } from './ChatHeaderView';
-import { Header, createPlainHeader } from './navigation/Header';
+import { Header, createHeader, createPlainHeader } from './navigation/Header';
 import { GitLineChanges } from './GitLineChanges';
 import { RigGitLineChanges } from './RigGitLineChanges';
 import SessionInfo from '@/app/(app)/session/[id]/info';
@@ -265,6 +265,22 @@ describe('session details', () => {
         const title = renderer.root.findByType('Text');
         expect(flattenStyle(title.props.style).textAlign).toBe('center');
         expect(title.props.numberOfLines).toBe(1);
+    });
+
+    it('keeps the stack back action on an Android tablet while the onboarding shell is hidden', () => {
+        state.platform = 'android';
+        state.tablet = true;
+        const renderer = render(createHeader({
+            options: { headerTitle: 'Step 3 of 3', headerTitleAlign: 'center' },
+            route: { name: 'onboarding/scan' }, back: { title: 'Back' },
+            navigation: { goBack: state.back },
+        } as any)!);
+        const header = renderer.root.findByType((Header as any).type);
+        expect(header.props.headerLeft).toBeTypeOf('function');
+
+        const left = render(header.props.headerLeft());
+        act(() => left.root.findByType('Pressable').props.onPress());
+        expect(state.back).toHaveBeenCalledOnce();
     });
 
     it('keeps Changes available for a legacy session without cached statistics', () => {

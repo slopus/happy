@@ -311,8 +311,11 @@ const NavigationHeaderComponent: React.FC<NavigationHeaderComponentProps> = Reac
     const isTablet = useIsTablet();
     const isDesktop = Platform.OS === 'web' || isRunningOnMac();
 
-    // Hide back button on tablet — navigation is handled via sidebar and persistent header
-    const shouldHideBackButton = isTablet;
+    // Tablet navigation normally lives in the persistent shell. First-run
+    // onboarding intentionally removes that shell, so its scan screen still
+    // needs the ordinary stack back button (notably on Android tablets, where
+    // this custom header renders instead of UIKit's native header).
+    const shouldHideBackButton = isTablet && !route.name.startsWith('onboarding/');
     const titleAlign = options.headerTitleAlign ?? (Platform.OS === 'ios' ? 'center' : 'left');
 
     // Extract title - handle both string and function types
