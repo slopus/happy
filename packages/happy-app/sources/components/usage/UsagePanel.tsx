@@ -12,6 +12,8 @@ import { HappyError } from '@/utils/errors';
 import { getCurrentLanguage, t } from '@/text';
 import { storage, useAllMachines } from '@/sync/storage';
 import { apiSocket } from '@/sync/apiSocket';
+import { useCodexAccounts } from '@/hooks/useCodexAccounts';
+import type { CodexAccountProfile } from '@/sync/apiCodexAccounts';
 
 type TimePeriod = 'today' | '7days' | '30days';
 
@@ -49,6 +51,13 @@ interface CodexUsageDay {
     totalOnlyTokens: number;
 }
 
+interface CodexAccountUsageSnapshot {
+    profileId: string;
+    usage: CodexUsageSnapshot;
+}
+
+type CodexUsageScope = 'all' | 'unattributed' | string;
+
 const CODEX_HEATMAP_DAYS = 365;
 const CODEX_HEATMAP_CELL_SIZE = 14;
 const CODEX_USAGE_REFRESH_RPC_TIMEOUT_MS = 60_000;
@@ -66,6 +75,19 @@ function getCodexUsageSnapshot(daemonState: unknown): CodexUsageSnapshot | null 
         return null;
     }
     return candidate as CodexUsageSnapshot;
+}
+
+function getCodexAccountUsageSnapshots(daemonState: unknown): CodexAccountUsageSnapshot[] {
+    if (!daemonState || typeof daemonState !== 'object') return [];
+    const entries = (daemonState as { codexAccountUsage?: unknown }).codexAccountUsage;
+    if (!Array.isArray(entries)) return [];
+    return entries.flatMap((entry): CodexAccountUsageSnapshot[] => {
+        if (!entry || typeof entry !== 'object') return [];
+        const candidate = entry as { profileId?: unknown; usage?: unknown };
+        if (typeof candidate.profileId !== 'string') return [];
+        const usage = getCodexUsageSnapshot({ codexUsage: candidate.usage });
+        return usage ? [{ profileId: candidate.profileId, usage }] : [];
+    });
 }
 
 function hasUsableRateLimits(snapshot: CodexUsageSnapshot): boolean {
@@ -282,6 +304,19 @@ function getCodexRateLimitSummary(window: CodexRateLimitWindow | undefined): Cod
     };
 }
 
+function getCodexAccountQuotaSummary(profile: CodexAccountProfile | undefined): CodexRateLimitSummary | null {
+    if (!profile || typeof profile.quota.remainingPercent !== 'number') return null;
+    const remaining = profile.quota.remainingPercent;
+    const resetAt = profile.quota.weeklyResetsAt;
+    if (resetAt && Date.parse(resetAt) <= Date.now()) return null;
+    return {
+        period: '7d',
+        used: 100 - remaining,
+        remaining,
+        resetAt: resetAt ? new Date(resetAt).toLocaleString() : t('common.unknown'),
+    };
+}
+
 const styles = StyleSheet.create((theme) => ({
     container: {
         flex: 1,
@@ -330,6 +365,30 @@ const styles = StyleSheet.create((theme) => ({
         flexDirection: 'row',
         justifyContent: 'space-between',
     },
+    codexAccountSelector: {
+        flexDirection: 'row',
+        gap: 8,
+    },
+    codexAccountChip: {
+        backgroundColor: theme.colors.surface,
+        borderRadius: 999,
+        paddingHorizontal: 14,
+        paddingVertical: 8,
+    },
+    codexAccountChipPressed: {
+        backgroundColor: theme.colors.surfacePressed,
+    },
+    codexAccountChipActive: {
+        backgroundColor: theme.colors.surfaceSelected,
+    },
+    codexAccountChipText: {
+        color: theme.colors.textSecondary,
+        fontSize: 13,
+        fontWeight: '600',
+    },
+    codexAccountChipTextActive: {
+        color: theme.colors.text,
+    },
     codexTitle: {
         color: theme.colors.text,
         fontSize: 16,
@@ -338,6 +397,7 @@ const styles = StyleSheet.create((theme) => ({
     planBadge: {
         backgroundColor: theme.colors.surfaceHigh,
         borderRadius: 999,
+        maxWidth: '55%',
         paddingHorizontal: 10,
         paddingVertical: 4,
     },
@@ -538,6 +598,8 @@ export const UsagePanel: React.FC<{ sessionId?: string }> = ({ sessionId }) => {
     const { theme } = useUnistyles();
     const auth = useAuth();
     const machines = useAllMachines({ includeOffline: true });
+    const codexAccounts = useCodexAccounts();
+    const [codexUsageScope, setCodexUsageScope] = useState<CodexUsageScope | null>(null);
     const [period, setPeriod] = useState<TimePeriod>('7days');
     const [chartMetric, setChartMetric] = useState<'tokens' | 'cost'>('tokens');
     const [loading, setLoading] = useState(true);
@@ -557,39 +619,69 @@ export const UsagePanel: React.FC<{ sessionId?: string }> = ({ sessionId }) => {
         const currentSessionId = state.currentViewingSessionId;
         return currentSessionId ? state.sessions[currentSessionId]?.metadata?.machineId || null : null;
     });
-    const refreshMachineId = React.useMemo(() => {
-        if (currentMachineId) return currentMachineId;
-        return machines.reduce<{ id: string; activeAt: number } | null>((latest, machine) => {
-            if (!machine.active || !machine.id) return latest;
-            const candidate = { id: machine.id, activeAt: machine.activeAt || 0 };
-            return !latest || candidate.activeAt > latest.activeAt ? candidate : latest;
-        }, null)?.id || null;
+    const currentCodexProfileId = storage((state) => {
+        const currentSessionId = state.currentViewingSessionId;
+        return currentSessionId ? state.sessions[currentSessionId]?.metadata?.codexAccountProfileId || null : null;
+    });
+    const refreshMachineIds = React.useMemo(() => {
+        const ids = new Set<string>();
+        if (currentMachineId) ids.add(currentMachineId);
+        for (const machine of machines) {
+            if (machine.active && machine.id) ids.add(machine.id);
+        }
+        return [...ids];
     }, [currentMachineId, machines]);
-    const codexUsageSnapshots = React.useMemo(() => machines
+    const unattributedCodexUsageSnapshots = React.useMemo(() => machines
         .map((machine) => getCodexUsageSnapshot(machine.daemonState))
         .filter((snapshot): snapshot is CodexUsageSnapshot => !!snapshot), [machines]);
-    const codexUsage = React.useMemo(() => getLatestCodexUsageSnapshot(machines), [machines]);
-    const codexQuotaUsage = React.useMemo(
+    const attributedCodexUsageSnapshots = React.useMemo(() => machines
+        .flatMap((machine) => getCodexAccountUsageSnapshots(machine.daemonState)), [machines]);
+    const preferredCodexProfileId = currentCodexProfileId
+        || codexAccounts.bindings.find((binding) => binding.machineId === currentMachineId)?.profileId;
+    const suggestedCodexProfileId = codexAccounts.profiles.some((profile) => profile.id === preferredCodexProfileId)
+        ? preferredCodexProfileId
+        : codexAccounts.profiles[0]?.id;
+    const activeCodexUsageScope = codexUsageScope
+        || suggestedCodexProfileId
+        || (unattributedCodexUsageSnapshots.length > 0 ? 'unattributed' : 'all');
+    const selectedCodexProfile = codexAccounts.profiles.find((profile) => profile.id === activeCodexUsageScope);
+    const selectedCodexUsageSnapshots = React.useMemo(() => {
+        if (activeCodexUsageScope === 'unattributed') return unattributedCodexUsageSnapshots;
+        const attributed = activeCodexUsageScope === 'all'
+            ? attributedCodexUsageSnapshots
+            : attributedCodexUsageSnapshots.filter((entry) => entry.profileId === activeCodexUsageScope);
+        const snapshots = attributed.map((entry) => entry.usage);
+        return activeCodexUsageScope === 'all' ? [...snapshots, ...unattributedCodexUsageSnapshots] : snapshots;
+    }, [activeCodexUsageScope, attributedCodexUsageSnapshots, unattributedCodexUsageSnapshots]);
+    const unattributedQuotaUsage = React.useMemo(
         () => getCodexQuotaUsageSnapshot(machines, currentMachineId),
         [currentMachineId, machines],
     );
+    const selectedAccountQuota = React.useMemo(
+        () => getCodexAccountQuotaSummary(selectedCodexProfile),
+        [selectedCodexProfile],
+    );
+    const codexQuotaUsage = activeCodexUsageScope === 'unattributed' ? unattributedQuotaUsage : null;
     const codexRateLimits = React.useMemo(() => {
         const rateLimits = codexQuotaUsage?.latestEvent?.rateLimits;
-        if (!rateLimits) return [];
+        if (!rateLimits) return selectedAccountQuota ? [selectedAccountQuota] : [];
         return [
             getCodexRateLimitSummary(rateLimits.primary),
             getCodexRateLimitSummary(rateLimits.secondary),
         ].filter((limit): limit is CodexRateLimitSummary => !!limit);
-    }, [codexQuotaUsage]);
+    }, [codexQuotaUsage, selectedAccountQuota]);
     const primaryCodexRateLimit = codexRateLimits[0];
+    const codexQuotaObservedAt = selectedCodexProfile?.quota.observedAt
+        ? Date.parse(selectedCodexProfile.quota.observedAt)
+        : codexQuotaUsage?.scannedAt;
     const codexActivity = React.useMemo(() => {
-        const latestScan = codexUsageSnapshots.reduce<CodexUsageSnapshot | null>((latest, snapshot) => (
+        const latestScan = selectedCodexUsageSnapshots.reduce<CodexUsageSnapshot | null>((latest, snapshot) => (
             !latest || snapshot.scannedAt > latest.scannedAt ? snapshot : latest
         ), null);
         return latestScan
-            ? { ...latestScan, days: mergeCodexUsageDays(codexUsageSnapshots) }
+            ? { ...latestScan, days: mergeCodexUsageDays(selectedCodexUsageSnapshots) }
             : null;
-    }, [codexUsageSnapshots]);
+    }, [selectedCodexUsageSnapshots]);
     const codexHeatmapDays = React.useMemo(() => getCodexHeatmapDays(codexActivity), [codexActivity]);
     const codexHeatmapWeeks = React.useMemo(() => getCodexHeatmapWeeks(codexHeatmapDays), [codexHeatmapDays]);
     const codexHeatmapMonthLabels = React.useMemo(
@@ -608,14 +700,22 @@ export const UsagePanel: React.FC<{ sessionId?: string }> = ({ sessionId }) => {
     const hasApiUsage = usageData.length > 0;
 
     useEffect(() => {
-        if (!refreshMachineId) return;
-        void apiSocket.machineRPC(
-            refreshMachineId,
-            'refresh-codex-usage',
-            {},
-            { timeoutMs: CODEX_USAGE_REFRESH_RPC_TIMEOUT_MS },
-        ).catch(() => {});
-    }, [refreshMachineId]);
+        if (codexUsageScope && codexUsageScope !== 'all' && codexUsageScope !== 'unattributed'
+            && !codexAccounts.profiles.some((profile) => profile.id === codexUsageScope)) {
+            setCodexUsageScope(null);
+        }
+    }, [codexAccounts.profiles, codexUsageScope]);
+
+    useEffect(() => {
+        for (const machineId of refreshMachineIds) {
+            void apiSocket.machineRPC(
+                machineId,
+                'refresh-codex-usage',
+                {},
+                { timeoutMs: CODEX_USAGE_REFRESH_RPC_TIMEOUT_MS },
+            ).catch(() => {});
+        }
+    }, [refreshMachineIds]);
     
     useEffect(() => {
         let cancelled = false;
@@ -692,14 +792,44 @@ export const UsagePanel: React.FC<{ sessionId?: string }> = ({ sessionId }) => {
             <View style={styles.codexCard} accessibilityLiveRegion="polite">
                 <View style={styles.codexHeader}>
                     <Text style={styles.codexTitle}>{t('machine.codexUsage')}</Text>
-                    {!!codexQuotaUsage?.latestEvent?.rateLimits?.planType && (
+                    {!!(selectedCodexProfile || codexQuotaUsage?.latestEvent?.rateLimits?.planType) && (
                         <View style={styles.planBadge}>
-                            <Text style={styles.planBadgeText}>
-                                {codexQuotaUsage.latestEvent.rateLimits.planType.toUpperCase()}
+                            <Text style={styles.planBadgeText} numberOfLines={1}>
+                                {selectedCodexProfile?.displayName
+                                    || codexQuotaUsage?.latestEvent?.rateLimits?.planType?.toUpperCase()}
                             </Text>
                         </View>
                     )}
                 </View>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                    <View style={styles.codexAccountSelector} accessibilityRole="tablist">
+                        {[
+                            { id: 'all', label: t('machine.codexUsageAllAccounts') },
+                            ...codexAccounts.profiles.map((profile) => ({ id: profile.id, label: profile.displayName })),
+                            ...(unattributedCodexUsageSnapshots.length > 0
+                                ? [{ id: 'unattributed', label: t('machine.codexUsageUnattributed') }]
+                                : []),
+                        ].map((scope) => {
+                            const active = scope.id === activeCodexUsageScope;
+                            return (
+                                <Pressable
+                                    key={scope.id}
+                                    testID={`codex-usage-scope-${scope.id}`}
+                                    accessibilityRole="tab"
+                                    aria-selected={active}
+                                    onPress={() => setCodexUsageScope(scope.id)}
+                                    style={({ pressed }) => [
+                                        styles.codexAccountChip,
+                                        active && styles.codexAccountChipActive,
+                                        pressed && styles.codexAccountChipPressed,
+                                    ]}
+                                >
+                                    <Text style={[styles.codexAccountChipText, active && styles.codexAccountChipTextActive]}>{scope.label}</Text>
+                                </Pressable>
+                            );
+                        })}
+                    </View>
+                </ScrollView>
                 {primaryCodexRateLimit ? (
                     <>
                         <View>
@@ -720,13 +850,28 @@ export const UsagePanel: React.FC<{ sessionId?: string }> = ({ sessionId }) => {
                         <Text style={styles.quotaReset}>
                             {t('machine.codexUsageResetsAt', { time: primaryCodexRateLimit.resetAt })}
                         </Text>
-                        <Text style={styles.quotaScannedAt}>
-                            {`${t('machine.codexUsageScannedAt')}: ${new Date(codexQuotaUsage!.scannedAt).toLocaleString()}`}
-                        </Text>
+                        {selectedCodexProfile?.quota.state === 'stale' && (
+                            <Text style={styles.quotaDetails}>{t('codexAccounts.quotaStale')}</Text>
+                        )}
+                        {typeof codexQuotaObservedAt === 'number' && (
+                            <Text style={styles.quotaScannedAt}>
+                                {`${t('machine.codexUsageScannedAt')}: ${new Date(codexQuotaObservedAt).toLocaleString()}`}
+                            </Text>
+                        )}
                     </>
                 ) : (
                     <Text style={styles.quotaDetails}>
-                        {codexUsage ? t('machine.codexUsageNoData') : t('machine.codexUsageWaitingForDaemon')}
+                        {activeCodexUsageScope === 'all'
+                            ? codexAccounts.profiles.length > 0
+                                ? t('machine.codexUsageSelectAccount')
+                                : t('machine.codexUsageWaitingForDaemon')
+                            : activeCodexUsageScope === 'unattributed'
+                                ? t('machine.codexUsageUnattributedHint')
+                                : selectedCodexProfile
+                                    ? selectedCodexProfile.quota.state === 'reset'
+                                        ? `${t('codexAccounts.quotaUnknown')} · ${t('codexAccounts.quotaWaiting')}`
+                                        : t('codexAccounts.quotaUnknown')
+                                    : t('machine.codexUsageWaitingForDaemon')}
                     </Text>
                 )}
             </View>
@@ -820,7 +965,7 @@ export const UsagePanel: React.FC<{ sessionId?: string }> = ({ sessionId }) => {
                 </View>
             )}
 
-            {loading && !codexUsage && (
+            {loading && !codexActivity && (
                 <View style={styles.loadingContainer}>
                     <ActivityIndicator size="large" color={theme.colors.accent} />
                 </View>

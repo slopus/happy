@@ -6,7 +6,7 @@ import { CodexAccountLaunch, withCodexAccountLaunch } from './codexAccountLaunch
 import { CodexAccountRequestError } from '@/api/codexAccountTypes';
 import { configuration } from '@/configuration';
 import { cleanupOrphanedCodexAccountHome } from '@/codex/codexAccountWorker';
-import { restoreCodexAccountHistory } from '@/codex/codexAccountHistory';
+import { rememberCodexAccountSession, restoreCodexAccountHistory } from '@/codex/codexAccountHistory';
 
 const auth = { tokens: { id_token: 'id-secret', access_token: 'access-secret', refresh_token: 'refresh-secret', account_id: 'account-secret' } };
 const dirs: string[] = [];
@@ -110,6 +110,44 @@ describe('Codex account launch lifecycle', () => {
     const result = await withCodexAccountLaunch({ agent: 'codex' }, a, 'machine-1', spawn);
     expect(result).toEqual({ type: 'success', sessionId: 'local-session' });
     expect(spawn).toHaveBeenCalledWith(undefined);
+    expect(a.redeemCodexSessionGrant).not.toHaveBeenCalled();
+  });
+  it('rejects grantless resume of a session attributed to a managed Codex account', async () => {
+    const a = api(); const spawn = vi.fn();
+    const historyRoot = join(configuration.happyHomeDir, 'codex-session-cache');
+    await rememberCodexAccountSession(historyRoot, 'managed-session', 'profile-1');
+
+    const result = await withCodexAccountLaunch(
+      { agent: 'codex' },
+      a,
+      'machine-1',
+      spawn,
+      { historyRoot, sourceSessionId: 'managed-session', sourceThreadId: 'managed-thread' },
+    );
+
+    expect(result).toEqual({
+      type: 'error',
+      errorMessage: expect.stringContaining('original Codex account'),
+    });
+    expect(spawn).not.toHaveBeenCalled();
+    expect(a.redeemCodexSessionGrant).not.toHaveBeenCalled();
+  });
+  it('rejects grantless resume from durable account metadata when the local audit is missing', async () => {
+    const a = api(); const spawn = vi.fn();
+
+    const result = await withCodexAccountLaunch(
+      { agent: 'codex' },
+      a,
+      'machine-1',
+      spawn,
+      { sourceSessionId: 'managed-session', sourceThreadId: 'managed-thread', sourceProfileId: 'profile-1' },
+    );
+
+    expect(result).toEqual({
+      type: 'error',
+      errorMessage: expect.stringContaining('original Codex account'),
+    });
+    expect(spawn).not.toHaveBeenCalled();
     expect(a.redeemCodexSessionGrant).not.toHaveBeenCalled();
   });
   it.each(['regular', 'tmux'] as const)('fails closed before %s spawn for malformed and rejected grants', async () => {

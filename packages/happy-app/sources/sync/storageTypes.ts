@@ -43,6 +43,8 @@ export const MetadataSchema = z.object({
     machineId: z.string().optional(),
     claudeSessionId: z.string().optional(), // Claude Code session ID
     codexThreadId: z.string().optional(), // Codex app-server thread ID
+    codexAccountProfileId: z.string().uuid().optional(),
+    codexAccountCredentialVersion: z.number().int().positive().optional(),
     // Cursor for reconnect-safe Codex Desktop/Paws history reconciliation.
     // MetadataSchema strips unknown keys, so this must remain explicit.
     codexSyncCursor: z.object({

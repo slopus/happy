@@ -48,4 +48,16 @@ describe('MetadataSchema', () => {
         });
         expect(metadata.codexPawsOriginToken).toBe('opaque-origin-token');
     });
+
+    it('preserves the explicit Codex account attribution', () => {
+        const metadata = MetadataSchema.parse({
+            path: '/tmp/project',
+            host: 'local-machine',
+            codexAccountProfileId: '00000000-0000-4000-8000-000000000001',
+            codexAccountCredentialVersion: 3,
+        });
+
+        expect(metadata.codexAccountProfileId).toBe('00000000-0000-4000-8000-000000000001');
+        expect(metadata.codexAccountCredentialVersion).toBe(3);
+    });
 });

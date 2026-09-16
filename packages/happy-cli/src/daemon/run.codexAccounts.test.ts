@@ -125,7 +125,7 @@ describe('real daemon Codex spawn paths', () => {
     await vi.waitFor(async () => { await expect(stat(launchHome)).rejects.toThrow(); });
     await vi.waitFor(() => expect(process.exit).toHaveBeenCalledWith(0));
   });
-  it('resumes an audited session under the newly bound profile and retains only its source thread', async () => {
+  it('rejects resuming an audited session under a different account before spawning', async () => {
     state.tmux = false;
     const first = state.handlers.spawnSession({ directory: sourceHome, agent: 'codex', codexSessionGrant: 'a'.repeat(43) });
     await vi.waitFor(() => expect(state.spawned).toHaveLength(1));
@@ -138,17 +138,10 @@ describe('real daemon Codex spawn paths', () => {
     state.children[0].emit('exit', 0);
     await vi.waitFor(async () => { await expect(stat(firstHome)).rejects.toThrow(); });
     state.api.redeemCodexSessionGrant.mockResolvedValue({ auth: { tokens: { id_token: 'b-id', access_token: 'b-access', refresh_token: 'b-refresh', account_id: 'b-account' } }, launchId: 'launch-b', profile: { id: 'profile-b', displayName: 'Codex · BBBB', credentialVersion: 2 } });
-    const resumed = state.handlers.resumeSession('paws-session', { codexSessionGrant: 'b'.repeat(43) });
-    await vi.waitFor(() => expect(state.spawned).toHaveLength(2));
-    const nextHome = state.spawned[1].CODEX_HOME;
-    expect(JSON.parse(await readFile(join(nextHome, 'auth.json'), 'utf8')).tokens.account_id).toBe('b-account');
-    expect(await readFile(join(nextHome, 'sessions', 'rollout-thread-source.jsonl'), 'utf8')).toBe('source-native-thread');
-    await expect(stat(join(nextHome, 'sessions', 'rollout-unrelated.jsonl'))).rejects.toThrow();
-    state.control.onHappySessionWebhook('paws-session', metadata, encryption);
-    expect(await resumed).toEqual({ type: 'success', sessionId: 'paws-session' });
-    expect(state.api.attachCodexSession).toHaveBeenLastCalledWith('launch-b', { machineId: 'machine-1', sourceSessionId: 'paws-session' });
-    state.children[1].emit('exit', 0);
-    await vi.waitFor(async () => { await expect(stat(nextHome)).rejects.toThrow(); });
+    const resumed = await state.handlers.resumeSession('paws-session', { codexSessionGrant: 'b'.repeat(43) });
+    expect(resumed).toEqual({ type: 'error', errorMessage: expect.stringContaining('different account') });
+    expect(state.spawned).toHaveLength(1);
+    expect(state.api.attachCodexSession).not.toHaveBeenCalledWith('launch-b', expect.anything());
   });
   it.each([false, true])('redeems and attaches the actual direct/tmux spawn (tmux=%s)', async tmux => {
     state.tmux = tmux;

@@ -3,6 +3,7 @@ import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { UsagePanel } from './UsagePanel';
 import { zhHans } from '@/text/translations/zh-Hans';
+import { appThemes } from '@/themePacks';
 
 // react-test-renderer does not publish TypeScript declarations with the package.
 // @ts-expect-error The test only needs the small create/unmount surface typed below.
@@ -12,9 +13,25 @@ const mocks = vi.hoisted(() => ({
     calculateTotals: vi.fn(),
     credentials: { token: 'test' } as { token: string } | null,
     currentMachineId: null as string | null,
+    currentCodexProfileId: null as string | null,
     getUsageForPeriod: vi.fn(),
     language: 'en',
     machineRPC: vi.fn(),
+    codexProfiles: [] as Array<{
+        id: string;
+        displayName: string;
+        status: 'available' | 'needs-refresh' | 'invalid';
+        credentialVersion: number;
+        createdAt: string;
+        updatedAt: string;
+        lastValidatedAt: string | null;
+        quota: {
+            state: 'unknown' | 'current' | 'stale' | 'reset';
+            remainingPercent: number | null;
+            weeklyResetsAt: string | null;
+            observedAt: string | null;
+        };
+    }>,
     machines: [] as Array<{
         active?: boolean;
         activeAt?: number;
@@ -54,7 +71,7 @@ vi.mock('@/sync/storage', () => ({
     storage: (selector: (state: unknown) => unknown) => selector({
         currentViewingSessionId: mocks.currentMachineId ? 'current-session' : null,
         sessions: mocks.currentMachineId ? {
-            'current-session': { metadata: { machineId: mocks.currentMachineId } },
+            'current-session': { metadata: { machineId: mocks.currentMachineId, codexAccountProfileId: mocks.currentCodexProfileId } },
         } : {},
     }),
     useAllMachines: () => mocks.machines,
@@ -65,6 +82,16 @@ vi.mock('@/sync/apiUsage', () => ({
 }));
 vi.mock('@/sync/apiSocket', () => ({
     apiSocket: { machineRPC: mocks.machineRPC },
+}));
+vi.mock('@/hooks/useCodexAccounts', () => ({
+    useCodexAccounts: () => ({
+        profiles: mocks.codexProfiles,
+        bindings: [],
+        migration: 'none',
+        loading: false,
+        busy: false,
+        error: null,
+    }),
 }));
 vi.mock('./UsageChart', () => ({ UsageChart: 'UsageChart' }));
 vi.mock('./UsageBar', () => ({ UsageBar: 'UsageBar' }));
@@ -111,8 +138,10 @@ describe('UsagePanel', () => {
     beforeEach(() => {
         mocks.credentials = { token: 'test' };
         mocks.currentMachineId = null;
+        mocks.currentCodexProfileId = null;
         mocks.language = 'en';
         mocks.machines = [];
+        mocks.codexProfiles = [];
         mocks.getUsageForPeriod.mockReset();
         mocks.calculateTotals.mockReset();
         mocks.machineRPC.mockReset();
@@ -139,8 +168,8 @@ describe('UsagePanel', () => {
             .filter((node: any) => node.props.accessibilityRole === 'tab');
         const texts = renderer.root.findAllByType('Text').map(textValue);
 
-        expect(tablists).toHaveLength(0);
-        expect(tabs).toHaveLength(0);
+        expect(tablists).toHaveLength(1);
+        expect(tabs).toHaveLength(1);
         expect(texts).toContain('machine.codexUsageWaitingForDaemon');
         expect(texts).not.toContain('usage.noData');
 
@@ -169,6 +198,140 @@ describe('UsagePanel', () => {
 
         expect(texts).toContain('51%');
         expect(renderer.root.findAllByType('ActivityIndicator')).toHaveLength(0);
+
+        act(() => renderer.unmount());
+    });
+
+    it('switches quota and activity between explicitly attributed Codex accounts', async () => {
+        mocks.getUsageForPeriod.mockResolvedValue({ usage: [] });
+        mocks.codexProfiles = [
+            {
+                id: '00000000-0000-4000-8000-000000000001', displayName: 'Codex · 5C7D', status: 'available', credentialVersion: 1,
+                createdAt: '2026-09-01T00:00:00.000Z', updatedAt: '2026-09-01T00:00:00.000Z', lastValidatedAt: '2026-09-01T00:00:00.000Z',
+                quota: { state: 'current', remainingPercent: 77, weeklyResetsAt: '2026-09-19T09:15:00.000Z', observedAt: '2026-09-14T09:00:00.000Z' },
+            },
+            {
+                id: '00000000-0000-4000-8000-000000000002', displayName: 'Codex · 8A6C', status: 'available', credentialVersion: 1,
+                createdAt: '2026-09-01T00:00:00.000Z', updatedAt: '2026-09-01T00:00:00.000Z', lastValidatedAt: '2026-09-01T00:00:00.000Z',
+                quota: { state: 'current', remainingPercent: 98, weeklyResetsAt: '2026-09-19T08:15:00.000Z', observedAt: '2026-09-14T09:05:00.000Z' },
+            },
+        ];
+        mocks.currentMachineId = 'current-machine';
+        mocks.currentCodexProfileId = mocks.codexProfiles[1].id;
+        const day = (date: string, totalTokens: number) => ({
+            date, inputTokens: totalTokens, cachedInputTokens: 0, outputTokens: 0, reasoningOutputTokens: 0,
+            totalTokens, tokenCountEvents: 1, sessions: 1, totalOnlyTokens: 0,
+        });
+        mocks.machines = [{
+            daemonState: {
+                codexAccountUsage: [
+                    { profileId: mocks.codexProfiles[0].id, usage: { source: 'codex-session-jsonl', scannedAt: Date.UTC(2026, 8, 14), days: [day('2026-09-14', 100)] } },
+                    { profileId: mocks.codexProfiles[1].id, usage: { source: 'codex-session-jsonl', scannedAt: Date.UTC(2026, 8, 14), days: [day('2026-09-14', 900)] } },
+                ],
+            },
+        }];
+
+        const renderer = await renderUsagePanel();
+        expect(renderer.root.findAllByType('Text').map(textValue)).toContain('98%');
+
+        const allAccounts = renderer.root.findByProps({ testID: 'codex-usage-scope-all' });
+        act(() => allAccounts.props.onPress());
+        expect(renderer.root.findAllByType('Text').map(textValue)).toContain('machine.codexUsageSelectAccount');
+
+        const firstAccount = renderer.root.findByProps({ testID: `codex-usage-scope-${mocks.codexProfiles[0].id}` });
+        act(() => firstAccount.props.onPress());
+        let texts = renderer.root.findAllByType('Text').map(textValue);
+        expect(texts).toContain('77%');
+        expect(texts).toContain('Codex · 5C7D');
+        expect(texts.some((value: string) => value.includes('"tokens":"100"'))).toBe(true);
+
+        const secondAccount = renderer.root.findByProps({ testID: `codex-usage-scope-${mocks.codexProfiles[1].id}` });
+        act(() => secondAccount.props.onPress());
+        texts = renderer.root.findAllByType('Text').map(textValue);
+        expect(texts).toContain('98%');
+        expect(texts).toContain('Codex · 8A6C');
+        expect(texts.some((value: string) => value.includes('"tokens":"900"'))).toBe(true);
+
+        act(() => renderer.unmount());
+    });
+
+    it('never presents an unattributed quota as the combined All-accounts quota when profile metadata is unavailable', async () => {
+        mocks.getUsageForPeriod.mockResolvedValue({ usage: [] });
+        const day = (totalTokens: number) => ({
+            date: '2026-09-14', inputTokens: totalTokens, cachedInputTokens: 0, outputTokens: 0, reasoningOutputTokens: 0,
+            totalTokens, tokenCountEvents: 1, sessions: 1, totalOnlyTokens: 0,
+        });
+        mocks.machines = [{
+            daemonState: {
+                codexUsage: {
+                    source: 'codex-session-jsonl', scannedAt: Date.UTC(2026, 8, 14), days: [day(300)],
+                    latestEvent: { rateLimits: { planType: 'pro', primary: { usedPercent: 49, windowMinutes: 10080 } } },
+                },
+                codexAccountUsage: [{
+                    profileId: '00000000-0000-4000-8000-000000000001',
+                    usage: { source: 'codex-session-jsonl', scannedAt: Date.UTC(2026, 8, 14), days: [day(100)] },
+                }],
+            },
+        }];
+
+        const renderer = await renderUsagePanel();
+        const allAccounts = renderer.root.findByProps({ testID: 'codex-usage-scope-all' });
+        act(() => allAccounts.props.onPress());
+        const texts = renderer.root.findAllByType('Text').map(textValue);
+
+        expect(texts).not.toContain('51%');
+        expect(renderer.root.findByProps({ testID: 'codex-usage-day-2026-09-14' }).props.accessibilityLabel)
+            .toContain('"tokens":"400"');
+
+        act(() => renderer.unmount());
+    });
+
+    it('uses semantic surface states for Codex account scope chips', async () => {
+        mocks.getUsageForPeriod.mockResolvedValue({ usage: [] });
+        mocks.codexProfiles = [{
+            id: '00000000-0000-4000-8000-000000000001', displayName: 'Codex · 5C7D', status: 'available', credentialVersion: 1,
+            createdAt: '2026-09-01T00:00:00.000Z', updatedAt: '2026-09-01T00:00:00.000Z', lastValidatedAt: null,
+            quota: { state: 'unknown', remainingPercent: null, weeklyResetsAt: null, observedAt: null },
+        }];
+
+        const renderer = await renderUsagePanel();
+        const allAccounts = renderer.root.findByProps({ testID: 'codex-usage-scope-all' });
+        const selectedAccount = renderer.root.findByProps({ testID: `codex-usage-scope-${mocks.codexProfiles[0].id}` });
+
+        expect(typeof allAccounts.props.style).toBe('function');
+        expect(allAccounts.props.style({ pressed: false })).toContainEqual(expect.objectContaining({ backgroundColor: appThemes.ginghamDark.colors.surface }));
+        expect(allAccounts.props.style({ pressed: true })).toContainEqual(expect.objectContaining({ backgroundColor: appThemes.ginghamDark.colors.surfacePressed }));
+        expect(selectedAccount.props.style({ pressed: false })).toContainEqual(expect.objectContaining({ backgroundColor: appThemes.ginghamDark.colors.surfaceSelected }));
+
+        act(() => renderer.unmount());
+    });
+
+    it('keeps legacy local sessions in an explicit unattributed scope', async () => {
+        mocks.getUsageForPeriod.mockResolvedValue({ usage: [] });
+        mocks.codexProfiles = [{
+            id: '00000000-0000-4000-8000-000000000001', displayName: 'Codex · 5C7D', status: 'available', credentialVersion: 1,
+            createdAt: '2026-09-01T00:00:00.000Z', updatedAt: '2026-09-01T00:00:00.000Z', lastValidatedAt: null,
+            quota: { state: 'unknown', remainingPercent: null, weeklyResetsAt: null, observedAt: null },
+        }];
+        mocks.machines = [{
+            daemonState: {
+                codexUsage: {
+                    source: 'codex-session-jsonl', scannedAt: Date.UTC(2026, 8, 14),
+                    days: [{
+                        date: '2026-09-14', inputTokens: 300, cachedInputTokens: 0, outputTokens: 0, reasoningOutputTokens: 0,
+                        totalTokens: 300, tokenCountEvents: 1, sessions: 1, totalOnlyTokens: 0,
+                    }],
+                },
+            },
+        }];
+
+        const renderer = await renderUsagePanel();
+        const unattributed = renderer.root.findByProps({ testID: 'codex-usage-scope-unattributed' });
+        act(() => unattributed.props.onPress());
+        const texts = renderer.root.findAllByType('Text').map(textValue);
+
+        expect(texts).toContain('machine.codexUsageUnattributedHint');
+        expect(texts.some((value: string) => value.includes('"tokens":"300"'))).toBe(true);
 
         act(() => renderer.unmount());
     });
@@ -288,7 +451,7 @@ describe('UsagePanel', () => {
                 return text.includes('usage.tokens') || text.includes('usage.cost');
             });
 
-        expect(tablists).toHaveLength(2);
+        expect(tablists).toHaveLength(3);
         expect(metricTabs.map((node: any) => node.props['aria-selected'])).toEqual([true, false]);
 
         act(() => metricTabs[1].props.onPress());
@@ -592,7 +755,7 @@ describe('UsagePanel', () => {
         const texts = renderer.root.findAllByType('Text').map(textValue);
 
         const horizontalScrollViews = renderer.root.findAllByType('ScrollView')
-            .filter((node: any) => node.props.horizontal === true);
+            .filter((node: any) => node.props.horizontal === true && node.props.testID === 'codex-usage-heatmap-scroll');
         const heatmapGrid = renderer.root.findAllByType('View').find((node: any) => (
             node.props.style?.flexDirection === 'row'
             && node.props.style?.gap === 5
