@@ -1,9 +1,10 @@
 import { MMKV } from 'react-native-mmkv';
+import { accountStorageId } from '@/auth/accountRuntime';
 import { z } from 'zod';
 import { ApiMessageSchema, ApiSessionSnapshotSchema, type ApiMessage, type ApiSessionSnapshot } from './apiTypes';
 import { sessionHistoryPageCache } from './sessionHistoryPageCache';
 
-const cacheStorage = new MMKV({ id: 'session-warm-cache' });
+const cacheStorage = new MMKV({ id: accountStorageId('session-warm-cache')! });
 const CACHE_KEY = 'encrypted-wire-v1';
 const MAX_SNAPSHOTS = 150;
 const MAX_LATEST_PAGES = 3;

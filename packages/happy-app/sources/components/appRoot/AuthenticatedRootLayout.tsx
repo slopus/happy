@@ -13,6 +13,11 @@ import { PostHogProvider } from 'posthog-react-native';
 import { useUnistyles } from 'react-native-unistyles';
 import { AuthCredentials, TokenStorage } from '@/auth/tokenStorage';
 import { AuthProvider } from '@/auth/AuthContext';
+import { migrateLegacyAccount, recoverAccountSelection } from '@/auth/accounts';
+import { accountIndex, getActiveAccountKey, getRuntimeAccountSelection, freezeAccountRuntime } from '@/auth/accountRuntime';
+import { installAccountNetworkGuard } from '@/auth/accountNetwork';
+import { AccountTransitionScreen } from '@/components/accounts/AccountTransitionScreen';
+import { getServerUrl } from '@/sync/serverConfig';
 import { SidebarNavigator } from '@/components/SidebarNavigator';
 import { DesktopSettingsModalProvider } from '@/components/DesktopSettingsModal';
 import { ThemeCaptureRoot } from '@/components/ThemeTransition';
@@ -77,6 +82,7 @@ if (Platform.OS === 'android') {
 }
 
 initConsoleLogging();
+installAccountNetworkGuard();
 markSessionCriticalPathAppStage('web.root.module_ready');
 
 function HorizontalSafeAreaWrapper({ children }: { children: React.ReactNode }) {
@@ -134,6 +140,7 @@ export default function AuthenticatedRootLayout() {
         devModeEnabled,
     });
     const [initState, setInitState] = React.useState<{ credentials: AuthCredentials | null } | null>(null);
+    const [initError, setInitError] = React.useState(false);
 
     React.useEffect(() => {
         void (async () => {
@@ -156,16 +163,28 @@ export default function AuthenticatedRootLayout() {
                     }
                 }
                 markSessionCriticalPathAppStage('web.credentials.ready');
-                if (credentials) await syncRestore(credentials);
+                if (credentials) {
+                    await migrateLegacyAccount(credentials);
+                    await syncRestore(credentials);
+                }
                 setInitState({ credentials });
             } catch (error) {
-                console.error('Error initializing:', error);
+                setInitError(true);
+                void SplashScreen.hideAsync();
             }
         })();
     }, []);
 
     React.useEffect(() => {
         if (!initState) return;
+        const pending = accountIndex.getString('pending-route');
+        if (pending) {
+            accountIndex.delete('pending-route');
+            try {
+                const target = JSON.parse(pending);
+                if (target.key === getActiveAccountKey() && (target.path === '/accounts' || /^\/session\/[a-zA-Z0-9_-]{1,128}$/.test(target.path))) router.replace(target.path);
+            } catch { /* A damaged pending route does not block startup. */ }
+        }
         const timer = setTimeout(() => { void SplashScreen.hideAsync(); }, 100);
         return () => clearTimeout(timer);
     }, [initState]);
@@ -179,14 +198,23 @@ export default function AuthenticatedRootLayout() {
         handledNotificationIds.current.add(responseId);
         try {
             if (response.actionIdentifier !== Notifications.DEFAULT_ACTION_IDENTIFIER) return;
-            const retrySessionId = getPublicSessionShareRetrySessionId(response);
-            if (retrySessionId) retryPublicSessionShareJob(retrySessionId);
             const route = getSessionRouteFromNotificationResponse(response);
             if (!route) return;
             const encodedSessionId = route.replace(/^\/session\//, '');
             let sessionId = encodedSessionId;
             try { sessionId = decodeURIComponent(encodedSessionId); } catch { /* Keep the encoded identifier. */ }
+            // Old notifications can remain on a device after switching accounts.
+            const credentials = await TokenStorage.getCredentials();
+            if (!credentials) return;
+            const ownership = await fetch(`${getServerUrl()}/v2/sessions/${encodeURIComponent(sessionId)}`, {
+                headers: { Authorization: `Bearer ${credentials.token}` }, signal: AbortSignal.timeout(10000),
+            });
+            if (!ownership.ok) return;
+            const retrySessionId = getPublicSessionShareRetrySessionId(response);
+            if (retrySessionId === sessionId) retryPublicSessionShareJob(retrySessionId);
             navigateToSession(router, sessionId);
+        } catch {
+            // A stale or inaccessible notification does not change accounts.
         } finally {
             await Notifications.clearLastNotificationResponseAsync().catch(() => undefined);
         }
@@ -217,6 +245,18 @@ export default function AuthenticatedRootLayout() {
         if (devModeEnabled && voiceUpsellOverride) applyVoiceUpsellOverride(voiceUpsellOverride);
     }, [devModeEnabled, voiceUpsellOverride]);
 
+    if (initError) return <AccountTransitionScreen error onCancel={() => void (async () => {
+        freezeAccountRuntime();
+        await recoverAccountSelection(getRuntimeAccountSelection()?.generation);
+        if (Platform.OS === 'web') window.location.replace('/accounts');
+        else {
+            accountIndex.set('pending-route', JSON.stringify({ key: getActiveAccountKey(), path: '/accounts' }));
+            await Updates.reloadAsync();
+        }
+    })().catch(() => undefined)} onRetry={() => {
+        if (Platform.OS === 'web') window.location.reload();
+        else void Updates.reloadAsync().catch(() => undefined);
+    }} />;
     if (!initState) return null;
 
     let providers = (

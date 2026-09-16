@@ -35,6 +35,7 @@ vi.mock('react-native', async () => {
         Platform: { get OS() { return mocks.platform; } },
         Pressable,
         Text: 'Text',
+        ScrollView: 'ScrollView',
         useWindowDimensions: () => ({ height: 900, width: 1280 }),
         View: 'View',
     };
@@ -64,6 +65,17 @@ vi.mock('react-native-unistyles', () => {
 });
 vi.mock('@/auth/AuthContext', () => ({ useAuth: () => ({ logout: mocks.logout }) }));
 vi.mock('@/components/Avatar', () => ({ Avatar: 'Avatar' }));
+vi.mock('@/components/accounts/SavedAccountsMenu', async () => {
+    const ReactModule = await import('react');
+    return { SavedAccountsMenu: ReactModule.forwardRef<any, any>((props, ref) => {
+        ReactModule.useImperativeHandle(ref, () => ({ focus: mocks.firstActionFocus }));
+        return ReactModule.createElement('SavedAccountsMenu', props);
+    }) };
+});
+vi.mock('react-native-reanimated', () => {
+    const animation = { duration: () => animation, reduceMotion: () => animation, withCallback: () => animation };
+    return { default: { View: 'View' }, FadeIn: animation, LinearTransition: animation, ReduceMotion: { System: 'system' } };
+});
 vi.mock('@/components/usage/UsagePanel', () => ({ UsagePanel: 'UsagePanel' }));
 vi.mock('@/constants/Typography', () => ({ Typography: { default: () => ({}) } }));
 vi.mock('@/modal', () => ({ Modal: { confirm: mocks.confirm } }));
@@ -292,7 +304,7 @@ describe('SidebarAccountMenu', () => {
         expect(mocks.navigate.mock.calls).toEqual([
             ['/settings/profile'],
             ['/settings'],
-            ['/settings/account'],
+            ['/accounts'],
         ]);
         expect(renderer.root.findAllByProps({ testID: 'sidebar-account-help-action' })).toHaveLength(0);
     });

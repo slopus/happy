@@ -26,6 +26,29 @@ function plural({ count, one, few, many }: { count: number; one: string; few: st
  * Must match the exact structure of the English translations
  */
 export const pl: TranslationStructure = {
+    accounts: {
+        attachmentWarning: "Zmiana konta przeładuje Paws. Wersje robocze tekstu zostaną zachowane, ale niewysłane załączniki trzeba będzie wybrać ponownie. Kontynuować?",
+        title: "Konta Paws",
+        description: "Zmień konto na tym urządzeniu. Pozostałe karty przeglądarki również zmienią konto.",
+        empty: "Brak zapisanych kont",
+        active: "Bieżące konto",
+        switch: "Zmień konto",
+        remove: "Usuń z urządzenia",
+        removeHint: "Usunąć zapisane dane logowania? Sesje na serwerze zostaną zachowane.",
+        add: "Dodaj konto",
+        server: "URL serwera",
+        label: "Nazwa konta (opcjonalna)",
+        secret: "Klucz odzyskiwania",
+        secretHint: "Wprowadź klucz odzyskiwania dodawanego konta. Dodanie konta nie przełącza go automatycznie.",
+        target: "Otwórz sesję",
+        targetHint: "Sprawdź konto i serwer, a następnie wybierz pasujące konto.",
+        invalidLink: "Nieprawidłowy link do konta",
+        failed: "Nie udało się ukończyć operacji. Sprawdź dane konta i połączenie, a następnie spróbuj ponownie.",
+        retry: "Ponów",
+        restartRequired: "Wymagane ponowne uruchomienie",
+        switching: "Przełączanie konta…",
+        restartHint: "Załaduj Paws ponownie, aby dokończyć zmianę. Jeśli to nie działa, zamknij i otwórz aplikację ponownie.",
+    },
     codexAccounts: en.codexAccounts,
     deviceEnvironmentDashboard: {
         previousResult: 'Wynik poprzedniego sprawdzenia',

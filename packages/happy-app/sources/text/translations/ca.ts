@@ -15,6 +15,29 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
  * Must match the exact structure of the English translations
  */
 export const ca: TranslationStructure = {
+    accounts: {
+        attachmentWarning: "En canviar de compte es tornarà a carregar Paws. Els esborranys de text es conservaran, però hauràs de tornar a seleccionar els fitxers adjunts no enviats. Vols continuar?",
+        title: "Comptes de Paws",
+        description: "Canvia de compte en aquest dispositiu. Les altres pestanyes també canviaran.",
+        empty: "No hi ha comptes desats",
+        active: "Compte actual",
+        switch: "Canvia de compte",
+        remove: "Elimina del dispositiu",
+        removeHint: "Vols eliminar aquest accés desat? Les sessions del servidor es conservaran.",
+        add: "Afegeix un compte",
+        server: "URL del servidor",
+        label: "Nom del compte (opcional)",
+        secret: "Clau de recuperació",
+        secretHint: "Introdueix la clau de recuperació del compte que vols afegir. El compte no canviarà automàticament.",
+        target: "Obre una sessió",
+        targetHint: "Comprova el compte i el servidor i selecciona el compte corresponent.",
+        invalidLink: "Enllaç de compte no vàlid",
+        failed: "No s’ha pogut completar l’acció. Comprova les dades del compte i la connexió i torna-ho a provar.",
+        retry: "Torna-ho a provar",
+        restartRequired: "Cal reiniciar",
+        switching: "S’està canviant de compte…",
+        restartHint: "Torna a carregar Paws per completar el canvi. Si no funciona, tanca i torna a obrir l’aplicació.",
+    },
     codexAccounts: en.codexAccounts,
     deviceEnvironmentDashboard: {
         previousResult: 'Resultat de la comprovació anterior',

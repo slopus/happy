@@ -2,6 +2,7 @@ import { io, Socket } from 'socket.io-client';
 import { AppState, Platform } from 'react-native';
 import Constants from 'expo-constants';
 import { TokenStorage } from '@/auth/tokenStorage';
+import { assertAccountRuntime, accountRuntimeCurrent } from '@/auth/accountRuntime';
 import { Encryption } from './encryption/encryption';
 import { storage } from './storage';
 
@@ -100,6 +101,7 @@ export class ApiSocket {
     //
 
     connect() {
+        if (!accountRuntimeCurrent()) return;
         if (!this.config || this.socket) {
             return;
         }
@@ -166,6 +168,7 @@ export class ApiSocket {
      * RPC call for sessions - uses session-specific encryption
      */
     async sessionRPC<R, A>(sessionId: string, method: string, params: A, options?: RpcCallOptions): Promise<R> {
+        assertAccountRuntime();
         return this.encryptedRPC<R, A>(
             `${sessionId}:${method}`,
             params,
@@ -184,6 +187,7 @@ export class ApiSocket {
      * RPC call for machines - uses legacy/global encryption (for now)
      */
     async machineRPC<R, A>(machineId: string, method: string, params: A, options?: RpcCallOptions): Promise<R> {
+        assertAccountRuntime();
         return this.encryptedRPC<R, A>(
             `${machineId}:${method}`,
             params,
@@ -207,11 +211,13 @@ export class ApiSocket {
     }
 
     send(event: string, data: any) {
+        assertAccountRuntime();
         this.socket!.emit(event, data);
         return true;
     }
 
     async emitWithAck<T = any>(event: string, data: any): Promise<T> {
+        assertAccountRuntime();
         if (!this.socket) {
             throw new Error('Socket not connected');
         }

@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Modal as NativeModal, Platform, Pressable, Text, View } from 'react-native';
+import { Modal as NativeModal, Platform, Pressable, ScrollView, Text, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
@@ -10,6 +10,8 @@ import { Modal } from '@/modal';
 import { getAvatarUrl, type Profile } from '@/sync/profile';
 import { t } from '@/text';
 import { UsageDialog } from '@/components/usage/UsageDialog';
+import { SavedAccountsMenu } from '@/components/accounts/SavedAccountsMenu';
+import Animated, { FadeIn, LinearTransition, ReduceMotion, runOnJS } from 'react-native-reanimated';
 
 type SidebarAccountMenuProps = {
     desktopDensity?: boolean;
@@ -79,8 +81,10 @@ export const SidebarAccountMenu = React.memo(function SidebarAccountMenu({
     const { theme } = useUnistyles();
     const triggerRef = React.useRef<any>(null);
     const safeArea = useSafeAreaInsets();
+    const { height: viewportHeight } = useWindowDimensions();
     const nativeMobileMenu = mobileRail && Platform.OS !== 'web';
     const firstActionRef = React.useRef<any>(null);
+    const focusFirstAction = React.useCallback(() => firstActionRef.current?.focus?.(), []);
     const wasOpenRef = React.useRef(false);
     const [usageDialogOpen, setUsageDialogOpen] = React.useState(false);
     const avatarUrl = getAvatarUrl(profile);
@@ -149,7 +153,12 @@ export const SidebarAccountMenu = React.memo(function SidebarAccountMenu({
     }, [onOpenChange]);
 
     const menu = open ? (
-                <View
+                <Animated.View
+                    entering={FadeIn.duration(160).reduceMotion(ReduceMotion.System).withCallback((finished) => {
+                        'worklet';
+                        if (finished) runOnJS(focusFirstAction)();
+                    })}
+                    layout={LinearTransition.duration(220).reduceMotion(ReduceMotion.System)}
                     accessibilityViewIsModal
                     style={[
                         styles.menu,
@@ -157,11 +166,13 @@ export const SidebarAccountMenu = React.memo(function SidebarAccountMenu({
                         railMode && styles.menuRail,
                         mobileRail && styles.menuMobileRail,
                         nativeMobileMenu && { bottom: safeArea.bottom + 64 },
+                        { maxHeight: Math.max(120, viewportHeight - safeArea.top - safeArea.bottom - 90) },
                     ]}
                     testID="sidebar-account-menu"
                 >
+                    <ScrollView keyboardShouldPersistTaps="handled">
+                    <SavedAccountsMenu ref={firstActionRef} onNavigate={navigate} />
                     <MenuAction
-                        ref={firstActionRef}
                         icon="person-circle-outline"
                         label={t('settingsAccount.profile')}
                         onPress={() => navigate('/settings/profile')}
@@ -183,8 +194,8 @@ export const SidebarAccountMenu = React.memo(function SidebarAccountMenu({
                     />
                     <MenuAction
                         icon="shield-checkmark-outline"
-                        label={t('settings.account')}
-                        onPress={() => navigate('/settings/account')}
+                        label={t('accounts.title')}
+                        onPress={() => navigate('/accounts')}
                         testID="sidebar-account-details-action"
                     />
                     <MenuAction
@@ -202,7 +213,8 @@ export const SidebarAccountMenu = React.memo(function SidebarAccountMenu({
                             testID="sidebar-account-logout-action"
                         />
                     </View>
-                </View>
+                    </ScrollView>
+                </Animated.View>
             ) : null;
 
     return (

@@ -172,6 +172,7 @@ function NotAuthenticated() {
         <>
             <HomeHeaderNotAuth />
             {isLandscape ? landscapeLayout : portraitLayout}
+            <View style={{ padding: 16 }}><RoundButton title={t('accounts.title')} onPress={() => router.push('/accounts')} display="inverted" /></View>
         </>
     )
 }

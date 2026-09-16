@@ -17,6 +17,29 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 }
 
 export const zhHant: TranslationStructure = {
+    accounts: {
+        attachmentWarning: "切換帳號會重新載入。文字草稿將保留，但尚未傳送的附件需要重新選取。是否繼續？",
+        title: "Paws 帳號",
+        description: "切換此裝置上的帳號。其他瀏覽器分頁也會同步切換。",
+        empty: "尚無已儲存的帳號",
+        active: "目前帳號",
+        switch: "切換帳號",
+        remove: "從裝置移除",
+        removeHint: "移除此帳號的本機登入資訊？伺服器端對話將繼續保留。",
+        add: "新增帳號",
+        server: "伺服器網址",
+        label: "帳號名稱（選填）",
+        secret: "復原密鑰",
+        secretHint: "輸入要新增帳號的復原密鑰。新增後不會自動切換帳號。",
+        target: "開啟對話",
+        targetHint: "確認帳號和伺服器後，選擇相符帳號開啟此對話。",
+        invalidLink: "帳號連結無效",
+        failed: "無法完成操作。請檢查帳號資訊和網路連線後重試。",
+        retry: "重試",
+        restartRequired: "需要重新啟動",
+        switching: "正在切換帳號…",
+        restartHint: "重新載入 Paws 以完成切換。如果無法重新載入，請關閉並重新開啟應用程式。",
+    },
     codexAccounts: en.codexAccounts,
     deviceEnvironmentDashboard: {
         previousResult: '上次檢查結果',

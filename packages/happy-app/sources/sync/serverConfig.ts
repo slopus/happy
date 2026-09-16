@@ -1,4 +1,5 @@
 import { MMKV } from 'react-native-mmkv';
+import { getRuntimeAccountServer } from '@/auth/accountRuntime';
 
 // Separate MMKV instance for server config that persists across logouts
 const serverConfigStorage = new MMKV({ id: 'server-config' });
@@ -9,6 +10,8 @@ const DEFAULT_SERVER_URL = 'https://47.115.228.20:8443';
 const LEGACY_DEFAULT_SERVER_URL = 'http://47.115.228.20:3005';
 
 export function getServerUrl(): string {
+    const accountServer = getRuntimeAccountServer();
+    if (accountServer) return accountServer;
     const storedUrl = serverConfigStorage.getString(SERVER_KEY);
     // 3005 was briefly shipped as the default even though Android release builds
     // reject its cleartext HTTP traffic. Migrate that value without touching

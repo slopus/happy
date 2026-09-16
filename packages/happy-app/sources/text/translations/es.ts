@@ -15,6 +15,29 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
  * Must match the exact structure of the English translations
  */
 export const es: TranslationStructure = {
+    accounts: {
+        attachmentWarning: "Al cambiar de cuenta se recargará Paws. Los borradores de texto se conservarán, pero tendrás que volver a seleccionar los archivos adjuntos no enviados. ¿Continuar?",
+        title: "Cuentas de Paws",
+        description: "Cambia de cuenta en este dispositivo. Las otras pestañas también cambiarán.",
+        empty: "No hay cuentas guardadas",
+        active: "Cuenta actual",
+        switch: "Cambiar de cuenta",
+        remove: "Eliminar del dispositivo",
+        removeHint: "¿Eliminar este acceso guardado? Las sesiones del servidor se conservarán.",
+        add: "Añadir cuenta",
+        server: "URL del servidor",
+        label: "Nombre de cuenta (opcional)",
+        secret: "Clave de recuperación",
+        secretHint: "Introduce la clave de recuperación de la cuenta que quieras añadir. No se cambiará de cuenta automáticamente.",
+        target: "Abrir sesión",
+        targetHint: "Comprueba la cuenta y el servidor y selecciona la cuenta correspondiente.",
+        invalidLink: "Enlace de cuenta no válido",
+        failed: "No se pudo completar la acción. Revisa los datos de la cuenta y la conexión e inténtalo de nuevo.",
+        retry: "Reintentar",
+        restartRequired: "Es necesario reiniciar",
+        switching: "Cambiando de cuenta…",
+        restartHint: "Recarga Paws para completar el cambio. Si no funciona, cierra y vuelve a abrir la aplicación.",
+    },
     codexAccounts: en.codexAccounts,
     deviceEnvironmentDashboard: {
         previousResult: 'Resultado de la comprobación anterior',

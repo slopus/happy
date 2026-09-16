@@ -18,6 +18,29 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 }
 
 export const ja: TranslationStructure = {
+    accounts: {
+        attachmentWarning: "アカウントを切り替えると Paws が再読み込みされます。テキストの下書きは保持されますが、未送信の添付ファイルは選び直す必要があります。続行しますか？",
+        title: "Paws アカウント",
+        description: "この端末のアカウントを切り替えます。他のブラウザタブも切り替わります。",
+        empty: "保存済みのアカウントはありません",
+        active: "現在のアカウント",
+        switch: "切り替える",
+        remove: "端末から削除",
+        removeHint: "保存されたログイン情報を削除しますか？サーバー上のセッションは残ります。",
+        add: "アカウントを追加",
+        server: "サーバー URL",
+        label: "アカウント名（任意）",
+        secret: "復元用シークレット",
+        secretHint: "追加するアカウントの復元用シークレットを入力してください。追加だけでは切り替わりません。",
+        target: "セッションを開く",
+        targetHint: "アカウントとサーバーを確認し、一致するアカウントを選択してください。",
+        invalidLink: "無効なアカウントリンク",
+        failed: "操作を完了できませんでした。アカウント情報と接続を確認して再試行してください。",
+        retry: "再試行",
+        restartRequired: "再起動が必要です",
+        switching: "アカウントを切り替え中…",
+        restartHint: "Paws を再読み込みして切り替えを完了してください。再読み込みできない場合はアプリを閉じて開き直してください。",
+    },
     codexAccounts: en.codexAccounts,
     deviceEnvironmentDashboard: {
         previousResult: '前回の確認結果',

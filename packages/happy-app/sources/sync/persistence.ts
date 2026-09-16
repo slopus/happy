@@ -1,4 +1,5 @@
 import { MMKV } from 'react-native-mmkv';
+import { accountStorageId } from '@/auth/accountRuntime';
 import { clearComposeDraft } from './composeDraft';
 import { Settings, settingsDefaults, settingsParse, settingsToSyncPayload, SettingsSchema } from './settings';
 import { LocalSettings, localSettingsDefaults, localSettingsParse } from './localSettings';
@@ -8,7 +9,8 @@ import type { PermissionModeKey } from '@/components/PermissionModeSelector';
 import { SidebarOrganizationSchema, type SidebarOrganization } from './sidebarOrganization';
 import { clearPublicSessionShareQueueStorage } from './publicSessionShareQueuePersistence';
 
-const mmkv = new MMKV();
+const storageId = accountStorageId();
+const mmkv = storageId ? new MMKV({ id: storageId }) : new MMKV();
 const NEW_SESSION_DRAFT_KEY = 'new-session-draft-v1';
 const REGISTERED_PUSH_TOKEN_KEY = 'registered-push-token-v1';
 const VOICE_SOFT_PAYWALL_SHOWN_KEY = 'voice-soft-paywall-shown';

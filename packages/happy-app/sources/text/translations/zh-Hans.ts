@@ -17,6 +17,29 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 }
 
 export const zhHans: TranslationStructure = {
+    accounts: {
+        attachmentWarning: "切换账号会重新加载。文字草稿将保留，但尚未发送的附件需要重新选择。是否继续？",
+        title: "Paws 账号",
+        description: "切换此设备上的账号。其他浏览器标签页也会同步切换。",
+        empty: "还没有已保存的账号",
+        active: "当前账号",
+        switch: "切换账号",
+        remove: "从设备移除",
+        removeHint: "移除此账号的本地登录信息？服务端会话将继续保留。",
+        add: "添加账号",
+        server: "服务器地址",
+        label: "账号名称（选填）",
+        secret: "恢复密钥",
+        secretHint: "输入待添加账号的恢复密钥。添加后不会自动切换账号。",
+        target: "打开会话",
+        targetHint: "确认账号和服务器后，选择匹配账号打开此会话。",
+        invalidLink: "账号链接无效",
+        failed: "未能完成操作。请检查账号信息和网络连接后重试。",
+        retry: "重试",
+        restartRequired: "需要重新启动",
+        switching: "正在切换账号…",
+        restartHint: "重新加载 Paws 以完成切换。如果无法重新加载，请关闭并重新打开应用。",
+    },
     codexAccounts: {
         openDeviceEnvironment: '前往设备环境',
         launchUnbound: '请先前往「设置 → 设备环境」，为此设备绑定一个 Codex 账号，再启动会话。',

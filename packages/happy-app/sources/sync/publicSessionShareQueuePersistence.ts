@@ -1,4 +1,5 @@
 import { MMKV } from 'react-native-mmkv';
+import { accountStorageId } from '@/auth/accountRuntime';
 import { z } from 'zod';
 import type { PublicSessionThemePack } from '@slopus/happy-wire';
 import { THEME_PACK_IDS } from '@/themePacksData';
@@ -8,7 +9,7 @@ import {
     type PublicSessionShareQueueStorage,
 } from './publicSessionShareQueue';
 
-const queueStorage = new MMKV({ id: 'public-session-share-queue' });
+const queueStorage = new MMKV({ id: accountStorageId('public-session-share-queue')! });
 const STORAGE_KEY = 'jobs-v1';
 
 const themePackSchema = z.custom<PublicSessionThemePack>((value) => (

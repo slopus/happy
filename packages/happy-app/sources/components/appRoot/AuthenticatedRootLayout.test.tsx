@@ -14,6 +14,15 @@ const bootStages = vi.hoisted(() => {
     return stages;
 });
 
+const accountMocks = vi.hoisted(() => ({
+    migrateLegacyAccount: vi.fn(async () => undefined),
+    recoverAccountSelection: vi.fn(async (_generation?: string) => undefined),
+    freezeAccountRuntime: vi.fn(),
+    reload: vi.fn(async () => undefined),
+    replace: vi.fn(),
+    indexSet: vi.fn(),
+}));
+
 vi.stubGlobal('__DEV__', false);
 
 vi.mock('react-native', () => ({
@@ -36,8 +45,18 @@ vi.mock('expo-notifications', () => ({
     setNotificationHandler: vi.fn(),
 }));
 vi.mock('expo-application', () => ({ applicationId: 'build.paws' }));
-vi.mock('expo-updates', () => ({ channel: 'production' }));
-vi.mock('expo-router', () => ({ useRouter: () => ({ push: vi.fn() }) }));
+vi.mock('expo-updates', () => ({ channel: 'production', reloadAsync: accountMocks.reload }));
+vi.mock('expo-router', () => ({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }) }));
+vi.mock('@/auth/accounts', () => ({ migrateLegacyAccount: accountMocks.migrateLegacyAccount, recoverAccountSelection: accountMocks.recoverAccountSelection }));
+vi.mock('@/auth/accountRuntime', () => ({
+    accountIndex: { getString: vi.fn(), delete: vi.fn(), set: accountMocks.indexSet },
+    getActiveAccountKey: () => null,
+    getRuntimeAccountSelection: () => ({ generation: 'generation-A' }),
+    freezeAccountRuntime: accountMocks.freezeAccountRuntime,
+}));
+vi.mock('@/auth/accountNetwork', () => ({ installAccountNetworkGuard: vi.fn() }));
+vi.mock('@/sync/serverConfig', () => ({ getServerUrl: () => 'https://paws.example' }));
+vi.mock('@/components/accounts/AccountTransitionScreen', () => ({ AccountTransitionScreen: 'AccountTransitionScreen' }));
 vi.mock('@react-navigation/native', () => ({
     DarkTheme: { colors: {} },
     DefaultTheme: { colors: {} },
@@ -152,6 +171,7 @@ describe('AuthenticatedRootLayout scanner provider topology', () => {
     let renderer: TestRenderer.ReactTestRenderer | undefined;
 
     beforeEach(() => {
+        vi.clearAllMocks();
         vi.mocked(loadAppRootFonts).mockResolvedValue(undefined);
         vi.mocked(TokenStorage.getCredentials).mockResolvedValue(null);
         vi.mocked(syncRestore).mockClear();
@@ -181,6 +201,30 @@ describe('AuthenticatedRootLayout scanner provider topology', () => {
     afterEach(() => {
         act(() => renderer?.unmount());
         renderer = undefined;
+        vi.unstubAllGlobals();
+        vi.stubGlobal('__DEV__', false);
+    });
+
+    it.each(['web', 'ios'] as const)('recovers a broken credential selection and opens account management on %s', async (platform) => {
+        Platform.OS = platform;
+        vi.stubGlobal('window', { location: { replace: accountMocks.replace } });
+        vi.mocked(TokenStorage.getCredentials).mockRejectedValueOnce(new Error('damaged credentials'));
+        await act(async () => { renderer = TestRenderer.create(<AuthenticatedRootLayout />); });
+        const transition = renderer!.root.findByType('AccountTransitionScreen');
+        expect(transition.props.error).toBe(true);
+        expect(syncRestore).not.toHaveBeenCalled();
+        await act(async () => { transition.props.onCancel(); });
+        expect(accountMocks.freezeAccountRuntime).toHaveBeenCalledOnce();
+        expect(accountMocks.recoverAccountSelection).toHaveBeenCalledWith('generation-A');
+        expect(accountMocks.migrateLegacyAccount).not.toHaveBeenCalled();
+        if (platform === 'web') {
+            expect(accountMocks.replace).toHaveBeenCalledWith('/accounts');
+            expect(accountMocks.reload).not.toHaveBeenCalled();
+        } else {
+            expect(accountMocks.indexSet).toHaveBeenCalledWith('pending-route', JSON.stringify({ key: null, path: '/accounts' }));
+            expect(accountMocks.reload).toHaveBeenCalledOnce();
+            expect(accountMocks.replace).not.toHaveBeenCalled();
+        }
     });
 
     it('keeps the desktop settings surface inside the unified scanner provider', async () => {

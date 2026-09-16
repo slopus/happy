@@ -1,4 +1,5 @@
 import { MMKV } from 'react-native-mmkv';
+import { accountStorageId } from '@/auth/accountRuntime';
 import { z } from 'zod';
 import { ApiMessageSchema, type ApiMessage } from './apiTypes';
 
@@ -116,4 +117,4 @@ export class SessionHistoryPageCache {
     }
 }
 
-export const sessionHistoryPageCache = new SessionHistoryPageCache(new MMKV({ id: 'session-history-pages-v1' }));
+export const sessionHistoryPageCache = new SessionHistoryPageCache(new MMKV({ id: accountStorageId('session-history-pages-v1')! }));

@@ -30,6 +30,29 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
  * - New translation keys must be added to ALL language files
  */
 export const en: TranslationStructure = {
+    accounts: {
+        attachmentWarning: "Switching accounts reloads Paws. Text drafts are kept, but unsent attachments must be selected again. Continue?",
+        title: "Paws accounts",
+        description: "Switch accounts on this device. Other browser tabs will switch too.",
+        empty: "No saved accounts",
+        active: "Current account",
+        switch: "Switch account",
+        remove: "Remove from device",
+        removeHint: "Remove this saved login? Its server sessions will remain available.",
+        add: "Add account",
+        server: "Server URL",
+        label: "Account name (optional)",
+        secret: "Recovery secret",
+        secretHint: "Enter the recovery secret from the account you want to add. Adding an account does not switch automatically.",
+        target: "Open a session",
+        targetHint: "Check the account and server, then select the matching account to open this session.",
+        invalidLink: "Invalid account link",
+        failed: "Could not complete this action. Check the account details and connection, then try again.",
+        retry: "Retry",
+        restartRequired: "Restart required",
+        switching: "Switching account…",
+        restartHint: "Reload Paws to finish switching. If reloading does not work, close and reopen the app.",
+    },
     codexAccounts: baseEn.codexAccounts,
     deviceEnvironmentDashboard: {
         previousResult: 'Previous inspection result',
