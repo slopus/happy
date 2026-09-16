@@ -997,6 +997,24 @@ describe('mapCodexThreadToSessionEnvelopes', () => {
         ]));
     });
 
+    it('preserves the first user request when wrapped Happy options match legacy context heuristics', () => {
+        const request = '从某一次会话 fork 后看不到之前的历史会话。';
+        const envelopes = mapCodexThreadToSessionEnvelopes({
+            turns: [{ id: 'first-turn', items: [{
+                id: 'first-user', type: 'userMessage', content: [{ type: 'text', text: [
+                    CODEX_HAPPY_SYSTEM_PROMPT_START,
+                    '# Options',
+                    'You have a way to give a user a easy way to answer your questions.',
+                    'Whenever you need to show the user an image, call the send_image tool.',
+                    CODEX_HAPPY_SYSTEM_PROMPT_END,
+                    request,
+                ].join('\n') }],
+            }] }],
+        });
+        expect(envelopes.filter(envelope => envelope.role === 'user').map(envelope => envelope.ev))
+            .toEqual([{ t: 'text', text: request }]);
+    });
+
     it('does not backfill a user message containing only internal Happy system instructions', () => {
         const envelopes = mapCodexThreadToSessionEnvelopes({
             turns: [{

@@ -409,13 +409,16 @@ function textFromInputItems(items: unknown, omitPawsOriginToken?: string): strin
         ))
         .map((item) => item.text)
         .join('\n');
-    if (isCodexRuntimeContext(text)) {
-        return null;
-    }
     if (omitPawsOriginToken && readPawsTurnOrigin(text) === omitPawsOriginToken) {
         return null;
     }
     const visibleText = stripPawsTurnOrigin(stripHappySystemPromptBlocks(text)).trim();
+    // Modern first-turn prompts wrap runtime instructions alongside the real
+    // request. Apply the legacy context heuristic only after removing those
+    // blocks, otherwise the Options instructions discard the entire request.
+    if (isCodexRuntimeContext(visibleText)) {
+        return null;
+    }
     return visibleText.length > 0 ? visibleText : null;
 }
 
