@@ -452,15 +452,18 @@ export async function codexForkThread(options: CodexForkThreadOptions): Promise<
 }
 
 export async function codexDuplicateThread(
-    options: CodexForkThreadOptions & { cutAfterItemId: string; retainSelectedTurn?: boolean },
+    options: CodexForkThreadOptions & { retainSelectedTurn?: boolean } & (
+        { cutAfterItemId: string; cutBeforeItemId?: never } | { cutBeforeItemId: string; cutAfterItemId?: never }
+    ),
 ): Promise<CodexForkThreadResult> {
-    const { machineId, directory, sourceSessionId, codexThreadId, cutAfterItemId, retainSelectedTurn } = options;
+    const { machineId, directory, sourceSessionId, codexThreadId, cutAfterItemId, cutBeforeItemId, retainSelectedTurn } = options;
     try {
         const result = await apiSocket.machineRPC<CodexForkThreadResult, {
             directory: string;
             sourceSessionId: string;
             codexThreadId: string;
-            cutAfterItemId: string;
+            cutAfterItemId?: string;
+            cutBeforeItemId?: string;
             retainSelectedTurn?: boolean;
         }>(
             machineId,
@@ -469,7 +472,7 @@ export async function codexDuplicateThread(
                 directory,
                 sourceSessionId,
                 codexThreadId,
-                cutAfterItemId,
+                ...(cutBeforeItemId ? { cutBeforeItemId } : { cutAfterItemId }),
                 ...(retainSelectedTurn ? { retainSelectedTurn: true } : {}),
             },
         );
@@ -1010,6 +1013,7 @@ export type ForkSource = ClaudeForkSource | CodexForkSource;
 type ForkOptions = {
     cutAfterUuid?: string;
     cutAfterItemId?: string;
+    cutBeforeItemId?: string;
     forkedFromMessageId?: string;
     retainSelectedTurn?: boolean;
     /** Continue the fork in a different validated working directory. */
@@ -1046,13 +1050,13 @@ export async function forkAndSpawn(
 ): Promise<SpawnSessionResult> {
     const spawnDirectory = opts.targetDirectory ?? source.directory;
     if (source.kind === 'codex') {
-        const forkResult = opts.cutAfterItemId
+        const forkResult = opts.cutAfterItemId || opts.cutBeforeItemId
             ? await codexDuplicateThread({
                 machineId: source.machineId,
                 sourceSessionId: source.sessionId,
                 directory: spawnDirectory,
                 codexThreadId: source.codexThreadId,
-                cutAfterItemId: opts.cutAfterItemId,
+                ...(opts.cutBeforeItemId ? { cutBeforeItemId: opts.cutBeforeItemId } : { cutAfterItemId: opts.cutAfterItemId! }),
                 retainSelectedTurn: opts.retainSelectedTurn,
             })
             : await codexForkThread({

@@ -50,6 +50,7 @@ type ForkFromMessage = (
     messageText: string,
     retainSelectedTurn?: boolean,
     messageCreatedAt?: number,
+    excludeSelectedPrompt?: boolean,
 ) => void;
 
 export type ConversationTranscriptProps = {

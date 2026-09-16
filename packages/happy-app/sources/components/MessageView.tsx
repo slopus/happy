@@ -37,6 +37,7 @@ export const MessageView = React.memo((props: {
     messageText: string,
     retainSelectedTurn?: boolean,
     messageCreatedAt?: number,
+    excludeSelectedPrompt?: boolean,
   ) => void;
   forkingFromMessageId?: string | null;
   agentForkTarget?: MessageForkTarget;
@@ -86,6 +87,7 @@ function RenderBlock(props: {
     messageText: string,
     retainSelectedTurn?: boolean,
     messageCreatedAt?: number,
+    excludeSelectedPrompt?: boolean,
   ) => void;
   forkingFromMessageId?: string | null;
   agentForkTarget?: MessageForkTarget;
@@ -149,6 +151,7 @@ function UserTextBlock(props: {
     messageText: string,
     retainSelectedTurn?: boolean,
     messageCreatedAt?: number,
+    excludeSelectedPrompt?: boolean,
   ) => void;
   showUserMessageActions?: boolean;
   canEditUserMessage?: boolean;
@@ -403,6 +406,7 @@ function AgentTextBlock(props: {
     messageText: string,
     retainSelectedTurn?: boolean,
     messageCreatedAt?: number,
+    excludeSelectedPrompt?: boolean,
   ) => void;
   forkingFromMessageId?: string | null;
   showActions?: boolean;
@@ -451,8 +455,9 @@ function AgentTextBlock(props: {
       props.forkTarget.messageId,
       props.forkTarget.rewindPointId,
       props.forkTarget.messageText,
-      true,
+      !props.forkTarget.excludeSelectedPrompt,
       props.forkTarget.messageCreatedAt,
+      props.forkTarget.excludeSelectedPrompt,
     );
   };
 

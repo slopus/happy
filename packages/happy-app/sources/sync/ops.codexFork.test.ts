@@ -335,7 +335,7 @@ describe('codex fork ops', () => {
         expect(refreshSessions).not.toHaveBeenCalled();
     });
 
-    it('duplicates a Codex thread from a selected user item before spawning', async () => {
+    it.each(['cutAfterItemId', 'cutBeforeItemId'] as const)('forwards the exact %s fork boundary before spawning', async (boundary) => {
         machineRPC.mockImplementation(async (_machineId: string, method: string) => {
             if (method === 'codex-duplicate-thread') {
                 return { type: 'success', newCodexThreadId: 'thread-cut' };
@@ -354,7 +354,7 @@ describe('codex fork ops', () => {
             directory: '/tmp/project',
             codexThreadId: 'thread-source',
         }, {
-            cutAfterItemId: 'user-item-2',
+            [boundary]: 'user-item-2',
             forkedFromMessageId: 'message-2',
         });
 
@@ -363,7 +363,7 @@ describe('codex fork ops', () => {
             1,
             'machine-1',
             'codex-duplicate-thread',
-            { directory: '/tmp/project', sourceSessionId: 'happy-source', codexThreadId: 'thread-source', cutAfterItemId: 'user-item-2' },
+            { directory: '/tmp/project', sourceSessionId: 'happy-source', codexThreadId: 'thread-source', [boundary]: 'user-item-2' },
         );
         expect(machineRPC).toHaveBeenNthCalledWith(
             2,

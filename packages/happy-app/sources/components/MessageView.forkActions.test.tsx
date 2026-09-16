@@ -75,6 +75,18 @@ function flattenStyle(style: unknown): Record<string, unknown> {
 }
 
 describe('MessageView fork action feedback', () => {
+    it('passes the next question as an excluded boundary when its fork button is clicked', () => {
+        const onFork = vi.fn();
+        let renderer: any;
+        act(() => {
+            renderer = TestRenderer.create(<MessageView message={agentMessage} metadata={null}
+                showAgentMessageActions agentForkTarget={{ ...forkTarget, rewindPointId: 'next-item',
+                    messageText: 'Next question', excludeSelectedPrompt: true }} onForkFromMessage={onFork} />);
+        });
+        act(() => renderer.root.findByProps({ testID: 'message-agent-fork-agent-1' }).props.onPress());
+        expect(onFork).toHaveBeenCalledWith('user-1', 'next-item', 'Next question', false, 1, true);
+        act(() => renderer.unmount());
+    });
     let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
     beforeEach(() => {

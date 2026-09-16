@@ -9,7 +9,19 @@ import {
 } from './messageForkPoint';
 
 describe('getAgentMessageForkTargets', () => {
-    it('maps each visible agent response to the user prompt that owns its turn', () => {
+    it('cuts before the next question without copying that question or its old answer', () => {
+        const messages = [
+            { kind: 'agent-text', id: 'answer-2', localId: null, createdAt: 4, text: 'Discard answer' },
+            { kind: 'user-text', id: 'question-2', localId: null, createdAt: 3, text: 'Discard question', codexItemId: 'item-2' },
+            { kind: 'agent-text', id: 'answer-1', localId: null, createdAt: 2, text: 'Keep answer' },
+            { kind: 'user-text', id: 'question-1', localId: null, createdAt: 1, text: 'Keep question', codexItemId: 'item-1' },
+        ] as Message[];
+        const target = getAgentMessageForkTargets(messages, { flavor: 'codex' }).get('answer-1')!;
+        expect(target).toMatchObject({ messageId: 'answer-1', messageText: 'Discard question',
+            rewindPointId: 'item-2', messageCreatedAt: 3, excludeSelectedPrompt: true });
+        expect(buildDirectMessageForkOptions('codex', target)).toEqual({ cutBeforeItemId: 'item-2', forkedFromMessageId: 'answer-1' });
+    });
+    it('uses the next question boundary, retaining the owning turn only at the end', () => {
         const messages: Message[] = [
             {
                 kind: 'agent-text',
@@ -77,11 +89,24 @@ describe('getAgentMessageForkTargets', () => {
         });
         expect(targets.get('agent-old')).toEqual({
             messageId: 'agent-old',
-            messageText: 'Old prompt',
-            messageCreatedAt: 1,
-            rewindPointId: 'codex-user-old',
+            messageText: 'New prompt',
+            messageCreatedAt: 4,
+            rewindPointId: 'codex-user-new',
+            excludeSelectedPrompt: true,
         });
         expect(targets.has('thinking-old')).toBe(false);
+    });
+
+    it('resolves a missing next-question id instead of falling back to the earlier turn', () => {
+        const messages: Message[] = [
+            { kind: 'user-text', id: 'next', localId: null, createdAt: 3, text: 'Next question' },
+            { kind: 'agent-text', id: 'answer', localId: null, createdAt: 2, text: 'Answer' },
+            { kind: 'user-text', id: 'first', localId: null, createdAt: 1, text: 'First question', codexItemId: 'first-item' },
+        ];
+        expect(getAgentMessageForkTargets(messages, { flavor: 'codex' }).has('answer')).toBe(false);
+        expect(getAgentMessageForkTargets(messages, { flavor: 'codex', allowMissingRewindPoint: true }).get('answer'))
+            .toEqual({ messageId: 'answer', messageText: 'Next question', messageCreatedAt: 3,
+                rewindPointId: undefined, excludeSelectedPrompt: true });
     });
 
     it('does not offer a fork target for agent text before the first user prompt', () => {

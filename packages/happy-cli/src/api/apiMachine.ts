@@ -491,7 +491,12 @@ export class ApiMachineClient {
         this.rpcHandlerManager.registerHandler('codex-duplicate-thread', async (params: any) => {
             const directory = requireNonEmptyString(params?.directory, 'directory');
             const codexThreadId = requireNonEmptyString(params?.codexThreadId, 'codexThreadId');
-            const cutAfterItemId = requireNonEmptyString(params?.cutAfterItemId, 'cutAfterItemId');
+            if (params?.cutBeforeItemId !== undefined && params?.cutAfterItemId !== undefined) {
+                throw new Error('Cannot combine Codex fork boundaries');
+            }
+            const cutBeforeItemId = params?.cutBeforeItemId === undefined
+                ? undefined : requireNonEmptyString(params.cutBeforeItemId, 'cutBeforeItemId');
+            const cutAfterItemId = cutBeforeItemId ? undefined : requireNonEmptyString(params?.cutAfterItemId, 'cutAfterItemId');
             const retainSelectedTurn = params?.retainSelectedTurn === true;
 
             try {
@@ -500,6 +505,7 @@ export class ApiMachineClient {
                     threadId: codexThreadId,
                     cwd: directory,
                     cutAfterItemId,
+                    cutBeforeItemId,
                     retainSelectedTurn,
                     deferGoalContinuation: true,
                 }));

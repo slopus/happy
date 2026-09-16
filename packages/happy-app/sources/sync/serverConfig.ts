@@ -1,5 +1,5 @@
 import { MMKV } from 'react-native-mmkv';
-import { getRuntimeAccountServer } from '@/auth/accountRuntime';
+import { getRuntimeAccountServer } from '../auth/accountRuntime';
 
 // Separate MMKV instance for server config that persists across logouts
 const serverConfigStorage = new MMKV({ id: 'server-config' });

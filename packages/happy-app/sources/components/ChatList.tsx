@@ -35,6 +35,7 @@ export const ChatList = React.memo((props: { session: Session; followLatestReque
         messageText: string,
         retainSelectedTurn?: boolean,
         messageCreatedAt?: number,
+        excludeSelectedPrompt?: boolean,
     ) => {
         forkFromMessage({
             messageId,
@@ -42,6 +43,7 @@ export const ChatList = React.memo((props: { session: Session; followLatestReque
             messageCreatedAt: messageCreatedAt ?? 0,
             rewindPointId,
             retainSelectedTurn,
+            excludeSelectedPrompt,
         });
     }, [forkFromMessage]);
     const handleEditUserMessage = React.useCallback(async (messageId: string, messageText: string) => {

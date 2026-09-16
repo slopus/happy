@@ -76,6 +76,26 @@ describe('codexThreadFork', () => {
         expect(client.readThread).not.toHaveBeenCalled();
     });
 
+    it('excludes the boundary question and all later content without reinjecting it', async () => {
+        const client = forkClient();
+        await forkCodexThread(client, { threadId: 'thread-source', cutBeforeItemId: 'user-2' });
+        const { thread } = await client.readThread({ threadId: 'thread-forked', includeTurns: true });
+        expect(thread.turns).toEqual([threadWithTurns.turns[0]]);
+        expect(client.injectItems).not.toHaveBeenCalled();
+    });
+
+    it('does not silently remove earlier messages when the excluded question is inside a turn', async () => {
+        const client = forkClient();
+        client.readThread.mockResolvedValueOnce({ thread: { id: 'thread-source', turns: [{
+            ...threadWithTurns.turns[0],
+            items: [...threadWithTurns.turns[0].items, ...threadWithTurns.turns[1].items],
+        }] } });
+        await expect(forkCodexThread(client, { threadId: 'thread-source', cutBeforeItemId: 'user-2' }))
+            .rejects.toThrow('inside a Codex turn');
+        expect(client.forkThread).not.toHaveBeenCalled();
+        expect(client.injectItems).not.toHaveBeenCalled();
+    });
+
     it('forks before the selected user turn and restores its prompt without rollback', async () => {
         const client = forkClient();
 

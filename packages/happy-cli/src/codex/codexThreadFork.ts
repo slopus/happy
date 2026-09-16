@@ -81,17 +81,18 @@ export function listCodexRewindPoints(thread: Pick<Thread, 'turns'>): CodexRewin
     return points;
 }
 
-function findCutTurn(thread: Thread, itemId: string): { index: number; text: string } | null {
+function findCutTurn(thread: Thread, itemId: string): { index: number; itemIndex: number; text: string } | null {
     const turns = thread.turns ?? [];
     for (let index = 0; index < turns.length; index++) {
         const turn = turns[index];
-        const item = (turn.items ?? []).find((candidate) => candidate.id === itemId);
+        const itemIndex = (turn.items ?? []).findIndex((candidate) => candidate.id === itemId);
+        const item = turn.items?.[itemIndex];
         if (!item) {
             continue;
         }
         const text = textFromUserItem(item);
         if (text) {
-            return { index, text };
+            return { index, itemIndex, text };
         }
     }
     return null;
@@ -104,6 +105,7 @@ export async function forkCodexThread(
         lastTurnId?: string;
         cwd?: string;
         cutAfterItemId?: string;
+        cutBeforeItemId?: string;
         retainSelectedTurn?: boolean;
         model?: string;
         approvalPolicy?: any;
@@ -115,14 +117,18 @@ export async function forkCodexThread(
     // Resolve the boundary on the source before creating anything. Paginated
     // Codex threads cannot be rolled back after a full fork.
     let cut: { turnId: string; text: string; retainedTurnIds: string[] } | undefined;
-    if (opts.cutAfterItemId) {
-        if (opts.lastTurnId) {
-            throw new Error('Cannot combine lastTurnId with cutAfterItemId');
+    const boundaryItemId = opts.cutBeforeItemId ?? opts.cutAfterItemId;
+    if (boundaryItemId) {
+        if (opts.lastTurnId || (opts.cutBeforeItemId && (opts.cutAfterItemId || opts.retainSelectedTurn))) {
+            throw new Error('Cannot combine Codex fork boundaries');
         }
         const { thread } = await client.readThread({ threadId: opts.threadId, includeTurns: true });
-        const selected = findCutTurn(thread, opts.cutAfterItemId);
+        const selected = findCutTurn(thread, boundaryItemId);
         if (!selected) {
-            throw new CodexForkRewindPointNotFoundError(opts.cutAfterItemId, opts.threadId);
+            throw new CodexForkRewindPointNotFoundError(boundaryItemId, opts.threadId);
+        }
+        if (opts.cutBeforeItemId && selected.itemIndex > 0) {
+            throw new Error('Cannot fork before a question inside a Codex turn without removing earlier history');
         }
         cut = {
             turnId: thread.turns![selected.index].id,
@@ -155,7 +161,7 @@ export async function forkCodexThread(
             if (!retainedIds || JSON.stringify(retainedIds) !== JSON.stringify(cut.retainedTurnIds)) {
                 throw new Error('Codex did not preserve the requested fork boundary; update Codex and try again');
             }
-            if (!opts.retainSelectedTurn) {
+            if (!opts.retainSelectedTurn && !opts.cutBeforeItemId) {
                 await client.injectItems({
                     threadId: forked.threadId,
                     items: [{

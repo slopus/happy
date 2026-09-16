@@ -12,6 +12,7 @@ vi.mock('react-native', () => ({
     View: 'View',
 }));
 vi.mock('@expo/vector-icons', () => ({ Ionicons: 'Ionicons' }));
+vi.mock('expo-router', () => ({ router: { push: vi.fn() } }));
 vi.mock('expo-clipboard', () => ({ setStringAsync: vi.fn() }));
 vi.mock('@react-navigation/native', () => ({ useFocusEffect: vi.fn() }));
 vi.mock('@/auth/AuthContext', () => ({

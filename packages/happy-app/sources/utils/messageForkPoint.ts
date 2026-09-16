@@ -5,6 +5,8 @@ export type MessageForkTarget = {
     messageText: string;
     messageCreatedAt: number;
     rewindPointId: string | undefined;
+    /** The next question marks the first excluded content in an agent fork. */
+    excludeSelectedPrompt?: boolean;
 };
 
 export type MessageForkFlavor = 'claude' | 'codex';
@@ -19,19 +21,23 @@ export function getUserMessageForkRewindPointId(
 export type DirectMessageForkOptions = {
     cutAfterUuid?: string;
     cutAfterItemId?: string;
+    cutBeforeItemId?: string;
     forkedFromMessageId: string;
     retainSelectedTurn?: boolean;
 };
 
 export function buildDirectMessageForkOptions(
     flavor: 'claude' | 'codex',
-    target: Pick<MessageForkTarget, 'messageId' | 'rewindPointId'> & { retainSelectedTurn?: boolean },
+    target: Pick<MessageForkTarget, 'messageId' | 'rewindPointId' | 'excludeSelectedPrompt'> & { retainSelectedTurn?: boolean },
 ): DirectMessageForkOptions | null {
     if (!target.rewindPointId) {
         return null;
     }
 
     if (flavor === 'codex') {
+        if (target.excludeSelectedPrompt) {
+            return { cutBeforeItemId: target.rewindPointId, forkedFromMessageId: target.messageId };
+        }
         return {
             cutAfterItemId: target.rewindPointId,
             forkedFromMessageId: target.messageId,
@@ -60,7 +66,8 @@ const MAX_CODEX_REWIND_TIMESTAMP_DISTANCE_MS = 5 * 60 * 1000;
 
 /**
  * Messages are newest-first. Walking from oldest to newest keeps the latest
- * user prompt in hand, so each visible agent response can fork its full turn.
+ * user prompt in hand for full-turn forks. Codex responses with a later
+ * question use that question as the first excluded item instead.
  */
 export function getAgentMessageForkTargets(
     messages: Message[],
@@ -93,6 +100,30 @@ export function getAgentMessageForkTargets(
         });
     }
 
+    // A button above a later question excludes that question and its response.
+    // Use the next question as an explicit boundary instead of retaining an
+    // entire earlier turn, which can contain more than the visible reply.
+    if (flavor === 'codex') {
+        let nextUserMessage: UserTextMessage | null = null;
+        for (const message of messages) {
+            if (message.kind === 'user-text') {
+                nextUserMessage = message;
+            } else if (message.kind === 'agent-text' && !message.isThinking && nextUserMessage && targets.has(message.id)) {
+                const rewindPointId = getUserMessageForkRewindPointId(nextUserMessage, flavor);
+                if (!rewindPointId && !options.allowMissingRewindPoint) {
+                    targets.delete(message.id);
+                    continue;
+                }
+                targets.set(message.id, {
+                    messageId: message.id,
+                    messageText: nextUserMessage.text,
+                    messageCreatedAt: nextUserMessage.createdAt,
+                    rewindPointId,
+                    excludeSelectedPrompt: true,
+                });
+            }
+        }
+    }
     return targets;
 }
 

@@ -348,7 +348,10 @@ describe('ApiMachineClient Codex fork RPCs', () => {
         });
     });
 
-    it('retains the selected Codex turn when duplicating from an agent response', async () => {
+    it.each([
+        { boundary: { cutAfterItemId: 'user-1', retainSelectedTurn: true }, native: { lastTurnId: 'turn-1' } },
+        { boundary: { cutBeforeItemId: 'user-2' }, native: { beforeTurnId: 'turn-2' } },
+    ])('preserves the agent response with boundary $boundary', async ({ boundary, native }) => {
         codexClientMethods.forkThread.mockResolvedValue({
             threadId: 'thread-forked',
             thread: {
@@ -379,12 +382,11 @@ describe('ApiMachineClient Codex fork RPCs', () => {
             directory: '/tmp/project',
             codexThreadId: 'thread-source',
             sourceSessionId: 'source-session',
-            cutAfterItemId: 'user-1',
-            retainSelectedTurn: true,
+            ...boundary,
         });
 
         expect(result).toEqual({ type: 'success', newCodexThreadId: 'thread-forked' });
-        expect(codexClientMethods.forkThread).toHaveBeenCalledWith({ threadId: 'thread-source', cwd: '/tmp/project', lastTurnId: 'turn-1', deferGoalContinuation: true });
+        expect(codexClientMethods.forkThread).toHaveBeenCalledWith({ threadId: 'thread-source', cwd: '/tmp/project', ...native, deferGoalContinuation: true });
         expect(codexClientMethods.rollbackThread).not.toHaveBeenCalled();
         expect(codexClientMethods.injectItems).not.toHaveBeenCalled();
     });
