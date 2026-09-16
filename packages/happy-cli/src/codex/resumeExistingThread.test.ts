@@ -64,7 +64,7 @@ describe('resumeExistingThread', () => {
         });
     });
 
-    it('resumes the thread and updates session metadata', async () => {
+    it.each([false, true])('resumes history and keeps fork startup notices out of the transcript (fork=%s)', async (isFork) => {
         const client = {
             resumeThread: vi.fn().mockResolvedValue({
                 threadId: '019ccca2-1a77-7481-9873-de72f3464372',
@@ -85,7 +85,7 @@ describe('resumeExistingThread', () => {
                 },
             }),
         };
-        let metadata: any = { existing: true };
+        let metadata: any = { existing: true, ...(isFork ? { parentSessionId: 'parent-session' } : {}) };
         const session = {
             sessionId: 'paws-session-1',
             getMetadata: vi.fn(() => metadata),
@@ -124,6 +124,7 @@ describe('resumeExistingThread', () => {
         });
         expect(metadata).toEqual({
             existing: true,
+            ...(isFork ? { parentSessionId: 'parent-session' } : {}),
             codexThreadId: '019ccca2-1a77-7481-9873-de72f3464372',
             codexSyncCursor: {
                 threadId: '019ccca2-1a77-7481-9873-de72f3464372',
@@ -149,7 +150,8 @@ describe('resumeExistingThread', () => {
         expect(session.sendSessionProtocolHistoryAndAwait.mock.invocationCallOrder[0])
             .toBeLessThan(session.updateMetadataAndAwait.mock.invocationCallOrder[1]);
         expect(messageBuffer.addMessage).toHaveBeenCalledWith(expect.stringContaining('Resumed thread'), 'status');
-        expect(session.sendSessionEvent).toHaveBeenCalledWith({
+        if (isFork) expect(session.sendSessionEvent).not.toHaveBeenCalled();
+        else expect(session.sendSessionEvent).toHaveBeenCalledWith({
             type: 'message',
             message: 'Resumed Codex thread 019ccca2-1a77-7481-9873-de72f3464372',
         });

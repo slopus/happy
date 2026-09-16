@@ -24,6 +24,7 @@ type ResumeThreadSession = {
     sessionId: string;
     getMetadata: () => {
         codexThreadId?: string;
+        parentSessionId?: string;
         codexSyncCursor?: { threadId: string; turnId: string };
         codexHistoryReplay?: { threadId: string; startedAt: number };
         codexPawsOriginToken?: string;
@@ -145,10 +146,12 @@ export async function resumeExistingThread(opts: {
         }
 
         opts.messageBuffer.addMessage(`Resumed thread ${trimIdent(resumedThread.threadId)}`, 'status');
-        opts.session.sendSessionEvent({
-            type: 'message',
-            message: `Resumed Codex thread ${resumedThread.threadId}`,
-        });
+        if (!opts.session.getMetadata()?.parentSessionId) {
+            opts.session.sendSessionEvent({
+                type: 'message',
+                message: `Resumed Codex thread ${resumedThread.threadId}`,
+            });
+        }
 
         return { ...resumedThread, activeTurnId };
     } catch (error) {

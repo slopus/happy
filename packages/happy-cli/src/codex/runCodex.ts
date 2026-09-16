@@ -492,26 +492,31 @@ export async function runCodex(opts: {
         });
     }
 
-    // Always report to daemon if it exists (skip if offline)
-    if (response) {
-        try {
-            logger.debug(`[START] Reporting session ${response.id} to daemon`);
-            const result = await notifyDaemonSessionStarted(response.id, metadata, {
-                encryptionKey: encodeBase64(response.encryptionKey),
-                encryptionVariant: response.encryptionVariant,
-                seq: response.seq,
-                metadataVersion: response.metadataVersion,
-                agentStateVersion: response.agentStateVersion,
-            });
-            if (result.error) {
-                logger.debug(`[START] Failed to report to daemon (may not be running):`, result.error);
-            } else {
-                logger.debug(`[START] Reported session ${response.id} to daemon`);
+    // Fork callers navigate as soon as the daemon receives this report. Keep
+    // them on the source session until inherited history is durable.
+    const deferForkReport = Boolean(forkedFromSessionId && !reconnectSessionId);
+    const reportSessionStarted = async () => {
+        if (response) {
+            try {
+                logger.debug(`[START] Reporting session ${response.id} to daemon`);
+                const result = await notifyDaemonSessionStarted(response.id, session.getMetadata() ?? metadata, {
+                    encryptionKey: encodeBase64(response.encryptionKey),
+                    encryptionVariant: response.encryptionVariant,
+                    seq: response.seq,
+                    metadataVersion: response.metadataVersion,
+                    agentStateVersion: response.agentStateVersion,
+                });
+                if (result.error) {
+                    logger.debug(`[START] Failed to report to daemon (may not be running):`, result.error);
+                } else {
+                    logger.debug(`[START] Reported session ${response.id} to daemon`);
+                }
+            } catch (error) {
+                logger.debug('[START] Failed to report to daemon (may not be running):', error);
             }
-        } catch (error) {
-            logger.debug('[START] Failed to report to daemon (may not be running):', error);
         }
-    }
+    };
+    if (!deferForkReport) await reportSessionStarted();
 
     // Track current overrides to apply per message
     // Use shared PermissionMode type from api/types for cross-agent compatibility
@@ -1271,6 +1276,8 @@ export async function runCodex(opts: {
                 throw error;
             }
         }
+
+        if (deferForkReport) await reportSessionStarted();
 
         const resolveExecutionPolicyForMode = (mode: EnhancedMode) => {
             const sandboxManagedByHappy = client.sandboxEnabled;

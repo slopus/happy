@@ -1,5 +1,6 @@
+import { createRequire } from 'node:module';
 import { afterEach, describe, expect, it } from 'vitest';
-import { mkdtemp, mkdir, writeFile, readFile, symlink, rm, stat } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, symlink, rm, stat, utimes } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { restoreCodexAccountHistory, retainCodexAccountHistory, rememberCodexAccountSession, copyCodexSourceThread, collectRetainedCodexAccountUsage } from './codexAccountHistory';
@@ -74,4 +75,99 @@ describe('profile-scoped native history', () => {
     expect(result[0]?.profileId).toBe(profileId);
     expect(result[0]?.usage.today?.totalTokens).toBe(24);
   });
+});
+
+let DatabaseSync: any;
+try { ({ DatabaseSync } = createRequire(import.meta.url)('node:sqlite')); } catch { /* Node 20 runs legacy cases only. */ }
+function historyDb(home: string) {
+  const db = new DatabaseSync(join(home, 'thread_history_1.sqlite'));
+  db.exec(`
+    PRAGMA journal_mode=WAL;
+    CREATE TABLE IF NOT EXISTS _sqlx_migrations(version INTEGER PRIMARY KEY, checksum BLOB);
+    INSERT OR IGNORE INTO _sqlx_migrations VALUES (1, X'1234');
+    CREATE TABLE IF NOT EXISTS thread_items(thread_id TEXT, item_id TEXT, item_json TEXT, PRIMARY KEY(thread_id,item_id));
+    CREATE TABLE IF NOT EXISTS thread_turns(thread_id TEXT, turn_id TEXT, PRIMARY KEY(thread_id,turn_id));
+    CREATE TABLE IF NOT EXISTS thread_history_projection_state(thread_id TEXT PRIMARY KEY, next_rollout_byte_offset INTEGER, next_rollout_ordinal INTEGER);
+    CREATE INDEX IF NOT EXISTS thread_items_lookup ON thread_items(thread_id);
+  `);
+  return db;
+}
+async function rollout(home: string, id: string, parent?: string) {
+  await mkdir(join(home, 'sessions'), { recursive: true });
+  await writeFile(join(home, 'sessions', `rollout-${id}.jsonl`), JSON.stringify({ type: 'session_meta', payload: {
+    id, history_mode: 'paginated', ...(parent ? { history_base: { thread_id: parent, end_ordinal_exclusive: 3, end_byte_offset: 100 } } : {}),
+  } }) + '\n');
+}
+it.skipIf(!DatabaseSync)('preserves WAL history across retention and restores only a fork and its ancestor indexes', async () => {
+  const cache = await temp(); const source = await temp(); const target = await temp();
+  for (const [id, parent] of [['parent', undefined], ['fork', 'parent'], ['other', undefined]]) await rollout(source, id!, parent);
+  const db = historyDb(source);
+  try {
+    for (const id of ['parent', 'fork', 'other']) {
+      db.prepare('INSERT INTO thread_items VALUES (?, ?, ?)').run(id, 'item', JSON.stringify({text: id}));
+      db.prepare('INSERT INTO thread_turns VALUES (?, ?)').run(id, 'turn');
+      db.prepare('INSERT INTO thread_history_projection_state VALUES (?, ?, ?)').run(id, 0, 0);
+    }
+    await retainCodexAccountHistory(cache, 'a', source);
+  } finally { db.close(); }
+  await rememberCodexAccountSession(cache, 'session', 'a');
+  await copyCodexSourceThread(cache, 'session', 'fork', target, 'a');
+  expect(await readFile(join(target, 'sessions', 'rollout-parent.jsonl'), 'utf8')).toContain('parent');
+  await expect(stat(join(target, 'sessions', 'rollout-other.jsonl'))).rejects.toThrow();
+  const restored = new DatabaseSync(join(target, 'thread_history_1.sqlite'), {readOnly:true});
+  try {
+    expect(restored.prepare('SELECT thread_id FROM thread_items ORDER BY thread_id').all().map((r: any) => r.thread_id)).toEqual(['fork', 'parent']);
+    expect(restored.prepare('SELECT hex(checksum) AS checksum FROM _sqlx_migrations').get().checksum).toBe('1234');
+    expect(restored.prepare("SELECT name FROM sqlite_master WHERE name='thread_items_lookup'").get()).toBeTruthy();
+  } finally { restored.close(); }
+});
+it.skipIf(!DatabaseSync)('does not replace a newer retained projection with an older isolated home', async () => {
+  const cache = await temp(); const source = await temp(); const stale = await temp(); const restored = await temp();
+  await rollout(source, 'thread');
+  const db = historyDb(source);
+  try {
+    db.prepare('INSERT INTO thread_items VALUES (?, ?, ?)').run('thread', 'item', 'old');
+    db.prepare('INSERT INTO thread_history_projection_state VALUES (?, ?, ?)').run('thread', 0, 0);
+    await retainCodexAccountHistory(cache, 'a', source);
+    await restoreCodexAccountHistory(cache, 'a', stale);
+    await writeFile(join(source, 'sessions', 'rollout-thread.jsonl'), (await readFile(join(source, 'sessions', 'rollout-thread.jsonl'), 'utf8')) + '{}\n');
+    db.prepare('UPDATE thread_items SET item_json=?').run('new');
+    db.prepare('UPDATE thread_history_projection_state SET next_rollout_ordinal=1').run();
+    await retainCodexAccountHistory(cache, 'a', source);
+    const touched = new Date(Date.now() + 10_000);
+    await utimes(join(stale, 'sessions', 'rollout-thread.jsonl'), touched, touched);
+    await retainCodexAccountHistory(cache, 'a', stale);
+    expect(await readFile(join(cache, (await import('node:crypto')).createHash('sha256').update('a').digest('hex'), 'sessions', 'rollout-thread.jsonl'), 'utf8')).toContain('{}\n');
+    await restoreCodexAccountHistory(cache, 'a', restored);
+    const actual = new DatabaseSync(join(restored, 'thread_history_1.sqlite'), {readOnly:true});
+    try { expect(actual.prepare('SELECT item_json FROM thread_items').get().item_json).toBe('new'); }
+    finally { actual.close(); }
+  } finally { db.close(); }
+});
+it('rejects missing and cyclic fork history dependencies', async () => {
+  const cache = await temp(); const source = await temp();
+  await rollout(source, 'fork', 'missing');
+  if (DatabaseSync) historyDb(source).close();
+  await retainCodexAccountHistory(cache, 'a', source);
+  await rememberCodexAccountSession(cache, 'session', 'a');
+  await expect(copyCodexSourceThread(cache, 'session', 'fork', await temp(), 'a')).rejects.toThrow('unavailable');
+  await rollout(source, 'missing', 'fork');
+  await retainCodexAccountHistory(cache, 'a', source);
+  await expect(copyCodexSourceThread(cache, 'session', 'fork', await temp(), 'a')).rejects.toThrow('unavailable');
+});
+
+it('rejects a scoped rollout whose header identifies another thread', async () => {
+  const cache = await temp(); const source = await temp();
+  await rollout(source, 'requested');
+  await writeFile(join(source, 'sessions', 'rollout-requested.jsonl'), JSON.stringify({type:'session_meta', payload:{id:'unrelated'}}) + '\n');
+  await retainCodexAccountHistory(cache, 'a', source);
+  await rememberCodexAccountSession(cache, 'session', 'a');
+  await expect(copyCodexSourceThread(cache, 'session', 'requested', await temp(), 'a')).rejects.toThrow('unavailable');
+});
+it('fails closed when a retained paginated thread has lost its history index', async () => {
+  const cache = await temp(); const source = await temp();
+  await rollout(source, 'thread');
+  await retainCodexAccountHistory(cache, 'a', source);
+  await rememberCodexAccountSession(cache, 'session', 'a');
+  await expect(copyCodexSourceThread(cache, 'session', 'thread', await temp(), 'a')).rejects.toThrow('unavailable');
 });
