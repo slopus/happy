@@ -1,26 +1,52 @@
 name: CLI npm publish
 
 on:
+  pull_request:
+    paths:
+      - 'scripts/verify-npm-publication.mjs'
+      - 'scripts/verify-npm-publication.test.mjs'
+      - '.github/workflows/cli-npm-publish.yml'
   push:
     branches: [main]
     paths:
       - 'packages/happy-cli/**'
       - 'packages/happy-wire/**'
+      - 'scripts/verify-npm-publication.mjs'
+      - 'scripts/verify-npm-publication.test.mjs'
       - '.github/workflows/cli-npm-publish.yml'
   workflow_dispatch:
 
 permissions:
   contents: read
-  id-token: write
 
 concurrency:
   group: cli-npm-publish-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
+  verification-test:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Test npm publication verification
+        run: node --test scripts/verify-npm-publication.test.mjs
+
   publish:
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -43,6 +69,9 @@ jobs:
           set -euo pipefail
           npm --version
           node --version
+
+      - name: Test npm publication verification
+        run: node --test scripts/verify-npm-publication.test.mjs
 
       - name: Read package version
         id: pkg
@@ -117,21 +146,14 @@ jobs:
           npm publish "${{ steps.pack.outputs.tarball }}" --access public
 
       - name: Verify published package
-        if: steps.npm.outputs.exists == 'false'
-        shell: bash
+        env:
+          NPM_VERIFY_TIMEOUT_MS: '900000'
+          NPM_VERIFY_INTERVAL_MS: '10000'
         run: |
-          set -euo pipefail
-          for attempt in $(seq 1 24); do
-            PUBLISHED="$(npm view @wangjs-jacky/paws version --json 2>/dev/null | tr -d '"')"
-            if [ "$PUBLISHED" = "${{ steps.pkg.outputs.version }}" ]; then
-              echo "Verified @wangjs-jacky/paws@${PUBLISHED} on npm."
-              exit 0
-            fi
-            echo "npm latest is ${PUBLISHED:-unknown}; waiting for ${{ steps.pkg.outputs.version }} (attempt ${attempt}/24)"
-            sleep 5
-          done
-          echo "::error::Published package did not appear on npm as latest."
-          exit 1
+          node scripts/verify-npm-publication.mjs \
+            '@wangjs-jacky/paws' \
+            '${{ steps.pkg.outputs.version }}' \
+            latest
 
       - name: Report skipped publish
         if: steps.npm.outputs.exists == 'true'
