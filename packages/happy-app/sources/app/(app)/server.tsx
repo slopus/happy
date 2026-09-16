@@ -46,12 +46,14 @@ const stylesheet = StyleSheet.create((theme) => ({
         marginBottom: 8,
     },
     textInput: {
-        backgroundColor: Platform.select({ web: theme.colors.input.background, default: theme.colors.glass.backgroundSubtle }),
-        padding: 12,
-        borderRadius: 8,
+        backgroundColor: Platform.select({ web: theme.colors.input.background, default: theme.colors.surfaceHigh }),
+        paddingHorizontal: 14,
+        paddingVertical: 12,
+        minHeight: 44,
+        borderRadius: 10,
         marginBottom: 8,
         ...Typography.mono(),
-        fontSize: 14,
+        fontSize: 15,
         color: theme.colors.input.text,
     },
     textInputValidating: {
@@ -69,13 +71,10 @@ const stylesheet = StyleSheet.create((theme) => ({
         color: theme.colors.status.connecting,
         marginBottom: 12,
     },
-    buttonRow: {
-        flexDirection: 'row',
-        gap: 12,
+    buttonColumn: {
+        gap: 4,
+        marginTop: 4,
         marginBottom: 12,
-    },
-    buttonWrapper: {
-        flex: 1,
     },
     statusText: {
         ...Typography.default(),
@@ -189,7 +188,8 @@ export default function ServerConfigScreen() {
             <Stack.Screen
                 options={{
                     headerShown: true,
-                    headerTitle: t('server.serverConfiguration'),
+                    headerTitle: t('server.title'),
+                    headerTitleAlign: 'center',
                     headerBackTitle: t('common.back'),
                 }}
             />
@@ -199,9 +199,9 @@ export default function ServerConfigScreen() {
                 behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
             >
                 <ItemList style={styles.itemListContainer}>
-                    <ItemGroup footer={t('server.advancedFeatureFooter')}>
+                    <ItemGroup footer={t('server.selfHostFooter')}>
                         <View style={styles.contentContainer}>
-                            <Text style={styles.labelText}>{t('server.customServerUrlLabel').toUpperCase()}</Text>
+                            <Text style={styles.labelText}>{t('server.serverUrlLabel').toUpperCase()}</Text>
                             <TextInput
                                 style={[
                                     styles.textInput,
@@ -229,23 +229,21 @@ export default function ServerConfigScreen() {
                                     {t('server.validatingServer')}
                                 </Text>
                             )}
-                            <View style={styles.buttonRow}>
-                                <View style={styles.buttonWrapper}>
+                            <View style={styles.buttonColumn}>
+                                <RoundButton
+                                    title={isValidating ? t('server.validating') : t('common.save')}
+                                    size="normal"
+                                    action={handleSave}
+                                    disabled={isValidating}
+                                />
+                                {isCustomServer && (
                                     <RoundButton
                                         title={t('server.resetToDefault')}
                                         size="normal"
                                         display="inverted"
                                         onPress={handleReset}
                                     />
-                                </View>
-                                <View style={styles.buttonWrapper}>
-                                    <RoundButton
-                                        title={isValidating ? t('server.validating') : t('common.save')}
-                                        size="normal"
-                                        action={handleSave}
-                                        disabled={isValidating}
-                                    />
-                                </View>
+                                )}
                             </View>
                             {isCustomServer && (
                                 <Text style={styles.statusText}>

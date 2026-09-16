@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Platform, View, Text, TextInput, ScrollView, ActivityIndicator } from 'react-native';
+import { Platform, View, Text, ScrollView, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/auth/AuthContext';
 import { RoundButton } from '@/components/RoundButton';
@@ -7,12 +7,12 @@ import { Typography } from '@/constants/Typography';
 import { encodeBase64 } from '@/encryption/base64';
 import { generateAuthKeyPair, authQRStart } from '@/auth/authQRStart';
 import { authQRWait } from '@/auth/authQRWait';
-import { layout } from '@/components/layout';
 import { Modal } from '@/modal';
 import { t } from '@/text';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { QRCode } from '@/components/qr/QRCode';
-import { MobileGlassSurface } from '@/components/MobileGlass';
+
+const QR_SIZE = 260;
 
 const stylesheet = StyleSheet.create((theme) => ({
     scrollView: {
@@ -20,58 +20,58 @@ const stylesheet = StyleSheet.create((theme) => ({
         backgroundColor: Platform.select({ web: theme.colors.surface, default: 'transparent' }),
     },
     container: {
-        flex: 1,
+        flexGrow: 1,
         alignItems: 'center',
-        paddingHorizontal: 24,
-    },
-    contentWrapper: {
-        width: '100%',
-        maxWidth: layout.maxWidth,
+        justifyContent: 'center',
+        paddingHorizontal: 32,
         paddingVertical: 24,
     },
-    instructionText: {
-        fontSize: 20,
-        color: theme.colors.text,
-        marginBottom: 24,
+    instruction: {
         ...Typography.default(),
-    },
-    secondInstructionText: {
-        fontSize: 16,
-        color: theme.colors.textSecondary,
-        marginBottom: 20,
-        marginTop: 30,
-        ...Typography.default(),
-    },
-    qrInstructions: {
-        fontSize: 14,
-        color: theme.colors.textSecondary,
-        marginBottom: 16,
+        fontSize: 17,
         lineHeight: 22,
+        color: theme.colors.text,
         textAlign: 'center',
-        ...Typography.default(),
+        marginBottom: 8,
     },
-    textInput: {
-        backgroundColor: Platform.select({ web: theme.colors.input.background, default: theme.colors.glass.backgroundSubtle }),
-        padding: 16,
-        borderRadius: 8,
-        marginBottom: 24,
-        fontFamily: 'IBMPlexMono-Regular',
-        fontSize: 14,
-        minHeight: 120,
-        textAlignVertical: 'top',
-        color: theme.colors.input.text,
+    path: {
+        ...Typography.default(),
+        fontSize: 15,
+        lineHeight: 20,
+        color: theme.colors.textSecondary,
+        textAlign: 'center',
+        marginBottom: 32,
+    },
+    qrPlaceholder: {
+        width: QR_SIZE,
+        height: QR_SIZE,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderRadius: 16,
+        backgroundColor: Platform.select({ web: theme.colors.surface, default: theme.colors.surfaceHigh }),
+    },
+    qrFrame: {
+        padding: 12,
+        borderRadius: 16,
+        backgroundColor: 'white',
+    },
+    buttonContainer: {
+        width: 280,
+        maxWidth: '100%',
+        marginTop: 32,
     },
 }));
 
+/**
+ * Restore by scanning from another phone that already has the account.
+ * The QR here is scanned by the other device, not by this one.
+ */
 export default function Restore() {
     const { theme } = useUnistyles();
     const styles = stylesheet;
     const auth = useAuth();
     const router = useRouter();
-    const [restoreKey, setRestoreKey] = useState('');
-    const [isWaitingForAuth, setIsWaitingForAuth] = useState(false);
     const [authReady, setAuthReady] = useState(false);
-    const [waitingDots, setWaitingDots] = useState(0);
     const isCancelledRef = useRef(false);
 
     // Memoize keypair generation to prevent re-creating on re-renders
@@ -81,13 +81,10 @@ export default function Restore() {
     useEffect(() => {
         const startQRAuth = async () => {
             try {
-                setIsWaitingForAuth(true);
-
                 // Send authentication request
                 const success = await authQRStart(keypair);
                 if (!success) {
                     Modal.alert(t('common.error'), t('errors.authenticationFailed'));
-                    setIsWaitingForAuth(false);
                     return;
                 }
 
@@ -96,7 +93,7 @@ export default function Restore() {
                 // Start waiting for authentication
                 const credentials = await authQRWait(
                     keypair,
-                    (dots) => setWaitingDots(dots),
+                    () => {},
                     () => isCancelledRef.current
                 );
 
@@ -105,7 +102,10 @@ export default function Restore() {
                     const secretString = encodeBase64(credentials.secret, 'base64url');
                     await auth.login(credentials.token, secretString);
                     if (!isCancelledRef.current) {
-                        router.back();
+                        // Straight home: the home route now renders the
+                        // signed-in state, and there is no restore screen to
+                        // return to.
+                        router.dismissTo('/');
                     }
                 } else if (!isCancelledRef.current) {
                     Modal.alert(t('common.error'), t('errors.authenticationFailed'));
@@ -118,7 +118,6 @@ export default function Restore() {
                 }
             } finally {
                 if (!isCancelledRef.current) {
-                    setIsWaitingForAuth(false);
                     setAuthReady(false);
                 }
             }
@@ -133,35 +132,30 @@ export default function Restore() {
     }, [keypair]);
 
     return (
-        <ScrollView style={styles.scrollView} contentContainerStyle={{ flexGrow: 1 }}>
-            <View style={styles.container}>
-
-                <View style={{justifyContent: 'flex-end' }}>
-                    <Text style={styles.secondInstructionText}>
-                        1. Open Happy on your mobile device{'\n'}
-                        2. Go to Settings → Account{'\n'}
-                        3. Tap "Link New Device"{'\n'}
-                        4. Scan this QR code
-                    </Text>
-                </View>
-                {!authReady && (
-                    <MobileGlassSurface enabled={Platform.OS !== 'web'} intensity={68} style={{ width: 200, height: 200, backgroundColor: Platform.select({ web: theme.colors.surface, android: theme.colors.glass.backgroundStrong, default: 'transparent' }), alignItems: 'center', justifyContent: 'center', borderRadius: Platform.select({ web: 0, default: 24 }), overflow: 'hidden', borderWidth: Platform.OS === 'web' ? 0 : 0.5, borderColor: theme.colors.glass.border }}>
-                        <ActivityIndicator size="small" color={theme.colors.text} />
-                    </MobileGlassSurface>
-                )}
-                {authReady && (
+        <ScrollView style={styles.scrollView} contentContainerStyle={styles.container}>
+            <Text style={styles.instruction}>{t('onboarding.restoreScan')}</Text>
+            <Text style={styles.path}>{t('onboarding.restoreScanPath')}</Text>
+            {authReady ? (
+                <View style={styles.qrFrame}>
                     <QRCode
                         data={'happy:///account?' + encodeBase64(keypair.publicKey, 'base64url')}
-                        size={300}
+                        size={QR_SIZE}
                         foregroundColor={'black'}
                         backgroundColor={'white'}
                     />
-                )}
-                <View style={{ flexGrow: 4, paddingTop: 30 }}>
-                    <RoundButton title="Restore with Secret Key Instead" display='inverted' onPress={() => {
-                        router.push('/restore/manual');
-                    }} />
                 </View>
+            ) : (
+                <View style={styles.qrPlaceholder}>
+                    <ActivityIndicator size="small" color={theme.colors.text} />
+                </View>
+            )}
+            <View style={styles.buttonContainer}>
+                <RoundButton
+                    size="normal"
+                    display="inverted"
+                    title={t('onboarding.restoreUseKey')}
+                    onPress={() => router.push('/restore/manual')}
+                />
             </View>
         </ScrollView>
     );

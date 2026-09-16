@@ -337,6 +337,9 @@ export const zhHans: TranslationStructure = {
     },
 
     server: {
+        title: en.server.title,
+        serverUrlLabel: en.server.serverUrlLabel,
+        selfHostFooter: en.server.selfHostFooter,
         // Used by Server Configuration screen (app/(app)/server.tsx)
         serverConfiguration: '服务器配置',
         enterServerUrl: '请输入服务器 URL',
@@ -860,6 +863,10 @@ export const zhHans: TranslationStructure = {
         restoreWithSecretKey: '通过密钥恢复',
         whatsNew: "更新日志",
         friends: '好友',
+    },
+
+    onboarding: {
+        ...en.onboarding,
     },
 
     welcome: {

@@ -9,6 +9,7 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
 import { ShortcutHintBadge, useShortcutHints } from './ShortcutHints';
 import { HomeHeaderTitle } from './HomeHeaderTitle';
+import { OnboardingHeader } from './onboarding/OnboardingHeader';
 
 const HEADER_LOGO_SIZE = 19;
 
@@ -63,20 +64,18 @@ export const HomeHeader = React.memo(() => {
         : header;
 })
 
+/**
+ * Step 1 of the first run. No logo and no socket status: nothing is connected
+ * yet, so the only chrome is the step counter and the server settings action.
+ */
 export const HomeHeaderNotAuth = React.memo(() => {
     useSegments(); // Re-rendered automatically when screen navigates back
     const serverInfo = getServerInfo();
-    const { theme } = useUnistyles();
     return (
-        <Header
-            title={<HomeHeaderTitle title={t('sidebar.sessionsTitle')} subtitle={serverInfo.isCustom ? serverInfo.hostname + (serverInfo.port ? `:${serverInfo.port}` : '') : undefined} />}
+        <OnboardingHeader
+            step={1}
+            subtitle={serverInfo.isCustom ? serverInfo.hostname + (serverInfo.port ? `:${serverInfo.port}` : '') : undefined}
             headerRight={() => <HeaderRightNotAuth />}
-            headerLeft={() => <HeaderLeft />}
-            headerLeftGlass={Platform.OS !== 'web'}
-            headerShadowVisible={false}
-            headerBackgroundColor={theme.colors.groupped.background}
-            mobileTitleSurface="plain"
-            mobileTitleAlignment="center"
         />
     )
 });
@@ -107,14 +106,17 @@ function HeaderRightNotAuth() {
     const { theme } = useUnistyles();
     const styles = stylesheet;
 
-
+    // Same gear the signed-in home uses: this is a settings action, and the
+    // server-rack glyph named an object most people have never seen.
     return (
         <Pressable
             onPress={() => router.push('/server')}
             hitSlop={15}
+            accessibilityRole="button"
+            accessibilityLabel={t('server.title')}
             style={styles.headerButton}
         >
-            <Ionicons name="server-outline" size={24} color={theme.colors.header.tint} />
+            <Ionicons name="settings-outline" size={22} color={theme.colors.header.tint} />
         </Pressable>
     );
 }

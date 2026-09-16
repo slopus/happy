@@ -5,14 +5,16 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as React from 'react';
 import { encodeBase64 } from "@/encryption/base64";
 import { authGetToken } from "@/auth/authGetToken";
-import { router, useRouter } from "expo-router";
+import { useRouter } from "expo-router";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { getRandomBytesAsync } from "expo-crypto";
-import { useIsLandscape } from "@/utils/responsive";
+import { useIsLandscape, useIsTablet } from "@/utils/responsive";
 import { Typography } from "@/constants/Typography";
 import { trackAccountCreated, trackAccountRestored } from '@/track';
 import { HomeHeaderNotAuth } from "@/components/HomeHeader";
 import { MainView } from "@/components/MainView";
+import { OnboardingInstall } from "@/components/onboarding/OnboardingInstall";
+import { useAllMachines, useIsDataReady } from "@/sync/storage";
 import { t } from '@/text';
 
 export default function Home() {
@@ -26,6 +28,20 @@ export default function Home() {
 }
 
 function Authenticated() {
+    const isTablet = useIsTablet();
+    const isDataReady = useIsDataReady();
+    const machines = useAllMachines({ includeOffline: true });
+    // Until a computer is linked there is nothing for the home chrome to do:
+    // the dock, the filter, and the session list all need a machine. Phones
+    // get the install step instead. Tablet, web, and desktop keep their
+    // existing empty screen.
+    const showInstallStep = Platform.OS !== 'web'
+        && !isTablet
+        && isDataReady
+        && machines.length === 0;
+    if (showInstallStep) {
+        return <OnboardingInstall />;
+    }
     return <MainView variant="phone" />;
 }
 
@@ -35,6 +51,7 @@ function NotAuthenticated() {
     const router = useRouter();
     const isLandscape = useIsLandscape();
     const insets = useSafeAreaInsets();
+    const isMobile = Platform.OS === 'android' || Platform.OS === 'ios';
 
     const createAccount = async () => {
         try {
@@ -49,60 +66,67 @@ function NotAuthenticated() {
         }
     }
 
+    const openRestore = () => {
+        trackAccountRestored();
+        router.push('/restore');
+    };
+
+    // One filled action and one quiet text action underneath it. The restore
+    // path is rare, so it reads as a footnote rather than a second button.
+    const actions = isMobile ? (
+        <>
+            <View style={styles.buttonContainer}>
+                <RoundButton
+                    title={t('onboarding.getStarted')}
+                    action={createAccount}
+                />
+            </View>
+            <View style={styles.buttonContainerSecondary}>
+                <RoundButton
+                    size="normal"
+                    title={t('onboarding.restoreExisting')}
+                    onPress={openRestore}
+                    display="inverted"
+                />
+            </View>
+        </>
+    ) : (
+        <>
+            <View style={styles.buttonContainer}>
+                <RoundButton
+                    title={t('welcome.loginWithMobileApp')}
+                    onPress={openRestore}
+                />
+            </View>
+            <View style={styles.buttonContainerSecondary}>
+                <RoundButton
+                    size="normal"
+                    title={t('welcome.createAccount')}
+                    action={createAccount}
+                    display="inverted"
+                />
+            </View>
+        </>
+    );
+
+    const logo = (
+        <Image
+            source={theme.dark ? require('@/assets/images/logotype-light.png') : require('@/assets/images/logotype-dark.png')}
+            resizeMode="contain"
+            style={styles.logo}
+        />
+    );
+
     const portraitLayout = (
         <View style={styles.portraitContainer}>
-            <Image
-                source={theme.dark ? require('@/assets/images/logotype-light.png') : require('@/assets/images/logotype-dark.png')}
-                resizeMode="contain"
-                style={styles.logo}
-            />
+            {logo}
             <Text style={styles.title}>
-                {t('welcome.title')}
+                {t('onboarding.headline')}
             </Text>
             <Text style={styles.subtitle}>
-                {t('welcome.subtitle')}
+                {t('onboarding.tagline')}
             </Text>
-            {Platform.OS !== 'android' && Platform.OS !== 'ios' ? (
-                <>
-                    <View style={styles.buttonContainer}>
-                        <RoundButton
-                            title={t('welcome.loginWithMobileApp')}
-                            onPress={() => {
-                                trackAccountRestored();
-                                router.push('/restore');
-                            }}
-                        />
-                    </View>
-                    <View style={styles.buttonContainerSecondary}>
-                        <RoundButton
-                            size="normal"
-                            title={t('welcome.createAccount')}
-                            action={createAccount}
-                            display="inverted"
-                        />
-                    </View>
-                </>
-            ) : (
-                <>
-                    <View style={styles.buttonContainer}>
-                        <RoundButton
-                            title={t('welcome.createAccount')}
-                            action={createAccount}
-                        />
-                    </View>
-                    <View style={styles.buttonContainerSecondary}>
-                        <RoundButton
-                            size="normal"
-                            title={t('welcome.linkOrRestoreAccount')}
-                            onPress={() => {
-                                trackAccountRestored();
-                                router.push('/restore');
-                            }}
-                            display="inverted"
-                        />
-                    </View>
-                </>
-            )}
+            {actions}
         </View>
     );
 
@@ -110,59 +134,16 @@ function NotAuthenticated() {
         <View style={[styles.landscapeContainer, { paddingBottom: insets.bottom + 24 }]}>
             <View style={styles.landscapeInner}>
                 <View style={styles.landscapeLogoSection}>
-                    <Image
-                        source={theme.dark ? require('@/assets/images/logotype-light.png') : require('@/assets/images/logotype-dark.png')}
-                        resizeMode="contain"
-                        style={styles.logo}
-                    />
+                    {logo}
                 </View>
                 <View style={styles.landscapeContentSection}>
                     <Text style={styles.landscapeTitle}>
-                        {t('welcome.title')}
+                        {t('onboarding.headline')}
                     </Text>
                     <Text style={styles.landscapeSubtitle}>
-                        {t('welcome.subtitle')}
+                        {t('onboarding.tagline')}
                     </Text>
-                    {Platform.OS !== 'android' && Platform.OS !== 'ios'
-                        ? (<>
-                            <View style={styles.landscapeButtonContainer}>
-                                <RoundButton
-                                    title={t('welcome.loginWithMobileApp')}
-                                    onPress={() => {
-                                        trackAccountRestored();
-                                        router.push('/restore');
-                                    }}
-                                />
-                            </View>
-                            <View style={styles.landscapeButtonContainerSecondary}>
-                                <RoundButton
-                                    size="normal"
-                                    title={t('welcome.createAccount')}
-                                    action={createAccount}
-                                    display="inverted"
-                                />
-                            </View>
-                        </>)
-                        : (<>
-                            <View style={styles.landscapeButtonContainer}>
-                                <RoundButton
-                                    title={t('welcome.createAccount')}
-                                    action={createAccount}
-                                />
-                            </View>
-                            <View style={styles.landscapeButtonContainerSecondary}>
-                                <RoundButton
-                                    size="normal"
-                                    title={t('welcome.linkOrRestoreAccount')}
-                                    onPress={() => {
-                                        trackAccountRestored();
-                                        router.push('/restore');
-                                    }}
-                                    display="inverted"
-                                />
-                            </View>
-                        </>)
-                    }
+                    {actions}
                 </View>
             </View>
         </View>
@@ -182,6 +163,7 @@ const styles = StyleSheet.create((theme) => ({
         flex: 1,
         alignItems: 'center',
         justifyContent: 'center',
+        paddingHorizontal: 32,
     },
     logo: {
         width: 300,
@@ -191,24 +173,27 @@ const styles = StyleSheet.create((theme) => ({
         marginTop: 16,
         textAlign: 'center',
         fontSize: 24,
+        lineHeight: 30,
         ...Typography.default('semiBold'),
         color: theme.colors.text,
     },
     subtitle: {
         ...Typography.default(),
-        fontSize: 18,
+        fontSize: 17,
+        lineHeight: 22,
         color: theme.colors.textSecondary,
-        marginTop: 16,
+        marginTop: 12,
         textAlign: 'center',
-        marginHorizontal: 24,
-        marginBottom: 64,
+        marginBottom: 48,
     },
     buttonContainer: {
-        maxWidth: 280,
-        width: '100%',
-        marginBottom: 16,
+        width: 280,
+        maxWidth: '100%',
+        marginBottom: 8,
     },
     buttonContainerSecondary: {
+        width: 280,
+        maxWidth: '100%',
     },
     // Landscape styles
     landscapeContainer: {
@@ -242,23 +227,18 @@ const styles = StyleSheet.create((theme) => ({
     landscapeTitle: {
         textAlign: 'center',
         fontSize: 24,
+        lineHeight: 30,
         ...Typography.default('semiBold'),
         color: theme.colors.text,
     },
     landscapeSubtitle: {
         ...Typography.default(),
-        fontSize: 18,
+        fontSize: 17,
+        lineHeight: 22,
         color: theme.colors.textSecondary,
-        marginTop: 16,
+        marginTop: 12,
         textAlign: 'center',
         marginBottom: 32,
         paddingHorizontal: 16,
-    },
-    landscapeButtonContainer: {
-        width: 280,
-        marginBottom: 16,
-    },
-    landscapeButtonContainerSecondary: {
-        width: 280,
     },
 }));

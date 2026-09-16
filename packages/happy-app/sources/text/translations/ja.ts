@@ -337,6 +337,9 @@ export const ja: TranslationStructure = {
     },
 
     server: {
+        title: en.server.title,
+        serverUrlLabel: en.server.serverUrlLabel,
+        selfHostFooter: en.server.selfHostFooter,
         // Used by Server Configuration screen (app/(app)/server.tsx)
         serverConfiguration: 'サーバー設定',
         enterServerUrl: 'サーバーURLを入力してください',
@@ -860,6 +863,10 @@ export const ja: TranslationStructure = {
         restoreWithSecretKey: 'シークレットキーで復元',
         whatsNew: "新機能",
         friends: '友達',
+    },
+
+    onboarding: {
+        ...en.onboarding,
     },
 
     welcome: {

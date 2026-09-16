@@ -1,28 +1,27 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Platform, View, Text, TextInput, ScrollView, ActivityIndicator } from 'react-native';
+import React, { useState } from 'react';
+import { Platform, View, Text, TextInput, ScrollView, KeyboardAvoidingView } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/auth/AuthContext';
 import { RoundButton } from '@/components/RoundButton';
 import { Typography } from '@/constants/Typography';
 import { normalizeSecretKey } from '@/auth/secretKeyBackup';
 import { authGetToken } from '@/auth/authGetToken';
-import { decodeBase64, encodeBase64 } from '@/encryption/base64';
-import { generateAuthKeyPair, authQRStart, QRAuthKeyPair } from '@/auth/authQRStart';
-import { authQRWait } from '@/auth/authQRWait';
+import { decodeBase64 } from '@/encryption/base64';
 import { layout } from '@/components/layout';
 import { Modal } from '@/modal';
 import { t } from '@/text';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
-import { QRCode } from '@/components/qr/QRCode';
-import { MobileGlassSurface } from '@/components/MobileGlass';
 
 const stylesheet = StyleSheet.create((theme) => ({
+    keyboardAvoidingView: {
+        flex: 1,
+    },
     scrollView: {
         flex: 1,
         backgroundColor: Platform.select({ web: theme.colors.surface, default: 'transparent' }),
     },
     container: {
-        flex: 1,
+        flexGrow: 1,
         alignItems: 'center',
         paddingHorizontal: 24,
     },
@@ -31,43 +30,23 @@ const stylesheet = StyleSheet.create((theme) => ({
         maxWidth: layout.maxWidth,
         paddingVertical: 24,
     },
-    instructionText: {
-        fontSize: 16,
-        color: theme.colors.textSecondary,
-        marginBottom: 20,
+    instruction: {
         ...Typography.default(),
-    },
-    secondInstructionText: {
-        fontSize: 16,
-        color: theme.colors.textSecondary,
-        marginBottom: 20,
-        marginTop: 30,
-        ...Typography.default(),
-    },
-    qrInstructions: {
-        fontSize: 14,
-        color: theme.colors.textSecondary,
-        marginBottom: 16,
+        fontSize: 17,
         lineHeight: 22,
-        textAlign: 'center',
-        ...Typography.default(),
+        color: theme.colors.textSecondary,
+        marginBottom: 20,
     },
     textInput: {
-        backgroundColor: Platform.select({ web: theme.colors.input.background, default: 'transparent' }),
+        backgroundColor: Platform.select({ web: theme.colors.input.background, default: theme.colors.surfaceHigh }),
         padding: 16,
-        borderRadius: 8,
+        borderRadius: 12,
         fontFamily: 'IBMPlexMono-Regular',
-        fontSize: 14,
+        fontSize: 15,
+        lineHeight: 22,
         minHeight: 120,
         textAlignVertical: 'top',
         color: theme.colors.input.text,
-    },
-    inputGlass: {
-        borderRadius: 16,
-        overflow: 'hidden',
-        backgroundColor: Platform.select({ web: 'transparent', android: theme.colors.glass.backgroundStrong, default: 'transparent' }),
-        borderWidth: Platform.select({ web: 0, default: StyleSheet.hairlineWidth }),
-        borderColor: theme.colors.glass.border,
         marginBottom: 24,
     },
 }));
@@ -106,8 +85,9 @@ export default function Restore() {
             // Login with new credentials
             await auth.login(token, normalizedKey);
 
-            // Dismiss
-            router.back();
+            // Straight home. A plain back() landed on the QR restore screen
+            // underneath, which then restarted its own pairing.
+            router.dismissTo('/');
 
         } catch (error) {
             console.error('Restore error:', error);
@@ -116,14 +96,18 @@ export default function Restore() {
     };
 
     return (
-        <ScrollView style={styles.scrollView}>
-            <View style={styles.container}>
+        <KeyboardAvoidingView
+            style={styles.keyboardAvoidingView}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+            <ScrollView
+                style={styles.scrollView}
+                contentContainerStyle={styles.container}
+                keyboardShouldPersistTaps="handled"
+            >
                 <View style={styles.contentWrapper}>
-                    <Text style={styles.instructionText}>
-                        Enter your secret key to restore access to your account.
-                    </Text>
+                    <Text style={styles.instruction}>{t('onboarding.secretKeyBody')}</Text>
 
-                    <MobileGlassSurface enabled={Platform.OS !== 'web'} intensity={68} style={styles.inputGlass}>
                     <TextInput
                         style={styles.textInput}
                         placeholder="XXXXX-XXXXX-XXXXX..."
@@ -132,17 +116,17 @@ export default function Restore() {
                         onChangeText={setRestoreKey}
                         autoCapitalize="characters"
                         autoCorrect={false}
+                        autoFocus
                         multiline={true}
                         numberOfLines={4}
                     />
-                    </MobileGlassSurface>
 
                     <RoundButton
-                        title={t('connect.restoreAccount')}
+                        title={t('onboarding.restoreButton')}
                         action={handleRestore}
                     />
                 </View>
-            </View>
-        </ScrollView>
+            </ScrollView>
+        </KeyboardAvoidingView>
     );
 }

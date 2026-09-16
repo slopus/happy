@@ -76,7 +76,7 @@ export const SessionsListWrapper = React.memo(({
         return (
             <View style={styles.container}>
                 <View style={styles.emptyStateContainer}>
-                    <View style={[styles.emptyStateContentContainer, { paddingTop: topContentInset }]}>
+                    <View style={[styles.emptyStateContentContainer, { paddingTop: topContentInset, paddingBottom: bottomContentInset }]}>
                         <EmptyMainScreen
                             hasArchivedSessions={hasArchivedSessions}
                             onShowArchived={() => setHideArchivedSessions(false)}
