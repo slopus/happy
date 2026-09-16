@@ -1143,7 +1143,9 @@ const style = StyleSheet.create((theme) => ({
     tableCell: {
         paddingHorizontal: 12,
         paddingVertical: 8,
-        alignItems: 'flex-start',
+        // On web, a start-aligned Text can keep a long URL's intrinsic width.
+        // Stretch it to the cell so React Native Web's break-word can wrap it.
+        alignItems: Platform.OS === 'web' ? 'stretch' : 'flex-start',
         flexShrink: 0,
     },
     foldedTableCell: {
