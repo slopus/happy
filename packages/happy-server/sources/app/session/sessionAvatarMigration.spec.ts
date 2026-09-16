@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import { PGlite } from "@electric-sql/pglite";
 import { describe, expect, it } from "vitest";
 
@@ -11,9 +12,9 @@ describe("session avatar database migration", () => {
       );
       await db.exec(
         await readFile(
-          new URL(
+          resolve(
+            __dirname,
             "../../../prisma/migrations/20260914090000_add_session_avatars/migration.sql",
-            import.meta.url,
           ),
           "utf8",
         ),
