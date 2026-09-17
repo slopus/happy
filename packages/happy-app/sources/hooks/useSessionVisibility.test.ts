@@ -7,11 +7,12 @@ const mocks = vi.hoisted(() => ({
     state: { currentViewingSessionId: null as string | null, unread: new Set<string>() },
     setCurrentViewingSession: vi.fn(),
     onSessionVisible: vi.fn(),
+    onSessionHidden: vi.fn(),
 }));
 vi.mock('@/sync/storage', () => ({ storage: { getState: () => ({
     ...mocks.state, setCurrentViewingSession: mocks.setCurrentViewingSession,
 }) } }));
-vi.mock('@/sync/sync', () => ({ sync: { onSessionVisible: mocks.onSessionVisible } }));
+vi.mock('@/sync/sync', () => ({ sync: { onSessionVisible: mocks.onSessionVisible, onSessionHidden: mocks.onSessionHidden } }));
 
 import { useSessionVisibility } from './useSessionVisibility';
 
@@ -73,6 +74,17 @@ describe('session visibility lifecycle', () => {
         expect(mocks.state.currentViewingSessionId).toBe('a');
         act(() => renderer.unmount());
         expect(mocks.state.currentViewingSessionId).toBeNull();
+    });
+
+    it('tells sync a claimed chat is hidden on unmount, but not an embedded or never-focused one', () => {
+        render({ id: 'a', active: true });
+        act(() => renderer.unmount());
+        expect(mocks.onSessionHidden).toHaveBeenCalledExactlyOnceWith('a');
+        render({ id: 'b', active: true, embedded: true });
+        act(() => renderer.unmount());
+        render({ id: 'c', active: false });
+        act(() => renderer.unmount());
+        expect(mocks.onSessionHidden).toHaveBeenCalledTimes(1);
     });
 
     it('discarding a never-focused preload cannot clear an existing viewer', () => {
