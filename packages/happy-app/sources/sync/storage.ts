@@ -882,19 +882,26 @@ export const storage = create<StorageState>()((set, get) => {
                 // Update session with todos and latestUsage
                 // IMPORTANT: We extract latestUsage from the mutable reducerState and copy it to the Session object
                 // This ensures latestUsage is available immediately on load, even before messages are fully loaded
+                //
+                // Only when something actually differs: the reducer reports its
+                // current todos and usage on every call, and re-minting the
+                // Session (with a fresh latestUsage) for each incoming message
+                // re-rendered every useSession subscriber of a streaming chat —
+                // SessionView, AgentInput, the chat list — per message.
                 let updatedSessions = state.sessions;
-                const needsUpdate = (reducerResult.todos !== undefined || existingSession.reducerState.latestUsage || shouldEnterPlanMode) && session;
+                const reducerUsage = existingSession.reducerState.latestUsage;
+                const todosChanged = reducerResult.todos !== undefined && reducerResult.todos !== session?.todos;
+                const usageChanged = reducerUsage !== undefined && !equal(reducerUsage, session?.latestUsage);
+                const needsUpdate = (todosChanged || usageChanged || shouldEnterPlanMode) && session;
 
                 if (needsUpdate) {
                     updatedSessions = {
                         ...state.sessions,
                         [sessionId]: {
                             ...session,
-                            ...(reducerResult.todos !== undefined && { todos: reducerResult.todos }),
+                            ...(todosChanged && { todos: reducerResult.todos }),
                             // Copy latestUsage from reducerState to make it immediately available
-                            latestUsage: existingSession.reducerState.latestUsage ? {
-                                ...existingSession.reducerState.latestUsage
-                            } : session.latestUsage,
+                            ...(usageChanged && reducerUsage && { latestUsage: { ...reducerUsage } }),
                             // Auto-switch to plan mode when EnterPlanMode tool call is detected
                             ...(shouldEnterPlanMode && { permissionMode: 'plan' })
                         }

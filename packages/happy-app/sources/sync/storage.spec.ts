@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Session } from './storageTypes';
+import type { NormalizedMessage } from './typesRaw';
 
 // storage.ts reaches React Native, MMKV and the sync engine at import time;
 // none of them take part in the store's own reducers under test here.
@@ -75,5 +76,32 @@ describe('applySessions', () => {
         expect(thinkingView).not.toBe(view);
         storage.getState().applySessions([{ ...a, thinking: true, metadata: { ...a.metadata!, lastMeaningfulMessageAt: 9_000 } }]);
         expect(storage.getState().sessionListViewData).not.toBe(thinkingView);
+    });
+});
+
+describe('applyMessages', () => {
+    const agentMessage = (id: string, createdAt: number, usage?: { input_tokens: number; output_tokens: number }): NormalizedMessage => ({
+        id,
+        localId: null,
+        createdAt,
+        role: 'agent',
+        isSidechain: false,
+        content: [{ type: 'text', text: id, uuid: id, parentUUID: null }],
+        ...(usage ? { usage } : {}),
+    });
+
+    it('re-mints the session only when its todos or usage actually change', () => {
+        storage.getState().applySessions([session({ id: 'a' })]);
+        storage.getState().applyMessages('a', [agentMessage('m1', 1_000, { input_tokens: 10, output_tokens: 5 })]);
+        const sessions = storage.getState().sessions;
+        expect(sessions.a.latestUsage?.inputTokens).toBe(10);
+
+        // A message without usage: nothing on the Session itself changed.
+        storage.getState().applyMessages('a', [agentMessage('m2', 2_000)]);
+        expect(storage.getState().sessions).toBe(sessions);
+
+        storage.getState().applyMessages('a', [agentMessage('m3', 3_000, { input_tokens: 20, output_tokens: 5 })]);
+        expect(storage.getState().sessions).not.toBe(sessions);
+        expect(storage.getState().sessions.a.latestUsage?.inputTokens).toBe(20);
     });
 });
