@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { Platform } from 'react-native';
 import { useHappyAction } from '@/hooks/useHappyAction';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { Modal } from '@/modal';
@@ -360,9 +361,17 @@ export function useSessionQuickActions(
 /**
  * Lightweight hook for list items that only have a sessionId.
  * Returns a long-press handler that shows the action alert on mobile.
+ *
+ * On web the rows open SessionActionsPopover from onContextMenu and never call
+ * this handler, yet every mounted row still paid a useSession subscription plus
+ * the whole quick-actions hook (machine, settings, a dozen memos) for it. The
+ * platform never changes while the app runs, so the variant is picked once at
+ * module load and hook order stays constant.
  */
-export function useSessionActionAlert(sessionId: string) {
-    const session = useSession(sessionId);
-    const { showActionAlert } = useSessionQuickActions(session!, {});
-    return session ? showActionAlert : undefined;
-}
+export const useSessionActionAlert: (sessionId: string) => (() => void) | undefined = Platform.OS === 'web'
+    ? () => undefined
+    : function useNativeSessionActionAlert(sessionId) {
+        const session = useSession(sessionId);
+        const { showActionAlert } = useSessionQuickActions(session!, {});
+        return session ? showActionAlert : undefined;
+    };
