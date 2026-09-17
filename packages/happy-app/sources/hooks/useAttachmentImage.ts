@@ -1,8 +1,8 @@
 /**
  * Loads, decrypts and exposes a chat attachment as a data URI for inline
  * rendering in chat bubbles. Decrypted blobs are kept in a module-level LRU
- * (max 50 entries) so scrolling back through the chat does not re-decrypt
- * every image. In-flight requests are de-duplicated per ref.
+ * (max 50 entries / 64 MB) so scrolling back through the chat does not
+ * re-decrypt every image. In-flight requests are de-duplicated per ref.
  */
 import * as React from 'react';
 import { Platform } from 'react-native';
@@ -16,16 +16,34 @@ import {
 import { decryptBlob } from '@/encryption/blob';
 import { encodeBase64 } from '@/encryption/base64';
 
-const MAX_CACHE_ENTRIES = 50;
+export const MAX_CACHE_ENTRIES = 50;
+// A 10 MB attachment becomes a ~13 MB base64 data URI, so a count-only cap
+// could pin hundreds of MB for the tab's lifetime. Bound the total bytes too
+// (string length ~ bytes for a base64 data URI).
+export const MAX_CACHE_BYTES = 64 * 1024 * 1024;
 const cache = new Map<string, string>();
+let cacheBytes = 0;
 const inFlight = new Map<string, Promise<string | null>>();
 
-function rememberInCache(ref: string, dataUri: string) {
-    if (cache.has(ref)) cache.delete(ref);
+/** Exposed for tests. */
+export function getAttachmentImageCacheStats(): { entries: number; bytes: number } {
+    return { entries: cache.size, bytes: cacheBytes };
+}
+
+export function rememberInCache(ref: string, dataUri: string) {
+    const previous = cache.get(ref);
+    if (previous !== undefined) {
+        cache.delete(ref);
+        cacheBytes -= previous.length;
+    }
     cache.set(ref, dataUri);
-    while (cache.size > MAX_CACHE_ENTRIES) {
+    cacheBytes += dataUri.length;
+    // Never evict the entry just added: a single oversized image is still
+    // better cached than re-decrypted on every scroll.
+    while ((cache.size > MAX_CACHE_ENTRIES || cacheBytes > MAX_CACHE_BYTES) && cache.size > 1) {
         const oldest = cache.keys().next().value;
         if (oldest === undefined) break;
+        cacheBytes -= cache.get(oldest)?.length ?? 0;
         cache.delete(oldest);
     }
 }
