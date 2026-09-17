@@ -149,6 +149,11 @@ class Sync {
     private messagePreloader = new SessionMessagePreloader((sessionId, signal) => this.preloadLatestPage(sessionId, signal));
     private historyPrefetchSessions = new Set<string>();
     private olderMessagesPrefetching = new Set<string>();
+    // Chats whose messages stay resident after the user leaves them, most
+    // recently viewed last. Only the last RESIDENT_SESSIONS survive a hidden
+    // event; see onSessionHidden.
+    private recentlyViewedSessions: string[] = [];
+    private static readonly RESIDENT_SESSIONS = 3;
     private preloadedPlanModes = new Map<string, Session['permissionMode']>();
     private sendSync = new Map<string, InvalidateSync>();
     private sendAbortControllers = new Map<string, AbortController>();
@@ -364,6 +369,8 @@ class Sync {
 
     onSessionVisible = (sessionId: string) => {
         releaseSpawnedSession(sessionId);
+        this.recentlyViewedSessions = this.recentlyViewedSessions.filter((id) => id !== sessionId);
+        this.recentlyViewedSessions.push(sessionId);
         this.historyPrefetchSessions.add(sessionId);
         this.refreshSessionData(sessionId);
         // Also cover focus arriving while the speculative first page is still
@@ -393,6 +400,51 @@ class Sync {
         // Preserve existing voice-follow behavior for actual server events.
         // Unlike a user visit, these must not opt a session into full history.
         this.notifyVoiceSessionFocus(sessionId);
+    }
+
+    /**
+     * A chat screen went away. Its messages stay resident, with those of the
+     * other most recently viewed chats, so going back is instant; whatever
+     * fell out of that window is released now. Nothing else ever freed
+     * sessionMessages: every chat opened during the life of the tab stayed in
+     * memory (reducer state + messagesMap + array, about twice its size) for
+     * good, and its per-session sync kept forward-syncing on every seq gap.
+     */
+    onSessionHidden = (sessionId: string) => {
+        log.log(`👋 Session ${sessionId} hidden`);
+        const viewing = storage.getState().currentViewingSessionId;
+        const stale = this.recentlyViewedSessions.slice(0, -Sync.RESIDENT_SESSIONS);
+        for (const id of stale) {
+            if (id === viewing || !this.releaseSessionMessages(id)) continue;
+            this.recentlyViewedSessions = this.recentlyViewedSessions.filter((other) => other !== id);
+        }
+    }
+
+    // Frees a session's message log and the sync state tied to it, as the
+    // delete-session handler does, so the next visit is a clean initial load.
+    // Refuses while anything is still in flight for the session — an unsent
+    // message, a fetch, a queued batch, a history page — and the caller
+    // retries at the next hidden event. The AsyncLock is kept on purpose: a
+    // late preload still holds it, and a new one would let the reload overlap.
+    private releaseSessionMessages = (sessionId: string): boolean => {
+        const busy = (this.pendingOutbox.get(sessionId)?.length ?? 0) > 0
+            || this.sendAbortControllers.has(sessionId)
+            || this.messagesSync.get(sessionId)?.isBusy
+            || this.sessionQueueProcessing.has(sessionId)
+            || (this.sessionMessageQueue.get(sessionId)?.length ?? 0) > 0
+            || this.olderMessagesPrefetching.has(sessionId)
+            || storage.getState().sessionMessages[sessionId]?.isLoadingOlder;
+        if (busy) return false;
+        this.messagesSync.get(sessionId)?.stop();
+        this.messagesSync.delete(sessionId);
+        this.sessionLastSeq.delete(sessionId);
+        this.sessionOldestSeq.delete(sessionId);
+        this.sessionMessageQueue.delete(sessionId);
+        this.historyPrefetchSessions.delete(sessionId);
+        this.preloadedPlanModes.delete(sessionId);
+        storage.getState().evictSessionMessages(sessionId);
+        log.log(`🧹 Released messages of session ${sessionId}`);
+        return true;
     }
 
     preloadSession = (sessionId: string) => {

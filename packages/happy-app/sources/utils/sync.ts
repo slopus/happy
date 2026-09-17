@@ -11,6 +11,11 @@ export class InvalidateSync {
         this._command = command;
     }
 
+    /** A command is queued, running, or waiting to retry. */
+    get isBusy(): boolean {
+        return this._invalidated && !this._stopped;
+    }
+
     invalidate() {
         if (this._stopped) {
             return;

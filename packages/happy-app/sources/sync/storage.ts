@@ -323,6 +323,7 @@ interface StorageState {
     updateArtifact: (artifact: DecryptedArtifact) => void;
     deleteArtifact: (artifactId: string) => void;
     deleteSession: (sessionId: string) => void;
+    evictSessionMessages: (sessionId: string) => void;
     // Friend management methods
     applyFriends: (friends: UserProfile[]) => void;
     applyRelationshipUpdate: (event: RelationshipUpdatedEvent) => void;
@@ -1395,6 +1396,19 @@ export const storage = create<StorageState>()((set, get) => {
                 sessionMessages: remainingSessionMessages,
                 sessionFileCache: remainingFileCache,
                 sessionListViewData
+            };
+        }),
+        // Releases only the in-memory message log (reducer state, map and
+        // array); the session row, drafts and file cache stay. Sync calls this
+        // for chats that fell out of its recently viewed window, so the next
+        // visit starts from a clean initial load instead of a copy kept for
+        // the life of the tab.
+        evictSessionMessages: (sessionId: string) => set((state) => {
+            if (!state.sessionMessages[sessionId]) return state;
+            const { [sessionId]: _evictedMessages, ...remainingSessionMessages } = state.sessionMessages;
+            return {
+                ...state,
+                sessionMessages: remainingSessionMessages
             };
         }),
         // Friend management methods

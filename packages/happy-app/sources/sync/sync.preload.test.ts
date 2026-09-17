@@ -38,6 +38,7 @@ vi.mock('@/sync/storage', () => ({ storage: { getState: () => ({
     applyMessages: mocks.applyMessages,
     applyMessagesLoaded: mocks.applyMessagesLoaded,
     applyOlderMessagesPagination: mocks.applyOlderMessagesPagination,
+    evictSessionMessages: (id: string) => { delete mocks.state.sessionMessages[id]; },
 }) } }));
 vi.mock('@/sync/ops', () => ({ sessionSetAgentModes: mocks.setModes }));
 vi.mock('@/sync/persistence', () => ({ loadPendingSettings: () => ({}), savePendingSettings: vi.fn() }));
@@ -263,5 +264,27 @@ describe('chat preload sync integration', () => {
         expect(mocks.voiceFocus).toHaveBeenCalledWith('a', {});
         expect(mocks.state.currentViewingSessionId).toBeNull();
         expect(older).not.toHaveBeenCalled();
+    });
+
+    it('releases chats that fell out of the recently viewed window and reloads them afresh', async () => {
+        mocks.state.sessions.c = { id: 'c', permissionMode: 'auto', metadata: {} };
+        mocks.state.sessions.d = { id: 'd', permissionMode: 'auto', metadata: {} };
+        for (const id of ['a', 'b', 'c', 'd']) {
+            mocks.state.currentViewingSessionId = id;
+            engine.onSessionVisible(id);
+            await engine.getMessagesSync(id).awaitQueue();
+            await new Promise((resolve) => setTimeout(resolve, 0));
+            mocks.state.currentViewingSessionId = null;
+            engine.onSessionHidden(id);
+        }
+        expect(mocks.state.sessionMessages.a).toBeUndefined();
+        expect(mocks.state.sessionMessages.b).toBeDefined();
+        expect(engine.sessionLastSeq.has('a')).toBe(false);
+        expect(engine.messagesSync.has('a')).toBe(false);
+        mocks.state.currentViewingSessionId = 'a';
+        engine.onSessionVisible('a');
+        await engine.getMessagesSync('a').awaitQueue();
+        expect(mocks.request.mock.calls.at(-1)?.[0]).toBe('/v3/sessions/a/messages?before_seq=2147483647&limit=100');
+        expect(mocks.state.sessionMessages.a).toBeDefined();
     });
 });
