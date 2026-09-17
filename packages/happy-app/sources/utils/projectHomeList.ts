@@ -108,7 +108,21 @@ export type ProjectHomeRow =
     | { type: 'project'; project: ProjectHomeEntry }
     /** `last` closes the tree line that runs down from the project's avatar. */
     | { type: 'worktree'; worktree: ProjectWorktree; last: boolean }
-    | { type: 'worktreeToggle'; toggle: WorktreeToggle };
+    | { type: 'worktreeToggle'; toggle: WorktreeToggle }
+    /**
+     * The divider that opens and closes the archive. Present whenever the
+     * account has something archived, so the setting that reveals it always
+     * has a control on this screen and never lands on a blank one.
+     */
+    | { type: 'archiveToggle'; hidden: boolean }
+    /** A day heading over the archived chats that follow. */
+    | { type: 'archiveHeader'; title: string }
+    /**
+     * A retired chat. The archive is a flat chronological tail, as it is under
+     * the flat layout: a retired chat belongs to no checkout in flight, and
+     * its worktree is frequently no longer on disk.
+     */
+    | { type: 'archived'; session: SessionRowData };
 
 interface BuildOptions {
     data: readonly SessionListViewItem[];
@@ -117,6 +131,14 @@ interface BuildOptions {
     /** Which projects are showing every worktree, keyed by project id. */
     expanded: Readonly<Record<string, boolean>>;
     labels: { bots: string; projects: string };
+    /**
+     * Whether the account has anything archived at all, which is what decides
+     * if the toggle is drawn. `data` cannot say: while the archive is hidden it
+     * has already been filtered out of it.
+     */
+    hasArchivedSessions?: boolean;
+    /** The archive-visibility setting, as the toggle should report it. */
+    archiveHidden?: boolean;
 }
 
 /** Checkouts are addressed through their project, which owns their names. */
@@ -198,8 +220,11 @@ function toWorktree(project: ProjectGroupData, workspace: ProjectWorkspaceGroup)
  * worktrees nested under it — the project's own checkout is the card itself,
  * not a row of its own, so the main chat never hides behind a fold.
  *
- * The archive has no place on this screen. It is about work in flight, and the
- * flat home list keeps retired sessions one layout switch away.
+ * The archive trails everything as the same flat, date-grouped tail the other
+ * layout draws, behind the same toggle. It is not part of any project: this
+ * screen is about work in flight, but the setting that reveals retired chats
+ * has to reveal them here too, or an account with nothing but an archive
+ * opens onto an empty screen.
  */
 export function buildProjectHomeRows({
     data,
@@ -207,6 +232,8 @@ export function buildProjectHomeRows({
     unknownMachineText,
     expanded,
     labels,
+    hasArchivedSessions = false,
+    archiveHidden = true,
 }: BuildOptions): ProjectHomeRow[] {
     const rows: ProjectHomeRow[] = [];
 
@@ -304,6 +331,26 @@ export function buildProjectHomeRows({
     if (projectRows.length > 0) {
         rows.push({ type: 'section', id: 'projects', label: labels.projects });
         rows.push(...projectRows);
+    }
+
+    if (hasArchivedSessions) {
+        rows.push({ type: 'archiveToggle', hidden: archiveHidden });
+    }
+    // The store already filtered these by the setting: while the archive is
+    // hidden there are none to pass through. A day heading is only kept when
+    // a chat follows it, so nothing heads an empty group.
+    let pendingHeader: string | null = null;
+    for (const item of data) {
+        if (item.type === 'header') {
+            pendingHeader = item.title;
+            continue;
+        }
+        if (item.type !== 'session') continue;
+        if (pendingHeader !== null) {
+            rows.push({ type: 'archiveHeader', title: pendingHeader });
+            pendingHeader = null;
+        }
+        rows.push({ type: 'archived', session: item.session });
     }
 
     return rows;

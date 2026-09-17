@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { DropdownMenu, DropdownMenuItem } from '@expo/ui/jetpack-compose';
+import { DropdownMenu, DropdownMenuItem, Text as ComposeText } from '@expo/ui/jetpack-compose';
 import { MISSING_SESSION, useSessionQuickActions } from '@/hooks/useSessionQuickActions';
 import { useSession } from '@/sync/storage';
 import type { SessionActionsNativeMenuHandle, SessionActionsNativeMenuProps } from './SessionActionsNativeMenu';
@@ -39,7 +39,12 @@ export const SessionActionsNativeMenu = React.forwardRef<
                             item.onPress();
                         }}
                     >
-                        <DropdownMenuItem.Text>{item.label}</DropdownMenuItem.Text>
+                        {/* Native slot view: a bare string child throws "Text strings
+                            must be rendered within a <Text> component" mid-render.
+                            Compose's own Text turns it into the native `text` prop. */}
+                        <DropdownMenuItem.Text>
+                            <ComposeText>{item.label}</ComposeText>
+                        </DropdownMenuItem.Text>
                     </DropdownMenuItem>
                 ))}
             </DropdownMenu.Items>

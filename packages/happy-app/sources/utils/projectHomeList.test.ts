@@ -64,13 +64,18 @@ const machines = [
     { id: 'machine-b', metadata: { displayName: 'Laptop' } },
 ];
 
-function build(data: SessionListViewItem[], expanded: Record<string, boolean> = {}) {
+function build(
+    data: SessionListViewItem[],
+    expanded: Record<string, boolean> = {},
+    archive: { hasArchivedSessions?: boolean; archiveHidden?: boolean } = {},
+) {
     return buildProjectHomeRows({
         data,
         machines,
         unknownMachineText: 'unknown',
         expanded,
         labels: { bots: 'Bots', projects: 'Projects' },
+        ...archive,
     });
 }
 
@@ -85,6 +90,9 @@ function shape(rows: ReturnType<typeof build>): string[] {
             case 'worktreeToggle': return item.toggle.expanded
                 ? 'toggle:less'
                 : `toggle:+${item.toggle.hiddenCount}`;
+            case 'archiveToggle': return item.hidden ? 'archive:show' : 'archive:hide';
+            case 'archiveHeader': return `archiveHeader:${item.title}`;
+            case 'archived': return `archived:${item.session.id}`;
         }
     });
 }
@@ -310,13 +318,43 @@ describe('buildProjectHomeRows', () => {
         ]);
     });
 
-    it('leaves the archive out of this layout entirely', () => {
+    it('trails the revealed archive behind the projects, under its toggle', () => {
         const rows = build([
             project('happy', 'rig', [{ id: '', name: null, sessions: [row({ id: 'a' })] }]),
             { type: 'header', title: 'Today' },
             { type: 'session', session: row({ id: 'archived', archived: true }) },
-        ]);
+        ], {}, { hasArchivedSessions: true, archiveHidden: false });
 
+        expect(shape(rows)).toEqual([
+            'section:Projects',
+            'project:happy(0)',
+            'archive:hide',
+            'archiveHeader:Today',
+            'archived:archived',
+        ]);
+    });
+
+    // The store filters hidden archived chats out of the data before it gets
+    // here, so the toggle is the only trace of them — and it has to be there,
+    // or nothing on the screen could bring them back.
+    it('keeps the toggle while the archive is hidden, and nothing else of it', () => {
+        const rows = build([
+            project('happy', 'rig', [{ id: '', name: null, sessions: [row({ id: 'a' })] }]),
+        ], {}, { hasArchivedSessions: true, archiveHidden: true });
+
+        expect(shape(rows)).toEqual(['section:Projects', 'project:happy(0)', 'archive:show']);
+    });
+
+    // An account with nothing but an archive used to open onto a blank screen.
+    it('still offers the archive when there is nothing else', () => {
+        const rows = build([], {}, { hasArchivedSessions: true, archiveHidden: true });
+        expect(shape(rows)).toEqual(['archive:show']);
+    });
+
+    it('draws no toggle for an account with nothing archived', () => {
+        const rows = build([
+            project('happy', 'rig', [{ id: '', name: null, sessions: [row({ id: 'a' })] }]),
+        ]);
         expect(shape(rows)).toEqual(['section:Projects', 'project:happy(0)']);
     });
 
