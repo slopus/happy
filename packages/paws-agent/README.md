@@ -312,3 +312,26 @@ The workflow maps prereleases to `next` and stable versions to `latest`, compare
 ## License
 
 MIT
+
+### Per-turn model configuration
+
+`await client.sessions.getConfiguration(sessionId)` reads the runner's current
+model, effort, and advertised options. `efforts` belongs to the **current** model;
+an empty catalog means the runner has not advertised choices yet.
+
+```ts
+const configuration = await client.sessions.getConfiguration(sessionId);
+await client.messages.send({
+  sessionId,
+  text: 'Explain this image',
+  configuration: { model: configuration.model, effort: null },
+  images: [{ name: 'example.png', mimeType: 'image/png', bytes }],
+});
+```
+
+Configuration is applied when the runner consumes the next message, without
+interrupting an existing turn. Omitted fields preserve settings; `null` resets
+to the agent default. Explicit `configuration` takes precedence over the same
+keys in `meta`. The runner remains the authority on model availability and
+agent-specific capabilities; this SDK does not invent a model catalog or claim
+an immediate runtime switch.

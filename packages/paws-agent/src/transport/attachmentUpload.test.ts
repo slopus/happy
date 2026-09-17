@@ -13,7 +13,7 @@ afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
 it.each(['http://localhost:3005/blob', 'http://127.0.0.1:3005/blob', 'http://[::1]:3005/blob', '/blob'])('本地上传地址 %s 被规范化到服务器且携带认证', async uploadUrl => {
     const { transport, fetch } = setup();
     await transport.uploadAttachment({ ref: 'a.enc', uploadUrl, method: 'PUT' }, bytes);
-    expect(fetch).toHaveBeenCalledWith('https://paws.example/blob', expect.objectContaining({ method: 'PUT', headers: { Authorization: 'Bearer secret', 'Content-Type': 'application/octet-stream' }, redirect: 'error', credentials: 'omit' }));
+    expect(fetch).toHaveBeenCalledWith('https://paws.example/blob', expect.objectContaining({ method: 'PUT', headers: { Authorization: 'Bearer secret', 'Content-Type': 'application/octet-stream' }, redirect: 'manual', credentials: 'omit' }));
 });
 
 it('相似前缀的第三方 PUT 不能收到 Paws token', async () => {

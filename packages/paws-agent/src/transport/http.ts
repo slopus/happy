@@ -101,9 +101,11 @@ export class PawsHttpTransport {
             }
             signal.throwIfAborted();
             const response = await fetch(upload.uploadUrl, {
-                method: upload.method, headers, body, signal, redirect: 'error', credentials: 'omit', referrerPolicy: 'no-referrer',
+                method: upload.method, headers, body, signal, redirect: 'manual', credentials: 'omit', referrerPolicy: 'no-referrer',
             });
             signal.throwIfAborted();
+            // Workers does not implement redirect: 'error'. Manual mode plus the
+            // non-2xx check rejects redirects without forwarding credentials/body.
             if (!response.ok) throw new PawsAgentError('UNKNOWN', 'Attachment upload failed', { details: { status: response.status } });
             return upload.ref;
         } catch (error) {

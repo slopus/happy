@@ -127,11 +127,27 @@ export type ImageAttachmentInput = {
     height?: number;
 };
 
+/** Overrides for the next submitted turn. Omitted fields preserve runtime settings;
+ * null resets to the agent default. No running turn is interrupted. */
+export type TurnConfiguration = {
+    model?: string | null;
+    effort?: 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max' | 'ultra' | null;
+};
+export type ConfigurationOption = { code: string; label: string; description?: string };
+export type SessionConfiguration = {
+    model: string | null;
+    effort: string | null;
+    models: ConfigurationOption[];
+    /** Options reported for the current model only. */
+    efforts: ConfigurationOption[];
+};
+
 export type SendMessageInput = {
     sessionId: string;
     text: string;
     localId?: string;
     meta?: Record<string, unknown>;
+    configuration?: TurnConfiguration;
     /** 最多四张 PNG/JPEG/WebP，每张不超过 10 MiB。 */
     images?: ImageAttachmentInput[];
     /** 取消尚未完成的上传和消息提交；已被服务器接受的消息无法撤回。 */
@@ -157,8 +173,11 @@ export interface MachinesResource {
 export interface SessionsResource {
     list(options?: { active?: boolean }): Promise<Session[]>;
     get(sessionId: string): Promise<Session>;
+    getConfiguration(sessionId: string): Promise<SessionConfiguration>;
     spawn(input: SpawnSessionInput): Promise<SpawnSessionResult>;
     resume(input: ResumeSessionInput): Promise<SpawnSessionResult>;
+    /** End the execution process, retaining history for resume. */
+    terminate(sessionId: string): Promise<void>;
     stop(sessionId: string): Promise<void>;
 }
 

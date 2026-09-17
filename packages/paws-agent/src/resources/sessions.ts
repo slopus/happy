@@ -1,3 +1,4 @@
+import { readConfiguration } from './configuration';
 import { PawsAgentError } from '../client/errors';
 import type {
     Machine,
@@ -66,6 +67,10 @@ export class SessionsResourceImpl implements SessionsResource {
         return session;
     }
 
+    async getConfiguration(sessionId: string) {
+        return readConfiguration((await this.get(sessionId)).metadata);
+    }
+
     async spawn(input: SpawnSessionInput): Promise<SpawnSessionResult> {
         this.requireId(input.machineId, 'machineId');
         this.requireId(input.directory, 'directory');
@@ -109,6 +114,15 @@ export class SessionsResourceImpl implements SessionsResource {
             sessionId: session.id,
         });
         return this.parseSpawnResult(result);
+    }
+
+    /** Gracefully end execution, preserving daemon resume state and message history. */
+    async terminate(sessionId: string): Promise<void> {
+        await this.ensureSession(sessionId);
+        const result = await this.realtime.sessionRpc<{ success?: boolean }>(sessionId, 'killSession', {});
+        if (result?.success !== true) {
+            throw new PawsAgentError('PROTOCOL_UNSUPPORTED', 'Session did not acknowledge termination');
+        }
     }
 
     async stop(sessionId: string): Promise<void> {

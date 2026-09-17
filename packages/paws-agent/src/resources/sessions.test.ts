@@ -108,3 +108,12 @@ describe('SessionsResource', () => {
             .resolves.toEqual(result);
     });
 });
+
+it('terminate stops the owning daemon process without deleting conversation history', async () => {
+    const transport = { getWithCredentials: vi.fn().mockResolvedValue({credentials, data:{session:{id:'s1', metadata:encodeBase64(encryptLegacy({machineId:'m1'},secret)), agentState:null, dataEncryptionKey:null}}}) };
+    const realtime = {sessionRpc:vi.fn().mockResolvedValue({success:true}),emit:vi.fn()};
+    const sessions=new SessionsResourceImpl(transport as never,realtime as never,new RecordEncryptionStore(),vi.fn().mockResolvedValue([{id:'m1'}]));
+    await sessions.terminate('s1');
+    expect(realtime.sessionRpc).toHaveBeenCalledWith('s1','killSession',{});
+    expect(realtime.emit).not.toHaveBeenCalled();
+});

@@ -12,7 +12,7 @@ describe('MessagesResource', () => {
         const sessions = { get: vi.fn().mockResolvedValue({ active: true, metadata: {} }) };
         const messages = new MessagesResourceImpl(transport as never, sessions as never, encryption);
 
-        const receipt = await messages.send({ sessionId: 'session-1', text: 'hello', localId: 'local-1' });
+        const receipt = await messages.send({ sessionId: 'session-1', text: 'hello', localId: 'local-1', meta: {model:'old', effort:'low'}, configuration:{model:'new',effort:null} });
 
         expect(receipt).toEqual({ sessionId: 'session-1', localId: 'local-1' });
         const body = transport.post.mock.calls[0][1] as { messages: Array<{ localId: string; content: string }> };
@@ -20,7 +20,7 @@ describe('MessagesResource', () => {
         expect(decrypt(key, 'legacy', decodeBase64(body.messages[0].content))).toMatchObject({
             role: 'user',
             content: { type: 'text', text: 'hello' },
-            meta: { sentFrom: 'paws-agent' },
+            meta: { sentFrom: 'paws-agent', model:'new', effort:null },
         });
     });
 

@@ -34,7 +34,7 @@ describe('加密图片发送', () => {
         await messages.send({ sessionId: 's1', text: '请看图', localId: 'turn1', images: [image] });
         expect(fetch).toHaveBeenCalledOnce();
         const options = fetch.mock.calls[0][1];
-        expect(options.redirect).toBe('error');
+        expect(options.redirect).toBe('manual');
         expect(options.credentials).toBe('omit');
         expect(options.headers?.Authorization).toBeUndefined();
         const form = options.body as FormData;
@@ -62,10 +62,10 @@ describe('加密图片发送', () => {
         expect(decrypt(key, 'legacy', decodeBase64(batch[1].content))).toMatchObject({ role: 'user', content: { type: 'text', text: '' } });
     });
 
-    it('第二张上传失败时不提交部分附件或正文', async () => {
+    it.each([302,307,500])('第二张上传返回 %s 时不提交部分附件或正文', async status => {
         const { messages, post, fetch } = setup();
-        fetch.mockResolvedValueOnce(new Response(null, { status: 204 })).mockResolvedValueOnce(new Response(null, { status: 500 }));
-        await expect(messages.send({ sessionId: 's1', text: '看两张', images: [image, image] })).rejects.toMatchObject({ code: 'UNKNOWN' });
+        fetch.mockResolvedValueOnce(new Response(null, { status: 204 })).mockResolvedValueOnce(new Response(null, { status }));
+        await expect(messages.send({ sessionId: 's1', text: '看两张', images: [image, image] })).rejects.toMatchObject({ code: 'UNKNOWN', details: {phase:'attachments',messageSubmitted:false} });
         expect(post.mock.calls.every(([url]) => url.endsWith('request-upload'))).toBe(true);
     });
 

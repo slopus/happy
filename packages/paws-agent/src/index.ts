@@ -2,6 +2,9 @@ export { PawsAgentClient } from './client/PawsAgentClient';
 export { PawsAgentError } from './client/errors';
 export type { PawsAgentErrorCode } from './client/errors';
 export type {
+    TurnConfiguration,
+    SessionConfiguration,
+    ConfigurationOption,
     AgentLogger,
     AgentRequest,
     AgentStorage,

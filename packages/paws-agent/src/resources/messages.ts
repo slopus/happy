@@ -1,3 +1,4 @@
+import { configurationMeta } from './configuration';
 import { PawsAgentError } from '../client/errors';
 import type { Message, MessageHistoryOptions, MessagePage, MessageSubscription, MessageWatchOptions, MessagesResource, SendMessageInput, SendMessageReceipt } from '../client/types';
 import { decodeBase64, decrypt, encodeBase64, encrypt } from '../crypto/encryption';
@@ -114,6 +115,7 @@ export class MessagesResourceImpl implements MessagesResource {
         if (!input.sessionId.trim()) {
             throw new PawsAgentError('INVALID_ARGUMENT', 'sessionId is required');
         }
+        const configuration = configurationMeta(input.configuration);
         const images = snapshotImages(input.images);
         const checkCancelled = () => {
             if (input.signal?.aborted) throw new PawsAgentError('CONNECTION_LOST', 'Message send cancelled');
@@ -130,6 +132,7 @@ export class MessagesResourceImpl implements MessagesResource {
         const recordEncryption = await this.getEncryption(input.sessionId);
         const localId = input.localId ?? globalThis.crypto.randomUUID();
         const batch: { localId: string; content: string }[] = [];
+        try {
         for (const [index, image] of images.entries()) {
             checkCancelled();
             const bytes = encryptImage(image.bytes, recordEncryption);
@@ -151,10 +154,13 @@ export class MessagesResourceImpl implements MessagesResource {
             };
             batch.push({ localId: fileLocalId, content: encodeBase64(encrypt(recordEncryption.key, recordEncryption.variant, file)) });
         }
+        } catch (cause) {
+            throw new PawsAgentError(cause instanceof PawsAgentError ? cause.code : 'UNKNOWN', 'Image attachment preparation failed; no message was submitted', { cause, details: { phase: 'attachments', messageSubmitted: false } });
+        }
         const content = {
             role: 'user',
             content: { type: 'text', text: input.text },
-            meta: { sentFrom: 'paws-agent', ...input.meta },
+            meta: { sentFrom: 'paws-agent', ...input.meta, ...configuration },
         };
         // CLI 在收到 user/text 时领取之前的附件；仅图片也必须保留空正文。
         batch.push({ localId, content: encodeBase64(encrypt(recordEncryption.key, recordEncryption.variant, content)) });
