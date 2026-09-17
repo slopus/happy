@@ -264,4 +264,16 @@ describe('chat preload sync integration', () => {
         expect(mocks.state.currentViewingSessionId).toBeNull();
         expect(older).not.toHaveBeenCalled();
     });
+
+    it('a message streaming into a chat that is neither open nor resident fetches nothing', async () => {
+        (encryption as any).decryptMessage = vi.fn(async () => message());
+        mocks.state.currentViewingSessionId = 'a';
+        const wire = { ...message(), content: { t: 'encrypted', c: 'opaque' }, updatedAt: 1 };
+        await engine.handleUpdate({ id: 'u1', seq: 1, createdAt: 1, body: { t: 'new-message', sid: 'b', message: wire } });
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        expect(mocks.request).not.toHaveBeenCalled();
+        expect(mocks.gitInvalidate).not.toHaveBeenCalled();
+        expect(mocks.voiceFocus).toHaveBeenCalledWith('b', {});
+        expect(mocks.state.sessionMessages.b).toBeUndefined();
+    });
 });
