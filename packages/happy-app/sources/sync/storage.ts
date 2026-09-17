@@ -141,6 +141,9 @@ export interface SessionRowData {
     gitCountsExact: boolean;
     gitDeletions: number | null;
     gitInsertions: number | null;
+    // The branch the agent last reported for its checkout. Names a project's
+    // own checkout, which has no worktree name of its own.
+    gitBranch?: string | null;
     state: SessionState;
     // Only present on inactive sessions — active sessions never show "last seen"
     // and activeAt updates on every heartbeat, causing needless deep-equal diffs
@@ -201,6 +204,7 @@ function buildSessionRowData(
     const projectId = getSessionProjectId(session);
     const linkedProject = projectId ? projects[projectId] : undefined;
     const metadataProject = session.metadata?.project;
+    const metadataBranch = session.metadata?.gitBranch;
     const projectAvatar = isHappyAgentSession(session) ? linkedProject?.avatar : null;
     const avatar = resolveSessionAvatar(session, projects);
     return {
@@ -222,6 +226,7 @@ function buildSessionRowData(
         gitCountsExact: rigGit?.countsExact ?? true,
         gitDeletions: rigGit?.deletions ?? null,
         gitInsertions: rigGit?.insertions ?? null,
+        gitBranch: typeof metadataBranch === 'string' ? metadataBranch : null,
         state,
         createdAt: session.createdAt,
         lastActivityAt: getSessionActivityAt(session),

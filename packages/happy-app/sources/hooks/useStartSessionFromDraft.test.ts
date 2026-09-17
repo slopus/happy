@@ -40,8 +40,10 @@ vi.mock('react', () => ({
 
 vi.mock('@/sync/storage', () => ({
     useAllMachines: () => mocks.machines,
-    useSessions: () => mocks.sessions,
     useSetting: () => mocks.defaultOverrides,
+    storage: {
+        getState: () => ({ sessionsData: mocks.sessions }),
+    },
 }));
 
 vi.mock('@/sync/agentDefaults', () => ({
@@ -705,6 +707,104 @@ describe('useStartSessionFromDraft', () => {
         expect(mocks.machineSpawnNewSession).not.toHaveBeenCalled();
     });
 
+    // A project only ever worked on inside its workspaces publishes no folder anybody here can
+    // read, so the draft names the project itself and the spawn asks for it by identity.
+    describe('a project whose folder only the catalog knows', () => {
+        function workspaceOnlyProjectSessions() {
+            return [{
+                id: 'workspace-session',
+                metadata: {
+                    machineId: 'machine-1',
+                    path: '~/project/.worktrees/retry',
+                    client: { id: 'rig', name: 'Happy Agent', version: 'test' },
+                    project: { id: 'project-1', kind: 'regular', name: 'shop-box' },
+                    workspace: { id: 'workspace-1', kind: 'worktree', name: 'Retry policy' },
+                },
+            }];
+        }
+
+        it('starts in the project itself', async () => {
+            mocks.machines = [createRigMachine()];
+            mocks.sessions = workspaceOnlyProjectSessions();
+            mocks.draft = createDraft({
+                agentType: 'rig',
+                selectedPath: null,
+                selectedProjectId: 'project-1',
+            });
+
+            const { startSession } = useStartSessionFromDraft();
+
+            await expect(startSession()).resolves.toBe(true);
+
+            expect(mocks.machineSpawnNewSession).toHaveBeenCalledWith(expect.objectContaining({
+                agent: 'rig',
+                happyAgentTarget: { kind: 'project', id: 'project-1' },
+            }));
+        });
+
+        it('starts in a workspace of that project when one is picked', async () => {
+            mocks.machines = [createRigMachine()];
+            mocks.sessions = workspaceOnlyProjectSessions();
+            mocks.draft = createDraft({
+                agentType: 'rig',
+                selectedPath: null,
+                selectedProjectId: 'project-1',
+                sessionType: 'worktree',
+                worktreeKey: '~/project/.worktrees/retry',
+            });
+
+            const { startSession } = useStartSessionFromDraft();
+
+            await expect(startSession()).resolves.toBe(true);
+
+            expect(mocks.machineSpawnNewSession).toHaveBeenCalledWith(expect.objectContaining({
+                agent: 'rig',
+                happyAgentTarget: { kind: 'workspace', id: 'workspace-1' },
+            }));
+        });
+
+        // The composer and the list disagree constantly: one holds the project a person last
+        // picked, the other starts a chat exactly where an existing one runs.
+        it('yields to a caller that names a directory of its own', async () => {
+            mocks.machines = [createRigMachine()];
+            mocks.sessions = workspaceOnlyProjectSessions();
+            mocks.draft = createDraft({
+                agentType: 'rig',
+                selectedPath: null,
+                selectedProjectId: 'project-1',
+            });
+
+            const { startSession } = useStartSessionFromDraft();
+
+            await expect(startSession({ selectedPath: '~/elsewhere', input: '' })).resolves.toBe(true);
+
+            expect(mocks.machineSpawnNewSession).toHaveBeenCalledWith(expect.objectContaining({
+                directory: '/absolute/elsewhere',
+            }));
+            expect(mocks.machineSpawnNewSession).not.toHaveBeenCalledWith(expect.objectContaining({
+                happyAgentTarget: expect.anything(),
+            }));
+        });
+
+        // Falling back to the draft's path would start the session in the home directory, which is
+        // not the project and not anywhere the user asked for.
+        it('refuses to start under a harness that cannot resolve it', async () => {
+            mocks.sessions = workspaceOnlyProjectSessions();
+            mocks.draft = createDraft({
+                agentType: 'claude',
+                selectedPath: null,
+                selectedProjectId: 'project-1',
+            });
+
+            const { startSession } = useStartSessionFromDraft();
+
+            await expect(startSession()).resolves.toBe(false);
+
+            expect(mocks.alert.mock.calls[0]?.[1]).toContain('Only Happy Agent knows where');
+            expect(mocks.machineSpawnNewSession).not.toHaveBeenCalled();
+        });
+    });
+
     it('stops polling when a created Rig session remains pending', async () => {
         mocks.machines = [{
             id: 'machine-1',
@@ -1089,5 +1189,72 @@ describe('useStartSessionFromDraft', () => {
         expect(mocks.draft.setInput).toHaveBeenCalledWith('');
         expect(mocks.navigateToSession).toHaveBeenCalledWith('session-1');
         expect(mocks.machineStopSession).not.toHaveBeenCalled();
+    });
+
+    describe('started from somewhere without a composer', () => {
+        it('uses what the caller asked for and leaves the draft alone', async () => {
+            const openSession = vi.fn();
+            const { startSession } = useStartSessionFromDraft();
+
+            await expect(startSession({
+                selectedPath: '~/other',
+                agentType: 'claude',
+                permissionMode: 'yolo',
+                modelMode: 'opus',
+                input: '',
+                attachments: [],
+                openSession,
+            })).resolves.toBe(true);
+
+            expect(mocks.machineSpawnNewSession).toHaveBeenCalledWith(expect.objectContaining({
+                directory: '/absolute/other',
+                agent: 'claude',
+                permissionMode: 'yolo',
+                modelMode: 'opus',
+            }));
+            // The draft's prompt belongs to whatever is being written on another
+            // screen: it is neither sent as this session's first message nor
+            // emptied on the way out.
+            expect(mocks.sendMessage).not.toHaveBeenCalled();
+            expect(mocks.draft.setInput).not.toHaveBeenCalled();
+            expect(mocks.draft.setAttachments).not.toHaveBeenCalled();
+            expect(openSession).toHaveBeenCalledWith('session-1');
+            expect(mocks.navigateToSession).not.toHaveBeenCalled();
+        });
+
+        // A daemon signed in to one account while publishing sessions that name
+        // a machine of another registers no machine at all, and the chat's `+`
+        // has no picker to send anybody to.
+        it('names the missing computer instead of asking for a pick nobody can make', async () => {
+            mocks.machines = [];
+
+            const { startSession } = useStartSessionFromDraft();
+
+            await expect(startSession({ selectedMachineId: 'machine-gone', input: '' }))
+                .resolves.toBe(false);
+
+            expect(mocks.alert.mock.calls[0]?.[1]).toContain('not registered with this account');
+            expect(mocks.machineSpawnNewSession).not.toHaveBeenCalled();
+        });
+
+        it('takes the Happy Agent catalog target the caller already holds', async () => {
+            mocks.machines = [createRigMachine()];
+            // Nothing here names a project, so the path round-trip would resolve
+            // no target at all — only the caller's does.
+            mocks.sessions = [];
+
+            const { startSession } = useStartSessionFromDraft();
+
+            await expect(startSession({
+                agentType: 'rig',
+                happyAgentTarget: { kind: 'workspace', id: 'workspace-1' },
+                input: '',
+            })).resolves.toBe(true);
+
+            expect(mocks.machineSpawnNewSession).toHaveBeenCalledWith(expect.objectContaining({
+                agent: 'rig',
+                happyAgentTarget: { kind: 'workspace', id: 'workspace-1' },
+            }));
+        });
     });
 });

@@ -7,20 +7,20 @@ import { resolveVisibleAgentGoalStatus } from '@/components/agentGoalStatus';
 import type { MultiTextInputHandle } from '@/components/MultiTextInput';
 import { layout } from '@/components/layout';
 import {
-    getAvailableModels,
-    getAvailablePermissionModes,
     getEffortLevelsForModel,
-    getRigCurrentModelOptionKey,
-    resolveCurrentOption,
     EffortLevel,
 } from '@/components/modelModeOptions';
 import { getSuggestions } from '@/components/autocomplete/suggestions';
 import { ChatHeaderView } from '@/components/ChatHeaderView';
+import { PendingChatView } from '@/components/PendingChatView';
+import { WorktreeTabStrip, WORKTREE_TAB_STRIP_HEIGHT } from '@/components/WorktreeTabStrip';
+import { useProjectWorktreeSummary } from '@/hooks/useProjectWorktree';
 import { ChatList } from '@/components/ChatList';
 import { Deferred } from '@/components/Deferred';
 import { EmptyMessages } from '@/components/EmptyMessages';
 import { Avatar } from '@/components/Avatar';
 import { VoiceAssistantStatusBar, VOICE_PILL_TOTAL_HEIGHT } from '@/components/VoiceAssistantStatusBar';
+import { useComposerModes } from '@/hooks/useComposerModes';
 import { useDraft } from '@/hooks/useDraft';
 import { useSessionVisibility } from '@/hooks/useSessionVisibility';
 import { useImagePicker } from '@/hooks/useImagePicker';
@@ -28,6 +28,8 @@ import { Modal } from '@/modal';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { getCurrentVoiceConversationId, getCurrentVoiceSessionDurationSeconds, startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSession';
 import { sessionAbort, sessionCancelCommunication, sessionGoalAction, sessionSetAgentModes, spawnSideChat, sessionKill, sessionArchive } from '@/sync/ops';
+import { consumeComposerFocus, usePendingChat, type PendingChat } from '@/sync/pendingChats';
+import { claimComposerFocus, COMPOSER_FOCUS_SETTLE_MS } from '@/utils/composerFocus';
 import { storage, useIsDataReady, useLocalSetting, useRealtimeStatus, useSessionGitStatus, useSessionMessages, useSessionPendingCommunications, useSessionAvatar, useSessionUsage, useSetting, useSideChatSessions } from '@/sync/storage';
 import { useSession } from '@/sync/storage';
 import { getSessionForkSource } from '@/utils/sessionFork';
@@ -61,11 +63,9 @@ import Animated, { useSharedValue, useAnimatedStyle, withTiming, Easing } from '
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import type { ModelMode, PermissionMode } from '@/components/PermissionModeSelector';
-import { resolveAgentDefaultConfig } from '@/sync/agentDefaults';
 import { performAgentGoalAction } from './agentGoalActionHandler';
 import { MOBILE_GLASS_HEADER_HEIGHT } from '@/components/navigation/headerMetrics';
 import {
-    getRigReasoningSelection,
     isRigMetadata,
     isRigMetadataV1,
     isRigModelSelectionEnabled,
@@ -86,12 +86,67 @@ export const SessionView = React.memo((props: { id: string }) => {
     const isFocused = useIsFocused();
     const session = useSession(sessionId);
     const avatar = useSessionAvatar(sessionId);
-    const gitStatus = useSessionGitStatus(sessionId);
+    // A chat opened from the strip's `+` is on screen before any machine has
+    // agreed to run it. Until it lands it stands in for itself, and borrows the
+    // checkout of the chat it was started beside.
+    const pendingChat = usePendingChat(sessionId);
+    /**
+     * The stand-in stays on screen for a moment after the chat it was standing
+     * in for has arrived.
+     *
+     * The caret is in the stand-in's composer, and iOS gives the keyboard up the
+     * instant the field holding it leaves the hierarchy — before any focus the
+     * arriving screen makes can be honoured, which is why the keyboard used to
+     * dip and come straight back. Two live fields do not have that problem: the
+     * real composer takes first responder from a stand-in that is still standing,
+     * and the keyboard never learns anything happened.
+     *
+     * Kept in a ref read during render rather than in state set from an effect:
+     * the route swaps in a render, and state would arrive one commit after the
+     * stand-in had already gone.
+     */
+    const lastStandIn = React.useRef<PendingChat | null>(null);
+    if (pendingChat) lastStandIn.current = pendingChat;
+    const routedFrom = React.useRef(sessionId);
+    const handoverRef = React.useRef<PendingChat | null>(null);
+    const [, dropHandover] = React.useReducer((count: number) => count + 1, 0);
+    if (sessionId !== routedFrom.current) {
+        // Established in the one render where the route leaves the stand-in for
+        // the chat it became, and only then: a chat opened again later is an
+        // ordinary arrival, and resurrecting its stand-in over it would be a
+        // ghost screen rather than a handover.
+        const outgoing = lastStandIn.current;
+        handoverRef.current = outgoing?.id === routedFrom.current && outgoing.sessionId === sessionId
+            ? outgoing
+            : null;
+        routedFrom.current = sessionId;
+    }
+    const handover = handoverRef.current;
+    const standIn = pendingChat ?? handover;
+    React.useEffect(() => {
+        if (!handover) return;
+        const timer = setTimeout(() => {
+            handoverRef.current = null;
+            dropHandover();
+        }, COMPOSER_FOCUS_SETTLE_MS);
+        return () => clearTimeout(timer);
+    }, [handover]);
+    // The header describes the checkout, which a chat that does not exist yet
+    // cannot speak for — so it is read from the chat it was started beside, and
+    // the header does not lose its branch and its diff on the way in.
+    const headerSessionId = pendingChat?.anchorSessionId ?? sessionId;
+    const headerSession = useSession(headerSessionId);
+    const gitStatus = useSessionGitStatus(headerSessionId);
     const headerGit = React.useMemo(
-        () => resolveSessionGitPresentation(session?.metadata, gitStatus),
-        [session?.metadata, gitStatus],
+        () => resolveSessionGitPresentation(headerSession?.metadata, gitStatus),
+        [headerSession?.metadata, gitStatus],
     );
     const isDataReady = useIsDataReady();
+    // Grouped by project, a chat is one tab of its checkout: the header names
+    // the checkout, and the strip under it holds the checkout's chats.
+    const worktree = useProjectWorktreeSummary(headerSessionId);
+    const showTabStrip = !!worktree && !!headerSession && isDataReady;
+    const tabStripHeight = showTabStrip ? WORKTREE_TAB_STRIP_HEIGHT : 0;
     const { theme } = useUnistyles();
     const safeArea = useSafeAreaInsets();
     const isLandscape = useIsLandscape();
@@ -351,6 +406,11 @@ export const SessionView = React.memo((props: { id: string }) => {
         if (!isDataReady) {
             return { title: '', isConnected: false };
         }
+        // A chat still on its way to a machine has no name of its own yet, and
+        // it is emphatically not a deleted one.
+        if (pendingChat) {
+            return { title: t('session.newChat'), isConnected: false };
+        }
         if (!session) {
             return { title: t('errors.sessionDeleted'), isConnected: false };
         }
@@ -360,7 +420,7 @@ export const SessionView = React.memo((props: { id: string }) => {
             title: sessionName,
             isConnected,
         };
-    }, [session, isDataReady]);
+    }, [session, isDataReady, pendingChat]);
     const headerRight = session && deviceType === 'phone' && Platform.OS !== 'web'
         ? (
             <Pressable
@@ -413,7 +473,7 @@ export const SessionView = React.memo((props: { id: string }) => {
                     paddingTop: !(isLandscape && deviceType === 'phone' && Platform.OS !== 'web')
                         ? contentRunsUnderHeader
                             ? 0
-                            : safeArea.top + mobileHeaderHeight + (!isTablet && realtimeStatus !== 'disconnected' ? VOICE_PILL_TOTAL_HEIGHT : 0)
+                            : safeArea.top + mobileHeaderHeight + tabStripHeight + (!isTablet && realtimeStatus !== 'disconnected' ? VOICE_PILL_TOTAL_HEIGHT : 0)
                         : 0,
                 }}
             >
@@ -421,23 +481,39 @@ export const SessionView = React.memo((props: { id: string }) => {
                     <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
                         <ActivityIndicator size="small" color={theme.colors.textSecondary} />
                     </View>
-                ) : !session ? (
+                ) : session ? (
+                    // The wrapper is always the same element, so the chat is not
+                    // rebuilt when the stand-in above it goes: only where it sits
+                    // changes. Under a stand-in it is laid out and focusable but
+                    // not seen, which is exactly what the handover needs.
+                    <View style={standIn
+                        ? { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }
+                        : { flexBasis: 0, flexGrow: 1 }}
+                    >
+                        <SessionViewLoaded
+                            key={sessionId}
+                            sessionId={sessionId}
+                            session={session}
+                            active={isFocused}
+                            headerAccessoryHeight={tabStripHeight}
+                            onHeaderBackdropVisibilityChange={contentRunsUnderHeader
+                                ? setHeaderBackdropVisible
+                                : undefined}
+                        />
+                    </View>
+                ) : !standIn ? (
                     <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
                         <Ionicons name="trash-outline" size={48} color={theme.colors.textSecondary} />
                         <Text style={{ color: theme.colors.text, fontSize: 20, marginTop: 16, fontWeight: '600' }}>{t('errors.sessionDeleted')}</Text>
                         <Text style={{ color: theme.colors.textSecondary, fontSize: 15, marginTop: 8, textAlign: 'center', paddingHorizontal: 32 }}>{t('errors.sessionDeletedDescription')}</Text>
                     </View>
-                ) : (
-                    <SessionViewLoaded
-                        key={sessionId}
-                        sessionId={sessionId}
-                        session={session}
-                        active={isFocused}
-                        onHeaderBackdropVisibilityChange={contentRunsUnderHeader
-                            ? setHeaderBackdropVisible
-                            : undefined}
-                    />
-                )}
+                ) : null}
+                {/* Last, so it covers the chat arriving underneath it. Its slot
+                    never moves: a stand-in that changed place in the tree would
+                    be rebuilt, which is the very thing costing the keyboard. */}
+                {standIn ? (
+                    <PendingChatView key={standIn.id} pending={standIn} />
+                ) : null}
             </View>
 
             {/* Render the overlay header after the dynamic list so native blur samples its content. */}
@@ -450,15 +526,20 @@ export const SessionView = React.memo((props: { id: string }) => {
                     zIndex: 1000
                 }}>
                     <ChatHeaderView
-                        title={headerProps.title}
-                        subtitle={session && isDataReady ? headerGit.subtitle : undefined}
-                        gitChanges={session && isDataReady ? headerGit.changes : null}
+                        title={showTabStrip
+                            ? worktree.workspaceName ?? headerGit.subtitle ?? worktree.projectName
+                            : headerProps.title}
+                        subtitle={showTabStrip
+                            ? t('sessionsFilter.worktreeTabs', { count: worktree.tabCount })
+                            : headerSession && isDataReady ? headerGit.subtitle : undefined}
+                        gitChanges={headerSession && isDataReady ? headerGit.changes : null}
                         backdropVisible={headerBackdropVisible}
                         extraPathSegment={fileViewPath ?? undefined}
                         rightSlot={(diffViewOpen || !!fileViewPath) ? headerRightSlot : headerRight}
                         onTitlePress={session ? () => router.push(`/session/${sessionId}/info`) : undefined}
                         onBackPress={() => router.back()}
                     />
+                    {showTabStrip && <WorktreeTabStrip sessionId={sessionId} />}
                     {/* Voice status bar below header - not on tablet (shown in sidebar) */}
                     {!isTablet && realtimeStatus !== 'disconnected' && (
                         <VoiceAssistantStatusBar variant="full" />
@@ -494,7 +575,7 @@ export const SessionView = React.memo((props: { id: string }) => {
                         pointerEvents="box-none"
                         style={{
                             position: 'absolute',
-                            top: safeArea.top + mobileHeaderHeight,
+                            top: safeArea.top + mobileHeaderHeight + tabStripHeight,
                             left: 0,
                             right: 0,
                             bottom: 0,
@@ -513,7 +594,7 @@ export const SessionView = React.memo((props: { id: string }) => {
                         pointerEvents="box-none"
                         style={{
                             position: 'absolute',
-                            top: safeArea.top + mobileHeaderHeight,
+                            top: safeArea.top + mobileHeaderHeight + tabStripHeight,
                             left: 0,
                             right: 0,
                             bottom: 0,
@@ -613,6 +694,22 @@ const ChatComposer = React.memo(function ChatComposer(props: ChatComposerProps) 
         },
     }), [clearDraft]);
 
+    // A chat opened from the tab strip's `+` arrives here once it exists, and
+    // the composer it was asked for is this one. The user was already typing in
+    // the composer of the chat that was still starting, so the caret is being
+    // handed over rather than granted — and it has to happen in this commit,
+    // before the keyboard notices the field it belonged to is gone.
+    //
+    // The claim is spent once globally but remembered here, so a setup the
+    // effect runs twice — which is what Strict Mode does in development — does
+    // not lose the focus to its own first pass.
+    const focusClaimedFor = React.useRef<string | null>(null);
+    React.useLayoutEffect(() => {
+        if (focusClaimedFor.current !== sessionId && !consumeComposerFocus(sessionId)) return;
+        focusClaimedFor.current = sessionId;
+        return claimComposerFocus(inputHandleRef, { caretToEnd: true });
+    }, [sessionId]);
+
     return (
         <AgentInput
             {...rest}
@@ -629,12 +726,15 @@ export function SessionViewLoaded({
     session,
     active = true,
     embedded = false,
+    headerAccessoryHeight = 0,
     onHeaderBackdropVisibilityChange,
 }: {
     sessionId: string;
     session: Session;
     active?: boolean;
     embedded?: boolean;
+    /** Chrome stacked under the header (the tab strip) that the chat scrolls beneath. */
+    headerAccessoryHeight?: number;
     onHeaderBackdropVisibilityChange?: (visible: boolean) => void;
 }) {
     const { theme } = useUnistyles();
@@ -704,6 +804,7 @@ export function SessionViewLoaded({
             ? safeArea.top
                 + MOBILE_GLASS_HEADER_HEIGHT
                 + (realtimeStatus !== 'disconnected' ? VOICE_PILL_TOTAL_HEIGHT : 0)
+                + headerAccessoryHeight
                 + 12
             : undefined;
 
@@ -715,55 +816,14 @@ export function SessionViewLoaded({
     const shouldShowCliWarning = isCliOutdated && !isAcknowledged;
     const flavor = session.metadata?.flavor;
     const isRig = isRigMetadata(session.metadata);
-    const agentDefaultOverrides = useSetting('agentDefaultOverrides');
-    const effectiveAgentDefaults = React.useMemo(() => (
-        resolveAgentDefaultConfig(agentDefaultOverrides, flavor, cliVersion)
-    ), [agentDefaultOverrides, cliVersion, flavor]);
-    const availableModels = React.useMemo(() => (
-        getAvailableModels(
-            flavor,
-            session.metadata,
-            t,
-            session.modelMode ?? (isRig ? null : effectiveAgentDefaults.modelMode),
-        )
-    ), [flavor, session.metadata, session.modelMode, effectiveAgentDefaults.modelMode, isRig]);
-    const availableModes = React.useMemo(() => (
-        getAvailablePermissionModes(flavor, session.metadata, t, session.permissionMode)
-    ), [flavor, session.metadata, session.permissionMode]);
-
-    const permissionMode = React.useMemo<PermissionMode | null>(() => (
-        resolveCurrentOption(availableModes, [
-            session.permissionMode,
-            ...(isRig ? [
-                session.metadata?.currentOperatingModeCode,
-                session.metadata?.permissionMode,
-                session.metadata?.session?.permissionMode,
-            ] : [
-                effectiveAgentDefaults.permissionMode,
-                session.metadata?.currentOperatingModeCode,
-            ]),
-        ])
-    ), [availableModes, session.permissionMode, effectiveAgentDefaults.permissionMode, session.metadata?.currentOperatingModeCode, session.metadata?.permissionMode, session.metadata?.session?.permissionMode, isRig]);
-
-    const modelMode = React.useMemo<ModelMode | null>(() => (
-        resolveCurrentOption(availableModels, [
-            session.modelMode,
-            isRig ? getRigCurrentModelOptionKey(session.metadata) : effectiveAgentDefaults.modelMode,
-            isRig ? undefined : session.metadata?.currentModelCode,
-        ])
-    ), [availableModels, session.modelMode, effectiveAgentDefaults.modelMode, session.metadata, isRig]);
-
-    // Effort level state
-    const modelKey = modelMode?.key ?? 'default';
-    const availableEffortLevels = React.useMemo<EffortLevel[]>(() => (
-        getEffortLevelsForModel(flavor, modelKey, session.metadata)
-    ), [flavor, modelKey, session.metadata]);
-    const effortLevel = React.useMemo<EffortLevel | null>(() => (
-        resolveCurrentOption(availableEffortLevels, [
-            session.effortLevel,
-            isRig ? getRigReasoningSelection(session.metadata, modelKey) : effectiveAgentDefaults.effortLevel,
-        ])
-    ), [availableEffortLevels, session.effortLevel, effectiveAgentDefaults.effortLevel, session.metadata, modelKey, isRig]);
+    const {
+        availableModes,
+        permissionMode,
+        availableModels,
+        modelMode,
+        availableEffortLevels,
+        effortLevel,
+    } = useComposerModes(session);
 
     const sessionStatus = useSessionStatus(session);
     const sessionUsage = useSessionUsage(sessionId);
@@ -1012,7 +1072,7 @@ export function SessionViewLoaded({
                         topContentInset={chatListTopContentInset}
                         bottomContentInset={usesFloatingMobileDock ? bottomDockInset : undefined}
                         scrollButtonInset={usesFloatingMobileDock ? scrollButtonInset : undefined}
-                        headerOverlayHeight={safeArea.top + MOBILE_GLASS_HEADER_HEIGHT}
+                        headerOverlayHeight={safeArea.top + MOBILE_GLASS_HEADER_HEIGHT + headerAccessoryHeight}
                         onHeaderBackdropVisibilityChange={onHeaderBackdropVisibilityChange}
                         onBottomDockVisibilityChange={usesFloatingMobileDock
                             ? handleChatBottomVisibilityChange

@@ -1,17 +1,35 @@
 import type { Machine, Session } from './storageTypes';
 
 /**
- * Somewhere a new session can be started: a directory, and whatever is known about it.
+ * Somewhere a new session can be started: a directory, or a project, and whatever is known about it.
  *
  * `path` is what actually gets sent to the machine. `name` is what a person reads, which is the
  * project's own name when one is known and the folder otherwise.
+ *
+ * `path` is null for a project that has only ever been worked on inside its workspaces. Nothing on
+ * the phone knows such a project's folder — only Happy Agent's catalog does — so it is offered by
+ * identity instead, which is what the native spawn wants anyway.
  */
 export interface SessionPlace {
     key: string;
     name: string;
-    path: string;
+    path: string | null;
     /** The project this place belongs to, when a Happy Agent session has named one. */
     projectId?: string;
+}
+
+const PROJECT_PLACE_PREFIX = 'project:';
+
+/** How a project whose folder only the catalog knows is named in the picker and the draft. */
+export function projectPlaceKey(projectId: string): string {
+    return `${PROJECT_PLACE_PREFIX}${projectId}`;
+}
+
+/** The project a place key names, or null when the key is an ordinary directory. */
+export function readProjectPlaceKey(key: string): string | null {
+    return key.startsWith(PROJECT_PLACE_PREFIX)
+        ? key.slice(PROJECT_PLACE_PREFIX.length) || null
+        : null;
 }
 
 /**
@@ -50,6 +68,10 @@ function isArchived(session: Session): boolean {
  *
  * Archived sessions are left out. They describe where work used to happen, and a worktree that has
  * been put away is frequently no longer on disk.
+ *
+ * A project worked on only inside its workspaces is offered too, by identity rather than by path.
+ * It appears on the home screen like any other, and leaving it out of the picker left a project a
+ * person could see but not start anything in.
  */
 export function collectSessionPlaces(options: {
     machineIds: readonly string[];
@@ -59,8 +81,11 @@ export function collectSessionPlaces(options: {
 }): SessionPlace[] {
     const machineIds = new Set(options.machineIds.filter((id) => id.length > 0));
     const byPath = new Map<string, SessionPlace>();
+    /** Projects met only through a checkout inside them, which says nothing about their folder. */
+    const byProject = new Map<string, string>();
+    const projectsWithPath = new Set<string>();
 
-    const remember = (place: SessionPlace, named: boolean): void => {
+    const remember = (place: SessionPlace & { path: string }, named: boolean): void => {
         const existing = byPath.get(place.path);
         // A named place replaces a bare path; a bare path never replaces a named one.
         if (existing !== undefined && (!named || existing.projectId !== undefined)) return;
@@ -83,9 +108,16 @@ export function collectSessionPlaces(options: {
         const project = metadata?.project;
         // A session running in a workspace reports the workspace's directory, and a project
         // publishes no path of its own, so such a session can say nothing about where its project
-        // lives. Offering the checkout here instead would put a worktree in the project list.
-        if (metadata?.workspace !== undefined) continue;
+        // lives. Offering the checkout here would put a worktree in the project list, so the
+        // project is remembered by identity instead and offered without a path below.
+        if (metadata?.workspace !== undefined) {
+            if (project !== undefined && project.id.length > 0) {
+                byProject.set(project.id, project.name);
+            }
+            continue;
+        }
         if (project !== undefined && project.id.length > 0) {
+            projectsWithPath.add(project.id);
             remember(
                 { key: path, name: project.name, path, projectId: project.id },
                 true,
@@ -95,7 +127,14 @@ export function collectSessionPlaces(options: {
         remember({ key: path, name: path, path }, false);
     }
 
-    return [...byPath.values()];
+    const places = [...byPath.values()];
+    for (const [projectId, name] of byProject) {
+        // A project whose own checkout is already offered needs no second row: that place carries
+        // the same identity, and it can also be started in as a plain directory.
+        if (projectsWithPath.has(projectId)) continue;
+        places.push({ key: projectPlaceKey(projectId), name, path: null, projectId });
+    }
+    return places;
 }
 
 /**

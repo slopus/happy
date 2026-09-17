@@ -24,8 +24,11 @@ import { randomUUID } from 'expo-crypto';
 export type SpawnRequestSignatureInput = {
     machineId: string | null;
     agent: string;
-    /** Directory as the user picked it, before any worktree resolution. */
-    directory: string;
+    /**
+     * Where the user picked, before any worktree resolution: the directory, or the project when
+     * that is what they named and only Happy Agent's catalog knows its folder.
+     */
+    place: string;
     worktree: string | null;
     modelKey: string | null;
     permissionMode: string | null;
@@ -41,7 +44,7 @@ export function buildSpawnRequestSignature(input: SpawnRequestSignatureInput): s
     return JSON.stringify([
         input.machineId ?? '',
         input.agent,
-        input.directory,
+        input.place,
         input.worktree ?? '',
         input.modelKey ?? '',
         input.permissionMode ?? '',

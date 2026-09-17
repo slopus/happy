@@ -3,6 +3,8 @@ import {
     collectSessionPlaces,
     collectSessionWorkspaces,
     pairedMachineIds,
+    projectPlaceKey,
+    readProjectPlaceKey,
 } from './agentSessionPlaces';
 import type { Machine, Session } from './storageTypes';
 
@@ -114,6 +116,88 @@ describe('where a Happy Agent session may be started', () => {
             sessions: [
                 session({
                     machineId: RIG,
+                    path: '/home/steve/projects/rig/.worktrees/retry',
+                    project: { id: 'project-7', kind: 'regular', name: 'rig' },
+                    workspace: { id: 'w1', kind: 'worktree', name: 'Retry policy' },
+                }),
+            ],
+        });
+        expect(places.map((p) => p.path)).toEqual([null]);
+    });
+
+    it('still offers a project worked on only inside its workspaces, by identity', () => {
+        const places = collectSessionPlaces({
+            machineIds: [RIG],
+            sessions: [
+                session({
+                    machineId: RIG,
+                    path: '/home/steve/projects/rig/.worktrees/retry',
+                    project: { id: 'project-7', kind: 'regular', name: 'rig' },
+                    workspace: { id: 'w1', kind: 'worktree', name: 'Retry policy' },
+                }),
+                session({
+                    machineId: RIG,
+                    path: '/home/steve/projects/rig/.worktrees/other',
+                    project: { id: 'project-7', kind: 'regular', name: 'rig' },
+                    workspace: { id: 'w2', kind: 'worktree', name: 'Something else' },
+                }),
+            ],
+        });
+        expect(places).toEqual([
+            { key: projectPlaceKey('project-7'), name: 'rig', path: null, projectId: 'project-7' },
+        ]);
+        expect(readProjectPlaceKey(places[0].key)).toBe('project-7');
+    });
+
+    it('offers a project once, as the directory, when its own checkout is known', () => {
+        const places = collectSessionPlaces({
+            machineIds: [RIG],
+            sessions: [
+                session({
+                    machineId: RIG,
+                    path: '/home/steve/projects/rig/.worktrees/retry',
+                    project: { id: 'project-7', kind: 'regular', name: 'rig' },
+                    workspace: { id: 'w1', kind: 'worktree', name: 'Retry policy' },
+                }),
+                session({
+                    machineId: RIG,
+                    path: '/home/steve/projects/rig',
+                    project: { id: 'project-7', kind: 'regular', name: 'rig' },
+                }),
+            ],
+        });
+        expect(places).toEqual([
+            {
+                key: '/home/steve/projects/rig',
+                name: 'rig',
+                path: '/home/steve/projects/rig',
+                projectId: 'project-7',
+            },
+        ]);
+    });
+
+    it('leaves out a project whose only workspace session is archived', () => {
+        const places = collectSessionPlaces({
+            machineIds: [RIG],
+            sessions: [
+                session({
+                    machineId: RIG,
+                    path: '/home/steve/projects/rig/.worktrees/old',
+                    lifecycleState: 'archived',
+                    project: { id: 'project-7', kind: 'regular', name: 'rig' },
+                    workspace: { id: 'w1', kind: 'worktree', name: 'Put away' },
+                }),
+            ],
+        });
+        expect(places).toEqual([]);
+    });
+
+    it('ignores a workspace project on a computer that is not this one', () => {
+        const places = collectSessionPlaces({
+            machineIds: [RIG],
+            sessions: [
+                session({
+                    machineId: 'someone-elses-laptop',
                     path: '/home/steve/projects/rig/.worktrees/retry',
                     project: { id: 'project-7', kind: 'regular', name: 'rig' },
                     workspace: { id: 'w1', kind: 'worktree', name: 'Retry policy' },

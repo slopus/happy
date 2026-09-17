@@ -217,6 +217,7 @@ export const ca: TranslationStructure = {
         flatList: 'Llista plana',
         groupByProject: 'Agrupa per projecte',
         appearanceSettings: 'Configuració d\'aparença',
+        worktreeTabs: ({ count }: { count: number }) => count === 1 ? '1 pestanya' : `${count} pestanyes`,
     },
 
     settingsFeatures: {
@@ -330,6 +331,9 @@ export const ca: TranslationStructure = {
         forkErrorMissingMetadata: 'Falten metadades de la sessió necessàries per bifurcar.',
         forkErrorGeneric: 'No s\'ha pogut bifurcar la sessió.',
         forkClaudeOnly: 'La bifurcació només està disponible per a sessions de Claude.',
+        archiveAction: 'Arxiva',
+        startingChat: 'Iniciant un xat nou…',
+        actionsTitle: 'Sessió',
     },
 
     commandPalette: {
@@ -557,6 +561,9 @@ export const ca: TranslationStructure = {
         hideArchived: 'Amaga arxivades',
         newSession: 'Nova sessió',
         projects: "Projectes",
+        bots: 'Bots',
+        showAllWorkspaces: ({ count }: { count: number }) => `Mostra els ${count} espais de treball`,
+        showFewerWorkspaces: 'Mostra\u2019n menys',
     },
 
     zen: {

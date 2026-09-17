@@ -218,6 +218,7 @@ export const zhHans: TranslationStructure = {
         flatList: '平铺列表',
         groupByProject: '按项目分组',
         appearanceSettings: '外观设置',
+        worktreeTabs: ({ count }: { count: number }) => `${count} 个标签页`,
     },
 
     settingsFeatures: {
@@ -331,6 +332,9 @@ export const zhHans: TranslationStructure = {
         forkErrorMissingMetadata: '缺少分叉所需的会话元数据。',
         forkErrorGeneric: '分叉会话失败。',
         forkClaudeOnly: '目前仅支持 Claude 会话的分叉。',
+        archiveAction: '归档',
+        startingChat: '正在启动新对话…',
+        actionsTitle: '会话',
     },
 
     commandPalette: {
@@ -558,6 +562,9 @@ export const zhHans: TranslationStructure = {
         hideArchived: '隐藏已归档',
         newSession: '新建会话',
         projects: "项目",
+        bots: '机器人',
+        showAllWorkspaces: ({ count }: { count: number }) => `显示全部 ${count} 个工作区`,
+        showFewerWorkspaces: '收起',
     },
 
     zen: {

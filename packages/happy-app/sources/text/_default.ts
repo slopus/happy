@@ -215,6 +215,7 @@ export const en = {
         flatList: 'Flat List',
         groupByProject: 'Group by Project',
         appearanceSettings: 'Appearance Settings',
+        worktreeTabs: ({ count }: { count: number }) => count === 1 ? '1 tab' : `${count} tabs`,
     },
 
     settingsFeatures: {
@@ -344,6 +345,9 @@ export const en = {
         forkErrorMissingMetadata: 'Missing session metadata required to fork.',
         forkErrorGeneric: 'Failed to fork the session.',
         forkClaudeOnly: 'Fork is currently only supported for Claude sessions.',
+        archiveAction: 'Archive',
+        startingChat: 'Starting a new chat…',
+        actionsTitle: 'Session',
     },
 
     commandPalette: {
@@ -586,6 +590,9 @@ export const en = {
         hideArchived: 'Hide archived',
         newSession: 'New session',
         projects: 'Projects',
+        bots: 'Bots',
+        showAllWorkspaces: ({ count }: { count: number }) => `Show all ${count} workspaces`,
+        showFewerWorkspaces: 'Show fewer',
     },
 
     zen: {

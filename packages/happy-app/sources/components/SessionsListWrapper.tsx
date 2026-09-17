@@ -3,8 +3,9 @@ import { View, ActivityIndicator, NativeScrollEvent, NativeSyntheticEvent } from
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { SessionsList } from './SessionsList';
 import { EmptyMainScreen } from './EmptyMainScreen';
+import { ProjectHomeList } from './ProjectHomeList';
 import { useHasArchivedSessions, useVisibleSessionListViewData } from '@/hooks/useVisibleSessionListViewData';
-import { useAllMachines, useSettingMutable } from '@/sync/storage';
+import { useAllMachines, useSetting, useSettingMutable } from '@/sync/storage';
 import { collectMachineChoices } from '@/sync/machineChoices';
 
 const stylesheet = StyleSheet.create((theme) => ({
@@ -55,6 +56,9 @@ export const SessionsListWrapper = React.memo(({
     const machineChoices = React.useMemo(() => collectMachineChoices(machines), [machines]);
     const hasOnlineMachines = machineChoices.some((machine) => machine.online);
     const [, setHideArchivedSessions] = useSettingMutable('hideInactiveSessions');
+    // The activity-sorted chat list is the default; the project hierarchy —
+    // project, then checkout, with chats as tabs — is the other layout.
+    const groupByProject = useSetting('sessionListGrouping') === 'project';
     const styles = stylesheet;
 
     if (sessionListViewData === null) {
@@ -83,6 +87,19 @@ export const SessionsListWrapper = React.memo(({
                         />
                     </View>
                 </View>
+            </View>
+        );
+    }
+
+    if (groupByProject) {
+        return (
+            <View style={styles.container}>
+                <ProjectHomeList
+                    topContentInset={topContentInset}
+                    scrollIndicatorTopInset={scrollIndicatorTopInset}
+                    bottomContentInset={bottomContentInset}
+                    onScroll={onScroll}
+                />
             </View>
         );
     }

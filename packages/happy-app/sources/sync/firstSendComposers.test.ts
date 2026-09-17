@@ -43,6 +43,11 @@ function newScreenBoundary() {
         resolveChoiceAgent: () => 'claude', selectedAgent: 'claude', resolveAgentMachine: () => machine,
         isMachineOnline: () => true, getSupportsWorktree: () => true, resolveWorktreeCreationMachine: () => machine,
         canPickWorktree: false, worktreeKey: null, setIsSpawning: vi.fn(), selectedPath: '/original',
+        // The catalog destination, which only Happy Agent has. A CLI start names a
+        // directory, so these stand at the values that mean "no project was picked".
+        draftProjectId: null, selectedProjectId: null, agentWorkspaces: [], picksWorkspaces: false,
+        projectPlaceKey: (projectId: string) => `project:${projectId}`,
+        getRigMachineSessionCreation: () => null, resolveHappyAgentSpawnTarget: () => null,
         trimPathInput: (path: string) => path, resolveAbsolutePath: (path: string) => path,
         currentPermission: { key: 'default' }, currentModelKey: 'default', currentEffort: null,
         machineSpawnNewSession: vi.fn().mockResolvedValue({ type: 'success', sessionId: 'created' }),
