@@ -327,12 +327,21 @@ const ChatListInternal = React.memo((props: {
         setOldestRenderedId(windowedMessages[windowedMessages.length - 1].id);
     }, [windowedMessages, oldestRenderedId]);
 
+    // Resets for a session change. Skipped on mount: the window memo has
+    // already run for this render, and blanking windowRef here left
+    // requestOlderHistory reading a zero-length window (currentEnd 0) until
+    // some later message change re-ran the memo — a freshly opened chat that
+    // received no new message could not page its own history in.
+    const mountedSessionRef = React.useRef(props.sessionId);
     React.useEffect(() => {
+        if (mountedSessionRef.current === props.sessionId) return;
+        mountedSessionRef.current = props.sessionId;
         listReadyRef.current = false;
         userTookOverRef.current = false;
         windowRef.current = EMPTY_MESSAGES;
         awaitingOlderRef.current = false;
         requestedWindowEndRef.current = 0;
+        olderRequestLengthRef.current = 0;
         setOldestRenderedId(null);
     }, [props.sessionId]);
 
@@ -688,6 +697,9 @@ const ChatListInternal = React.memo((props: {
     // arriving inside the trigger zone while React renders the larger window,
     // and without this each one would ask for another page.
     const requestedWindowEndRef = React.useRef(0);
+    // Store length when history was last requested from sync, to tell a page
+    // that landed from a fetch that brought nothing.
+    const olderRequestLengthRef = React.useRef(0);
     const requestOlderHistory = useCallback(() => {
         // Only a reader deliberately exploring history pages more in. A short
         // conversation rests with its oldest message already inside the
@@ -709,6 +721,7 @@ const ChatListInternal = React.memo((props: {
             const { hasMoreOlder: more, isLoadingOlder: loading } = paginationRef.current;
             if (more) {
                 awaitingOlderRef.current = true;
+                olderRequestLengthRef.current = all.length;
                 if (!loading) void sync.loadOlderMessages(sessionId);
             }
             return;
@@ -727,15 +740,27 @@ const ChatListInternal = React.memo((props: {
         const currentEnd = windowRef.current.length;
         const nextEnd = windowEndForTurn(all, currentEnd + WINDOW_PAGE, props.hasMoreOlder);
         if (nextEnd <= currentEnd) {
-            // The fetch settled without adding anything renderable. Only stop
-            // waiting once the server says there is nothing left.
-            if (!props.hasMoreOlder) awaitingOlderRef.current = false;
+            // The fetch settled without a renderable turn boundary. This used
+            // to leave awaitingOlderRef raised with nothing in flight, so no
+            // later drag could ask for history again: the chat ended there.
+            if (!props.hasMoreOlder) {
+                awaitingOlderRef.current = false;
+            } else if (all.length > olderRequestLengthRef.current) {
+                // A page landed but the turn's prompt is still on the server:
+                // a long agent turn spans several pages. Fetch the next one.
+                olderRequestLengthRef.current = all.length;
+                void sync.loadOlderMessages(sessionId);
+            } else {
+                // Nothing arrived (failed or empty fetch): let the next drag
+                // request again instead of retrying in a loop from here.
+                awaitingOlderRef.current = false;
+            }
             return;
         }
         awaitingOlderRef.current = false;
         requestedWindowEndRef.current = nextEnd;
         setOldestRenderedId(all[nextEnd - 1].id);
-    }, [messages, props.isLoadingOlder, props.hasMoreOlder]);
+    }, [sessionId, messages, props.isLoadingOlder, props.hasMoreOlder]);
 
     // On web a wheel is the drag gesture: it marks the reader taking over,
     // since there is no onScrollBeginDrag for wheels. Shift+wheel also swaps
