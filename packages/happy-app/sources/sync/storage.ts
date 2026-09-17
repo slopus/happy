@@ -34,7 +34,7 @@ import { getCurrentRealtimeSessionId, getVoiceSession } from '@/realtime/Realtim
 import { isMutableTool } from "@/components/tools/knownTools";
 import { DecryptedArtifact } from "./artifactTypes";
 import { FeedItem } from "./feedTypes";
-import { getRigActivityIndicators, getRigGitSummary, getRigIdentity, isRigMetadata, rigSendsMessageReceipts } from './rig';
+import { backgroundWorkCount, getRigActivityIndicators, getRigGitSummary, getRigIdentity, isRigMetadata, rigSendsMessageReceipts } from './rig';
 import { indexSessionsById } from './sessionIdentity';
 import { t } from '@/text';
 import type { Project } from './projectTypes';
@@ -127,6 +127,8 @@ export interface SessionRowData {
     gitCountsExact: boolean;
     gitDeletions: number | null;
     gitInsertions: number | null;
+    /** In-flight background items, for the "N running in background" status line. */
+    backgroundCount: number;
     state: SessionState;
     // Only present on inactive sessions — active sessions never show "last seen"
     // and activeAt updates on every heartbeat, causing needless deep-equal diffs
@@ -177,6 +179,7 @@ function buildSessionRowData(
         agentState: session.agentState,
         thinking: session.thinking,
         isOnline,
+        metadata: session.metadata,
     });
 
     const rigIdentity = getRigIdentity(session.metadata);
@@ -208,6 +211,7 @@ function buildSessionRowData(
         gitCountsExact: rigGit?.countsExact ?? true,
         gitDeletions: rigGit?.deletions ?? null,
         gitInsertions: rigGit?.insertions ?? null,
+        backgroundCount: backgroundWorkCount(session.metadata),
         state,
         createdAt: session.createdAt,
         lastActivityAt: getSessionActivityAt(session),
