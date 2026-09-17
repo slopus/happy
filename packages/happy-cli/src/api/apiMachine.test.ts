@@ -357,6 +357,8 @@ describe('ApiMachineClient socket reconnection', () => {
             traceId: '00000000-0000-4000-8000-000000000001',
             token: 'token-canary',
             codexSessionGrant: 'grant-canary',
+            model: 'gpt-5.6-luna',
+            effort: 'low',
             prompt: 'prompt-canary',
         });
 
@@ -366,6 +368,8 @@ describe('ApiMachineClient socket reconnection', () => {
             traceId: '00000000-0000-4000-8000-000000000001',
             machineId: 'test-machine-id',
             codexSessionGrant: 'grant-canary',
+            model: 'gpt-5.6-luna',
+            effort: 'low',
         }));
         expect(JSON.stringify(mockLoggerDebug.mock.calls)).not.toContain('canary');
     });

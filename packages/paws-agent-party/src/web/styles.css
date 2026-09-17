@@ -1,0 +1,165 @@
+@import 'tailwindcss';
+
+/* Scan the SPA and the reusable UI components (imported from the package's src/ui) for class names. */
+@source './**/*.{ts,tsx,html}';
+@source '../../vendor/agents-party/src/ui/**/*.{ts,tsx}';
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  color-scheme: light dark;
+
+  --radius: 0.625rem;
+
+  --light-background: oklch(1 0 0);
+  --light-foreground: oklch(54.059% 0.01084 285.956);
+  --light-card: oklch(1 0 0);
+  --light-card-foreground: oklch(0.141 0.005 285.823);
+  --light-popover: oklch(1 0 0);
+  --light-popover-foreground: oklch(0.141 0.005 285.823);
+  --light-primary: oklch(52.787% 0.21377 265.462);
+  --light-primary-hover: oklch(50.111% 0.28043 263.839);
+  --light-primary-foreground: oklch(0.97 0.014 254.604);
+  --light-secondary: oklch(0.967 0.001 286.375);
+  --light-secondary-hover: oklch(0.957 0.001 286.375);
+  --light-secondary-foreground: oklch(0.21 0.006 285.885);
+  --light-muted: oklch(0.967 0.001 286.375);
+  --light-muted-foreground: oklch(68.842% 0.01022 286.023);
+  --light-accent: oklch(0.967 0.001 286.375);
+  --light-accent-foreground: oklch(0.21 0.006 285.885);
+  --light-destructive: oklch(0.577 0.245 27.325);
+  --light-success: oklch(0.58 0.16 145);
+  --light-info: oklch(0.52 0.18 250);
+  --light-warning: hsl(31, 92%, 45%);
+  --light-border: oklch(0.92 0.004 286.32);
+  --light-input: oklch(74.564% 0.00575 286.047);
+  --light-ring: oklch(0.141 0.005 285.823);
+  --light-link: var(--light-primary);
+  --light-link-hover: var(--light-primary-hover);
+
+  --dark-background: oklch(0.141 0.005 285.823);
+  --dark-foreground: oklch(81.093% 0.00009 271.152);
+  --dark-card: oklch(0.21 0.006 285.885);
+  --dark-card-foreground: oklch(0.985 0 0);
+  --dark-popover: oklch(0.21 0.006 285.885);
+  --dark-popover-foreground: oklch(0.985 0 0);
+  --dark-primary: oklch(0.56 0.18 264);
+  --dark-primary-hover: oklch(0.61 0.16 264);
+  --dark-primary-foreground: oklch(0.985 0 0);
+  --dark-secondary: oklch(0.274 0.006 286.033);
+  --dark-secondary-hover: oklch(34.609% 0.00693 285.957);
+  --dark-secondary-foreground: oklch(0.985 0 0);
+  --dark-muted: oklch(0.274 0.006 286.033);
+  --dark-muted-foreground: oklch(0.705 0.015 286.067);
+  --dark-accent: oklch(0.274 0.006 286.033);
+  --dark-accent-foreground: oklch(0.985 0 0);
+  --dark-destructive: oklch(0.704 0.191 22.216);
+  --dark-success: oklch(0.72 0.16 145);
+  --dark-info: oklch(0.74 0.12 250);
+  --dark-warning: hsl(46, 87%, 65%);
+  --dark-border: oklch(1 0 0 / 10%);
+  --dark-input: oklch(0.705 0.015 286.067);
+  --dark-ring: oklch(0.985 0 0);
+  --dark-link: var(--dark-primary);
+  --dark-link-hover: var(--dark-primary-hover);
+
+  --background: light-dark(var(--light-background), var(--dark-background));
+  --foreground: light-dark(var(--light-foreground), var(--dark-foreground));
+  --card: light-dark(var(--light-card), var(--dark-card));
+  --card-foreground: light-dark(var(--light-card-foreground), var(--dark-card-foreground));
+  --popover: light-dark(var(--light-popover), var(--dark-popover));
+  --popover-foreground: light-dark(var(--light-popover-foreground), var(--dark-popover-foreground));
+  --primary: light-dark(var(--light-primary), var(--dark-primary));
+  --primary-hover: light-dark(var(--light-primary-hover), var(--dark-primary-hover));
+  --primary-foreground: light-dark(var(--light-primary-foreground), var(--dark-primary-foreground));
+  --secondary: light-dark(var(--light-secondary), var(--dark-secondary));
+  --secondary-hover: light-dark(var(--light-secondary-hover), var(--dark-secondary-hover));
+  --secondary-foreground: light-dark(var(--light-secondary-foreground), var(--dark-secondary-foreground));
+  --muted: light-dark(var(--light-muted), var(--dark-muted));
+  --muted-foreground: light-dark(var(--light-muted-foreground), var(--dark-muted-foreground));
+  --accent: light-dark(var(--light-accent), var(--dark-accent));
+  --accent-foreground: light-dark(var(--light-accent-foreground), var(--dark-accent-foreground));
+  --destructive: light-dark(var(--light-destructive), var(--dark-destructive));
+  --success: light-dark(var(--light-success), var(--dark-success));
+  --info: light-dark(var(--light-info), var(--dark-info));
+  --warning: light-dark(var(--light-warning), var(--dark-warning));
+  --border: light-dark(var(--light-border), var(--dark-border));
+  --input: light-dark(var(--light-input), var(--dark-input));
+  --ring: light-dark(var(--light-ring), var(--dark-ring));
+  --link: light-dark(var(--light-link), var(--dark-link));
+  --link-hover: light-dark(var(--light-link-hover), var(--dark-link-hover));
+}
+
+/* POC additions consume the original semantic surface tokens. */
+.modal-backdrop { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; background: var(--background); padding: 1rem; }
+.modal-card { display: flex; flex-direction: column; gap: .75rem; width: min(100%, 42rem); max-height: 94dvh; overflow: auto; padding: 1rem; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); }
+.modal-card label { display: flex; flex-direction: column; gap: .25rem; font-size: .875rem; }
+select { padding: .4rem; border: 1px solid var(--border); border-radius: var(--radius); color: var(--foreground); background: var(--background); }
+.agent-details { width: 25rem; flex-shrink: 0; overflow: auto; display: flex; flex-direction: column; gap: .75rem; padding: 1rem; border-left: 1px solid var(--border); background: var(--card); }
+@media (max-width: 900px) { .agent-details { position: fixed; inset: 0; z-index: 60; width: 100%; height: 100dvh; } }
+
+.light {
+  color-scheme: light;
+}
+
+.dark {
+  color-scheme: dark;
+}
+
+@theme inline {
+  --font-mono:
+    ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+  --font-logo: 'Fira Code', monospace;
+  --font-body: 'Inter', sans-serif;
+  --font-title: 'IBM Plex Serif', serif;
+  --font-accent: 'Fira Code', monospace;
+
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-success: var(--success);
+  --color-info: var(--info);
+  --color-warning: var(--warning);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-hover: var(--secondary-hover);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary: var(--primary);
+  --color-link: var(--link);
+  --color-link-hover: var(--link-hover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 12px);
+  --radius-4xl: calc(var(--radius) + 16px);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  :where(a, button, [role='button']):not(:disabled):not([aria-disabled='true']):not([data-disabled='true']) {
+    cursor: pointer;
+  }
+  html {
+    @apply font-body bg-background;
+  }
+  body {
+    @apply font-body bg-background text-foreground;
+  }
+}

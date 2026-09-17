@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, writeFile, readFile, rm, stat } from 'node:fs/promises'
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { EventEmitter } from 'node:events';
-const state = vi.hoisted(() => ({ control: null as any, handlers: null as any, tmux: false, spawned: [] as any[], children: [] as any[], rejectGrant: false, api: null as any, bundleMtime: 1, tmuxOptions: null as any }));
+const state = vi.hoisted(() => ({ control: null as any, handlers: null as any, tmux: false, spawned: [] as any[], workerArgs: [] as any[], children: [] as any[], rejectGrant: false, api: null as any, bundleMtime: 1, tmuxOptions: null as any }));
 vi.mock('node:fs', async importOriginal => {
   const fs = await importOriginal<typeof import('node:fs')>();
   return { ...fs, statSync: (...args: any[]) => String(args[0]).endsWith('/dist/index.mjs') ? { mtimeMs: state.bundleMtime } : (fs.statSync as any)(...args) };
@@ -23,7 +23,8 @@ vi.mock('@/utils/tmux', () => ({ isTmuxAvailable: async () => state.tmux,
   getTmuxUtilities: () => ({ spawnInTmux: async (_args: any, options: any, env: any) => { state.tmuxOptions = options; state.spawned.push(env); return { success: true, pid: 987602, sessionId: 'test:1' }; } }),
   parseTmuxSessionIdentifier: vi.fn(), formatTmuxSessionIdentifier: vi.fn(),
 }));
-vi.mock('@/utils/spawnHappyCLI', () => ({ resolveHappyCLIEntrypoint: () => '/fake/entry.mjs', spawnHappyCLI: (_args: any, options: any) => {
+vi.mock('@/utils/spawnHappyCLI', () => ({ resolveHappyCLIEntrypoint: () => '/fake/entry.mjs', spawnHappyCLI: (args: any, options: any) => {
+  state.workerArgs.push(args);
   const child = Object.assign(new EventEmitter(), { pid: 987601, kill: vi.fn() }); state.children.push(child); state.spawned.push(options.env); return child;
 } }));
 import { startDaemon } from './run';
@@ -39,7 +40,7 @@ beforeEach(async () => {
   vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
   vi.spyOn(process, 'kill').mockImplementation(() => true);
   signalListeners = new Map(['SIGINT', 'SIGTERM', 'uncaughtException', 'unhandledRejection', 'exit', 'beforeExit'].map(s => [s, process.listeners(s as NodeJS.Signals)]));
-  state.control = null; state.handlers = null; state.spawned = []; state.children = []; state.rejectGrant = false; state.bundleMtime = 1; state.tmuxOptions = null;
+  state.control = null; state.handlers = null; state.spawned = []; state.workerArgs = []; state.children = []; state.rejectGrant = false; state.bundleMtime = 1; state.tmuxOptions = null;
   sourceHome = await mkdtemp(join(tmpdir(), 'daemon-codex-test-')); await writeFile(join(sourceHome, 'auth.json'), 'global-auth');
   (configuration as { happyHomeDir: string }).happyHomeDir = sourceHome;
   savedHome = process.env.CODEX_HOME; process.env.CODEX_HOME = sourceHome;
@@ -66,6 +67,26 @@ afterEach(async () => {
   await rm(sourceHome, { recursive: true, force: true });
 });
 describe('real daemon Codex spawn paths', () => {
+  it('forwards model and effort only to the spawned Codex worker', async () => {
+    state.tmux = false;
+    const spawning = state.handlers.spawnSession({
+      directory: sourceHome,
+      agent: 'codex',
+      codexSessionGrant: 'g'.repeat(43),
+      model: 'gpt-5.6-luna',
+      effort: 'low',
+    });
+
+    await vi.waitFor(() => expect(state.workerArgs).toHaveLength(1));
+    expect(state.workerArgs[0]).toEqual(expect.arrayContaining([
+      'codex',
+      '--model', 'gpt-5.6-luna',
+      '--effort', 'low',
+    ]));
+    state.control.onHappySessionWebhook('model-session', { hostPid: 987601, flavor: 'codex', startedBy: 'daemon' });
+    await expect(spawning).resolves.toEqual({ type: 'success', sessionId: 'model-session' });
+  });
+
   it('keeps worker rotation observation and final cleanup after bundle replacement while the session stays alive', async () => {
     state.tmux = false;
     const spawning = state.handlers.spawnSession({ directory: sourceHome, agent: 'codex', codexSessionGrant: 'g'.repeat(43) });

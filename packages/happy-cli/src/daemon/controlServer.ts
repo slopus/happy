@@ -10,7 +10,9 @@ import { logger } from '@/ui/logger';
 import { Metadata } from '@/api/types';
 import { decodeBase64 } from '@/api/encryption';
 import { TrackedSession, SessionEncryptionData } from './types';
-import { SpawnSessionOptions, SpawnSessionResult } from '@/modules/common/registerCommonHandlers';
+import type { CodexEffort, SpawnSessionOptions, SpawnSessionResult } from '@/modules/common/registerCommonHandlers';
+
+const codexEffortSchema = z.enum(['low', 'medium', 'high', 'xhigh', 'max']);
 
 export function startDaemonControlServer({
   getChildren,
@@ -130,10 +132,20 @@ export function startDaemonControlServer({
           directory: z.string(),
           sessionId: z.string().optional(),
           agent: z.enum(['ask', 'claude', 'codex', 'gemini', 'opencode', 'openclaw']).optional(),
+          model: z.string().min(1).optional(),
+          effort: codexEffortSchema.optional(),
           environmentVariables: z.record(z.string(), z.string()).optional(),
           resumeClaudeSessionId: z.string().optional(),
           resumeCodexThreadId: z.string().optional(),
           codexSessionGrant: z.string().regex(/^[A-Za-z0-9_-]{43}$/).optional(),
+        }).superRefine((input, context) => {
+          if ((input.model !== undefined || input.effort !== undefined) && input.agent !== 'codex') {
+            context.addIssue({
+              code: 'custom',
+              message: 'model and effort are supported only for Codex sessions',
+              path: ['agent'],
+            });
+          }
         }),
         response: {
           200: z.object({
@@ -154,7 +166,7 @@ export function startDaemonControlServer({
         }
       }
     }, async (request, reply) => {
-      const { directory, sessionId, agent, environmentVariables, resumeClaudeSessionId, resumeCodexThreadId, codexSessionGrant } = request.body;
+      const { directory, sessionId, agent, environmentVariables, model, effort, resumeClaudeSessionId, resumeCodexThreadId, codexSessionGrant } = request.body;
 
       logger.debug(`[CONTROL SERVER] Spawn session request: dir=${directory}, sessionId=${sessionId || 'new'}, agent=${agent || 'default'}`);
       const result = await spawnSession({
@@ -162,6 +174,8 @@ export function startDaemonControlServer({
         sessionId,
         agent,
         environmentVariables,
+        model,
+        effort,
         resumeClaudeSessionId,
         resumeCodexThreadId,
         codexSessionGrant,

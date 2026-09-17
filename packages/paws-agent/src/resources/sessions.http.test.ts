@@ -71,6 +71,20 @@ describe('Codex spawn authorization over HTTP', () => {
         });
     });
 
+    it('serializes the Codex model and effort in the machine spawn RPC', async () => {
+        await expect(sessions.spawn({
+            ...input,
+            model: 'gpt-5.6-luna',
+            effort: 'low',
+        })).resolves.toEqual({ type: 'success', sessionId: 'local-session' });
+
+        expect(machineRpc).toHaveBeenCalledExactlyOnceWith('machine-1', 'spawn-happy-session', expect.objectContaining({
+            agent: 'codex',
+            model: 'gpt-5.6-luna',
+            effort: 'low',
+        }));
+    });
+
     it('still forwards a fresh valid grant for a bound machine', async () => {
         status = 200;
         body = JSON.stringify({ grant: 'g'.repeat(43) });

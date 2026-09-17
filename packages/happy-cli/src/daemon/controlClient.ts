@@ -7,11 +7,14 @@ import { logger } from '@/ui/logger';
 import { clearDaemonState, readDaemonState } from '@/persistence';
 import { Metadata } from '@/api/types';
 import { configuration } from '@/configuration';
+import type { CodexEffort } from '@/modules/common/registerCommonHandlers';
 
 export type SpawnDaemonSessionOptions = {
   directory: string;
   sessionId?: string;
   agent?: 'ask' | 'claude' | 'codex' | 'gemini' | 'opencode' | 'openclaw';
+  model?: string;
+  effort?: CodexEffort;
   environmentVariables?: Record<string, string>;
   resumeClaudeSessionId?: string;
   resumeCodexThreadId?: string;

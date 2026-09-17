@@ -226,11 +226,20 @@ export class ApiMachineClient {
 
         // Register spawn session handler
         this.rpcHandlerManager.registerHandler('spawn-happy-session', async (params: any) => {
-            const { directory, sessionId, approvedNewDirectoryCreation, agent, environmentVariables, token, codexSessionGrant, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, forkedFromMessageId } = params || {};
+            const { directory, sessionId, approvedNewDirectoryCreation, agent, environmentVariables, token, codexSessionGrant, model, effort, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, forkedFromMessageId } = params || {};
             const traceId = traceIdFromParams(params?.traceId);
 
             if (!directory) {
                 throw new Error('Directory is required');
+            }
+            if ((model !== undefined || effort !== undefined) && agent !== 'codex') {
+                throw new Error('Model and effort are supported only for Codex sessions');
+            }
+            if (model !== undefined && (typeof model !== 'string' || model.length === 0)) {
+                throw new Error('Codex model must be a non-empty string');
+            }
+            if (effort !== undefined && !['low', 'medium', 'high', 'xhigh', 'max'].includes(effort)) {
+                throw new Error('Codex effort must be one of: low, medium, high, xhigh, max');
             }
 
             const result = await spawnSession({
@@ -242,6 +251,8 @@ export class ApiMachineClient {
                 environmentVariables,
                 token,
                 codexSessionGrant,
+                model,
+                effort,
                 resumeClaudeSessionId,
                 resumeCodexThreadId,
                 parentSessionId,

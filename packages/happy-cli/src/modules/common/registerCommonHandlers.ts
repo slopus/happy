@@ -132,12 +132,18 @@ interface DifftasticResponse {
  * This rpc type is used by the daemon, all other RPCs here are for sessions
 */
 
+export type CodexEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+
 export interface SpawnSessionOptions {
     machineId?: string;
     directory: string;
     sessionId?: string;
     approvedNewDirectoryCreation?: boolean;
     agent?: 'ask' | 'claude' | 'codex' | 'gemini' | 'opencode' | 'openclaw';
+    /** Codex-only model selection forwarded to the Codex worker. */
+    model?: string;
+    /** Codex-only reasoning level forwarded to the Codex worker. */
+    effort?: CodexEffort;
     environmentVariables?: Record<string, string>;
     token?: string;
     /**

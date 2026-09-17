@@ -1,0 +1,47 @@
+{
+  "name": "@wangjs-jacky/paws-agent-party",
+  "version": "0.0.0-private",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build-server.mjs && vite build --config vite.config.ts",
+    "build:server": "node scripts/build-server.mjs",
+    "start:test": "tsx test/acceptance-server.ts",
+    "start": "node dist/server.mjs",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@wangjs-jacky/paws-agent": "workspace:*",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "@tanstack/react-virtual": "3.14.9",
+    "class-variance-authority": "0.7.1",
+    "clsx": "2.1.1",
+    "tailwind-merge": "3.5.0",
+    "lucide-react": "0.560.0",
+    "diff2html": "3.4.56",
+    "qrcode": "1.5.4"
+  },
+  "devDependencies": {
+    "@types/node": ">=20",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "@types/qrcode": "1.5.5",
+    "vite": "8.0.9",
+    "@vitejs/plugin-react": "6.0.1",
+    "tailwindcss": "4.2.3",
+    "@tailwindcss/vite": "4.2.3",
+    "jsdom": "26.1.0",
+    "@testing-library/react": "16.3.0",
+    "@testing-library/user-event": "14.6.1",
+    "tsx": "4.21.0",
+    "esbuild": "0.27.2",
+    "typescript": "5.9.3",
+    "vitest": "^3.2.4"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "packageManager": "pnpm@10.11.0"
+}

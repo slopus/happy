@@ -363,6 +363,9 @@ export async function startDaemon(): Promise<void> {
       const trace = startupIntegration.requestReceived(options);
 
       const { directory, sessionId, approvedNewDirectoryCreation = true } = options;
+      if ((options.model !== undefined || options.effort !== undefined) && options.agent !== 'codex') {
+        return { type: 'error', errorMessage: 'Model and effort are supported only for Codex sessions' };
+      }
       let directoryCreated = false;
 
       try {
@@ -518,7 +521,10 @@ export async function startDaemon(): Promise<void> {
             ? ` --resume ${shellescape(resumeId)}`
             : '';
           const agentCommand = agent === 'opencode' ? 'acp opencode' : agent;
-          const fullCommand = `node --no-warnings --no-deprecation ${cliPath} ${agentCommand} --happy-starting-mode remote --started-by daemon${resumeFragment}`;
+          const codexOptions = agent === 'codex'
+            ? `${options.model ? ` --model ${shellescape(options.model)}` : ''}${options.effort ? ` --effort ${shellescape(options.effort)}` : ''}`
+            : '';
+          const fullCommand = `node --no-warnings --no-deprecation ${cliPath} ${agentCommand} --happy-starting-mode remote --started-by daemon${resumeFragment}${codexOptions}`;
 
           // Spawn in tmux with environment variables
           // IMPORTANT: Pass complete environment (process.env + extraEnv) because:
@@ -639,6 +645,13 @@ export async function startDaemon(): Promise<void> {
               };
           }
           args.push('--happy-starting-mode', 'remote', '--started-by', 'daemon');
+
+          if (agentCommand === 'codex' && options.model) {
+            args.push('--model', options.model);
+          }
+          if (agentCommand === 'codex' && options.effort) {
+            args.push('--effort', options.effort);
+          }
 
           // Resume ids attach the new Happy session to a pre-existing provider
           // conversation created by the fork / duplicate RPC.

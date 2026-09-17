@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths: &paths
       - 'packages/paws-agent/**'
+      - 'packages/paws-agent-party/**'
       - 'packages/paws-agent-chrome/**'
       - 'packages/happy-wire/**'
       - 'packages/happy-cli/src/api/**'
@@ -23,6 +24,23 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  agent-party:
+    name: AgentParty production build and tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @wangjs-jacky/paws-agent build
+      - run: pnpm --filter @wangjs-jacky/paws-agent-party typecheck
+      - run: pnpm --filter @wangjs-jacky/paws-agent-party test
+      - run: PAWS_AGENT_PARTY_STANDALONE=1 PAWS_AGENT_PARTY_BASE_PATH=/agent-party/ pnpm --filter @wangjs-jacky/paws-agent-party build
+      - run: node packages/paws-agent-party/scripts/production-smoke.mjs
+      - run: node --test packages/paws-agent-party/scripts/production-gateway.test.mjs packages/paws-agent-party/scripts/preview-gateway.test.mjs
+
   workspace:
     name: workspace suite
     runs-on: ubuntu-latest

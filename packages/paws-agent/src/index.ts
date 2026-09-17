@@ -12,6 +12,7 @@ export type {
     BrowseDirectoryInput,
     BrowseDirectoryResult,
     ConnectionState,
+    CodexEffort,
     CredentialProvider,
     ImageAttachmentInput,
     Machine,

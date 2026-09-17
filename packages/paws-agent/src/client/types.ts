@@ -101,13 +101,25 @@ export type AgentRequest = {
 
 export type SupportedAgent = 'ask' | 'claude' | 'codex' | 'gemini' | 'opencode' | 'openclaw';
 
-export type SpawnSessionInput = {
+/** Reasoning levels accepted by the Codex CLI. */
+export type CodexEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+
+type SpawnSessionInputBase = {
     machineId: string;
     directory: string;
     approvedNewDirectoryCreation?: boolean;
-    agent?: SupportedAgent;
     providerToken?: string;
 };
+
+/**
+ * Only Codex supports model and effort at session creation time. Keeping this
+ * as a discriminated union prevents other providers from silently accepting
+ * settings they cannot honor.
+ */
+export type SpawnSessionInput = SpawnSessionInputBase & (
+    | { agent: 'codex'; model?: string; effort?: CodexEffort }
+    | { agent?: Exclude<SupportedAgent, 'codex'>; model?: never; effort?: never }
+);
 
 export type SpawnSessionResult =
     | { type: 'success'; sessionId: string }

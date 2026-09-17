@@ -98,6 +98,8 @@ export class SessionsResourceImpl implements SessionsResource {
             approvedNewDirectoryCreation: input.approvedNewDirectoryCreation ?? false,
             token: input.providerToken,
             agent: input.agent,
+            ...(input.agent === 'codex' && input.model ? { model: input.model } : {}),
+            ...(input.agent === 'codex' && input.effort ? { effort: input.effort } : {}),
             ...(codexSessionGrant ? { codexSessionGrant } : {}),
         });
         return this.parseSpawnResult(result);
