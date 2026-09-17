@@ -217,6 +217,7 @@ export const ja: TranslationStructure = {
         flatList: 'フラットリスト',
         groupByProject: 'プロジェクト別にグループ化',
         appearanceSettings: '外観設定',
+        worktreeTabs: ({ count }: { count: number }) => `${count} 個のタブ`,
     },
 
     settingsFeatures: {
@@ -330,6 +331,9 @@ export const ja: TranslationStructure = {
         forkErrorMissingMetadata: 'フォークに必要なセッションのメタデータがありません。',
         forkErrorGeneric: 'セッションのフォークに失敗しました。',
         forkClaudeOnly: 'フォークは現在 Claude セッションのみ対応しています。',
+        archiveAction: 'アーカイブ',
+        startingChat: '新しいチャットを開始しています…',
+        actionsTitle: 'セッション',
     },
 
     commandPalette: {
@@ -557,6 +561,9 @@ export const ja: TranslationStructure = {
         hideArchived: 'アーカイブを非表示',
         newSession: '新しいセッション',
         projects: "プロジェクト",
+        bots: 'ボット',
+        showAllWorkspaces: ({ count }: { count: number }) => `${count}件のワークスペースをすべて表示`,
+        showFewerWorkspaces: '表示を減らす',
     },
 
     zen: {

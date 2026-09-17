@@ -1,13 +1,13 @@
 import * as React from 'react';
-import { Session } from '@/sync/storageTypes';
+import type { SessionActionsNativeMenuHandle, SessionActionsNativeMenuProps } from './SessionActionsNativeMenu';
 
-interface SessionActionsNativeMenuProps {
-    children: React.ReactNode;
-    onAfterArchive?: () => void;
-    onAfterDelete?: () => void;
-    session: Session;
-}
-
-export function SessionActionsNativeMenu(props: SessionActionsNativeMenuProps) {
+/** The browser has no menu to borrow — `SessionActionsPopover` serves right-click. */
+export const SessionActionsNativeMenu = React.forwardRef<
+    SessionActionsNativeMenuHandle,
+    SessionActionsNativeMenuProps
+>((props, ref) => {
+    React.useImperativeHandle(ref, () => ({ open: () => {} }), []);
     return <>{props.children}</>;
-}
+});
+
+SessionActionsNativeMenu.displayName = 'SessionActionsNativeMenu';

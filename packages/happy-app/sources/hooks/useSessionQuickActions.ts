@@ -29,6 +29,22 @@ export interface SessionActionItem {
 }
 
 interface UseSessionQuickActionsOptions {
+    /**
+     * Called on the press, before anything is asked of the machine.
+     *
+     * Archiving the chat you are reading has to move the screen off it first.
+     * A kill that lands while the session is still the route takes the screen
+     * apart around the user: the tab strip loses the checkout it was drawing
+     * and collapses, the content falls back to "session deleted", and both come
+     * back a moment later once the neighbouring tab is routed to. Moving first
+     * makes the only visible change the one that was asked for — a tab leaving
+     * the strip.
+     *
+     * The cost is that a press which then fails has still moved the screen. The
+     * chat is alive and still in the strip, one tab away, and the failure says
+     * so in its own words.
+     */
+    onBeforeArchive?: () => void;
     onAfterArchive?: () => void;
     onAfterDelete?: () => void;
     onAfterCopySessionMetadata?: () => void;
@@ -127,6 +143,7 @@ export function useSessionQuickActions(
     const {
         onAfterArchive,
         onAfterCopySessionMetadata,
+        onBeforeArchive,
     } = options;
     const router = useRouter();
     const navigateToSession = useNavigateToSession();
@@ -232,6 +249,9 @@ export function useSessionQuickActions(
     });
 
     const [archivingSession, performArchive] = useHappyAction(async () => {
+        // Before the first await: the screen has to be off this chat while it is
+        // still whole, not once the store has started dismantling it.
+        onBeforeArchive?.();
         if (session.metadata?.bot) {
             const result = await sessionKill(session.id);
             if (!result.success) {
@@ -308,7 +328,7 @@ export function useSessionQuickActions(
             items.push({ id: 'copy-metadata-and-logs', icon: 'document-text-outline', label: t('sessionInfo.copyMetadata') + ' & Client Logs', onPress: copySessionMetadataAndLogs });
         }
 
-        items.push({ id: 'archive', icon: 'archive-outline', label: 'Archive', onPress: archiveSession, destructive: true });
+        items.push({ id: 'archive', icon: 'archive-outline', label: t('session.archiveAction'), onPress: archiveSession, destructive: true });
 
         return items;
     }, [
@@ -332,7 +352,7 @@ export function useSessionQuickActions(
             style: item.destructive ? 'destructive' as const : undefined,
         }));
         buttons.push({ text: t('common.cancel'), style: 'cancel' });
-        Modal.alert('Session', undefined, buttons);
+        Modal.alert(t('session.actionsTitle'), undefined, buttons);
     }, [actionItems]);
 
     return {
@@ -361,8 +381,31 @@ export function useSessionQuickActions(
  * Lightweight hook for list items that only have a sessionId.
  * Returns a long-press handler that shows the action alert on mobile.
  */
+/**
+ * A session that is not in the store has no actions, but the hooks above still
+ * have to run in the same order on every render — so a missing session is
+ * handed this frozen stand-in and the caller drops the result. Without it
+ * useSessionQuickActions dereferences null long before its callers reach the
+ * `if (!session)` guard they already have.
+ */
+export const MISSING_SESSION: Session = Object.freeze({
+    id: '',
+    seq: 0,
+    createdAt: 0,
+    updatedAt: 0,
+    active: false,
+    activeAt: 0,
+    metadata: null,
+    metadataVersion: 0,
+    agentState: null,
+    agentStateVersion: 0,
+    thinking: false,
+    thinkingAt: 0,
+    presence: 0,
+});
+
 export function useSessionActionAlert(sessionId: string) {
     const session = useSession(sessionId);
-    const { showActionAlert } = useSessionQuickActions(session!, {});
+    const { showActionAlert } = useSessionQuickActions(session ?? MISSING_SESSION, {});
     return session ? showActionAlert : undefined;
 }

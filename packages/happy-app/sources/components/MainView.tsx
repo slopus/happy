@@ -8,6 +8,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useFriendRequests, useRealtimeStatus, useSettingMutable } from '@/sync/storage';
+import { SESSION_LIST_GROUPING_MODES, type SessionListGrouping } from '@/sync/settings';
 import { NativeSettingsMenu, type NativeSettingsMenuGroup } from './NativeSettingsMenu';
 import { useVisibleSessionListViewData } from '@/hooks/useVisibleSessionListViewData';
 import { useIsTablet } from '@/utils/responsive';
@@ -162,8 +163,12 @@ const HeaderRight = React.memo(({ activeTab }: { activeTab: ActiveTabType }) => 
                         { key: 'flat', label: t('sessionsFilter.flatList') },
                         { key: 'project', label: t('sessionsFilter.groupByProject') },
                     ],
-                    selectedKey: sessionListGrouping === 'project' ? 'project' : 'flat',
-                    onSelect: (key) => setSessionListGrouping(key === 'project' ? 'project' : 'flat'),
+                    selectedKey: sessionListGrouping,
+                    onSelect: (key) => {
+                        if ((SESSION_LIST_GROUPING_MODES as readonly string[]).includes(key)) {
+                            setSessionListGrouping(key as SessionListGrouping);
+                        }
+                    },
                 },
                 // A plain row, not a choice: it leaves this screen for the
                 // appearance settings, where the avatar options now live.

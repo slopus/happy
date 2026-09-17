@@ -19,6 +19,12 @@ interface NewSessionDraftState {
     attachments: AttachmentPreview[];
     selectedMachineId: string | null;
     selectedPath: string | null;
+    /**
+     * The project the draft names, for a project whose folder only Happy Agent's catalog knows.
+     * Exactly one of this and `selectedPath` describes where the session starts; setting either
+     * clears the other, so the draft never names two places at once.
+     */
+    selectedProjectId: string | null;
     agentType: NewSessionAgentType;
     permissionMode: PermissionModeKey | null;
     modelMode: string | null;
@@ -38,6 +44,8 @@ interface NewSessionDraftState {
      */
     renameMachineId: (id: string | null) => void;
     setPath: (path: string | null) => void;
+    /** Names a catalog project as the place, in place of whatever directory was chosen before. */
+    setProjectId: (id: string | null) => void;
     setAgentType: (agent: NewSessionAgentType) => void;
     setPermissionMode: (mode: PermissionModeKey) => void;
     setModelMode: (mode: string) => void;
@@ -51,6 +59,7 @@ function persist(state: NewSessionDraftState) {
         input: state.input,
         selectedMachineId: state.selectedMachineId,
         selectedPath: state.selectedPath,
+        selectedProjectId: state.selectedProjectId,
         agentType: state.agentType,
         permissionMode: state.permissionMode,
         modelMode: state.modelMode,
@@ -70,6 +79,7 @@ export const useNewSessionDraft = create<NewSessionDraftState>()((set, get) => (
     attachments: [],
     selectedMachineId: initial?.selectedMachineId ?? null,
     selectedPath: initial?.selectedPath ?? null,
+    selectedProjectId: initial?.selectedProjectId ?? null,
     agentType: initial?.agentType ?? 'claude',
     permissionMode: initial?.permissionMode ?? null,
     modelMode: initial?.modelMode ?? null,
@@ -79,9 +89,10 @@ export const useNewSessionDraft = create<NewSessionDraftState>()((set, get) => (
 
     setInput: (input) => { set({ input }); persist(get()); },
     setAttachments: (attachments) => { set({ attachments }); },
-    setMachineId: (id) => { set({ selectedMachineId: id, selectedPath: null, worktreeKey: null }); persist(get()); },
+    setMachineId: (id) => { set({ selectedMachineId: id, selectedPath: null, selectedProjectId: null, worktreeKey: null }); persist(get()); },
     renameMachineId: (id) => { set({ selectedMachineId: id }); persist(get()); },
-    setPath: (path) => { set({ selectedPath: path, worktreeKey: null }); persist(get()); },
+    setPath: (path) => { set({ selectedPath: path, selectedProjectId: null, worktreeKey: null }); persist(get()); },
+    setProjectId: (id) => { set({ selectedProjectId: id, selectedPath: null, worktreeKey: null }); persist(get()); },
     setAgentType: (agent) => { set({ agentType: agent }); persist(get()); },
     setPermissionMode: (mode) => { set({ permissionMode: mode }); persist(get()); },
     setModelMode: (mode) => { set({ modelMode: mode }); persist(get()); },

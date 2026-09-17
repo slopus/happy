@@ -26,13 +26,18 @@ import { Typography } from '@/constants/Typography';
 import { layout } from './layout';
 import { t } from '@/text';
 import { useNewSessionDraft } from '@/hooks/useNewSessionDraft';
-import { useAllMachines, useSessions, useSetting } from '@/sync/storage';
+import { useAllMachines, useProjects, useSessions, useSetting } from '@/sync/storage';
 import { getCodeAgentDefaults, resolveAgentDefaultConfig } from '@/sync/agentDefaults';
 import { formatLastSeen, formatPathRelativeToHome } from '@/utils/sessionUtils';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { resolveAbsolutePath } from '@/utils/pathUtils';
 import { useWorktrees } from '@/hooks/useWorktrees';
-import { collectSessionPlaces, collectSessionWorkspaces } from '@/sync/agentSessionPlaces';
+import {
+    collectSessionPlaces,
+    collectSessionWorkspaces,
+    projectPlaceKey,
+    readProjectPlaceKey,
+} from '@/sync/agentSessionPlaces';
 import {
     collectMachineChoices,
     findMachineChoice,
@@ -681,6 +686,7 @@ export const HomeDock = React.memo(({
     const agentType = useNewSessionDraft((state) => state.agentType);
     const selectedMachineId = useNewSessionDraft((state) => state.selectedMachineId);
     const selectedPath = useNewSessionDraft((state) => state.selectedPath);
+    const draftProjectId = useNewSessionDraft((state) => state.selectedProjectId);
     const sessionType = useNewSessionDraft((state) => state.sessionType);
     const worktreeKey = useNewSessionDraft((state) => state.worktreeKey);
     const permissionMode = useNewSessionDraft((state) => state.permissionMode);
@@ -690,6 +696,7 @@ export const HomeDock = React.memo(({
     const renameMachineId = useNewSessionDraft((state) => state.renameMachineId);
     const setAgentType = useNewSessionDraft((state) => state.setAgentType);
     const setPath = useNewSessionDraft((state) => state.setPath);
+    const setProjectId = useNewSessionDraft((state) => state.setProjectId);
     const setSessionType = useNewSessionDraft((state) => state.setSessionType);
     const setWorktreeKey = useNewSessionDraft((state) => state.setWorktreeKey);
     const setPermissionMode = useNewSessionDraft((state) => state.setPermissionMode);
@@ -698,6 +705,8 @@ export const HomeDock = React.memo(({
     const defaultOverrides = useSetting('agentDefaultOverrides');
     const machines = useAllMachines({ includeOffline: true });
     const sessions = useSessions();
+    // Names projects the session list cannot: the catalog keeps them whether or not a chat is open.
+    const projects = useProjects();
     // A person picks a computer, not a daemon. Happy CLI and Happy Agent each register a machine
     // for the same laptop, so the pair is offered once and the agent settles which one runs.
     const machineChoices = React.useMemo(() => collectMachineChoices(machines), [machines]);
@@ -750,24 +759,6 @@ export const HomeDock = React.memo(({
         }),
         [placeMachineIds, selectedPath, sessionList],
     );
-    const projectOptions = React.useMemo<ModeOption[]>(() => {
-        const homeDir = selectedHomeDir;
-        return places.map((place) => {
-            const relative = formatPathRelativeToHome(place.path, homeDir);
-            // A project names itself; a bare directory is named by where it is.
-            const name = place.projectId ? place.name : relative;
-            return {
-                key: place.key,
-                name,
-                description: name === place.path ? undefined : relative,
-            };
-        });
-    }, [places, selectedHomeDir]);
-    const selectedProjectId = React.useMemo(
-        () => places.find((place) => place.path === selectedPath)?.projectId ?? null,
-        [places, selectedPath],
-    );
-    const currentProject = resolveOption(projectOptions, [selectedPath, '~']);
     // Happy Agent's half of this computer, and only this computer's: a session asked for here is
     // never handed to a daemon somewhere else because that one happened to be reachable.
     const rigSelectionMachine = selectedChoice?.rigMachine ?? null;
@@ -775,6 +766,52 @@ export const HomeDock = React.memo(({
         () => getRigMachineSessionCreation(rigSelectionMachine?.metadata),
         [rigSelectionMachine],
     );
+    // The project the draft names, as the picker addresses it. A project that has since been worked
+    // on in its own checkout is offered as that directory, and the draft's row follows it there
+    // rather than standing beside it as a second row for the same project.
+    const draftProjectPlace = draftProjectId
+        ? places.find((place) => place.projectId === draftProjectId) ?? null
+        : null;
+    const draftProjectPlaceKey = draftProjectId
+        ? draftProjectPlace?.key ?? projectPlaceKey(draftProjectId)
+        : null;
+    const projectOptions = React.useMemo<ModeOption[]>(() => {
+        const homeDir = selectedHomeDir;
+        const options = places.flatMap((place): ModeOption[] => {
+            if (place.path === null) {
+                // A project only the catalog has the folder for can be opened by Happy Agent alone,
+                // so it is offered only where Happy Agent could run it.
+                if (!rigSelectionCreation) return [];
+                return [{ key: place.key, name: place.name }];
+            }
+            const relative = formatPathRelativeToHome(place.path, homeDir);
+            // A project names itself; a bare directory is named by where it is.
+            const name = place.projectId ? place.name : relative;
+            return [{
+                key: place.key,
+                name,
+                description: name === place.path ? undefined : relative,
+            }];
+        });
+        // A project is visible here only through its own chats, so archiving the last one takes it
+        // out of the list. It is still in the catalog and can still be started in, so the draft's
+        // own project keeps its row — otherwise the picker would read as home while the start went
+        // to the project. Its name comes from the catalog, which does not need a chat to know it.
+        if (draftProjectId && !draftProjectPlace) {
+            options.push({
+                key: projectPlaceKey(draftProjectId),
+                name: projects[draftProjectId]?.name ?? 'Project',
+            });
+        }
+        return options;
+    }, [draftProjectId, draftProjectPlace, places, projects, rigSelectionCreation, selectedHomeDir]);
+    const selectedProjectId = React.useMemo(
+        () => draftProjectId
+            ?? places.find((place) => place.path === selectedPath)?.projectId
+            ?? null,
+        [draftProjectId, places, selectedPath],
+    );
+    const currentProject = resolveOption(projectOptions, [draftProjectPlaceKey, selectedPath, '~']);
     const rigCreation = agentType === 'rig' ? rigSelectionCreation : null;
     const happyCliVersion = selectedChoice?.happyMachine?.metadata?.happyCliVersion;
     const supportsWorktree = rigCreation?.supportsWorktrees
@@ -1252,6 +1289,14 @@ export const HomeDock = React.memo(({
                 onSelect: (key) => {
                     if (key === CUSTOM_PROJECT_PATH_KEY) {
                         requestCustomProjectPath();
+                        return;
+                    }
+                    const projectId = readProjectPlaceKey(key);
+                    if (projectId) {
+                        // Nothing here knows this project's folder, so it is named by identity and
+                        // the harness moves to the only one that can resolve it.
+                        setProjectId(projectId);
+                        selectAgent('rig');
                         return;
                     }
                     setPath(key);

@@ -18,7 +18,7 @@ import {
 const baseInput = {
     machineId: 'machine-1',
     agent: 'rig',
-    directory: '~/project',
+    place: '~/project',
     worktree: '__none__',
     modelKey: 'codex/gpt-5.6-sol',
     permissionMode: 'auto',
@@ -55,7 +55,7 @@ describe('spawn request id', () => {
         }))).toBe('request-2');
         expect(resolveSpawnRequestId(buildSpawnRequestSignature({
             ...baseInput,
-            directory: '~/other',
+            place: '~/other',
         }))).toBe('request-3');
     });
 
@@ -78,7 +78,7 @@ describe('spawn request id', () => {
         const abandon = vi.fn();
         rememberSpawnedSession(id, 'accepted-session', abandon);
         completeSpawnRequest(id);
-        resolveSpawnRequestId(buildSpawnRequestSignature({ ...baseInput, directory: '/different' }));
+        resolveSpawnRequestId(buildSpawnRequestSignature({ ...baseInput, place: '~/different' }));
         expect(abandon).not.toHaveBeenCalled();
     });
 
@@ -87,7 +87,7 @@ describe('spawn request id', () => {
         const abandon = vi.fn();
         rememberSpawnedSession(id, 'adopted-session', abandon);
         releaseSpawnedSession('adopted-session');
-        resolveSpawnRequestId(buildSpawnRequestSignature({ ...baseInput, directory: '/different' }));
+        resolveSpawnRequestId(buildSpawnRequestSignature({ ...baseInput, place: '~/different' }));
         expect(abandon).not.toHaveBeenCalled();
     });
 });

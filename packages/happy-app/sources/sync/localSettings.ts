@@ -21,8 +21,8 @@ export const LocalSettingsSchema = z.object({
     sidebarPanelActive: z.enum(['changes', 'allFiles', 'sideChat']).nullable().describe('Currently active right-sidebar panel (null shows the picker)'),
     // CLI version acknowledgments - keyed by machineId
     acknowledgedCliVersions: z.record(z.string(), z.string()).describe('Acknowledged CLI versions per machine'),
-    // Collapsed Rig projects in the session list - keyed by project id
-    collapsedProjects: z.record(z.string(), z.boolean()).describe('Collapsed state per sidebar project'),
+    // Projects showing every workspace rather than the first few - keyed by project id
+    expandedProjects: z.record(z.string(), z.boolean()).describe('Projects showing all workspaces instead of the first few'),
 });
 
 //
@@ -51,7 +51,7 @@ export const localSettingsDefaults: LocalSettings = {
     sidebarPanelsOpen: [],
     sidebarPanelActive: null,
     acknowledgedCliVersions: {},
-    collapsedProjects: {},
+    expandedProjects: {},
 };
 Object.freeze(localSettingsDefaults);
 

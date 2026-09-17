@@ -383,6 +383,12 @@ export default function RootLayout() {
                 }}
             />
             <Stack.Screen
+                name="dev/project-home"
+                options={{
+                    headerTitle: 'Project Home',
+                }}
+            />
+            <Stack.Screen
                 name="session/recent"
                 options={{
                     headerShown: true,
