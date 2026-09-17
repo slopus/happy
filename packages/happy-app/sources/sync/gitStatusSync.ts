@@ -59,7 +59,19 @@ export class GitStatusSync {
      * to avoid duplicate RPC round-trips.
      */
     invalidate(sessionId: string): void {
-        const projectKey = this.sessionToProjectKey.get(sessionId);
+        let projectKey = this.sessionToProjectKey.get(sessionId);
+        if (!projectKey) {
+            // A sibling that was never opened has no mapping yet (getSync runs
+            // on view), but its tools mutate the same working tree. Resolve the
+            // project from its metadata and refresh only if somebody is looking
+            // at that project (a sync exists); never create one for a project
+            // nobody views. Registering the mapping also lets the RPC run
+            // through this session, which is alive since it just streamed.
+            const resolved = this.getProjectKeyForSession(sessionId);
+            if (!resolved || !this.projectSyncMap.has(resolved)) return;
+            this.sessionToProjectKey.set(sessionId, resolved);
+            projectKey = resolved;
+        }
         if (projectKey) {
             const existing = this.debounceTimers.get(projectKey);
             if (existing) clearTimeout(existing);

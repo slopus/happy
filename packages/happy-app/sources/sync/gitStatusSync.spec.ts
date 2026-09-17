@@ -36,4 +36,26 @@ describe('git status sync', () => {
         await sync.invalidateAndAwait();
         expect(mocks.sessionBash).not.toHaveBeenCalled();
     });
+
+    it('refreshes a viewed project when a never-opened sibling session mutates it', async () => {
+        vi.useFakeTimers();
+        try {
+            const gitStatus = new GitStatusSync();
+            const sync = gitStatus.getSync('a');
+            const spy = vi.spyOn(sync, 'invalidate');
+            // b streams a tool result without ever having been opened.
+            gitStatus.invalidate('b');
+            await vi.advanceTimersByTimeAsync(300);
+            expect(spy).toHaveBeenCalledOnce();
+
+            // A session of a project nobody views creates nothing.
+            mocks.state.sessions.c = { id: 'c', active: true, metadata: { machineId: 'm', path: '/other' } };
+            gitStatus.invalidate('c');
+            await vi.advanceTimersByTimeAsync(300);
+            expect(spy).toHaveBeenCalledOnce();
+            expect(mocks.applyGitStatus).not.toHaveBeenCalledWith('m:/other', expect.anything());
+        } finally {
+            vi.useRealTimers();
+        }
+    });
 });
