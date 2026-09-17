@@ -6,6 +6,20 @@ The current release supports Codex-only reusable profiles, defaulting to
 `gpt-5.6-luna` with `low` effort. Model IDs and effort are editable in **管理 Agent**;
 rooms retain a snapshot, so profile edits affect newly created rooms only.
 
+Group text is delivered incrementally using the upstream Party `since` cursor,
+independently for each member and remote session. A successful published turn
+advances only to its input snapshot; messages arriving during execution remain
+unread. The session's own generated replies and old scheduling instructions are
+not echoed back. Restart preserves this cursor; a replacement session receives
+public history again. Existing rooms without a delivery cursor bootstrap once.
+Failed/stopped turns do not advance it, so uncertain remote delivery can be
+repeated on a later explicit request (not an exactly-once guarantee).
+No custom summarizer is added: native Codex context management remains responsible
+for its thread. Unread text exceeding 100,000 characters fails explicitly rather
+than silently truncating unseen messages. Attachments retain the existing per-task
+scope (up to four current-task images); historical image pixels are not replayed.
+Complete public history remains stored and visible.
+
 **自动辩论** is separate from **自动接话** and defaults off. Enable it, select
 1–10 rounds (default 10), and mention exactly two members in one message. One
 round means one reply from each member, so 10 rounds produce at most 20 replies.

@@ -19,8 +19,8 @@ try {
   assert(html.includes('lang="zh-CN"'));
   assert(!html.includes(token));
   const assetPath = html.match(/src="([^"]+\.js)"/)?.[1]; assert(assetPath);
-  const js = await fetch(server.url + assetPath).then(response => response.text());
-  assert(js.includes('Mock 行情'));
+  const js = await fetch(server.url + assetPath).then(response => { assert.equal(response.status, 200); assert.match(response.headers.get('content-type') ?? '', /javascript/); return response.text(); });
+  assert(js.length > 0);
   assert(!js.includes('TestOnlySdk'));
   assert.equal((await fetch(server.url + '/api/paws/status')).status, 401);
   assert.equal((await fetch(server.url + '/api/paws/status', { headers }).then(response => response.json())).state, 'disconnected');

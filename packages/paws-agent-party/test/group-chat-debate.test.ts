@@ -35,6 +35,10 @@ describe('bounded room debate', () => {
     expect(final.turns).toHaveLength(20);
     expect(t.sdk.calls[0]!.text).toContain('立论'); expect(t.sdk.calls[1]!.text).toContain(`public-${a!.id}-1`);
     expect(t.sdk.calls[2]!.text).toContain('交锋 2'); expect(t.sdk.calls[2]!.text).toContain(`public-${b!.id}-1`);
+    expect(t.sdk.calls[2]!.text).not.toContain(`public-${a!.id}-1`);
+    expect(t.sdk.calls[2]!.text).not.toContain('立论');
+    expect(t.sdk.calls[4]!.text).not.toContain(`public-${b!.id}-1`);
+    expect(t.sdk.calls[4]!.text).toContain(`public-${b!.id}-2`);
     expect(t.sdk.calls.every(call => !call.text.includes('tool-secret'))).toBe(true);
     await eventually(async () => {
       const stored = JSON.parse(await readFile(join(t.dataDir, 'group-chat-rooms.json'), 'utf8'));

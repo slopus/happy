@@ -22,7 +22,7 @@ export type GroupRoomSnapshot = {
 export type GroupTurn = TurnProvenance & { debateId?: string; round?: number; phase?: 'opening' | 'rebuttal' };
 export type CreateGroupRoomInput = { requestId: string; title: string; memberIds: string[]; machineId: string; directory: string; autoReply?: boolean; autoDebate?: boolean; maxRounds?: number };
 export type GroupMessageInput = { requestId: string; text: string; images: ImageRef[] };
-type StoredRoom = { snapshot: GroupRoomSnapshot; cursors: Record<string, number> };
+type StoredRoom = { snapshot: GroupRoomSnapshot; cursors: Record<string, number>; deliveries?: Record<string, { sessionId: string; cursor: string }> };
 type RoomsFile = { rooms: StoredRoom[]; requestIds: Record<string, string>; messageRequestIds: string[] };
 
 export class GroupRoomService {
@@ -212,11 +212,26 @@ export class GroupRoomService {
       const direction = debate ? `辩论第 ${debate.round} 轮 · ${debate.phase === 'opening' ? '立论：先阐述你的立场及理由。' : `交锋 ${debate.round}：直接回应对方最近的观点，指出分歧或修正自己的判断。`}请以你的角色发言。` : '请以你的角色回应刚才的群聊消息。';
       const task = await this.party.send({ partyId: room.snapshot.partyId, from: 'host', to: [agentId], text: `${direction}不要展示工具过程、凭据或隐藏推理；直接给出面向群聊的简洁结论。`, replyTo });
       const turn: GroupTurn = { runId: room.snapshot.id, partyId: room.snapshot.partyId, participant: agentId as never, taskMessageId: task.id, ...debate }; room.snapshot.turns.push(turn);
-      const history = await this.party.read(room.snapshot.partyId); const context = history.map(message => `${displayName(room.snapshot.members, message.from)}: ${message.text}`).join('\n').slice(-100_000);
-      const prompt = `你是 AgentParty 群聊成员「${member.name}」。\n\n你的角色：${member.instructions}\n\n只根据以下本群公开上下文回答，简洁、可执行；不要臆造事实，也不要暴露工具调用、凭据或隐藏推理。\n\n${context}`;
+      const previous = room.deliveries?.[agentId];
+      const delivery = previous?.sessionId === member.sessionId ? previous : undefined;
+      const history = await this.party.read(room.snapshot.partyId, delivery ? { since: delivery.cursor } : undefined);
+      // Skip only this session's own generated replies. A replacement session
+      // must receive older replies too. Internal scheduling tasks are not chat.
+      const ownReplies = new Set(room.snapshot.turns.filter(value => value.sessionId === member.sessionId && value.participant === agentId).map(value => value.publicMessageId));
+      const unread = history.filter(message => message.to === '*' && !ownReplies.has(message.id));
+      const context = unread.map(message => `[${message.id}] ${displayName(room.snapshot.members, message.from)}: ${message.text}`).join('\n');
+      // Never silently discard unseen messages and then advance past them.
+      if (context.length > 100_000) throw new RunError(413, 'Unread group context exceeds the delivery budget; no messages were marked read.');
+      const prompt = `你是 AgentParty 群聊成员「${member.name}」。\n\n你的角色：${member.instructions}\n\n以下是尚未投递给你的群聊消息；结合本会话已有上下文回答，不要复述历史。不要臆造事实，也不要暴露工具调用、凭据或隐藏推理。\n\n${context}\n\n本次指派：${direction}\n回应群消息 ID：${replyTo}`;
+      // Preserve the existing per-task attachment contract (SDK maximum: four).
+      // Replaying attachments from every historical message can wedge a member.
       const result = await this.remote(room, member, prompt, await this.loadImages(input.images), controller.signal, turn);
       controller.signal.throwIfAborted();
       const published = await this.party.send({ partyId: room.snapshot.partyId, from: member.id, to: '*', text: result, replyTo: task.id }); turn.publicMessageId = published.id;
+      // Commit the read snapshot, NOT the new reply's cursor: other members or
+      // the user may have posted while this remote turn was running.
+      const cursor = history.at(-1)?.cursor;
+      if (cursor && member.sessionId) (room.deliveries ??= {})[agentId] = { sessionId: member.sessionId, cursor };
       return true;
     } catch (error) { member.status = this.closing ? 'interrupted' : controller.signal.aborted ? 'stopped' : 'failed'; member.error = safeError(error); return false; }
     finally { room.snapshot.updatedAt = Date.now(); this.controllers.delete(`${room.snapshot.id}:${agentId}`); await this.persist(); }

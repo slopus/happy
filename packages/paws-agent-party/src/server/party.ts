@@ -21,7 +21,7 @@ export type PartyBus = {
   create(title: string): Promise<string>;
   createGroup(input: { title: string; participants: Array<{ id: string; description: string }> }): Promise<string>;
   send(input: { partyId: string; from: string; to: Recipients; text: string; images?: ImageRef[]; replyTo?: string }): Promise<PartyMessage>;
-  read(partyId: string): Promise<DecodedPartyMessage[]>;
+  read(partyId: string, options?: { since?: string }): Promise<DecodedPartyMessage[]>;
 };
 
 export async function createPartyService(dataDir: string, accessToken: string): Promise<PartyService> {
@@ -92,8 +92,9 @@ export async function createPartyService(dataDir: string, accessToken: string): 
       });
       return body.message as PartyMessage;
     },
-    async read(partyId) {
-      const body = await call(`/api/parties/${partyId}/messages`);
+    async read(partyId, options) {
+      const query = options?.since ? `?since=${encodeURIComponent(options.since)}` : '';
+      const body = await call(`/api/parties/${partyId}/messages${query}`);
       const key = await keyFor(partyId);
       const decoded: DecodedPartyMessage[] = [];
       for (const message of body.messages as PartyMessage[]) {
