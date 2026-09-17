@@ -38,6 +38,9 @@ export function useAutocomplete(query: string | null, resolver: (text: string) =
             let results = cache.get(t);
             if (results === undefined) {
                 results = await resolver(t);
+                // Per-instance and never evicted otherwise; keep a long-lived
+                // composer from accumulating every query ever typed.
+                if (cache.size > 200) cache.clear();
                 cache.set(t, results);
             }
             if (state.query === t) {
@@ -59,6 +62,10 @@ export function useAutocomplete(query: string | null, resolver: (text: string) =
     React.useEffect(() => {
         sync.onSearchQueryChange(query);
     }, [query]);
+
+    // Stop the InvalidateSync on unmount so an in-flight resolver cannot
+    // setState on a dead component or schedule further runs.
+    React.useEffect(() => () => sync.sync.stop(), [sync]);
 
     // Return empty array if no query
     if (query === null) {
