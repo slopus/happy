@@ -1,5 +1,6 @@
 import React from 'react';
 import { Platform, Pressable, View } from 'react-native';
+import equal from 'fast-deep-equal';
 import { Swipeable } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
@@ -272,7 +273,15 @@ export const FlatSessionRow = React.memo(({ row, selected, showBorder, archived 
             {content}
         </Swipeable>
     );
-});
+}, (prev, next) => (
+    // Every list rebuild mints a fresh `row`, so the default identity check
+    // re-rendered all mounted rows on each event. Row data is all primitives:
+    // deep-equal is cheap and only the rows that changed re-render.
+    prev.selected === next.selected
+    && prev.showBorder === next.showBorder
+    && prev.archived === next.archived
+    && (prev.row === next.row || equal(prev.row, next.row))
+));
 
 const stylesheet = StyleSheet.create((theme) => ({
     row: {
