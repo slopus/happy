@@ -205,7 +205,7 @@ machine RPC. The daemon resolves symlinks, rejects paths outside the canonical
 home directory, and returns directories only; it does not expose file contents
 or command execution through this SDK method.
 
-### Reliable message subscriptions (source changes, not yet published)
+### Reliable message subscriptions
 
 `client.subscribe()` provides best-effort live events. A `message` event can be
 the last row of a stored batch and has no replay guarantee. Use `messages.watch`
@@ -281,13 +281,13 @@ async function sendImage(client: PawsAgentClient, sessionId: string, image: Imag
 - `signal` 可中断图片上传与最终消息请求，`client.dispose()` 也会终止传输；单个图片上传最多等待 15 秒。服务器已经接受的消息不能通过取消撤回。
 - Codex `sessions.spawn` 会按 `machineId` 申请新的会话授权，不缓存、不复用；已绑定账号使用该授权。仅当服务端明确返回 HTTP 409 / `codex-account-unbound` 时，使用目标机器已有的本地 Codex 登录（不上传或复制凭据）；机器必须已完成本地登录。其他授权失败、网络错误和畸形授权响应均直接报错，不降级。
 
-这次只修改 SDK 源码，不新增 CLI 选图参数、不修改 Happy 服务端、不发布 npm。
+图片接口面向 SDK 调用方；未新增 CLI 选图参数，也不要求修改 Happy 服务端。
 Chrome 插件 0.0.8 仍使用已发布 beta.2 的补丁；新版 SDK 正式发布并由插件完成集成验证后再移除补丁。
 本地协议测试不等于线上模型识图验收。
 
 ## Release status
 
-Registry availability is established by `npm view @wangjs-jacky/paws-agent@0.1.0-beta.2 version`, not by a source tag or a green preparation run. Before the first successful publication, use workspace linking or an exact verified tarball. Publication runs in GitHub Actions using the repository's `NPM_TOKEN` when available; otherwise npm trusted publishing must already be configured. A local npm login is not required for this workflow.
+The stable release line starts at `0.1.0`. Verify publication with `npm view @wangjs-jacky/paws-agent@0.1.0 version`; a source tag or a green preparation run alone is not evidence of npm publication. Publication runs in GitHub Actions using the repository's `NPM_TOKEN` when available; otherwise npm trusted publishing must already be configured. A local npm login is not required for this workflow.
 
 The beta includes the connection fixes used by paws-agent-chrome v0.0.5: `syncing` is emitted during initial synchronization, followed by a reusable `snapshot` event before `ready`. Consumers can reuse that snapshot instead of downloading machines and sessions again. Individual session reads and realtime session updates require the Paws `/v2/sessions/:id` endpoint and never fall back to fetching the full session list.
 
@@ -335,3 +335,14 @@ to the agent default. Explicit `configuration` takes precedence over the same
 keys in `meta`. The runner remains the authority on model availability and
 agent-specific capabilities; this SDK does not invent a model catalog or claim
 an immediate runtime switch.
+
+
+### Execution lifecycle and compatibility
+
+- `sessions.terminate(sessionId)` gracefully ends the CLI/Codex execution through the existing encrypted `killSession` RPC. Remote messages and daemon resume state are retained. It requires a connected client and a reachable session supporting that RPC.
+- `sessions.stop(sessionId)` is the legacy presence notification; it does **not** terminate the execution process. `client.dispose()` releases SDK connections, not remote executions.
+- `sessions.resume({sessionId})` acknowledges process launch. Before sending, poll `sessions.get()` until `active === true` and `metadata.lifecycleState !== 'archived'`, with a bounded timeout. A process that failed before Codex thread creation has no resumable thread.
+- Callers own concurrency limits and idle-reclamation policy. Do not terminate executions with running turns, queued messages or unresolved permission requests. This version does not add a server-wide queue or capacity guarantee.
+- Node consumers require Node >=20.19.0. ESM, CommonJS, CLI and browser bundles are verified in the release pipeline; browser fixtures must also pass Ego acceptance on the exact tarball digest.
+- Model/effort choices come from the runner-advertised catalog. Empty catalogs do not prove configuration support. Validated against the MISS Paws runner 1.3.11; other runner/server combinations require capability and integration checks.
+- `0.1.x` patches should preserve the documented public API. Incompatible public API changes require a new minor version while the SDK remains pre-1.0. Pin an exact version for production and review the changelog before upgrading.
