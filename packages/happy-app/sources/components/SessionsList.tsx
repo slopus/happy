@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Pressable, FlatList, NativeScrollEvent, NativeSyntheticEvent, Platform } from 'react-native';
+import equal from 'fast-deep-equal';
 import { Text } from '@/components/StyledText';
 import { usePathname, useRouter } from 'expo-router';
 import { SessionListViewItem, SessionRowData, useAllMachines, useSetting, useSettingMutable } from '@/sync/storage';
@@ -745,14 +746,26 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
                 </View>
             </View>
         </Pressable>
-        {Platform.OS === 'web' && (
+        {/* Mounted only while open: the popover subscribes to the session and
+            runs the whole quick-actions hook even when it renders null, and
+            there is one per row. */}
+        {Platform.OS === 'web' && actionsAnchor && (
             <SessionActionsPopover
                 anchor={actionsAnchor}
                 onClose={() => setActionsAnchor(null)}
                 sessionId={session.id}
-                visible={!!actionsAnchor}
+                visible
             />
         )}
         </View>
     );
-});
+}, (prev, next) => (
+    // Every list rebuild mints a fresh `session` row, so the default identity
+    // check re-rendered all mounted rows on each event. Row data is all
+    // primitives: deep-equal is cheap and only the rows that changed re-render.
+    prev.selected === next.selected
+    && prev.isFirst === next.isFirst
+    && prev.isLast === next.isLast
+    && prev.isSingle === next.isSingle
+    && (prev.session === next.session || equal(prev.session, next.session))
+));
