@@ -2557,6 +2557,9 @@ class Sync {
 
             // Decrypt message
             let lastMessage: NormalizedMessage | null = null;
+            // True once the fast path applied the message in order; nothing
+            // else needs to be fetched for it.
+            let appliedInOrder = false;
             if (updateData.body.message) {
                 const decrypted = await encryption.decryptMessage(updateData.body.message);
                 if (decrypted) {
@@ -2618,6 +2621,7 @@ class Sync {
                     if (lastMessage && currentLastSeq !== undefined && incomingSeq === currentLastSeq + 1) {
                         this.enqueueMessages(updateData.body.sid, [lastMessage]);
                         this.sessionLastSeq.set(updateData.body.sid, incomingSeq);
+                        appliedInOrder = true;
                         let hasMutableTool = false;
                         if (lastMessage.role === 'agent' && lastMessage.content[0] && lastMessage.content[0].type === 'tool-result') {
                             hasMutableTool = storage.getState().isMutableToolCall(updateData.body.sid, lastMessage.content[0].tool_use_id);
@@ -2625,14 +2629,32 @@ class Sync {
                         if (hasMutableTool) {
                             gitStatusSync.invalidate(updateData.body.sid);
                         }
-                    } else {
-                        this.getMessagesSync(updateData.body.sid).invalidate();
                     }
                 }
             }
 
             // A socket update refreshes data; it is not a user opening a chat.
-            this.onSessionDataUpdated(updateData.body.sid);
+            //
+            // Only the open chat pays for a server round trip, and only when the
+            // fast path could not apply the message in order (seq gap, unknown
+            // seq, undecryptable). This used to run for every message of every
+            // session: a forward-sync GET that returned nothing after the fast
+            // path had already advanced seq, plus four git RPCs on the daemon
+            // (bypassing the 300 ms debounce), and for a session never opened it
+            // loaded 100 messages into memory that were never released. With
+            // dozens of sessions streaming that was the tab's background load.
+            const sid = updateData.body.sid;
+            if (!appliedInOrder && sid === storage.getState().currentViewingSessionId) {
+                this.onSessionDataUpdated(sid);
+            } else {
+                // A gap in a chat that is resident but not open (recently
+                // viewed, preloaded, or with an optimistic send) is closed by a
+                // bounded forward sync. Anything else loads on open.
+                if (!appliedInOrder && storage.getState().sessionMessages[sid]) {
+                    this.getMessagesSync(sid).invalidate();
+                }
+                this.notifyVoiceSessionFocus(sid);
+            }
 
         } else if (updateData.body.t === 'new-session') {
             log.log('🆕 New session update received');
@@ -2743,7 +2765,13 @@ class Sync {
                     if (handoffDirection) {
                         const target = handoffDirection === 'desktop-to-mobile' ? 'mobile' : 'desktop';
                         log.log(`🔄 Control returned to ${target} for session ${updateData.body.id}, re-fetching messages`);
-                        this.onSessionDataUpdated(updateData.body.id);
+                        // Only the open chat is worth a round trip; a chat that
+                        // is not on screen catches up when it is opened.
+                        if (updateData.body.id === storage.getState().currentViewingSessionId) {
+                            this.onSessionDataUpdated(updateData.body.id);
+                        } else {
+                            this.notifyVoiceSessionFocus(updateData.body.id);
+                        }
                     }
                 }
             }
