@@ -8,13 +8,12 @@ import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
 import { storage, useSessionListViewData, type SessionRowData } from '@/sync/storage';
 import {
-    failPendingChat,
     openPendingChat,
     usePendingChat,
     usePendingChatsBeside,
     type PendingChat,
 } from '@/sync/pendingChats';
-import { handOverPendingChat } from '@/sync/pendingChatHandover';
+import { handOverPendingChat, retirePendingChat } from '@/sync/pendingChatHandover';
 import { findProjectWorktree, locateProjectWorkspace } from '@/utils/projectHomeList';
 import { neighbouringTabId, resolveWorktreeTabs } from '@/utils/worktreeTabs';
 import { newSessionLikeSession } from '@/utils/newSessionCheckout';
@@ -170,10 +169,10 @@ export const WorktreeTabStrip = React.memo(({ sessionId }: { sessionId: string }
             ...newSessionLikeSession(open),
             openSession: (startedId) => handOverPendingChat(chat.id, startedId),
         }).then(
-            (started) => { if (!started) failPendingChat(chat.id); },
+            (started) => { if (!started) retirePendingChat(chat.id); },
             // A start that blew up rather than declining is still a start that
             // is not coming, and the tab must not be left waiting for it.
-            () => failPendingChat(chat.id),
+            () => retirePendingChat(chat.id),
         ));
     }, [anchorId, select, selectedId, startSession, tabIds]);
 

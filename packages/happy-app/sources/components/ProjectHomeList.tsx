@@ -31,9 +31,10 @@ import {
     useAllMachines,
     useLocalSetting,
     useSessionGitStatus,
+    useSettingMutable,
     type SessionRowData,
 } from '@/sync/storage';
-import { useVisibleSessionListViewData } from '@/hooks/useVisibleSessionListViewData';
+import { useHasArchivedSessions, useVisibleSessionListViewData } from '@/hooks/useVisibleSessionListViewData';
 import {
     buildProjectHomeRows,
     workspaceOrigin,
@@ -111,6 +112,10 @@ export const ProjectHomeList = React.memo((props: ProjectHomeListLayout) => {
     const data = useVisibleSessionListViewData();
     const machines = useAllMachines();
     const expanded = useLocalSetting('expandedProjects');
+    const hasArchivedSessions = useHasArchivedSessions();
+    // Stored under its original `hideInactiveSessions` key — synced settings
+    // have no rename migration — but it hides archived sessions only.
+    const [archiveHidden, setArchiveHidden] = useSettingMutable('hideInactiveSessions');
 
     const rows = React.useMemo(() => buildProjectHomeRows({
         data: data ?? [],
@@ -118,7 +123,13 @@ export const ProjectHomeList = React.memo((props: ProjectHomeListLayout) => {
         unknownMachineText: t('status.unknown'),
         expanded,
         labels: { bots: t('sidebar.bots'), projects: t('sidebar.projects') },
-    }), [expanded, data, machines]);
+        hasArchivedSessions,
+        archiveHidden,
+    }), [archiveHidden, expanded, data, hasArchivedSessions, machines]);
+
+    const toggleArchive = React.useCallback(() => {
+        setArchiveHidden(!archiveHidden);
+    }, [archiveHidden, setArchiveHidden]);
 
     // Reads the record it is about to change from the store rather than closing
     // over it: the callback then never changes identity, and showing a
@@ -142,7 +153,7 @@ export const ProjectHomeList = React.memo((props: ProjectHomeListLayout) => {
         });
     }, []);
 
-    return <ProjectHomeListView rows={rows} onToggle={toggle} {...props} />;
+    return <ProjectHomeListView rows={rows} onToggle={toggle} onToggleArchive={toggleArchive} {...props} />;
 });
 
 /**
@@ -152,6 +163,7 @@ export const ProjectHomeList = React.memo((props: ProjectHomeListLayout) => {
 export const ProjectHomeListView = React.memo(({
     rows,
     onToggle,
+    onToggleArchive,
     topContentInset = 0,
     scrollIndicatorTopInset = 0,
     bottomContentInset = 128,
@@ -159,6 +171,7 @@ export const ProjectHomeListView = React.memo(({
 }: ProjectHomeListLayout & {
     rows: ProjectHomeRow[];
     onToggle: (projectId: string) => void;
+    onToggleArchive?: () => void;
 }) => {
     const styles = stylesheet;
     const { theme } = useUnistyles();
@@ -179,6 +192,9 @@ export const ProjectHomeListView = React.memo(({
             case 'project': return `project-${row.project.id}`;
             case 'worktree': return `worktree-${row.worktree.id}`;
             case 'worktreeToggle': return `worktree-toggle-${row.toggle.projectId}`;
+            case 'archiveToggle': return 'archive-toggle';
+            case 'archiveHeader': return `archive-header-${row.title}`;
+            case 'archived': return `archived-${row.session.id}`;
         }
     }, []);
 
@@ -219,8 +235,31 @@ export const ProjectHomeListView = React.memo(({
                 return <WorktreeRow worktree={item.worktree} last={item.last} />;
             case 'worktreeToggle':
                 return <WorktreeToggleRow toggle={item.toggle} onToggle={onToggle} />;
+            case 'archiveToggle':
+                return (
+                    <Pressable
+                        onPress={onToggleArchive}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: !item.hidden }}
+                        style={({ pressed }) => [styles.archiveToggle, pressed && styles.pressed]}
+                    >
+                        <View style={styles.archiveToggleLine} />
+                        <Text style={styles.archiveToggleText}>
+                            {item.hidden ? t('sidebar.showArchived') : t('sidebar.hideArchived')}
+                        </Text>
+                        <View style={styles.archiveToggleLine} />
+                    </Pressable>
+                );
+            case 'archiveHeader':
+                return (
+                    <View style={styles.section}>
+                        <Text style={styles.sectionText}>{item.title}</Text>
+                    </View>
+                );
+            case 'archived':
+                return <ChatRow session={item.session} archived />;
         }
-    }, [newSession, onToggle, styles, theme]);
+    }, [newSession, onToggle, onToggleArchive, styles, theme]);
 
     const ListHeader = React.useCallback(() => (
         <UpdateBanner
@@ -650,13 +689,27 @@ function sameDrawnSession(a: SessionRowData, b: SessionRowData): boolean {
 }
 
 /** A bot is a single standing chat, so its row opens it directly. */
-const BotRow = React.memo(({ session }: { session: SessionRowData }) => {
+const BotRow = React.memo(({ session }: { session: SessionRowData }) => (
+    <ChatRow session={session} bot />
+));
+
+/**
+ * One chat as a row of its own: a bot, which is a single standing chat, or a
+ * retired chat in the archive, which belongs to no checkout any more. Both
+ * open the chat directly. The archive is drawn faded, the way the flat layout
+ * fades it.
+ */
+const ChatRow = React.memo(({ session, bot = false, archived = false }: {
+    session: SessionRowData;
+    bot?: boolean;
+    archived?: boolean;
+}) => {
     const styles = stylesheet;
     const pressHandlers = useSessionPressHandlers(session.id);
     const presentation = resolveFlatSessionRowPresentation({
         state: session.state,
         hasUnread: session.hasUnread,
-        faded: session.machineOffline,
+        faded: archived || session.machineOffline,
     });
     const timestamp = React.useMemo(
         () => formatSessionListTimestamp(session.lastActivityAt),
@@ -668,14 +721,14 @@ const BotRow = React.memo(({ session }: { session: SessionRowData }) => {
             {...pressHandlers}
             accessibilityRole="button"
             accessibilityLabel={session.name}
-            style={styles.botRow}
+            style={[styles.botRow, archived && styles.archivedRow]}
         >
             <View style={styles.avatarLane}>
                 <Avatar
                     id={session.avatarId}
                     size={AVATAR_SIZE}
                     flavor={null}
-                    bot
+                    bot={bot}
                     imageUrl={session.projectAvatarUri}
                     thumbhash={session.projectAvatarThumbhash}
                 />
@@ -860,6 +913,28 @@ const stylesheet = StyleSheet.create((theme) => ({
         alignItems: 'center',
         height: BOT_ROW_HEIGHT,
         paddingHorizontal: ROW_PADDING_X,
+    },
+    archivedRow: {
+        opacity: 0.6,
+    },
+    // The divider that opens the archive, drawn as the flat layout draws it.
+    archiveToggle: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+        paddingHorizontal: 24,
+        paddingTop: 20,
+        paddingBottom: 12,
+    },
+    archiveToggleLine: {
+        flex: 1,
+        height: StyleSheet.hairlineWidth,
+        backgroundColor: theme.colors.divider,
+    },
+    archiveToggleText: {
+        fontSize: 14,
+        color: theme.colors.textSecondary,
+        ...Typography.default('regular'),
     },
     timestamp: {
         fontSize: 13,

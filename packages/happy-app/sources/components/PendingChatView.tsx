@@ -17,7 +17,6 @@ import {
     submitPendingChat,
     type PendingChat,
 } from '@/sync/pendingChats';
-import { returnPendingChatDraft } from '@/sync/pendingChatHandover';
 import { claimComposerFocus } from '@/utils/composerFocus';
 import type { MultiTextInputHandle } from './MultiTextInput';
 import { useSession } from '@/sync/storage';
@@ -108,15 +107,15 @@ export const PendingChatView = React.memo(({ pending }: { pending: PendingChat }
         router.setParams({ id: sessionId });
     }, [sessionId, router]);
 
-    // The start failed and has already said why, in its own words. All that is
-    // left is to stop standing on a tab that is not coming.
+    // The start failed and has already said why, in its own words. The typing
+    // was handed back to the anchor by whoever retired the record — it had to
+    // be, since this screen may not be mounted when the failure lands. All that
+    // is left is to stop standing on a tab that is not coming.
     React.useEffect(() => {
         if (pending.status !== 'failed' || handedOver.current) return;
         handedOver.current = true;
-        // The chat is not coming; the typing should not go down with it.
-        returnPendingChatDraft(pending.id);
         router.setParams({ id: pending.anchorSessionId });
-    }, [pending.status, pending.anchorSessionId, pending.id, router]);
+    }, [pending.status, pending.anchorSessionId, router]);
 
     /**
      * A stand-in that has handed over is spent, and this unmount is the handover
