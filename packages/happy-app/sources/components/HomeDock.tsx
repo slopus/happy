@@ -26,7 +26,9 @@ import { Typography } from '@/constants/Typography';
 import { layout } from './layout';
 import { t } from '@/text';
 import { useNewSessionDraft } from '@/hooks/useNewSessionDraft';
-import { useAllMachines, useSessions, useSetting } from '@/sync/storage';
+import { storage, useAllMachines, useSetting } from '@/sync/storage';
+import { sameSessionFields, useEqualSelector } from '@/sync/storeSelectors';
+import { getSessionActivityAt } from '@/utils/sessionActivity';
 import { getCodeAgentDefaults, resolveAgentDefaultConfig } from '@/sync/agentDefaults';
 import { formatLastSeen, formatPathRelativeToHome } from '@/utils/sessionUtils';
 import { isMachineOnline } from '@/utils/machineUtils';
@@ -697,7 +699,14 @@ export const HomeDock = React.memo(({
     const setEffortLevel = useNewSessionDraft((state) => state.setEffortLevel);
     const defaultOverrides = useSetting('agentDefaultOverrides');
     const machines = useAllMachines({ includeOffline: true });
-    const sessions = useSessions();
+    // Only metadata, liveness and the activity key feed the memos below, so the
+    // selector compares those instead of the Session objects the store re-mints
+    // per message: the O(N) place/workspace scans rerun when one of them
+    // changes, not on every socket event for any session.
+    const sessions = storage(useEqualSelector(
+        (state) => state.isDataReady ? Object.values(state.sessions) : [],
+        sameSessionFields('id', 'metadata', 'active', 'lastMessageSentAt', 'createdAt'),
+    ));
     // A person picks a computer, not a daemon. Happy CLI and Happy Agent each register a machine
     // for the same laptop, so the pair is offered once and the agent settles which one runs.
     const machineChoices = React.useMemo(() => collectMachineChoices(machines), [machines]);
@@ -738,8 +747,15 @@ export const HomeDock = React.memo(({
         () => selectedChoice?.machineIds ?? [],
         [selectedChoice],
     );
+    // The order the legacy sessionsData had — live sessions first, newest
+    // activity next — so places are offered in the order the list shows them.
     const sessionList = React.useMemo<Session[]>(
-        () => (sessions ?? []).filter((item): item is Session => typeof item !== 'string'),
+        () => sessions
+            .filter((session) => !session.metadata?.isSideChat)
+            .sort((a, b) => {
+                const activeDelta = Number(b.active) - Number(a.active);
+                return activeDelta !== 0 ? activeDelta : getSessionActivityAt(b) - getSessionActivityAt(a);
+            }),
         [sessions],
     );
     const places = React.useMemo(

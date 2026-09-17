@@ -1,21 +1,32 @@
 import equal from 'fast-deep-equal';
 import React from 'react';
+import type { Session } from './storageTypes';
 
 /**
  * The comparison on its own, given somewhere to remember the last result: a
- * newly computed result that is merely *equal* to the previous one comes back
- * as the previous one, so its identity never changes.
+ * newly computed result that `isEqual` calls the same as the previous one
+ * comes back as the previous one, so its identity never changes.
  *
  * Kept free of React so the behaviour can be exercised directly.
  */
-export function memoizeDeepEqual<TState, TResult>(
+export function memoizeEqual<TState, TResult>(
     selector: (state: TState) => TResult,
+    isEqual: (previous: TResult, next: TResult) => boolean,
     previous: { current: TResult | undefined },
 ): (state: TState) => TResult {
     return (state: TState) => {
         const next = selector(state);
-        return equal(previous.current, next) ? previous.current! : (previous.current = next);
+        return previous.current !== undefined && isEqual(previous.current, next)
+            ? previous.current
+            : (previous.current = next);
     };
+}
+
+export function memoizeDeepEqual<TState, TResult>(
+    selector: (state: TState) => TResult,
+    previous: { current: TResult | undefined },
+): (state: TState) => TResult {
+    return memoizeEqual(selector, equal, previous);
 }
 
 /**
@@ -36,4 +47,30 @@ export function useDeepEqual<TState, TResult>(
     selector: (state: TState) => TResult,
 ): (state: TState) => TResult {
     return memoizeDeepEqual(selector, React.useRef<TResult>(undefined));
+}
+
+/**
+ * useDeepEqual with a caller-supplied comparison, for results whose elements
+ * are stored objects that get re-minted more often than the fields the
+ * consumer reads change.
+ */
+export function useEqualSelector<TState, TResult>(
+    selector: (state: TState) => TResult,
+    isEqual: (previous: TResult, next: TResult) => boolean,
+): (state: TState) => TResult {
+    return memoizeEqual(selector, isEqual, React.useRef<TResult>(undefined));
+}
+
+/**
+ * Equality for a selector returning sessions whose consumer reads only the
+ * listed fields. The store re-mints a Session object on every message it
+ * receives, so comparing the objects (as useShallow does) differs on every
+ * socket event; comparing the fields instead — metadata is a reference the
+ * re-mint preserves — keeps the result, and every memo built on it, stable
+ * until one of them actually changes.
+ */
+export function sameSessionFields<K extends keyof Session>(...fields: K[]) {
+    return (previous: readonly Pick<Session, K>[], next: readonly Pick<Session, K>[]): boolean =>
+        previous.length === next.length
+        && previous.every((session, index) => fields.every((field) => session[field] === next[index][field]));
 }

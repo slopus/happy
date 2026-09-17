@@ -5,9 +5,9 @@ import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
 import { Typography } from '@/constants/Typography';
-import { useSessions, useAllMachines, useMachine } from '@/sync/storage';
+import { storage, useAllMachines, useMachine } from '@/sync/storage';
+import { sameSessionFields, useEqualSelector } from '@/sync/storeSelectors';
 import { Ionicons, Octicons } from '@expo/vector-icons';
-import type { Session } from '@/sync/storageTypes';
 import { machineStopDaemon, machineUpdateMetadata, machineDelete } from '@/sync/ops';
 import { Modal } from '@/modal';
 import { getSessionName, getSessionSubtitle } from '@/utils/sessionUtils';
@@ -22,7 +22,6 @@ export default function MachineDetailScreen() {
     const { theme } = useUnistyles();
     const { id: machineId } = useLocalSearchParams<{ id: string }>();
     const router = useRouter();
-    const sessions = useSessions();
     const machine = useMachine(machineId!);
     const navigateToSession = useNavigateToSession();
     const [isRefreshing, setIsRefreshing] = useState(false);
@@ -30,15 +29,15 @@ export default function MachineDetailScreen() {
     const [isRenamingMachine, setIsRenamingMachine] = useState(false);
     const [isDeletingMachine, setIsDeletingMachine] = useState(false);
 
-    const machineSessions = useMemo(() => {
-        if (!sessions || !machineId) return [];
-
-        return sessions.filter(item => {
-            if (typeof item === 'string') return false;
-            const session = item as Session;
-            return session.metadata?.machineId === machineId;
-        }) as Session[];
-    }, [sessions, machineId]);
+    // Compared on the fields read below rather than on the Session objects the
+    // store re-mints per message, so the memo reruns only when one of them
+    // changes and sessions on other machines never wake this screen.
+    const machineSessions = storage(useEqualSelector(
+        (state) => machineId
+            ? Object.values(state.sessions).filter((session) => session.metadata?.machineId === machineId)
+            : [],
+        sameSessionFields('id', 'metadata', 'updatedAt'),
+    ));
 
     const previousSessions = useMemo(() => {
         return [...machineSessions]

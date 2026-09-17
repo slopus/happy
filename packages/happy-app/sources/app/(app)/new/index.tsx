@@ -33,7 +33,9 @@ import { KeyboardAvoidingView, KeyboardStickyView } from 'react-native-keyboard-
 import Constants from 'expo-constants';
 import { useHeaderHeight } from '@/utils/responsive';
 import { t } from '@/text';
-import { useAllMachines, useLocalSetting, useSessions, useSetting, storage } from '@/sync/storage';
+import { useAllMachines, useLocalSetting, useSetting, storage } from '@/sync/storage';
+import { sameSessionFields, useEqualSelector } from '@/sync/storeSelectors';
+import { getSessionActivityAt } from '@/utils/sessionActivity';
 import type { NewSessionAgentType } from '@/sync/persistence';
 import { sync } from '@/sync/sync';
 import { isMachineOnline } from '@/utils/machineUtils';
@@ -747,7 +749,14 @@ function NewSessionScreen() {
 
     // Real data sources
     const allMachines = useAllMachines({ includeOffline: true });
-    const sessions = useSessions();
+    // Only metadata, liveness and the activity key feed the memos below, so the
+    // selector compares those instead of the Session objects the store re-mints
+    // per message: the O(N) place/workspace scans rerun when one of them
+    // changes, not on every socket event for any session.
+    const sessions = storage(useEqualSelector(
+        (state) => state.isDataReady ? Object.values(state.sessions) : [],
+        sameSessionFields('id', 'metadata', 'active', 'lastMessageSentAt', 'createdAt'),
+    ));
     const agentInputEnterToSend = useSetting('agentInputEnterToSend');
     const agentDefaultOverrides = useSetting('agentDefaultOverrides');
     const fileDiffsSidebarEnabled = useSetting('fileDiffsSidebar');
@@ -887,8 +896,15 @@ function NewSessionScreen() {
 
     // Both daemons on the computer contribute places, so choosing Happy Agent does not hide the
     // projects that Happy CLI sessions already established (or vice versa).
+    // The order the legacy sessionsData had — live sessions first, newest
+    // activity next — so places are offered in the order the list shows them.
     const sessionList = React.useMemo<Session[]>(
-        () => (sessions ?? []).filter((item): item is Session => typeof item !== 'string'),
+        () => sessions
+            .filter((session) => !session.metadata?.isSideChat)
+            .sort((a, b) => {
+                const activeDelta = Number(b.active) - Number(a.active);
+                return activeDelta !== 0 ? activeDelta : getSessionActivityAt(b) - getSessionActivityAt(a);
+            }),
         [sessions],
     );
     const placeMachineIds = React.useMemo(
