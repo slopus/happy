@@ -24,7 +24,6 @@ const EMPTY_SESSION_IDS: readonly string[] = [];
 export function CommandPaletteProvider({ children }: { children: React.ReactNode }) {
     const router = useRouter();
     const { logout, isAuthenticated } = useAuth();
-    const sessions = storage(useShallow((state) => state.sessions));
     const commandPaletteEnabled = storage(useShallow((state) => state.localSettings.commandPaletteEnabled));
     const sessionListViewData = useVisibleSessionListViewData();
     const machines = useAllMachines();
@@ -39,8 +38,11 @@ export function CommandPaletteProvider({ children }: { children: React.ReactNode
         t('status.unknown'),
     ), [machines, sessionListViewData]);
 
-    // Define available commands
-    const commands = useMemo((): Command[] => {
+    // Define available commands. The recent-session entries are built when the
+    // palette opens (see showCommandPalette): subscribing to the sessions map
+    // here re-rendered this provider and re-sorted every session on each socket
+    // event for any session, while the palette opens rarely.
+    const navigationCommands = useMemo((): Command[] => {
         const cmds: Command[] = [
             // Navigation commands
             {
@@ -96,25 +98,11 @@ export function CommandPaletteProvider({ children }: { children: React.ReactNode
                 }
             },
         ];
+        return cmds;
+    }, [browserSafeShortcuts, router, preferredModifier]);
 
-        // Add session-specific commands
-        const recentSessions = Object.values(sessions)
-            .sort((a, b) => b.updatedAt - a.updatedAt)
-            .slice(0, 5);
-
-        recentSessions.forEach(session => {
-            const sessionName = session.metadata?.name || `Session ${session.id.slice(0, 6)}`;
-            cmds.push({
-                id: `session-${session.id}`,
-                title: sessionName,
-                subtitle: session.metadata?.path || 'Switch to session',
-                icon: 'time-outline',
-                category: 'Recent Sessions',
-                action: () => {
-                    navigateToSession(session.id);
-                }
-            });
-        });
+    const systemCommands = useMemo((): Command[] => {
+        const cmds: Command[] = [];
 
         // System commands
         cmds.push({
@@ -143,18 +131,33 @@ export function CommandPaletteProvider({ children }: { children: React.ReactNode
         }
 
         return cmds;
-    }, [browserSafeShortcuts, router, logout, sessions, navigateToSession, preferredModifier]);
+    }, [logout, router]);
 
     const showCommandPalette = useCallback(() => {
         if (Platform.OS !== 'web' || !isAuthenticated || !commandPaletteEnabled) return;
-        
+
+        // Read the sessions once, now, instead of subscribing to them.
+        const recentSessions = Object.values(storage.getState().sessions)
+            .sort((a, b) => b.updatedAt - a.updatedAt)
+            .slice(0, 5);
+        const sessionCommands = recentSessions.map((session): Command => ({
+            id: `session-${session.id}`,
+            title: session.metadata?.name || `Session ${session.id.slice(0, 6)}`,
+            subtitle: session.metadata?.path || 'Switch to session',
+            icon: 'time-outline',
+            category: 'Recent Sessions',
+            action: () => {
+                navigateToSession(session.id);
+            }
+        }));
+
         Modal.show({
             component: CommandPalette,
             props: {
-                commands,
+                commands: [...navigationCommands, ...sessionCommands, ...systemCommands],
             }
         } as any);
-    }, [commands, commandPaletteEnabled, isAuthenticated]);
+    }, [commandPaletteEnabled, isAuthenticated, navigateToSession, navigationCommands, systemCommands]);
 
     const openNewSession = useCallback(() => {
         router.navigate('/new');
