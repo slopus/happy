@@ -73,6 +73,12 @@ jobs:
           ACTUAL_SHA256: ${{ steps.pack.outputs.sha256 }}
         run: |
           node --input-type=module -e "import { assertEgoVerifiedDigest } from './packages/paws-agent/scripts/release-contract.mjs'; assertEgoVerifiedDigest(process.env.VERIFIED_SHA256, process.env.ACTUAL_SHA256)"
+      - name: Load verifier from the workflow revision after packing
+        env:
+          AUTOMATION_SHA: ${{ github.sha }}
+        run: |
+          # Keep the tagged package immutable while allowing release-tool repairs.
+          git show "$AUTOMATION_SHA:packages/paws-agent/scripts/verify-pack.mjs" > packages/paws-agent/scripts/verify-pack.mjs
       - name: Verify the exact release tarball
         shell: bash
         run: PAWS_AGENT_DIST_TAG="${{ steps.contract.outputs.dist_tag }}" node packages/paws-agent/scripts/verify-pack.mjs --prepare-browser "${{ steps.pack.outputs.tarball }}" | tee "$RUNNER_TEMP/paws-agent/node-consumer-verification.json"
@@ -147,9 +153,31 @@ jobs:
           pnpm --filter @wangjs-jacky/paws-agent test
           registry_e2e="$RUNNER_TEMP/paws-agent-registry-e2e"
           mkdir -p "$registry_e2e"
-          npm init -y --prefix "$registry_e2e"
+          (cd "$registry_e2e" && npm init -y)
           npm install --prefix "$registry_e2e" --ignore-scripts "$PAWS_AGENT_INSTALL_SPEC"
           PAWS_AGENT_CONSUMER_DIR="$registry_e2e" PAWS_AGENT_BIN_PATH="$registry_e2e/node_modules/.bin/paws-agent" pnpm --filter @wangjs-jacky/paws-agent test:integration
+      - name: Promote the verified version and clear this workflow's rollback marker
+        if: inputs.ego_verified_sha256 != '' && steps.post_publish.outcome == 'success'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          RELEASE_VERSION: ${{ steps.contract.outputs.version }}
+          RELEASE_DIST_TAG: ${{ steps.contract.outputs.dist_tag }}
+        run: |
+          set -euo pipefail
+          release_spec="@wangjs-jacky/paws-agent@$RELEASE_VERSION"
+          deprecated="$(npm view "$release_spec" deprecated)"
+          if [ "$deprecated" = 'Post-publish validation failed; use the previous latest release.' ]; then
+            npm deprecate "$release_spec" ""
+          elif [ -n "$deprecated" ]; then
+            echo 'Refusing to clear a deprecation not created by this workflow.' >&2
+            exit 1
+          fi
+          current="$(npm view '@wangjs-jacky/paws-agent' "dist-tags.$RELEASE_DIST_TAG")"
+          if [ "$current" != "$RELEASE_VERSION" ]; then
+            npm dist-tag add "$release_spec" "$RELEASE_DIST_TAG"
+          fi
+          test "$(npm view '@wangjs-jacky/paws-agent' "dist-tags.$RELEASE_DIST_TAG")" = "$RELEASE_VERSION"
+          test -z "$(npm view "$release_spec" deprecated)"
       - name: Roll back a failed stable promotion when credentials permit
         if: >-
           steps.post_publish.outcome == 'failure' &&

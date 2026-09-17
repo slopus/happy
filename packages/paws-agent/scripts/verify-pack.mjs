@@ -91,7 +91,8 @@ async function scanSecrets(directory) {
 }
 await scanSecrets(unpacked);
 
-await run('npm', ['publish', '--dry-run', '--json', '--ignore-scripts', '--tag', process.env.PAWS_AGENT_DIST_TAG ?? 'next', tarball], { cwd: workspace });
+// Inspect packaging without asking npm whether this immutable version can be published again.
+await run('npm', ['pack', '--dry-run', '--json', '--ignore-scripts', tarball], { cwd: workspace });
 await run('npm', ['init', '-y'], { cwd: workspace });
 await run('npm', [
     'install', '--ignore-scripts', '--no-audit', '--no-fund', '--registry=https://registry.npmjs.org',
@@ -147,5 +148,5 @@ process.stdout.write(JSON.stringify({
     installSpec: process.env.PAWS_AGENT_INSTALL_SPEC ?? tarball,
     browserFixture: join(browserDir, 'index.html'),
     browserStatus: 'pending-ego-verification',
-    checks: ['metadata', 'secret-scan', 'dry-run', 'publint', 'esm', 'cjs', 'cli', 'browser-bundle'],
+    checks: ['metadata', 'secret-scan', 'pack-dry-run', 'publint', 'esm', 'cjs', 'cli', 'browser-bundle'],
 }, null, 2) + '\n');
