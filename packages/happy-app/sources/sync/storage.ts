@@ -1248,10 +1248,15 @@ export const storage = create<StorageState>()((set, get) => {
                 }
             };
 
+            // The row only shows whether a draft exists, so rebuilding the
+            // list for every edit of the draft text bought nothing.
+            const hasDraftChanged = !!session.draft !== !!normalizedDraft;
             return {
                 ...state,
                 sessions: updatedSessions,
-                sessionListViewData: buildSessionListViewData(updatedSessions, state.unreadSessionIds, state.machines, state.projects)
+                ...(hasDraftChanged && {
+                    sessionListViewData: buildSessionListViewData(updatedSessions, state.unreadSessionIds, state.machines, state.projects),
+                }),
             };
         }),
         // Permission / model / effort picks are local mirrors of synced session
@@ -1296,13 +1301,19 @@ export const storage = create<StorageState>()((set, get) => {
             });
             saveSessionLastMessageSentAt(allTimestamps);
 
-            // Rebuild list view data — this timestamp drives activity-based sort.
+            // Rebuild list view data — this timestamp drives activity-based sort,
+            // but only as the fallback for an agent that publishes no
+            // lastMeaningfulMessageAt (see getSessionActivityAt); once that is
+            // set no row reads it.
             // Pass unreadSessionIds so other sessions keep their unread badges
             // (omitting it drops every badge until the next rebuild).
+            const affectsRow = session.metadata?.lastMeaningfulMessageAt == null;
             return {
                 ...state,
                 sessions: updatedSessions,
-                sessionListViewData: buildSessionListViewData(updatedSessions, state.unreadSessionIds, state.machines, state.projects)
+                ...(affectsRow && {
+                    sessionListViewData: buildSessionListViewData(updatedSessions, state.unreadSessionIds, state.machines, state.projects),
+                }),
             };
         }),
         getSessionPathKey: (sessionId: string): string | null => {

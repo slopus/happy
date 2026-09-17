@@ -105,3 +105,23 @@ describe('applyMessages', () => {
         expect(storage.getState().sessions.a.latestUsage?.inputTokens).toBe(20);
     });
 });
+
+describe('updateSessionDraft / markSessionMessageSent', () => {
+    it('rebuild the list only when a row can show the difference', () => {
+        storage.getState().applySessions([session({ id: 'a', lastMeaningfulMessageAt: 4_000 })]);
+        const view = storage.getState().sessionListViewData;
+
+        storage.getState().updateSessionDraft('a', 'hello');
+        const withDraft = storage.getState().sessionListViewData;
+        expect(withDraft).not.toBe(view);
+        storage.getState().updateSessionDraft('a', 'hello again');
+        expect(storage.getState().sessions.a.draft).toBe('hello again');
+        expect(storage.getState().sessionListViewData).toBe(withDraft);
+
+        // The agent publishes lastMeaningfulMessageAt, so this device's sent-at
+        // is not the row's activity key.
+        storage.getState().markSessionMessageSent('a');
+        expect(storage.getState().sessions.a.lastMessageSentAt).toBeDefined();
+        expect(storage.getState().sessionListViewData).toBe(withDraft);
+    });
+});
