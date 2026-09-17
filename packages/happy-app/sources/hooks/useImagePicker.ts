@@ -26,6 +26,17 @@ const IOS_ATTACHMENT_MAX_FILE_SIZE = MAX_FILE_SIZE - 40;
 
 export type { AttachmentPreview };
 
+// Web previews are blob: object URLs (pasteImages.web.ts); the browser keeps
+// the underlying File alive until the URL is revoked, and nothing revoked
+// them. Both callers only drop a preview after the upload has read its bytes
+// (sync.sendMessage uploads before onAccepted; HomeDock clears once the
+// session started), so releasing here is safe.
+function releasePreviewUri(uri: string) {
+    if (uri.startsWith('blob:') && typeof URL !== 'undefined' && typeof URL.revokeObjectURL === 'function') {
+        URL.revokeObjectURL(uri);
+    }
+}
+
 type UseImagePickerResult = {
     selectedImages: AttachmentPreview[];
     pickImages: () => Promise<void>;
@@ -186,11 +197,18 @@ export function useImagePicker(): UseImagePickerResult {
     }, [requestPermission]);
 
     const removeImage = useCallback((id: string) => {
-        setSelectedImages(prev => prev.filter(img => img.id !== id));
+        setSelectedImages(prev => {
+            // Revoking twice (StrictMode re-runs updaters) is a harmless no-op.
+            for (const img of prev) if (img.id === id) releasePreviewUri(img.uri);
+            return prev.filter(img => img.id !== id);
+        });
     }, []);
 
     const clearImages = useCallback(() => {
-        setSelectedImages([]);
+        setSelectedImages(prev => {
+            for (const img of prev) releasePreviewUri(img.uri);
+            return prev.length === 0 ? prev : [];
+        });
     }, []);
 
     const addImages = useCallback((images: AttachmentPreview[]) => {
