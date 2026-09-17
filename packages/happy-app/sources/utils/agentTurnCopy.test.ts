@@ -35,6 +35,32 @@ describe('buildAgentTurnCopyTextByMessageId', () => {
         expect(buildAgentTurnCopyTextByMessageId(messages, { currentTurnComplete: false }).size).toBe(0);
     });
 
+    it('reuses the joined text of a turn whose messages are unchanged', () => {
+        let textReads = 0;
+        const block = (id: string, text: string): AgentTurnCopyMessage => ({
+            kind: 'agent-text',
+            id,
+            get text() {
+                textReads++;
+                return text;
+            },
+        });
+        const messages: AgentTurnCopyMessage[] = [
+            block('final', 'Final answer'),
+            block('progress', 'Progress update'),
+            { kind: 'user-text', id: 'user', text: 'Do it' },
+        ];
+
+        const first = buildAgentTurnCopyTextByMessageId(messages, { currentTurnComplete: true });
+        const readsForFirst = textReads;
+        textReads = 0;
+        const second = buildAgentTurnCopyTextByMessageId(messages, { currentTurnComplete: true });
+
+        expect(second).toEqual(first);
+        // The classification pass still reads each block; the join must not.
+        expect(textReads).toBeLessThan(readsForFirst);
+    });
+
     it('still offers copy for completed historical turns', () => {
         const messages: AgentTurnCopyMessage[] = [
             { kind: 'user-text', id: 'current-user', text: 'Next task' },
