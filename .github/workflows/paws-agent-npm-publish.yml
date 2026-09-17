@@ -176,8 +176,17 @@ jobs:
           if [ "$current" != "$RELEASE_VERSION" ]; then
             npm dist-tag add "$release_spec" "$RELEASE_DIST_TAG"
           fi
-          test "$(npm view '@wangjs-jacky/paws-agent' "dist-tags.$RELEASE_DIST_TAG")" = "$RELEASE_VERSION"
-          test -z "$(npm view "$release_spec" deprecated)"
+          # Registry metadata can lag behind successful dist-tag/deprecation writes.
+          for attempt in $(seq 1 24); do
+            current="$(npm view '@wangjs-jacky/paws-agent' "dist-tags.$RELEASE_DIST_TAG" --prefer-online)"
+            deprecated="$(npm view "$release_spec" deprecated --prefer-online)"
+            if [ "$current" = "$RELEASE_VERSION" ] && [ -z "$deprecated" ]; then
+              exit 0
+            fi
+            sleep 5
+          done
+          echo 'Registry promotion metadata did not converge within two minutes.' >&2
+          exit 1
       - name: Roll back a failed stable promotion when credentials permit
         if: >-
           steps.post_publish.outcome == 'failure' &&
