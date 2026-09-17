@@ -1,5 +1,6 @@
 import * as React from 'react';
-import { useSession, useSessionMessages, useSetting } from "@/sync/storage";
+import { storage, useSessionMessages, useSetting } from "@/sync/storage";
+import { useShallow } from 'zustand/react/shallow';
 import { sync } from '@/sync/sync';
 import { ActivityIndicator, AppState, NativeScrollEvent, NativeSyntheticEvent, Platform, Pressable, View } from 'react-native';
 import { useCallback } from 'react';
@@ -117,6 +118,26 @@ const EMPTY_GROUP_TOGGLES = {
 } as const;
 const EMPTY_WATCHED_TURN_IDS = new Set<string>() as ReadonlySet<string>;
 
+/**
+ * The three facts about the session the list actually reads. Subscribing to
+ * the whole session object re-rendered the list pipeline (window, grouping,
+ * copy text, FlashList) on every activeAt heartbeat, usage update and draft
+ * save of the open session.
+ */
+function useChatSessionFlags(sessionId: string) {
+    return storage(useShallow((state) => {
+        const session = state.sessions[sessionId];
+        const controlled = usesControlledSessionUi(session?.metadata);
+        return {
+            thinking: session?.thinking === true,
+            hasPendingPermission: Boolean(
+                session?.agentState?.requests && Object.keys(session.agentState.requests).length > 0,
+            ),
+            controlledByUser: controlled && (session?.agentState?.controlledByUser || false),
+        };
+    }));
+}
+
 function stringSetsEqual(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {
     if (a.size !== b.size) return false;
     for (const value of a) {
@@ -215,9 +236,9 @@ const OlderEnd = React.memo((props: { showOlderSpinner: boolean; topContentInset
 
 /** Renders just past the newest message, so the list's header when inverted. */
 const NewerEnd = React.memo((props: { sessionId: string }) => {
-    const session = useSession(props.sessionId)!;
+    const { controlledByUser } = useChatSessionFlags(props.sessionId);
     return (
-        <ChatFooter controlledByUser={usesControlledSessionUi(session.metadata) && (session.agentState?.controlledByUser || false)} />
+        <ChatFooter controlledByUser={controlledByUser} />
     )
 });
 
@@ -259,8 +280,8 @@ const ChatListInternal = React.memo((props: {
     // everything older sits in the store until the reader asks for it.
     const [oldestRenderedId, setOldestRenderedId] = React.useState<string | null>(null);
     const listReadyRef = React.useRef(false);
-    const session = useSession(props.sessionId);
-    const controlMode = resolveControlMode(usesControlledSessionUi(session?.metadata) ? session?.agentState?.controlledByUser : false);
+    const sessionFlags = useChatSessionFlags(props.sessionId);
+    const controlMode = resolveControlMode(sessionFlags.controlledByUser);
     const previousControlModeRef = React.useRef(controlMode);
 
     React.useEffect(() => {
@@ -284,12 +305,10 @@ const ChatListInternal = React.memo((props: {
     // its work visible when it finishes, while a completed turn first seen on
     // open keeps the historic collapsed-by-default behavior.
     const groupToolCalls = useSetting('groupToolCalls');
-    const hasPendingPermission = Boolean(
-        session?.agentState?.requests && Object.keys(session.agentState.requests).length > 0,
-    );
+    const hasPendingPermission = sessionFlags.hasPendingPermission;
     const [appState, setAppState] = React.useState(AppState.currentState);
     const sessionInForeground = props.active && appState !== 'background';
-    const currentTurnComplete = session?.thinking !== true
+    const currentTurnComplete = !sessionFlags.thinking
         && !hasPendingPermission;
     const groupingOptions = React.useMemo(
         () => ({ collapseCurrentTurn: currentTurnComplete }),
@@ -335,6 +354,19 @@ const ChatListInternal = React.memo((props: {
         requestedWindowEndRef.current = 0;
         setOldestRenderedId(null);
     }, [props.sessionId]);
+
+    // Back at the newest message the window shrinks to INITIAL_WINDOW again
+    // (the pin effect re-pins it). The window only ever grew while the reader
+    // explored history; without this a chat once scrolled to its top kept
+    // every message rendered — re-windowed, re-grouped and re-joined on every
+    // update — for the rest of the tab's life. The rows dropped sit at the far
+    // end of the inverted list, above the viewport.
+    const shrinkWindowToNewest = useCallback(() => {
+        if (requestedWindowEndRef.current === 0) return;
+        requestedWindowEndRef.current = 0;
+        awaitingOlderRef.current = false;
+        setOldestRenderedId(null);
+    }, []);
 
     // The spinner reflects a fetch the reader is actually waiting on: the
     // window has consumed everything in the store and sync is asking the
@@ -626,6 +658,9 @@ const ChatListInternal = React.memo((props: {
             && distanceFromOldest < scrollMetricsRef.current.viewportHeight * START_REACHED_VIEWPORTS) {
             requestOlderHistoryRef.current();
         }
+        if (distanceFromNewest === 0) {
+            shrinkWindowToNewest();
+        }
         updateHeaderBackdropVisibility();
         updateBottomDockVisibility(distanceFromNewest);
         const next = distanceFromNewest > SCROLL_THRESHOLD;
@@ -633,12 +668,37 @@ const ChatListInternal = React.memo((props: {
             showScrollButtonRef.current = next;
             setShowScrollButton(next);
         }
-    }, [updateBottomDockVisibility, updateHeaderBackdropVisibility]);
+    }, [shrinkWindowToNewest, updateBottomDockVisibility, updateHeaderBackdropVisibility]);
 
     const handleContentSizeChange = useCallback((_width: number, height: number) => {
         scrollMetricsRef.current.contentHeight = height;
         updateHeaderBackdropVisibility();
     }, [updateHeaderBackdropVisibility]);
+
+    const handleLayout = useCallback((event: { nativeEvent: { layout: { height: number } } }) => {
+        scrollMetricsRef.current.viewportHeight = event.nativeEvent.layout.height;
+        updateHeaderBackdropVisibility();
+    }, [updateHeaderBackdropVisibility]);
+
+    // Stable prop identities: FlashList diffs its props on every render, and a
+    // fresh style object or element here is a change on each of them.
+    // paddingTop, not paddingBottom: the content container is inside the
+    // inverted transform, so its top edge is the bottom of the screen. The
+    // measured dock inset lets the newest message scroll above the floating
+    // composer instead of stopping underneath it.
+    const contentContainerStyle = React.useMemo(
+        () => ({ paddingTop: 8 + (props.bottomContentInset ?? 0) }),
+        [props.bottomContentInset],
+    );
+    // Swapped: the list's header sits at item 0, which an inverted list draws
+    // at the bottom of the screen.
+    const listHeader = React.useMemo(() => <NewerEnd sessionId={props.sessionId} />, [props.sessionId]);
+    const listFooter = React.useMemo(() => (
+        <OlderEnd
+            showOlderSpinner={showOlderSpinner}
+            topContentInset={props.topContentInset}
+        />
+    ), [showOlderSpinner, props.topContentInset]);
 
     // Nothing here places the list on open. Offset 0 is both where a scroll
     // view rests by default and where the newest message is, so an inverted
@@ -662,7 +722,8 @@ const ChatListInternal = React.memo((props: {
     // the origin rather than a measurement of where the content currently ends.
     const scrollToBottom = useCallback(() => {
         listRef.current?.scrollToOffset({ offset: 0, animated: true });
-    }, []);
+        shrinkWindowToNewest();
+    }, [shrinkWindowToNewest]);
 
     // Reaching the oldest rendered message renders another page of history, and
     // asks sync for more once the store runs out. History is inserted at the
@@ -769,32 +830,17 @@ const ChatListInternal = React.memo((props: {
                 maintainVisibleContentPosition={MAINTAIN_VISIBLE_CONTENT_POSITION}
                 keyboardShouldPersistTaps="handled"
                 keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'none'}
-                // The measured dock inset lets the newest message scroll above
-                // the floating composer instead of stopping underneath it.
-                // paddingTop, not paddingBottom: the content container is
-                // inside the inverted transform, so its top edge is the bottom
-                // of the screen.
-                contentContainerStyle={{ paddingTop: 8 + (props.bottomContentInset ?? 0) }}
+                contentContainerStyle={contentContainerStyle}
                 renderItem={renderItem}
                 viewabilityConfig={SYNTAX_VIEWABILITY}
                 onViewableItemsChanged={syntaxViewport.update}
                 onScroll={handleScroll}
                 onScrollBeginDrag={handleScrollBeginDrag}
                 scrollEventThrottle={16}
-                onLayout={(event) => {
-                    scrollMetricsRef.current.viewportHeight = event.nativeEvent.layout.height;
-                    updateHeaderBackdropVisibility();
-                }}
+                onLayout={handleLayout}
                 onContentSizeChange={handleContentSizeChange}
-                // Swapped: the list's header sits at item 0, which an inverted
-                // list draws at the bottom of the screen.
-                ListHeaderComponent={<NewerEnd sessionId={props.sessionId} />}
-                ListFooterComponent={(
-                    <OlderEnd
-                        showOlderSpinner={showOlderSpinner}
-                        topContentInset={props.topContentInset}
-                    />
-                )}
+                ListHeaderComponent={listHeader}
+                ListFooterComponent={listFooter}
                 onLoad={handleLoad}
             />
             {showScrollButton && (

@@ -11,6 +11,33 @@ export type AgentTurnCopyMessage = {
 };
 
 /**
+ * Copy text per final message id, remembered across calls. The chat rebuilds
+ * the map on every change to its window — every message of an open session —
+ * and each rebuild re-joined the full text of every completed turn into
+ * strings identical to the previous ones. Messages are immutable store
+ * objects, so a turn whose message identities are unchanged has unchanged
+ * text. Bounded by a wipe rather than an LRU: a wipe costs one rebuild.
+ */
+const MAX_CACHED_TURNS = 2000;
+const copyTextByFinalMessageId = new Map<string, { msgs: readonly AgentTurnCopyMessage[]; text: string }>();
+
+function turnCopyText(finalMessageId: string, turnMessagesNewestFirst: readonly AgentTurnCopyMessage[]): string {
+    const cached = copyTextByFinalMessageId.get(finalMessageId);
+    if (cached
+        && cached.msgs.length === turnMessagesNewestFirst.length
+        && cached.msgs.every((message, i) => message === turnMessagesNewestFirst[i])) {
+        return cached.text;
+    }
+    const text = [...turnMessagesNewestFirst]
+        .reverse()
+        .map((message) => message.text!.trim())
+        .join('\n\n');
+    if (copyTextByFinalMessageId.size >= MAX_CACHED_TURNS) copyTextByFinalMessageId.clear();
+    copyTextByFinalMessageId.set(finalMessageId, { msgs: turnMessagesNewestFirst, text });
+    return text;
+}
+
+/**
  * Builds the copy payload for each completed assistant turn and attaches it to
  * that turn's final text block. Messages are newest-first, while copied text
  * should read in chronological order.
@@ -43,11 +70,9 @@ export function buildAgentTurnCopyTextByMessageId(
             continue;
         }
         const finalMessage = turnMessagesNewestFirst[0];
-        const copyText = [...turnMessagesNewestFirst]
-            .reverse()
-            .map((message) => message.text!.trim())
-            .join('\n\n');
-        if (finalMessage && copyText) {
+        if (!finalMessage) continue;
+        const copyText = turnCopyText(finalMessage.id, turnMessagesNewestFirst);
+        if (copyText) {
             result.set(finalMessage.id, copyText);
         }
     }

@@ -79,7 +79,9 @@ vi.mock('@expo/vector-icons', async () => {
     return { Octicons: (props: any) => ReactModule.createElement('Octicons', props) };
 });
 vi.mock('@/sync/storage', () => ({
-    useSession: () => state.session,
+    storage: (selector: (storeState: any) => any) => selector({
+        sessions: state.session ? { [state.session.id]: state.session } : {},
+    }),
     useSessionMessages: () => ({ messages: state.messages, hasMoreOlder: state.hasMoreOlder, isLoadingOlder: false }),
     useSetting: () => true,
 }));
