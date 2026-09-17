@@ -21,7 +21,7 @@ vi.mock('@/sync/sync', () => ({ sync: { preloadSession: mocks.preloadSession } }
 vi.mock('@/track', () => ({ trackSessionSwitched: mocks.trackSessionSwitched }));
 vi.mock('@/utils/perfLog', () => ({ perfMark: mocks.perfMark }));
 
-import { useSessionPressHandlers } from './useNavigateToSession';
+import { singularSessionRoute, useSessionPressHandlers } from './useNavigateToSession';
 
 let renderer: ReturnType<typeof create>;
 let handlers: ReturnType<typeof useSessionPressHandlers>;
@@ -94,6 +94,19 @@ describe('session row press contract', () => {
         expect(mocks.preloadSession).not.toHaveBeenCalled();
         expect(mocks.router.prefetch).not.toHaveBeenCalled();
         handlers.onPress();
-        expect(mocks.router.push).toHaveBeenCalledWith('/session/a');
+        if (reason === 'web') {
+            expect(mocks.router.push).toHaveBeenCalledWith('/session/a', { dangerouslySingular: singularSessionRoute });
+        } else {
+            expect(mocks.router.push).toHaveBeenCalledWith('/session/a');
+        }
+    });
+
+    it('keeps a single session route in the web stack, keyed on the route name', () => {
+        mocks.platform.OS = 'web';
+        handlers.onPress();
+        const [, options] = mocks.router.push.mock.calls[0];
+        expect(options.dangerouslySingular).toBe(singularSessionRoute);
+        // Different ids must collapse into the same singular id.
+        expect(singularSessionRoute('session/[id]')).toBe('session/[id]');
     });
 });
