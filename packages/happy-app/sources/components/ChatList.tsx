@@ -355,6 +355,19 @@ const ChatListInternal = React.memo((props: {
         setOldestRenderedId(null);
     }, [props.sessionId]);
 
+    // Back at the newest message the window shrinks to INITIAL_WINDOW again
+    // (the pin effect re-pins it). The window only ever grew while the reader
+    // explored history; without this a chat once scrolled to its top kept
+    // every message rendered — re-windowed, re-grouped and re-joined on every
+    // update — for the rest of the tab's life. The rows dropped sit at the far
+    // end of the inverted list, above the viewport.
+    const shrinkWindowToNewest = useCallback(() => {
+        if (requestedWindowEndRef.current === 0) return;
+        requestedWindowEndRef.current = 0;
+        awaitingOlderRef.current = false;
+        setOldestRenderedId(null);
+    }, []);
+
     // The spinner reflects a fetch the reader is actually waiting on: the
     // window has consumed everything in the store and sync is asking the
     // server for more. The raw isLoadingOlder flag also pulses on every
@@ -645,6 +658,9 @@ const ChatListInternal = React.memo((props: {
             && distanceFromOldest < scrollMetricsRef.current.viewportHeight * START_REACHED_VIEWPORTS) {
             requestOlderHistoryRef.current();
         }
+        if (distanceFromNewest === 0) {
+            shrinkWindowToNewest();
+        }
         updateHeaderBackdropVisibility();
         updateBottomDockVisibility(distanceFromNewest);
         const next = distanceFromNewest > SCROLL_THRESHOLD;
@@ -652,7 +668,7 @@ const ChatListInternal = React.memo((props: {
             showScrollButtonRef.current = next;
             setShowScrollButton(next);
         }
-    }, [updateBottomDockVisibility, updateHeaderBackdropVisibility]);
+    }, [shrinkWindowToNewest, updateBottomDockVisibility, updateHeaderBackdropVisibility]);
 
     const handleContentSizeChange = useCallback((_width: number, height: number) => {
         scrollMetricsRef.current.contentHeight = height;
@@ -681,7 +697,8 @@ const ChatListInternal = React.memo((props: {
     // the origin rather than a measurement of where the content currently ends.
     const scrollToBottom = useCallback(() => {
         listRef.current?.scrollToOffset({ offset: 0, animated: true });
-    }, []);
+        shrinkWindowToNewest();
+    }, [shrinkWindowToNewest]);
 
     // Reaching the oldest rendered message renders another page of history, and
     // asks sync for more once the store runs out. History is inserted at the
