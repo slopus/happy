@@ -675,6 +675,31 @@ const ChatListInternal = React.memo((props: {
         updateHeaderBackdropVisibility();
     }, [updateHeaderBackdropVisibility]);
 
+    const handleLayout = useCallback((event: { nativeEvent: { layout: { height: number } } }) => {
+        scrollMetricsRef.current.viewportHeight = event.nativeEvent.layout.height;
+        updateHeaderBackdropVisibility();
+    }, [updateHeaderBackdropVisibility]);
+
+    // Stable prop identities: FlashList diffs its props on every render, and a
+    // fresh style object or element here is a change on each of them.
+    // paddingTop, not paddingBottom: the content container is inside the
+    // inverted transform, so its top edge is the bottom of the screen. The
+    // measured dock inset lets the newest message scroll above the floating
+    // composer instead of stopping underneath it.
+    const contentContainerStyle = React.useMemo(
+        () => ({ paddingTop: 8 + (props.bottomContentInset ?? 0) }),
+        [props.bottomContentInset],
+    );
+    // Swapped: the list's header sits at item 0, which an inverted list draws
+    // at the bottom of the screen.
+    const listHeader = React.useMemo(() => <NewerEnd sessionId={props.sessionId} />, [props.sessionId]);
+    const listFooter = React.useMemo(() => (
+        <OlderEnd
+            showOlderSpinner={showOlderSpinner}
+            topContentInset={props.topContentInset}
+        />
+    ), [showOlderSpinner, props.topContentInset]);
+
     // Nothing here places the list on open. Offset 0 is both where a scroll
     // view rests by default and where the newest message is, so an inverted
     // list opens on the newest message with no scroll at all — which is the
@@ -805,32 +830,17 @@ const ChatListInternal = React.memo((props: {
                 maintainVisibleContentPosition={MAINTAIN_VISIBLE_CONTENT_POSITION}
                 keyboardShouldPersistTaps="handled"
                 keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'none'}
-                // The measured dock inset lets the newest message scroll above
-                // the floating composer instead of stopping underneath it.
-                // paddingTop, not paddingBottom: the content container is
-                // inside the inverted transform, so its top edge is the bottom
-                // of the screen.
-                contentContainerStyle={{ paddingTop: 8 + (props.bottomContentInset ?? 0) }}
+                contentContainerStyle={contentContainerStyle}
                 renderItem={renderItem}
                 viewabilityConfig={SYNTAX_VIEWABILITY}
                 onViewableItemsChanged={syntaxViewport.update}
                 onScroll={handleScroll}
                 onScrollBeginDrag={handleScrollBeginDrag}
                 scrollEventThrottle={16}
-                onLayout={(event) => {
-                    scrollMetricsRef.current.viewportHeight = event.nativeEvent.layout.height;
-                    updateHeaderBackdropVisibility();
-                }}
+                onLayout={handleLayout}
                 onContentSizeChange={handleContentSizeChange}
-                // Swapped: the list's header sits at item 0, which an inverted
-                // list draws at the bottom of the screen.
-                ListHeaderComponent={<NewerEnd sessionId={props.sessionId} />}
-                ListFooterComponent={(
-                    <OlderEnd
-                        showOlderSpinner={showOlderSpinner}
-                        topContentInset={props.topContentInset}
-                    />
-                )}
+                ListHeaderComponent={listHeader}
+                ListFooterComponent={listFooter}
                 onLoad={handleLoad}
             />
             {showScrollButton && (
