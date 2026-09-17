@@ -746,12 +746,15 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
                 </View>
             </View>
         </Pressable>
-        {Platform.OS === 'web' && (
+        {/* Mounted only while open: the popover subscribes to the session and
+            runs the whole quick-actions hook even when it renders null, and
+            there is one per row. */}
+        {Platform.OS === 'web' && actionsAnchor && (
             <SessionActionsPopover
                 anchor={actionsAnchor}
                 onClose={() => setActionsAnchor(null)}
                 sessionId={session.id}
-                visible={!!actionsAnchor}
+                visible
             />
         )}
         </View>

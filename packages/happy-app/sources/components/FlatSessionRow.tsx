@@ -241,15 +241,20 @@ export const FlatSessionRow = React.memo(({ row, selected, showBorder, archived 
     );
 
     if (!swipeEnabled) {
+        // Mounted only while open: the popover subscribes to the session and
+        // runs the whole quick-actions hook even when it renders null, and
+        // there is one per row.
         return (
             <>
                 {content}
-                <SessionActionsPopover
-                    anchor={actionsAnchor}
-                    onClose={() => setActionsAnchor(null)}
-                    sessionId={session.id}
-                    visible={!!actionsAnchor}
-                />
+                {actionsAnchor && (
+                    <SessionActionsPopover
+                        anchor={actionsAnchor}
+                        onClose={() => setActionsAnchor(null)}
+                        sessionId={session.id}
+                        visible
+                    />
+                )}
             </>
         );
     }
