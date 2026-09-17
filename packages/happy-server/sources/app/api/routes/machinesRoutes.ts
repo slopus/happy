@@ -1,6 +1,7 @@
 import { eventRouter } from "@/app/events/eventRouter";
 import { Fastify } from "../types";
 import { z } from "zod";
+import { Prisma } from "@prisma/client";
 import { db } from "@/storage/db";
 import { inTx, afterTx } from "@/storage/inTx";
 import { log } from "@/utils/log";
@@ -52,20 +53,39 @@ export function machinesRoutes(app: Fastify) {
             // Create new machine
             log({ module: 'machines', machineId: id, userId }, 'Creating new machine');
 
-            const newMachine = await db.machine.create({
-                data: {
-                    id,
-                    accountId: userId,
-                    metadata,
-                    metadataVersion: 1,
-                    daemonState: daemonState || null,
-                    daemonStateVersion: daemonState ? 1 : 0,
-                    dataEncryptionKey: dataEncryptionKey ? new Uint8Array(Buffer.from(dataEncryptionKey, 'base64')) : undefined,
-                    // Default to offline - in case the user does not start daemon
-                    active: false,
-                    // lastActiveAt and activeAt defaults to now() in schema
+            let newMachine;
+            try {
+                newMachine = await db.machine.create({
+                    data: {
+                        id,
+                        accountId: userId,
+                        metadata,
+                        metadataVersion: 1,
+                        daemonState: daemonState || null,
+                        daemonStateVersion: daemonState ? 1 : 0,
+                        dataEncryptionKey: dataEncryptionKey ? new Uint8Array(Buffer.from(dataEncryptionKey, 'base64')) : undefined,
+                        // Default to offline - in case the user does not start daemon
+                        active: false,
+                        // lastActiveAt and activeAt defaults to now() in schema
+                    }
+                });
+            } catch (e) {
+                // A machine id is the primary key of the whole table, not of this
+                // account's slice of it, so an id another account already registered
+                // cannot be created here. Daemons do bring such an id along: one
+                // re-paired to a second account keeps the machine identity it minted
+                // under the first. This is a permanent answer, not an outage, and
+                // saying so is what lets a daemon mint a fresh id instead of retrying
+                // a request that can never succeed.
+                if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+                    log({ module: 'machines', machineId: id, userId }, 'Machine id belongs to another account');
+                    return reply.code(409).send({
+                        error: 'Machine id is registered to another account',
+                        code: 'machine_id_taken'
+                    });
                 }
-            });
+                throw e;
+            }
 
             // Emit both new-machine and update-machine events for backward compatibility
             const updSeq1 = await allocateUserSeq(userId);
