@@ -8,4 +8,10 @@ describe('settingsFeatureEntries', () => {
         expect(entries.map((entry) => entry.key)).not.toContain('image-style-agent');
         expect(entries.map((entry) => entry.key)).not.toContain('my-agents');
     });
+
+    it('does not duplicate the outer usage shortcut inside settings', () => {
+        const entries = getSettingsFeatureEntries({ experiments: true });
+
+        expect(entries.map((entry) => entry.key)).not.toContain('usage');
+    });
 });

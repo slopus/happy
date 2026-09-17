@@ -1,7 +1,11 @@
 import * as React from 'react';
 import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { UsagePanel } from './UsagePanel';
+import {
+    filterCodexHeatmapMonthLabels,
+    getCodexHeatmapCellMetrics,
+    UsagePanel,
+} from './UsagePanel';
 import { zhHans } from '@/text/translations/zh-Hans';
 import { appThemes } from '@/themePacks';
 
@@ -158,6 +162,24 @@ describe('UsagePanel', () => {
 
     afterEach(() => {
         consoleErrorSpy.mockRestore();
+    });
+
+    it('keeps the 53-week grid within an extremely narrow container', () => {
+        const width = 180;
+        const metrics = getCodexHeatmapCellMetrics(width);
+
+        expect(53 * metrics.cellSize + 52 * metrics.gap).toBeLessThanOrEqual(width);
+    });
+
+    it('removes month labels that would overlap at narrow widths', () => {
+        const labels = [
+            { key: '2025-09', label: 'Sep', weekIndex: 0 },
+            { key: '2025-10', label: 'Oct', weekIndex: 1 },
+            { key: '2025-11', label: 'Nov', weekIndex: 5 },
+        ];
+
+        expect(filterCodexHeatmapMonthLabels(labels, 6).map((label) => label.key))
+            .toEqual(['2025-09', '2025-11']);
     });
 
     it('shows a Codex sync state instead of empty API usage metrics', async () => {
@@ -558,7 +580,7 @@ describe('UsagePanel', () => {
         act(() => renderer.unmount());
     });
 
-    it('renders a scrollable 365-day Codex activity heatmap as week columns with month labels', async () => {
+    it('fits all 365 days into a narrow heatmap instead of hiding earlier months offscreen', async () => {
         mocks.getUsageForPeriod.mockResolvedValue({ usage: [] });
         mocks.machines = [{
             daemonState: {
@@ -610,21 +632,15 @@ describe('UsagePanel', () => {
         }];
 
         const renderer = await renderUsagePanel();
+        const heatmap = renderer.root.findByProps({ testID: 'codex-usage-heatmap' });
+        act(() => heatmap.props.onLayout({ nativeEvent: { layout: { width: 358 } } }));
+
         const cells = renderer.root.findAll((node: any) => (
             typeof node.props.testID === 'string' && node.props.testID.startsWith('codex-usage-day-')
         ));
         const texts = renderer.root.findAllByType('Text').map(textValue);
 
-        const horizontalScrollViews = renderer.root.findAllByType('ScrollView')
-            .filter((node: any) => node.props.horizontal === true && node.props.testID === 'codex-usage-heatmap-scroll');
-        const heatmapGrid = renderer.root.findAllByType('View').find((node: any) => (
-            node.props.style?.flexDirection === 'row'
-            && node.props.style?.gap === 5
-            && node.findAll((child: any) => (
-                typeof child.props.testID === 'string'
-                && child.props.testID.startsWith('codex-usage-day-')
-            )).length === 365
-        ));
+        const heatmapGrid = renderer.root.findByProps({ testID: 'codex-usage-heatmap-grid' });
         const monthLabels = renderer.root.findAllByType('Text').filter((node: any) => (
             Array.isArray(node.props.style)
             && node.props.style.some((style: any) => style?.position === 'absolute' && style?.top === 0)
@@ -639,11 +655,11 @@ describe('UsagePanel', () => {
             const styles = typeof cell.props.style === 'function'
                 ? cell.props.style({ pressed: false })
                 : cell.props.style;
-            return styles.some((style: any) => style?.width === 14 && style?.height === 14)
+            return styles.some((style: any) => style?.width === 5 && style?.height === 5)
                 && styles.every((style: any) => style?.flex === undefined);
         })).toBe(true);
-        expect(horizontalScrollViews).toHaveLength(1);
-        expect(horizontalScrollViews[0].props.testID).toBe('codex-usage-heatmap-scroll');
+        expect(renderer.root.findAllByProps({ testID: 'codex-usage-heatmap-scroll' })).toHaveLength(0);
+        expect(heatmapGrid.props.style).toContainEqual({ gap: 1 });
         expect(heatmapGrid?.children).toHaveLength(53);
         expect(renderer.root.findAll((node: any) => (
             typeof node.props.testID === 'string'

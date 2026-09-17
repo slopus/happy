@@ -9,8 +9,7 @@ type SettingsFeatureEntryTitleKey =
     | 'settings.agentDefaults'
     | 'settings.customInstructions'
     | 'settingsSkills.title'
-    | 'settings.featuresTitle'
-    | 'settings.usage';
+    | 'settings.featuresTitle';
 
 type SettingsFeatureEntrySubtitleKey =
     | 'settings.voiceAssistantSubtitle'
@@ -20,8 +19,7 @@ type SettingsFeatureEntrySubtitleKey =
     | 'settings.agentDefaultsSubtitle'
     | 'settings.customInstructionsSubtitle'
     | 'settingsSkills.entrySubtitle'
-    | 'settings.featuresSubtitle'
-    | 'settings.usageSubtitle';
+    | 'settings.featuresSubtitle';
 
 export type SettingsFeatureEntry = {
     key: string;
@@ -32,7 +30,7 @@ export type SettingsFeatureEntry = {
     route: string;
 };
 
-export function getSettingsFeatureEntries(args: { experiments: boolean }): SettingsFeatureEntry[] {
+export function getSettingsFeatureEntries(_args: { experiments: boolean }): SettingsFeatureEntry[] {
     return [
         {
             key: 'voice',
@@ -90,13 +88,5 @@ export function getSettingsFeatureEntries(args: { experiments: boolean }): Setti
             color: '#FF9500',
             route: '/settings/features',
         },
-        ...(args.experiments ? [{
-            key: 'usage',
-            titleKey: 'settings.usage' as const,
-            subtitleKey: 'settings.usageSubtitle' as const,
-            icon: 'analytics-outline' as const,
-            color: 'accent',
-            route: '/settings/usage',
-        }] : []),
     ];
 }

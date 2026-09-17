@@ -9,7 +9,6 @@ import { Typography } from '@/constants/Typography';
 import { Modal } from '@/modal';
 import { getAvatarUrl, type Profile } from '@/sync/profile';
 import { t } from '@/text';
-import { UsageDialog } from '@/components/usage/UsageDialog';
 import { SavedAccountsMenu } from '@/components/accounts/SavedAccountsMenu';
 import Animated, { FadeIn, LinearTransition, ReduceMotion, runOnJS } from 'react-native-reanimated';
 
@@ -88,7 +87,6 @@ export const SidebarAccountMenu = React.memo(function SidebarAccountMenu({
     const firstActionRef = React.useRef<any>(null);
     const focusFirstAction = React.useCallback(() => firstActionRef.current?.focus?.(), []);
     const wasOpenRef = React.useRef(false);
-    const [usageDialogOpen, setUsageDialogOpen] = React.useState(false);
     const avatarUrl = getAvatarUrl(profile);
     const webTitle = Platform.OS === 'web' && railMode ? { title: displayName } as any : {};
 
@@ -103,13 +101,13 @@ export const SidebarAccountMenu = React.memo(function SidebarAccountMenu({
         const timeout = setTimeout(() => {
             if (open) {
                 firstActionRef.current?.focus?.();
-            } else if (wasOpen && restoreFocusOnClose && !usageDialogOpen) {
+            } else if (wasOpen && restoreFocusOnClose) {
                 triggerRef.current?.focus?.();
             }
         }, 0);
 
         return () => clearTimeout(timeout);
-    }, [open, restoreFocusOnClose, usageDialogOpen]);
+    }, [open, restoreFocusOnClose]);
 
     React.useEffect(() => {
         if (Platform.OS !== 'web' || !open || typeof window === 'undefined') {
@@ -149,11 +147,6 @@ export const SidebarAccountMenu = React.memo(function SidebarAccountMenu({
         })();
     }, [logout, onOpenChange]);
 
-    const openUsageDialog = React.useCallback(() => {
-        setUsageDialogOpen(true);
-        onOpenChange(false);
-    }, [onOpenChange]);
-
     const openAccountManagement = React.useCallback((path: string) => {
         if (path === '/accounts?add=1' && onOpenAccounts) {
             triggerRef.current?.focus?.();
@@ -163,7 +156,6 @@ export const SidebarAccountMenu = React.memo(function SidebarAccountMenu({
         }
         navigate(path);
     }, [navigate, onOpenAccounts, onOpenChange]);
-
     const menu = open ? (
                 <Animated.View
                     entering={FadeIn.duration(160).reduceMotion(ReduceMotion.System).withCallback((finished) => {
@@ -215,7 +207,7 @@ export const SidebarAccountMenu = React.memo(function SidebarAccountMenu({
                     <MenuAction
                         icon="analytics-outline"
                         label={t('settings.usage')}
-                        onPress={openUsageDialog}
+                        onPress={() => navigate('/settings/usage')}
                         testID="sidebar-account-usage-action"
                     />
                     <View style={styles.dangerGroup}>
@@ -286,11 +278,6 @@ export const SidebarAccountMenu = React.memo(function SidebarAccountMenu({
                     size={15}
                 /> : null}
             </Pressable>
-            <UsageDialog
-                onClose={() => setUsageDialogOpen(false)}
-                open={usageDialogOpen}
-                returnFocusRef={triggerRef}
-            />
         </View>
     );
 });
