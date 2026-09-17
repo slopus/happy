@@ -247,15 +247,23 @@ class Sync {
                 log.log('📱 App became active');
                 this.purchasesSync.invalidate();
                 this.profileSync.invalidate();
-                this.machinesSync.invalidate();
                 this.pushTokenSync.invalidate();
-                this.sessionsSync.invalidate();
                 this.nativeUpdateSync.invalidate();
-                log.log('📱 App became active: Invalidating artifacts sync');
-                this.artifactsSync.invalidate();
-                this.friendsSync.invalidate();
-                this.friendRequestsSync.invalidate();
-                this.feedSync.invalidate();
+                // On web, AppState turns 'active' on every tab refocus. While
+                // the data socket stayed connected the live updates already
+                // covered the gap, so the full list refreshes are skipped: the
+                // sessions one alone is a GET /v1/sessions, up to 150 session
+                // decrypts and 7 applySessions rebuilds, paid on every alt-tab.
+                // A socket that dropped runs the same set from onReconnected.
+                if (storage.getState().socketStatus !== 'connected') {
+                    this.machinesSync.invalidate();
+                    this.sessionsSync.invalidate();
+                    log.log('📱 App became active: Invalidating artifacts sync');
+                    this.artifactsSync.invalidate();
+                    this.friendsSync.invalidate();
+                    this.friendRequestsSync.invalidate();
+                    this.feedSync.invalidate();
+                }
 
                 // Refresh the open chat's message log on resume. While the app is
                 // backgrounded the data socket is suspended/dropped, so any messages

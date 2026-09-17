@@ -23,7 +23,7 @@ vi.mock('expo-crypto', () => ({ randomUUID: () => 'id' }));
 vi.mock('expo-notifications', () => ({}));
 vi.mock('react-native', () => ({ Platform: { OS: 'ios' }, AppState: { currentState: 'active', addEventListener: vi.fn() } }));
 vi.mock('@/utils/platform', () => ({ isRunningOnMac: () => false }));
-vi.mock('@/sync/apiSocket', () => ({ apiSocket: { request: mocks.request }, getCurrentAppState: () => 'active', getHappyClientId: () => 'test' }));
+vi.mock('@/sync/apiSocket', () => ({ apiSocket: { request: mocks.request, sendAppState: vi.fn() }, getCurrentAppState: () => 'active', getHappyClientId: () => 'test' }));
 vi.mock('@/sync/webTabTitle', () => ({ notifyUnreadMessage: vi.fn() }));
 vi.mock('@/sync/encryption/encryption', () => ({ Encryption: class {} }));
 vi.mock('@/sync/encryption/artifactEncryption', () => ({ ArtifactEncryption: class {} }));
@@ -64,6 +64,7 @@ vi.mock('@/realtime/hooks/voiceHooks', () => ({ voiceHooks: {
     onSessionFocus: mocks.voiceFocus, onMessages: mocks.voiceMessages, onReady: mocks.voiceReady,
 } }));
 
+import { AppState } from 'react-native';
 import { sync } from './sync';
 
 let engine: any;
@@ -263,5 +264,23 @@ describe('chat preload sync integration', () => {
         expect(mocks.voiceFocus).toHaveBeenCalledWith('a', {});
         expect(mocks.state.currentViewingSessionId).toBeNull();
         expect(older).not.toHaveBeenCalled();
+    });
+});
+
+describe('app resume', () => {
+    it('skips the full list refreshes on refocus while the socket stayed connected', () => {
+        const onAppState = (AppState.addEventListener as any).mock.calls[0][1] as (state: string) => void;
+        const syncs = ['purchasesSync', 'profileSync', 'pushTokenSync', 'nativeUpdateSync', 'machinesSync', 'sessionsSync', 'artifactsSync', 'friendsSync', 'friendRequestsSync', 'feedSync'];
+        for (const name of syncs) engine[name] = { invalidate: vi.fn() };
+        mocks.state.socketStatus = 'connected';
+        onAppState('active');
+        expect(engine.sessionsSync.invalidate).not.toHaveBeenCalled();
+        expect(engine.machinesSync.invalidate).not.toHaveBeenCalled();
+        expect(engine.feedSync.invalidate).not.toHaveBeenCalled();
+        expect(engine.profileSync.invalidate).toHaveBeenCalledOnce();
+        mocks.state.socketStatus = 'connecting';
+        onAppState('active');
+        expect(engine.sessionsSync.invalidate).toHaveBeenCalledOnce();
+        expect(engine.machinesSync.invalidate).toHaveBeenCalledOnce();
     });
 });
