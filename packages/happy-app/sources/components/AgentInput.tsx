@@ -907,6 +907,8 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     const shakerRef = React.useRef<ShakeInstance>(null);
     const sendBlockShakerRef = React.useRef<ShakeInstance>(null);
     const inputRef = React.useRef<MultiTextInputHandle>(null);
+    // The box around the text input; on web the View ref is its DOM node.
+    const composerRef = React.useRef<View>(null);
     const primaryAction = resolveAgentInputPrimaryAction({
         hasComposerContent,
         isSendBlocked,
@@ -948,16 +950,25 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     React.useEffect(() => {
         if (Platform.OS !== 'web' || !props.onAddImages) return;
 
-        const handlePaste = async (e: ClipboardEvent) => {
-            // Only handle pastes targeted at a focused text-editable element.
-            // The listener is attached to document, so without this guard a
-            // paste in the URL bar, another modal, or any focused-elsewhere
-            // input would steal images intended for somewhere else.
+        // The listeners live on document and several composers can be mounted
+        // at once (stacked session screens on web, side chats), so each one
+        // has to decide whether an event is its own — otherwise a single paste
+        // lands in every composer.
+        const composerNode = () => composerRef.current as unknown as HTMLElement | null;
+        const isEditable = (node: Element | null) => node instanceof HTMLInputElement
+            || node instanceof HTMLTextAreaElement
+            || (node instanceof HTMLElement && node.isContentEditable);
+        const ownsFocus = () => {
+            const node = composerNode();
             const active = document.activeElement;
-            const isEditableTarget = active instanceof HTMLInputElement
-                || active instanceof HTMLTextAreaElement
-                || (active instanceof HTMLElement && active.isContentEditable);
-            if (!isEditableTarget) return;
+            return !!node && isEditable(active) && node.contains(active);
+        };
+
+        const handlePaste = async (e: ClipboardEvent) => {
+            // Only a paste into this composer's own input. Without the guard a
+            // paste in the URL bar, a modal, or a sibling composer's input
+            // would steal images intended for somewhere else.
+            if (!ownsFocus()) return;
 
             const { getImagesFromClipboard, fileToAttachmentPreview } = await import('@/utils/pasteImages.web');
             const files = getImagesFromClipboard(e);
@@ -996,6 +1007,17 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         const handleDrop = async (e: DragEvent) => {
             if (!isFileDrag(e)) return;
             e.preventDefault();
+            // The drop is ours when it lands on this composer, when this
+            // composer has the focus, or when nothing editable is focused and
+            // this composer is on screen (a hidden stacked screen has no
+            // layout boxes). preventDefault stays unconditional so the
+            // browser never opens the dropped file instead.
+            const node = composerNode();
+            const target = e.target;
+            const takesDrop = (!!node && target instanceof Node && node.contains(target))
+                || ownsFocus()
+                || (!!node && !isEditable(document.activeElement) && node.getClientRects().length > 0);
+            if (!takesDrop) return;
             const { getImagesFromDrop, fileToAttachmentPreview } = await import('@/utils/pasteImages.web');
             const files = getImagesFromDrop(e);
             if (!files.length) return;
@@ -2077,7 +2099,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                         />
                     )}
                     {/* Input field */}
-                    <View style={[
+                    <View ref={composerRef} style={[
                         styles.inputContainer,
                         compactMobileComposer && styles.mobileInputContainer,
                         props.minHeight ? { minHeight: props.minHeight } : undefined,
