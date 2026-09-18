@@ -9,6 +9,8 @@ const state = vi.hoisted(() => ({
     messages: [] as any[],
     hasMoreOlder: false,
     session: null as any,
+    platform: 'ios',
+    scrollNode: null as any,
 }));
 vi.hoisted(() => {
     vi.stubGlobal('__DEV__', false);
@@ -33,7 +35,7 @@ vi.mock('react-native', async () => {
                 };
             },
         },
-        Platform: { OS: 'ios' },
+        Platform: { get OS() { return state.platform; } },
         Pressable: host('Pressable'),
         View: host('View'),
     };
@@ -42,7 +44,13 @@ vi.mock('react-native', async () => {
 vi.mock('@shopify/flash-list', async () => {
     const ReactModule = await import('react');
     return {
-        FlashList: (props: any) => ReactModule.createElement(
+        FlashList: (props: any) => {
+            const node = state.scrollNode;
+            ReactModule.useImperativeHandle(props.ref, () => ({
+                getScrollableNode: () => node,
+                scrollToOffset: vi.fn(),
+            }), [node]);
+            return ReactModule.createElement(
             'FlashList',
             props,
             props.data.map((item: any, index: number) => ReactModule.createElement(
@@ -50,7 +58,8 @@ vi.mock('@shopify/flash-list', async () => {
                 { key: props.keyExtractor?.(item, index) ?? index },
                 props.renderItem({ item, index }),
             )),
-        ),
+            );
+        },
     };
 });
 
@@ -189,6 +198,39 @@ afterEach(() => {
     state.messages = [];
     state.hasMoreOlder = false;
     state.session = null;
+    state.platform = 'ios';
+    state.scrollNode = null;
+});
+
+describe('ChatList web wheel listener lifecycle', () => {
+    function scrollNode() {
+        return { addEventListener: vi.fn(), removeEventListener: vi.fn() };
+    }
+
+    it('does not attach a wheel listener on native', () => {
+        state.scrollNode = scrollNode();
+        state.session = { id: 'session', metadata: null, thinking: false, agentState: { requests: {} } };
+        renderChat(undefined);
+        expect(state.scrollNode.addEventListener).not.toHaveBeenCalled();
+    });
+
+    it('rebinds on a session list remount and removes the current listener on unmount', () => {
+        state.platform = 'web';
+        const first = scrollNode();
+        state.scrollNode = first;
+        state.session = { id: 'session', metadata: null, thinking: false, agentState: { requests: {} } };
+        const renderer = renderChat(undefined);
+        expect(first.addEventListener).toHaveBeenCalledWith('wheel', expect.any(Function), { passive: false });
+
+        const second = scrollNode();
+        state.scrollNode = second;
+        state.session = { ...state.session, id: 'other-session' };
+        renderChat(renderer);
+        expect(first.removeEventListener).toHaveBeenCalledWith('wheel', first.addEventListener.mock.calls[0][1]);
+        expect(second.addEventListener).toHaveBeenCalledWith('wheel', expect.any(Function), { passive: false });
+        act(() => renderer.unmount());
+        expect(second.removeEventListener).toHaveBeenCalledWith('wheel', second.addEventListener.mock.calls[0][1]);
+    });
 });
 
 describe('ChatList work-group folding', () => {

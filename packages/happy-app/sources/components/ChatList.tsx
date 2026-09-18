@@ -18,6 +18,7 @@ import { resolveControlMode } from '@/sync/controlHandoff';
 import { usesControlledSessionUi } from '@/sync/rig';
 import { buildAgentTurnCopyTextByMessageId } from '@/utils/agentTurnCopy';
 import { perfSince, useCommitPerf } from '@/utils/perfLog';
+import { handleInvertedChatWheel } from '@/utils/invertedChatWheel';
 import { DiffSyntaxCell, SyntaxViewport, SYNTAX_VIEWABILITY } from './diff/syntax/viewport';
 
 const SCROLL_THRESHOLD = 300;
@@ -737,23 +738,20 @@ const ChatListInternal = React.memo((props: {
         setOldestRenderedId(all[nextEnd - 1].id);
     }, [messages, props.isLoadingOlder, props.hasMoreOlder]);
 
-    // On web a wheel is the drag gesture: it marks the reader taking over,
-    // since there is no onScrollBeginDrag for wheels. Shift+wheel also swaps
-    // deltaX/deltaY on macOS — restore vertical scrolling.
+    // FlashList lacks React Native Web FlatList's inverted-wheel correction.
+    // Keep the mobile coordinate system, correcting only web chat gestures.
     React.useEffect(() => {
         if (Platform.OS !== 'web') return;
         const node = listRef.current?.getScrollableNode?.() as HTMLElement | undefined;
         if (!node) return;
         const handler = (e: WheelEvent) => {
-            userTookOverRef.current = true;
-            if (e.shiftKey && Math.abs(e.deltaX) > 0 && Math.abs(e.deltaY) < 1) {
-                node.scrollTop += e.deltaX;
-                e.preventDefault();
-            }
+            // Wheels have no onScrollBeginDrag; only a chat-owned gesture
+            // should unlock user-driven history paging.
+            if (handleInvertedChatWheel(node, e)) userTookOverRef.current = true;
         };
         node.addEventListener('wheel', handler, { passive: false });
         return () => node.removeEventListener('wheel', handler);
-    }, [handoffListRevision]);
+    }, [handoffListRevision, props.sessionId]);
 
     return (
         <View style={{ flex: 1 }}>
