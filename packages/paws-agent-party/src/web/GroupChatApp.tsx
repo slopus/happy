@@ -9,6 +9,7 @@ import { decrypt } from './lib/crypto.js';
 import { ConnectionPanel } from './ConnectionPanel.js';
 import { GroupComposer, type ComposerDraft } from './GroupComposer.js';
 import { RobotAvatar } from './RobotAvatar.js';
+import { RemoteDirectoryPicker } from './RemoteDirectoryPicker.js';
 import { ProfileEditor, type ConfigurationSession } from './ProfileEditor.js';
 import { AssetImage, decodeEnvelope } from './Attachments.js';
 import { machineLabel } from './machine-label.js';
@@ -180,13 +181,13 @@ function RoomDialog({ agents, machines, ready, api, close, onCreated }: { agents
   const fallback = chosen.some(agent => !agent.machineId || !agent.directory);
   const first = chosen[0]; const resolvedMachine = fallback ? machineId : first?.machineId; const resolvedDirectory = fallback ? directory.trim() : first?.directory;
   return <Modal title="新建群聊" close={close}><form className="profile-form" onSubmit={async event => {
-    event.preventDefault(); if (busy) return; setBusy(true); setError('');
+    event.preventDefault(); if (busy || !ready || !selected.length || !resolvedMachine || !resolvedDirectory?.startsWith('/')) return; setBusy(true); setError('');
     try { const created = await api<GroupRoomSnapshot>('/api/group-chat/rooms', { method: 'POST', body: JSON.stringify({ requestId: requestId.current, title, memberIds: selected, machineId: resolvedMachine, directory: resolvedDirectory, autoReply, autoDebate, maxRounds }) }); onCreated(created); }
     catch (error) { setError((error as Error).message); } finally { setBusy(false); }
   }}>
     <label>群聊名称<input required value={title} onChange={event => setTitle(event.target.value)}/></label>
     <div><p>邀请成员</p>{agents.map(agent => <label className="invite-row" key={agent.id}><input type="checkbox" checked={selected.includes(agent.id)} onChange={() => setSelected(value => value.includes(agent.id) ? value.filter(id => id !== agent.id) : [...value, agent.id])}/><RobotAvatar id={agent.id} avatarId={agent.avatarId}/><span>{agent.name}<small>{agent.model} · {agent.effort}{!agent.machineId ? ' · 待配置设备' : ''}</small></span></label>)}</div>
-    {fallback && <><p className="muted">部分旧 Agent 尚未配置设备，以下只作为这些成员的本次执行默认值；已配置成员仍使用自己的设备。</p><label>远端机器<select required disabled={!ready} value={machineId} onChange={event => setMachineId(event.target.value)}><option value="">{ready ? '选择机器' : '请先连接 Paws'}</option>{machines.map(machine => <option key={machine.id} value={machine.id}>{machineLabel(machine)}</option>)}</select></label><label>工作目录<input required value={directory} onChange={event => setDirectory(event.target.value)} placeholder="例如 /home/node，必须是已授权目录"/></label></>}
+    {fallback && <><p className="muted">部分旧 Agent 尚未配置设备，以下只作为这些成员的本次执行默认值；已配置成员仍使用自己的设备。</p><label>远端机器<select required disabled={!ready} value={machineId} onChange={event => { setMachineId(event.target.value); setDirectory(''); }}><option value="">{ready ? '选择机器' : '请先连接 Paws'}</option>{machines.map(machine => <option key={machine.id} value={machine.id}>{machineLabel(machine)}</option>)}</select></label><RemoteDirectoryPicker key={machineId} machineId={machineId} value={directory} onChange={setDirectory} api={api} disabled={!ready || busy}/></>}
     <label className="check-label"><input type="checkbox" checked={autoReply} onChange={event => setAutoReply(event.target.checked)}/>允许未 @ 时自动由一个相关成员接话</label>
     <label className="check-label"><input type="checkbox" checked={autoDebate} onChange={event => setAutoDebate(event.target.checked)}/>同时 @ 多位成员时自动辩论</label>
     {autoDebate && <label>最多轮数<select aria-label="新群聊最大辩论轮数" value={maxRounds} onChange={event => setMaxRounds(Number(event.target.value))}>{Array.from({ length: 10 }, (_, i) => <option key={i} value={i + 1}>{i + 1} 轮</option>)}</select></label>}

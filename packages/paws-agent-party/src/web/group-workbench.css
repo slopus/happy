@@ -242,6 +242,10 @@
 .directory-browser { max-height:160px; overflow:auto; display:grid; gap:4px; }
 .directory-browser button { text-align:left; padding:6px 8px; border-radius:5px; font-size:12px; }
 .directory-browser button:hover { background:var(--workbench-surface-hover); }
+.remote-directory-picker { min-width:0; display:grid; gap:8px; padding:12px; border:1px solid var(--border); border-radius:8px; }
+.remote-directory-picker p, .remote-directory-picker small { overflow-wrap:anywhere; }
+.remote-directory-picker > button { justify-self:start; padding:6px 10px; border:1px solid var(--border); border-radius:6px; }
+.remote-directory-picker > button:hover { background:var(--workbench-surface-hover); }
 @keyframes panel-in { from { opacity:0; transform:translateY(-7px); } to { opacity:1; transform:translateY(0); } }
 .room-members { transition:opacity 200ms,transform 200ms; }
 .room-members.is-closing { opacity:0; transform:translateY(-7px); pointer-events:none; animation:none; }
