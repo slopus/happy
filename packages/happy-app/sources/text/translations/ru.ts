@@ -201,6 +201,7 @@ export const ru: TranslationStructure = {
         flatList: 'Общий список',
         groupByProject: 'Группировать по проектам',
         appearanceSettings: 'Настройки внешнего вида',
+        worktreeTabs: ({ count }: { count: number }) => `${count} ${plural({ count, one: 'вкладка', few: 'вкладки', many: 'вкладок' })}`,
     },
 
     settingsFeatures: {
@@ -459,6 +460,9 @@ export const ru: TranslationStructure = {
         forkErrorMissingMetadata: 'Не хватает метаданных сессии для форка.',
         forkErrorGeneric: 'Не удалось форкнуть сессию.',
         forkClaudeOnly: 'Форк сейчас поддерживается только для Claude-сессий.',
+        archiveAction: 'Архивировать',
+        startingChat: 'Запускаем новый чат…',
+        actionsTitle: 'Сессия',
     },
 
     commandPalette: {
@@ -572,6 +576,9 @@ export const ru: TranslationStructure = {
         hideArchived: 'Скрыть архив',
         newSession: 'Новая сессия',
         projects: "Проекты",
+        bots: 'Боты',
+        showAllWorkspaces: ({ count }: { count: number }) => `Показать все пространства (${count})`,
+        showFewerWorkspaces: 'Показать меньше',
     },
 
     zen: {

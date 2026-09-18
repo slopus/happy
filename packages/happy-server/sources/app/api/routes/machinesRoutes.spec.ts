@@ -1,4 +1,5 @@
 import fastify from "fastify";
+import { Prisma } from "@prisma/client";
 import { serializerCompiler, validatorCompiler, ZodTypeProvider } from "fastify-type-provider-zod";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type Fastify } from "../types";
@@ -20,16 +21,20 @@ const {
         existingMachine: null as any,
         created: [] as any[],
         seq: 0,
+        /** Thrown by `create` instead of inserting, standing in for a database constraint. */
+        createError: null as unknown,
     };
 
     const resetState = () => {
         state.existingMachine = null;
         state.created = [];
         state.seq = 0;
+        state.createError = null;
     };
 
     const machineFindFirst = vi.fn(async () => state.existingMachine);
     const machineCreate = vi.fn(async (args: any) => {
+        if (state.createError !== null) throw state.createError;
         // Mirror a Prisma Machine row: server defaults active=false on create
         // ("Default to offline - in case the user does not start daemon").
         const now = new Date("2026-01-01T00:00:00.000Z");
@@ -175,5 +180,44 @@ describe("machinesRoutes — POST /v1/machines creation emits", () => {
         expect(newMachine).toBeDefined();
         expect(newMachine.payload.body.dataEncryptionKey).toBeNull();
         expect(ApiUpdateContainerSchema.safeParse(newMachine.payload).success).toBe(true);
+    });
+
+    // A machine id is the primary key of the whole table, so an id another
+    // account already holds can never be created here. A daemon re-paired to a
+    // second account brings exactly such an id along, and answering 500 left it
+    // retrying a doomed request every five seconds — with no machine on the
+    // account, nothing could start a session on that computer at all.
+    it("answers 409 for a machine id that belongs to another account", async () => {
+        app = await createApp();
+        state.createError = new Prisma.PrismaClientKnownRequestError(
+            "Unique constraint failed on the fields: (`id`)",
+            { code: "P2002", clientVersion: "test" },
+        );
+
+        const res = await app.inject({
+            method: "POST",
+            url: "/v1/machines",
+            headers: { "x-user-id": "user-2" },
+            payload: { id: "machine-of-another-account", metadata: "encrypted-metadata-blob" },
+        });
+
+        expect(res.statusCode).toBe(409);
+        expect(res.json().code).toBe("machine_id_taken");
+        // Nothing was registered, so nothing may be announced either.
+        expect(emitUpdateSpy).not.toHaveBeenCalled();
+    });
+
+    it("still fails loudly for a create that broke for any other reason", async () => {
+        app = await createApp();
+        state.createError = new Error("the database is on fire");
+
+        const res = await app.inject({
+            method: "POST",
+            url: "/v1/machines",
+            headers: { "x-user-id": "user-2" },
+            payload: { id: "machine-4", metadata: "encrypted-metadata-blob" },
+        });
+
+        expect(res.statusCode).toBe(500);
     });
 });

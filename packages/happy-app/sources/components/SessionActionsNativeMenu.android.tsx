@@ -1,58 +1,56 @@
 import * as React from 'react';
-import { DropdownMenu, DropdownMenuItem } from '@expo/ui/jetpack-compose';
-import { useSessionQuickActions } from '@/hooks/useSessionQuickActions';
-import { Session } from '@/sync/storageTypes';
-import { t } from '@/text';
+import { DropdownMenu, DropdownMenuItem, Text as ComposeText } from '@expo/ui/jetpack-compose';
+import { MISSING_SESSION, useSessionQuickActions } from '@/hooks/useSessionQuickActions';
+import { useSession } from '@/sync/storage';
+import type { SessionActionsNativeMenuHandle, SessionActionsNativeMenuProps } from './SessionActionsNativeMenu';
 
-interface SessionActionsNativeMenuProps {
-    children: React.ReactNode;
-    onAfterArchive?: () => void;
-    onAfterDelete?: () => void;
-    session: Session;
-}
-
-export function SessionActionsNativeMenu({
-    children,
-    onAfterArchive,
-    onAfterDelete,
-    session,
-}: SessionActionsNativeMenuProps) {
-    const {
-        archiveSession,
-        canArchive,
-        canCopySessionMetadata,
-        canShowResume,
-        copySessionMetadata,
-        openDetails,
-        resumeSession,
-    } = useSessionQuickActions(session, {
+export const SessionActionsNativeMenu = React.forwardRef<
+    SessionActionsNativeMenuHandle,
+    SessionActionsNativeMenuProps
+>(({ children, onAfterArchive, onAfterDelete, onBeforeArchive, sessionId }, ref) => {
+    const session = useSession(sessionId);
+    const [expanded, setExpanded] = React.useState(false);
+    const close = React.useCallback(() => setExpanded(false), []);
+    const { actionItems } = useSessionQuickActions(session ?? MISSING_SESSION, {
         onAfterArchive,
         onAfterDelete,
+        onBeforeArchive,
     });
 
+    // Compose only renders the trigger; the menu opens when `expanded` says so,
+    // so the gesture has to come from the caller.
+    React.useImperativeHandle(ref, () => ({
+        open: () => setExpanded(true),
+    }), []);
+
+    // Nothing to act on once the session is gone.
+    if (!session) {
+        return <>{children}</>;
+    }
+
     return (
-        <DropdownMenu>
+        <DropdownMenu expanded={expanded} onDismissRequest={close}>
             <DropdownMenu.Items>
-                <DropdownMenuItem onClick={openDetails}>
-                    <DropdownMenuItem.Text>Details</DropdownMenuItem.Text>
-                </DropdownMenuItem>
-                {canArchive && (
-                    <DropdownMenuItem onClick={archiveSession}>
-                        <DropdownMenuItem.Text>Archive</DropdownMenuItem.Text>
+                {actionItems.map((item) => (
+                    <DropdownMenuItem
+                        key={item.id}
+                        onClick={() => {
+                            close();
+                            item.onPress();
+                        }}
+                    >
+                        {/* Native slot view: a bare string child throws "Text strings
+                            must be rendered within a <Text> component" mid-render.
+                            Compose's own Text turns it into the native `text` prop. */}
+                        <DropdownMenuItem.Text>
+                            <ComposeText>{item.label}</ComposeText>
+                        </DropdownMenuItem.Text>
                     </DropdownMenuItem>
-                )}
-                {canShowResume && (
-                    <DropdownMenuItem onClick={resumeSession}>
-                        <DropdownMenuItem.Text>Resume</DropdownMenuItem.Text>
-                    </DropdownMenuItem>
-                )}
-                {canCopySessionMetadata && (
-                    <DropdownMenuItem onClick={copySessionMetadata}>
-                        <DropdownMenuItem.Text>{t('sessionInfo.copyMetadata')}</DropdownMenuItem.Text>
-                    </DropdownMenuItem>
-                )}
+                ))}
             </DropdownMenu.Items>
             <DropdownMenu.Trigger>{children}</DropdownMenu.Trigger>
         </DropdownMenu>
     );
-}
+});
+
+SessionActionsNativeMenu.displayName = 'SessionActionsNativeMenu';

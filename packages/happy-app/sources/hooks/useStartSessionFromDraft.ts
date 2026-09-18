@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useAllMachines, useSessions, useSetting } from '@/sync/storage';
+import { storage, useAllMachines, useSetting } from '@/sync/storage';
 import { getCodeAgentDefaults, resolveAgentDefaultConfig } from '@/sync/agentDefaults';
 import {
     machineSpawnNewSession,
@@ -46,10 +46,54 @@ import {
 } from '@/sync/spawnRequestId';
 import type { NewSessionStartPhase } from '@/components/newSessionProgress';
 import type { Session } from '@/sync/storageTypes';
-import { collectSessionPlaces, collectSessionWorkspaces } from '@/sync/agentSessionPlaces';
-import { resolveHappyAgentSpawnTarget } from '@/sync/happyAgentSpawn';
+import type { AttachmentPreview } from '@/sync/attachmentTypes';
+import type { NewSessionAgentType, NewSessionSessionType } from '@/sync/persistence';
+import type { PermissionModeKey } from '@/components/PermissionModeSelector';
+import { collectSessionPlaces, collectSessionWorkspaces, projectPlaceKey } from '@/sync/agentSessionPlaces';
+import { resolveHappyAgentSpawnTarget, type HappyAgentSpawnTarget } from '@/sync/happyAgentSpawn';
 
 const MAX_RIG_PENDING_RESULTS = 3;
+
+/**
+ * What to start instead of what the composer's draft says.
+ *
+ * A session can be started from places that have no composer — the tab strip's
+ * `+`, for one — where the target is already known and the persisted draft is
+ * somebody else's. Overrides are read in place of the draft for this one start
+ * and never written back to it.
+ */
+export interface StartSessionOverrides {
+    selectedMachineId?: string | null;
+    selectedPath?: string | null;
+    /**
+     * The catalog project to start in, for a project with no folder of its own. Naming a directory
+     * above clears whatever project the draft held, so a caller never has to state both.
+     */
+    selectedProjectId?: string | null;
+    agentType?: NewSessionAgentType;
+    permissionMode?: PermissionModeKey | null;
+    modelMode?: string | null;
+    effortLevel?: string | null;
+    sessionType?: NewSessionSessionType;
+    worktreeKey?: string | null;
+    input?: string;
+    attachments?: AttachmentPreview[];
+    /**
+     * The Happy Agent catalog destination, when the caller already knows it.
+     * The draft can only name a directory, which is then matched back to a
+     * project and a workspace; a caller starting from an existing session holds
+     * those identities already, and passing them avoids the path round-trip
+     * that would otherwise import a known workspace as a second project.
+     * Ignored unless the agent is Happy Agent; `null` forces a plain directory.
+     */
+    happyAgentTarget?: HappyAgentSpawnTarget | null;
+    /**
+     * Where to go once the session exists. The default pushes the session
+     * screen, which is wrong for a caller already on one — the tab strip swaps
+     * the route's session in place instead.
+     */
+    openSession?: (sessionId: string) => void;
+}
 
 // Stop has to be felt at once. A request already on its way to the machine
 // cannot be recalled, and the machine may never answer it at all, so the flow
@@ -105,7 +149,6 @@ function resolveOption<T extends { key: string }>(
 
 export function useStartSessionFromDraft() {
     const machines = useAllMachines({ includeOffline: true });
-    const sessions = useSessions();
     const defaultOverrides = useSetting('agentDefaultOverrides');
     const navigateToSession = useNavigateToSession();
     // The composer stays on screen for the whole flow, so what it is waiting on
@@ -145,16 +188,44 @@ export function useStartSessionFromDraft() {
         if (isMountedRef.current) setPhase(null);
     }, []);
 
-    const startSession = React.useCallback(async (): Promise<boolean> => {
+    const startSession = React.useCallback(async (overrides?: StartSessionOverrides): Promise<boolean> => {
         if (activeRunRef.current) return false;
 
-        const draft = useNewSessionDraft.getState();
+        const {
+            happyAgentTarget: targetOverride,
+            openSession,
+            ...draftOverrides
+        } = overrides ?? {};
+        const draftStore = useNewSessionDraft.getState();
+        // A snapshot for this attempt to read. What the flow clears at the end
+        // is the store as it stands then, and only when the prompt came from it.
+        const draft = {
+            ...draftStore,
+            // A caller that names a directory has named the place. Keeping the draft's project
+            // beside it would start the session in that project instead, which is somewhere the
+            // caller never asked for.
+            ...(draftOverrides.selectedPath !== undefined ? { selectedProjectId: null } : {}),
+            ...draftOverrides,
+        };
         // The draft names a computer, which may run both Happy CLI and Happy Agent. Which daemon
         // receives the request follows from the agent, so it is settled here rather than by
         // whichever machine id the draft happened to store.
         const choice = findMachineChoice(collectMachineChoices(machines), draft.selectedMachineId);
         if (!choice) {
-            Modal.alert(t('common.error'), 'Please select a machine');
+            // Two different failures wear the same shape here. Nothing selected
+            // is the composer's, and asking for a computer is the answer. A
+            // computer that was named and cannot be found is not: the start came
+            // from a session running on it, and telling the user to pick a
+            // machine sends them looking for a control that is not on screen —
+            // the sibling-chat `+` has no picker at all. A daemon signed in to a
+            // different account than the sessions it publishes leaves exactly
+            // this state, and it is worth naming rather than papering over.
+            Modal.alert(
+                t('common.error'),
+                draft.selectedMachineId
+                    ? 'This session’s computer is not registered with this account, so nothing can start a session on it. Check that Happy is running there and signed in to this account.'
+                    : 'Please select a machine',
+            );
             return false;
         }
 
@@ -240,18 +311,41 @@ export function useStartSessionFromDraft() {
         let ownsCreatedSession = true;
         const isCurrentTarget = () => {
             const current = useNewSessionDraft.getState();
+            // Only what the composer supplied is watched. A caller that named a
+            // machine, a path or an agent itself never read the composer for it,
+            // so the composer changing underneath says nothing about whether the
+            // session being started is still the one that was asked for — and
+            // treating it as a mismatch would put down every start made from a
+            // chat's own `+`, which supplies all of them.
             return ownsCreatedSession && (['selectedMachineId', 'selectedPath', 'agentType', 'permissionMode', 'modelMode', 'effortLevel', 'sessionType', 'worktreeKey'] as const)
-                .every(key => current[key] === draft[key]);
+                .every(key => draftOverrides[key] !== undefined || current[key] === draft[key]);
         };
+        // A draft names either a directory or a catalog project. The project route asks Happy Agent
+        // for the project by identity, so the path below is only a fallback for the directory route.
+        const draftProjectId = draft.selectedProjectId?.trim() || null;
+        if (draftProjectId && !rigCreation) {
+            Modal.alert(
+                t('common.error'),
+                'Only Happy Agent knows where this project is, so no other harness can open it. Switch the harness back to Happy Agent, or pick the project’s folder.',
+            );
+            return false;
+        }
         const selectedPath = draft.selectedPath?.trim() || '~';
         const absolutePath = resolveAbsolutePath(selectedPath, machine.metadata?.homeDir);
-        const sessionList = (sessions ?? []).filter((item): item is Session => typeof item !== 'string');
+        // Read when Start is pressed rather than subscribed to. The session list
+        // is rebuilt on every token a running agent sends, and this hook is
+        // mounted on screens — the chat's own tab strip among them — that must
+        // not re-render at that rate for a list only the press reads.
+        const sessionList = (storage.getState().sessionsData ?? [])
+            .filter((item): item is Session => typeof item !== 'string');
         const places = collectSessionPlaces({
             machineIds: choice.machineIds,
             selectedPath,
             sessions: sessionList,
         });
-        const selectedProjectId = places.find((place) => place.path === selectedPath)?.projectId ?? null;
+        const selectedProjectId = draftProjectId
+            ?? places.find((place) => place.path === selectedPath)?.projectId
+            ?? null;
         const projectWorkspaces = collectSessionWorkspaces({
             machineIds: choice.machineIds,
             projectId: selectedProjectId,
@@ -260,14 +354,14 @@ export function useStartSessionFromDraft() {
         const requestedWorktree = draft.sessionType === 'worktree'
             ? draft.worktreeKey ?? '__new__'
             : '__none__';
-        let happyAgentTarget: ReturnType<typeof resolveHappyAgentSpawnTarget>;
+        let happyAgentTarget: HappyAgentSpawnTarget | null;
         try {
             happyAgentTarget = rigCreation
-                ? resolveHappyAgentSpawnTarget({
+                ? (targetOverride !== undefined ? targetOverride : resolveHappyAgentSpawnTarget({
                     projectId: selectedProjectId,
                     workspaceSelection: requestedWorktree,
                     workspaces: projectWorkspaces,
-                })
+                }))
                 : null;
         } catch (error) {
             Modal.alert(
@@ -297,7 +391,9 @@ export function useStartSessionFromDraft() {
         const clientRequestId = resolveSpawnRequestId(buildSpawnRequestSignature({
             machineId: machine.id,
             agent: agentType,
-            directory: selectedPath,
+            // Two catalog projects share the same empty path, so the project itself is what
+            // distinguishes them: without it, starting in one would be deduped into the other.
+            place: draftProjectId ? projectPlaceKey(draftProjectId) : selectedPath,
             worktree: worktreeSelection,
             modelKey: model.key,
             permissionMode: permission.key,
@@ -488,11 +584,16 @@ export function useStartSessionFromDraft() {
                 }
             }
             completeSpawnRequest(clientRequestId);
-            // Do not erase edits made while hydration or attachment upload ran.
-            const currentDraft = useNewSessionDraft.getState();
-            if (currentDraft.input === draft.input) currentDraft.setInput('');
-            if (currentDraft.attachments === attachments) currentDraft.setAttachments([]);
-            navigateToSession(sessionId);
+            // Only what was consumed is cleared. A start that brought its own
+            // prompt never read the draft, and emptying it would throw away
+            // whatever the user has been typing on another screen.
+            if (draftOverrides.input === undefined) {
+                // Do not erase edits made while hydration or attachment upload ran.
+                const currentDraft = useNewSessionDraft.getState();
+                if (currentDraft.input === draft.input) currentDraft.setInput('');
+                if (currentDraft.attachments === attachments) currentDraft.setAttachments([]);
+            }
+            (openSession ?? navigateToSession)(sessionId);
             return true;
         } catch (error) {
             // A failure the user already walked away from is not news.
@@ -512,7 +613,7 @@ export function useStartSessionFromDraft() {
                 if (isMountedRef.current) setPhase(null);
             }
         }
-    }, [defaultOverrides, machines, navigateToSession, sessions]);
+    }, [defaultOverrides, machines, navigateToSession]);
 
     return { isStarting: phase !== null, phase, startSession, cancelStart };
 }

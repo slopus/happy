@@ -19,6 +19,12 @@ export interface NewSessionDraft {
     input: string;
     selectedMachineId: string | null;
     selectedPath: string | null;
+    /**
+     * The Happy Agent project the draft names, when it names one instead of a directory. Set only
+     * for a project whose folder nothing here knows — the catalog owns it, and the spawn asks for
+     * the project by identity.
+     */
+    selectedProjectId: string | null;
     agentType: NewSessionAgentType;
     permissionMode: PermissionModeKey | null;
     modelMode: string | null;
@@ -162,6 +168,7 @@ export function loadNewSessionDraft(): NewSessionDraft | null {
         const input = typeof parsed.input === 'string' ? parsed.input : '';
         const selectedMachineId = typeof parsed.selectedMachineId === 'string' ? parsed.selectedMachineId : null;
         const selectedPath = typeof parsed.selectedPath === 'string' ? parsed.selectedPath : null;
+        const selectedProjectId = typeof parsed.selectedProjectId === 'string' ? parsed.selectedProjectId : null;
         const agentType: NewSessionAgentType = parsed.agentType === 'codex' || parsed.agentType === 'gemini' || parsed.agentType === 'openclaw' || parsed.agentType === 'agy' || parsed.agentType === 'rig'
             ? parsed.agentType
             : 'claude';
@@ -178,6 +185,7 @@ export function loadNewSessionDraft(): NewSessionDraft | null {
             input,
             selectedMachineId,
             selectedPath,
+            selectedProjectId,
             agentType,
             permissionMode,
             modelMode,

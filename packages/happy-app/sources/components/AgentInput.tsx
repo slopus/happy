@@ -51,6 +51,12 @@ interface AgentInputProps {
     // deletion crisp. The parent reads the live text via the imperative ref.
     initialValue: string;
     placeholder: string;
+    /**
+     * False leaves the composer on screen but out of reach — no caret, no
+     * keyboard, nothing to tap into. For a chat that has not started yet, where
+     * the composer is there to hold the layout still rather than to be used.
+     */
+    editable?: boolean;
     // Fires on every keystroke so the parent can sync derived state (drafts,
     // hasText) — typically wrapped in startTransition / debounce by the caller.
     onChangeText?: (text: string) => void;
@@ -2084,6 +2090,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                     ]}>
                         <MultiTextInput
                             ref={inputRef}
+                            editable={props.editable ?? true}
                             defaultValue={props.initialValue}
                             paddingTop={compactMobileComposer
                                 ? MOBILE_COMPOSER_METRICS.inputPaddingTop

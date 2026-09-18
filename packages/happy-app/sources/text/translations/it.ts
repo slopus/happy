@@ -214,6 +214,7 @@ export const it: TranslationStructure = {
         flatList: 'Elenco semplice',
         groupByProject: 'Raggruppa per progetto',
         appearanceSettings: 'Impostazioni aspetto',
+        worktreeTabs: ({ count }: { count: number }) => count === 1 ? '1 scheda' : `${count} schede`,
     },
 
     settingsFeatures: {
@@ -327,6 +328,9 @@ export const it: TranslationStructure = {
         forkErrorMissingMetadata: 'Mancano i metadati della sessione necessari per biforcare.',
         forkErrorGeneric: 'Impossibile biforcare la sessione.',
         forkClaudeOnly: 'La biforcazione è attualmente supportata solo per le sessioni Claude.',
+        archiveAction: 'Archivia',
+        startingChat: 'Avvio di una nuova chat…',
+        actionsTitle: 'Sessione',
     },
 
     commandPalette: {
@@ -554,6 +558,9 @@ export const it: TranslationStructure = {
         hideArchived: 'Nascondi archiviate',
         newSession: 'Nuova sessione',
         projects: "Progetti",
+        bots: 'Bot',
+        showAllWorkspaces: ({ count }: { count: number }) => `Mostra tutti i ${count} spazi di lavoro`,
+        showFewerWorkspaces: 'Mostra meno',
     },
 
     zen: {

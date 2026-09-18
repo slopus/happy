@@ -357,6 +357,12 @@ export default function DevScreen() {
                     icon={<Ionicons name="terminal-outline" size={28} color="#007AFF" />}
                     onPress={() => router.push('/dev/rig-preview' as any)}
                 />
+                <Item
+                    title="Project Home"
+                    subtitle="Project cards, worktrees, and session chips"
+                    icon={<Ionicons name="cube-outline" size={28} color="#007AFF" />}
+                    onPress={() => router.push('/dev/project-home' as any)}
+                />
             </ItemGroup>
 
             {/* Test Features */}
