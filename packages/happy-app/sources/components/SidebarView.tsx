@@ -417,15 +417,15 @@ export const SidebarView = React.memo(({
         router.navigate(path as any);
     }, [closeDrawer, router]);
 
-    const openDesktopHistory = () => {
+    const openDesktopSessionLists = () => {
         setDesktopSidebarMode(desktopSidebarListMode);
         if (mobileNavigation) setMobilePanel('sessions');
         else if (advisorSidebarActive) go('/');
     };
 
-    const openDesktopSessionLists = () => {
-        setDesktopSidebarMode(desktopSidebarListMode);
-        if (advisorSidebarActive) go('/');
+    const openArchive = () => {
+        setDesktopSidebarMode('archive');
+        if (mobileNavigation) setMobilePanel('sessions');
     };
 
     const openSettingsFromSidebar = React.useCallback(() => {
@@ -584,32 +584,20 @@ export const SidebarView = React.memo(({
                 }
                 go(path);
             }} />
-            {mobileNavigation ? (
-                <DesktopRailItem
-                    icon="time-outline"
-                    label={t('sessionHistory.title')}
-                    onPress={openDesktopHistory}
-                    selected={!advisorSidebarActive && desktopSidebarMode !== 'archive'}
-                    testID="sidebar-history-button"
-                />
-            ) : (
-                <>
-                    <DesktopRailItem
-                        icon="albums-outline"
-                        label={t('sidebar.listsTab')}
-                        onPress={openDesktopSessionLists}
-                        selected={desktopSidebarMode !== 'archive'}
-                        testID="sidebar-session-list-button"
-                    />
-                    <DesktopRailItem
-                        icon="file-tray-stacked-outline"
-                        label={t('sessionHistory.archiveTitle')}
-                        onPress={() => setDesktopSidebarMode('archive')}
-                        selected={desktopSidebarMode === 'archive'}
-                        testID="sidebar-archive-button"
-                    />
-                </>
-            )}
+            <DesktopRailItem
+                icon="albums-outline"
+                label={t('sidebar.listsTab')}
+                onPress={openDesktopSessionLists}
+                selected={!advisorSidebarActive && desktopSidebarMode !== 'archive'}
+                testID="sidebar-session-list-button"
+            />
+            <DesktopRailItem
+                icon="file-tray-stacked-outline"
+                label={t('sessionHistory.archiveTitle')}
+                onPress={openArchive}
+                selected={!advisorSidebarActive && desktopSidebarMode === 'archive'}
+                testID="sidebar-archive-button"
+            />
         </View>
     );
 
@@ -719,7 +707,13 @@ export const SidebarView = React.memo(({
                                             <Ionicons name="chevron-back" size={20} color={styles.mobileHeaderTitle.color} />
                                         </Pressable>
                                     ) : null}
-                                    <Text style={styles.mobileHeaderTitle} numberOfLines={1}>{advisorSidebarActive ? t('relationshipAdvisor.title') : t('tabs.sessions')}</Text>
+                                    <Text style={styles.mobileHeaderTitle} numberOfLines={1}>
+                                        {advisorSidebarActive
+                                            ? t('relationshipAdvisor.title')
+                                            : desktopSidebarMode === 'archive'
+                                                ? t('sessionHistory.archiveTitle')
+                                                : t('tabs.sessions')}
+                                    </Text>
                                     <Pressable accessibilityRole="button" accessibilityLabel={t('sidebarLists.close')} onPress={closeDrawer} style={styles.mobileHeaderButton} testID="mobile-sidebar-close">
                                         <Ionicons name="close" size={20} color={styles.mobileHeaderTitle.color} />
                                     </Pressable>
