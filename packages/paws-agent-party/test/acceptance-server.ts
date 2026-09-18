@@ -17,7 +17,7 @@ class WorkbenchFixtureSdk extends TestOnlySdk {
     return (await super.machines()).map(machine => ({ ...machine, metadata: { host: 'fixture-mac-mini.local' } }));
   }
 }
-const server = await createPocServer({ dataDir, staticDir, sdk: new WorkbenchFixtureSdk({ delayMs: 350 }), port: 0 });
+const server = await createPocServer({ dataDir, staticDir, sdk: new WorkbenchFixtureSdk({ delayMs: 350, streamChunks: true }), port: 0 });
 console.log(`测试替身，非真实 Agent · ${server.url}`);
 console.log(`Access token file: ${join(dataDir, 'access-token')}`);
 const close = async () => { await server.close(); await rm(staticDir, { recursive: true, force: true }); process.exit(0); };

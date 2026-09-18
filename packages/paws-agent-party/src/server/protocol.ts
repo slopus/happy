@@ -6,6 +6,8 @@ type SessionEnvelope = {
   role: 'agent' | 'user';
   turn?: string;
   subagent?: string;
+  codexItemId?: string;
+  id?: string;
   ev:
     | { t: 'turn-start' }
     | { t: 'turn-end'; status: 'completed' | 'failed' | 'cancelled' }
@@ -43,6 +45,10 @@ export class DurableTurnDecoder {
     return { ...(this.turnId ? { rootTurnId: this.turnId } : {}), ...(this.terminalMessageId ? { sourceMessageId: this.terminalMessageId } : {}) };
   }
   private readonly text: string[] = [];
+  private readonly items = new Map<string, string>();
+  get publicItems(): ReadonlyMap<string, string> { return this.items; }
+  private ended = false;
+  get finished(): boolean { return this.ended; }
 
   constructor(private readonly submittedLocalId: string) {}
 
@@ -60,14 +66,14 @@ export class DurableTurnDecoder {
       this.turnId = envelope.turn;
       return null;
     }
-    if (!this.turnId || envelope.turn !== this.turnId) return null;
+    if (!this.turnId || envelope.turn !== this.turnId || this.ended) return null;
     if (envelope.ev.t === 'text' && !envelope.ev.thinking && typeof envelope.ev.text === 'string') {
       const value = envelope.ev.text.trim();
-      if (value) this.text.push(value);
+      if (value) { this.text.push(value); this.items.set(envelope.codexItemId ?? envelope.id ?? message.id, value); }
       return null;
     }
     if (envelope.ev.t !== 'turn-end' || !('status' in envelope.ev)) return null;
-    if (['completed', 'failed', 'cancelled'].includes(String(envelope.ev.status))) this.terminalMessageId = message.id;
+    if (['completed', 'failed', 'cancelled'].includes(String(envelope.ev.status))) { this.terminalMessageId = message.id; this.ended = true; }
     if (envelope.ev.status === 'failed' || envelope.ev.status === 'cancelled') {
       return { type: 'failed', status: envelope.ev.status };
     }

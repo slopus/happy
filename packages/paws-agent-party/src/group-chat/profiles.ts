@@ -11,6 +11,9 @@ export type AgentProfile = RoomMember & {
   engine: 'codex';
   model: CodexModel;
   effort: CodexEffort;
+  avatarId: number;
+  machineId?: string;
+  directory?: string;
   createdAt: number;
   updatedAt: number;
 };
@@ -19,6 +22,9 @@ export type AgentProfileInput = {
   instructions: string;
   model?: CodexModel;
   effort?: CodexEffort;
+  avatarId?: number;
+  machineId?: string;
+  directory?: string;
   /** Rejected when supplied with anything other than Codex, for a clear API error. */
   engine?: unknown;
 };
@@ -95,8 +101,8 @@ export class ProfileService {
   }
 }
 
-function normalize(input: AgentProfileInput): Pick<AgentProfile, 'name' | 'instructions' | 'engine' | 'model' | 'effort'> {
-  if (!input || typeof input.name !== 'string' || typeof input.instructions !== 'string') throw new RunError(400, 'An agent needs a name and role instructions.');
+export function normalizeProfileInput(input: AgentProfileInput): Pick<AgentProfile, 'name' | 'instructions' | 'engine' | 'model' | 'effort' | 'avatarId' | 'machineId' | 'directory'> {
+  if (!input || typeof input !== 'object' || Array.isArray(input) || typeof input.name !== 'string' || typeof input.instructions !== 'string') throw new RunError(400, 'An agent needs a name and role instructions.');
   if (input.engine !== undefined && input.engine !== 'codex') throw new RunError(400, 'This release supports Codex Agent profiles only.');
   const name = input.name.trim(); const instructions = input.instructions.trim();
   if (!name || name.length > 40 || /[@\n\r]/u.test(name)) throw new RunError(400, 'Agent name must be 1–40 characters and cannot contain @ or newlines.');
@@ -105,15 +111,25 @@ function normalize(input: AgentProfileInput): Pick<AgentProfile, 'name' | 'instr
   const effort = input.effort ?? DEFAULT_CODEX_EFFORT;
   if (!isCodexModel(model)) throw new RunError(400, 'Unsupported Codex model.');
   if (!isCodexEffort(effort)) throw new RunError(400, 'Unsupported Codex thinking effort.');
-  return { name, instructions, engine: 'codex', model, effort };
+  const avatarId = input.avatarId === undefined ? 0 : input.avatarId;
+  if (!Number.isInteger(avatarId) || avatarId < 0 || avatarId > 23) throw new RunError(400, 'avatarId must be an integer from 0 to 23.');
+  if ((input.machineId === undefined) !== (input.directory === undefined)) throw new RunError(400, 'machineId and directory must be provided together.');
+  if (input.machineId !== undefined && (typeof input.machineId !== 'string' || typeof input.directory !== 'string')) throw new RunError(400, 'machineId and directory must be strings.');
+  const machineId = input.machineId?.trim(); const directory = input.directory?.trim();
+  if (input.machineId !== undefined && (!machineId || !directory)) throw new RunError(400, 'machineId and directory must be provided together.');
+  if (directory && !isAbsoluteDirectory(directory)) throw new RunError(400, 'Enter an absolute working directory already approved in Paws.');
+  return { name, instructions, engine: 'codex', model, effort, avatarId, ...(machineId && directory ? { machineId, directory } : {}) };
 }
+const normalize = normalizeProfileInput;
 function normalizeStoredProfile(profile: AgentProfile): AgentProfile {
   return {
     ...profile,
     engine: 'codex',
     model: isCodexModel(profile.model) ? profile.model : DEFAULT_CODEX_MODEL,
     effort: isCodexEffort(profile.effort) ? profile.effort : DEFAULT_CODEX_EFFORT,
+    avatarId: Number.isInteger(profile.avatarId) && profile.avatarId >= 0 && profile.avatarId <= 23 ? profile.avatarId : 0,
   };
 }
-function sameProfile(left: AgentProfile, right: AgentProfile): boolean { return left.engine === right.engine && left.model === right.model && left.effort === right.effort; }
+function sameProfile(left: AgentProfile, right: AgentProfile): boolean { return left.engine === right.engine && left.model === right.model && left.effort === right.effort && left.avatarId === right.avatarId; }
 function clone<T>(value: T): T { return structuredClone(value); }
+function isAbsoluteDirectory(value: string): boolean { return value.startsWith('/') && !value.includes('\0'); }

@@ -9,12 +9,15 @@ import type {
   Session,
   SpawnSessionInput,
   SpawnSessionResult,
+  PawsAgentEvent,
 } from '@wangjs-jacky/paws-agent';
 import type { ConnectionStatus, RoleId } from '../src/contracts.js';
 
 type Watch = { options: MessageWatchOptions; active: boolean };
 
 export class TestOnlySdk {
+  private readonly textListeners = new Set<(event: Extract<PawsAgentEvent, { type: 'text-delta' }>) => void>();
+  subscribeText(listener: (event: Extract<PawsAgentEvent, { type: 'text-delta' }>) => void) { this.textListeners.add(listener); return () => { this.textListeners.delete(listener); }; }
   readonly calls: Array<{ role: string; text: string; images: SendMessageInput['images'] }> = [];
   unsubscribeCount = 0;
   readonly sessionsStopped = 0;
@@ -33,6 +36,7 @@ export class TestOnlySdk {
     spawnDelayMs?: number;
     spawnGate?: Promise<void>;
     linkDelayMs?: number;
+    streamChunks?: boolean;
   } = {}) {}
 
   linkCalls = 0;
@@ -49,6 +53,8 @@ export class TestOnlySdk {
   async disconnect(): Promise<void> {}
   async dispose(): Promise<void> {}
   async machines(): Promise<Machine[]> { return [machine('machine-1')]; }
+  async browseDirectory(_machineId: string, path = '') { return { success: true as const, path, parent: null, home: '/tmp', directories: [] }; }
+  async configuration(_machineId: string, _sessionId?: string) { return { available: false as const, reason: 'Session required.' }; }
 
   async spawn(input: SpawnSessionInput & { role?: string }): Promise<SpawnSessionResult> {
     if (!input.role) throw new Error('test SDK requires the role boundary field');
@@ -92,6 +98,13 @@ export class TestOnlySdk {
       if (this.options.delayMs) await new Promise(resolve => setTimeout(resolve, this.options.delayMs));
       this.emit(input.sessionId, { role: 'user' }, localId);
       this.emit(input.sessionId, sessionEvent(`root-${call}`, { t: 'turn-start' }));
+      if (this.options.streamChunks) {
+        const text = `public-${role}-${call}`;
+        for (const size of [6, 15, text.length]) {
+          await new Promise(resolve => setTimeout(resolve, 450));
+          for (const listener of this.textListeners) listener({ type: 'text-delta', sessionId: input.sessionId, turnId: `root-${call}`, itemId: 'answer', text: text.slice(0, size), delta: text.slice(0, size) });
+        }
+      }
       this.emit(input.sessionId, sessionEvent(`root-${call}`, { t: 'tool', result: 'tool-secret' }));
       if (this.options.failRole === role) {
         this.emit(input.sessionId, sessionEvent(`root-${call}`, { t: 'turn-end', status: 'failed' }));
@@ -136,7 +149,7 @@ export class TestOnlySdk {
 }
 
 function sessionEvent(turn: string, ev: Record<string, unknown>): unknown {
-  return { role: 'session', content: { id: crypto.randomUUID(), time: Date.now(), role: 'agent', turn, ev }, meta: { sentFrom: 'cli' } };
+  return { role: 'session', content: { id: crypto.randomUUID(), codexItemId: 'answer', time: Date.now(), role: 'agent', turn, ev }, meta: { sentFrom: 'cli' } };
 }
 
 function machine(id: string): Machine {

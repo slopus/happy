@@ -8,27 +8,31 @@ import { DurableTurnDecoder, type TurnTerminal } from '../server/protocol.js';
 import { RunError } from '../server/runs.js';
 import { safeError, type PawsSdkBoundary } from '../server/sdk.js';
 import type { PartyBus } from '../server/party.js';
-import type { AgentProfile, ProfileService } from './profiles.js';
+import { normalizeProfileInput, type AgentProfile, type AgentProfileInput, type ProfileService } from './profiles.js';
 import { resolveMentionTargets, type RoomMember } from './routing.js';
-import { debateTurn, validateMaxRounds, type DebateSnapshot } from './debate.js';
+import { debateTurn, validateMaxRounds, validateDebateMembers, type DebateSnapshot } from './debate.js';
 import { DEFAULT_CODEX_MODEL, DEFAULT_CODEX_EFFORT, type CodexEffort } from './codex-profile.js';
 
-export type RoomAgentSnapshot = RoomMember & { engine: 'codex'; model: string; effort: CodexEffort; status: 'idle' | 'spawning' | 'running' | 'completed' | 'failed' | 'stopped' | 'interrupted'; sessionId?: string; error?: string };
+export type RoomAgentSnapshot = RoomMember & { engine: 'codex'; model: string; effort: CodexEffort; avatarId: number; machineId?: string; directory?: string; temporary?: boolean; status: 'idle' | 'spawning' | 'running' | 'completed' | 'failed' | 'stopped' | 'interrupted'; sessionId?: string; error?: string };
 export type GroupRoomSnapshot = {
   id: string; partyId: string; title: string; machineId: string; directory: string; autoReply: boolean; createdAt: number; updatedAt: number;
   autoDebate: boolean; maxRounds: number; debate?: DebateSnapshot;
   members: RoomAgentSnapshot[]; turns: GroupTurn[]; error?: string;
 };
-export type GroupTurn = TurnProvenance & { debateId?: string; round?: number; phase?: 'opening' | 'rebuttal' };
+export type GroupTurn = TurnProvenance & { debateId?: string; round?: number; phase?: 'opening' | 'rebuttal'; live?: { text: string; status: 'running' | 'completed' | 'failed' | 'stopped' | 'interrupted'; createdAt: number; error?: string } };
 export type CreateGroupRoomInput = { requestId: string; title: string; memberIds: string[]; machineId: string; directory: string; autoReply?: boolean; autoDebate?: boolean; maxRounds?: number };
 export type GroupMessageInput = { requestId: string; text: string; images: ImageRef[] };
 type StoredRoom = { snapshot: GroupRoomSnapshot; cursors: Record<string, number>; deliveries?: Record<string, { sessionId: string; cursor: string }> };
-type RoomsFile = { rooms: StoredRoom[]; requestIds: Record<string, string>; messageRequestIds: string[] };
+type RoomDeletion = { roomId: string; partyId: string };
+type RoomsFile = { rooms: StoredRoom[]; requestIds: Record<string, string>; messageRequestIds: string[]; memberRequestIds?: string[]; deletions?: RoomDeletion[] };
 
 export class GroupRoomService {
   private readonly rooms = new Map<string, StoredRoom>();
   private readonly createRequests = new Map<string, string>();
   private readonly messageRequests = new Set<string>();
+  private readonly memberRequests = new Set<string>();
+  private readonly deletions = new Map<string, string>();
+  private readonly durableDeletions = new Set<string>();
   private readonly controllers = new Map<string, AbortController>();
   private readonly pendingSpawns = new Map<string, Promise<SpawnSessionResult>>();
   private readonly queues = new Map<string, Promise<void>>();
@@ -37,9 +41,29 @@ export class GroupRoomService {
   private readonly epochs = new Map<string, number>();
   private persistQueue: Promise<void> = Promise.resolve();
   private closing = false;
+  private readonly listeners = new Map<string, Set<() => void>>();
+  private readonly deletionListeners = new Map<string, Set<() => void>>();
+
+  subscribe(id: string, listener: () => void): () => void {
+    this.require(id);
+    const listeners = this.listeners.get(id) ?? new Set(); listeners.add(listener); this.listeners.set(id, listeners);
+    return () => { listeners.delete(listener); if (!listeners.size) this.listeners.delete(id); };
+  }
+  subscribeDeletion(id: string, listener: () => void): () => void {
+    this.require(id);
+    const listeners = this.deletionListeners.get(id) ?? new Set(); listeners.add(listener); this.deletionListeners.set(id, listeners);
+    return () => { listeners.delete(listener); if (!listeners.size) this.deletionListeners.delete(id); };
+  }
+  private changed(room: StoredRoom): void {
+    room.snapshot.updatedAt = Math.max(Date.now(), room.snapshot.updatedAt + 1);
+    for (const listener of this.listeners.get(room.snapshot.id) ?? []) listener();
+  }
 
   private constructor(private readonly path: string, private readonly sdk: PawsSdkBoundary, private readonly assets: AssetStore, private readonly party: PartyBus, private readonly profiles: ProfileService, private readonly timeoutMs: number, file: RoomsFile) {
+    for (const deletion of file.deletions ?? []) { this.deletions.set(deletion.roomId, deletion.partyId); this.durableDeletions.add(deletion.roomId); }
     for (const room of file.rooms ?? []) {
+      if (this.deletions.has(room.snapshot.id)) continue;
+      for (const turn of room.snapshot.turns) if (turn.live?.status === 'running') { turn.live.status = 'interrupted'; turn.live.error = '服务已重启，本次回复未自动重放。'; }
       room.snapshot.autoDebate ??= false; room.snapshot.maxRounds ??= 10;
       if (room.snapshot.debate?.status === 'running') { room.snapshot.debate.status = 'interrupted'; room.snapshot.debate.nextMemberId = null; room.snapshot.debate.stopReason = 'Service restarted; debate was not replayed. Remote work may continue.'; }
       for (const member of room.snapshot.members) {
@@ -50,11 +74,13 @@ export class GroupRoomService {
           delete member.sessionId; delete room.cursors[member.id];
         }
         member.engine = 'codex'; member.model ??= DEFAULT_CODEX_MODEL; member.effort ??= DEFAULT_CODEX_EFFORT;
+        member.avatarId ??= 0;
       }
       this.rooms.set(room.snapshot.id, room);
     }
     for (const [requestId, id] of Object.entries(file.requestIds ?? {})) this.createRequests.set(requestId, id);
     for (const id of file.messageRequestIds ?? []) this.messageRequests.add(id);
+    for (const id of file.memberRequestIds ?? []) this.memberRequests.add(id);
   }
 
   static async create(options: { dataDir: string; sdk: PawsSdkBoundary; assets: AssetStore; party: PartyBus; profiles: ProfileService; turnTimeoutMs?: number }): Promise<GroupRoomService> {
@@ -62,6 +88,10 @@ export class GroupRoomService {
     try { file = JSON.parse(await readFile(path, 'utf8')) as RoomsFile; } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
     const service = new GroupRoomService(path, options.sdk, options.assets, options.party, options.profiles, options.turnTimeoutMs ?? 10 * 60_000, file);
     await service.persist();
+    for (const [roomId, partyId] of [...service.deletions]) {
+      try { await service.party.delete(partyId); service.deletions.delete(roomId); service.durableDeletions.delete(roomId); await service.persist(); }
+      catch { /* Keep the durable tombstone for the next explicit retry or restart. */ }
+    }
     for (const room of service.rooms.values()) {
       const debate = room.snapshot.debate;
       if (debate && debate.status !== 'running' && !debate.terminalMessageId) await service.publishDebateEnd(room, debate);
@@ -87,6 +117,51 @@ export class GroupRoomService {
   }
 
   async setAutoReply(id: string, autoReply: boolean): Promise<GroupRoomSnapshot> { const room = this.require(id); room.snapshot.autoReply = Boolean(autoReply); room.snapshot.updatedAt = Date.now(); await this.persist(); return clone(room.snapshot); }
+
+  async addMembers(id: string, input: { requestId: string; memberIds?: string[]; temporary?: AgentProfileInput[] }): Promise<GroupRoomSnapshot> {
+    return this.serialize(id, async () => {
+      const room = this.require(id); const key = `${id}:${input?.requestId}`;
+      if (!input || typeof input !== 'object' || Array.isArray(input) || typeof input.requestId !== 'string' || !input.requestId.trim()) throw new RunError(400, 'A member invitation needs a request id.');
+      if (this.memberRequests.has(key)) return clone(room.snapshot);
+      const memberIds = input.memberIds ?? []; const temporary = input.temporary ?? [];
+      if (!Array.isArray(memberIds) || !Array.isArray(temporary) || memberIds.some(value => typeof value !== 'string')) throw new RunError(400, 'Invalid member invitation.');
+      const existingIds = new Set(room.snapshot.members.map(member => member.id));
+      const profiles = [...new Set(memberIds)].filter(profileId => !existingIds.has(profileId)).map(profileId => this.profiles.get(profileId));
+      const temporaryProfiles = temporary.map(value => normalizeProfileInput(value));
+      const names = [...room.snapshot.members.map(member => member.name), ...profiles.map(profile => profile.name), ...temporaryProfiles.map(profile => profile.name)];
+      if (new Set(names).size !== names.length) throw new RunError(409, 'Agent display names must be unique in a room.');
+      if (profiles.length + temporaryProfiles.length === 0) { this.memberRequests.add(key); await this.persist(); return clone(room.snapshot); }
+      const additions: RoomAgentSnapshot[] = [
+        ...profiles.map(toMember),
+        ...temporaryProfiles.map(profile => ({ id: `agent-${randomUUID().replaceAll('-', '').slice(0, 16)}`, ...profile, temporary: true, status: 'idle' as const })),
+      ];
+      for (const member of additions) await this.party.join(room.snapshot.partyId, { id: member.id, description: member.instructions });
+      room.snapshot.members.push(...additions); this.memberRequests.add(key); await this.persist(); return clone(room.snapshot);
+    });
+  }
+
+  async delete(id: string): Promise<void> {
+    return this.serialize(id, async () => {
+      const pendingPartyId = this.deletions.get(id);
+      if (pendingPartyId) {
+        if (!this.durableDeletions.has(id)) { await this.persist(); this.durableDeletions.add(id); }
+        await this.party.delete(pendingPartyId); this.deletions.delete(id); this.durableDeletions.delete(id); await this.persist(); return;
+      }
+      const room = this.require(id);
+      if (room.snapshot.debate?.status === 'running' || this.debateJobs.has(id) || room.snapshot.members.some(member => member.status === 'spawning' || member.status === 'running') || [...this.queues.keys()].some(key => key.startsWith(`${id}:`)) || [...this.controllers.keys()].some(key => key.startsWith(`${id}:`))) throw new RunError(409, 'Stop active group work before deleting this room.');
+      this.deletions.set(id, room.snapshot.partyId);
+      this.rooms.delete(id); this.epochs.set(id, (this.epochs.get(id) ?? 0) + 1);
+      for (const [requestId, roomId] of this.createRequests) if (roomId === id) this.createRequests.delete(requestId);
+      for (const key of this.messageRequests) if (key.startsWith(`${id}:`)) this.messageRequests.delete(key);
+      for (const key of this.memberRequests) if (key.startsWith(`${id}:`)) this.memberRequests.delete(key);
+      for (const listener of this.deletionListeners.get(id) ?? []) listener();
+      this.listeners.delete(id); this.deletionListeners.delete(id);
+      await this.persist();
+      this.durableDeletions.add(id);
+      await this.party.delete(room.snapshot.partyId);
+      this.deletions.delete(id); this.durableDeletions.delete(id); await this.persist();
+    });
+  }
 
   async configure(id: string, input: { autoReply?: boolean; autoDebate?: boolean; maxRounds?: number }): Promise<GroupRoomSnapshot> {
     return this.serialize(id, async () => {
@@ -115,19 +190,20 @@ export class GroupRoomService {
     if (route.mode === 'invalid') throw new RunError(400, `These @ agents are not in this group: ${route.unknown.join('、')}`);
     if (this.messageRequests.has(key)) return { route, room: clone(room.snapshot) };
     if (room.snapshot.debate?.status === 'running' || this.debateJobs.has(id)) throw new RunError(409, 'A debate is already active. Stop it before sending another task.');
-    const startsDebate = room.snapshot.autoDebate && route.mode === 'mention' && route.ids.length === 2;
+    const startsDebate = room.snapshot.autoDebate && route.mode === 'mention' && route.ids.length >= 2;
     if (startsDebate && [...this.queues.keys()].some(key => key.startsWith(`${id}:`))) throw new RunError(409, 'Wait for current group replies before starting a debate.');
     await this.assets.resolveMany(input.images);
     const publicMessage = await this.party.send({ partyId: room.snapshot.partyId, from: 'host', to: '*', text: input.text, images: input.images });
     this.messageRequests.add(key); room.snapshot.updatedAt = Date.now();
-    if (startsDebate) await this.startDebate(room, route.ids as [string, string], publicMessage.id, input);
+    if (startsDebate) await this.startDebate(room, route.ids, publicMessage.id, input);
     else { await this.persist(); for (const agentId of route.ids) void this.enqueue(room, agentId, publicMessage.id, input).catch(() => undefined); }
     return { route, room: clone(room.snapshot) };
   }
 
-  private async startDebate(room: StoredRoom, members: [string, string], sourceMessageId: string, input: GroupMessageInput): Promise<void> {
+  private async startDebate(room: StoredRoom, members: string[], sourceMessageId: string, input: GroupMessageInput): Promise<void> {
     validateMaxRounds(room.snapshot.maxRounds);
-    const debate: DebateSnapshot = { id: randomUUID(), status: 'running', members, maxRounds: room.snapshot.maxRounds, completedRounds: 0, completedTurns: 0, currentTurn: 1, nextMemberId: members[0], sourceMessageId };
+    validateDebateMembers(members);
+    const debate: DebateSnapshot = { id: randomUUID(), status: 'running', members, maxRounds: room.snapshot.maxRounds, completedRounds: 0, completedTurns: 0, currentTurn: 1, nextMemberId: members[0]!, sourceMessageId };
     room.snapshot.debate = debate;
     await this.persist();
     if (debate.status !== 'running' || this.closing) return;
@@ -144,9 +220,9 @@ export class GroupRoomService {
         const ok = await this.runTurn(room, next.memberId, debate.sourceMessageId, input, { debateId: debate.id, round: next.round, phase: next.phase });
         if (debate.status !== 'running' || this.closing) break;
         if (!ok) { debate.status = 'failed'; debate.stopReason = `${displayName(room.snapshot.members, next.memberId)}: ${room.snapshot.members.find(member => member.id === next.memberId)?.error ?? 'Turn failed.'}`; break; }
-        debate.completedTurns++; debate.completedRounds = Math.floor(debate.completedTurns / 2);
-        if (debate.completedTurns === debate.maxRounds * 2) { debate.status = 'completed'; break; }
-        debate.nextMemberId = debate.members[debate.completedTurns % 2]!; await this.persist();
+        debate.completedTurns++; debate.completedRounds = Math.floor(debate.completedTurns / debate.members.length);
+        if (debate.completedTurns === debate.maxRounds * debate.members.length) { debate.status = 'completed'; break; }
+        debate.nextMemberId = debate.members[debate.completedTurns % debate.members.length]!; await this.persist();
       }
     } catch (error) { if (debate.status === 'running') { debate.status = 'failed'; debate.stopReason = safeError(error); } }
     if (debate.status !== 'running') { debate.nextMemberId = null; await this.persist(); if (!this.closing) await this.publishDebateEnd(room, debate); }
@@ -207,11 +283,12 @@ export class GroupRoomService {
   private async runTurn(room: StoredRoom, agentId: string, replyTo: string, input: GroupMessageInput, debate?: Pick<GroupTurn, 'debateId' | 'round' | 'phase'>): Promise<boolean> {
     const member = room.snapshot.members.find(value => value.id === agentId); if (!member || this.closing) return false;
     const controller = new AbortController(); this.controllers.set(`${room.snapshot.id}:${agentId}`, controller);
+    let turn: GroupTurn | undefined;
     try {
       member.error = undefined;
       const direction = debate ? `辩论第 ${debate.round} 轮 · ${debate.phase === 'opening' ? '立论：先阐述你的立场及理由。' : `交锋 ${debate.round}：直接回应对方最近的观点，指出分歧或修正自己的判断。`}请以你的角色发言。` : '请以你的角色回应刚才的群聊消息。';
       const task = await this.party.send({ partyId: room.snapshot.partyId, from: 'host', to: [agentId], text: `${direction}不要展示工具过程、凭据或隐藏推理；直接给出面向群聊的简洁结论。`, replyTo });
-      const turn: GroupTurn = { runId: room.snapshot.id, partyId: room.snapshot.partyId, participant: agentId as never, taskMessageId: task.id, ...debate }; room.snapshot.turns.push(turn);
+      turn = { runId: room.snapshot.id, partyId: room.snapshot.partyId, participant: agentId as never, taskMessageId: task.id, ...debate, live: { text: '', status: 'running', createdAt: Date.now() } }; room.snapshot.turns.push(turn);
       const previous = room.deliveries?.[agentId];
       const delivery = previous?.sessionId === member.sessionId ? previous : undefined;
       const history = await this.party.read(room.snapshot.partyId, delivery ? { since: delivery.cursor } : undefined);
@@ -228,37 +305,57 @@ export class GroupRoomService {
       const result = await this.remote(room, member, prompt, await this.loadImages(input.images), controller.signal, turn);
       controller.signal.throwIfAborted();
       const published = await this.party.send({ partyId: room.snapshot.partyId, from: member.id, to: '*', text: result, replyTo: task.id }); turn.publicMessageId = published.id;
+      turn.live = { ...turn.live!, text: result, status: 'completed' };
       // Commit the read snapshot, NOT the new reply's cursor: other members or
       // the user may have posted while this remote turn was running.
       const cursor = history.at(-1)?.cursor;
       if (cursor && member.sessionId) (room.deliveries ??= {})[agentId] = { sessionId: member.sessionId, cursor };
       return true;
-    } catch (error) { member.status = this.closing ? 'interrupted' : controller.signal.aborted ? 'stopped' : 'failed'; member.error = safeError(error); return false; }
-    finally { room.snapshot.updatedAt = Date.now(); this.controllers.delete(`${room.snapshot.id}:${agentId}`); await this.persist(); }
+    } catch (error) { member.status = this.closing ? 'interrupted' : controller.signal.aborted ? 'stopped' : 'failed'; member.error = safeError(error); if (turn?.live) { turn.live.status = member.status; turn.live.error = member.error; } return false; }
+    finally { this.controllers.delete(`${room.snapshot.id}:${agentId}`); await this.persist(); }
   }
-  private async remote(room: StoredRoom, member: RoomAgentSnapshot, prompt: string, images: SendMessageInput['images'], signal: AbortSignal, turn: TurnProvenance): Promise<string> {
+  private async remote(room: StoredRoom, member: RoomAgentSnapshot, prompt: string, images: SendMessageInput['images'], signal: AbortSignal, turn: GroupTurn): Promise<string> {
     signal.throwIfAborted(); member.status = member.sessionId ? 'running' : 'spawning'; await this.persist(); signal.throwIfAborted(); const deadline = timeout(signal, this.timeoutMs); let subscription: MessageSubscription | undefined;
+    let unsubscribeText: (() => void) | undefined;
     try {
       const sessionId = await this.session(room, member, deadline.signal); const localId = randomUUID(); Object.assign(turn, { sessionId, localId });
       const decoder = new DurableTurnDecoder(localId); const terminal = deferred<TurnTerminal>(); terminal.promise.catch(() => undefined);
-      const pending = this.sdk.watch(sessionId, { afterSeq: room.cursors[member.id] ?? 0, signal: deadline.signal, onMessage: message => { room.cursors[member.id] = Math.max(room.cursors[member.id] ?? 0, message.seq); const outcome = decoder.accept(message); Object.assign(turn, decoder.provenance); if (outcome) terminal.resolve(outcome); }, onError: error => terminal.reject(error) });
+      // Cumulative item snapshots replace, never append, overlapping chunks.
+      // Durable echo + root-turn-start remain the authority for accepting text.
+      const streamed = new Map<string, { turnId: string; itemId: string; text: string }>();
+      const updateText = () => {
+        if (deadline.signal.aborted || !turn.live || !decoder.provenance.rootTurnId) return;
+        const items = new Map<string, string>();
+        for (const item of streamed.values()) if (item.turnId === decoder.provenance.rootTurnId) items.set(item.itemId, item.text);
+        for (const [id, text] of decoder.publicItems) items.set(id, text);
+        const text = [...items.values()].join('\n\n').slice(0, 100_000);
+        if (text !== turn.live.text) { turn.live.text = text; this.changed(room); }
+      };
+      unsubscribeText = this.sdk.subscribeText?.(event => {
+        if (deadline.signal.aborted || decoder.finished || event.sessionId !== sessionId || (decoder.provenance.rootTurnId && event.turnId !== decoder.provenance.rootTurnId)) return;
+        const key = `${event.turnId}:${event.itemId}`;
+        if (!streamed.has(key) && streamed.size >= 32) return;
+        if (event.text.length > 100_000) return;
+        streamed.set(key, { turnId: event.turnId, itemId: event.itemId, text: event.text }); updateText();
+      });
+      const pending = this.sdk.watch(sessionId, { afterSeq: room.cursors[member.id] ?? 0, signal: deadline.signal, onMessage: message => { if (deadline.signal.aborted) return; room.cursors[member.id] = Math.max(room.cursors[member.id] ?? 0, message.seq); const outcome = decoder.accept(message); Object.assign(turn, decoder.provenance); updateText(); if (outcome) terminal.resolve(outcome); }, onError: error => terminal.reject(error) });
       void pending.then(value => { if (deadline.signal.aborted) value.unsubscribe(); }, () => undefined);
       subscription = await abortable(pending, deadline.signal); member.status = 'running'; await this.persist(); deadline.signal.throwIfAborted();
       const [, outcome] = await abortable(Promise.all([this.sdk.send({ sessionId, text: prompt, localId, images, meta: { model: member.model, effort: member.effort }, signal: deadline.signal }), terminal.promise]), deadline.signal);
       if (outcome.type === 'failed') throw new Error(`Remote ${member.name} turn ${outcome.status}.`); member.status = 'completed'; return outcome.text;
-    } finally { subscription?.unsubscribe(); deadline.dispose(); }
+    } finally { unsubscribeText?.(); subscription?.unsubscribe(); deadline.dispose(); }
   }
   private async session(room: StoredRoom, member: RoomAgentSnapshot, signal: AbortSignal): Promise<string> {
     signal.throwIfAborted(); if (member.sessionId) return member.sessionId; const key = `${room.snapshot.id}:${member.id}`; let pending = this.pendingSpawns.get(key);
-    if (!pending) { pending = this.sdk.spawn({ role: member.id, machineId: room.snapshot.machineId, directory: room.snapshot.directory, approvedNewDirectoryCreation: false, agent: 'codex', model: member.model, effort: member.effort }); this.pendingSpawns.set(key, pending); void pending.finally(() => this.pendingSpawns.delete(key)).catch(() => undefined); }
+    if (!pending) { pending = this.sdk.spawn({ role: member.id, machineId: member.machineId ?? room.snapshot.machineId, directory: member.directory ?? room.snapshot.directory, approvedNewDirectoryCreation: false, agent: 'codex', model: member.model, effort: member.effort }); this.pendingSpawns.set(key, pending); void pending.finally(() => this.pendingSpawns.delete(key)).catch(() => undefined); }
     const result = await abortable(pending, signal); if (result.type === 'requestToApproveDirectoryCreation') throw new Error(`Directory approval required for ${result.directory}; approve it in Paws before retrying.`); if (result.type === 'error') throw new Error(result.errorMessage); member.sessionId = result.sessionId; await this.persist(); return result.sessionId;
   }
   private async loadImages(images: ImageRef[]): Promise<SendMessageInput['images']> { return (await this.assets.resolveMany(images)).map(({ ref, bytes }) => ({ name: ref.name, mimeType: ref.mimeType, bytes })); }
   private require(id: string): StoredRoom { const room = this.rooms.get(id); if (!room) throw new RunError(404, 'Group not found.'); return room; }
-  private persist(): Promise<void> { const payload = JSON.stringify({ rooms: [...this.rooms.values()], requestIds: Object.fromEntries(this.createRequests), messageRequestIds: [...this.messageRequests] } satisfies RoomsFile); this.persistQueue = this.persistQueue.then(async () => { await mkdir(dirname(this.path), { recursive: true, mode: 0o700 }); const temp = `${this.path}.${randomUUID()}.tmp`; await writeFile(temp, payload, { flag: 'wx', mode: 0o600 }); await rename(temp, this.path); await chmod(this.path, 0o600); }); return this.persistQueue; }
+  private persist(): Promise<void> { for (const room of this.rooms.values()) this.changed(room); const payload = JSON.stringify({ rooms: [...this.rooms.values()], requestIds: Object.fromEntries(this.createRequests), messageRequestIds: [...this.messageRequests], memberRequestIds: [...this.memberRequests], deletions: [...this.deletions].map(([roomId, partyId]) => ({ roomId, partyId })) } satisfies RoomsFile); this.persistQueue = this.persistQueue.catch(() => undefined).then(async () => { await mkdir(dirname(this.path), { recursive: true, mode: 0o700 }); const temp = `${this.path}.${randomUUID()}.tmp`; await writeFile(temp, payload, { flag: 'wx', mode: 0o600 }); await rename(temp, this.path); await chmod(this.path, 0o600); }); return this.persistQueue; }
 }
 
-function toMember(profile: AgentProfile): RoomAgentSnapshot { return { id: profile.id, name: profile.name, instructions: profile.instructions, engine: 'codex', model: profile.model, effort: profile.effort, status: 'idle' }; }
+function toMember(profile: AgentProfile): RoomAgentSnapshot { return { id: profile.id, name: profile.name, instructions: profile.instructions, engine: 'codex', model: profile.model, effort: profile.effort, avatarId: profile.avatarId, ...(profile.machineId && profile.directory ? { machineId: profile.machineId, directory: profile.directory } : {}), status: 'idle' }; }
 function displayName(members: RoomAgentSnapshot[], id: string): string { return id === 'host' ? '我' : members.find(member => member.id === id)?.name ?? id; }
 function clone<T>(value: T): T { return structuredClone(value); }
 function isAbsoluteDirectory(value: string): boolean { return value.startsWith('/') && !value.includes('\0'); }

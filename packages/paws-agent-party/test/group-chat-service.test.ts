@@ -70,6 +70,67 @@ describe('generic group chat', () => {
     expect(response.status).toBe(400);
     expect((await response.json() as { error: string }).error).toContain('absolute working directory');
   });
+
+  it('invites permanent and temporary agents atomically and uses each member machine configuration', async () => {
+    const { server, sdk } = await start(); const spawn = vi.spyOn(sdk, 'spawn');
+    const permanent = await json<{ id: string }>(`${server.url}/api/group-chat/agents`, { method: 'POST', body: JSON.stringify({ name: '远端成员', instructions: '远端处理', avatarId: 4, machineId: 'machine-2', directory: '/srv/remote' }) });
+    const seeded = await json<{ agents: Array<{ id: string }> }>(`${server.url}/api/group-chat/agents`);
+    const room = await json<GroupRoomSnapshot>(`${server.url}/api/group-chat/rooms`, { method: 'POST', body: JSON.stringify({ requestId: 'invite-room', title: '邀请', memberIds: [seeded.agents[0]!.id], machineId: 'machine-1', directory: '/tmp/work', autoReply: false }) });
+    const admitted = await json<GroupRoomSnapshot>(`${server.url}/api/group-chat/rooms/${room.id}/members`, { method: 'POST', body: JSON.stringify({ requestId: 'invite-1', memberIds: [permanent.id, permanent.id], temporary: [{ name: '临时顾问', instructions: '临时分析', avatarId: 7 }] }) });
+    expect(admitted.members).toEqual(expect.arrayContaining([expect.objectContaining({ id: permanent.id, avatarId: 4, machineId: 'machine-2', directory: '/srv/remote' }), expect.objectContaining({ name: '临时顾问', avatarId: 7, temporary: true })]));
+    const retry = await json<GroupRoomSnapshot>(`${server.url}/api/group-chat/rooms/${room.id}/members`, { method: 'POST', body: JSON.stringify({ requestId: 'invite-1', temporary: [{ name: 'ignored', instructions: 'ignored' }] }) });
+    expect(retry.members).toHaveLength(admitted.members.length);
+    const library = await json<{ agents: Array<{ name: string }> }>(`${server.url}/api/group-chat/agents`);
+    expect(library.agents.some(agent => agent.name === '临时顾问')).toBe(false);
+    const bad = await fetch(`${server.url}/api/group-chat/rooms/${room.id}/members`, auth({ method: 'POST', body: JSON.stringify({ requestId: 'invite-bad', temporary: [{ name: '临时顾问', instructions: 'duplicate' }, { name: 'new', instructions: '' }] }) }));
+    expect(bad.status).toBe(400);
+    expect((await json<GroupRoomSnapshot>(`${server.url}/api/group-chat/rooms/${room.id}`)).members).toHaveLength(admitted.members.length);
+    await json(`${server.url}/api/group-chat/rooms/${room.id}/messages`, { method: 'POST', body: JSON.stringify({ requestId: 'per-member-spawn', text: '@远端成员 执行', images: [] }) });
+    await eventually(() => expect(spawn).toHaveBeenCalledWith(expect.objectContaining({ machineId: 'machine-2', directory: '/srv/remote' })));
+  });
+
+  it('deletes an idle room durably and rejects deletion during active work', async () => {
+    const { server, sdk, dir } = await start(); const profiles = await json<{ agents: Array<{ id: string; name: string }> }>(`${server.url}/api/group-chat/agents`); const agent = profiles.agents[0]!;
+    const room = await json<GroupRoomSnapshot>(`${server.url}/api/group-chat/rooms`, { method: 'POST', body: JSON.stringify({ requestId: 'delete-room', title: '删除', memberIds: [agent.id], machineId: 'machine-1', directory: '/tmp/work' }) });
+    let release!: () => void; sdk.holdNextDelivery(new Promise<void>(resolve => { release = resolve; }));
+    await json(`${server.url}/api/group-chat/rooms/${room.id}/messages`, { method: 'POST', body: JSON.stringify({ requestId: 'busy', text: `@${agent.name} 工作`, images: [] }) });
+    await eventually(() => expect(sdk.calls).toHaveLength(1));
+    expect((await fetch(`${server.url}/api/group-chat/rooms/${room.id}`, auth({ method: 'DELETE' }))).status).toBe(409);
+    release(); await eventually(async () => expect((await json<GroupRoomSnapshot>(`${server.url}/api/group-chat/rooms/${room.id}`)).members[0]!.status).toBe('completed'));
+    await eventually(async () => expect((await fetch(`${server.url}/api/group-chat/rooms/${room.id}`, auth({ method: 'DELETE' }))).status).toBe(200));
+    expect((await fetch(`${server.url}/api/group-chat/rooms/${room.id}`, auth())).status).toBe(404);
+    const persisted = JSON.parse(await readFile(join(dir, 'group-chat-rooms.json'), 'utf8'));
+    expect(persisted.rooms).toHaveLength(0); expect(persisted.requestIds).toEqual({});
+  });
+
+  it('exposes SDK directory discovery and an explicit unavailable machine configuration capability', async () => {
+    const { server, sdk } = await start(); const browse = vi.spyOn(sdk, 'browseDirectory');
+    const listing = await json<{ path: string }>(`${server.url}/api/paws/machines/machine-1/directories?path=${encodeURIComponent('/tmp')}`);
+    expect(listing.path).toBe('/tmp'); expect(browse).toHaveBeenCalledWith('machine-1', '/tmp');
+    await expect(json<{ available: boolean }>(`${server.url}/api/paws/machines/machine-1/configuration`)).resolves.toEqual(expect.objectContaining({ available: false }));
+  });
+
+  it('rejects malformed invitation request ids and temporary configuration with 400', async () => {
+    const { server } = await start(); const profiles = await json<{ agents: Array<{ id: string }> }>(`${server.url}/api/group-chat/agents`);
+    const room = await json<GroupRoomSnapshot>(`${server.url}/api/group-chat/rooms`, { method: 'POST', body: JSON.stringify({ requestId: 'malformed-room', title: '校验', memberIds: [profiles.agents[0]!.id], machineId: 'machine-1', directory: '/tmp/work' }) });
+    for (const body of [
+      { requestId: 1, temporary: [] },
+      { requestId: 'bad-avatar', temporary: [{ name: '坏头像', instructions: '拒绝', avatarId: null }] },
+      { requestId: 'bad-machine', temporary: [{ name: '坏机器', instructions: '拒绝', machineId: 1, directory: '/tmp' }] },
+    ]) expect((await fetch(`${server.url}/api/group-chat/rooms/${room.id}/members`, auth({ method: 'POST', body: JSON.stringify(body) }))).status).toBe(400);
+  });
+
+  it('closes an events stream safely when its room is deleted during a pending debounce', async () => {
+    const { server } = await start(); const profiles = await json<{ agents: Array<{ id: string }> }>(`${server.url}/api/group-chat/agents`);
+    const room = await json<GroupRoomSnapshot>(`${server.url}/api/group-chat/rooms`, { method: 'POST', body: JSON.stringify({ requestId: 'sse-delete-room', title: 'SSE 删除', memberIds: [profiles.agents[0]!.id], machineId: 'machine-1', directory: '/tmp/work' }) });
+    const controller = new AbortController(); const stream = await fetch(`${server.url}/api/group-chat/rooms/${room.id}/events`, auth({ signal: controller.signal }));
+    await json(`${server.url}/api/group-chat/rooms/${room.id}/members`, { method: 'POST', body: JSON.stringify({ requestId: 'schedule-event', temporary: [{ name: '临时流', instructions: '触发更新' }] }) });
+    expect((await fetch(`${server.url}/api/group-chat/rooms/${room.id}`, auth({ method: 'DELETE' }))).status).toBe(200);
+    await expect(stream.text()).resolves.toContain('data:');
+    await new Promise(resolve => setTimeout(resolve, 150));
+    expect((await fetch(`${server.url}/api/group-chat/rooms`, auth())).status).toBe(200);
+    controller.abort();
+  });
 });
 
-async function eventually(assertion: () => void): Promise<void> { let last: unknown; for (let i = 0; i < 30; i += 1) { try { assertion(); return; } catch (error) { last = error; await new Promise(resolve => setTimeout(resolve, 20)); } } throw last; }
+async function eventually(assertion: () => void | Promise<void>): Promise<void> { let last: unknown; for (let i = 0; i < 30; i += 1) { try { await assertion(); return; } catch (error) { last = error; await new Promise(resolve => setTimeout(resolve, 20)); } } throw last; }

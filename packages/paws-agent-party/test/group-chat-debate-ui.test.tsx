@@ -49,7 +49,7 @@ it('shows bounded debate progress, locks its cap while running, and sends the de
 it('allows a non-running room to set its bounded 1–10 round cap', async () => {
   sessionStorage.setItem('apToken', 'test-token');
   const calls: Array<{ path: string; init?: RequestInit }> = [];
-  let snapshot = room({ autoDebate: false, debate: undefined });
+  let snapshot = room({ autoDebate: true, debate: undefined });
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const path = String(input); calls.push({ path, init });
     if (path.endsWith('/api/paws/status')) return Response.json({ state: 'disconnected' });
@@ -90,7 +90,10 @@ it('shows a manually stopped member as a neutral Chinese state, not a failure', 
   }));
 
   render(<GroupChatApp />);
-  expect(await screen.findByText('codex · 已停止')).toBeTruthy();
+  const membersButton = await screen.findByRole('button', { name: /成员 · 2/ });
+  fireEvent.click(membersButton);
+  expect(membersButton.getAttribute('aria-expanded')).toBe('true');
+  expect(await screen.findByText('已停止')).toBeTruthy();
   expect(screen.queryByText('Debate stopped')).toBeNull();
   expect(screen.queryByRole('alert')).toBeNull();
 });

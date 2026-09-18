@@ -62,6 +62,7 @@ export async function createPocServer(options: CreatePocServerOptions = {}): Pro
   let closed = false;
   let listeningPort = 0;
   let accountTransition: symbol | null = null;
+  const eventResponses = new Set<ServerResponse>();
 
   const server = createServer((request, response) => {
     void handle(request, response).catch(error => {
@@ -120,6 +121,10 @@ export async function createPocServer(options: CreatePocServerOptions = {}): Pro
     if (request.method === 'GET' && url.pathname === '/api/paws/machines') {
       return sendJson(response, 200, { machines: await sdk.machines() });
     }
+    const machineDirectoriesMatch = url.pathname.match(/^\/api\/paws\/machines\/([^/]+)\/directories$/);
+    if (request.method === 'GET' && machineDirectoriesMatch) return sendJson(response, 200, await sdk.browseDirectory(decodeURIComponent(machineDirectoriesMatch[1]), url.searchParams.get('path') ?? undefined));
+    const machineConfigurationMatch = url.pathname.match(/^\/api\/paws\/machines\/([^/]+)\/configuration$/);
+    if (request.method === 'GET' && machineConfigurationMatch) return sendJson(response, 200, await sdk.configuration(decodeURIComponent(machineConfigurationMatch[1]), url.searchParams.get('sessionId') ?? undefined));
     if (request.method === 'GET' && url.pathname === '/api/group-chat/agents') return sendJson(response, 200, { agents: profiles.list() });
     if (request.method === 'POST' && url.pathname === '/api/group-chat/agents') return sendJson(response, 200, await profiles.create(await readJson(request, 32 * 1024) as AgentProfileInput));
     const agentProfileMatch = url.pathname.match(/^\/api\/group-chat\/agents\/([^/]+)$/);
@@ -129,12 +134,37 @@ export async function createPocServer(options: CreatePocServerOptions = {}): Pro
       if (accountTransition) return sendJson(response, 409, { error: 'Wait for the Paws account transition to finish.' });
       return sendJson(response, 200, await groups.create(await readJson(request, 64 * 1024) as CreateGroupRoomInput));
     }
+    const groupEventsMatch = url.pathname.match(/^\/api\/group-chat\/rooms\/([^/]+)\/events$/);
+    if (request.method === 'GET' && groupEventsMatch) {
+      const id = decodeURIComponent(groupEventsMatch[1]); groups.get(id);
+      response.writeHead(200, { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-store', 'x-accel-buffering': 'no' });
+      eventResponses.add(response);
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      let blocked = false; let dirty = false; let ended = false;
+      const write = () => {
+        timer = undefined;
+        if (ended || blocked) { dirty = true; return; }
+        try { dirty = false; blocked = !response.write(`data: ${JSON.stringify(groups.get(id))}\n\n`); }
+        catch (error) { if (error instanceof RunError && error.status === 404) { finish(); response.end(); } else throw error; }
+      };
+      const schedule = () => { dirty = true; if (!timer && !blocked && !ended) timer = setTimeout(write, 100); };
+      const unsubscribe = groups.subscribe(id, schedule);
+      const unsubscribeDeletion = groups.subscribeDeletion(id, () => { finish(); response.end(); });
+      const finish = () => { if (ended) return; ended = true; if (timer) clearTimeout(timer); clearInterval(heartbeat); unsubscribe(); unsubscribeDeletion(); eventResponses.delete(response); };
+      response.on('drain', () => { blocked = false; if (dirty) schedule(); });
+      const heartbeat = setInterval(() => { if (!blocked && !ended) blocked = !response.write(': heartbeat\n\n'); }, 15_000);
+      response.once('close', finish);
+      write(); return;
+    }
     const groupRoomMatch = url.pathname.match(/^\/api\/group-chat\/rooms\/([^/]+)$/);
     if (request.method === 'GET' && groupRoomMatch) return sendJson(response, 200, groups.get(decodeURIComponent(groupRoomMatch[1])));
+    if (request.method === 'DELETE' && groupRoomMatch) { await groups.delete(decodeURIComponent(groupRoomMatch[1])); return sendJson(response, 200, { ok: true }); }
     if (request.method === 'PATCH' && groupRoomMatch) {
       const body = await readJson(request, 4096);
       return sendJson(response, 200, await groups.configure(decodeURIComponent(groupRoomMatch[1]), body));
     }
+    const groupMembersMatch = url.pathname.match(/^\/api\/group-chat\/rooms\/([^/]+)\/members$/);
+    if (request.method === 'POST' && groupMembersMatch) return sendJson(response, 200, await groups.addMembers(decodeURIComponent(groupMembersMatch[1]), await readJson(request, 64 * 1024) as never));
     const groupMessageMatch = url.pathname.match(/^\/api\/group-chat\/rooms\/([^/]+)\/messages$/);
     if (request.method === 'POST' && groupMessageMatch) {
       if (accountTransition) return sendJson(response, 409, { error: 'Wait for the Paws account transition to finish.' });
@@ -241,6 +271,7 @@ export async function createPocServer(options: CreatePocServerOptions = {}): Pro
     async close() {
       if (closed) return;
       closed = true;
+      for (const response of eventResponses) response.end();
       await new Promise<void>((resolveClose, reject) => server.close(error => error ? reject(error) : resolveClose()));
       await Promise.allSettled([runs.close(), groups.close()]);
       await Promise.allSettled([party.close(), sdk.dispose()]);

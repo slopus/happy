@@ -91,12 +91,13 @@ describe('consultation runs', () => {
     expect(sdk.callsFor('timing1')).toHaveLength(2);
     expect(sdk.callsFor('moderator')).toHaveLength(2);
     expect(sdk.calls).toHaveLength(8);
-    expect(sdk.calls.map(call => call.role)).toEqual([
-      'moderator',
-      'trend30', 'structure10', 'timing1',
-      'trend30', 'structure10', 'timing1',
-      'moderator',
-    ]);
+    // Specialists execute concurrently inside each phase; only phase boundaries
+    // are ordered, not the arrival order of their SDK sends.
+    const callRoles = sdk.calls.map(call => call.role);
+    expect(callRoles[0]).toBe('moderator');
+    expect(callRoles.slice(1, 4).sort()).toEqual(['structure10', 'timing1', 'trend30']);
+    expect(callRoles.slice(4, 7).sort()).toEqual(['structure10', 'timing1', 'trend30']);
+    expect(callRoles[7]).toBe('moderator');
     expect(sdk.callsFor('moderator')[0].text).toContain('30-minute:');
     expect(sdk.callsFor('moderator')[0].text).toContain('10-minute:');
     expect(sdk.callsFor('moderator')[0].text).toContain('1-minute:');

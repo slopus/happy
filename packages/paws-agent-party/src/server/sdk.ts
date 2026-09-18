@@ -7,6 +7,8 @@ import {
   type ImageAttachmentInput,
   type KeyValueStorage,
   type Machine,
+  type BrowseDirectoryResult,
+  type SessionConfiguration,
   type MessagePage,
   type MessageSubscription,
   type MessageWatchOptions,
@@ -15,15 +17,19 @@ import {
   type Session,
   type SpawnSessionInput,
   type SpawnSessionResult,
+  type PawsAgentEvent,
 } from '@wangjs-jacky/paws-agent/browser';
 import type { ConnectionStatus } from '../contracts.js';
 
 export interface PawsSdkBoundary {
+  subscribeText?(listener: (event: Extract<PawsAgentEvent, { type: 'text-delta' }>) => void): () => void;
   status(): ConnectionStatus;
   link(serverUrl: string): Promise<ConnectionStatus>;
   recover(serverUrl: string, recoveryCode: string): Promise<ConnectionStatus>;
   disconnect(): Promise<void>;
   machines(): Promise<Machine[]>;
+  browseDirectory(machineId: string, path?: string): Promise<BrowseDirectoryResult>;
+  configuration(machineId: string, sessionId?: string): Promise<{ available: false; reason: string } | ({ available: true; sessionId: string } & SessionConfiguration)>;
   spawn(input: SpawnSessionInput & { role: string }): Promise<SpawnSessionResult>;
   watch(sessionId: string, options: MessageWatchOptions): Promise<MessageSubscription>;
   send(input: SendMessageInput): Promise<SendMessageReceipt>;
@@ -170,7 +176,16 @@ export function createRealPawsSdk(): PawsSdkBoundary {
       }
     },
     disconnect,
+    subscribeText: listener => readyClient().subscribe(event => { if (event.type === 'text-delta') listener(event); }),
     machines: () => readyClient().machines.list({ active: true }),
+    browseDirectory: (machineId, path) => readyClient().machines.browseDirectory({ machineId, path }),
+    async configuration(machineId, sessionId) {
+      if (!sessionId) return { available: false, reason: 'The Paws SDK exposes model configuration only for an existing session; provide sessionId from this machine.' };
+      const session = await readyClient().sessions.get(sessionId);
+      const metadata = session.metadata && typeof session.metadata === 'object' ? session.metadata as Record<string, unknown> : {};
+      if (metadata.machineId !== machineId) throw new Error('The session does not belong to the requested machine.');
+      return { available: true, sessionId, ...await readyClient().sessions.getConfiguration(sessionId) };
+    },
     spawn: ({ role: _role, ...input }) => readyClient().sessions.spawn(input),
     watch: (sessionId, options) => readyClient().messages.watch(sessionId, options),
     send: input => readyClient().messages.send(input),

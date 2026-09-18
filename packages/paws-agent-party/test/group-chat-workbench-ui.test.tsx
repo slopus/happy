@@ -29,6 +29,7 @@ it('opens a named agent dialog and restores focus after Escape', async () => {
   trigger.focus(); fireEvent.click(trigger);
   const dialog = screen.getByRole('dialog', { name: '管理 Agent' });
   expect(dialog.contains(document.activeElement)).toBe(true);
+  fireEvent.click(screen.getByRole('button', { name: '添加 Codex Agent' }));
   expect(screen.getByLabelText('Agent 名称')).toBeTruthy();
   expect(screen.getByLabelText('角色与关注点')).toBeTruthy();
   fireEvent.keyDown(document, { key: 'Escape' });

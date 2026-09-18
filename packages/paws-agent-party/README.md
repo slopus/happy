@@ -24,11 +24,18 @@ scope (up to four current-task images); historical image pixels are not replayed
 Complete public history remains stored and visible.
 
 **自动辩论** is separate from **自动接话** and defaults off. Enable it, select
-1–10 rounds (default 10), and mention exactly two members in one message. One
-round means one reply from each member, so 10 rounds produce at most 20 replies.
+1–10 rounds (default 10), and mention two or more members in one message. Members
+speak sequentially in first-mention order. One round means one reply from each
+member, so three members at 10 rounds produce at most 30 replies.
 The next speaker sees previous public statements. The stop button cancels local
 observation/scheduling, not remote processes already running. Active debates are
 interrupted after service restart and never automatically replayed.
+
+Replies update in-place from real SDK text events over authenticated SSE. Only
+the matched session/root turn is shown; durable terminal text remains authoritative.
+Stopped or failed turns retain partial text with an explicit status, not a fake
+completed reply. Reconnection restores the current room snapshot; clients without
+live SDK text fall back to durable public text (no simulated typing animation).
 
 The formal companion URL is `https://47.115.228.20:8443/agent-party/`, deployed
 only by merged-main Web CI. It is a **single-owner POC**, protected by a separate
@@ -40,6 +47,7 @@ The deployment preserves a private data backup and the stopped prior container
 for rollback. A page being reachable does not prove a Paws account is connected.
 
 Real bounded-debate acceptance: [2026-09-18 report](docs/codex-debate-acceptance.md).
+Streaming and multi-person acceptance: [2026-09-18 report](docs/stream-multi-acceptance.md).
 The following finance/preview sections are historical evidence, not the current
 generic group-chat workflow or a claim that an old preview remains available.
 
