@@ -302,11 +302,13 @@ describe('SidebarView Agent space exit', () => {
         expect(renderer.root.findAllByType('ScrollView')).toHaveLength(1);
         expect(renderer.root.findByType('SidebarAccountMenu').props.mobileRail).toBe(true);
         expect(renderer.root.findAllByType('PluginLeftSidebarSlot')).toHaveLength(0);
-        for (const entry of ['new-session', 'inbox', 'command-palette', 'plugins', 'history', 'plugin-relationship-advisor']) {
+        for (const entry of ['new-session', 'inbox', 'command-palette', 'plugins', 'session-list', 'archive', 'plugin-relationship-advisor']) {
             const button = renderer.root.findAllByType('Pressable').find((node: any) => node.props.testID === `sidebar-${entry}-button`);
             expect(button.findAllByType('Text')).toHaveLength(0);
             expect(button.props.style({ pressed: false })).toContainEqual(expect.objectContaining({ height: 44, width: 44 }));
         }
+        expect(renderer.root.findByProps({ testID: 'sidebar-session-list-button' }).findByType('Ionicons').props.name).toBe('albums-outline');
+        expect(renderer.root.findByProps({ testID: 'sidebar-archive-button' }).findByType('Ionicons').props.name).toBe('file-tray-stacked-outline');
         expect(renderer.root.findAllByProps({ testID: 'sidebar-my-agents-button' })).toHaveLength(0);
         expect(renderer.root.findAllByProps({ testID: 'sidebar-add-agent-button' })).toHaveLength(0);
         const mobileNewSession = renderer.root.findByProps({ testID: 'sidebar-new-session-button' });
@@ -346,11 +348,44 @@ describe('SidebarView Agent space exit', () => {
         expect(plugin.props.accessibilityState.selected).toBe(false);
         expect(mocks.navigate).not.toHaveBeenCalled();
         expect(mocks.dispatch).not.toHaveBeenCalled();
-        act(() => renderer.root.findByProps({ testID: 'sidebar-history-button' }).props.onPress());
+        act(() => renderer.root.findByProps({ testID: 'sidebar-session-list-button' }).props.onPress());
         expect(mocks.setDesktopSidebarMode).toHaveBeenCalledWith('timeline');
         expect(mocks.navigate).not.toHaveBeenCalled();
         act(() => renderer.root.findByProps({ testID: 'mobile-sidebar-close' }).props.onPress());
         expect(mocks.dispatch).toHaveBeenCalledWith({ type: 'CLOSE_DRAWER' });
+        act(() => renderer.unmount());
+    });
+
+    it('switches the mobile sidebar to the archived-session list without navigating away', () => {
+        mocks.spaceAgent = null;
+        mocks.pathname = '/session/current';
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<SidebarView closeDrawerOnNavigate />); });
+
+        const archiveButton = renderer.root.findAllByType('Pressable')
+            .find((node: any) => node.props.testID === 'sidebar-archive-button')!;
+        expect(archiveButton.props.accessibilityState).toEqual({ selected: false });
+        act(() => archiveButton.props.onPress());
+
+        expect(mocks.setDesktopSidebarMode).toHaveBeenCalledWith('archive');
+        expect(mocks.navigate).not.toHaveBeenCalled();
+        expect(mocks.dispatch).not.toHaveBeenCalled();
+        act(() => renderer.unmount());
+    });
+
+    it('labels the mobile archive surface and selects its rail destination', () => {
+        mocks.spaceAgent = null;
+        mocks.desktopSidebarMode = 'archive';
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<SidebarView closeDrawerOnNavigate />); });
+
+        const archiveButton = renderer.root.findAllByType('Pressable')
+            .find((node: any) => node.props.testID === 'sidebar-archive-button')!;
+        const sessionListButton = renderer.root.findAllByType('Pressable')
+            .find((node: any) => node.props.testID === 'sidebar-session-list-button')!;
+        expect(archiveButton.props.accessibilityState).toEqual({ selected: true });
+        expect(sessionListButton.props.accessibilityState).toEqual({ selected: false });
+        expect(renderer.root.findAllByType('Text').some((node: any) => node.props.children === 'sessionHistory.archiveTitle')).toBe(true);
         act(() => renderer.unmount());
     });
 
