@@ -4,6 +4,7 @@ import { MessageBuffer } from "@/ui/ink/messageBuffer";
 import { RemoteModeDisplay } from "@/ui/ink/RemoteModeDisplay";
 import React from "react";
 import { claudeRemote } from "./claudeRemote";
+import { claudeProviderAuthErrorMessage } from './utils/providerAuth';
 import { PermissionHandler } from "./utils/permissionHandler";
 import { mergeUsageLimits } from "./utils/usageLimits";
 import { Future } from "@/utils/future";
@@ -427,9 +428,13 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                         logger.debug('[remote]: Session reset');
                         session.clearSessionId();
                     },
-                    onReady: () => {
-                        session.client.closeClaudeSessionTurn('completed');
-                        if (!pending && session.queue.size() === 0) {
+                    onReady: async (status) => {
+                        // Assistant messages are queued until the next tick. Deliver
+                        // them before closing an auth-failed turn, or the close can
+                        // run before the mapper has even opened that turn.
+                        if (status === 'failed') await messageQueue.flush();
+                        session.client.closeClaudeSessionTurn(status ?? 'completed');
+                        if (status !== 'failed' && !pending && session.queue.size() === 0) {
                             session.api.push().sendSessionNotification({
                                 kind: 'done',
                                 metadata: session.client.getMetadata(),
@@ -454,8 +459,10 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
             } catch (e) {
                 logger.debug('[remote]: launch error', e);
                 if (!exitReason) {
+                    const authMessage = claudeProviderAuthErrorMessage(e);
+                    if (authMessage) await messageQueue.flush();
                     session.client.closeClaudeSessionTurn('failed');
-                    session.client.sendSessionEvent({ type: 'message', message: launchFailureMessage(e) });
+                    session.client.sendSessionEvent({ type: 'message', message: authMessage ?? launchFailureMessage(e) });
                     continue;
                 }
             } finally {
