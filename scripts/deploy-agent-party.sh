@@ -120,11 +120,7 @@ origin='https://47.115.228.20:8443'
 [[ "$(curl --insecure --fail --silent --show-error --noproxy '*' --max-time 15 "$origin/agent-party/revision")" == "$revision" ]]
 [[ "$(curl --insecure --silent --show-error --noproxy '*' --max-time 15 --output /dev/null --write-out '%{http_code}' "$origin/agent-party/")" == 200 ]]
 [[ "$(curl --insecure --silent --show-error --noproxy '*' --max-time 15 --output /dev/null --write-out '%{http_code}' "$origin/agent-party/api/paws/status")" == 401 ]]
-# Use a private curl config to keep the credential out of the process argument list.
-IFS='=' read -r env_key token < "$stage/runtime.env"
-[[ "$env_key" == PAWS_AGENT_PARTY_ACCESS_TOKEN && "$token" =~ ^[A-Za-z0-9_-]{43,128}$ ]]
-printf 'header = "Authorization: Bearer %s"\n' "$token" > "$stage/auth.curl"
-chmod 600 "$stage/auth.curl"
-[[ "$(curl --config "$stage/auth.curl" --insecure --silent --show-error --noproxy '*' --max-time 15 --output /dev/null --write-out '%{http_code}' "$origin/agent-party/api/paws/status")" == 200 ]]
+# Public account-mode metadata is reachable; shared master key no longer grants API access.
+[[ "$(curl --insecure --silent --show-error --noproxy '*' --max-time 15 "$origin/agent-party/api/access/config")" == '{"accountMode":true}' ]]
 echo "AgentParty deployed: $origin/agent-party/ ($revision). Recovery backup: $backup"
 REMOTE_SCRIPT

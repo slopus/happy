@@ -1,7 +1,7 @@
 FROM node:24-bookworm-slim
 WORKDIR /opt/paws-agent-party
 COPY --chown=node:node dist/ dist/
-COPY --chown=node:node scripts/production-server.mjs scripts/production-gateway.mjs scripts/
+COPY --chown=node:node scripts/production-server.mjs scripts/production-gateway.mjs scripts/migrate-legacy-space.mjs scripts/
 USER node
 ENV NODE_ENV=production PAWS_AGENT_PARTY_DATA_DIR=/var/lib/paws-agent-party
 # Host networking keeps both upstream listeners loopback-only; never publish a port.

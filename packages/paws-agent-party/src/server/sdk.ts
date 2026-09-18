@@ -4,6 +4,7 @@ import {
   restorePawsCredentialsWithSecret,
   startBrowserAccountLink,
   type AgentRequest,
+  type PawsCredentials,
   type ImageAttachmentInput,
   type KeyValueStorage,
   type Machine,
@@ -22,6 +23,7 @@ import {
 import type { ConnectionStatus } from '../contracts.js';
 
 export interface PawsSdkBoundary {
+  attach?(serverUrl: string, credentials: PawsCredentials): Promise<ConnectionStatus>;
   subscribeText?(listener: (event: Extract<PawsAgentEvent, { type: 'text-delta' }>) => void): () => void;
   status(): ConnectionStatus;
   link(serverUrl: string): Promise<ConnectionStatus>;
@@ -81,6 +83,31 @@ export function createRealPawsSdk(): PawsSdkBoundary {
 
   return {
     status: () => ({ ...state }),
+    async attach(rawServerUrl, credentials) {
+      const serverUrl = normalizeServerUrl(rawServerUrl);
+      if (state.state === 'ready' && state.serverUrl === serverUrl) return { ...state };
+      const operation = ++generation;
+      await disconnect(false);
+      if (generation !== operation) return { ...state };
+      const nextProvider = new BrowserCredentialProvider(storage, `paws-agent-party:${serverUrl}`);
+      provider = nextProvider;
+      await nextProvider.setCredentials(credentials);
+      const candidate = new PawsAgentClient({ serverUrl, credentials: nextProvider });
+      pendingClient = candidate; state = { state: 'connecting', serverUrl };
+      let timeout: ReturnType<typeof setTimeout> | undefined;
+      try {
+        await Promise.race([
+          (async () => { await candidate.connect(); if (generation === operation) await candidate.machines.list({ active: true }); })(),
+          new Promise<never>((_, reject) => { timeout = setTimeout(() => reject(new Error('Paws connection timed out')), 25000); }),
+        ]);
+        if (generation !== operation) return { ...state };
+        client = candidate; pendingClient = null;
+        state = { state: 'ready', serverUrl }; return { ...state };
+      } catch {
+        if (generation === operation) { await disconnect(); state = { state: 'error', serverUrl, error: '无法连接 Paws，请重新打开群聊。' }; }
+        return { ...state };
+      } finally { clearTimeout(timeout); if (client !== candidate) await candidate.dispose().catch(() => undefined); }
+    },
     async link(rawServerUrl) {
       const serverUrl = normalizeServerUrl(rawServerUrl);
       const operation = ++generation;
