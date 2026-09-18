@@ -14,6 +14,7 @@ import { ProfileEditor, type ConfigurationSession } from './ProfileEditor.js';
 import { AssetImage, decodeEnvelope } from './Attachments.js';
 import { machineLabel } from './machine-label.js';
 import { displayAvatarId } from './display-avatar.js';
+import { NEWS_OBSERVATORY, type RoomStarter } from '../group-chat/starter-templates.js';
 import './group-workbench.css';
 import { useDialogFocus } from './modalFocus.js';
 import { mergeRooms, reconcileRoomList, timelineMessages, watchGroupRoom, type VisibleMessage } from './group-stream.js';
@@ -174,24 +175,40 @@ function AgentDialog({ agents, machines, sessions, api, close, refresh }: { agen
 }
 function RoomDialog({ agents, machines, ready, api, close, onCreated }: { agents: AgentProfile[]; machines: MachinesResponse['machines']; ready: boolean; api: ReturnType<typeof createApi>; close(): void; onCreated(room: GroupRoomSnapshot): void }) {
   const [title, setTitle] = useState('新的讨论'); const [selected, setSelected] = useState<string[]>(agents.map(agent => agent.id));
+  const [starter, setStarter] = useState<RoomStarter | null>(null);
   const [machineId, setMachineId] = useState(''); const [directory, setDirectory] = useState('');
   const [autoReply, setAutoReply] = useState(true); const [autoDebate, setAutoDebate] = useState(false); const [maxRounds, setMaxRounds] = useState(10);
   const [error, setError] = useState(''); const [busy, setBusy] = useState(false); const requestId = useRef(crypto.randomUUID());
   const chosen = agents.filter(agent => selected.includes(agent.id));
   const fallback = chosen.some(agent => !agent.machineId || !agent.directory);
   const first = chosen[0]; const resolvedMachine = fallback ? machineId : first?.machineId; const resolvedDirectory = fallback ? directory.trim() : first?.directory;
+  const needsRoomDefaults = starter !== null || fallback;
+  const executionMachine = starter ? machineId : resolvedMachine; const executionDirectory = starter ? directory.trim() : resolvedDirectory;
+  const chooseStarter = (value: RoomStarter) => {
+    setStarter(value); setTitle(value.title);
+    setSelected(agents.filter(agent => value.members.some(member => member.name === agent.name)).map(agent => agent.id));
+  };
   return <Modal title="新建群聊" close={close}><form className="profile-form" onSubmit={async event => {
-    event.preventDefault(); if (busy || !ready || !selected.length || !resolvedMachine || !resolvedDirectory?.startsWith('/')) return; setBusy(true); setError('');
-    try { const created = await api<GroupRoomSnapshot>('/api/group-chat/rooms', { method: 'POST', body: JSON.stringify({ requestId: requestId.current, title, memberIds: selected, machineId: resolvedMachine, directory: resolvedDirectory, autoReply, autoDebate, maxRounds }) }); onCreated(created); }
+    event.preventDefault(); if (busy || !ready || (!starter && !selected.length) || !executionMachine || !executionDirectory?.startsWith('/')) return; setBusy(true); setError('');
+    try {
+      const memberIds = starter ? await Promise.all(starter.members.map(async member => {
+        const existing = agents.find(agent => agent.name === member.name);
+        if (existing) return existing.id;
+        const profile = await api<AgentProfile>('/api/group-chat/agents', { method: 'POST', body: JSON.stringify({ ...member, machineId: executionMachine, directory: executionDirectory }) });
+        return profile.id;
+      })) : selected;
+      const created = await api<GroupRoomSnapshot>('/api/group-chat/rooms', { method: 'POST', body: JSON.stringify({ requestId: requestId.current, title, memberIds, machineId: executionMachine, directory: executionDirectory, autoReply, autoDebate, maxRounds }) }); onCreated(created);
+    }
     catch (error) { setError((error as Error).message); } finally { setBusy(false); }
   }}>
+    <section className="room-starter" aria-label="圆桌模板"><p>圆桌模板</p><button type="button" className="room-starter-card" aria-pressed={starter?.id === NEWS_OBSERVATORY.id} onClick={() => chooseStarter(NEWS_OBSERVATORY)}><strong>热点新闻观察室</strong><small>{NEWS_OBSERVATORY.description}</small><span>一键加入 6 位观点角色</span></button>{starter && <p className="muted">会复用同名 Agent；缺少的角色会保存到“我的 Agent”，供下次继续使用。</p>}</section>
     <label>群聊名称<input required value={title} onChange={event => setTitle(event.target.value)}/></label>
-    <div><p>邀请成员</p>{agents.map(agent => <label className="invite-row" key={agent.id}><input type="checkbox" checked={selected.includes(agent.id)} onChange={() => setSelected(value => value.includes(agent.id) ? value.filter(id => id !== agent.id) : [...value, agent.id])}/><RobotAvatar id={agent.id} avatarId={agent.avatarId}/><span>{agent.name}<small>{agent.model} · {agent.effort}{!agent.machineId ? ' · 待配置设备' : ''}</small></span></label>)}</div>
-    {fallback && <><p className="muted">部分旧 Agent 尚未配置设备，以下只作为这些成员的本次执行默认值；已配置成员仍使用自己的设备。</p><label>远端机器<select required disabled={!ready} value={machineId} onChange={event => { setMachineId(event.target.value); setDirectory(''); }}><option value="">{ready ? '选择机器' : '请先连接 Paws'}</option>{machines.map(machine => <option key={machine.id} value={machine.id}>{machineLabel(machine)}</option>)}</select></label><RemoteDirectoryPicker key={machineId} machineId={machineId} value={directory} onChange={setDirectory} api={api} disabled={!ready || busy}/></>}
+    <div><p>邀请成员</p>{starter ? starter.members.map(member => <div className="invite-row" key={member.name}><RobotAvatar id={member.name} avatarId={member.avatarId}/><span>{member.name}<small>{member.instructions}</small></span></div>) : agents.map(agent => <label className="invite-row" key={agent.id}><input type="checkbox" checked={selected.includes(agent.id)} onChange={() => setSelected(value => value.includes(agent.id) ? value.filter(id => id !== agent.id) : [...value, agent.id])}/><RobotAvatar id={agent.id} avatarId={agent.avatarId}/><span>{agent.name}<small>{agent.model} · {agent.effort}{!agent.machineId ? ' · 待配置设备' : ''}</small></span></label>)}</div>
+    {needsRoomDefaults && <><p className="muted">{starter ? '模板成员将使用这里的执行设备与工作目录。' : '部分旧 Agent 尚未配置设备，以下只作为这些成员的本次执行默认值；已配置成员仍使用自己的设备。'}</p><label>远端机器<select required disabled={!ready} value={machineId} onChange={event => { setMachineId(event.target.value); setDirectory(''); }}><option value="">{ready ? '选择机器' : '请先连接 Paws'}</option>{machines.map(machine => <option key={machine.id} value={machine.id}>{machineLabel(machine)}</option>)}</select></label><RemoteDirectoryPicker key={machineId} machineId={machineId} value={directory} onChange={setDirectory} api={api} disabled={!ready || busy}/></>}
     <label className="check-label"><input type="checkbox" checked={autoReply} onChange={event => setAutoReply(event.target.checked)}/>允许未 @ 时自动由一个相关成员接话</label>
     <label className="check-label"><input type="checkbox" checked={autoDebate} onChange={event => setAutoDebate(event.target.checked)}/>同时 @ 多位成员时自动辩论</label>
     {autoDebate && <label>最多轮数<select aria-label="新群聊最大辩论轮数" value={maxRounds} onChange={event => setMaxRounds(Number(event.target.value))}>{Array.from({ length: 10 }, (_, i) => <option key={i} value={i + 1}>{i + 1} 轮</option>)}</select></label>}
-    <button className="primary-action" disabled={busy || !ready || !selected.length || !resolvedMachine || !resolvedDirectory?.startsWith('/')}>{busy ? '创建中…' : '创建群聊'}</button>{!ready && <p className="muted">请先从左下角连接 Paws。</p>}{error && <p role="alert">{error}</p>}
+    <button className="primary-action" disabled={busy || !ready || (!starter && !selected.length) || !executionMachine || !executionDirectory?.startsWith('/')}>{busy ? '创建中…' : '创建群聊'}</button>{!ready && <p className="muted">请先从左下角连接 Paws。</p>}{error && <p role="alert">{error}</p>}
   </form></Modal>;
 }
 function Modal({ title, children, close }: { title: string; children: React.ReactNode; close(): void }) {
