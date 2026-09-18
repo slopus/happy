@@ -2,6 +2,9 @@
 
 ## Current group-chat entry
 
+交互与布局参考：[群聊交互设计（用户截图版归档）](docs/group-chat-interaction-design.md)。
+该文档区分模拟草图、后续亮色偏好与真实运行能力，不代表截图中的功能全部已实现。
+
 The current release supports Codex-only reusable profiles, defaulting to
 `gpt-5.6-luna` with `low` effort. Model IDs and effort are editable in **管理 Agent**;
 rooms retain a snapshot, so profile edits affect newly created rooms only.
