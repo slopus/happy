@@ -183,10 +183,20 @@ export default function RootLayout() {
                 }}
             />
             <Stack.Screen
+                name="onboarding/scan"
+                options={{
+                    headerShown: true,
+                    headerTitle: t('onboarding.step', { step: 3, total: 3 }),
+                    headerTitleAlign: 'center',
+                    headerBackTitle: t('common.back'),
+                }}
+            />
+            <Stack.Screen
                 name="restore/index"
                 options={{
                     headerShown: true,
-                    headerTitle: t('navigation.linkNewDevice'),
+                    headerTitle: t('onboarding.restoreTitle'),
+                    headerTitleAlign: 'center',
                     headerBackTitle: t('common.back'),
                 }}
             />
@@ -194,7 +204,8 @@ export default function RootLayout() {
                 name="restore/manual"
                 options={{
                     headerShown: true,
-                    headerTitle: t('navigation.restoreWithSecretKey'),
+                    headerTitle: t('onboarding.secretKeyTitle'),
+                    headerTitleAlign: 'center',
                     headerBackTitle: t('common.back'),
                 }}
             />

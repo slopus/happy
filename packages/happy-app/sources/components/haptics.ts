@@ -7,3 +7,7 @@ export function hapticsError() {
 export function hapticsLight() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 }
+
+export function hapticsSuccess() {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+}

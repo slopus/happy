@@ -291,6 +291,9 @@ export const ru: TranslationStructure = {
     },
 
     server: {
+        title: en.server.title,
+        serverUrlLabel: en.server.serverUrlLabel,
+        selfHostFooter: en.server.selfHostFooter,
         // Used by Server Configuration screen (app/(app)/server.tsx)
         serverConfiguration: 'Настройка сервера',
         enterServerUrl: 'Пожалуйста, введите URL сервера',
@@ -865,6 +868,10 @@ export const ru: TranslationStructure = {
         restoreWithSecretKey: 'Восстановить секретным ключом',
         whatsNew: 'Что нового',
         friends: 'Друзья',
+    },
+
+    onboarding: {
+        ...en.onboarding,
     },
 
     welcome: {

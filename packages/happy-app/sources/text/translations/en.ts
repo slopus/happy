@@ -352,6 +352,9 @@ export const en: TranslationStructure = {
     server: {
         // Used by Server Configuration screen (app/(app)/server.tsx)
         serverConfiguration: 'Server Configuration',
+        title: 'Server',
+        serverUrlLabel: 'Server URL',
+        selfHostFooter: 'For self-hosted servers. Sign out and back in after changing it.',
         enterServerUrl: 'Please enter a server URL',
         notValidHappyServer: 'Not a valid Happy Server',
         changeServer: 'Change Server',
@@ -886,6 +889,37 @@ export const en: TranslationStructure = {
         createAccount: 'Create account',
         linkOrRestoreAccount: 'Link or restore account',
         loginWithMobileApp: 'Login with mobile app',
+    },
+
+    onboarding: {
+        // Three-step first run on phones: welcome, install, scan.
+        step: ({ step, total }: { step: number; total: number }) => `Step ${step} of ${total}`,
+        headline: 'Run Claude Code and Codex from your phone',
+        tagline: 'End-to-end encrypted. No email, no password.',
+        getStarted: 'Get Started',
+        restoreExisting: 'Restore an existing account',
+        installTitle: 'Install Happy Desktop',
+        installBodyPrefix: 'On your computer, download it from ',
+        installBodyLink: 'happy.engineering',
+        installBodySuffix: '.',
+        installedDesktop: 'Desktop app installed',
+        useTerminal: 'Use the terminal instead',
+        useDesktop: 'Use the desktop app instead',
+        continue: 'Continue',
+        scanTitle: 'Scan the QR code',
+        scanBody: 'Point your camera at the code on your computer.',
+        scanButton: 'Scan QR Code',
+        pasteLink: 'Paste the link instead',
+        pasteLinkTitle: 'Paste Link',
+        pasteLinkMessage: 'Paste the link shown on your computer.',
+        connecting: 'Connecting…',
+        restoreTitle: 'Restore Account',
+        restoreScan: 'Scan this code with your other phone.',
+        restoreScanPath: 'Happy › Settings › Account › Link New Device',
+        restoreUseKey: 'Use a secret key instead',
+        secretKeyTitle: 'Secret Key',
+        secretKeyBody: 'Paste your secret key. It is in Happy › Settings › Account on your other device.',
+        restoreButton: 'Restore',
     },
 
     review: {

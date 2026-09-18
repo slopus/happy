@@ -158,21 +158,25 @@ export const Header = React.memo((props: HeaderProps) => {
     return (
         <View style={containerStyle}>
             {glassControlsEnabled && backdropMounted && (
-                <Animated.View
+                <View
                     pointerEvents="none"
                     style={[
                         styles.headerBackdrop,
                         homeBackdrop
                             ? styles.headerBackdropHome
                             : strongBackdrop && styles.headerBackdropStrong,
-                        { opacity: backdropOpacity },
                     ]}
                 >
-                    <MobileHeaderScrim
-                        variant={headerBackdropVariant}
-                        overlayOpacity={backdropStrength}
-                    />
-                </Animated.View>
+                    {/* RN Animated flattens its style array. Keep Unistyles on
+                        the static wrapper so their native dependency markers
+                        are not merged into one invalid animated style object. */}
+                    <Animated.View style={[StyleSheet.absoluteFillObject, { opacity: backdropOpacity }]}>
+                        <MobileHeaderScrim
+                            variant={headerBackdropVariant}
+                            overlayOpacity={backdropStrength}
+                        />
+                    </Animated.View>
+                </View>
             )}
             <View style={styles.contentWrapper}>
                 <View style={[
@@ -311,8 +315,11 @@ const NavigationHeaderComponent: React.FC<NavigationHeaderComponentProps> = Reac
     const isTablet = useIsTablet();
     const isDesktop = Platform.OS === 'web' || isRunningOnMac();
 
-    // Hide back button on tablet — navigation is handled via sidebar and persistent header
-    const shouldHideBackButton = isTablet;
+    // Tablet navigation normally lives in the persistent shell. First-run
+    // onboarding intentionally removes that shell, so its scan screen still
+    // needs the ordinary stack back button (notably on Android tablets, where
+    // this custom header renders instead of UIKit's native header).
+    const shouldHideBackButton = isTablet && !route.name.startsWith('onboarding/');
     const titleAlign = options.headerTitleAlign ?? (Platform.OS === 'ios' ? 'center' : 'left');
 
     // Extract title - handle both string and function types

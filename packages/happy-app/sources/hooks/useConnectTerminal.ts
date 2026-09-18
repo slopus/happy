@@ -9,6 +9,7 @@ import { useCheckScannerPermissions } from '@/hooks/useCheckCameraPermissions';
 import { Modal } from '@/modal';
 import { t } from '@/text';
 import { sync } from '@/sync/sync';
+import { hapticsSuccess } from '@/components/haptics';
 
 interface UseConnectTerminalOptions {
     onSuccess?: () => void;
@@ -36,13 +37,11 @@ export function useConnectTerminal(options?: UseConnectTerminalOptions) {
             responseV2Bundle.set(sync.encryption.contentDataKey, 1);
             const responseV2 = encryptBox(responseV2Bundle, publicKey);
             await authApprove(auth.credentials!.token, publicKey, responseV1, responseV2);
-            
-            Modal.alert(t('common.success'), t('modals.terminalConnectedSuccessfully'), [
-                { 
-                    text: t('common.ok'), 
-                    onPress: () => options?.onSuccess?.()
-                }
-            ]);
+
+            // People expect a scan to work, so success is felt, not announced:
+            // the machine turns up in the list. Only a failure gets an alert.
+            hapticsSuccess();
+            options?.onSuccess?.();
             return true;
         } catch (e) {
             console.error(e);

@@ -4,9 +4,9 @@ import { Drawer } from 'expo-router/drawer';
 import { useIsTablet, useHeaderHeight } from '@/utils/responsive';
 import { SidebarView } from './SidebarView';
 import { useWindowDimensions, View, Pressable, Platform } from 'react-native';
-import { useLocalSetting, useLocalSettingMutable } from '@/sync/storage';
+import { useAllMachines, useIsDataReady, useLocalSetting, useLocalSettingMutable } from '@/sync/storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { usePathname, useRouter } from 'expo-router';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useUnistyles } from 'react-native-unistyles';
@@ -16,14 +16,39 @@ import { useOverlayNav } from '@/-session/sessionOverlayNav';
 import { DEFAULT_APP_ZOOM } from '@/hooks/useTauriZoom';
 import { canRouteForward, canUseRouteBack, getNavigatorCanGoBack } from '@/navigation/browserNavigation';
 import { useBrowserNavigationStore } from '@/navigation/browserNavigationStore';
+import { isRunningOnMac } from '@/utils/platform';
+import { shouldShowFirstRunInstall, shouldSuppressTabletShell } from './onboarding/firstRunOnboarding';
 
 const TAURI_HEADER_CONTROL_LEFT = Math.ceil(92 / DEFAULT_APP_ZOOM);
 
 export const SidebarNavigator = React.memo(() => {
     const auth = useAuth();
     const isTablet = useIsTablet();
+    const isDataReady = useIsDataReady();
+    const machines = useAllMachines({ includeOffline: true });
+    const pathname = usePathname();
     const zenMode = useLocalSetting('zenMode');
-    const isDesktopLayout = auth.isAuthenticated && isTablet;
+    const isWeb = Platform.OS === 'web';
+    const runningOnMac = isRunningOnMac();
+    const showInstallStep = shouldShowFirstRunInstall({
+        isAuthenticated: auth.isAuthenticated,
+        isDataReady,
+        machineCount: machines.length,
+        isWeb,
+        isRunningOnMac: runningOnMac,
+    });
+    // The onboarding screen owns the whole native canvas. Keep the permanent
+    // tablet sidebar and its header out of steps 2 and 3, including the brief
+    // interval after a scanned machine arrives but before the route dismisses.
+    const suppressTabletShell = shouldSuppressTabletShell({
+        isAuthenticated: auth.isAuthenticated,
+        isTablet,
+        showInstallStep,
+        isOnboardingRoute: pathname.startsWith('/onboarding/'),
+        isWeb,
+        isRunningOnMac: runningOnMac,
+    });
+    const isDesktopLayout = auth.isAuthenticated && isTablet && !suppressTabletShell;
     const showSidebar = isDesktopLayout && !zenMode;
     const { width: windowWidth } = useWindowDimensions();
 

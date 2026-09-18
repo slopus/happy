@@ -39,6 +39,7 @@ export function query(params: { prompt: QueryPrompt; options?: QueryOptions }): 
         allowedTools: opts?.allowedTools,
         disallowedTools: opts?.disallowedTools,
         mcpServers: opts?.mcpServers as Options['mcpServers'],
+        plugins: opts?.plugins,
         systemPrompt,
         settings: opts?.settingsPath,
         strictMcpConfig: opts?.strictMcpConfig,

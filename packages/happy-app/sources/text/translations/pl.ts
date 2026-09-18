@@ -353,6 +353,9 @@ export const pl: TranslationStructure = {
     },
 
     server: {
+        title: en.server.title,
+        serverUrlLabel: en.server.serverUrlLabel,
+        selfHostFooter: en.server.selfHostFooter,
         // Used by Server Configuration screen (app/(app)/server.tsx)
         serverConfiguration: 'Konfiguracja serwera',
         enterServerUrl: 'Proszę wprowadzić URL serwera',
@@ -875,6 +878,10 @@ export const pl: TranslationStructure = {
         restoreWithSecretKey: 'Przywróć kluczem tajnym',
         whatsNew: 'Co nowego',
         friends: 'Przyjaciele',
+    },
+
+    onboarding: {
+        ...en.onboarding,
     },
 
     welcome: {
