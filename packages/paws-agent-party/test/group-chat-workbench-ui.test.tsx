@@ -36,3 +36,20 @@ it('opens a named agent dialog and restores focus after Escape', async () => {
   expect(screen.queryByRole('dialog')).toBeNull();
   expect(document.activeElement).toBe(trigger);
 });
+
+it('offers the news observatory starter with viewpoint roles, not named-person impersonation', async () => {
+  sessionStorage.setItem('apToken', 'token');
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+    const path = String(input);
+    if (path.endsWith('/api/paws/status')) return Response.json({ state: 'ready' });
+    if (path.endsWith('/api/paws/machines')) return Response.json({ machines: [] });
+    if (path.endsWith('/api/group-chat/agents')) return Response.json({ agents: [] });
+    return Response.json({ rooms: [] });
+  }));
+  render(<GroupChatApp/>);
+  fireEvent.click(await screen.findByTitle('新建群聊'));
+  fireEvent.click(screen.getByRole('button', { name: /热点新闻观察室/ }));
+  expect(screen.getByText('事实核查员')).toBeTruthy();
+  expect(screen.getByText('反方质疑者')).toBeTruthy();
+  expect(screen.getByText(/不代表或冒充真实人物/)).toBeTruthy();
+});

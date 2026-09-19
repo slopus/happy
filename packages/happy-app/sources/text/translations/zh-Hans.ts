@@ -838,6 +838,7 @@ export const zhHans: TranslationStructure = {
         anchorsEmpty: '还没有可跳转的提问。',
         inputPlaceholder: '输入消息...',
         inactiveArchived: '此会话处于非活动状态。',
+        failedRecoveryAvailable: '此任务已失败。可从当前设备发起恢复，Paws 会在原主机重启执行进程。',
         resumeFromTerminal: '要从终端恢复它：',
         newChat: '新对话',
         forkAction: '分叉会话',

@@ -26,6 +26,7 @@ import { useSessionManagementPreferences } from './useSessionManagementPreferenc
 import { isSessionArchived } from '@/utils/sessionLifecycle';
 import { buildDirectMessageForkOptions, resolveCodexMessageForkRewindPointId, type MessageForkTarget } from '@/utils/messageForkPoint';
 import { describeSpawnSessionError } from '@/utils/spawnSessionError';
+import { resolveSessionResumeAvailability } from '@/utils/sessionResumeAvailability';
 
 export interface SessionActionItem {
     id: string;
@@ -55,8 +56,17 @@ function isRegenerateTitleRpcUnavailable(message: string | undefined): boolean {
         || message === 'Method not found';
 }
 
-function getResumeAvailability(session: Session, machine: Machine | null | undefined, isConnected: boolean): ResumeAvailability {
-    if (isConnected) {
+function getResumeAvailability(session: Session, machine: Machine | null | undefined, isConnected: boolean, hasFailedTurn: boolean): ResumeAvailability {
+    const availability = resolveSessionResumeAvailability({
+        isConnected,
+        hasFailedTurn,
+        hasMachineId: Boolean(session.metadata?.machineId),
+        hasBackendResumeId: Boolean(session.metadata?.claudeSessionId || session.metadata?.codexThreadId),
+        hasMachine: Boolean(machine),
+        machineOnline: Boolean(machine && isMachineOnline(machine)),
+        rpcAvailable: machine?.metadata?.resumeSupport?.rpcAvailable,
+    });
+    if (availability === 'hidden') {
         return {
             canResume: false,
             canShowResume: false,
@@ -65,8 +75,7 @@ function getResumeAvailability(session: Session, machine: Machine | null | undef
         };
     }
 
-    const machineId = session.metadata?.machineId;
-    if (!machineId) {
+    if (availability === 'missing-machine') {
         const message = t('sessionInfo.resumeSessionMissingMachine');
         return {
             canResume: false,
@@ -76,8 +85,7 @@ function getResumeAvailability(session: Session, machine: Machine | null | undef
         };
     }
 
-    const hasBackendResumeId = Boolean(session.metadata?.claudeSessionId || session.metadata?.codexThreadId);
-    if (!hasBackendResumeId) {
+    if (availability === 'missing-backend-id') {
         const message = t('sessionInfo.resumeSessionMissingBackendId');
         return {
             canResume: false,
@@ -87,7 +95,7 @@ function getResumeAvailability(session: Session, machine: Machine | null | undef
         };
     }
 
-    if (!machine) {
+    if (availability === 'wrong-machine') {
         const message = t('sessionInfo.resumeSessionSameMachineOnly');
         return {
             canResume: false,
@@ -97,13 +105,18 @@ function getResumeAvailability(session: Session, machine: Machine | null | undef
         };
     }
 
-    if (!isMachineOnline(machine)) {
+    if (availability === 'machine-offline') {
         return {
             canResume: false,
             canShowResume: true,
             subtitle: t('sessionInfo.resumeSessionMachineOffline'),
             message: t('sessionInfo.resumeSessionMachineOffline'),
         };
+    }
+
+    if (availability === 'rpc-unavailable') {
+        const message = t('sessionInfo.resumeSessionNeedsHappyAgent');
+        return { canResume: false, canShowResume: true, subtitle: message, message };
     }
 
     return {
@@ -133,14 +146,13 @@ export function useSessionQuickActions(
     const sessionManagement = useSessionManagementPreferences([session.id], { prune: false });
     const sessionPinned = sessionManagement.isPinned(session.id);
     const resumeAvailability = React.useMemo(
-        () => expResumeSession ? getResumeAvailability(session, machine, sessionStatus.isConnected) : { canResume: false, canShowResume: false, subtitle: '', message: '' },
-        [machine, session, sessionStatus.isConnected, expResumeSession],
+        () => getResumeAvailability(session, machine, sessionStatus.isConnected, sessionStatus.state === 'failed'),
+        [machine, session, sessionStatus.isConnected, sessionStatus.state],
     );
 
-    // Fork eligibility — separate from resume because fork works on both
-    // active AND inactive provider sessions. The user-facing toggle is the same
-    // expResumeSession experiment so all three flows (resume / fork /
-    // duplicate) ride a single switch on settings/features.
+    // Fork eligibility is separate from resume because fork works on both
+    // active and inactive provider sessions. Fork/duplicate retain the legacy
+    // experiment switch; resume is now a standard recovery action.
     const forkSource = React.useMemo(() => getSessionForkSource(session), [
         session.id,
         session.metadata?.flavor,

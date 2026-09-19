@@ -790,6 +790,7 @@ export const it: TranslationStructure = {
         anchorsEmpty: 'Nessun messaggio a cui saltare.',
         inputPlaceholder: 'Scrivi un messaggio ...',
         inactiveArchived: 'Questa sessione è inattiva.',
+        failedRecoveryAvailable: 'Questa attività non è riuscita. Riprendila da questo dispositivo e Paws riavvierà il processo sul computer originale.',
         resumeFromTerminal: 'Per riprenderla dal terminale:',
         newChat: 'Nuova chat',
         forkAction: 'Biforca sessione',

@@ -1429,9 +1429,9 @@ function SessionViewLoaded({
     const alwaysShowContextSize = useSetting('alwaysShowContextSize');
     const agentDefaultOverrides = useSetting('agentDefaultOverrides');
     const experiments = useSetting('experiments');
-    const expResumeSession = useSetting('expResumeSession');
-    const { canResume, resumeSession, resumingSession } = useSessionQuickActions(session);
+    const { canResume, resumeSession, resumeSessionSubtitle, resumingSession } = useSessionQuickActions(session);
     const isDisconnected = !sessionStatus.isConnected;
+    const isRecoverableFailure = sessionStatus.state === 'failed';
     const resumeCommandBlock = getResumeCommandBlock(session);
     const permissionSelector = useSessionTaskPermission(session, !isDisconnected);
     const getCurrentDraft = React.useCallback(
@@ -1653,20 +1653,22 @@ function SessionViewLoaded({
         />
     );
 
-    // Disconnected sessions get the full Resume affordance regardless of
+    // Disconnected sessions and terminal failures get the full Resume
+    // affordance regardless of
     // whether they were explicitly archived or just lost their CLI (e.g.
     // Ctrl-C in terminal — lifecycleState stays 'running', server flips
     // active=false). InactiveArchivedHint handles both cases: shows the
-    // Resume button when canResume is true, falls back to the
-    // copy-this-command hint when the experiments toggle is off or the
-    // machine isn't reachable.
-    const inactiveHint = isDisconnected ? (
+    // Resume button when canResume is true, and falls back to a useful
+    // diagnostic when the machine or saved metadata is unavailable.
+    const inactiveHint = (isDisconnected || isRecoverableFailure) ? (
         <CenteredInputWidth horizontalPadding={sessionInputHorizontalPadding}>
             <InactiveArchivedHint
-                resumeCommandBlock={expResumeSession ? resumeCommandBlock : null}
+                resumeCommandBlock={resumeCommandBlock}
                 canResume={canResume}
                 resuming={resumingSession}
                 onResume={resumeSession}
+                failed={isRecoverableFailure}
+                unavailableMessage={resumeSessionSubtitle}
             />
         </CenteredInputWidth>
     ) : null;
@@ -1844,6 +1846,8 @@ function InactiveArchivedHint(props: {
     canResume: boolean;
     resuming: boolean;
     onResume: () => void;
+    failed?: boolean;
+    unavailableMessage?: string;
 }) {
     const { theme } = useUnistyles();
     const hintTextStyle = {
@@ -1862,7 +1866,9 @@ function InactiveArchivedHint(props: {
         }}>
             <View style={{ paddingHorizontal: 8, gap: 4 }}>
                 <Text style={hintTextStyle}>
-                    {t('session.inactiveArchived')}
+                    {props.failed
+                        ? (props.canResume ? t('session.failedRecoveryAvailable') : props.unavailableMessage)
+                        : t('session.inactiveArchived')}
                 </Text>
                 {props.canResume ? null : props.resumeCommandBlock && (
                     <Text style={hintTextStyle}>
