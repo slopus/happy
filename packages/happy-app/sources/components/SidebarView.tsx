@@ -495,10 +495,7 @@ export const SidebarView = React.memo(({
                     <Text style={styles.messagesText}>{t('tabs.inbox')}</Text>
                 </Pressable>
 
-                <Pressable accessibilityRole="button" onPress={() => go('/group-chat')} testID="sidebar-group-chat-button" style={({ pressed }) => [styles.messagesRow, desktopDensity && styles.messagesRowDesktop, pressed && styles.navigationCardPressed]}>
-                    <Ionicons name="people-outline" size={17} color={stylesheet.messagesText.color}/><Text style={styles.messagesText}>Agent 群聊</Text>
-                </Pressable>
-                <Pressable accessibilityRole="button" onPress={() => go('/group-chat?view=agents')} testID="sidebar-party-agents-button" style={({ pressed }) => [styles.messagesRow, desktopDensity && styles.messagesRowDesktop, pressed && styles.navigationCardPressed]}>
+                <Pressable accessibilityRole="button" onPress={() => go('/agent-profiles')} testID="sidebar-party-agents-button" style={({ pressed }) => [styles.messagesRow, desktopDensity && styles.messagesRowDesktop, pressed && styles.navigationCardPressed]}>
                     <Ionicons name="person-add-outline" size={17} color={stylesheet.messagesText.color}/><Text style={styles.messagesText}>群聊 Agent 管理</Text>
                 </Pressable>
 

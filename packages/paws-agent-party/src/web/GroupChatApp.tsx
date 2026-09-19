@@ -122,7 +122,7 @@ export function GroupChatApp() {
   const stopRoom = async () => { if (!room) return; setError(''); try { await api(`/api/group-chat/rooms/${room.id}/stop`, { method: 'POST', body: '{}' }); await refresh(); } catch (error) { setError((error as Error).message); } };
   if (gate) return <TokenGate value={draftToken} setValue={setDraftToken} submit={() => { const value = draftToken.trim(); if (!value) return; sessionStorage.setItem('apToken', value); setToken(value); setGate(false); }} />;
   return <main className={`group-workbench${collapsed ? ' sidebar-collapsed' : ''}`}>
-    {!collapsed && <button className="mobile-sidebar-backdrop" aria-label="收起群聊侧栏" onClick={() => setCollapsed(true)}/>}<aside className="workbench-sidebar">
+    {!collapsed && <button className="mobile-sidebar-backdrop" aria-label="收起群聊侧栏" onClick={() => setCollapsed(true)}/>}<aside className="workbench-sidebar">{account?.logout && <button onClick={account.logout}>退出当前账号</button>}
       <div className="workbench-brand"><span className="brand-mark" aria-hidden="true"><i/><i/></span><h1>AgentParty</h1><button className="collapse-button" aria-label={collapsed ? '展开侧栏' : '折叠侧栏'} onClick={() => setCollapsed(value => !value)}>{collapsed ? <PanelLeftOpen size={18}/> : <PanelLeftClose size={18}/>}</button></div>
       <nav aria-label="工作台导航" className="workbench-nav"><button className="nav-current" aria-label="群聊" title="群聊" onClick={() => setCollapsed(false)}><MessageCircle size={19}/><span>群聊</span><span className="nav-count">{rooms.length}</span></button><button aria-label="Agent 管理" title="Agent 管理" onClick={() => setShowAgent(true)}><Users size={19}/><span>Agent 管理</span><span className="nav-count">{agents.length}</span></button></nav>
       <div className="room-list-heading"><span>我的群聊</span><button aria-label="新建群聊" title="新建群聊" onClick={() => setShowRoom(true)}><Plus size={18}/></button></div>
@@ -169,6 +169,8 @@ function EmptyState({ onCreate }: { onCreate(): void }) { return <section classN
 function TokenGate({ value, setValue, submit }: { value: string; setValue(value: string): void; submit(): void }) { return <main className="flex min-h-screen items-center justify-center bg-muted p-6"><form onSubmit={event => { event.preventDefault(); submit(); }} className="w-full max-w-md rounded-2xl border border-border bg-card p-7 shadow-sm"><h1 className="font-accent text-xl">打开 AgentParty</h1><p className="mt-2 text-sm text-muted-foreground">输入此服务生成的访问令牌后继续。</p><input value={value} onChange={event => setValue(event.target.value)} className="mt-5 w-full rounded-lg border border-input bg-background p-3" placeholder="访问令牌"/><button className="mt-3 w-full rounded-lg bg-primary py-3 text-primary-foreground">进入工作台</button></form></main>; }
 function AgentDialog({ agents, machines, sessions, api, close, refresh }: { agents: AgentProfile[]; machines: MachinesResponse['machines']; sessions: ConfigurationSession[]; api: ReturnType<typeof createApi>; close(): void; refresh(): Promise<void> }) {
   const [editing, setEditing] = useState<AgentProfile | 'new' | null>(null);
+  const account = useContext(AccountContext);
+  if (account) return <Modal title="我的 Agent" close={close}><p>这些 Agent 来自当前 Paws 账号。在 Paws 修改后，这里会自动更新；已有群聊保留邀请时的配置。</p>{agents.map(agent => <div className="profile-summary" key={agent.id}><RobotAvatar id={agent.id} avatarId={agent.avatarId}/><span><strong>{agent.name}</strong><small>{agent.instructions}</small></span></div>)}<a className="primary-action" href={`https://47.115.228.20:8443/agent-profiles?accountId=${encodeURIComponent(account.accountId)}`} target="_blank" rel="noreferrer">在 Paws 管理 Agent ↗</a></Modal>;
   return <Modal title="管理 Agent" close={close}>
     {editing ? <><button onClick={() => setEditing(null)}>← 返回我的 Agent</button><ProfileEditor key={editing === 'new' ? 'new' : editing.id} initial={editing === 'new' ? undefined : editing} machines={machines} sessions={sessions} api={api} onSave={async value => {
       await api(editing === 'new' ? '/api/group-chat/agents' : `/api/group-chat/agents/${editing.id}`, { method: editing === 'new' ? 'POST' : 'PATCH', body: JSON.stringify(value) }); await refresh(); setEditing(null);
@@ -237,11 +239,5 @@ function InviteDialog({ room, agents, machines, sessions, api, refresh, close }:
 function SessionLink({ sessionId }: { sessionId: string }) {
   const account = useContext(AccountContext);
   const href = account ? `https://47.115.228.20:8443/accounts?${new URLSearchParams({ accountId: account.accountId, serverUrl: account.serverUrl, sessionId })}` : `https://47.115.228.20:8443/session/${encodeURIComponent(sessionId)}`;
-  return <a href={href} target="_blank" rel="noreferrer" onClick={event => {
-    if (!account) return;
-    const message = { type: 'agent-party-session', accountId: account.accountId, serverUrl: account.serverUrl, sessionId };
-    const native = (window as unknown as { ReactNativeWebView?: { postMessage(message: string): void } }).ReactNativeWebView;
-    if (native) { event.preventDefault(); native.postMessage(JSON.stringify(message)); }
-    else if (window.parent !== window) { event.preventDefault(); window.parent.postMessage(message, 'https://47.115.228.20:8443'); }
-  }}>在 Paws 打开完整会话 ↗</a>;
+  return <a href={href} target="_blank" rel="noreferrer">在 Paws 打开完整会话 ↗</a>;
 }

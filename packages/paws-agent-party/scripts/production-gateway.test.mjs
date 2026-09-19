@@ -24,6 +24,9 @@ test('production prefix preserves API authentication and validates browser autho
   assert.equal(await call('/agent-party/api/paws/status', { authorization: 'Bearer test-only' }), 200);
   assert.equal(seen.at(-1).path, '/api/paws/status');
   assert.equal(seen.at(-1).authorization, 'Bearer test-only');
+  for (const [path, method] of [['access/ticket', 'POST'], ['access/exchange', 'POST'], ['group-chat/agents/agent-1', 'PATCH'], ['access/logout', 'POST']]) {
+    assert.equal(await call('/agent-party/api/' + path, { origin: 'https://47.115.228.20:8443', authorization: 'Bearer test-only' }, method), 200);
+  }
   assert.equal(await call('/api/paws/status'), 404);
   assert.equal(await call('/agent-party/api/paws/status', { host: 'evil.invalid' }), 403);
   assert.equal(await call('/agent-party/api/paws/recover', { origin: 'https://evil.invalid' }, 'POST'), 403);

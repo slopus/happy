@@ -33,6 +33,11 @@ it('isolates profiles, rooms and image reads, forbids shared-token and account-s
   const agentsA = await (await api('/api/group-chat/agents', a)).json();
   const privateId = agentsA.agents.find((item: { name: string }) => item.name === 'Private A').id;
   expect((await api(`/api/group-chat/agents/${privateId}`, b, 'PATCH', { name: 'stolen', instructions: 'no' })).status).toBe(404);
+  // Paws manager and independent website have separate sessions, one catalog.
+  const otherDeviceA = await login('A');
+  expect((await api(`/api/group-chat/agents/${privateId}`, otherDeviceA, 'PATCH', { name: 'Private A', instructions: 'Edited from Paws mobile', avatarId: 12, machineId: 'machine-1', directory: '/tmp' })).status).toBe(200);
+  const refreshed = await (await api('/api/group-chat/agents', a)).json();
+  expect(refreshed.agents.find((item: { id: string }) => item.id === privateId)).toMatchObject({ instructions: 'Edited from Paws mobile', avatarId: 12, machineId: 'machine-1', directory: '/tmp' });
   const roomResponse = await api('/api/group-chat/rooms', a, 'POST', { requestId: 'private-room', title: 'Only A room', memberIds: [privateId], machineId: 'machine-1', directory: '/tmp' });
   expect(roomResponse.status).toBeLessThan(300);
   const room = await roomResponse.json();

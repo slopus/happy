@@ -16,9 +16,9 @@ export async function createProductionGateway({ backendUrl, port = 3847, revisio
     res.setHeader('Cache-Control', 'no-store');
     res.setHeader('Referrer-Policy', 'no-referrer');
     res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+    res.setHeader('X-Frame-Options', 'DENY');
     res.setHeader('X-Robots-Tag', 'noindex, nofollow');
-    res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; connect-src 'self'; font-src 'self'; object-src 'none'; frame-ancestors 'self'; base-uri 'none'; form-action 'self'");
+    res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; connect-src 'self'; font-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
     const fail = (status, error) => {
       if (res.headersSent) { res.destroy(); return; }
       res.writeHead(status, { 'content-type': 'application/json', connection: 'close' });
