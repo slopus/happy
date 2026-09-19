@@ -105,6 +105,7 @@ describe('session display order', () => {
                     id: 'rig-project',
                     name: 'rig',
                     machineId: 'machine-a',
+                    path: null,
                     activeCount: 1,
                     sessionCount: 1,
                     workspaces: [{
@@ -122,6 +123,7 @@ describe('session display order', () => {
                     id: 'happy-project',
                     name: 'happy',
                     machineId: 'machine-a',
+                    path: null,
                     activeCount: 1,
                     sessionCount: 1,
                     workspaces: [{
@@ -198,5 +200,105 @@ describe('session display order', () => {
             'Alpha project',
             'Zulu project',
         ]);
+    });
+    describe('starred projects', () => {
+        // Starring writes `${machineId}:${path}`, and a worktree is starred
+        // under the repo it belongs to.
+        function projectItem(
+            id: string,
+            name: string,
+            path: string | null,
+            machineId: string | null = 'machine-a',
+        ): SessionListViewItem {
+            return {
+                type: 'project',
+                source: 'happy',
+                project: {
+                    id,
+                    name,
+                    machineId,
+                    path,
+                    activeCount: 0,
+                    sessionCount: 1,
+                    workspaces: [{
+                        id: '',
+                        name: null,
+                        sessions: [session(`${id}-session`, machineId ?? '', path ?? '')],
+                    }],
+                },
+            };
+        }
+
+        const alphaAndZulu: SessionListViewItem[] = [
+            projectItem('alpha', 'Alpha project', '/projects/alpha'),
+            projectItem('zulu', 'Zulu project', '/projects/zulu'),
+        ];
+
+        function projectIds(
+            data: SessionListViewItem[],
+            starred?: ReadonlySet<string>,
+        ): string[] {
+            const groups = buildSessionProjectDisplayGroups(data, machines, 'Unknown', starred);
+            return groups.flatMap(group => group.projects.map(item => item.project.id));
+        }
+
+        it('lifts a starred project above the alphabetical order of its machine', () => {
+            expect(projectIds(alphaAndZulu, new Set(['machine-a:/projects/zulu'])))
+                .toEqual(['zulu', 'alpha']);
+        });
+
+        it('keeps the alphabetical order among projects sharing a starred state', () => {
+            expect(projectIds(alphaAndZulu, new Set([
+                'machine-a:/projects/zulu',
+                'machine-a:/projects/alpha',
+            ]))).toEqual(['alpha', 'zulu']);
+        });
+
+        it('leaves the order alone when nothing is starred', () => {
+            expect(projectIds(alphaAndZulu, new Set())).toEqual(['alpha', 'zulu']);
+            expect(projectIds(alphaAndZulu)).toEqual(['alpha', 'zulu']);
+        });
+
+        it('rides a worktree card up on the star of the repo it belongs to', () => {
+            const data = [
+                projectItem('alpha', 'Alpha project', '/projects/alpha'),
+                projectItem('worktree', 'feature', '/projects/repo/.dev/worktree/feature'),
+            ];
+
+            expect(projectIds(data)).toEqual(['alpha', 'worktree']);
+            expect(projectIds(data, new Set(['machine-a:/projects/repo'])))
+                .toEqual(['worktree', 'alpha']);
+        });
+
+        it('cannot star a card that carries no path (Rig projects)', () => {
+            const data = [
+                projectItem('rig-alpha', 'Alpha project', null),
+                projectItem('rig-zulu', 'Zulu project', null),
+            ];
+
+            expect(projectIds(data, new Set(['machine-a:/projects/anything'])))
+                .toEqual(['rig-alpha', 'rig-zulu']);
+        });
+
+        it('keeps a star inside its own machine group', () => {
+            const data = [
+                projectItem('alpha', 'Alpha project', '/projects/alpha'),
+                projectItem('zulu-machine', 'Zulu machine project', '/projects/z', 'machine-z'),
+            ];
+
+            // machine-a leads machine-z by machine name, so starring a project
+            // on machine-z lifts it within its own group, not above Alpha's.
+            expect(projectIds(data, new Set(['machine-z:/projects/z'])))
+                .toEqual(['alpha', 'zulu-machine']);
+        });
+
+        it('numbers the session shortcuts in the starred order too', () => {
+            expect(getSessionShortcutIdsInDisplayOrder(
+                alphaAndZulu,
+                machines,
+                'Unknown',
+                new Set(['machine-a:/projects/zulu']),
+            )).toEqual(['zulu-session', 'alpha-session']);
+        });
     });
 });
