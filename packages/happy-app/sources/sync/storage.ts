@@ -75,6 +75,38 @@ function isSessionArchived(session: Session): boolean {
         || (!isRigMetadata(session.metadata) && !session.active);
 }
 
+/**
+ * Whether an incoming version of a session draws the same list row in the
+ * same place as the stored one. Mirrors what buildSessionRowData,
+ * isSessionArchived, getSessionActivityAt and the list's sorting/grouping
+ * read. updatedAt, seq, the *Version counters, thinkingAt, a live session's
+ * activeAt, the mode picks and latestUsage are not among them — and those are
+ * exactly what a new-message event and the activity flush bump.
+ */
+function sessionRowUnchanged(prev: Session | undefined, next: Session): boolean {
+    if (!prev) return false;
+    if (prev.active !== next.active
+        || (!next.active && prev.activeAt !== next.activeAt)
+        || prev.thinking !== next.thinking
+        || prev.createdAt !== next.createdAt
+        || prev.lastMessageSentAt !== next.lastMessageSentAt
+        || (prev.projectId ?? null) !== (next.projectId ?? null)
+        || !!prev.draft !== !!next.draft
+        || (prev.todos !== next.todos && !equal(prev.todos, next.todos))
+        || (prev.avatar !== next.avatar && !equal(prev.avatar, next.avatar))
+        || (prev.metadata !== next.metadata && !equal(prev.metadata, next.metadata))) {
+        return false;
+    }
+    // agentState carries the whole permission history, so a deep compare would
+    // cost more than it saves; the row only shows the state it resolves to.
+    if (prev.agentState !== next.agentState) {
+        const isOnline = next.presence === 'online';
+        return resolveSessionState({ agentState: prev.agentState, thinking: prev.thinking, isOnline })
+            === resolveSessionState({ agentState: next.agentState, thinking: next.thinking, isOnline });
+    }
+    return true;
+}
+
 /** "Today", "Yesterday", or "N days ago" for a flat row's date heading. */
 function relativeDayTitle(timestamp: number): string {
     const now = new Date();
@@ -524,6 +556,16 @@ export const storage = create<StorageState>()((set, get) => {
             // Merge new sessions with existing ones
             const mergedSessions: Record<string, Session> = indexSessionsById(Object.values(state.sessions));
 
+            // Every socket event (new-message, update-session) and the 2 s
+            // activity flush land here, and most bump only fields no row shows
+            // (updatedAt, seq, a live session's activeAt). Rebuilding both list
+            // views for those meant minting a row for every session, sorting
+            // and grouping them, then deep-equalling the result in every
+            // subscriber — per event, for hundreds of sessions. Track whether
+            // any incoming session changes its row or position and skip the
+            // rebuild when none does.
+            let listChanged = state.sessionListViewData === null || state.sessionsData === null;
+
             // Update sessions with calculated presence using centralized resolver
             sessions.forEach(session => {
                 // Use centralized resolver for consistent state management
@@ -556,7 +598,7 @@ export const storage = create<StorageState>()((set, get) => {
                 // Local activity timestamp — preserve in-memory value, else restore from MMKV.
                 const resolvedLastMessageSentAt = state.sessions[session.id]?.lastMessageSentAt ?? savedLastMessageSentAt[session.id];
 
-                mergedSessions[session.id] = {
+                const mergedSession: Session = {
                     ...session,
                     presence,
                     draft: existingDraft || savedDraft || session.draft || null,
@@ -565,58 +607,70 @@ export const storage = create<StorageState>()((set, get) => {
                     effortLevel: resolvedEffortLevel,
                     lastMessageSentAt: resolvedLastMessageSentAt,
                 };
-            });
-
-            // Build active set from all sessions (including existing ones)
-            const activeSet = new Set<string>();
-            Object.values(mergedSessions).forEach(session => {
-                if (isSessionActive(session)) {
-                    activeSet.add(session.id);
+                mergedSessions[session.id] = mergedSession;
+                if (!listChanged && !sessionRowUnchanged(state.sessions[session.id], mergedSession)) {
+                    listChanged = true;
                 }
             });
 
-            // Separate active and inactive sessions
-            const activeSessions: Session[] = [];
-            const inactiveSessions: Session[] = [];
+            // Legacy sessionsData: its order hangs off the same fields as the
+            // rows, so it is only rebuilt with them.
+            let sessionsData = state.sessionsData;
+            if (listChanged) {
+                // Build active set from all sessions (including existing ones)
+                const activeSet = new Set<string>();
+                Object.values(mergedSessions).forEach(session => {
+                    if (isSessionActive(session)) {
+                        activeSet.add(session.id);
+                    }
+                });
 
-            // Process all sessions from merged set
-            Object.values(mergedSessions).forEach(session => {
-                // Side chats are hidden children — never in any session list.
-                if (session.metadata?.isSideChat) {
-                    return;
+                // Separate active and inactive sessions
+                const activeSessions: Session[] = [];
+                const inactiveSessions: Session[] = [];
+
+                // Process all sessions from merged set
+                Object.values(mergedSessions).forEach(session => {
+                    // Side chats are hidden children — never in any session list.
+                    if (session.metadata?.isSideChat) {
+                        return;
+                    }
+                    if (activeSet.has(session.id)) {
+                        activeSessions.push(session);
+                    } else {
+                        inactiveSessions.push(session);
+                    }
+                });
+
+                // Keep both sections in canonical chat-list order: newest activity first.
+                const sortKey = getSessionActivityAt;
+                activeSessions.sort((a, b) => sortKey(b) - sortKey(a));
+                inactiveSessions.sort((a, b) => sortKey(b) - sortKey(a));
+
+                // Build flat list data for FlashList
+                const listData: SessionListItem[] = [];
+
+                if (activeSessions.length > 0) {
+                    listData.push('online');
+                    listData.push(...activeSessions);
                 }
-                if (activeSet.has(session.id)) {
-                    activeSessions.push(session);
-                } else {
-                    inactiveSessions.push(session);
+
+                // Legacy sessionsData - to be removed
+                // Machines are now integrated into sessionListViewData
+
+                if (inactiveSessions.length > 0) {
+                    listData.push('offline');
+                    listData.push(...inactiveSessions);
                 }
-            });
 
-            // Keep both sections in canonical chat-list order: newest activity first.
-            const sortKey = getSessionActivityAt;
-            activeSessions.sort((a, b) => sortKey(b) - sortKey(a));
-            inactiveSessions.sort((a, b) => sortKey(b) - sortKey(a));
-
-            // Build flat list data for FlashList
-            const listData: SessionListItem[] = [];
-
-            if (activeSessions.length > 0) {
-                listData.push('online');
-                listData.push(...activeSessions);
+                // console.log(`📊 Storage: applySessions called with ${sessions.length} sessions, active: ${activeSessions.length}, inactive: ${inactiveSessions.length}`);
+                sessionsData = listData;
             }
 
-            // Legacy sessionsData - to be removed
-            // Machines are now integrated into sessionListViewData
-
-            if (inactiveSessions.length > 0) {
-                listData.push('offline');
-                listData.push(...inactiveSessions);
-            }
-
-            // console.log(`📊 Storage: applySessions called with ${sessions.length} sessions, active: ${activeSessions.length}, inactive: ${inactiveSessions.length}`);
-
-            // Process AgentState updates for sessions that already have messages loaded
-            const updatedSessionMessages = { ...state.sessionMessages };
+            // Process AgentState updates for sessions that already have messages loaded.
+            // Copied lazily: the spread is O(loaded sessions) per event and most
+            // events touch no entry.
+            let updatedSessionMessages = state.sessionMessages;
 
             sessions.forEach(session => {
                 const oldSession = state.sessions[session.id];
@@ -685,6 +739,9 @@ export const storage = create<StorageState>()((set, get) => {
                         const messagesArray = Object.values(mergedMessagesMap)
                             .sort((a, b) => messageSortKey(b) - messageSortKey(a));
 
+                        if (updatedSessionMessages === state.sessionMessages) {
+                            updatedSessionMessages = { ...state.sessionMessages };
+                        }
                         updatedSessionMessages[session.id] = {
                             messages: messagesArray,
                             messagesMap: mergedMessagesMap,
@@ -727,18 +784,21 @@ export const storage = create<StorageState>()((set, get) => {
                 }
             });
 
-            // Build new unified list view data
-            const sessionListViewData = buildSessionListViewData(
-                mergedSessions,
-                unreadSessionIds,
-                state.machines,
-                state.projects,
-            );
+            // Build new unified list view data — unless no row changed and no
+            // badge flipped, in which case the previous list is still exact.
+            const sessionListViewData = listChanged || unreadSessionIds !== state.unreadSessionIds
+                ? buildSessionListViewData(
+                    mergedSessions,
+                    unreadSessionIds,
+                    state.machines,
+                    state.projects,
+                )
+                : state.sessionListViewData;
 
             return {
                 ...state,
                 sessions: mergedSessions,
-                sessionsData: listData,  // Legacy - to be removed
+                sessionsData,  // Legacy - to be removed
                 sessionListViewData,
                 sessionMessages: updatedSessionMessages,
                 unreadSessionIds,
@@ -822,19 +882,26 @@ export const storage = create<StorageState>()((set, get) => {
                 // Update session with todos and latestUsage
                 // IMPORTANT: We extract latestUsage from the mutable reducerState and copy it to the Session object
                 // This ensures latestUsage is available immediately on load, even before messages are fully loaded
+                //
+                // Only when something actually differs: the reducer reports its
+                // current todos and usage on every call, and re-minting the
+                // Session (with a fresh latestUsage) for each incoming message
+                // re-rendered every useSession subscriber of a streaming chat —
+                // SessionView, AgentInput, the chat list — per message.
                 let updatedSessions = state.sessions;
-                const needsUpdate = (reducerResult.todos !== undefined || existingSession.reducerState.latestUsage || shouldEnterPlanMode) && session;
+                const reducerUsage = existingSession.reducerState.latestUsage;
+                const todosChanged = reducerResult.todos !== undefined && reducerResult.todos !== session?.todos;
+                const usageChanged = reducerUsage !== undefined && !equal(reducerUsage, session?.latestUsage);
+                const needsUpdate = (todosChanged || usageChanged || shouldEnterPlanMode) && session;
 
                 if (needsUpdate) {
                     updatedSessions = {
                         ...state.sessions,
                         [sessionId]: {
                             ...session,
-                            ...(reducerResult.todos !== undefined && { todos: reducerResult.todos }),
+                            ...(todosChanged && { todos: reducerResult.todos }),
                             // Copy latestUsage from reducerState to make it immediately available
-                            latestUsage: existingSession.reducerState.latestUsage ? {
-                                ...existingSession.reducerState.latestUsage
-                            } : session.latestUsage,
+                            ...(usageChanged && reducerUsage && { latestUsage: { ...reducerUsage } }),
                             // Auto-switch to plan mode when EnterPlanMode tool call is detected
                             ...(shouldEnterPlanMode && { permissionMode: 'plan' })
                         }
@@ -1181,10 +1248,15 @@ export const storage = create<StorageState>()((set, get) => {
                 }
             };
 
+            // The row only shows whether a draft exists, so rebuilding the
+            // list for every edit of the draft text bought nothing.
+            const hasDraftChanged = !!session.draft !== !!normalizedDraft;
             return {
                 ...state,
                 sessions: updatedSessions,
-                sessionListViewData: buildSessionListViewData(updatedSessions, state.unreadSessionIds, state.machines, state.projects)
+                ...(hasDraftChanged && {
+                    sessionListViewData: buildSessionListViewData(updatedSessions, state.unreadSessionIds, state.machines, state.projects),
+                }),
             };
         }),
         // Permission / model / effort picks are local mirrors of synced session
@@ -1229,13 +1301,19 @@ export const storage = create<StorageState>()((set, get) => {
             });
             saveSessionLastMessageSentAt(allTimestamps);
 
-            // Rebuild list view data — this timestamp drives activity-based sort.
+            // Rebuild list view data — this timestamp drives activity-based sort,
+            // but only as the fallback for an agent that publishes no
+            // lastMeaningfulMessageAt (see getSessionActivityAt); once that is
+            // set no row reads it.
             // Pass unreadSessionIds so other sessions keep their unread badges
             // (omitting it drops every badge until the next rebuild).
+            const affectsRow = session.metadata?.lastMeaningfulMessageAt == null;
             return {
                 ...state,
                 sessions: updatedSessions,
-                sessionListViewData: buildSessionListViewData(updatedSessions, state.unreadSessionIds, state.machines, state.projects)
+                ...(affectsRow && {
+                    sessionListViewData: buildSessionListViewData(updatedSessions, state.unreadSessionIds, state.machines, state.projects),
+                }),
             };
         }),
         getSessionPathKey: (sessionId: string): string | null => {
