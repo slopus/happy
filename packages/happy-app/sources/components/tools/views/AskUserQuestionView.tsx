@@ -1,3 +1,4 @@
+import { TranscriptReadOnlyContext } from "../../TranscriptReadOnlyContext";
 import * as React from 'react';
 import { View, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
@@ -166,6 +167,7 @@ const styles = StyleSheet.create((theme) => ({
 
 export const AskUserQuestionView = React.memo<ToolViewProps>(({ tool, sessionId }) => {
     const { theme } = useUnistyles();
+    const readOnly = React.useContext(TranscriptReadOnlyContext);
     const [selections, setSelections] = React.useState<Map<number, Set<number>>>(new Map());
     const [isSubmitting, setIsSubmitting] = React.useState(false);
     const [isSubmitted, setIsSubmitted] = React.useState(false);
@@ -179,7 +181,7 @@ export const AskUserQuestionView = React.memo<ToolViewProps>(({ tool, sessionId 
     }
 
     const isRunning = tool.state === 'running';
-    const canInteract = isRunning && !isSubmitted;
+    const canInteract = !readOnly && isRunning && !isSubmitted;
 
     // Check if all questions have at least one selection
     const allQuestionsAnswered = questions.every((_, qIndex) => {
@@ -213,7 +215,7 @@ export const AskUserQuestionView = React.memo<ToolViewProps>(({ tool, sessionId 
     }, [canInteract]);
 
     const handleSubmit = React.useCallback(async () => {
-        if (!sessionId || !allQuestionsAnswered || isSubmitting) return;
+        if (!canInteract || !sessionId || !allQuestionsAnswered || isSubmitting) return;
 
         setIsSubmitting(true);
 
@@ -246,7 +248,7 @@ export const AskUserQuestionView = React.memo<ToolViewProps>(({ tool, sessionId 
         } finally {
             setIsSubmitting(false);
         }
-    }, [sessionId, questions, selections, allQuestionsAnswered, isSubmitting, tool.permission?.id]);
+    }, [canInteract, sessionId, questions, selections, allQuestionsAnswered, isSubmitting, tool.permission?.id]);
 
     // Show submitted state
     if (isSubmitted || tool.state === 'completed') {

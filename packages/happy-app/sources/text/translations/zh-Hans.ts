@@ -829,6 +829,20 @@ export const zhHans: TranslationStructure = {
     },
 
     session: {
+        continueFresh: "新建 Session 接着聊",
+        continueOpen: "打开接续会话",
+        continueCreating: "正在创建新会话…",
+        continueBoundary: "已启动新 Session · 上方保留之前的完整对话",
+        continueWaiting: "等待你发送消息。新 Agent 尚未继承旧模型的上下文。",
+        continueOld: "之前的会话 · 历史只读",
+        continueHistoryError: "暂时无法加载之前的对话，请重试读取已保存的历史。",
+        continueCycle: "会话关联出现循环，原会话仍然保留。",
+        continueUnknown: "创建结果尚未确认，请先检查会话列表，避免重复创建。",
+        continueOffline: "原执行机离线，请在它上线后重试。",
+        continueMissing: "原执行机、项目目录或 Agent 信息不可用。",
+        continueHydration: "新会话已创建，但加载或关联未完成。再次点击将继续处理同一个新会话。",
+        continueRetry: "重试加载历史",
+
         anchorsButton: '锚点',
         scrollToBottom: '滚动到底部',
         anchorsTitle: '我的提问',

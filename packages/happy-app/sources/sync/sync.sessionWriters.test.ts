@@ -150,6 +150,70 @@ beforeEach(() => {
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe('real session writer composition', () => {
+    it.each([{ thinkingAt: 15, expected: false }, { thinkingAt: 35, expected: true }])(
+        'lets persisted completion settle only its own activity (%j)', async ({ thinkingAt, expected }) => {
+            await sync.ensureSessionHydrated('writer-session');
+            const current = storage.getState().sessions['writer-session'];
+            storage.getState().applySessions([{ ...current, thinking: true, thinkingAt }]);
+            subject.applySessions([{ ...current, thinking: true, thinkingAt, updatedAt: 40,
+                agentStateVersion: 1, agentState: { requests: {}, completedRequests: {},
+                    turnStatus: { status: 'completed', updatedAt: 25 } } }]);
+            expect(storage.getState().sessions['writer-session'].thinking).toBe(expected);
+        });
+
+    it('rejects stale running activity after completion but permits a later turn', async () => {
+        await sync.ensureSessionHydrated('writer-session');
+        storage.getState().applySessions([{ ...storage.getState().sessions['writer-session'],
+            thinking: false, thinkingAt: 15,
+            agentState: { requests: {}, completedRequests: {}, turnStatus: { status: 'completed', updatedAt: 25 } } }]);
+        subject.flushActivityUpdates(new Map([['writer-session', { active: true, activeAt: 20, thinking: true }]]));
+        expect(storage.getState().sessions['writer-session'].thinking).toBe(false);
+        subject.flushActivityUpdates(new Map([['writer-session', { active: true, activeAt: 35, thinking: true }]]));
+        expect(storage.getState().sessions['writer-session'].thinking).toBe(true);
+        subject.flushActivityUpdates(new Map([['writer-session', { active: true, activeAt: 30, thinking: false }]]));
+        expect(storage.getState().sessions['writer-session'].thinking).toBe(true);
+    });
+
+    it.each([
+        { eventTime: 25, thinkingAt: 15, subagent: undefined, expected: false },
+        { eventTime: 15, thinkingAt: 25, subagent: undefined, expected: true },
+        { eventTime: 25, thinkingAt: 15, subagent: 'child', expected: true },
+    ])('applies canonical turn completion without replaying history (%j)', async ({ eventTime, thinkingAt, subagent, expected }) => {
+        await sync.ensureSessionHydrated('writer-session');
+        storage.getState().applySessions([{ ...storage.getState().sessions['writer-session'], thinking: true, thinkingAt }]);
+        subject.historyWindows.set('writer-session', { isAtLatest: false });
+        const crypto = subject.encryption.getSessionEncryption('writer-session') as any;
+        crypto.encryptor.decrypt = async () => [{ role: 'session', content: {
+            id: 'terminal', time: eventTime, role: 'agent', turn: 'turn-one',
+            ...(subagent ? { subagent } : {}), ev: { t: 'turn-end', status: 'completed' },
+        } }];
+        await subject.handleUpdate(envelope({ t: 'new-message', sid: 'writer-session', message: {
+            id: 'terminal-wire', seq: 3, localId: null, createdAt: 40, updatedAt: 40,
+            content: { t: 'encrypted', c: 'AA==' },
+        } }, 9001, 40));
+        expect(storage.getState().sessions['writer-session'].thinking).toBe(expected);
+    });
+
+    it('does not restore captured running state when completion decryption finishes late', async () => {
+        await sync.ensureSessionHydrated('writer-session');
+        const initial = storage.getState().sessions['writer-session'];
+        storage.getState().applySessions([{ ...initial, thinking: true, thinkingAt: 15 }]);
+        const gate = deferred<any[]>();
+        const started = deferred<void>();
+        const crypto = subject.encryption.getSessionEncryption('writer-session') as any;
+        crypto.encryptor.decrypt = async () => { started.resolve(); return gate.promise; };
+        const pending = subject.handleUpdate(envelope({ t: 'update-session', id: 'writer-session',
+            agentState: { version: 1, value: 'AA==' } }, 9001, 30));
+        await started.promise;
+        // A newer activity/terminal receipt arrives while the state decrypts.
+        storage.getState().applySessions([{ ...storage.getState().sessions['writer-session'],
+            thinking: false, thinkingAt: 25 }]);
+        gate.resolve([{ requests: {}, completedRequests: {}, turnStatus: { status: 'completed', updatedAt: 25 } }]);
+        await pending;
+        expect(storage.getState().sessions['writer-session']).toMatchObject({ thinking: false, thinkingAt: 25,
+            agentState: { turnStatus: { status: 'completed' } } });
+    });
+
     it('resolves a cached deleted session as not-found and evicts its warm snapshot', async () => {
         subject.sessionWarmCacheAccountKey = 'https://test|deleted-route';
         await sync.ensureSessionHydrated('writer-session');

@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { TranscriptReadOnlyContext } from '../TranscriptReadOnlyContext';
 import { Text, View, ScrollView, Platform, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { ToolCall, Message } from '@/sync/typesMessage';
@@ -19,6 +20,7 @@ interface ToolFullViewProps {
 }
 
 export function ToolFullView({ tool, metadata, messages = [], sessionId }: ToolFullViewProps) {
+    const readOnly = React.useContext(TranscriptReadOnlyContext) || Boolean(metadata?.continuedBySessionId);
     // Check if there's a specialized content view for this tool
     const SpecializedFullView = getToolFullViewComponent(tool.name);
     const screenWidth = useWindowDimensions().width;
@@ -28,7 +30,7 @@ export function ToolFullView({ tool, metadata, messages = [], sessionId }: ToolF
     return (
         <ScrollView style={[styles.container, { paddingHorizontal: screenWidth > 700 ? 16 : 0 }]}>
             <View style={styles.contentWrapper}>
-                {tool.permission && sessionId && tool.name !== 'AskUserQuestion' ? (
+                {!readOnly && tool.permission && sessionId && tool.name !== 'AskUserQuestion' ? (
                     <View style={styles.permissionFooter}>
                         <PermissionFooter
                             metadata={metadata}
@@ -41,7 +43,9 @@ export function ToolFullView({ tool, metadata, messages = [], sessionId }: ToolF
                 ) : null}
                 {/* Tool-specific content or generic fallback */}
                 {SpecializedFullView ? (
-                    <SpecializedFullView tool={tool} metadata={metadata || null} messages={messages} />
+                    <TranscriptReadOnlyContext.Provider value={readOnly}>
+                        <SpecializedFullView tool={tool} metadata={metadata || null} messages={messages} sessionId={sessionId} />
+                    </TranscriptReadOnlyContext.Provider>
                 ) : (
                     <>
                     {/* Generic fallback for tools without specialized views */}

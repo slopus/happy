@@ -376,6 +376,11 @@ function mergeHydratedSessions(sessions: HydratedSession[]): HydratedSession {
             agentStateVersion: agentStateWinner.agentStateVersion,
         };
     }
+    const terminal = merged.agentState?.turnStatus;
+    if (merged.thinking && terminal && (terminal.status === 'completed' || terminal.status === 'failed')
+        && terminal.updatedAt >= merged.thinkingAt) {
+        return { ...merged, thinking: false, thinkingAt: terminal.updatedAt };
+    }
     return merged;
 }
 
@@ -4346,6 +4351,8 @@ class Sync {
                             type?: string;
                             data?: {
                                 type?: string;
+                                time?: number;
+                                subagent?: string;
                                 ev?: { t?: string };
                             }
                         }
@@ -4353,6 +4360,10 @@ class Sync {
                     const contentType = rawContent?.content?.type;
                     const dataType = rawContent?.content?.data?.type;
                     const sessionEventType = rawContent?.content?.data?.ev?.t;
+                    const lifecycleAt = contentType === 'session'
+                        ? rawContent?.content?.data?.time ?? decrypted.createdAt
+                        : decrypted.createdAt;
+                    const isSubagentEvent = contentType === 'session' && !!rawContent?.content?.data?.subagent;
                     
                     // Debug logging to trace lifecycle events
                     if (dataType === 'task_complete' || dataType === 'turn_aborted' || dataType === 'task_started' || sessionEventType === 'turn-start' || sessionEventType === 'turn-end') {
@@ -4379,8 +4390,8 @@ class Sync {
                             updatedAt: updateData.createdAt,
                             seq: Math.max(session.seq, updateData.body.message.seq),
                             // Update thinking state based on task lifecycle events
-                            ...(isTaskComplete ? { thinking: false } : {}),
-                            ...(isTaskStarted ? { thinking: true } : {})
+                            ...(!isSubagentEvent && lifecycleAt >= session.thinkingAt && (isTaskComplete || isTaskStarted)
+                                ? { thinking: isTaskStarted, thinkingAt: lifecycleAt } : {})
                         }])
                     }
 
@@ -4515,18 +4526,23 @@ class Sync {
                     : session.metadata;
                 assertCurrent();
 
+                // Decryption may race a terminal message or activity update.
+                // Preserve live presence/thinking rather than restoring the
+                // snapshot captured before the awaits.
+                const liveSession = storage.getState().sessions[updateData.body.id];
+                if (!liveSession) return;
                 this.applySessions([{
-                    ...session,
-                    agentState,
+                    ...liveSession,
+                    agentState: updateData.body.agentState ? agentState : liveSession.agentState,
                     agentStateVersion: updateData.body.agentState
                         ? updateData.body.agentState.version
-                        : session.agentStateVersion,
-                    metadata,
+                        : liveSession.agentStateVersion,
+                    metadata: updateData.body.metadata ? metadata : liveSession.metadata,
                     metadataVersion: updateData.body.metadata
                         ? updateData.body.metadata.version
-                        : session.metadataVersion,
+                        : liveSession.metadataVersion,
                     updatedAt: updateData.createdAt,
-                    seq: session.seq
+                    seq: liveSession.seq
                 }]);
 
                 const history = historyOwner?.history;
@@ -4880,12 +4896,17 @@ class Sync {
         for (const [sessionId, update] of updates) {
             const session = storage.getState().sessions[sessionId];
             if (session) {
+                const terminal = session.agentState?.turnStatus;
+                const terminalAt = terminal && (terminal.status === 'completed' || terminal.status === 'failed')
+                    ? terminal.updatedAt : 0;
+                const staleThinking = update.activeAt < session.thinkingAt
+                    || (update.thinking === true && update.activeAt <= terminalAt);
                 sessions.push({
                     ...session,
-                    active: update.active,
-                    activeAt: update.activeAt,
-                    thinking: update.thinking ?? false,
-                    thinkingAt: update.activeAt // Always use activeAt for consistency
+                    active: update.activeAt >= session.activeAt ? update.active : session.active,
+                    activeAt: Math.max(update.activeAt, session.activeAt),
+                    thinking: staleThinking ? session.thinking : update.thinking ?? false,
+                    thinkingAt: staleThinking ? session.thinkingAt : update.activeAt
                 });
             }
         }

@@ -1429,7 +1429,7 @@ function SessionViewLoaded({
     const alwaysShowContextSize = useSetting('alwaysShowContextSize');
     const agentDefaultOverrides = useSetting('agentDefaultOverrides');
     const experiments = useSetting('experiments');
-    const { canResume, resumeSession, resumeSessionSubtitle, resumingSession } = useSessionQuickActions(session);
+    const { canResume, resumeSession, resumeSessionSubtitle, resumingSession, canContinue, continueSession, continuingSession } = useSessionQuickActions(session);
     const isDisconnected = !sessionStatus.isConnected;
     const isRecoverableFailure = sessionStatus.state === 'failed';
     const resumeCommandBlock = getResumeCommandBlock(session);
@@ -1610,12 +1610,12 @@ function SessionViewLoaded({
                     verifiedRouteOwnerEpoch={verifiedRouteOwnerEpoch}
                     isLoaded={isLoaded}
                 >
-                    {messages.length > 0 && <ChatList session={session} followLatestRequest={followLatestRequest} />}
+                    {(messages.length > 0 || !!session.metadata?.continuationOfSessionId) && <ChatList session={session} followLatestRequest={followLatestRequest} />}
                 </VerifiedSessionMessageContent>
             </Deferred>
         </>
     );
-    const placeholder = messages.length === 0 ? (
+    const placeholder = messages.length === 0 && !session.metadata?.continuationOfSessionId ? (
         <>
             {isLoaded ? (
                 <EmptyMessages session={session} />
@@ -1667,6 +1667,8 @@ function SessionViewLoaded({
                 canResume={canResume}
                 resuming={resumingSession}
                 onResume={resumeSession}
+                onContinue={canContinue ? continueSession : undefined}
+                continuing={continuingSession}
                 failed={isRecoverableFailure}
                 unavailableMessage={resumeSessionSubtitle}
             />
@@ -1846,6 +1848,8 @@ function InactiveArchivedHint(props: {
     canResume: boolean;
     resuming: boolean;
     onResume: () => void;
+    onContinue?: () => void;
+    continuing?: boolean;
     failed?: boolean;
     unavailableMessage?: string;
 }) {
@@ -1901,6 +1905,13 @@ function InactiveArchivedHint(props: {
             ) : props.resumeCommandBlock && (
                 <ResumeCommandCopyBlock resumeCommandBlock={props.resumeCommandBlock} />
             )}
+            {props.onContinue && <Pressable accessibilityRole="button" accessibilityLabel={t('session.continueFresh')}
+                onPress={props.onContinue} disabled={props.continuing}
+                style={({ pressed }) => ({ padding: 12, marginHorizontal: 8, borderRadius: 10,
+                    backgroundColor: pressed ? theme.colors.surfacePressed : theme.colors.surface,
+                    alignItems: 'center', opacity: props.continuing ? 0.6 : 1 })}>
+                <Text style={{ color: theme.colors.text, fontWeight: '600' }}>{t(props.continuing ? 'session.continueCreating' : 'session.continueFresh')}</Text>
+            </Pressable>}
         </View>
     );
 }

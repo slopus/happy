@@ -1500,3 +1500,27 @@ describe('ConversationTranscript older history pagination', () => {
         act(() => renderer.unmount()); grouped.items = null;
     });
 });
+
+it('routes scoped historical message rows to their original session and disables current-session actions', async () => {
+    (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+    Platform.OS = 'web'; grouped.renderRows = true; grouped.items = null;
+    const old = userMessage('old-message');
+    const current = userMessage('new-message');
+    const edit = vi.fn(); const fork = vi.fn();
+    let renderer: any;
+    await act(async () => { renderer = TestRenderer.create(<ConversationTranscript
+        sessionId="new" metadata={null} messages={[current, old]}
+        showMessageActions canEditLatestUserMessage onEditUserMessage={edit} onForkFromMessage={fork}
+        scopedItems={[
+            { type: 'message', id: 'new:new-message', message: current, source: { sessionId: 'new', metadata: null, readOnly: false } },
+            { type: 'message', id: 'old:old-message', message: old, source: { sessionId: 'old', metadata: null, readOnly: true } },
+        ]} />); });
+    const rows = renderer.root.findAllByType('MessageView');
+    expect(rows.find((row: any) => row.props.message.id === 'old-message').props).toMatchObject({
+        sessionId: 'old', showUserMessageActions: false, canEditUserMessage: false, onEditUserMessage: undefined, onForkFromMessage: undefined,
+    });
+    expect(rows.find((row: any) => row.props.message.id === 'new-message').props).toMatchObject({
+        sessionId: 'new', showUserMessageActions: true, onEditUserMessage: edit, onForkFromMessage: fork,
+    });
+    act(() => renderer.unmount()); grouped.renderRows = false;
+});

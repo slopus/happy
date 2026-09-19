@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { createSessionContinuation } from '@/sync/sessionContinuation';
 import { useHappyAction } from '@/hooks/useHappyAction';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { Modal } from '@/modal';
@@ -237,6 +238,21 @@ export function useSessionQuickActions(
                 throw new HappyError(t('sessionInfo.resumeSessionUnexpectedDirectoryPrompt'), false);
             case 'error':
                 throw new HappyError(result.errorMessage, false);
+        }
+    });
+
+    const canContinue = !sessionStatus.isConnected || sessionStatus.state === 'failed' || Boolean(session.metadata?.continuedBySessionId);
+    const [continuingSession, continueSession] = useHappyAction(async () => {
+        try {
+            const id = await createSessionContinuation(session.id);
+            navigateToSession(id);
+        } catch (error) {
+            const message = error instanceof Error ? error.message : '';
+            const translated = message === 'continuation-machine-offline' ? t('session.continueOffline')
+                : message === 'continuation-outcome-unknown' ? t('session.continueUnknown')
+                : message === 'continuation-hydration-failed' ? t('session.continueHydration')
+                : message.startsWith('continuation-') ? t('session.continueMissing') : message;
+            throw new HappyError(translated || t('errors.unknownError'), false);
         }
     });
 
@@ -499,6 +515,7 @@ export function useSessionQuickActions(
                 unpin: t('sessionInfo.unpinSession'),
                 details: t('profile.details'),
                 resume: t('sessionInfo.resumeSession'),
+                continueFresh: continuingSession ? t('session.continueCreating') : session.metadata?.continuedBySessionId ? t('session.continueOpen') : t('session.continueFresh'),
                 rename: t('sessionInfo.renameSession'),
                 regenerateTitle: t('sessionInfo.regenerateTitle'),
                 fork: t('session.forkAction'),
@@ -514,6 +531,7 @@ export function useSessionQuickActions(
                 togglePinSession,
                 openDetails,
                 resumeSession,
+                continueSession,
                 renameSession,
                 regenerateTitle,
                 forkSession,
@@ -526,6 +544,7 @@ export function useSessionQuickActions(
                 selectSession: onSelectSession,
             },
             canShowResume: resumeAvailability.canShowResume,
+            canContinue,
             canRegenerateTitle,
             canFork,
             canCopySessionMetadata,
@@ -548,6 +567,10 @@ export function useSessionQuickActions(
         onSelectSession,
         regenerateTitle,
         renameSession,
+        canContinue,
+        continueSession,
+        continuingSession,
+        session.metadata?.continuedBySessionId,
         resumeAvailability.canShowResume,
         resumeSession,
         restoreSession,
@@ -569,6 +592,9 @@ export function useSessionQuickActions(
 
     return {
         actionItems,
+        canContinue,
+        continueSession,
+        continuingSession,
         showActionAlert,
         archiveSession,
         archivingSession,

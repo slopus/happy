@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // @ts-expect-error react-test-renderer has no declarations in this workspace.
 import TestRenderer from 'react-test-renderer';
 import { ToolView } from './ToolView';
+import { TranscriptReadOnlyContext } from '../TranscriptReadOnlyContext';
 
 vi.mock('react-native', () => ({
     ActivityIndicator: 'ActivityIndicator',
@@ -18,7 +19,8 @@ vi.mock('react-native-unistyles', () => {
     };
 });
 vi.mock('@expo/vector-icons', () => ({ Ionicons: 'Ionicons', Octicons: 'Octicons' }));
-vi.mock('expo-router', () => ({ useRouter: () => ({ push: vi.fn() }) }));
+const routerPush = vi.hoisted(() => vi.fn());
+vi.mock('expo-router', () => ({ useRouter: () => ({ push: routerPush }) }));
 vi.mock('@/text', () => ({ t: (key: string) => key }));
 vi.mock('@/hooks/useElapsedTime', () => ({ useElapsedTime: () => 1 }));
 vi.mock('@/utils/toolDisplay', () => ({
@@ -33,7 +35,7 @@ vi.mock('./views/MCPToolView', () => ({ formatMCPTitle: () => 'Demo App' }));
 vi.mock('./knownTools', () => ({ knownTools: {} }));
 vi.mock('@/components/tools/knownTools', () => ({ knownTools: {} }));
 vi.mock('@/utils/toolErrorParser', () => ({ parseToolUseError: () => ({ isToolUseError: false }) }));
-vi.mock('./PermissionFooter', () => ({ PermissionFooter: () => null }));
+vi.mock('./PermissionFooter', () => ({ PermissionFooter: 'PermissionFooter' }));
 vi.mock('./ToolError', () => ({ ToolError: 'ToolError' }));
 vi.mock('../CodeView', () => ({ CodeView: 'CodeView' }));
 vi.mock('./ToolSectionView', () => ({ ToolSectionView: 'ToolSectionView' }));
@@ -57,6 +59,24 @@ describe('ToolView MCP App presentation', () => {
         consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     });
     afterEach(() => consoleErrorSpy.mockRestore());
+
+    it('disables historical approvals and interactive MCP apps while retaining detail navigation', () => {
+        const tool = { ...baseTool, permission: { id: 'approval-1', status: 'pending' as const },
+            mcpApp: { version: 1 as const, server: 'demo', resourceUri: 'ui://demo/view.html' } };
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<ToolView metadata={null} tool={tool} sessionId="old" messageId="message-1" />); });
+        expect(renderer.root.findAllByType('PermissionFooter')).toHaveLength(1);
+        expect(renderer.root.findAllByType('McpAppHost')).toHaveLength(1);
+        act(() => { renderer.update(<TranscriptReadOnlyContext.Provider value={true}>
+            <ToolView metadata={null} tool={tool} sessionId="old" messageId="message-1" />
+        </TranscriptReadOnlyContext.Provider>); });
+        expect(renderer.root.findAllByType('PermissionFooter')).toHaveLength(0);
+        expect(renderer.root.findAllByType('McpAppHost')).toHaveLength(0);
+        const detailLink = renderer.root.findAllByType('TouchableOpacity').find((node: any) => Boolean(node.props.onPress));
+        act(() => detailLink.props.onPress());
+        expect(routerPush).toHaveBeenCalledWith('/session/old/message/message-1');
+        act(() => renderer.unmount());
+    });
 
     it('retains the existing title/status header and mounts App content beneath it', () => {
         const tool = {

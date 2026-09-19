@@ -1,5 +1,7 @@
 import type { HistoryViewportReader } from '@/sync/historyWindowPolicy';
 import * as React from 'react';
+import { TranscriptReadOnlyContext } from './TranscriptReadOnlyContext';
+import type { ScopedTranscriptItem as DisplayItem } from './continuationTranscript';
 import { transcriptViewportRange } from './transcriptViewportRange';
 import { reconcileTranscriptIdentities } from './transcriptWindowIdentity';
 import {
@@ -23,7 +25,6 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import type { Metadata } from '@/sync/storageTypes';
 import type { Message } from '@/sync/typesMessage';
 import {
-    type DisplayItem,
     type ToolGroupItem,
     useGroupedMessages,
     filterSupersededUserMessages,
@@ -57,6 +58,8 @@ export type ConversationTranscriptProps = {
     metadata: Metadata | null;
     sessionId?: string;
     messages: Message[];
+    scopedItems?: DisplayItem[];
+    scopedViewport?: (items: DisplayItem[], direction: 'older' | 'newer') => ReturnType<HistoryViewportReader>;
     reading?: TranscriptReadingAdapter;
     groupToolCalls?: boolean;
     currentTurnActive?: boolean;
@@ -65,6 +68,7 @@ export type ConversationTranscriptProps = {
     onLoadOlder?: (viewport?: HistoryViewportReader) => void;
     hasMoreOlder?: boolean;
     olderCursor?: number | null;
+    boundaryScope?: string;
     isLoadingOlder?: boolean;
     onLoadNewer?: (viewport?: HistoryViewportReader) => void;
     hasMoreNewer?: boolean;
@@ -117,7 +121,8 @@ export const ConversationTranscript = React.memo((props: ConversationTranscriptP
     }), [props.sessionId, props.messages]);
     const transcriptMessages = React.useMemo(() => hideLinkedBrowserSteps(props.messages, browserProgress.runs),
         [props.messages, browserProgress.runs]);
-    const displayItems = useGroupedMessages(transcriptMessages, props.groupToolCalls ?? true, groupingOptions);
+    const defaultItems = useGroupedMessages(props.scopedItems ? [] : transcriptMessages, props.groupToolCalls ?? true, groupingOptions);
+    const displayItems = props.scopedItems ?? defaultItems;
     const inverted = props.inverted ?? Platform.OS !== 'web';
     const invertedRef = React.useRef(inverted);
     invertedRef.current = inverted;
@@ -136,8 +141,8 @@ export const ConversationTranscript = React.memo((props: ConversationTranscriptP
         const renderedBoundary = direction === 'older' ? props.messages.at(-1)?.id : props.messages[0]?.id;
         const boundary = (direction === 'older' ? props.olderCursor : props.newerCursor)
             ?? (renderedBoundary ? props.reading?.wireId(renderedBoundary) ?? renderedBoundary : undefined);
-        return JSON.stringify([props.sessionId, direction, boundary]);
-    }, [props.sessionId, props.messages, props.reading, props.olderCursor, props.newerCursor]);
+        return JSON.stringify([props.sessionId, props.boundaryScope, direction, boundary]);
+    }, [props.sessionId, props.boundaryScope, props.messages, props.reading, props.olderCursor, props.newerCursor]);
     const currentBoundaryAttemptKeys = React.useRef<string[]>([]);
     currentBoundaryAttemptKeys.current = [boundaryAttemptKey('older'), boundaryAttemptKey('newer')];
     const loadBoundary = React.useCallback((direction: 'older' | 'newer', retry = false, refill = false) => {
@@ -171,9 +176,9 @@ export const ConversationTranscript = React.memo((props: ConversationTranscriptP
             previousIdentities.current.session === props.sessionId ? previousIdentities.current.identities : []);
         previousIdentities.current = { session: props.sessionId, identities: result.identities };
         return result.keyed;
-    }, [displayItems, inverted, props.reading, props.sessionId]);
+    }, [displayItems, inverted, props.reading, props.sessionId, props.scopedItems]);
     viewportRange.current = () => {
-        if (Platform.OS !== 'web' || !props.reading) return undefined;
+        if (Platform.OS !== 'web' || (!props.reading && !props.scopedViewport)) return undefined;
         const node = (flatListRef.current as any)?.getScrollableNode?.() as HTMLElement | undefined;
         if (!node?.querySelectorAll) return undefined;
         const rect = node.getBoundingClientRect();
@@ -181,7 +186,10 @@ export const ConversationTranscript = React.memo((props: ConversationTranscriptP
             const bounds = row.getBoundingClientRect();
             return bounds.bottom > rect.top && bounds.top < rect.bottom;
         }).map(row => row.dataset.transcriptKey));
-        const visibleMessages = listItems.filter(item => keys.has(item.renderKey)).flatMap(itemMessages);
+        const visibleItems = listItems.filter(item => keys.has(item.renderKey));
+        if (props.scopedViewport) return props.scopedViewport(visibleItems, userScrollDirection.current ?? 'older');
+        if (!props.reading) return undefined;
+        const visibleMessages = visibleItems.flatMap(itemMessages);
         return transcriptViewportRange(filterSupersededUserMessages(props.messages), visibleMessages, props.reading.wireSeq,
             { oldestSeq: props.olderCursor, newestSeq: props.newerCursor });
     };
@@ -456,12 +464,19 @@ export const ConversationTranscript = React.memo((props: ConversationTranscriptP
         [props.messages, props.metadata?.flavor],
     );
     const renderItemContent = React.useCallback(({ item }: { item: DisplayItem }) => {
+        const sourceId = item.source?.sessionId ?? props.sessionId;
+        const sourceMetadata = item.source ? item.source.metadata : props.metadata;
+        const readOnly = item.source?.readOnly ?? false;
+        if (item.continuationBoundary) return <View testID="session-continuation-boundary" style={{ padding: 20, marginVertical: 12, borderTopWidth: 1, borderColor: theme.colors.divider }}>
+            <Text style={{ color: theme.colors.text, fontWeight: '600' }}>{t('session.continueBoundary')}</Text>
+            {(readOnly || item.continuationWaiting) && <Text style={{ color: theme.colors.textSecondary, marginTop: 6 }}>{t(readOnly ? 'session.continueOld' : 'session.continueWaiting')}</Text>}
+        </View>;
         if (item.type === 'tool-group') {
             return (
                 <ToolGroupView
                     group={item}
-                    metadata={props.metadata}
-                    sessionId={props.sessionId}
+                    metadata={sourceMetadata}
+                    sessionId={sourceId}
                     expanded={isGroupExpanded(item)}
                     onToggle={() => handleToggleGroup(item.id)}
                 />
@@ -471,7 +486,7 @@ export const ConversationTranscript = React.memo((props: ConversationTranscriptP
             return (
                 <AttachmentGalleryView
                     messages={item.messages}
-                    sessionId={props.sessionId}
+                    sessionId={sourceId}
                     presentation={item.presentation}
                     pendingCount={item.pendingCount}
                     pendingStartedAt={item.pendingStartedAt}
@@ -482,8 +497,8 @@ export const ConversationTranscript = React.memo((props: ConversationTranscriptP
             return (
                 <AgentWorkGroupView
                     group={item}
-                    metadata={props.metadata}
-                    sessionId={props.sessionId}
+                    metadata={sourceMetadata}
+                    sessionId={sourceId}
                     expanded={isGroupExpanded(item)}
                     onToggle={() => handleToggleGroup(item.id)}
                 />
@@ -492,20 +507,20 @@ export const ConversationTranscript = React.memo((props: ConversationTranscriptP
         return (
             <MessageView
                 message={item.message}
-                metadata={props.metadata}
-                sessionId={props.sessionId}
-                onForkFromMessage={props.onForkFromMessage}
+                metadata={sourceMetadata}
+                sessionId={sourceId}
+                onForkFromMessage={readOnly ? undefined : props.onForkFromMessage}
                 forkingFromMessageId={props.forkingFromMessageId}
                 agentForkTarget={item.message.kind === 'agent-text' ? agentForkTargets.get(item.message.id) : undefined}
-                showAgentMessageActions={props.showMessageActions}
-                showUserMessageActions={props.showMessageActions}
+                showAgentMessageActions={!readOnly && props.showMessageActions}
+                showUserMessageActions={!readOnly && props.showMessageActions}
                 canEditUserMessage={Boolean(
-                    props.canEditLatestUserMessage
+                    !readOnly && props.canEditLatestUserMessage
                     && item.message.kind === 'user-text'
                     && item.message.id === latestVisibleUserMessageId
                     && !props.hasPendingPermission
                 )}
-                onEditUserMessage={props.onEditUserMessage}
+                onEditUserMessage={readOnly ? undefined : props.onEditUserMessage}
             />
         );
     }, [
@@ -521,10 +536,11 @@ export const ConversationTranscript = React.memo((props: ConversationTranscriptP
         props.forkingFromMessageId,
         props.sessionId,
         props.showMessageActions,
+        theme,
     ]);
     const renderItem = React.useCallback(({ item }: { item: DisplayItem & { renderKey: string } }) => {
         const content = <TranscriptReadingMarker messageId={itemMessages(item)[0]?.id ?? item.id}>
-            {renderItemContent({ item })}
+            {item.source ? <TranscriptReadOnlyContext.Provider value={item.source.readOnly}><BrowserProgressContext.Provider value={{ sessionId: item.source.sessionId, runs: item.source.browserRuns ?? [] }}>{renderItemContent({ item })}</BrowserProgressContext.Provider></TranscriptReadOnlyContext.Provider> : renderItemContent({ item })}
         </TranscriptReadingMarker>;
         if (Platform.OS !== 'web') {
             return props.itemContainerStyle ? <View style={props.itemContainerStyle}>{content}</View> : content;

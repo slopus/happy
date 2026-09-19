@@ -81,6 +81,8 @@ export const MetadataSchema = z.object({
      * point (only set for "duplicate from message", not for plain fork).
      * Both ride inside encrypted metadata so the server stays oblivious.
      */
+    continuationOfSessionId: z.string().optional(),
+    continuedBySessionId: z.string().optional(),
     parentSessionId: z.string().optional(),
     forkedFromMessageId: z.string().optional(),
 });

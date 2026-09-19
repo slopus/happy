@@ -1,5 +1,9 @@
 import type { HistoryViewportReader } from '@/sync/historyWindowPolicy';
 import * as React from 'react';
+import { useContinuationHistory } from '@/hooks/useContinuationHistory';
+import { composeContinuationItems } from './continuationTranscript';
+import { transcriptViewportRange } from './transcriptViewportRange';
+import { itemMessages } from './transcriptReading';
 import { Platform, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useHeaderHeight } from '@/utils/responsive';
@@ -15,7 +19,56 @@ import { useSessionTextPreviews } from '@/sync/sessionTextStream';
 import { selectVisibleTextPreviews } from './sessionTextPreviewProjection';
 import { StreamingTextPreviews } from './StreamingTextPreviews';
 
-export const ChatList = React.memo((props: { session: Session; followLatestRequest?: number }) => {
+type ChatListProps = { session: Session; followLatestRequest?: number };
+export const ChatList = React.memo((props: ChatListProps) => props.session.metadata?.continuationOfSessionId
+    ? <ContinuationChatList key={props.session.id} {...props} /> : <SingleSessionChatList {...props} />);
+
+const ContinuationChatList = React.memo((props: ChatListProps) => {
+    const history = useContinuationHistory(props.session.id);
+    const session = useSession(props.session.id) ?? props.session;
+    const groupToolCalls = useSetting('groupToolCalls');
+    const previews = useSessionTextPreviews(props.session.id);
+    const { canFork, forkFromMessage, forkingFromMessageId } = useSessionQuickActions(session);
+    const sections = history.sections.map(section => ({ ...section, reading: {
+        key: section.id, read: () => Promise.resolve(null), save: () => {},
+        wireId: (id: string) => sync.getMessageWireId(section.id, id),
+        wireSeq: (id: string) => sync.getMessageWireSeq(section.id, id),
+        blockKey: (id: string) => sync.getMessageWireBlockKey(section.id, id),
+    } }));
+    const messages = history.sections.flatMap(section => section.messages);
+    const items = React.useMemo(() => composeContinuationItems(sections, props.session.id,
+        groupToolCalls, isSessionTurnActive(session)), [sections, props.session.id, groupToolCalls, session]);
+    return <ConversationTranscript sessionId={props.session.id} metadata={session.metadata}
+        messages={messages} scopedItems={items} groupToolCalls={groupToolCalls}
+        scopedViewport={(visible, direction) => {
+            const section = direction === 'older' ? sections.at(-1) : sections[0];
+            if (!section) return undefined;
+            return transcriptViewportRange(section.messages, visible.filter(item => item.source?.sessionId === section.id).flatMap(itemMessages),
+                section.reading.wireSeq, { oldestSeq: sync.getHistoryBoundarySeq(section.id, 'older'), newestSeq: sync.getHistoryBoundarySeq(section.id, 'newer') });
+        }}
+        showMessageActions={Platform.OS === 'web'} canEditLatestUserMessage={history.isAtLatest && !session.thinking}
+        hasPendingPermission={Boolean(session.agentState?.requests && Object.keys(session.agentState.requests).length)}
+        onEditUserMessage={async (id, text) => { await sync.sendMessage(session.id, text, { source: 'chat', editedFromMessageId: id }); }}
+        onForkFromMessage={canFork ? (messageId, rewindPointId, messageText, retainSelectedTurn, messageCreatedAt, excludeSelectedPrompt) => {
+            forkFromMessage({ messageId, rewindPointId, messageText, retainSelectedTurn, messageCreatedAt: messageCreatedAt ?? 0, excludeSelectedPrompt });
+        } : undefined} forkingFromMessageId={forkingFromMessageId}
+        currentTurnActive={history.isAtLatest && isSessionTurnActive(session)}
+        followLatestRequest={props.followLatestRequest}
+        onLoadOlder={history.loadOlder} onLoadNewer={history.loadNewer}
+        hasMoreOlder={history.hasMoreOlder} hasMoreNewer={history.hasMoreNewer}
+        isLoadingOlder={history.loading} isLoadingNewer={history.loading}
+        olderError={history.olderError} newerError={history.newerError}
+        boundaryScope={`${history.olderCursor}/${history.newerCursor}`}
+        isAtLatest={history.isAtLatest} onJumpToLatest={history.jumpLatest}
+        showAnchorNavigation={false} visualTop={<ListHeader />}
+        visualBottom={history.isAtLatest ? <>
+            <StreamingTextPreviews previews={selectVisibleTextPreviews(props.session.id, true,
+                history.sections.find(section => section.id === props.session.id)?.messages ?? [], previews)} />
+            <ListFooter sessionId={props.session.id} />
+        </> : null} />;
+});
+
+const SingleSessionChatList = React.memo((props: ChatListProps) => {
     const { messages, isLoaded, hasMoreOlder, isLoadingOlder, hasMoreNewer, isLoadingNewer, isAtLatest,
         olderError, newerError } = useSessionMessages(props.session.id);
     const session = useSession(props.session.id);

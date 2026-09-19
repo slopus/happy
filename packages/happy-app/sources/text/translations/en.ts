@@ -854,6 +854,20 @@ export const en: TranslationStructure = {
     },
 
     session: {
+        continueFresh: "Start a fresh session here",
+        continueOpen: "Open continued session",
+        continueCreating: "Creating new session…",
+        continueBoundary: "New session · previous conversation preserved above",
+        continueWaiting: "Waiting for your message. The new agent has not inherited the previous model context.",
+        continueOld: "Previous session · read-only history",
+        continueHistoryError: "Could not load previous conversation. Retry to view saved history.",
+        continueCycle: "The conversation links contain a cycle. Original sessions are still available.",
+        continueUnknown: "The creation result is unknown. Check the session list before starting another session.",
+        continueOffline: "The original machine is offline. Reconnect it before starting a fresh session.",
+        continueMissing: "The original machine, directory or agent is unavailable.",
+        continueHydration: "The new session was created, but could not be loaded or linked. Retry to use the same new session.",
+        continueRetry: "Retry loading history",
+
         anchorsButton: 'Jump',
         scrollToBottom: 'Scroll to bottom',
         anchorsTitle: 'Your messages',
