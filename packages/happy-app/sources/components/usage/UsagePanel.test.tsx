@@ -161,6 +161,7 @@ describe('UsagePanel', () => {
     });
 
     afterEach(() => {
+        vi.useRealTimers();
         consoleErrorSpy.mockRestore();
     });
 
@@ -227,6 +228,9 @@ describe('UsagePanel', () => {
     });
 
     it('switches account quota while preserving the current machine local activity', async () => {
+        // The fixed quota fixtures must remain before their weekly reset date.
+        vi.useFakeTimers({ toFake: ['Date'] });
+        vi.setSystemTime(new Date('2026-09-14T10:00:00.000Z'));
         mocks.getUsageForPeriod.mockResolvedValue({ usage: [] });
         mocks.codexProfiles = [
             {

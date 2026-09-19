@@ -33,6 +33,7 @@ import { CODEX_ACCOUNT_UNSET_ENV, withCodexAccountLaunch, type CodexAccountLaunc
 import { refreshCodexAccountQuota } from './codexQuotaProbe';
 import { collectCodexUsageSnapshot, codexUsageSignature, mergeRecentCodexUsageSnapshot } from '@/codex/codexUsage';
 import { collectRetainedCodexAccountUsage } from '@/codex/codexAccountHistory';
+import { retryPendingCodexProbeCredentials } from './codexQuotaProbeRecovery';
 import { AsyncLock } from '@/utils/lock';
 import {
   buildSessionWorkerEnvironment,
@@ -1174,6 +1175,7 @@ export async function startDaemon(): Promise<void> {
     apiMachine.connect();
 
     const initialCodexUsageTimer = setTimeout(() => {
+      void retryPendingCodexProbeCredentials(api, machineId);
       syncCodexUsage(true).catch((error) => {
         logger.debug('[DAEMON RUN] Initial Codex usage sync failed', error);
       });
@@ -1191,6 +1193,7 @@ export async function startDaemon(): Promise<void> {
         return;
       }
       heartbeatRunning = true;
+      void retryPendingCodexProbeCredentials(api, machineId);
 
       if (process.env.DEBUG) {
         logger.debug(`[DAEMON RUN] Health check started at ${new Date().toLocaleString()}`);
