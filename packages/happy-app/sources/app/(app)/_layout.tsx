@@ -78,6 +78,7 @@ export default function RootLayout() {
             <Stack.Screen name="settings/skill" options={{ headerTitle: t('settingsSkills.detailTitle') }} />
             <Stack.Screen name="settings/skills" options={{ headerTitle: t('settingsSkills.title') }} />
             <Stack.Screen name="settings/usage" options={{ headerTitle: t('settings.usage') }} />
+            <Stack.Screen name="settings/agent-party-admin" options={{ headerTitle: 'AgentParty 管理' }} />
             <Stack.Screen name="settings/temporary-previews" options={{ headerTitle: t('interactivePreviews.title') }} />
             <Stack.Screen name="settings/voice" options={{ headerTitle: t('settings.voiceAssistant') }} />
             <Stack.Screen name="settings/voice/language" options={{ headerTitle: t('settingsVoice.languageTitle') }} />

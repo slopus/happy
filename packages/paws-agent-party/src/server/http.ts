@@ -13,6 +13,7 @@ import { createRealPawsSdk, safeError, type PawsSdkBoundary } from './sdk.js';
 import { ROLE_IDS, type FollowUpInput, type RoleId, type StartInput } from '../contracts.js';
 import { ProfileService, type AgentProfileInput } from '../group-chat/profiles.js';
 import { GroupRoomService, type CreateGroupRoomInput, type GroupMessageInput } from '../group-chat/rooms.js';
+import { AdminService, type VisitorPolicy } from './admin.js';
 
 export type PocServer = {
   url: string;
@@ -44,6 +45,7 @@ export async function createPocServer(options: CreatePocServerOptions = {}): Pro
   let runs!: RunService;
   let profiles!: ProfileService;
   let groups!: GroupRoomService;
+  let admin!: AdminService;
   try {
     accessToken = options.accessToken ?? await loadOrCreateAccessToken(dataDir);
     sdk = options.sdk ?? createRealPawsSdk();
@@ -52,6 +54,7 @@ export async function createPocServer(options: CreatePocServerOptions = {}): Pro
     runs = await RunService.create({ dataDir, sdk, assets, party: party.bus, turnTimeoutMs: options.turnTimeoutMs });
     profiles = await ProfileService.create(dataDir);
     groups = await GroupRoomService.create({ dataDir, sdk, assets, party: party.bus, profiles, turnTimeoutMs: options.turnTimeoutMs });
+    admin = await AdminService.create(dataDir);
   } catch (error) {
     const cleanup: Promise<unknown>[] = [lock.release()];
     if (party) cleanup.push(party.close());
@@ -76,9 +79,16 @@ export async function createPocServer(options: CreatePocServerOptions = {}): Pro
       return sendJson(response, 403, { error: 'Untrusted request authority' });
     }
     const url = new URL(request.url ?? '/', `http://${request.headers.host}`);
-    if (url.pathname.startsWith('/api/') && !isAuthorized(request.headers.authorization, accessToken)) {
+    if (request.method === 'POST' && url.pathname === '/api/public/visitor') return sendJson(response, 200, await admin.recordVisit());
+    const isOwnerToken = isAuthorized(request.headers.authorization, accessToken);
+    const isPawsAdmin = url.pathname.startsWith('/api/admin/') && !isOwnerToken && await isPawsAdministrator(request.headers.authorization, admin);
+    if (url.pathname.startsWith('/api/') && !isOwnerToken && !isPawsAdmin) {
       return sendJson(response, 401, { error: 'Unauthorized' });
     }
+
+    if (request.method === 'GET' && url.pathname === '/api/admin/dashboard') return sendJson(response, 200, admin.dashboard());
+    if (request.method === 'GET' && url.pathname === '/api/admin/policy') return sendJson(response, 200, admin.dashboard().policy);
+    if (request.method === 'PATCH' && url.pathname === '/api/admin/policy') return sendJson(response, 200, await admin.updatePolicy(await readJson(request, 4096) as Partial<VisitorPolicy>));
 
     if (request.method === 'GET' && url.pathname === '/api/paws/status') return sendJson(response, 200, sdk.status());
     if (request.method === 'POST' && url.pathname === '/api/paws/link') {
@@ -358,7 +368,8 @@ function firstHeader(value: string | string[] | undefined): string {
 
 async function serveStatic(response: ServerResponse, pathname: string, staticDir: string): Promise<void> {
   const root = resolve(staticDir);
-  const requested = resolve(root, `.${normalize(pathname === '/' ? '/index.html' : pathname)}`);
+  const route = pathname === '/' || pathname === '/admin' || pathname === '/admin/' ? '/index.html' : pathname;
+  const requested = resolve(root, `.${normalize(route)}`);
   if (!requested.startsWith(`${root}/`)) return sendJson(response, 404, { error: 'Not found' });
   try {
     if (!(await stat(requested)).isFile()) return sendJson(response, 404, { error: 'Not found' });
@@ -368,6 +379,22 @@ async function serveStatic(response: ServerResponse, pathname: string, staticDir
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return sendJson(response, 404, { error: 'Not found' });
     throw error;
   }
+}
+
+async function isPawsAdministrator(header: string | undefined, admin: AdminService): Promise<boolean> {
+  if (!header?.startsWith('Bearer ') || header.length > 4096) return false;
+  const token = header.slice('Bearer '.length);
+  if (!token) return false;
+  const origin = process.env.PAWS_AGENT_PARTY_PAWS_ORIGIN ?? 'https://47.115.228.20:8443';
+  let endpoint: URL;
+  try { endpoint = new URL('/v1/account/profile', origin); }
+  catch { return false; }
+  try {
+    const response = await fetch(endpoint, { headers: { authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(5_000) });
+    if (!response.ok) return false;
+    const body = await response.json() as { id?: unknown };
+    return typeof body.id === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(body.id) && await admin.claimOrAuthorize(body.id);
+  } catch { return false; }
 }
 
 class HttpError extends Error { constructor(readonly status: number, message: string) { super(message); } }
