@@ -108,7 +108,8 @@ export function isTerminalToolName(name: string): boolean {
  * Patch tools draw a header per changed file, naming the file and its stats.
  * A card header above that would only repeat the same name, so it is dropped.
  */
-const SELF_HEADING_TOOL_NAMES = new Set(['CodexPatch', 'GeminiPatch', 'apply_patch']);
+// `file` is a user attachment: the picture is the whole message, so no card, header, or frame.
+const SELF_HEADING_TOOL_NAMES = new Set(['CodexPatch', 'GeminiPatch', 'apply_patch', 'file']);
 
 export function shouldRenderToolCardHeader(toolName: string, _platformOS: string): boolean {
     return !SELF_HEADING_TOOL_NAMES.has(toolName);

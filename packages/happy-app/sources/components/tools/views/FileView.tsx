@@ -66,7 +66,7 @@ export const FileView = React.memo<ToolViewProps>(({ tool, sessionId }) => {
 
     return (
         <View style={styles.inlineContainer}>
-            <View style={[styles.inlineWrapper, { borderColor: theme.colors.divider }]}>
+            <View style={styles.inlineWrapper}>
                 <Image
                     source={uri ? { uri } : undefined}
                     placeholder={placeholder}
@@ -93,7 +93,6 @@ const styles = StyleSheet.create(() => ({
     },
     inlineWrapper: {
         borderRadius: BORDER_RADIUS,
-        borderWidth: 1,
         overflow: 'hidden',
         alignSelf: 'flex-start',
         position: 'relative',

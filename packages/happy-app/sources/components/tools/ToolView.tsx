@@ -183,6 +183,8 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
         || isCompactTerminalTool);
     const activityLabel = getToolActivityLabel(tool);
     const isInlineCodexPatch = Platform.OS === 'web' && (tool.name === 'CodexPatch' || tool.name === 'apply_patch');
+    // A user attachment is shown as a bare picture, not inside a tool card.
+    const isInlineAttachment = tool.name === 'file';
     const renderCardHeader = isCompactActivityTool || shouldRenderToolCardHeader(tool.name, Platform.OS);
     const renderPermissionFooter = () => (
         tool.permission && sessionId && tool.name !== 'AskUserQuestion'
@@ -234,7 +236,7 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
     };
 
     return (
-        <View style={isCompactActivityTool ? styles.compactContainer : isInlineCodexPatch ? styles.inlineContainer : styles.container}>
+        <View style={isCompactActivityTool ? styles.compactContainer : isInlineCodexPatch || isInlineAttachment ? styles.inlineContainer : styles.container}>
             {renderCardHeader ? (
                 isPressable ? (
                     <TouchableOpacity style={isCompactActivityTool ? styles.compactHeader : styles.header} onPress={handlePress} activeOpacity={0.8}>
@@ -257,7 +259,7 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
                 // Try to use a specific tool view component first
                 if (SpecificToolView) {
                     return (
-                        <View style={styles.content}>
+                        <View style={isInlineAttachment ? undefined : styles.content}>
                             <SpecificToolView
                                 tool={tool}
                                 metadata={props.metadata}
