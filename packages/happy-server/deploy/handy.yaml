@@ -35,6 +35,11 @@ spec:
           value: redis://happy-redis:6379
         - name: S3_PUBLIC_URL
           value: https://files.cluster-fluster.com/happy
+        # Minio uses S3_HOST when constructing presigned upload/download URLs.
+        # Keep it explicit so stale Vault endpoint data cannot emit the old
+        # files.happy-servers.com hostname to clients.
+        - name: S3_HOST
+          value: files.cluster-fluster.com
         envFrom:
         - secretRef:
             name: handy-secrets
