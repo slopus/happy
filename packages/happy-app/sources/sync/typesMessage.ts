@@ -46,9 +46,10 @@ export type UserTextMessage = {
      */
     codexItemId?: string;
     /**
-     * Sent, but the agent has not taken it into context yet. Shown faded and
-     * pinned to the bottom of the chat until an acceptance receipt arrives,
-     * so a turn that has not seen this message still streams above it.
+     * Sent, but the agent has not taken it into context yet. Pinned to the
+     * bottom until an acceptance receipt arrives, so a turn that has not seen
+     * this message still streams above it. meta.queuedWhileBusy sends are faded
+     * and labelled at once; other pending sends get a short visual grace period.
      */
     pending?: boolean;
     /** Terminal refusal from the daemon; this message never started a turn. */

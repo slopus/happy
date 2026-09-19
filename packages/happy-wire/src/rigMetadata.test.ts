@@ -13,11 +13,15 @@ describe('Rig wire contract', () => {
 
   it('accepts native Rig message selection codes and provider qualification', () => {
     expect(MessageMetaSchema.parse({
+      expectsAcceptance: true,
+      queuedWhileBusy: true,
       permissionMode: 'workspace_write',
       model: 'shared-model',
       modelProviderId: 'codex',
       effort: 'high',
     })).toEqual({
+      expectsAcceptance: true,
+      queuedWhileBusy: true,
       permissionMode: 'workspace_write',
       model: 'shared-model',
       modelProviderId: 'codex',

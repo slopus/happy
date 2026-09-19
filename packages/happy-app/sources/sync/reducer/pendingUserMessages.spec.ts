@@ -61,6 +61,21 @@ function userMessages(messages: Message[]) {
 }
 
 describe('pending user messages', () => {
+    it.each([false, true])('preserves the send-time queue display decision through history and acceptance (%s)', (queuedWhileBusy) => {
+        const state = createReducer();
+        const restored = normalizeRawMessage('server-1', 'local-1', 1000, {
+            role: 'user',
+            content: { type: 'text', text: 'hello' },
+            meta: { expectsAcceptance: true, queuedWhileBusy },
+        });
+        const [pending] = reducer(state, [restored!], null, HOLD).messages;
+        expect(pending).toMatchObject({ pending: true, meta: { queuedWhileBusy } });
+
+        const [settled] = reducer(state, [receipt('accepted:1', 'server-1', 2000)], null, HOLD).messages;
+        expect(settled).not.toHaveProperty('pending');
+        expect(settled.meta?.queuedWhileBusy).toBe(queuedWhileBusy);
+    });
+
     it.each(['receipt-first', 'message-first'] as const)('keeps a rejected message failed across reload (%s)', (delivery) => {
         const failed = normalizeRawMessage('relay-refusal', 'rig:refused:server-1', 3000, {
             role: 'session',

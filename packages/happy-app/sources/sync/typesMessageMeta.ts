@@ -6,6 +6,9 @@ export const MessageMetaSchema = z.object({
     // Capability at send time, inside the encrypted payload. New history can
     // resume waiting after reconnect without holding pre-receipt-era messages.
     expectsAcceptance: z.boolean().optional(),
+    // Snapshot at send time, not the agent's live state: starting this message's
+    // own turn must not briefly make an idle send look queued.
+    queuedWhileBusy: z.boolean().optional(),
     permissionMode: z.string().optional(), // Permission mode key for this message
     model: z.string().nullable().optional(), // Model name for this message (null = reset)
     modelProviderId: z.string().optional(), // Provider qualifier for metadata-driven clients such as Rig

@@ -61,14 +61,14 @@ import { fetchFeed } from './apiFeed';
 import { FeedItem } from './feedTypes';
 import { UserProfile } from './friendTypes';
 import { resolveControlHandoffDirection } from './controlHandoff';
-import { resolveMessageModeMeta, UnsupportedPermissionModeError } from './messageMeta';
+import { resolveMessageDeliveryMeta, resolveMessageModeMeta, UnsupportedPermissionModeError } from './messageMeta';
 import type { AttachmentPreview, UploadedAttachment } from './attachmentTypes';
 import { requestAttachmentUpload, uploadEncryptedBlob } from './apiAttachments';
 import { encryptBlob } from '@/encryption/blob';
 import { readFileBytes } from '@/utils/readFileBytes';
 import { Modal } from '@/modal';
 import { t } from '@/text';
-import { isRigMetadataV1, rigCanUseAttachments, rigSendsMessageReceipts, usesControlledSessionUi } from './rig';
+import { isRigMetadataV1, rigCanUseAttachments, usesControlledSessionUi } from './rig';
 import { fetchProjects as fetchProjectRecords } from './apiProjects';
 import { decryptProjectRecord, loadProjectAvatar, type DecryptedProjectRecord } from './projects';
 import type { Project, ProjectAvatar } from './projectTypes';
@@ -852,6 +852,15 @@ class Sync {
             sentFrom = 'web'; // fallback
         }
 
+        // Capture after attachment uploads: the previous turn may have finished
+        // while uploading. Persist this so echoes and remounts keep the same UI.
+        const sendingSession = storage.getState().sessions[sessionId];
+        if (!canSend() || !sendingSession) return false;
+        const hasPendingUserMessage = this.pendingOutbox.get(sessionId)?.some(message => message.kind === 'user') === true
+            || storage.getState().sessionMessages[sessionId]?.messages.some(
+                message => message.kind === 'user-text' && message.pending === true,
+            ) === true;
+
         // Create user message content with metadata
         const content: RawRecord = {
             role: 'user',
@@ -861,7 +870,7 @@ class Sync {
             },
             meta: {
                 sentFrom,
-                ...(rigSendsMessageReceipts(session.metadata) ? { expectsAcceptance: true } : {}),
+                ...resolveMessageDeliveryMeta(sendingSession, source === 'new_session', hasPendingUserMessage),
                 appendSystemPrompt: systemPrompt,
                 ...(modeMeta.permissionMode !== undefined ? { permissionMode: modeMeta.permissionMode } : {}),
                 ...(modeMeta.model !== undefined ? { model: modeMeta.model } : {}),

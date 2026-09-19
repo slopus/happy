@@ -2,6 +2,10 @@ import * as z from 'zod';
 
 export const MessageMetaSchema = z.object({
   sentFrom: z.string().optional(),
+  /** The sending client expects an agent acceptance or rejection receipt. */
+  expectsAcceptance: z.boolean().optional(),
+  /** The sending client observed an existing turn blocking this message. */
+  queuedWhileBusy: z.boolean().optional(),
   // Native clients may publish their own mode codes (for example Rig's
   // auto/workspace_write/read_only/full_access), so this stays open-ended.
   permissionMode: z.string().optional(),

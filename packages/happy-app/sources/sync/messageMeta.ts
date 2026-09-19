@@ -1,5 +1,7 @@
 import type { Session } from './storageTypes';
 import type { Settings } from './settings';
+import type { MessageMeta } from './typesMessageMeta';
+import { resolveSessionState } from './sessionState';
 import { getAgentDefaultOverride, resolveAgentDefaultConfig, retirePermissionMode } from './agentDefaults';
 import { permissionModeSupportedByCli } from '@/components/modelModeOptions';
 import type { PermissionModeKey } from '@/components/PermissionModeSelector';
@@ -10,7 +12,31 @@ import {
     getRigReasoningSelection,
     getRigSelectedModelKey,
     isRigMetadataV1,
+    rigSendsMessageReceipts,
 } from './rig';
+
+export function resolveMessageDeliveryMeta(
+    session: Pick<Session, 'metadata' | 'thinking' | 'agentState'>,
+    isNewSession = false,
+    hasPendingUserMessage = false,
+): Pick<MessageMeta, 'expectsAcceptance' | 'queuedWhileBusy'> {
+    if (!rigSendsMessageReceipts(session.metadata)) return {};
+    const state = resolveSessionState({
+        agentState: session.agentState,
+        thinking: session.thinking,
+        isOnline: true,
+    });
+    return {
+        expectsAcceptance: true,
+        // Startup is not a previous turn to wait for. Ignore connectivity here:
+        // being offline alone does not mean another turn is occupying the agent.
+        // A pending question is also ready for the user's answer, not a turn the
+        // answer must wait behind. Permission requests still block new input.
+        queuedWhileBusy: !isNewSession && (
+            hasPendingUserMessage || state === 'thinking' || state === 'permission_required'
+        ),
+    };
+}
 
 export type MessageModeMeta = {
     permissionMode?: PermissionModeKey;
