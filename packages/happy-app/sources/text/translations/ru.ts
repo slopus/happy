@@ -1017,6 +1017,7 @@ export const ru: TranslationStructure = {
         anchorsEmpty: 'Пока некуда переходить.',
         inputPlaceholder: 'Введите сообщение...',
         inactiveArchived: 'Эта сессия неактивна.',
+        failedRecoveryAvailable: 'Эта задача завершилась с ошибкой. Возобновите её с этого устройства, и Paws перезапустит процесс на исходной машине.',
         resumeFromTerminal: 'Чтобы возобновить её из терминала:',
         newChat: 'Новый чат',
         forkAction: 'Форкнуть сессию',

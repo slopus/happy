@@ -46,12 +46,12 @@ describe('FeaturesSettingsScreen 可访问语义', () => {
 
         expect(renderer.root.findAllByType('Switch').map((node: any) => node.props.accessibilityLabel))
             .toEqual([
+                'session.forkAction / session.duplicateAction',
                 'featuresInterface.fileDiffsSidebar',
                 'settingsFeatures.groupToolCalls',
                 'settingsFeatures.experimentalFeatures',
                 'settingsFeatures.markdownCopyV2',
                 'settingsFeatures.hideInactiveSessions',
-                'featuresInterface.resumeSession',
                 'settingsFeatures.disableAnalytics',
                 'settingsFeatures.enterToSend',
             ]);

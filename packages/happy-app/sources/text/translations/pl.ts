@@ -809,6 +809,7 @@ export const pl: TranslationStructure = {
         anchorsEmpty: 'Brak wiadomości do przejścia.',
         inputPlaceholder: 'Wpisz wiadomość...',
         inactiveArchived: 'Ta sesja jest nieaktywna.',
+        failedRecoveryAvailable: 'To zadanie nie powiodło się. Wznów je na tym urządzeniu, a Paws uruchomi proces ponownie na pierwotnej maszynie.',
         resumeFromTerminal: 'Aby wznowić ją z terminala:',
         newChat: 'Nowy czat',
         forkAction: 'Rozwidl sesję',

@@ -792,6 +792,7 @@ export const ca: TranslationStructure = {
         anchorsEmpty: 'Encara no hi ha missatges on saltar.',
         inputPlaceholder: 'Escriu un missatge...',
         inactiveArchived: 'Aquesta sessió està inactiva.',
+        failedRecoveryAvailable: 'Aquesta tasca ha fallat. Reprèn-la des d’aquest dispositiu i Paws reiniciarà el procés a la màquina original.',
         resumeFromTerminal: 'Per reprendre-la des del terminal:',
         newChat: 'Nou xat',
         forkAction: 'Bifurca la sessió',

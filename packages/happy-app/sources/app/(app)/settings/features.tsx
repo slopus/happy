@@ -27,6 +27,18 @@ export default function FeaturesSettingsScreen() {
                 footer={t('featuresInterface.footer')}
             >
                 <Item
+                    title={`${t('session.forkAction')} / ${t('session.duplicateAction')}`}
+                    icon={<Ionicons name="git-branch-outline" size={29} color={theme.colors.accent} />}
+                    rightElement={
+                        <Switch
+                            accessibilityLabel={`${t('session.forkAction')} / ${t('session.duplicateAction')}`}
+                            value={expResumeSession}
+                            onValueChange={setExpResumeSession}
+                        />
+                    }
+                    showChevron={false}
+                />
+                <Item
                     title={t('featuresInterface.fileDiffsSidebar')}
                     subtitle={t('featuresInterface.fileDiffsSidebarSubtitle')}
                     icon={<Ionicons name="git-branch-outline" size={29} color="#5AC8FA" />}
@@ -94,19 +106,6 @@ export default function FeaturesSettingsScreen() {
                             accessibilityLabel={t('settingsFeatures.hideInactiveSessions')}
                             value={hideInactiveSessions}
                             onValueChange={setHideInactiveSessions}
-                        />
-                    }
-                    showChevron={false}
-                />
-                <Item
-                    title={t('featuresInterface.resumeSession')}
-                    subtitle={t('featuresInterface.resumeSessionSubtitle')}
-                    icon={<Ionicons name="play-circle-outline" size={29} color="#30D158" />}
-                    rightElement={
-                        <Switch
-                            accessibilityLabel={t('featuresInterface.resumeSession')}
-                            value={expResumeSession}
-                            onValueChange={setExpResumeSession}
                         />
                     }
                     showChevron={false}

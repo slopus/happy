@@ -164,6 +164,79 @@ describe('real daemon Codex spawn paths', () => {
     expect(state.spawned).toHaveLength(1);
     expect(state.api.attachCodexSession).not.toHaveBeenCalledWith('launch-b', expect.anything());
   });
+  it('keeps the live worker running when resume authorization cannot be prepared', async () => {
+    state.tmux = false;
+    const first = state.handlers.spawnSession({ directory: sourceHome, agent: 'codex', codexSessionGrant: 'a'.repeat(43) });
+    await vi.waitFor(() => expect(state.spawned).toHaveLength(1));
+    const metadata = { hostPid: 987601, flavor: 'codex', startedBy: 'daemon', path: sourceHome, codexThreadId: 'thread-source' };
+    const encryption = { encryptionKey: new Uint8Array(32), encryptionVariant: 'legacy', seq: 0, metadataVersion: 1, agentStateVersion: 1 };
+    state.control.onHappySessionWebhook('paws-session', metadata, encryption);
+    await first;
+
+    state.rejectGrant = true;
+    const resumed = await state.handlers.resumeSession('paws-session', { codexSessionGrant: 'b'.repeat(43) });
+
+    expect(resumed).toEqual({ type: 'error', errorMessage: expect.stringContaining('account launch failed') });
+    expect(state.children[0].kill).not.toHaveBeenCalled();
+    expect(state.spawned).toHaveLength(1);
+  });
+  it('deduplicates concurrent resume requests for the same live session', async () => {
+    state.tmux = false;
+    const first = state.handlers.spawnSession({ directory: sourceHome, agent: 'codex', codexSessionGrant: 'a'.repeat(43) });
+    await vi.waitFor(() => expect(state.spawned).toHaveLength(1));
+    const firstHome = state.spawned[0].CODEX_HOME;
+    const metadata = { hostPid: 987601, flavor: 'codex', startedBy: 'daemon', path: sourceHome, codexThreadId: 'thread-source' };
+    const encryption = { encryptionKey: new Uint8Array(32), encryptionVariant: 'legacy', seq: 0, metadataVersion: 1, agentStateVersion: 1 };
+    state.control.onHappySessionWebhook('paws-session', metadata, encryption);
+    await first;
+    await mkdir(join(firstHome, 'sessions'));
+    await writeFile(join(firstHome, 'sessions', 'rollout-thread-source.jsonl'), 'source-native-thread');
+
+    const firstResume = state.handlers.resumeSession('paws-session', { codexSessionGrant: 'b'.repeat(43) });
+    const secondResume = state.handlers.resumeSession('paws-session', { codexSessionGrant: 'c'.repeat(43) });
+    await vi.waitFor(() => expect(state.children[0].kill).toHaveBeenCalledTimes(1));
+    expect(state.api.redeemCodexSessionGrant).toHaveBeenCalledTimes(2);
+
+    state.children[0].emit('exit', 0);
+    await vi.waitFor(() => expect(state.spawned).toHaveLength(2));
+    state.control.onHappySessionWebhook('paws-session', metadata, encryption);
+    await expect(Promise.all([firstResume, secondResume])).resolves.toEqual([
+      { type: 'success', sessionId: 'paws-session' },
+      { type: 'success', sessionId: 'paws-session' },
+    ]);
+  });
+  it('does not spawn a replacement when the live worker misses the stop deadline', async () => {
+    state.tmux = false;
+    const first = state.handlers.spawnSession({ directory: sourceHome, agent: 'codex', codexSessionGrant: 'a'.repeat(43) });
+    await vi.waitFor(() => expect(state.spawned).toHaveLength(1));
+    const firstHome = state.spawned[0].CODEX_HOME;
+    const metadata = { hostPid: 987601, flavor: 'codex', startedBy: 'daemon', path: sourceHome, codexThreadId: 'thread-source' };
+    const encryption = { encryptionKey: new Uint8Array(32), encryptionVariant: 'legacy', seq: 0, metadataVersion: 1, agentStateVersion: 1 };
+    state.control.onHappySessionWebhook('paws-session', metadata, encryption); await first;
+    await mkdir(join(firstHome, 'sessions')); await writeFile(join(firstHome, 'sessions', 'rollout-thread-source.jsonl'), 'source-native-thread');
+
+    const resumed = state.handlers.resumeSession('paws-session', { codexSessionGrant: 'b'.repeat(43) });
+    await vi.waitFor(() => expect(state.children[0].kill).toHaveBeenCalledWith('SIGTERM'));
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    await expect(resumed).resolves.toEqual({ type: 'error', errorMessage: expect.stringContaining('did not stop cleanly') });
+    expect(state.spawned).toHaveLength(1);
+  });
+  it('refuses to replace a live tmux session that the daemon cannot stop safely', async () => {
+    state.tmux = true;
+    const first = state.handlers.spawnSession({ directory: sourceHome, agent: 'codex', codexSessionGrant: 'a'.repeat(43), environmentVariables: { TMUX_SESSION_NAME: 'test' } });
+    await vi.waitFor(() => expect(state.spawned).toHaveLength(1));
+    const firstHome = state.spawned[0].CODEX_HOME;
+    const metadata = { hostPid: 987602, flavor: 'codex', startedBy: 'daemon', path: sourceHome, codexThreadId: 'thread-source' };
+    const encryption = { encryptionKey: new Uint8Array(32), encryptionVariant: 'legacy', seq: 0, metadataVersion: 1, agentStateVersion: 1 };
+    state.control.onHappySessionWebhook('paws-session', metadata, encryption); await first;
+    await mkdir(join(firstHome, 'sessions')); await writeFile(join(firstHome, 'sessions', 'rollout-thread-source.jsonl'), 'source-native-thread');
+
+    const resumed = await state.handlers.resumeSession('paws-session', { codexSessionGrant: 'b'.repeat(43) });
+
+    expect(resumed).toEqual({ type: 'error', errorMessage: expect.stringContaining('cannot be safely restarted remotely') });
+    expect(state.spawned).toHaveLength(1);
+  });
   it.each([false, true])('redeems and attaches the actual direct/tmux spawn (tmux=%s)', async tmux => {
     state.tmux = tmux;
     const result = state.handlers.spawnSession({ directory: sourceHome, agent: 'codex', codexSessionGrant: 'g'.repeat(43), environmentVariables: { TMUX_SESSION_NAME: 'test', CODEX_HOME: sourceHome, OPENAI_API_KEY: 'caller-secret' } });

@@ -792,6 +792,7 @@ export const es: TranslationStructure = {
         anchorsEmpty: 'Aún no hay mensajes a los que saltar.',
         inputPlaceholder: 'Escriba un mensaje ...',
         inactiveArchived: 'Esta sesión está inactiva.',
+        failedRecoveryAvailable: 'Esta tarea falló. Reanúdala desde este dispositivo y Paws reiniciará el proceso en la máquina original.',
         resumeFromTerminal: 'Para reanudarla desde la terminal:',
         newChat: 'Chat nuevo',
         forkAction: 'Bifurcar sesión',

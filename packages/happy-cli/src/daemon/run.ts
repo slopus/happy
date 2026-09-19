@@ -274,6 +274,7 @@ export async function startDaemon(): Promise<void> {
     // Retain session data after process exits so resume can still find it.
     // Pre-populate from disk so sessions survive daemon restarts.
     const sessionIdToFinishedSession = new Map<string, TrackedSession>();
+    const resumeSessionInFlight = new Map<string, Promise<SpawnSessionResult>>();
     const persisted = readPersistedSessions();
     for (const [id, s] of Object.entries(persisted)) {
       sessionIdToFinishedSession.set(id, {
@@ -832,7 +833,7 @@ export async function startDaemon(): Promise<void> {
       }
     };
 
-    const resumeSession = async (happySessionId: string, options?: { model?: string; permissionMode?: string; effort?: string | null; codexSessionGrant?: string }): Promise<SpawnSessionResult> => {
+    const resumeSessionUnlocked = async (happySessionId: string, options?: { model?: string; permissionMode?: string; effort?: string | null; codexSessionGrant?: string }): Promise<SpawnSessionResult> => {
       try {
         const tracked = findTrackedSessionById(happySessionId);
         if (!tracked) {
@@ -901,6 +902,25 @@ export async function startDaemon(): Promise<void> {
 
         const agent = metadata?.flavor === 'codex' || metadata?.codexThreadId ? 'codex' : 'claude';
         return withCodexAccountLaunch({ agent, codexSessionGrant: options?.codexSessionGrant }, api, machineId, async (codexLaunch) => {
+        // Do this only after metadata, cwd, and (for a bound Codex account) the
+        // fresh launch credential/history have been validated. Never allow the
+        // old and replacement wrappers to own one Happy session concurrently.
+        const liveEntry = Array.from(pidToTrackedSession.entries())
+          .find(([, candidate]) => candidate === tracked);
+        if (liveEntry) {
+          const [, liveSession] = liveEntry;
+          if (!liveSession.childProcess) {
+            return { type: 'error', errorMessage: 'This live session was not started by the Paws daemon, so it cannot be safely restarted remotely.' };
+          }
+          const exited = await new Promise<boolean>((resolve) => {
+            const timeout = setTimeout(() => resolve(false), 5_000);
+            liveSession.childProcess!.once('exit', () => { clearTimeout(timeout); resolve(true); });
+            try { liveSession.childProcess!.kill('SIGTERM'); } catch { clearTimeout(timeout); resolve(false); }
+          });
+          if (!exited) {
+            return { type: 'error', errorMessage: 'The failed session did not stop cleanly, so Paws did not start a replacement.' };
+          }
+        }
         const env = {
             ...process.env,
             HAPPY_RECONNECT_SESSION_ID: happySessionId,
@@ -931,6 +951,18 @@ export async function startDaemon(): Promise<void> {
           errorMessage: `Failed to resume session: ${errorMessage}`,
         };
       }
+    };
+
+    const resumeSession = (happySessionId: string, options?: { model?: string; permissionMode?: string; effort?: string | null; codexSessionGrant?: string }): Promise<SpawnSessionResult> => {
+      const existing = resumeSessionInFlight.get(happySessionId);
+      if (existing) return existing;
+      const pending = resumeSessionUnlocked(happySessionId, options);
+      resumeSessionInFlight.set(happySessionId, pending);
+      void pending.then(
+        () => resumeSessionInFlight.delete(happySessionId),
+        () => resumeSessionInFlight.delete(happySessionId),
+      );
+      return pending;
     };
 
     // Stop a session by sessionId or PID fallback

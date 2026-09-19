@@ -793,6 +793,7 @@ export const ja: TranslationStructure = {
         anchorsEmpty: 'ジャンプできるメッセージはまだありません。',
         inputPlaceholder: 'メッセージを入力...',
         inactiveArchived: 'このセッションは非アクティブです。',
+        failedRecoveryAvailable: 'このタスクは失敗しました。この端末から再開すると、Paws が元のマシンでプロセスを再起動します。',
         resumeFromTerminal: 'ターミナルから再開するには:',
         newChat: '新規チャット',
         forkAction: 'セッションをフォーク',

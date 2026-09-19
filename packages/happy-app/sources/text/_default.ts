@@ -948,6 +948,7 @@ export const en = {
         anchorsEmpty: 'No messages to jump to yet.',
         inputPlaceholder: 'Type a message ...',
         inactiveArchived: 'This session is inactive.',
+        failedRecoveryAvailable: 'This task failed. Resume from this device and Paws will restart the worker on the original machine.',
         resumeFromTerminal: 'To resume it from the terminal:',
         newChat: 'New chat',
         // Fork / duplicate / rewind flow (Claude only)

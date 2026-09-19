@@ -792,6 +792,7 @@ export const zhHant: TranslationStructure = {
         anchorsEmpty: '還沒有可跳轉的提問。',
         inputPlaceholder: '輸入訊息...',
         inactiveArchived: '此會話處於非活動狀態。',
+        failedRecoveryAvailable: '此工作已失敗。可從目前裝置發起恢復，Paws 會在原主機重新啟動執行程序。',
         resumeFromTerminal: '若要從終端恢復它：',
         newChat: '新對話',
         forkAction: '分叉會話',
