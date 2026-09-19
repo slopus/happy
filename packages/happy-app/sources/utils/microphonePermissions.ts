@@ -32,12 +32,10 @@ export async function requestMicrophonePermission(): Promise<MicrophonePermissio
       const result = await AudioModule.requestRecordingPermissionsAsync();
 
       if (result.granted) {
-        // Configure audio mode for recording
-        await AudioModule.setAudioModeAsync({
-          allowsRecording: true,
-          playsInSilentMode: true,
-        });
-
+        // NOTE: Do NOT call AudioModule.setAudioModeAsync here.
+        // expo-audio 55+ activates AVAudioSession when setAudioModeAsync is called,
+        // taking ownership without Bluetooth routing options and clobbering the
+        // WebRTC audio session that ElevenLabs/LiveKit configures on session start.
         return { granted: true, canAskAgain: result.canAskAgain };
       }
 
