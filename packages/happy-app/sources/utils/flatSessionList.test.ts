@@ -57,7 +57,7 @@ function project(
 }
 
 describe('buildFlatSessionRows', () => {
-    it('distinguishes identically named bots by their machine labels in either list layout', () => {
+    it('shows only the bot identity and omits its machine label', () => {
         const rows = buildFlatSessionRows([{
             type: 'bots',
             sessions: [
@@ -65,7 +65,7 @@ describe('buildFlatSessionRows', () => {
                 row({ id: 'desktop-bot', name: 'Assistant', botId: 'bot-2', botUsername: 'assistant', machineId: 'desktop', machineName: 'Office Mac' }),
             ],
         }], { sortByActivity: true });
-        expect(rows.map((item) => item.projectName)).toEqual(['@assistant · My Laptop', '@assistant · Office Mac']);
+        expect(rows.map((item) => item.projectName)).toEqual(['@assistant', '@assistant']);
         expect(rows.every((item) => item.workspaceName === null)).toBe(true);
     });
 

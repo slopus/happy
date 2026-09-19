@@ -69,7 +69,7 @@ export function toFlatSessionRow(session: SessionRowData): FlatSessionRowData {
     if (session.botId) {
         return {
             session,
-            projectName: [`@${session.botUsername ?? ''}`, session.machineName].filter(Boolean).join(' · '),
+            projectName: `@${session.botUsername ?? ''}`,
             workspaceName: null,
         };
     }
