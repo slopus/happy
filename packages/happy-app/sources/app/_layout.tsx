@@ -36,6 +36,7 @@ import { applyVoiceUpsellOverride } from '@/realtime/voiceExperiment';
 import { useTauriZoom } from '@/hooks/useTauriZoom';
 import { useTauriDrag } from '@/hooks/useTauriDrag';
 import { BrowserNavigationShortcuts } from '@/hooks/useBrowserNavigationShortcuts';
+import { getServerUrl } from '@/sync/serverConfig';
 
 // The RevenueCat SDK logs its failures through console.error, which LogBox
 // turns into a red error overlay. Dev builds have no App Store products, so
@@ -181,16 +182,47 @@ async function loadFonts() {
     });
 }
 
+function isDemoDevStartup(): boolean {
+    return __DEV__ && process.env.EXPO_PUBLIC_DEMO_MODE === '1';
+}
+
+function hasDemoDevCredentials(): boolean {
+    return __DEV__ && Boolean(
+        process.env.EXPO_PUBLIC_DEMO_DEV_TOKEN
+        || process.env.EXPO_PUBLIC_DEMO_DEV_SECRET,
+    );
+}
+
+function assertLoopbackDemoServer(): void {
+    const configuredUrl = getServerUrl();
+    let parsed: URL;
+    try {
+        parsed = new URL(configuredUrl);
+    } catch {
+        throw new Error('Demo startup requires a valid loopback server URL.');
+    }
+    if (parsed.protocol !== 'http:' || !['localhost', '127.0.0.1', '::1', '[::1]'].includes(parsed.hostname)) {
+        throw new Error('Demo startup refuses a non-loopback server URL.');
+    }
+}
+
 function getDevEnvironmentCredentials(): AuthCredentials | null {
     if (!__DEV__) {
         return null;
     }
 
-    const token = process.env.EXPO_PUBLIC_DEV_TOKEN;
-    const secret = process.env.EXPO_PUBLIC_DEV_SECRET;
+    const demoMode = isDemoDevStartup();
+    const token = demoMode
+        ? process.env.EXPO_PUBLIC_DEMO_DEV_TOKEN
+        : process.env.EXPO_PUBLIC_DEV_TOKEN;
+    const secret = demoMode
+        ? process.env.EXPO_PUBLIC_DEMO_DEV_SECRET
+        : process.env.EXPO_PUBLIC_DEV_SECRET;
     if (!token || !secret) {
         return null;
     }
+
+    if (demoMode) assertLoopbackDemoServer();
 
     return { token, secret };
 }
@@ -199,6 +231,10 @@ function getDevWebQueryCredentials(): AuthCredentials | null {
     if (!__DEV__ || Platform.OS !== 'web' || typeof window === 'undefined') {
         return null;
     }
+
+    // The recording path accepts credentials only from its command-scoped
+    // Metro environment, never from a URL that could be copied or logged.
+    if (isDemoDevStartup()) return null;
 
     const params = new URLSearchParams(window.location.search);
     const token = params.get('dev_token');
@@ -246,6 +282,18 @@ export default function RootLayout() {
 
                 let credentials = await TokenStorage.getCredentials();
                 const devCredentials = getDevWebQueryCredentials() ?? getDevEnvironmentCredentials();
+
+                if (hasDemoDevCredentials() && !isDemoDevStartup()) {
+                    await TokenStorage.removeCredentials();
+                    throw new Error('Demo credentials require the debug demo startup flag.');
+                }
+
+                // A demo bundle must never silently reuse a persisted account
+                // when its command-scoped auth variables are absent.
+                if (isDemoDevStartup() && !devCredentials) {
+                    await TokenStorage.removeCredentials();
+                    throw new Error('Demo startup did not provide debug credentials.');
+                }
 
                 if (devCredentials) {
                     const credentialsChanged = credentials?.token !== devCredentials.token

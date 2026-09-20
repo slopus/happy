@@ -83,6 +83,7 @@ export interface EnvironmentConfig {
     template: string;
     projectTemplate: string;
     projectPath: string;
+    isolated?: boolean;
     authenticatedWebUrl?: string;
     cliCommand?: string;
 }
@@ -114,13 +115,28 @@ function readEnvironmentConfig(name: string): EnvironmentConfig {
     return JSON.parse(fs.readFileSync(configPath, "utf-8"));
 }
 
+function assertGenericEnvironment(config: EnvironmentConfig, operation: string): void {
+    if (config.isolated === true) {
+        throw new Error(
+            `Environment "${config.name}" is isolated; generic ${operation} is disabled. `
+            + "Use environments/coreDemo.mts for the recording launcher.",
+        );
+    }
+}
+
 function writeEnvironmentConfig(config: EnvironmentConfig) {
     const envDir = path.join(ENVIRONMENTS_DIR, config.name);
     const configPath = path.join(ENVIRONMENTS_DIR, config.name, "environment.json");
+    const isolated = config.isolated === true;
     fs.writeFileSync(
         configPath,
-        JSON.stringify({ ...config, cliCommand: buildCliCommand(envDir) }, null, 4) + "\n"
+        JSON.stringify(
+            isolated ? config : { ...config, cliCommand: buildCliCommand(envDir) },
+            null,
+            4,
+        ) + "\n"
     );
+    if (isolated) return;
     fs.writeFileSync(
         path.join(envDir, "env.sh"),
         buildEnvSh(config.name, envDir, config.serverPort, config.expoPort),
@@ -267,7 +283,11 @@ export function setEnvironmentTemplate(name: string, template: Template): void {
     writeEnvironmentConfig({ ...config, template });
 }
 
-export async function createEnvironment(opts?: { noSwitch?: boolean }): Promise<string> {
+export async function createEnvironment(opts?: {
+    noSwitch?: boolean;
+    isolated?: boolean;
+    masterSecret?: string;
+}): Promise<string> {
     ensureEnvironmentsDir();
 
     const existing = new Set(listEnvironments());
@@ -285,9 +305,19 @@ export async function createEnvironment(opts?: { noSwitch?: boolean }): Promise<
     const expoPort = await allocatePort();
 
     const envDir = path.join(ENVIRONMENTS_DIR, name);
+    if (opts?.isolated) {
+        fs.mkdirSync(envDir, { recursive: true, mode: 0o700 });
+        fs.chmodSync(envDir, 0o700);
+    }
     fs.mkdirSync(path.join(envDir, "server", "pglite"), { recursive: true });
     fs.mkdirSync(path.join(envDir, "server", "logs"), { recursive: true });
     fs.mkdirSync(path.join(envDir, "cli", "home"), { recursive: true });
+    if (opts?.isolated) {
+        fs.mkdirSync(path.join(envDir, "process-home"), { recursive: true, mode: 0o700 });
+        fs.mkdirSync(path.join(envDir, "process-tmp"), { recursive: true, mode: 0o700 });
+        fs.chmodSync(path.join(envDir, "process-home"), 0o700);
+        fs.chmodSync(path.join(envDir, "process-tmp"), 0o700);
+    }
     const projectPath = copyLabRatProject(envDir);
 
     const config: EnvironmentConfig = {
@@ -298,18 +328,36 @@ export async function createEnvironment(opts?: { noSwitch?: boolean }): Promise<
         template: "empty",
         projectTemplate: "lab-rat-todo-project",
         projectPath,
+        ...(opts?.isolated ? { isolated: true } : {}),
     };
     writeEnvironmentConfig(config);
 
     console.log(`Running database migration for ${name}...`);
-    const migrationEnv = buildEnvVars(envDir, serverPort, expoPort);
+    const migrationEnv = buildEnvVars(envDir, serverPort, expoPort, {
+        masterSecret: opts?.masterSecret,
+    });
     const standaloneTs = path.join(REPO_ROOT, "packages", "happy-server", "sources", "standalone.ts");
+    const migrationProcessEnv = opts?.isolated
+        ? {
+            PATH: process.env.PATH || "/usr/bin:/bin:/usr/sbin:/sbin",
+            HOME: path.join(envDir, "process-home"),
+            TMPDIR: path.join(envDir, "process-tmp"),
+            DB_PROVIDER: "pglite",
+            HANDY_MASTER_SECRET: migrationEnv.HANDY_MASTER_SECRET,
+            PORT: migrationEnv.PORT,
+            NODE_ENV: migrationEnv.NODE_ENV,
+            DATA_DIR: migrationEnv.DATA_DIR,
+            PGLITE_DIR: migrationEnv.PGLITE_DIR,
+            DATABASE_URL: migrationEnv.DATABASE_URL,
+            METRICS_ENABLED: migrationEnv.METRICS_ENABLED,
+        }
+        : { ...process.env, ...migrationEnv };
     const result = spawnSync(
         "tsx",
         [standaloneTs, "migrate"],
         {
             cwd: path.join(REPO_ROOT, "packages", "happy-server"),
-            env: { ...process.env, ...migrationEnv },
+            env: migrationProcessEnv,
             stdio: "inherit",
         }
     );
@@ -327,20 +375,24 @@ export async function createEnvironment(opts?: { noSwitch?: boolean }): Promise<
     console.log(`  Webapp: http://localhost:${expoPort}`);
     console.log(`  Project: ${projectPath}`);
     console.log("");
-    const envShRelative = path.relative(process.cwd(), path.join(envDir, "env.sh"));
-    console.log("Start in separate terminals:");
-    console.log("");
-    console.log(`  Server:  pnpm env:server`);
-    console.log(`  Webapp:  pnpm env:web`);
-    console.log("");
-    console.log("CLI (from any terminal, anywhere):");
-    console.log("");
-    console.log(`  One-liner: ${buildCliCommand(envDir)}`);
-    console.log("");
-    console.log(`  source ${envShRelative}`);
-    console.log(`  happy`);
-    console.log("");
-    console.log(`Full env.sh path: ${path.join(envDir, "env.sh")}`);
+    if (opts?.isolated) {
+        console.log("  Isolated recording environment: use environments/coreDemo.mts to start it.");
+    } else {
+        const envShRelative = path.relative(process.cwd(), path.join(envDir, "env.sh"));
+        console.log("Start in separate terminals:");
+        console.log("");
+        console.log(`  Server:  pnpm env:server`);
+        console.log(`  Webapp:  pnpm env:web`);
+        console.log("");
+        console.log("CLI (from any terminal, anywhere):");
+        console.log("");
+        console.log(`  One-liner: ${buildCliCommand(envDir)}`);
+        console.log("");
+        console.log(`  source ${envShRelative}`);
+        console.log(`  happy`);
+        console.log("");
+        console.log(`Full env.sh path: ${path.join(envDir, "env.sh")}`);
+    }
 
     return name;
 }
@@ -348,6 +400,7 @@ export async function createEnvironment(opts?: { noSwitch?: boolean }): Promise<
 export async function startEnvironmentServices(name: string): Promise<void> {
     const envDir = getEnvironmentDir(name);
     const config = readEnvironmentConfig(name);
+    assertGenericEnvironment(config, "service startup");
     const envVars = buildEnvVars(envDir, config.serverPort, config.expoPort);
     const mergedEnv: Record<string, string | undefined> = { ...process.env, ...envVars };
 
@@ -392,6 +445,7 @@ export async function startEnvironmentServices(name: string): Promise<void> {
 export async function seedEnvironment(name: string): Promise<void> {
     const envDir = getEnvironmentDir(name);
     const config = readEnvironmentConfig(name);
+    assertGenericEnvironment(config, "seeding");
     const serverUrl = `http://localhost:${config.serverPort}`;
 
     try {
@@ -589,6 +643,7 @@ function commandUse(name: string) {
         console.error(`Available: ${listEnvironments().join(", ") || "(none)"}`);
         process.exit(1);
     }
+    assertGenericEnvironment(readEnvironmentConfig(name), "selection");
     writeCurrentConfig(name);
     console.log(`Switched to environment: ${name}`);
 }
@@ -648,6 +703,7 @@ function commandRun(service: string, serviceArgs: string[] = []) {
     }
 
     const config = readEnvironmentConfig(envName);
+    assertGenericEnvironment(config, "service startup");
     const envVars = buildEnvVars(envDir, config.serverPort, config.expoPort);
     const mergedEnv = { ...process.env, ...envVars };
 
@@ -733,13 +789,18 @@ function commandRun(service: string, serviceArgs: string[] = []) {
 // env.sh builder
 // ============================================================================
 
-function buildEnvVars(envDir: string, serverPort: number, expoPort: number): Record<string, string> {
+function buildEnvVars(
+    envDir: string,
+    serverPort: number,
+    expoPort: number,
+    options: { masterSecret?: string } = {},
+): Record<string, string> {
     const devAuth = readDevAuth(envDir);
     const projectDir = path.join(envDir, "project");
 
     return {
         // Server
-        HANDY_MASTER_SECRET: "happy-dev-secret",
+        HANDY_MASTER_SECRET: options.masterSecret || "happy-dev-secret",
         PORT: String(serverPort),
         NODE_ENV: "development",
         DATA_DIR: path.join(envDir, "server"),
@@ -941,6 +1002,7 @@ function commandTailscale() {
     }
 
     const config = readEnvironmentConfig(currentConfig.current);
+    assertGenericEnvironment(config, "public exposure");
 
     // Get tailscale hostname
     let hostname: string;
