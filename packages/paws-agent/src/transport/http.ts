@@ -57,13 +57,18 @@ export class PawsHttpTransport {
         }
     }
 
-    async post<T>(path: string, body: unknown, options: { signal?: AbortSignal } = {}): Promise<T> {
+    async post<T>(path: string, body: unknown, options: { signal?: AbortSignal; expectedCredentials?: PawsCredentials } = {}): Promise<T> {
         const signal = options.signal
             ? AbortSignal.any([options.signal, this.abortController.signal])
             : this.abortController.signal;
         try {
             signal.throwIfAborted();
             const credentials = await this.getCredentials();
+            if (options.expectedCredentials && (credentials.token !== options.expectedCredentials.token
+                || credentials.secret.length !== options.expectedCredentials.secret.length
+                || credentials.secret.some((byte, i) => byte !== options.expectedCredentials!.secret[i]))) {
+                throw new PawsAgentError('AUTH_EXPIRED', 'Account changed before settings update');
+            }
             signal.throwIfAborted();
             const response = await this.client.post(this.url(path), body, {
                 headers: this.headers(credentials),

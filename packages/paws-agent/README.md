@@ -346,3 +346,33 @@ an immediate runtime switch.
 - Node consumers require Node >=20.19.0. ESM, CommonJS, CLI and browser bundles are verified in the release pipeline; browser fixtures must also pass Ego acceptance on the exact tarball digest.
 - Model/effort choices come from the runner-advertised catalog. Empty catalogs do not prove configuration support. Validated against the MISS Paws runner 1.3.11; other runner/server combinations require capability and integration checks.
 - `0.1.x` patches should preserve the documented public API. Incompatible public API changes require a new minor version while the SDK remains pre-1.0. Pin an exact version for production and review the changelog before upgrading.
+
+### Session lists and tags
+
+```ts
+const catalog = await client.sessions.getOrganization();
+const result = await client.sessions.spawn({
+  machineId, directory, agent: 'codex',
+  organization: { listName: 'MISS', tagNames: ['视频采集'] },
+});
+// Durable applications should persist the spawned session ID first, then organize.
+await client.sessions.organize(sessionId, {
+  listId: 'existing-list-id', tagIds: ['existing-tag-id'],
+});
+```
+
+Names reuse exact trimmed matches, creating missing entries. Duplicate names require
+IDs. New lists are workspace lists without machine/path presets. Choose either
+`listId` or `listName`, and either `tagIds` or `tagNames`. Omitted fields preserve
+existing assignments. `listId: null` clears the list; `tagIds: []` clears tags.
+Provided tags replace the session's tag set.
+
+Organization uses the Paws app's encrypted account settings. Other settings, unknown
+fields and unrelated sessions are preserved. Version conflicts retry against fresh
+settings up to four writes. Account changes abort the update. No server/runner upgrade
+is needed.
+
+Spawn and organization are two operations. If spawn succeeds but organization fails,
+the thrown `PawsAgentError.details` contains `{ sessionCreated: true, sessionId,
+stage: 'organization' }`. Persist that ID and retry `organize`; do not spawn again.
+Transport timeouts during spawn itself retain normal ambiguous-spawn semantics.
