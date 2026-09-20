@@ -304,6 +304,12 @@ export default function DevScreen() {
                     onPress={() => router.push('/dev/diff-bench' as any)}
                 />
                 <Item
+                    title="Bot Faces"
+                    subtitle="What the picker draws vs what a bot is given"
+                    icon={<Ionicons name="happy-outline" size={28} color="#007AFF" />}
+                    onPress={() => router.push('/dev/bot-face')}
+                />
+                <Item
                     title="Shimmer View"
                     subtitle="Shimmer loading effects with masks"
                     icon={<Ionicons name="sparkles-outline" size={28} color="#007AFF" />}

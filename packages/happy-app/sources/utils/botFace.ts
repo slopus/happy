@@ -40,17 +40,110 @@ export function rollBotFaceSeeds(): BotFaceSeeds {
     return [one(), one(), one(), one()];
 }
 
+/** Where the `<g>` whose body starts at `start` closes, counting nested groups. */
+function groupEndingAfter(svg: string, start: number): { body: string; end: number } | undefined {
+    const tags = /<(\/?)g\b[^>]*?(\/?)>/g;
+    tags.lastIndex = start;
+    let depth = 1;
+    for (let tag = tags.exec(svg); tag; tag = tags.exec(svg)) {
+        if (tag[2] === '/') continue; // A `<g/>` opens and closes at once.
+        depth += tag[1] === '/' ? -1 : 1;
+        if (depth === 0) return { body: svg.slice(start, tag.index), end: tags.lastIndex };
+    }
+    return undefined;
+}
+
+/** A definition DiceBear wrote under `<defs>`, and where it sits in that block. */
+type Definition = { readonly id: string; readonly body: string; readonly from: number; readonly to: number };
+
+const DEFINITION = /<g id="([^"]+)">/g;
+const REFERENCE = /<use\b([^>]*?)\s*\/>/g;
+/** All DiceBear ever puts on a `<use>`: an optional transform, then a plain href. */
+const REFERENCE_SHAPE = /^(?:\s+transform="([^"]*)")?\s+href="#([^"]+)"$/;
+
+/**
+ * Resolves DiceBear's `<use>` references into the drawing itself.
+ *
+ * DiceBear defines each feature once under `<defs>` and points at it with
+ * `<use href="#id">`. Browsers and react-native-svg follow that reference, so
+ * the picker looked right; Skia's SVG parser accepts only the older
+ * `xlink:href` spelling, so it drew the background and silently dropped the
+ * eyes, brows and mouth. A bot ended up wearing one flat colour.
+ *
+ * This is a compatibility transform for the markup DiceBear emits, not a
+ * general SVG one — `<use>` in full carries shadow-tree semantics, `x`/`y`
+ * offsets and targets that are not groups, none of which are reproduced here.
+ * So it expands a reference only when the markup has exactly the shape DiceBear
+ * writes: attribute-free groups under a single `<defs>`, named by self-closing
+ * `<use>` elements carrying nothing but a transform and a plain href. Anything
+ * else is handed back untouched, because a face drawn wrong is worse than one
+ * drawn by the old path. `botFaceSvg` is covered by a test that fails if the
+ * real output ever stops taking this path.
+ */
+export function inlineUseElements(svg: string): string {
+    const opensAt = svg.indexOf('<defs>');
+    const closesAt = svg.indexOf('</defs>');
+    if (opensAt < 0 || closesAt < opensAt) return svg;
+    if (svg.includes('<defs', opensAt + '<defs>'.length)) return svg;
+
+    const head = svg.slice(0, opensAt);
+    const defined = svg.slice(opensAt + '<defs>'.length, closesAt);
+    const drawn = svg.slice(closesAt + '</defs>'.length);
+
+    const definitions: Definition[] = [];
+    const bodies = new Map<string, string>();
+    DEFINITION.lastIndex = 0;
+    for (let open = DEFINITION.exec(defined); open; open = DEFINITION.exec(defined)) {
+        const group = groupEndingAfter(defined, open.index + open[0].length);
+        if (!group) return svg; // Unbalanced: this is not the markup we know.
+        if (group.body.includes('<use')) return svg; // A reference inside a definition.
+        if (bodies.has(open[1])) return svg; // Two definitions of one name.
+        bodies.set(open[1], group.body);
+        definitions.push({ id: open[1], body: group.body, from: open.index, to: group.end });
+        DEFINITION.lastIndex = group.end;
+    }
+    if (bodies.size === 0) return svg;
+
+    const consumed = new Set<string>();
+    let unexpected = false;
+    const drawing = drawn.replace(REFERENCE, (reference, attributes: string) => {
+        const shape = REFERENCE_SHAPE.exec(attributes);
+        const body = shape ? bodies.get(shape[2]) : undefined;
+        if (!shape || body === undefined) {
+            unexpected = true;
+            return reference;
+        }
+        consumed.add(shape[2]);
+        return shape[1] === undefined ? `<g>${body}</g>` : `<g transform="${shape[1]}">${body}</g>`;
+    });
+    // A reference left over is one we could not read, including `<use></use>`.
+    if (unexpected || drawing.includes('<use')) return svg;
+
+    // Only the definitions that were spent are gone; cut from the back so the
+    // earlier offsets still hold.
+    let remaining = defined;
+    for (const definition of [...definitions].reverse()) {
+        if (!consumed.has(definition.id)) continue;
+        remaining = remaining.slice(0, definition.from) + remaining.slice(definition.to);
+    }
+
+    // A `<defs>` holding nothing but those definitions is noise now.
+    return `${head}${remaining.trim() === '' ? '' : `<defs>${remaining}</defs>`}${drawing}`;
+}
+
 /**
  * The SVG markup for a seed, at the given pixel size.
  *
  * DiceBear embeds an RDF `<metadata>` block and an XML comment that neither
- * native renderer needs; they are stripped so the markup is only drawing.
+ * native renderer needs; they are stripped so the markup is only drawing. The
+ * `<use>` references are resolved for the same reason: what is left is shapes.
  */
 export function botFaceSvg(seed: string, size: number): string {
-    return new DiceBearAvatar(style, { seed, size })
+    const drawn = new DiceBearAvatar(style, { seed, size })
         .toString()
         .replace(/<!--[\s\S]*?-->/g, '')
         .replace(/<metadata[\s\S]*?<\/metadata>/g, '');
+    return inlineUseElements(drawn);
 }
 
 /** The raster the daemon keeps: 256px is more than any face is shown at. */
