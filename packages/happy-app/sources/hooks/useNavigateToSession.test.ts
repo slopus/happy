@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => ({
     platform: { OS: 'ios' },
     mac: false,
     state: { sessions: {} as Record<string, { id: string }>, currentViewingSessionId: null as string | null },
-    router: { push: vi.fn(), prefetch: vi.fn() },
+    router: { push: vi.fn(), replace: vi.fn(), dismissTo: vi.fn(), prefetch: vi.fn() },
     preloadSession: vi.fn(),
     trackSessionSwitched: vi.fn(),
     perfMark: vi.fn(),
@@ -21,7 +21,7 @@ vi.mock('@/sync/sync', () => ({ sync: { preloadSession: mocks.preloadSession } }
 vi.mock('@/track', () => ({ trackSessionSwitched: mocks.trackSessionSwitched }));
 vi.mock('@/utils/perfLog', () => ({ perfMark: mocks.perfMark }));
 
-import { useSessionPressHandlers } from './useNavigateToSession';
+import { replaceToSession, singularSessionRoute, useSessionPressHandlers } from './useNavigateToSession';
 
 let renderer: ReturnType<typeof create>;
 let handlers: ReturnType<typeof useSessionPressHandlers>;
@@ -33,6 +33,8 @@ function Harness({ id }: { id: string }) {
 beforeEach(() => {
     vi.clearAllMocks();
     mocks.router.prefetch.mockReset();
+    mocks.router.replace.mockReset();
+    mocks.router.dismissTo.mockReset();
     mocks.platform.OS = 'ios';
     mocks.mac = false;
     mocks.state.sessions = { a: { id: 'a' }, 'a/b?c': { id: 'a/b?c' } };
@@ -85,6 +87,26 @@ describe('session row press contract', () => {
         expect(mocks.router.push).toHaveBeenCalledWith('/session/a%2Fb%3Fc');
     });
 
+    it('keeps one session route in the web stack while preserving native pushes', () => {
+        mocks.platform.OS = 'web';
+        handlers.onPress();
+        expect(mocks.router.push).toHaveBeenCalledWith('/session/a', {
+            dangerouslySingular: singularSessionRoute,
+        });
+        expect(singularSessionRoute('session/[id]')).toBe('session/[id]');
+    });
+
+    it('uses web pop-to replacement while preserving native replace', () => {
+        mocks.platform.OS = 'web';
+        replaceToSession(mocks.router as any, 'a/b?c');
+        expect(mocks.router.dismissTo).toHaveBeenCalledWith('/session/a%2Fb%3Fc');
+        expect(mocks.router.replace).not.toHaveBeenCalled();
+
+        mocks.platform.OS = 'ios';
+        replaceToSession(mocks.router as any, 'a');
+        expect(mocks.router.replace).toHaveBeenLastCalledWith('/session/a');
+    });
+
     it.each(['web', 'mac', 'missing', 'current'])('skips unnecessary preload: %s', (reason) => {
         if (reason === 'web') mocks.platform.OS = 'web';
         if (reason === 'mac') mocks.mac = true;
@@ -94,6 +116,12 @@ describe('session row press contract', () => {
         expect(mocks.preloadSession).not.toHaveBeenCalled();
         expect(mocks.router.prefetch).not.toHaveBeenCalled();
         handlers.onPress();
-        expect(mocks.router.push).toHaveBeenCalledWith('/session/a');
+        if (reason === 'web') {
+            expect(mocks.router.push).toHaveBeenCalledWith('/session/a', {
+                dangerouslySingular: singularSessionRoute,
+            });
+        } else {
+            expect(mocks.router.push).toHaveBeenCalledWith('/session/a');
+        }
     });
 });

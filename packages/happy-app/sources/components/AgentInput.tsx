@@ -45,6 +45,12 @@ import {
 } from './agentInputLayout';
 import { shouldUseExpoNativeSettingsMenu } from './glassInteractionPolicy';
 
+// Drops bubble through document once per mounted composer. A WeakSet keeps a
+// background drop from being accepted by multiple visible composers without
+// retaining completed browser events.
+const claimedDropEvents = new WeakSet<DragEvent>();
+const mountedComposerNodes = new Set<HTMLElement>();
+
 interface AgentInputProps {
     // `initialValue` seeds the uncontrolled textarea once; keystrokes never
     // round-trip back into it via React, which is what keeps fast typing/
@@ -907,6 +913,8 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     const shakerRef = React.useRef<ShakeInstance>(null);
     const sendBlockShakerRef = React.useRef<ShakeInstance>(null);
     const inputRef = React.useRef<MultiTextInputHandle>(null);
+    // The box around the text input; on web the View ref is its DOM node.
+    const composerRef = React.useRef<View>(null);
     const primaryAction = resolveAgentInputPrimaryAction({
         hasComposerContent,
         isSendBlocked,
@@ -948,16 +956,36 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     React.useEffect(() => {
         if (Platform.OS !== 'web' || !props.onAddImages) return;
 
-        const handlePaste = async (e: ClipboardEvent) => {
-            // Only handle pastes targeted at a focused text-editable element.
-            // The listener is attached to document, so without this guard a
-            // paste in the URL bar, another modal, or any focused-elsewhere
-            // input would steal images intended for somewhere else.
+        // The listeners live on document and several composers can be mounted
+        // at once (stacked session screens, side chats), so each one has to
+        // decide whether an event is its own — otherwise one paste/drop lands
+        // in every mounted composer.
+        const composerNode = () => composerRef.current as unknown as HTMLElement | null;
+        const node = composerNode();
+        if (node) mountedComposerNodes.add(node);
+
+        const isEditable = (element: Element | null) => element instanceof HTMLInputElement
+            || element instanceof HTMLTextAreaElement
+            || (element instanceof HTMLElement && element.isContentEditable);
+        const isEditableTarget = (target: EventTarget | null) => {
+            if (!(target instanceof Element)) return false;
+            return isEditable(target)
+                || !!target.closest('input,textarea,[contenteditable="true"]');
+        };
+        const ownsFocus = () => {
+            const currentNode = composerNode();
             const active = document.activeElement;
-            const isEditableTarget = active instanceof HTMLInputElement
-                || active instanceof HTMLTextAreaElement
-                || (active instanceof HTMLElement && active.isContentEditable);
-            if (!isEditableTarget) return;
+            return !!currentNode
+                && currentNode.getClientRects().length > 0
+                && isEditable(active)
+                && currentNode.contains(active);
+        };
+
+        const handlePaste = async (e: ClipboardEvent) => {
+            // Only a paste into this composer's own input. Without the guard a
+            // paste in the URL bar, a modal, or a sibling composer's input
+            // would steal images intended for somewhere else.
+            if (!ownsFocus()) return;
 
             const { getImagesFromClipboard, fileToAttachmentPreview } = await import('@/utils/pasteImages.web');
             const files = getImagesFromClipboard(e);
@@ -996,6 +1024,34 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         const handleDrop = async (e: DragEvent) => {
             if (!isFileDrag(e)) return;
             e.preventDefault();
+            // The drop is ours when it lands on this visible composer, when
+            // this composer owns the focus, or when no editable is focused and
+            // this is the only visible composer. With multiple visible side
+            // chats an untargeted drop is intentionally ignored; the
+            // mounted-node registry still routes targeted drops to the sibling
+            // they landed on.
+            const currentNode = composerNode();
+            const target = e.target;
+            const targetComposer = target instanceof Node
+                ? [...mountedComposerNodes].find((candidate) => candidate.contains(target))
+                : undefined;
+            const visibleComposers = [...mountedComposerNodes]
+                .filter((candidate) => candidate.getClientRects().length > 0);
+            const targetIsThisComposer = !!currentNode
+                && targetComposer === currentNode
+                && currentNode.getClientRects().length > 0;
+            const targetIsAnotherComposer = !!targetComposer && targetComposer !== currentNode;
+            const targetIsOutsideEditable = isEditableTarget(target) && !targetIsThisComposer;
+            const takesDrop = !targetIsAnotherComposer
+                && !targetIsOutsideEditable
+                && (targetIsThisComposer
+                    || ownsFocus()
+                    || (!isEditable(document.activeElement)
+                        && !!currentNode
+                        && visibleComposers.length === 1
+                        && visibleComposers[0] === currentNode));
+            if (!takesDrop || claimedDropEvents.has(e)) return;
+            claimedDropEvents.add(e);
             const { getImagesFromDrop, fileToAttachmentPreview } = await import('@/utils/pasteImages.web');
             const files = getImagesFromDrop(e);
             if (!files.length) return;
@@ -1014,6 +1070,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         document.addEventListener('dragover', handleDragOver);
         document.addEventListener('drop', handleDrop);
         return () => {
+            if (node) mountedComposerNodes.delete(node);
             document.removeEventListener('paste', handlePaste as any);
             document.removeEventListener('dragover', handleDragOver);
             document.removeEventListener('drop', handleDrop);
@@ -2077,7 +2134,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                         />
                     )}
                     {/* Input field */}
-                    <View style={[
+                    <View ref={composerRef} style={[
                         styles.inputContainer,
                         compactMobileComposer && styles.mobileInputContainer,
                         props.minHeight ? { minHeight: props.minHeight } : undefined,

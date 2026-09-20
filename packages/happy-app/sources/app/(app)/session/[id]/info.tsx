@@ -25,6 +25,7 @@ import { copySessionMetadataToClipboard, copySessionMetadataAndLogsToClipboard }
 import { HappyError } from '@/utils/errors';
 import { getRigIdentity, isRigMetadata } from '@/sync/rig';
 import { MOBILE_GLASS_HEADER_HEIGHT } from '@/components/navigation/headerMetrics';
+import { navigateToSession } from '@/hooks/useNavigateToSession';
 
 function formatSandboxMetadata(sandbox: unknown, homeDir?: string): string {
     if (sandbox === null || sandbox === undefined) {
@@ -266,7 +267,7 @@ function SessionInfoContent({ session }: { session: Session }) {
                             title={t('session.forkedFromLabel')}
                             subtitle={t('session.forkedFromSubtitle')}
                             icon={<Ionicons name="return-up-back-outline" size={29} color="#5856D6" />}
-                            onPress={() => router.push(`/session/${session.metadata!.parentSessionId}`)}
+                            onPress={() => navigateToSession(router, session.metadata!.parentSessionId!)}
                         />
                     )}
                     <Item

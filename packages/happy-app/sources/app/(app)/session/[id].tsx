@@ -6,5 +6,8 @@ import { SessionView } from '@/-session/SessionView';
 export default React.memo(() => {
     const route = useRoute();
     const sessionId = (route.params! as any).id as string;
-    return (<SessionView id={sessionId} />);
+    // The web session route is singular (see useNavigateToSession): a hop to
+    // another session reuses the route key and only swaps params, so key the
+    // view on the id to remount the session-local state.
+    return (<SessionView key={sessionId} id={sessionId} />);
 });
