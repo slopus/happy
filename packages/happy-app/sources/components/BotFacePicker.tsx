@@ -21,6 +21,13 @@ const styles = StyleSheet.create((theme) => ({
     container: {
         gap: 6,
     },
+    // Named the way the pickers name their sections, so the block reads as one
+    // more setting rather than a row of pictures that arrived on its own.
+    heading: {
+        color: theme.colors.textSecondary,
+        fontSize: 12,
+        ...Typography.default('semiBold'),
+    },
     faces: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -45,11 +52,12 @@ const styles = StyleSheet.create((theme) => ({
         borderRadius: FACE_RADIUS - RING_WIDTH,
         overflow: 'hidden',
     },
+    // Right beside the faces, not off at the edge: rolling is what you do to
+    // the four of them, so it reads as the fifth thing in the row.
     die: {
         width: DIE_SIZE,
         height: DIE_SIZE,
         flexShrink: 0,
-        marginLeft: 'auto',
         borderRadius: DIE_SIZE / 2,
         alignItems: 'center',
         justifyContent: 'center',
@@ -69,8 +77,8 @@ const styles = StyleSheet.create((theme) => ({
 
 /**
  * The faces a new bot may wear: four drawn from seeds, one already picked, and
- * a die to roll four more. The pack and its artist are credited beneath, with
- * the artist's link, as the licence asks and as the desktop does.
+ * a die to roll four more. The artist is credited beneath, with a link to her
+ * work, as the licence asks and as the desktop does.
  */
 export const BotFacePicker = React.memo(({
     seeds,
@@ -90,6 +98,7 @@ export const BotFacePicker = React.memo(({
     );
     return (
         <View style={styles.container}>
+            <Text style={styles.heading}>Avatar</Text>
             <View style={styles.faces} accessibilityRole="radiogroup">
                 {faces.map((svg, index) => {
                     const picked = index === slot;
@@ -118,8 +127,7 @@ export const BotFacePicker = React.memo(({
                 </Pressable>
             </View>
             <Text style={styles.credit} numberOfLines={1}>
-                {botFaceCredit.pack}
-                {' by '}
+                {'Art by '}
                 <Text
                     style={styles.creditLink}
                     onPress={() => void openExternalUrl(botFaceCredit.artistUrl)}

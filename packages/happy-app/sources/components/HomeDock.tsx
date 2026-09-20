@@ -111,6 +111,11 @@ const COMPOSER_KINDS = [
     { key: 'session', label: 'Session' },
     { key: 'bot', label: 'Bot' },
 ] as const;
+// What a bot is for, said once under the choice that offers one. A session is
+// the thing people already know, so only the bot side needs explaining.
+const BOT_LEDE = 'Bots are virtual colleagues great for recurring work like '
+    + 'releases, competitor analysis, or to own a large feature across several '
+    + 'projects and worktrees';
 
 // The in-app sheet's check column. Half the width the native menu's image
 // column took, so choosing a row moves nothing: the gutter is always there,
@@ -384,15 +389,43 @@ const styles = StyleSheet.create((theme) => ({
         paddingHorizontal: 6,
         borderRadius: 12,
     },
-    // The Session | Bot choice sits above the rows, inset to the rows' text
-    // edge so the control and the labels below share one left edge.
-    focusConfigSegment: {
-        paddingHorizontal: 6,
-        paddingBottom: 6,
+    // The Session | Bot choice heads the whole screen rather than the dock: it
+    // decides what everything below it is for, so it is held at the top edge
+    // over the dimmed list, with the bot's lede directly beneath it.
+    // `box-none` throughout, so the backdrop underneath still dismisses except
+    // where the control and its text actually are.
+    focusHeader: {
+        position: 'absolute',
+        left: 0,
+        right: 0,
+        top: 0,
+        paddingHorizontal: 24,
+        alignItems: 'center',
     },
-    // The faces line up under the machine's label rather than its icon.
+    focusHeaderContent: {
+        width: '100%',
+        maxWidth: layout.maxWidth,
+        alignItems: 'center',
+        gap: 10,
+    },
+    // Narrower than the text below it: a two-word choice stretched the full
+    // width of a tablet reads as a toolbar rather than a switch.
+    focusHeaderSegment: {
+        width: '100%',
+        maxWidth: 260,
+    },
+    focusHeaderLede: {
+        maxWidth: 340,
+        color: theme.colors.textSecondary,
+        fontSize: 13,
+        lineHeight: 18,
+        textAlign: 'center',
+        ...Typography.default(),
+    },
+    // The faces line up with the icon column, not the labels after it, so the
+    // block reads as its own thing rather than another row's value.
     focusConfigFaces: {
-        paddingLeft: 6 + 24 + 12,
+        paddingLeft: 6,
         paddingRight: 6,
         paddingTop: 6,
         paddingBottom: 4,
@@ -661,12 +694,15 @@ function FocusConfigRevealRow({
     index,
     refusing,
     onRefuse,
+    pointerEvents,
     children,
 }: {
     progress: SharedValue<number>;
     index: number;
     refusing?: boolean;
     onRefuse?: () => void;
+    /** `box-none` for a row laid over the backdrop, which must stay dismissable. */
+    pointerEvents?: 'auto' | 'box-none';
     children: React.ReactNode;
 }) {
     const shake = useSharedValue(0);
@@ -689,7 +725,10 @@ function FocusConfigRevealRow({
     }, [index]);
 
     return (
-        <Animated.View style={[styles.focusConfigRevealRow, revealStyle]}>
+        <Animated.View
+            pointerEvents={pointerEvents}
+            style={[styles.focusConfigRevealRow, revealStyle]}
+        >
             {children}
             {refusing && (
                 <Pressable
@@ -1626,23 +1665,10 @@ export const HomeDock = React.memo(({
         );
     };
 
-    // Session | Bot first, when the computer can make bots, then the rows for
-    // whichever was chosen, then the faces a bot may wear. Each reveals in turn.
+    // The rows for whatever the header chose, then the faces a bot may wear.
+    // Each reveals in turn. Session | Bot itself is at the top of the screen.
     const renderEnvironmentPickers = () => {
         const lines: { key: string; content: React.ReactNode }[] = [
-            ...(supportsBots ? [{
-                key: 'kind',
-                content: (
-                    <View style={styles.focusConfigSegment}>
-                        <NativeSegmentedControl
-                            options={COMPOSER_KINDS}
-                            selectedKey={createsBot ? 'bot' : 'session'}
-                            onSelect={(key) => setCreatesBot(key === 'bot')}
-                            accessibilityLabel="What to create"
-                        />
-                    </View>
-                ),
-            }] : []),
             ...environmentRows.map((row) => ({
                 key: row.page,
                 content: renderPickerRow(row, getPickerConfig(row.page)),
@@ -2177,6 +2203,35 @@ export const HomeDock = React.memo(({
                     {/* No back affordance here on purpose: tapping the backdrop
                         already closes focus mode, and a floating chevron over the
                         session list is redundant chrome. */}
+
+                    {supportsBots && (
+                        <View
+                            pointerEvents="box-none"
+                            style={[styles.focusHeader, { paddingTop: safeArea.top + 8 }]}
+                        >
+                            <FocusConfigRevealRow
+                                progress={focusPresentation}
+                                index={0}
+                                refusing={isSubmitting}
+                                onRefuse={refuse}
+                                pointerEvents="box-none"
+                            >
+                                <View pointerEvents="box-none" style={styles.focusHeaderContent}>
+                                    <View style={styles.focusHeaderSegment}>
+                                        <NativeSegmentedControl
+                                            options={COMPOSER_KINDS}
+                                            selectedKey={createsBot ? 'bot' : 'session'}
+                                            onSelect={(key) => setCreatesBot(key === 'bot')}
+                                            accessibilityLabel="What to create"
+                                        />
+                                    </View>
+                                    {createsBot && (
+                                        <Text style={styles.focusHeaderLede}>{BOT_LEDE}</Text>
+                                    )}
+                                </View>
+                            </FocusConfigRevealRow>
+                        </View>
+                    )}
 
                     <Animated.View style={[styles.focusDock, keyboardStyle]}>
                         <View style={styles.focusConfig}>
