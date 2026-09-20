@@ -10,14 +10,25 @@ import { getProjectPath } from './path'
 
 describe('sessionScanner', () => {
   let testDir: string
+  let configDir: string
   let projectDir: string
   let collectedMessages: RawJSONLines[]
   let collectedTranscriptEvents: ClaudeGoalStatusTranscriptEvent[]
   let scanner: Awaited<ReturnType<typeof createSessionScanner>> | null = null
-  
+  let prevConfigDir: string | undefined
+
   beforeEach(async () => {
-    testDir = join(tmpdir(), `scanner-test-${Date.now()}`)
+    const unique = `${Date.now()}-${Math.random().toString(36).slice(2)}`
+    testDir = join(tmpdir(), `scanner-test-${unique}`)
     await mkdir(testDir, { recursive: true })
+
+    // Isolate CLAUDE_CONFIG_DIR *before* deriving projectDir, since
+    // getProjectPath() reads it. Otherwise these tests create directories
+    // under the developer's real ~/.claude/projects and rm -rf them in
+    // afterEach.
+    configDir = join(tmpdir(), `scanner-config-${unique}`)
+    prevConfigDir = process.env.CLAUDE_CONFIG_DIR
+    process.env.CLAUDE_CONFIG_DIR = configDir
 
     // Use the same path calculation as the scanner to ensure paths match
     projectDir = getProjectPath(testDir)
@@ -26,19 +37,25 @@ describe('sessionScanner', () => {
     collectedMessages = []
     collectedTranscriptEvents = []
   })
-  
+
   afterEach(async () => {
     // Clean up scanner
     if (scanner) {
       await scanner.cleanup()
       scanner = null
     }
-    
+
+    if (prevConfigDir === undefined) {
+      delete process.env.CLAUDE_CONFIG_DIR
+    } else {
+      process.env.CLAUDE_CONFIG_DIR = prevConfigDir
+    }
+
     if (existsSync(testDir)) {
       await rm(testDir, { recursive: true, force: true })
     }
-    if (existsSync(projectDir)) {
-      await rm(projectDir, { recursive: true, force: true })
+    if (existsSync(configDir)) {
+      await rm(configDir, { recursive: true, force: true })
     }
   })
   
@@ -319,11 +336,14 @@ describe('sessionScanner', () => {
     // }
   })
 
-  it('drops a phantom session whose transcript never appears and keeps serving real ones', async () => {
-    // Reproduces the "dead Happy instance" bug: a session id is announced
-    // (e.g. a remote launch) but its .jsonl is never written. The scanner
-    // must give up on it instead of spinning forever, and must still process
-    // a real session that arrives afterwards.
+  it('keeps serving real sessions while a phantom session has no transcript', async () => {
+    // A session id is announced (e.g. a remote launch) but its .jsonl is
+    // never written. The watcher now waits for that file indefinitely via
+    // the parent directory instead of giving up on a deadline — a transcript
+    // Claude Code creates lazily must never be abandoned (that dropped real
+    // sessions whose first prompt came late). The phantom therefore stays
+    // watched, costing one idle directory watch and no CPU, and must not
+    // leak messages or disturb a real session arriving afterwards.
     scanner = await createSessionScanner({
       sessionId: null,
       workingDirectory: testDir,
