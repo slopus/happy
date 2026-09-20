@@ -2,7 +2,9 @@
 export type HappyAgentSpawnTarget =
     | { kind: 'project'; id: string }
     | { kind: 'workspace'; id: string }
-    | { kind: 'newWorkspace'; projectId: string };
+    | { kind: 'newWorkspace'; projectId: string }
+    /** A new bot, always named here: the daemon never invents a name for one. */
+    | { kind: 'bot'; name: string };
 
 /**
  * Resolves the workspace picker state to a durable Happy Agent catalog target.

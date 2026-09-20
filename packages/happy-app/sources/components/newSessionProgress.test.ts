@@ -72,3 +72,26 @@ describe('new session primary action', () => {
         })).toBe('busy');
     });
 });
+
+describe('new bot progress', () => {
+    it('names each step for the bot being made', () => {
+        expect(resolveNewSessionProgressLabel({
+            phase: 'spawning',
+            agentName: 'Happy Agent',
+            picksWorkspaces: false,
+            createsBot: true,
+        })).toBe('Creating bot…');
+        expect(resolveNewSessionProgressLabel({
+            phase: 'avatar',
+            agentName: 'Happy Agent',
+            picksWorkspaces: false,
+            createsBot: true,
+        })).toBe('Putting on a face…');
+        expect(resolveNewSessionProgressLabel({
+            phase: 'opening',
+            agentName: 'Happy Agent',
+            picksWorkspaces: false,
+            createsBot: true,
+        })).toBe('Opening bot…');
+    });
+});

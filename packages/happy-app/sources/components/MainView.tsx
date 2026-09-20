@@ -280,12 +280,19 @@ export const MainView = React.memo(({ variant }: MainViewProps) => {
         : MOBILE_HOME_DOCK_CONTENT_INSET;
 
     const handleHomePromptSubmit = React.useCallback(async (): Promise<boolean> => {
+        const draft = useNewSessionDraft.getState();
+        // A bot is made from its name, not from a prompt: the composer's text
+        // is the name, and the prompt typed for a session is left as it was.
+        if (draft.createsBot) {
+            if (!draft.botName.trim()) return false;
+            return await startHomeSession();
+        }
         const prompt = homePrompt.trim();
-        const attachments = useNewSessionDraft.getState().attachments;
+        const attachments = draft.attachments;
         if (!prompt && attachments.length === 0) {
             return false;
         }
-        useNewSessionDraft.getState().setInput(prompt);
+        draft.setInput(prompt);
         // The keyboard stays up: the dock reports what is happening above the
         // composer and closes itself once the session is open.
         const started = await startHomeSession();

@@ -21,6 +21,11 @@ export type NativeSettingsMenuGroup = {
     title?: string;
     systemImage?: string;
     options: NativeSettingsMenuOption[];
+    /**
+     * The chosen option. `null` means the rows are actions rather than a
+     * choice — nothing is ever check-marked and the rows keep their own icons.
+     * `undefined` is a choice with nothing chosen yet.
+     */
     selectedKey: string | null | undefined;
     onSelect: (key: string) => void;
 };

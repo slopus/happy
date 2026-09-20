@@ -696,6 +696,22 @@ class Sync {
         return { uploaded, failed };
     }
 
+    /**
+     * Puts one in-memory blob in a session's attachment store, encrypted with the
+     * session's blob key, and returns the ref the agent can download it by. This is
+     * the message-attachment path without the file read: a bot face painted on the
+     * phone travels the same way as a picture attached to a message.
+     */
+    async uploadSessionBlob(sessionId: string, name: string, bytes: Uint8Array): Promise<{ ref: string; size: number }> {
+        if (!this.credentials) throw new Error('Not signed in.');
+        const blobKey = this.encryption.getSessionBlobKey(sessionId);
+        if (!blobKey) throw new Error(`No blob key for session ${sessionId}`);
+        const encrypted = encryptBlob(bytes, blobKey);
+        const upload = await requestAttachmentUpload(this.credentials, sessionId, name, encrypted.length);
+        await uploadEncryptedBlob(upload, encrypted, this.credentials);
+        return { ref: upload.ref, size: bytes.length };
+    }
+
     /** A visible row alone is not enough to place a message safely. */
     async ensureSessionReady(sessionId: string): Promise<void> {
         const isReady = () => !!(storage.getState().sessions[sessionId]?.metadata

@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
-import { Button, Host, HStack, Image, Menu, Section, Spacer, Text } from '@expo/ui/swift-ui';
+import { Button, Host, HStack, Image, Menu, Section, Spacer, Text, Toggle } from '@expo/ui/swift-ui';
 import {
     accessibilityLabel as accessibilityLabelModifier,
     buttonStyle,
@@ -14,8 +14,13 @@ import {
     shapes,
     tint,
 } from '@expo/ui/swift-ui/modifiers';
-import type { NativeSettingsMenuProps } from './NativeSettingsMenu';
+import type {
+    NativeSettingsMenuGroup,
+    NativeSettingsMenuOption,
+    NativeSettingsMenuProps,
+} from './NativeSettingsMenu';
 import { orderNativeMenuItems } from './nativeMenuOrder';
+import { isNativeMenuChoice } from './nativeMenuSelection';
 
 const systemImage = (name: string) => (
     name as React.ComponentProps<typeof Button>['systemImage']
@@ -61,6 +66,37 @@ export function NativeSettingsMenu({
     // only the upward, bottom-up case needs the pre-reversal.
     const orderItems = <T,>(items: readonly T[]): T[] => (
         anchor === 'bottom' ? orderNativeMenuItems(items, 'ios') : [...items]
+    );
+    // The check is the system's own selection state, which each Toggle keeps on
+    // the native side. Tapping a row flips it there whether or not React's
+    // selection changes (re-choosing the current row does not), so the rows
+    // are remounted after every tap to read the selection back from props.
+    const [generation, setGeneration] = React.useState(0);
+    const renderOption = (group: NativeSettingsMenuGroup, option: NativeSettingsMenuOption) => (
+        isNativeMenuChoice(group) ? (
+            // A Toggle in a menu is the system's checkable row: the small
+            // leading check that every row in the menu, heading included,
+            // shares one text edge with. A checkmark image took the wide icon
+            // column instead, and only the section holding it moved.
+            <Toggle
+                key={`${group.key}:${option.key}:${generation}`}
+                label={option.label}
+                isOn={option.key === group.selectedKey}
+                modifiers={[disabled(option.disabled === true)]}
+                onIsOnChange={() => {
+                    setGeneration((current) => current + 1);
+                    group.onSelect(option.key);
+                }}
+            />
+        ) : (
+            <Button
+                key={`${group.key}:${option.key}`}
+                label={option.label}
+                systemImage={option.systemImage ? systemImage(option.systemImage) : undefined}
+                modifiers={[disabled(option.disabled === true)]}
+                onPress={() => group.onSelect(option.key)}
+            />
+        )
     );
     return (
         <View
@@ -148,43 +184,24 @@ export function NativeSettingsMenu({
                 >
                     {flat ? orderItems(groups.flatMap((group) => (
                         group.options.map((option) => ({ group, option }))
-                    ))).map(({ group, option }) => (
-                        <Button
-                            key={`${group.key}:${option.key}`}
-                            label={option.label}
-                            systemImage={option.key === group.selectedKey
-                                ? systemImage('checkmark')
-                                : option.systemImage ? systemImage(option.systemImage) : undefined}
-                            modifiers={[disabled(option.disabled === true)]}
-                            onPress={() => group.onSelect(option.key)}
-                        />
-                    )) : orderItems(groups).map((group) => (
-                        <Section
-                            key={group.key}
-                            header={(group.title ?? group.label) ? (
-                                <HStack spacing={6}>
-                                    {group.systemImage ? (
-                                        <Image systemName={sectionSystemImage(group.systemImage)} size={14} />
-                                    ) : null}
-                                    {/* The heading names what is being chosen, not
-                                        the current value, which the chip already shows. */}
-                                    <Text>{group.title ?? group.label}</Text>
-                                </HStack>
-                            ) : undefined}
-                        >
-                            {orderItems(group.options).map((option) => (
-                                <Button
-                                    key={option.key}
-                                    label={option.label}
-                                    systemImage={option.key === group.selectedKey
-                                        ? systemImage('checkmark')
-                                        : option.systemImage ? systemImage(option.systemImage) : undefined}
-                                    modifiers={[disabled(option.disabled === true)]}
-                                    onPress={() => group.onSelect(option.key)}
-                                />
-                            ))}
-                        </Section>
-                    ))}
+                    ))).map(({ group, option }) => renderOption(group, option))
+                        : orderItems(groups).map((group) => (
+                            <Section
+                                key={group.key}
+                                header={(group.title ?? group.label) ? (
+                                    <HStack spacing={6}>
+                                        {group.systemImage ? (
+                                            <Image systemName={sectionSystemImage(group.systemImage)} size={14} />
+                                        ) : null}
+                                        {/* The heading names what is being chosen, not
+                                            the current value, which the chip already shows. */}
+                                        <Text>{group.title ?? group.label}</Text>
+                                    </HStack>
+                                ) : undefined}
+                            >
+                                {orderItems(group.options).map((option) => renderOption(group, option))}
+                            </Section>
+                        ))}
                 </Menu>
             </Host>
         </View>

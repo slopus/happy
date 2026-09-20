@@ -518,6 +518,7 @@ export const MachineMetadataSchema = z.object({
         version: z.string(),
     }).passthrough().optional(),
     capabilities: z.object({
+        bots: z.boolean().optional(),
         newSession: z.boolean().optional(),
         resume: z.boolean().optional(),
         worktrees: z.boolean().optional(),

@@ -91,3 +91,30 @@ describe('spawn request id', () => {
         expect(abandon).not.toHaveBeenCalled();
     });
 });
+
+describe('spawn request id for a bot', () => {
+    beforeEach(() => {
+        mocks.uuidCount = 0;
+        completeSpawnRequest();
+    });
+
+    it('mints a new key when the bot changes name or face, and keeps it otherwise', () => {
+        const bot = { name: 'Release Captain', faceSeed: 'abc12345' };
+        const first = resolveSpawnRequestId(buildSpawnRequestSignature({ ...baseInput, bot }));
+        expect(resolveSpawnRequestId(buildSpawnRequestSignature({ ...baseInput, bot: { ...bot } }))).toBe(first);
+        expect(resolveSpawnRequestId(buildSpawnRequestSignature({
+            ...baseInput,
+            bot: { ...bot, name: 'Release Cap' },
+        }))).not.toBe(first);
+        expect(resolveSpawnRequestId(buildSpawnRequestSignature({
+            ...baseInput,
+            bot: { ...bot, faceSeed: 'zzz99999' },
+        }))).not.toBe(first);
+    });
+
+    it('is a different request from the session in the same place', () => {
+        const session = buildSpawnRequestSignature({ ...baseInput, bot: null });
+        const bot = buildSpawnRequestSignature({ ...baseInput, bot: { name: 'Bot', faceSeed: 'abc12345' } });
+        expect(session).not.toBe(bot);
+    });
+});

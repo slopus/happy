@@ -109,3 +109,91 @@ describe('Rig machine spawn RPC', () => {
         expect(machineRPC).not.toHaveBeenCalled();
     });
 });
+
+describe('Happy Agent spawn answers and cancellation', () => {
+    beforeEach(() => {
+        machineRPC.mockReset();
+    });
+
+    it('reads a refusal the daemon put under `message` as well as `errorMessage`', async () => {
+        const { machineSpawnNewSession } = await import('./ops');
+        const request = {
+            machineId: 'rig-machine',
+            directory: '/work/project',
+            agent: 'rig' as const,
+            clientRequestId: 'request-1',
+            happyAgentTarget: { kind: 'bot' as const, name: 'Release Captain' },
+        };
+
+        machineRPC.mockResolvedValueOnce({ type: 'error', message: 'That bot was archived.' });
+        await expect(machineSpawnNewSession(request)).resolves.toEqual({
+            type: 'error',
+            errorMessage: 'That bot was archived.',
+        });
+
+        machineRPC.mockResolvedValueOnce({ type: 'error', errorMessage: 'That model is not available.' });
+        await expect(machineSpawnNewSession(request)).resolves.toEqual({
+            type: 'error',
+            errorMessage: 'That model is not available.',
+        });
+
+        machineRPC.mockResolvedValueOnce({ type: 'error' });
+        await expect(machineSpawnNewSession(request)).resolves.toMatchObject({
+            type: 'error',
+            errorMessage: expect.any(String),
+        });
+    });
+
+    it('asks Happy Agent to make a bot by name', async () => {
+        machineRPC.mockResolvedValue({ type: 'success', sessionId: 'remote-1' });
+        const { machineSpawnNewSession } = await import('./ops');
+
+        await expect(machineSpawnNewSession({
+            machineId: 'rig-machine',
+            directory: '/work/project',
+            agent: 'rig',
+            clientRequestId: 'request-1',
+            providerId: 'codex',
+            modelId: 'gpt-5.6-sol',
+            permissionMode: 'auto',
+            effort: 'high',
+            happyAgentTarget: { kind: 'bot', name: 'Release Captain' },
+        })).resolves.toEqual({ type: 'success', sessionId: 'remote-1' });
+
+        expect(machineRPC).toHaveBeenCalledWith('rig-machine', 'spawn-happy-session', {
+            type: 'happy-agent-spawn',
+            clientRequestId: 'request-1',
+            target: { kind: 'bot', name: 'Release Captain' },
+            agentConfiguration: {
+                type: 'happy-agent',
+                permissionMode: 'auto',
+                providerId: 'codex',
+                modelId: 'gpt-5.6-sol',
+                effort: 'high',
+            },
+        });
+    });
+
+    it('cancels a request by the key it was asked with', async () => {
+        const { machineCancelHappySpawn } = await import('./ops');
+
+        machineRPC.mockResolvedValueOnce({ type: 'success' });
+        await expect(machineCancelHappySpawn('rig-machine', 'request-1')).resolves.toEqual({ success: true });
+        expect(machineRPC).toHaveBeenCalledWith('rig-machine', 'cancel-happy-spawn', {
+            type: 'happy-agent-spawn-cancel',
+            clientRequestId: 'request-1',
+        });
+
+        machineRPC.mockResolvedValueOnce({ type: 'error', errorMessage: 'The catalog is busy.' });
+        await expect(machineCancelHappySpawn('rig-machine', 'request-1')).resolves.toEqual({
+            success: false,
+            message: 'The catalog is busy.',
+        });
+
+        machineRPC.mockRejectedValueOnce(new Error('offline'));
+        await expect(machineCancelHappySpawn('rig-machine', 'request-1')).resolves.toEqual({
+            success: false,
+            message: 'offline',
+        });
+    });
+});

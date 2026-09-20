@@ -2,11 +2,13 @@ import * as React from 'react';
 import { useAllMachines, useSessions, useSetting } from '@/sync/storage';
 import { getCodeAgentDefaults, resolveAgentDefaultConfig } from '@/sync/agentDefaults';
 import {
+    machineCancelHappySpawn,
     machineSpawnNewSession,
     machineStopSession,
     sessionArchive,
     sessionKill,
     sessionSetAgentModes,
+    sessionSetAvatar,
 } from '@/sync/ops';
 import { sync } from '@/sync/sync';
 import { useNewSessionDraft } from '@/hooks/useNewSessionDraft';
@@ -47,7 +49,9 @@ import {
 import type { NewSessionStartPhase } from '@/components/newSessionProgress';
 import type { Session } from '@/sync/storageTypes';
 import { collectSessionPlaces, collectSessionWorkspaces } from '@/sync/agentSessionPlaces';
-import { resolveHappyAgentSpawnTarget } from '@/sync/happyAgentSpawn';
+import { resolveHappyAgentSpawnTarget, type HappyAgentSpawnTarget } from '@/sync/happyAgentSpawn';
+import { paintBotFace } from '@/utils/botFacePaint';
+import { describeBotNameProblem } from '@/utils/botName';
 
 const MAX_RIG_PENDING_RESULTS = 3;
 
@@ -72,6 +76,13 @@ type StartRun = {
     accepted: boolean;
     signal: Promise<typeof CANCELED>;
     cancel: () => void;
+    /**
+     * Tells the machine the request is no longer wanted, set once a Happy Agent
+     * spawn is on its way. Happy Agent makes the session or bot before it
+     * answers, so a Stop pressed while the answer is still pending has to reach
+     * the daemon by the request key, not by a session id nobody has yet.
+     */
+    abandonSpawn?: () => void;
 };
 
 function beginRun(): StartRun {
@@ -89,6 +100,29 @@ function beginRun(): StartRun {
         },
     };
     return run;
+}
+
+/**
+ * Paints the chosen face and puts it on the bot behind a session that is
+ * already open on this phone. Reported rather than thrown: the bot exists by
+ * now, and the caller decides what a missing face means.
+ */
+async function wearBotFace(
+    sessionId: string,
+    seed: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+    try {
+        const painting = await paintBotFace(seed);
+        const uploaded = await sync.uploadSessionBlob(sessionId, 'face.png', painting.bytes);
+        await sessionSetAvatar(sessionId, {
+            ref: uploaded.ref,
+            size: uploaded.size,
+            mimeType: painting.mimeType,
+        });
+        return { ok: true };
+    } catch (error) {
+        return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
 }
 
 function resolveOption<T extends { key: string }>(
@@ -130,6 +164,7 @@ export function useStartSessionFromDraft() {
         const run = activeRunRef.current;
         if (!run || run.accepted) return;
         run.cancel();
+        run.abandonSpawn?.();
         // Spent here, synchronously, and not when the canceled flow eventually
         // resumes. Stop hands the composer back on this same tick, so a new
         // Start can be pressed before that resumption ever runs — and if the
@@ -161,7 +196,16 @@ export function useStartSessionFromDraft() {
         // The draft survives machine changes and app upgrades. Resolve it again
         // at launch time so a stale Claude selection cannot spawn Claude while
         // the selected computer only reports Codex (the Android 1.7.0 regression).
-        const agentType = resolveChoiceAgent(choice, draft.agentType);
+        // A bot is Happy Agent's to make whatever harness the draft last chose.
+        const createsBot = draft.createsBot;
+        const botName = draft.botName.trim();
+        const botFaceSeed = draft.botFaceSeeds[draft.botFaceSlot];
+        const botNameProblem = createsBot ? describeBotNameProblem(botName) : null;
+        if (botNameProblem !== null) {
+            Modal.alert(t('common.error'), botNameProblem);
+            return false;
+        }
+        const agentType = createsBot ? 'rig' : resolveChoiceAgent(choice, draft.agentType);
         const agentChanged = agentType !== draft.agentType;
         const machine = resolveAgentMachine(choice, agentType);
         if (!machine) {
@@ -187,6 +231,10 @@ export function useStartSessionFromDraft() {
             : null;
         if (agentType === 'rig' && !rigCreation) {
             Modal.alert(t('common.error'), 'This machine cannot start Happy agent sessions');
+            return false;
+        }
+        if (createsBot && !rigCreation?.supportsBots) {
+            Modal.alert(t('common.error'), 'Happy Agent on this computer cannot create bots yet. Update it and try again.');
             return false;
         }
         const defaults = rigCreation
@@ -235,12 +283,14 @@ export function useStartSessionFromDraft() {
             return false;
         }
 
-        const prompt = draft.input.trim();
-        const attachments = draft.attachments;
+        // A bot takes no first message from here: its conversation opens empty
+        // and the prompt typed for a session stays in the draft, untouched.
+        const prompt = createsBot ? '' : draft.input.trim();
+        const attachments = createsBot ? [] : draft.attachments;
         let ownsCreatedSession = true;
         const isCurrentTarget = () => {
             const current = useNewSessionDraft.getState();
-            return ownsCreatedSession && (['selectedMachineId', 'selectedPath', 'agentType', 'permissionMode', 'modelMode', 'effortLevel', 'sessionType', 'worktreeKey'] as const)
+            return ownsCreatedSession && (['selectedMachineId', 'selectedPath', 'agentType', 'permissionMode', 'modelMode', 'effortLevel', 'sessionType', 'worktreeKey', 'createsBot', 'botName', 'botFaceSeeds', 'botFaceSlot'] as const)
                 .every(key => current[key] === draft[key]);
         };
         const selectedPath = draft.selectedPath?.trim() || '~';
@@ -260,15 +310,17 @@ export function useStartSessionFromDraft() {
         const requestedWorktree = draft.sessionType === 'worktree'
             ? draft.worktreeKey ?? '__new__'
             : '__none__';
-        let happyAgentTarget: ReturnType<typeof resolveHappyAgentSpawnTarget>;
+        let happyAgentTarget: HappyAgentSpawnTarget | null;
         try {
-            happyAgentTarget = rigCreation
-                ? resolveHappyAgentSpawnTarget({
-                    projectId: selectedProjectId,
-                    workspaceSelection: requestedWorktree,
-                    workspaces: projectWorkspaces,
-                })
-                : null;
+            happyAgentTarget = createsBot
+                ? { kind: 'bot', name: botName }
+                : rigCreation
+                    ? resolveHappyAgentSpawnTarget({
+                        projectId: selectedProjectId,
+                        workspaceSelection: requestedWorktree,
+                        workspaces: projectWorkspaces,
+                    })
+                    : null;
         } catch (error) {
             Modal.alert(
                 t('common.error'),
@@ -302,6 +354,7 @@ export function useStartSessionFromDraft() {
             modelKey: model.key,
             permissionMode: permission.key,
             effort: effort?.key ?? null,
+            bot: createsBot ? { name: botName, faceSeed: botFaceSeed } : null,
         }));
 
         const run = beginRun();
@@ -324,11 +377,27 @@ export function useStartSessionFromDraft() {
             // completions. Opening/using the session elsewhere revokes it.
             if (!ownsCreatedSession) return;
             ownsCreatedSession = false;
-            // The daemon first: it holds the child process and its socket is the
-            // one this session was spawned through. The session's own kill RPC
-            // is tried after, for a session already up and detached from the
-            // daemon, and the archive last so a session nobody can reach still
-            // leaves the active list rather than sitting there as debris.
+            // Happy Agent is asked by the request key it was asked with: that
+            // reaches the bot or session it made whether or not the relay knows
+            // it yet, and archives it in the catalog that owns it. The session's
+            // own kill RPC is the fallback, never the generic archive, which
+            // refuses a bot. Happy CLI has no such key, so its daemon is asked
+            // first: it holds the child process and its socket is the one this
+            // session was spawned through. The session's own kill RPC is tried
+            // after, for a session already up and detached from the daemon, and
+            // the archive last so a session nobody can reach still leaves the
+            // active list rather than sitting there as debris.
+            if (rigCreation) {
+                const cancelled = await machineCancelHappySpawn(machine.id, clientRequestId);
+                if (!cancelled.success) {
+                    const killed = await sessionKill(createdSessionId);
+                    if (!killed.success) {
+                        console.error('[spawn] The abandoned Happy Agent session could not be put away:', cancelled.message);
+                    }
+                }
+                await sync.refreshSessions().catch(() => { /* the list catches up on its own */ });
+                return;
+            }
             const stopped = await machineStopSession(machine.id, createdSessionId);
             if (!stopped.success) {
                 const killed = await sessionKill(createdSessionId);
@@ -423,6 +492,18 @@ export function useStartSessionFromDraft() {
                 return approved ? spawn(true) : null;
             };
 
+            // A Stop from here on reaches the daemon by the key, whatever the
+            // spawn has or has not answered yet. Once the session is known the
+            // cleanup with its id takes over, through the same cancel.
+            if (rigCreation && !existingSessionId) {
+                run.abandonSpawn = () => {
+                    void machineCancelHappySpawn(machine.id, clientRequestId).then((cancelled) => {
+                        if (!cancelled.success) {
+                            console.error('[spawn] The stopped Happy Agent request could not be cancelled:', cancelled.message);
+                        }
+                    });
+                };
+            }
             const spawning = existingSessionId ? Promise.resolve(existingSessionId) : spawn();
             const spawned = await untilCanceled(spawning);
             if (spawned === CANCELED) {
@@ -436,6 +517,10 @@ export function useStartSessionFromDraft() {
             }
             const sessionId = spawned;
             if (!sessionId) return false;
+            // From here the id is known and every way out goes through
+            // stopAbandonedSession, which cancels by the same key for Happy
+            // Agent; a second cancel from Stop would only repeat it.
+            run.abandonSpawn = undefined;
             rememberSpawnedSession(clientRequestId, sessionId, () => {
                 run.cancel();
                 void stopAbandonedSession(sessionId).catch(error => console.error('Failed to stop abandoned session:', error));
@@ -466,6 +551,26 @@ export function useStartSessionFromDraft() {
                 });
             }
 
+            if (createsBot) {
+                // The face travels as a session attachment, the way a picture
+                // for a message does, then the bot is asked to wear it. A face
+                // that cannot be painted or delivered is not a reason to lose
+                // the bot that was just made: it opens without one, and says so.
+                showPhase('avatar');
+                const worn = await untilCanceled(wearBotFace(sessionId, botFaceSeed));
+                if (worn === CANCELED) {
+                    void stopAbandonedSession(sessionId);
+                    return false;
+                }
+                if (!worn.ok) {
+                    console.error('[bot] The face could not be put on the bot:', worn.error);
+                    Modal.alert(
+                        'Bot created without a face',
+                        `${botName} is ready, but its picture could not be set: ${worn.error}`,
+                    );
+                }
+            }
+
             if (prompt || attachments.length > 0) {
                 const accepted = await untilCanceled(sync.sendMessage(sessionId, prompt, {
                     source: 'new_session', attachments, signal: run.controller.signal,
@@ -490,8 +595,16 @@ export function useStartSessionFromDraft() {
             completeSpawnRequest(clientRequestId);
             // Do not erase edits made while hydration or attachment upload ran.
             const currentDraft = useNewSessionDraft.getState();
-            if (currentDraft.input === draft.input) currentDraft.setInput('');
-            if (currentDraft.attachments === attachments) currentDraft.setAttachments([]);
+            if (createsBot) {
+                // The next bot starts from a clean name and fresh faces; the
+                // composer goes back to offering a session, the ordinary case.
+                if (currentDraft.botName === draft.botName) currentDraft.setBotName('');
+                currentDraft.rollBotFaces();
+                currentDraft.setCreatesBot(false);
+            } else {
+                if (currentDraft.input === draft.input) currentDraft.setInput('');
+                if (currentDraft.attachments === attachments) currentDraft.setAttachments([]);
+            }
             navigateToSession(sessionId);
             return true;
         } catch (error) {

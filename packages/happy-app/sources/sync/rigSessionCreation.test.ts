@@ -97,6 +97,16 @@ describe('Rig machine session creation', () => {
         expect(creation?.defaultEffortForModel('claude:shared-model')).toBe('max');
     });
 
+    it('offers bots only when the daemon says it can make them', () => {
+        // An older Happy Agent publishes no such capability, and must not be
+        // asked for a bot it does not know how to make.
+        expect(getRigMachineSessionCreation(rigMachine)?.supportsBots).toBe(false);
+        expect(getRigMachineSessionCreation({
+            ...rigMachine,
+            capabilities: { ...rigMachine.capabilities, bots: true },
+        } as MachineMetadata)?.supportsBots).toBe(true);
+    });
+
     it('finds an online Rig machine for automatic composer selection', () => {
         const machine = (id: string, active: boolean, metadata: MachineMetadata): Machine => ({
             id,

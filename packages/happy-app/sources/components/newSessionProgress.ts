@@ -1,7 +1,7 @@
 // There is deliberately no 'canceling' phase. Stop hands the composer back at
 // once and kills what it can without being watched, so a state meaning "waiting
 // to finish stopping" would be a wait the user never has to sit through.
-export type NewSessionStartPhase = 'worktree' | 'spawning' | 'opening';
+export type NewSessionStartPhase = 'worktree' | 'spawning' | 'opening' | 'avatar';
 
 /**
  * What the composer says while a session is being created. The dock stays up
@@ -12,19 +12,25 @@ export function resolveNewSessionProgressLabel({
     phase,
     agentName,
     picksWorkspaces,
+    createsBot = false,
 }: {
     phase: NewSessionStartPhase | null | undefined;
     agentName: string;
     picksWorkspaces: boolean;
+    /** A bot is being made rather than a session: the steps are named for it. */
+    createsBot?: boolean;
 }): string | null {
     if (!phase) return null;
     if (phase === 'worktree') {
         return picksWorkspaces ? 'Creating workspace…' : 'Creating worktree…';
     }
     if (phase === 'spawning') {
-        return `Starting ${agentName}…`;
+        return createsBot ? 'Creating bot…' : `Starting ${agentName}…`;
     }
-    return 'Opening session…';
+    if (phase === 'avatar') {
+        return 'Putting on a face…';
+    }
+    return createsBot ? 'Opening bot…' : 'Opening session…';
 }
 
 export type NewSessionPrimaryAction = 'send' | 'stop' | 'busy' | 'idle';

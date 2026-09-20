@@ -7,6 +7,8 @@ const styles = StyleSheet.create({
     container: {
         position: 'relative',
         width: '100%',
+        flexGrow: 1,
+        minWidth: 0,
     },
     picker: {
         ...StyleSheet.absoluteFillObject,
@@ -16,11 +18,13 @@ const styles = StyleSheet.create({
 
 export function NativeOptionsPicker({
     title,
-    options,
+    sections,
     selectedKey,
     onSelect,
     children,
 }: NativeOptionsPickerProps) {
+    // A select has no sections: every option in reading order.
+    const options = sections.flatMap((section) => section.options);
     return (
         <View style={styles.container}>
             <View pointerEvents="none">{children}</View>
@@ -33,7 +37,12 @@ export function NativeOptionsPicker({
                 style={styles.picker}
             >
                 {options.map((option) => (
-                    <Picker.Item key={option.key} label={option.label} value={option.key} />
+                    <Picker.Item
+                        key={option.key}
+                        label={option.label}
+                        value={option.key}
+                        enabled={option.disabled !== true}
+                    />
                 ))}
             </Picker>
         </View>

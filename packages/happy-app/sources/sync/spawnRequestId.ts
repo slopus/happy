@@ -30,6 +30,8 @@ export type SpawnRequestSignatureInput = {
     modelKey: string | null;
     permissionMode: string | null;
     effort: string | null;
+    /** The bot being made, when it is one: its name and the face seed it will wear. */
+    bot?: { name: string; faceSeed: string } | null;
 };
 
 let pendingRequest: { signature: string; clientRequestId: string; sessionId?: string; abandon?: () => void; release?: () => void } | null = null;
@@ -44,6 +46,7 @@ export function buildSpawnRequestSignature(input: SpawnRequestSignatureInput): s
         input.modelKey ?? '',
         input.permissionMode ?? '',
         input.effort ?? '',
+        input.bot ? [input.bot.name, input.bot.faceSeed] : '',
     ]);
 }
 

@@ -13,6 +13,7 @@ import {
 } from '@/sync/persistence';
 import type { PermissionModeKey } from '@/components/PermissionModeSelector';
 import type { AttachmentPreview } from '@/sync/attachmentTypes';
+import { rollBotFaceSeeds, type BotFaceSeeds, type BotFaceSlot } from '@/utils/botFace';
 
 interface NewSessionDraftState {
     input: string;
@@ -25,6 +26,17 @@ interface NewSessionDraftState {
     effortLevel: string | null;
     sessionType: NewSessionSessionType;
     worktreeKey: string | null;
+    /**
+     * The composer is making a new bot rather than a session in the project.
+     * Sits on top of the project choice, which stays what it was, and is not
+     * persisted: a restarted app should offer a session, the ordinary case.
+     */
+    createsBot: boolean;
+    /** What the bot will be called. Typed into the composer's own input while making a bot. */
+    botName: string;
+    /** The four faces on offer; `botFaceSlot` says which one the bot gets. */
+    botFaceSeeds: BotFaceSeeds;
+    botFaceSlot: BotFaceSlot;
 
     setInput: (input: string) => void;
     setAttachments: (attachments: AttachmentPreview[]) => void;
@@ -44,6 +56,12 @@ interface NewSessionDraftState {
     setEffortLevel: (level: string) => void;
     setSessionType: (type: NewSessionSessionType) => void;
     setWorktreeKey: (key: string | null) => void;
+    setCreatesBot: (createsBot: boolean) => void;
+    setBotName: (name: string) => void;
+    /** Picks one of the four faces by position. */
+    setBotFaceSlot: (slot: BotFaceSlot) => void;
+    /** Rolls four new faces. The picked position stays picked, now wearing its new face. */
+    rollBotFaces: () => void;
 }
 
 function persist(state: NewSessionDraftState) {
@@ -76,6 +94,10 @@ export const useNewSessionDraft = create<NewSessionDraftState>()((set, get) => (
     effortLevel: initial?.effortLevel ?? null,
     sessionType: initial?.sessionType ?? 'simple',
     worktreeKey: initial?.worktreeKey ?? null,
+    createsBot: false,
+    botName: '',
+    botFaceSeeds: rollBotFaceSeeds(),
+    botFaceSlot: 0,
 
     setInput: (input) => { set({ input }); persist(get()); },
     setAttachments: (attachments) => { set({ attachments }); },
@@ -88,4 +110,8 @@ export const useNewSessionDraft = create<NewSessionDraftState>()((set, get) => (
     setEffortLevel: (level) => { set({ effortLevel: level }); persist(get()); },
     setSessionType: (type) => { set({ sessionType: type }); persist(get()); },
     setWorktreeKey: (key) => { set({ worktreeKey: key }); persist(get()); },
+    setCreatesBot: (createsBot) => { set({ createsBot }); },
+    setBotName: (botName) => { set({ botName }); },
+    setBotFaceSlot: (botFaceSlot) => { set({ botFaceSlot }); },
+    rollBotFaces: () => { set({ botFaceSeeds: rollBotFaceSeeds() }); },
 }));

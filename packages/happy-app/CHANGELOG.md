@@ -1,3 +1,9 @@
+# September 20 - Bots from your phone
+
+- **Bots** — the composer can now make a Happy Agent bot: choose Bot, pick one of four faces or roll new ones, give it a name, and it opens ready to talk. Needs a Happy Agent that offers bots.
+- **Pickers** — the composer's menus mark the current choice the way the system does.
+- **Workspaces** — "Create New" now reads "Create New Workspace".
+
 # September 14 - Harness setup
 
 - The harness picker now lists only harnesses your computer can actually run — and offers setup help when none are installed yet.

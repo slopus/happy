@@ -28,6 +28,8 @@ export type RigMachineSessionCreation = {
     defaultModelKey: string | null;
     defaultPermissionMode: string | null;
     supportsWorktrees: boolean;
+    /** True when the machine can make a new bot from a `bot` spawn target. */
+    supportsBots: boolean;
     /** Backoff the machine publishes for polling a `pending` spawn result. */
     pendingRetryAfterMs: number | null;
     effortsForModel: (modelKey: string | null | undefined) => string[];
@@ -65,7 +67,7 @@ type RigMachineMetadata = {
     rigOnly?: unknown;
     client?: { id?: unknown } | null;
     cliAvailability?: { rig?: unknown } | null;
-    capabilities?: { newSession?: unknown; worktrees?: unknown } | null;
+    capabilities?: { bots?: unknown; newSession?: unknown; worktrees?: unknown } | null;
     defaults?: {
         providerId?: unknown;
         modelId?: unknown;
@@ -218,6 +220,7 @@ export function getRigMachineSessionCreation(
         defaultModelKey,
         defaultPermissionMode,
         supportsWorktrees: rig.capabilities?.worktrees === true,
+        supportsBots: rig.capabilities?.bots === true,
         pendingRetryAfterMs: finiteNumber(rig.sessionCreation?.pendingRetryAfterMs),
         effortsForModel: (modelKey) => modelFor(modelKey)?.thinkingLevels ?? [],
         defaultEffortForModel: (modelKey) => modelFor(modelKey)?.defaultThinkingLevel ?? null,

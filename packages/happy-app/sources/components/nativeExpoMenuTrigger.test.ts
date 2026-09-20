@@ -33,6 +33,7 @@ vi.mock('@expo/ui/swift-ui', async () => {
         Section: component('ExpoSection'),
         Spacer: component('ExpoSpacer'),
         Text: component('ExpoText'),
+        Toggle: component('ExpoToggle'),
     };
 });
 
@@ -112,13 +113,12 @@ function expectNoVisibleTriggerContent(
 }
 
 describe('iOS Expo-native menu triggers', () => {
-    it('draws the picker row in SwiftUI and keeps the RN row for layout alone', () => {
+    it('draws the picker value in SwiftUI and keeps the RN copy for layout alone', () => {
         const onMenuOpen = vi.fn();
         const renderer = render(React.createElement(NativeOptionsPicker, {
             title: 'Machine',
             triggerLabel: 'Mac',
-            systemImage: 'desktopcomputer',
-            options: [{ key: 'mac', label: 'Mac' }],
+            sections: [{ key: 'machine', title: 'Machine', options: [{ key: 'mac', label: 'Mac' }] }],
             selectedKey: 'mac',
             onSelect: vi.fn(),
             onMenuOpen,
@@ -146,11 +146,13 @@ describe('iOS Expo-native menu triggers', () => {
         });
 
         const label = render(menu.props.label);
-        expect(label.root.findByType('ExpoText' as any).props.children).toBe('Mac');
-        // One icon only: the leading symbol. The chevrons were noise.
-        const icons = label.root.findAllByType('ExpoImage' as any);
-        expect(icons).toHaveLength(1);
-        expect(icons[0].props.systemName).toBe('desktopcomputer');
+        const value = label.root.findByType('ExpoText' as any);
+        expect(value.props.children).toBe('Mac');
+        // Half a row is narrow: the value truncates rather than wrapping.
+        expect(value.props.modifiers).toContainEqual({ type: 'lineLimit', value: 1 });
+        // The value alone is the trigger. The row's icon is a React Native view
+        // beside the host, so it stays put while the value morphs into the menu.
+        expect(label.root.findAllByType('ExpoImage' as any)).toHaveLength(0);
     });
 
     // The menu tint, not foregroundColor, is what paints a SwiftUI label. Once
@@ -160,7 +162,7 @@ describe('iOS Expo-native menu triggers', () => {
         const picker = render(React.createElement(NativeOptionsPicker, {
             title: 'Machine',
             triggerLabel: 'Mac',
-            options: [{ key: 'mac', label: 'Mac' }],
+            sections: [{ key: 'machine', options: [{ key: 'mac', label: 'Mac' }] }],
             selectedKey: 'mac',
             onSelect: vi.fn(),
             children: React.createElement('Trigger'),
@@ -185,31 +187,55 @@ describe('iOS Expo-native menu triggers', () => {
             .toContainEqual({ type: 'tint', value: THEME_TEXT_COLOR });
     });
 
-    it('heads the menu with a disabled item so the icon survives UIMenu', () => {
+    it('lays the project menu out as New bot, then the projects under a heading, then the action', () => {
         const renderer = render(React.createElement(NativeOptionsPicker, {
-            title: 'Machine',
-            triggerLabel: 'Mac',
-            systemImage: 'desktopcomputer',
-            options: [{ key: 'mac', label: 'Mac' }],
-            selectedKey: 'mac',
+            title: 'Project',
+            triggerLabel: 'happy',
+            sections: [
+                { key: 'bot', options: [{ key: '__new_bot__', label: 'New bot' }] },
+                { key: 'projects', title: 'Projects', options: [{ key: '~/happy', label: 'happy' }] },
+                { key: 'custom', options: [{ key: '__custom__', label: 'Enter custom path…', action: true }] },
+            ],
+            selectedKey: '~/happy',
             onSelect: vi.fn(),
             children: React.createElement('Trigger'),
         }));
 
-        const heading = renderer.root.findAllByType('ExpoButton' as any).find((button: any) => button.props.label === 'Machine');
-        expect(heading.props.systemImage).toBe('desktopcomputer');
-        expect(heading.props.modifiers).toContainEqual({ type: 'disabled', value: { disabled: true } });
+        // One native section per group: the system draws its line between them,
+        // the same line the model menu draws between providers.
+        const sections = renderer.root.findAllByType('ExpoSection' as any);
+        expect(sections).toHaveLength(3);
+        expect(sections[0].props.header).toBeUndefined();
+        expect(render(sections[1].props.header).root.findByType('ExpoText' as any).props.children).toBe('Projects');
+        expect(sections[2].props.header).toBeUndefined();
+        // No icon heads the menu and no row carries one.
+        expect(renderer.root.findAllByType('ExpoImage' as any)).toHaveLength(0);
+        expect(renderer.root.findAllByType('ExpoButton' as any).every((button: any) => button.props.systemImage === undefined)).toBe(true);
+
+        // Choices are the system's checkable rows; the action is a plain button.
+        const toggles = renderer.root.findAllByType('ExpoToggle' as any);
+        expect(toggles.map((toggle: any) => [toggle.props.label, toggle.props.isOn])).toEqual([
+            ['New bot', false],
+            ['happy', true],
+        ]);
+        const buttons = renderer.root.findAllByType('ExpoButton' as any);
+        expect(buttons.map((button: any) => button.props.label)).toEqual(['Enter custom path…']);
     });
 
-    it('uses the complete option-row bounds and forwards native button selection', () => {
+    it('uses the complete option-row bounds and forwards native selection', () => {
         const onSelect = vi.fn();
         const renderer = render(React.createElement(NativeOptionsPicker, {
             title: 'Machine',
             triggerLabel: 'Mac',
-            options: [
-                { key: 'mac', label: 'Mac' },
-                { key: 'mini', label: 'Mini' },
-            ],
+            sections: [{
+                key: 'machine',
+                title: 'Machine',
+                options: [
+                    { key: 'mac', label: 'Mac' },
+                    { key: 'mini', label: 'Mini' },
+                    { key: 'gone', label: 'Gone', disabled: true },
+                ],
+            }],
             selectedKey: 'mac',
             onSelect,
             children: React.createElement('Trigger'),
@@ -219,34 +245,41 @@ describe('iOS Expo-native menu triggers', () => {
         expectFullTriggerHitArea(menu.props.label, 42);
         expect(renderer.root.findByType('ExpoHost' as any)).toBeDefined();
 
-        const buttons = renderer.root.findAllByType('ExpoButton' as any);
-        expect(buttons.find((button: any) => button.props.label === 'Mac')?.props.systemImage).toBe('checkmark');
-        const mini = buttons.find((button: any) => button.props.label === 'Mini');
-        act(() => mini.props.onPress());
+        // The check is the system's own selection state, not a checkmark image
+        // that would take the wide icon column and shift the section's labels.
+        const toggles = renderer.root.findAllByType('ExpoToggle' as any);
+        expect(toggles.find((toggle: any) => toggle.props.label === 'Mac')?.props.isOn).toBe(true);
+        const mini = toggles.find((toggle: any) => toggle.props.label === 'Mini');
+        expect(mini.props.isOn).toBe(false);
+        expect(toggles.find((toggle: any) => toggle.props.label === 'Gone')?.props.modifiers)
+            .toContainEqual({ type: 'disabled', value: { disabled: true } });
+        act(() => mini.props.onIsOnChange(true));
         expect(onSelect).toHaveBeenCalledOnce();
         expect(onSelect).toHaveBeenCalledWith('mini');
     });
 
-    it('commits the selection the user tapped', () => {
+    it('re-reads the selection from props after every tap, including a tap on the chosen row', () => {
         const onSelect = vi.fn();
         const renderer = render(React.createElement(NativeOptionsPicker, {
             title: 'Machine',
             triggerLabel: 'Mac',
-            options: [
-                { key: 'mac', label: 'Mac' },
-                { key: 'mini', label: 'Mini' },
-            ],
+            sections: [{ key: 'machine', options: [{ key: 'mac', label: 'Mac' }, { key: 'mini', label: 'Mini' }] }],
             selectedKey: 'mac',
             onSelect,
             children: React.createElement('Trigger'),
         }));
-        const buttons = renderer.root.findAllByType('ExpoButton' as any);
-        const mini = buttons.find((button: any) => button.props.label === 'Mini');
+        const findMac = () => renderer.root.findAllByType('ExpoToggle' as any).find((toggle: any) => toggle.props.label === 'Mac');
+        // The key sits on the Toggle element; the mock renders a host under it.
+        const keyOf = (instance: any) => instance.parent._fiber.key as string;
+        const before = keyOf(findMac());
 
-        act(() => mini.props.onPress());
+        // Tapping the chosen row flips its native state off while nothing in
+        // React changes; only a fresh row shows the selection again.
+        act(() => findMac().props.onIsOnChange(false));
 
-        expect(onSelect).toHaveBeenCalledOnce();
-        expect(onSelect).toHaveBeenCalledWith('mini');
+        expect(onSelect).toHaveBeenCalledWith('mac');
+        expect(findMac().props.isOn).toBe(true);
+        expect(keyOf(findMac())).not.toBe(before);
     });
 
     it('renders grouped settings as sections in one native menu with full trigger bounds', () => {
@@ -293,13 +326,39 @@ describe('iOS Expo-native menu triggers', () => {
         // The heading names what is being chosen, not the current value.
         expect(sectionHeader.root.findByType('ExpoText' as any).props.children).toBe('Permission mode');
 
-        const safeMode = renderer.root.findAllByType('ExpoButton' as any).find((button: any) => button.props.label === 'Safe mode');
-        expect(safeMode.props.systemImage).toBe('checkmark');
-        act(() => safeMode.props.onPress());
+        // A choice is drawn with the system's own selection state: the small
+        // leading check whose column every row and heading shares, rather than
+        // a checkmark image in the wide icon column that shifted one section.
+        const safeMode = renderer.root.findAllByType('ExpoToggle' as any).find((toggle: any) => toggle.props.label === 'Safe mode');
+        expect(safeMode.props.isOn).toBe(true);
+        act(() => safeMode.props.onIsOnChange(true));
         expect(onSelect).toHaveBeenCalledWith('safe');
 
-        const locked = renderer.root.findAllByType('ExpoButton' as any).find((button: any) => button.props.label === 'Locked');
+        const locked = renderer.root.findAllByType('ExpoToggle' as any).find((toggle: any) => toggle.props.label === 'Locked');
+        expect(locked.props.isOn).toBe(false);
         expect(locked.props.modifiers).toContainEqual({ type: 'disabled', value: { disabled: true } });
+    });
+
+    it('keeps action rows as plain buttons with their own icons', () => {
+        const onSelect = vi.fn();
+        const renderer = render(React.createElement(NativeSettingsMenu, {
+            groups: [{
+                key: 'appearance',
+                label: '',
+                title: '',
+                options: [{ key: 'open', label: 'Appearance', systemImage: 'paintpalette' }],
+                // null: these rows are actions, not a choice.
+                selectedKey: null,
+                onSelect,
+            }],
+            children: React.createElement('Trigger'),
+        }));
+
+        expect(renderer.root.findAllByType('ExpoToggle' as any)).toHaveLength(0);
+        const open = renderer.root.findByType('ExpoButton' as any);
+        expect(open.props.systemImage).toBe('paintpalette');
+        act(() => open.props.onPress());
+        expect(onSelect).toHaveBeenCalledWith('open');
     });
 
     it('draws the composer chip in SwiftUI when a native trigger is given', () => {
