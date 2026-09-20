@@ -1329,19 +1329,35 @@ class Sync {
             sync?.stop();
             let retryPending = false;
             sync = new CoalescingMessageSync(lease, async () => {
-                const operation = this.sessionMessageLoadGate.begin(lease);
-                const route = this.activeOpenSession;
-                if (retryPending && route?.sessionId === sessionId && route.messageLease === lease
-                    && !route.cancelled && this.sessionRouteOwnership.owns(route.owner)
-                    && this.sessionMessageLoadGate.isCurrent(operation)) {
-                    markSessionCriticalPathHydrationRetry();
-                }
-                try {
-                    await this.fetchMessages(sessionId, operation);
-                    retryPending = false;
-                } catch (error) {
-                    retryPending = true;
-                    throw error;
+                const owner = this.captureHistoryOwner(sessionId);
+                while (owner.isCurrent() && this.sessionMessageLoadGate.isLeaseCurrent(lease)) {
+                    const operation = this.sessionMessageLoadGate.begin(lease);
+                    const route = this.activeOpenSession;
+                    if (retryPending && route?.sessionId === sessionId && route.messageLease === lease
+                        && !route.cancelled && this.sessionRouteOwnership.owns(route.owner)
+                        && this.sessionMessageLoadGate.isCurrent(operation)) {
+                        markSessionCriticalPathHydrationRetry();
+                    }
+                    try {
+                        await this.fetchMessages(sessionId, operation);
+                        retryPending = false;
+                        if (this.sessionMessageLoadGate.isCurrent(operation)) return;
+                        // A history navigation can supersede this request without
+                        // applying the live target. Let that navigation finish, then
+                        // resume catch-up only if it still displays the latest edge.
+                        // Otherwise CoalescingMessageSync sees no progress and stops
+                        // permanently when the final result was the last socket event.
+                        await this.historyWindowLoads.get(sessionId);
+                        if (!owner.isCurrent() || !this.sessionMessageLoadGate.isLeaseCurrent(lease)) return;
+                        // Native pagination without IndexedDB waits on this lock
+                        // instead of historyWindowLoads. Drain its queued work
+                        // before a new load epoch could cancel that navigation.
+                        await this.getSessionMessageLock(sessionId).inLock(() => undefined);
+                        if (this.historyWindows.get(sessionId)?.isAtLatest === false) return;
+                    } catch (error) {
+                        retryPending = true;
+                        throw error;
+                    }
                 }
             }, () => this.getSessionProjectedMessageSeq(sessionId), () => (
                 this.sessionMessageLoadGate.isLeaseCurrent(lease)

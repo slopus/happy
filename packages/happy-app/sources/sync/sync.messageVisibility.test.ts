@@ -1045,6 +1045,107 @@ describe('message visibility synchronization', () => {
         expect(storage.getState().sessionMessages['projection-gap'].messages).toHaveLength(4);
     });
 
+    it.each([
+        ['memory', 'history-first'], ['memory', 'forward-first'],
+        ['disk', 'history-first'], ['disk', 'forward-first'],
+    ])('finishes a live result gap after an older history load supersedes its request (%s, %s)', async (cache, order) => {
+        Platform.OS = 'web';
+        const id = 'superseded-result-gap';
+        if (cache === 'disk') {
+            vi.stubGlobal('indexedDB', new IDBFactory()); vi.stubGlobal('IDBKeyRange', IDBKeyRange);
+            syncForTest.localHistory = await openLocalHistory('server|superseded-result-gap');
+        }
+        installSession(id);
+        mocks.state.currentViewingSessionId = id;
+        const lease = syncForTest.sessionMessageLoadGate.enter(id);
+        await syncForTest.applyLatestMessagePage(id, { messages: [apiMessage(100)], hasMore: true },
+            syncForTest.sessionMessageLoadGate.begin(lease));
+        const forward = deferred<Response>();
+        const older = deferred<Response>();
+        mocks.apiRequest.mockReturnValueOnce(forward.promise)
+            .mockReturnValueOnce(older.promise)
+            .mockResolvedValueOnce(response({ messages: [apiMessage(101), apiMessage(103)], hasMore: false }));
+
+        await syncForTest.handleUpdate(newMessageUpdate(id, 103));
+        await vi.waitFor(() => expect(mocks.apiRequest).toHaveBeenCalledTimes(1));
+        const loading = sync.loadOlderMessages(id);
+        await vi.waitFor(() => expect(mocks.apiRequest).toHaveBeenCalledTimes(2));
+        if (order === 'history-first') {
+            older.resolve(response({ messages: [apiMessage(99)], hasMore: true }));
+            await loading;
+        }
+        forward.resolve(response({ messages: [apiMessage(101), apiMessage(103)], hasMore: false }));
+        if (order === 'forward-first') {
+            await syncForTest.getSessionMessageLock(id).inLock(() => undefined);
+            expect(mocks.apiRequest).toHaveBeenCalledTimes(2);
+            older.resolve(response({ messages: [apiMessage(99)], hasMore: true }));
+            await loading;
+        }
+        await syncForTest.messagesSync.get(id).awaitQueue();
+
+        expect(mocks.state.sessionMessages[id].latestAppliedSeq).toBe(103);
+        expect(syncForTest.historyWindows.get(id).messages.map((message: ApiMessage) => message.seq))
+            .toEqual([99, 100, 101, 103]);
+        expect(mocks.apiRequest).toHaveBeenCalledTimes(3);
+    });
+
+    it.each(['android', 'ios'] as const)('finishes both native older history and the superseded result gap on %s without IndexedDB', async platform => {
+        Platform.OS = platform;
+        const id = 'native-result-gap';
+        installSession(id);
+        mocks.state.currentViewingSessionId = id;
+        const lease = syncForTest.sessionMessageLoadGate.enter(id);
+        await syncForTest.applyLatestMessagePage(id, { messages: [apiMessage(100)], hasMore: true },
+            syncForTest.sessionMessageLoadGate.begin(lease));
+        const forward = deferred<Response>();
+        mocks.apiRequest.mockReturnValueOnce(forward.promise).mockImplementation(async (url: string) => response({
+            messages: url.includes('before_seq=') ? [apiMessage(99)] : [apiMessage(101), apiMessage(103)], hasMore: false,
+        }));
+        await syncForTest.handleUpdate(newMessageUpdate(id, 103));
+        await vi.waitFor(() => expect(mocks.apiRequest).toHaveBeenCalledTimes(1));
+        const older = sync.loadOlderMessages(id);
+        forward.resolve(response({ messages: [apiMessage(101), apiMessage(103)], hasMore: false }));
+        await older;
+        await syncForTest.messagesSync.get(id).awaitQueue();
+        expect(mocks.state.sessionMessages[id].messagesMap['message-99']).toBeDefined();
+        expect(mocks.state.sessionMessages[id].messagesMap['message-103']).toBeDefined();
+        expect(mocks.state.sessionMessages[id].latestAppliedSeq).toBe(103);
+        expect(mocks.state.sessionMessages[id].olderError).toBeNull();
+        expect(mocks.apiRequest).toHaveBeenCalledTimes(3);
+    });
+
+    it.each(['historical', 'evicted', 'account'])('does not resume superseded result sync after %s navigation', async terminal => {
+        Platform.OS = 'android';
+        vi.stubGlobal('indexedDB', new IDBFactory()); vi.stubGlobal('IDBKeyRange', IDBKeyRange);
+        const id = 'abandoned-result-gap';
+        const history = (await openLocalHistory('server|abandoned-result-gap'))!;
+        syncForTest.localHistory = history;
+        installSession(id);
+        mocks.state.currentViewingSessionId = id;
+        await history.commitPage(id, { direction: 'older', boundary: 2147483647,
+            messages: Array.from({ length: 400 }, (_, i) => apiMessage(i + 1)), hasMore: false });
+        const lease = syncForTest.sessionMessageLoadGate.enter(id);
+        await syncForTest.applyHistoryWindow(id, await history.readWindow(id, { limit: 300 }),
+            syncForTest.sessionMessageLoadGate.begin(lease));
+        const forward = deferred<Response>();
+        mocks.apiRequest.mockReturnValueOnce(forward.promise);
+        await syncForTest.handleUpdate(newMessageUpdate(id, 403));
+        await vi.waitFor(() => expect(mocks.apiRequest).toHaveBeenCalledTimes(1));
+        const pending = syncForTest.messagesSync.get(id).awaitQueue();
+        if (terminal === 'historical') await sync.loadOlderMessages(id);
+        else if (terminal === 'evicted') syncForTest.releaseSessionMessageCache(id);
+        else syncForTest.encryption = { ...syncForTest.encryption };
+        forward.resolve(response({ messages: [apiMessage(401), apiMessage(403)], hasMore: false }));
+        await pending;
+        await syncForTest.getSessionMessageLock(id).inLock(() => undefined);
+        expect(mocks.apiRequest).toHaveBeenCalledTimes(1);
+        expect(mocks.state.sessionMessages[id]?.messages.some((message: any) => message.text === 'fetched-403') ?? false).toBe(false);
+        if (terminal === 'historical') {
+            expect(syncForTest.historyWindows.get(id).isAtLatest).toBe(false);
+            expect(mocks.state.sessionMessages[id].latestAppliedSeq).toBeLessThan(400);
+        }
+    });
+
     it.each([101, 102])('does not confuse ACK %s with a committed remote projection', async ackSeq => {
         Platform.OS = 'web';
         const storage = await seedLocalProjectionSession();
