@@ -105,8 +105,9 @@ export interface ProjectHomeListLayout {
  * away and never the card. Chats are not rows here at all; a checkout opens its
  * most recent chat and the rest sit beside it as tabs on the session screen.
  *
- * There is no archive here. This screen is about work in flight, and retired
- * sessions stay one layout switch away in the flat home list.
+ * The archive trails the projects as a flat, date-grouped tail. Retired chats
+ * stay out of the project cards, but the divider below them can reveal or hide
+ * the same archive that the flat home list shows.
  */
 export const ProjectHomeList = React.memo((props: ProjectHomeListLayout) => {
     const data = useVisibleSessionListViewData();
@@ -176,13 +177,6 @@ export const ProjectHomeListView = React.memo(({
     const styles = stylesheet;
     const { theme } = useUnistyles();
     const safeArea = useSafeAreaInsets();
-    const router = useRouter();
-
-    // Nothing listens for the dock in the sidebar layout or on web, where it is
-    // never mounted; those fall back to the standalone screen.
-    const newSession = React.useCallback(() => {
-        if (!requestHomeDockFocus()) router.navigate('/new');
-    }, [router]);
 
     const keyExtractor = React.useCallback((row: ProjectHomeRow) => {
         switch (row.type) {
@@ -204,17 +198,6 @@ export const ProjectHomeListView = React.memo(({
                 return (
                     <View style={styles.section}>
                         <Text style={styles.sectionText}>{item.label}</Text>
-                        {item.id === 'projects' && (
-                            <Pressable
-                                onPress={newSession}
-                                hitSlop={10}
-                                accessibilityRole="button"
-                                accessibilityLabel={t('sidebar.newSession')}
-                                style={({ pressed }) => [styles.sectionAction, pressed && styles.pressed]}
-                            >
-                                <Ionicons name="add" size={18} color={theme.colors.textSecondary} />
-                            </Pressable>
-                        )}
                     </View>
                 );
             case 'machine':
@@ -259,7 +242,7 @@ export const ProjectHomeListView = React.memo(({
             case 'archived':
                 return <ChatRow session={item.session} archived />;
         }
-    }, [newSession, onToggle, onToggleArchive, styles, theme]);
+    }, [onToggle, onToggleArchive, styles, theme]);
 
     const ListHeader = React.useCallback(() => (
         <UpdateBanner
@@ -672,6 +655,7 @@ function sameEntry(before: ProjectHomeEntry, after: ProjectHomeEntry): boolean {
         && before.avatarSession?.id === after.avatarSession?.id
         && before.avatarSession?.avatarId === after.avatarSession?.avatarId
         && before.avatarSession?.projectAvatarUri === after.avatarSession?.projectAvatarUri
+        && before.avatarSession?.projectAvatarThumbhash === after.avatarSession?.projectAvatarThumbhash
         && (!before.session || !after.session || sameDrawnSession(before.session, after.session));
 }
 
@@ -787,12 +771,6 @@ const stylesheet = StyleSheet.create((theme) => ({
         textTransform: 'uppercase',
         color: theme.colors.groupped.sectionTitle,
         ...Typography.default('semiBold'),
-    },
-    sectionAction: {
-        width: 26,
-        height: 26,
-        alignItems: 'center',
-        justifyContent: 'center',
     },
     machineHeader: {
         flexDirection: 'row',
