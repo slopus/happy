@@ -708,13 +708,19 @@ const ChatRow = React.memo(({ session, bot = false, archived = false }: {
             style={[styles.botRow, archived && styles.archivedRow]}
         >
             <View style={styles.avatarLane}>
+                {/*
+                  * The chat's own picture, which already falls back to its
+                  * project's artwork where there is one. Reading that artwork
+                  * directly left every bot blank: a bot belongs to no project,
+                  * and the face painted onto it is the only picture it has.
+                  */}
                 <Avatar
                     id={session.avatarId}
                     size={AVATAR_SIZE}
                     flavor={null}
                     bot={bot}
-                    imageUrl={session.projectAvatarUri}
-                    thumbhash={session.projectAvatarThumbhash}
+                    imageUrl={session.avatarUri}
+                    thumbhash={session.avatarThumbhash}
                 />
             </View>
             <RowName
