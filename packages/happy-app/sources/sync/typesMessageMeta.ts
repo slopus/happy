@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 // Shared message metadata schema
 export const MessageMetaSchema = z.object({
+    continuationContextSourceId: z.string().optional(),
     sentFrom: z.string().optional(), // Source identifier
     permissionMode: z.string().optional(), // Permission mode key for this message
     permissionModeExplicit: z.boolean().optional(), // True when the user selected a per-session mode

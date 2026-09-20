@@ -82,6 +82,7 @@ export const MetadataSchema = z.object({
      * Both ride inside encrypted metadata so the server stays oblivious.
      */
     continuationOfSessionId: z.string().optional(),
+    continuationContext: z.string().max(24000).optional(),
     continuedBySessionId: z.string().optional(),
     parentSessionId: z.string().optional(),
     forkedFromMessageId: z.string().optional(),

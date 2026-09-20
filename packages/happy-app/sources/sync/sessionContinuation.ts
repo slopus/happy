@@ -1,3 +1,5 @@
+import { sync } from './sync';
+import { buildContinuationContext } from './continuationContext';
 import { MMKV } from 'react-native-mmkv';
 import { accountStorageId, assertAccountRuntime } from '@/auth/accountRuntime';
 import { storage } from './storage';
@@ -8,6 +10,30 @@ import { isMachineOnline } from '@/utils/machineUtils';
 import { getSessionName } from '@/utils/sessionUtils';
 import type { Session } from './storageTypes';
 
+const preparedContexts = new Map<string, string>();
+async function prepareContext(id: string): Promise<string> {
+    await sync.ensureMessagesLoaded(id);
+    assertAccountRuntime();
+    if (storage.getState().sessionMessages[id]?.hasMoreNewer) await sync.jumpToLatestMessages(id);
+    assertAccountRuntime();
+    const history = storage.getState().sessionMessages[id];
+    if (!history?.isLoaded || !history.isAtLatest || !storage.getState().sessions[id]) throw new Error('continuation-history-unavailable');
+    // The latest wire page may consist entirely of tool events. Walk a bounded
+    // number of older pages until an actual user request is included, retaining
+    // the latest text even if the visible history window shifts while paging.
+    const collected = new Map(history.messages.map(message => [message.id, message]));
+    for (let page = 0; page < 5 && ![...collected.values()].some(message => message.kind === 'user-text')
+        && storage.getState().sessionMessages[id]?.hasMoreOlder; page++) {
+        await sync.loadOlderMessages(id);
+        assertAccountRuntime();
+        const older = storage.getState().sessionMessages[id];
+        if (!older?.isLoaded || !storage.getState().sessions[id]) throw new Error('continuation-history-unavailable');
+        for (const message of older.messages) collected.set(message.id, message);
+    }
+    if (storage.getState().sessionMessages[id]?.hasMoreOlder
+        && ![...collected.values()].some(message => message.kind === 'user-text')) throw new Error('continuation-history-unavailable');
+    return buildContinuationContext([...collected.values()], storage.getState().sessions[id].metadata?.continuationContext);
+}
 const receipts = new MMKV({ id: accountStorageId('session-continuations') });
 export function continuationSpawnOptions(source: Session): SpawnSessionOptions {
     const metadata = source.metadata;
@@ -34,6 +60,7 @@ const continueSession = createContinuationCoordinator({
             options = continuationSpawnOptions(source);
             const machine = storage.getState().machines[options.machineId];
             if (!machine || !isMachineOnline(machine)) throw new Error('continuation-machine-offline');
+            preparedContexts.set(id, await prepareContext(id));
         } catch (error) { receipts.delete(id); throw error; }
         // A thrown transport error has an unknown remote outcome. Keep starting
         // rather than silently spawning a second worker when the user retries.
@@ -51,8 +78,10 @@ const continueSession = createContinuationCoordinator({
         const source = storage.getState().sessions[sourceId];
         const target = storage.getState().sessions[targetId];
         if (!source?.metadata || !target?.metadata) throw new Error('continuation-source-unavailable');
+        const context = target.metadata.continuationContext ?? preparedContexts.get(sourceId) ?? await prepareContext(sourceId);
+        assertAccountRuntime();
         const targetUpdate = await sessionUpdateMetadata(targetId, target.metadata, target.metadataVersion, metadata => ({
-            ...metadata, continuationOfSessionId: sourceId,
+            ...metadata, continuationOfSessionId: sourceId, continuationContext: context,
             summary: { text: getSessionName(source), updatedAt: Date.now() },
         }));
         assertAccountRuntime();
@@ -64,6 +93,7 @@ const continueSession = createContinuationCoordinator({
         const sourceUpdate = await sessionUpdateMetadata(sourceId, source.metadata, source.metadataVersion, metadata => ({ ...metadata, continuedBySessionId: targetId }));
         assertAccountRuntime();
         storage.getState().applySessions([{ ...storage.getState().sessions[sourceId], metadata: sourceUpdate.metadata, metadataVersion: sourceUpdate.version }]);
+        preparedContexts.delete(sourceId);
     },
 });
 

@@ -250,6 +250,7 @@ export function useSessionQuickActions(
             const message = error instanceof Error ? error.message : '';
             const translated = message === 'continuation-machine-offline' ? t('session.continueOffline')
                 : message === 'continuation-outcome-unknown' ? t('session.continueUnknown')
+                : message === 'continuation-history-unavailable' ? t('session.continueHistoryError')
                 : message === 'continuation-hydration-failed' ? t('session.continueHydration')
                 : message.startsWith('continuation-') ? t('session.continueMissing') : message;
             throw new HappyError(translated || t('errors.unknownError'), false);

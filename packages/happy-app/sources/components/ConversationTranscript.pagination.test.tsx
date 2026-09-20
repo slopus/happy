@@ -1462,6 +1462,22 @@ describe('ConversationTranscript older history pagination', () => {
         expect(retry).toHaveBeenCalledOnce(); act(() => renderer.unmount());
     });
 
+    it.each([false, true])('shows continuation history errors without scrolling (retryable=%s)', async (retryable) => {
+        const retry = vi.fn(); let renderer: any;
+        await act(async () => { renderer = TestRenderer.create(<ConversationTranscript metadata={null} messages={[userMessage('u')]}
+            hasMoreOlder olderError="missing" olderErrorMessage="Previous session unavailable" olderRetryable={retryable} onLoadOlder={retry} />); });
+        expect(byId(renderer, 'history-older-error').props.children).toBe('Previous session unavailable');
+        const banner = byId(renderer, 'history-older-notice');
+        expect(banner.props.style.position).not.toBe('absolute');
+        expect(renderer.root.findAllByProps({ testID: 'history-older-retry' })).toHaveLength(retryable ? 1 : 0);
+        expect(retry).not.toHaveBeenCalled();
+        if (retryable) {
+            act(() => byId(renderer, 'history-older-retry').props.onPress());
+            expect(retry).toHaveBeenCalledOnce();
+        }
+        act(() => renderer.unmount());
+    });
+
     it('cancels estimated anchor-scroll retries after switching sessions', async () => {
         vi.useFakeTimers(); const scrollToIndex = vi.fn(); let renderer: any;
         const render = (id: string) => <ConversationTranscript metadata={null} sessionId={id} messages={[userMessage('u')]} />;

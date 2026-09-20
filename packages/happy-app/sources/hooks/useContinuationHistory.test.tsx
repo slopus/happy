@@ -12,7 +12,7 @@ vi.mock('@/sync/storage', async () => ({ storage: (await import('zustand')).crea
 vi.mock('@/sync/sync', () => ({ sync: {
     ensureMessagesLoaded: vi.fn().mockResolvedValue(undefined), loadOlderMessages: vi.fn().mockResolvedValue(undefined),
     loadNewerMessages: vi.fn().mockResolvedValue(undefined), jumpToLatestMessages: vi.fn().mockResolvedValue(undefined),
-    getHistoryBoundarySeq: vi.fn().mockReturnValue(1),
+    getHistoryBoundarySeq: vi.fn().mockReturnValue(1), checkSessionExists: vi.fn().mockResolvedValue(true),
 } }));
 vi.mock('@/sync/ensureSessionHydratedWithRetry', () => ({ ensureSessionHydratedWithRetry: vi.fn().mockResolvedValue(true) }));
 vi.mock('@/auth/accountRuntime', () => ({ accountRuntimeCurrent: () => true }));
@@ -44,6 +44,7 @@ let consoleError: ReturnType<typeof vi.spyOn>;
 beforeEach(() => {
     (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
     vi.clearAllMocks();
+    vi.mocked(sync.checkSessionExists).mockResolvedValue(true);
     vi.mocked(ensureSessionHydratedWithRetry).mockResolvedValue(true);
     vi.mocked(sync.ensureMessagesLoaded).mockResolvedValue(undefined);
     vi.mocked(sync.loadOlderMessages).mockResolvedValue(undefined);
@@ -166,4 +167,38 @@ it('does not silently join an unreadable parent whose sync completed without loa
     await mount();
     expect(latest.olderError).toBe('session.continueHistoryError');
     expect(latest.sections.map(s => s.id)).toEqual(['new']);
+});
+
+it('stops retrying a parent confirmed unavailable by the server', async () => {
+    seed({ new: 'missing' });
+    vi.mocked(ensureSessionHydratedWithRetry).mockResolvedValue(false);
+    vi.mocked(sync.checkSessionExists).mockResolvedValue(false);
+    await mount();
+    expect(latest.olderError).toBe('session.continueHistoryUnavailable');
+    expect(latest.olderRetryable).toBe(false);
+});
+it('keeps failed availability probes retryable', async () => {
+    seed({ new: 'missing' });
+    vi.mocked(ensureSessionHydratedWithRetry).mockResolvedValue(false);
+    vi.mocked(sync.checkSessionExists).mockRejectedValue(new Error('offline'));
+    await mount();
+    expect(latest.olderError).toBe('session.continueHistoryError');
+    expect(latest.olderRetryable).toBe(true);
+});
+it('keeps transient hydration failures retryable and recovers after retry', async () => {
+    seed({ new: 'old', old: undefined });
+    vi.mocked(ensureSessionHydratedWithRetry).mockResolvedValueOnce(false);
+    await mount();
+    expect(latest.olderRetryable).toBe(true);
+    await act(async () => latest.loadOlder());
+    expect(latest.olderError).toBeNull();
+    expect(latest.sections.map(s => s.id)).toEqual(['new', 'old']);
+});
+
+it('confirms server absence when message sync finishes without a readable parent', async () => {
+    seed({ new: 'old', old: undefined }, { old: { isLoaded: false } });
+    vi.mocked(sync.checkSessionExists).mockResolvedValue(false);
+    await mount();
+    expect(latest.olderError).toBe('session.continueHistoryUnavailable');
+    expect(latest.olderRetryable).toBe(false);
 });

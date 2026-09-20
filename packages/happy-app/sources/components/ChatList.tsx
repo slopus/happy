@@ -57,7 +57,8 @@ const ContinuationChatList = React.memo((props: ChatListProps) => {
         onLoadOlder={history.loadOlder} onLoadNewer={history.loadNewer}
         hasMoreOlder={history.hasMoreOlder} hasMoreNewer={history.hasMoreNewer}
         isLoadingOlder={history.loading} isLoadingNewer={history.loading}
-        olderError={history.olderError} newerError={history.newerError}
+        olderError={history.olderError} olderErrorMessage={history.olderErrorMessage}
+        olderRetryable={history.olderRetryable} newerError={history.newerError}
         boundaryScope={`${history.olderCursor}/${history.newerCursor}`}
         isAtLatest={history.isAtLatest} onJumpToLatest={history.jumpLatest}
         showAnchorNavigation={false} visualTop={<ListHeader />}

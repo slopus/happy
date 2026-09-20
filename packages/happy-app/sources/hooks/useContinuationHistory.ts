@@ -13,11 +13,12 @@ export function useContinuationHistory(currentId: string) {
     const [ids, setIds] = React.useState([currentId]);
     const [loading, setLoading] = React.useState(false);
     const [error, setError] = React.useState<string | null>(null);
+    const [olderRetryable, setOlderRetryable] = React.useState(true);
     const busy = React.useRef<object | null>(null);
     const owner = React.useRef({ currentId, live: true });
     React.useEffect(() => {
         const token = { currentId, live: true }; owner.current = token;
-        setIds([currentId]); setError(null); setLoading(false);
+        setIds([currentId]); setError(null); setLoading(false); setOlderRetryable(true);
         return () => { token.live = false; };
     }, [currentId]);
     const snapshots = storage(useShallow(state => ids.map(id => state.sessionMessages[id])));
@@ -37,9 +38,16 @@ export function useContinuationHistory(currentId: string) {
         if (busy.current === token || ids[0] !== currentId) return;
         const isCurrent = () => token.live && owner.current === token && accountRuntimeCurrent();
         if (!isCurrent()) return;
-        busy.current = token; setLoading(true); setError(null);
+        busy.current = token; setLoading(true); setError(null); setOlderRetryable(true);
         try { await action(isCurrent); }
-        catch (e) { if (isCurrent()) setError(e instanceof Error && e.message === 'cycle' ? t('session.continueCycle') : t('session.continueHistoryError')); }
+        catch (e) {
+            if (isCurrent()) {
+                const reason = e instanceof Error ? e.message : '';
+                setOlderRetryable(reason !== 'unavailable' && reason !== 'cycle');
+                setError(reason === 'unavailable' ? t('session.continueHistoryUnavailable')
+                    : reason === 'cycle' ? t('session.continueCycle') : t('session.continueHistoryError'));
+            }
+        }
         finally { if (busy.current === token) busy.current = null; if (isCurrent()) setLoading(false); }
     };
     const loadOlder = (viewport?: HistoryViewportReader) => run(async isCurrent => {
@@ -47,11 +55,16 @@ export function useContinuationHistory(currentId: string) {
         if (oldest.hasMoreOlder) { await sync.loadOlderMessages(oldestId, viewport); return; }
         if (!parentId) return;
         if (ids.includes(parentId)) throw new Error('cycle');
-        if (!await ensureSessionHydratedWithRetry(parentId, isCurrent)) throw new Error('missing');
+        if (!await ensureSessionHydratedWithRetry(parentId, isCurrent)) {
+            if (!isCurrent()) return;
+            throw new Error(await sync.checkSessionExists(parentId) ? 'missing' : 'unavailable');
+        }
         if (!isCurrent()) return;
         await sync.ensureMessagesLoaded(parentId);
         if (!isCurrent()) return;
-        if (!storage.getState().sessionMessages[parentId]?.isLoaded) throw new Error('unreadable');
+        if (!storage.getState().sessionMessages[parentId]?.isLoaded) {
+            throw new Error(await sync.checkSessionExists(parentId) ? 'unreadable' : 'unavailable');
+        }
         if (storage.getState().sessionMessages[parentId]?.hasMoreNewer) await sync.jumpToLatestMessages(parentId);
         if (isCurrent()) setIds(previous => previous.includes(parentId) ? previous : [...previous, parentId]);
     });
@@ -70,7 +83,8 @@ export function useContinuationHistory(currentId: string) {
         isAtLatest: newestId === currentId && newest?.isAtLatest !== false,
         olderCursor: `${oldestId}:${sync.getHistoryBoundarySeq(oldestId, 'older') ?? ''}`,
         newerCursor: `${newestId}:${sync.getHistoryBoundarySeq(newestId, 'newer') ?? ''}`,
-        loading, olderError: error ?? oldest?.olderError ?? null,
+        loading, olderRetryable, olderError: error ?? oldest?.olderError ?? null,
+        olderErrorMessage: error ?? (oldest?.olderError ? t('session.continueHistoryError') : null),
         newerError: newest?.newerError ?? null,
     };
 }

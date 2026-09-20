@@ -77,6 +77,8 @@ export type ConversationTranscriptProps = {
     isAtLatest?: boolean;
     onJumpToLatest?: () => Promise<void>;
     olderError?: string | null;
+    olderErrorMessage?: string | null;
+    olderRetryable?: boolean;
     newerError?: string | null;
     visualTop?: React.ReactElement | null;
     visualBottom?: React.ReactElement | null;
@@ -789,6 +791,12 @@ export const ConversationTranscript = React.memo((props: ConversationTranscriptP
         <TranscriptReadingContext.Provider value={reading.markers}>
         <TranscriptGroupExpansionContext.Provider value={nestedExpansion}>
         <View ref={viewportRef} collapsable={false} style={styles.container}>
+            {/* Continuation failures can occur before any scroll event, including
+                conversations shorter than the viewport. Keep their notice in
+                normal flow so it remains visible without covering messages. */}
+            {!!props.olderError && !!props.olderErrorMessage && <HistoryBoundary direction="older" reached inline
+                error={props.olderError} message={props.olderErrorMessage} retryable={props.olderRetryable}
+                retry={() => loadBoundary('older', true)} />}
             <TranscriptList<DisplayItem & { renderKey: string }>
                 ref={flatListRef}
                 testID="conversation-transcript-list"
@@ -849,8 +857,8 @@ export const ConversationTranscript = React.memo((props: ConversationTranscriptP
                 onEndReachedThreshold={2}
                 onScrollToIndexFailed={handleScrollToIndexFailed}
             />
-            <HistoryBoundary direction="older" reached={boundaries.older} loading={props.isLoadingOlder}
-                error={props.olderError} retry={() => loadBoundary('older', true)} />
+            <HistoryBoundary direction="older" reached={boundaries.older && !(props.olderError && props.olderErrorMessage)} loading={props.isLoadingOlder}
+                error={props.olderError} message={props.olderErrorMessage} retryable={props.olderRetryable} retry={() => loadBoundary('older', true)} />
             <HistoryBoundary direction="newer" reached={boundaries.newer && !isAtLatest} loading={props.isLoadingNewer}
                 error={props.newerError} retry={() => loadBoundary('newer', true)} />
             {props.showAnchorNavigation !== false && showAnchorPill && hasAnchorNavigation ? (
@@ -898,7 +906,7 @@ export const ConversationTranscript = React.memo((props: ConversationTranscriptP
     );
 });
 
-function HistoryBoundary(props: { direction: 'older' | 'newer'; reached: boolean; loading?: boolean; error?: string | null; retry: () => void }) {
+function HistoryBoundary(props: { direction: 'older' | 'newer'; reached: boolean; loading?: boolean; error?: string | null; message?: string | null; retryable?: boolean; inline?: boolean; retry: () => void }) {
     const { theme } = useUnistyles();
     const [visible, setVisible] = React.useState(false);
     React.useEffect(() => {
@@ -908,9 +916,10 @@ function HistoryBoundary(props: { direction: 'older' | 'newer'; reached: boolean
         return () => clearTimeout(timer);
     }, [props.reached, props.loading]);
     if (!props.reached || (!visible && !props.error)) return null;
-    return <View style={{ position: 'absolute', [props.direction === 'older' ? 'top' : 'bottom']: 0, left: 0, right: 0,
-        height: 36, alignItems: 'center', justifyContent: 'center' }}>
-        {props.error ? <Pressable testID={`history-${props.direction}-retry`} accessibilityRole="button" onPress={props.retry}>
+    return <View testID={`history-${props.direction}-notice`} style={{ ...(props.inline ? {} : { position: 'absolute' as const, [props.direction === 'older' ? 'top' : 'bottom']: 0, left: 0, right: 0 }),
+        minHeight: 36, paddingHorizontal: 16, paddingVertical: 6, gap: 4, backgroundColor: theme.colors.surface, alignItems: 'center', justifyContent: 'center' }}>
+        {props.error && props.message && <Text testID={`history-${props.direction}-error`} style={{ color: theme.colors.textSecondary, textAlign: 'center' }}>{props.message}</Text>}
+        {props.error ? props.retryable !== false && <Pressable testID={`history-${props.direction}-retry`} accessibilityRole="button" onPress={props.retry}>
             <Text style={{ color: theme.colors.text }}>{t(props.error === 'history-window-capacity' ? 'common.continue' : 'common.retry')}</Text>
         </Pressable> : <ActivityIndicator testID={`history-${props.direction}-loading`} size="small" />}
     </View>;

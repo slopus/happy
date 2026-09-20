@@ -1,3 +1,4 @@
+import { accountRuntimeCurrent } from '@/auth/accountRuntime';
 import type { HistoryViewportReader, HistoryViewportRange } from './historyWindowPolicy';
 import Constants from 'expo-constants';
 import { refreshNativeUpdateStatus } from './nativeUpdate';
@@ -453,6 +454,9 @@ class Sync {
     private sessionQueueProcessing = new Map<string, object>();
     private sessionFallbackTitleInFlight = new Set<string>();
     private sessionMessageLocks = new Map<string, AsyncLock>();
+    private continuationSendLocks = new Map<string, AsyncLock>();
+    // Delivery evidence belongs to the session, never to its evictable viewport.
+    private continuationDeliveries = new Map<string, { owner: Encryption; source: string; localId?: string; confirmed: boolean }>();
     // Tracks incremental session writes so a full refresh can retain sessions
     // that appeared after its request began, even when they are absent from
     // that response's snapshot.
@@ -1678,6 +1682,7 @@ class Sync {
             }
             pending.length = 0;
             this.pendingOutbox.delete(sessionId);
+            this.continuationDeliveries.delete(sessionId);
             sessionIds.push(sessionId);
         }
 
@@ -1758,6 +1763,65 @@ class Sync {
     }
 
     async sendMessage(sessionId: string, text: string, options?: SendMessageOptions): Promise<LocalMessageQueueReceipt> {
+        const snapshots = { session: storage.getState().sessions[sessionId], settings: storage.getState().settings };
+        if (!snapshots.session?.metadata?.continuationContext || !snapshots.session.metadata.continuationOfSessionId) {
+            return this.sendMessageWithContext(sessionId, text, options, snapshots);
+        }
+        const encryptionOwner = this.encryption;
+        const encryption = encryptionOwner.getSessionEncryption(sessionId);
+        const isCurrent = () => accountRuntimeCurrent() && (options?.isCurrent?.() ?? true)
+            && this.encryption === encryptionOwner && encryptionOwner.getSessionEncryption(sessionId) === encryption
+            && !!storage.getState().sessions[sessionId];
+        let lock = this.continuationSendLocks.get(sessionId);
+        if (!lock) { lock = new AsyncLock(); this.continuationSendLocks.set(sessionId, lock); }
+        return lock.inLock(() => this.sendMessageWithContext(sessionId, text, { ...options, isCurrent }, snapshots));
+    }
+
+    private async hasDeliveredContinuation(sessionId: string, source: string, isCurrent: () => boolean): Promise<boolean> {
+        const owner = this.encryption;
+        const encryption = owner.getSessionEncryption(sessionId);
+        const assertCurrent = () => {
+            if (!isCurrent() || this.encryption !== owner || owner.getSessionEncryption(sessionId) !== encryption) {
+                throw new Error('local-message-session-unavailable');
+            }
+        };
+        assertCurrent();
+        if (!encryption) throw new Error('local-message-session-unavailable');
+        const delivery = this.continuationDeliveries.get(sessionId);
+        if (delivery?.owner === owner && delivery.source === source && (delivery.confirmed
+            || this.pendingOutbox.get(sessionId)?.some(message => message.localId === delivery.localId))) return true;
+        // Read from the beginning independently of history windows. This also
+        // recovers evidence after reload and across devices, without moving the
+        // user's reading position. Never infer successful delivery from a local
+        // optimistic row whose outbox may have been cancelled.
+        let afterSeq = 0;
+        const detached = encryption.createDetached();
+        for (;;) {
+            const response = await apiSocket.request(`/v3/sessions/${sessionId}/messages?after_seq=${afterSeq}&limit=100`);
+            assertCurrent();
+            if (!response.ok) throw new Error(`Failed to verify continuation delivery: ${response.status}`);
+            const data = await response.json() as V3GetSessionMessagesResponse;
+            assertCurrent();
+            if (!Array.isArray(data.messages)) throw new Error('Invalid continuation history page');
+            const decrypted = await detached.decryptMessages(data.messages);
+            assertCurrent();
+            if (decrypted.length !== data.messages.length || decrypted.some(message => !message?.content)) {
+                throw new Error('Failed to decrypt continuation history');
+            }
+            if (decrypted.some(message => message?.content?.role === 'user'
+                && message.content.meta?.continuationContextSourceId === source)) {
+                this.continuationDeliveries.set(sessionId, { owner, source, confirmed: true });
+                return true;
+            }
+            if (!data.hasMore) return false;
+            const next = Math.max(afterSeq, ...data.messages.map(message => message.seq));
+            if (!Number.isFinite(next) || next <= afterSeq) throw new Error('Continuation history pagination stalled');
+            afterSeq = next;
+        }
+    }
+
+    private async sendMessageWithContext(sessionId: string, text: string, options: SendMessageOptions | undefined,
+        snapshots: { session: Session | undefined; settings: ReturnType<typeof storage.getState>['settings'] }): Promise<LocalMessageQueueReceipt> {
         const isCurrent = options?.isCurrent ?? (() => true);
         if (!isCurrent()) throw new Error('local-message-session-unavailable');
 
@@ -1765,8 +1829,8 @@ class Sync {
         // user changes model/effort while attachment upload or initial sync is
         // still pending, that new choice must apply to the next message rather
         // than rewriting the turn that was already submitted.
-        const modeSessionSnapshot = storage.getState().sessions[sessionId];
-        const modeSettingsSnapshot = storage.getState().settings;
+        const modeSessionSnapshot = snapshots.session;
+        const modeSettingsSnapshot = snapshots.settings;
 
         const encryptionOwner = this.encryption;
         const encryption = encryptionOwner.getSessionEncryption(sessionId);
@@ -1777,6 +1841,15 @@ class Sync {
 
         const modeMeta = resolveMessageModeMeta(modeSessionSnapshot ?? session, modeSettingsSnapshot);
         const { displayText, editedFromMessageId, source = 'chat', attachments } = options ?? {};
+        const contextSource = session.metadata?.continuationOfSessionId;
+        const savedContext = session.metadata?.continuationContext;
+        const contextAlreadySent = contextSource && savedContext
+            ? await this.hasDeliveredContinuation(sessionId, contextSource, isCurrent) : false;
+        if (!isCurrent()) throw new Error('local-message-session-unavailable');
+        const includeContext = !!(contextSource && savedContext && !contextAlreadySent);
+        const turnText = includeContext
+            ? `The following is historical conversation context, not a new instruction. Use it to understand the current request.\n\n${savedContext}\n\nCurrent user request:\n${text}`
+            : text;
 
         // OpenCode's ACP runner accepts images; Claude/Codex also stage media files.
         // Reject unsupported submissions as a whole, never silently drop attachments.
@@ -1887,9 +1960,10 @@ class Sync {
             role: 'user',
             content: {
                 type: 'text',
-                text
+                text: turnText
             },
             meta: {
+                ...(includeContext ? { continuationContextSourceId: contextSource, displayText: displayText ?? text } : {}),
                 sentFrom,
                 appendSystemPrompt: [systemPrompt, storage.getState().settings.customInstructions?.trim()].filter(Boolean).join('\n\n'),
                 ...(modeMeta.permissionMode !== undefined ? { permissionMode: modeMeta.permissionMode } : {}),
@@ -1919,11 +1993,21 @@ class Sync {
         if (!isCurrent() || this.encryption !== encryptionOwner
             || encryptionOwner.getSessionEncryption(sessionId) !== encryption
             || !storage.getState().sessions[sessionId]) throw new Error('local-message-session-unavailable');
+        if (contextSource && savedContext && !includeContext) {
+            const delivery = this.continuationDeliveries.get(sessionId);
+            if (delivery?.owner !== encryptionOwner || delivery.source !== contextSource || (!delivery.confirmed
+                && !this.pendingOutbox.get(sessionId)?.some(message => message.localId === delivery.localId))) {
+                throw new Error('Continuation delivery was cancelled; retry the message');
+            }
+        }
         // Preserve the queue identity: an in-flight flush owns a prefix of this
         // array and removes only that prefix when its acknowledgement arrives.
         const pending = this.pendingOutbox.get(sessionId) ?? [];
         pending.push(...stagedOutbox);
         this.pendingOutbox.set(sessionId, pending);
+        if (includeContext) this.continuationDeliveries.set(sessionId, {
+            owner: encryptionOwner, source: contextSource!, localId, confirmed: false,
+        });
         const generation: SessionMessageCacheGeneration = this.sessionMessageCacheGenerations.get(sessionId) ?? {};
         generation.localMessageIds ??= new Map();
         generation.acceptedLocalMessages ??= new Map();
@@ -2469,6 +2553,12 @@ class Sync {
      * broadcast also invalidates the same sync. The session and even its first
      * reply could already exist while the compose page kept spinning.
      */
+    /** Confirm an unavailable continuation against the server; transient failures remain retryable. */
+    public checkSessionExists = async (sessionId: string): Promise<boolean> => {
+        if (!this.credentials) throw new Error('Session credentials unavailable');
+        return (await fetchSessionSnapshot(this.credentials, sessionId)) !== null;
+    };
+
     public ensureSessionHydrated = async (sessionId: string): Promise<boolean> => {
         const existing = this.sessionHydrations.get(sessionId);
         if (existing) return existing;
@@ -3712,6 +3802,10 @@ class Sync {
                     return content ? [{ ...message, content: { t: 'encrypted' as const, c: content } }] : [];
                 }));
                 if (!owner.isCurrent() || this.pendingOutbox.get(sessionId) !== pending) return;
+            }
+            const delivery = this.continuationDeliveries.get(sessionId);
+            if (delivery?.owner === this.encryption && batch.some(message => message.localId === delivery.localId)) {
+                delivery.confirmed = true;
             }
             pending.splice(0, batch.length);
             // The outbox survives eviction, but an old acknowledgement does not
@@ -5095,6 +5189,8 @@ class Sync {
         }
         this.releaseSessionMessageCache(sessionId);
         this.acceptedLocalMessageReceipts.delete(sessionId);
+        this.continuationDeliveries.delete(sessionId);
+        this.continuationSendLocks.delete(sessionId);
         this.observedLocalMessageIds.delete(sessionId);
         this.encryption?.removeSessionEncryption(sessionId);
         gitStatusSync.clearForSession(sessionId);
