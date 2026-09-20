@@ -3,7 +3,7 @@ import { Platform, Pressable, Modal as RNModal, Text, View, useWindowDimensions 
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Ionicons } from '@expo/vector-icons';
 import { Typography } from '@/constants/Typography';
-import { useSessionQuickActions, SessionActionItem } from '@/hooks/useSessionQuickActions';
+import { useSessionQuickActions, type SessionActionItem } from '@/hooks/useSessionQuickActions';
 import { useSession } from '@/sync/storage';
 
 export type SessionActionsAnchor =
@@ -22,6 +22,7 @@ export type SessionActionsAnchor =
 
 interface SessionActionsPopoverProps {
     anchor: SessionActionsAnchor | null;
+    extraActions?: SessionActionItem[];
     onAfterArchive?: () => void;
     onAfterDelete?: () => void;
     onSelectSession?: () => void;
@@ -96,6 +97,7 @@ const stylesheet = StyleSheet.create((theme) => ({
 
 export function SessionActionsPopover({
     anchor,
+    extraActions,
     onAfterArchive,
     onAfterDelete,
     onSelectSession,
@@ -108,11 +110,12 @@ export function SessionActionsPopover({
     const { theme } = useUnistyles();
     const { height: windowHeight, width: windowWidth } = useWindowDimensions();
     const session = useSession(sessionId);
-    const { actionItems: actions } = useSessionQuickActions(session!, {
+    const { actionItems } = useSessionQuickActions(session!, {
         onAfterArchive,
         onAfterDelete,
         onSelectSession,
     });
+    const actions = extraActions?.length ? [...actionItems, ...extraActions] : actionItems;
 
     const position = React.useMemo(() => {
         if (!anchor) {

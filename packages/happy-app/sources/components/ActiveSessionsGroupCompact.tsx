@@ -248,7 +248,9 @@ export function ActiveSessionsGroupCompact(props: ActiveSessionsGroupProps) {
 
 // Compact Codex-style session row. Runtime status stays visible while actions
 // and richer metadata remain available through hover disclosure.
-export const CompactSessionRow = React.memo(({ session, selected, bulkSelected, selectionMode, showBorder, showLocation = false, onStartSelection, onToggleSelection }: {
+export const CompactSessionRow = React.memo(({ nested = false, onOrganize, session, selected, bulkSelected, selectionMode, showBorder, showLocation = false, onStartSelection, onToggleSelection, testID }: {
+    nested?: boolean;
+    onOrganize?: () => void;
     session: SessionRowData;
     selected?: boolean;
     bulkSelected?: boolean;
@@ -257,6 +259,7 @@ export const CompactSessionRow = React.memo(({ session, selected, bulkSelected, 
     showLocation?: boolean;
     onStartSelection?: (sessionId: string) => void;
     onToggleSelection?: (sessionId: string) => void;
+    testID?: string;
 }) => {
     const styles = stylesheet;
     const { theme } = useUnistyles();
@@ -351,6 +354,7 @@ export const CompactSessionRow = React.memo(({ session, selected, bulkSelected, 
         <View
             style={[
                 styles.sessionRow,
+                nested && styles.sessionRowNested,
                 showLocation && styles.sessionRowByTime,
                 showBorder && styles.sessionRowWithBorder,
                 disclosure.visible && styles.sessionRowHovered,
@@ -365,7 +369,7 @@ export const CompactSessionRow = React.memo(({ session, selected, bulkSelected, 
                 focusable
                 onPress={handlePress}
                 style={styles.sessionPressTarget}
-                testID={`session-row-${session.id}`}
+                testID={testID ?? `session-row-${session.id}`}
                 {...menuProps}
             >
                 <View style={[styles.sessionContent, showLocation && styles.sessionContentByTime]}>
@@ -427,6 +431,7 @@ export const CompactSessionRow = React.memo(({ session, selected, bulkSelected, 
                 <SessionRowActions
                     contextAnchor={actionsAnchor}
                     onContextAnchorChange={setActionsAnchor}
+                    onOrganize={onOrganize}
                     onStartSelection={onStartSelection ? () => onStartSelection(session.id) : undefined}
                     sessionId={session.id}
                     statusLabel={presentation.status}
@@ -504,6 +509,12 @@ const stylesheet = StyleSheet.create((theme) => ({
         minHeight: 52,
         paddingLeft: 38,
         paddingRight: 8,
+    },
+    sessionRowNested: {
+        borderLeftColor: theme.colors.divider,
+        borderLeftWidth: StyleSheet.hairlineWidth,
+        marginLeft: 30,
+        paddingLeft: 10,
     },
     sessionRowByTime: {
         minHeight: 68,
