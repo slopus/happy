@@ -9,6 +9,7 @@ import { storage } from './storage';
 // Circular at module level (ops.ts imports sync) but safe: both sides only
 // touch each other's exports at runtime, never during module initialization.
 import { sessionSetAgentModes } from './ops';
+import { rigComposerClear } from './rigComposer';
 import { getImageAttachmentSendPlan, isAttachmentAllowedByPolicy } from './attachmentSupport';
 import {
     errorMessageFromUnknown,
@@ -876,6 +877,7 @@ class Sync {
                 ...(modeMeta.model !== undefined ? { model: modeMeta.model } : {}),
                 ...(modeMeta.modelProviderId !== undefined ? { modelProviderId: modeMeta.modelProviderId } : {}),
                 ...(modeMeta.effort !== undefined ? { effort: modeMeta.effort } : {}),
+                ...(modeMeta.serviceTier !== undefined ? { serviceTier: modeMeta.serviceTier } : {}),
                 ...(displayText && { displayText }) // Add displayText if provided
             }
         };
@@ -909,6 +911,15 @@ class Sync {
             content: encryptedRawRecord
         });
         releaseSpawnedSession(sessionId);
+        // The synced Happy Agent draft is spent once its text is accepted. The
+        // mode was captured above, before the clear. Text typed since (a newer
+        // local edit) stays; the composer clears itself only when unchanged.
+        const latestSession = storage.getState().sessions[sessionId];
+        if (isRigMetadataV1(latestSession?.metadata) && source !== 'voice'
+            && latestSession.draftUpdatedAt === session.draftUpdatedAt
+            && (!latestSession.draft || latestSession.draft === text)) {
+            rigComposerClear(sessionId);
+        }
         options?.onAccepted?.();
         trackMessageSent(source, session.metadata);
 

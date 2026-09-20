@@ -3,7 +3,7 @@ import { messagePlanMode } from './messagePlanMode';
 import { useShallow } from 'zustand/react/shallow'
 import equal from 'fast-deep-equal'
 import { useDeepEqual } from './storeSelectors';
-import { Session, Machine, GitStatus, SessionAgentModesPatch } from "./storageTypes";
+import { Session, Machine, GitStatus, SessionAgentModesPatch, SessionComposerPatch } from "./storageTypes";
 import type { GitStatusFiles } from "./gitStatusFiles";
 import type { ProjectFilesList } from "./projectFiles";
 import { buildPathProjectGroups, buildProjectGroups, isProjectSession, type ProjectGroupData } from "./projectGroups";
@@ -24,7 +24,7 @@ import { LocalSettings, applyLocalSettings } from "./localSettings";
 import { Purchases, customerInfoToPurchases } from "./purchases";
 import { Profile } from "./profile";
 import { UserProfile, RelationshipUpdatedEvent } from "./friendTypes";
-import { loadSettings, loadLocalSettings, saveLocalSettings, saveSettings, loadPurchases, savePurchases, loadProfile, saveProfile, loadSessionDrafts, saveSessionDrafts } from "./persistence";
+import { loadSettings, loadLocalSettings, saveLocalSettings, saveSettings, loadPurchases, savePurchases, loadProfile, saveProfile, loadSessionDrafts, saveSessionDrafts, loadRigComposerDraft, saveRigComposerDraft } from "./persistence";
 import { isAgentModePushPending } from "./agentModesPending";
 import { loadSessionLastMessageSentAt, saveSessionLastMessageSentAt } from "./persistence";
 import type { CustomerInfo } from './revenueCat/types';
@@ -34,7 +34,8 @@ import { getCurrentRealtimeSessionId, getVoiceSession } from '@/realtime/Realtim
 import { isMutableTool } from "@/components/tools/knownTools";
 import { DecryptedArtifact } from "./artifactTypes";
 import { FeedItem } from "./feedTypes";
-import { getRigActivityIndicators, getRigGitSummary, getRigIdentity, isRigMetadata, rigSendsMessageReceipts } from './rig';
+import { getRigActivityIndicators, getRigComposerState, getRigGitSummary, getRigIdentity, isRigMetadata, isRigMetadataV1, rigSendsMessageReceipts } from './rig';
+import { rigComposerFlushAheadSessions, rigComposerFlushPending } from './rigComposer';
 import { indexSessionsById } from './sessionIdentity';
 import { t } from '@/text';
 import type { Project } from './projectTypes';
@@ -52,6 +53,19 @@ const REALTIME_MODE_DEBOUNCE_MS = 150;
 function resolveSessionOnlineState(session: { active: boolean; activeAt: number }): "online" | number {
     // Session is online if the active flag is true
     return session.active ? "online" : session.activeAt;
+}
+
+/** Pending Happy Agent composer, including empty text and clears. lastMode is never stored. */
+function persistRigComposerDraft(session: Session): void {
+    if (!isRigMetadataV1(session.metadata)) return;
+    saveRigComposerDraft(session.id, session.draftUpdatedAt == null ? null : {
+        text: session.draft ?? null,
+        draftUpdatedAt: session.draftUpdatedAt,
+        permissionMode: session.permissionMode ?? null,
+        modelMode: session.modelMode ?? null,
+        effortLevel: session.effortLevel ?? null,
+        serviceTier: session.serviceTier ?? null,
+    });
 }
 
 /**
@@ -199,7 +213,7 @@ function buildSessionRowData(
         flavor: session.metadata?.flavor ?? null,
         clientId: session.metadata?.client?.id ?? null,
         identityLine: rigIdentity ? `${rigIdentity.clientName} · ${rigIdentity.providerName}` : null,
-        providerKind: session.metadata?.provider?.kind ?? null,
+        providerKind: rigIdentity?.providerKind ?? session.metadata?.provider?.kind ?? null,
         modelName: rigIdentity?.modelName ?? null,
         activitySummary: rigActivity.length > 0
             ? rigActivity.map((item) => `${item.count}${item.queued ? `+${item.queued}` : ''} ${item.key}`).join(' · ')
@@ -316,6 +330,7 @@ interface StorageState {
     getActiveSessions: () => Session[];
     updateSessionDraft: (sessionId: string, draft: string | null) => void;
     updateSessionAgentModes: (sessionId: string, patch: SessionAgentModesPatch) => void;
+    updateSessionComposer: (sessionId: string, patch: SessionComposerPatch) => void;
     markSessionMessageSent: (sessionId: string) => void;
     // Artifact methods
     applyArtifacts: (artifacts: DecryptedArtifact[]) => void;
@@ -459,7 +474,6 @@ export const storage = create<StorageState>()((set, get) => {
     let localSettings = loadLocalSettings();
     let purchases = loadPurchases();
     let profile = loadProfile();
-    let sessionDrafts = loadSessionDrafts();
     let sessionLastMessageSentAt = loadSessionLastMessageSentAt();
     return {
         settings,
@@ -515,10 +529,12 @@ export const storage = create<StorageState>()((set, get) => {
             const state = get();
             return Object.values(state.sessions).filter(s => s.active);
         },
-        applySessions: (sessions: (Omit<Session, 'presence'> & { presence?: "online" | number })[]) => set((state) => {
+        applySessions: (sessions: (Omit<Session, 'presence'> & { presence?: "online" | number })[]) => {
+            const pendingComposerWrites: string[] = [];
+            set((state) => {
             // Load drafts if sessions are empty (initial load)
             const isInitialLoad = Object.keys(state.sessions).length === 0;
-            const savedDrafts = isInitialLoad ? sessionDrafts : {};
+            const savedDrafts = isInitialLoad ? loadSessionDrafts() : {};
             const savedLastMessageSentAt = isInitialLoad ? sessionLastMessageSentAt : {};
 
             // Merge new sessions with existing ones
@@ -549,12 +565,49 @@ export const storage = create<StorageState>()((set, get) => {
                         ? session.metadata[field] ?? null
                         : existing;
                 };
+                // Local activity timestamp — preserve in-memory value, else restore from MMKV.
+                const resolvedLastMessageSentAt = state.sessions[session.id]?.lastMessageSentAt ?? savedLastMessageSentAt[session.id];
+
+                if (isRigMetadataV1(session.metadata)) {
+                    // Happy Agent syncs the whole composer through metadata.
+                    // A later metadata version settles equal-stamped edits too.
+                    // Only a strictly newer local draft stays ahead of the server.
+                    const existing = state.sessions[session.id];
+                    if (existing && existing.metadataVersion > session.metadataVersion) {
+                        session = { ...session, metadata: existing.metadata, metadataVersion: existing.metadataVersion };
+                    }
+                    // Disk is only the source when this session is not already in memory;
+                    // an in-memory stamp must win over a stale MMKV snapshot.
+                    const saved = existing ? undefined : loadRigComposerDraft(session.id);
+                    const remoteStamp = session.metadata?.draftUpdatedAt ?? null;
+                    const localStamp = existing?.draftUpdatedAt ?? saved?.draftUpdatedAt ?? null;
+                    const adopt = localStamp === null || (remoteStamp !== null && remoteStamp >= localStamp);
+                    const composer = adopt ? getRigComposerState(session.metadata) : null;
+                    // A clear can echo before the message updates lastMode. Keep
+                    // its captured selection until lastMode actually changes.
+                    const keepClearedMode = existing && existing.draft == null
+                        && composer?.text === null && remoteStamp === localStamp
+                        && equal(existing.metadata?.lastMode, session.metadata?.lastMode);
+                    mergedSessions[session.id] = {
+                        ...session,
+                        presence,
+                        draft: composer ? composer.text : existing?.draft ?? saved?.text ?? null,
+                        draftUpdatedAt: composer ? remoteStamp : localStamp,
+                        permissionMode: composer && !keepClearedMode ? composer.permissionMode : existing?.permissionMode ?? saved?.permissionMode ?? null,
+                        modelMode: composer && !keepClearedMode ? composer.modelMode : existing?.modelMode ?? saved?.modelMode ?? null,
+                        effortLevel: composer && !keepClearedMode ? composer.effortLevel : existing?.effortLevel ?? saved?.effortLevel ?? null,
+                        serviceTier: composer && !keepClearedMode ? composer.serviceTier : existing?.serviceTier ?? saved?.serviceTier,
+                        lastMessageSentAt: resolvedLastMessageSentAt,
+                    };
+                    if (!existing && !adopt && localStamp !== null && (remoteStamp === null || localStamp > remoteStamp)) {
+                        pendingComposerWrites.push(session.id);
+                    }
+                    return;
+                }
+
                 const resolvedPermissionMode = resolveModePick('permissionMode');
                 const resolvedModelMode = resolveModePick('modelMode');
                 const resolvedEffortLevel = resolveModePick('effortLevel');
-
-                // Local activity timestamp — preserve in-memory value, else restore from MMKV.
-                const resolvedLastMessageSentAt = state.sessions[session.id]?.lastMessageSentAt ?? savedLastMessageSentAt[session.id];
 
                 mergedSessions[session.id] = {
                     ...session,
@@ -735,6 +788,8 @@ export const storage = create<StorageState>()((set, get) => {
                 state.projects,
             );
 
+            for (const session of sessions) persistRigComposerDraft(mergedSessions[session.id]);
+
             return {
                 ...state,
                 sessions: mergedSessions,
@@ -743,7 +798,11 @@ export const storage = create<StorageState>()((set, get) => {
                 sessionMessages: updatedSessionMessages,
                 unreadSessionIds,
             };
-        }),
+            });
+            for (const sessionId of pendingComposerWrites) {
+                rigComposerFlushPending(sessionId);
+            }
+        },
         applyLoaded: () => set((state) => {
             const result = {
                 ...state,
@@ -1133,7 +1192,8 @@ export const storage = create<StorageState>()((set, get) => {
             ...state,
             voiceSessionGeneration: state.voiceSessionGeneration + 1
         })),
-        setSocketStatus: (status: 'disconnected' | 'connecting' | 'connected' | 'error') => set((state) => {
+        setSocketStatus: (status: 'disconnected' | 'connecting' | 'connected' | 'error') => {
+            set((state) => {
             const now = Date.now();
             const updates: Partial<StorageState> = {
                 socketStatus: status
@@ -1150,7 +1210,9 @@ export const storage = create<StorageState>()((set, get) => {
                 ...state,
                 ...updates
             };
-        }),
+            });
+            if (status === 'connected') rigComposerFlushAheadSessions();
+        },
         updateSessionDraft: (sessionId: string, draft: string | null) => set((state) => {
             const session = state.sessions[sessionId];
             if (!session) return state;
@@ -1206,6 +1268,20 @@ export const storage = create<StorageState>()((set, get) => {
                         ...(patch.effortLevel !== undefined && { effortLevel: patch.effortLevel }),
                     }
                 }
+            };
+        }),
+        // Happy Agent composer mirror. Use rigComposer.ts to change it — it
+        // stamps the edit, calls this for the optimistic update, and writes the
+        // whole draft into synced session metadata.
+        updateSessionComposer: (sessionId: string, patch: SessionComposerPatch) => set((state) => {
+            const session = state.sessions[sessionId];
+            if (!session) return state;
+            const updated = { ...session, ...patch };
+            const updatedSessions = { ...state.sessions, [sessionId]: updated };
+            persistRigComposerDraft(updated);
+            return {
+                ...state,
+                sessions: updatedSessions,
             };
         }),
         markSessionMessageSent: (sessionId: string) => set((state) => {
@@ -1380,6 +1456,7 @@ export const storage = create<StorageState>()((set, get) => {
             const drafts = loadSessionDrafts();
             delete drafts[sessionId];
             saveSessionDrafts(drafts);
+            saveRigComposerDraft(sessionId, null);
 
             const lastMessageSentAt = loadSessionLastMessageSentAt();
             delete lastMessageSentAt[sessionId];

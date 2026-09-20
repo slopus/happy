@@ -844,6 +844,7 @@ export function SessionViewLoaded({
         if (sendingSessionsRef.current.has(sessionId)) return;
         const composer = composerHandleRef.current;
         const liveMessage = composer?.getMessage() ?? '';
+        const draftUpdatedAt = storage.getState().sessions[sessionId]?.draftUpdatedAt;
         if (liveMessage.trim() || selectedImages.length > 0) {
             const attachments = selectedImages.length > 0 ? selectedImages : undefined;
             const communicationsToDismiss = [...pendingCommunications];
@@ -861,7 +862,10 @@ export function SessionViewLoaded({
                         awaitDelivery: communicationsToDismiss.length > 0,
                         onAccepted: () => {
                             if (currentSessionIdRef.current === sessionId) {
-                                if (composerHandleRef.current === composer && composer?.getMessage() === liveMessage) {
+                                const latest = storage.getState().sessions[sessionId];
+                                const unchanged = !isRigMetadataV1(latest?.metadata)
+                                    || latest?.draft == null || latest.draftUpdatedAt === draftUpdatedAt;
+                                if (unchanged && composerHandleRef.current === composer && composer?.getMessage() === liveMessage) {
                                     composer.clearMessage();
                                 }
                                 for (const attachment of attachments ?? []) removeImage(attachment.id);

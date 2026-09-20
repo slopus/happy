@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
     state: {} as any,
     request: vi.fn(),
     alert: vi.fn(),
+    clearDraft: vi.fn(),
 }));
 
 // Real Sync, key wrapping, key derivation, session decryption and outbox.
@@ -27,6 +28,7 @@ vi.mock('@/sync/apiSocket', () => ({ apiSocket: { request: mocks.request }, getC
 vi.mock('@/sync/webTabTitle', () => ({ notifyUnreadMessage: vi.fn() }));
 vi.mock('@/sync/storage', () => ({ storage: { getState: () => mocks.state } }));
 vi.mock('@/sync/ops', () => ({ sessionSetAgentModes: vi.fn() }));
+vi.mock('@/sync/rigComposer', () => ({ rigComposerClear: mocks.clearDraft }));
 vi.mock('@/sync/persistence', () => ({ loadPendingSettings: () => ({}), savePendingSettings: vi.fn() }));
 vi.mock('@/sync/revenueCat', () => ({ RevenueCat: {}, LogLevel: {}, PaywallResult: {} }));
 vi.mock('@/sync/serverConfig', () => ({ getServerUrl: () => 'https://example.invalid' }));
@@ -50,18 +52,19 @@ import { sync } from './sync';
 import { Encryption } from './encryption/encryption';
 import { encodeBase64 } from '@/encryption/base64';
 import { settingsDefaults } from './settings';
+import { rigMetadataFixture } from './__testdata__/rigMetadata';
 
 let engine: any;
 let writer: Encryption;
 let fetchMock: ReturnType<typeof vi.fn>;
 const accountSecret = new Uint8Array(32).fill(7);
 
-async function sessionRecord(id: string, legacy = false) {
+async function sessionRecord(id: string, legacy = false, metadata: Record<string, unknown> = { path: '/test', host: 'test', flavor: 'claude' }) {
     const key = legacy ? null : new Uint8Array(32).fill(9);
     await writer.initializeSessions(new Map([[id, key]]));
     return {
         id, seq: 0, createdAt: 2, updatedAt: 2, active: true, activeAt: 2,
-        metadata: await writer.getSessionEncryption(id)!.encryptMetadata({ path: '/test', host: 'test', flavor: 'claude' }),
+        metadata: await writer.getSessionEncryption(id)!.encryptMetadata(metadata as any),
         metadataVersion: 1, agentState: null, agentStateVersion: 0,
         dataEncryptionKey: key ? encodeBase64(await writer.encryptEncryptionKey(key)) : null,
         lastMessage: null,
@@ -73,7 +76,7 @@ beforeEach(async () => {
     vi.clearAllMocks();
     vi.spyOn(console, 'error').mockImplementation(() => {});
     mocks.state = {
-        sessions: {}, settings: settingsDefaults,
+        sessions: {}, sessionMessages: {}, settings: settingsDefaults,
         getActiveSessions: () => [],
         applySessions: (sessions: any[]) => { for (const session of sessions) mocks.state.sessions[session.id] = session; },
         markSessionMessageSent: vi.fn(),
@@ -212,5 +215,63 @@ describe('first message session hydration', () => {
         })).resolves.toBe(true);
         expect(onAccepted).toHaveBeenCalledOnce();
         expect(mocks.request.mock.calls[0][0]).toBe('/v3/sessions/new-session/messages');
+    });
+});
+
+describe('Happy Agent composer on send', () => {
+    const mode = { providerId: 'claude', modelId: 'shared-model', effort: 'low', serviceTier: 'fast', permissionMode: 'read_only' };
+
+    it('captures the full composer mode into message meta and spends the synced draft once accepted', async () => {
+        const target = await sessionRecord('rig-session', false, {
+            ...rigMetadataFixture, draft: { ...mode, text: 'ship it' }, draftUpdatedAt: 5, lastMode: null,
+        });
+        fetchMock.mockResolvedValue({ ok: true, json: async () => ({ sessions: [target] }) });
+        await engine.fetchSessions();
+        // The mirror the composer edits; a send of the same text spends it.
+        Object.assign(mocks.state.sessions['rig-session'], { draft: 'ship it', serviceTier: 'fast', permissionMode: 'read_only', modelMode: 'claude:shared-model', effortLevel: 'low' });
+
+        await expect(engine.sendMessage('rig-session', 'ship it', { awaitDelivery: true })).resolves.toBe(true);
+        expect(mocks.clearDraft).toHaveBeenCalledExactlyOnceWith('rig-session');
+        const batch = JSON.parse(mocks.request.mock.calls[0][1].body).messages;
+        const record = await writer.getSessionEncryption('rig-session')!.decryptRaw(batch[0].content) as any;
+        expect(record.meta).toMatchObject({ model: 'shared-model', modelProviderId: 'claude', effort: 'low', permissionMode: 'read_only', serviceTier: 'fast' });
+    });
+
+    it('does not spend a draft the user has kept editing, nor one a voice message never used', async () => {
+        const target = await sessionRecord('rig-session', false, { ...rigMetadataFixture, draft: { ...mode, text: 'first' }, draftUpdatedAt: 5, lastMode: null });
+        fetchMock.mockResolvedValue({ ok: true, json: async () => ({ sessions: [target] }) });
+        await engine.fetchSessions();
+
+        mocks.state.sessions['rig-session'].draft = 'first, then more';
+        await expect(engine.sendMessage('rig-session', 'first', { awaitDelivery: true })).resolves.toBe(true);
+        mocks.state.sessions['rig-session'].draft = null;
+        await expect(engine.sendMessage('rig-session', 'spoken', { source: 'voice', awaitDelivery: true })).resolves.toBe(true);
+        expect(mocks.clearDraft).not.toHaveBeenCalled();
+    });
+
+    it('keeps a picker edit made while the same text is being encrypted', async () => {
+        const target = await sessionRecord('rig-session', false, { ...rigMetadataFixture, draft: { ...mode, text: 'send' }, draftUpdatedAt: 5, lastMode: null });
+        fetchMock.mockResolvedValue({ ok: true, json: async () => ({ sessions: [target] }) });
+        await engine.fetchSessions();
+        Object.assign(mocks.state.sessions['rig-session'], { draft: 'send', draftUpdatedAt: 5 });
+        const encryption = engine.encryption.getSessionEncryption('rig-session');
+        const encrypt = encryption.encryptRawRecord.bind(encryption);
+        let release!: () => void;
+        let entered!: () => void;
+        const waiting = new Promise<void>((resolve) => { release = resolve; });
+        const encrypting = new Promise<void>((resolve) => { entered = resolve; });
+        vi.spyOn(encryption, 'encryptRawRecord').mockImplementation(async (value: unknown) => {
+            entered();
+            await waiting;
+            return encrypt(value);
+        });
+        const sending = engine.sendMessage('rig-session', 'send', { awaitDelivery: true });
+        await encrypting;
+        mocks.state.sessions['rig-session'] = {
+            ...mocks.state.sessions['rig-session'], permissionMode: 'auto', draftUpdatedAt: 6,
+        };
+        release();
+        await expect(sending).resolves.toBe(true);
+        expect(mocks.clearDraft).not.toHaveBeenCalled();
     });
 });

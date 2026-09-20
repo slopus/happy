@@ -6,6 +6,7 @@ import { getAgentDefaultOverride, resolveAgentDefaultConfig, retirePermissionMod
 import { permissionModeSupportedByCli } from '@/components/modelModeOptions';
 import type { PermissionModeKey } from '@/components/PermissionModeSelector';
 import {
+    getRigComposerMode,
     getRigCurrentModel,
     getRigModels,
     getRigReasoningLevels,
@@ -43,6 +44,7 @@ export type MessageModeMeta = {
     model?: string | null;
     modelProviderId?: string;
     effort?: string | null;
+    serviceTier?: string | null;
 };
 
 /**
@@ -69,16 +71,22 @@ export class UnsupportedPermissionModeError extends Error {
 }
 
 export function resolveMessageModeMeta(
-    session: Pick<Session, 'permissionMode' | 'modelMode' | 'metadata' | 'effortLevel'>,
+    session: Pick<Session, 'permissionMode' | 'modelMode' | 'metadata' | 'effortLevel' | 'serviceTier'>,
     settings?: Pick<Settings, 'agentDefaultOverrides'>,
 ): MessageModeMeta {
     if (isRigMetadataV1(session.metadata)) {
+        // The local mirror is the composer (draft, then lastMode); the
+        // deprecated display fields are only the final fallback.
         const meta: MessageModeMeta = {};
+        const composerMode = getRigComposerMode(session.metadata);
         const permissionMode = session.permissionMode
+            ?? composerMode?.permissionMode
             ?? session.metadata?.currentOperatingModeCode
             ?? session.metadata?.permissionMode
             ?? session.metadata?.session?.permissionMode;
         if (permissionMode) meta.permissionMode = permissionMode;
+        if (session.serviceTier !== undefined) meta.serviceTier = session.serviceTier;
+        else if (composerMode) meta.serviceTier = composerMode.serviceTier;
 
         const selectedKey = session.modelMode ?? getRigSelectedModelKey(session.metadata);
         const selectedModel = getRigModels(session.metadata).find((model) => model.key === selectedKey)

@@ -10,6 +10,7 @@ import type { AgentQuestionAnswer, MachineMetadata, SessionAgentModesPatch } fro
 import { markAgentModePushPending, clearAgentModePushPending, type AgentModeField } from './agentModesPending';
 import {
     isRigMetadata,
+    isRigMetadataV1,
     rigCanAbort,
     rigCanReadFiles,
     rigCanSearchFiles,
@@ -17,6 +18,7 @@ import {
     rigCanWriteFiles,
     rigHasRpcMethod,
 } from './rig';
+import { rigComposerSetMode } from './rigComposer';
 import type { HappyAgentSpawnTarget } from './happyAgentSpawn';
 import { encodeBase64 } from '@/encryption/base64';
 
@@ -810,6 +812,13 @@ async function sessionUpdateAgentModesMetadata(
 export function sessionSetAgentModes(sessionId: string, patch: SessionAgentModesPatch): void {
     const state = storage.getState();
     const session = state.sessions[sessionId];
+
+    // Happy Agent sessions carry their pickers inside the synced composer
+    // draft, so the pick is written there as part of the whole draft.
+    if (isRigMetadataV1(session?.metadata)) {
+        rigComposerSetMode(sessionId, patch);
+        return;
+    }
 
     // Only touch fields that actually change — clearing modes on a session
     // with no picks (e.g. every abort) must not cost a metadata round-trip.

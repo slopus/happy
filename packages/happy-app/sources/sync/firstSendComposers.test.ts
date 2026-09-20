@@ -134,23 +134,27 @@ describe('new-session screen callback boundary', () => {
 describe('chat composer callback boundary', () => {
     function chatBoundary() {
         const composer = { getMessage: vi.fn(() => 'original'), clearMessage: vi.fn() };
+        const session = { draft: 'original', draftUpdatedAt: 5, metadata: { client: { id: 'rig' }, rigMetadataVersion: 1 } };
         const scope = {
+            storage: { getState: () => ({ sessions: { 'original-session': session } }) },
+            isRigMetadataV1: () => true,
             sessionId: 'original-session', composerHandleRef: { current: composer },
             sendingSessionsRef: { current: new Set() }, currentSessionIdRef: { current: 'original-session' as string | null },
             selectedImages: [{ id: 'image' }], removeImage: vi.fn(), pendingCommunications: [{ id: 'question', kind: 'question' }],
             sessionCancelCommunication: vi.fn(), sync: { sendMessage: vi.fn() },
         };
-        return { scope, composer, send: callbackAt(chatScreen, sendCallback, scope) as () => void };
+        return { scope, composer, session, send: callbackAt(chatScreen, sendCallback, scope) as () => void };
     }
 
-    it.each(['failure', 'new-text', 'navigation'])('preserves the correct draft and question on %s', async (change) => {
-        const { scope, composer, send } = chatBoundary();
+    it.each(['failure', 'new-text', 'new-picker', 'navigation'])('preserves the correct draft and question on %s', async (change) => {
+        const { scope, composer, session, send } = chatBoundary();
         let finish!: (accepted: boolean) => void;
         scope.sync.sendMessage.mockReturnValue(new Promise(resolve => { finish = resolve; }));
         send();
         send();
         expect(scope.sync.sendMessage).toHaveBeenCalledOnce();
         if (change === 'new-text') composer.getMessage.mockReturnValue('new text');
+        if (change === 'new-picker') session.draftUpdatedAt++;
         if (change === 'navigation') scope.currentSessionIdRef.current = 'new-session';
         if (change !== 'failure') scope.sync.sendMessage.mock.calls[0][2].onAccepted();
         finish(change !== 'failure');

@@ -1,4 +1,4 @@
-import type { Metadata } from './storageTypes';
+import type { Metadata, RigComposerMode } from './storageTypes';
 
 export type ProviderIconKind = 'codex' | 'claude' | 'grok' | 'kimi' | 'generic';
 
@@ -90,11 +90,44 @@ export function getRigModels(metadata: Metadata | null | undefined): RigModelDes
     return result;
 }
 
+/** The synced composer mode: the open draft first, else what the daemon last ran with. */
+export function getRigComposerMode(metadata: Metadata | null | undefined): RigComposerMode | null {
+    if (!isRigMetadataV1(metadata)) return null;
+    return metadata?.draft ?? metadata?.lastMode ?? null;
+}
+
+export type RigComposerState = {
+    text: string | null;
+    modelMode: string | null;
+    effortLevel: string | null;
+    permissionMode: string | null;
+    serviceTier: string | null | undefined;
+};
+
+/**
+ * What an opened composer shows for a Happy Agent session: `draft`, then
+ * `lastMode`, then nothing — the nulls let the pickers fall through to the
+ * defaults the app already derives from the deprecated display fields.
+ */
+export function getRigComposerState(metadata: Metadata | null | undefined): RigComposerState {
+    const mode = getRigComposerMode(metadata);
+    return {
+        text: metadata?.draft?.text ?? null,
+        modelMode: mode ? qualifyRigModelKey(mode.providerId, mode.modelId) : null,
+        effortLevel: mode?.effort ?? null,
+        permissionMode: mode?.permissionMode ?? null,
+        serviceTier: mode ? mode.serviceTier : undefined,
+    };
+}
+
 export function getRigSelectedModelPair(metadata: Metadata | null | undefined): { providerId: string; id: string } | null {
     if (!isRigMetadata(metadata)) return null;
-    const providerId = nonEmpty(metadata?.currentModelProviderId)
+    const mode = getRigComposerMode(metadata);
+    const providerId = nonEmpty(mode?.providerId)
+        ?? nonEmpty(metadata?.currentModelProviderId)
         ?? nonEmpty(metadata?.model?.providerId);
-    const id = nonEmpty(metadata?.currentModelCode)
+    const id = nonEmpty(mode?.modelId)
+        ?? nonEmpty(metadata?.currentModelCode)
         ?? nonEmpty(metadata?.model?.id);
     return providerId && id ? { providerId, id } : null;
 }
@@ -237,7 +270,10 @@ export function getRigReasoningLevels(metadata: Metadata | null | undefined, mod
 export function getRigReasoningSelection(metadata: Metadata | null | undefined, modelKey: string | null | undefined): string | null {
     if (!isRigMetadata(metadata)) return null;
     const levels = getRigReasoningLevels(metadata, modelKey);
-    const explicit = metadata?.reasoning?.current ?? metadata?.currentThoughtLevelCode ?? null;
+    const explicit = getRigComposerMode(metadata)?.effort
+        ?? metadata?.reasoning?.current
+        ?? metadata?.currentThoughtLevelCode
+        ?? null;
     if (explicit && levels.includes(explicit)) return explicit;
     const modelDefault = getRigModels(metadata).find((candidate) => candidate.key === modelKey)?.defaultThinkingLevel;
     return modelDefault && levels.includes(modelDefault) ? modelDefault : null;

@@ -4,10 +4,12 @@ import { rigMetadataFixture } from './__testdata__/rigMetadata';
 import {
     getProviderIconKind,
     getRigActivityIndicators,
+    getRigComposerState,
     getRigGitSummary,
     getRigIdentity,
     getRigModels,
     getRigReasoningLevels,
+    getRigReasoningSelection,
     getRigSelectedModelKey,
     isRigMetadata,
     isRigModelSelectionEnabled,
@@ -123,6 +125,41 @@ describe('Rig metadata', () => {
             host: 'legacy',
             git,
         })).toBeNull();
+    });
+
+    it('initializes the composer from draft, then lastMode, then the deprecated display fields', () => {
+        const lastMode = { providerId: 'claude', modelId: 'shared-model', effort: 'low', serviceTier: null, permissionMode: 'read_only' };
+        const draft = { ...lastMode, providerId: 'codex', effort: 'medium', serviceTier: 'fast', permissionMode: 'full_access', text: '  keep  ' };
+
+        const fromDraft = MetadataSchema.parse({ ...rigMetadataFixture, draft, draftUpdatedAt: 5, lastMode });
+        expect(getRigComposerState(fromDraft)).toEqual({
+            text: '  keep  ', modelMode: 'codex:shared-model', effortLevel: 'medium', permissionMode: 'full_access', serviceTier: 'fast',
+        });
+        expect(getRigSelectedModelKey(fromDraft)).toBe('codex:shared-model');
+        expect(getRigReasoningSelection(fromDraft, 'codex:shared-model')).toBe('medium');
+
+        const fromLastMode = MetadataSchema.parse({ ...rigMetadataFixture, draft: null, draftUpdatedAt: 6, lastMode });
+        expect(getRigComposerState(fromLastMode)).toEqual({
+            text: null, modelMode: 'claude:shared-model', effortLevel: 'low', permissionMode: 'read_only', serviceTier: null,
+        });
+        expect(getRigSelectedModelKey(fromLastMode)).toBe('claude:shared-model');
+        expect(getRigReasoningSelection(fromLastMode, 'claude:shared-model')).toBe('low');
+
+        // Never edited and never sent: the pickers fall through to the deprecated mirrors.
+        const defaults = MetadataSchema.parse({ ...rigMetadataFixture, draft: null, draftUpdatedAt: null, lastMode: null });
+        expect(getRigComposerState(defaults)).toEqual({
+            text: null, modelMode: null, effortLevel: null, permissionMode: null, serviceTier: undefined,
+        });
+        expect(getRigSelectedModelKey(defaults)).toBe('codex:shared-model');
+        expect(getRigReasoningSelection(defaults, 'codex:shared-model')).toBe('high');
+
+        // A daemon that no longer publishes the deprecated nested selection still parses.
+        const { permissionMode: _mode, ...session } = rigMetadataFixture.session!;
+        expect(MetadataSchema.parse({ ...rigMetadataFixture, session }).session?.permissionMode).toBeUndefined();
+        // A malformed draft degrades to "no draft" rather than failing the session.
+        expect(MetadataSchema.parse({ ...rigMetadataFixture, draft: { text: 1 }, draftUpdatedAt: -1 })).toMatchObject({
+            draft: undefined, draftUpdatedAt: undefined,
+        });
     });
 
     it('retains legacy metadata behavior when the Rig extension is absent', () => {

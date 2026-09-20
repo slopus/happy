@@ -7,6 +7,21 @@ import type { ProjectAvatar } from './projectTypes';
 // Agent states
 //
 
+export const RigComposerModeSchema = z.object({
+    providerId: z.string(),
+    modelId: z.string(),
+    effort: z.string(),
+    serviceTier: z.string().nullable(),
+    permissionMode: z.string(),
+});
+
+export const RigComposerDraftSchema = RigComposerModeSchema.extend({
+    text: z.string(),
+});
+
+export type RigComposerMode = z.infer<typeof RigComposerModeSchema>;
+export type RigComposerDraft = z.infer<typeof RigComposerDraftSchema>;
+
 export const MetadataSchema = z.object({
     bot: RigBotSchema.optional(),
     models: z.array(z.object({
@@ -69,10 +84,21 @@ export const MetadataSchema = z.object({
     }).passthrough().optional(),
     session: z.object({
         status: z.string(),
-        permissionMode: z.string(),
+        /** @deprecated Display mirror; `draft` / `lastMode` carry the selection. */
+        permissionMode: z.string().optional(),
         modelLocked: z.boolean(),
         serviceTier: z.string().optional(),
     }).passthrough().optional(),
+    /**
+     * Happy Agent composer synchronization. `draft` is the whole composer
+     * (text plus every picker), `draftUpdatedAt` orders edits and clears
+     * across devices (null = never edited), and `lastMode` is what the daemon
+     * last accepted a message with. Only `draft` and `draftUpdatedAt` are
+     * written by the app, always together; `lastMode` is daemon-owned.
+     */
+    draft: RigComposerDraftSchema.nullish().catch(undefined),
+    draftUpdatedAt: z.number().int().nonnegative().nullish().catch(undefined),
+    lastMode: RigComposerModeSchema.nullish().catch(undefined),
     capabilities: z.object({
         abort: z.boolean(),
         attachments: z.object({
@@ -393,6 +419,11 @@ export interface SessionAgentModesPatch {
     effortLevel?: string | null;
 }
 
+/** Happy Agent composer fields mirrored on the session; see rigComposer.ts. */
+export type SessionComposerPatch = Partial<Pick<Session,
+    'draft' | 'draftUpdatedAt' | 'permissionMode' | 'modelMode' | 'effortLevel' | 'serviceTier'
+>>;
+
 export interface Session {
     id: string,
     avatarDescriptor?: SessionAvatarDescriptor | null,
@@ -416,10 +447,14 @@ export interface Session {
     thinkingAt: number,
     presence: "online" | number, // "online" when active, timestamp when last seen
     todos?: TodoItem[];
-    draft?: string | null; // Local draft message, not synced to server
+    draft?: string | null; // Draft text. Device-local, except Happy Agent sessions sync it through metadata.draft and also persist the pending composer so offline edits survive restart.
+    /** Happy Agent only: stamp of the newest composer state this device holds; null = never edited. */
+    draftUpdatedAt?: number | null;
     permissionMode?: string | null; // Permission pick; local mirror of synced metadata.permissionMode (#1492)
     modelMode?: string | null; // Model pick; local mirror of synced metadata.modelMode (#1492)
     effortLevel?: string | null; // Effort pick; local mirror of synced metadata.effortLevel (#1492)
+    /** Happy Agent only: service tier carried in the composer draft; the UI does not expose it. */
+    serviceTier?: string | null;
     lastMessageSentAt?: number; // Local timestamp of last user-sent message, not synced to server; used for activity-based sort
     // IMPORTANT: latestUsage is extracted from reducerState.latestUsage after message processing.
     // We store it directly on Session to ensure it's available immediately on load.

@@ -1,14 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { rigMetadataFixture } from './__testdata__/rigMetadata';
 
-const { sessionRPC, getState } = vi.hoisted(() => ({
+const { sessionRPC, getState, setMode } = vi.hoisted(() => ({
     sessionRPC: vi.fn(),
     getState: vi.fn(),
+    setMode: vi.fn(),
 }));
 
 vi.mock('./apiSocket', () => ({ apiSocket: { sessionRPC } }));
 vi.mock('./sync', () => ({ sync: {} }));
 vi.mock('./storage', () => ({ storage: { getState } }));
+vi.mock('./rigComposer', () => ({ rigComposerSetMode: setMode }));
 
 describe('Rig session RPC capability gates', () => {
     beforeEach(() => {
@@ -54,6 +56,15 @@ describe('Rig session RPC capability gates', () => {
             error: 'File writing is not available for this session',
         });
         expect(sessionRPC).not.toHaveBeenCalled();
+    });
+
+    it('writes a Happy Agent picker change through the synced composer draft, never as a loose metadata field', async () => {
+        const updateSessionAgentModes = vi.fn();
+        getState.mockReturnValue({ sessions: { rig: { metadata: rigMetadataFixture } }, updateSessionAgentModes });
+        const { sessionSetAgentModes } = await import('./ops');
+        sessionSetAgentModes('rig', { permissionMode: 'read_only' });
+        expect(setMode).toHaveBeenCalledExactlyOnceWith('rig', { permissionMode: 'read_only' });
+        expect(updateSessionAgentModes).not.toHaveBeenCalled();
     });
 
     it('never invokes unadvertised directory RPC helpers for Rig', async () => {
