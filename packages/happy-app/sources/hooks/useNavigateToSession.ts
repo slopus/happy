@@ -12,6 +12,14 @@ function sessionHref(sessionId: string): `/session/${string}` {
     return `/session/${encodeURIComponent(sessionId)}`;
 }
 
+// expo-router's `dangerouslySingular: true` keys on getSingularId(name, params),
+// which substitutes the dynamic segment ("session/[id]" -> "session/<id>"), so
+// every session would still get its own route. Keying on the bare route name
+// makes all `session/[id]` entries collapse into one.
+export function singularSessionRoute(name: string): string {
+    return name;
+}
+
 export function prefetchSession(router: Router, sessionId: string) {
     // Native stack owns the off-screen instance. Web keeps its current
     // navigation behavior; mounting its file/sidebar tree is not a warmup.
@@ -36,6 +44,15 @@ export function navigateToSession(router: Router, sessionId: string) {
         trackSessionSwitched(session);
     }
 
+    if (Platform.OS === 'web') {
+        // Web has no screen recycling: @react-navigation/native-stack keeps
+        // every pushed route mounted (unfocused ones only get display:none),
+        // so each opened session would stay alive - ChatList, store
+        // subscriptions, document listeners - for the life of the tab. Keep a
+        // single session route in the stack; back then returns to the list.
+        router.push(sessionHref(sessionId), { dangerouslySingular: singularSessionRoute });
+        return;
+    }
     router.push(sessionHref(sessionId));
 }
 
