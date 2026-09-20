@@ -1,5 +1,10 @@
 import os from 'os'
 import { execSync } from 'child_process'
+import {
+    getMacCapabilityState,
+    releaseMacCapabilityMonitor,
+    retainMacCapabilityMonitor,
+} from './macCapability'
 
 export function hasNetworkConnectivity(): boolean {
     const interfaces = os.networkInterfaces()
@@ -50,6 +55,30 @@ export function hasExternalDisplay(): boolean {
 
 export function shouldReconnect(): boolean {
     if (!hasNetworkConnectivity()) return false
-    if (isLidClosed() && !hasExternalDisplay()) return false
+
+    const capability = getMacCapabilityState()
+    if (capability.status === 'ready') {
+        return capability.fullWake === true
+    }
+    if (capability.status === 'pending') {
+        return false
+    }
+
+    // Older installs may not have the helper yet, and a failed helper must
+    // preserve the previous conservative macOS behavior rather than treating
+    // network reachability alone as proof of a full wake.
+    if (capability.status === 'unavailable') {
+        if (process.platform !== 'darwin') return true
+        return !isLidClosed() || hasExternalDisplay()
+    }
+
     return true
+}
+
+export function retainReconnectCapabilityMonitor(): void {
+    retainMacCapabilityMonitor()
+}
+
+export function releaseReconnectCapabilityMonitor(): void {
+    releaseMacCapabilityMonitor()
 }

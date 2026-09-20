@@ -12,7 +12,11 @@ vi.mock('@/configuration', () => ({ configuration: { serverUrl: 'http://127.0.0.
 vi.mock('@/ui/logger', () => ({ logger: { debug: vi.fn(), debugLargeJson: vi.fn() } }));
 vi.mock('@/modules/common/registerCommonHandlers', () => ({ registerCommonHandlers: vi.fn() }));
 vi.mock('@/utils/detectCLI', () => ({ detectCLIAvailability: vi.fn(() => ({ claude: false, codex: false, gemini: false, openclaw: false })) }));
-vi.mock('@/utils/lidState', () => ({ shouldReconnect: vi.fn(() => true) }));
+vi.mock('@/utils/lidState', () => ({
+    shouldReconnect: vi.fn(() => true),
+    retainReconnectCapabilityMonitor: vi.fn(),
+    releaseReconnectCapabilityMonitor: vi.fn()
+}));
 vi.mock('@/resume/localHappyAgentAuth', () => ({
     detectResumeSupport: vi.fn(() => ({
         rpcAvailable: false,

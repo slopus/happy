@@ -54,6 +54,7 @@
     "dist",
     "bin",
     "scripts",
+    "native",
     "tools/archives",
     "tools/licenses",
     "package.json"
@@ -63,6 +64,8 @@
     "bundle:server": "node scripts/bundle-server.cjs",
     "bundle:server:all": "node scripts/bundle-server.cjs --all-platforms",
     "bundle:webapp": "node scripts/bundle-webapp.cjs",
+    "build:capability": "sh scripts/build-capability.sh",
+    "test:capability-lifetime": "node scripts/test-capability-parent-lifetime.cjs",
     "build": "shx rm -rf dist && tsc --noEmit && pkgroll",
     "test": "pnpm run build && vitest run --project unit",
     "test:integration": "pnpm run build && vitest run --project integration-empty --project integration-plan-mode --project integration-authenticated",

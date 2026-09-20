@@ -75,7 +75,9 @@ vi.mock('@/utils/time', () => ({
 }));
 
 vi.mock('@/utils/lidState', () => ({
-    shouldReconnect: mockShouldReconnect
+    shouldReconnect: mockShouldReconnect,
+    retainReconnectCapabilityMonitor: vi.fn(),
+    releaseReconnectCapabilityMonitor: vi.fn()
 }));
 
 type SocketHandler = (...args: any[]) => void;
@@ -208,6 +210,21 @@ describe('ApiSessionClient v3 messages API migration', () => {
 
         await vi.advanceTimersByTimeAsync(3000);
         expect(mockSocket.connect).toHaveBeenCalledTimes(3);
+
+        await client.close();
+    });
+
+    it('rechecks reconnect eligibility before the delayed retry fires', async () => {
+        vi.useFakeTimers();
+        mockSocket.connected = false;
+
+        const client = new ApiSessionClient('fake-token', session);
+        mockShouldReconnect.mockReset();
+        mockShouldReconnect.mockReturnValueOnce(true).mockReturnValue(false);
+        emitSocketEvent('connect_error', new Error('ECONNREFUSED'));
+
+        await vi.advanceTimersByTimeAsync(1000);
+        expect(mockSocket.connect).toHaveBeenCalledTimes(1);
 
         await client.close();
     });

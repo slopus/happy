@@ -62,7 +62,9 @@ vi.mock('@/resume/localHappyAgentAuth', () => ({
 }));
 
 vi.mock('@/utils/lidState', () => ({
-    shouldReconnect: mockShouldReconnect
+    shouldReconnect: mockShouldReconnect,
+    retainReconnectCapabilityMonitor: vi.fn(),
+    releaseReconnectCapabilityMonitor: vi.fn()
 }));
 
 type SocketHandler = (...args: any[]) => void;
@@ -145,6 +147,23 @@ describe('ApiMachineClient socket reconnection', () => {
         expect(mockSocket.connect).toHaveBeenCalledTimes(2);
 
         client.shutdown();
+    });
+
+    it('rechecks reconnect eligibility before the delayed retry fires', async () => {
+        vi.useFakeTimers();
+        const client = new ApiMachineClient('fake-token', makeMachine());
+        client.connect();
+
+        mockShouldReconnect.mockReset();
+        mockShouldReconnect.mockReturnValueOnce(true).mockReturnValue(false);
+        emitSocketEvent('connect_error', new Error('ECONNREFUSED'));
+
+        await vi.advanceTimersByTimeAsync(1000);
+        expect(mockSocket.connect).not.toHaveBeenCalled();
+
+        client.shutdown();
+        await vi.advanceTimersByTimeAsync(10_000);
+        expect(mockSocket.connect).not.toHaveBeenCalled();
     });
 
     it('emits machine-alive immediately when the socket connects', async () => {

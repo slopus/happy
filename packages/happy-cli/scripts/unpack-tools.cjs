@@ -61,6 +61,12 @@ function areToolsUnpacked(toolsDir) {
         path.join(unpackedPath, rgBinary),
         path.join(unpackedPath, 'ripgrep.node')
     ];
+
+    // The capability helper is only shipped for macOS. Keep the existing
+    // cross-platform tool checks unchanged for Linux and Windows.
+    if (os.platform() === 'darwin') {
+        expectedFiles.push(path.join(unpackedPath, 'happy-capability'));
+    }
     
     return expectedFiles.every(file => fs.existsSync(file));
 }
@@ -138,6 +144,16 @@ async function unpackTools() {
             throw new Error(`Archive not found: ${ripgrepArchive}`);
         }
         await unpackArchive(ripgrepArchive, unpackedPath);
+
+        // The macOS helper is a prebuilt, read-only IOKit observer. It is
+        // unpacked at install time; consumers never need Xcode or a compiler.
+        if (platformDir.endsWith('-darwin')) {
+            const capabilityArchive = path.join(archivesDir, `happy-capability-${platformDir}.tar.gz`);
+            if (!fs.existsSync(capabilityArchive)) {
+                throw new Error(`Archive not found: ${capabilityArchive}`);
+            }
+            await unpackArchive(capabilityArchive, unpackedPath);
+        }
         
         console.log(`Tools unpacked successfully to ${unpackedPath}`);
         return { success: true, alreadyUnpacked: false };
