@@ -783,12 +783,21 @@ const stylesheet = StyleSheet.create((theme) => ({
         alignItems: 'center',
         gap: 6,
         paddingHorizontal: ROW_PADDING_X,
-        paddingTop: 14,
-        paddingBottom: 2,
+        // The machine heads the list now, so this is the first row under the
+        // floating home header rather than a divider between two groups of
+        // projects. It carried a divider's clearance — the smallest of any row
+        // here — and the header's backdrop was taking the top off its icon,
+        // which is the tallest thing in the row. Same air the section label
+        // that used to open the list gave.
+        paddingTop: 18,
+        paddingBottom: 4,
     },
     machineHeaderText: {
         maxWidth: '60%',
         fontSize: 11,
+        // Given a line box of its own so the name and the icon beside it are
+        // measured the same way on both platforms.
+        lineHeight: 14,
         color: theme.colors.textSecondary,
         ...Typography.default('regular'),
     },

@@ -356,7 +356,9 @@ const PendingTab = React.memo(({ chat, selected, onSelect, onLayoutX }: {
                     pressed && !selected && styles.tabPressed,
                 ]}
             >
-                <Ionicons name="add-circle-outline" size={14} color={theme.colors.textSecondary} />
+                {/* No icon, for the same reason a real tab carries none: the
+                    strip is the narrowest thing on the screen, and the shimmer
+                    already says this chat is still arriving. */}
                 <View style={styles.tabLabel}>
                     <ShimmerText
                         text={label}
