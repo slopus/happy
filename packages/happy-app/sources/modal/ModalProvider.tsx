@@ -102,7 +102,6 @@ export function ModalProvider({ children }: { children: React.ReactNode }) {
                     {currentModal.type === 'prompt' && (
                         <WebPromptModal
                             config={currentModal}
-                            onClose={() => hideModal(currentModal.id)}
                             onConfirm={(value) => {
                                 Modal.resolvePrompt(currentModal.id, value);
                                 hideModal(currentModal.id);

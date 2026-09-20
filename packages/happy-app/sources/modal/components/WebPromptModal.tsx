@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, TextInput, Pressable, StyleSheet, KeyboardTypeOptions, Platform } from 'react-native';
+import { View, Text, TextInput, Pressable, StyleSheet, KeyboardTypeOptions, Platform, InteractionManager } from 'react-native';
 import { BaseModal } from './BaseModal';
 import { PromptModalConfig } from '../types';
 import { Typography } from '@/constants/Typography';
@@ -8,32 +8,46 @@ import { MobileGlassSurface } from '@/components/MobileGlass';
 
 interface WebPromptModalProps {
     config: PromptModalConfig;
-    onClose: () => void;
     onConfirm: (value: string | null) => void;
 }
 
-export function WebPromptModal({ config, onClose, onConfirm }: WebPromptModalProps) {
+export function WebPromptModal({ config, onConfirm }: WebPromptModalProps) {
     const { theme } = useUnistyles();
     const [inputValue, setInputValue] = useState(config.defaultValue || '');
     const inputRef = useRef<TextInput>(null);
+    const resolvedRef = useRef(false);
 
     useEffect(() => {
-        // Auto-focus the input when modal opens
-        const timer = setTimeout(() => {
-            inputRef.current?.focus();
-        }, 100);
-        return () => clearTimeout(timer);
+        if (Platform.OS === 'web') {
+            return;
+        }
+
+        // Let the modal's opening animation settle before showing the native
+        // keyboard. Focusing on a fixed timer races Android's window resize.
+        let frame: number | undefined;
+        const interaction = InteractionManager.runAfterInteractions(() => {
+            frame = requestAnimationFrame(() => inputRef.current?.focus());
+        });
+
+        return () => {
+            interaction.cancel();
+            if (frame !== undefined) {
+                cancelAnimationFrame(frame);
+            }
+        };
     }, []);
 
-    const handleCancel = () => {
-        onConfirm(null);
-        onClose();
+    const resolveOnce = (value: string | null) => {
+        if (resolvedRef.current) {
+            return;
+        }
+        resolvedRef.current = true;
+        onConfirm(value);
     };
 
-    const handleConfirm = () => {
-        onConfirm(inputValue);
-        onClose();
-    };
+    const handleCancel = () => resolveOnce(null);
+
+    const handleConfirm = () => resolveOnce(inputValue);
 
     const getKeyboardType = (): KeyboardTypeOptions => {
         switch (config.inputType) {

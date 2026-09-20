@@ -67,7 +67,10 @@ export function BaseModal({
         >
             <KeyboardAvoidingView
                 style={styles.container}
-                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                // Android already resizes the modal window for the IME. Applying
+                // another height adjustment here makes a centered, animated modal
+                // repeatedly re-layout while its input is taking focus.
+                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
                 {...webEventHandlers}
             >
                 {Platform.OS === 'web' ? (
