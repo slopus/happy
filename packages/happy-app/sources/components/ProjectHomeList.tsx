@@ -66,6 +66,10 @@ const AVATAR_GAP = 12;
 const PROJECT_ROW_HEIGHT = 52;
 const WORKTREE_ROW_HEIGHT = 48;
 const BOT_ROW_HEIGHT = 48;
+// The tree and the machine rule were a hairline in the divider grey, which on a
+// light screen all but vanished. Twice the hairline, in the grey the machine
+// name beside them already uses.
+const TREE_LINE_WIDTH = StyleSheet.hairlineWidth * 2;
 
 // Android draws nothing for LayoutAnimation until it is asked to. The call is
 // gone on the New Architecture, where layout animations are always available.
@@ -803,8 +807,8 @@ const stylesheet = StyleSheet.create((theme) => ({
     },
     machineHeaderLine: {
         flex: 1,
-        height: StyleSheet.hairlineWidth,
-        backgroundColor: theme.colors.divider,
+        height: TREE_LINE_WIDTH,
+        backgroundColor: theme.colors.textSecondary,
     },
 
     // ---- the two leading columns every row shares ----
@@ -853,8 +857,8 @@ const stylesheet = StyleSheet.create((theme) => ({
         position: 'absolute',
         top: (PROJECT_ROW_HEIGHT + AVATAR_SIZE) / 2,
         bottom: 0,
-        width: StyleSheet.hairlineWidth,
-        backgroundColor: theme.colors.divider,
+        width: TREE_LINE_WIDTH,
+        backgroundColor: theme.colors.textSecondary,
     },
     worktreeRow: {
         flexDirection: 'row',
@@ -887,8 +891,8 @@ const stylesheet = StyleSheet.create((theme) => ({
         position: 'absolute',
         top: 0,
         bottom: 0,
-        width: StyleSheet.hairlineWidth,
-        backgroundColor: theme.colors.divider,
+        width: TREE_LINE_WIDTH,
+        backgroundColor: theme.colors.textSecondary,
     },
     treeTrunkLast: {
         bottom: WORKTREE_ROW_HEIGHT / 2,
@@ -897,8 +901,8 @@ const stylesheet = StyleSheet.create((theme) => ({
         position: 'absolute',
         left: AVATAR_SIZE / 2,
         right: 0,
-        height: StyleSheet.hairlineWidth,
-        backgroundColor: theme.colors.divider,
+        height: TREE_LINE_WIDTH,
+        backgroundColor: theme.colors.textSecondary,
     },
 
     botRow: {
