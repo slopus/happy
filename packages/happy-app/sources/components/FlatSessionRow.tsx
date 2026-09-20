@@ -10,10 +10,7 @@ import { StatusDot } from './StatusDot';
 import { SessionActionsAnchor, SessionActionsPopover } from './SessionActionsPopover';
 import { SessionShortcutHintBadge } from './ShortcutHints';
 import { useSessionPressHandlers } from '@/hooks/useNavigateToSession';
-import { useSessionActionAlert } from '@/hooks/useSessionQuickActions';
-import { useHappyAction } from '@/hooks/useHappyAction';
-import { HappyError } from '@/utils/errors';
-import { sessionKill } from '@/sync/ops';
+import { useSessionActionAlert, useSessionArchiveAction } from '@/hooks/useSessionQuickActions';
 import type { FlatSessionRowData } from '@/utils/flatSessionList';
 import { formatSessionListTimestamp } from '@/utils/sessionListTimestamp';
 import type { Theme } from '@/theme';
@@ -105,17 +102,14 @@ export const FlatSessionRow = React.memo(({ row, selected, showBorder, archived 
         [session.lastActivityAt],
     );
 
-    const [archiving, performArchive] = useHappyAction(async () => {
-        const result = await sessionKill(session.id);
-        if (!result.success) {
-            throw new HappyError(result.message || t('sessionInfo.failedToArchiveSession'), false);
-        }
-    });
+    // The same archive the row's own menu runs, so a swipe drops the row from
+    // the list on the release exactly as pressing Archive does.
+    const { archiveSession, archivingSession: archiving } = useSessionArchiveAction(session.id);
 
     const handleArchive = React.useCallback(() => {
         swipeableRef.current?.close();
-        performArchive();
-    }, [performArchive]);
+        archiveSession();
+    }, [archiveSession]);
 
     const handleContextMenu = React.useCallback((event: any) => {
         event.preventDefault?.();

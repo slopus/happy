@@ -252,22 +252,44 @@ export function useSessionQuickActions(
         // Before the first await: the screen has to be off this chat while it is
         // still whole, not once the store has started dismantling it.
         onBeforeArchive?.();
-        if (session.metadata?.bot) {
-            const result = await sessionKill(session.id);
-            if (!result.success) {
-                throw new HappyError(result.message || 'Connect to the bot’s machine to archive it.', false);
+        // Also before it. Archiving asks a machine to check a worktree, then to
+        // kill the agent, and sometimes the server to retire the session after
+        // that — seconds, during which the row the user just archived used to
+        // sit in the list looking untouched. It leaves now, and the only thing
+        // that brings it back is the archive not working.
+        storage.getState().markArchiving(session.id);
+        try {
+            if (session.metadata?.bot) {
+                const result = await sessionKill(session.id);
+                if (!result.success) {
+                    throw new HappyError(result.message || 'Connect to the bot’s machine to archive it.', false);
+                }
+                onAfterArchive?.();
+                return;
+            }
+            await maybeCleanupWorktree(session.id, session.metadata?.path, session.metadata?.machineId);
+
+            // Try to kill the CLI process; if it's already dead, force-archive via server
+            const killResult = await sessionKill(session.id);
+            if (!killResult.success) {
+                // Checked, where it used to be fire-and-forget: the row has
+                // already left the list on the strength of this working, and a
+                // fallback that fails quietly would leave a live chat hidden.
+                const archiveResult = await sessionArchive(session.id);
+                if (!archiveResult.success) {
+                    throw new HappyError(archiveResult.message || t('sessionInfo.failedToArchiveSession'), false);
+                }
             }
             onAfterArchive?.();
-            return;
+        } catch (error) {
+            // Back into the list, where it still is as far as the machine is
+            // concerned. The screen stays where the press put it: the user
+            // moved on, and hauling them back to a chat they tried to close
+            // would be a second surprise on top of the failure, which
+            // useHappyAction is already reporting in words.
+            storage.getState().unmarkArchiving(session.id);
+            throw error;
         }
-        await maybeCleanupWorktree(session.id, session.metadata?.path, session.metadata?.machineId);
-
-        // Try to kill the CLI process; if it's already dead, force-archive via server
-        const killResult = await sessionKill(session.id);
-        if (!killResult.success) {
-            await sessionArchive(session.id);
-        }
-        onAfterArchive?.();
     });
 
     const archiveSession = React.useCallback(() => {
@@ -408,4 +430,18 @@ export function useSessionActionAlert(sessionId: string, options: UseSessionQuic
     const session = useSession(sessionId);
     const { showActionAlert } = useSessionQuickActions(session ?? MISSING_SESSION, options);
     return session ? showActionAlert : undefined;
+}
+
+/**
+ * Archiving for a row that only has an id — the flat list's swipe.
+ *
+ * It used to call `sessionKill` on its own, which meant the swipe skipped the
+ * worktree cleanup, the server-side fallback for an agent that is already
+ * dead, and — since the row leaving the list on the press lives in the action
+ * too — the whole point of this change.
+ */
+export function useSessionArchiveAction(sessionId: string) {
+    const session = useSession(sessionId);
+    const { archiveSession, archivingSession } = useSessionQuickActions(session ?? MISSING_SESSION);
+    return { archiveSession, archivingSession };
 }

@@ -83,11 +83,20 @@ function isSessionActive(session: { active: boolean; activeAt: number }): boolea
  * Archived sessions never sit inside a project card: they trail the list as
  * flat, date-grouped rows, so revealing the archive appends to the bottom
  * instead of reshaping the groups above it.
+ *
+ * A chat the user is in the middle of archiving counts as archived here. The
+ * machine has not agreed yet — that is several round trips away — but the
+ * answer is not what the press was about, and nothing else on this screen
+ * makes the user wait for one.
  */
-function isSessionArchived(session: Session): boolean {
-    return session.metadata?.lifecycleState === 'archived'
+function isSessionArchived(session: Session, archiving: ReadonlySet<string>): boolean {
+    return archiving.has(session.id)
+        || session.metadata?.lifecycleState === 'archived'
         || (!isRigMetadata(session.metadata) && !session.active);
 }
+
+/** For the handful of reads that happen outside a rebuild. */
+const NO_SESSIONS_ARCHIVING: ReadonlySet<string> = new Set<string>();
 
 /** "Today", "Yesterday", or "N days ago" for a flat row's date heading. */
 function relativeDayTitle(timestamp: number): string {
@@ -185,6 +194,7 @@ export interface SessionRowData {
 
 function buildSessionRowData(
     session: Session,
+    archivingSessionIds: ReadonlySet<string>,
     unreadSessionIds?: Set<string>,
     machines?: Record<string, Machine>,
     projects: Record<string, Project> = {},
@@ -233,7 +243,7 @@ function buildSessionRowData(
         ...(!session.active && { activeAt: session.activeAt }),
         hasDraft: !!session.draft,
         active: session.active,
-        archived: isSessionArchived(session),
+        archived: isSessionArchived(session, archivingSessionIds),
         machineId,
         machineName: machine?.metadata?.displayName || machine?.metadata?.host || session.metadata?.host || null,
         machineOffline: machine ? !isMachineOnline(machine) : false,
@@ -361,6 +371,15 @@ interface StorageState {
     markSessionRead: (sessionId: string) => void;
     markSessionUnread: (sessionId: string) => void;
     setCurrentViewingSession: (sessionId: string | null) => void;
+    /**
+     * Chats the user has archived, before any machine has agreed to it.
+     *
+     * Memory-only, like the unread set above: an app that was restarted has no
+     * archive still in flight, and the server has long since answered.
+     */
+    archivingSessionIds: Set<string>;
+    markArchiving: (sessionId: string) => void;
+    unmarkArchiving: (sessionId: string) => void;
 }
 
 // Helper function to build unified list view data from sessions and machines
@@ -372,6 +391,9 @@ function buildSessionListViewData(
     // Also required: rows grey out on their machine's presence, and an omitted
     // map would quietly report every machine as online.
     machines: Record<string, Machine>,
+    // Required for the same reason again: a chat left the list on the press,
+    // and a rebuild that forgot which ones those are puts them all back.
+    archivingSessionIds: ReadonlySet<string>,
     projects: Record<string, Project> = {},
 ): SessionListViewItem[] {
     const rigProjectSessions: Session[] = [];
@@ -387,7 +409,7 @@ function buildSessionListViewData(
             return;
         }
         // The archive is a flat chronological tail, not part of any project.
-        if (isSessionArchived(session)) {
+        if (isSessionArchived(session, archivingSessionIds)) {
             archivedSessions.push(session);
             return;
         }
@@ -421,7 +443,7 @@ function buildSessionListViewData(
     archivedSessions.sort((a, b) => sortKey(b) - sortKey(a));
 
     const listData: SessionListViewItem[] = [];
-    const toRow = (session: Session) => buildSessionRowData(session, unreadSessionIds, machines, projects);
+    const toRow = (session: Session) => buildSessionRowData(session, archivingSessionIds, unreadSessionIds, machines, projects);
 
     if (botSessions.length > 0) {
         botSessions.sort((a, b) => {
@@ -515,6 +537,7 @@ export const storage = create<StorageState>()((set, get) => {
         nativeUpdateStatus: null,
         unreadSessionIds: new Set<string>(),
         currentViewingSessionId: null,
+        archivingSessionIds: new Set<string>(),
         isMutableToolCall: (sessionId: string, callId: string) => {
             const sessionMessages = get().sessionMessages[sessionId];
             if (!sessionMessages) {
@@ -785,11 +808,26 @@ export const storage = create<StorageState>()((set, get) => {
                 }
             });
 
+            // A chat held out of the list by hand until the archive lands can
+            // be let go the moment the server says the same thing — or the
+            // moment it stops being a chat at all. Held any longer the set only
+            // grows, and nothing would ever empty it.
+            let archivingSessionIds = state.archivingSessionIds;
+            state.archivingSessionIds.forEach((sessionId) => {
+                const session = mergedSessions[sessionId];
+                if (session && !isSessionArchived(session, NO_SESSIONS_ARCHIVING)) return;
+                if (archivingSessionIds === state.archivingSessionIds) {
+                    archivingSessionIds = new Set(archivingSessionIds);
+                }
+                archivingSessionIds.delete(sessionId);
+            });
+
             // Build new unified list view data
             const sessionListViewData = buildSessionListViewData(
                 mergedSessions,
                 unreadSessionIds,
                 state.machines,
+                archivingSessionIds,
                 state.projects,
             );
 
@@ -802,6 +840,7 @@ export const storage = create<StorageState>()((set, get) => {
                 sessionListViewData,
                 sessionMessages: updatedSessionMessages,
                 unreadSessionIds,
+                archivingSessionIds,
             };
             });
             for (const sessionId of pendingComposerWrites) {
@@ -1251,7 +1290,7 @@ export const storage = create<StorageState>()((set, get) => {
             return {
                 ...state,
                 sessions: updatedSessions,
-                sessionListViewData: buildSessionListViewData(updatedSessions, state.unreadSessionIds, state.machines, state.projects)
+                sessionListViewData: buildSessionListViewData(updatedSessions, state.unreadSessionIds, state.machines, state.archivingSessionIds, state.projects)
             };
         }),
         // Permission / model / effort picks are local mirrors of synced session
@@ -1316,7 +1355,7 @@ export const storage = create<StorageState>()((set, get) => {
             return {
                 ...state,
                 sessions: updatedSessions,
-                sessionListViewData: buildSessionListViewData(updatedSessions, state.unreadSessionIds, state.machines, state.projects)
+                sessionListViewData: buildSessionListViewData(updatedSessions, state.unreadSessionIds, state.machines, state.archivingSessionIds, state.projects)
             };
         }),
         getSessionPathKey: (sessionId: string): string | null => {
@@ -1349,6 +1388,7 @@ export const storage = create<StorageState>()((set, get) => {
                 state.sessions,
                 state.unreadSessionIds,
                 mergedMachines,
+                state.archivingSessionIds,
                 state.projects,
             );
 
@@ -1370,6 +1410,7 @@ export const storage = create<StorageState>()((set, get) => {
                     state.sessions,
                     state.unreadSessionIds,
                     state.machines,
+                    state.archivingSessionIds,
                     mergedProjects,
                 ),
             };
@@ -1388,6 +1429,7 @@ export const storage = create<StorageState>()((set, get) => {
                     state.sessions,
                     state.unreadSessionIds,
                     state.machines,
+                    state.archivingSessionIds,
                     projects,
                 ),
             };
@@ -1400,7 +1442,7 @@ export const storage = create<StorageState>()((set, get) => {
             return {
                 ...state,
                 machines: remaining,
-                sessionListViewData: buildSessionListViewData(state.sessions, state.unreadSessionIds, remaining, state.projects)
+                sessionListViewData: buildSessionListViewData(state.sessions, state.unreadSessionIds, remaining, state.archivingSessionIds, state.projects)
             };
         }),
         // Artifact methods
@@ -1469,7 +1511,7 @@ export const storage = create<StorageState>()((set, get) => {
 
             // Rebuild sessionListViewData without the deleted session.
             // Pass unreadSessionIds so the remaining sessions keep their unread badges.
-            const sessionListViewData = buildSessionListViewData(remainingSessions, state.unreadSessionIds, state.machines, state.projects);
+            const sessionListViewData = buildSessionListViewData(remainingSessions, state.unreadSessionIds, state.machines, state.archivingSessionIds, state.projects);
             
             return {
                 ...state,
@@ -1609,7 +1651,7 @@ export const storage = create<StorageState>()((set, get) => {
             return {
                 ...state,
                 unreadSessionIds: next,
-                sessionListViewData: buildSessionListViewData(state.sessions, next, state.machines, state.projects),
+                sessionListViewData: buildSessionListViewData(state.sessions, next, state.machines, state.archivingSessionIds, state.projects),
             };
         }),
         markSessionUnread: (sessionId: string) => set((state) => {
@@ -1619,7 +1661,7 @@ export const storage = create<StorageState>()((set, get) => {
             return {
                 ...state,
                 unreadSessionIds: next,
-                sessionListViewData: buildSessionListViewData(state.sessions, next, state.machines, state.projects),
+                sessionListViewData: buildSessionListViewData(state.sessions, next, state.machines, state.archivingSessionIds, state.projects),
             };
         }),
         setCurrentViewingSession: (sessionId: string | null) => set((state) => {
@@ -1633,8 +1675,37 @@ export const storage = create<StorageState>()((set, get) => {
                 currentViewingSessionId: sessionId,
                 unreadSessionIds: next,
                 ...(next !== state.unreadSessionIds ? {
-                    sessionListViewData: buildSessionListViewData(state.sessions, next, state.machines, state.projects),
+                    sessionListViewData: buildSessionListViewData(state.sessions, next, state.machines, state.archivingSessionIds, state.projects),
                 } : {}),
+            };
+        }),
+        /**
+         * Archiving is several round trips long — a worktree check, a kill on
+         * the machine, sometimes a server-side archive after it — and the row
+         * used to sit in the list for every one of them. Called before the
+         * first of them, it takes the chat out of the live list on the press.
+         *
+         * Reversed by `unmarkArchiving` if the archive fails, which is the only
+         * thing that brings the chat back.
+         */
+        markArchiving: (sessionId: string) => set((state) => {
+            if (state.archivingSessionIds.has(sessionId)) return state;
+            const archivingSessionIds = new Set(state.archivingSessionIds);
+            archivingSessionIds.add(sessionId);
+            return {
+                ...state,
+                archivingSessionIds,
+                sessionListViewData: buildSessionListViewData(state.sessions, state.unreadSessionIds, state.machines, archivingSessionIds, state.projects),
+            };
+        }),
+        unmarkArchiving: (sessionId: string) => set((state) => {
+            if (!state.archivingSessionIds.has(sessionId)) return state;
+            const archivingSessionIds = new Set(state.archivingSessionIds);
+            archivingSessionIds.delete(sessionId);
+            return {
+                ...state,
+                archivingSessionIds,
+                sessionListViewData: buildSessionListViewData(state.sessions, state.unreadSessionIds, state.machines, archivingSessionIds, state.projects),
             };
         }),
     }
