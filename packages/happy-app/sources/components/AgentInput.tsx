@@ -10,7 +10,7 @@ import { layout } from './layout';
 import { MultiTextInput, KeyPressEvent } from './MultiTextInput';
 import { Typography } from '@/constants/Typography';
 import { PermissionMode, ModelMode } from './PermissionModeSelector';
-import { EffortLevel, groupModelModesByProvider } from './modelModeOptions';
+import { EffortLevel, groupModelModesByProvider, truncateModelLabel } from './modelModeOptions';
 import { hapticsLight, hapticsError } from './haptics';
 import { Shaker, ShakeInstance } from './Shaker';
 import { StatusDot } from './StatusDot';
@@ -850,7 +850,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         [availableModels],
     );
     const availableEffortLevels = props.availableEffortLevels ?? [];
-    const modelLabel = props.modelMode?.name ?? t('agentInput.model.title');
+    const modelLabel = truncateModelLabel(props.modelMode?.name ?? t('agentInput.model.title'));
     const effortLabel = props.effortLevel?.name;
     const canOpenModelPicker = availableModels.length > 0 && !!props.onModelModeChange;
     const canOpenEffortPicker = availableEffortLevels.length > 0 && !!props.onEffortLevelChange;

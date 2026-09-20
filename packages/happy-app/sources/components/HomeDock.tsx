@@ -57,6 +57,7 @@ import {
     getSupportsWorktree,
     groupModelModesByProvider,
     includeConfiguredModel,
+    truncateModelLabel,
     type ModeOption,
 } from './modelModeOptions';
 import type { NewSessionAgentType } from '@/sync/persistence';
@@ -1063,6 +1064,7 @@ export const HomeDock = React.memo(({
         ?? availableAgents[0]
         ?? { key: agentType, name: getHarnessName(agentType) };
     const permissionLabel = getPermissionModeShortLabel(currentPermission);
+    const modelChipLabel = truncateModelLabel(currentModel?.name ?? currentAgent.name);
     const focusedPromptPlaceholder = createsBot
         ? 'Name your bot'
         : resolveHomeDockPromptPlaceholder(currentAgent.key, currentAgent.name);
@@ -2053,12 +2055,12 @@ export const HomeDock = React.memo(({
                                 groups: modelSettingsGroups,
                                 style: styles.nativeModeMenu,
                                 accessibilityLabel: t('agentInput.model.title'),
-                                triggerLabel: currentModel?.name ?? currentAgent.name,
+                                triggerLabel: modelChipLabel,
                                 triggerAlignment: 'trailing',
                                 children: (
                                     <View style={styles.focusedModeButton}>
                                         <Text style={styles.focusedModeText} numberOfLines={1}>
-                                            {currentModel?.name ?? currentAgent.name}
+                                            {modelChipLabel}
                                         </Text>
                                     </View>
                                 ),
@@ -2067,7 +2069,7 @@ export const HomeDock = React.memo(({
                             <View style={styles.nativeModeMenu}>
                                 <View style={styles.focusedModeButton}>
                                     <Text style={styles.focusedModeText} numberOfLines={1}>
-                                        {currentAgent.name}
+                                        {modelChipLabel}
                                     </Text>
                                 </View>
                             </View>

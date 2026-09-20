@@ -615,3 +615,27 @@ export function getSupportsWorktree(flavor: AgentFlavor): boolean {
     if (flavor === 'openclaw') return false;
     return true;
 }
+
+/** The most characters a model name may take on the composer's chip. */
+export const MODEL_CHIP_LABEL_MAX_LENGTH = 16;
+
+/**
+ * The model name as it fits on the composer's chip.
+ *
+ * The chip is the only elastic thing between the add button and send, so a long
+ * name — "Claude Sonnet thinking" — used to push send over. Native menus size
+ * their trigger to the whole string they are handed, so the cut has to happen
+ * here rather than being left to `numberOfLines`. It falls on a word boundary
+ * when one is near the limit: "Claude Sonnet…" rather than "Claude Sonnet th…".
+ */
+export function truncateModelLabel(
+    label: string,
+    max: number = MODEL_CHIP_LABEL_MAX_LENGTH,
+): string {
+    const trimmed = label.trim();
+    if (trimmed.length <= max) return trimmed;
+    const cut = trimmed.slice(0, max);
+    const lastSpace = cut.lastIndexOf(' ');
+    const head = lastSpace >= max - 8 ? cut.slice(0, lastSpace) : cut.trimEnd();
+    return `${head}…`;
+}

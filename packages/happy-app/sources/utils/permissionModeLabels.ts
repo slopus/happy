@@ -44,22 +44,19 @@ export function getPermissionModeShortLabel(mode: { name: string } | null | unde
 }
 
 /**
- * The text shown on a row of the permission menu. The iOS menu draws option
- * labels alone, with no room for a separate description, so a description has
- * to be folded into the label to appear at all.
+ * The text shown on a row of the permission menu: the mode's name, nothing
+ * else.
  *
- * Only a one-word name gets one. Our own names are single words that cannot
- * stand alone — Auto and Default say nothing by themselves — while a harness
- * publishing its own catalog names modes in full ("Workspace write", "Read
- * only"), where appending a sentence only pushed the row onto a second line
- * and truncated it mid-word.
+ * A description used to be folded in after a dot, because the iOS menu draws
+ * option labels alone. It never fit — "Auto · Uses the workspace sandbox…" ran
+ * off the row and was cut mid-sentence — and the word on its own is what people
+ * already recognise, Happy's agent above all. The in-app sheet still has room
+ * for a second line and still shows the description there.
  */
 export function getPermissionModeMenuLabel(
     mode: { name: string; description?: string | null },
 ): string {
-    const description = mode.description?.trim();
-    const isOneWord = mode.name.trim().split(/\s+/).length === 1;
-    return description && isOneWord ? `${mode.name} · ${description}` : mode.name;
+    return mode.name;
 }
 
 export function getPermissionModeRank(mode: { name: string }): number {

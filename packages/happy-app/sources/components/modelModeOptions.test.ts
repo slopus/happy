@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+    truncateModelLabel,
     filterPermissionModesForCli,
     modeSupportedByCli,
     permissionModeSupportedByCli,
@@ -433,5 +434,18 @@ describe('modelModeOptions', () => {
         ]);
         expect(filterPermissionModesForCli(modes, '1.2.1-beta.2')).toEqual(modes);
         expect(filterPermissionModesForCli(modes, undefined)).toEqual(modes);
+    });
+    // The chip is the only elastic thing between the add button and send, so a
+    // name that does not fit is cut here rather than pushing send over.
+    it('cuts a long model name on a word boundary for the composer chip', () => {
+        expect(truncateModelLabel('GPT-5.6 Sol')).toBe('GPT-5.6 Sol');
+        expect(truncateModelLabel('Gemini 2.5 Pro')).toBe('Gemini 2.5 Pro');
+        expect(truncateModelLabel('Claude Sonnet thinking')).toBe('Claude Sonnet\u2026');
+        expect(truncateModelLabel('Claude Opus 4.1 Thinking')).toBe('Claude Opus 4.1\u2026');
+    });
+
+    it('cuts mid-word only when there is no boundary to fall back on', () => {
+        expect(truncateModelLabel('Supercalifragilisticexpialidocious'))
+            .toBe('Supercalifragili\u2026');
     });
 });

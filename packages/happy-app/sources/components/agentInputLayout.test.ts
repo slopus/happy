@@ -74,6 +74,8 @@ describe('agent input compact mobile layout', () => {
         // The pair is right-aligned, so each chip keeps its slack on the outside
         // of the separator. Only the model shrinks; the effort reserves the
         // widest label's width so changing level cannot reflow or clip the row.
+        // The effort's outer padding is deliberately small: that slack is what
+        // the model name spends before it has to be cut, and send must not move.
         ['model',
             { flexShrink: 1, minWidth: 0, height: 40 },
             {
@@ -86,7 +88,7 @@ describe('agent input compact mobile layout', () => {
             {
                 minWidth: 0, height: 40, borderRadius: 20,
                 flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start',
-                paddingLeft: 4, paddingRight: 12, gap: 4,
+                paddingLeft: 4, paddingRight: 6, gap: 4,
             }],
     ])('keeps %s native-menu frame geometry separate from label padding', (variant, expectedFrame, expectedContent) => {
         const resolveGeometry = (agentInputLayout as Record<string, unknown>)
