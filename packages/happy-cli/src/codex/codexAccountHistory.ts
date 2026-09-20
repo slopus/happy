@@ -159,12 +159,12 @@ export async function getCodexSourceAccountProfileId(root: string, sessionId: st
 }
 
 export async function rememberCodexAccountSession(root: string, sessionId: string, profileId: string, home?: string): Promise<void> {
-  await copyLock.inLock(async () => {
-    await privateDirectory(root); await privateDirectory(join(root, 'session-audit'));
-    const target = auditPath(root, sessionId); const temp = target + '.' + randomUUID();
-    try { await writeFile(temp, JSON.stringify({ profileId, home }), { mode: 0o600, flag: 'wx' }); await rename(temp, target); }
-    finally { await rm(temp, { force: true }); }
-  });
+  // Each audit has a unique temporary file and is atomically replaced. It
+  // does not touch rollout/index state and must not queue behind history I/O.
+  await privateDirectory(root); await privateDirectory(join(root, 'session-audit'));
+  const target = auditPath(root, sessionId); const temp = target + '.' + randomUUID();
+  try { await writeFile(temp, JSON.stringify({ profileId, home }), { mode: 0o600, flag: 'wx' }); await rename(temp, target); }
+  finally { await rm(temp, { force: true }); }
 }
 
 /**

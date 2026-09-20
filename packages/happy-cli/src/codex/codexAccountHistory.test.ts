@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+import { withCodexHistoryCacheLock } from './codexHistoryIndex';
 import { createRequire } from 'node:module';
 import { afterEach, describe, expect, it } from 'vitest';
 import { mkdtemp, mkdir, writeFile, readFile, symlink, rm, stat, utimes } from 'node:fs/promises';
@@ -8,6 +10,35 @@ const dirs: string[] = [];
 async function temp() { const h = await mkdtemp(join(tmpdir(), 'codex-history-test-')); dirs.push(h); return h; }
 afterEach(async () => { await Promise.all(dirs.splice(0).map(h => rm(h, { recursive: true, force: true }))); });
 describe('profile-scoped native history', () => {
+  it('records a new session while an unrelated history restore waits on the cache lock', async () => {
+    const root = await temp(); const target = await temp();
+    const cache = join(root, createHash('sha256').update('profile-a').digest('hex'));
+    await mkdir(cache);
+    let release!: () => void;
+    let acquired!: () => void;
+    const ready = new Promise<void>(resolve => { acquired = resolve; });
+    const held = withCodexHistoryCacheLock(cache, () => {
+      acquired(); return new Promise<void>(resolve => { release = resolve; });
+    });
+    await ready;
+    const restoring = restoreCodexAccountHistory(root, 'profile-a', target);
+    // The restore takes the in-process lock before waiting on SQLite.
+    const recording = rememberCodexAccountSession(root, 'new-session', 'profile-b');
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    let registered = false;
+    try {
+      registered = await Promise.race([
+        recording.then(() => true),
+        new Promise<boolean>(resolve => { timeout = setTimeout(() => resolve(false), 1000); }),
+      ]);
+    } finally {
+      clearTimeout(timeout); release(); await Promise.all([held, restoring, recording]);
+    }
+    expect(registered).toBe(true);
+    const audit = join(root, 'session-audit', createHash('sha256').update('new-session').digest('hex') + '.json');
+    expect(JSON.parse(await readFile(audit, 'utf8')).profileId).toBe('profile-b');
+  });
+
   it('hands off only the requested thread across profiles through an explicit Paws source-session audit', async () => {
     const cache = await temp(); const source = await temp();
     await mkdir(join(source, 'sessions')); await writeFile(join(source, 'sessions', 'rollout-thread-a.jsonl'), 'requested');

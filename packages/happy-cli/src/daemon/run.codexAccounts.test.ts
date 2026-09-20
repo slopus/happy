@@ -28,6 +28,8 @@ vi.mock('@/utils/spawnHappyCLI', () => ({ resolveHappyCLIEntrypoint: () => '/fak
   const child = Object.assign(new EventEmitter(), { pid: 987601, kill: vi.fn() }); state.children.push(child); state.spawned.push(options.env); return child;
 } }));
 import { startDaemon } from './run';
+import axios from 'axios';
+import { encrypt, encodeBase64 } from '@/api/encryption';
 import { logger } from '@/ui/logger';
 import { configuration } from '@/configuration';
 import { startCodexAccountWorkerObserver } from '@/codex/codexAccountWorker';
@@ -164,6 +166,32 @@ describe('real daemon Codex spawn paths', () => {
     expect(state.spawned).toHaveLength(1);
     expect(state.api.attachCodexSession).not.toHaveBeenCalledWith('launch-b', expect.anything());
   });
+  it('restarts an inactive never-used thread in the same Paws session without requiring a rollout', async () => {
+    state.tmux = false;
+    const first = state.handlers.spawnSession({ directory: sourceHome, agent: 'codex', codexSessionGrant: 'a'.repeat(43) });
+    await vi.waitFor(() => expect(state.spawned).toHaveLength(1));
+    const firstHome = state.spawned[0].CODEX_HOME;
+    const metadata = { hostPid: 987601, flavor: 'codex', startedBy: 'daemon', path: sourceHome, codexThreadId: 'empty-thread', codexAccountProfileId: 'profile-1' };
+    const encryption = { encryptionKey: new Uint8Array(32), encryptionVariant: 'legacy' as const, seq: 0, metadataVersion: 1, agentStateVersion: 1 };
+    state.control.onHappySessionWebhook('empty-session', metadata, encryption); await first;
+    state.children[0].emit('exit', 0);
+    await vi.waitFor(async () => { await expect(stat(firstHome)).rejects.toThrow(); });
+    const encrypted = (value: unknown) => encodeBase64(encrypt(encryption.encryptionKey, 'legacy', value));
+    vi.mocked(axios.get).mockImplementation(async (url: any) => ({ data: String(url).endsWith('/messages')
+      ? { messages: [{ seq: 1, content: { t: 'encrypted', c: encrypted({ role: 'agent', content: { type: 'event', data: { type: 'ready' } } }) } }] }
+      : { sessions: [{ id: 'empty-session', active: false, seq: 1, metadataVersion: 2, metadata: encrypted(metadata) }] } }));
+    const resumed = state.handlers.resumeSession('empty-session', { codexSessionGrant: 'b'.repeat(43) });
+    try {
+      await vi.waitFor(() => expect(state.spawned).toHaveLength(2));
+      expect(state.workerArgs[1]).not.toContain('--resume');
+      expect(state.spawned[1].HAPPY_RECONNECT_SESSION_ID).toBe('empty-session');
+      expect(JSON.parse(state.spawned[1].HAPPY_RECONNECT_METADATA_JSON).codexThreadId).toBeUndefined();
+      state.control.onHappySessionWebhook('empty-session', { ...metadata, codexThreadId: undefined }, encryption);
+      await expect(resumed).resolves.toEqual({ type: 'success', sessionId: 'empty-session' });
+    } finally {
+      vi.mocked(axios.get).mockImplementation(async () => ({ data: { sessions: [] } }));
+    }
+  });
   it('keeps the live worker running when resume authorization cannot be prepared', async () => {
     state.tmux = false;
     const first = state.handlers.spawnSession({ directory: sourceHome, agent: 'codex', codexSessionGrant: 'a'.repeat(43) });
@@ -236,6 +264,25 @@ describe('real daemon Codex spawn paths', () => {
 
     expect(resumed).toEqual({ type: 'error', errorMessage: expect.stringContaining('cannot be safely restarted remotely') });
     expect(state.spawned).toHaveLength(1);
+  });
+  it('retries a finished ordinary session on the daemon heartbeat after an upload outage', async () => {
+    state.tmux = false;
+    const spawning = state.handlers.spawnSession({ directory: sourceHome, agent: 'codex', codexSessionGrant: 'g'.repeat(43) });
+    await vi.waitFor(() => expect(state.spawned).toHaveLength(1));
+    state.control.onHappySessionWebhook('recovery-session', { hostPid: 987601, flavor: 'codex', startedBy: 'daemon' });
+    await spawning;
+    const home = state.spawned[0].CODEX_HOME;
+    const auth = JSON.parse(await readFile(join(home, 'auth.json'), 'utf8'));
+    const rotated = { ...auth, tokens: { ...auth.tokens, refresh_token: 'pending-exit-refresh' } };
+    await writeFile(join(home, 'auth.json'), JSON.stringify(rotated));
+    state.api.updateCodexAccountCredential.mockRejectedValue(new Error('upload unavailable'));
+    state.children[0].emit('exit', 0);
+    await vi.waitFor(async () => expect((await stat(join(home, '.paws-session-finished'))).isFile()).toBe(true));
+    expect(JSON.parse(await readFile(join(home, 'auth.json'), 'utf8'))).toEqual(rotated);
+    state.api.updateCodexAccountCredential.mockResolvedValue({ profile: { credentialVersion: 2 } });
+    await vi.advanceTimersByTimeAsync(60_000);
+    await vi.waitFor(async () => { await expect(stat(home)).rejects.toThrow(); });
+    expect(state.api.updateCodexAccountCredential).toHaveBeenLastCalledWith('profile-1', expect.objectContaining({ launchId: 'launch-1', expectedVersion: 1, auth: rotated }));
   });
   it.each([false, true])('redeems and attaches the actual direct/tmux spawn (tmux=%s)', async tmux => {
     state.tmux = tmux;

@@ -25,6 +25,10 @@ vi.mock('@/sync/storage', () => ({
 vi.mock('@/sync/sessionTextStream', () => ({ useSessionTextPreviews: () => state.previews }));
 vi.mock('@/sync/sync', () => ({ sync: { getLocalHistoryScope: () => null, getHistoryBoundarySeq: () => null } }));
 vi.mock('@/hooks/useSessionQuickActions', () => ({ useSessionQuickActions: () => ({}) }));
+// These cases render ordinary sessions; continuation hydration is a separate boundary.
+vi.mock('@/hooks/useContinuationHistory', () => ({ useContinuationHistory: () => {
+    throw new Error('Ordinary streaming sessions must not hydrate continuation history');
+} }));
 vi.mock('@/hooks/useGroupedMessages', () => ({ isSessionTurnActive: () => true }));
 vi.mock('./layout', () => ({ layout: { maxWidth: 800 } }));
 vi.mock('./ChatFooter', () => ({ ChatFooter: () => null }));

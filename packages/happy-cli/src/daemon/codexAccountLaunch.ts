@@ -1,21 +1,22 @@
 import { createHash } from 'node:crypto';
-import { rm } from 'node:fs/promises';
+import { lstat, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { ApiClient } from '@/api/api';
 import { CodexAccountRequestError } from '@/api/codexAccountTypes';
 import { codexAccountAuthSchema, readCodexAccountAuth, type CodexAccountAuth } from '@/codex/codexAccountAuth';
 import { prepareCodexHomeWithAuth } from '@/codex/codexHome';
 import { collectCodexUsageSnapshot, type CodexUsageRateLimitWindow, type CodexUsageRateLimits } from '@/codex/codexUsage';
-import { retainCodexAccountHistory, restoreCodexAccountHistory, rememberCodexAccountSession, copyCodexSourceThread, getCodexSourceAccountProfileId, CodexSourceHistoryUnavailableError, CodexSourceAccountMismatchError } from '@/codex/codexAccountHistory';
+import { retainCodexAccountHistory, rememberCodexAccountSession, copyCodexSourceThread, getCodexSourceAccountProfileId, CodexSourceHistoryUnavailableError, CodexSourceAccountMismatchError } from '@/codex/codexAccountHistory';
 import { configuration } from '@/configuration';
 import type { SpawnSessionOptions, SpawnSessionResult } from '@/modules/common/registerCommonHandlers';
 import { CODEX_ACCOUNT_UNSET_ENV } from '@/codex/codexAccountConfig';
 import { writeCodexAccountLaunchState, type CodexAccountLaunchState } from '@/codex/codexAccountLaunchState';
+import { createCodexSessionHome, preserveFinishedCodexSession } from '@/codex/codexSessionHome';
 export { CODEX_ACCOUNT_UNSET_ENV } from '@/codex/codexAccountConfig';
 
 export type AccountApi = Pick<ApiClient, 'redeemCodexSessionGrant' | 'attachCodexSession' | 'updateCodexAccountCredential' | 'reportCodexAccountQuota' | 'reportCodexAccountStatus'>
-  & Partial<Pick<ApiClient, 'reportCodexAccountQuotaProbe'>>;
-type PrepareOptions = NonNullable<Parameters<typeof prepareCodexHomeWithAuth>[1]> & { historyRoot?: string; sourceSessionId?: string; sourceThreadId?: string; sourceProfileId?: string; skipHistory?: boolean };
+  & Partial<Pick<ApiClient, 'reportCodexAccountQuotaProbe' | 'createCodexSessionGrant'>>;
+type PrepareOptions = NonNullable<Parameters<typeof prepareCodexHomeWithAuth>[1]> & { historyRoot?: string; sourceSessionId?: string; sourceThreadId?: string; sourceProfileId?: string; resumeExistingSession?: boolean; skipHistory?: boolean };
 const fingerprint = (auth: CodexAccountAuth) => createHash('sha256').update(JSON.stringify(auth)).digest('hex');
 const identityFingerprint = (launchId: string, accountId: string) => createHash('sha256').update(`${launchId}\0${accountId}`).digest('hex');
 
@@ -73,17 +74,30 @@ export class CodexAccountLaunch {
 
   static async prepare(api: AccountApi, machineId: string, grant: string | undefined, options?: PrepareOptions): Promise<CodexAccountLaunch> {
     if (typeof grant !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(grant)) throw new Error('A fresh Codex session grant is required. Check the binding in Settings → Device Environment.');
-    const redeemed = await api.redeemCodexSessionGrant({ machineId, grant });
+    let redeemed = await api.redeemCodexSessionGrant({ machineId, grant });
+    const historyRoot = options?.historyRoot ?? join(configuration.happyHomeDir, 'codex-session-cache');
+    const sourceProfileId = options?.sourceProfileId ?? (options?.sourceSessionId
+      ? await getCodexSourceAccountProfileId(historyRoot, options.sourceSessionId) : undefined);
+    if (sourceProfileId && sourceProfileId !== redeemed.profile?.id) {
+      if (!options?.resumeExistingSession || !options.sourceSessionId || !api.createCodexSessionGrant) throw new CodexSourceAccountMismatchError();
+      // The relay authorizes this against its original launch audit. Never
+      // rebind the machine or import history into another provider account.
+      const scoped = await api.createCodexSessionGrant({ machineId, sourceSessionId: options.sourceSessionId });
+      redeemed = await api.redeemCodexSessionGrant({ machineId, grant: scoped.grant });
+      if (redeemed.profile?.id !== sourceProfileId) throw new CodexSourceAccountMismatchError();
+    }
     const parsed = codexAccountAuthSchema.safeParse(redeemed.auth);
     if (!parsed.success || !redeemed.launchId || !redeemed.profile?.id || !Number.isInteger(redeemed.profile.credentialVersion) || redeemed.profile.credentialVersion < 1) {
       throw new Error('Invalid Codex grant response');
     }
-    const home = await prepareCodexHomeWithAuth(JSON.stringify(parsed.data), options);
-    const historyRoot = options?.historyRoot ?? join(configuration.happyHomeDir, 'codex-session-cache');
+    const home = await prepareCodexHomeWithAuth(JSON.stringify(parsed.data), {
+      ...options, createTempDir: options?.createTempDir ?? createCodexSessionHome,
+    });
     try {
-      if (!options?.skipHistory) {
-        await restoreCodexAccountHistory(historyRoot, redeemed.profile.id, home);
-        if (options?.sourceThreadId) await copyCodexSourceThread(historyRoot, options.sourceSessionId ?? '', options.sourceThreadId, home, redeemed.profile.id);
+      // Fresh sessions need no history. Import only an explicit resume/fork
+      // source and its ancestors, never the entire account cache.
+      if (!options?.skipHistory && options?.sourceThreadId) {
+        await copyCodexSourceThread(historyRoot, options.sourceSessionId ?? '', options.sourceThreadId, home, redeemed.profile.id);
       }
       const launch = new CodexAccountLaunch(api, machineId, home, {
         schemaVersion: 1, daemonPid: process.pid, machineId, profileId: redeemed.profile.id, launchId: redeemed.launchId,
@@ -223,17 +237,44 @@ export class CodexAccountLaunch {
   finish(): Promise<void> {
     if (!this.finishing) {
       clearInterval(this.timer);
-      this.finishing = Promise.allSettled([this.pending, this.attaching]).then(() => this.syncOnce()).catch(() => undefined)
+      this.finishing = Promise.allSettled([this.pending, this.attaching]).then(() => this.sourceSessionId
+        ? this.syncOnce()
+        : !this.writeDisabled ? this.syncProbeCredential() : undefined).catch(() => undefined)
         .then(async () => {
-          try { if (this.sourceSessionId && !this.identityInvalid) await retainCodexAccountHistory(this.historyRoot, this.profileId, this.home); }
-          finally { await rm(this.home, { recursive: true, force: true }); }
+          if (!await lstat(this.home).then(() => true).catch(error => {
+            if (error.code === 'ENOENT') return false;
+            throw error;
+          })) return; // Another lifecycle owner already completed cleanup.
+          try {
+            // Persist the last acknowledged version before any later process retries.
+            await this.checkpoint();
+            const auth = await readCodexAccountAuth(this.home).catch(() => undefined);
+            if (this.sourceSessionId && !this.identityInvalid) await retainCodexAccountHistory(this.historyRoot, this.profileId, this.home);
+            if (auth && !this.identityInvalid && fingerprint(auth) === this.authFingerprint) {
+              await rm(this.home, { recursive: true, force: true });
+            } else {
+              await preserveFinishedCodexSession(this.home);
+            }
+          } catch (error) {
+            // A history/checkpoint failure must not destroy the only refreshed login either.
+            await preserveFinishedCodexSession(this.home).catch(() => undefined);
+            throw error;
+          }
         });
     }
     return this.finishing;
   }
 
   async abort(): Promise<void> {
-    if (this.pid) { try { process.kill(this.pid, 'SIGTERM'); } catch { /* Already gone. */ } }
+    if (this.pid) {
+      try { process.kill(this.pid, 'SIGTERM'); } catch { /* Verify death below. */ }
+      try {
+        process.kill(this.pid, 0);
+        return; // The registered exit/heartbeat handler will finalize after the worker stops.
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ESRCH') return;
+      }
+    }
     await this.finish();
   }
 }

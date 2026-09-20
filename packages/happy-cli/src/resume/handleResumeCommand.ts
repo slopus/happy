@@ -13,6 +13,8 @@ export type ResumeLaunch = {
 export type ResumeLaunchOptions = {
     claudeStartingMode?: 'local' | 'remote';
     startedBy?: 'daemon' | 'terminal';
+    /** Daemon verified a complete ready-only transcript on an inactive session. */
+    restartUnusedCodexThread?: boolean;
 };
 
 export function parseResumeCommandArgs(args: string[]): { showHelp: boolean; sessionId: string } {
@@ -51,10 +53,10 @@ export function buildResumeLaunch(session: ResumableHappySession, options: Resum
     const flavor = resolveFlavor(metadata);
 
     if (flavor === 'codex') {
-        if (!metadata.codexThreadId) {
+        if (!metadata.codexThreadId && !options.restartUnusedCodexThread) {
             throw new Error(`Happy session ${session.id} is missing its Codex thread ID.`);
         }
-        const args = ['codex', '--resume', metadata.codexThreadId];
+        const args = options.restartUnusedCodexThread ? ['codex'] : ['codex', '--resume', metadata.codexThreadId!];
         if (options.startedBy) {
             args.push('--started-by', options.startedBy);
         }

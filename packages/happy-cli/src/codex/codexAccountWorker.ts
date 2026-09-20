@@ -1,4 +1,4 @@
-import { readFile, lstat, rm } from 'node:fs/promises';
+import { readFile, lstat } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { retainCodexAccountHistory } from './codexAccountHistory';
 import { readCodexAccountLaunchState } from './codexAccountLaunchState';
@@ -51,8 +51,9 @@ export async function cleanupOrphanedCodexAccountHome(home = process.env.CODEX_H
     if (!Number.isSafeInteger(marker.daemonPid) || marker.daemonPid <= 0 || typeof marker.profileId !== 'string' || typeof marker.historyRoot !== 'string') return;
     try { process.kill(marker.daemonPid, 0); return; }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ESRCH') return; }
-    try { await retainCodexAccountHistory(marker.historyRoot, marker.profileId, home); }
-    finally { await rm(home, { recursive: true, force: true }); }
+    await retainCodexAccountHistory(marker.historyRoot, marker.profileId, home);
+    // Without an API/checkpoint reconciliation we cannot know whether auth was uploaded.
+    // Leave the login in place for its account-aware owner to recover.
   } catch { /* Best effort when another cleanup already owns this home. */ }
 }
 

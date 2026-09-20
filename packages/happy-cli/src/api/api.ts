@@ -317,6 +317,9 @@ export class ApiClient {
   uploadCodexAccount(auth: CodexAccountAuth): Promise<{ profile: CodexAccountProfile }> {
     return this.codexAccountRequest('POST', 'codex-accounts/upload', { auth });
   }
+  createCodexSessionGrant(request: { machineId: string; sourceSessionId: string }): Promise<{ grant: string }> {
+    return this.codexAccountRequest('POST', 'codex-session-grants', request);
+  }
   redeemCodexSessionGrant(request: { machineId: string; grant: string }): Promise<CodexGrantRedemption> {
     return this.codexAccountRequest('POST', 'codex-session-grants/redeem', request);
   }
