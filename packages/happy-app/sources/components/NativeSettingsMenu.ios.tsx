@@ -21,6 +21,7 @@ import type {
 } from './NativeSettingsMenu';
 import { orderNativeMenuItems } from './nativeMenuOrder';
 import { isNativeMenuChoice } from './nativeMenuSelection';
+import { getDefaultFont } from '@/constants/Typography';
 
 const systemImage = (name: string) => (
     name as React.ComponentProps<typeof Button>['systemImage']
@@ -30,8 +31,18 @@ const sectionSystemImage = (name: string) => (
     name as React.ComponentProps<typeof Image>['systemName']
 );
 
-/** Matches the React Native chip the native trigger stands in for. */
+/**
+ * Matches the React Native chip the native trigger stands in for.
+ *
+ * The family matters as much as the size. The hidden chip underneath is what
+ * gives this host its width, and it is drawn in the app's own face; left on the
+ * system font, SwiftUI measured the same word wider than the frame it was given
+ * and truncated a chip that had room to spare — "Auto" came out as "A…".
+ */
 const TRIGGER_FONT_SIZE = 14;
+const TRIGGER_FONT_FAMILY = getDefaultFont();
+/** Between an icon and its label, and nowhere else — see the trigger's stacks. */
+const TRIGGER_ICON_GAP = 7;
 
 const styles = StyleSheet.create({
     container: {
@@ -145,8 +156,14 @@ export function NativeSettingsMenu({
                         // content paints white on top of the chip and reads as a
                         // duplicate. opacity hides the whole subtree regardless.
                         // VoiceOver still announces it via accessibilityLabel.
+                        // The spacers that align the label are charged the
+                        // stack's spacing just like a sibling would be, so a
+                        // centred trigger paid the icon gap twice over for
+                        // nothing between. That came straight off the label's
+                        // width and truncated it. The gap belongs to the icon
+                        // and its label, so it lives on their own stack now.
                         <HStack
-                            spacing={7}
+                            spacing={0}
                             modifiers={[
                                 frame({ maxWidth: 10000, maxHeight: 10000, minHeight: 40 }),
                                 contentShape(shapes.rectangle()),
@@ -157,23 +174,25 @@ export function NativeSettingsMenu({
                             {nativeTrigger ? (
                                 <>
                                     {triggerAlignment === 'leading' ? null : <Spacer minLength={0} />}
-                                    {triggerSystemImage ? (
-                                        <Image systemName={sectionSystemImage(triggerSystemImage)} size={20} />
-                                    ) : null}
-                                    {triggerLabel ? (
-                                        // Without the line limit the label wraps
-                                        // inside a narrow trigger and the chip
-                                        // renders as two stacked lines. Letting
-                                        // SwiftUI truncate is what keeps an
-                                        // over-long model name from being clipped
-                                        // mid-glyph by the React Native frame.
-                                        <Text modifiers={[
-                                            font({ size: TRIGGER_FONT_SIZE }),
-                                            lineLimit(1),
-                                        ]}>
-                                            {triggerLabel}
-                                        </Text>
-                                    ) : null}
+                                    <HStack spacing={TRIGGER_ICON_GAP}>
+                                        {triggerSystemImage ? (
+                                            <Image systemName={sectionSystemImage(triggerSystemImage)} size={20} />
+                                        ) : null}
+                                        {triggerLabel ? (
+                                            // Without the line limit the label wraps
+                                            // inside a narrow trigger and the chip
+                                            // renders as two stacked lines. Letting
+                                            // SwiftUI truncate is what keeps an
+                                            // over-long model name from being clipped
+                                            // mid-glyph by the React Native frame.
+                                            <Text modifiers={[
+                                                font({ family: TRIGGER_FONT_FAMILY, size: TRIGGER_FONT_SIZE }),
+                                                lineLimit(1),
+                                            ]}>
+                                                {triggerLabel}
+                                            </Text>
+                                        ) : null}
+                                    </HStack>
                                     {triggerAlignment === 'trailing' ? null : <Spacer minLength={0} />}
                                 </>
                             ) : (

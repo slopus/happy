@@ -7,6 +7,7 @@ vi.mock('react-native', async () => {
     const ReactModule = await import('react');
     const host = (name: string) => (props: any) => ReactModule.createElement(name, props, props.children);
     return {
+        Platform: { OS: 'ios', select: (choices: Record<string, unknown>) => choices.ios ?? choices.default },
         StyleSheet: {
             absoluteFillObject: { position: 'absolute', inset: 0 },
             create: (styles: unknown) => styles,
@@ -385,6 +386,62 @@ describe('iOS Expo-native menu triggers', () => {
         // The chip is the label itself now, so it must not be hidden.
         expect(renderer.root.findByType('ExpoMenu' as any).props.label.props.modifiers)
             .not.toContainEqual({ type: 'opacity', value: 0.01 });
+    });
+
+    /*
+     * "Auto" came out of the composer as "A…" with half the row empty beside
+     * it. The chip is sized by the hidden React Native copy underneath, and the
+     * SwiftUI label on top was being measured against a smaller budget than
+     * that copy reserved, for two reasons at once.
+     */
+    it('does not charge the spacers that align a label the gap meant for an icon', () => {
+        const renderer = render(React.createElement(NativeSettingsMenu, {
+            accessibilityLabel: 'Permission',
+            groups: [{
+                key: 'permission',
+                label: 'Auto',
+                options: [{ key: 'auto', label: 'Auto' }],
+                selectedKey: 'auto',
+                onSelect: vi.fn(),
+            }],
+            triggerLabel: 'Auto',
+            triggerAlignment: 'center',
+            children: React.createElement('Chip'),
+        }));
+
+        // A centred trigger carries a spacer on each side, and a stack charges
+        // its spacing between every pair. That took the gap twice out of the
+        // label's width for nothing that needed separating.
+        const stacks = render(renderer.root.findByType('ExpoMenu' as any).props.label)
+            .root.findAllByType('ExpoHStack' as any);
+        expect(stacks[0].props.spacing).toBe(0);
+        // The gap still exists where it means something: icon to label.
+        expect(stacks[1].props.spacing).toBe(7);
+    });
+
+    it('measures the label in the same face as the chip that sizes its frame', () => {
+        const renderer = render(React.createElement(NativeSettingsMenu, {
+            accessibilityLabel: 'Permission',
+            groups: [{
+                key: 'permission',
+                label: 'Auto',
+                options: [{ key: 'auto', label: 'Auto' }],
+                selectedKey: 'auto',
+                onSelect: vi.fn(),
+            }],
+            triggerLabel: 'Auto',
+            children: React.createElement('Chip'),
+        }));
+
+        // Left on the system font, SwiftUI measured the word wider than the
+        // frame the app's own face had reserved for it, and truncated a chip
+        // with room to spare.
+        const value = render(renderer.root.findByType('ExpoMenu' as any).props.label)
+            .root.findByType('ExpoText' as any);
+        expect(value.props.modifiers).toContainEqual({
+            type: 'font',
+            value: { family: 'IBMPlexSans-Regular', size: 14 },
+        });
     });
 
     it('keeps the trigger invisible when it stands over a React Native chip', () => {
