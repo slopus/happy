@@ -1,24 +1,11 @@
-# September 20 - Bots from your phone
+# September 20 - Closer to Happy Desktop
 
-- **Bots** — the composer can now make a Happy Agent bot: choose Bot, pick one of four faces or roll new ones, give it a name, and it opens ready to talk. Needs a Happy Agent that offers bots.
-- **Pickers** — the composer's menus mark the current choice the way the system does.
-- **Workspaces** — "Create New" now reads "Create New Workspace".
-
-# September 14 - Harness setup
-
-- The harness picker now lists only harnesses your computer can actually run — and offers setup help when none are installed yet.
-
-# September 14 - First messages
-
-- First message — a new session's first message no longer fails when an unrelated session can't be read.
-- Your draft — text and images stay in the composer when a message doesn't go through.
-- Retry — starting again reuses the session already created instead of leaving a spare behind.
-
-# September 14 - Photo uploads and session resume
-
-- Large iPhone photos — resized before upload, with size checks on the converted image. Reported by [@Jtome46](https://github.com/Jtome46).
-- Session resume — resume sessions already in your app, even if your machine no longer remembers them. Requires the updated Happy CLI.
-- Community Credits: [@chphch](https://github.com/chphch), [@a37836323](https://github.com/a37836323), [@suntaoathome](https://github.com/suntaoathome), [@f-liva](https://github.com/f-liva).
+- **Bots** — make one from your phone: pick a face, name it, start talking.
+- **In sync** — drafts follow you between phone and desktop, and sent messages show when the agent picks them up.
+- **Colored diffs** — highlighted, with a workspace's full branch changes.
+- **Projects** — Group by Project shows checkouts, with their chats as tabs.
+- **Fixes** — chats open faster, history loads on scroll, Android prompts stay put.
+- Community Credits: [@f-liva](https://github.com/f-liva), [@chphch](https://github.com/chphch), [@a37836323](https://github.com/a37836323), [@suntaoathome](https://github.com/suntaoathome).
 
 # September 5 - New models, clearer changes
 
