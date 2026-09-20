@@ -153,7 +153,10 @@ function collectAgentWorkGroups(messages: Message[], turnOf: number[], collapseC
             oldestIdx,
             item: {
                 type: 'agent-work-group',
-                id: `work-${messages[oldestIdx].id}`,
+                // Keyed by the final answer, the one member a turn is sure to
+                // have: history pages in oldest-last, so a turn's older work
+                // (and its opening prompt) can arrive after the group exists.
+                id: `work-${messages[finalTextIndex].id}`,
                 turnUserMessageId,
                 messages: hiddenMessages,
                 hasRunning: false,

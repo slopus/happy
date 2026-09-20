@@ -76,6 +76,7 @@ export const pl: TranslationStructure = {
         fileViewer: 'Przeglądarka plików',
         loading: 'Ładowanie...',
         retry: 'Ponów',
+        loadMore: 'Załaduj więcej',
         delete: 'Usuń',
         optional: 'opcjonalnie',
     },

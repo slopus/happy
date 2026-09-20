@@ -67,6 +67,7 @@ export const zhHant: TranslationStructure = {
         fileViewer: '檔案檢視器',
         loading: '載入中...',
         retry: '重試',
+        loadMore: '載入更多',
         delete: '刪除',
         optional: '選填',
     },

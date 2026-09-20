@@ -104,8 +104,11 @@ beforeEach(() => {
         return { changed: ['message'], hasReadyEvent: true, enteredPlanMode };
     });
     mocks.applyOlderMessagesPagination.mockImplementation((id, { hasMore }) => {
-        mocks.state.sessionMessages[id] ??= {};
-        mocks.state.sessionMessages[id].hasMoreOlder = hasMore;
+        if (mocks.state.sessionMessages[id]) mocks.state.sessionMessages[id].hasMoreOlder = hasMore;
+    });
+    mocks.applyMessagesLoaded.mockImplementation((id) => {
+        mocks.state.sessionMessages[id] ??= { messages: [], messagesMap: {}, hasMoreOlder: false, isLoadingOlder: false };
+        mocks.state.sessionMessages[id].isLoaded = true;
     });
     mocks.setModes.mockImplementation((id, patch) => Object.assign(mocks.state.sessions[id], patch));
     engine = new (sync.constructor as new () => typeof sync)();

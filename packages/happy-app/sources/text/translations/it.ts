@@ -64,6 +64,7 @@ export const it: TranslationStructure = {
         fileViewer: 'Visualizzatore file',
         loading: 'Caricamento...',
         retry: 'Riprova',
+        loadMore: 'Carica altro',
         delete: 'Elimina',
         optional: 'opzionale',
         saveAs: 'Salva con nome',

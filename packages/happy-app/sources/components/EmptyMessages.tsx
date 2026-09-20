@@ -1,11 +1,16 @@
 import React from 'react';
-import { View, Text } from 'react-native';
+import { ActivityIndicator, View, Text } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Typography } from '@/constants/Typography';
 import { Session } from '@/sync/storageTypes';
 import { useSessionStatus, formatPathRelativeToHome } from '@/utils/sessionUtils';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
+import { RoundButton } from './RoundButton';
+import { useSessionMessages } from '@/sync/storage';
+import { sync } from '@/sync/sync';
+
+const MAX_INVISIBLE_OLDER_PAGES = 5;
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
@@ -84,6 +89,39 @@ function formatRelativeTime(timestamp: number): string {
 }
 
 export function EmptyMessages({ session }: EmptyMessagesProps) {
+    const { hasMoreOlder, isLoadingOlder } = useSessionMessages(session.id);
+    // SessionView unmounts this placeholder when any messages enter the store.
+    // Until then, page back subject to the invisible-page budget and errors.
+    const [blocked, setBlocked] = React.useState<'error' | 'limit' | null>(null);
+    // The store's loading flag drops before this request's rejection is seen,
+    // so the pending request is tracked here; see ChatList for the same rule.
+    const [settled, setSettled] = React.useState(0);
+    const pendingRef = React.useRef<Promise<boolean> | null>(null);
+    const invisiblePagesRef = React.useRef(0);
+    React.useEffect(() => {
+        setBlocked(null);
+        invisiblePagesRef.current = 0;
+        return () => { pendingRef.current = null; };
+    }, [session.id]);
+    React.useEffect(() => {
+        if (!hasMoreOlder || isLoadingOlder || blocked || pendingRef.current) return;
+        const request = sync.loadOlderMessages(session.id);
+        pendingRef.current = request;
+        request.then(
+            (advanced) => {
+                if (pendingRef.current !== request) return;
+                pendingRef.current = null;
+                if (!advanced) return;
+                invisiblePagesRef.current += 1;
+                if (invisiblePagesRef.current >= MAX_INVISIBLE_OLDER_PAGES) {
+                    setBlocked('limit');
+                } else {
+                    setSettled((n) => n + 1);
+                }
+            },
+            () => { if (pendingRef.current === request) { pendingRef.current = null; setBlocked('error'); } },
+        );
+    }, [session.id, hasMoreOlder, isLoadingOlder, blocked, settled]);
     const { theme } = useUnistyles();
     const styles = stylesheet;
     const osIcon = getOSIcon(session.metadata?.os);
@@ -111,9 +149,18 @@ export function EmptyMessages({ session }: EmptyMessagesProps) {
                 </Text>
             )}
             
-            <Text style={styles.noMessagesText}>
-                No messages yet
-            </Text>
+            {!hasMoreOlder ? (
+                <Text style={styles.noMessagesText}>No messages yet</Text>
+            ) : blocked === 'error' ? (
+                <RoundButton size="small" display="inverted" title={t('common.retry')} onPress={() => setBlocked(null)} />
+            ) : blocked === 'limit' ? (
+                <RoundButton size="small" display="inverted" title={t('common.loadMore')} onPress={() => {
+                    invisiblePagesRef.current = 0;
+                    setBlocked(null);
+                }} />
+            ) : (
+                <ActivityIndicator size="small" color={theme.colors.textSecondary} style={{ marginBottom: 8 }} />
+            )}
             
             <Text style={styles.createdText}>
                 Created {startedTime}

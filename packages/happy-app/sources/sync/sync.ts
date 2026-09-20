@@ -2361,6 +2361,8 @@ class Sync {
         if (messages.length > 0) {
             this.sessionOldestSeq.set(sessionId, minSeq);
         }
+        // Even a valid page can contain only non-rendering protocol records.
+        storage.getState().applyMessagesLoaded(sessionId);
         storage.getState().applyOlderMessagesPagination(sessionId, {
             hasMore: !!data.hasMore && messages.length > 0
         });
@@ -2436,31 +2438,36 @@ class Sync {
      * the currently loaded history. No-op when we have already fetched the
      * earliest message, when no initial fetch has happened yet, or when an
      * older-fetch is already in flight for this session.
+     * Resolves true only when the cursor moved back: callers that page
+     * automatically continue on true and rest on false.
      */
-    loadOlderMessages = async (sessionId: string) => {
+    loadOlderMessages = async (sessionId: string): Promise<boolean> => {
         const oldestSeq = this.sessionOldestSeq.get(sessionId);
         if (oldestSeq === undefined || oldestSeq <= 1) {
-            return;
+            return false;
         }
         const sessionMessages = storage.getState().sessionMessages[sessionId];
         if (!sessionMessages || sessionMessages.isLoadingOlder || !sessionMessages.hasMoreOlder) {
-            return;
+            return false;
         }
 
         storage.getState().applyOlderMessagesLoading(sessionId, true);
         const lock = this.getSessionMessageLock(sessionId);
         try {
-            await lock.inLock(async () => {
+            return await lock.inLock(async () => {
                 const encryption = this.encryption.getSessionEncryption(sessionId);
                 if (!encryption) {
+                    // Thrown, as fetchMessages does: a silent no-op leaves
+                    // hasMoreOlder set with nothing changed, and automatic
+                    // paging would ask again at once.
                     log.log(`💬 loadOlderMessages: encryption not ready for ${sessionId}`);
-                    return;
+                    throw new Error(`Session encryption not ready for ${sessionId}`);
                 }
                 // Re-read the cursor inside the lock. A concurrent
                 // socket-pushed update or reload could have changed it.
                 const beforeSeq = this.sessionOldestSeq.get(sessionId);
                 if (beforeSeq === undefined || beforeSeq <= 1) {
-                    return;
+                    return false;
                 }
                 const response = await apiSocket.request(
                     `/v3/sessions/${sessionId}/messages?before_seq=${beforeSeq}&limit=100`
@@ -2477,12 +2484,16 @@ class Sync {
                 for (const message of messages) {
                     if (message.seq < minSeq) minSeq = message.seq;
                 }
-                if (messages.length > 0) {
+                // A page that does not move the cursor back would be refetched
+                // forever; treat it as the end of history.
+                const advanced = minSeq < beforeSeq;
+                if (advanced) {
                     this.sessionOldestSeq.set(sessionId, minSeq);
                 }
                 storage.getState().applyOlderMessagesPagination(sessionId, {
-                    hasMore: !!data.hasMore && messages.length > 0
+                    hasMore: !!data.hasMore && advanced
                 });
+                return advanced;
             });
         } finally {
             storage.getState().applyOlderMessagesLoading(sessionId, false);

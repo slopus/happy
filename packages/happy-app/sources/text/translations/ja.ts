@@ -67,6 +67,7 @@ export const ja: TranslationStructure = {
         fileViewer: 'ファイルビューアー',
         loading: '読み込み中...',
         retry: '再試行',
+        loadMore: 'さらに読み込む',
         delete: '削除',
         optional: '任意',
         saveAs: '名前を付けて保存',

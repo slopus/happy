@@ -73,7 +73,7 @@ describe('useGroupedMessages', () => {
 
         expect(items.map((item) => item.type)).toEqual(['message', 'agent-work-group', 'message']);
         expect(items[0]).toMatchObject({ type: 'message', id: 'user' });
-        expect(items[1]).toMatchObject({ type: 'agent-work-group', id: 'work-tool-earliest' });
+        expect(items[1]).toMatchObject({ type: 'agent-work-group', id: 'work-agent-final' });
         expect(items[2]).toMatchObject({ type: 'message', id: 'agent-final' });
         if (items[1].type !== 'agent-work-group') {
             throw new Error('Expected an agent work group');
@@ -125,9 +125,9 @@ describe('useGroupedMessages', () => {
         // answer stays visible instead of vanishing into the later group.
         expect(items.map((item) => item.id)).toEqual([
             'user',
-            'work-earlier-tool',
+            'work-earlier-final',
             'earlier-final',
-            'work-later-tool',
+            'work-later-final',
             'later-final',
         ]);
     });

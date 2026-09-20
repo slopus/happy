@@ -20,6 +20,8 @@ import { buildAgentTurnCopyTextByMessageId } from '@/utils/agentTurnCopy';
 import { perfSince, useCommitPerf } from '@/utils/perfLog';
 import { handleInvertedChatWheel } from '@/utils/invertedChatWheel';
 import { DiffSyntaxCell, SyntaxViewport, SYNTAX_VIEWABILITY } from './diff/syntax/viewport';
+import { RoundButton } from './RoundButton';
+import { t } from '@/text';
 
 const SCROLL_THRESHOLD = 300;
 const DOCK_DETAILS_SHOW_OFFSET = 16;
@@ -91,6 +93,8 @@ const WINDOW_PAGE = 60;
  * viewports of the oldest rendered message.
  */
 const START_REACHED_VIEWPORTS = 1;
+/** Stop automatic paging after this many pages without an older rendered boundary. */
+const MAX_INVISIBLE_OLDER_PAGES = 5;
 // Visual gap between the button's bottom edge and the composer card's top
 // edge. scrollButtonInset is measured to the card itself, so this is exact.
 const SCROLL_BUTTON_COMPOSER_GAP = 16;
@@ -130,30 +134,19 @@ function stringSetsEqual(a: ReadonlySet<string>, b: ReadonlySet<string>): boolea
  * How many messages the list renders for a requested window size.
  *
  * Messages arrive newest-first, so a window is a prefix of the array and its
- * end lands on the oldest rendered message. Turn grouping is computed from
- * what is rendered, so a window cut mid-turn regroups — and visibly reshapes —
- * the moment older messages arrive and complete the turn. Cutting at a turn
- * boundary (the user message that opened the turn) makes the rendered shape
- * independent of how much history exists below it. Extending is cheap: a
- * completed turn collapses to a single work-group header.
+ * end lands on the oldest rendered message. Cutting at a turn boundary (the
+ * user message that opened the turn) keeps a turn's collapsed work group whole
+ * once the store holds all of it. The store's own tail is rendered as is: a
+ * turn whose older rows are still on the server folds from the rows present,
+ * and its group keeps its identity when the rest arrives (see
+ * collectAgentWorkGroups).
  */
-function windowEndForTurn(messages: Message[], desiredEnd: number, hasMoreOlder: boolean): number {
+function windowEndForTurn(messages: Message[], desiredEnd: number): number {
     let end = Math.min(desiredEnd, messages.length);
-    while (end < messages.length) {
+    while (end > 0 && end < messages.length) {
         const message = messages[end - 1];
         if (message.kind === 'user-text' && !message.pending && message.sendError === undefined) break;
         end++;
-    }
-    // The store's tail is itself a mid-turn cut while older pages are still on
-    // the server, so rendering it has the same reshape problem. Hold the
-    // incomplete turn back until its opener arrives; the reader reaching the
-    // top sees it via the loading spinner, not a lurch.
-    const oldest = messages[end - 1];
-    if (end === messages.length && hasMoreOlder && (oldest.kind !== 'user-text' || oldest.pending || oldest.sendError !== undefined)) {
-        for (let i = end - 1; i >= 0; i--) {
-            const message = messages[i];
-            if (message.kind === 'user-text' && !message.pending && message.sendError === undefined) return i + 1;
-        }
     }
     return end;
 }
@@ -189,8 +182,9 @@ export const ChatList = React.memo((props: {
 });
 
 /**
- * Renders past the oldest message: the "loading older messages" spinner
- * directly above it, then a spacer keeping it clear of the header bar.
+ * Renders past the oldest message: the older-history spinner, Retry after a
+ * failed page, or Load more after the invisible-page budget, then a spacer
+ * keeping it clear of the header bar.
  *
  * This is the list's *footer* because the list is inverted — the far end of
  * the data is the top of the screen. The two children are in visual order
@@ -198,16 +192,18 @@ export const ChatList = React.memo((props: {
  * this component layout reads normally, but its position relative to the
  * conversation is mirrored.
  *
- * The spinner slot is always mounted at a fixed height. It sits beyond every
+ * The status slot is always mounted at a fixed height. It sits beyond every
  * row, so a height change here moves the whole conversation.
  */
-const OlderEnd = React.memo((props: { showOlderSpinner: boolean; topContentInset?: number }) => {
+const OlderEnd = React.memo((props: { status: 'idle' | 'loading' | 'error' | 'load-more'; onAction: () => void; topContentInset?: number }) => {
     const headerHeight = useHeaderHeight();
     const safeArea = useSafeAreaInsets();
     return (
         <View>
-            <View style={{ height: 24, alignItems: 'center', justifyContent: 'center' }}>
-                {props.showOlderSpinner && <ActivityIndicator size="small" />}
+            <View style={{ height: 32, alignItems: 'center', justifyContent: 'center' }}>
+                {props.status === 'loading' && <ActivityIndicator size="small" />}
+                {props.status === 'error' && <RoundButton size="small" display="inverted" title={t('common.retry')} onPress={props.onAction} />}
+                {props.status === 'load-more' && <RoundButton size="small" display="inverted" title={t('common.loadMore')} onPress={props.onAction} />}
             </View>
             <View style={{ height: props.topContentInset ?? headerHeight + safeArea.top + 32 }} />
         </View>
@@ -253,12 +249,13 @@ const ChatListInternal = React.memo((props: {
         contentHeight: 0,
         viewportHeight: 0,
     });
-    // True once the reader has ever dragged this session — gates history
-    // paging so layout drift can never request older messages.
-    const userTookOverRef = React.useRef(false);
     // Oldest message the list renders. Everything newer than it is rendered;
-    // everything older sits in the store until the reader asks for it.
+    // everything older sits in the store until the reader nears it.
     const [oldestRenderedId, setOldestRenderedId] = React.useState<string | null>(null);
+    // A failed page or an invisible-tail budget stop automatic paging. The
+    // block clears on Retry or Load more (not on background/live messages).
+    const [olderBlocked, setOlderBlocked] = React.useState<'error' | 'limit' | null>(null);
+    // Perf reporting only; history paging keys off measured layout instead.
     const listReadyRef = React.useRef(false);
     const session = useSession(props.sessionId);
     const controlMode = resolveControlMode(usesControlledSessionUi(session?.metadata) ? session?.agentState?.controlledByUser : false);
@@ -311,14 +308,14 @@ const ChatListInternal = React.memo((props: {
             const index = messages.findIndex((msg) => msg.id === oldestRenderedId);
             if (index >= 0) desiredEnd = index + 1;
         }
-        const next = messages.slice(0, windowEndForTurn(messages, desiredEnd, props.hasMoreOlder));
+        const next = messages.slice(0, windowEndForTurn(messages, desiredEnd));
         const prev = windowRef.current;
         if (prev.length === next.length && prev.every((msg, i) => msg === next[i])) {
             return prev;
         }
         windowRef.current = next;
         return next;
-    }, [messages, oldestRenderedId, props.hasMoreOlder]);
+    }, [messages, oldestRenderedId]);
 
     // Pin the window's oldest message once history is available, so a new
     // message extends the window rather than pushing the oldest rendered one
@@ -330,18 +327,10 @@ const ChatListInternal = React.memo((props: {
 
     React.useEffect(() => {
         listReadyRef.current = false;
-        userTookOverRef.current = false;
-        windowRef.current = EMPTY_MESSAGES;
-        awaitingOlderRef.current = false;
         requestedWindowEndRef.current = 0;
         setOldestRenderedId(null);
+        setOlderBlocked(null);
     }, [props.sessionId]);
-
-    // The spinner reflects a fetch the reader is actually waiting on: the
-    // window has consumed everything in the store and sync is asking the
-    // server for more. The raw isLoadingOlder flag also pulses on every
-    // background prefetch page, which the reader never sees.
-    const showOlderSpinner = props.isLoadingOlder && windowedMessages.length >= messages.length;
 
     const displayItems = useGroupedMessages(windowedMessages, groupToolCalls, groupingOptions);
     const agentCopyTextByMessageId = React.useMemo(
@@ -435,11 +424,9 @@ const ChatListInternal = React.memo((props: {
     }, []);
 
     const handleToggleGroup = useCallback((group: AgentWorkGroupItem) => {
-        // Expanding a group is a reading action. Its rows are inserted at
-        // indices past the reader's position, which in an inverted list is
-        // above them on screen, so the content they are looking at does not
-        // move and the expansion grows upward from the header.
-        userTookOverRef.current = true;
+        // Rows are inserted at indices past the reader's position, which in an
+        // inverted list is above them on screen, so the content they are
+        // looking at does not move and the expansion grows upward from the header.
         setGroupToggles((prev) => {
             const watched = group.turnUserMessageId !== null
                 && sessionInForeground
@@ -617,16 +604,7 @@ const ChatListInternal = React.memo((props: {
         if (layoutMeasurement.height > 0) {
             scrollMetricsRef.current.viewportHeight = layoutMeasurement.height;
         }
-        // Approaching the oldest rendered message: render more history. Only
-        // ever after a real drag, so layout movement cannot request history.
-        const distanceFromOldest = Math.max(
-            0,
-            scrollMetricsRef.current.contentHeight - scrollMetricsRef.current.viewportHeight - distanceFromNewest,
-        );
-        if (userTookOverRef.current
-            && distanceFromOldest < scrollMetricsRef.current.viewportHeight * START_REACHED_VIEWPORTS) {
-            requestOlderHistoryRef.current();
-        }
+        fillOlderRef.current();
         updateHeaderBackdropVisibility();
         updateBottomDockVisibility(distanceFromNewest);
         const next = distanceFromNewest > SCROLL_THRESHOLD;
@@ -638,6 +616,7 @@ const ChatListInternal = React.memo((props: {
 
     const handleContentSizeChange = useCallback((_width: number, height: number) => {
         scrollMetricsRef.current.contentHeight = height;
+        fillOlderRef.current();
         updateHeaderBackdropVisibility();
     }, [updateHeaderBackdropVisibility]);
 
@@ -651,24 +630,20 @@ const ChatListInternal = React.memo((props: {
         reportReady();
     }, [reportReady]);
 
-    // A drag is the reader's finger and nothing else, which makes it the only
-    // trustworthy signal of who is scrolling — FlashList's own scrolls emit
-    // indistinguishable scroll and momentum events. It gates history paging,
-    // and nothing else: where the viewport ends up is the pin's business.
-    const handleScrollBeginDrag = useCallback(() => {
-        userTookOverRef.current = true;
-    }, []);
-
     // Offset 0 is the newest message, so returning to it is a plain scroll to
     // the origin rather than a measurement of where the content currently ends.
     const scrollToBottom = useCallback(() => {
         listRef.current?.scrollToOffset({ offset: 0, animated: true });
     }, []);
 
-    // Reaching the oldest rendered message renders another page of history, and
-    // asks sync for more once the store runs out. History is inserted at the
-    // far end of an inverted list — beyond the viewport, where it cannot shift
-    // anything the reader is looking at.
+    // History fills in ahead of the reader. Whenever the oldest rendered
+    // message is within a viewport of the screen — which includes a list too
+    // short to fill it — the window grows from the store, and once the store
+    // is spent one older page is fetched. Each step re-runs this on settling
+    // (content size, scroll, or the page landing), so it walks back exactly
+    // as far as the reader goes, stopping at exhaustion, error, or the budget.
+    // History is inserted at the far end of an inverted list — beyond the
+    // viewport, where it cannot shift anything the reader is looking at.
     //
     // Detection is ours, in handleScroll, not FlashList's onEndReached. That
     // callback is a latch: it fires once on entering the threshold zone and
@@ -680,63 +655,112 @@ const ChatListInternal = React.memo((props: {
     const isLoadingOlder = props.isLoadingOlder;
     const messagesRef = React.useRef(messages);
     messagesRef.current = messages;
-    const paginationRef = React.useRef({ hasMoreOlder, isLoadingOlder });
-    paginationRef.current = { hasMoreOlder, isLoadingOlder };
-    // Set while the reader waits at an exhausted top for the server to answer;
-    // the fetched page renders as soon as it lands (see effect below).
-    const awaitingOlderRef = React.useRef(false);
+    const paginationRef = React.useRef({ sessionId, hasMoreOlder, isLoadingOlder, olderBlocked, active: props.active });
+    paginationRef.current = { sessionId, hasMoreOlder, isLoadingOlder, olderBlocked, active: props.active };
     // Window length a growth was last requested for. Scroll events keep
     // arriving inside the trigger zone while React renders the larger window,
     // and without this each one would ask for another page.
     const requestedWindowEndRef = React.useRef(0);
-    const requestOlderHistory = useCallback(() => {
-        // Only a reader deliberately exploring history pages more in. A short
-        // conversation rests with its oldest message already inside the
-        // trigger zone, and layout corrections can drift into it as well —
-        // neither is a request for more history.
-        if (!props.active || !listReadyRef.current || !userTookOverRef.current) {
-            return;
-        }
-        if (awaitingOlderRef.current) return;
+    // This list's own page (including a failed one until Retry); a successful
+    // page bumps the counter so the effect re-checks with fresh props.
+    const pendingOlderRef = React.useRef<Promise<boolean> | null>(null);
+    // A settled page is assessed after its rows have had a chance to enter the
+    // window. Compare the oldest item's identity, not the row count: live rows
+    // and group expansion must not reset the budget. null means an empty list;
+    // undefined means no page is awaiting assessment.
+    const olderPageRef = React.useRef<string | null | undefined>(undefined);
+    const invisibleOlderPagesRef = React.useRef(0);
+    const [olderSettled, setOlderSettled] = React.useState(0);
+    React.useEffect(() => () => {
+        pendingOlderRef.current = null;
+        olderPageRef.current = undefined;
+        invisibleOlderPagesRef.current = 0;
+    }, [sessionId]);
+    const fillOlder = useCallback(() => {
+        // Measured layout only, not onLoad: FlashList never reports a first
+        // layout for zero rows, and a window whose rows all group away is
+        // exactly the case that must keep paging.
+        const { contentHeight, viewportHeight, offsetY } = scrollMetricsRef.current;
+        if (viewportHeight <= 0 || contentHeight <= 0) return;
+        if (contentHeight - viewportHeight - offsetY >= viewportHeight * START_REACHED_VIEWPORTS) return;
         const all = messagesRef.current;
         const currentEnd = windowRef.current.length;
         if (all.length === 0 || currentEnd <= 0) return;
-        // A request already made but not yet rendered.
+        // A growth already requested but not yet rendered.
         if (currentEnd < requestedWindowEndRef.current) return;
-        const nextEnd = windowEndForTurn(all, currentEnd + WINDOW_PAGE, paginationRef.current.hasMoreOlder);
-        if (nextEnd <= currentEnd) {
-            // Everything the store holds that can be rendered already is —
-            // the rest of this turn is still on the server.
-            const { hasMoreOlder: more, isLoadingOlder: loading } = paginationRef.current;
-            if (more) {
-                awaitingOlderRef.current = true;
-                if (!loading) void sync.loadOlderMessages(sessionId);
+        const nextEnd = windowEndForTurn(all, currentEnd + WINDOW_PAGE);
+        if (nextEnd > currentEnd) {
+            requestedWindowEndRef.current = nextEnd;
+            setOldestRenderedId(all[nextEnd - 1].id);
+            return;
+        }
+        // Wait until any newly fetched rows have been admitted to the window
+        // before deciding whether the page made visible progress.
+        const pageBaseline = olderPageRef.current;
+        if (pageBaseline !== undefined && pendingOlderRef.current === null) {
+            olderPageRef.current = undefined;
+            if ((listItemsRef.current[listItemsRef.current.length - 1]?.id ?? null) !== pageBaseline) {
+                invisibleOlderPagesRef.current = 0;
+                setOlderBlocked(null);
+            } else {
+                invisibleOlderPagesRef.current += 1;
+                if (invisibleOlderPagesRef.current >= MAX_INVISIBLE_OLDER_PAGES) {
+                    setOlderBlocked('limit');
+                    return;
+                }
             }
-            return;
         }
-        requestedWindowEndRef.current = nextEnd;
-        setOldestRenderedId(all[nextEnd - 1].id);
-    }, [sessionId, props.active]);
-    const requestOlderHistoryRef = React.useRef(requestOlderHistory);
-    requestOlderHistoryRef.current = requestOlderHistory;
-
-    // A reader parked at the oldest message gets the fetched page the moment it
-    // lands — they are holding still, so no scroll event would arrive to notice.
+        // Everything the store holds is rendered; the rest is on the server.
+        // The store's flag also covers background pages, but it drops before
+        // this list's own request settles — a failed page would be retried by
+        // that very transition — so the pending promise is tracked here too.
+        const { hasMoreOlder: more, isLoadingOlder: loading, olderBlocked: blocked, active } = paginationRef.current;
+        if (!active || !more || loading || blocked || pendingOlderRef.current
+            || invisibleOlderPagesRef.current >= MAX_INVISIBLE_OLDER_PAGES) return;
+        // Settlement re-checks through state, not directly: the promise can
+        // settle before React has committed the store's new flags. Only a page
+        // that moved the cursor re-checks; a no-op rests until the next
+        // scroll or store change, so it cannot spin.
+        const request = sync.loadOlderMessages(sessionId);
+        pendingOlderRef.current = request;
+        olderPageRef.current = listItemsRef.current[listItemsRef.current.length - 1]?.id ?? null;
+        request.then(
+            (advanced) => {
+                if (pendingOlderRef.current !== request) return;
+                pendingOlderRef.current = null;
+                if (advanced) {
+                    setOlderSettled((n) => n + 1);
+                } else {
+                    olderPageRef.current = undefined;
+                }
+            },
+            () => {
+                if (pendingOlderRef.current !== request) return;
+                // Keep the request as a synchronous block until Retry: a web
+                // scroll can arrive before the error state commits.
+                olderPageRef.current = undefined;
+                setOlderBlocked('error');
+            },
+        );
+    }, [sessionId]);
+    const fillOlderRef = React.useRef(fillOlder);
+    fillOlderRef.current = fillOlder;
+    // A page landing, or the window growing, is checked without waiting for a
+    // scroll event: a reader parked at the oldest message is holding still.
     React.useEffect(() => {
-        if (!awaitingOlderRef.current || props.isLoadingOlder) return;
-        const all = messagesRef.current;
-        const currentEnd = windowRef.current.length;
-        const nextEnd = windowEndForTurn(all, currentEnd + WINDOW_PAGE, props.hasMoreOlder);
-        if (nextEnd <= currentEnd) {
-            // The fetch settled without adding anything renderable. Only stop
-            // waiting once the server says there is nothing left.
-            if (!props.hasMoreOlder) awaitingOlderRef.current = false;
-            return;
-        }
-        awaitingOlderRef.current = false;
-        requestedWindowEndRef.current = nextEnd;
-        setOldestRenderedId(all[nextEnd - 1].id);
-    }, [messages, props.isLoadingOlder, props.hasMoreOlder]);
+        fillOlder();
+    }, [fillOlder, messages, windowedMessages, props.isLoadingOlder, props.hasMoreOlder, props.active, olderBlocked, olderSettled]);
+    const retryOlder = useCallback(() => {
+        pendingOlderRef.current = null;
+        setOlderBlocked(null);
+    }, []);
+    const loadMoreOlder = useCallback(() => {
+        invisibleOlderPagesRef.current = 0;
+        setOlderBlocked(null);
+    }, []);
+    const olderStatus = olderBlocked === 'error' && props.hasMoreOlder ? 'error'
+        : olderBlocked === 'limit' && props.hasMoreOlder ? 'load-more'
+        : props.isLoadingOlder && windowedMessages.length >= messages.length ? 'loading' : 'idle';
 
     // FlashList lacks React Native Web FlatList's inverted-wheel correction.
     // Keep the mobile coordinate system, correcting only web chat gestures.
@@ -744,11 +768,7 @@ const ChatListInternal = React.memo((props: {
         if (Platform.OS !== 'web') return;
         const node = listRef.current?.getScrollableNode?.() as HTMLElement | undefined;
         if (!node) return;
-        const handler = (e: WheelEvent) => {
-            // Wheels have no onScrollBeginDrag; only a chat-owned gesture
-            // should unlock user-driven history paging.
-            if (handleInvertedChatWheel(node, e)) userTookOverRef.current = true;
-        };
+        const handler = (e: WheelEvent) => handleInvertedChatWheel(node, e);
         node.addEventListener('wheel', handler, { passive: false });
         return () => node.removeEventListener('wheel', handler);
     }, [handoffListRevision, props.sessionId]);
@@ -777,10 +797,10 @@ const ChatListInternal = React.memo((props: {
                 viewabilityConfig={SYNTAX_VIEWABILITY}
                 onViewableItemsChanged={syntaxViewport.update}
                 onScroll={handleScroll}
-                onScrollBeginDrag={handleScrollBeginDrag}
                 scrollEventThrottle={16}
                 onLayout={(event) => {
                     scrollMetricsRef.current.viewportHeight = event.nativeEvent.layout.height;
+                    fillOlderRef.current();
                     updateHeaderBackdropVisibility();
                 }}
                 onContentSizeChange={handleContentSizeChange}
@@ -789,7 +809,11 @@ const ChatListInternal = React.memo((props: {
                 ListHeaderComponent={<NewerEnd sessionId={props.sessionId} />}
                 ListFooterComponent={(
                     <OlderEnd
-                        showOlderSpinner={showOlderSpinner}
+                        // The store's flag also pulses on background pages the
+                        // reader never sees; only a fetch this list waits on
+                        // shows, and a failure shows only while it applies.
+                        status={olderStatus}
+                        onAction={olderStatus === 'load-more' ? loadMoreOlder : retryOlder}
                         topContentInset={props.topContentInset}
                     />
                 )}

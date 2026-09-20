@@ -67,6 +67,7 @@ export const zhHans: TranslationStructure = {
         fileViewer: '文件查看器',
         loading: '加载中...',
         retry: '重试',
+        loadMore: '加载更多',
         delete: '删除',
         optional: '可选的',
     },

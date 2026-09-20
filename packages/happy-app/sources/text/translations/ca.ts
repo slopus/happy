@@ -65,6 +65,7 @@ export const ca: TranslationStructure = {
         fileViewer: 'Visualitzador de fitxers',
         loading: 'Carregant...',
         retry: 'Torna-ho a provar',
+        loadMore: 'Carrega més',
         delete: 'Elimina',
         optional: 'Opcional',
     },

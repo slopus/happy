@@ -65,6 +65,7 @@ export const en = {
         fileViewer: 'File Viewer',
         loading: 'Loading...',
         retry: 'Retry',
+        loadMore: 'Load more',
         delete: 'Delete',
         optional: 'optional',
     },

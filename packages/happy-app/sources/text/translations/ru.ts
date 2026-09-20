@@ -76,6 +76,7 @@ export const ru: TranslationStructure = {
         fileViewer: 'Просмотр файла',
         loading: 'Загрузка...',
         retry: 'Повторить',
+        loadMore: 'Загрузить ещё',
         delete: 'Удалить',
         optional: 'необязательно',
     },

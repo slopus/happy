@@ -80,6 +80,7 @@ export const en: TranslationStructure = {
         fileViewer: 'File Viewer',
         loading: 'Loading...',
         retry: 'Retry',
+        loadMore: 'Load more',
         delete: 'Delete',
         optional: 'optional',
     },
