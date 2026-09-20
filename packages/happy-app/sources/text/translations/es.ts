@@ -1095,6 +1095,8 @@ export const es: TranslationStructure = {
         attachTitle: 'Añadir imagen',
         pasteFromClipboard: 'Pegar del portapapeles',
         chooseFromLibrary: 'Biblioteca de fotos',
+        nothingToPasteTitle: 'Nada que pegar',
+        nothingToPasteMessage: 'Copia una imagen primero e inténtalo de nuevo.',
     },
 
     feed: {

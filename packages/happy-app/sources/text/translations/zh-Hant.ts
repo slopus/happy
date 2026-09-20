@@ -1094,6 +1094,8 @@ export const zhHant: TranslationStructure = {
         attachTitle: '新增圖片',
         pasteFromClipboard: '從剪貼簿貼上',
         chooseFromLibrary: '照片圖庫',
+        nothingToPasteTitle: '沒有可貼上的內容',
+        nothingToPasteMessage: '請先複製一張圖片，然後再試一次。',
     },
 
     feed: {

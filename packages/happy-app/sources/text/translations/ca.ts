@@ -1094,6 +1094,8 @@ export const ca: TranslationStructure = {
         attachTitle: 'Afegeix una imatge',
         pasteFromClipboard: 'Enganxa del porta-retalls',
         chooseFromLibrary: 'Biblioteca de fotos',
+        nothingToPasteTitle: 'Res per enganxar',
+        nothingToPasteMessage: 'Copia una imatge primer i torna-ho a provar.',
     },
 
     feed: {

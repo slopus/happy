@@ -4,7 +4,8 @@
 - **In sync** — drafts follow you between phone and desktop, and sent messages show when the agent picks them up.
 - **Colored diffs** — highlighted, with a workspace's full branch changes.
 - **Projects** — Group by Project shows checkouts, with their chats as tabs.
-- **Paste a picture** — the + in the composer offers whatever is on your clipboard, so a screenshot goes straight in.
+- **Paste a picture** — the + in the composer now asks Paste or Photo Library, so a screenshot goes straight in.
+- **Send stays put** — a long model name shortens instead of pushing the send button out of the composer.
 - **Fixes** — chats open faster, history loads on scroll, Android prompts stay put.
 - Community Credits: [@f-liva](https://github.com/f-liva), [@chphch](https://github.com/chphch), [@a37836323](https://github.com/a37836323), [@suntaoathome](https://github.com/suntaoathome).
 

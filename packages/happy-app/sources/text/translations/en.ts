@@ -1183,6 +1183,8 @@ export const en: TranslationStructure = {
         attachTitle: 'Add Image',
         pasteFromClipboard: 'Paste from Clipboard',
         chooseFromLibrary: 'Photo Library',
+        nothingToPasteTitle: 'Nothing to Paste',
+        nothingToPasteMessage: 'Copy an image first, then try again.',
     },
 
     feed: {

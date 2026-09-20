@@ -1124,6 +1124,8 @@ export const pl: TranslationStructure = {
         attachTitle: 'Dodaj obraz',
         pasteFromClipboard: 'Wklej ze schowka',
         chooseFromLibrary: 'Biblioteka zdjęć',
+        nothingToPasteTitle: 'Nie ma czego wkleić',
+        nothingToPasteMessage: 'Najpierw skopiuj obraz, a potem spróbuj ponownie.',
     },
 
     feed: {

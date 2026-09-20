@@ -268,21 +268,26 @@ describe('useImagePicker pasting', () => {
         })]);
     });
 
-    it('stays quiet when the clipboard holds no picture', async () => {
+    // Paste was asked for by name, so an empty clipboard gets an answer.
+    it('says there is nothing to paste when the clipboard holds no picture', async () => {
         mocks.hasImageAsync.mockResolvedValue(false);
         await expect(useImagePicker().pasteImages()).resolves.toBe(false);
         expect(mocks.getImageAsync).not.toHaveBeenCalled();
         expect(mocks.setSelectedImages).not.toHaveBeenCalled();
-        expect(mocks.alert).not.toHaveBeenCalled();
+        expect(mocks.alert).toHaveBeenCalledExactlyOnceWith(
+            'imageUpload.nothingToPasteTitle', 'imageUpload.nothingToPasteMessage', expect.any(Array),
+        );
     });
 
     // On iOS 16+ a refused paste is indistinguishable from an empty clipboard.
-    it('stays quiet when the paste is refused', async () => {
+    it('says there is nothing to paste when the paste is refused', async () => {
         mocks.hasImageAsync.mockResolvedValue(true);
         mocks.getImageAsync.mockResolvedValue(null);
         await expect(useImagePicker().pasteImages()).resolves.toBe(false);
         expect(mocks.setSelectedImages).not.toHaveBeenCalled();
-        expect(mocks.alert).not.toHaveBeenCalled();
+        expect(mocks.alert).toHaveBeenCalledExactlyOnceWith(
+            'imageUpload.nothingToPasteTitle', 'imageUpload.nothingToPasteMessage', expect.any(Array),
+        );
     });
 
     it('holds a pasted image to the same size limit as a picked one', async () => {
@@ -299,24 +304,37 @@ describe('useImagePicker pasting', () => {
         mocks.hasImageAsync.mockRejectedValue(new Error('no permission'));
         await expect(useImagePicker().pasteImages()).resolves.toBe(false);
         expect(mocks.setSelectedImages).not.toHaveBeenCalled();
+        expect(mocks.alert).toHaveBeenCalledExactlyOnceWith(
+            'imageUpload.nothingToPasteTitle', 'imageUpload.nothingToPasteMessage', expect.any(Array),
+        );
     });
 
-    it('goes straight to the library when there is nothing to paste', async () => {
+    // Always offered, so Paste is somewhere to be seen: a choice that only
+    // appeared when the clipboard held a picture read as missing otherwise.
+    it('offers paste and the library every time, without reading the clipboard first', async () => {
         mocks.hasImageAsync.mockResolvedValue(false);
         await useImagePicker().attachImages();
-        expect(mocks.launchImageLibraryAsync).toHaveBeenCalledOnce();
-        expect(mocks.alert).not.toHaveBeenCalled();
-    });
-
-    it('asks which one was meant when the clipboard holds a picture', async () => {
-        mocks.hasImageAsync.mockResolvedValue(true);
-        await useImagePicker().attachImages();
+        expect(mocks.hasImageAsync).not.toHaveBeenCalled();
         expect(mocks.launchImageLibraryAsync).not.toHaveBeenCalled();
-        expect(mocks.alert).toHaveBeenCalledWith('imageUpload.attachTitle', undefined, [
+        expect(mocks.alert).toHaveBeenCalledExactlyOnceWith('imageUpload.attachTitle', undefined, [
             expect.objectContaining({ text: 'imageUpload.pasteFromClipboard' }),
             expect.objectContaining({ text: 'imageUpload.chooseFromLibrary' }),
             expect.objectContaining({ text: 'common.cancel', style: 'cancel' }),
         ]);
+    });
+
+    it('pastes when Paste is chosen and opens the library when the library is', async () => {
+        mocks.hasImageAsync.mockResolvedValue(true);
+        mocks.getImageAsync.mockResolvedValue(clipboardImage);
+        await useImagePicker().attachImages();
+        const buttons = mocks.alert.mock.calls[0][2] as { text: string; onPress?: () => void }[];
+
+        buttons.find((button) => button.text === 'imageUpload.pasteFromClipboard')!.onPress!();
+        await vi.waitFor(() => expect(mocks.setSelectedImages).toHaveBeenCalledOnce());
+        expect(mocks.launchImageLibraryAsync).not.toHaveBeenCalled();
+
+        buttons.find((button) => button.text === 'imageUpload.chooseFromLibrary')!.onPress!();
+        await vi.waitFor(() => expect(mocks.launchImageLibraryAsync).toHaveBeenCalledOnce());
     });
 
     // Off iOS nothing downstream measures an image, so a paste that is not
@@ -361,12 +379,11 @@ describe('useImagePicker pasting', () => {
     });
 
     // The web composer takes a paste and a drop on the document itself, and
-    // reading the clipboard to find out would prompt for permission on a tap
-    // that used to open the library.
+    // there is no cache to paste into there, so the button stays a picker.
     describe('on web', () => {
         beforeEach(() => { mocks.platform.OS = 'web'; });
 
-        it('opens the library without touching the clipboard', async () => {
+        it('opens the library without asking or touching the clipboard', async () => {
             mocks.hasImageAsync.mockResolvedValue(true);
             await useImagePicker().attachImages();
             expect(mocks.hasImageAsync).not.toHaveBeenCalled();

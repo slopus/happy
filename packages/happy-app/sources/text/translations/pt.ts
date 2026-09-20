@@ -1093,6 +1093,8 @@ export const pt: TranslationStructure = {
         attachTitle: 'Adicionar imagem',
         pasteFromClipboard: 'Colar da área de transferência',
         chooseFromLibrary: 'Biblioteca de fotos',
+        nothingToPasteTitle: 'Nada para colar',
+        nothingToPasteMessage: 'Copie uma imagem primeiro e tente novamente.',
     },
 
     feed: {

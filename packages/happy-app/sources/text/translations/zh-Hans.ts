@@ -1095,6 +1095,8 @@ export const zhHans: TranslationStructure = {
         attachTitle: '添加图片',
         pasteFromClipboard: '从剪贴板粘贴',
         chooseFromLibrary: '照片图库',
+        nothingToPasteTitle: '没有可粘贴的内容',
+        nothingToPasteMessage: '请先复制一张图片，然后重试。',
     },
 
     feed: {

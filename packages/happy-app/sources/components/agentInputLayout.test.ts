@@ -136,4 +136,35 @@ describe('agent input compact mobile layout', () => {
             marginLeft: 8,
         });
     });
+
+    // [+] [ permission ... model · effort ] [send]: the row's only flexible
+    // child is the box in the middle, so it takes exactly what the two fixed
+    // buttons leave, and anything inside that will not fit is cut at its edge
+    // instead of pushing send off its corner.
+    it('bounds every chip in one middle box beside the fixed buttons', () => {
+        const middle = agentInputLayout.resolveMobileComposerMiddleGeometry();
+        const add = agentInputLayout.resolveMobileComposerActionGeometry('icon');
+        const send = agentInputLayout.resolveMobileComposerActionGeometry('primary');
+
+        expect(middle).toEqual({
+            flex: 1,
+            minWidth: 0,
+            height: 42,
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'flex-start',
+            overflow: 'hidden',
+            gap: 2,
+        });
+        // The buttons on either side hold their size no matter what the box
+        // holds, which is what leaves the box a fixed remainder to fill.
+        expect(add.flexShrink).toBe(0);
+        expect(send.flexShrink).toBe(0);
+        expect(add.width).toBe(42);
+        expect(send.width).toBe(42);
+        // Inside the box only the model name gives way.
+        expect(agentInputLayout.resolveMobileComposerMenuGeometry('permission').frame.flexShrink).toBe(0);
+        expect(agentInputLayout.resolveMobileComposerMenuGeometry('effort').frame.flexShrink).toBe(0);
+        expect(agentInputLayout.resolveMobileComposerMenuGeometry('model').frame).toMatchObject({ flexShrink: 1, minWidth: 0 });
+    });
 });

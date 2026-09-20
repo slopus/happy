@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { ActivityIndicator, Keyboard, LayoutChangeEvent, Modal as RNModal, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import type { StyleProp, ViewStyle } from 'react-native';
 import { Ionicons, Octicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -98,6 +99,7 @@ import {
     resolveMobileCollapsedComposerGeometry,
     resolveMobileComposerHeight,
     resolveMobileComposerMenuGeometry,
+    resolveMobileComposerMiddleGeometry,
 } from './agentInputLayout';
 
 export const MOBILE_HOME_DOCK_CONTENT_INSET = 108;
@@ -130,6 +132,7 @@ const MOBILE_MODEL_MENU_GEOMETRY = resolveMobileComposerMenuGeometry('model');
 const MOBILE_EFFORT_MENU_GEOMETRY = resolveMobileComposerMenuGeometry('effort');
 const MOBILE_PERMISSION_MENU_GEOMETRY = resolveMobileComposerMenuGeometry('permission');
 const MOBILE_ACTION_ROW_GEOMETRY = resolveMobileComposerActionRowGeometry();
+const MOBILE_MIDDLE_GEOMETRY = resolveMobileComposerMiddleGeometry();
 const MOBILE_ICON_ACTION_GEOMETRY = resolveMobileComposerActionGeometry('icon');
 const MOBILE_PRIMARY_ACTION_GEOMETRY = resolveMobileComposerActionGeometry('primary');
 const MOBILE_COLLAPSED_COMPOSER_GEOMETRY = resolveMobileCollapsedComposerGeometry();
@@ -313,6 +316,7 @@ const styles = StyleSheet.create((theme) => ({
         paddingBottom: MOBILE_COMPOSER_METRICS.inputPaddingBottom,
     },
     focusedComposerActions: MOBILE_ACTION_ROW_GEOMETRY,
+    focusedComposerMiddle: MOBILE_MIDDLE_GEOMETRY,
     nativeModeMenu: MOBILE_MODEL_MENU_GEOMETRY.frame,
     focusedModeButton: MOBILE_MODEL_MENU_GEOMETRY.content,
     nativeEffortMenu: MOBILE_EFFORT_MENU_GEOMETRY.frame,
@@ -654,14 +658,22 @@ function shakeOnce(value: SharedValue<number>) {
  * transparent sheet because a native menu mounts a SwiftUI host that no React
  * Native `disabled` prop can reach, and it is a later sibling so it paints and
  * hits over the control it covers.
+ *
+ * This wrapper is what the row lays out, not the control inside it, so the
+ * control's frame — whether it may shrink, how narrow it may go — has to be
+ * carried here. Left on the control alone it never reached the row: the
+ * wrapper kept React Native's refusal to shrink, the model name could not
+ * give way, and the row grew until send was pushed off its corner.
  */
 function RefusableControl({
     refusing,
     onRefuse,
+    style,
     children,
 }: {
     refusing: boolean;
     onRefuse: () => void;
+    style?: StyleProp<ViewStyle>;
     children: React.ReactNode;
 }) {
     const shake = useSharedValue(0);
@@ -669,7 +681,7 @@ function RefusableControl({
         transform: [{ translateX: shake.value }],
     }));
     return (
-        <Animated.View style={shakeStyle}>
+        <Animated.View style={[style, shakeStyle]}>
             {children}
             {refusing && (
                 <Pressable
@@ -1723,7 +1735,10 @@ export const HomeDock = React.memo(({
         triggerAlignment?: NativeSettingsMenuProps['triggerAlignment'];
         children: React.ReactNode;
     }) => (
-        <RefusableControl refusing={isSubmitting} onRefuse={refuse}>
+        // The frame goes on the wrapper as well as the control: the wrapper is
+        // the row's child, so it is the one that has to be allowed to shrink.
+        // The control inside is stretched to whatever the wrapper is given.
+        <RefusableControl refusing={isSubmitting} onRefuse={refuse} style={style}>
             {!useNativeMenus ? (
                 <Pressable
                     onPress={() => setSheetPage(page)}
@@ -2022,6 +2037,10 @@ export const HomeDock = React.memo(({
                             </BubblePressable>
                         </RefusableControl>
                         )}
+                        {/* Every chip lives in this one box, and send is the
+                            box's sibling: the box is handed the width left
+                            over and nothing inside can reach past it. */}
+                        <View style={styles.focusedComposerMiddle}>
                         {/* The permission mode reads out in words instead of
                             hiding behind a gear: it is the one setting here that
                             changes what the agent is allowed to do to your
@@ -2096,6 +2115,7 @@ export const HomeDock = React.memo(({
                                 </View>
                             ),
                         })}
+                        </View>
                         {/* Nothing covers this row as a whole: each control
                             beside Stop refuses its own presses, which leaves
                             Stop itself reachable without having to be painted

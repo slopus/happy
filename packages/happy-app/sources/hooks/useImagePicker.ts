@@ -207,7 +207,7 @@ export function useImagePicker(): UseImagePickerResult {
     }, [requestPermission]);
 
     /**
-     * Attaches an image sitting on the clipboard, if there is one.
+     * Attaches the image on the clipboard.
      *
      * A pasted image takes the same road as a picked one — same normalizing,
      * same limits, same thumbhash — so nothing downstream can tell where it
@@ -215,9 +215,10 @@ export function useImagePicker(): UseImagePickerResult {
      * the cache first: the upload reads a file, and on Android the picker's own
      * path never converts.
      *
-     * Answers whether anything was attached, so a caller can stay quiet when
-     * the clipboard holds no picture. On iOS 16+ a refused paste is
-     * indistinguishable from an empty clipboard, and both mean the same here.
+     * Asked for by name, so an empty clipboard is answered rather than passed
+     * over in silence. On iOS 16+ a refused paste looks the same as an empty
+     * clipboard and gets the same answer. Answers whether anything was
+     * attached.
      */
     const pasteImages = useCallback(async (): Promise<boolean> => {
         if (Platform.OS === 'web') return false;
@@ -232,13 +233,21 @@ export function useImagePicker(): UseImagePickerResult {
 
         let pasted: Clipboard.ClipboardImage | null = null;
         try {
-            if (!(await Clipboard.hasImageAsync())) return false;
-            pasted = await Clipboard.getImageAsync({ format: 'png' });
+            if (await Clipboard.hasImageAsync()) {
+                pasted = await Clipboard.getImageAsync({ format: 'png' });
+            }
         } catch {
-            return false;
+            pasted = null;
         }
         const image = pasted && readImageDataUri(pasted.data);
-        if (!pasted || !image) return false;
+        if (!pasted || !image) {
+            Modal.alert(
+                t('imageUpload.nothingToPasteTitle'),
+                t('imageUpload.nothingToPasteMessage'),
+                [{ text: t('common.ok') }],
+            );
+            return false;
+        }
 
         let uri: string;
         let fileSize: number;
@@ -281,25 +290,18 @@ export function useImagePicker(): UseImagePickerResult {
     }, []);
 
     /**
-     * What the add button does.
+     * What the add button does: asks, every time, whether to paste or to pick.
      *
-     * Straight to the library, exactly as before, unless there is a picture on
-     * the clipboard — then it asks, because either one is a reasonable thing to
-     * have meant. A screenshot you just took is the common case and used to be
-     * unreachable without saving it to the library first.
+     * It always asks rather than only when the clipboard holds a picture, so
+     * that Paste is somewhere you can see and reach for. A choice that only
+     * appeared under a condition read as missing when the condition was not
+     * met — and there is no telling from the button whether it was.
      *
-     * The web composer already takes a paste and a drop on its own, and asking
-     * the clipboard here would put a permission prompt behind a button that
-     * used to open the library, so on web this stays the button it was.
+     * The web composer already takes a paste and a drop on its own, and there
+     * is no cache to paste into there, so on web this stays the button it was.
      */
     const attachImages = useCallback(async () => {
-        let onClipboard = false;
-        try {
-            onClipboard = Platform.OS !== 'web' && await Clipboard.hasImageAsync();
-        } catch {
-            onClipboard = false;
-        }
-        if (!onClipboard) {
+        if (Platform.OS === 'web') {
             await pickImages();
             return;
         }

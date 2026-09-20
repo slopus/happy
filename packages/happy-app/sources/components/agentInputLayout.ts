@@ -70,6 +70,7 @@ export interface MobileComposerGeometryStyle {
     flexDirection?: 'row';
     alignItems?: 'center';
     justifyContent?: 'center' | 'flex-start' | 'flex-end';
+    overflow?: 'hidden';
     borderRadius?: number;
     paddingLeft?: number;
     paddingRight?: number;
@@ -219,6 +220,30 @@ export function resolveMobileComposerActionRowGeometry(): MobileComposerGeometry
         justifyContent: 'flex-start',
         gap: 2,
         paddingHorizontal: 0,
+    };
+}
+
+/**
+ * The box between the add button and send, holding every chip.
+ *
+ *     [+] [ permission ......... model · effort ] [send]
+ *
+ * The row has three children and only this one can flex, so it is handed
+ * exactly the width left after the two fixed buttons; send is its sibling,
+ * not the chips', and no label can reach it. Whatever is inside has to fit
+ * here — the model name is the one thing that gives way — and anything that
+ * would not is cut at this edge rather than drawn over the button.
+ */
+export function resolveMobileComposerMiddleGeometry(): MobileComposerGeometryStyle {
+    return {
+        flex: 1,
+        minWidth: 0,
+        height: MOBILE_COMPOSER_METRICS.actionRowHeight,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'flex-start',
+        overflow: 'hidden',
+        gap: 2,
     };
 }
 

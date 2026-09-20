@@ -1125,6 +1125,8 @@ export const ru: TranslationStructure = {
         attachTitle: 'Добавить изображение',
         pasteFromClipboard: 'Вставить из буфера обмена',
         chooseFromLibrary: 'Библиотека фото',
+        nothingToPasteTitle: 'Нечего вставить',
+        nothingToPasteMessage: 'Сначала скопируйте изображение, затем попробуйте снова.',
     },
 
     feed: {

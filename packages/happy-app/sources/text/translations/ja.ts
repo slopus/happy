@@ -1096,6 +1096,8 @@ export const ja: TranslationStructure = {
         attachTitle: '画像を追加',
         pasteFromClipboard: 'クリップボードから貼り付け',
         chooseFromLibrary: 'フォトライブラリ',
+        nothingToPasteTitle: '貼り付けるものがありません',
+        nothingToPasteMessage: '先に画像をコピーしてから、もう一度お試しください。',
     },
 
     feed: {

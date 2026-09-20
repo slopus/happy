@@ -1093,6 +1093,8 @@ export const it: TranslationStructure = {
         attachTitle: 'Aggiungi immagine',
         pasteFromClipboard: 'Incolla dagli appunti',
         chooseFromLibrary: 'Libreria foto',
+        nothingToPasteTitle: 'Niente da incollare',
+        nothingToPasteMessage: 'Copia prima un\'immagine, poi riprova.',
     },
 
     feed: {

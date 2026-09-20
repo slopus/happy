@@ -42,6 +42,7 @@ import {
     resolveMobileComposerActionGeometry,
     resolveMobileComposerActionRowGeometry,
     resolveMobileComposerMenuGeometry,
+    resolveMobileComposerMiddleGeometry,
 } from './agentInputLayout';
 import { shouldUseExpoNativeSettingsMenu } from './glassInteractionPolicy';
 
@@ -145,6 +146,7 @@ const MOBILE_MODEL_MENU_GEOMETRY = resolveMobileComposerMenuGeometry('model');
 const MOBILE_EFFORT_MENU_GEOMETRY = resolveMobileComposerMenuGeometry('effort');
 const MOBILE_PERMISSION_MENU_GEOMETRY = resolveMobileComposerMenuGeometry('permission');
 const MOBILE_ACTION_ROW_GEOMETRY = resolveMobileComposerActionRowGeometry();
+const MOBILE_MIDDLE_GEOMETRY = resolveMobileComposerMiddleGeometry();
 const MOBILE_ICON_ACTION_GEOMETRY = resolveMobileComposerActionGeometry('icon');
 const MOBILE_PRIMARY_ACTION_GEOMETRY = resolveMobileComposerActionGeometry('primary');
 
@@ -348,6 +350,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         paddingHorizontal: 0,
     },
     mobileActionButtonsContainer: MOBILE_ACTION_ROW_GEOMETRY,
+    mobileActionMiddle: MOBILE_MIDDLE_GEOMETRY,
     mobileIconButton: MOBILE_ICON_ACTION_GEOMETRY,
     mobileModelMenuFrame: MOBILE_MODEL_MENU_GEOMETRY.frame,
     mobileModelMenuContent: MOBILE_MODEL_MENU_GEOMETRY.content,
@@ -2189,6 +2192,10 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                             </BubblePressable>
                         )}
 
+                        {/* Every chip lives in this one box, and send is the
+                            box's sibling: the box is handed the width left
+                            over and nothing inside can reach past it. */}
+                        <View style={styles.mobileActionMiddle}>
                         {/* Named in words rather than hidden behind a gear: the
                             permission mode is the one control here that changes
                             what the agent may do to the machine. Matches the
@@ -2298,6 +2305,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                 )}
                             </>
                         ) : <View style={{ flex: 1 }} />}
+                        </View>
 
                         {!compactMobileComposer && props.agentType && props.onAgentClick && (
                             <BubblePressable
