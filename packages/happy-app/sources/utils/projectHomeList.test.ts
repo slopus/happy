@@ -60,8 +60,10 @@ function project(
 }
 
 const machines = [
-    { id: 'machine-a', metadata: { displayName: 'Studio' } },
-    { id: 'machine-b', metadata: { displayName: 'Laptop' } },
+    { id: 'machine-a', metadata: { displayName: 'Studio', machineKind: 'rig' } },
+    { id: 'machine-b', metadata: { displayName: 'Laptop', machineKind: 'rig' } },
+    // No `machineKind`: a Happy CLI daemon, which trails the Happy Agent ones.
+    { id: 'machine-c', metadata: { displayName: 'Terminal' } },
 ];
 
 function build(
@@ -119,6 +121,7 @@ describe('buildProjectHomeRows', () => {
         ]);
 
         expect(shape(rows)).toEqual([
+            'machine:Studio',
             'section:Projects',
             'project:happy(1)',
             'worktree:Gdansk:last',
@@ -130,8 +133,8 @@ describe('buildProjectHomeRows', () => {
             project('shop-box', 'rig', [{ id: '', name: null, sessions: [row({ id: 'a' })] }]),
         ]);
 
-        expect(shape(rows)).toEqual(['section:Projects', 'project:shop-box(0)']);
-        expect(rows[1]).toMatchObject({ project: { worktreeCount: 0 } });
+        expect(shape(rows)).toEqual(['machine:Studio', 'section:Projects', 'project:shop-box(0)']);
+        expect(rows[2]).toMatchObject({ project: { worktreeCount: 0 } });
     });
 
     it('opens the own checkout from the card, with its chats as tabs oldest first', () => {
@@ -142,7 +145,7 @@ describe('buildProjectHomeRows', () => {
             ]),
         ]);
 
-        const card = rows[1].type === 'project' ? rows[1].project : null;
+        const card = rows[2].type === 'project' ? rows[2].project : null;
         expect(card?.session?.id).toBe('late');
         expect(card?.tabs.map((tab) => tab.id)).toEqual(['early', 'late']);
     });
@@ -157,6 +160,7 @@ describe('buildProjectHomeRows', () => {
         ]);
 
         expect(shape(rows)).toEqual([
+            'machine:Studio',
             'section:Projects',
             'project:happy(2)',
             'worktree:Vilnius',
@@ -172,14 +176,15 @@ describe('buildProjectHomeRows', () => {
             ]),
         ]);
 
-        expect(rows[1]).toMatchObject({ project: { working: false, blocked: false, unread: false } });
-        expect(rows[2]).toMatchObject({ worktree: { blocked: true, unread: true } });
+        expect(rows[2]).toMatchObject({ project: { working: false, blocked: false, unread: false } });
+        expect(rows[3]).toMatchObject({ worktree: { blocked: true, unread: true } });
     });
 
     it('shows the first three worktrees and offers the rest', () => {
         const rows = build([project('happy', 'rig', worktrees(5))]);
 
         expect(shape(rows)).toEqual([
+            'machine:Studio',
             'section:Projects',
             'project:happy(5)',
             'worktree:w1',
@@ -193,6 +198,7 @@ describe('buildProjectHomeRows', () => {
         const rows = build([project('happy', 'rig', worktrees(5))], { 'rig:happy': true });
 
         expect(shape(rows)).toEqual([
+            'machine:Studio',
             'section:Projects',
             'project:happy(5)',
             'worktree:w1',
@@ -208,6 +214,7 @@ describe('buildProjectHomeRows', () => {
         // Three shown and none held back: a control that would do nothing in
         // either direction is not drawn.
         expect(shape(build([project('happy', 'rig', worktrees(3))]))).toEqual([
+            'machine:Studio',
             'section:Projects',
             'project:happy(3)',
             'worktree:w1',
@@ -216,6 +223,7 @@ describe('buildProjectHomeRows', () => {
         ]);
         expect(shape(build([project('happy', 'rig', worktrees(3))], { 'rig:happy': true })))
             .toEqual([
+                'machine:Studio',
                 'section:Projects',
                 'project:happy(3)',
                 'worktree:w1',
@@ -232,20 +240,20 @@ describe('buildProjectHomeRows', () => {
         ];
 
         const folded = build([project('happy', 'rig', held)]);
-        expect(folded[5]).toMatchObject({ toggle: { hiddenCount: 1, blocked: true, unread: true } });
+        expect(folded[6]).toMatchObject({ toggle: { hiddenCount: 1, blocked: true, unread: true } });
         // The card never took this on: it answers for its own checkout only.
-        expect(folded[1]).toMatchObject({ project: { blocked: false, unread: false } });
+        expect(folded[2]).toMatchObject({ project: { blocked: false, unread: false } });
 
         const open = build([project('happy', 'rig', held)], { 'rig:happy': true });
-        expect(open[6]).toMatchObject({
+        expect(open[7]).toMatchObject({
             toggle: { expanded: true, hiddenCount: 0, blocked: false, unread: false },
         });
     });
 
     it('runs the tree line through the toggle, which is the last row under a card', () => {
         const rows = build([project('happy', 'rig', worktrees(4))]);
-        expect(rows[4]).toMatchObject({ type: 'worktree', last: false });
-        expect(rows[5]).toMatchObject({ type: 'worktreeToggle' });
+        expect(rows[5]).toMatchObject({ type: 'worktree', last: false });
+        expect(rows[6]).toMatchObject({ type: 'worktreeToggle' });
     });
 
     it('carries a project that has only worktrees, with no chat on the card', () => {
@@ -253,9 +261,14 @@ describe('buildProjectHomeRows', () => {
             project('happy', 'rig', [{ id: 'w', name: 'Vilnius', sessions: [row({ id: 'a' })] }]),
         ]);
 
-        expect(shape(rows)).toEqual(['section:Projects', 'project:happy(1)', 'worktree:Vilnius:last']);
-        expect(rows[1]).toMatchObject({ project: { session: null } });
-        expect(rows[1].type === 'project' && rows[1].project.avatarSession?.id).toBe('a');
+        expect(shape(rows)).toEqual([
+            'machine:Studio',
+            'section:Projects',
+            'project:happy(1)',
+            'worktree:Vilnius:last',
+        ]);
+        expect(rows[2]).toMatchObject({ project: { session: null } });
+        expect(rows[2].type === 'project' && rows[2].project.avatarSession?.id).toBe('a');
     });
 
     it('reports a card live only while a chat in it runs on a reachable machine', () => {
@@ -269,9 +282,9 @@ describe('buildProjectHomeRows', () => {
             project('c', 'rig', [{ id: '', name: null, sessions: [row({ id: 'z' })] }]),
         ]);
 
-        expect(offline[1]).toMatchObject({ project: { live: false } });
-        expect(inactive[1]).toMatchObject({ project: { live: false } });
-        expect(live[1]).toMatchObject({ project: { live: true } });
+        expect(offline[2]).toMatchObject({ project: { live: false } });
+        expect(inactive[2]).toMatchObject({ project: { live: false } });
+        expect(live[2]).toMatchObject({ project: { live: true } });
     });
 
     it('skips checkouts with no chats left, and projects with no checkouts left', () => {
@@ -283,7 +296,12 @@ describe('buildProjectHomeRows', () => {
             project('empty', 'rig', [{ id: '', name: null, sessions: [] }]),
         ]);
 
-        expect(shape(rows)).toEqual(['section:Projects', 'project:happy(1)', 'worktree:w:last']);
+        expect(shape(rows)).toEqual([
+            'machine:Studio',
+            'section:Projects',
+            'project:happy(1)',
+            'worktree:w:last',
+        ]);
     });
 
     it('gives CLI projects the same card and worktrees Happy Agent projects get', () => {
@@ -294,6 +312,7 @@ describe('buildProjectHomeRows', () => {
         ]);
 
         expect(shape(rows)).toEqual([
+            'machine:Studio',
             'section:Bots',
             'bot:bot',
             'bot:cli-bot',
@@ -303,22 +322,86 @@ describe('buildProjectHomeRows', () => {
         ]);
     });
 
-    it('heads each computer once the account reaches more than one', () => {
+    it('heads the list with the computer even when the account has only one', () => {
         const rows = build([
             project('happy', 'rig', [{ id: '', name: null, sessions: [row({ id: 'a' })] }]),
-            project('side', 'rig', [{ id: '', name: null, sessions: [row({ id: 'b', machineId: 'machine-b' })] }], 'machine-b'),
+        ]);
+
+        expect(shape(rows)).toEqual(['machine:Studio', 'section:Projects', 'project:happy(0)']);
+    });
+
+    it('gives every computer its own bots and its own projects', () => {
+        const rows = build([
+            { type: 'bots', sessions: [row({ id: 'studio-bot' }), row({ id: 'terminal-bot', machineId: 'machine-c' })] },
+            project('happy', 'rig', [{ id: '', name: null, sessions: [row({ id: 'a' })] }]),
+            project('cli', 'happy', [{ id: '', name: null, sessions: [row({ id: 'b', machineId: 'machine-c' })] }], 'machine-c'),
         ]);
 
         expect(shape(rows)).toEqual([
-            'section:Projects',
-            'machine:Laptop',
-            'project:side(0)',
             'machine:Studio',
+            'section:Bots',
+            'bot:studio-bot',
+            'section:Projects',
             'project:happy(0)',
+            'machine:Terminal',
+            'section:Bots',
+            'bot:terminal-bot',
+            'section:Projects',
+            'project:cli(0)',
         ]);
     });
 
-    it('trails the revealed archive behind the projects, under its toggle', () => {
+    it('leads with the Happy Agent computers and trails the CLI daemons', () => {
+        const rows = build([
+            project('cli', 'happy', [{ id: '', name: null, sessions: [row({ id: 'a', machineId: 'machine-c' })] }], 'machine-c'),
+            project('agent', 'rig', [{ id: '', name: null, sessions: [row({ id: 'b' })] }]),
+        ]);
+
+        expect(shape(rows).filter((entry) => entry.startsWith('machine:')))
+            .toEqual(['machine:Studio', 'machine:Terminal']);
+    });
+
+    it('puts the computer worked on most recently first within its own kind', () => {
+        // Laptop sorts before Studio by name, so leading with Studio can only
+        // be its more recent activity.
+        const rows = build([
+            project('recent', 'rig', [{ id: '', name: null, sessions: [row({ id: 'a', lastActivityAt: 20 })] }]),
+            project('stale', 'rig', [
+                { id: '', name: null, sessions: [row({ id: 'b', machineId: 'machine-b', lastActivityAt: 10 })] },
+            ], 'machine-b'),
+        ]);
+
+        expect(shape(rows).filter((entry) => entry.startsWith('machine:')))
+            .toEqual(['machine:Studio', 'machine:Laptop']);
+    });
+
+    it('files a chat that names no computer under its own heading, last', () => {
+        const rows = build([
+            { type: 'bots', sessions: [row({ id: 'homeless', machineId: null })] },
+            project('happy', 'rig', [{ id: '', name: null, sessions: [row({ id: 'a' })] }]),
+        ]);
+
+        expect(shape(rows)).toEqual([
+            'machine:Studio',
+            'section:Projects',
+            'project:happy(0)',
+            'machine:<unknown>',
+            'section:Bots',
+            'bot:homeless',
+        ]);
+    });
+
+    // Repeated labels are repeated rows, and the list keys on the id.
+    it('gives the section labels under each computer ids of their own', () => {
+        const rows = build([
+            { type: 'bots', sessions: [row({ id: 'studio-bot' }), row({ id: 'terminal-bot', machineId: 'machine-c' })] },
+        ]);
+        const ids = rows.flatMap((item) => (item.type === 'section' ? [item.id] : []));
+
+        expect(ids).toEqual(['bots:machine-a', 'bots:machine-c']);
+    });
+
+    it('trails the revealed archive behind every computer, under its toggle', () => {
         const rows = build([
             project('happy', 'rig', [{ id: '', name: null, sessions: [row({ id: 'a' })] }]),
             { type: 'header', title: 'Today' },
@@ -326,6 +409,7 @@ describe('buildProjectHomeRows', () => {
         ], {}, { hasArchivedSessions: true, archiveHidden: false });
 
         expect(shape(rows)).toEqual([
+            'machine:Studio',
             'section:Projects',
             'project:happy(0)',
             'archive:hide',
@@ -342,7 +426,12 @@ describe('buildProjectHomeRows', () => {
             project('happy', 'rig', [{ id: '', name: null, sessions: [row({ id: 'a' })] }]),
         ], {}, { hasArchivedSessions: true, archiveHidden: true });
 
-        expect(shape(rows)).toEqual(['section:Projects', 'project:happy(0)', 'archive:show']);
+        expect(shape(rows)).toEqual([
+            'machine:Studio',
+            'section:Projects',
+            'project:happy(0)',
+            'archive:show',
+        ]);
     });
 
     // An account with nothing but an archive used to open onto a blank screen.
@@ -355,11 +444,12 @@ describe('buildProjectHomeRows', () => {
         const rows = build([
             project('happy', 'rig', [{ id: '', name: null, sessions: [row({ id: 'a' })] }]),
         ]);
-        expect(shape(rows)).toEqual(['section:Projects', 'project:happy(0)']);
+        expect(shape(rows)).toEqual(['machine:Studio', 'section:Projects', 'project:happy(0)']);
     });
 
     it('draws no projects heading when the account has none', () => {
         expect(shape(build([{ type: 'bots', sessions: [row({ id: 'bot' })] }]))).toEqual([
+            'machine:Studio',
             'section:Bots',
             'bot:bot',
         ]);

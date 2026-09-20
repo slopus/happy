@@ -102,7 +102,13 @@ export interface WorktreeToggle {
 
 export type ProjectHomeRow =
     | { type: 'section'; id: string; label: string }
-    /** Only drawn when the account reaches more than one computer. */
+    /**
+     * The computer everything below it runs on, down to the next one of these.
+     * Drawn even for an account with a single machine: the list is read as
+     * "this computer, its bots, its projects", and a heading that appears only
+     * once a second computer shows up makes that hierarchy look like something
+     * the second computer introduced.
+     */
     | { type: 'machine'; machineId: string | null; machineName: string }
     | { type: 'bot'; session: SessionRowData }
     | { type: 'project'; project: ProjectHomeEntry }
@@ -215,16 +221,128 @@ function toWorktree(project: ProjectGroupData, workspace: ProjectWorkspaceGroup)
     };
 }
 
+/** One computer and everything of the account's that runs on it. */
+interface MachineSection {
+    machineId: string | null;
+    machineName: string;
+    /** A Happy Agent machine, as opposed to a Happy CLI daemon. */
+    rig: boolean;
+    bots: SessionRowData[];
+    projects: ProjectHomeRow[];
+    /** When this computer was last worked on, across everything under it. */
+    lastActivityAt: number;
+}
+
 /**
- * Lays the grouped home list out as one card per project, with that project's
- * worktrees nested under it — the project's own checkout is the card itself,
- * not a row of its own, so the main chat never hides behind a fold.
+ * Which computer comes first.
+ *
+ * Happy Agent's own machines lead, because they are the ones the app can start
+ * work on; the CLI daemons are where work that was started in a terminal shows
+ * up, and they trail. Within each, the computer worked on most recently.
+ *
+ * Recency is a stand-in. What was asked for is "the home machine, not the
+ * team, first", and a machine has no home/team notion to read — so the list
+ * leads with the one being used, which is the same machine most of the time.
+ * Kept as one function so the real concept replaces it here and nowhere else.
+ */
+function compareMachineSections(a: MachineSection, b: MachineSection): number {
+    return machineRank(a) - machineRank(b)
+        || b.lastActivityAt - a.lastActivityAt
+        || a.machineName.localeCompare(b.machineName);
+}
+
+function machineRank(section: MachineSection): number {
+    // A chat that does not say where it runs is filed under no computer at all,
+    // and that group belongs at the bottom whatever it holds.
+    if (section.machineId === null) return 2;
+    return section.rig ? 0 : 1;
+}
+
+/** The rows one project contributes: its card, its worktrees, and their toggle. */
+function projectRows(
+    project: ProjectGroupData,
+    expanded: Readonly<Record<string, boolean>>,
+): ProjectHomeRow[] {
+    const checkouts = project.workspaces
+        .map((workspace) => toWorktree(project, workspace))
+        .filter((checkout): checkout is ProjectWorktree => checkout !== null);
+    if (checkouts.length === 0) return [];
+
+    const rows: ProjectHomeRow[] = [];
+    const primary = checkouts.find((checkout) => checkout.workspaceId === '') ?? null;
+    const worktrees = checkouts.filter((checkout) => checkout.workspaceId !== '');
+    // The list holds worktrees back rather than folding them, so the card
+    // answers for its own checkout and nothing else. What is held back is
+    // answered for by the row that holds it back.
+    const ownTabs = primary?.tabs ?? [];
+
+    rows.push({
+        type: 'project',
+        project: {
+            id: project.id,
+            name: project.name,
+            session: primary?.session ?? null,
+            tabs: ownTabs,
+            avatarSession: primary?.session ?? worktrees[0]?.session ?? null,
+            worktreeCount: worktrees.length,
+            ...activityState(ownTabs),
+            live: isLive(ownTabs),
+        },
+    });
+
+    const projectExpanded = !!expanded[project.id];
+    const shown = projectExpanded
+        ? worktrees
+        : worktrees.slice(0, WORKTREE_PREVIEW_COUNT);
+    const hidden = worktrees.slice(shown.length);
+    // Only worth a row when it governs something. A project sitting exactly at
+    // the preview count has nothing to show or hide.
+    const togglable = projectExpanded
+        ? worktrees.length > WORKTREE_PREVIEW_COUNT
+        : hidden.length > 0;
+
+    shown.forEach((worktree, index) => {
+        rows.push({
+            type: 'worktree',
+            worktree,
+            // The toggle row carries the tree line on past the last worktree,
+            // so the line only closes here without one.
+            last: !togglable && index === shown.length - 1,
+        });
+    });
+
+    if (togglable) {
+        rows.push({
+            type: 'worktreeToggle',
+            toggle: {
+                projectId: project.id,
+                worktreeCount: worktrees.length,
+                hiddenCount: hidden.length,
+                expanded: projectExpanded,
+                ...activityState(hidden.flatMap((worktree) => worktree.tabs)),
+            },
+        });
+    }
+
+    return rows;
+}
+
+/**
+ * Lays the grouped home list out under the computer the work is on: the
+ * machine, then its bots, then its projects — one card per project with that
+ * project's worktrees nested under it, the project's own checkout being the
+ * card itself rather than a row of its own, so the main chat never hides
+ * behind a fold.
+ *
+ * The machine is the top level because everything under it is only reachable
+ * through it: a project is a directory on one computer, and a bot is a chat
+ * standing on one. A second computer brings its own bots and its own projects
+ * rather than adding to a shared list of either.
  *
  * The archive trails everything as the same flat, date-grouped tail the other
- * layout draws, behind the same toggle. It is not part of any project: this
- * screen is about work in flight, but the setting that reveals retired chats
- * has to reveal them here too, or an account with nothing but an archive
- * opens onto an empty screen.
+ * layout draws, behind the same toggle. It belongs to no computer: a retired
+ * chat's machine is frequently gone, and the tail is chronological rather than
+ * grouped by anything.
  */
 export function buildProjectHomeRows({
     data,
@@ -236,101 +354,73 @@ export function buildProjectHomeRows({
     archiveHidden = true,
 }: BuildOptions): ProjectHomeRow[] {
     const rows: ProjectHomeRow[] = [];
+    const machinesById = new Map(machines.map((machine) => [machine.id, machine]));
+    const sections = new Map<string | null, MachineSection>();
 
-    const bots = data
-        .filter((item): item is Extract<SessionListViewItem, { type: 'bots' }> => item.type === 'bots')
-        .flatMap((item) => item.sessions);
-    if (bots.length > 0) {
-        rows.push({ type: 'section', id: 'bots', label: labels.bots });
-        for (const session of bots) {
-            rows.push({ type: 'bot', session });
+    const sectionFor = (machineId: string | null): MachineSection => {
+        const existing = sections.get(machineId);
+        if (existing) return existing;
+        const machine = machineId ? machinesById.get(machineId) : undefined;
+        const section: MachineSection = {
+            machineId,
+            machineName: machine?.metadata?.displayName
+                || machine?.metadata?.host
+                || (machineId ?? `<${unknownMachineText}>`),
+            rig: machine?.metadata?.machineKind === 'rig',
+            bots: [],
+            projects: [],
+            lastActivityAt: 0,
+        };
+        sections.set(machineId, section);
+        return section;
+    };
+
+    const seen = (section: MachineSection, sessions: readonly SessionRowData[]) => {
+        for (const session of sessions) {
+            section.lastActivityAt = Math.max(section.lastActivityAt, session.lastActivityAt);
+        }
+    };
+
+    // A bot runs on a computer like anything else, and says which one. The ones
+    // that do not join the chats that could not say either.
+    for (const item of data) {
+        if (item.type !== 'bots') continue;
+        for (const session of item.sessions) {
+            const section = sectionFor(session.machineId);
+            section.bots.push(session);
+            seen(section, [session]);
         }
     }
 
-    const machineGroups = buildSessionProjectDisplayGroups(data, machines, unknownMachineText);
-    // A single computer needs no heading: every project below it would repeat
-    // the same name, and the phone screen is narrow enough already.
-    const showMachineHeaders = machineGroups.length > 1;
-    const projectRows: ProjectHomeRow[] = [];
-
-    for (const group of machineGroups) {
-        const machineRows: ProjectHomeRow[] = [];
-
+    for (const group of buildSessionProjectDisplayGroups(data, machines, unknownMachineText)) {
+        const section = sectionFor(group.machineId);
         for (const { project } of group.projects) {
-            const checkouts = project.workspaces
-                .map((workspace) => toWorktree(project, workspace))
-                .filter((checkout): checkout is ProjectWorktree => checkout !== null);
-            if (checkouts.length === 0) continue;
-
-            const primary = checkouts.find((checkout) => checkout.workspaceId === '') ?? null;
-            const worktrees = checkouts.filter((checkout) => checkout.workspaceId !== '');
-            // The list holds worktrees back rather than folding them, so the
-            // card answers for its own checkout and nothing else. What is held
-            // back is answered for by the row that holds it back.
-            const ownTabs = primary?.tabs ?? [];
-
-            machineRows.push({
-                type: 'project',
-                project: {
-                    id: project.id,
-                    name: project.name,
-                    session: primary?.session ?? null,
-                    tabs: ownTabs,
-                    avatarSession: primary?.session ?? worktrees[0]?.session ?? null,
-                    worktreeCount: worktrees.length,
-                    ...activityState(ownTabs),
-                    live: isLive(ownTabs),
-                },
-            });
-
-            const projectExpanded = !!expanded[project.id];
-            const shown = projectExpanded
-                ? worktrees
-                : worktrees.slice(0, WORKTREE_PREVIEW_COUNT);
-            const hidden = worktrees.slice(shown.length);
-            // Only worth a row when it governs something. A project sitting
-            // exactly at the preview count has nothing to show or hide.
-            const togglable = projectExpanded
-                ? worktrees.length > WORKTREE_PREVIEW_COUNT
-                : hidden.length > 0;
-
-            shown.forEach((worktree, index) => {
-                machineRows.push({
-                    type: 'worktree',
-                    worktree,
-                    // The toggle row carries the tree line on past the last
-                    // worktree, so the line only closes here without one.
-                    last: !togglable && index === shown.length - 1,
-                });
-            });
-
-            if (!togglable) continue;
-            machineRows.push({
-                type: 'worktreeToggle',
-                toggle: {
-                    projectId: project.id,
-                    worktreeCount: worktrees.length,
-                    hiddenCount: hidden.length,
-                    expanded: projectExpanded,
-                    ...activityState(hidden.flatMap((worktree) => worktree.tabs)),
-                },
-            });
+            const built = projectRows(project, expanded);
+            if (built.length === 0) continue;
+            section.projects.push(...built);
+            for (const workspace of project.workspaces) seen(section, workspace.sessions);
         }
-
-        if (machineRows.length === 0) continue;
-        if (showMachineHeaders) {
-            projectRows.push({
-                type: 'machine',
-                machineId: group.machineId,
-                machineName: group.machineName,
-            });
-        }
-        projectRows.push(...machineRows);
     }
 
-    if (projectRows.length > 0) {
-        rows.push({ type: 'section', id: 'projects', label: labels.projects });
-        rows.push(...projectRows);
+    for (const section of Array.from(sections.values()).sort(compareMachineSections)) {
+        // A computer with nothing left on it is not worth a heading of its own.
+        if (section.bots.length === 0 && section.projects.length === 0) continue;
+        const key = section.machineId ?? 'unknown';
+        rows.push({
+            type: 'machine',
+            machineId: section.machineId,
+            machineName: section.machineName,
+        });
+        if (section.bots.length > 0) {
+            rows.push({ type: 'section', id: `bots:${key}`, label: labels.bots });
+            for (const session of section.bots) {
+                rows.push({ type: 'bot', session });
+            }
+        }
+        if (section.projects.length > 0) {
+            rows.push({ type: 'section', id: `projects:${key}`, label: labels.projects });
+            rows.push(...section.projects);
+        }
     }
 
     if (hasArchivedSessions) {

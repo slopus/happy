@@ -7,6 +7,8 @@ export interface SessionDisplayMachine {
     metadata?: {
         displayName?: string | null;
         host?: string | null;
+        /** `rig` for a Happy Agent machine; absent for a Happy CLI daemon. */
+        machineKind?: string | null;
     } | null;
 }
 
