@@ -63,7 +63,7 @@ export function EmptySessionsTablet() {
     const machineChoices = React.useMemo(() => collectMachineChoices(machines), [machines]);
     const hasOnlineMachines = machineChoices.some((machine) => machine.online);
     const hasOfflineMachines = machineChoices.length > 0 && !hasOnlineMachines;
-    const troubleshoot = useOfflineMachineTroubleshooting(machineChoices);
+    const troubleshoot = useOfflineMachineTroubleshooting();
     
     const handleStartNewSession = () => {
         router.navigate('/new');

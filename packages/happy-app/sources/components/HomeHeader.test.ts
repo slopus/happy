@@ -118,7 +118,7 @@ vi.mock('./StatusDot', () => ({ StatusDot: () => null }));
 
 import { HomeHeader, HomeHeaderNotAuth } from './HomeHeader';
 import { HomeHeaderTitle } from './HomeHeaderTitle';
-import { OnboardingStepTitle } from './onboarding/OnboardingHeader';
+import { OnboardingTitle } from './onboarding/OnboardingHeader';
 import { MainView } from './MainView';
 
 const originalConsoleError = console.error;
@@ -166,16 +166,15 @@ describe('HomeHeaderNotAuth', () => {
         expect(header.props.mobileTitleAlignment).toBe('center');
     });
 
-    it('shows the step counter without a logo or socket status before an account exists', () => {
+    it('shows no title, logo, or socket status before an account exists', () => {
         socketStatus.status = 'disconnected';
         const renderer = render(React.createElement(HomeHeaderNotAuth));
         const header = renderer.root.findByType('Header' as any);
-        expect(header.props.title.type).toBe(OnboardingStepTitle);
+        expect(header.props.title.type).toBe(OnboardingTitle);
         expect(header.props.headerLeft).toBeUndefined();
         const texts = renderer.root.findAllByType('Text' as any).map((node: any) => node.props.children);
-        expect(texts[0]).toBe('onboarding.step');
+        expect(texts).toEqual(['192.168.0.108:3005']);
         expect(texts).not.toContain('status.disconnected');
-        expect(texts).toContain('192.168.0.108:3005');
     });
 
     it('opens server settings from a gear, not a server-rack glyph', () => {
@@ -221,8 +220,8 @@ describe('home header connection status', () => {
         const title = render(React.createElement(HomeHeaderNotAuth));
         const texts = title.root.findAllByType('Text' as any);
 
-        expect(texts).toHaveLength(2);
-        expect(texts[1].props.children).toBe('192.168.0.108:3005');
+        expect(texts).toHaveLength(1);
+        expect(texts[0].props.children).toBe('192.168.0.108:3005');
     });
 
     it('keeps the centered title and its empty slot mounted across connection changes', () => {

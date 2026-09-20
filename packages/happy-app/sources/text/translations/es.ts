@@ -876,6 +876,10 @@ export const es: TranslationStructure = {
         ...en.onboarding,
     },
 
+    troubleshoot: {
+        ...en.troubleshoot,
+    },
+
     welcome: {
         // Main welcome screen for unauthenticated users
         title: 'Cliente móvil de Codex y Claude Code',

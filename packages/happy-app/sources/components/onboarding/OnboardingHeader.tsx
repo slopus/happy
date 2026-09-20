@@ -3,28 +3,28 @@ import { Platform, Text, View } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
 import { Header } from '../navigation/Header';
-import { t } from '@/text';
-
-export const ONBOARDING_STEP_COUNT = 3;
 
 /**
- * Plain step counter for the first-run screens. No logo, no socket status:
- * before an account exists there is no socket, and a red "disconnected" line
- * on the welcome screen read as a fault. A custom server hostname still shows
- * underneath, since self-hosters need to see where they are pointed.
+ * Plain title for the first-run screens. No logo, no socket status: before
+ * an account exists there is no socket, and a red "disconnected" line on the
+ * welcome screen read as a fault. The title itself is optional; the create
+ * account screen has none. A custom server hostname still shows underneath,
+ * since self-hosters need to see where they are pointed.
  */
-export const OnboardingStepTitle = React.memo(function OnboardingStepTitle({
-    step,
+export const OnboardingTitle = React.memo(function OnboardingTitle({
+    title,
     subtitle,
 }: {
-    step: number;
+    title?: string;
     subtitle?: string;
 }) {
     return (
         <View style={styles.container} pointerEvents="none">
-            <Text style={styles.title} numberOfLines={1} accessibilityRole="header">
-                {t('onboarding.step', { step, total: ONBOARDING_STEP_COUNT })}
-            </Text>
+            {title ? (
+                <Text style={styles.title} numberOfLines={1} accessibilityRole="header">
+                    {title}
+                </Text>
+            ) : null}
             {subtitle ? (
                 <Text style={styles.subtitle} numberOfLines={1} ellipsizeMode="middle">{subtitle}</Text>
             ) : null}
@@ -33,18 +33,18 @@ export const OnboardingStepTitle = React.memo(function OnboardingStepTitle({
 });
 
 export const OnboardingHeader = React.memo(function OnboardingHeader({
-    step,
+    title,
     subtitle,
     headerRight,
 }: {
-    step: number;
+    title?: string;
     subtitle?: string;
     headerRight?: () => React.ReactNode;
 }) {
     const { theme } = useUnistyles();
     return (
         <Header
-            title={<OnboardingStepTitle step={step} subtitle={subtitle} />}
+            title={<OnboardingTitle title={title} subtitle={subtitle} />}
             headerRight={headerRight}
             headerShadowVisible={false}
             headerBackgroundColor={theme.colors.groupped.background}

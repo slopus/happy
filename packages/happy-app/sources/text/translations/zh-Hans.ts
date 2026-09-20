@@ -877,6 +877,10 @@ export const zhHans: TranslationStructure = {
         ...en.onboarding,
     },
 
+    troubleshoot: {
+        ...en.troubleshoot,
+    },
+
     welcome: {
         // Main welcome screen for unauthenticated users
         title: 'Codex 和 Claude Code 移动客户端',

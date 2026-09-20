@@ -1,5 +1,40 @@
 import { describe, expect, it } from 'vitest';
-import { shouldShowFirstRunInstall, shouldSuppressTabletShell } from './firstRunOnboarding';
+import {
+    resolveHomeEmptyState,
+    shouldShowFirstRunInstall,
+    shouldShowOfflineMachinesBanner,
+    shouldSuppressTabletShell,
+} from './firstRunOnboarding';
+
+describe('home empty state', () => {
+    const base = { visibleSessionCount: 0, hasArchivedSessions: false, machineCount: 1, onlineMachineCount: 1 };
+
+    it('asks to link a computer when none is linked', () => {
+        expect(resolveHomeEmptyState({ ...base, machineCount: 0, onlineMachineCount: 0 })).toBe('link');
+    });
+
+    it('shows the offline checklist when every linked computer is unreachable', () => {
+        expect(resolveHomeEmptyState({ ...base, onlineMachineCount: 0 })).toBe('offline');
+        expect(resolveHomeEmptyState({ ...base, onlineMachineCount: 0, hasArchivedSessions: true })).toBe('offline');
+    });
+
+    it('lists sessions whenever there are some, even with every computer offline', () => {
+        expect(resolveHomeEmptyState({ ...base, visibleSessionCount: 3, onlineMachineCount: 0 })).toBe('list');
+    });
+
+    it('lets an archive-only account reach its archive when a computer is online', () => {
+        expect(resolveHomeEmptyState({ ...base, hasArchivedSessions: true })).toBe('list');
+        expect(resolveHomeEmptyState(base)).toBe('no-sessions');
+    });
+});
+
+describe('offline machines banner', () => {
+    it('shows only when computers exist and none is reachable', () => {
+        expect(shouldShowOfflineMachinesBanner({ machineCount: 2, onlineMachineCount: 0 })).toBe(true);
+        expect(shouldShowOfflineMachinesBanner({ machineCount: 2, onlineMachineCount: 1 })).toBe(false);
+        expect(shouldShowOfflineMachinesBanner({ machineCount: 0, onlineMachineCount: 0 })).toBe(false);
+    });
+});
 
 describe('first-run onboarding', () => {
     it.each([

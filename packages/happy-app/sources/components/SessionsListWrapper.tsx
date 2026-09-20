@@ -7,6 +7,8 @@ import { ProjectHomeList } from './ProjectHomeList';
 import { useHasArchivedSessions, useVisibleSessionListViewData } from '@/hooks/useVisibleSessionListViewData';
 import { useAllMachines, useSetting, useSettingMutable } from '@/sync/storage';
 import { collectMachineChoices } from '@/sync/machineChoices';
+import { LinkComputerChecklist } from './onboarding/LinkComputer';
+import { resolveHomeEmptyState } from './onboarding/firstRunOnboarding';
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
@@ -54,7 +56,7 @@ export const SessionsListWrapper = React.memo(({
     const hasArchivedSessions = useHasArchivedSessions();
     const machines = useAllMachines({ includeOffline: true });
     const machineChoices = React.useMemo(() => collectMachineChoices(machines), [machines]);
-    const hasOnlineMachines = machineChoices.some((machine) => machine.online);
+    const onlineMachineCount = machineChoices.filter((machine) => machine.online).length;
     const [, setHideArchivedSessions] = useSettingMutable('hideInactiveSessions');
     // The activity-sorted chat list is the default; the project hierarchy —
     // project, then checkout, with chats as tabs — is the other layout.
@@ -73,10 +75,33 @@ export const SessionsListWrapper = React.memo(({
         );
     }
 
-    // With an online machine, an archive-only account renders SessionsList's inline archive
-    // control. With no reachable machine, the connection problem is the useful primary state and
-    // the archive remains available as its secondary action.
-    if (sessionListViewData.length === 0 && (!hasArchivedSessions || !hasOnlineMachines)) {
+    const emptyState = resolveHomeEmptyState({
+        visibleSessionCount: sessionListViewData.length,
+        hasArchivedSessions,
+        machineCount: machineChoices.length,
+        onlineMachineCount,
+    });
+
+    // Every linked computer is offline and there is nothing to list: the
+    // checklist that got the first computer linked, now about getting it
+    // running again. On phones the no-machine case never reaches here (the
+    // home route shows the first-run screen); web and desktop keep their own.
+    if (emptyState === 'offline') {
+        return (
+            <View style={styles.container}>
+                <View style={styles.emptyStateContainer}>
+                    <View style={[styles.emptyStateContentContainer, { paddingTop: topContentInset, paddingBottom: bottomContentInset }]}>
+                        <LinkComputerChecklist
+                            variant="offline"
+                            onShowArchived={hasArchivedSessions ? () => setHideArchivedSessions(false) : undefined}
+                        />
+                    </View>
+                </View>
+            </View>
+        );
+    }
+
+    if (emptyState === 'link' || emptyState === 'no-sessions') {
         return (
             <View style={styles.container}>
                 <View style={styles.emptyStateContainer}>

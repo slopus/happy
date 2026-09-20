@@ -18,7 +18,7 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useIsTablet } from '@/utils/responsive';
 import { getHarnessName } from '@/utils/harnessCatalog';
 import { requestReview } from '@/utils/requestReview';
-import { UpdateBanner } from './UpdateBanner';
+import { HomeListHeader } from './HomeListHeader';
 import { layout } from './layout';
 import { useSessionPressHandlers } from '@/hooks/useNavigateToSession';
 import { SessionActionsAnchor, SessionActionsPopover } from './SessionActionsPopover';
@@ -573,7 +573,7 @@ export function SessionsList({
     const HeaderComponent = React.useCallback(() => {
         const isPhoneLayout = topContentInset > 0;
         return (
-            <UpdateBanner
+            <HomeListHeader
                 style={isPhoneLayout ? styles.phoneUpdateBanner : undefined}
                 headerStyle={isPhoneLayout ? styles.phoneUpdateBannerHeader : undefined}
             />

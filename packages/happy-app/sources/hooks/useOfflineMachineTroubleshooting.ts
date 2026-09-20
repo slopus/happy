@@ -1,29 +1,14 @@
 import * as React from 'react';
-import * as Clipboard from 'expo-clipboard';
-import type { MachineChoice } from '@/sync/machineChoices';
-import { useSessions } from '@/sync/storage';
-import { Modal } from '@/modal';
-import { t } from '@/text';
-import { buildOfflineMachineTroubleshooting } from '@/utils/offlineMachineTroubleshooting';
+import { useRouter } from 'expo-router';
 
-export function useOfflineMachineTroubleshooting(choices: readonly MachineChoice[]): () => void {
-    const sessions = useSessions();
-    const guide = React.useMemo(
-        () => buildOfflineMachineTroubleshooting(choices, sessions),
-        [choices, sessions],
-    );
-
+/**
+ * Opens the troubleshooting screen for an account whose linked computers are
+ * all offline. It used to be an alert; the screen has room to say what to
+ * check and to hand over the AI prompt without a dialog in the way.
+ */
+export function useOfflineMachineTroubleshooting(): () => void {
+    const router = useRouter();
     return React.useCallback(() => {
-        Modal.alert('Troubleshoot connection', guide.message, [
-            { text: t('common.cancel'), style: 'cancel' },
-            {
-                text: 'Copy AI prompt',
-                onPress: () => {
-                    void Clipboard.setStringAsync(guide.aiPrompt).catch(() => {
-                        Modal.alert(t('common.error'), 'Could not copy the AI prompt.');
-                    });
-                },
-            },
-        ]);
-    }, [guide]);
+        router.push('/troubleshoot');
+    }, [router]);
 }

@@ -9,7 +9,6 @@ import { t } from '@/text';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useAllMachines } from '@/sync/storage';
 import { collectMachineChoices } from '@/sync/machineChoices';
-import { useOfflineMachineTroubleshooting } from '@/hooks/useOfflineMachineTroubleshooting';
 import { useRouter } from 'expo-router';
 
 const stylesheet = StyleSheet.create((theme) => ({
@@ -156,8 +155,6 @@ export function EmptyMainScreen({
     const [showManualSetup, setShowManualSetup] = React.useState(false);
     const machines = useAllMachines({ includeOffline: true });
     const machineChoices = React.useMemo(() => collectMachineChoices(machines), [machines]);
-    const hasOnlineMachines = machineChoices.some((machine) => machine.online);
-    const troubleshoot = useOfflineMachineTroubleshooting(machineChoices);
     const showArchivedAction = hasArchivedSessions && onShowArchived ? (
         <Pressable
             onPress={onShowArchived}
@@ -186,28 +183,15 @@ export function EmptyMainScreen({
         }
     }, [connectWithUrl]);
 
+    // A linked computer with nothing on it yet. The all-offline case never
+    // reaches here: the list wrapper shows the offline checklist for it.
     if (machineChoices.length > 0) {
-        if (hasOnlineMachines) {
-            return (
-                <View style={styles.container}>
-                    <Ionicons name="terminal-outline" size={56} color={theme.colors.textSecondary} style={styles.stateIcon} />
-                    <Text style={styles.stateTitle}>No sessions yet</Text>
-                    <Text style={styles.stateDescription}>Start one on a connected machine.</Text>
-                    <RoundButton title="Start New Session" size="large" onPress={() => router.navigate('/new')} />
-                    {showArchivedAction}
-                </View>
-            );
-        }
-
-        const title = machineChoices.length === 1
-            ? `${machineChoices[0].name} is unreachable`
-            : 'No machines are reachable';
         return (
             <View style={styles.container}>
-                <Ionicons name="cloud-offline-outline" size={56} color={theme.colors.textSecondary} style={styles.stateIcon} />
-                <Text style={styles.stateTitle}>{title}</Text>
-                <Text style={styles.stateDescription}>Bring a machine online to start a session.</Text>
-                <RoundButton title="Troubleshoot" size="large" onPress={troubleshoot} />
+                <Ionicons name="terminal-outline" size={56} color={theme.colors.textSecondary} style={styles.stateIcon} />
+                <Text style={styles.stateTitle}>No sessions yet</Text>
+                <Text style={styles.stateDescription}>Start one on a connected machine.</Text>
+                <RoundButton title="Start New Session" size="large" onPress={() => router.navigate('/new')} />
                 {showArchivedAction}
             </View>
         );

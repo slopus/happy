@@ -877,6 +877,10 @@ export const ja: TranslationStructure = {
         ...en.onboarding,
     },
 
+    troubleshoot: {
+        ...en.troubleshoot,
+    },
+
     welcome: {
         // Main welcome screen for unauthenticated users
         title: 'CodexとClaude Codeのモバイルクライアント',

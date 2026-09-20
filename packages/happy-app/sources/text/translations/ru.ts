@@ -882,6 +882,10 @@ export const ru: TranslationStructure = {
         ...en.onboarding,
     },
 
+    troubleshoot: {
+        ...en.troubleshoot,
+    },
+
     welcome: {
         // Main welcome screen for unauthenticated users
         title: 'Мобильный клиент Codex и Claude Code',

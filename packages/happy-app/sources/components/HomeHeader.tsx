@@ -65,15 +65,15 @@ export const HomeHeader = React.memo(() => {
 })
 
 /**
- * Step 1 of the first run. No logo and no socket status: nothing is connected
- * yet, so the only chrome is the step counter and the server settings action.
+ * The create-account screen's header. No title, no logo, and no socket
+ * status: nothing is connected yet, so the only chrome is the server
+ * settings action and, for self-hosters, the hostname they are pointed at.
  */
 export const HomeHeaderNotAuth = React.memo(() => {
     useSegments(); // Re-rendered automatically when screen navigates back
     const serverInfo = getServerInfo();
     return (
         <OnboardingHeader
-            step={1}
             subtitle={serverInfo.isCustom ? serverInfo.hostname + (serverInfo.port ? `:${serverInfo.port}` : '') : undefined}
             headerRight={() => <HeaderRightNotAuth />}
         />

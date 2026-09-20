@@ -53,7 +53,7 @@ import { hapticsLight } from './haptics';
 import { Avatar } from './Avatar';
 import { StatusDot } from './StatusDot';
 import { ShimmerText } from './ShimmerText';
-import { UpdateBanner } from './UpdateBanner';
+import { HomeListHeader } from './HomeListHeader';
 import { layout } from './layout';
 
 // Every row starts with the same avatar and name columns. Disclosure controls
@@ -245,7 +245,7 @@ export const ProjectHomeListView = React.memo(({
     }, [onToggle, onToggleArchive, styles, theme]);
 
     const ListHeader = React.useCallback(() => (
-        <UpdateBanner
+        <HomeListHeader
             style={topContentInset > 0 ? styles.updateBanner : undefined}
             headerStyle={topContentInset > 0 ? styles.updateBannerHeader : undefined}
         />
@@ -751,11 +751,13 @@ const stylesheet = StyleSheet.create((theme) => ({
         flex: 1,
         maxWidth: layout.maxWidth,
     },
+    // The banner group already insets its card by the row padding, so adding
+    // it again here left the card narrower than the rows beneath it.
     updateBanner: {
-        paddingHorizontal: 16,
+        paddingBottom: 16,
     },
     updateBannerHeader: {
-        paddingTop: 8,
+        paddingTop: 4,
     },
     pressed: {
         opacity: 0.55,

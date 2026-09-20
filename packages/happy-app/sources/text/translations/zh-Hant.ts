@@ -876,6 +876,10 @@ export const zhHant: TranslationStructure = {
         ...en.onboarding,
     },
 
+    troubleshoot: {
+        ...en.troubleshoot,
+    },
+
     welcome: {
         // Main welcome screen for unauthenticated users
         title: 'Codex 和 Claude Code 行動用戶端',

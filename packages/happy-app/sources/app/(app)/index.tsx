@@ -13,7 +13,7 @@ import { Typography } from "@/constants/Typography";
 import { trackAccountCreated, trackAccountRestored } from '@/track';
 import { HomeHeaderNotAuth } from "@/components/HomeHeader";
 import { MainView } from "@/components/MainView";
-import { OnboardingInstall } from "@/components/onboarding/OnboardingInstall";
+import { OnboardingLinkComputer } from "@/components/onboarding/LinkComputer";
 import { shouldShowFirstRunInstall } from "@/components/onboarding/firstRunOnboarding";
 import { useAllMachines, useIsDataReady } from "@/sync/storage";
 import { t } from '@/text';
@@ -34,7 +34,7 @@ function Authenticated() {
     const machines = useAllMachines({ includeOffline: true });
     // Until a computer is linked there is nothing for the home chrome to do:
     // the dock, filters, session list, and tablet sidebar all need a machine.
-    // Native phones and tablets therefore share the same install step. Web
+    // Native phones and tablets therefore share the same link screen. Web
     // and desktop retain their existing account-linking flow.
     const showInstallStep = shouldShowFirstRunInstall({
         isAuthenticated: true,
@@ -44,7 +44,7 @@ function Authenticated() {
         isRunningOnMac: isRunningOnMac(),
     });
     if (showInstallStep) {
-        return <OnboardingInstall />;
+        return <OnboardingLinkComputer />;
     }
     return <MainView variant="phone" />;
 }
@@ -81,7 +81,7 @@ function NotAuthenticated() {
         <>
             <View style={styles.buttonContainer}>
                 <RoundButton
-                    title={t('onboarding.getStarted')}
+                    title={t('onboarding.createAccount')}
                     action={createAccount}
                 />
             </View>
