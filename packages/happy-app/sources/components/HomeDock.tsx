@@ -313,18 +313,6 @@ const styles = StyleSheet.create((theme) => ({
         paddingBottom: MOBILE_COMPOSER_METRICS.inputPaddingBottom,
     },
     focusedComposerActions: MOBILE_ACTION_ROW_GEOMETRY,
-    // Everything between the add button and send. Send is a sibling of this
-    // box, not of the chips inside it, so no label can ever push it off its
-    // corner: the box is handed exactly the width that is left and whatever is
-    // in it has to fit. The permission chip refuses to shrink, so the model
-    // name — the one thing here that can be any length — is what gives way.
-    focusedComposerMiddle: {
-        flex: 1,
-        minWidth: 0,
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 2,
-    },
     nativeModeMenu: MOBILE_MODEL_MENU_GEOMETRY.frame,
     focusedModeButton: MOBILE_MODEL_MENU_GEOMETRY.content,
     nativeEffortMenu: MOBILE_EFFORT_MENU_GEOMETRY.frame,
@@ -2034,7 +2022,6 @@ export const HomeDock = React.memo(({
                             </BubblePressable>
                         </RefusableControl>
                         )}
-                        <View style={styles.focusedComposerMiddle}>
                         {/* The permission mode reads out in words instead of
                             hiding behind a gear: it is the one setting here that
                             changes what the agent is allowed to do to your
@@ -2109,7 +2096,6 @@ export const HomeDock = React.memo(({
                                 </View>
                             ),
                         })}
-                        </View>
                         {/* Nothing covers this row as a whole: each control
                             beside Stop refuses its own presses, which leaves
                             Stop itself reachable without having to be painted
