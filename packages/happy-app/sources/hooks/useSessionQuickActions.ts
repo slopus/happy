@@ -404,8 +404,8 @@ export const MISSING_SESSION: Session = Object.freeze({
     presence: 0,
 });
 
-export function useSessionActionAlert(sessionId: string) {
+export function useSessionActionAlert(sessionId: string, options: UseSessionQuickActionsOptions = {}) {
     const session = useSession(sessionId);
-    const { showActionAlert } = useSessionQuickActions(session ?? MISSING_SESSION, {});
+    const { showActionAlert } = useSessionQuickActions(session ?? MISSING_SESSION, options);
     return session ? showActionAlert : undefined;
 }

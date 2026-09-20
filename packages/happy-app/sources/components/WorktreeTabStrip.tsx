@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { LayoutChangeEvent, Platform, Pressable, ScrollView, View } from 'react-native';
+import { LayoutChangeEvent, NativeScrollEvent, NativeSyntheticEvent, Platform, Pressable, ScrollView, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
@@ -18,13 +18,12 @@ import { findProjectWorktree, locateProjectWorkspace } from '@/utils/projectHome
 import { neighbouringTabId, resolveWorktreeTabs } from '@/utils/worktreeTabs';
 import { newSessionLikeSession } from '@/utils/newSessionCheckout';
 import { useStartSessionFromDraft } from '@/hooks/useStartSessionFromDraft';
+import { useSessionActionAlert } from '@/hooks/useSessionQuickActions';
 import { useIsTablet } from '@/utils/responsive';
 import { isRunningOnMac } from '@/utils/platform';
 import { trackSessionSwitched } from '@/track';
 import { layout } from './layout';
 import { MobileGlassSurface } from './MobileGlass';
-import { ProviderIcon } from './ProviderIcon';
-import { SessionActionsNativeMenu, type SessionActionsNativeMenuHandle } from './SessionActionsNativeMenu';
 import { SessionActionsAnchor, SessionActionsPopover } from './SessionActionsPopover';
 import { ShimmerText } from './ShimmerText';
 import { StatusDot } from './StatusDot';
@@ -38,6 +37,8 @@ const PILL_HEIGHT = 40;
 const PILL_RADIUS = PILL_HEIGHT / 2;
 const GAP_ABOVE = 10;
 const GAP_BELOW = 6;
+/** Breathing room either side of a tab the strip has had to scroll to. */
+const TAB_SCROLL_MARGIN = 8;
 
 /** What the strip costs the layout, margins included. */
 export const WORKTREE_TAB_STRIP_HEIGHT = PILL_HEIGHT + GAP_ABOVE + GAP_BELOW;
@@ -63,6 +64,18 @@ function enqueueStart(job: () => Promise<unknown>): void {
     // it must not take the starts queued behind it down with it.
     startQueue = startQueue.then(job, job);
 }
+
+/**
+ * Where each checkout's strip was last scrolled to.
+ *
+ * The session screen is keyed on the chat it shows, so switching tabs tears
+ * the whole screen down, this strip with it, and mounts it again on the new
+ * chat. A fresh ScrollView starts at zero, and the strip used to be seen
+ * sliding from there to the tab just pressed — read, reasonably, as the strip
+ * being rebuilt and scrolled back into place. The offset is kept here, across
+ * mounts, so the strip comes back exactly where the finger left it.
+ */
+const stripOffsets = new Map<string, number>();
 
 /**
  * The chats of one checkout as tabs, under the session screen's header.
@@ -100,9 +113,22 @@ export const WorktreeTabStrip = React.memo(({ sessionId }: { sessionId: string }
     const { startSession } = useStartSessionFromDraft();
 
     const scrollRef = React.useRef<ScrollView>(null);
-    const tabOffsets = React.useRef<Record<string, number>>({});
+    const tabBoxes = React.useRef<Record<string, { x: number; width: number }>>({});
     const [stripWidth, setStripWidth] = React.useState(0);
     const stripWidthRef = React.useRef(0);
+    // Starts where the last mount on this checkout left off, so the first
+    // frame is already in place and there is nothing to slide from. Latched on
+    // the first render that knows the checkout, which is the render the
+    // ScrollView first appears on.
+    const worktreeId = worktree?.id ?? null;
+    const initialXRef = React.useRef<number | null>(null);
+    /** Where the strip is scrolled to, to tell a tab in view from one that is not. */
+    const scrollX = React.useRef(0);
+    if (initialXRef.current === null && worktreeId) {
+        initialXRef.current = stripOffsets.get(worktreeId) ?? 0;
+        scrollX.current = initialXRef.current;
+    }
+    const initialX = initialXRef.current ?? 0;
     /**
      * A tab the strip has been asked to show but cannot place yet.
      *
@@ -176,26 +202,58 @@ export const WorktreeTabStrip = React.memo(({ sessionId }: { sessionId: string }
         ));
     }, [anchorId, select, selectedId, startSession, tabIds]);
 
+    /**
+     * Brings a tab into view, and otherwise leaves the strip where it is.
+     *
+     * Switching used to re-centre on the tab every time, which moved the whole
+     * strip under the finger for a tab that was already on screen — the reason
+     * tapping a neighbour read as the strip being rebuilt and scrolled somewhere
+     * rather than as the selection simply moving across. A tab out of view is
+     * still fetched, by the smallest scroll that reveals it.
+     */
     const scrollToTab = React.useCallback((id: string) => {
-        const x = tabOffsets.current[id];
+        const box = tabBoxes.current[id];
         const width = stripWidthRef.current;
-        if (x === undefined || width === 0) {
+        if (!box || width === 0) {
             awaitingScroll.current = id;
             return;
         }
         awaitingScroll.current = null;
-        scrollRef.current?.scrollTo({ x: Math.max(0, x - width / 3), animated: true });
+        const offset = scrollX.current;
+        const left = box.x - TAB_SCROLL_MARGIN;
+        const right = box.x + box.width + TAB_SCROLL_MARGIN;
+        if (left >= offset && right <= offset + width) return;
+        scrollRef.current?.scrollTo({
+            x: Math.max(0, left < offset ? left : right - width),
+            animated: true,
+        });
     }, []);
 
-    const handleTabLayout = React.useCallback((id: string, x: number) => {
-        tabOffsets.current[id] = x;
+    const handleTabLayout = React.useCallback((id: string, x: number, width: number) => {
+        tabBoxes.current[id] = { x, width };
         if (awaitingScroll.current === id) scrollToTab(id);
     }, [scrollToTab]);
+
+    const handleScroll = React.useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
+        const x = event.nativeEvent.contentOffset.x;
+        scrollX.current = x;
+        if (worktreeId) stripOffsets.set(worktreeId, x);
+    }, [worktreeId]);
 
     const handleStripLayout = React.useCallback((event: LayoutChangeEvent) => {
         stripWidthRef.current = event.nativeEvent.layout.width;
         setStripWidth(event.nativeEvent.layout.width);
     }, []);
+
+    // `contentOffset` places the first frame on iOS; Android ignores it, so the
+    // same offset is applied once the content is measured and can be scrolled
+    // to. Unanimated: this is where the strip already was, not a move.
+    const restored = React.useRef(false);
+    const handleContentSizeChange = React.useCallback(() => {
+        if (restored.current) return;
+        restored.current = true;
+        if (initialX > 0) scrollRef.current?.scrollTo({ x: initialX, animated: false });
+    }, [initialX]);
 
     // Keep the open tab in view, including after a switch from the far end and
     // for a tab that did not exist a frame ago.
@@ -220,7 +278,11 @@ export const WorktreeTabStrip = React.memo(({ sessionId }: { sessionId: string }
                         horizontal
                         showsHorizontalScrollIndicator={false}
                         contentContainerStyle={styles.tabs}
+                        contentOffset={{ x: initialX, y: 0 }}
+                        onContentSizeChange={handleContentSizeChange}
                         onLayout={handleStripLayout}
+                        onScroll={handleScroll}
+                        scrollEventThrottle={16}
                         style={styles.scroll}
                     >
                         {resolved.tabs.map((tab) => (
@@ -275,14 +337,14 @@ const PendingTab = React.memo(({ chat, selected, onSelect, onLayoutX }: {
     chat: PendingChat;
     selected: boolean;
     onSelect: (id: string) => void;
-    onLayoutX: (id: string, x: number) => void;
+    onLayoutX: (id: string, x: number, width: number) => void;
 }) => {
     const styles = stylesheet;
     const { theme } = useUnistyles();
     const label = t('session.newChat');
 
     return (
-        <View onLayout={(event: LayoutChangeEvent) => onLayoutX(chat.id, event.nativeEvent.layout.x)}>
+        <View onLayout={(event: LayoutChangeEvent) => onLayoutX(chat.id, event.nativeEvent.layout.x, event.nativeEvent.layout.width)}>
             <Pressable
                 onPress={() => onSelect(chat.id)}
                 accessibilityRole="tab"
@@ -312,8 +374,13 @@ const PendingTab = React.memo(({ chat, selected, onSelect, onLayoutX }: {
  * One chat. The open one is a filled chip rather than an underline: inside a
  * capsule an underline would run into the rounded edge.
  *
- * Holding it opens the session's actions in the platform's own menu — UIMenu on
- * iOS, a Compose dropdown on Android — and right-click opens the web popover.
+ * Holding it opens the session's actions in the same sheet the home list uses;
+ * right-click opens the web popover. The tabs used to sit inside the platform's
+ * own menu host — SwiftUI on iOS, Compose on Android — and a native view of
+ * that kind inside a horizontal ScrollView fights it for every touch: the
+ * strip would stop scrolling, stop answering taps, and re-measure itself in
+ * the middle of a drag, yanking the offset back. Plain React Native views
+ * scroll like anything else.
  */
 const WorktreeTab = React.memo(({ session, selected, neighbourId, onSelect, onArchiving, onLayoutX }: {
     session: SessionRowData;
@@ -323,7 +390,7 @@ const WorktreeTab = React.memo(({ session, selected, neighbourId, onSelect, onAr
     onSelect: (id: string) => void;
     /** On the press rather than on the answer, so the screen leaves first. */
     onArchiving: (id: string, neighbourId: string | null) => void;
-    onLayoutX: (id: string, x: number) => void;
+    onLayoutX: (id: string, x: number, width: number) => void;
 }) => {
     const styles = stylesheet;
     const { theme } = useUnistyles();
@@ -331,15 +398,11 @@ const WorktreeTab = React.memo(({ session, selected, neighbourId, onSelect, onAr
     const blocked = session.state === 'permission_required' || session.state === 'input_required';
     const color = selected ? theme.colors.header.tint : theme.colors.textSecondary;
 
-    const menuRef = React.useRef<SessionActionsNativeMenuHandle>(null);
     const [actionsAnchor, setActionsAnchor] = React.useState<SessionActionsAnchor | null>(null);
     const handleBeforeArchive = React.useCallback(() => {
         onArchiving(session.id, neighbourId);
     }, [neighbourId, onArchiving, session.id]);
-
-    // iOS raises its context menu from the press itself; Android and the web
-    // ignore this, so the same gesture can be wired everywhere.
-    const openMenu = React.useCallback(() => menuRef.current?.open(), []);
+    const showActions = useSessionActionAlert(session.id, { onBeforeArchive: handleBeforeArchive });
 
     const handleContextMenu = React.useCallback((event: any) => {
         event.preventDefault?.();
@@ -351,58 +414,50 @@ const WorktreeTab = React.memo(({ session, selected, neighbourId, onSelect, onAr
         });
     }, []);
 
-    const webMenuProps = Platform.OS === 'web'
+    const menuProps = Platform.OS === 'web'
         ? { onContextMenu: handleContextMenu } as any
-        : undefined;
+        : { onLongPress: showActions };
 
     return (
-        // The native menu hosts the tab inside a platform view of its own, so
-        // the offset the strip scrolls by has to be measured out here, on the
-        // React Native box that still sits in the ScrollView's coordinates.
-        <View onLayout={(event: LayoutChangeEvent) => onLayoutX(session.id, event.nativeEvent.layout.x)}>
-            <SessionActionsNativeMenu
-                onBeforeArchive={handleBeforeArchive}
-                ref={menuRef}
-                sessionId={session.id}
+        <View onLayout={(event: LayoutChangeEvent) => onLayoutX(session.id, event.nativeEvent.layout.x, event.nativeEvent.layout.width)}>
+            <Pressable
+                onPress={() => onSelect(session.id)}
+                accessibilityRole="tab"
+                accessibilityState={{ selected }}
+                accessibilityLabel={session.name}
+                style={({ pressed }) => [
+                    styles.tab,
+                    selected && styles.tabSelected,
+                    pressed && !selected && styles.tabPressed,
+                ]}
+                {...menuProps}
             >
-                <Pressable
-                    onPress={() => onSelect(session.id)}
-                    onLongPress={openMenu}
-                    accessibilityRole="tab"
-                    accessibilityState={{ selected }}
-                    accessibilityLabel={session.name}
-                    style={({ pressed }) => [
-                        styles.tab,
-                        selected && styles.tabSelected,
-                        pressed && !selected && styles.tabPressed,
-                    ]}
-                    {...webMenuProps}
-                >
-                    <ProviderIcon kind={session.providerKind} size={14} />
-                    <View style={styles.tabLabel}>
-                        {working ? (
-                            <ShimmerText
-                                text={session.name}
-                                style={[styles.tabText, selected && styles.tabTextSelected]}
-                                baseColor={theme.colors.textSecondary}
-                                highlightColor={theme.colors.header.tint}
-                            />
-                        ) : (
-                            <Text
-                                numberOfLines={1}
-                                style={[styles.tabText, selected && styles.tabTextSelected, { color }]}
-                            >
-                                {session.name}
-                            </Text>
-                        )}
-                    </View>
-                    {blocked ? (
-                        <StatusDot color="#FF9500" isPulsing size={7} />
-                    ) : session.hasUnread && !selected ? (
-                        <View style={styles.unread} />
-                    ) : null}
-                </Pressable>
-            </SessionActionsNativeMenu>
+                {/* No harness icon: the strip is the narrowest thing on the
+                    screen, and a chat's harness is already named on the
+                    screen it opens. The width goes to the chat's name. */}
+                <View style={styles.tabLabel}>
+                    {working ? (
+                        <ShimmerText
+                            text={session.name}
+                            style={[styles.tabText, selected && styles.tabTextSelected]}
+                            baseColor={theme.colors.textSecondary}
+                            highlightColor={theme.colors.header.tint}
+                        />
+                    ) : (
+                        <Text
+                            numberOfLines={1}
+                            style={[styles.tabText, selected && styles.tabTextSelected, { color }]}
+                        >
+                            {session.name}
+                        </Text>
+                    )}
+                </View>
+                {blocked ? (
+                    <StatusDot color="#FF9500" isPulsing size={7} />
+                ) : session.hasUnread && !selected ? (
+                    <View style={styles.unread} />
+                ) : null}
+            </Pressable>
             {Platform.OS === 'web' && (
                 <SessionActionsPopover
                     anchor={actionsAnchor}
@@ -426,7 +481,6 @@ const WorktreeTab = React.memo(({ session, selected, neighbourId, onSelect, onAr
     && before.session.name === after.session.name
     && before.session.state === after.session.state
     && before.session.hasUnread === after.session.hasUnread
-    && before.session.providerKind === after.session.providerKind
 ));
 
 const stylesheet = StyleSheet.create((theme) => ({
