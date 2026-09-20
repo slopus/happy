@@ -784,13 +784,11 @@ const stylesheet = StyleSheet.create((theme) => ({
         gap: 6,
         paddingHorizontal: ROW_PADDING_X,
         // The machine heads the list now, so this is the first row under the
-        // floating home header rather than a divider between two groups of
-        // projects. It carried a divider's clearance — the smallest of any row
-        // here — and the header's backdrop was taking the top off its icon,
-        // which is the tallest thing in the row. Same air the section label
-        // that used to open the list gave.
-        paddingTop: 18,
-        paddingBottom: 4,
+        // header rather than a divider between two groups of projects. Clearing
+        // the header is the top inset's job, and every screen mounting this
+        // list has to supply one; the row itself keeps a divider's own air.
+        paddingTop: 14,
+        paddingBottom: 2,
     },
     machineHeaderText: {
         maxWidth: '60%',

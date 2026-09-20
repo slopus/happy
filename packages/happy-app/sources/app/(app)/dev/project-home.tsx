@@ -1,7 +1,8 @@
 import * as React from 'react';
-import { ActivityIndicator, View } from 'react-native';
+import { ActivityIndicator, Platform, View } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { ProjectHomeList } from '@/components/ProjectHomeList';
+import { MOBILE_GLASS_HEADER_HEIGHT } from '@/components/navigation/headerMetrics';
 import { useVisibleSessionListViewData } from '@/hooks/useVisibleSessionListViewData';
 
 /**
@@ -24,7 +25,15 @@ export default function ProjectHomePreviewScreen() {
 
     return (
         <View style={styles.container}>
-            <ProjectHomeList bottomContentInset={24} />
+            {/* This screen's header is translucent on iOS and the list runs
+                under it, so the first row has to be let down past it — the
+                same clearance the settings screen gives its own list. Without
+                it the machine heading sat behind the header bar. */}
+            <ProjectHomeList
+                topContentInset={Platform.OS === 'ios' ? MOBILE_GLASS_HEADER_HEIGHT : 0}
+                scrollIndicatorTopInset={Platform.OS === 'ios' ? MOBILE_GLASS_HEADER_HEIGHT : 0}
+                bottomContentInset={24}
+            />
         </View>
     );
 }
