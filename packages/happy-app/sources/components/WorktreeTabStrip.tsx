@@ -140,12 +140,16 @@ export const WorktreeTabStrip = React.memo(({ sessionId }: { sessionId: string }
      */
     const awaitingScroll = React.useRef<string | null>(null);
 
+    // A chat is one chip but can be two ids: one opened from `+` keeps its
+    // stand-in in the route for as long as its screen stands there, and its
+    // chip goes by the session it became. Routing to the chat you are already
+    // reading would throw that screen away, composer and all.
     const select = React.useCallback((id: string) => {
-        if (id === sessionId) return;
+        if (id === sessionId || id === selectedId) return;
         const session = storage.getState().sessions[id];
         if (session) trackSessionSwitched(session);
         router.setParams({ id });
-    }, [router, sessionId]);
+    }, [router, selectedId, sessionId]);
 
     /**
      * Archiving the tab you are reading would leave the screen parked on a

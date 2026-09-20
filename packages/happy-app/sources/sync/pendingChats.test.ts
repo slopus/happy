@@ -4,12 +4,11 @@ const mocks = vi.hoisted(() => ({ uuidCount: 0 }));
 vi.mock('expo-crypto', () => ({ randomUUID: () => `uuid-${++mocks.uuidCount}` }));
 
 import {
-    consumeComposerFocus,
+    dismissPendingChat,
     failPendingChat,
     getPendingChat,
     isPendingChatId,
     openPendingChat,
-    requestComposerFocus,
     resetPendingChats,
     setPendingChatDraft,
     settlePendingChat,
@@ -30,7 +29,7 @@ describe('openPendingChat', () => {
         expect(chat.status).toBe('starting');
     });
 
-    it('sweeps chats nobody is standing on any more', () => {
+    it('sweeps only the starts that are not coming', () => {
         const settled = openPendingChat('anchor', ['anchor']);
         const failed = openPendingChat('anchor', ['anchor']);
         const waiting = openPendingChat('anchor', ['anchor']);
@@ -39,10 +38,20 @@ describe('openPendingChat', () => {
 
         openPendingChat('anchor', ['anchor']);
 
-        expect(getPendingChat(settled.id)).toBeNull();
-        expect(getPendingChat(failed.id)).toBeNull();
+        // A chat that landed is still the id its screen is standing on, and
+        // the record is what says which chat that id means.
+        expect(getPendingChat(settled.id)?.sessionId).toBe('session-1');
         // Still starting, so still someone's open tab.
         expect(getPendingChat(waiting.id)).not.toBeNull();
+        // Nobody is standing on a start that already gave up.
+        expect(getPendingChat(failed.id)).toBeNull();
+    });
+
+    it('is retired by the screen that was standing on it', () => {
+        const chat = openPendingChat('anchor', ['anchor']);
+        settlePendingChat(chat.id, 'session-1');
+        dismissPendingChat(chat.id);
+        expect(getPendingChat(chat.id)).toBeNull();
     });
 });
 
@@ -109,14 +118,5 @@ describe('typing into a chat that does not exist yet', () => {
         submitPendingChat(chat.id, 'a straggler');
         expect(getPendingChat(chat.id)?.draft).toBe('handed over');
         expect(getPendingChat(chat.id)?.queued).toEqual([]);
-    });
-});
-
-describe('composer focus', () => {
-    it('is spent by the session it was asked for, and only once', () => {
-        requestComposerFocus('session-1');
-        expect(consumeComposerFocus('session-2')).toBe(false);
-        expect(consumeComposerFocus('session-1')).toBe(true);
-        expect(consumeComposerFocus('session-1')).toBe(false);
     });
 });

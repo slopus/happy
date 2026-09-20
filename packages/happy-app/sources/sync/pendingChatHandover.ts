@@ -20,15 +20,16 @@ import { t } from '@/text';
  * as its draft if it was not.
  *
  * The session exists in the store by now — `startSession` syncs the list before
- * it reports the id — so the draft has somewhere to be written, and the real
- * composer hydrates from it synchronously when it mounts.
+ * it reports the id — so the draft has somewhere to be written.
  *
- * Everything is in place before the settle, and therefore before the screen
- * reacts to it by routing to the real chat: the composer that mounts there
- * hydrates its draft synchronously, so a draft written afterwards would arrive
- * to a field that has already read an empty one — and a message put back after
- * a rejected send would be overwritten by the next autosave of whatever the
- * user typed in the meantime.
+ * The screen that was typing this is not rebuilt around the settle, and its
+ * composer already holds the text: what is written here is the persisted copy,
+ * which matters for the stand-in nobody is looking at, and for text this hands
+ * back after a send the chat would not take.
+ *
+ * Everything is in place before the settle either way. From that moment the
+ * chat is real to every screen watching, and a draft written afterwards would
+ * be racing whatever they do about it.
  */
 export function handOverPendingChat(id: string, sessionId: string): void {
     const chat = getPendingChat(id);
@@ -54,12 +55,12 @@ export function handOverPendingChat(id: string, sessionId: string): void {
  * to a sibling tab in the meantime. Awaited one after another so they reach
  * the agent in the order they were written.
  *
- * The stand-in stays on screen until they have been accepted. A send that the
- * chat declines — the session not ready, an attachment policy, a permission
- * mode the agent cannot honour — hands its text back rather than dropping it:
- * the rejected message and everything queued behind it go into the draft, in
- * front of whatever is still being typed, where the real composer picks them
- * up the moment it mounts.
+ * The placeholder stays up until they have been accepted. A send that the chat
+ * declines — the session not ready, an attachment policy, a permission mode
+ * the agent cannot honour — hands its text back rather than dropping it: the
+ * rejected message and everything queued behind it go into the draft, in front
+ * of whatever is still being typed, which is where a composer left empty by the
+ * send reads it from.
  */
 async function deliverAndSettle(id: string, sessionId: string, queued: readonly string[]): Promise<void> {
     const unsent: string[] = [];

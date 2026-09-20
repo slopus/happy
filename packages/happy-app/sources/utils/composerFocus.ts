@@ -1,34 +1,20 @@
 import type { MultiTextInputHandle } from '@/components/MultiTextInput';
 
 /**
- * Hand the caret to a composer that has just mounted, without letting the
- * keyboard dip on the way.
+ * Give the caret to a composer that has just mounted, and keep it.
  *
- * A chat that is still starting and the real chat that replaces it are two
- * screens, so the composer the user is typing in is torn down and a different
- * one is built. The keyboard belongs to whichever field holds focus, and the
- * moment the old field goes there is none — the system starts dismissing it. It
- * only has to be given a new one before that animation commits.
+ * A chat asked for from the strip's `+` was asked for in order to be typed
+ * into, so its screen opens with the keyboard already up. The claim is
+ * synchronous, made from the layout effect of the commit that mounted the
+ * field: a 50ms timer, which is what used to be here on its own, is far too
+ * late — the screen is up and the keyboard visibly arrives after it.
  *
- * So the first claim is synchronous, made from the layout effect of the commit
- * that mounted the replacement. What used to be here was a 50ms timer, which is
- * far too late: the keyboard had already begun sliding away and came back up,
- * which reads as the screen flinching right after it opened.
- *
- * The timer is kept, behind the immediate claim, because a field focused in the
- * very commit that mounted it does not always take it — a fresh screen is still
- * settling, and Android in particular can drop it. Focusing a field that already
- * has the caret does nothing, so the retries cost nothing when the first one
+ * The retries are kept behind that immediate claim because a field focused in
+ * the very commit that mounted it does not always take it — a fresh screen is
+ * still settling, and Android in particular can drop it. Focusing a field that
+ * already has the caret does nothing, so they cost nothing when the first one
  * worked.
  */
-/**
- * How long the outgoing composer has to stay alive for the claim above to land.
- *
- * Covers the last retry with a frame or two to spare. Long enough that focus has
- * certainly moved, short enough that nobody sees the screen it belongs to.
- */
-export const COMPOSER_FOCUS_SETTLE_MS = 120;
-
 export function claimComposerFocus(
     ref: { current: MultiTextInputHandle | null },
     options: { caretToEnd?: boolean } = {},

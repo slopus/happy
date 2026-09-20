@@ -73,10 +73,11 @@ const usePendingChatsStore = create<PendingChatsState>()(() => ({ chats: {} }));
 /**
  * A chat that can be opened immediately, running where `anchorSessionId` runs.
  *
- * A record outlives its own screen on purpose: coming back to a stand-in that
- * has since landed should still forward to the real chat. What it must not do
- * is accumulate, so every open sweeps the ones that have finished one way or
- * the other — this is the only place the set can grow.
+ * A record outlives its own screen on purpose, and it outlives the chat's
+ * arrival too: the route stays on the stand-in for as long as the screen
+ * stands there, and the record is what maps that id to the chat it became.
+ * The screen retires it on the way out; the sweep here is only for the records
+ * of starts that failed, which no screen is left standing on.
  */
 export function openPendingChat(
     anchorSessionId: string,
@@ -95,7 +96,7 @@ export function openPendingChat(
     usePendingChatsStore.setState((state) => {
         const chats: Record<string, PendingChat> = { [chat.id]: chat };
         for (const existing of Object.values(state.chats)) {
-            if (existing.status === 'starting' && !existing.sessionId) {
+            if (existing.status !== 'failed') {
                 chats[existing.id] = existing;
             }
         }
@@ -195,27 +196,7 @@ export function usePendingChatRecords(): Record<string, PendingChat> {
     return usePendingChatsStore((state) => state.chats);
 }
 
-/**
- * The session whose composer should take focus as soon as it mounts.
- *
- * A pending chat and the real one are different screens, so the swap between
- * them costs the keyboard unless the arriving composer claims it back. Read
- * once, by the screen that arrives.
- */
-let focusRequest: string | null = null;
-
-export function requestComposerFocus(sessionId: string): void {
-    focusRequest = sessionId;
-}
-
-export function consumeComposerFocus(sessionId: string): boolean {
-    if (focusRequest !== sessionId) return false;
-    focusRequest = null;
-    return true;
-}
-
-/** Test seam: the store and the focus request are module state. */
+/** Test seam: the store is module state. */
 export function resetPendingChats(): void {
     usePendingChatsStore.setState({ chats: {} });
-    focusRequest = null;
 }
