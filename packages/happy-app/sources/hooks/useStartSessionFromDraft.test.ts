@@ -26,7 +26,6 @@ const mocks = vi.hoisted(() => ({
     paintBotFace: vi.fn(),
     uploadSessionBlob: vi.fn(),
     sessionSetAvatar: vi.fn(),
-    machineCancelHappySpawn: vi.fn(),
 }));
 
 // Counts up so a test can tell a reused idempotency key from a fresh one.
@@ -69,7 +68,6 @@ vi.mock('@/sync/ops', () => ({
     sessionKill: mocks.sessionKill,
     sessionArchive: mocks.sessionArchive,
     sessionSetAvatar: mocks.sessionSetAvatar,
-    machineCancelHappySpawn: mocks.machineCancelHappySpawn,
 }));
 
 vi.mock('@/sync/sync', () => ({
@@ -244,7 +242,6 @@ describe('useStartSessionFromDraft', () => {
         mocks.paintBotFace.mockResolvedValue({ mimeType: 'image/png', bytes: new Uint8Array([1, 2, 3]) });
         mocks.uploadSessionBlob.mockResolvedValue({ ref: 'sessions/session-1/attachments/face.png', size: 3 });
         mocks.sessionSetAvatar.mockResolvedValue(undefined);
-        mocks.machineCancelHappySpawn.mockResolvedValue({ success: true });
     });
 
     it('creates and opens the session directly from the home draft', async () => {
@@ -674,41 +671,7 @@ describe('useStartSessionFromDraft', () => {
         );
     });
 
-    it('tells Happy Agent to put the bot away when Stop lands while the answer is still pending', async () => {
-        mocks.machines = [createRigMachine({
-            capabilities: { newSession: true, resume: false, worktrees: false, bots: true },
-        })];
-        mocks.draft = createBotDraft();
-        // The daemon has made the bot and is waiting for its relay session; the
-        // phone only ever hears "pending" and then Stop is pressed.
-        mocks.machineSpawnNewSession.mockResolvedValue({
-            type: 'pending', clientRequestId: 'rig-request-1', retryAfterMs: 250,
-        });
-        let releaseDelay!: () => void;
-        mocks.delay.mockReturnValue(new Promise<void>((resolve) => { releaseDelay = resolve; }));
-
-        const { startSession, cancelStart } = useStartSessionFromDraft();
-        const starting = startSession();
-        await vi.waitFor(() => expect(mocks.machineSpawnNewSession).toHaveBeenCalledTimes(1));
-        cancelStart();
-        releaseDelay();
-        await expect(starting).resolves.toBe(false);
-
-        // Cancelled by the request key: no session id exists on this phone yet,
-        // and the key is what the daemon derived the bot from.
-        expect(mocks.machineCancelHappySpawn).toHaveBeenCalledWith('machine-1', 'rig-request-1');
-        expect(mocks.machineStopSession).not.toHaveBeenCalled();
-        expect(mocks.navigateToSession).not.toHaveBeenCalled();
-
-        // The next press is a new request, and does not reuse the cancelled key.
-        mocks.machineSpawnNewSession.mockResolvedValue({ type: 'success', sessionId: 'session-2' });
-        await expect(useStartSessionFromDraft().startSession()).resolves.toBe(true);
-        expect(mocks.machineSpawnNewSession).toHaveBeenLastCalledWith(expect.objectContaining({
-            clientRequestId: 'rig-request-2',
-        }));
-    });
-
-    it('puts away a bot that lands after Stop through the same cancel, never the generic archive', async () => {
+    it('puts away a bot that lands after Stop through its own kill switch, never the generic archive', async () => {
         mocks.machines = [createRigMachine({
             capabilities: { newSession: true, resume: false, worktrees: false, bots: true },
         })];
@@ -722,32 +685,11 @@ describe('useStartSessionFromDraft', () => {
         await expect(starting).resolves.toBe(false);
         landSpawn({ type: 'success', sessionId: 'session-late' });
 
-        await vi.waitFor(() => {
-            expect(mocks.machineCancelHappySpawn).toHaveBeenCalledWith('machine-1', 'rig-request-1');
-        });
+        await vi.waitFor(() => expect(mocks.sessionKill).toHaveBeenCalledWith('session-late'));
+        // Happy Agent serves no machine stop, and the generic archive refuses a bot.
         expect(mocks.machineStopSession).not.toHaveBeenCalled();
         expect(mocks.sessionArchive).not.toHaveBeenCalled();
         expect(mocks.navigateToSession).not.toHaveBeenCalled();
-    });
-
-    it('falls back to the session kill switch when the daemon cannot cancel a known session', async () => {
-        mocks.machines = [createRigMachine({
-            capabilities: { newSession: true, resume: false, worktrees: false, bots: true },
-        })];
-        mocks.draft = createBotDraft();
-        mocks.machineCancelHappySpawn.mockResolvedValue({ success: false, message: 'busy' });
-        let finishAvatar!: () => void;
-        mocks.sessionSetAvatar.mockReturnValue(new Promise<void>((resolve) => { finishAvatar = resolve; }));
-
-        const { startSession, cancelStart } = useStartSessionFromDraft();
-        const starting = startSession();
-        await vi.waitFor(() => expect(mocks.sessionSetAvatar).toHaveBeenCalled());
-        cancelStart();
-        finishAvatar();
-        await expect(starting).resolves.toBe(false);
-
-        await vi.waitFor(() => expect(mocks.sessionKill).toHaveBeenCalledWith('session-1'));
-        expect(mocks.sessionArchive).not.toHaveBeenCalled();
     });
 
     it('asks for a name before making a bot', async () => {
@@ -1004,13 +946,13 @@ describe('useStartSessionFromDraft', () => {
             clientRequestId: 'rig-request-2',
         }));
 
-        // The first attempt is put down by its own key, and the retry's is
+        // The first attempt's session still gets put down, and the retry's is
         // left alone.
         landFirstSpawn({ type: 'success', sessionId: 'rig-session-1' });
         await vi.waitFor(() => {
-            expect(mocks.machineCancelHappySpawn).toHaveBeenCalledWith('machine-1', 'rig-request-1');
+            expect(mocks.sessionKill).toHaveBeenCalledWith('rig-session-1');
         });
-        expect(mocks.machineCancelHappySpawn).not.toHaveBeenCalledWith('machine-1', 'rig-request-2');
+        expect(mocks.sessionKill).not.toHaveBeenCalledWith('rig-session-2');
         expect(mocks.machineStopSession).not.toHaveBeenCalled();
     });
 

@@ -173,27 +173,4 @@ describe('Happy Agent spawn answers and cancellation', () => {
             },
         });
     });
-
-    it('cancels a request by the key it was asked with', async () => {
-        const { machineCancelHappySpawn } = await import('./ops');
-
-        machineRPC.mockResolvedValueOnce({ type: 'success' });
-        await expect(machineCancelHappySpawn('rig-machine', 'request-1')).resolves.toEqual({ success: true });
-        expect(machineRPC).toHaveBeenCalledWith('rig-machine', 'cancel-happy-spawn', {
-            type: 'happy-agent-spawn-cancel',
-            clientRequestId: 'request-1',
-        });
-
-        machineRPC.mockResolvedValueOnce({ type: 'error', errorMessage: 'The catalog is busy.' });
-        await expect(machineCancelHappySpawn('rig-machine', 'request-1')).resolves.toEqual({
-            success: false,
-            message: 'The catalog is busy.',
-        });
-
-        machineRPC.mockRejectedValueOnce(new Error('offline'));
-        await expect(machineCancelHappySpawn('rig-machine', 'request-1')).resolves.toEqual({
-            success: false,
-            message: 'offline',
-        });
-    });
 });

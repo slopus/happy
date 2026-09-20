@@ -365,32 +365,6 @@ export function normalizeSpawnSessionResult(result: unknown): SpawnSessionResult
 }
 
 /**
- * Tells a Happy Agent machine that a session or bot it was asked for is no
- * longer wanted, by the same request key it was asked with. The daemon
- * derives what it made from that key and archives it, or refuses the spawn if
- * it has not arrived yet: a Stop pressed while the answer was still pending
- * would otherwise leave a bot behind and the next press would make a second.
- */
-export async function machineCancelHappySpawn(
-    machineId: string,
-    clientRequestId: string,
-): Promise<{ success: boolean; message?: string }> {
-    try {
-        const result = await apiSocket.machineRPC<
-            { type: 'success' } | { type: 'error'; errorMessage: string },
-            { type: 'happy-agent-spawn-cancel'; clientRequestId: string }
-        >(machineId, 'cancel-happy-spawn', { type: 'happy-agent-spawn-cancel', clientRequestId });
-        if (result?.type === 'success') return { success: true };
-        return { success: false, message: result?.errorMessage ?? 'Failed to cancel the request' };
-    } catch (error) {
-        return {
-            success: false,
-            message: error instanceof Error ? error.message : 'Failed to cancel the request',
-        };
-    }
-}
-
-/**
  * Copy the source session's Claude JSONL on the daemon machine and return
  * the new Claude session UUID. Caller then spawns a fresh Happy session
  * with `resumeClaudeSessionId` set to that UUID to attach a new Happy

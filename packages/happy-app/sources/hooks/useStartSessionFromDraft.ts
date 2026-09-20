@@ -2,7 +2,6 @@ import * as React from 'react';
 import { useAllMachines, useSessions, useSetting } from '@/sync/storage';
 import { getCodeAgentDefaults, resolveAgentDefaultConfig } from '@/sync/agentDefaults';
 import {
-    machineCancelHappySpawn,
     machineSpawnNewSession,
     machineStopSession,
     sessionArchive,
@@ -76,13 +75,6 @@ type StartRun = {
     accepted: boolean;
     signal: Promise<typeof CANCELED>;
     cancel: () => void;
-    /**
-     * Tells the machine the request is no longer wanted, set once a Happy Agent
-     * spawn is on its way. Happy Agent makes the session or bot before it
-     * answers, so a Stop pressed while the answer is still pending has to reach
-     * the daemon by the request key, not by a session id nobody has yet.
-     */
-    abandonSpawn?: () => void;
 };
 
 function beginRun(): StartRun {
@@ -164,7 +156,6 @@ export function useStartSessionFromDraft() {
         const run = activeRunRef.current;
         if (!run || run.accepted) return;
         run.cancel();
-        run.abandonSpawn?.();
         // Spent here, synchronously, and not when the canceled flow eventually
         // resumes. Stop hands the composer back on this same tick, so a new
         // Start can be pressed before that resumption ever runs — and if the
@@ -377,23 +368,20 @@ export function useStartSessionFromDraft() {
             // completions. Opening/using the session elsewhere revokes it.
             if (!ownsCreatedSession) return;
             ownsCreatedSession = false;
-            // Happy Agent is asked by the request key it was asked with: that
-            // reaches the bot or session it made whether or not the relay knows
-            // it yet, and archives it in the catalog that owns it. The session's
-            // own kill RPC is the fallback, never the generic archive, which
-            // refuses a bot. Happy CLI has no such key, so its daemon is asked
-            // first: it holds the child process and its socket is the one this
-            // session was spawned through. The session's own kill RPC is tried
-            // after, for a session already up and detached from the daemon, and
-            // the archive last so a session nobody can reach still leaves the
-            // active list rather than sitting there as debris.
+            // Happy Agent serves no machine stop: its session's own kill RPC
+            // archives a bot in the catalog that owns it, which the generic
+            // archive refuses. Happy CLI's daemon is asked first: it holds the
+            // child process and its socket is the one this session was spawned
+            // through. The session's own kill RPC is tried after, for a session
+            // already up and detached from the daemon, and the archive last so a
+            // session nobody can reach still leaves the active list rather than
+            // sitting there as debris. A Stop pressed while Happy Agent's answer
+            // is still pending leaves what it made; the next press makes another,
+            // which is accepted over a cancel RPC for that one window.
             if (rigCreation) {
-                const cancelled = await machineCancelHappySpawn(machine.id, clientRequestId);
-                if (!cancelled.success) {
-                    const killed = await sessionKill(createdSessionId);
-                    if (!killed.success) {
-                        console.error('[spawn] The abandoned Happy Agent session could not be put away:', cancelled.message);
-                    }
+                const killed = await sessionKill(createdSessionId);
+                if (!killed.success) {
+                    console.error('[spawn] The abandoned Happy Agent session could not be put away:', killed.message);
                 }
                 await sync.refreshSessions().catch(() => { /* the list catches up on its own */ });
                 return;
@@ -492,18 +480,6 @@ export function useStartSessionFromDraft() {
                 return approved ? spawn(true) : null;
             };
 
-            // A Stop from here on reaches the daemon by the key, whatever the
-            // spawn has or has not answered yet. Once the session is known the
-            // cleanup with its id takes over, through the same cancel.
-            if (rigCreation && !existingSessionId) {
-                run.abandonSpawn = () => {
-                    void machineCancelHappySpawn(machine.id, clientRequestId).then((cancelled) => {
-                        if (!cancelled.success) {
-                            console.error('[spawn] The stopped Happy Agent request could not be cancelled:', cancelled.message);
-                        }
-                    });
-                };
-            }
             const spawning = existingSessionId ? Promise.resolve(existingSessionId) : spawn();
             const spawned = await untilCanceled(spawning);
             if (spawned === CANCELED) {
@@ -517,10 +493,6 @@ export function useStartSessionFromDraft() {
             }
             const sessionId = spawned;
             if (!sessionId) return false;
-            // From here the id is known and every way out goes through
-            // stopAbandonedSession, which cancels by the same key for Happy
-            // Agent; a second cancel from Stop would only repeat it.
-            run.abandonSpawn = undefined;
             rememberSpawnedSession(clientRequestId, sessionId, () => {
                 run.cancel();
                 void stopAbandonedSession(sessionId).catch(error => console.error('Failed to stop abandoned session:', error));
