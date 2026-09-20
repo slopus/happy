@@ -1,6 +1,11 @@
 {
   "entries": [
     {
+      "title": "September 20 - Bots from your phone",
+      "summary": "",
+      "markdown": "- **Bots** — the composer can now make a Happy Agent bot: choose Bot, pick one of four faces or roll new ones, give it a name, and it opens ready to talk. Needs a Happy Agent that offers bots.\n- **Pickers** — the composer's menus mark the current choice the way the system does.\n- **Workspaces** — \"Create New\" now reads \"Create New Workspace\"."
+    },
+    {
       "title": "September 14 - Harness setup",
       "summary": "",
       "markdown": "- The harness picker now lists only harnesses your computer can actually run — and offers setup help when none are installed yet."
@@ -116,5 +121,5 @@
       "markdown": "- E2E encrypted sessions.\n- Voice assistant.\n- File manager with syntax highlighting.\n- Real-time sync across devices."
     }
   ],
-  "latestTitle": "September 14 - Harness setup"
+  "latestTitle": "September 20 - Bots from your phone"
 }
