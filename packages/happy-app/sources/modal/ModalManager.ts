@@ -8,7 +8,6 @@ class ModalManagerClass implements IModal {
     private hideAllModalsFn: (() => void) | null = null;
     private confirmResolvers: Map<string, (value: boolean) => void> = new Map();
     private promptResolvers: Map<string, (value: string | null) => void> = new Map();
-    private pendingPrompts: Map<string, Promise<string | null>> = new Map();
 
     setFunctions(
         showModal: (config: Omit<ModalConfig, 'id'>) => string,
@@ -183,15 +182,6 @@ class ModalManagerClass implements IModal {
                 return null;
             }
 
-            // A rapid double tap can call prompt twice before the triggering
-            // control re-renders. Reuse the pending result instead of stacking
-            // two identical modals that appear to dismiss and immediately reopen.
-            const promptKey = JSON.stringify([title, message, options]);
-            const pendingPrompt = this.pendingPrompts.get(promptKey);
-            if (pendingPrompt) {
-                return pendingPrompt;
-            }
-
             const modalId = this.showModalFn({
                 type: 'prompt',
                 title,
@@ -203,14 +193,9 @@ class ModalManagerClass implements IModal {
                 inputType: options?.inputType
             } as Omit<ModalConfig, 'id'>);
 
-            const prompt = new Promise<string | null>((resolve) => {
-                this.promptResolvers.set(modalId, (value) => {
-                    this.pendingPrompts.delete(promptKey);
-                    resolve(value);
-                });
+            return new Promise<string | null>((resolve) => {
+                this.promptResolvers.set(modalId, resolve);
             });
-            this.pendingPrompts.set(promptKey, prompt);
-            return prompt;
         }
     }
 }

@@ -15,7 +15,6 @@ export function WebPromptModal({ config, onConfirm }: WebPromptModalProps) {
     const { theme } = useUnistyles();
     const [inputValue, setInputValue] = useState(config.defaultValue || '');
     const inputRef = useRef<TextInput>(null);
-    const resolvedRef = useRef(false);
 
     useEffect(() => {
         if (Platform.OS === 'web') {
@@ -37,17 +36,9 @@ export function WebPromptModal({ config, onConfirm }: WebPromptModalProps) {
         };
     }, []);
 
-    const resolveOnce = (value: string | null) => {
-        if (resolvedRef.current) {
-            return;
-        }
-        resolvedRef.current = true;
-        onConfirm(value);
-    };
+    const handleCancel = () => onConfirm(null);
 
-    const handleCancel = () => resolveOnce(null);
-
-    const handleConfirm = () => resolveOnce(inputValue);
+    const handleConfirm = () => onConfirm(inputValue);
 
     const getKeyboardType = (): KeyboardTypeOptions => {
         switch (config.inputType) {
