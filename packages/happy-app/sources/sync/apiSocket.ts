@@ -53,6 +53,24 @@ export type SyncSocketListener = (state: SyncSocketState) => void;
 // reconnecting daemon to rejoin the room, then a 30s call.
 const RPC_ACK_TIMEOUT_MS = 50_000;
 
+/**
+ * Runs one step of an RPC and, if it throws, says which step that was.
+ *
+ * A TypeError raised inside a minified dependency reads like
+ * "undefined is not an object (evaluating 'this.#i')" — true, and useless,
+ * because nothing in it says where. The step's name and the throw site's top
+ * frame are carried out with the message so the report places itself.
+ */
+async function labelRpcStep<T>(step: string, run: () => Promise<T>): Promise<T> {
+    try {
+        return await run();
+    } catch (error) {
+        if (!(error instanceof Error)) throw new Error(`${step}: ${String(error)}`);
+        const frame = error.stack?.split('\n')[1]?.trim();
+        throw new Error(frame ? `${step}: ${error.message} (at ${frame})` : `${step}: ${error.message}`);
+    }
+}
+
 //
 // Main Class
 //
@@ -183,13 +201,24 @@ class ApiSocket {
             throw new Error(`Session encryption not found for ${sessionId}`);
         }
 
-        const result = await this.rpcCall(
-            `${sessionId}:${method}`,
-            await sessionEncryption.encryptRaw(params),
+        // Four unrelated things happen here — encrypt, emit, wait, decrypt —
+        // and a raw TypeError out of any of them arrives at the caller saying
+        // only what it could not read, never which one was running. Naming the
+        // step costs nothing on the way through and turns an unplaceable
+        // message into an address.
+        const encrypted = await labelRpcStep(
+            'encrypting the request',
+            () => sessionEncryption.encryptRaw(params),
         );
-
+        const result = await labelRpcStep(
+            'sending the request',
+            () => this.rpcCall(`${sessionId}:${method}`, encrypted),
+        );
         if (result.ok) {
-            return await sessionEncryption.decryptRaw(result.result) as R;
+            return await labelRpcStep(
+                'reading the answer',
+                () => sessionEncryption.decryptRaw(result.result),
+            ) as R;
         }
         throw new Error(result.error || 'RPC call failed');
     }
