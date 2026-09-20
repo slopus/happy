@@ -266,6 +266,7 @@ interface SidebarViewProps {
     closeDrawerOnNavigate?: boolean;
     desktopDensity?: boolean;
     desktopPrimaryNavigation?: boolean;
+    desktopSecondaryVisible?: boolean;
 }
 
 type FooterMenu = 'account' | 'help' | null;
@@ -370,6 +371,7 @@ export const SidebarView = React.memo(({
     closeDrawerOnNavigate = true,
     desktopDensity = false,
     desktopPrimaryNavigation = false,
+    desktopSecondaryVisible = true,
 }: SidebarViewProps) => {
     useDrawerHaptics();
     const styles = stylesheet;
@@ -698,7 +700,12 @@ export const SidebarView = React.memo(({
                         ) : <>{desktopNavigationRail}<View style={styles.desktopPrimarySpacer} /></>}
                         {footerNavigation}
                     </View>
-                    <View style={styles.desktopSecondaryColumn} testID="desktop-secondary-navigation-column">
+                    <View
+                        style={[styles.desktopSecondaryColumn, desktopPrimaryNavigation && !desktopSecondaryVisible && styles.hiddenContent]}
+                        aria-hidden={desktopPrimaryNavigation && !desktopSecondaryVisible}
+                        {...(desktopPrimaryNavigation && !desktopSecondaryVisible ? { inert: true } as any : {})}
+                        testID="desktop-secondary-navigation-column"
+                    >
                         {mobileNavigation ? (
                             <>
                                 <View style={styles.mobileHeader}>

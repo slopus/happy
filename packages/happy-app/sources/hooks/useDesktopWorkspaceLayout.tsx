@@ -6,12 +6,14 @@ import { useLocalSettingMutable } from '@/sync/storage';
 import { useGlobalKeyboard } from '@/hooks/useGlobalKeyboard';
 import {
     DESKTOP_PRIMARY_NAVIGATION_WIDTH,
+    DESKTOP_WORKSPACE_OUTER_GAP,
     type DesktopPanelSide,
     getDesktopPanelResizeWidth,
     getDesktopWorkspacePanelWidths,
     isDesktopRightPanelAvailable,
     isDesktopRightPanelRoute,
 } from '@/utils/desktopNavigationLayout';
+import { useDesktopSidebarReveal } from './useDesktopSidebarReveal';
 import { isRunningOnMac } from '@/utils/platform';
 
 type ResizeSession = {
@@ -39,6 +41,8 @@ type DesktopWorkspaceLayoutValue = {
     continuePanelResize: (pointerX: number) => void;
     endPanelResize: () => void;
     resizePanelBy: (side: DesktopPanelSide, delta: number) => void;
+    setLeftSidebarHovered: (hovered: boolean) => void;
+    setLeftSidebarFocused: (focused: boolean) => void;
     toggleLeftSidebar: () => void;
     toggleRightSidebar: () => void;
 };
@@ -59,6 +63,8 @@ const EMPTY_LAYOUT: DesktopWorkspaceLayoutValue = {
     continuePanelResize: () => undefined,
     endPanelResize: () => undefined,
     resizePanelBy: () => undefined,
+    setLeftSidebarHovered: () => undefined,
+    setLeftSidebarFocused: () => undefined,
     toggleLeftSidebar: () => undefined,
     toggleRightSidebar: () => undefined,
 };
@@ -94,6 +100,7 @@ export const DesktopWorkspaceLayoutProvider = React.memo(function DesktopWorkspa
     const [liveLeftWidth, setLiveLeftWidth] = React.useState(storedLeftWidth);
     const [liveRightWidth, setLiveRightWidth] = React.useState(storedRightWidth);
     const [resizingSide, setResizingSide] = React.useState<DesktopPanelSide | null>(null);
+    const reveal = useDesktopSidebarReveal(enabled && !zenMode && Platform.OS === 'web', resizingSide === 'left');
     const resizeSessionRef = React.useRef<ResizeSession | null>(null);
     const liveLeftWidthRef = React.useRef(liveLeftWidth);
     const liveRightWidthRef = React.useRef(liveRightWidth);
@@ -118,9 +125,9 @@ export const DesktopWorkspaceLayoutProvider = React.memo(function DesktopWorkspa
             supportsPersistentPanel: Platform.OS === 'web' || isRunningOnMac(),
             windowWidth,
         });
-    const reservedWidth = enabled && Platform.OS === 'web' ? DESKTOP_PRIMARY_NAVIGATION_WIDTH : 0;
+    const reservedWidth = enabled && Platform.OS === 'web' ? DESKTOP_PRIMARY_NAVIGATION_WIDTH + DESKTOP_WORKSPACE_OUTER_GAP : 0;
     const layoutWindowWidth = Math.max(0, windowWidth - reservedWidth);
-    const leftVisible = enabled && !zenMode && !leftCollapsed;
+    const leftVisible = enabled && !zenMode && (Platform.OS === 'web' ? reveal.visible : !leftCollapsed);
     const rightVisible = rightPanelAvailable && !zenMode && !rightCollapsed;
     const panelWidths = React.useMemo(() => getDesktopWorkspacePanelWidths({
         leftVisible,
@@ -167,13 +174,18 @@ export const DesktopWorkspaceLayoutProvider = React.memo(function DesktopWorkspa
 
     const toggleLeftSidebar = React.useCallback(() => {
         if (!enabled) return;
+        if (Platform.OS === 'web') {
+            if (zenMode) setZenMode(false);
+            reveal.toggle();
+            return;
+        }
         if (zenMode) {
             setZenMode(false);
             setLeftCollapsed(false);
             return;
         }
         setLeftCollapsed(!leftCollapsed);
-    }, [enabled, leftCollapsed, setLeftCollapsed, setZenMode, zenMode]);
+    }, [enabled, leftCollapsed, setLeftCollapsed, setZenMode, zenMode, reveal.toggle]);
     const toggleRightSidebar = React.useCallback(() => {
         if (!rightPanelAvailable) return;
         if (zenMode) {
@@ -295,6 +307,8 @@ export const DesktopWorkspaceLayoutProvider = React.memo(function DesktopWorkspa
         continuePanelResize,
         endPanelResize,
         resizePanelBy,
+        setLeftSidebarHovered: reveal.setHovered,
+        setLeftSidebarFocused: reveal.setFocused,
         toggleLeftSidebar,
         toggleRightSidebar,
     }), [

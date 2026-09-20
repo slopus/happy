@@ -64,6 +64,7 @@ vi.mock('react-native-unistyles', () => ({
         theme: {
             colors: {
                 surface: '#111',
+                groupped: { background: '#101010' },
                 surfacePressed: '#222',
                 divider: '#333',
                 header: { tint: '#fff' },
@@ -78,6 +79,7 @@ vi.mock('react-native-unistyles', () => ({
         create: (factory: any) => factory({
             colors: {
                 surface: '#111',
+                groupped: { background: '#101010' },
                 surfacePressed: '#222',
                 divider: '#333',
                 header: { tint: '#fff' },
@@ -253,34 +255,18 @@ describe('SidebarNavigator drawer behavior', () => {
         act(() => renderer.unmount());
     });
 
-    it('removes a collapsed desktop sidebar from layout and the accessibility tree', () => {
+    it('keeps the icon rail interactive while collapsing only the secondary panel', () => {
         mocks.desktopLeftSidebarCollapsed = true;
         let renderer: any;
-        act(() => {
-            renderer = TestRenderer.create(<SidebarNavigator />);
-        });
-
+        act(() => { renderer = TestRenderer.create(<SidebarNavigator />); });
         const drawer = renderer.root.findByType('Drawer');
-        const drawerContent = drawer.props.drawerContent({ navigation: { closeDrawer: vi.fn() } });
-        expect(drawer.props.screenOptions.drawerStyle.width).toBe(0);
-        expect(drawerContent.props['aria-hidden']).toBe(true);
-        expect(drawerContent.props.accessibilityElementsHidden).toBe(true);
-        expect(drawerContent.props.importantForAccessibility).toBe('no-hide-descendants');
-        expect(drawerContent.props.inert).toBe(true);
-        expect(drawerContent.props.pointerEvents).toBeUndefined();
-        expect(drawerContent.props.dataSet).toMatchObject({
-            happyMotion: 'desktop-panel',
-            happyMotionSide: 'left',
-            happyMotionState: 'closed',
-        });
-        expect(drawerContent.props.style).toContainEqual(expect.objectContaining({ width: 420 }));
-        expect(drawerContent.props.style).toContainEqual(expect.objectContaining({ pointerEvents: 'none' }));
-        expect(drawerContent.props.style).not.toContainEqual({ display: 'none' });
-
-        const sidebarToggle = renderer.root.findByProps({ testID: 'desktop-navigation-sidebar-button' });
-        expect(sidebarToggle.props['aria-expanded']).toBe(false);
-        expect(sidebarToggle.props.accessibilityLabel).toBe('desktopWorkspace.showSessions');
-
+        const content = drawer.props.drawerContent({ navigation: { closeDrawer: vi.fn() } });
+        expect(drawer.props.screenOptions.drawerStyle.width).toBe(60);
+        expect(content.props['aria-hidden']).toBe(false);
+        expect(content.props.inert).toBeUndefined();
+        expect(content.props.children.props.desktopSecondaryVisible).toBe(false);
+        expect(content.props.children.props.desktopPrimaryNavigation).toBe(true);
+        expect(renderer.root.findByProps({ testID: 'desktop-navigation-controls' }).parent.props.style.left).toBe(76);
         act(() => renderer.unmount());
     });
 

@@ -31,6 +31,7 @@ import {
     PERSISTENT_NAVIGATION_ZEN_CONTROL_WIDTH,
     TAURI_HEADER_CONTROL_LEFT,
     DESKTOP_PRIMARY_NAVIGATION_WIDTH,
+    DESKTOP_WORKSPACE_OUTER_GAP,
 } from '@/utils/desktopNavigationLayout';
 
 export const SidebarNavigator = React.memo(() => {
@@ -54,6 +55,8 @@ const SidebarNavigatorContent = React.memo(() => {
         leftExpandedWidth,
         leftVisible: showSidebar,
         leftWidth,
+        setLeftSidebarHovered,
+        setLeftSidebarFocused,
     } = useDesktopWorkspaceLayout();
     const selectionMode = useSessionSelection((s) => s.active);
     const clearSelection = useSessionSelection((s) => s.clearSelection);
@@ -65,7 +68,9 @@ const SidebarNavigatorContent = React.memo(() => {
         if (!isDesktopLayout) return Math.max(0, Math.min(windowWidth - 16, 420));
         return leftExpandedWidth + (Platform.OS === 'web' ? DESKTOP_PRIMARY_NAVIGATION_WIDTH : 0);
     }, [isDesktopLayout, leftExpandedWidth, windowWidth]);
-    const drawerWidth = showSidebar ? fullDrawerWidth : 0;
+    const fixedRail = isDesktopLayout && Platform.OS === 'web';
+    const drawerWidth = showSidebar ? fullDrawerWidth : fixedRail ? DESKTOP_PRIMARY_NAVIGATION_WIDTH : 0;
+    const hideDrawer = isDesktopLayout && !showSidebar && !fixedRail;
 
     React.useEffect(() => {
         if (!selectionMode || Platform.OS === 'web') {
@@ -137,41 +142,47 @@ const SidebarNavigatorContent = React.memo(() => {
             headerShown: false,
             drawerType: 'permanent' as const,
             drawerStyle: {
-                backgroundColor: 'white',
+                backgroundColor: theme.colors.groupped.background,
                 borderRightWidth: 0,
                 width: drawerWidth,
                 overflow: Platform.OS === 'web' ? 'visible' as const : 'hidden' as const,
             } as any,
+            sceneStyle: Platform.OS === 'web' ? {
+                margin: DESKTOP_WORKSPACE_OUTER_GAP, marginLeft: 0, borderRadius: 20, overflow: 'hidden',
+                backgroundColor: theme.colors.surface,
+            } : undefined,
             swipeEnabled: false,
             drawerActiveTintColor: 'transparent',
             drawerInactiveTintColor: 'transparent',
             drawerItemStyle: { display: 'none' as const },
             drawerLabelStyle: { display: 'none' as const },
         };
-    }, [isDesktopLayout, drawerWidth, windowWidth, auth.isAuthenticated, fullDrawerWidth, selectionMode, theme.colors.surface]);
+    }, [isDesktopLayout, drawerWidth, windowWidth, auth.isAuthenticated, fullDrawerWidth, selectionMode, theme.colors.surface, theme.colors.groupped.background]);
 
     const drawerContent = React.useCallback(
         ({ navigation }: { navigation: { closeDrawer: () => void } }) => (
             <View
-                aria-hidden={isDesktopLayout && !showSidebar}
-                accessibilityElementsHidden={isDesktopLayout && !showSidebar}
-                importantForAccessibility={isDesktopLayout && !showSidebar ? 'no-hide-descendants' : 'auto'}
+                aria-hidden={hideDrawer}
+                accessibilityElementsHidden={hideDrawer}
+                importantForAccessibility={hideDrawer ? 'no-hide-descendants' : 'auto'}
                 {...(Platform.OS !== 'web' ? {
-                    pointerEvents: isDesktopLayout && !showSidebar ? 'none' : 'auto',
+                    pointerEvents: hideDrawer ? 'none' : 'auto',
                 } : {})}
-                {...(isDesktopLayout && Platform.OS === 'web' ? {
-                    dataSet: {
-                        happyMotion: 'desktop-panel',
-                        happyMotionSide: 'left',
-                        happyMotionState: showSidebar ? 'open' : 'closed',
+                {...(fixedRail ? {
+                    onMouseEnter: () => setLeftSidebarHovered(true),
+                    onMouseLeave: () => setLeftSidebarHovered(false),
+                    onFocus: (event: React.FocusEvent<HTMLElement>) => {
+                        if (event.target.matches(':focus-visible')) setLeftSidebarFocused(true);
                     },
-                    inert: showSidebar ? undefined : true,
+                    onBlur: (event: React.FocusEvent<HTMLElement>) => {
+                        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setLeftSidebarFocused(false);
+                    },
                 } as any : {})}
                 style={[
                     styles.drawerContent,
-                    isDesktopLayout && Platform.OS === 'web' && { width: fullDrawerWidth },
+                    isDesktopLayout && Platform.OS === 'web' && { width: drawerWidth },
                     Platform.OS === 'web' && {
-                        pointerEvents: isDesktopLayout && !showSidebar ? 'none' : 'auto',
+                        pointerEvents: hideDrawer ? 'none' : 'auto',
                     },
                     isDesktopLayout && !showSidebar && Platform.OS !== 'web' && styles.drawerContentHidden,
                 ]}
@@ -181,15 +192,16 @@ const SidebarNavigatorContent = React.memo(() => {
                     onCloseDrawer={() => navigation.closeDrawer()}
                     closeDrawerOnNavigate={!isDesktopLayout}
                     desktopDensity={isDesktopLayout}
-                    desktopPrimaryNavigation={isDesktopLayout && Platform.OS === 'web'}
+                    desktopPrimaryNavigation={fixedRail}
+                    desktopSecondaryVisible={showSidebar}
                 />
             </View>
         ),
-        [fullDrawerWidth, isDesktopLayout, showSidebar]
+        [drawerWidth, fixedRail, hideDrawer, isDesktopLayout, showSidebar, setLeftSidebarHovered, setLeftSidebarFocused]
     );
 
     return (
-        <View style={{ flex: 1, backgroundColor: theme.colors.surface }}>
+        <View style={{ flex: 1, backgroundColor: theme.colors.groupped.background }}>
             <Drawer
                 screenOptions={drawerNavigationOptions}
                 drawerContent={(isDesktopLayout || auth.isAuthenticated) ? drawerContent : undefined}
@@ -280,10 +292,8 @@ const PersistentHeader = React.memo(() => {
         <View
             style={{
                 position: 'absolute',
-                top: 0,
-                left: (sidebarVisible
-                    ? sidebarWidth + (Platform.OS === 'web' ? DESKTOP_PRIMARY_NAVIGATION_WIDTH : 0)
-                    : 0) + 16,
+                top: Platform.OS === 'web' ? DESKTOP_WORKSPACE_OUTER_GAP : 0,
+                left: (sidebarVisible ? sidebarWidth : 0) + (Platform.OS === 'web' ? DESKTOP_PRIMARY_NAVIGATION_WIDTH : 0) + 16,
                 right: 0,
                 paddingTop: safeArea.top,
                 paddingLeft: isMacTauri ? TAURI_HEADER_CONTROL_LEFT : 16,

@@ -838,7 +838,7 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
         <CompactRightPanelToggleButton panelLabel={capabilityHubLabel} />
     ) : null;
     const composeContent = (
-        <View style={styles.container}>
+        <View style={[styles.container, Platform.OS === 'web' && isTablet && { backgroundColor: theme.colors.surface }]}>
             <Header
                 title={undefined}
                 headerShadowVisible={false}
@@ -1245,10 +1245,12 @@ const styles = StyleSheet.create((theme) => ({
     startingSubmissionProgress: { ...Typography.default(), color: theme.colors.textSecondary, fontSize: 13 },
     startingSubmissionActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
     desktopWorkspace: {
+        backgroundColor: theme.colors.groupped.background,
         flex: 1,
         flexDirection: 'row',
     },
     desktopWorkspaceMain: {
+        ...(Platform.OS === 'web' ? { borderRadius: 20, overflow: 'hidden' as const } : {}),
         flex: 1,
         minWidth: DESKTOP_MAIN_MIN_WIDTH,
     },
@@ -1262,6 +1264,7 @@ const styles = StyleSheet.create((theme) => ({
         overflow: Platform.OS === 'web' ? 'visible' : 'hidden',
     },
     desktopWorkspacePanelWeb: {
+        paddingLeft: 10,
         position: 'absolute',
         top: 0,
         right: 0,

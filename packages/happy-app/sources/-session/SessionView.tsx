@@ -1156,7 +1156,7 @@ const SessionViewContent = React.memo((props: { id: string }) => {
     // File browsing is a tab in that panel, so enabling it never removes quick
     // prompts or creates a fourth column.
     return (
-        <View style={{ flex: 1, flexDirection: 'row' }}>
+        <View style={{ flex: 1, flexDirection: 'row', backgroundColor: theme.colors.groupped.background }}>
             <View
                 style={[
                     workspaceStyles.desktopMain,
@@ -2231,6 +2231,7 @@ const workspaceStyles = StyleSheet.create((theme) => ({
         opacity: 0.7,
     },
     desktopMain: {
+        ...(Platform.OS === 'web' ? { borderRadius: 20, overflow: 'hidden' as const, backgroundColor: theme.colors.surface } : {}),
         flex: 1,
         minWidth: DESKTOP_MAIN_MIN_WIDTH,
     },
@@ -2251,6 +2252,7 @@ const workspaceStyles = StyleSheet.create((theme) => ({
         flex: 1,
     },
     desktopPanelWeb: {
+        paddingLeft: 10,
         position: 'absolute',
         top: 0,
         right: 0,
