@@ -147,14 +147,27 @@ async function wearBotFace(
     sessionId: string,
     seed: string,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
+    // Each leg is caught under its own name. The three do quite different
+    // things — draw, upload, ask — and a bare message like "undefined is not an
+    // object" says nothing about which of them was running when it was thrown.
+    const leg = async <T,>(name: string, step: () => Promise<T>): Promise<T> => {
+        try {
+            return await step();
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            throw new Error(`${name}: ${message}`);
+        }
+    };
     try {
-        const painting = await paintBotFace(seed);
-        const uploaded = await sync.uploadSessionBlob(sessionId, 'face.png', painting.bytes);
-        await sessionSetAvatar(sessionId, {
+        const painting = await leg('painting the face', () => paintBotFace(seed));
+        const uploaded = await leg('uploading the face', () => (
+            sync.uploadSessionBlob(sessionId, 'face.png', painting.bytes)
+        ));
+        await leg('asking the bot to wear it', () => sessionSetAvatar(sessionId, {
             ref: uploaded.ref,
             size: uploaded.size,
             mimeType: painting.mimeType,
-        });
+        }));
         return { ok: true };
     } catch (error) {
         return { ok: false, error: error instanceof Error ? error.message : String(error) };
