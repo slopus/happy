@@ -10,14 +10,22 @@ import { getProjectPath } from './path'
 
 describe('sessionScanner', () => {
   let testDir: string
+  let configDir: string
   let projectDir: string
   let collectedMessages: RawJSONLines[]
   let collectedTranscriptEvents: ClaudeGoalStatusTranscriptEvent[]
   let scanner: Awaited<ReturnType<typeof createSessionScanner>> | null = null
+  let previousConfigDir: string | undefined
   
   beforeEach(async () => {
-    testDir = join(tmpdir(), `scanner-test-${Date.now()}`)
+    const unique = `${Date.now()}-${Math.random().toString(36).slice(2)}`
+    testDir = join(tmpdir(), `scanner-test-${unique}`)
     await mkdir(testDir, { recursive: true })
+
+    // Keep fixtures away from the developer's real ~/.claude/projects tree.
+    configDir = join(tmpdir(), `scanner-config-${unique}`)
+    previousConfigDir = process.env.CLAUDE_CONFIG_DIR
+    process.env.CLAUDE_CONFIG_DIR = configDir
 
     // Use the same path calculation as the scanner to ensure paths match
     projectDir = getProjectPath(testDir)
@@ -34,11 +42,17 @@ describe('sessionScanner', () => {
       scanner = null
     }
     
+    if (previousConfigDir === undefined) {
+      delete process.env.CLAUDE_CONFIG_DIR
+    } else {
+      process.env.CLAUDE_CONFIG_DIR = previousConfigDir
+    }
+
     if (existsSync(testDir)) {
       await rm(testDir, { recursive: true, force: true })
     }
-    if (existsSync(projectDir)) {
-      await rm(projectDir, { recursive: true, force: true })
+    if (existsSync(configDir)) {
+      await rm(configDir, { recursive: true, force: true })
     }
   })
   
@@ -319,11 +333,9 @@ describe('sessionScanner', () => {
     // }
   })
 
-  it('drops a phantom session whose transcript never appears and keeps serving real ones', async () => {
-    // Reproduces the "dead Happy instance" bug: a session id is announced
-    // (e.g. a remote launch) but its .jsonl is never written. The scanner
-    // must give up on it instead of spinning forever, and must still process
-    // a real session that arrives afterwards.
+  it('keeps serving real sessions while a phantom session has no transcript', async () => {
+    // A missing transcript is now held by one idle directory watcher rather
+    // than dropped after a deadline, while other sessions remain independent.
     scanner = await createSessionScanner({
       sessionId: null,
       workingDirectory: testDir,
@@ -335,7 +347,7 @@ describe('sessionScanner', () => {
     const phantomId = 'fd4aa0c2-000a-4cd3-a066-80c6d87c3456'
     scanner.onNewSession(phantomId)
 
-    // Long enough for the first ~1s backoff + give-up to fire.
+    // Longer than the old give-up window.
     await new Promise((r) => setTimeout(r, 2500))
 
     expect(collectedMessages).toHaveLength(0)
@@ -352,6 +364,54 @@ describe('sessionScanner', () => {
 
     expect(collectedMessages).toHaveLength(1)
     expect(collectedMessages[0].type).toBe('user')
+  })
+
+  it('syncs a transcript created after the timeout exactly once', async () => {
+    const fixture = await readFile(join(__dirname, '__fixtures__', '0-say-lol-session.jsonl'), 'utf-8')
+    const sessionId = '5ec1f8ef-7845-4d7f-a34b-3b8f98f4cf29'
+    const sessionFile = join(projectDir, `${sessionId}.jsonl`)
+
+    scanner = await createSessionScanner({
+      sessionId: null,
+      workingDirectory: testDir,
+      onMessage: (msg) => collectedMessages.push(msg),
+      missingFileTimeoutMs: 100,
+    })
+
+    scanner.onNewSession(sessionId)
+    await new Promise((resolve) => setTimeout(resolve, 500))
+    expect(collectedMessages).toHaveLength(0)
+
+    await writeFile(sessionFile, fixture)
+    await new Promise((resolve) => setTimeout(resolve, 500))
+
+    expect(collectedMessages.map((message) => message.type)).toEqual(['user', 'assistant'])
+    await new Promise((resolve) => setTimeout(resolve, 500))
+    expect(collectedMessages).toHaveLength(2)
+  })
+
+  it('revives a same-id session after its directory becomes watchable again', async () => {
+    const fixture = await readFile(join(__dirname, '__fixtures__', '0-say-lol-session.jsonl'), 'utf-8')
+    const sessionId = '3d8bdaf9-c502-4a34-a5a1-76d12be5ec43'
+
+    scanner = await createSessionScanner({
+      sessionId: null,
+      workingDirectory: testDir,
+      onMessage: (msg) => collectedMessages.push(msg),
+      missingFileTimeoutMs: 100,
+    })
+
+    scanner.onNewSession(sessionId)
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    await rm(projectDir, { recursive: true, force: true })
+    await new Promise((resolve) => setTimeout(resolve, 2_500))
+
+    await mkdir(projectDir, { recursive: true })
+    await writeFile(join(projectDir, `${sessionId}.jsonl`), fixture)
+    scanner.onNewSession(sessionId)
+    await new Promise((resolve) => setTimeout(resolve, 500))
+
+    expect(collectedMessages.map((message) => message.type)).toEqual(['user', 'assistant'])
   })
 
   it('emits the synthetic assistant message written when the API rejects a turn', async () => {

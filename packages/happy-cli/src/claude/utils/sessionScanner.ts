@@ -30,9 +30,8 @@ export async function createSessionScanner(opts: {
     onMessage: (message: RawJSONLines) => void
     onTranscriptEvent?: (event: ScannerTranscriptEvent) => void
     /**
-     * How long a session transcript may stay absent before its watcher gives
-     * up and the session is dropped. Defaults to the startFileWatcher default
-     * (60s). Exposed mainly so tests can exercise the drop path quickly.
+     * How long the transcript's parent directory may stay unwatchable before
+     * its watcher gives up. This does not bound a late transcript file.
      */
     missingFileTimeoutMs?: number
 }) {
@@ -46,11 +45,9 @@ export async function createSessionScanner(opts: {
     let currentSessionId: string | null = null;
     let watchers = new Map<string, (() => void)>();
     let processedEntryKeys = new Set<string>();
-    // Sessions whose transcript file never appeared. Their watcher gave up,
-    // so we must stop re-reading them and never re-create a watcher for them
-    // — otherwise a phantom session id (e.g. a remote launch whose .jsonl is
-    // never written) keeps itself alive forever via the watchers map below
-    // and spins the CPU / floods the log (the "dead Happy instance" bug).
+    // Sessions whose project directory stayed unwatchable. Their watcher gave
+    // up, so do not keep re-creating it on every sync. A merely absent file is
+    // watched through its parent directory and never enters this set.
     let deadSessions = new Set<string>();
 
     // Mark existing entries as processed and start watching the initial session
@@ -132,12 +129,10 @@ export async function createSessionScanner(opts: {
                     {
                         missingFileTimeoutMs: opts.missingFileTimeoutMs,
                         onGaveUp: () => {
-                            // The transcript for this session never appeared.
-                            // Tear the watcher down and blacklist the session
-                            // so the collection loop above stops resurrecting
-                            // it. Without this the phantom session would keep
-                            // itself in `watchers` forever.
-                            logger.debug(`[SESSION_SCANNER] Session ${p} transcript never appeared — dropping it`);
+                            // The project directory stayed unwatchable. Tear
+                            // down and blacklist the session so the collection
+                            // loop does not resurrect the failed watcher.
+                            logger.debug(`[SESSION_SCANNER] Session ${p} transcript unreachable (directory unwatchable) — dropping it`);
                             watchers.get(p)?.();
                             watchers.delete(p);
                             deadSessions.add(p);
@@ -157,28 +152,37 @@ export async function createSessionScanner(opts: {
     return {
         cleanup: async () => {
             clearInterval(intervalId);
+            // The final sync can create watchers, so flush and stop before
+            // disposing the map. Otherwise cleanup can leak newly-created
+            // directory watchers.
+            await sync.invalidateAndAwait();
+            sync.stop();
             for (let w of watchers.values()) {
                 w();
             }
             watchers.clear();
-            await sync.invalidateAndAwait();
-            sync.stop();
         },
         onNewSession: async (sessionId: string, options?: { treatExistingAsProcessed?: boolean }) => {
-            if (currentSessionId === sessionId) {
-                logger.debug(`[SESSION_SCANNER] New session: ${sessionId} is the same as the current session, skipping`);
-                return;
-            }
-            // The caller explicitly re-announces this session, so give a
-            // previously-dropped id another chance (its file may exist now).
-            if (deadSessions.delete(sessionId)) {
+            const wasDead = deadSessions.delete(sessionId);
+            if (wasDead) {
                 logger.debug(`[SESSION_SCANNER] Reviving previously-dropped session: ${sessionId}`);
             }
-            if (finishedSessions.has(sessionId)) {
+            if (currentSessionId === sessionId) {
+                if (wasDead) {
+                    // A re-announced current session may have been dropped
+                    // while its directory was unavailable. Do not let the
+                    // same-id fast path prevent its watcher from returning.
+                    sync.invalidate();
+                } else {
+                    logger.debug(`[SESSION_SCANNER] New session: ${sessionId} is the same as the current session, skipping`);
+                }
+                return;
+            }
+            if (!wasDead && finishedSessions.has(sessionId)) {
                 logger.debug(`[SESSION_SCANNER] New session: ${sessionId} is already finished, skipping`);
                 return;
             }
-            if (pendingSessions.has(sessionId)) {
+            if (!wasDead && pendingSessions.has(sessionId)) {
                 logger.debug(`[SESSION_SCANNER] New session: ${sessionId} is already pending, skipping`);
                 return;
             }

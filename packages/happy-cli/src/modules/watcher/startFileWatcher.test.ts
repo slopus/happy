@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { startFileWatcher } from './startFileWatcher'
-import { mkdir, writeFile, appendFile, rm } from 'node:fs/promises'
+import { mkdir, writeFile, appendFile, rm, unlink } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { existsSync } from 'node:fs'
@@ -26,7 +26,7 @@ describe('startFileWatcher', () => {
     }
   })
 
-  it('gives up exactly once when the file never appears', async () => {
+  it('waits for a file created after the missing-file timeout', async () => {
     const missing = join(testDir, 'never.jsonl')
     let changes = 0
     let gaveUp = 0
@@ -36,11 +36,18 @@ describe('startFileWatcher', () => {
       onGaveUp: () => { gaveUp++ },
     })
 
-    // First retry backoff is ~1s, so give-up lands a little after that.
-    await sleep(2500)
+    await sleep(1200)
 
-    expect(gaveUp).toBe(1)
+    expect(gaveUp).toBe(0)
     expect(changes).toBe(0)
+
+    await writeFile(missing, 'line-1\n')
+    await sleep(400)
+    await appendFile(missing, 'line-2\n')
+    await sleep(400)
+
+    expect(gaveUp).toBe(0)
+    expect(changes).toBeGreaterThan(0)
   })
 
   it('recovers when the file appears within the grace window', async () => {
@@ -84,6 +91,45 @@ describe('startFileWatcher', () => {
     expect(changes).toBeGreaterThan(0)
   })
 
+  it('re-arms when the file is deleted and later recreated', async () => {
+    const file = join(testDir, 'recreated.jsonl')
+    await writeFile(file, 'init\n')
+
+    let changes = 0
+    let gaveUp = 0
+    stop = startFileWatcher(file, () => { changes++ }, {
+      missingFileTimeoutMs: 100,
+      onGaveUp: () => { gaveUp++ },
+    })
+
+    await sleep(200)
+    await unlink(file)
+    await sleep(600)
+    await writeFile(file, 'reborn\n')
+    await sleep(400)
+    await appendFile(file, 'again\n')
+    await sleep(400)
+
+    expect(gaveUp).toBe(0)
+    expect(changes).toBeGreaterThan(0)
+  })
+
+  it('gives up when the parent directory stays unwatchable', async () => {
+    const missing = join(testDir, 'no-such-dir', 'ghost.jsonl')
+    let changes = 0
+    let gaveUp = 0
+
+    stop = startFileWatcher(missing, () => { changes++ }, {
+      missingFileTimeoutMs: 100,
+      onGaveUp: () => { gaveUp++ },
+    })
+
+    await sleep(2500)
+
+    expect(gaveUp).toBe(1)
+    expect(changes).toBe(0)
+  })
+
   it('stops on dispose without giving up', async () => {
     const missing = join(testDir, 'aborted.jsonl')
     let changes = 0
@@ -100,7 +146,10 @@ describe('startFileWatcher', () => {
     dispose()
     stop = null
 
-    await sleep(2000)
+    await sleep(600)
+
+    await writeFile(missing, 'after-dispose\n')
+    await sleep(300)
 
     expect(gaveUp).toBe(0)
     expect(changes).toBe(0)
