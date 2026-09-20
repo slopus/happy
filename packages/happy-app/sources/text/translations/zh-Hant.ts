@@ -1091,6 +1091,9 @@ export const zhHant: TranslationStructure = {
             : `${count} 張圖片上傳失敗，未傳送。`,
         notSupportedTitle: '不支援圖片',
         notSupportedMessage: '此代理不支援圖片附件。圖片未傳送。',
+        attachTitle: '新增圖片',
+        pasteFromClipboard: '從剪貼簿貼上',
+        chooseFromLibrary: '照片圖庫',
     },
 
     feed: {

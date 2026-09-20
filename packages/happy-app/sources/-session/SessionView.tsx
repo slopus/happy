@@ -880,7 +880,7 @@ export function SessionViewLoaded({
 
     // Attachment availability is capability-driven by the active session. There
     // is nothing to attach to before the chat exists.
-    const { selectedImages, pickImages, removeImage, clearImages, addImages } = useImagePicker();
+    const { selectedImages, attachImages, removeImage, clearImages, addImages } = useImagePicker();
     const canUseAttachments = !!session && (isRigMetadataV1(session.metadata)
         ? rigCanUseAttachments(session.metadata)
         : supportsImageAttachmentsForFlavor(session.metadata?.flavor));
@@ -1197,7 +1197,7 @@ export function SessionViewLoaded({
                 )}
                 onFileViewerPress={session && experiments && !isTablet && rigCanBrowseFiles(session.metadata) && rigCanReadFiles(session.metadata) ? handleFileViewerPress : undefined}
                 selectedImages={canUseAttachments ? selectedImages : undefined}
-                onPickImages={canUseAttachments ? pickImages : undefined}
+                onPickImages={canUseAttachments ? attachImages : undefined}
                 onRemoveImage={canUseAttachments ? removeImage : undefined}
                 onAddImages={canUseAttachments ? addImages : undefined}
                 autocompletePrefixes={AGENT_INPUT_AUTOCOMPLETE_PREFIXES}

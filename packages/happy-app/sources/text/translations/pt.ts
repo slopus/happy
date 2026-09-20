@@ -1090,6 +1090,9 @@ export const pt: TranslationStructure = {
             : `Não foi possível enviar ${count} imagens e não foram enviadas.`,
         notSupportedTitle: 'Imagens não suportadas',
         notSupportedMessage: 'Este agente não suporta anexos de imagem. As imagens não foram enviadas.',
+        attachTitle: 'Adicionar imagem',
+        pasteFromClipboard: 'Colar da área de transferência',
+        chooseFromLibrary: 'Biblioteca de fotos',
     },
 
     feed: {

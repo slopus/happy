@@ -1121,6 +1121,9 @@ export const pl: TranslationStructure = {
             : `Nie udało się przesłać ${count} zdjęć i nie zostały wysłane.`,
         notSupportedTitle: 'Obrazy nieobsługiwane',
         notSupportedMessage: 'Ten agent nie obsługuje załączników obrazów. Obrazy nie zostały wysłane.',
+        attachTitle: 'Dodaj obraz',
+        pasteFromClipboard: 'Wklej ze schowka',
+        chooseFromLibrary: 'Biblioteka zdjęć',
     },
 
     feed: {

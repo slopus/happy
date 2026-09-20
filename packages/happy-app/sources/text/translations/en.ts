@@ -1180,6 +1180,9 @@ export const en: TranslationStructure = {
             : `${count} images could not be uploaded and were not sent.`,
         notSupportedTitle: 'Images Not Supported',
         notSupportedMessage: 'This agent does not support image attachments. Images were not sent.',
+        attachTitle: 'Add Image',
+        pasteFromClipboard: 'Paste from Clipboard',
+        chooseFromLibrary: 'Photo Library',
     },
 
     feed: {

@@ -7,6 +7,9 @@ const mocks = vi.hoisted(() => ({
     manipulateAsync: vi.fn(),
     generateThumbhash: vi.fn(),
     getInfoAsync: vi.fn(),
+    writeAsStringAsync: vi.fn(),
+    hasImageAsync: vi.fn(),
+    getImageAsync: vi.fn(),
     alert: vi.fn(),
     setSelectedImages: vi.fn(),
 }));
@@ -38,7 +41,14 @@ vi.mock('@/modal', () => ({
 }));
 
 vi.mock('expo-file-system/legacy', () => ({
+    cacheDirectory: 'file:///cache/',
     getInfoAsync: mocks.getInfoAsync,
+    writeAsStringAsync: mocks.writeAsStringAsync,
+}));
+
+vi.mock('expo-clipboard', () => ({
+    hasImageAsync: mocks.hasImageAsync,
+    getImageAsync: mocks.getImageAsync,
 }));
 
 vi.mock('@/text', () => ({
@@ -49,7 +59,7 @@ vi.mock('@/utils/thumbhash', () => ({
     generateThumbhash: mocks.generateThumbhash,
 }));
 
-import { MAX_FILE_SIZE, normalizePickedAssetForUpload, useImagePicker } from './useImagePicker';
+import { MAX_FILE_SIZE, normalizePickedAssetForUpload, readImageDataUri, useImagePicker } from './useImagePicker';
 import type { AttachmentPreview } from './useImagePicker';
 
 const photo = {
@@ -213,5 +223,164 @@ describe('useImagePicker transformed upload validation', () => {
         expect(mocks.getInfoAsync).not.toHaveBeenCalled();
         expect(mocks.setSelectedImages).not.toHaveBeenCalled();
         expect(mocks.alert).not.toHaveBeenCalled();
+    });
+});
+
+describe('readImageDataUri', () => {
+    it('separates the type from the bytes', () => {
+        expect(readImageDataUri('data:image/png;base64,AAAA')).toEqual({ mimeType: 'image/png', base64: 'AAAA' });
+        expect(readImageDataUri('DATA:IMAGE/JPEG;BASE64,QUJD')).toEqual({ mimeType: 'image/jpeg', base64: 'QUJD' });
+    });
+
+    it.each([
+        'data:text/plain;base64,AAAA',
+        'data:image/png,AAAA',
+        'file:///photo.png',
+        'data:image/png;base64,',
+        '',
+    ])('refuses %s', (uri) => {
+        expect(readImageDataUri(uri)).toBeNull();
+    });
+});
+
+describe('useImagePicker pasting', () => {
+    const clipboardImage = {
+        data: 'data:image/png;base64,QUJD',
+        size: { width: 1200, height: 800 },
+    };
+
+    it('attaches a clipboard image by the same road a picked one takes', async () => {
+        mocks.hasImageAsync.mockResolvedValue(true);
+        mocks.getImageAsync.mockResolvedValue(clipboardImage);
+
+        await expect(useImagePicker().pasteImages()).resolves.toBe(true);
+
+        // Written to a file first: the upload reads one, and on Android the
+        // picker's own path never converts.
+        expect(mocks.writeAsStringAsync).toHaveBeenCalledExactlyOnceWith(
+            expect.stringMatching(/^file:\/\/\/cache\/paste_\d+\.png$/),
+            'QUJD',
+            { encoding: 'base64' },
+        );
+        const added = mocks.setSelectedImages.mock.calls[0][0]([]);
+        expect(added).toEqual([expect.objectContaining({
+            uri: 'file:///test/normalized.jpg', mimeType: 'image/jpeg', size: 3_000_000, thumbhash: 'thumbhash',
+        })]);
+    });
+
+    it('stays quiet when the clipboard holds no picture', async () => {
+        mocks.hasImageAsync.mockResolvedValue(false);
+        await expect(useImagePicker().pasteImages()).resolves.toBe(false);
+        expect(mocks.getImageAsync).not.toHaveBeenCalled();
+        expect(mocks.setSelectedImages).not.toHaveBeenCalled();
+        expect(mocks.alert).not.toHaveBeenCalled();
+    });
+
+    // On iOS 16+ a refused paste is indistinguishable from an empty clipboard.
+    it('stays quiet when the paste is refused', async () => {
+        mocks.hasImageAsync.mockResolvedValue(true);
+        mocks.getImageAsync.mockResolvedValue(null);
+        await expect(useImagePicker().pasteImages()).resolves.toBe(false);
+        expect(mocks.setSelectedImages).not.toHaveBeenCalled();
+        expect(mocks.alert).not.toHaveBeenCalled();
+    });
+
+    it('holds a pasted image to the same size limit as a picked one', async () => {
+        mocks.hasImageAsync.mockResolvedValue(true);
+        mocks.getImageAsync.mockResolvedValue(clipboardImage);
+        mocks.getInfoAsync.mockResolvedValue({ exists: true, isDirectory: false, size: MAX_FILE_SIZE + 1 });
+
+        await expect(useImagePicker().pasteImages()).resolves.toBe(false);
+        expect(mocks.setSelectedImages).not.toHaveBeenCalled();
+        expect(mocks.alert).toHaveBeenCalledWith('imageUpload.fileTooLargeTitle', 'imageUpload.fileTooLargeMessage', expect.any(Array));
+    });
+
+    it('says so rather than throwing when the clipboard cannot be read', async () => {
+        mocks.hasImageAsync.mockRejectedValue(new Error('no permission'));
+        await expect(useImagePicker().pasteImages()).resolves.toBe(false);
+        expect(mocks.setSelectedImages).not.toHaveBeenCalled();
+    });
+
+    it('goes straight to the library when there is nothing to paste', async () => {
+        mocks.hasImageAsync.mockResolvedValue(false);
+        await useImagePicker().attachImages();
+        expect(mocks.launchImageLibraryAsync).toHaveBeenCalledOnce();
+        expect(mocks.alert).not.toHaveBeenCalled();
+    });
+
+    it('asks which one was meant when the clipboard holds a picture', async () => {
+        mocks.hasImageAsync.mockResolvedValue(true);
+        await useImagePicker().attachImages();
+        expect(mocks.launchImageLibraryAsync).not.toHaveBeenCalled();
+        expect(mocks.alert).toHaveBeenCalledWith('imageUpload.attachTitle', undefined, [
+            expect.objectContaining({ text: 'imageUpload.pasteFromClipboard' }),
+            expect.objectContaining({ text: 'imageUpload.chooseFromLibrary' }),
+            expect.objectContaining({ text: 'common.cancel', style: 'cancel' }),
+        ]);
+    });
+
+    // Off iOS nothing downstream measures an image, so a paste that is not
+    // weighed here counts as nothing at all.
+    describe('on Android', () => {
+        beforeEach(() => { mocks.platform.OS = 'android'; });
+
+        it('weighs the file it wrote', async () => {
+            mocks.hasImageAsync.mockResolvedValue(true);
+            mocks.getImageAsync.mockResolvedValue(clipboardImage);
+            mocks.getInfoAsync.mockResolvedValue({ exists: true, isDirectory: false, size: 1_234_567 });
+
+            await expect(useImagePicker().pasteImages()).resolves.toBe(true);
+
+            const added = mocks.setSelectedImages.mock.calls[0][0]([]);
+            expect(added).toEqual([expect.objectContaining({
+                uri: expect.stringMatching(/^file:\/\/\/cache\/paste_\d+\.png$/),
+                mimeType: 'image/png',
+                size: 1_234_567,
+            })]);
+        });
+
+        it('holds a pasted image to the same size limit as a picked one', async () => {
+            mocks.hasImageAsync.mockResolvedValue(true);
+            mocks.getImageAsync.mockResolvedValue(clipboardImage);
+            mocks.getInfoAsync.mockResolvedValue({ exists: true, isDirectory: false, size: MAX_FILE_SIZE + 1 });
+
+            await expect(useImagePicker().pasteImages()).resolves.toBe(false);
+            expect(mocks.setSelectedImages).not.toHaveBeenCalled();
+            expect(mocks.alert).toHaveBeenCalledWith('imageUpload.fileTooLargeTitle', 'imageUpload.fileTooLargeMessage', expect.any(Array));
+        });
+
+        it('says so rather than attaching an image it could not weigh', async () => {
+            mocks.hasImageAsync.mockResolvedValue(true);
+            mocks.getImageAsync.mockResolvedValue(clipboardImage);
+            mocks.getInfoAsync.mockResolvedValue({ exists: false });
+
+            await expect(useImagePicker().pasteImages()).resolves.toBe(false);
+            expect(mocks.setSelectedImages).not.toHaveBeenCalled();
+            expect(mocks.alert).toHaveBeenCalledWith('imageUpload.uploadFailedTitle', 'imageUpload.uploadFailedMessage', expect.any(Array));
+        });
+    });
+
+    // The web composer takes a paste and a drop on the document itself, and
+    // reading the clipboard to find out would prompt for permission on a tap
+    // that used to open the library.
+    describe('on web', () => {
+        beforeEach(() => { mocks.platform.OS = 'web'; });
+
+        it('opens the library without touching the clipboard', async () => {
+            mocks.hasImageAsync.mockResolvedValue(true);
+            await useImagePicker().attachImages();
+            expect(mocks.hasImageAsync).not.toHaveBeenCalled();
+            expect(mocks.launchImageLibraryAsync).toHaveBeenCalledOnce();
+            expect(mocks.alert).not.toHaveBeenCalled();
+        });
+
+        it('pastes nothing, since there is no cache to write a file into', async () => {
+            mocks.hasImageAsync.mockResolvedValue(true);
+            mocks.getImageAsync.mockResolvedValue(clipboardImage);
+            await expect(useImagePicker().pasteImages()).resolves.toBe(false);
+            expect(mocks.hasImageAsync).not.toHaveBeenCalled();
+            expect(mocks.writeAsStringAsync).not.toHaveBeenCalled();
+            expect(mocks.setSelectedImages).not.toHaveBeenCalled();
+        });
     });
 });

@@ -1093,6 +1093,9 @@ export const ja: TranslationStructure = {
             : `${count}枚の画像をアップロードできず、送信されませんでした。`,
         notSupportedTitle: '画像はサポートされていません',
         notSupportedMessage: 'このエージェントは画像の添付に対応していません。画像は送信されませんでした。',
+        attachTitle: '画像を追加',
+        pasteFromClipboard: 'クリップボードから貼り付け',
+        chooseFromLibrary: 'フォトライブラリ',
     },
 
     feed: {

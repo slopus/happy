@@ -780,7 +780,7 @@ export const HomeDock = React.memo(({
     // and use an in-modal React Native picker only on Android.
     const useNativeMenus = shouldUseNativeHomeDockMenus(Platform.OS);
     const [sheetPage, setSheetPage] = React.useState<PickerPage | null>(null);
-    const { selectedImages, pickImages, removeImage, clearImages } = useImagePicker();
+    const { selectedImages, attachImages, removeImage, clearImages } = useImagePicker();
     const agentType = useNewSessionDraft((state) => state.agentType);
     const selectedMachineId = useNewSessionDraft((state) => state.selectedMachineId);
     const selectedPath = useNewSessionDraft((state) => state.selectedPath);
@@ -2009,7 +2009,7 @@ export const HomeDock = React.memo(({
                         {!createsBot && (
                         <RefusableControl refusing={isSubmitting} onRefuse={refuse}>
                             <BubblePressable
-                                onPress={() => void pickImages()}
+                                onPress={() => void attachImages()}
                                 style={styles.sideButton}
                                 accessibilityRole="button"
                                 accessibilityLabel="Add image"

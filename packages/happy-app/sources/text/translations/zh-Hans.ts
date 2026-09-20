@@ -1092,6 +1092,9 @@ export const zhHans: TranslationStructure = {
             : `${count} 张图片上传失败，未发送。`,
         notSupportedTitle: '不支持图片',
         notSupportedMessage: '此代理不支持图片附件。图片未发送。',
+        attachTitle: '添加图片',
+        pasteFromClipboard: '从剪贴板粘贴',
+        chooseFromLibrary: '照片图库',
     },
 
     feed: {
