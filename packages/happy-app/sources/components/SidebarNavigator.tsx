@@ -171,8 +171,7 @@ const SidebarNavigatorContent = React.memo(() => {
                     pointerEvents: hideDrawer ? 'none' : 'auto',
                 } : {})}
                 {...(fixedRail ? {
-                    // Match Pressable's pointer-based hover events. Mixing mouseleave
-                    // with pointerenter can cancel the pin button's hover on arrival.
+                    // Only hovering pointers reveal the panel; touch uses the pin control.
                     onPointerEnter: (event: React.PointerEvent) => { if (event.pointerType !== 'touch') setLeftSidebarHovered(true); },
                     onPointerLeave: (event: React.PointerEvent) => { if (event.pointerType !== 'touch') setLeftSidebarHovered(false); },
                     onFocus: (event: React.FocusEvent<HTMLElement>) => {
@@ -236,13 +235,10 @@ const PersistentHeader = React.memo(() => {
     const router = useRouter();
     const [zenMode, setZenMode] = useLocalSettingMutable('zenMode');
     const {
-        resizingSide,
         leftPinned: sidebarPinned,
         leftVisible: sidebarVisible,
-        leftExpandedWidth: sidebarWidth,
+        leftWidth: sidebarWidth,
         toggleLeftSidebar,
-        setLeftSidebarHovered,
-        setLeftSidebarFocused,
     } = useDesktopWorkspaceLayout();
     const [sidebarTooltipVisible, setSidebarTooltipVisible] = React.useState(false);
     const [zenTooltipVisible, setZenTooltipVisible] = React.useState(false);
@@ -297,11 +293,16 @@ const PersistentHeader = React.memo(() => {
         ? (sidebarPinned ? t('desktopWorkspace.unpinSessions') : t('desktopWorkspace.pinSessions'))
         : (sidebarVisible ? t('desktopWorkspace.hideSessions') : t('desktopWorkspace.showSessions'));
     const sidebarSelected = Platform.OS === 'web' ? sidebarPinned : sidebarVisible;
+    const coveredBySidebar = Platform.OS === 'web' && sidebarVisible && !sidebarPinned;
 
     return (
         <View
-            {...(Platform.OS === 'web' ? { dataSet: { happyMotion: resizingSide ? undefined : 'desktop-sidebar-controls' } } : {})}
+            aria-hidden={coveredBySidebar}
+            {...(coveredBySidebar ? { inert: true } as any : {})}
             style={{
+                // Stay anchored to the chat's reserved width. The temporary
+                // sidebar covers these controls instead of pushing them over its title.
+                ...(Platform.OS === 'web' ? { visibility: coveredBySidebar ? 'hidden' : 'visible' } as any : {}),
                 position: 'absolute',
                 top: Platform.OS === 'web' ? DESKTOP_WORKSPACE_OUTER_GAP : 0,
                 left: (sidebarVisible ? sidebarWidth : 0) + (Platform.OS === 'web' ? DESKTOP_PRIMARY_NAVIGATION_WIDTH : 0) + 16,
@@ -331,14 +332,11 @@ const PersistentHeader = React.memo(() => {
             >
                 <View style={styles.sidebarToggleWrapper}>
                     <Pressable
-                        onBlur={() => { setSidebarTooltipVisible(false); setLeftSidebarFocused(false); }}
-                        onFocus={(event) => {
-                            setSidebarTooltipVisible(true);
-                            if (Platform.OS === 'web' && (event.target as unknown as HTMLElement).matches?.(':focus-visible')) setLeftSidebarFocused(true);
-                        }}
-                        onHoverIn={() => { setSidebarTooltipVisible(true); if (sidebarVisible) setLeftSidebarHovered(true); }}
-                        onHoverOut={() => { setSidebarTooltipVisible(false); setLeftSidebarHovered(false); }}
-                        onPress={toggleLeftSidebar}
+                        onBlur={() => setSidebarTooltipVisible(false)}
+                        onFocus={() => setSidebarTooltipVisible(true)}
+                        onHoverIn={() => setSidebarTooltipVisible(true)}
+                        onHoverOut={() => setSidebarTooltipVisible(false)}
+                        onPress={() => { setSidebarTooltipVisible(false); toggleLeftSidebar(); }}
                         hitSlop={8}
                         style={({ pressed }) => [
                             styles.sidebarToggle,
@@ -366,7 +364,7 @@ const PersistentHeader = React.memo(() => {
                         label={sidebarToggleLabel}
                         shortcut={shortcuts.leftLabel}
                         testID="desktop-navigation-sidebar-tooltip"
-                        visible={sidebarTooltipVisible}
+                        visible={sidebarTooltipVisible && !coveredBySidebar}
                     />
                 </View>
                 <View style={styles.headerIconWrapper}>

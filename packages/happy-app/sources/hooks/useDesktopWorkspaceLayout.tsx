@@ -180,6 +180,18 @@ export const DesktopWorkspaceLayoutProvider = React.memo(function DesktopWorkspa
         windowWidth: layoutWindowWidth,
     });
 
+    const endPanelResize = React.useCallback(() => {
+        const session = resizeSessionRef.current;
+        if (!session) return;
+        resizeSessionRef.current = null;
+        setResizingSide(null);
+        if (session.side === 'left') {
+            setStoredLeftWidth(liveLeftWidthRef.current);
+        } else {
+            setStoredRightWidth(liveRightWidthRef.current);
+        }
+    }, [setStoredLeftWidth, setStoredRightWidth]);
+
     const toggleLeftSidebar = React.useCallback(() => {
         if (!enabled) return;
         if (zenMode) {
@@ -187,8 +199,12 @@ export const DesktopWorkspaceLayoutProvider = React.memo(function DesktopWorkspa
             setLeftCollapsed(false);
             return;
         }
+        if (Platform.OS === 'web' && !leftCollapsed) {
+            if (resizingSide === 'left') endPanelResize();
+            reveal.dismiss();
+        }
         setLeftCollapsed(!leftCollapsed);
-    }, [enabled, leftCollapsed, setLeftCollapsed, setZenMode, zenMode]);
+    }, [enabled, endPanelResize, leftCollapsed, resizingSide, setLeftCollapsed, setZenMode, zenMode, reveal.dismiss]);
     const toggleRightSidebar = React.useCallback(() => {
         if (!rightPanelAvailable) return;
         if (zenMode) {
@@ -238,18 +254,6 @@ export const DesktopWorkspaceLayoutProvider = React.memo(function DesktopWorkspa
             setLiveRightWidth(nextWidth);
         }
     }, []);
-
-    const endPanelResize = React.useCallback(() => {
-        const session = resizeSessionRef.current;
-        if (!session) return;
-        resizeSessionRef.current = null;
-        setResizingSide(null);
-        if (session.side === 'left') {
-            setStoredLeftWidth(liveLeftWidthRef.current);
-        } else {
-            setStoredRightWidth(liveRightWidthRef.current);
-        }
-    }, [setStoredLeftWidth, setStoredRightWidth]);
 
     const resizePanelBy = React.useCallback((side: DesktopPanelSide, delta: number) => {
         const sideVisible = side === 'left' ? leftVisible : rightVisible;

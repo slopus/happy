@@ -273,7 +273,10 @@ describe('SidebarNavigator drawer behavior', () => {
         expect(toggle.props['aria-expanded']).toBe(true);
         expect(toggle.props['aria-pressed']).toBe(false);
         expect(toggle.props.accessibilityLabel).toBe('desktopWorkspace.pinSessions');
-        expect(renderer.root.findByProps({ testID: 'desktop-navigation-controls' }).parent.props.style.left).toBe(436);
+        const header = renderer.root.findByProps({ testID: 'desktop-navigation-controls' }).parent;
+        expect(header.props.style.left).toBe(76);
+        expect(header.props['aria-hidden']).toBe(true);
+        expect(header.props.inert).toBe(true);
         const handle = renderer.root.findByProps({ testID: 'desktop-left-panel-resize-handle' });
         expect(handle.props['aria-valuenow']).toBe(360);
         act(() => handle.props.onKeyDown({ key: 'Home' }));

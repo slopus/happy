@@ -33,5 +33,14 @@ export function useDesktopSidebarReveal(enabled: boolean, resizing: boolean, pin
     }, [enabled, pinned, hovered, focused, resizing, cancelClose]);
 
     React.useEffect(() => cancelClose, [cancelClose]);
-    return { visible: enabled && (pinned || visible), setHovered, setFocused };
+    // Explicit collapse takes priority over existing pointer/focus engagement.
+    // A new enter/focus event can reveal again after the user returns.
+    const dismiss = React.useCallback(() => {
+        cancelClose();
+        wasEngaged.current = false;
+        setVisible(false);
+        setHovered(false);
+        setFocused(false);
+    }, [cancelClose]);
+    return { visible: enabled && (pinned || visible), setHovered, setFocused, dismiss };
 }

@@ -294,10 +294,3 @@ diffs-container {
         transform: none;
     }
 }
-
-[data-happy-motion="desktop-sidebar-controls"] {
-    transition: left 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
-}
-@media (prefers-reduced-motion: reduce) {
-    [data-happy-motion="desktop-sidebar-controls"] { transition: none; }
-}

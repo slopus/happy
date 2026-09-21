@@ -59,6 +59,34 @@ describe('desktop workspace sidebar integration', () => {
         expect(storage.values.desktopLeftSidebarCollapsed).toBe(true);
     });
 
+    it('unpin dismisses immediately even while pointer or keyboard focus remains engaged', () => {
+        act(() => layout.toggleLeftSidebar());
+        act(() => layout.setLeftSidebarHovered(true));
+        act(() => layout.setLeftSidebarFocused(true));
+        act(() => layout.toggleLeftSidebar());
+        expect(layout.leftPinned).toBe(false);
+        expect(layout.leftVisible).toBe(false);
+        act(() => vi.advanceTimersByTime(1000));
+        expect(layout.leftVisible).toBe(false);
+        act(() => layout.setLeftSidebarHovered(false));
+        act(() => layout.setLeftSidebarFocused(false));
+        expect(layout.leftVisible).toBe(false);
+        act(() => layout.setLeftSidebarHovered(true));
+        expect(layout.leftVisible).toBe(true);
+    });
+
+    it('unpin ends a live left resize instead of reopening the dismissed sidebar', () => {
+        act(() => layout.toggleLeftSidebar());
+        act(() => layout.beginPanelResize('left', 300));
+        act(() => layout.continuePanelResize(320));
+        expect(layout.resizingSide).toBe('left');
+        act(() => layout.toggleLeftSidebar());
+        expect(layout.leftVisible).toBe(false);
+        expect(layout.resizingSide).toBe(null);
+        act(() => vi.advanceTimersByTime(1000));
+        expect(layout.leftVisible).toBe(false);
+    });
+
     it('writes pin intent, survives remount, and never persists hover or focus reveal', () => {
         act(() => layout.setLeftSidebarHovered(true));
         act(() => layout.setLeftSidebarFocused(true));
@@ -73,7 +101,7 @@ describe('desktop workspace sidebar integration', () => {
         expect(layout.leftWidth).toBeGreaterThan(0);
         act(() => layout.toggleLeftSidebar());
         expect(layout.leftPinned).toBe(false);
-        expect(layout.leftVisible).toBe(true);
+        expect(layout.leftVisible).toBe(false);
         act(() => vi.advanceTimersByTime(220));
         expect(layout.leftVisible).toBe(false);
         expect(storage.values.desktopLeftSidebarCollapsed).toBe(true);
