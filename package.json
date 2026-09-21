@@ -6,6 +6,7 @@
         "release": "node ./scripts/release.cjs",
         "web": "pnpm --filter happy-app web",
         "app-logs": "pnpm --filter happy-app-logs start",
+        "mobile-gym": "pnpm --filter happy-mobile-gym cli",
         "postinstall": "node ./scripts/postinstall.cjs",
         "env:new": "tsx environments/environments.ts new",
         "env:list": "tsx environments/environments.ts list",
@@ -32,6 +33,7 @@
             "packages/happy-server-self-host",
             "packages/happy-wire",
             "packages/happy-app-logs",
+            "packages/happy-mobile-gym",
             "packages/expo-tailcat"
         ]
     },

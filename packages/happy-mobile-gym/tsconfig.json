@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "allowJs": true,
+    "checkJs": true,
+    "types": ["node"],
+    "declaration": true,
+    "outDir": "dist",
+    "rootDir": "sources",
+    "skipLibCheck": true
+  },
+  "include": ["sources/**/*.ts", "sources/**/*.mjs"]
+}

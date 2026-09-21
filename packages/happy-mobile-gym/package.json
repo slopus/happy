@@ -1,0 +1,17 @@
+{
+  "name": "happy-mobile-gym",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./sources/index.ts" },
+  "scripts": {
+    "cli": "tsx sources/cli.ts",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc"
+  },
+  "devDependencies": {
+    "@types/node": ">=20",
+    "tsx": "^4.20.6",
+    "typescript": "5.9.3"
+  }
+}

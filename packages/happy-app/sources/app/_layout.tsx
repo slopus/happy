@@ -182,27 +182,28 @@ async function loadFonts() {
     });
 }
 
-function isDemoDevStartup(): boolean {
-    return __DEV__ && process.env.EXPO_PUBLIC_DEMO_MODE === '1';
+function isHarnessDevStartup(): boolean {
+    return __DEV__ && process.env.EXPO_PUBLIC_HARNESS_MODE === '1';
 }
 
-function hasDemoDevCredentials(): boolean {
+function hasHarnessDevCredentials(): boolean {
     return __DEV__ && Boolean(
-        process.env.EXPO_PUBLIC_DEMO_DEV_TOKEN
-        || process.env.EXPO_PUBLIC_DEMO_DEV_SECRET,
+        process.env.EXPO_PUBLIC_HARNESS_DEV_TOKEN
+        || process.env.EXPO_PUBLIC_HARNESS_DEV_SECRET,
     );
 }
 
-function assertLoopbackDemoServer(): void {
+function assertLoopbackHarnessServer(): void {
     const configuredUrl = getServerUrl();
     let parsed: URL;
     try {
         parsed = new URL(configuredUrl);
     } catch {
-        throw new Error('Demo startup requires a valid loopback server URL.');
+        throw new Error('Harness startup requires a valid loopback server URL.');
     }
-    if (parsed.protocol !== 'http:' || !['localhost', '127.0.0.1', '::1', '[::1]'].includes(parsed.hostname)) {
-        throw new Error('Demo startup refuses a non-loopback server URL.');
+    if (parsed.protocol !== 'http:' || !['localhost', '127.0.0.1', '::1', '[::1]'].includes(parsed.hostname)
+        || parsed.username || parsed.password || parsed.search || parsed.hash || parsed.pathname !== '/') {
+        throw new Error('Harness startup refuses a non-loopback server URL.');
     }
 }
 
@@ -211,18 +212,18 @@ function getDevEnvironmentCredentials(): AuthCredentials | null {
         return null;
     }
 
-    const demoMode = isDemoDevStartup();
-    const token = demoMode
-        ? process.env.EXPO_PUBLIC_DEMO_DEV_TOKEN
+    const harnessMode = isHarnessDevStartup();
+    const token = harnessMode
+        ? process.env.EXPO_PUBLIC_HARNESS_DEV_TOKEN
         : process.env.EXPO_PUBLIC_DEV_TOKEN;
-    const secret = demoMode
-        ? process.env.EXPO_PUBLIC_DEMO_DEV_SECRET
+    const secret = harnessMode
+        ? process.env.EXPO_PUBLIC_HARNESS_DEV_SECRET
         : process.env.EXPO_PUBLIC_DEV_SECRET;
     if (!token || !secret) {
         return null;
     }
 
-    if (demoMode) assertLoopbackDemoServer();
+    if (harnessMode) assertLoopbackHarnessServer();
 
     return { token, secret };
 }
@@ -232,9 +233,9 @@ function getDevWebQueryCredentials(): AuthCredentials | null {
         return null;
     }
 
-    // The recording path accepts credentials only from its command-scoped
+    // The harness accepts credentials only from its command-scoped
     // Metro environment, never from a URL that could be copied or logged.
-    if (isDemoDevStartup()) return null;
+    if (isHarnessDevStartup()) return null;
 
     const params = new URLSearchParams(window.location.search);
     const token = params.get('dev_token');
@@ -283,16 +284,16 @@ export default function RootLayout() {
                 let credentials = await TokenStorage.getCredentials();
                 const devCredentials = getDevWebQueryCredentials() ?? getDevEnvironmentCredentials();
 
-                if (hasDemoDevCredentials() && !isDemoDevStartup()) {
+                if (hasHarnessDevCredentials() && !isHarnessDevStartup()) {
                     await TokenStorage.removeCredentials();
-                    throw new Error('Demo credentials require the debug demo startup flag.');
+                    throw new Error('Harness credentials require the debug harness startup flag.');
                 }
 
-                // A demo bundle must never silently reuse a persisted account
+                // A harness bundle must never silently reuse a persisted account
                 // when its command-scoped auth variables are absent.
-                if (isDemoDevStartup() && !devCredentials) {
+                if (isHarnessDevStartup() && !devCredentials) {
                     await TokenStorage.removeCredentials();
-                    throw new Error('Demo startup did not provide debug credentials.');
+                    throw new Error('Harness startup did not provide debug credentials.');
                 }
 
                 if (devCredentials) {

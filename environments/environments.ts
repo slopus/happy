@@ -119,7 +119,7 @@ function assertGenericEnvironment(config: EnvironmentConfig, operation: string):
     if (config.isolated === true) {
         throw new Error(
             `Environment "${config.name}" is isolated; generic ${operation} is disabled. `
-            + "Use environments/coreDemo.mts for the recording launcher.",
+            + "Use packages/happy-mobile-gym for a new private integration run.",
         );
     }
 }
@@ -376,7 +376,7 @@ export async function createEnvironment(opts?: {
     console.log(`  Project: ${projectPath}`);
     console.log("");
     if (opts?.isolated) {
-        console.log("  Isolated recording environment: use environments/coreDemo.mts to start it.");
+        console.log("  Isolated environment; new private integration runs use packages/happy-mobile-gym.");
     } else {
         const envShRelative = path.relative(process.cwd(), path.join(envDir, "env.sh"));
         console.log("Start in separate terminals:");

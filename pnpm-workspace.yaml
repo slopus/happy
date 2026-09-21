@@ -6,4 +6,5 @@ packages:
   - "packages/happy-server-self-host"
   - "packages/happy-wire"
   - "packages/happy-app-logs"
+  - "packages/happy-mobile-gym"
   - "packages/expo-tailcat"

@@ -9,6 +9,18 @@ const USE_CUSTOM_SERVER_FOR_VOICE_KEY = 'use-custom-server-for-voice';
 const DEFAULT_SERVER_URL = 'https://api.cluster-fluster.com';
 
 export function getServerUrl(): string {
+    // A selected private run must not silently reuse a previously persisted
+    // server (including another loopback run). Production ignores this path.
+    if (__DEV__ && process.env.EXPO_PUBLIC_HARNESS_MODE === '1') {
+        const configured = process.env.EXPO_PUBLIC_HAPPY_SERVER_URL;
+        if (!configured) throw new Error('Harness startup requires its explicit server URL.');
+        const parsed = new URL(configured);
+        if (parsed.protocol !== 'http:' || !['127.0.0.1', 'localhost', '[::1]', '::1'].includes(parsed.hostname)
+            || parsed.username || parsed.password || parsed.search || parsed.hash || parsed.pathname !== '/') {
+            throw new Error('Harness startup requires a plain loopback HTTP origin.');
+        }
+        return parsed.origin;
+    }
     return serverConfigStorage.getString(SERVER_KEY) ||
            (globalThis as any).__HAPPY_CONFIG__?.serverUrl ||
            process.env.EXPO_PUBLIC_HAPPY_SERVER_URL ||

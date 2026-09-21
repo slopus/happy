@@ -1,43 +1,21 @@
 # Synchronized core demo startup
 
-`environments/coreDemo.mts` is a local recording launcher. It is not imported
-by `happy-app`, and it is never part of an iOS, Android, web, or desktop app
-bundle.
-
-## Startup boundary
-
-Create a private environment, start its loopback server, seed one temporary
-account, then start the debug Metro app:
+The demo consumes the reusable [mobile gym](../packages/happy-mobile-gym/README.md).
+There is no demo-specific launcher, active environment pointer, or product UI
+fixture. Create a private run and keep its foreground controller alive:
 
 ```sh
-pnpm tsx environments/coreDemo.mts new
-pnpm tsx environments/coreDemo.mts server
-pnpm tsx environments/coreDemo.mts seed
-pnpm tsx environments/coreDemo.mts metro
+pnpm mobile-gym create --repository "$PWD" --owner "core recording" --server-port 64950 --metro-port 64951
+pnpm mobile-gym start --run /absolute/runRoot/from/create
 ```
 
-The launcher binds both services to `127.0.0.1`, gives the server an isolated
-data/PGlite directory, and generates a random per-environment master secret in
-a mode-0600 ignored file. Environment creation runs its migration with a
-sanitized child environment and emits no generic `env.sh` or bin launcher for
-this isolated environment. `HAPPY_DEMO_MASTER_SECRET` may override that secret
-for a controlled local run, but it is never required in source or printed.
-
-The server child receives an explicit environment allowlist. Host cloud,
-GitHub, S3, SSH, and other ambient credentials are not inherited. The auth
-token and account secret are stored in a mode-0600 ignored file and passed only
-to the debug Metro child as `EXPO_PUBLIC_DEMO_DEV_TOKEN` and
-`EXPO_PUBLIC_DEMO_DEV_SECRET`. The app accepts those variables only when both
-`__DEV__` and the exact `EXPO_PUBLIC_DEMO_MODE=1` flag are true, rejects
-non-loopback server URLs, and clears persisted credentials when demo
-credentials are missing. A production bundle cannot use this startup path for
-authentication. `EXPO_PUBLIC_DISABLE_ANALYTICS=1`
-disables app analytics for this disposable run; `HAPPY_DEMO_MODE=1` identifies
-the server run without changing product behavior.
-
-Do not put a demo token, account secret, master secret, local environment data,
-or a built debug bundle in Git. Do not use this launcher against a production
-server. Stop its children after capture.
+Pass that explicit run root to the desktop recorder's mobile integration. Its
+`manifest.json` supplies loopback endpoints and source provenance, with a private
+credential-file reference for normal account pairing when needed. Follow the
+package README for ownership, readiness, graceful stop, recovery, and the exact
+debug-only startup boundary. Existing old demo environments are not migrated or
+deleted automatically; choose a fresh gym run. Never publish credential files or
+the account-bearing debug JS bundle. Stop the controller after capture.
 
 ## What the synchronized recording proves
 
