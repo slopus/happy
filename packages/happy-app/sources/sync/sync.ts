@@ -92,6 +92,12 @@ type V3GetSessionMessagesResponse = {
 // within int4 while still being effectively "infinite" for any session.
 const SEQ_BACKWARD_INITIAL_SENTINEL = 2_147_483_647;
 
+// 404: the session was deleted; 410: it is gone for good. Neither is a
+// transient failure worth retrying.
+function isSessionGone(status: number): boolean {
+    return status === 404 || status === 410;
+}
+
 type V3PostSessionMessagesResponse = {
     messages: Array<{
         id: string;
@@ -249,15 +255,23 @@ class Sync {
                 log.log('📱 App became active');
                 this.purchasesSync.invalidate();
                 this.profileSync.invalidate();
-                this.machinesSync.invalidate();
                 this.pushTokenSync.invalidate();
-                this.sessionsSync.invalidate();
                 this.nativeUpdateSync.invalidate();
-                log.log('📱 App became active: Invalidating artifacts sync');
-                this.artifactsSync.invalidate();
-                this.friendsSync.invalidate();
-                this.friendRequestsSync.invalidate();
-                this.feedSync.invalidate();
+                // On web, AppState turns 'active' on every tab refocus. While
+                // the data socket stayed connected the live updates already
+                // covered the gap, so the full list refreshes are skipped: the
+                // sessions one alone is a GET /v1/sessions, up to 150 session
+                // decrypts and 7 applySessions rebuilds, paid on every alt-tab.
+                // A socket that dropped runs the same set from onReconnected.
+                if (storage.getState().socketStatus !== 'connected') {
+                    this.machinesSync.invalidate();
+                    this.sessionsSync.invalidate();
+                    log.log('📱 App became active: Invalidating artifacts sync');
+                    this.artifactsSync.invalidate();
+                    this.friendsSync.invalidate();
+                    this.friendRequestsSync.invalidate();
+                    this.feedSync.invalidate();
+                }
 
                 // Refresh the open chat's message log on resume. While the app is
                 // backgrounded the data socket is suspended/dropped, so any messages
@@ -422,7 +436,7 @@ class Sync {
                 || this.sessionLastSeq.has(sessionId)) {
                 return false;
             }
-            await this.fetchInitialLatestPage(sessionId, encryption, signal);
+            if (!await this.fetchInitialLatestPage(sessionId, encryption, signal)) return false;
             storage.getState().applyMessagesLoaded(sessionId);
             return true;
         });
@@ -2291,12 +2305,12 @@ class Sync {
                 // from displaying anything for sessions with thousands of
                 // messages. The user's reported pain point was "opening a long
                 // session feels frozen" — this is the fix.
-                await this.fetchInitialLatestPage(sessionId, encryption);
+                if (!await this.fetchInitialLatestPage(sessionId, encryption)) return;
             } else {
                 // Forward incremental sync. Used after reconnect, invalidate,
                 // or any subsequent visit. Only pulls messages newer than what
                 // we already have, so it's bounded and fast in normal use.
-                await this.fetchForwardSince(sessionId, encryption, knownLastSeq);
+                if (!await this.fetchForwardSince(sessionId, encryption, knownLastSeq)) return;
             }
 
             storage.getState().applyMessagesLoaded(sessionId);
@@ -2369,6 +2383,12 @@ class Sync {
             { signal: preloadSignal },
         );
         if (!response.ok) {
+            // A session the server no longer has will not come back; a throw
+            // here would make its InvalidateSync retry for the life of the tab.
+            if (isSessionGone(response.status)) {
+                log.log(`💬 Session ${sessionId} is gone from the server (${response.status}), not retrying`);
+                return false;
+            }
             throw new Error(`Failed to fetch initial page for ${sessionId}: ${response.status}`);
         }
         const data = await response.json() as V3GetSessionMessagesResponse;
@@ -2393,6 +2413,7 @@ class Sync {
         storage.getState().applyOlderMessagesPagination(sessionId, {
             hasMore: !!data.hasMore && messages.length > 0
         });
+        return true;
     }
 
     private fetchForwardSince = async (
@@ -2404,6 +2425,10 @@ class Sync {
         while (true) {
             const response = await apiSocket.request(`/v3/sessions/${sessionId}/messages?after_seq=${afterSeq}&limit=100`);
             if (!response.ok) {
+                if (isSessionGone(response.status)) {
+                    log.log(`💬 Session ${sessionId} is gone from the server (${response.status}), not retrying`);
+                    return false;
+                }
                 throw new Error(`Failed to forward-sync ${sessionId}: ${response.status}`);
             }
             const data = await response.json() as V3GetSessionMessagesResponse;
@@ -2424,6 +2449,7 @@ class Sync {
             }
             afterSeq = maxSeq;
         }
+        return true;
     }
 
     private applyFetchedMessages = async (
