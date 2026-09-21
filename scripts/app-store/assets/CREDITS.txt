@@ -1,0 +1,23 @@
+App Store 2D device artwork
+
+Frame: iPhone 16 Pro — Black Titanium, Apple Developer Design Resources,
+distributed by James Jingyi's Device Mockups collection:
+https://developer.apple.com/design/resources/
+https://github.com/jamesjingyi/mockup-device-frames
+Exports/iOS/16 Pro/16 Pro - Black Titanium.png
+Upstream Git blob: aac753fd235a3efbaa8c6a382659c1701862fa95
+
+iphone-16-pro-black.png is the unchanged 1406 × 2822 2D frame. Its actual
+transparent screen opening is x=102, y=100, width=1206, height=2622.
+screen-alpha.png is the companion mask used to clip the real screen capture
+to that opening. These assets were moved from Happy Desktop's credited
+scripts/demo/demos/core/assets/device/ source; no 3D model is used here.
+The original Apple design-resource terms apply; this is not a claim that
+Apple device artwork is covered by Happy's MIT software license.
+
+The iPhone 17 Pro Simulator capture has the same 1206 × 2622 screen dimensions.
+The pictured Black Titanium frame is deliberately identified as iPhone 16 Pro.
+iPad compositions are frameless and use actual iPad screenshots.
+
+iPhone and iPad are trademarks of Apple Inc. This presentation is not
+affiliated with or endorsed by Apple.
