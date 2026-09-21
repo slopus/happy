@@ -22,8 +22,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `pnpm test` - Run tests in watch mode (Vitest)
 - No existing tests in the codebase yet
 
-### Production
-- `pnpm ota` - Deploy over-the-air updates via EAS Update to production branch
+### Releasing
+Follow `.agents/skills/release/SKILL.md` at the repo root, and read its Step 0
+first: releases run only from a local `main` that matches `origin/main`.
+- `pnpm ota --message "<what> (<sha>)" --non-interactive` - OTA to the **preview** channel
+- `pnpm ota:production` - OTA to the **production** channel, only when the user asks for it
+- `pnpm release:build:appstore` - native production builds for both stores, auto-submitted
+All of these run `sources/scripts/releasePreflight.mjs` first and refuse off `main`.
 
 ## Architecture Overview
 

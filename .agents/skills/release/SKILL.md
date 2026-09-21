@@ -12,6 +12,72 @@ description: >
 
 You are the release operator for the Happy monorepo. When invoked, walk the user through releasing the component they choose.
 
+## Step 0: Where you release from (never skipped)
+
+**Every release runs from a local `main` that is exactly `origin/main`, checked
+against a fetch made right then.** Not from a worktree. Not from a branch. Not
+from a `main` that is ahead by an unpushed commit or behind by anyone else's.
+Not with uncommitted changes. This applies to every target below: preview OTA,
+production OTA, native builds, store submissions, CLI dispatch.
+
+Why this is rule zero. On 2026-09-20 a preview OTA was published from a
+worktree commit (`fe7de0a1`) that had branched off `main` hours earlier. The
+commit was fine on its own, and it was later rebased and pushed, so git looked
+right afterwards. But expo-updates serves whatever was published *last* on a
+branch, not whatever is on `main`. For the next several hours every phone on
+the preview channel ran a bundle missing four fixes that `main` already had:
+bot faces, the truncated "Auto" chip, paste-from-clipboard, and the send button
+being pushed out of the composer. Nothing errored. The user saw "the same old
+issue" and could not tell why. A release from a stale checkout is not a
+release, it is a rollback that nobody asked for.
+
+Run this and read the output before any release command:
+
+```bash
+git checkout main
+git fetch origin main
+git rev-parse --abbrev-ref HEAD            # must print exactly: main
+git rev-parse HEAD origin/main             # the two hashes must be identical
+git status --porcelain                     # must print nothing
+```
+
+If `HEAD` is behind, `git merge --ff-only origin/main`. If it is ahead, the
+commits are not on `main` yet — push first (see `AGENTS.md` "Sync To Main"),
+then release. If the tree is dirty, commit or stash; a release must be
+reproducible from the commit EAS records.
+
+The mobile release scripts enforce this mechanically:
+`packages/happy-app/sources/scripts/releasePreflight.mjs` runs first in `ota`,
+`ota:production`, `release:build:appstore`, and the other `release:build:*`
+scripts. It fetches, compares `HEAD` to `origin/main`, checks the tree is
+clean, regenerates `changelog.json` and insists it is committed, and refuses
+with the list of `main` commits the release would have dropped. If you run
+`eas update` or `eas build` by hand instead of through those scripts, run the
+preflight by hand first:
+
+```bash
+cd packages/happy-app && node sources/scripts/releasePreflight.mjs
+```
+
+**The only exception is one the user asks for by name, in the current
+conversation** — for example "publish this branch to preview so I can test
+it on my phone". A standing instruction from an earlier session does not
+count, and neither does your own judgement that it is probably fine. When the
+user does ask: fetch and rebase anyway, show them `git log --oneline
+HEAD..origin/main` (what the release will *not* contain), get a yes, run with
+`HAPPY_RELEASE_ALLOW_OFF_MAIN=1`, and say in the final report that the release
+was off-main and from which commit. Afterwards, once the work lands on `main`,
+republish from `main` so the channel is back on the mainline.
+
+After publishing an OTA, verify the channel now serves what you meant:
+
+```bash
+cd packages/happy-app && eas update:list --branch <branch> --limit 1 --non-interactive
+```
+
+The newest group's commit must be your `HEAD`. If it is not, someone published
+after you; find out from what.
+
 ## Step 1: Pick a target
 
 Ask which component to release:
@@ -285,7 +351,11 @@ and fast-forward/rebase the workflow's version commit while preserving local wor
 
     Package:     packages/happy-app
     Variants:    development, preview, production
-    Platform:    Expo SDK 54 / React Native 0.81.4
+    Platform:    Expo SDK 55 / React Native 0.83.1
+
+Step 0 first, always. Every command in this section is wrapped by
+`sources/scripts/releasePreflight.mjs`; if you bypass a `pnpm` script and call
+`eas` directly, run the preflight yourself.
 
 ### Build types
 
@@ -300,18 +370,30 @@ options in order of popularity:
 #### OTA Updates
 
   ```bash
-  # Preview (most common)
-  pnpm --filter happy-app run ota
+  # Preview (most common). pnpm forwards the trailing flags to `eas update`.
+  cd packages/happy-app && pnpm ota --message "<what changed> (<short sha>)" --non-interactive
 
   # Production
-  pnpm --filter happy-app run ota:production
+  cd packages/happy-app && pnpm ota:production
   ```
 
-OTA scripts require a message — stdin is not readable from Claude Code, so run the
-underlying `eas update` directly with `--message`:
-  ```bash
-  cd packages/happy-app && APP_ENV=preview NODE_ENV=preview tsx sources/scripts/parseChangelog.ts && pnpm typecheck && eas update --branch preview --message "<message>"
-  ```
+`eas update` prompts for a message when none is given, and stdin is not
+readable from an agent, so always pass `--message` and `--non-interactive`.
+Put the short commit hash in the message: it is what lets the next person
+answer "what is actually on this channel" from `eas update:list` alone.
+
+The `ota` script is `releasePreflight.mjs && pnpm typecheck && eas update
+--branch preview`. The preflight regenerates `changelog.json` from
+`CHANGELOG.md` and refuses if the result is not committed, so edit the
+changelog, regenerate, commit, push, *then* release. Do not reach around the
+script to `eas update` directly just to skip a step it is failing on; the
+failure is the point.
+
+Production OTA (`ota:production`) dispatches the EAS workflow in
+`.eas/workflows/ota.yaml`, which publishes the current commit to the
+`production` channel. Same rule: `main`, matching `origin/main`, pushed. Never
+run it without the user asking for a production OTA in the current
+conversation.
 
 #### Native Builds
 
@@ -323,15 +405,21 @@ underlying `eas update` directly with `--message`:
 - **TestFlight / Play Store builds** — use `-store` profiles for distribution via TestFlight and Play Store.
   **Always pass `--auto-submit`** so the build goes straight to TestFlight after completion.
   ```bash
-  # Preview (TestFlight/internal testing)
-  cd packages/happy-app && eas build --profile preview-store --platform ios --non-interactive --auto-submit
+  # Production, both platforms, auto-submitted to App Store Connect and Play Console.
+  # This is `release-production.sh`, and it runs the preflight first.
+  cd packages/happy-app && pnpm release:build:appstore
+
+  # Preview (TestFlight/internal testing) — run the preflight yourself, then:
+  cd packages/happy-app && node sources/scripts/releasePreflight.mjs && eas build --profile preview-store --platform ios --non-interactive --auto-submit
 
   # Dev (TestFlight, points to dev server)
-  cd packages/happy-app && eas build --profile development-store --platform ios --non-interactive --auto-submit
-
-  # Production (App Store / Play Store submission)
-  cd packages/happy-app && eas build --profile production --platform ios --non-interactive --auto-submit
+  cd packages/happy-app && node sources/scripts/releasePreflight.mjs && eas build --profile development-store --platform ios --non-interactive --auto-submit
   ```
+
+  Afterwards, `eas build:list --limit 4 --non-interactive --json` and check
+  that each build's `gitCommitHash` is your `HEAD` and its `runtimeVersion`
+  is the one in `app.config.js`. A build from the wrong commit is the native
+  version of the stale-OTA mistake, and it is far harder to undo.
 
 **IMPORTANT:** Always pass `--non-interactive` to `eas build` commands. Without it,
 EAS prompts for Apple account login interactively which breaks in non-TTY contexts
@@ -359,7 +447,9 @@ the `-store` profiles above.
     preview              internal       preview
 
 Version source is remote (EAS manages build numbers, auto-incremented).
-Runtime version "20" — bump when native code changes to invalidate OTA.
+Runtime version is `runtimeVersion` in `app.config.js` (currently "21") — bump
+it when native code changes, so an OTA built against the new native layer can
+never land on an old binary.
 
 ### App Store Connect
 
@@ -429,6 +519,7 @@ Separate repo, not part of this monorepo. Guide the user to push to that repo.
 
 ## Rules
 
+- **Release only from local `main` that is `origin/main`, fetched right then, tree clean** — see Step 0. Not a worktree, not a branch, not ahead, not behind. The mobile scripts refuse otherwise. The only exception is one the user asks for by name in the current conversation; then run with `HAPPY_RELEASE_ALLOW_OFF_MAIN=1`, show what `main` commits the release lacks, and say it was off-main in the report.
 - **Release notes: investigate with subagents, exclude default-off, ask when unsure** — see "Writing release notes" above.
 - **Always present options** — never assume which component, channel, or version.
 - **Always verify before publishing** — show the user what will be published and get confirmation.
