@@ -2,6 +2,7 @@ import * as React from 'react';
 import { ActivityIndicator, Linking, Platform, Pressable, ScrollView, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
 import { RoundButton } from '../RoundButton';
@@ -14,8 +15,20 @@ import { Modal } from '@/modal';
 import { trackConnectAttempt } from '@/track';
 import { t } from '@/text';
 import { getServerInfo } from '@/sync/serverConfig';
+import { openExternalUrl } from '@/utils/openExternalUrl';
 
 const DESKTOP_URL = 'https://happy.engineering';
+
+/**
+ * Where somebody stuck on this screen can turn, and to whom. The same list
+ * the desktop app offers during its own setup.
+ */
+const HELP_LINKS: readonly { label: () => string; url: string }[] = [
+    { label: () => t('onboarding.helpDiscord'), url: 'https://discord.gg/fX9WBAhyfD' },
+    { label: () => t('onboarding.helpBra1nDump'), url: 'https://x.com/bra1n_dump' },
+    { label: () => t('onboarding.helpEx3ndr'), url: 'https://x.com/Ex3NDR' },
+    { label: () => t('onboarding.helpIssues'), url: 'https://github.com/slopus/happy/issues' },
+];
 
 /**
  * How long to keep saying "connected" after a successful scan while the linked
@@ -24,6 +37,10 @@ const DESKTOP_URL = 'https://happy.engineering';
  * does.
  */
 const MACHINE_ARRIVAL_TIMEOUT_MS = 10_000;
+
+/** Room kept under the checklist so the corner button never covers its last row. */
+const GET_HELP_RESERVED_HEIGHT = 56;
+const SCROLL_BOTTOM_PADDING = 48;
 
 type ChecklistRowProps = {
     checked: boolean;
@@ -115,10 +132,13 @@ function useScanActions(onSuccess: () => void) {
 export const LinkComputerChecklist = React.memo(function LinkComputerChecklist({
     variant,
     onShowArchived,
+    bottomInset = 0,
 }: {
     variant: 'link' | 'offline';
     /** Archive-only accounts keep a way to their archive while offline. */
     onShowArchived?: () => void;
+    /** Extra room under the content for anything floating over it. */
+    bottomInset?: number;
 }) {
     const router = useRouter();
     const machines = useAllMachines({ includeOffline: true });
@@ -187,7 +207,7 @@ export const LinkComputerChecklist = React.memo(function LinkComputerChecklist({
             ? t('onboarding.offlineLinkedStep', { name: choices[0].name })
             : t('onboarding.offlineLinkedStepMany', { count: choices.length });
         return (
-            <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+            <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: SCROLL_BOTTOM_PADDING + bottomInset }]} keyboardShouldPersistTaps="handled">
                 <View style={styles.content}>
                     <Text style={styles.title}>{title}</Text>
                     <ChecklistRow checked title={linked} />
@@ -233,7 +253,7 @@ export const LinkComputerChecklist = React.memo(function LinkComputerChecklist({
     }
 
     return (
-        <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+        <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: SCROLL_BOTTOM_PADDING + bottomInset }]} keyboardShouldPersistTaps="handled">
             <View style={styles.content}>
                 <ChecklistRow
                     checked={!!ticked.install}
@@ -273,6 +293,42 @@ export const LinkComputerChecklist = React.memo(function LinkComputerChecklist({
 });
 
 /**
+ * Somewhere to turn without leaving the step you are stuck on. The options
+ * arrive as the app's ordinary alert — a native sheet on a phone, the web
+ * modal in a browser — so this adds a corner button, not a new surface.
+ */
+export const GetHelpButton = React.memo(function GetHelpButton() {
+    const { theme } = useUnistyles();
+
+    const openHelp = React.useCallback(() => {
+        Modal.alert(
+            t('onboarding.getHelp'),
+            t('onboarding.helpMessage'),
+            [
+                ...HELP_LINKS.map((link) => ({
+                    text: link.label(),
+                    onPress: () => { void openExternalUrl(link.url); },
+                })),
+                { text: t('common.cancel'), style: 'cancel' as const },
+            ],
+        );
+    }, []);
+
+    return (
+        <Pressable
+            onPress={openHelp}
+            accessibilityRole="button"
+            accessibilityLabel={t('onboarding.getHelp')}
+            hitSlop={8}
+            style={({ pressed }) => [styles.getHelp, pressed && styles.getHelpPressed]}
+        >
+            <Ionicons name="help-circle-outline" size={17} color={theme.colors.textSecondary} />
+            <Text style={styles.getHelpText}>{t('onboarding.getHelp')}</Text>
+        </Pressable>
+    );
+});
+
+/**
  * The first-run screen: the checklist under its own header, in place of the
  * session list and its dock. Shown at the home route once the account exists
  * and no machine has been linked yet.
@@ -280,6 +336,7 @@ export const LinkComputerChecklist = React.memo(function LinkComputerChecklist({
 export const OnboardingLinkComputer = React.memo(function OnboardingLinkComputer() {
     const router = useRouter();
     const { theme } = useUnistyles();
+    const insets = useSafeAreaInsets();
     const serverInfo = getServerInfo();
     return (
         <View style={styles.root}>
@@ -298,7 +355,10 @@ export const OnboardingLinkComputer = React.memo(function OnboardingLinkComputer
                     </Pressable>
                 )}
             />
-            <LinkComputerChecklist variant="link" />
+            <LinkComputerChecklist variant="link" bottomInset={GET_HELP_RESERVED_HEIGHT} />
+            <View style={[styles.getHelpCorner, { bottom: insets.bottom + 12 }]} pointerEvents="box-none">
+                <GetHelpButton />
+            </View>
         </View>
     );
 });
@@ -317,7 +377,29 @@ const styles = StyleSheet.create((theme) => ({
     scroll: {
         alignItems: 'center',
         paddingTop: 16,
-        paddingBottom: 48,
+    },
+    // Sits over the checklist rather than under it, so a short list keeps the
+    // button at the bottom of the screen instead of floating mid-page.
+    getHelpCorner: {
+        position: 'absolute',
+        right: 16,
+        alignItems: 'flex-end',
+    },
+    getHelp: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        minHeight: 36,
+        paddingHorizontal: 12,
+        borderRadius: 18,
+    },
+    getHelpPressed: {
+        backgroundColor: theme.colors.surfacePressedOverlay,
+    },
+    getHelpText: {
+        ...Typography.default('semiBold'),
+        fontSize: 15,
+        color: theme.colors.textSecondary,
     },
     content: {
         width: '100%',

@@ -934,6 +934,13 @@ export const en: TranslationStructure = {
         offlineOpenBody: 'Open Happy Desktop, or run happy in a terminal. This screen updates as soon as it connects.',
         offlineTroubleshoot: 'Troubleshoot',
         linkAnother: 'Link another computer',
+        // Get help, bottom right of the link screen.
+        getHelp: 'Get help',
+        helpMessage: 'Stuck? Come ask us.',
+        helpDiscord: 'Ask on Discord',
+        helpBra1nDump: 'DM @bra1n_dump on X',
+        helpEx3ndr: 'DM @Ex3NDR on X',
+        helpIssues: 'Browse known issues',
         // Gear on the link screen.
         settingsTitle: 'Settings',
         settingsServer: 'Server',
