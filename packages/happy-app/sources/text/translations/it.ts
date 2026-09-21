@@ -37,6 +37,7 @@ export const it: TranslationStructure = {
     },
 
     common: {
+        managedByOrganization: "Gestito dalla tua organizzazione",
         // Simple string constants
         cancel: 'Annulla',
         authenticate: 'Autentica',
