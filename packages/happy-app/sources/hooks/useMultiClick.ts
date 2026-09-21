@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 interface UseMultiClickOptions {
     /** Number of clicks required to trigger the callback */
@@ -24,6 +24,11 @@ export function useMultiClick(
     const { requiredClicks, resetTimeout = 2000, onClickCountChange } = options;
     const [clickCount, setClickCount] = useState(0);
     const resetTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+    // A pending reset would otherwise fire setState on an unmounted component.
+    useEffect(() => () => {
+        if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
+    }, []);
 
     const handleClick = useCallback(() => {
         // Clear existing timer
