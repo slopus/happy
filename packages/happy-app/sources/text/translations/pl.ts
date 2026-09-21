@@ -294,6 +294,8 @@ export const pl: TranslationStructure = {
         sessions: 'Sesje',
         showSessions: 'Pokaż panel boczny sesji',
         hideSessions: 'Ukryj panel boczny sesji',
+        pinSessions: 'Przypnij panel boczny sesji',
+        unpinSessions: 'Odepnij panel boczny sesji',
         showPanel: ({ panel }: { panel: string }) => `Pokaż ${panel}`,
         hidePanel: ({ panel }: { panel: string }) => `Ukryj ${panel}`,
         resizePanel: ({ panel }: { panel: string }) => `Zmień szerokość ${panel}`,

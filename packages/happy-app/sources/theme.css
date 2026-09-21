@@ -274,3 +274,30 @@ diffs-container {
     scrollbar-width: auto;
     scrollbar-color: auto;
 }
+
+/* Hover reveal is an overlay: animate compositor properties without resizing chat. */
+[data-happy-motion="desktop-sidebar"] {
+    transition: transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 180ms ease, visibility 0s;
+    transform: translateX(0);
+    opacity: 1;
+    visibility: visible;
+}
+[data-happy-motion="desktop-sidebar"][data-sidebar-visible="false"] {
+    transform: translateX(-24px);
+    opacity: 0;
+    visibility: hidden;
+    transition-delay: 0s, 0s, 220ms;
+}
+@media (prefers-reduced-motion: reduce) {
+    [data-happy-motion="desktop-sidebar"] {
+        transition: none;
+        transform: none;
+    }
+}
+
+[data-happy-motion="desktop-sidebar-controls"] {
+    transition: left 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+    [data-happy-motion="desktop-sidebar-controls"] { transition: none; }
+}

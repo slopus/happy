@@ -53,8 +53,8 @@ const SidebarNavigatorContent = React.memo(() => {
     const { theme } = useUnistyles();
     const {
         leftExpandedWidth,
+        leftPinned,
         leftVisible: showSidebar,
-        leftWidth,
         setLeftSidebarHovered,
         setLeftSidebarFocused,
     } = useDesktopWorkspaceLayout();
@@ -69,7 +69,7 @@ const SidebarNavigatorContent = React.memo(() => {
         return leftExpandedWidth + (Platform.OS === 'web' ? DESKTOP_PRIMARY_NAVIGATION_WIDTH : 0);
     }, [isDesktopLayout, leftExpandedWidth, windowWidth]);
     const fixedRail = isDesktopLayout && Platform.OS === 'web';
-    const drawerWidth = showSidebar ? fullDrawerWidth : fixedRail ? DESKTOP_PRIMARY_NAVIGATION_WIDTH : 0;
+    const drawerWidth = (fixedRail ? leftPinned : showSidebar) ? fullDrawerWidth : fixedRail ? DESKTOP_PRIMARY_NAVIGATION_WIDTH : 0;
     const hideDrawer = isDesktopLayout && !showSidebar && !fixedRail;
 
     React.useEffect(() => {
@@ -130,7 +130,8 @@ const SidebarNavigatorContent = React.memo(() => {
             } as any;
         }
 
-        // Tablet: always permanent, just collapse width in zen mode.
+        // Desktop keeps the rail permanent. Only a pinned panel reserves layout
+        // width; hover reveal animates the secondary column as an overlay.
         //
         // We deliberately do NOT animate `width` on web. A CSS transition on
         // the drawer width re-flowed the chat flex-1 sibling on every frame,
@@ -145,6 +146,7 @@ const SidebarNavigatorContent = React.memo(() => {
                 backgroundColor: theme.colors.groupped.background,
                 borderRightWidth: 0,
                 width: drawerWidth,
+                zIndex: 10,
                 overflow: Platform.OS === 'web' ? 'visible' as const : 'hidden' as const,
             } as any,
             sceneStyle: Platform.OS === 'web' ? {
@@ -169,8 +171,10 @@ const SidebarNavigatorContent = React.memo(() => {
                     pointerEvents: hideDrawer ? 'none' : 'auto',
                 } : {})}
                 {...(fixedRail ? {
-                    onMouseEnter: () => setLeftSidebarHovered(true),
-                    onMouseLeave: () => setLeftSidebarHovered(false),
+                    // Match Pressable's pointer-based hover events. Mixing mouseleave
+                    // with pointerenter can cancel the pin button's hover on arrival.
+                    onPointerEnter: (event: React.PointerEvent) => { if (event.pointerType !== 'touch') setLeftSidebarHovered(true); },
+                    onPointerLeave: (event: React.PointerEvent) => { if (event.pointerType !== 'touch') setLeftSidebarHovered(false); },
                     onFocus: (event: React.FocusEvent<HTMLElement>) => {
                         if (event.target.matches(':focus-visible')) setLeftSidebarFocused(true);
                     },
@@ -194,10 +198,11 @@ const SidebarNavigatorContent = React.memo(() => {
                     desktopDensity={isDesktopLayout}
                     desktopPrimaryNavigation={fixedRail}
                     desktopSecondaryVisible={showSidebar}
+                    desktopSecondaryWidth={leftExpandedWidth}
                 />
             </View>
         ),
-        [drawerWidth, fixedRail, hideDrawer, isDesktopLayout, showSidebar, setLeftSidebarHovered, setLeftSidebarFocused]
+        [leftExpandedWidth, drawerWidth, fixedRail, hideDrawer, isDesktopLayout, showSidebar, setLeftSidebarHovered, setLeftSidebarFocused]
     );
 
     return (
@@ -215,7 +220,7 @@ const SidebarNavigatorContent = React.memo(() => {
                     accessibilityLabel={t('desktopWorkspace.resizePanel', {
                         panel: t('desktopWorkspace.sessions'),
                     })}
-                    offset={leftWidth + (Platform.OS === 'web' ? DESKTOP_PRIMARY_NAVIGATION_WIDTH : 0) - 5}
+                    offset={leftExpandedWidth + (Platform.OS === 'web' ? DESKTOP_PRIMARY_NAVIGATION_WIDTH : 0) - 5}
                     side="left"
                 />
             )}
@@ -231,9 +236,13 @@ const PersistentHeader = React.memo(() => {
     const router = useRouter();
     const [zenMode, setZenMode] = useLocalSettingMutable('zenMode');
     const {
+        resizingSide,
+        leftPinned: sidebarPinned,
         leftVisible: sidebarVisible,
-        leftWidth: sidebarWidth,
+        leftExpandedWidth: sidebarWidth,
         toggleLeftSidebar,
+        setLeftSidebarHovered,
+        setLeftSidebarFocused,
     } = useDesktopWorkspaceLayout();
     const [sidebarTooltipVisible, setSidebarTooltipVisible] = React.useState(false);
     const [zenTooltipVisible, setZenTooltipVisible] = React.useState(false);
@@ -284,12 +293,14 @@ const PersistentHeader = React.memo(() => {
 
     const canGoBackEffective = canGoBack || overlayCanBack;
     const canGoForwardEffective = canGoForward || overlayCanForward;
-    const sidebarToggleLabel = sidebarVisible
-        ? t('desktopWorkspace.hideSessions')
-        : t('desktopWorkspace.showSessions');
+    const sidebarToggleLabel = Platform.OS === 'web'
+        ? (sidebarPinned ? t('desktopWorkspace.unpinSessions') : t('desktopWorkspace.pinSessions'))
+        : (sidebarVisible ? t('desktopWorkspace.hideSessions') : t('desktopWorkspace.showSessions'));
+    const sidebarSelected = Platform.OS === 'web' ? sidebarPinned : sidebarVisible;
 
     return (
         <View
+            {...(Platform.OS === 'web' ? { dataSet: { happyMotion: resizingSide ? undefined : 'desktop-sidebar-controls' } } : {})}
             style={{
                 position: 'absolute',
                 top: Platform.OS === 'web' ? DESKTOP_WORKSPACE_OUTER_GAP : 0,
@@ -320,29 +331,33 @@ const PersistentHeader = React.memo(() => {
             >
                 <View style={styles.sidebarToggleWrapper}>
                     <Pressable
-                        onBlur={() => setSidebarTooltipVisible(false)}
-                        onFocus={() => setSidebarTooltipVisible(true)}
-                        onHoverIn={() => setSidebarTooltipVisible(true)}
-                        onHoverOut={() => setSidebarTooltipVisible(false)}
+                        onBlur={() => { setSidebarTooltipVisible(false); setLeftSidebarFocused(false); }}
+                        onFocus={(event) => {
+                            setSidebarTooltipVisible(true);
+                            if (Platform.OS === 'web' && (event.target as unknown as HTMLElement).matches?.(':focus-visible')) setLeftSidebarFocused(true);
+                        }}
+                        onHoverIn={() => { setSidebarTooltipVisible(true); if (sidebarVisible) setLeftSidebarHovered(true); }}
+                        onHoverOut={() => { setSidebarTooltipVisible(false); setLeftSidebarHovered(false); }}
                         onPress={toggleLeftSidebar}
                         hitSlop={8}
                         style={({ pressed }) => [
                             styles.sidebarToggle,
-                            sidebarVisible && styles.toggleSelected,
+                            sidebarSelected && styles.toggleSelected,
                             pressed && styles.togglePressed,
                         ]}
                         aria-expanded={sidebarVisible}
+                        aria-pressed={sidebarSelected}
                         accessibilityHint={`${sidebarToggleLabel} (${shortcuts.leftLabel})`}
                         accessibilityLabel={sidebarToggleLabel}
                         accessibilityRole="button"
-                        accessibilityState={{ expanded: sidebarVisible }}
+                        accessibilityState={{ expanded: sidebarVisible, selected: sidebarSelected }}
                         {...({
                             'aria-keyshortcuts': shortcuts.leftAria,
                         } as any)}
                         testID="desktop-navigation-sidebar-button"
                     >
                         <Ionicons
-                            name={sidebarVisible ? 'folder-open-outline' : 'folder-outline'}
+                            name={sidebarSelected ? 'folder-open-outline' : 'folder-outline'}
                             size={19}
                             color={theme.colors.header.tint}
                         />
@@ -468,7 +483,7 @@ const styles = StyleSheet.create((theme) => ({
         borderRadius: 10,
     },
     toggleSelected: {
-        backgroundColor: theme.colors.surfacePressed,
+        backgroundColor: theme.colors.surfaceSelected,
     },
     togglePressed: {
         opacity: 0.7,

@@ -286,6 +286,8 @@ export const ja: TranslationStructure = {
         sessions: 'セッション',
         showSessions: 'セッションサイドバーを表示',
         hideSessions: 'セッションサイドバーを非表示',
+        pinSessions: 'セッションサイドバーを固定',
+        unpinSessions: 'セッションサイドバーの固定を解除',
         showPanel: ({ panel }: { panel: string }) => `${panel}を表示`,
         hidePanel: ({ panel }: { panel: string }) => `${panel}を非表示`,
         resizePanel: ({ panel }: { panel: string }) => `${panel}の幅を変更`,

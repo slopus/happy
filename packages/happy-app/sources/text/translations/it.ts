@@ -283,6 +283,8 @@ export const it: TranslationStructure = {
         sessions: 'Sessioni',
         showSessions: 'Mostra la barra laterale delle sessioni',
         hideSessions: 'Nascondi la barra laterale delle sessioni',
+        pinSessions: 'Fissa la barra laterale delle sessioni',
+        unpinSessions: 'Sblocca la barra laterale delle sessioni',
         showPanel: ({ panel }: { panel: string }) => `Mostra ${panel}`,
         hidePanel: ({ panel }: { panel: string }) => `Nascondi ${panel}`,
         resizePanel: ({ panel }: { panel: string }) => `Ridimensiona ${panel}`,

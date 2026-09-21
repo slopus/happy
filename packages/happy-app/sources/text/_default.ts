@@ -353,6 +353,8 @@ export const en = {
         sessions: 'Sessions',
         showSessions: 'Show sessions sidebar',
         hideSessions: 'Hide sessions sidebar',
+        pinSessions: 'Pin sessions sidebar',
+        unpinSessions: 'Unpin sessions sidebar',
         showPanel: ({ panel }: { panel: string }) => `Show ${panel}`,
         hidePanel: ({ panel }: { panel: string }) => `Hide ${panel}`,
         resizePanel: ({ panel }: { panel: string }) => `Resize ${panel}`,

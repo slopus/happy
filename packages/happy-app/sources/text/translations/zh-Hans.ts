@@ -306,6 +306,8 @@ export const zhHans: TranslationStructure = {
         sessions: '会话',
         showSessions: '展开会话侧栏',
         hideSessions: '收起会话侧栏',
+        pinSessions: '固定会话侧边栏',
+        unpinSessions: '取消固定会话侧边栏',
         showPanel: ({ panel }: { panel: string }) => `展开${panel}`,
         hidePanel: ({ panel }: { panel: string }) => `收起${panel}`,
         resizePanel: ({ panel }: { panel: string }) => `调整${panel}宽度`,

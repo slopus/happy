@@ -10,8 +10,8 @@ import { useDesktopSidebarReveal } from './useDesktopSidebarReveal';
 describe('desktop sidebar reveal', () => {
     let renderer: any;
     let current: ReturnType<typeof useDesktopSidebarReveal>;
-    function Harness({ enabled = true, resizing = false }) {
-        current = useDesktopSidebarReveal(enabled, resizing);
+    function Harness({ enabled = true, resizing = false, pinned = false }) {
+        current = useDesktopSidebarReveal(enabled, resizing, pinned);
         return null;
     }
     beforeEach(() => { vi.useFakeTimers(); });
@@ -43,15 +43,29 @@ describe('desktop sidebar reveal', () => {
         act(() => vi.advanceTimersByTime(220));
         expect(current.visible).toBe(false);
     });
-    it('keeps explicit opening after exiting Zen and cancels a pending hover close', () => {
-        act(() => { renderer = TestRenderer.create(<Harness enabled={false} />); });
-        act(() => { current.toggle(); renderer.update(<Harness />); });
-        act(() => vi.advanceTimersByTime(300));
+    it('stays pinned after pointer leave, then returns to automatic reveal when unpinned', () => {
+        act(() => { renderer = TestRenderer.create(<Harness pinned />); });
         expect(current.visible).toBe(true);
         act(() => current.setHovered(true));
         act(() => current.setHovered(false));
-        act(() => { current.toggle(); current.toggle(); });
-        act(() => vi.advanceTimersByTime(300));
+        act(() => vi.advanceTimersByTime(500));
+        expect(current.visible).toBe(true);
+        act(() => renderer.update(<Harness />));
+        act(() => vi.advanceTimersByTime(220));
+        expect(current.visible).toBe(false);
+        act(() => current.setHovered(true));
+        expect(current.visible).toBe(true);
+    });
+    it('pinning cancels a pending close and survives Zen mode', () => {
+        act(() => { renderer = TestRenderer.create(<Harness />); });
+        act(() => current.setHovered(true));
+        act(() => current.setHovered(false));
+        act(() => renderer.update(<Harness pinned />));
+        act(() => vi.advanceTimersByTime(500));
+        expect(current.visible).toBe(true);
+        act(() => renderer.update(<Harness pinned enabled={false} />));
+        expect(current.visible).toBe(false);
+        act(() => renderer.update(<Harness pinned />));
         expect(current.visible).toBe(true);
     });
     it('disables reveal in Zen/mobile and cleans up pending closes', () => {

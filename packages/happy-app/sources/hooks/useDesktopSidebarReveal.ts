@@ -1,7 +1,7 @@
 import * as React from 'react';
 
 /** Transient desktop reveal; pointer travel never writes to persisted settings. */
-export function useDesktopSidebarReveal(enabled: boolean, resizing: boolean) {
+export function useDesktopSidebarReveal(enabled: boolean, resizing: boolean, pinned = false) {
     const [visible, setVisible] = React.useState(false);
     const [hovered, setHovered] = React.useState(false);
     const [focused, setFocused] = React.useState(false);
@@ -20,7 +20,7 @@ export function useDesktopSidebarReveal(enabled: boolean, resizing: boolean) {
             setVisible(false);
             return;
         }
-        if (hovered || focused || resizing) {
+        if (pinned || hovered || focused || resizing) {
             wasEngaged.current = true;
             setVisible(true);
             return;
@@ -30,12 +30,8 @@ export function useDesktopSidebarReveal(enabled: boolean, resizing: boolean) {
             closeTimer.current = setTimeout(() => setVisible(false), 220);
         }
         return cancelClose;
-    }, [enabled, hovered, focused, resizing, cancelClose]);
+    }, [enabled, pinned, hovered, focused, resizing, cancelClose]);
 
     React.useEffect(() => cancelClose, [cancelClose]);
-    const toggle = React.useCallback(() => {
-        cancelClose();
-        setVisible(value => !value);
-    }, [cancelClose]);
-    return { visible: enabled && visible, setHovered, setFocused, toggle };
+    return { visible: enabled && (pinned || visible), setHovered, setFocused };
 }

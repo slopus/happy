@@ -285,6 +285,8 @@ export const zhHant: TranslationStructure = {
         sessions: '工作階段',
         showSessions: '展開工作階段側欄',
         hideSessions: '收起工作階段側欄',
+        pinSessions: '固定工作階段側欄',
+        unpinSessions: '取消固定工作階段側欄',
         showPanel: ({ panel }: { panel: string }) => `展開${panel}`,
         hidePanel: ({ panel }: { panel: string }) => `收起${panel}`,
         resizePanel: ({ panel }: { panel: string }) => `調整${panel}寬度`,

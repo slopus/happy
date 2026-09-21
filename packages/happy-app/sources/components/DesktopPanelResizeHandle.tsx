@@ -24,14 +24,14 @@ export const DesktopPanelResizeHandle = React.memo(function DesktopPanelResizeHa
         continuePanelResize,
         endPanelResize,
         leftMaximumWidth,
-        leftWidth,
+        leftExpandedWidth,
         resizePanelBy,
         resizingSide,
         rightMaximumWidth,
         rightWidth,
         setLeftSidebarFocused,
     } = useDesktopWorkspaceLayout();
-    const currentWidth = side === 'left' ? leftWidth : rightWidth;
+    const currentWidth = side === 'left' ? leftExpandedWidth : rightWidth;
     const minimumWidth = side === 'left' ? DESKTOP_LEFT_PANEL_MIN_WIDTH : DESKTOP_RIGHT_PANEL_MIN_WIDTH;
     const maximumWidth = side === 'left' ? leftMaximumWidth : rightMaximumWidth;
 
