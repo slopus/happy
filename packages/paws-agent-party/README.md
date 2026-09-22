@@ -1,5 +1,20 @@
 # Paws agents-party POC
 
+## Paws account integration
+
+Production `/agent-party/` uses the current Paws account rather than a shared invitation token. Open **Agent 群聊** or **群聊 Agent 管理** in the Paws Web sidebar, or **设置 → Agent 群聊** on mobile. New users create a Paws account through the regular Paws entry; no GitHub OAuth application is required for this route.
+
+Paws Web and mobile manage the account's shared Agent catalog at `/agent-profiles` with native controls: 24 avatars, role instructions, Codex configuration, machine selection and remote directory browsing. The independent Party website reads that same account catalog and refreshes it while open; existing rooms retain their invitation snapshots. Existing device-local AgentLauncher spaces are separate and are not silently uploaded or overwritten.
+
+The independent website's “Use Paws” link opens `/agent-party-access`. After explicit authorization, Paws returns to the fixed Party URL with a single-use 30-second ticket. No iframe or WebView is used. The ticket is removed from the address bar and exchanged for a scoped session stored only in this tab's sessionStorage, allowing reloads. Logout revokes it; the Paws bearer and recovery secret never appear in URLs or browser storage. The server validates the bearer and independently restores and verifies credential ownership against the fixed trusted relay before attaching the SDK. SDK credentials remain in memory. This is a trusted hosted Agent executor with the account access needed to run Agents.
+
+Each verified account has its own Party database, profiles, rooms, images and SDK connection beneath `accounts/<sha256(relay + NUL + accountId)>`. All data APIs and event streams use that namespace. Sessions expire after 12 hours, revalidate the Paws bearer every minute, and are revoked on frame logout. Event streams reconnect within 55 seconds to recheck access. Idle SDK instances are retired after 30 minutes and require a fresh account bootstrap. The old shared access token is now only a server-side derivation key and cannot authenticate the public API.
+
+Legacy single-space files remain untouched in the original data directory. **They are not assigned to the first visitor.** Before migrating them, identify and verify the intended owner on the configured relay, stop the service, back up the source, and ensure the destination account directory is absent. Copy only `party/`, `assets/`, `runs.json`, `group-chat-rooms.json` and `group-chat-profiles.json`; never copy access tokens or service locks. The offline helper `node scripts/migrate-legacy-space.mjs --data-dir /var/lib/paws-agent-party --account-id <verified-owner-id> --token-file <private-token-file>` enforces both service locks, verifies account ownership, refuses an existing destination and verifies every copied file by checksum. Build the server bundle first. It records a manifest and preserves the source; verify history and images after opening the target account. The token file stays outside the data directory and is never copied. Do not combine two existing account spaces by overwriting files.
+
+Local UI verification can enable `PAWS_PARTY_ACCOUNT_FIXTURE=1` with the explicit `start:test` entry. Its `fixture-ticket` file is valid once for 30 seconds. This entry uses deterministic SDK fixtures and cannot prove real Agent or native-device behavior.
+
+
 ## Current group-chat entry
 
 交互与布局参考：[群聊交互设计（用户截图版归档）](docs/group-chat-interaction-design.md)。

@@ -329,7 +329,13 @@ export const SettingsView = React.memo(function SettingsView() {
                         showChevron={false}
                     />
                 </ItemGroup>
+
+
             )}
+
+                <ItemGroup title="Agent 群聊">
+                    <Item title="群聊 Agent 管理" subtitle="配置角色、头像与设备，在独立群聊网站使用" icon={<Ionicons name="person-add-outline" size={29} color={theme.colors.accent}/>} onPress={() => router.push('/agent-profiles')}/>
+                </ItemGroup>
 
             {/* General — 主题/语言入口（照图3，列表行 + 右侧当前值） */}
             <ItemGroup title={t('settings.general')}>

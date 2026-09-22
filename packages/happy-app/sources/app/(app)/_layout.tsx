@@ -65,6 +65,8 @@ export default function RootLayout() {
             />
             <Stack.Screen name="settings/account" options={{ headerTitle: t('settings.account') }} />
             <Stack.Screen name="accounts" options={{ headerTitle: t('accounts.title') }} />
+            <Stack.Screen name="agent-party-access" options={{ headerTitle: "连接群聊网站" }} />
+            <Stack.Screen name="agent-profiles" options={{ headerTitle: "我的群聊 Agent" }} />
             <Stack.Screen name="settings/agents" options={{ headerTitle: t('settings.agentDefaults') }} />
             <Stack.Screen name="settings/appearance" options={{ headerTitle: t('settings.appearance') }} />
             <Stack.Screen name="settings/ask" options={{ headerTitle: t('settings.askApi') }} />

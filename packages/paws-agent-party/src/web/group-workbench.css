@@ -202,7 +202,7 @@
 .composer-images { display:flex; gap:8px; padding:0 15px; max-height:110px; overflow:auto; }
 .composer-images figure { position:relative; flex:none; }
 .composer-images img { max-height:90px; max-width:130px; }
-.composer-images button { position:absolute; top:2px; right:2px; background:var(--card); border-radius:50%; padding:3px; }
+.composer-images figure > button:not(.asset-image-trigger) { position:absolute; top:2px; right:2px; background:var(--card); border-radius:50%; padding:3px; }
 .mention-menu { position:absolute; display:block; left:0; bottom:calc(100% + 9px); width:min(360px,100%); max-height:290px; overflow:auto; z-index:8; margin:0; padding:10px; border-radius:12px; box-shadow:0 12px 30px color-mix(in srgb,var(--foreground) 14%,transparent); }
 .mention-menu>small { display:block; padding:3px 7px 8px; color:var(--foreground); }
 .mention-menu button { display:flex; gap:10px; width:100%; align-items:center; padding:9px; border-radius:8px; text-align:left; background:var(--popover); }
@@ -270,8 +270,8 @@
  .room-list-heading { margin:22px 0 12px; justify-content:center; }
  .sidebar-foot { display:flex; }
  .sidebar-foot svg { margin:0; }
- .group-workbench:not(.sidebar-collapsed) .workbench-sidebar:focus-within { position:absolute; z-index:15; inset:0 auto 0 0; width:240px; box-shadow:0 10px 40px color-mix(in srgb,var(--foreground) 15%,transparent); }
- .group-workbench:not(.sidebar-collapsed) .workbench-sidebar:focus-within :is(h1,.brand-mark,.workbench-nav span,.room-list-heading>span,.room-select>span,.room-select strong,.sidebar-foot>span,.room-more) { display:revert; }
+ .group-workbench:not(.sidebar-collapsed) .workbench-sidebar { position:absolute; z-index:15; inset:0 auto 0 0; width:240px; box-shadow:0 10px 40px color-mix(in srgb,var(--foreground) 15%,transparent); }
+ .group-workbench:not(.sidebar-collapsed) .workbench-sidebar :is(h1,.brand-mark,.workbench-nav span,.room-list-heading>span,.room-select>span,.room-select strong,.sidebar-foot>span,.room-more) { display:revert; }
  .room-header { height:auto; min-height:60px; padding:10px 12px; flex-wrap:wrap; gap:6px; }
  .room-heading h2 { font-size:15px; }
  .room-actions { flex-wrap:wrap; }
@@ -287,3 +287,21 @@
  .debate-status { padding:7px 12px; flex-wrap:wrap; }
  .avatar-grid { grid-template-columns:repeat(6,minmax(0,1fr)); }
 }
+.account-welcome { min-height:100dvh; display:grid; grid-template-columns:1fr 1fr; background:var(--background); color:var(--foreground); }
+.account-welcome section { display:flex; flex-direction:column; justify-content:center; gap:24px; padding:clamp(24px,6vw,100px); }
+.account-eyebrow { color:var(--muted-foreground); letter-spacing:.15em; font-size:12px; }
+.account-welcome h1 { font-size:clamp(28px,3.5vw,48px); line-height:1.35; font-weight:650; }
+.account-welcome p { color:var(--muted-foreground); line-height:1.9; }
+.account-welcome small { color:var(--muted-foreground); line-height:1.6; }
+.account-login { align-self:flex-start; padding:14px 24px; border-radius:12px; background:var(--primary); color:var(--primary-foreground); }
+.account-welcome aside { display:flex; flex-direction:column; justify-content:center; gap:28px; padding:40px; background:var(--secondary); border-radius:32px; margin:24px; }
+.account-welcome aside h2 { font-size:32px; }
+@media(max-width:700px) { .account-welcome { grid-template-columns:1fr; } .account-welcome aside { display:none; } }
+.image-viewer { position:fixed; inset:0; z-index:1000; background:var(--background); display:flex; align-items:center; justify-content:center; padding:54px 12px 12px; }
+.image-viewer > button { position:absolute; top:16px; right:20px; padding:8px 16px; background:var(--secondary); border-radius:8px; }
+.image-viewer > img { max-width:100%; max-height:100%; object-fit:contain; }
+
+.mobile-sidebar-backdrop { display:none; }
+@media(max-width:700px) { .mobile-sidebar-backdrop { display:block; position:absolute; inset:0; z-index:14; background:color-mix(in srgb,var(--foreground) 15%,transparent); } }
+
+.asset-image-trigger { display:block; padding:0; border:0; background:transparent; max-width:100%; cursor:zoom-in; }

@@ -1,5 +1,6 @@
+import { AccountContext } from './AccountContext.js';
 import { MessageCircle, Plus, Users, PanelLeftClose, PanelLeftOpen, MoreHorizontal, Trash2, X, HelpCircle, UserRound, Link2 } from 'lucide-react';
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { Message, PartyMeta } from '../../vendor/agents-party/src/core/types.js';
 import type { AgentMessagesResponse, ConnectionStatus, MachinesResponse } from '../contracts.js';
 import type { AgentProfile } from '../group-chat/profiles.js';
@@ -21,7 +22,8 @@ import { mergeRooms, reconcileRoomList, timelineMessages, watchGroupRoom, type V
 
 type OwnerParty = Pick<PartyMeta, 'key'>;
 export function GroupChatApp() {
-  const [token, setToken] = useState(() => bootstrapToken(window.location, window.history, sessionStorage));
+  const account = useContext(AccountContext);
+  const [token, setToken] = useState(() => account?.token ?? bootstrapToken(window.location, window.history, sessionStorage));
   const [gate, setGate] = useState(!token); const [draftToken, setDraftToken] = useState('');
   const [connection, setConnection] = useState<ConnectionStatus>({ state: 'disconnected' });
   const [machines, setMachines] = useState<MachinesResponse['machines']>([]);
@@ -34,10 +36,11 @@ export function GroupChatApp() {
   const appliedMessageRequest = useRef(0);
   const timeline = useRef<HTMLDivElement>(null);
   const followOutput = useRef(true);
-  const [showAgent, setShowAgent] = useState(false); const [showRoom, setShowRoom] = useState(false); const [error, setError] = useState('');
+  const [showAgent, setShowAgent] = useState(new URLSearchParams(location.search).get('view') === 'agents'); const [showRoom, setShowRoom] = useState(false); const [error, setError] = useState('');
   const [drafts, setDrafts] = useState<Record<string, ComposerDraft>>({});
   const [sendingRooms, setSendingRooms] = useState<Set<string>>(new Set());
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(() => { try { return localStorage.getItem(`party-sidebar:${account?.accountId ?? 'local'}`) === 'collapsed' || (localStorage.getItem(`party-sidebar:${account?.accountId ?? 'local'}`) === null && window.innerWidth <= 700); } catch { return window.innerWidth <= 700; } });
+  useEffect(() => { try { localStorage.setItem(`party-sidebar:${account?.accountId ?? 'local'}`, collapsed ? 'collapsed' : 'expanded'); } catch {} }, [collapsed, account?.accountId]);
   const [membersOpen, setMembersOpen] = useState(false);
   const [membersRendered, setMembersRendered] = useState(false);
   const [menuRoom, setMenuRoom] = useState<string | null>(null);
@@ -50,7 +53,7 @@ export function GroupChatApp() {
   const [mentionRequest, setMentionRequest] = useState(0);
   const [detailMember, setDetailMember] = useState<string | null>(null);
   const [invite, setInvite] = useState(false);
-  const api = useMemo(() => createApi(() => token, () => setGate(true)), [token]);
+  const api = useMemo(() => createApi(() => token, () => { if (account) account.expired(); else setGate(true); }), [token]);
   const room = rooms.find(value => value.id === roomId) ?? null;
   const draft = room ? drafts[room.id] ?? { text: '', images: [] } : { text: '', images: [] };
   const changeDraft = (value: ComposerDraft) => { if (room) setDrafts(current => ({ ...current, [room.id]: value })); };
@@ -69,7 +72,7 @@ export function GroupChatApp() {
   useEffect(() => {
     if (gate || !token || !roomId) return;
     const controller = new AbortController();
-    void watchGroupRoom({ roomId, token, signal: controller.signal, onUnauthorized: () => setGate(true), onSnapshot: snapshot => { if (!deletedRooms.current.has(snapshot.id)) setRooms(current => mergeRooms(current, [snapshot])); } });
+    void watchGroupRoom({ roomId, token, signal: controller.signal, onUnauthorized: () => { if (account) account.expired(); else setGate(true); }, onSnapshot: snapshot => { if (!deletedRooms.current.has(snapshot.id)) setRooms(current => mergeRooms(current, [snapshot])); } });
     return () => controller.abort();
   }, [roomId, token, gate]);
   const refreshMessages = useCallback(async () => {
@@ -120,12 +123,12 @@ export function GroupChatApp() {
   const stopRoom = async () => { if (!room) return; setError(''); try { await api(`/api/group-chat/rooms/${room.id}/stop`, { method: 'POST', body: '{}' }); await refresh(); } catch (error) { setError((error as Error).message); } };
   if (gate) return <TokenGate value={draftToken} setValue={setDraftToken} submit={() => { const value = draftToken.trim(); if (!value) return; sessionStorage.setItem('apToken', value); setToken(value); setGate(false); }} />;
   return <main className={`group-workbench${collapsed ? ' sidebar-collapsed' : ''}`}>
-    <aside className="workbench-sidebar">
+    {!collapsed && <button className="mobile-sidebar-backdrop" aria-label="收起群聊侧栏" onClick={() => setCollapsed(true)}/>}<aside className="workbench-sidebar">{account?.logout && <button onClick={account.logout}>退出当前账号</button>}
       <div className="workbench-brand"><span className="brand-mark" aria-hidden="true"><i/><i/></span><h1>AgentParty</h1><button className="collapse-button" aria-label={collapsed ? '展开侧栏' : '折叠侧栏'} onClick={() => setCollapsed(value => !value)}>{collapsed ? <PanelLeftOpen size={18}/> : <PanelLeftClose size={18}/>}</button></div>
-      <nav aria-label="工作台导航" className="workbench-nav"><button className="nav-current" title="群聊" onClick={() => setCollapsed(false)}><MessageCircle size={19}/><span>群聊</span><span className="nav-count">{rooms.length}</span></button><button title="Agent 管理" onClick={() => setShowAgent(true)}><Users size={19}/><span>Agent 管理</span><span className="nav-count">{agents.length}</span></button></nav>
+      <nav aria-label="工作台导航" className="workbench-nav"><button className="nav-current" aria-label="群聊" title="群聊" onClick={() => setCollapsed(false)}><MessageCircle size={19}/><span>群聊</span><span className="nav-count">{rooms.length}</span></button><button aria-label="Agent 管理" title="Agent 管理" onClick={() => setShowAgent(true)}><Users size={19}/><span>Agent 管理</span><span className="nav-count">{agents.length}</span></button></nav>
       <div className="room-list-heading"><span>我的群聊</span><button aria-label="新建群聊" title="新建群聊" onClick={() => setShowRoom(true)}><Plus size={18}/></button></div>
-      <nav aria-label="我的群聊" className="workbench-rooms">{rooms.map(item => <div className="room-row" key={item.id}><button className="room-select" title={item.title} aria-current={item.id === room?.id ? 'page' : undefined} onClick={() => setRoomId(item.id)}><MessageCircle className="room-rail-icon" size={18}/><strong>{item.title}</strong><span>{item.members.length} 位 Agent · {item.autoReply ? '自动接话' : '仅 @ 回复'}</span></button><button className="room-more" aria-label={`${item.title} 的更多操作`} aria-expanded={menuRoom === item.id} onClick={() => setMenuRoom(menuRoom === item.id ? null : item.id)}><MoreHorizontal size={18}/></button>{menuRoom === item.id && <div className="room-menu"><button onClick={() => { setDeleting(item); setMenuRoom(null); setError(''); }}><Trash2 size={15}/>删除群聊</button></div>}</div>)}</nav>
-      <button className="sidebar-foot" title="Paws 连接设置" onClick={() => setConnectionOpen(true)}><span className={`connection-dot ${connection.state === 'ready' ? 'is-ready' : ''}`}/><span>{connection.state === 'ready' ? 'Paws 已连接' : '连接 Paws'}</span><Link2 size={15}/></button>
+      <nav aria-label="我的群聊" className="workbench-rooms">{rooms.map(item => <div className="room-row" key={item.id}><button className="room-select" aria-label={`${item.title} ${item.members.length} 位 Agent · ${item.autoReply ? '自动接话' : '仅 @ 回复'}`} title={item.title} aria-current={item.id === room?.id ? 'page' : undefined} onClick={() => { setRoomId(item.id); if (window.innerWidth <= 700) setCollapsed(true); }}><MessageCircle className="room-rail-icon" size={18}/><strong>{item.title}</strong><span>{item.members.length} 位 Agent · {item.autoReply ? '自动接话' : '仅 @ 回复'}</span></button><button className="room-more" aria-label={`${item.title} 的更多操作`} aria-expanded={menuRoom === item.id} onClick={() => setMenuRoom(menuRoom === item.id ? null : item.id)}><MoreHorizontal size={18}/></button>{menuRoom === item.id && <div className="room-menu"><button onClick={() => { setDeleting(item); setMenuRoom(null); setError(''); }}><Trash2 size={15}/>删除群聊</button></div>}</div>)}</nav>
+      <button className="sidebar-foot" title={account ? "当前 Paws 账号" : "Paws 连接设置"} onClick={() => { if (!account) setConnectionOpen(true); }}><span className={`connection-dot ${connection.state === 'ready' ? 'is-ready' : ''}`}/><span>{connection.state === 'ready' ? 'Paws 已连接' : '连接 Paws'}</span><Link2 size={15}/></button>
     </aside>
     <div className="workbench-main">
       {!room ? <EmptyState onCreate={() => setShowRoom(true)}/> : <section className="workbench-room">
@@ -137,7 +140,7 @@ export function GroupChatApp() {
         {membersRendered && <><button hidden={!membersOpen} className="members-scrim" aria-label="关闭成员面板" onClick={() => setMembersOpen(false)}/><aside className={`room-members${membersOpen ? '' : ' is-closing'}`} inert={!membersOpen} aria-hidden={!membersOpen} aria-label="本群成员"><div className="members-heading"><span>本群成员 · {room.members.length}</span><button aria-label="关闭成员" onClick={() => setMembersOpen(false)}><X size={18}/></button></div><div className="member-list">{room.members.map(member => <button key={member.id} className="member-profile" onClick={() => { setDetailMember(member.id); setMembersOpen(false); }}><RobotAvatar id={member.id} avatarId={displayAvatarId(member, agents)}/><span className="member-copy"><strong>{member.name}</strong><span className="member-model">{memberStatusLabel(member.status)}{member.temporary ? ' · 临时成员' : ''}</span></span></button>)}</div><button className="invite-button" onClick={() => { setInvite(true); setMembersOpen(false); }}><Plus size={16}/>邀请成员</button></aside></>}
         </div>
       </section>}</div>
-    {connectionOpen && <Modal title="Paws 连接" close={() => setConnectionOpen(false)}><ConnectionPanel status={connection} api={api} active={rooms.some(item => item.members.some(member => member.status === 'running' || member.status === 'spawning'))} onChange={setConnection}/></Modal>}
+    {!account && connectionOpen && <Modal title="Paws 连接" close={() => setConnectionOpen(false)}><ConnectionPanel status={connection} api={api} active={rooms.some(item => item.members.some(member => member.status === 'running' || member.status === 'spawning'))} onChange={setConnection}/></Modal>}
     {showAgent && <AgentDialog agents={agents} machines={machines} sessions={configurationSessions} api={api} close={() => setShowAgent(false)} refresh={refresh}/>}
     {showRoom && <RoomDialog agents={agents} machines={machines} ready={connection.state === 'ready'} api={api} close={() => setShowRoom(false)} onCreated={created => { roomMutationEpoch.current += 1; deletedRooms.current.delete(created.id); setRooms(current => mergeRooms(current, [created])); setRoomId(created.id); setShowRoom(false); }}/>}
     {deleting && <Modal title="删除群聊" close={() => { if (!deleteBusy) setDeleting(null); }}><p>删除「{deleting.title}」及本地聊天记录？此操作不可撤销。</p><p className="muted">不会删除 Agent 配置库或远端 Paws 会话。运行中的群聊须先停止协调。</p><div className="dialog-actions"><button disabled={deleteBusy} onClick={() => setDeleting(null)}>取消</button><button className="danger" disabled={deleteBusy} onClick={() => void deleteRoom()}>{deleteBusy ? '删除中…' : '确认删除'}</button></div>{error && <p role="alert">{error}</p>}</Modal>}
@@ -167,6 +170,8 @@ function EmptyState({ onCreate }: { onCreate(): void }) { return <section classN
 function TokenGate({ value, setValue, submit }: { value: string; setValue(value: string): void; submit(): void }) { return <main className="flex min-h-screen items-center justify-center bg-muted p-6"><form onSubmit={event => { event.preventDefault(); submit(); }} className="w-full max-w-md rounded-2xl border border-border bg-card p-7 shadow-sm"><h1 className="font-accent text-xl">打开 AgentParty</h1><p className="mt-2 text-sm text-muted-foreground">输入此服务生成的访问令牌后继续。</p><input value={value} onChange={event => setValue(event.target.value)} className="mt-5 w-full rounded-lg border border-input bg-background p-3" placeholder="访问令牌"/><button className="mt-3 w-full rounded-lg bg-primary py-3 text-primary-foreground">进入工作台</button></form></main>; }
 function AgentDialog({ agents, machines, sessions, api, close, refresh }: { agents: AgentProfile[]; machines: MachinesResponse['machines']; sessions: ConfigurationSession[]; api: ReturnType<typeof createApi>; close(): void; refresh(): Promise<void> }) {
   const [editing, setEditing] = useState<AgentProfile | 'new' | null>(null);
+  const account = useContext(AccountContext);
+  if (account) return <Modal title="我的 Agent" close={close}><p>这些 Agent 来自当前 Paws 账号。在 Paws 修改后，这里会自动更新；已有群聊保留邀请时的配置。</p>{agents.map(agent => <div className="profile-summary" key={agent.id}><RobotAvatar id={agent.id} avatarId={agent.avatarId}/><span><strong>{agent.name}</strong><small>{agent.instructions}</small></span></div>)}<a className="primary-action" href={`https://47.115.228.20:8443/agent-profiles?accountId=${encodeURIComponent(account.accountId)}`} target="_blank" rel="noreferrer">在 Paws 管理 Agent ↗</a></Modal>;
   return <Modal title="管理 Agent" close={close}>
     {editing ? <><button onClick={() => setEditing(null)}>← 返回我的 Agent</button><ProfileEditor key={editing === 'new' ? 'new' : editing.id} initial={editing === 'new' ? undefined : editing} machines={machines} sessions={sessions} api={api} onSave={async value => {
       await api(editing === 'new' ? '/api/group-chat/agents' : `/api/group-chat/agents/${editing.id}`, { method: editing === 'new' ? 'POST' : 'PATCH', body: JSON.stringify(value) }); await refresh(); setEditing(null);
@@ -235,7 +240,7 @@ function MemberDetails({ room, memberId, profiles, machines, api, close }: { roo
   useEffect(() => { void load(); return () => controller.current?.abort(); }, [load]);
   const executionMachineId = member.machineId ?? room.machineId;
   const executionMachine = machines.find(machine => machine.id === executionMachineId) ?? { id: executionMachineId, active: false } as MachinesResponse['machines'][number];
-  return <Modal title={`${member.name} · 执行详情`} close={close}><div className="detail-profile"><RobotAvatar id={member.id} avatarId={displayAvatarId(member, profiles)} large/><div><h3>{member.name}</h3><p>{memberStatusLabel(member.status)}</p></div></div><p>{member.instructions}</p><dl className="configuration-summary"><dt>执行配置快照</dt><dd>{member.model} · {member.effort}</dd><dt>执行设备</dt><dd>{machineLabel(executionMachine)}</dd><dt>工作目录</dt><dd>{member.directory ?? room.directory}</dd></dl>{member.sessionId && <a href={`https://47.115.228.20:8443/session/${encodeURIComponent(member.sessionId)}`} target="_blank" rel="noreferrer">在 Paws 打开完整会话 ↗</a>}<p className="muted">以下是实际收到的执行记录，不保证包含隐藏推理。停止协调不等于终止远端进程。</p>{!!page?.requests.length && <p role="status">有待授权操作，请在 Paws 原始会话处理。</p>}{records.map(record => <details key={record.id}><summary>记录 #{record.seq}</summary><pre>{JSON.stringify(record.content, null, 2)}</pre></details>)}{error && <p role="alert">{error}</p>}<button disabled={busy} onClick={() => void load()}>{busy ? '读取中…' : page?.hasMore ? '加载更多' : '刷新记录'}</button></Modal>;
+  return <Modal title={`${member.name} · 执行详情`} close={close}><div className="detail-profile"><RobotAvatar id={member.id} avatarId={displayAvatarId(member, profiles)} large/><div><h3>{member.name}</h3><p>{memberStatusLabel(member.status)}</p></div></div><p>{member.instructions}</p><dl className="configuration-summary"><dt>执行配置快照</dt><dd>{member.model} · {member.effort}</dd><dt>执行设备</dt><dd>{machineLabel(executionMachine)}</dd><dt>工作目录</dt><dd>{member.directory ?? room.directory}</dd></dl>{member.sessionId && <SessionLink sessionId={member.sessionId}/>}<p className="muted">以下是实际收到的执行记录，不保证包含隐藏推理。停止协调不等于终止远端进程。</p>{!!page?.requests.length && <p role="status">有待授权操作，请在 Paws 原始会话处理。</p>}{records.map(record => <details key={record.id}><summary>记录 #{record.seq}</summary><pre>{JSON.stringify(record.content, null, 2)}</pre></details>)}{error && <p role="alert">{error}</p>}<button disabled={busy} onClick={() => void load()}>{busy ? '读取中…' : page?.hasMore ? '加载更多' : '刷新记录'}</button></Modal>;
 }
 
 function InviteDialog({ room, agents, machines, sessions, api, refresh, close }: { room: GroupRoomSnapshot; agents: AgentProfile[]; machines: MachinesResponse['machines']; sessions: ConfigurationSession[]; api: ReturnType<typeof createApi>; refresh(): Promise<void>; close(): void }) {
@@ -246,4 +251,10 @@ function InviteDialog({ room, agents, machines, sessions, api, refresh, close }:
     await api(`/api/group-chat/rooms/${room.id}/members`, { method: 'POST', body: JSON.stringify({ requestId: requestId.current, ...data }) }); await refresh(); close();
   };
   return <Modal title="邀请成员" close={close}><div className="dialog-tabs"><button aria-pressed={!temporary} onClick={() => setTemporary(false)}>我的 Agent</button><button aria-pressed={temporary} onClick={() => setTemporary(true)}>临时成员</button></div><p className="muted">新成员可以阅读本群上下文；已开始的辩论仍由原参与者完成。</p>{temporary ? <><p>只加入本群，不保存到我的 Agent。</p><ProfileEditor machines={machines} sessions={sessions} api={api} submitLabel="创建并加入群聊" onSave={value => submit({ temporary: [value] })}/></> : <>{available.map(agent => <label className="invite-row" key={agent.id}><input type="checkbox" checked={selected.includes(agent.id)} onChange={() => setSelected(previous => previous.includes(agent.id) ? previous.filter(id => id !== agent.id) : [...previous, agent.id])}/><RobotAvatar id={agent.id} avatarId={agent.avatarId}/><span>{agent.name}<small>{agent.instructions}</small></span></label>)}{!available.length && <p>配置库中的 Agent 都已加入本群。</p>}<button className="primary-action" disabled={!selected.length || busy} onClick={async () => { setBusy(true); try { await submit({ memberIds: selected }); } catch (error) { setError((error as Error).message); } finally { setBusy(false); } }}>邀请已选成员</button></>}{error && <p role="alert">{error}</p>}</Modal>;
+}
+
+function SessionLink({ sessionId }: { sessionId: string }) {
+  const account = useContext(AccountContext);
+  const href = account ? `https://47.115.228.20:8443/accounts?${new URLSearchParams({ accountId: account.accountId, serverUrl: account.serverUrl, sessionId })}` : `https://47.115.228.20:8443/session/${encodeURIComponent(sessionId)}`;
+  return <a href={href} target="_blank" rel="noreferrer">在 Paws 打开完整会话 ↗</a>;
 }

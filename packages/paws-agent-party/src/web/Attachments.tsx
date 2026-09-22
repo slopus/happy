@@ -1,10 +1,18 @@
+import { createPortal } from 'react-dom';
 import { useEffect, useRef, useState } from 'react';
 import type { ImageRef, PartyEnvelope } from '../contracts.js';
 import { MessageText } from '../../vendor/agents-party/src/ui/party/message.js';
 import { validateImages, type Api } from './api.js';
+import { useDialogFocus } from './modalFocus.js';
+
+function ImageViewer({ src, name, close }: { src: string; name: string; close(): void }) {
+  const dialog = useDialogFocus(true, close);
+  return createPortal(<section ref={dialog} className="image-viewer" role="dialog" aria-modal="true" aria-label={name} tabIndex={-1} onClick={close}><button type="button" aria-label="关闭图片" onClick={close}>关闭</button><img src={src} alt={name} onClick={event => event.stopPropagation()}/></section>, document.body);
+}
 
 export function AssetImage({ image, api }: { image: ImageRef; api: Api }) {
   const [src, setSrc] = useState('');
+  const [expanded, setExpanded] = useState(false);
   const [error, setError] = useState('');
   useEffect(() => {
     const controller = new AbortController();
@@ -16,7 +24,7 @@ export function AssetImage({ image, api }: { image: ImageRef; api: Api }) {
     }).catch(() => { if (!controller.signal.aborted) setError('图片读取失败，请重连后再试。'); });
     return () => { controller.abort(); if (url) URL.revokeObjectURL(url); };
   }, [image.id, api]);
-  return src ? <img src={src} alt={image.name} className="max-h-40 max-w-full rounded-md" /> : <span role={error ? 'alert' : 'status'}>{error || '图片加载中…'}</span>;
+  return src ? <><button className="asset-image-trigger" type="button" aria-label={`打开图片 ${image.name}`} onClick={() => setExpanded(true)}><img src={src} alt={image.name} className="max-h-40 max-w-full rounded-md" /></button>{expanded && <ImageViewer src={src} name={image.name} close={() => setExpanded(false)}/>}</> : <span role={error ? 'alert' : 'status'}>{error || '图片加载中…'}</span>;
 }
 
 export function Attachments({ images, onChange, api, disabled = false, onBusy }: {

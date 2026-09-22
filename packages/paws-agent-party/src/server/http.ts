@@ -18,6 +18,7 @@ import { AdminService, type VisitorPolicy } from './admin.js';
 export type PocServer = {
   url: string;
   close(): Promise<void>;
+  hasActiveWork?(): boolean;
 };
 
 export type CreatePocServerOptions = {
@@ -278,6 +279,7 @@ export async function createPocServer(options: CreatePocServerOptions = {}): Pro
 
   return {
     url: `http://${host.includes(':') ? `[${host}]` : host}:${listeningPort}`,
+    hasActiveWork: () => runs.hasActiveWork() || groups.hasActiveWork(),
     async close() {
       if (closed) return;
       closed = true;
