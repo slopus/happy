@@ -33,6 +33,7 @@ import {
     getMarkdownTypography,
     type MarkdownTypographyMode,
 } from './markdownTypography';
+import { calculateTableColumnWidths } from './markdownTableLayout';
 
 // Option type for callback
 export type Option = {
@@ -571,27 +572,15 @@ function getSpanTypographyStyle(
     return undefined;
 }
 
-// Plain-text length of a span array — used to estimate column widths.
-function spansLength(spans: MarkdownSpan[]): number {
-    let n = 0;
-    for (const s of spans) n += s.text.length;
-    return n;
-}
-
-const TABLE_MIN_COL_WIDTH = 80;
-const TABLE_MAX_COL_WIDTH = 360;
-const TABLE_CHAR_WIDTH = 8.5;  // approx px per char at 16px default font
-const TABLE_CELL_H_PADDING = 24;
-
-// Row-first layout with content-estimated column widths.
+// Row-first layout with display-width-estimated columns.
 //
-// - Each column's width is picked from the widest text in that column (header +
-//   rows), clamped to [MIN, MAX]. This gives column-alignment across rows and
-//   lets narrow columns (like "1, 2, 3") stay narrow.
+// - Each column starts from its widest header/cell. CJK and full-width glyphs
+//   count as two display cells so their natural width matches what is rendered.
+// - If the table fits, its spare width is distributed proportionally across the
+//   columns. If it does not, it keeps its natural width and scrolls horizontally.
 // - Each row is a flex row — default `alignItems: 'stretch'` makes all cells in
 //   a row match the tallest cell's height.
-// - Wrapped in a horizontal ScrollView so wide tables still scroll instead of
-//   being squashed unreadably.
+// - Wrapped in a horizontal ScrollView so narrow screens never squash content.
 function RenderTableBlock(props: {
     headers: MarkdownSpan[][],
     rows: MarkdownSpan[][][],
@@ -604,6 +593,7 @@ function RenderTableBlock(props: {
     const typography = useMarkdownTypography();
     const columnCount = props.headers.length;
     const rowCount = props.rows.length;
+    const [availableWidth, setAvailableWidth] = React.useState<number | null>(null);
     const isLastCol = (colIndex: number) => colIndex === columnCount - 1;
     const isLastRow = (rowIndex: number) => rowIndex === rowCount - 1;
     const foldedPrompt = props.variant === 'foldedPrompt';
@@ -614,26 +604,26 @@ function RenderTableBlock(props: {
         ? [style.tableCellText, style.foldedTableText, typography.body]
         : [style.tableCellText, typography.body];
 
-    const columnWidths = React.useMemo(() => {
-        const widths = new Array(columnCount).fill(0);
-        for (let c = 0; c < columnCount; c++) {
-            widths[c] = Math.max(widths[c], spansLength(props.headers[c] ?? []));
-        }
-        for (const row of props.rows) {
-            for (let c = 0; c < columnCount; c++) {
-                widths[c] = Math.max(widths[c], spansLength(row[c] ?? []));
-            }
-        }
-        return widths.map(len => Math.min(TABLE_MAX_COL_WIDTH, Math.max(TABLE_MIN_COL_WIDTH, len * TABLE_CHAR_WIDTH + TABLE_CELL_H_PADDING)));
-    }, [props.headers, props.rows, columnCount]);
+    const columnWidths = React.useMemo(
+        () => calculateTableColumnWidths(props.headers, props.rows, availableWidth),
+        [props.headers, props.rows, availableWidth],
+    );
+    const tableWidth = React.useMemo(
+        () => columnWidths.reduce((total, width) => total + width, 0),
+        [columnWidths],
+    );
+    const handleTableViewportLayout = React.useCallback((event: { nativeEvent: { layout: { width: number } } }) => {
+        const nextWidth = event.nativeEvent.layout.width;
+        setAvailableWidth(currentWidth => currentWidth === nextWidth ? currentWidth : nextWidth);
+    }, []);
 
     return (
         <View style={[style.tableContainer, foldedPrompt && style.foldedTableContainer, props.first && style.first, props.last && style.last]}>
             {/* flexGrow:0 stops iOS from stretching the horizontal ScrollView
                 vertically to fill the parent — the cause of the table's frame
                 extending down past the last row into empty space. */}
-            <HorizontalScrollView style={{ flexGrow: 0 }} testID="markdown-table-scroll">
-                <View style={{ alignSelf: 'flex-start' }}>
+            <HorizontalScrollView style={style.tableScrollView} onLayout={handleTableViewportLayout} testID="markdown-table-scroll">
+                <View style={{ alignSelf: 'flex-start', width: tableWidth }}>
                     {/* Header row */}
                     <View style={[style.tableRow, style.tableHeaderRow]}>
                         {props.headers.map((header, colIndex) => (
@@ -1122,8 +1112,15 @@ const style = StyleSheet.create((theme) => ({
         borderColor: theme.colors.divider,
         borderRadius: 8,
         overflow: 'hidden',
+        width: '100%',
         maxWidth: '100%',
-        alignSelf: 'flex-start',
+        alignSelf: 'stretch',
+    },
+    tableScrollView: {
+        // Keep iOS from stretching the horizontal viewport vertically, while
+        // explicitly matching the table frame's available message width.
+        flexGrow: 0,
+        width: '100%',
     },
     foldedTableContainer: {
         marginVertical: 6,
