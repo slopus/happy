@@ -11,6 +11,35 @@ const group = (id: string, ids: string[]) => ({ type: 'tool-group', id, messages
 const wire = (id: string) => id.replace(/-replayed$/, '');
 
 describe('durable transcript reading anchors', () => {
+    it('does not measure or persist on coordinated Web scroll events', async () => {
+        const measure = vi.fn(() => ({ top: 0, height: 600 }));
+        const save = vi.fn();
+        const adapter = { key: 'web-idle', read: async () => null, save, wireId: wire, wireSeq: () => 1 };
+        let reading: ReturnType<typeof useTranscriptReading>;
+        let settled = false;
+        function Probe() {
+            reading = useTranscriptReading({ adapter, items: [], inverted: false, isAtLatest: false,
+                externallyScheduled: true, canCapture: () => settled,
+                listRef: { current: null }, viewportRef: { current: { getBoundingClientRect: measure } },
+                expanded: [], restoreExpanded: () => {} });
+            return null;
+        }
+        let renderer: any;
+        await act(async () => { renderer = TestRenderer.create(<Probe />); });
+        const row = { isConnected: true, getBoundingClientRect: vi.fn(() => ({ top: -20, height: 200 })) };
+        reading!.markers!.register('message', row as any, 0);
+        reading!.cancelRestore('older');
+        for (let i = 0; i < 50; i++) reading!.scroll(i, 500);
+        await reading!.capture();
+        expect(measure).not.toHaveBeenCalled();
+        expect(row.getBoundingClientRect).not.toHaveBeenCalled();
+        expect(save).not.toHaveBeenCalled();
+        settled = true;
+        await reading!.capture();
+        expect(measure).toHaveBeenCalledTimes(1);
+        expect(save).toHaveBeenCalledWith(expect.objectContaining({ anchorId: 'message', offset: -20 }));
+        act(() => renderer.unmount());
+    });
     it('keeps public normal transcripts at the top when automatic latest layout is disabled', async () => {
         const scrollToEnd = vi.fn();
         let reading: ReturnType<typeof useTranscriptReading>;

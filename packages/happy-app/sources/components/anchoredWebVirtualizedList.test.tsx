@@ -6,6 +6,7 @@ import { afterEach, beforeAll, expect, it, vi } from 'vitest';
 // @ts-expect-error no local renderer declarations
 import TestRenderer from 'react-test-renderer';
 import { createAnchoredWebVirtualizedList } from './anchoredWebVirtualizedList';
+import { WebTranscriptScrollCoordinator } from './webTranscriptScrollCoordinator';
 
 const require = createRequire(import.meta.url);
 // Same explicit Web export as production (bypasses Unistyles' RN wrapper).
@@ -25,6 +26,43 @@ const props = (data: number[]) => ({ data, getItem: (rows: number[], index: numb
     initialNumToRender: 10, windowSize: 5, maxToRenderPerBatch: 10,
 });
 afterEach(() => { vi.restoreAllMocks(); });
+
+it('coordinated commits measure only a history transaction and never apply an estimated fallback', async () => {
+    let list: any; let renderer: any; let rowTop = 100;
+    const measure = vi.fn(() => ({ top: rowTop, bottom: rowTop + 100 }));
+    const anchor = { isConnected: true, getAttribute: () => 'wire-1', getBoundingClientRect: measure };
+    const node = { scrollTop: 100, getBoundingClientRect: () => ({ top: 0, bottom: 600 }),
+        querySelectorAll: () => [anchor], addEventListener() {}, removeEventListener() {} };
+    const write = vi.fn(({ offset }: { offset: number }) => { rowTop -= offset - node.scrollTop; node.scrollTop = offset; });
+    const coordinator = new WebTranscriptScrollCoordinator(() => ({ scrollToOffset: write, scrollToIndex() {}, scrollToEnd() {} }));
+    const Row = ({ phase }: { phase: number }) => {
+        React.useLayoutEffect(() => { if (phase === 1) rowTop += 40; }, [phase]);
+        return <img />;
+    };
+    const render = (phase: number) => <List {...props(phase ? [0, 1] : [1])}
+        ref={(value: any) => { list = value; }} scrollCoordinator={coordinator}
+        renderItem={({ item }: { item: number }) => item === 1 ? <Row phase={phase} /> : <span />} />;
+    await act(async () => { renderer = TestRenderer.create(render(0)); });
+    list._scrollRef = { getScrollableNode: () => node, scrollTo: vi.fn() };
+    try {
+        await act(async () => renderer.update(render(0)));
+        expect(measure).not.toHaveBeenCalled();
+        coordinator.userIntent('older');
+        const id = coordinator.beginHistory('page', 'older')!;
+        await act(async () => renderer.update(render(1)));
+        expect(write).toHaveBeenCalledExactlyOnceWith({ offset: 140, animated: false });
+        expect(rowTop).toBe(100);
+        measure.mockClear();
+        await act(async () => renderer.update(render(2)));
+        expect(measure).not.toHaveBeenCalled();
+        expect(write).toHaveBeenCalledTimes(1);
+        coordinator.finishHistory(id);
+        coordinator.userIntent('older'); coordinator.beginHistory('page-2', 'older');
+        anchor.isConnected = false;
+        await act(async () => renderer.update(render(3)));
+        expect(write).toHaveBeenCalledTimes(1);
+    } finally { act(() => renderer.unmount()); coordinator.dispose(); }
+});
 
 it('keeps a visible loaded image mounted through prepend and corrects offset before paint with bounded cells', async () => {
     (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;

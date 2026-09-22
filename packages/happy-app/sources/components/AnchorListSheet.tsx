@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { View, Text, ScrollView, Pressable, useWindowDimensions } from 'react-native';
+import { View, Text, FlatList, ScrollView, Platform, Pressable, useWindowDimensions } from 'react-native';
 import { StyleSheet } from 'react-native-unistyles';
 import { t } from '@/text';
 import { getDuplicateSheetFrame } from '@/utils/duplicateSheetLayout';
@@ -45,8 +45,9 @@ export const AnchorListSheet = React.memo(function AnchorListSheet(props: Anchor
                     : t('session.anchorsSubtitle', { count: anchors.length })}</Text>
             </View>
 
-            <ScrollView style={styles.list} contentContainerStyle={styles.listContent}>
-                {props.hasMoreOlder && props.onLoadOlder ? (
+            <AnchorRows
+                data={anchors}
+                ListHeaderComponent={props.hasMoreOlder && props.onLoadOlder ? (
                     <Pressable
                         testID="anchor-list-load-older"
                         accessibilityRole="button"
@@ -58,10 +59,8 @@ export const AnchorListSheet = React.memo(function AnchorListSheet(props: Anchor
                         <Text style={styles.rowText}>{props.isLoadingOlder ? t('common.loading') : t('session.anchorsLoadOlder')}</Text>
                     </Pressable>
                 ) : null}
-                {anchors.length === 0 ? (
-                    !props.hasMoreOlder ? <Text style={styles.emptyText}>{t('session.anchorsEmpty')}</Text> : null
-                ) : (
-                    anchors.map((anchor) => (
+                ListEmptyComponent={!props.hasMoreOlder ? <Text style={styles.emptyText}>{t('session.anchorsEmpty')}</Text> : null}
+                renderItem={({ item: anchor }) => (
                         <Pressable
                             key={anchor.id}
                             onPress={() => handlePick(anchor)}
@@ -74,12 +73,26 @@ export const AnchorListSheet = React.memo(function AnchorListSheet(props: Anchor
                                 {anchor.text}
                             </Text>
                         </Pressable>
-                    ))
                 )}
-            </ScrollView>
+            />
         </View>
     );
 });
+
+function AnchorRows(props: {
+    data: UserMessageAnchor[];
+    ListHeaderComponent: React.ReactElement | null;
+    ListEmptyComponent: React.ReactElement | null;
+    renderItem: (entry: { item: UserMessageAnchor }) => React.ReactElement;
+}) {
+    if (Platform.OS === 'web') return <FlatList {...props} testID="anchor-list"
+        style={styles.list} contentContainerStyle={styles.listContent}
+        keyExtractor={anchor => anchor.id} initialNumToRender={12} windowSize={5} />;
+    return <ScrollView style={styles.list} contentContainerStyle={styles.listContent}>
+        {props.ListHeaderComponent}
+        {props.data.length ? props.data.map(item => React.cloneElement(props.renderItem({ item }), { key: item.id })) : props.ListEmptyComponent}
+    </ScrollView>;
+}
 
 const styles = StyleSheet.create((theme) => ({
     sheet: {

@@ -39,6 +39,12 @@ export function createAnchoredWebVirtualizedList(Base: any): any {
                 if (nextIndex !== undefined) surviving.push({ old: index, next: nextIndex });
             }
             if (!surviving.length) return next;
+            // Render-mask translation is independent of scroll ownership. In
+            // coordinated mode never read DOM or derive an estimated write here.
+            if (props.scrollCoordinator) {
+                const cells = { first: Math.min(...surviving.map(row => row.next)), last: Math.max(...surviving.map(row => row.next)) };
+                return { ...next, cellsAroundViewport: cells, renderMask: Base._createRenderMask(props, cells) };
+            }
             const offset = previous.readAnchorOffset();
             const anchor = surviving.find(row => {
                 const frame = old.getItemLayout(old.data, row.old);
@@ -50,8 +56,12 @@ export function createAnchoredWebVirtualizedList(Base: any): any {
                 ...(delta !== 0 ? { anchorRevision: previous.anchorRevision + 1, anchorOffset: Math.max(0, offset + delta) } : {}) };
         }
 
-        getSnapshotBeforeUpdate(previous: any): { node: HTMLElement; offset: number } | null {
+        getSnapshotBeforeUpdate(previous: any): { node: HTMLElement; offset: number; transaction?: number } | null {
             if (this.props.inverted) return null;
+            const coordinator = this.props.scrollCoordinator;
+            const transaction = coordinator?.history;
+            if (coordinator && (!transaction || transaction.compensated || previous.data === this.props.data)) return null;
+            if (transaction && this.props.historyBoundaryKeys?.[transaction.direction === 'older' ? 0 : 1] === transaction.key) return null;
             const scroll = this._scrollRef?.getScrollableNode?.() as HTMLElement | undefined;
             if (!scroll?.getBoundingClientRect || !scroll.querySelectorAll) return null;
             const viewport = scroll.getBoundingClientRect();
@@ -64,14 +74,14 @@ export function createAnchoredWebVirtualizedList(Base: any): any {
                     if (item?.type === 'message' || item?.type === 'image-group') survivingContent.add(key(this.props, index));
                 }
             }
-            let fallback: { node: HTMLElement; offset: number } | null = null;
-            let contentFallback: { node: HTMLElement; offset: number } | null = null;
+            let fallback: { node: HTMLElement; offset: number; transaction?: number } | null = null;
+            let contentFallback: { node: HTMLElement; offset: number; transaction?: number } | null = null;
             for (const node of scroll.querySelectorAll<HTMLElement>('[data-transcript-key]')) {
                 const nodeKey = node.getAttribute?.('data-transcript-key');
                 if (nodeKey && !survivingKeys.has(nodeKey)) continue;
                 const bounds = node.getBoundingClientRect();
                 if (bounds.bottom > viewport.top && bounds.top < viewport.bottom) {
-                    const anchor = { node, offset: bounds.top - viewport.top };
+                    const anchor = { node, offset: bounds.top - viewport.top, transaction: transaction?.id };
                     // Paging can split a summary while retaining its outer key.
                     // Keep the visible text/media below it in place, rather than
                     // pinning the summary and pushing the reading content away.
@@ -86,11 +96,20 @@ export function createAnchoredWebVirtualizedList(Base: any): any {
             return contentFallback ?? fallback;
         }
 
-        componentDidUpdate(previous: any, _state: any, snapshot: { node: HTMLElement; offset: number } | null): void {
+        componentDidUpdate(previous: any, _state: any, snapshot: { node: HTMLElement; offset: number; transaction?: number } | null): void {
             const scroll = this._scrollRef?.getScrollableNode?.() as HTMLElement | undefined;
             const measured = snapshot?.node.isConnected && scroll?.getBoundingClientRect
                 ? Math.max(0, scroll.scrollTop + snapshot.node.getBoundingClientRect().top
                     - scroll.getBoundingClientRect().top - snapshot.offset) : null;
+            if (this.props.scrollCoordinator) {
+                if (snapshot?.transaction !== undefined && measured !== null
+                    && this.props.scrollCoordinator.compensate(snapshot.transaction, measured)) {
+                    this._scrollMetrics = { ...this._scrollMetrics, offset: measured };
+                    this.props.onAnchorOffsetChange?.(measured);
+                }
+                super.componentDidUpdate(previous);
+                return;
+            }
             if (measured !== null || this.appliedAnchorRevision !== this.state.anchorRevision) {
                 const offset = measured ?? this.state.anchorOffset;
                 // Real cells plus estimated spacers do not necessarily have the

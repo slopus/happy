@@ -20,6 +20,7 @@ import {
 } from 'react-native';
 import { Octicons } from '@expo/vector-icons';
 import { TranscriptList } from './TranscriptList';
+import { WebTranscriptScrollCoordinator, type TranscriptScrollPort } from './webTranscriptScrollCoordinator';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import type { Metadata } from '@/sync/storageTypes';
@@ -40,7 +41,7 @@ import { AnchorListSheet } from './AnchorListSheet';
 import { BrowserProgressContext } from './BrowserProgressContext';
 import { getBrowserStepRuns, hideLinkedBrowserSteps } from './rightPanel/browserStepRunsModel';
 import { setGroupExpansion, groupIsExpanded, itemMessages, TranscriptReadingContext, TranscriptReadingMarker,
-    TranscriptGroupExpansionContext, handleTranscriptWebWheel, useTranscriptReading, type TranscriptReadingAdapter } from './transcriptReading';
+    TranscriptGroupExpansionContext, useTranscriptReading, type TranscriptReadingAdapter } from './transcriptReading';
 
 const SCROLL_THRESHOLD = 300;
 const ANCHOR_PILL_LINGER_MS = 1600;
@@ -98,6 +99,18 @@ export const ConversationTranscript = React.memo((props: ConversationTranscriptP
     const { theme } = useUnistyles();
     const { fontScale } = useWindowDimensions();
     const flatListRef = React.useRef<FlatList>(null);
+    const scrollOwnerKey = JSON.stringify([props.sessionId, props.reading?.key]);
+    const scrollOwner = React.useRef(scrollOwnerKey);
+    scrollOwner.current = scrollOwnerKey;
+    const coordinator = React.useMemo(() => Platform.OS === 'web'
+        ? new WebTranscriptScrollCoordinator(() => scrollOwner.current === scrollOwnerKey ? flatListRef.current : null) : null, [scrollOwnerKey]);
+    const scrollPortRef = React.useRef<TranscriptScrollPort | null>(null);
+    scrollPortRef.current = coordinator?.driver ?? {
+        scrollToOffset: options => flatListRef.current?.scrollToOffset(options),
+        scrollToIndex: options => flatListRef.current?.scrollToIndex(options),
+        scrollToEnd: options => flatListRef.current?.scrollToEnd(options),
+    };
+    React.useEffect(() => { coordinator?.activate(); return () => coordinator?.dispose(); }, [coordinator]);
     const viewportRef = React.useRef<View>(null);
     const [showScrollButton, setShowScrollButton] = React.useState(false);
     const showScrollButtonRef = React.useRef(false);
@@ -138,7 +151,6 @@ export const ConversationTranscript = React.memo((props: ConversationTranscriptP
     const userScrollOffset = React.useRef<number | null>(null);
     const viewportRange = React.useRef<HistoryViewportReader>(() => undefined);
     const boundaryFill = React.useRef<{ direction: 'older' | 'newer'; key: string } | null>(null);
-    const prepareBoundaryLoad = React.useRef<(isCurrent: () => boolean) => Promise<void> | void>(() => {});
     const boundaryAttemptKey = React.useCallback((direction: 'older' | 'newer') => {
         const renderedBoundary = direction === 'older' ? props.messages.at(-1)?.id : props.messages[0]?.id;
         const boundary = (direction === 'older' ? props.olderCursor : props.newerCursor)
@@ -147,6 +159,8 @@ export const ConversationTranscript = React.memo((props: ConversationTranscriptP
     }, [props.sessionId, props.boundaryScope, props.messages, props.reading, props.olderCursor, props.newerCursor]);
     const currentBoundaryAttemptKeys = React.useRef<string[]>([]);
     currentBoundaryAttemptKeys.current = [boundaryAttemptKey('older'), boundaryAttemptKey('newer')];
+    const loadingRef = React.useRef({ older: props.isLoadingOlder, newer: props.isLoadingNewer });
+    loadingRef.current = { older: props.isLoadingOlder, newer: props.isLoadingNewer };
     const loadBoundary = React.useCallback((direction: 'older' | 'newer', retry = false, refill = false) => {
         const loading = direction === 'older' ? props.isLoadingOlder : props.isLoadingNewer;
         const more = direction === 'older' ? props.hasMoreOlder : props.hasMoreNewer;
@@ -157,21 +171,29 @@ export const ConversationTranscript = React.memo((props: ConversationTranscriptP
             || (userScrollDirection.current === undefined && userScrollOffset.current !== null)
             || (userScrollDirection.current !== undefined && userScrollDirection.current !== direction))) return;
         if (!load || more === false || loading || (!retry && (error || attempted.current.has(key)))) return;
+        const transaction = coordinator?.beginHistory(key, direction, retry || refill);
+        if (coordinator && transaction === null) return;
         attempted.current.add(key);
         const fill = { direction, key };
         boundaryFill.current = fill;
         if (attempted.current.size > 8) attempted.current.delete(attempted.current.values().next().value!);
         if (Platform.OS === 'web') userScrollStarted.current = false;
-        const session = props.sessionId;
-        const isCurrent = () => sessionRef.current === session && (!refill
-            || (boundaryFill.current === fill && userScrollDirection.current === direction));
-        const prepared = prepareBoundaryLoad.current(isCurrent);
-        if (prepared) void prepared.then(() => { if (isCurrent()) load(retry && error === 'history-window-capacity' ? undefined : () => viewportRange.current()); });
-        else load(retry && error === 'history-window-capacity' ? undefined : () => viewportRange.current());
+        load(retry && error === 'history-window-capacity' ? undefined : () => viewportRange.current());
     }, [boundaryAttemptKey, props.hasMoreOlder, props.hasMoreNewer, props.isLoadingOlder, props.isLoadingNewer,
-        props.onLoadOlder, props.onLoadNewer, props.olderError, props.newerError]);
+        props.onLoadOlder, props.onLoadNewer, props.olderError, props.newerError, coordinator]);
     const loadBoundaryRef = React.useRef(loadBoundary);
     loadBoundaryRef.current = loadBoundary;
+    React.useEffect(() => {
+        const transaction = coordinator?.history;
+        if (!transaction) return;
+        const loading = transaction.direction === 'older' ? props.isLoadingOlder : props.isLoadingNewer;
+        const error = transaction.direction === 'older' ? props.olderError : props.newerError;
+        const more = transaction.direction === 'older' ? props.hasMoreOlder : props.hasMoreNewer;
+        if (error || more === false || (!loading && transaction.key !== boundaryAttemptKey(transaction.direction))) {
+            coordinator?.finishHistory(transaction.id);
+        } else coordinator?.observeLoading(Boolean(loading));
+    }, [coordinator, boundaryAttemptKey, props.isLoadingOlder, props.isLoadingNewer, props.olderError, props.newerError,
+        props.hasMoreOlder, props.hasMoreNewer]);
     const previousIdentities = React.useRef<{ session: string | undefined; identities: ReturnType<typeof reconcileTranscriptIdentities>['identities'] }>({ session: undefined, identities: [] });
     const listItems = React.useMemo(() => {
         const result = reconcileTranscriptIdentities(inverted ? displayItems : [...displayItems].reverse(), props.reading,
@@ -179,6 +201,8 @@ export const ConversationTranscript = React.memo((props: ConversationTranscriptP
         previousIdentities.current = { session: props.sessionId, identities: result.identities };
         return result.keyed;
     }, [displayItems, inverted, props.reading, props.sessionId, props.scopedItems]);
+    const listItemsRef = React.useRef(listItems);
+    listItemsRef.current = listItems;
     viewportRange.current = () => {
         if (Platform.OS !== 'web' || (!props.reading && !props.scopedViewport)) return undefined;
         const node = (flatListRef.current as any)?.getScrollableNode?.() as HTMLElement | undefined;
@@ -220,18 +244,21 @@ export const ConversationTranscript = React.memo((props: ConversationTranscriptP
     const spacers = React.useMemo(() => {
         const keys = listItems.map(item => item.renderKey);
         const previous = extent.current;
+        const previousKeys = new Set(previous.keys);
+        const nextKeys = new Set(keys);
+        const projectionChanged = keys.length !== previous.keys.length || keys.some((key, index) => previous.keys[index] !== key);
         // Initial list-width layout can invalidate measurements after child
         // onLayout has fired. Read surviving DOM geometry before this commit
         // removes those cells, rather than substituting a 160px estimate.
         const scrollNode = (flatListRef.current as any)?.getScrollableNode?.() as HTMLElement | undefined;
-        if (Platform.OS === 'web' && previous.keys.length && scrollNode?.querySelectorAll) {
+        if (Platform.OS === 'web' && projectionChanged && previous.keys.length && scrollNode?.querySelectorAll) {
             for (const row of scrollNode.querySelectorAll<HTMLElement>('[data-transcript-key]')) {
                 const key = row.dataset.transcriptKey;
                 const height = row.getBoundingClientRect().height;
-                if (key && previous.keys.includes(key) && height > 0) rowHeights.current.set(key, height);
+                if (key && previousKeys.has(key) && height > 0) rowHeights.current.set(key, height);
             }
         }
-        const common = new Set(keys.filter(key => previous.keys.includes(key)));
+        const common = new Set(keys.filter(key => previousKeys.has(key)));
         let leading = 0; let trailing = 0;
         if (Platform.OS === 'web' && !inverted && previous.session === props.sessionId && common.size && !jumpPending.current) {
             const firstOld = previous.keys.findIndex(key => common.has(key));
@@ -252,7 +279,7 @@ export const ConversationTranscript = React.memo((props: ConversationTranscriptP
         if (props.hasMoreOlder === false) leading = 0;
         if (props.hasMoreNewer === false) trailing = 0;
         for (const [key, debt] of measurementDebt.current) {
-            if (!keys.includes(key) || (debt.edge === 'leading' ? props.hasMoreOlder === false : props.hasMoreNewer === false)) {
+            if (!nextKeys.has(key) || (debt.edge === 'leading' ? props.hasMoreOlder === false : props.hasMoreNewer === false)) {
                 measurementDebt.current.delete(key);
             }
         }
@@ -334,21 +361,21 @@ export const ConversationTranscript = React.memo((props: ConversationTranscriptP
     const reading = useTranscriptReading({ adapter: props.reading, items: listItems, inverted, isAtLatest,
         followLatestOnLayout: Boolean(props.sessionId) || props.inverted !== false,
         synchronousAnchoring: Platform.OS === 'web' && !inverted,
-        listRef: flatListRef, viewportRef, expanded: expandedKeys, restoreExpanded: setExpandedKeys });
-    prepareBoundaryLoad.current = isCurrent => {
-        if (Platform.OS !== 'web' || !props.reading || !viewportRef.current) return;
-        return reading.capture().then(() => { if (isCurrent()) reading.pin(); });
-    };
+        listRef: coordinator ? scrollPortRef : flatListRef, viewportRef, expanded: expandedKeys, restoreExpanded: setExpandedKeys,
+        externallyScheduled: Boolean(coordinator), canCapture: () => !coordinator || coordinator.canCapture() });
+    if (coordinator) coordinator.onSettled = () => { void reading.capture(); };
     const contentGeneration = React.useMemo(() => ({}), [collapsedGroups, expandedKeys, manuallyCollapsedKeys, props.currentTurnActive,
         props.groupToolCalls, props.messages]);
     const cancelReadingRestoreRef = React.useRef(reading.cancelRestore);
     cancelReadingRestoreRef.current = reading.cancelRestore;
     const claimScroll = React.useCallback(() => {
+        coordinator?.userIntent();
+        if (coordinator) { jumpPending.current = false; jumpRequest.current = null; }
         userScrollStarted.current = true;
         userScrollDirection.current = undefined;
         userScrollOffset.current = null;
         cancelReadingRestoreRef.current();
-    }, []);
+    }, [coordinator]);
     const seenCollapsibleGroupsRef = React.useRef<Set<string>>(new Set(
         displayItems.filter(isCollapsibleDisplayItem).map((item) => item.id),
     ));
@@ -560,10 +587,12 @@ export const ConversationTranscript = React.memo((props: ConversationTranscriptP
                 if (changed) rowHeights.current.set(item.renderKey, height);
                 if (changed || debt) setHeightRevision(value => value + 1);
             }
+            coordinator?.rowMounted(item.renderKey);
         }}>{content}</View>;
-    }, [props.itemContainerStyle, renderItemContent]);
+    }, [props.itemContainerStyle, renderItemContent, coordinator]);
 
     const handleScroll = React.useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
+        coordinator?.activity();
         const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
         // The Web history window keeps evicted newer rows as a footer spacer
         // so a pagination commit does not move the reader. That spacer is
@@ -574,7 +603,7 @@ export const ConversationTranscript = React.memo((props: ConversationTranscriptP
         const trailing = Platform.OS === 'web' && !inverted ? Math.max(0, extent.current.trailing) : 0;
         const lastRenderedOffset = Math.max(0, contentSize.height - layoutMeasurement.height - trailing);
         const offsetY = trailing > 0 && contentOffset.y > lastRenderedOffset ? lastRenderedOffset : contentOffset.y;
-        if (offsetY !== contentOffset.y) flatListRef.current?.scrollToOffset({ offset: offsetY, animated: false });
+        if (offsetY !== contentOffset.y) scrollPortRef.current?.scrollToOffset({ offset: offsetY, animated: false });
         // Scrollbar presses have no direction until their first scroll. Wheel,
         // keys and touch already carry intent; anchor corrections must not
         // overwrite it or trigger the opposite overlapping preload boundary.
@@ -585,6 +614,7 @@ export const ConversationTranscript = React.memo((props: ConversationTranscriptP
             // from that row into the trailing spacer look like no movement.
             const towardEnd = contentOffset.y > userScrollOffset.current;
             userScrollDirection.current = towardEnd !== inverted ? 'newer' : 'older';
+            coordinator?.userIntent(userScrollDirection.current);
         }
         const distanceFromBottom = inverted
             ? offsetY
@@ -593,9 +623,9 @@ export const ConversationTranscript = React.memo((props: ConversationTranscriptP
         const distanceFromTop = inverted ? Math.max(0, contentSize.height - layoutMeasurement.height - offsetY) : Math.max(0, offsetY - Math.max(0, extent.current.leading));
         setBoundaries(previous => previous.older === (distanceFromTop <= 24) && previous.newer === (distanceFromBottom <= 24)
             ? previous : { older: distanceFromTop <= 24, newer: distanceFromBottom <= 24 });
-        if (!isAtLatest && distanceFromBottom <= 2 * layoutMeasurement.height) loadBoundary('newer');
+        if (!isAtLatest && distanceFromBottom <= (coordinator ? 0.5 : 2) * layoutMeasurement.height) loadBoundary('newer');
         if ((Platform.OS !== 'web' || userScrollStarted.current) && props.hasMoreOlder
-            && ((!inverted && distanceFromTop <= 2 * layoutMeasurement.height) || distanceFromTop <= 24)) loadBoundary('older');
+            && ((!inverted && distanceFromTop <= (coordinator ? 0.5 : 2) * layoutMeasurement.height) || distanceFromTop <= 24)) loadBoundary('older');
         const next = distanceFromBottom > SCROLL_THRESHOLD;
         if (next !== showScrollButtonRef.current) {
             showScrollButtonRef.current = next;
@@ -606,13 +636,14 @@ export const ConversationTranscript = React.memo((props: ConversationTranscriptP
                 anchorPillVisibleRef.current = true;
                 setShowAnchorPill(true);
             }
+            if (coordinator) return; // Keep Web navigation available after the gesture.
             if (anchorPillTimerRef.current) clearTimeout(anchorPillTimerRef.current);
             anchorPillTimerRef.current = setTimeout(() => {
                 anchorPillVisibleRef.current = false;
                 setShowAnchorPill(false);
             }, ANCHOR_PILL_LINGER_MS);
         }
-    }, [hasAnchorNavigation, inverted, isAtLatest, loadBoundary, reading, props.hasMoreOlder, props.showAnchorNavigation]);
+    }, [hasAnchorNavigation, inverted, isAtLatest, loadBoundary, reading, props.hasMoreOlder, props.showAnchorNavigation, coordinator]);
 
     React.useEffect(() => () => {
         if (anchorPillTimerRef.current) clearTimeout(anchorPillTimerRef.current);
@@ -620,12 +651,13 @@ export const ConversationTranscript = React.memo((props: ConversationTranscriptP
     }, []);
 
     const scrollLatest = React.useCallback(() => {
+        coordinator?.jump();
         boundaryFill.current = null;
         if (Platform.OS === 'web') userScrollStarted.current = false;
         reading.jumpLatest();
-        if (inverted) flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
-        else flatListRef.current?.scrollToEnd({ animated: true });
-    }, [inverted, reading]);
+        if (inverted) scrollPortRef.current?.scrollToOffset({ offset: 0, animated: true });
+        else scrollPortRef.current?.scrollToEnd({ animated: true });
+    }, [inverted, reading, coordinator]);
     const sessionRef = React.useRef(props.sessionId); sessionRef.current = props.sessionId;
     const scrollToBottom = React.useCallback(async () => {
         if (isAtLatest) { scrollLatest(); return; }
@@ -633,11 +665,16 @@ export const ConversationTranscript = React.memo((props: ConversationTranscriptP
         const session = props.sessionId;
         const request = {}; jumpRequest.current = request;
         boundaryFill.current = null;
+        if (coordinator) {
+            coordinator.jump();
+            userScrollStarted.current = false;
+            reading.jumpLatest();
+        }
         jumpPending.current = true;
         try { await props.onJumpToLatest(); }
         catch { if (sessionRef.current === session) jumpPending.current = false; }
         finally { if (jumpRequest.current === request) jumpRequest.current = null; }
-    }, [isAtLatest, scrollLatest, props.onJumpToLatest, props.sessionId]);
+    }, [isAtLatest, scrollLatest, props.onJumpToLatest, props.sessionId, coordinator, reading]);
     const followLatestRequestRef = React.useRef(props.followLatestRequest ?? 0);
     React.useEffect(() => {
         const request = props.followLatestRequest ?? 0;
@@ -697,17 +734,35 @@ export const ConversationTranscript = React.memo((props: ConversationTranscriptP
         if (Platform.OS === 'web') userScrollStarted.current = false;
         cancelReadingRestoreRef.current('older');
         const index = inverted ? current.displayIndex : displayItemsRef.current.length - 1 - current.displayIndex;
-        flatListRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.5 });
-    }, [inverted]);
+        if (coordinator) {
+            const key = listItemsRef.current[index]?.renderKey;
+            if (!key) return;
+            const align = () => {
+                const node = (flatListRef.current as any)?.getScrollableNode?.() as HTMLElement | undefined;
+                const row = node && [...node.querySelectorAll<HTMLElement>('[data-transcript-key]')]
+                    .find(row => row.dataset.transcriptKey === key);
+                if (!node || !row) return false;
+                coordinator.driver.scrollToOffset({ offset: Math.max(0, node.scrollTop + row.getBoundingClientRect().top
+                    - node.getBoundingClientRect().top - (node.clientHeight - row.getBoundingClientRect().height) / 2), animated: false });
+                return true;
+            };
+            coordinator.jump();
+            if (!align()) {
+                coordinator.jump(key, align);
+                coordinator.driver.scrollToIndex({ index, animated: false, viewPosition: 0.5 });
+            }
+        } else flatListRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.5 });
+    }, [inverted, coordinator]);
     const handleScrollToIndexFailed = React.useCallback((info: { index: number; averageItemLength: number }) => {
-        flatListRef.current?.scrollToOffset({ offset: info.averageItemLength * info.index, animated: false });
+        scrollPortRef.current?.scrollToOffset({ offset: info.averageItemLength * info.index, animated: false });
+        if (coordinator) return; // Web finishes when the requested row mounts.
         if (indexRetryTimerRef.current) clearTimeout(indexRetryTimerRef.current);
         const session = sessionRef.current;
         indexRetryTimerRef.current = setTimeout(() => {
             if (sessionRef.current !== session) return;
             flatListRef.current?.scrollToIndex({ index: info.index, animated: true, viewPosition: 0.5 });
         }, 120);
-    }, []);
+    }, [coordinator]);
     const openAnchorSheet = React.useCallback(() => setAnchorSheetOpen(true), []);
     const closeAnchorSheet = React.useCallback(() => setAnchorSheetOpen(false), []);
 
@@ -729,7 +784,12 @@ export const ConversationTranscript = React.memo((props: ConversationTranscriptP
         const node = (flatListRef.current as any)?.getScrollableNode?.() as HTMLElement | undefined;
         if (!node) return;
         const claim = (delta?: number) => {
+            jumpPending.current = false;
+            jumpRequest.current = null;
             const direction = delta === undefined ? undefined : delta < 0 ? 'older' : 'newer';
+            const transaction = coordinator?.history;
+            if (transaction && !loadingRef.current[transaction.direction]) coordinator?.finishHistory(transaction.id);
+            coordinator?.userIntent(direction);
             if (boundaryFill.current?.direction !== direction) boundaryFill.current = null;
             for (const key of currentBoundaryAttemptKeys.current) attempted.current.delete(key);
             userScrollStarted.current = true;
@@ -748,7 +808,7 @@ export const ConversationTranscript = React.memo((props: ConversationTranscriptP
         const handler = (event: WheelEvent) => {
             const delta = event.shiftKey && Math.abs(event.deltaX) > 0 && Math.abs(event.deltaY) < 1
                 ? event.deltaX : event.deltaY;
-            if (delta) handleTranscriptWebWheel(event, node, () => claim(delta));
+            if (delta) claim(delta);
         };
         const interactiveTarget = (event: Event) => event.target instanceof Element
             && event.target.closest('input, textarea, select, button, a[href], [contenteditable]:not([contenteditable="false"]), [role="slider"], [role="textbox"]');
@@ -787,7 +847,7 @@ export const ConversationTranscript = React.memo((props: ConversationTranscriptP
         node.addEventListener('touchmove', touchmove, { passive: true });
         node.addEventListener('touchend', touchend);
         node.addEventListener('touchcancel', touchend);
-        node.addEventListener('wheel', handler, { passive: false });
+        node.addEventListener('wheel', handler, { passive: true });
         return () => {
             node.removeEventListener('wheel', handler);
             node.removeEventListener('keydown', keydown);
@@ -797,7 +857,7 @@ export const ConversationTranscript = React.memo((props: ConversationTranscriptP
             node.removeEventListener('touchend', touchend);
             node.removeEventListener('touchcancel', touchend);
         };
-    }, []);
+    }, [coordinator]);
 
     return (
         <BrowserProgressContext.Provider value={browserProgress}>
@@ -826,7 +886,11 @@ export const ConversationTranscript = React.memo((props: ConversationTranscriptP
                 // index, making unmeasured anchors/latest impossible to seek.
                 // Estimates mount the target; reading markers correct its offset.
                 getItemLayout={Platform.OS === 'web' ? getWebItemLayout : undefined}
-                {...(Platform.OS === 'web' ? { onAnchorOffsetChange: reading.adjustOffset } : {})}
+                {...(coordinator ? {
+                    scrollCoordinator: coordinator,
+                    historyBoundaryKeys: currentBoundaryAttemptKeys.current,
+                    onAnchorOffsetChange: reading.adjustOffset,
+                } : {})}
                 maintainVisibleContentPosition={inverted
                     ? { minIndexForVisible: 0, ...(isAtLatest ? { autoscrollToTopThreshold: 50 } : {}) }
                     : undefined}
@@ -862,12 +926,12 @@ export const ConversationTranscript = React.memo((props: ConversationTranscriptP
                 onStartReached={!inverted ? () => {
                     if (Platform.OS !== 'web' || userScrollStarted.current) loadBoundary('older');
                 } : undefined}
-                onStartReachedThreshold={2}
+                onStartReachedThreshold={coordinator ? 0.5 : 2}
                 // Start the next backward page before the user reaches the
                 // visual top. Existing messages stay interactive while the
                 // request runs, and the loading affordance is normally kept
                 // outside the viewport instead of flashing on every page.
-                onEndReachedThreshold={2}
+                onEndReachedThreshold={coordinator ? 0.5 : 2}
                 onScrollToIndexFailed={handleScrollToIndexFailed}
             />
             <HistoryBoundary direction="older" reached={boundaries.older && !(props.olderError && props.olderErrorMessage)} loading={props.isLoadingOlder}
@@ -893,7 +957,7 @@ export const ConversationTranscript = React.memo((props: ConversationTranscriptP
                         anchors={anchors}
                         hasMoreOlder={props.hasMoreOlder}
                         isLoadingOlder={props.isLoadingOlder}
-                        onLoadOlder={props.onLoadOlder}
+                        onLoadOlder={props.onLoadOlder ? () => loadBoundary('older', true) : undefined}
                         onSelect={scrollToAnchor}
                         onClose={closeAnchorSheet}
                     />

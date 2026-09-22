@@ -110,6 +110,8 @@ export function useTranscriptReading(options: {
     isAtLatest: boolean;
     followLatestOnLayout?: boolean;
     synchronousAnchoring?: boolean;
+    externallyScheduled?: boolean;
+    canCapture?: () => boolean;
     listRef: React.RefObject<any>;
     viewportRef: React.RefObject<any>;
     expanded: string[];
@@ -144,6 +146,18 @@ export function useTranscriptReading(options: {
         }
     }
     const measurements = React.useCallback(async () => {
+        if (current.current.externallyScheduled) {
+            const viewportNode = current.current.viewportRef.current as HTMLElement | null;
+            if (!viewportNode?.getBoundingClientRect) return null;
+            const viewport = viewportNode.getBoundingClientRect();
+            const rows = [...nodes.current].flatMap(([node, entry]) => {
+                const element = node as HTMLElement;
+                if (!element.isConnected || !element.getBoundingClientRect) return [];
+                const bounds = element.getBoundingClientRect();
+                return [{ ...entry, bounds: { y: bounds.top, height: bounds.height } }];
+            });
+            return { viewport: { y: viewport.top, height: viewport.height }, rows };
+        }
         const viewport = await measure(current.current.viewportRef.current);
         if (!viewport) return null;
         const rows = await Promise.all([...nodes.current].map(async ([node, entry]) => ({ ...entry, bounds: await measure(node) })));
@@ -177,6 +191,7 @@ export function useTranscriptReading(options: {
         else followLatestTimer.current = setTimeout(run, 0);
     }, []);
     const capture = React.useCallback(async () => {
+        if (current.current.canCapture?.() === false) return;
         const { adapter } = current.current;
         if (!adapter) return;
         if (!ready.current) { deferredCapture.current = true; return; }
@@ -184,7 +199,8 @@ export function useTranscriptReading(options: {
         const owner = generation.current;
         const epoch = ownershipEpoch.current;
         const result = await measurements();
-        if (!result || owner !== generation.current || epoch !== ownershipEpoch.current || adapter !== current.current.adapter) return;
+        if (!result || owner !== generation.current || epoch !== ownershipEpoch.current || adapter !== current.current.adapter
+            || current.current.canCapture?.() === false) return;
         const { viewport } = result;
         const row = result.rows.filter(row => row.bounds.y < viewport.y + viewport.height && row.bounds.y + row.bounds.height > viewport.y
             && adapter.wireId(row.id) && adapter.wireSeq(row.id) !== null)
@@ -288,6 +304,7 @@ export function useTranscriptReading(options: {
                     && userDirection.current !== 'older'
                     && (distanceFromBottom <= 50 || transientLatestLayout);
             }
+            if (current.current.externallyScheduled) return;
             if (Date.now() - lastCapture.current > 120) { lastCapture.current = Date.now(); void capture(); }
             if (timer.current) clearTimeout(timer.current);
             timer.current = setTimeout(() => { void capture(); }, 120);
