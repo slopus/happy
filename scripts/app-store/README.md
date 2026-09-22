@@ -200,7 +200,15 @@ bottom insets in every scene. Do not change production UI for photography.
 
 Android phone keeps the five headlines above, with a measured caption band of
 384 output pixels (20% of the image, including whitespace). The native capture
-is frameless and scaled down without distortion. Its third card uses the actual
+is scaled down without distortion to 828 × 1472 output pixels, unchanged from
+the frameless layout. An original CSS Android-style shell adds a restrained dark
+edge, subtly rounded outer corners, and a soft shadow. Its outer corner radius
+equals the 16-output-pixel inset, fitting the square native screen corners
+without clipping even blank source pixels. The inset lies
+entirely outside the native bitmap: the 860 × 1504 shell adds no notch, camera
+cutout, screen mask, or UI overlay, and never reads Apple frame assets. The
+complete status bar, app, and navigation bar remain visible without source-pixel
+upscaling. Its third card uses the actual
 desktop capture, vertically centered with only the right side clipped. It is a
 **companion-product review draft**, not proof of Android usage or guaranteed
 Play acceptance. Replace it with native usage if store review requires it.
@@ -209,6 +217,14 @@ Android tablets are full-bleed native UI: no headline, support line, decorative
 background, bezel, corner rounding, or shadow. Scene `companion` must be a real
 native computer/session overview; a desktop bitmap is not a substitute. The
 other scene keys remain `models`, `sessions`, `multiplayer`, and `source`.
+
+The 10-inch plan expands `sessionListTimestamp.ts` in the real Changes route for
+the companion card and waits for its diff hunk to load. Its source card uses the
+app's normal Zen mode control to focus that same public file without the session
+sidebar; the plan restores the sidebar before the multiplayer capture. The
+32-line file fits vertically on this tablet, so no artificial scroll, zoom, or
+pixel crop is used to distinguish these two cards. Record this native view choice
+in the capture manifest's fixture disclosure.
 
 Version 2 now has a closed device-discriminated contract. Existing documented
 Apple manifests remain valid and Apple composition geometry is unchanged.
@@ -318,8 +334,12 @@ No capture, output selection, upload, or publication is implicit in this command
   least four 9:16 portrait or 16:9 landscape screenshots, with a short side of
   at least 1080px. Large-screen guidance allows 1080–7680px and excludes added
   text outside the core app experience. The chosen Android dimensions satisfy
-  both ranges. Necessary phone taglines occupy no more than 20%; avoid device
-  imagery, rankings, promotional pricing, and installation calls to action.
+  both ranges. Necessary phone taglines occupy no more than 20%. The guidance
+  prioritizes actual app footage and advises against people interacting with a
+  device; this is not a blanket ban on static phone frames. The owner-selected
+  Android phone shell is a deliberate presentation choice, not a claim that
+  Google endorses frames. Keep tablet exports UI-only and exclude people holding
+  devices. Avoid rankings, promotional pricing, and installation calls to action.
   Provide meaningful alt text of at most 140 characters. Five scenes fit the
   maximum of eight per device type. Recheck the live guidance before upload.
 - [Google Play image types](https://developers.google.com/android-publisher/api-ref/rest/v3/AppImageType):

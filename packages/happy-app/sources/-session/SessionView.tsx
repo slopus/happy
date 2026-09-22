@@ -42,7 +42,7 @@ import { t } from '@/text';
 import { tracking } from '@/track';
 import { getVoiceMessageCount, getVoiceOnboardingPromptLoadCount } from '@/sync/persistence';
 import { isRunningOnMac } from '@/utils/platform';
-import { useDeviceType, useHeaderHeight, useIsLandscape, useIsTablet } from '@/utils/responsive';
+import { useHeaderHeight, useIsLandscape, useIsTablet, useLayoutDimensions } from '@/utils/responsive';
 import { resolveSessionGitPresentation } from '@/utils/sessionGitPresentation';
 import { FilesSidebar, SidebarMode } from '@/components/FilesSidebar';
 import { AllFilesDiffView } from '@/components/AllFilesDiffView';
@@ -58,7 +58,7 @@ import { useRouter } from 'expo-router';
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import * as React from 'react';
 import { useMemo } from 'react';
-import { ActivityIndicator, LayoutChangeEvent, Platform, Pressable, Text, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, LayoutChangeEvent, Platform, Pressable, Text, View } from 'react-native';
 import Animated, { useSharedValue, useAnimatedStyle, withTiming, Easing } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
@@ -121,20 +121,19 @@ export const SessionView = React.memo((props: { id: string }) => {
     const { theme } = useUnistyles();
     const safeArea = useSafeAreaInsets();
     const isLandscape = useIsLandscape();
-    const deviceType = useDeviceType();
+    const isTablet = useIsTablet();
     const headerHeight = useHeaderHeight();
-    const mobileHeaderHeight = deviceType === 'phone' && Platform.OS === 'ios'
+    const mobileHeaderHeight = !isTablet && Platform.OS === 'ios'
         ? Math.max(headerHeight, MOBILE_GLASS_HEADER_HEIGHT)
         : headerHeight;
     // Keep Android's compact landscape header: it owns the session info and
     // Changes navigation even when a small tablet uses the phone layout.
-    const hidesLandscapeHeader = isLandscape && deviceType === 'phone' && Platform.OS === 'ios';
-    const contentRunsUnderHeader = deviceType === 'phone'
+    const hidesLandscapeHeader = isLandscape && !isTablet && Platform.OS === 'ios';
+    const contentRunsUnderHeader = !isTablet
         && Platform.OS !== 'web'
         && !isLandscape;
     const realtimeStatus = useRealtimeStatus();
-    const isTablet = useIsTablet();
-    const { width: windowWidth } = useWindowDimensions();
+    const { width: windowWidth } = useLayoutDimensions();
     const fileDiffsSidebarEnabled = useSetting('fileDiffsSidebar');
     const zenMode = useLocalSetting('zenMode');
     const [headerBackdropVisible, setHeaderBackdropVisible] = React.useState(false);
@@ -424,7 +423,7 @@ export const SessionView = React.memo((props: { id: string }) => {
             isConnected,
         };
     }, [session, isDataReady, pendingChat]);
-    const headerRight = session && deviceType === 'phone' && Platform.OS !== 'web'
+    const headerRight = session && !isTablet && Platform.OS !== 'web'
         ? (
             <Pressable
                 onPress={() => router.push(`/session/${session.id}/info`)}
@@ -447,7 +446,7 @@ export const SessionView = React.memo((props: { id: string }) => {
 
     const mainContent = (
         <>
-            <MobileGlassBackdrop enabled={deviceType === 'phone' && Platform.OS !== 'web'} />
+            <MobileGlassBackdrop enabled={!isTablet && Platform.OS !== 'web'} />
             {/* Status bar shadow for landscape mode */}
             {hidesLandscapeHeader && (
                 <View style={{
@@ -776,12 +775,11 @@ export function SessionViewLoaded({
     const router = useRouter();
     const safeArea = useSafeAreaInsets();
     const isLandscape = useIsLandscape();
-    const deviceType = useDeviceType();
     const isTablet = useIsTablet();
     // Only the portrait phone chat uses an overlay dock. Tablet, desktop,
     // landscape, and embedded views retain their existing split layout.
     const usesFloatingMobileDock = !embedded
-        && deviceType === 'phone'
+        && !isTablet
         && Platform.OS !== 'web'
         && !isRunningOnMac()
         && !isLandscape;
@@ -833,9 +831,9 @@ export function SessionViewLoaded({
     const acknowledgedCliVersions = useLocalSetting('acknowledgedCliVersions');
     const zenMode = useLocalSetting('zenMode');
     const sessionInputHorizontalPadding = Platform.OS === 'web' || isRunningOnMac() || isTablet ? 12 : 8;
-    const chatListTopContentInset = embedded || (isLandscape && deviceType === 'phone')
+    const chatListTopContentInset = embedded || (isLandscape && !isTablet)
         ? 12
-        : deviceType === 'phone' && Platform.OS !== 'web'
+        : !isTablet && Platform.OS !== 'web'
             ? safeArea.top
                 + MOBILE_GLASS_HEADER_HEIGHT
                 + (realtimeStatus !== 'disconnected' ? VOICE_PILL_TOTAL_HEIGHT : 0)
@@ -1271,7 +1269,7 @@ export function SessionViewLoaded({
     return (
         <>
             {/* CLI Version Warning Overlay - Subtle centered pill */}
-            {shouldShowCliWarning && !(isLandscape && deviceType === 'phone') && (
+            {shouldShowCliWarning && !(isLandscape && !isTablet) && (
                 <Pressable
                     onPress={handleDismissCliWarning}
                     style={{
@@ -1326,7 +1324,7 @@ export function SessionViewLoaded({
 
             {/* Back button for landscape phone mode when header is hidden */}
             {
-                isLandscape && deviceType === 'phone' && Platform.OS === 'ios' && (
+                isLandscape && !isTablet && Platform.OS === 'ios' && (
                     <Pressable
                         onPress={() => router.back()}
                         style={{

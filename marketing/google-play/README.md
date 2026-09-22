@@ -2,7 +2,7 @@
 
 One selected five-image set per upload target:
 
-- [Phone](en-US/phone/): 1080 × 1920 portrait, with short captions.
+- [Phone](en-US/phone/): 1080 × 1920 portrait, with short captions and an Android-style frame.
 - [7-inch tablet](en-US/tablet-7/): 1920 × 1080 landscape, native UI only.
 - [10-inch tablet](en-US/tablet-10/): 1920 × 1080 landscape, native UI only.
 
@@ -21,9 +21,11 @@ local native setup and scenario are ready, run the matching capture plan, then
 Keep raw captures, debug bundles, account data, and intermediate renders ignored.
 Select only one PNG per concept/target here. No upload or OTA is automated.
 
-The selected Android retakes use mobile source `a186dc04` plus the small UI fixes
-and screenshot tooling in this commit, the desktop renderer at `7b63dd676b8f17ae61df4cba03678a19bb767ff0`,
-and the installed stable Agent 0.4.72 in its isolated capture home. Real Android
+The tablet retakes use mobile source `fc1ce7d` plus the responsive-layout changes
+in this commit. Phone compositions preserve the earlier verified native captures
+and add only the external frame; the unchanged desktop card uses renderer source
+`7b63dd676b8f17ae61df4cba03678a19bb767ff0`. The stable Agent 0.4.72 runs in its
+isolated capture home. Real Android
 API36 development clients use native 1080×1920/420dpi, 1920×1080/288dpi, and
 1920×1080/216dpi displays. Private capture manifests retain timestamps, hashes,
 source revisions, dimensions, and fixture disclosures.
@@ -33,14 +35,18 @@ source revisions, dimensions, and fixture disclosures.
 These are **review drafts**, not uploaded or approved store assets. Screenshot
 review found timestamp truncation, Android text-surface transparency, and a hidden
 small-tablet landscape header. These were fixed in the actual app and the Android
-sets retaken. See [the product observations and fixes](../../scripts/app-store/OBSERVATIONS.md).
+sets retaken. The latest tablet set also uses the real width-aware layout: wide
+windows show the sidebar, while narrow windows use one column. Rotation and
+keyboard behavior were verified on the native 7-inch target without reloading.
+See [the product observations and fixes](../../scripts/app-store/OBSERVATIONS.md).
 The capture does not patch app rendering or edit screenshot pixels to conceal bugs.
 
 The isolated debug harness supplies fictional projects and scripted Agent
 responses through normal encrypted APIs. Auto permissions remain selected.
 The source card shows the public `sessionListTimestamp.ts` through the real
-native Git-diff viewer. The tablet companion card shows the native Changes list.
-It is intentionally sparse because the fixture has one genuine changed file.
+native Git-diff viewer. The tablet companion card shows the real Changes file
+expanded beside the sidebar. The source card uses the app's normal Zen control
+for a focused view; neither image hides collapsed or unloaded content.
 
 The phone's desktop-only third card is a companion-product marketing draft;
 review its acceptability under Play's actual-app-experience guidance. The

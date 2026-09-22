@@ -35,7 +35,9 @@ export const profiles = {
         height: 960,
         headline: 42,
         support: 18,
+        // Keep the native screen large; the original Android shell sits outside it.
         deviceWidth: 414,
+        frameInset: 8,
         desktopWidth: 680,
         gutter: 32,
         top: 24,

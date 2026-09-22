@@ -164,7 +164,9 @@ try {
             ? `<img class="desktop" src="${images.desktop}" alt="">`
             : manifest.device === "iphone"
               ? `<div class="phone"><img class="screen" src="${images[spec.id]}" alt=""><img class="bezel" src="${frame}" alt=""></div>`
-              : `<img class="tablet" src="${images[spec.id]}" alt="">`;
+              : androidPhone
+                ? `<div class="android-device"><img class="android-screen" src="${images[spec.id]}" alt=""></div>`
+                : `<img class="tablet" src="${images[spec.id]}" alt="">`;
         await page.setContent(
             profile.uiOnly
                 ? `<!doctype html><html><head><meta charset="utf-8"><style>
@@ -197,7 +199,9 @@ try {
             header{height:192px;padding:24px 32px 12px;gap:8px}
             h1{letter-spacing:-1.4px}
             .scene{padding:0 32px}
-            .tablet{border-radius:0;box-shadow:none}
+            /* Original shell, outside the complete native bitmap. Outer radius equals inset so its square screen corners nest cleanly without a mask. */
+            .android-device{display:flex;flex:none;width:${profile.deviceWidth + profile.frameInset * 2}px;padding:${profile.frameInset}px;border-radius:${profile.frameInset}px;background:linear-gradient(135deg,#45494e,#202225 24%,#111315 72%,#3c4045);box-shadow:inset 0 0 0 1px #74797e,inset 0 0 0 3px #181a1d,0 5px 10px #193e3726}
+            .android-screen{display:block;flex:none;width:${profile.deviceWidth}px;height:auto}
             `
                     : ""
             }
@@ -207,7 +211,8 @@ try {
             await document.fonts.ready;
             await Promise.all([...document.images].map((image) => image.decode()));
         });
-        const geometry = await page.evaluate(({ headline, support, platform, uiOnly }) => {
+        const geometry = await page.evaluate((profile) => {
+            const { headline, support, platform, uiOnly, rawWidth, rawHeight, frameInset } = profile;
             const box = (selector) => {
                 const rect = document.querySelector(selector)?.getBoundingClientRect();
                 return rect
@@ -251,9 +256,11 @@ try {
                 }
             }
             const phone = box(".phone");
+            const androidDevice = box(".android-device");
+            const androidScreen = box(".android-screen");
             const tablet = box(".tablet");
             const desktop = box(".desktop");
-            const device = phone ?? tablet;
+            const device = phone ?? androidDevice ?? tablet;
             if (
                 device &&
                 (device.x < 0 ||
@@ -265,6 +272,22 @@ try {
             }
             if (phone && Math.abs(phone.width / phone.height - 1406 / 2822) > 0.0001)
                 throw new Error("Device aspect ratio changed.");
+            if (androidDevice) {
+                if (
+                    !androidScreen ||
+                    Math.abs(androidScreen.width / androidScreen.height - rawWidth / rawHeight) >
+                        0.0001 ||
+                    androidScreen.width * devicePixelRatio > rawWidth ||
+                    androidScreen.height * devicePixelRatio > rawHeight ||
+                    androidScreen.x !== androidDevice.x + frameInset ||
+                    androidScreen.y !== androidDevice.y + frameInset ||
+                    androidDevice.width !== androidScreen.width + frameInset * 2 ||
+                    androidDevice.height !== androidScreen.height + frameInset * 2
+                )
+                    throw new Error(
+                        "Android shell must surround the complete native screen without distortion or upscaling.",
+                    );
+            }
             if (
                 desktop &&
                 (desktop.x < 0 ||
@@ -284,6 +307,7 @@ try {
                     : {}),
                 headline: box("h1"),
                 phone,
+                ...(platform === "android" ? { androidDevice, androidScreen } : {}),
                 tablet,
                 screen: box(".screen"),
                 desktop,

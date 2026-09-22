@@ -61,6 +61,45 @@ verification. No OTA or store upload is part of this work.
 - Native verification: the replay opens the new conversation and returns to the
   list before capture; the selected images show its full AM/PM timestamp.
 
+## Small tablets and foldables need width-aware navigation
+
+- Owner feedback: the 7-inch landscape screenshots waste space in the phone
+  layout. The same limitation would affect sufficiently wide unfolded phones.
+- Cause: the shared layout hook used the estimated 9-inch device threshold,
+  although logical points/DPI do not establish a device's physical diagonal.
+- Fix: tablet-style navigation uses the current window width, starting at
+  768 logical pixels. The minimum 250px sidebar leaves 518px for content.
+  Narrow windows keep the single-column UI; wider windows share the same
+  sidebar, header, chat insets, and dock decision. Height does not control the
+  breakpoint, so an Android keyboard cannot collapse the sidebar.
+- This is ordinary production responsiveness, not a screenshot override.
+  Device diagnostics and native platform flags are unchanged. Actual foldable
+  hardware still needs validation; emulator rotation checks do not prove every
+  hinge, safe-area, or multi-window configuration.
+- Native rotation exposed stale React Native `Dimensions`: after the 7-inch
+  window changed from 1067×600 to 600×1067 logical pixels, its cached dimensions
+  stayed in landscape. The existing Unistyles runtime reported the correct
+  current window bounds and reacted in both directions without a reload.
+  Navigation, orientation, drawer width, chat layout, and the compact composer
+  now share a window-metrics hook: Unistyles on Android API 30+, React Native
+  elsewhere. Earlier Android uses physical display bounds in Unistyles, so it
+  must retain React Native's window metrics for split-screen sizing. No native
+  dependency, injected dimensions, new provider, or capture-specific code was added.
+- Native verification on the final bundle: rotate the same open conversation
+  from 1067dp-wide landscape to 600dp-wide portrait and back, without reloading.
+  The sidebar disappears and returns, and the compact composer follows the
+  narrow layout. Opening and closing the real Android keyboard preserves the
+  wide sidebar and selected conversation. Phone portrait remains single-column.
+
+## Screenshot selection feedback
+
+- The third Android tablet scene was captured with its Changes file collapsed,
+  leaving a largely empty view. Retakes must show useful expanded content,
+  reached through normal app controls and fully loaded before capture.
+- Android phone compositions should have a restrained Android-specific frame,
+  without copying Apple's frame or painting over the captured native UI.
+  Tablet exports remain native UI-only.
+
 ## Capture/setup issues, not confirmed product bugs
 
 - A one-shot sample conversation producer loses its presence. The producer now
