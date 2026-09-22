@@ -216,6 +216,32 @@ describe('rpcHandler', () => {
         expect(acknowledge).toHaveBeenCalledWith({ ok: true, result: 'encrypted-response' });
     });
 
+    it('allows a Codex account quota refresh acknowledgement after 40 seconds', async () => {
+        vi.useFakeTimers();
+        try {
+            const target = new FakeTargetSocket();
+            target.ack = () => new Promise<string>((resolve) => {
+                setTimeout(() => resolve('encrypted-response'), 40_000);
+            });
+            const caller = new FakeCallerSocket();
+            const io = createIo(target);
+            rpcHandler('user-1', caller as any, io as any);
+            const acknowledge = vi.fn();
+
+            const request = caller.receive('rpc-call', {
+                method: 'machine-1:refresh-codex-account-quota',
+                params: {},
+            }, acknowledge);
+            await vi.advanceTimersByTimeAsync(40_000);
+            await request;
+
+            expect(target.timeout).toHaveBeenCalledWith(55_000);
+            expect(acknowledge).toHaveBeenCalledWith({ ok: true, result: 'encrypted-response' });
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
     it('stops an empty lookup within the initial 2 seconds plus the 15-second grace window', async () => {
         vi.useFakeTimers();
         try {

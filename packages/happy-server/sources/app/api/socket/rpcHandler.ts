@@ -16,6 +16,10 @@ import { performance } from 'node:perf_hooks';
 
 const RPC_ROOM_PREFIX = 'rpc:';
 const RPC_CALL_TIMEOUT_MS = 30_000;
+// The quota probe allows a 45-second Codex turn. Leave time for app-server
+// startup and credential cleanup while still returning inside the App's
+// 60-second acknowledgement deadline.
+const RPC_CODEX_QUOTA_REFRESH_TIMEOUT_MS = 55_000;
 const RPC_STARTUP_TIMEOUT_MS = 100_000;
 const RPC_ENVIRONMENT_APPLY_TIMEOUT_MS = 600_000;
 const RPC_STARTUP_METHODS = new Set(['spawn-happy-session', 'resume-happy-session']);
@@ -124,6 +128,7 @@ function rpcCallTimeoutMs(prefixedMethod: string): number {
     const method = baseMethodName(prefixedMethod);
     // Only acknowledgement routing changes; encrypted request/response data stays opaque.
     if (method === 'environment-apply') return RPC_ENVIRONMENT_APPLY_TIMEOUT_MS;
+    if (method === 'refresh-codex-account-quota') return RPC_CODEX_QUOTA_REFRESH_TIMEOUT_MS;
     return RPC_STARTUP_METHODS.has(method)
         ? RPC_STARTUP_TIMEOUT_MS
         : RPC_CALL_TIMEOUT_MS;
