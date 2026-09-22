@@ -39,6 +39,7 @@ export const zhHant: TranslationStructure = {
     },
 
     common: {
+        managedByOrganization: "由你的組織管理",
         // Simple string constants
         cancel: '取消',
         authenticate: '驗證',

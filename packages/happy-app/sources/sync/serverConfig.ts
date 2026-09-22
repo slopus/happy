@@ -1,4 +1,5 @@
 import { MMKV } from 'react-native-mmkv';
+import { managedConfiguration } from './managedConfiguration';
 
 // Separate MMKV instance for server config that persists across logouts
 const serverConfigStorage = new MMKV({ id: 'server-config' });
@@ -9,6 +10,12 @@ const USE_CUSTOM_SERVER_FOR_VOICE_KEY = 'use-custom-server-for-voice';
 const DEFAULT_SERVER_URL = 'https://api.cluster-fluster.com';
 
 export function getServerUrl(): string {
+    return managedConfiguration.serverUrl ?? getUnmanagedServerUrl();
+}
+
+// Also used to determine the original server of credentials saved before MDM
+// support was introduced. Reading this does not change the user's preference.
+export function getUnmanagedServerUrl(): string {
     // A selected private run must not silently reuse a previously persisted
     // server (including another loopback run). Production ignores this path.
     if (__DEV__ && process.env.EXPO_PUBLIC_HARNESS_MODE === '1') {
@@ -43,6 +50,7 @@ export function rewriteLoopbackHost(url: string): string {
 }
 
 export function setServerUrl(url: string | null): void {
+    if (managedConfiguration.serverUrl) return;
     if (url && url.trim()) {
         serverConfigStorage.set(SERVER_KEY, url.trim());
     } else {
