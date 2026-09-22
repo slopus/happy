@@ -45,7 +45,8 @@ If there is no just-merged PR or other target evidence, ask which component to r
 - **CLI** — npm package `happy`
 - **Mobile** — Expo/EAS builds for iOS + Android
 - **Web** — Paws self-hosted Web at `https://47.115.228.20:8443`
-- **Server** — Docker image + K8s deploy via TeamCity
+- **Server** — Paws self-hosted Server; resolve the current production target
+  and rollout procedure from `happy-ops` local facts
 - **Docs** — GitHub Pages (separate repo)
 
 Present these as options. Wait for the user to pick.
@@ -445,17 +446,50 @@ The release is complete only when all checks agree:
 ## Server Release
 
     Package:     packages/happy-server
-    Dockerfile:  Dockerfile.server (production), Dockerfile (standalone w/ PGlite)
-    Image:       docker.korshakov.com/handy-server:{version}
-    K8s:         packages/happy-server/deploy/handy.yaml (1 replica, port 3005)
+    Runtime:     Self-hosted; current topology is private local operations state
+    Build input: The approved Server diff on top of the exact live release
 
-Server releases go through TeamCity (`Lab_HappyServer`). The config is in the TeamCity UI, not in the repo.
+This Paws fork does **not** use the upstream Happy TeamCity instance or the
+`docker.korshakov.com` registry. Those are upstream infrastructure and must not
+be opened, authenticated to, or triggered for a Paws release. The retained K8s
+manifests are compatibility/reference material, not evidence of the active
+production topology.
 
-Build: node:20 + python3 + ffmpeg, builds happy-wire + happy-server.
-Secrets from Vault: handy-db, handy-master, handy-github, handy-files, handy-e2b, handy-revenuecat, handy-elevenlabs.
-Redis: happy-redis StatefulSet (redis:7-alpine, 1Gi persistent volume).
+Before any Server release, invoke `happy-ops` and read its
+`experience.local.md`. That private file is the source of truth for the active
+service, release directory, runner, endpoint, backup location, and current
+operational constraints. If those facts are missing or conflict with the live
+process, stop and establish the real deployment handoff instead of guessing or
+falling back to upstream infrastructure.
 
-Guide the user to trigger the TeamCity build.
+### Prepare from the live release
+
+1. Inspect the active process and runner, and verify local and public health.
+2. Compare the merged Server diff with the active release. Production may
+   intentionally contain scoped overlays, so do not replace it wholesale with
+   `main` or include unrelated Server commits.
+3. Create a new immutable candidate from the exact active release and apply
+   only the approved diff. Never build, install dependencies, or edit files in
+   the active release directory.
+4. Confirm whether the Prisma schema or migrations changed. A no-migration
+   release must prove the candidate schema is byte-identical to the live one.
+5. Build and test the candidate outside the live directory. Record the source
+   commit, changed files, and bundle checksum used for activation.
+
+### Activate and verify
+
+1. Re-read the active runner and configuration checksums immediately before
+   activation so a concurrent deployment cannot be overwritten.
+2. Back up the current runner and release pointer without printing or copying
+   production secrets into the repository.
+3. Atomically point the runner at the candidate and restart the existing
+   managed service. Roll back automatically if the expected process path and
+   local health do not become ready within the bounded verification window.
+4. Verify the active process path/revision, local and public health, Socket.IO
+   connectivity, error logs, and the changed behavior itself. Health alone is
+   not sufficient when a safe end-to-end probe exists.
+5. Write the new release identity, checksum, rollback evidence, and verified
+   runtime facts back to `happy-ops/experience.local.md`.
 
 ---
 

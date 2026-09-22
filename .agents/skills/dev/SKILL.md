@@ -25,7 +25,7 @@ To undo: `npm unlink -g happy && npm i -g happy@latest`.
 ## Packages
 
     packages/happy-cli     # the `happy` CLI and daemon, published to npm
-    packages/happy-server  # Node + Prisma server, deployed via TeamCity
+    packages/happy-server  # Node + Prisma self-hosted server; deploy via /release + happy-ops
     packages/happy-app     # Expo app: iOS, Android, web, Tauri desktop
     packages/happy-agent   # agent runtime
     packages/happy-wire    # shared Zod schemas + wire types
