@@ -123,9 +123,12 @@ export const SessionView = React.memo((props: { id: string }) => {
     const isLandscape = useIsLandscape();
     const deviceType = useDeviceType();
     const headerHeight = useHeaderHeight();
-    const mobileHeaderHeight = deviceType === 'phone' && Platform.OS !== 'web'
+    const mobileHeaderHeight = deviceType === 'phone' && Platform.OS === 'ios'
         ? Math.max(headerHeight, MOBILE_GLASS_HEADER_HEIGHT)
         : headerHeight;
+    // Keep Android's compact landscape header: it owns the session info and
+    // Changes navigation even when a small tablet uses the phone layout.
+    const hidesLandscapeHeader = isLandscape && deviceType === 'phone' && Platform.OS === 'ios';
     const contentRunsUnderHeader = deviceType === 'phone'
         && Platform.OS !== 'web'
         && !isLandscape;
@@ -446,7 +449,7 @@ export const SessionView = React.memo((props: { id: string }) => {
         <>
             <MobileGlassBackdrop enabled={deviceType === 'phone' && Platform.OS !== 'web'} />
             {/* Status bar shadow for landscape mode */}
-            {isLandscape && deviceType === 'phone' && (
+            {hidesLandscapeHeader && (
                 <View style={{
                     position: 'absolute',
                     top: 0,
@@ -470,7 +473,7 @@ export const SessionView = React.memo((props: { id: string }) => {
             <View
                 style={{
                     flex: 1,
-                    paddingTop: !(isLandscape && deviceType === 'phone' && Platform.OS !== 'web')
+                    paddingTop: !hidesLandscapeHeader
                         ? contentRunsUnderHeader
                             ? 0
                             : safeArea.top + mobileHeaderHeight + tabStripHeight + (!isTablet && realtimeStatus !== 'disconnected' ? VOICE_PILL_TOTAL_HEIGHT : 0)
@@ -510,7 +513,7 @@ export const SessionView = React.memo((props: { id: string }) => {
             </View>
 
             {/* Render the overlay header after the dynamic list so native blur samples its content. */}
-            {!(isLandscape && deviceType === 'phone' && Platform.OS !== 'web') && (
+            {!hidesLandscapeHeader && (
                 <View style={{
                     position: 'absolute',
                     top: 0,
@@ -1323,7 +1326,7 @@ export function SessionViewLoaded({
 
             {/* Back button for landscape phone mode when header is hidden */}
             {
-                isLandscape && deviceType === 'phone' && (
+                isLandscape && deviceType === 'phone' && Platform.OS === 'ios' && (
                     <Pressable
                         onPress={() => router.back()}
                         style={{

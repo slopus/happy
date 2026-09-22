@@ -177,11 +177,11 @@ const styles = StyleSheet.create((theme) => ({
         overflow: 'hidden',
         borderWidth: StyleSheet.hairlineWidth,
         borderColor: theme.colors.glass.border,
-        // Frosted glass is supplied by MobileGlassSurface on native. The dense
-        // material tint keeps backdrop detail from competing with this input.
+        // iOS supplies frosted blur. Android needs an opaque writing surface
+        // because its fallback does not blur the session rows behind this dock.
         backgroundColor: Platform.select({
             ios: 'transparent',
-            android: theme.colors.glass.backgroundStrong,
+            android: theme.colors.input.background,
             default: theme.colors.glass.backgroundStrong,
         }),
     },
@@ -245,7 +245,7 @@ const styles = StyleSheet.create((theme) => ({
         borderColor: theme.colors.glass.border,
         backgroundColor: Platform.select({
             ios: 'transparent',
-            android: theme.colors.glass.backgroundStrong,
+            android: theme.colors.input.background,
             default: theme.colors.glass.backgroundStrong,
         }),
     },

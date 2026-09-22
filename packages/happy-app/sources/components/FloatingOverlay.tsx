@@ -12,7 +12,9 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         backgroundColor: Platform.select({
             web: theme.colors.surface,
             ios: theme.colors.glass.overlay,
-            android: theme.colors.glass.backgroundStrong,
+            // Android has no backdrop blur in MobileGlassSurface; menu text
+            // needs an opaque surface so the conversation cannot show through.
+            android: theme.colors.surface,
             default: theme.colors.surface,
         }),
         borderWidth: Platform.OS === 'web' ? 0 : StyleSheet.hairlineWidth,

@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
 import { lstat, mkdir, readFile, realpath, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, relative, resolve, join, sep } from "node:path";
+import { validateManifest } from "./profiles.mjs";
 
 const workspace = resolve(import.meta.dirname, "../..");
 const rootRequire = createRequire(join(workspace, "package.json"));
@@ -17,98 +18,45 @@ for (let index = 0; index < args.length; index += 2) {
 }
 if (!options.captures || !options.out) throw new Error("Both --captures and --out are required.");
 const manifest = JSON.parse(await readFile(options.captures, "utf8"));
-if (
-    manifest.version !== 2 ||
-    !["iphone", "ipad"].includes(manifest.device) ||
-    !manifest.provenance ||
-    typeof manifest.font !== "string" ||
-    typeof manifest.supportFont !== "string"
-) {
-    throw new Error(
-        "Expected a version-2 capture manifest with device, provenance and explicit fonts.",
-    );
-}
-const profile =
-    manifest.device === "iphone"
-        ? {
-              width: 660,
-              height: 1434,
-              headline: 66,
-              support: 26,
-              deviceWidth: 552,
-              desktopWidth: 832,
-              gutter: 40,
-              top: 48,
-              rawWidth: 1206,
-              rawHeight: 2622,
-          }
-        : {
-              width: 1032,
-              height: 1376,
-              headline: 76,
-              support: 28,
-              deviceWidth: 770,
-              desktopWidth: 1080,
-              gutter: 64,
-              top: 40,
-              rawWidth: 2064,
-              rawHeight: 2752,
-          };
-const supplied = manifest.provenance;
-if (
-    !/^[a-f0-9]{40,64}$/u.test(supplied.mobileCommit ?? "") ||
-    !/^[a-f0-9]{40,64}$/u.test(supplied.desktopCommit ?? "") ||
-    typeof supplied.mobileDirty !== "boolean" ||
-    typeof supplied.desktopDirty !== "boolean" ||
-    !/^[a-f0-9-]{36}$/iu.test(supplied.simulator ?? "") ||
-    typeof supplied.capturedAt !== "string" ||
-    !Number.isFinite(Date.parse(supplied.capturedAt)) ||
-    !Array.isArray(supplied.fixtures) ||
-    supplied.fixtures.length > 20 ||
-    supplied.fixtures.some((value) => typeof value !== "string" || value.length > 512)
-)
-    throw new Error(
-        "Invalid capture provenance; provide revision, Simulator, time, and fixture descriptions only.",
-    );
-// A richer runtime object must never carry auth or environment values into the
-// exported composition report. Copy only the declared non-secret contract.
-const provenance = {
-    mobileCommit: supplied.mobileCommit,
-    desktopCommit: supplied.desktopCommit,
-    mobileDirty: supplied.mobileDirty,
-    desktopDirty: supplied.desktopDirty,
-    simulator: supplied.simulator,
-    capturedAt: supplied.capturedAt,
-    fixtures: supplied.fixtures,
-};
+const { profile, provenance } = validateManifest(manifest);
+const androidPhone = manifest.device === "android-phone";
 
 const specs = [
     {
         id: "models",
         title: ["Your models.", "One place."],
         detail: ["Use existing Claude,", "ChatGPT, Grok subscriptions"],
+        altText: "Happy's native model picker over a conversation.",
     },
     {
         id: "sessions",
         title: ["Every agent.", "Within reach."],
         detail: ["Follow your work across projects."],
+        altText: "Happy sessions organized across projects.",
     },
     {
-        id: "desktop",
+        id: profile.uiOnly ? "companion" : "desktop",
         title: ["From desk", "to anywhere."],
         detail: ["Your desktop companion."],
+        altText: "Happy's desktop companion showing an active workspace.",
     },
     {
         id: "multiplayer",
         title: ["Build", "together."],
         detail: ["You, your team, and your agents."],
+        altText: "A Happy conversation showing fictional participant contributions.",
     },
     {
         id: "source",
         title: ["Open source", "MIT license"],
         detail: ["Read, modify and deploy anywhere"],
+        altText: "A public source file shown in Happy's native changes view.",
     },
-];
+].map((spec) => ({
+    ...spec,
+    ...(profile.platform === "android" ? { altText: manifest.altText[spec.id] } : {}),
+    ...(profile.uiOnly ? { title: [], detail: [] } : {}),
+}));
 const escape = (value) =>
     value.replace(
         /[&<>"']/gu,
@@ -139,6 +87,8 @@ for (const id of specs.map((spec) => spec.id)) {
     }
     const bytes = await readFile(path);
     const metadata = await sharp(bytes).metadata();
+    if (!["png", "jpeg"].includes(metadata.format) || (metadata.pages ?? 1) !== 1)
+        throw new Error(`${id} must be a single-frame PNG or JPEG capture.`);
     if (metadata.width < 700 || metadata.height < 500)
         throw new Error(`${id} capture is too small.`);
     if (
@@ -152,9 +102,11 @@ for (const id of specs.map((spec) => spec.id)) {
     const displayWidth =
         id === "desktop"
             ? profile.desktopWidth
-            : manifest.device === "iphone"
-              ? (profile.deviceWidth * 1206) / 1406
-              : profile.deviceWidth;
+            : profile.uiOnly
+              ? profile.width
+              : manifest.device === "iphone"
+                ? (profile.deviceWidth * 1206) / 1406
+                : profile.deviceWidth;
     if (metadata.width < displayWidth * 2) {
         throw new Error(`${id} would upscale source pixels; capture it at higher resolution.`);
     }
@@ -165,21 +117,26 @@ for (const id of specs.map((spec) => spec.id)) {
         sha256: createHash("sha256").update(bytes).digest("hex"),
     };
 }
-const font = data(await readFile(resolve(dirname(options.captures), manifest.font)), "font/ttf");
-const supportFont = data(
-    await readFile(resolve(dirname(options.captures), manifest.supportFont)),
-    "font/ttf",
-);
-const frame = data(
-    await readFile(
-        join(workspace, "scripts/app-store/assets/iphone-16-pro-black.png"),
-    ),
-    "image/png",
-);
-const screenMask = data(
-    await readFile(join(workspace, "scripts/app-store/assets/screen-alpha.png")),
-    "image/png",
-);
+const font = profile.uiOnly
+    ? null
+    : data(await readFile(resolve(dirname(options.captures), manifest.font)), "font/ttf");
+const supportFont = profile.uiOnly
+    ? null
+    : data(await readFile(resolve(dirname(options.captures), manifest.supportFont)), "font/ttf");
+const frame =
+    manifest.device === "iphone"
+        ? data(
+              await readFile(join(workspace, "scripts/app-store/assets/iphone-16-pro-black.png")),
+              "image/png",
+          )
+        : null;
+const screenMask =
+    manifest.device === "iphone"
+        ? data(
+              await readFile(join(workspace, "scripts/app-store/assets/screen-alpha.png")),
+              "image/png",
+          )
+        : null;
 // Require a fresh export directory: rerendering may never overwrite a raw
 // capture or the last selected image set, even if the caller mixes paths.
 await mkdir(dirname(options.out), { recursive: true });
@@ -208,7 +165,13 @@ try {
             : manifest.device === "iphone"
               ? `<div class="phone"><img class="screen" src="${images[spec.id]}" alt=""><img class="bezel" src="${frame}" alt=""></div>`
               : `<img class="tablet" src="${images[spec.id]}" alt="">`;
-        await page.setContent(`<!doctype html><html><head><meta charset="utf-8"><style>
+        await page.setContent(
+            profile.uiOnly
+                ? `<!doctype html><html><head><meta charset="utf-8"><style>
+            *{box-sizing:border-box}html,body{margin:0;width:${profile.width}px;height:${profile.height}px;overflow:hidden}
+            body{display:flex}img{display:block;width:100%;height:100%;object-fit:contain;flex:none}
+        </style></head><body><img class="native" src="${images[spec.id]}" alt="${escape(spec.altText)}"></body></html>`
+                : `<!doctype html><html><head><meta charset="utf-8"><style>
             @font-face{font-family:Headline;src:url('${font}') format('truetype');font-weight:700;font-display:block}
             @font-face{font-family:Support;src:url('${supportFont}') format('truetype');font-weight:400;font-display:block}
             *{box-sizing:border-box}html,body{margin:0;width:${profile.width}px;height:${profile.height}px;overflow:hidden}
@@ -226,18 +189,43 @@ try {
             .tablet{display:block;width:${profile.deviceWidth}px;height:auto;flex:none;border-radius:16px;box-shadow:0 12px 32px #193e3720}
             .desktop-scene{justify-content:flex-start;align-items:center}
             .desktop{display:block;width:${profile.desktopWidth}px;height:auto;flex:none;border-radius:12px;box-shadow:0 18px 30px #193e3725}
-        </style></head><body><main><header><h1>${spec.title.map((line) => `<span>${escape(line)}</span>`).join("")}</h1><p>${spec.detail.map((line) => `<span>${escape(line)}</span>`).join("")}</p></header><section class="scene ${desktop ? "desktop-scene" : ""}">${visual}</section></main></body></html>`);
+            ${
+                androidPhone
+                    ? `
+            /* The entire caption band (including its whitespace) is 20% of the export. */
+            main{padding:0;gap:0}
+            header{height:192px;padding:24px 32px 12px;gap:8px}
+            h1{letter-spacing:-1.4px}
+            .scene{padding:0 32px}
+            .tablet{border-radius:0;box-shadow:none}
+            `
+                    : ""
+            }
+        </style></head><body><main><header><h1>${spec.title.map((line) => `<span>${escape(line)}</span>`).join("")}</h1><p>${spec.detail.map((line) => `<span>${escape(line)}</span>`).join("")}</p></header><section class="scene ${desktop ? "desktop-scene" : ""}">${visual}</section></main></body></html>`,
+        );
         await page.evaluate(async () => {
             await document.fonts.ready;
             await Promise.all([...document.images].map((image) => image.decode()));
         });
-        const geometry = await page.evaluate(({ headline, support }) => {
+        const geometry = await page.evaluate(({ headline, support, platform, uiOnly }) => {
             const box = (selector) => {
                 const rect = document.querySelector(selector)?.getBoundingClientRect();
                 return rect
                     ? { x: rect.x, y: rect.y, width: rect.width, height: rect.height }
                     : null;
             };
+            if (uiOnly) {
+                const native = box(".native");
+                if (
+                    !native ||
+                    native.x !== 0 ||
+                    native.y !== 0 ||
+                    native.width !== innerWidth ||
+                    native.height !== innerHeight
+                )
+                    throw new Error("Tablet export must contain only a full-size native capture.");
+                return { native, captionBandPercent: 0 };
+            }
             if (!document.fonts.check(`700 ${headline}px Headline`))
                 throw new Error("Headline font did not load.");
             if (!document.fonts.check(`400 ${support}px Support`))
@@ -250,6 +238,17 @@ try {
                     node.scrollWidth > node.clientWidth + 1
                 )
                     throw new Error("Copy overflows.");
+            }
+            const captionBand = box("header");
+            if (platform === "android") {
+                const captionBottom = captionBand.y + captionBand.height;
+                if (captionBand.y < 0 || captionBottom > innerHeight * 0.2)
+                    throw new Error("Android captions must occupy at most 20% of the image.");
+                for (const node of document.querySelectorAll("h1, h1 span, p, p span")) {
+                    const rect = node.getBoundingClientRect();
+                    if (rect.top < captionBand.y || rect.bottom > captionBottom)
+                        throw new Error("Android copy escapes the caption band.");
+                }
             }
             const phone = box(".phone");
             const tablet = box(".tablet");
@@ -276,6 +275,13 @@ try {
                 throw new Error("Desktop crop must extend only beyond the right edge.");
             }
             return {
+                ...(platform === "android"
+                    ? {
+                          captionBand,
+                          captionBandPercent:
+                              (100 * (captionBand.y + captionBand.height)) / innerHeight,
+                      }
+                    : {}),
                 headline: box("h1"),
                 phone,
                 tablet,
@@ -301,7 +307,7 @@ try {
             metadata.height !== profile.height * 2 ||
             metadata.hasAlpha
         )
-            throw new Error(`Invalid App Store export ${name}.`);
+            throw new Error(`Invalid store export ${name}.`);
         report.cards.push({
             file: name,
             ...spec,
@@ -309,6 +315,9 @@ try {
             width: metadata.width,
             height: metadata.height,
             hasAlpha: metadata.hasAlpha,
+            sha256: createHash("sha256")
+                .update(await readFile(path))
+                .digest("hex"),
         });
     }
 } finally {

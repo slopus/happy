@@ -182,11 +182,11 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         elevation: theme.dark ? 4 : 2,
     },
     mobileUnifiedPanel: {
-        // The frosted material is supplied by MobileGlassSurface. The dense
-        // tint keeps the transcript illegible behind it without losing glass.
+        // iOS supplies frosted blur; Android's unblurred fallback must be opaque
+        // so transcript text cannot compete with the draft or placeholder.
         backgroundColor: Platform.select({
             ios: 'transparent',
-            android: theme.colors.glass.backgroundStrong,
+            android: theme.colors.input.background,
             default: theme.colors.input.background,
         }),
         borderRadius: MOBILE_COMPOSER_METRICS.shellRadius,

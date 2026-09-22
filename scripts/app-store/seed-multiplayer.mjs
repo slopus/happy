@@ -3,6 +3,7 @@ import { createRequire } from "node:module";
 import { readFile, lstat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { once } from "node:events";
 
 // An App Store scenario producer, not an app patch or a team-auth implementation. The
 // normal encrypted API stores fictional participant envelopes; the current
@@ -41,11 +42,11 @@ const wrappedKey = Buffer.concat([
     libsodiumEncryptForPublicKey(key, publicKey),
 ]).toString("base64");
 const encrypt = (value) => Buffer.from(encryptWithDataKey(value, key)).toString("base64");
-const post = async (path, body) => {
+const post = async (path, body, timeoutMs = 15000) => {
     const response = await fetch(`${manifest.server.url}${path}`, {
         method: "POST",
         redirect: "error",
-        signal: AbortSignal.timeout(15000),
+        signal: AbortSignal.timeout(timeoutMs),
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${auth.token}` },
         body: JSON.stringify(body),
     });
@@ -121,11 +122,90 @@ const messages = events.map((event, index) => {
     return { localId: id, content: encrypt(payload) };
 });
 await post(`/v3/sessions/${session.id}/messages`, { messages });
-console.log(
-    JSON.stringify({
+// Own the ordinary session presence while filming. A one-shot producer exits
+// and correctly becomes an archived CLI-style session; inventing Rig metadata
+// or patching the app's archive filter would hide that lifecycle instead.
+const { io } = appRequire("socket.io-client");
+const socket = io(manifest.server.url, {
+    path: "/v1/updates",
+    transports: ["websocket"],
+    reconnection: false,
+    autoConnect: false,
+    timeout: 15000,
+    auth: {
+        token: auth.token,
+        clientType: "session-scoped",
         sessionId: session.id,
-        title: metadata.name,
-        fixture:
-            "Fictional participant identities and conversation sent through the real encrypted API; no team-login or live-inference claim.",
-    }),
-);
+        happyClient: "store-screenshot-fixture/1",
+    },
+});
+let heartbeat;
+let stopping = false;
+let shutdown;
+let finish;
+const finished = new Promise((accept) => {
+    finish = accept;
+});
+const stop = () => {
+    if (stopping) return shutdown;
+    stopping = true;
+    clearInterval(heartbeat);
+    socket.close();
+    // Match the real CLI's graceful shutdown contract. Closing a socket alone
+    // leaves its last active lease visible until expiry, polluting later takes.
+    // Archive deactivates this exact sample session without deleting its data.
+    shutdown = post(`/v1/sessions/${session.id}/archive`, {}, 3000)
+        .catch(() => {
+            process.exitCode = 1;
+            process.stderr.write("Local fixture deactivation was not confirmed.\n");
+        })
+        .finally(finish);
+    return shutdown;
+};
+process.once("SIGINT", stop);
+process.once("SIGTERM", stop);
+try {
+    const connected = Promise.race([
+        once(socket, "connect"),
+        once(socket, "connect_error").then(() => {
+            throw new Error("Local fixture presence connection failed.");
+        }),
+        finished.then(() => {
+            throw new Error("Fixture startup stopped.");
+        }),
+    ]);
+    socket.connect();
+    await connected;
+    const alive = () =>
+        socket.volatile.emit("session-alive", {
+            sid: session.id,
+            time: Date.now(),
+            thinking: false,
+        });
+    alive();
+    heartbeat = setInterval(alive, 5000);
+    socket.once("disconnect", () => {
+        if (!stopping) {
+            process.exitCode = 1;
+            process.stderr.write(
+                "Local fixture presence disconnected; capture is no longer ready.\n",
+            );
+            stop();
+        }
+    });
+    console.log(
+        JSON.stringify({
+            sessionId: session.id,
+            title: metadata.name,
+            fixture:
+                "Fictional participant identities and conversation sent through the real encrypted API; no team-login or live-inference claim.",
+            presence:
+                "Owned fixture connection remains active until SIGINT/SIGTERM; no CLI version is impersonated.",
+        }),
+    );
+    await finished;
+} finally {
+    await stop();
+    process.removeListener("SIGINT", stop);
+    process.removeListener("SIGTERM", stop);
+}

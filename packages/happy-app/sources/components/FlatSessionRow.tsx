@@ -25,7 +25,7 @@ const AVATAR_SIZE = 60;
 const ROW_PADDING_LEFT = 16;
 const AVATAR_GAP = 12;
 const TOP_RIGHT_DOT_SIZE = 20;
-const TOP_RIGHT_SLOT_WIDTH = 56;
+const TOP_RIGHT_SLOT_MIN_WIDTH = 56;
 const UNREAD_DOT_CLEAR_GRACE_MS = 350;
 
 /**
@@ -177,15 +177,24 @@ export const FlatSessionRow = React.memo(({ row, selected, showBorder, archived 
                         accessibilityRole={topRightAccessibilityLabel ? 'text' : undefined}
                         accessibilityLabel={topRightAccessibilityLabel}
                     >
-                        {presentation.topRight.type === 'dot' ? (
-                            <StatusDot
-                                color={presentation.topRight.color}
-                                size={TOP_RIGHT_DOT_SIZE}
-                            />
-                        ) : (
-                            <Text style={styles.timestamp} numberOfLines={1}>
-                                {timestamp}
-                            </Text>
+                        <Text
+                            style={[
+                                styles.timestamp,
+                                presentation.topRight.type === 'dot' && styles.timestampHidden,
+                            ]}
+                            numberOfLines={1}
+                            accessibilityElementsHidden={presentation.topRight.type === 'dot'}
+                            importantForAccessibility={presentation.topRight.type === 'dot' ? 'no-hide-descendants' : 'auto'}
+                        >
+                            {timestamp}
+                        </Text>
+                        {presentation.topRight.type === 'dot' && (
+                            <View style={styles.statusDotOverlay}>
+                                <StatusDot
+                                    color={presentation.topRight.color}
+                                    size={TOP_RIGHT_DOT_SIZE}
+                                />
+                            </View>
                         )}
                     </View>
                 </View>
@@ -323,12 +332,12 @@ const stylesheet = StyleSheet.create((theme) => ({
         flexShrink: 0,
         marginLeft: 8,
     },
-    // The dot and time share a Telegram-like right column, so changing status
-    // never makes the title jump horizontally. It is only as wide as the
-    // longest timestamp; the dot occupies that same slot instead of reserving
-    // a second lane.
+    // A fixed 56dp slot clipped "12:55 AM" in the native 216dpi capture
+    // (only 75.6 backing pixels). Let the actual localized stamp size the
+    // non-shrinking slot. Keep that same Text mounted while the dot is shown
+    // so clearing unread status cannot resize the slot or jump the title.
     topRightStatus: {
-        width: TOP_RIGHT_SLOT_WIDTH,
+        minWidth: TOP_RIGHT_SLOT_MIN_WIDTH,
         height: 22,
         flexShrink: 0,
         marginLeft: 8,
@@ -342,6 +351,18 @@ const stylesheet = StyleSheet.create((theme) => ({
         fontVariant: ['tabular-nums'],
         textAlign: 'right',
         ...Typography.default('regular'),
+    },
+    timestampHidden: {
+        opacity: 0,
+    },
+    statusDotOverlay: {
+        // An intentional overlay: the timestamp owns width in normal flow;
+        // the dot shares its right edge without reserving a second lane.
+        position: 'absolute',
+        top: 0,
+        bottom: 0,
+        right: 0,
+        justifyContent: 'center',
     },
     project: {
         fontSize: 15,

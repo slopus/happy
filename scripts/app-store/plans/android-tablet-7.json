@@ -1,0 +1,73 @@
+{
+    "version": 1,
+    "target": "android-tablet-7",
+    "scenes": [
+        {
+            "id": "sessions",
+            "steps": [
+                { "type": "wait", "selector": { "field": "text", "value": "Sessions" } },
+                {
+                    "type": "wait",
+                    "selector": { "field": "text", "value": "Make the release ready" }
+                },
+                { "type": "settle" }
+            ]
+        },
+        {
+            "id": "models",
+            "steps": [
+                { "type": "route", "path": "session/cmuaqym3i0015cetyfazs8194" },
+                { "type": "wait", "selector": { "field": "text", "value": "Type a message ..." } },
+                { "type": "tap", "selector": { "field": "description", "value": "" } },
+                { "type": "wait", "selector": { "field": "text", "value": "Auto" } },
+                { "type": "swipe", "from": "600,700", "to": "600,250" },
+                { "type": "wait", "selector": { "field": "text", "value": "Grok 4.6" } },
+                { "type": "settle" }
+            ]
+        },
+        {
+            "id": "companion",
+            "steps": [
+                { "type": "tap", "selector": { "field": "description", "value": "" } },
+                {
+                    "type": "tap",
+                    "selector": { "field": "text", "value": "Keep voice on the active session" }
+                },
+                { "type": "tap", "selector": { "field": "text", "value": "Changes" } },
+                { "type": "wait", "selector": { "field": "text", "value": "View changes" } },
+                {
+                    "type": "wait",
+                    "selector": { "field": "text", "value": "sessionListTimestamp.ts" }
+                },
+                { "type": "settle" }
+            ]
+        },
+        {
+            "id": "source",
+            "steps": [
+                {
+                    "type": "tap",
+                    "selector": { "field": "text", "value": "sessionListTimestamp.ts" }
+                },
+                { "type": "wait", "selector": { "field": "text", "value": "@@ -0,0 +1,32 @@" } },
+                { "type": "swipe", "from": "1000,900", "to": "1000,570" },
+                { "type": "settle" }
+            ]
+        },
+        {
+            "id": "multiplayer",
+            "steps": [
+                { "type": "route", "path": "session/cmucf7uwi0002ceaocak8ev3j" },
+                {
+                    "type": "wait",
+                    "selector": {
+                        "field": "text",
+                        "value": "Shortcuts stay as they are. The updated copy is ready for your review."
+                    }
+                },
+                { "type": "swipe", "from": "1200,350", "to": "1200,395" },
+                { "type": "settle" }
+            ]
+        }
+    ]
+}
