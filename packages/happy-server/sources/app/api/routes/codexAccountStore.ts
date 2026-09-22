@@ -1,4 +1,5 @@
 import { createHash, createHmac, randomBytes, randomUUID } from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
 import type { CodexAccountProfile, CodexQuotaSnapshot, Machine, Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { db } from '@/storage/db';
@@ -149,12 +150,22 @@ export const codexAccountStore = {
             return { binding: bindingView(await ownedMachine(tx, accountId, machineId)) };
         });
     },
-    async createGrant(accountId: string, machineId: string): Promise<CreateCodexGrantResponse> {
+    async createGrant(accountId: string, machineId: string, sourceSessionId?: string): Promise<CreateCodexGrantResponse> {
         return transaction(accountId, async (tx) => {
             await migrateLegacy(tx, accountId);
             const machine = await ownedMachine(tx, accountId, machineId);
-            if (!machine.defaultCodexAccountProfileId) return fail(409, 'codex-account-unbound');
-            const profile = await ownedProfile(tx, accountId, machine.defaultCodexAccountProfileId);
+            let profileId = machine.defaultCodexAccountProfileId;
+            if (sourceSessionId) {
+                const session = await tx.session.findFirst({ where: { id: sourceSessionId, accountId } });
+                const source = await tx.codexSessionGrant.findFirst({
+                    where: { accountId, machineId, sourceSessionId, redeemedAt: { not: null } },
+                    orderBy: { createdAt: 'desc' },
+                });
+                if (!session || !source) return fail(409, 'session-unavailable');
+                profileId = source.codexAccountProfileId;
+            }
+            if (!profileId) return fail(409, 'codex-account-unbound');
+            const profile = await ownedProfile(tx, accountId, profileId);
             if (profile.status !== 'available') return fail(409, 'codex-account-unavailable');
             const grant = randomBytes(32).toString('base64url');
             const expiresAt = new Date(Date.now() + CODEX_GRANT_TTL_MS);
@@ -163,6 +174,7 @@ export const codexAccountStore = {
                 accountId, machineId, codexAccountProfileId: profile.id, displayNameSnapshot: profile.displayName,
                 credentialVersion: profile.credentialVersion, lastCredentialVersion: profile.credentialVersion,
                 bindingVersion: machine.codexAccountBindingVersion, digest: digest(grant), expiresAt,
+                ...(sourceSessionId ? { sourceSessionId } : {}),
             } });
             await audit(tx, accountId, 'grant-create', profile.id, machineId, profile.credentialVersion);
             return { grant, expiresAt: expiresAt.toISOString(), profile: { id: profile.id, displayName: profile.displayName, credentialVersion: profile.credentialVersion } };
@@ -174,7 +186,19 @@ export const codexAccountStore = {
             if (!grant) return fail(409, 'grant-unavailable');
             const machine = await tx.machine.findFirst({ where: { id: machineId, accountId } });
             const profile = await tx.codexAccountProfile.findFirst({ where: { id: grant.codexAccountProfileId, accountId } });
-            if (!machine || !profile || profile.status !== 'available' || profile.credentialVersion !== grant.credentialVersion || machine.defaultCodexAccountProfileId !== profile.id || machine.codexAccountBindingVersion !== grant.bindingVersion) return fail(409, 'grant-unavailable');
+            if (!machine || !profile || profile.status !== 'available' || profile.credentialVersion !== grant.credentialVersion) return fail(409, 'grant-unavailable');
+            if (grant.sourceSessionId) {
+                // Resume stays pinned to an owned session and its previous
+                // redeemed launch, independently of the default for new work.
+                const session = await tx.session.findFirst({ where: { id: grant.sourceSessionId, accountId } });
+                const source = await tx.codexSessionGrant.findFirst({ where: {
+                    accountId, machineId, sourceSessionId: grant.sourceSessionId,
+                    codexAccountProfileId: profile.id, redeemedAt: { not: null },
+                } });
+                if (!session || !source) return fail(409, 'grant-unavailable');
+            } else if (machine.defaultCodexAccountProfileId !== profile.id || machine.codexAccountBindingVersion !== grant.bindingVersion) {
+                return fail(409, 'grant-unavailable');
+            }
             const auth = codexAuthSchema.parse(JSON.parse(decryptString(path(accountId, profile.id), profile.credential)));
             const consumed = await tx.codexSessionGrant.updateMany({ where: { id: grant.id, redeemedAt: null, expiresAt: { gt: new Date() } }, data: { redeemedAt: new Date() } });
             if (consumed.count !== 1) return fail(409, 'grant-unavailable');
@@ -197,9 +221,18 @@ export const codexAccountStore = {
     async updateCredential(accountId: string, id: string, input: UpdateCodexCredentialRequest) {
         return transaction(accountId, async (tx) => {
             const profile = await ownedProfile(tx, accountId, id);
-            const launch = await tx.codexSessionGrant.findFirst({ where: { id: input.launchId, accountId, machineId: input.machineId, codexAccountProfileId: id, redeemedAt: { not: null }, lastCredentialVersion: input.expectedVersion } });
+            const launch = await tx.codexSessionGrant.findFirst({ where: { id: input.launchId, accountId, machineId: input.machineId, codexAccountProfileId: id, redeemedAt: { not: null } } });
             if (!launch) return fail(409, 'credential-version-conflict');
             await ownedMachine(tx, accountId, input.machineId);
+            // A committed write may lose its response. Only acknowledge the exact
+            // current credential committed by this launch; never advance a stale writer.
+            if (launch.lastCredentialVersion === input.expectedVersion + 1
+                && launch.credentialVersion <= input.expectedVersion
+                && profile.credentialVersion === launch.lastCredentialVersion
+                && isDeepStrictEqual(JSON.parse(decryptString(path(accountId, id), profile.credential)), input.auth)) {
+                return { profile: profileView(profile) };
+            }
+            if (launch.lastCredentialVersion !== input.expectedVersion) return fail(409, 'credential-version-conflict');
             if (fingerprint(accountId, input.auth) !== profile.externalAccountFingerprint) return fail(400, 'credential-identity-mismatch');
             const changed = await tx.codexAccountProfile.updateMany({ where: { id, accountId, credentialVersion: input.expectedVersion }, data: { credential: encryptString(path(accountId, id), JSON.stringify(input.auth)), credentialVersion: { increment: 1 }, status: 'available', lastValidatedAt: new Date() } });
             if (changed.count !== 1) return fail(409, 'credential-version-conflict');

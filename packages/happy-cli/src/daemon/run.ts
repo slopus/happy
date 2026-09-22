@@ -27,12 +27,15 @@ import { getTmuxUtilities, isTmuxAvailable, parseTmuxSessionIdentifier, formatTm
 import { expandEnvironmentVariables } from '@/utils/expandEnvVars';
 import { detectCLIAvailability } from '@/utils/detectCLI';
 import { buildResumeLaunch } from '@/resume/handleResumeCommand';
+import { isUnusedCodexSession } from './emptyCodexSession';
 import { detectResumeSupport } from '@/resume/localHappyAgentAuth';
 import { encodeBase64, decodeBase64, decrypt } from '@/api/encryption';
 import { CODEX_ACCOUNT_UNSET_ENV, withCodexAccountLaunch, type CodexAccountLaunch } from './codexAccountLaunch';
 import { refreshCodexAccountQuota } from './codexQuotaProbe';
 import { collectCodexUsageSnapshot, codexUsageSignature, mergeRecentCodexUsageSnapshot } from '@/codex/codexUsage';
 import { collectRetainedCodexAccountUsage } from '@/codex/codexAccountHistory';
+import { retryPendingCodexProbeCredentials } from './codexQuotaProbeRecovery';
+import { retryPendingCodexSessionCredentials } from './codexSessionCredentialRecovery';
 import { AsyncLock } from '@/utils/lock';
 import {
   buildSessionWorkerEnvironment,
@@ -806,7 +809,7 @@ export async function startDaemon(): Promise<void> {
       sessionId: string,
       encryptionKey: Uint8Array,
       encryptionVariant: 'legacy' | 'dataKey',
-    ): Promise<{ metadata: Metadata; seq: number; metadataVersion: number } | null> => {
+    ): Promise<{ metadata: Metadata; seq: number; metadataVersion: number; active: boolean } | null> => {
       try {
         const response = await axios.get(`${configuration.serverUrl}/v1/sessions`, {
           headers: { Authorization: `Bearer ${credentials.token}` },
@@ -814,6 +817,7 @@ export async function startDaemon(): Promise<void> {
         });
         const sessions = (response.data as { sessions: Array<{
           id: string;
+          active: boolean;
           metadata: string;
           seq: number;
           metadataVersion: number;
@@ -824,6 +828,7 @@ export async function startDaemon(): Promise<void> {
         if (!decrypted) return null;
         return {
           metadata: decrypted as Metadata,
+          active: matched.active,
           seq: matched.seq,
           metadataVersion: matched.metadataVersion,
         };
@@ -883,9 +888,33 @@ export async function startDaemon(): Promise<void> {
           tracked.encryption.metadataVersion = serverSnapshot.metadataVersion;
         }
 
+        // Codex does not persist a rollout until the first turn. A ready-only
+        // session therefore has an ID but nothing native to resume. Prove it
+        // unused from the relay, never from a missing local file or stale cache.
+        let restartUnusedCodexThread = false;
+        if (serverSnapshot?.active === false && metadata.flavor === 'codex'
+            && serverSnapshot.seq <= 150
+            && !Array.from(pidToTrackedSession.values()).includes(tracked)) {
+          try {
+            const response = await axios.get(`${configuration.serverUrl}/v1/sessions/${encodeURIComponent(happySessionId)}/messages`, {
+              headers: { Authorization: `Bearer ${credentials.token}` }, timeout: 10_000,
+            });
+            const messages = response.data.messages.map((message: { seq: number; content: { t: string; c: string } }) => ({
+              seq: message.seq,
+              content: message.content?.t === 'encrypted'
+                ? decrypt(tracked.encryption!.encryptionKey, tracked.encryption!.encryptionVariant, decodeBase64(message.content.c))
+                : null,
+            }));
+            restartUnusedCodexThread = isUnusedCodexSession(metadata, serverSnapshot.seq, messages);
+          } catch { /* Missing evidence must keep the original resume path. */ }
+        }
+        if (restartUnusedCodexThread) {
+          metadata = { ...metadata };
+          delete metadata.codexThreadId;
+        }
         const launch = buildResumeLaunch(
           { id: happySessionId, active: true, metadata },
-          { startedBy: 'daemon', claudeStartingMode: 'remote' },
+          { startedBy: 'daemon', claudeStartingMode: 'remote', restartUnusedCodexThread },
         );
 
         if (options?.model) {
@@ -940,6 +969,7 @@ export async function startDaemon(): Promise<void> {
         });
         }, {
           sourceSessionId: happySessionId,
+          resumeExistingSession: true,
           sourceThreadId: metadata.codexThreadId,
           sourceProfileId: metadata.codexAccountProfileId,
         });
@@ -1174,6 +1204,8 @@ export async function startDaemon(): Promise<void> {
     apiMachine.connect();
 
     const initialCodexUsageTimer = setTimeout(() => {
+      void retryPendingCodexProbeCredentials(api, machineId);
+      void retryPendingCodexSessionCredentials(api, machineId);
       syncCodexUsage(true).catch((error) => {
         logger.debug('[DAEMON RUN] Initial Codex usage sync failed', error);
       });
@@ -1191,6 +1223,8 @@ export async function startDaemon(): Promise<void> {
         return;
       }
       heartbeatRunning = true;
+      void retryPendingCodexProbeCredentials(api, machineId);
+      void retryPendingCodexSessionCredentials(api, machineId);
 
       if (process.env.DEBUG) {
         logger.debug(`[DAEMON RUN] Health check started at ${new Date().toLocaleString()}`);

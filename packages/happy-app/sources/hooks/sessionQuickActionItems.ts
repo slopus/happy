@@ -5,6 +5,7 @@ interface SessionQuickActionLabels {
     unpin: string;
     details: string;
     resume: string;
+    continueFresh?: string;
     rename: string;
     regenerateTitle: string;
     fork: string;
@@ -21,6 +22,7 @@ interface SessionQuickActionCallbacks {
     togglePinSession: () => void;
     openDetails: () => void;
     resumeSession: () => void;
+    continueSession?: () => void;
     renameSession: () => void;
     regenerateTitle: () => void;
     forkSession: () => void;
@@ -37,6 +39,7 @@ interface BuildSessionQuickActionItemsOptions {
     labels: SessionQuickActionLabels;
     callbacks: SessionQuickActionCallbacks;
     canShowResume: boolean;
+    canContinue?: boolean;
     canRegenerateTitle: boolean;
     canFork: boolean;
     canCopySessionMetadata: boolean;
@@ -50,6 +53,7 @@ export function buildSessionQuickActionItems({
     labels,
     callbacks,
     canShowResume,
+    canContinue,
     canRegenerateTitle,
     canFork,
     canCopySessionMetadata,
@@ -82,6 +86,10 @@ export function buildSessionQuickActionItems({
 
     if (canShowResume && !sessionArchived) {
         items.push({ id: 'resume', icon: 'play-circle-outline', label: labels.resume, onPress: callbacks.resumeSession });
+    }
+
+    if (canContinue && callbacks.continueSession && labels.continueFresh) {
+        items.push({ id: 'continue-fresh', icon: 'add-circle-outline', label: labels.continueFresh, onPress: callbacks.continueSession });
     }
 
     if (canFork) {

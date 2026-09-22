@@ -24,13 +24,14 @@ export const DesktopPanelResizeHandle = React.memo(function DesktopPanelResizeHa
         continuePanelResize,
         endPanelResize,
         leftMaximumWidth,
-        leftWidth,
+        leftExpandedWidth,
         resizePanelBy,
         resizingSide,
         rightMaximumWidth,
         rightWidth,
+        setLeftSidebarFocused,
     } = useDesktopWorkspaceLayout();
-    const currentWidth = side === 'left' ? leftWidth : rightWidth;
+    const currentWidth = side === 'left' ? leftExpandedWidth : rightWidth;
     const minimumWidth = side === 'left' ? DESKTOP_LEFT_PANEL_MIN_WIDTH : DESKTOP_RIGHT_PANEL_MIN_WIDTH;
     const maximumWidth = side === 'left' ? leftMaximumWidth : rightMaximumWidth;
 
@@ -72,8 +73,8 @@ export const DesktopPanelResizeHandle = React.memo(function DesktopPanelResizeHa
                 'aria-valuemin': minimumWidth,
                 'aria-valuenow': currentWidth,
                 'aria-valuetext': `${currentWidth} px`,
-                onBlur: () => setFocused(false),
-                onFocus: () => setFocused(true),
+                onBlur: () => { setFocused(false); if (side === 'left') setLeftSidebarFocused(false); },
+                onFocus: () => { setFocused(true); if (side === 'left') setLeftSidebarFocused(true); },
                 onKeyDown: handleKeyDown,
                 tabIndex: 0,
             } as any) : {})}

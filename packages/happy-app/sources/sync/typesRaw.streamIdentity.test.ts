@@ -7,6 +7,9 @@ function normalize(ev: object, extra: object = {}) {
     } } } as RawRecord);
 }
 describe('stream identity on durable session messages', () => {
+    it('does not project child turn completion as a parent ready event', () => {
+        expect(normalize({ t: 'turn-end', status: 'completed' }, { subagent: 'child' })).toBeNull();
+    });
     it('retains exact root turn/item identity for final text reconciliation', () => {
         expect(normalize({ t: 'text', text: 'done' })?.streamKey).toEqual({ turnId: 'turn', itemId: 'item' });
     });

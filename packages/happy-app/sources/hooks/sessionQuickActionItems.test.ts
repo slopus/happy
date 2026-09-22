@@ -133,3 +133,16 @@ describe('buildSessionQuickActionItems', () => {
         ]);
     });
 });
+
+it('offers fresh continuation independently of Resume and native fork eligibility', () => {
+    const continuation = vi.fn();
+    const items = buildSessionQuickActionItems({
+        labels: { ...labels, continueFresh: 'Fresh continuation' },
+        callbacks: { ...callbacks, continueSession: continuation },
+        canContinue: true, canShowResume: false, canFork: false, canRegenerateTitle: false,
+        canCopySessionMetadata: false, sessionPinned: false, sessionActive: true, sessionArchived: false,
+    });
+    expect(items.some(item => item.id === 'resume')).toBe(false);
+    items.find(item => item.id === 'continue-fresh')!.onPress();
+    expect(continuation).toHaveBeenCalledOnce();
+});

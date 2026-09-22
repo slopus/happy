@@ -92,7 +92,7 @@ describe('Codex worker account lifecycle', () => {
       expect((await stat(f.launch.home)).isDirectory()).toBe(true);
     } finally { paused.release(); await cleanup; await f.launch.finish(); }
   });
-  it('removes an orphaned private home after preserving native history, while leaving a live daemon to collect final quota', async () => {
+  it('retains orphaned credentials when no API is available to acknowledge their upload', async () => {
     const root = await mkdtemp(join(tmpdir(), 'codex-worker-test-')); dirs.push(root);
     const home = await mkdtemp(join(tmpdir(), 'happy-codex-home-')); dirs.push(home);
     await writeFile(join(home, '.paws-account-launch.json'), JSON.stringify({ daemonPid: 123456, profileId: 'profile-a', historyRoot: join(root, 'cache') }));
@@ -101,7 +101,7 @@ describe('Codex worker account lifecycle', () => {
     vi.spyOn(process, 'kill').mockImplementation(() => true);
     await cleanupOrphanedCodexAccountHome(home); expect(await readFile(join(home, 'auth.json'), 'utf8')).toBe('credential');
     vi.mocked(process.kill).mockImplementation(() => { throw Object.assign(new Error('dead'), { code: 'ESRCH' }); });
-    await cleanupOrphanedCodexAccountHome(home); await expect(stat(home)).rejects.toThrow();
+    await cleanupOrphanedCodexAccountHome(home); expect(await readFile(join(home, 'auth.json'), 'utf8')).toBe('credential');
   });
   it('only exposes non-secret profile attribution from valid launch environment', () => {
     expect(codexAccountSessionMetadata({ HAPPY_CODEX_ACCOUNT_PROFILE_ID: '00000000-0000-4000-8000-000000000001', HAPPY_CODEX_ACCOUNT_CREDENTIAL_VERSION: '3', SECRET: 'secret' })).toEqual({ codexAccountProfileId: '00000000-0000-4000-8000-000000000001', codexAccountCredentialVersion: 3 });

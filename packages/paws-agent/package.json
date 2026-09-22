@@ -1,6 +1,6 @@
 {
   "name": "@wangjs-jacky/paws-agent",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "SDK and CLI for controlling Paws agent sessions remotely",
   "author": "wangjs-jacky",
   "license": "MIT",

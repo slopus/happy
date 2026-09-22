@@ -187,6 +187,7 @@ const styles = StyleSheet.create((theme) => ({
         borderLeftColor: theme.colors.divider,
     },
     containerResizable: {
+        ...(Platform.OS === 'web' ? { borderRadius: 20, overflow: 'hidden' as const, backgroundColor: theme.colors.surface } : {}),
         borderLeftWidth: 0,
     },
     header: {

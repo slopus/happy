@@ -180,7 +180,7 @@ export type SpawnSessionHydrationError = {
 export type SpawnSessionResult =
     | { type: 'success'; sessionId: string }
     | { type: 'requestToApproveDirectoryCreation'; directory: string }
-    | { type: 'error'; errorMessage: string; codexAccountErrorCode?: CodexAccountErrorCode }
+    | { type: 'error'; errorMessage: string; codexAccountErrorCode?: CodexAccountErrorCode; outcomeUnknown?: boolean }
     | SpawnSessionHydrationError;
 
 function normalizeSpawnSessionResult(result: unknown): SpawnSessionResult {
@@ -312,6 +312,7 @@ async function machineStartSession(
 ): Promise<SpawnSessionResult> {
     let grant: string | undefined;
     const redact = (message: string) => grant ? message.replaceAll(grant, '[redacted]') : message;
+    let dispatching = false;
     try {
         if (isCodex) {
             const { TokenStorage } = await import('@/auth/tokenStorage');
@@ -327,6 +328,7 @@ async function machineStartSession(
                 }
             }
         }
+        dispatching = true;
         const result = normalizeSpawnSessionResult(await apiSocket.machineRPC<SpawnSessionResult, Record<string, unknown>>(
             machineId, method,
             { ...parameters, ...(grant ? { codexSessionGrant: grant } : {}) },
@@ -337,6 +339,7 @@ async function machineStartSession(
         const message = error instanceof Error ? error.message : 'Failed to start session';
         return {
             type: 'error',
+            ...(dispatching ? { outcomeUnknown: true } : {}),
             ...(error instanceof CodexAccountError ? { codexAccountErrorCode: error.code } : {}),
             errorMessage: error instanceof CodexAccountError
                 ? `${message} (machine: ${machineId}; RPC: ${method}; ${error.code}${error.status ? `; HTTP ${error.status}` : ''})`

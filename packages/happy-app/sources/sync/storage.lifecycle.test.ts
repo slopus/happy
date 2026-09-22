@@ -52,9 +52,22 @@ vi.mock('@/components/tools/knownTools', () => ({
 }));
 
 import { storage } from './storage';
+import { normalizeRawMessage } from './typesRaw';
 import * as persistence from './persistence';
 
 describe('storage session lifecycle', () => {
+    it('keeps the parent running when live child completion is projected', () => {
+        storage.getState().applySessions([{ id: 'parent', seq: 1, createdAt: 1, updatedAt: 1,
+            active: true, activeAt: Date.now(), metadata: null, metadataVersion: 0,
+            agentState: null, agentStateVersion: 0, thinking: true, thinkingAt: 15 }]);
+        const child = normalizeRawMessage('child-end', null, 25, { role: 'agent', content: { type: 'session', data: {
+            id: 'child-end', time: 25, role: 'agent', turn: 'child-turn', subagent: 'child',
+            ev: { t: 'turn-end', status: 'completed' },
+        } } });
+        storage.getState().applyMessages('parent', child ? [child] : []);
+        expect(storage.getState().sessions.parent.thinking).toBe(true);
+    });
+
     beforeEach(() => {
         storage.setState({
             sessions: {},

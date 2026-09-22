@@ -6,7 +6,10 @@ import { CodexAccountLaunch, withCodexAccountLaunch } from './codexAccountLaunch
 import { CodexAccountRequestError } from '@/api/codexAccountTypes';
 import { configuration } from '@/configuration';
 import { cleanupOrphanedCodexAccountHome } from '@/codex/codexAccountWorker';
-import { rememberCodexAccountSession, restoreCodexAccountHistory } from '@/codex/codexAccountHistory';
+import { rememberCodexAccountSession, restoreCodexAccountHistory, retainCodexAccountHistory } from '@/codex/codexAccountHistory';
+import { readCodexAccountLaunchState } from '@/codex/codexAccountLaunchState';
+import { spawn } from 'node:child_process';
+import { once } from 'node:events';
 
 const auth = { tokens: { id_token: 'id-secret', access_token: 'access-secret', refresh_token: 'refresh-secret', account_id: 'account-secret' } };
 const dirs: string[] = [];
@@ -24,6 +27,80 @@ function api() {
   };
 }
 describe('Codex account launch lifecycle', () => {
+  it('starts a fresh session without importing unrelated account history', async () => {
+    const historyRoot = await home(); const previous = await home();
+    await mkdir(join(previous, 'sessions'));
+    await writeFile(join(previous, 'sessions', 'rollout-old-thread.jsonl'), 'old account conversation');
+    await retainCodexAccountHistory(historyRoot, 'profile-1', previous);
+    const launch = await CodexAccountLaunch.prepare(api(), 'machine-1', 'g'.repeat(43), { sourceHome: await home(), historyRoot });
+    try {
+      await expect(stat(join(launch.home, 'sessions', 'rollout-old-thread.jsonl'))).rejects.toThrow();
+      expect(JSON.parse(await readFile(join(launch.home, 'auth.json'), 'utf8'))).toEqual(auth);
+    } finally { await launch.finish(); }
+  });
+  it('restores only the requested source thread during a managed launch', async () => {
+    const historyRoot = await home(); const previous = await home();
+    await mkdir(join(previous, 'sessions'));
+    await writeFile(join(previous, 'sessions', 'rollout-requested.jsonl'), 'requested conversation');
+    await writeFile(join(previous, 'sessions', 'rollout-unrelated.jsonl'), 'unrelated conversation');
+    await retainCodexAccountHistory(historyRoot, 'profile-1', previous);
+    await rememberCodexAccountSession(historyRoot, 'old-session', 'profile-1');
+    const launch = await CodexAccountLaunch.prepare(api(), 'machine-1', 'g'.repeat(43), {
+      sourceHome: await home(), historyRoot, sourceSessionId: 'old-session', sourceThreadId: 'requested',
+    });
+    try {
+      expect(await readFile(join(launch.home, 'sessions', 'rollout-requested.jsonl'), 'utf8')).toBe('requested conversation');
+      await expect(stat(join(launch.home, 'sessions', 'rollout-unrelated.jsonl'))).rejects.toThrow();
+    } finally { await launch.finish(); }
+  });
+
+  it('defers abort cleanup while its tracked worker is still alive', async () => {
+    const a = api();
+    const launch = await CodexAccountLaunch.prepare(a, 'machine-1', 'g'.repeat(43), { sourceHome: await home() });
+    const child = spawn(process.execPath, ['-e', 'process.on("SIGTERM",()=>{});setInterval(()=>{},1000);console.log("ready")'], { stdio: ['ignore', 'pipe', 'ignore'] });
+    try {
+      await once(child.stdout!, 'data'); launch.trackProcess(child.pid!);
+      await launch.abort();
+      expect((await stat(launch.home)).isDirectory()).toBe(true);
+      await expect(stat(join(launch.home, '.paws-session-finished'))).rejects.toThrow();
+    } finally {
+      const exited = once(child, 'exit'); child.kill('SIGKILL'); await exited;
+      await launch.finish();
+    }
+    await expect(stat(launch.home)).rejects.toThrow();
+  });
+  it('preserves an unacknowledged rotation on exit and can finish recovery from its persisted checkpoint', async () => {
+    const a = api(); const sourceHome = await home();
+    const launch = await CodexAccountLaunch.prepare(a, 'machine-1', 'g'.repeat(43), { sourceHome });
+    await launch.attach('session-1');
+    const rotated = { tokens: { ...auth.tokens, refresh_token: 'unacknowledged-rotation' } };
+    await writeFile(join(launch.home, 'auth.json'), JSON.stringify(rotated));
+    a.updateCodexAccountCredential.mockRejectedValue(new Error('upload unavailable'));
+    await launch.sync();
+    await launch.finish();
+    expect(JSON.parse(await readFile(join(launch.home, 'auth.json'), 'utf8'))).toEqual(rotated);
+    expect((await stat(launch.home)).mode & 0o777).toBe(0o700);
+    expect((await stat(join(launch.home, 'auth.json'))).mode & 0o777).toBe(0o600);
+    const state = await readCodexAccountLaunchState(launch.home);
+    expect(state.currentVersion).toBe(3);
+    a.updateCodexAccountCredential.mockResolvedValue({ profile: { id: 'profile-1', displayName: 'Codex', credentialVersion: 4, status: 'available' } });
+    const recovery = CodexAccountLaunch.recover(a, launch.home, state);
+    await recovery.finish();
+    expect(a.updateCodexAccountCredential).toHaveBeenLastCalledWith('profile-1', expect.objectContaining({ auth: rotated, expectedVersion: 3 }));
+    await expect(stat(launch.home)).rejects.toThrow();
+  });
+
+  it('keeps unreadable and identity-conflicting credentials when finalization cannot verify safe cleanup', async () => {
+    for (const value of ['{', JSON.stringify({ tokens: { ...auth.tokens, account_id: 'other-identity' } })]) {
+      const a = api();
+      const launch = await CodexAccountLaunch.prepare(a, 'machine-1', 'g'.repeat(43), { sourceHome: await home() });
+      await launch.attach('session-1');
+      await writeFile(join(launch.home, 'auth.json'), value);
+      await launch.finish();
+      expect(await readFile(join(launch.home, 'auth.json'), 'utf8')).toBe(value);
+      expect(a.updateCodexAccountCredential).not.toHaveBeenCalled();
+    }
+  });
   it('preserves orphan-exit rotation and immutable final quota attribution before cleanup', async () => {
     const a = api(); const sourceHome = await home();
     const launch = await CodexAccountLaunch.prepare(a, 'machine-1', 'g'.repeat(43), { sourceHome });
@@ -52,6 +129,30 @@ describe('Codex account launch lifecycle', () => {
       expect(await readFile(join(restored, 'sessions', 'rollout-thread.jsonl'), 'utf8')).toContain('rate_limits');
       await expect(stat(join(restored, 'auth.json'))).rejects.toThrow();
     } finally { kill.mockRestore(); await launch.finish(); }
+  });
+  it('uses a session-scoped grant when the default machine account changed', async () => {
+    const original = api();
+    const a = { ...original, createCodexSessionGrant: vi.fn(async () => ({ grant: 's'.repeat(43) })) };
+    a.redeemCodexSessionGrant.mockResolvedValueOnce({ auth, launchId: 'wrong-launch', profile: { id: 'new-default', displayName: 'New', credentialVersion: 1 } });
+    const launch = await CodexAccountLaunch.prepare(a, 'machine-1', 'g'.repeat(43), {
+      sourceHome: await home(), historyRoot: await home(), sourceSessionId: 'original-session', sourceProfileId: 'profile-1', resumeExistingSession: true,
+    });
+    try {
+      expect(launch.profileId).toBe('profile-1');
+      expect(a.createCodexSessionGrant).toHaveBeenCalledWith({ machineId: 'machine-1', sourceSessionId: 'original-session' });
+      expect(a.redeemCodexSessionGrant).toHaveBeenLastCalledWith({ machineId: 'machine-1', grant: 's'.repeat(43) });
+    } finally { await launch.finish(); }
+  });
+  it('rejects a cross-account fork before spawning even when scoped grants are supported', async () => {
+    const original = api();
+    const a = { ...original, createCodexSessionGrant: vi.fn(async () => ({ grant: 's'.repeat(43) })) };
+    const spawn = vi.fn(async () => ({ type: 'success' as const, sessionId: 'child' }));
+    const result = await withCodexAccountLaunch({ agent: 'codex', codexSessionGrant: 'g'.repeat(43) }, a, 'machine-1', spawn, {
+      sourceHome: await home(), historyRoot: await home(), sourceSessionId: 'parent', sourceProfileId: 'different-profile',
+    });
+    expect(result).toMatchObject({ type: 'error', errorMessage: expect.stringContaining('different account') });
+    expect(spawn).not.toHaveBeenCalled();
+    expect(a.createCodexSessionGrant).not.toHaveBeenCalled();
   });
   it('waits for an in-flight attachment before deleting its home and never resurrects its timer', async () => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });

@@ -1258,8 +1258,20 @@ export class CodexAppServerClient {
         logger.debug('[CodexAppServer] Disconnected');
     }
 
-    async disconnect(): Promise<void> {
-        await this.disconnectInternal();
+    async disconnect(options?: { waitForExit?: boolean }): Promise<void> {
+        const proc = options?.waitForExit ? this.process : null;
+        // Probe credentials must not be read/deleted while their producer can still write.
+        const exited = proc && proc.exitCode === null && proc.signalCode === null
+            ? new Promise<void>((resolve, reject) => {
+                const onExit = () => { clearTimeout(timer); resolve(); };
+                const timer = setTimeout(() => {
+                    proc.removeListener('exit', onExit);
+                    reject(new Error('Codex process did not exit before credential recovery'));
+                }, 5_000);
+                proc.once('exit', onExit);
+            })
+            : Promise.resolve();
+        await Promise.all([this.disconnectInternal(), exited]);
     }
 
     private buildThreadConfig(mcpServers?: Record<string, unknown>): Record<string, unknown> | null {

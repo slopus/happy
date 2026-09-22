@@ -105,6 +105,7 @@ export type SupportedAgent = 'ask' | 'claude' | 'codex' | 'gemini' | 'opencode' 
 export type CodexEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 
 type SpawnSessionInputBase = {
+    organization?: SessionOrganizationInput;
     machineId: string;
     directory: string;
     approvedNewDirectoryCreation?: boolean;
@@ -116,6 +117,21 @@ type SpawnSessionInputBase = {
  * as a discriminated union prevents other providers from silently accepting
  * settings they cannot honor.
  */
+/** Names reuse an exact trimmed match, or create an entry. Duplicate names require IDs. */
+export type SessionOrganizationInput = {
+    listId?: string | null;
+    listName?: string;
+    tagIds?: string[];
+    tagNames?: string[];
+};
+export type SessionOrganization = { listId: string | null; tagIds: string[] };
+export type SessionOrganizationCatalog = {
+    lists: Array<{ id: string; name: string; [key: string]: unknown }>;
+    tags: Array<{ id: string; name: string; [key: string]: unknown }>;
+    sessions: Record<string, SessionOrganization>;
+    [key: string]: unknown;
+};
+
 export type SpawnSessionInput = SpawnSessionInputBase & (
     | { agent: 'codex'; model?: string; effort?: CodexEffort }
     | { agent?: Exclude<SupportedAgent, 'codex'>; model?: never; effort?: never }
@@ -183,6 +199,8 @@ export interface MachinesResource {
 }
 
 export interface SessionsResource {
+    getOrganization(): Promise<SessionOrganizationCatalog>;
+    organize(sessionId: string, input: SessionOrganizationInput): Promise<SessionOrganization>;
     list(options?: { active?: boolean }): Promise<Session[]>;
     get(sessionId: string): Promise<Session>;
     getConfiguration(sessionId: string): Promise<SessionConfiguration>;

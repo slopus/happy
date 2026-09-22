@@ -27,6 +27,15 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('transparent Codex grants', () => {
+    it('distinguishes a lost startup response from an explicit rejection', async () => {
+        machineRPC.mockRejectedValueOnce(new Error('operation has timed out'));
+        expect(await machineSpawnNewSession({ machineId: 'm1', directory: '/repo', agent: 'codex' }))
+            .toMatchObject({ type: 'error', outcomeUnknown: true });
+        machineRPC.mockResolvedValueOnce({ type: 'error', errorMessage: 'directory unavailable' });
+        const rejected = await machineSpawnNewSession({ machineId: 'm1', directory: '/repo', agent: 'codex' });
+        expect(rejected).toEqual({ type: 'error', errorMessage: 'directory unavailable' });
+    });
+
     it('obtains fresh grants for new, retry and native-resume spawns without an account selector', async () => {
         await machineSpawnNewSession({ machineId: 'm1', directory: '/repo', agent: 'codex', token: 'legacy-secret' });
         await machineSpawnNewSession({ machineId: 'm1', directory: '/repo', agent: 'codex', approvedNewDirectoryCreation: true });

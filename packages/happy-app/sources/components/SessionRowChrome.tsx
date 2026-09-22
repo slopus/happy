@@ -5,7 +5,7 @@ import { Feather, Octicons } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Text } from '@/components/StyledText';
 import { Typography } from '@/constants/Typography';
-import { useSessionQuickActions } from '@/hooks/useSessionQuickActions';
+import { useSessionQuickActions, type SessionActionItem } from '@/hooks/useSessionQuickActions';
 import { SessionActionsAnchor, SessionActionsPopover } from '@/components/SessionActionsPopover';
 import { SessionRowData, useMachine, useSession } from '@/sync/storage';
 import { t } from '@/text';
@@ -254,6 +254,7 @@ export const SessionRowDetails = React.memo(function SessionRowDetails({
 export const SessionRowActions = React.memo(function SessionRowActions({
     contextAnchor,
     onContextAnchorChange,
+    onOrganize,
     onStartSelection,
     sessionId,
     statusLabel,
@@ -261,6 +262,7 @@ export const SessionRowActions = React.memo(function SessionRowActions({
 }: {
     contextAnchor: SessionActionsAnchor | null;
     onContextAnchorChange: (anchor: SessionActionsAnchor | null) => void;
+    onOrganize?: () => void;
     onStartSelection?: () => void;
     sessionId: string;
     statusLabel: string;
@@ -275,6 +277,12 @@ export const SessionRowActions = React.memo(function SessionRowActions({
     const useMoreAction = shouldUseSessionRowMoreAction(Platform.OS, viewportWidth, canHover);
     const showInline = !useMoreAction && visible;
     const actionClusterRef = React.useRef<any>(null);
+    const extraActions = React.useMemo<SessionActionItem[] | undefined>(() => onOrganize ? [{
+        id: 'organize',
+        icon: 'pricetag-outline',
+        label: t('sidebarLists.organizeSession'),
+        onPress: onOrganize,
+    }] : undefined, [onOrganize]);
 
     React.useEffect(() => {
         if (Platform.OS !== 'web' || !useMoreAction || !contextAnchor || typeof document === 'undefined') {
@@ -352,6 +360,7 @@ export const SessionRowActions = React.memo(function SessionRowActions({
             </View>
             <SessionActionsPopover
                 anchor={contextAnchor}
+                extraActions={extraActions}
                 inline={Platform.OS === 'web' && useMoreAction}
                 onClose={() => onContextAnchorChange(null)}
                 onSelectSession={onStartSelection}

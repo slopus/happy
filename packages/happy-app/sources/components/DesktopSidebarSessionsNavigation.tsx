@@ -12,7 +12,6 @@ import { usePathname, useRouter } from 'expo-router';
 import { mq, StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Text } from '@/components/StyledText';
 import { Typography } from '@/constants/Typography';
-import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { useNewSessionDraft } from '@/hooks/useNewSessionDraft';
 import { useVisibleSessionListViewData } from '@/hooks/useVisibleSessionListViewData';
 import { Modal } from '@/modal';
@@ -199,29 +198,13 @@ const stylesheet = StyleSheet.create((theme) => ({
     listName: { color: theme.colors.text, fontSize: 14, ...Typography.default('semiBold') },
     listMeta: { color: theme.colors.textSecondary, fontSize: 11, marginTop: 1, ...Typography.default() },
     count: { color: theme.colors.textSecondary, fontSize: 12, ...Typography.default() },
-    sessionRow: {
-        alignItems: 'center',
-        borderRadius: 8,
-        flexDirection: 'row',
-        marginRight: 8,
-        minHeight: 48,
-        paddingLeft: 10,
-    },
+    sessionRowDragging: { backgroundColor: theme.colors.surfacePressed, opacity: 0.52, transform: [{ scale: 0.99 }] },
     sessionRowNested: {
         borderLeftColor: theme.colors.divider,
         borderLeftWidth: StyleSheet.hairlineWidth,
         marginLeft: 30,
+        paddingLeft: 10,
     },
-    sessionRowSelected: { backgroundColor: theme.colors.surfaceSelected },
-    sessionRowPressed: { backgroundColor: theme.colors.surfacePressed },
-    sessionRowDragging: { backgroundColor: theme.colors.surfacePressed, opacity: 0.52, transform: [{ scale: 0.99 }] },
-    sessionMain: { flex: 1, minWidth: 0, paddingVertical: 6 },
-    sessionTitle: { color: theme.colors.text, fontSize: 13, ...Typography.default() },
-    sessionMeta: { color: theme.colors.textSecondary, fontSize: 11, marginTop: 2, ...Typography.default() },
-    sessionTags: { alignItems: 'center', flexDirection: 'row', gap: 4, marginTop: 4, overflow: 'hidden' },
-    sessionTag: { backgroundColor: theme.colors.surfaceHigh, borderRadius: 8, maxWidth: 92, paddingHorizontal: 6, paddingVertical: 1 },
-    sessionTagText: { color: theme.colors.textSecondary, fontSize: 10, ...Typography.default('semiBold') },
-    sessionTagMore: { color: theme.colors.textSecondary, fontSize: 10, ...Typography.default('semiBold') },
     newSessionRow: {
         alignItems: 'center',
         borderLeftColor: theme.colors.divider,
@@ -488,7 +471,6 @@ function SidebarListsView() {
     const styles = stylesheet;
     const { theme } = useUnistyles();
     const router = useRouter();
-    const navigateToSession = useNavigateToSession();
     const listColors = getListColors(theme.colors);
     const pathname = usePathname();
     const data = useVisibleSessionListViewData();
@@ -624,7 +606,6 @@ function SidebarListsView() {
         setEditorVisible(true);
     }, []);
     const closeEditor = React.useCallback(() => setEditorVisible(false), []);
-    const openSession = React.useCallback((session: SessionRowData) => navigateToSession(session.id), [navigateToSession]);
     const openOrganizer = React.useCallback((session: SessionRowData) => setOrganizingSession(session), []);
     const startSessionDrag = React.useCallback((data: SidebarDragData) => {
         setDraggedSessionId(data.id);
@@ -795,9 +776,6 @@ function SidebarListsView() {
                         <Pressable accessibilityLabel={`${t('sidebarLists.editList')} ${list.name}`} accessibilityRole="button" onPress={() => openEdit(list)} style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]} testID={`sidebar-edit-list-${list.id}`}>
                             <Feather color={theme.colors.textSecondary} name="edit-2" size={14} />
                         </Pressable>
-                        <Pressable accessibilityLabel={`${t('sidebarLists.deleteList')} ${list.name}`} accessibilityRole="button" onPress={() => void deleteList(list)} style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]} testID={`sidebar-delete-list-${list.id}`}>
-                            <Feather color={theme.colors.deleteAction} name="trash-2" size={14} />
-                        </Pressable>
                     </View>
                 </WebDropTarget>
             );
@@ -838,10 +816,7 @@ function SidebarListsView() {
             );
         }
         if (item.type === 'session') {
-            const sessionTags = (organization.sessions[item.session.id]?.tagIds ?? [])
-                .map((tagId) => organization.tags.find((tag) => tag.id === tagId))
-                .filter((tag) => !!tag);
-            return <OrganizedSessionRow dragging={draggedSessionId === item.session.id} nested={item.nested} onDragEnd={finishSidebarDrag} onDragStart={startSessionDrag} onOpen={openSession} onOrganize={openOrganizer} onPin={sessionManagement.moveToPinned} selected={selectedSessionId === item.session.id} session={item.session} tags={sessionTags} />;
+            return <OrganizedSessionRow dragging={draggedSessionId === item.session.id} nested={item.nested} onDragEnd={finishSidebarDrag} onDragStart={startSessionDrag} onOrganize={openOrganizer} selected={selectedSessionId === item.session.id} session={item.session} />;
         }
         if (item.type === 'empty') {
             return <Text style={[styles.empty, item.nested && styles.sessionRowNested]}>{item.label}</Text>;
@@ -881,7 +856,7 @@ function SidebarListsView() {
                 {organization.tags.length === 0 ? <Text style={styles.empty}>{t('sidebarLists.noTags')}</Text> : null}
             </View>
         );
-    }, [addTag, changeDropTarget, createSession, deleteList, draggedListId, draggedSessionId, dropFeedback, dropOntoList, finishSidebarDrag, leaveDropTarget, listColors, openCreate, openEdit, openOrganizer, openSession, openTagActions, organization.lists.length, organization.sessions, organization.tags, selectedSessionId, selectedTagId, sessionIndex, sessionManagement.moveToPinned, sidebarGroupExpansion, startListDrag, startSessionDrag, styles, tagAssociationCounts, theme.colors]);
+    }, [addTag, changeDropTarget, createSession, deleteList, draggedListId, draggedSessionId, dropFeedback, dropOntoList, finishSidebarDrag, leaveDropTarget, listColors, openCreate, openEdit, openOrganizer, openTagActions, organization.lists.length, organization.sessions, organization.tags, selectedSessionId, selectedTagId, sessionIndex, sidebarGroupExpansion, startListDrag, startSessionDrag, styles, tagAssociationCounts, theme.colors]);
 
     return (
         <View style={styles.container} testID="sidebar-lists-view">
@@ -946,9 +921,8 @@ function SidebarListsView() {
     );
 }
 
-const OrganizedSessionRow = React.memo(function OrganizedSessionRow({ dragging, nested, onDragEnd, onDragStart, onOpen, onOrganize, onPin, selected, session, tags }: { dragging: boolean; nested: boolean; onDragEnd: () => void; onDragStart: (data: SidebarDragData) => void; onOpen: (session: SessionRowData) => void; onOrganize: (session: SessionRowData) => void; onPin: (sessionId: string) => void; selected: boolean; session: SessionRowData; tags: SidebarTag[] }) {
+const OrganizedSessionRow = React.memo(function OrganizedSessionRow({ dragging, nested, onDragEnd, onDragStart, onOrganize, selected, session }: { dragging: boolean; nested: boolean; onDragEnd: () => void; onDragStart: (data: SidebarDragData) => void; onOrganize: (session: SessionRowData) => void; selected: boolean; session: SessionRowData }) {
     const styles = stylesheet;
-    const { theme } = useUnistyles();
     const ref = React.useRef<View>(null);
 
     React.useEffect(() => {
@@ -966,25 +940,16 @@ const OrganizedSessionRow = React.memo(function OrganizedSessionRow({ dragging, 
     return (
         <View
             ref={ref}
-            style={[styles.sessionRow, nested && styles.sessionRowNested, selected && styles.sessionRowSelected, dragging && styles.sessionRowDragging]}
+            style={dragging && styles.sessionRowDragging}
             testID={`sidebar-drag-session-${session.id}`}
         >
-            <Pressable aria-selected={selected} accessibilityRole="button" accessibilityState={{ selected }} onPress={() => onOpen(session)} style={({ pressed }) => [styles.sessionMain, pressed && styles.sessionRowPressed]} testID={`organized-session-${session.id}`}>
-                <Text numberOfLines={1} style={styles.sessionTitle}>{session.name}</Text>
-                <Text numberOfLines={1} style={styles.sessionMeta}>{session.subtitle}</Text>
-                {tags.length > 0 ? (
-                    <View style={styles.sessionTags} testID={`organized-session-tags-${session.id}`}>
-                        {tags.slice(0, 2).map((tag) => <View key={tag.id} style={styles.sessionTag} testID={`organized-session-tag-${tag.id}`}><Text numberOfLines={1} style={styles.sessionTagText}>#{tag.name}</Text></View>)}
-                        {tags.length > 2 ? <Text style={styles.sessionTagMore}>+{tags.length - 2}</Text> : null}
-                    </View>
-                ) : null}
-            </Pressable>
-            <Pressable accessibilityLabel={t('sessionInfo.pinSession')} onPress={() => onPin(session.id)} style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]} testID={`pin-organized-session-${session.id}`}>
-                <Feather color={theme.colors.textSecondary} name="bookmark" size={14} />
-            </Pressable>
-            <Pressable accessibilityLabel={t('sidebarLists.organizeSession')} onPress={() => onOrganize(session)} style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]} testID={`organize-session-${session.id}`}>
-                <Feather color={theme.colors.textSecondary} name="tag" size={14} />
-            </Pressable>
+            <CompactSessionRow
+                nested={nested}
+                onOrganize={() => onOrganize(session)}
+                selected={selected}
+                session={session}
+                testID={`organized-session-${session.id}`}
+            />
         </View>
     );
 });

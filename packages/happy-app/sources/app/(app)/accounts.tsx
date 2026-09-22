@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Text, TextInput, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
@@ -9,6 +9,8 @@ import { getServerUrl } from '@/sync/serverConfig';
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
+import { SecureTextInput } from '@/components/SecureTextInput';
+import { Typography } from '@/constants/Typography';
 import { layout } from '@/components/layout';
 import { Modal } from '@/modal';
 import { t } from '@/text';
@@ -35,6 +37,18 @@ export default React.memo(function AccountsPage() {
     const [detailSecret, setDetailSecret] = useState<string | null>(null);
     const [showDetailSecret, setShowDetailSecret] = useState(false);
     const activeKey = getActiveAccountKey();
+    const resetAddForm = useCallback(() => {
+        setSecret('');
+        setLabel('');
+        setServerUrl(target?.serverUrl ?? getServerUrl());
+    }, [target?.serverUrl]);
+    const openAddForm = useCallback(() => {
+        resetAddForm();
+        setAdding(true);
+    }, [resetAddForm]);
+    useEffect(() => {
+        if (params.add === '1') openAddForm();
+    }, [openAddForm, params.add]);
     const reload = async () => setAccounts(await listSavedAccounts());
     useEffect(() => { reload().catch(() => setFailed(true)); }, []);
     const run = async (action: () => Promise<void>) => {
@@ -100,26 +114,38 @@ export default React.memo(function AccountsPage() {
             </View>)}
         </ItemGroup>
         <Animated.View layout={LinearTransition.duration(220).reduceMotion(ReduceMotion.System)}>
-        {!adding ? <ItemGroup><Item title={t('accounts.add')} onPress={() => setAdding(true)} /></ItemGroup> :
+        {!adding ? <ItemGroup><Item title={t('accounts.add')} onPress={openAddForm} /></ItemGroup> :
         <Animated.View entering={FadeIn.duration(180).reduceMotion(ReduceMotion.System)} exiting={FadeOut.duration(140).reduceMotion(ReduceMotion.System)}>
         <ItemGroup title={t('accounts.add')} footer={t('accounts.secretHint')}>
             <View style={styles.form}>
                 <Text style={styles.label}>{t('accounts.server')}</Text>
-                <TextInput style={styles.input} value={serverUrl} onChangeText={setServerUrl} editable={!busy && !target} autoCapitalize="none" autoCorrect={false} accessibilityLabel={t('accounts.server')} placeholderTextColor={theme.colors.textSecondary} />
+                <TextInput style={styles.input} value={serverUrl} onChangeText={setServerUrl} editable={!busy && !target} autoCapitalize="none" autoComplete="off" autoCorrect={false} accessibilityLabel={t('accounts.server')} placeholderTextColor={theme.colors.textSecondary} textContentType="URL" />
                 <Text style={styles.label}>{t('accounts.label')}</Text>
-                <TextInput style={styles.input} value={label} onChangeText={setLabel} maxLength={80} editable={!busy} accessibilityLabel={t('accounts.label')} />
+                <TextInput style={styles.input} value={label} onChangeText={setLabel} autoComplete="off" maxLength={80} editable={!busy} accessibilityLabel={t('accounts.label')} textContentType="none" />
                 <Text style={styles.label}>{t('accounts.secret')}</Text>
-                <TextInput style={styles.input} value={secret} onChangeText={setSecret} secureTextEntry autoCapitalize="none" autoCorrect={false} editable={!busy} accessibilityLabel={t('accounts.secret')} />
+                <SecureTextInput
+                    accessibilityLabel={t('accounts.secret')}
+                    autoCapitalize="none"
+                    autoComplete="new-password"
+                    autoCorrect={false}
+                    editable={!busy}
+                    emptyValueAccessibilityLabel={t('accounts.secret')}
+                    hideValueAccessibilityLabel={t('settingsAccount.tapToHide')}
+                    onChangeText={setSecret}
+                    showValueAccessibilityLabel={t('settingsAccount.tapToReveal')}
+                    textContentType="newPassword"
+                    value={secret}
+                    visibilityButtonTestID="accounts-secret-visibility-toggle"
+                />
             </View>
             <Item title={t('accounts.add')} loading={busy} disabled={!secret.trim() || (hasTarget && !target)} onPress={() => void run(async () => {
                 if (target && canonicalAccountServer(serverUrl) !== target.serverUrl) throw new Error('account_target_mismatch');
                 await addSavedAccount({ secret: secret.trim(), serverUrl, label: label.trim() || undefined, expectedAccountId: target?.accountId });
-                setSecret('');
-                setLabel('');
+                resetAddForm();
                 await reload();
                 setAdding(false);
             })} />
-            <Item title={t('common.cancel')} disabled={busy} onPress={() => { setSecret(''); setLabel(''); setAdding(false); }} />
+            <Item title={t('common.cancel')} disabled={busy} onPress={() => { resetAddForm(); setAdding(false); }} />
         </ItemGroup>
         </Animated.View>}
         </Animated.View>
@@ -128,7 +154,18 @@ export default React.memo(function AccountsPage() {
 });
 
 const styles = StyleSheet.create(theme => ({
-    form: { width: '100%', maxWidth: layout.maxWidth, alignSelf: 'center', padding: 16, gap: 10 },
-    label: { color: theme.colors.text, fontSize: 14 },
-    input: { color: theme.colors.text, backgroundColor: theme.colors.surfaceSelected, borderRadius: 8, padding: 12, fontSize: 16 },
+    form: { width: '100%', maxWidth: layout.maxWidth, alignSelf: 'center', padding: 16, gap: 8 },
+    label: { ...Typography.default('semiBold'), color: theme.colors.text, fontSize: 13, lineHeight: 18 },
+    input: {
+        ...Typography.default(),
+        color: theme.colors.input.text,
+        backgroundColor: theme.colors.input.background,
+        borderColor: theme.colors.divider,
+        borderRadius: 10,
+        borderWidth: StyleSheet.hairlineWidth,
+        minHeight: 44,
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+        fontSize: 15,
+    },
 }));

@@ -37,6 +37,17 @@ const disconnectedSdk = {
 };
 
 describe('authenticated local service', () => {
+  it('keeps public visit telemetry isolated from the owner dashboard and protects policy changes', async () => {
+    const server = await start();
+    const visit = await fetch(`${server.url}/api/public/visitor`, { method: 'POST' });
+    expect(visit.status).toBe(200);
+    expect(await visit.json()).toMatchObject({ policy: { enabled: false, tokenLimit: 200_000 }, guestExecutorReady: false });
+    expect((await fetch(`${server.url}/api/admin/dashboard`)).status).toBe(401);
+    const dashboard = await fetch(`${server.url}/api/admin/dashboard`, authorized());
+    expect(await dashboard.json()).toMatchObject({ visitors: { total: 1 }, usage: { estimatedTokens: 0 }, policy: { tokenLimit: 200_000 } });
+    const updated = await fetch(`${server.url}/api/admin/policy`, authorized({ method: 'PATCH', body: JSON.stringify({ enabled: true, tokenLimit: 50_000 }) }));
+    expect(await updated.json()).toMatchObject({ enabled: true, tokenLimit: 50_000 });
+  });
   it('accepts recovery-code connection only through the dedicated account transition route', async () => {
     const sdk = new TestOnlySdk();
     const server = await start(undefined, sdk);
@@ -116,10 +127,12 @@ describe('authenticated local service', () => {
     servers.push(server);
 
     const html = await fetch(`${server.url}/`);
+    const admin = await fetch(`${server.url}/admin/`);
     const script = await fetch(`${server.url}/app.js`);
     const css = await fetch(`${server.url}/app.css`);
 
     expect(html.status).toBe(200);
+    expect(admin.status).toBe(200);
     expect(html.headers.get('content-type')).toContain('text/html');
     expect(script.headers.get('content-type')).toContain('text/javascript');
     expect(css.headers.get('content-type')).toContain('text/css');

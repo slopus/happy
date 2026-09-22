@@ -150,6 +150,70 @@ beforeEach(() => {
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe('real session writer composition', () => {
+    it.each([{ thinkingAt: 15, expected: false }, { thinkingAt: 35, expected: true }])(
+        'lets persisted completion settle only its own activity (%j)', async ({ thinkingAt, expected }) => {
+            await sync.ensureSessionHydrated('writer-session');
+            const current = storage.getState().sessions['writer-session'];
+            storage.getState().applySessions([{ ...current, thinking: true, thinkingAt }]);
+            subject.applySessions([{ ...current, thinking: true, thinkingAt, updatedAt: 40,
+                agentStateVersion: 1, agentState: { requests: {}, completedRequests: {},
+                    turnStatus: { status: 'completed', updatedAt: 25 } } }]);
+            expect(storage.getState().sessions['writer-session'].thinking).toBe(expected);
+        });
+
+    it('rejects stale running activity after completion but permits a later turn', async () => {
+        await sync.ensureSessionHydrated('writer-session');
+        storage.getState().applySessions([{ ...storage.getState().sessions['writer-session'],
+            thinking: false, thinkingAt: 15,
+            agentState: { requests: {}, completedRequests: {}, turnStatus: { status: 'completed', updatedAt: 25 } } }]);
+        subject.flushActivityUpdates(new Map([['writer-session', { active: true, activeAt: 20, thinking: true }]]));
+        expect(storage.getState().sessions['writer-session'].thinking).toBe(false);
+        subject.flushActivityUpdates(new Map([['writer-session', { active: true, activeAt: 35, thinking: true }]]));
+        expect(storage.getState().sessions['writer-session'].thinking).toBe(true);
+        subject.flushActivityUpdates(new Map([['writer-session', { active: true, activeAt: 30, thinking: false }]]));
+        expect(storage.getState().sessions['writer-session'].thinking).toBe(true);
+    });
+
+    it.each([
+        { eventTime: 25, thinkingAt: 15, subagent: undefined, expected: false },
+        { eventTime: 15, thinkingAt: 25, subagent: undefined, expected: true },
+        { eventTime: 25, thinkingAt: 15, subagent: 'child', expected: true },
+    ])('applies canonical turn completion without replaying history (%j)', async ({ eventTime, thinkingAt, subagent, expected }) => {
+        await sync.ensureSessionHydrated('writer-session');
+        storage.getState().applySessions([{ ...storage.getState().sessions['writer-session'], thinking: true, thinkingAt }]);
+        subject.historyWindows.set('writer-session', { isAtLatest: false });
+        const crypto = subject.encryption.getSessionEncryption('writer-session') as any;
+        crypto.encryptor.decrypt = async () => [{ role: 'session', content: {
+            id: 'terminal', time: eventTime, role: 'agent', turn: 'turn-one',
+            ...(subagent ? { subagent } : {}), ev: { t: 'turn-end', status: 'completed' },
+        } }];
+        await subject.handleUpdate(envelope({ t: 'new-message', sid: 'writer-session', message: {
+            id: 'terminal-wire', seq: 3, localId: null, createdAt: 40, updatedAt: 40,
+            content: { t: 'encrypted', c: 'AA==' },
+        } }, 9001, 40));
+        expect(storage.getState().sessions['writer-session'].thinking).toBe(expected);
+    });
+
+    it('does not restore captured running state when completion decryption finishes late', async () => {
+        await sync.ensureSessionHydrated('writer-session');
+        const initial = storage.getState().sessions['writer-session'];
+        storage.getState().applySessions([{ ...initial, thinking: true, thinkingAt: 15 }]);
+        const gate = deferred<any[]>();
+        const started = deferred<void>();
+        const crypto = subject.encryption.getSessionEncryption('writer-session') as any;
+        crypto.encryptor.decrypt = async () => { started.resolve(); return gate.promise; };
+        const pending = subject.handleUpdate(envelope({ t: 'update-session', id: 'writer-session',
+            agentState: { version: 1, value: 'AA==' } }, 9001, 30));
+        await started.promise;
+        // A newer activity/terminal receipt arrives while the state decrypts.
+        storage.getState().applySessions([{ ...storage.getState().sessions['writer-session'],
+            thinking: false, thinkingAt: 25 }]);
+        gate.resolve([{ requests: {}, completedRequests: {}, turnStatus: { status: 'completed', updatedAt: 25 } }]);
+        await pending;
+        expect(storage.getState().sessions['writer-session']).toMatchObject({ thinking: false, thinkingAt: 25,
+            agentState: { turnStatus: { status: 'completed' } } });
+    });
+
     it('resolves a cached deleted session as not-found and evicts its warm snapshot', async () => {
         subject.sessionWarmCacheAccountKey = 'https://test|deleted-route';
         await sync.ensureSessionHydrated('writer-session');
@@ -472,6 +536,130 @@ describe('real session writer composition', () => {
         subject.localHistory = null; read.resolve(null); await jumping;
         expect(mocks.apiRequest).not.toHaveBeenCalled();
     });
+    it('confirms missing history only on a successful 404 lookup, not a network failure', async () => {
+        mocks.fetchSnapshot.mockResolvedValueOnce(null);
+        expect(await sync.checkSessionExists('missing')).toBe(false);
+        mocks.fetchSnapshot.mockResolvedValueOnce(snapshot());
+        expect(await sync.checkSessionExists('present')).toBe(true);
+        mocks.fetchSnapshot.mockRejectedValueOnce(new Error('network'));
+        await expect(sync.checkSessionExists('unreachable')).rejects.toThrow('network');
+    });
+
+    it('delivers the saved continuation context with the user turn while preserving the displayed prompt', async () => {
+        await sync.ensureSessionHydrated('writer-session');
+        const current = storage.getState().sessions['writer-session'];
+        storage.getState().applySessions([{ ...current, metadata: { ...current.metadata!, continuationOfSessionId: 'deleted-parent', continuationContext: 'Project ORCHID: next fix the parser.' } }]);
+        const sessionEncryption = subject.encryption.getSessionEncryption('writer-session');
+        const encrypted = vi.spyOn(sessionEncryption, 'encryptRawRecord');
+        vi.spyOn(subject, 'getSendSync').mockReturnValue({ invalidate: () => undefined });
+        await sync.sendMessage('writer-session', 'Continue');
+        const record = encrypted.mock.calls.at(-1)![0] as any;
+        expect(record.content.text).toContain('ORCHID');
+        expect(record.content.text).toContain('Continue');
+        expect(record.meta.displayText).toBe('Continue');
+        expect(record.meta.continuationContextSourceId).toBe('deleted-parent');
+        await sync.sendMessage('writer-session', 'Next');
+        expect((encrypted.mock.calls.at(-1)![0] as any).content.text).toBe('Next');
+    });
+
+    async function continuationWriter() {
+        await sync.ensureSessionHydrated('writer-session');
+        const current = storage.getState().sessions['writer-session'];
+        storage.getState().applySessions([{ ...current, metadata: { ...current.metadata!, continuationOfSessionId: 'parent', continuationContext: 'Project ORCHID' } }]);
+        const encryption = subject.encryption.getSessionEncryption('writer-session');
+        const encrypted = vi.spyOn(encryption, 'encryptRawRecord');
+        vi.spyOn(subject, 'getSendSync').mockReturnValue({ invalidate: () => undefined });
+        return { encryption, encrypted };
+    }
+
+    it('keeps queued handoff evidence after the visible history window is discarded', async () => {
+        const { encrypted } = await continuationWriter();
+        await sync.sendMessage('writer-session', 'Continue');
+        storage.setState({ sessionMessages: {} });
+        await sync.sendMessage('writer-session', 'Next');
+        expect((encrypted.mock.calls.at(-1)![0] as any).content.text).toBe('Next');
+    });
+
+    it('finds a persisted handoff outside the latest page after reload without replacing the viewport', async () => {
+        const { encryption, encrypted } = await continuationWriter();
+        const page = [{ id: 'first', seq: 1, localId: 'sent', createdAt: 1, content: { t: 'encrypted', c: 'AA==' } }];
+        mocks.apiRequest.mockResolvedValue({ ok: true, json: async () => ({ messages: page, hasMore: false }) });
+        vi.spyOn(encryption, 'createDetached').mockReturnValue({ decryptMessages: async () => [{ ...page[0], content: { role: 'user', content: { type: 'text', text: 'saved' }, meta: { continuationContextSourceId: 'parent' } } }] } as any);
+        await sync.sendMessage('writer-session', 'After reload');
+        expect((encrypted.mock.calls.at(-1)![0] as any).content.text).toBe('After reload');
+        expect(mocks.apiRequest).toHaveBeenCalledWith('/v3/sessions/writer-session/messages?after_seq=0&limit=100');
+    });
+
+    it('injects only once when two messages are submitted concurrently', async () => {
+        const { encrypted } = await continuationWriter();
+        await Promise.all([sync.sendMessage('writer-session', 'First'), sync.sendMessage('writer-session', 'Second')]);
+        expect(encrypted.mock.calls.filter(call => (call[0] as any).meta.continuationContextSourceId)).toHaveLength(1);
+    });
+
+    it('does not send when durable handoff evidence cannot be read', async () => {
+        const { encrypted } = await continuationWriter();
+        mocks.apiRequest.mockRejectedValueOnce(new Error('offline'));
+        await expect(sync.sendMessage('writer-session', 'Continue')).rejects.toThrow('offline');
+        expect(encrypted).not.toHaveBeenCalled();
+        expect(subject.pendingOutbox.size).toBe(0);
+    });
+
+    it('rechecks durable delivery after cancelling a pending handoff even if its optimistic row remains', async () => {
+        const { encrypted } = await continuationWriter();
+        await sync.sendMessage('writer-session', 'First');
+        subject.failPendingOutboxMessages('Cancelled');
+        await sync.sendMessage('writer-session', 'Retry');
+        expect((encrypted.mock.calls.at(-1)![0] as any).meta.continuationContextSourceId).toBe('parent');
+        expect(mocks.apiRequest).toHaveBeenCalledTimes(2);
+    });
+
+    it('rejects a dependent send when its queued handoff is cancelled during encryption', async () => {
+        const { encrypted } = await continuationWriter();
+        await sync.sendMessage('writer-session', 'First');
+        const encoded = deferred<string>();
+        encrypted.mockReturnValueOnce(encoded.promise);
+        const sending = sync.sendMessage('writer-session', 'Next');
+        await vi.waitFor(() => expect(encrypted).toHaveBeenCalledTimes(2));
+        subject.failPendingOutboxMessages('Cancelled');
+        encoded.resolve('AA==');
+        await expect(sending).rejects.toThrow('Continuation delivery was cancelled');
+        expect(subject.pendingOutbox.size).toBe(0);
+    });
+
+    it('retains delivery evidence after acknowledgement and viewport eviction', async () => {
+        const { encrypted } = await continuationWriter();
+        await sync.sendMessage('writer-session', 'First');
+        await subject.flushOutbox('writer-session');
+        expect(subject.pendingOutbox.size).toBe(0);
+        storage.setState({ sessionMessages: {} });
+        await sync.sendMessage('writer-session', 'Next');
+        expect((encrypted.mock.calls.at(-1)![0] as any).content.text).toBe('Next');
+        expect(mocks.apiRequest).toHaveBeenCalledTimes(2); // initial evidence GET and outbox POST
+    });
+
+    it('discards a delivery lookup after the account encryption owner changes', async () => {
+        const { encrypted } = await continuationWriter();
+        const response = deferred<any>();
+        mocks.apiRequest.mockReturnValueOnce(response.promise);
+        const sending = sync.sendMessage('writer-session', 'Continue');
+        await vi.waitFor(() => expect(mocks.apiRequest).toHaveBeenCalled());
+        subject.encryption = encryption();
+        response.resolve({ ok: true, json: async () => ({ messages: [], hasMore: false }) });
+        await expect(sending).rejects.toThrow('local-message-session-unavailable');
+        expect(encrypted).not.toHaveBeenCalled();
+        expect(subject.pendingOutbox.size).toBe(0);
+    });
+
+    it('reads subsequent evidence pages without treating a stalled cursor as no prior handoff', async () => {
+        const { encryption, encrypted } = await continuationWriter();
+        const row = { id: 'event', seq: 7, localId: null, createdAt: 1, content: { t: 'encrypted', c: 'AA==' } };
+        mocks.apiRequest.mockResolvedValue({ ok: true, json: async () => ({ messages: [row], hasMore: true }) });
+        vi.spyOn(encryption, 'createDetached').mockReturnValue({ decryptMessages: async () => [{ ...row, content: { role: 'agent', content: { type: 'output', data: {} } } }] } as any);
+        await expect(sync.sendMessage('writer-session', 'Continue')).rejects.toThrow('pagination stalled');
+        expect(mocks.apiRequest).toHaveBeenNthCalledWith(2, '/v3/sessions/writer-session/messages?after_seq=7&limit=100');
+        expect(encrypted).not.toHaveBeenCalled();
+    });
+
     it('ignores an outbox acknowledgement that arrives after session deletion', async () => {
         await sync.ensureSessionHydrated('writer-session');
         vi.spyOn(subject, 'getSendSync').mockReturnValue({ invalidate: () => undefined });

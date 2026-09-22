@@ -1,4 +1,5 @@
 import * as React from "react";
+import { TranscriptReadOnlyContext } from "./TranscriptReadOnlyContext";
 import { ActivityIndicator, View, Text, Pressable, Platform, TextInput } from "react-native";
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Ionicons } from '@expo/vector-icons';
@@ -158,34 +159,36 @@ function UserTextBlock(props: {
   onEditUserMessage?: (messageId: string, messageText: string) => Promise<void> | void;
 }) {
   const { theme } = useUnistyles();
+  const readOnly = React.useContext(TranscriptReadOnlyContext);
   const [isEditing, setIsEditing] = React.useState(false);
   const [editText, setEditText] = React.useState('');
   const [isSendingEdit, setIsSendingEdit] = React.useState(false);
   const [isCopied, setIsCopied] = React.useState(false);
   const copyFeedbackTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleOptionPress = React.useCallback((option: Option) => {
-    if (props.sessionId) void sync.sendMessage(props.sessionId, option.title, { source: 'option' })
+    if (!readOnly && props.sessionId) void sync.sendMessage(props.sessionId, option.title, { source: 'option' })
       .catch(() => Modal.alert(t('common.error'), t('common.retry')));
-  }, [props.sessionId]);
+  }, [props.sessionId, readOnly]);
 
   const rewindPointId = getUserMessageForkRewindPointId(
     props.message,
     props.metadata?.flavor === 'codex' ? 'codex' : 'claude',
   );
-  const canFork = Boolean(props.onForkFromUserMessage) && Boolean(rewindPointId);
+  const canFork = !readOnly && Boolean(props.onForkFromUserMessage) && Boolean(rewindPointId);
   const modeLabel = getMessageExecutionModeLabel(props.message.meta, props.metadata?.flavor, t);
   const visibleText = getUserMessageDisplayText(props.message.displayText || props.message.text);
   const handleLongPress = React.useCallback(() => {
-    if (props.onForkFromUserMessage) {
+    if (!readOnly && props.onForkFromUserMessage) {
       props.onForkFromUserMessage(props.message.id, rewindPointId, visibleText, undefined, props.message.createdAt);
     }
-  }, [props.message.createdAt, props.message.id, props.onForkFromUserMessage, rewindPointId, visibleText]);
-  const showActions = Platform.OS === 'web' && props.showUserMessageActions;
+  }, [props.message.createdAt, props.message.id, props.onForkFromUserMessage, rewindPointId, visibleText, readOnly]);
+  const showActions = !readOnly && Platform.OS === 'web' && props.showUserMessageActions;
   const canEdit = showActions && props.canEditUserMessage && Boolean(props.onEditUserMessage);
   const startEditing = React.useCallback(() => {
+    if (readOnly) return;
     setEditText(visibleText);
     setIsEditing(true);
-  }, [visibleText]);
+  }, [visibleText, readOnly]);
   const cancelEditing = React.useCallback(() => {
     setEditText('');
     setIsEditing(false);
@@ -212,7 +215,7 @@ function UserTextBlock(props: {
   }, []);
   const sendEditedMessage = React.useCallback(async () => {
     const trimmed = editText.trim();
-    if (!trimmed || !props.onEditUserMessage || isSendingEdit) return;
+    if (readOnly || !trimmed || !props.onEditUserMessage || isSendingEdit) return;
 
     setIsSendingEdit(true);
     try {
@@ -221,7 +224,7 @@ function UserTextBlock(props: {
     } finally {
       setIsSendingEdit(false);
     }
-  }, [editText, isSendingEdit, props.message.id, props.message.localId, props.onEditUserMessage]);
+  }, [editText, isSendingEdit, props.message.id, props.message.localId, props.onEditUserMessage, readOnly]);
 
   // Claude Agent SDK emits synthetic user messages wrapped in tags like
   // <local-command-caveat>…</local-command-caveat> and
@@ -266,7 +269,7 @@ function UserTextBlock(props: {
           <AutoFoldPromptBlock
             text={parsed.text}
             info={autoFoldPrompt}
-            onOptionPress={handleOptionPress}
+            onOptionPress={readOnly ? undefined : handleOptionPress}
             sessionId={props.sessionId}
           />
         </View>
@@ -275,7 +278,7 @@ function UserTextBlock(props: {
     );
   }
 
-  if (isEditing) {
+  if (isEditing && !readOnly) {
     const canSend = editText.trim().length > 0 && !isSendingEdit;
     return (
       <View testID={`message-user-${props.message.id}`} style={styles.userMessageContainer}>
@@ -334,7 +337,7 @@ function UserTextBlock(props: {
           (modeLabel || showActions) && styles.userContentWithModeMeta,
         ]}
       >
-        <MarkdownView markdown={parsed.text} onOptionPress={props.sessionId ? handleOptionPress : undefined} sessionId={props.sessionId} typography="chatMono" />
+        <MarkdownView markdown={parsed.text} onOptionPress={!readOnly && props.sessionId ? handleOptionPress : undefined} sessionId={props.sessionId} typography="chatMono" />
       </Pressable>
       {showActions && (
         <View style={[styles.userMessageActions, modeLabel && styles.userMessageActionsWithMode]}>
@@ -412,15 +415,16 @@ function AgentTextBlock(props: {
   showActions?: boolean;
 }) {
   const { theme } = useUnistyles();
+  const readOnly = React.useContext(TranscriptReadOnlyContext);
   const [isHovered, setIsHovered] = React.useState(false);
   const [isActionFocused, setIsActionFocused] = React.useState(false);
   const [hoveredAction, setHoveredAction] = React.useState<'copy' | 'fork' | null>(null);
   const [isCopied, setIsCopied] = React.useState(false);
   const copyFeedbackTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleOptionPress = React.useCallback((option: Option) => {
-    if (props.sessionId) void sync.sendMessage(props.sessionId, option.title, { source: 'option' })
+    if (!readOnly && props.sessionId) void sync.sendMessage(props.sessionId, option.title, { source: 'option' })
       .catch(() => Modal.alert(t('common.error'), t('common.retry')));
-  }, [props.sessionId]);
+  }, [props.sessionId, readOnly]);
   const copyMessage = React.useCallback(async () => {
     try {
       await Clipboard.setStringAsync(props.message.text);
@@ -443,14 +447,14 @@ function AgentTextBlock(props: {
     return null;
   }
 
-  const showActions = Platform.OS === 'web' && props.showActions;
-  const canFork = Boolean(props.forkTarget && props.onForkFromMessage);
+  const showActions = !readOnly && Platform.OS === 'web' && props.showActions;
+  const canFork = !readOnly && Boolean(props.forkTarget && props.onForkFromMessage);
   const isForkingThisMessage = Boolean(
     props.forkTarget && props.forkingFromMessageId === props.forkTarget.messageId,
   );
   const actionsVisible = Boolean(showActions && (isHovered || isActionFocused || isCopied || isForkingThisMessage));
   const handleFork = () => {
-    if (!props.forkTarget || !props.onForkFromMessage || isForkingThisMessage) return;
+    if (readOnly || !props.forkTarget || !props.onForkFromMessage || isForkingThisMessage) return;
     props.onForkFromMessage(
       props.forkTarget.messageId,
       props.forkTarget.rewindPointId,
@@ -468,7 +472,7 @@ function AgentTextBlock(props: {
         <AutoFoldPromptBlock
           text={props.message.text}
           info={autoFoldPrompt}
-          onOptionPress={handleOptionPress}
+          onOptionPress={readOnly ? undefined : handleOptionPress}
           sessionId={props.sessionId}
         />
       </View>
@@ -484,7 +488,7 @@ function AgentTextBlock(props: {
         onMouseLeave: () => setIsHovered(false),
       } as any) : {})}
     >
-      <MarkdownView markdown={props.message.text} onOptionPress={props.sessionId ? handleOptionPress : undefined} sessionId={props.sessionId} typography="chatMono" />
+      <MarkdownView markdown={props.message.text} onOptionPress={!readOnly && props.sessionId ? handleOptionPress : undefined} sessionId={props.sessionId} typography="chatMono" />
       {showActions && (
         <View
           testID={`message-agent-actions-${props.message.id}`}
@@ -580,6 +584,7 @@ function AutoFoldPromptBlock(props: {
   sessionId?: string;
 }) {
   const { theme } = useUnistyles();
+  const readOnly = React.useContext(TranscriptReadOnlyContext);
   const [expanded, setExpanded] = React.useState(false);
   const toggleExpanded = React.useCallback(() => {
     setExpanded((value) => !value);
@@ -618,7 +623,7 @@ function AutoFoldPromptBlock(props: {
         {bodyRenderState.kind === 'markdown' ? (
           <MarkdownView
             markdown={bodyRenderState.text}
-            onOptionPress={props.onOptionPress}
+            onOptionPress={readOnly ? undefined : props.onOptionPress}
             sessionId={props.sessionId}
             typography="chatMono"
             variant={bodyRenderState.markdownVariant}

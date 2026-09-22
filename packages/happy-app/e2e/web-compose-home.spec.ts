@@ -3290,12 +3290,14 @@ test('[SESSION-LAYOUT] 项目清单时间线同级、时间线稳定且置顶独
     await page.getByTestId(`session-row-actions-${middleSessionId}`).getByTestId('session-row-pin-action').click();
     await expect(page.getByTestId('sidebar-pinned-section')).toHaveCount(0);
     const unassignedList = page.getByTestId('sidebar-list-unassigned');
-    const listPinAction = page.getByTestId(`pin-organized-session-${middleSessionId}`);
+    const organizedSessionRow = page.getByTestId(`sidebar-drag-session-${middleSessionId}`);
     await expect.poll(async () => {
-        if (await listPinAction.count() > 0) return true;
+        if (await organizedSessionRow.count() > 0) return true;
         if (await unassignedList.getAttribute('aria-expanded') !== 'true') await unassignedList.click();
         return false;
     }, { timeout: 30_000 }).toBe(true);
+    await organizedSessionRow.hover();
+    const listPinAction = page.getByTestId(`session-row-actions-${middleSessionId}`).getByTestId('session-row-pin-action');
     await listPinAction.click();
     await expect(page.getByTestId('sidebar-pinned-section')).toBeVisible();
     await expect(page.getByTestId(`session-row-${middleSessionId}`)).toHaveCount(1);

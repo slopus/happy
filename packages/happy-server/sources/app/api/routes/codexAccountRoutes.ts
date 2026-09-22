@@ -30,7 +30,10 @@ export function codexAccountRoutes(app: Fastify): void {
     app.patch<{ Params: { id: string } }>('/v1/codex-accounts/:id', options, (req, reply) => guarded(reply, () => codexAccountStore.rename(req.userId, profileId.parse(req.params.id), renameCodexAccountSchema.parse(req.body).displayName)));
     app.delete<{ Params: { id: string } }>('/v1/codex-accounts/:id', options, (req, reply) => guarded(reply, () => codexAccountStore.delete(req.userId, profileId.parse(req.params.id))));
     app.put<{ Params: { machineId: string } }>('/v1/machines/:machineId/codex-account', options, (req, reply) => guarded(reply, () => codexAccountStore.bind(req.userId, machineId.parse(req.params.machineId), bindCodexAccountSchema.parse(req.body))));
-    app.post('/v1/codex-session-grants', options, (req, reply) => guarded(reply, () => codexAccountStore.createGrant(req.userId, createCodexGrantSchema.parse(req.body).machineId)));
+    app.post('/v1/codex-session-grants', options, (req, reply) => guarded(reply, () => {
+        const input = createCodexGrantSchema.parse(req.body);
+        return codexAccountStore.createGrant(req.userId, input.machineId, input.sourceSessionId);
+    }));
     app.post('/v1/codex-session-grants/redeem', options, (req, reply) => guarded(reply, () => {
         const input = redeemCodexGrantSchema.parse(req.body);
         return codexAccountStore.redeem(req.userId, input.machineId, input.grant);

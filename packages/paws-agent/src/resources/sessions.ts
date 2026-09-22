@@ -1,3 +1,5 @@
+import { SessionOrganizationStore, validateOrganization } from './organization';
+import type { SessionOrganizationInput } from '../client/types';
 import { readConfiguration } from './configuration';
 import { PawsAgentError } from '../client/errors';
 import type {
@@ -71,7 +73,19 @@ export class SessionsResourceImpl implements SessionsResource {
         return readConfiguration((await this.get(sessionId)).metadata);
     }
 
+    async getOrganization() {
+        return new SessionOrganizationStore(this.transport).get();
+    }
+
+    async organize(sessionId: string, input: SessionOrganizationInput) {
+        validateOrganization(input);
+        const owner = await this.transport.getCredentials();
+        await this.get(sessionId); // Verify ownership, including uncached sessions.
+        return new SessionOrganizationStore(this.transport).set(sessionId, input, owner);
+    }
+
     async spawn(input: SpawnSessionInput): Promise<SpawnSessionResult> {
+        if (input.organization !== undefined) validateOrganization(input.organization);
         this.requireId(input.machineId, 'machineId');
         this.requireId(input.directory, 'directory');
         await this.ensureMachine(input.machineId);
@@ -102,7 +116,16 @@ export class SessionsResourceImpl implements SessionsResource {
             ...(input.agent === 'codex' && input.effort ? { effort: input.effort } : {}),
             ...(codexSessionGrant ? { codexSessionGrant } : {}),
         });
-        return this.parseSpawnResult(result);
+        const parsed = this.parseSpawnResult(result);
+        if (parsed.type === 'success' && input.organization !== undefined) {
+            try { await this.organize(parsed.sessionId, input.organization); }
+            catch (error) {
+                throw new PawsAgentError(error instanceof PawsAgentError ? error.code : 'UNKNOWN',
+                    'Session created, but organization was not confirmed; retry organize with sessionId',
+                    { details: { sessionId: parsed.sessionId, sessionCreated: true, stage: 'organization' } });
+            }
+        }
+        return parsed;
     }
 
     async resume(input: ResumeSessionInput): Promise<SpawnSessionResult> {

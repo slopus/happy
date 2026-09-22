@@ -1462,6 +1462,22 @@ describe('ConversationTranscript older history pagination', () => {
         expect(retry).toHaveBeenCalledOnce(); act(() => renderer.unmount());
     });
 
+    it.each([false, true])('shows continuation history errors without scrolling (retryable=%s)', async (retryable) => {
+        const retry = vi.fn(); let renderer: any;
+        await act(async () => { renderer = TestRenderer.create(<ConversationTranscript metadata={null} messages={[userMessage('u')]}
+            hasMoreOlder olderError="missing" olderErrorMessage="Previous session unavailable" olderRetryable={retryable} onLoadOlder={retry} />); });
+        expect(byId(renderer, 'history-older-error').props.children).toBe('Previous session unavailable');
+        const banner = byId(renderer, 'history-older-notice');
+        expect(banner.props.style.position).not.toBe('absolute');
+        expect(renderer.root.findAllByProps({ testID: 'history-older-retry' })).toHaveLength(retryable ? 1 : 0);
+        expect(retry).not.toHaveBeenCalled();
+        if (retryable) {
+            act(() => byId(renderer, 'history-older-retry').props.onPress());
+            expect(retry).toHaveBeenCalledOnce();
+        }
+        act(() => renderer.unmount());
+    });
+
     it('cancels estimated anchor-scroll retries after switching sessions', async () => {
         vi.useFakeTimers(); const scrollToIndex = vi.fn(); let renderer: any;
         const render = (id: string) => <ConversationTranscript metadata={null} sessionId={id} messages={[userMessage('u')]} />;
@@ -1499,4 +1515,28 @@ describe('ConversationTranscript older history pagination', () => {
         expect(row(renderer).expanded).toBe(false);
         act(() => renderer.unmount()); grouped.items = null;
     });
+});
+
+it('routes scoped historical message rows to their original session and disables current-session actions', async () => {
+    (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+    Platform.OS = 'web'; grouped.renderRows = true; grouped.items = null;
+    const old = userMessage('old-message');
+    const current = userMessage('new-message');
+    const edit = vi.fn(); const fork = vi.fn();
+    let renderer: any;
+    await act(async () => { renderer = TestRenderer.create(<ConversationTranscript
+        sessionId="new" metadata={null} messages={[current, old]}
+        showMessageActions canEditLatestUserMessage onEditUserMessage={edit} onForkFromMessage={fork}
+        scopedItems={[
+            { type: 'message', id: 'new:new-message', message: current, source: { sessionId: 'new', metadata: null, readOnly: false } },
+            { type: 'message', id: 'old:old-message', message: old, source: { sessionId: 'old', metadata: null, readOnly: true } },
+        ]} />); });
+    const rows = renderer.root.findAllByType('MessageView');
+    expect(rows.find((row: any) => row.props.message.id === 'old-message').props).toMatchObject({
+        sessionId: 'old', showUserMessageActions: false, canEditUserMessage: false, onEditUserMessage: undefined, onForkFromMessage: undefined,
+    });
+    expect(rows.find((row: any) => row.props.message.id === 'new-message').props).toMatchObject({
+        sessionId: 'new', showUserMessageActions: true, onEditUserMessage: edit, onForkFromMessage: fork,
+    });
+    act(() => renderer.unmount()); grouped.renderRows = false;
 });

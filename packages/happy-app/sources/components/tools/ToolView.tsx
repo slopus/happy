@@ -1,3 +1,4 @@
+import { TranscriptReadOnlyContext } from "../TranscriptReadOnlyContext";
 import * as React from 'react';
 import { Text, View, TouchableOpacity, ActivityIndicator, Platform } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
@@ -29,6 +30,7 @@ interface ToolViewProps {
 
 export const ToolView = React.memo<ToolViewProps>((props) => {
     const { tool, onPress, sessionId, messageId } = props;
+    const readOnly = React.useContext(TranscriptReadOnlyContext);
     const router = useRouter();
     const { theme } = useUnistyles();
 
@@ -174,7 +176,7 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
     const isInlineMediaFile = isInlineVideoFile || isInlineAudioFile || isInlineImageFile;
     const renderCardHeader = !isInlineMediaFile && shouldRenderToolCardHeader(tool.name, Platform.OS);
     const renderPermissionFooter = () => (
-        tool.permission && sessionId && tool.name !== 'AskUserQuestion'
+        !readOnly && tool.permission && sessionId && tool.name !== 'AskUserQuestion'
             ? <PermissionFooter permission={tool.permission} sessionId={sessionId} toolName={tool.name} toolInput={tool.input} metadata={props.metadata} />
             : null
     );
@@ -240,7 +242,7 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
 
             {/* Content area - either custom children or tool-specific view */}
             {(() => {
-                if (tool.mcpApp) {
+                if (tool.mcpApp && !readOnly) {
                     return (
                         <View style={styles.mcpAppContent} testID="mcp-app-content">
                             <McpAppHost

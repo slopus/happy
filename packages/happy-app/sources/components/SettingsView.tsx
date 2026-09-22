@@ -292,6 +292,12 @@ export const SettingsView = React.memo(function SettingsView() {
                     icon={<Ionicons name="shield-checkmark-outline" size={29} color={theme.colors.text} />}
                     onPress={() => router.push('/settings/account')}
                 />
+                <Item
+                    title="AgentParty 管理"
+                    subtitle="访客访问、Token 配额与执行器状态"
+                    icon={<Ionicons name="people-outline" size={29} color={theme.colors.accent} />}
+                    onPress={() => router.push('/settings/agent-party-admin' as any)}
+                />
             </ItemGroup>
 
             {/* Connect Terminal - Only show on native platforms */}

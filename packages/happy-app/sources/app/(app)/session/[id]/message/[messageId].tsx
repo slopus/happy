@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { TranscriptReadOnlyContext } from '@/components/TranscriptReadOnlyContext';
 import { useLocalSearchParams, Stack, useRouter } from "expo-router";
 import { Text, View, ActivityIndicator } from "react-native";
 import { useMessage, useSession, useSessionMessages } from "@/sync/storage";
@@ -94,9 +95,11 @@ export default React.memo(() => {
                     }}
                 />
             )}
-            <Deferred>
-                <FullView message={message} metadata={session.metadata} sessionId={sessionId!} />
-            </Deferred>
+            <TranscriptReadOnlyContext.Provider value={Boolean(session.metadata?.continuedBySessionId)}>
+                <Deferred>
+                    <FullView message={message} metadata={session.metadata} sessionId={sessionId!} />
+                </Deferred>
+            </TranscriptReadOnlyContext.Provider>
         </>
     );
 });

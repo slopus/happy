@@ -289,7 +289,13 @@ async function organizeSession(
     page: Page,
     options: { sessionId: string; listName: string; tagName: string },
 ): Promise<void> {
-    await page.getByTestId(`organize-session-${options.sessionId}`).click();
+    const sessionRow = page.getByTestId(`organized-session-${options.sessionId}`);
+    if (await sessionRow.count() === 0) {
+        const unassignedList = page.getByTestId('sidebar-list-unassigned');
+        if (await unassignedList.getAttribute('aria-expanded') !== 'true') await unassignedList.click();
+    }
+    await sessionRow.click({ button: 'right' });
+    await page.getByRole('button', { name: 'Organize session', exact: true }).click();
     await expect(page.getByText('Organize session', { exact: true })).toBeVisible();
     const list = page.getByRole('radio', { name: options.listName, exact: true });
     await list.click();
@@ -365,6 +371,7 @@ test('[SIDEBAR-LISTS-TAGS] desktop Lists and Tags organize sessions without repl
         await page.getByTestId('sidebar-list-name-input').fill('Remote Happy renamed');
         await page.getByTestId('sidebar-edit-list-submit').click();
         await expect(page.getByText('Remote Happy renamed', { exact: true })).toBeVisible();
+        await expect(page.getByTestId(`sidebar-delete-list-${remoteId}`)).toHaveCount(0);
 
         await createList(page, { name: 'Advisor', kind: 'agent' });
         const advisorListRow = page.getByText('Advisor', { exact: true });
@@ -417,7 +424,13 @@ test('[SIDEBAR-LISTS-TAGS] desktop Lists and Tags organize sessions without repl
         await expect(page.getByTestId('desktop-sidebar-tab-lists')).toHaveAttribute('aria-selected', 'true', { timeout: 120_000 });
         await expectListBefore(advisorDropTarget, remoteDropTarget);
         await expect(page).toHaveURL(alphaUrl);
-        await expect(page.getByTestId(`organized-session-tags-${alphaId}`)).toContainText('#product');
+        await expect(page.getByTestId(`session-row-tags-${alphaId}`)).toContainText('#product');
+        const organizedRow = page.getByTestId(`sidebar-drag-session-${alphaId}`);
+        await organizedRow.hover();
+        await expect(page.getByTestId(`session-row-actions-${alphaId}`).getByTestId('session-row-pin-action')).toBeVisible();
+        await expect(page.getByTestId(`session-row-actions-${alphaId}`).getByTestId('session-row-delete-action')).toBeVisible();
+        await expect(page.getByTestId(`session-row-actions-${alphaId}`).getByTestId('session-row-archive-action')).toBeVisible();
+        await expect(page.getByTestId('session-row-details')).toBeVisible();
         await captureEvidenceFrame(page, testInfo, '09-list-order-reloaded');
 
         await dragListToList(page, remoteDropTarget, advisorDropTarget, 'before');
@@ -435,14 +448,14 @@ test('[SIDEBAR-LISTS-TAGS] desktop Lists and Tags organize sessions without repl
         );
         await expect(remoteDropTarget.getByText('0', { exact: true })).toBeVisible();
         await expect(advisorDropTarget.getByText('1', { exact: true })).toBeVisible();
-        await expect(page.getByTestId(`organized-session-tags-${alphaId}`)).toContainText('#product');
+        await expect(page.getByTestId(`session-row-tags-${alphaId}`)).toContainText('#product');
         await expect(page).toHaveURL(alphaUrl);
         await captureEvidenceFrame(page, testInfo, '08-alpha-dragged-to-advisor');
 
         await dragSessionToList(page, page.getByTestId(`sidebar-drag-session-${alphaId}`), unassignedDropTarget);
         await expect(advisorDropTarget.getByText('0', { exact: true })).toBeVisible();
         await expect(unassignedDropTarget.getByText('2', { exact: true })).toBeVisible();
-        await expect(page.getByTestId(`organized-session-tags-${alphaId}`)).toContainText('#product');
+        await expect(page.getByTestId(`session-row-tags-${alphaId}`)).toContainText('#product');
         await expect(page).toHaveURL(alphaUrl);
         await page.screenshot({ path: testInfo.outputPath('06-dragged-to-unassigned.png'), fullPage: true });
         await captureEvidenceFrame(page, testInfo, '09-alpha-dragged-to-unassigned');
@@ -483,7 +496,7 @@ test('[SIDEBAR-LISTS-TAGS] desktop Lists and Tags organize sessions without repl
         await expect(page.getByText('Advisor', { exact: true })).toHaveCount(0);
         await expect(page.getByRole('button', { name: /^product 2$/ })).toBeVisible({ timeout: 120_000 });
         await expect(page.getByTestId('sidebar-drop-list-unassigned').getByText('2', { exact: true })).toBeVisible();
-        await expect(page.getByTestId(`organized-session-tags-${alphaId}`)).toContainText('#product');
+        await expect(page.getByTestId(`session-row-tags-${alphaId}`)).toContainText('#product');
         await page.getByTestId(`sidebar-edit-list-${remoteId}`).click();
         await expect(page.getByText('Edit list', { exact: true })).toBeVisible();
         await expect(page.getByRole('radio', { name: /Sidebar E2E Mac/ })).toHaveAttribute('aria-checked', 'true');
@@ -559,7 +572,7 @@ test('[SESSION-TAG-COMBOBOX] title hash creates, searches, and syncs tags outsid
 
         await page.getByTestId('desktop-sidebar-tab-lists').click();
         await page.getByRole('button', { name: /^product 1$/ }).click();
-        await expect(page.getByTestId(`organized-session-tags-${sessionId}`)).toContainText('#product');
+        await expect(page.getByTestId(`session-row-tags-${sessionId}`)).toContainText('#product');
         await page.screenshot({ path: tagComboboxEvidencePath(testInfo, '04-lists-sidebar-tags.png'), fullPage: true });
         await captureEvidenceFrame(page, testInfo, 'tag-combobox-04-lists-sidebar-tags');
         await page.goto(authenticatedRoute(`/session/${sessionId}`));
@@ -737,7 +750,12 @@ test('[SIDEBAR-LISTS-TAGS-MOBILE] mobile drawer exposes Projects and Lists tabs'
         await expect(page.getByText('New list', { exact: true })).toHaveCount(0);
         const removableList = page.getByText('Mobile removable', { exact: true });
         await expect(removableList).toBeVisible();
-        const deleteButton = page.getByRole('button', { name: 'Delete list Mobile removable', exact: true });
+        const removableListTestId = await removableList.locator('xpath=ancestor::*[@data-testid][1]').getAttribute('data-testid');
+        expect(removableListTestId).toMatch(/^sidebar-list-/);
+        const removableListId = removableListTestId!.replace('sidebar-list-', '');
+        await page.getByTestId(`sidebar-edit-list-${removableListId}`).click();
+        await expect(page.getByText('Edit list', { exact: true })).toBeVisible();
+        const deleteButton = page.getByTestId('sidebar-delete-list');
         await expectMobileTouchTarget(deleteButton);
         await expect(page.getByText(/cannot contain a nested/i)).toHaveCount(0);
         await pauseForReview(page);

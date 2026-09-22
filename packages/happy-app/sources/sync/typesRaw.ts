@@ -636,6 +636,9 @@ function normalizeSessionEnvelope(
     }
 
     if (envelope.ev.t === 'turn-end') {
+        // A child's terminal event must not become the parent session's ready
+        // signal. Child presentation is handled by its start/stop envelopes.
+        if (envelope.subagent) return null;
         return {
             id: messageId,
             localId,

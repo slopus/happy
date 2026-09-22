@@ -16,6 +16,8 @@ const mocks = vi.hoisted(() => ({
     zenMode: false,
     desktopLeftSidebarCollapsed: false,
     pathname: '/',
+    hovered: false,
+    resizePanelBy: vi.fn(),
 }));
 
 vi.mock('@/auth/AuthContext', () => ({
@@ -64,7 +66,9 @@ vi.mock('react-native-unistyles', () => ({
         theme: {
             colors: {
                 surface: '#111',
+                groupped: { background: '#101010' },
                 surfacePressed: '#222',
+                surfaceSelected: '#444',
                 divider: '#333',
                 header: { tint: '#fff' },
                 textLink: '#88f',
@@ -78,7 +82,9 @@ vi.mock('react-native-unistyles', () => ({
         create: (factory: any) => factory({
             colors: {
                 surface: '#111',
+                groupped: { background: '#101010' },
                 surfacePressed: '#222',
+                surfaceSelected: '#444',
                 divider: '#333',
                 header: { tint: '#fff' },
                 textLink: '#88f',
@@ -143,7 +149,8 @@ vi.mock('@/hooks/useDesktopWorkspaceLayout', () => ({
     useDesktopWorkspaceLayout: () => ({
         enabled: mocks.isTablet,
         leftExpandedWidth: mocks.isTablet ? 360 : 0,
-        leftVisible: mocks.isTablet && !mocks.zenMode && !mocks.desktopLeftSidebarCollapsed,
+        leftPinned: mocks.isTablet && !mocks.zenMode && !mocks.desktopLeftSidebarCollapsed,
+        leftVisible: mocks.isTablet && !mocks.zenMode && (!mocks.desktopLeftSidebarCollapsed || mocks.hovered),
         leftMaximumWidth: 640,
         leftWidth: mocks.isTablet && !mocks.zenMode && !mocks.desktopLeftSidebarCollapsed ? 360 : 0,
         rightPanelAvailable: false,
@@ -154,9 +161,11 @@ vi.mock('@/hooks/useDesktopWorkspaceLayout', () => ({
         beginPanelResize: vi.fn(),
         continuePanelResize: vi.fn(),
         endPanelResize: vi.fn(),
-        resizePanelBy: vi.fn(),
+        resizePanelBy: mocks.resizePanelBy,
         toggleLeftSidebar: () => mocks.setDesktopLeftSidebarCollapsed(!mocks.desktopLeftSidebarCollapsed),
         toggleRightSidebar: vi.fn(),
+        setLeftSidebarHovered: vi.fn(),
+        setLeftSidebarFocused: vi.fn(),
     }),
 }));
 
@@ -165,6 +174,7 @@ describe('SidebarNavigator drawer behavior', () => {
     let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
     beforeEach(() => {
+        mocks.hovered = false;
         mocks.isTablet = true;
         mocks.windowWidth = 1200;
         mocks.zenMode = false;
@@ -241,8 +251,8 @@ describe('SidebarNavigator drawer behavior', () => {
         expect(renderer.root.findByProps({ testID: 'desktop-navigation-controls' }).parent.props.style.left).toBe(436);
         const sidebarToggle = renderer.root.findByProps({ testID: 'desktop-navigation-sidebar-button' });
         expect(sidebarToggle.props['aria-expanded']).toBe(true);
-        expect(sidebarToggle.props.accessibilityState).toEqual({ expanded: true });
-        expect(sidebarToggle.props.accessibilityLabel).toBe('desktopWorkspace.hideSessions');
+        expect(sidebarToggle.props.accessibilityState).toEqual({ expanded: true, selected: true });
+        expect(sidebarToggle.props.accessibilityLabel).toBe('desktopWorkspace.unpinSessions');
         expect(sidebarToggle.props.style({ pressed: false })).toContainEqual(expect.objectContaining({ height: 40 }));
         expect(sidebarToggle.findByType('Ionicons').props.name).toBe('folder-open-outline');
 
@@ -253,34 +263,43 @@ describe('SidebarNavigator drawer behavior', () => {
         act(() => renderer.unmount());
     });
 
-    it('removes a collapsed desktop sidebar from layout and the accessibility tree', () => {
+    it('reveals an unpinned overlay without occupying chat width or selecting the pin button', () => {
+        mocks.desktopLeftSidebarCollapsed = true;
+        mocks.hovered = true;
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<SidebarNavigator />); });
+        expect(renderer.root.findByType('Drawer').props.screenOptions.drawerStyle.width).toBe(60);
+        const toggle = renderer.root.findByProps({ testID: 'desktop-navigation-sidebar-button' });
+        expect(toggle.props['aria-expanded']).toBe(true);
+        expect(toggle.props['aria-pressed']).toBe(false);
+        expect(toggle.props.accessibilityLabel).toBe('desktopWorkspace.pinSessions');
+        const header = renderer.root.findByProps({ testID: 'desktop-navigation-controls' }).parent;
+        expect(header.props.style.left).toBe(76);
+        expect(header.props['aria-hidden']).toBe(true);
+        expect(header.props.inert).toBe(true);
+        const handle = renderer.root.findByProps({ testID: 'desktop-left-panel-resize-handle' });
+        expect(handle.props['aria-valuenow']).toBe(360);
+        act(() => handle.props.onKeyDown({ key: 'Home' }));
+        expect(mocks.resizePanelBy).toHaveBeenLastCalledWith('left', handle.props['aria-valuemin'] - 360);
+        act(() => handle.props.onKeyDown({ key: 'End' }));
+        expect(mocks.resizePanelBy).toHaveBeenLastCalledWith('left', 640 - 360);
+        act(() => toggle.props.onPress());
+        expect(mocks.setDesktopLeftSidebarCollapsed).toHaveBeenCalledWith(false);
+        act(() => renderer.unmount());
+    });
+
+    it('keeps the icon rail interactive while collapsing only the secondary panel', () => {
         mocks.desktopLeftSidebarCollapsed = true;
         let renderer: any;
-        act(() => {
-            renderer = TestRenderer.create(<SidebarNavigator />);
-        });
-
+        act(() => { renderer = TestRenderer.create(<SidebarNavigator />); });
         const drawer = renderer.root.findByType('Drawer');
-        const drawerContent = drawer.props.drawerContent({ navigation: { closeDrawer: vi.fn() } });
-        expect(drawer.props.screenOptions.drawerStyle.width).toBe(0);
-        expect(drawerContent.props['aria-hidden']).toBe(true);
-        expect(drawerContent.props.accessibilityElementsHidden).toBe(true);
-        expect(drawerContent.props.importantForAccessibility).toBe('no-hide-descendants');
-        expect(drawerContent.props.inert).toBe(true);
-        expect(drawerContent.props.pointerEvents).toBeUndefined();
-        expect(drawerContent.props.dataSet).toMatchObject({
-            happyMotion: 'desktop-panel',
-            happyMotionSide: 'left',
-            happyMotionState: 'closed',
-        });
-        expect(drawerContent.props.style).toContainEqual(expect.objectContaining({ width: 420 }));
-        expect(drawerContent.props.style).toContainEqual(expect.objectContaining({ pointerEvents: 'none' }));
-        expect(drawerContent.props.style).not.toContainEqual({ display: 'none' });
-
-        const sidebarToggle = renderer.root.findByProps({ testID: 'desktop-navigation-sidebar-button' });
-        expect(sidebarToggle.props['aria-expanded']).toBe(false);
-        expect(sidebarToggle.props.accessibilityLabel).toBe('desktopWorkspace.showSessions');
-
+        const content = drawer.props.drawerContent({ navigation: { closeDrawer: vi.fn() } });
+        expect(drawer.props.screenOptions.drawerStyle.width).toBe(60);
+        expect(content.props['aria-hidden']).toBe(false);
+        expect(content.props.inert).toBeUndefined();
+        expect(content.props.children.props.desktopSecondaryVisible).toBe(false);
+        expect(content.props.children.props.desktopPrimaryNavigation).toBe(true);
+        expect(renderer.root.findByProps({ testID: 'desktop-navigation-controls' }).parent.props.style.left).toBe(76);
         act(() => renderer.unmount());
     });
 

@@ -250,6 +250,36 @@ describe('DesktopSidebarSessionsNavigation', () => {
         act(() => renderer.unmount());
     });
 
+    it('keeps List deletion inside the editor instead of exposing a row trash action', () => {
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<DesktopSidebarSessionsNavigation />); });
+        act(() => renderer.root.findByProps({ testID: 'desktop-sidebar-tab-lists' }).props.onPress());
+
+        expect(renderer.root.findAllByProps({ testID: 'sidebar-delete-list-happy' })).toHaveLength(0);
+
+        act(() => renderer.root.findByProps({ testID: 'sidebar-edit-list-happy' }).props.onPress());
+        expect(renderer.root.findAllByProps({ testID: 'sidebar-delete-list' }).length).toBeGreaterThan(0);
+        act(() => renderer.unmount());
+    });
+
+    it('renders sessions in a List through the shared session row and keeps organizing in its context action', () => {
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<DesktopSidebarSessionsNavigation />); });
+        act(() => renderer.root.findByProps({ testID: 'desktop-sidebar-tab-lists' }).props.onPress());
+
+        const listSession = renderer.root.findByType('CompactSessionRow');
+        expect(listSession.props).toMatchObject({
+            nested: true,
+            session: expect.objectContaining({ id: 'session-1' }),
+        });
+        expect(listSession.props.onOrganize).toEqual(expect.any(Function));
+        expect(renderer.root.findAllByProps({ testID: 'organize-session-session-1' })).toHaveLength(0);
+
+        act(() => listSession.props.onOrganize());
+        expect(renderer.root.findByProps({ testID: 'organize-session-save' })).toBeDefined();
+        act(() => renderer.unmount());
+    });
+
     it('opens a Tag detail dialog and groups every tagged session by its List', () => {
         mocks.sessions = [
             sessionFixture('session-1', 'Happy work'),
@@ -283,7 +313,7 @@ describe('DesktopSidebarSessionsNavigation', () => {
             'tag-detail-group-advisor',
             'tag-detail-group-unassigned',
         ]);
-        expect(renderer.root.findAllByType('CompactSessionRow').map((node: any) => node.props.session.id)).toEqual([
+        expect(renderer.root.findAllByType('CompactSessionRow').filter((node: any) => !node.props.testID).map((node: any) => node.props.session.id)).toEqual([
             'session-1',
             'session-2',
             'session-3',
@@ -652,7 +682,7 @@ describe('DesktopSidebarSessionsNavigation', () => {
         let renderer: any;
         act(() => { renderer = TestRenderer.create(<DesktopSidebarSessionsNavigation />); });
         act(() => renderer.root.findByProps({ testID: 'desktop-sidebar-tab-lists' }).props.onPress());
-        act(() => renderer.root.findByProps({ testID: 'organize-session-session-1' }).props.onPress());
+        act(() => renderer.root.findByType('CompactSessionRow').props.onOrganize());
 
         const input = renderer.root.findByProps({ testID: 'organize-tag-input' });
         act(() => input.props.onChangeText('#'));
@@ -679,7 +709,7 @@ describe('DesktopSidebarSessionsNavigation', () => {
         let renderer: any;
         act(() => { renderer = TestRenderer.create(<DesktopSidebarSessionsNavigation />); });
         act(() => renderer.root.findByProps({ testID: 'desktop-sidebar-tab-lists' }).props.onPress());
-        act(() => renderer.root.findByProps({ testID: 'organize-session-session-1' }).props.onPress());
+        act(() => renderer.root.findByType('CompactSessionRow').props.onOrganize());
         act(() => renderer.root.findByProps({ testID: 'organize-tag-input' }).props.onChangeText('#temporary'));
         act(() => renderer.root.findByProps({ testID: 'organize-create-tag' }).props.onPress());
         act(() => renderer.root.findByProps({ testID: 'organize-session-cancel' }).props.onPress());
@@ -704,7 +734,7 @@ describe('DesktopSidebarSessionsNavigation', () => {
         act(() => { renderer = TestRenderer.create(<DesktopSidebarSessionsNavigation />); });
         act(() => renderer.root.findByProps({ testID: 'desktop-sidebar-tab-lists' }).props.onPress());
         act(() => renderer.root.findByProps({ testID: 'sidebar-list-unassigned' }).props.onPress());
-        act(() => renderer.root.findByProps({ testID: 'organize-session-session-1' }).props.onPress());
+        act(() => renderer.root.findByType('CompactSessionRow').props.onOrganize());
 
         act(() => renderer.root.findByProps({ testID: 'organize-tag-input' }).props.onChangeText('#available'));
         expect(renderer.root.findByProps({ testID: 'organize-tag-result-available' }).props).toMatchObject({
@@ -729,9 +759,7 @@ describe('DesktopSidebarSessionsNavigation', () => {
             machineId: 'mac',
             manualInput: false,
         });
-        expect(renderer.root.findByProps({ testID: 'sidebar-delete-list-happy' }).props).toMatchObject({
-            accessibilityRole: 'button',
-        });
+        expect(renderer.root.findAllByProps({ testID: 'sidebar-delete-list-happy' })).toHaveLength(0);
         act(() => renderer.root.findByProps({ testID: 'sidebar-list-directory-none' }).props.onPress());
         expect(renderer.root.findByProps({ testID: 'sidebar-list-directory-picker' }).findByType('PathPickerContent').props.value).toBe('');
         expect(renderer.root.findAllByProps({ testID: 'sidebar-delete-list' }).length).toBeGreaterThan(0);
@@ -781,7 +809,8 @@ describe('DesktopSidebarSessionsNavigation', () => {
 
         mocks.confirm.mockResolvedValueOnce(true);
         await act(async () => {
-            renderer.root.findByProps({ testID: 'sidebar-delete-list-happy' }).props.onPress();
+            renderer.root.findByProps({ testID: 'sidebar-edit-list-happy' }).props.onPress();
+            renderer.root.findByProps({ testID: 'sidebar-delete-list' }).props.onPress();
             await Promise.resolve();
             await Promise.resolve();
         });
