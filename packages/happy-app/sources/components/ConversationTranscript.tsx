@@ -565,19 +565,32 @@ export const ConversationTranscript = React.memo((props: ConversationTranscriptP
 
     const handleScroll = React.useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
         const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+        // The Web history window keeps evicted newer rows as a footer spacer
+        // so a pagination commit does not move the reader. That spacer is
+        // accounting geometry, not transcript content: a scrollbar drag can
+        // otherwise land inside it and expose a very large empty viewport.
+        // Keep the actual scroll position at the last rendered row while the
+        // normal newer-boundary path fetches and replaces that extent.
+        const trailing = Platform.OS === 'web' && !inverted ? Math.max(0, extent.current.trailing) : 0;
+        const lastRenderedOffset = Math.max(0, contentSize.height - layoutMeasurement.height - trailing);
+        const offsetY = trailing > 0 && contentOffset.y > lastRenderedOffset ? lastRenderedOffset : contentOffset.y;
+        if (offsetY !== contentOffset.y) flatListRef.current?.scrollToOffset({ offset: offsetY, animated: false });
         // Scrollbar presses have no direction until their first scroll. Wheel,
         // keys and touch already carry intent; anchor corrections must not
         // overwrite it or trigger the opposite overlapping preload boundary.
         if (Platform.OS === 'web' && userScrollStarted.current && userScrollDirection.current === undefined
             && userScrollOffset.current !== null && contentOffset.y !== userScrollOffset.current) {
+            // Preserve the raw gesture direction here. offsetY is clamped to
+            // the last rendered row, so using it would make a scrollbar drag
+            // from that row into the trailing spacer look like no movement.
             const towardEnd = contentOffset.y > userScrollOffset.current;
             userScrollDirection.current = towardEnd !== inverted ? 'newer' : 'older';
         }
         const distanceFromBottom = inverted
-            ? contentOffset.y
-            : Math.max(0, contentSize.height - layoutMeasurement.height - contentOffset.y - Math.max(0, extent.current.trailing));
-        reading.scroll(contentOffset.y, distanceFromBottom);
-        const distanceFromTop = inverted ? Math.max(0, contentSize.height - layoutMeasurement.height - contentOffset.y) : Math.max(0, contentOffset.y - Math.max(0, extent.current.leading));
+            ? offsetY
+            : Math.max(0, contentSize.height - layoutMeasurement.height - offsetY - Math.max(0, extent.current.trailing));
+        reading.scroll(offsetY, distanceFromBottom);
+        const distanceFromTop = inverted ? Math.max(0, contentSize.height - layoutMeasurement.height - offsetY) : Math.max(0, offsetY - Math.max(0, extent.current.leading));
         setBoundaries(previous => previous.older === (distanceFromTop <= 24) && previous.newer === (distanceFromBottom <= 24)
             ? previous : { older: distanceFromTop <= 24, newer: distanceFromBottom <= 24 });
         if (!isAtLatest && distanceFromBottom <= 2 * layoutMeasurement.height) loadBoundary('newer');

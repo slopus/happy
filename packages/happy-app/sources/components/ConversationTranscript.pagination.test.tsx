@@ -215,6 +215,42 @@ describe('ConversationTranscript older history pagination', () => {
         act(() => renderer.unmount());
     });
 
+    it('keeps a Web scrollbar from entering the trailing history spacer and loads newer history', async () => {
+        const node = document.createElement('div');
+        Object.defineProperties(node, {
+            scrollHeight: { value: 5000 }, clientHeight: { value: 800 }, clientWidth: { value: 784 },
+        });
+        node.getBoundingClientRect = () => ({ left: 0, right: 800, top: 0, bottom: 800, width: 800, height: 800, x: 0, y: 0, toJSON() {} });
+        const scrollToOffset = vi.fn();
+        const onLoadNewer = vi.fn();
+        const messages = Array.from({ length: 10 }, (_, index) => userMessage(String(10 - index)));
+        const render = (rows: Message[]) => <ConversationTranscript metadata={null} sessionId="tail-spacer"
+            messages={rows} hasMoreOlder hasMoreNewer isAtLatest={false} onLoadNewer={onLoadNewer} />;
+        let renderer: any;
+        await act(async () => { renderer = TestRenderer.create(render(messages), {
+            createNodeMock: (element: any) => element.type === 'FlatList'
+                ? { getScrollableNode: () => node, scrollToOffset } : null,
+        }); });
+        const list = () => byId(renderer, 'conversation-transcript-list');
+        act(() => { for (const item of list().props.data) list().props.renderItem({ item }).props.onLayout({
+            nativeEvent: { layout: { height: 100 } },
+        }); });
+        // Keep the older half in the bounded window. The evicted newer half is
+        // represented by a 500px trailing spacer to preserve the scroll extent.
+        await act(async () => renderer.update(render(messages.slice(5))));
+        // Start at the final real row, then drag the native scrollbar into the
+        // spacer. The clamp must not discard that newer-direction intent.
+        node.scrollTop = 3700;
+        act(() => node.dispatchEvent(new MouseEvent('pointerdown', { button: 0, clientX: 792, clientY: 400, bubbles: true })));
+        act(() => list().props.onScroll({ nativeEvent: {
+            contentOffset: { y: 4200 }, contentSize: { height: 5000 }, layoutMeasurement: { height: 800 },
+        } }));
+        // 4200 would be inside the spacer; 3700 ends exactly at its first pixel.
+        expect(scrollToOffset).toHaveBeenCalledWith({ offset: 3700, animated: false });
+        expect(onLoadNewer).toHaveBeenCalledOnce();
+        act(() => renderer.unmount());
+    });
+
     it('settles restored row height against its placeholder and clears stale extent on resize', async () => {
         const adapter = { key: 'extent-resize', read: async () => null, save: () => {},
             wireId: (id: string) => id, wireSeq: (id: string) => Number(id), blockKey: () => 'text:0' };
