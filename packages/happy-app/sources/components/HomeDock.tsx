@@ -1463,10 +1463,12 @@ export const HomeDock = React.memo(({
         if (setting === 'project') {
             return {
                 title: 'Project',
-                // The projects under their heading, then the one row that is an
-                // action rather than a place, past the system's line.
+                // The custom-path row first, not last: projectOptions grows with
+                // every distinct path the machine has ever run a session in, so
+                // putting the only way to type a path after it buries that row
+                // below a list with no bound. The /new screen already puts its
+                // path field above the same suggestions.
                 sections: [
-                    { key: 'projects', title: 'Projects', options: projectOptions },
                     {
                         key: 'custom',
                         options: [{
@@ -1475,6 +1477,7 @@ export const HomeDock = React.memo(({
                             action: true,
                         }],
                     },
+                    { key: 'projects', title: 'Projects', options: projectOptions },
                 ],
                 selectedKey: currentProject?.key,
                 onSelect: (key) => {
