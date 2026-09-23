@@ -368,7 +368,7 @@ describe('ConversationTranscript older history pagination', () => {
     });
 
     it.each((['older', 'newer'] as const).flatMap(direction =>
-        (['error', 'reverse', 'filled', 'unchanged', 'capturing-reverse', 'wire-only'] as const).map(stop => ({ direction, stop }))))(
+        (['error', 'reverse', 'filled', 'unchanged', 'capturing-reverse', 'wire-only', 'covered', 'touching'] as const).map(stop => ({ direction, stop }))))(
         'refills known $direction spacer after a sparse page and stops on $stop', async ({ direction, stop }) => {
         const node = document.createElement('div');
         Object.defineProperties(node, { scrollHeight: { value: 1000 }, clientHeight: { value: 400 } });
@@ -400,8 +400,18 @@ describe('ConversationTranscript older history pagination', () => {
         await act(async () => node.dispatchEvent(new WheelEvent('wheel', { deltaY: direction === 'newer' ? 1 : -1, cancelable: true })));
         expect(load).toHaveBeenCalledTimes(1);
         holdCapture = stop === 'capturing-reverse';
+        // Restoring a page must only chain another load if blank extent is
+        // actually exposed, not merely within two screens of the viewport.
+        node.scrollTop = direction === 'newer' ? 201 : 399;
+        if (stop === 'covered') node.scrollTop = direction === 'newer' ? 100 : 500;
+        if (stop === 'touching') node.scrollTop = direction === 'newer' ? 200 : 400;
         await act(async () => renderer.update(render(page(stop === 'wire-only' ? 5 : 6), undefined, 6)));
         await flushFrame(); await flushFrame();
+        if (stop === 'covered' || stop === 'touching') {
+            expect(load).toHaveBeenCalledTimes(1);
+            act(() => renderer.unmount());
+            return;
+        }
         if (stop === 'capturing-reverse') {
             // Web history no longer waits on asynchronous reading measurements.
             expect(held.length).toBe(0);

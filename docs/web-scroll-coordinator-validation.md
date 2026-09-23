@@ -1,8 +1,10 @@
 # Web transcript scroll ownership
 
 The Web transcript routes programmatic writes through `WebTranscriptScrollCoordinator.driver`.
-Interaction ownership and the history transaction are independent. A history commit can compensate
-one surviving DOM anchor once; ordinary layout/height revisions do not request compensation.
+Interaction ownership and the history transaction are independent. A history commit compensates
+one surviving DOM anchor. Subsequent geometry commits may reconcile that same anchor until
+250 ms idle (at most 1 second); new user input, navigation, session reset or unrelated data
+replacement cancels reconciliation. Ordinary layout updates have no such authority.
 Native keeps its existing list and reading behavior, including the native anchor sheet.
 
 Web reading capture runs after 250 ms without scroll activity, and is suspended during history
@@ -43,3 +45,19 @@ Development traces expose bounded `transcript:history-request`, `transcript:anch
 
 The RN Web compatibility adapter still uses private render-mask APIs; its vendor-class tests
 remain an upgrade gate. Automatic refill for already-evicted blank extents remains supported.
+
+## Long Skills groups
+
+Skills/subagent activity rows retain their existing full display and interactions. Web-only
+`data-transcript-activity` markers let history compensation retain a visible inner activity,
+instead of the outer work group's top when history prepends inside that group. The marker uses
+the same stable identity as its React key, scoped to the surviving transcript row.
+
+Automatic evicted-spacer refill now requires actual blank viewport overlap; being within two
+screens is insufficient. Fresh user navigation still loads at the ordinary boundary threshold.
+
+Regression contracts: growing groups preserve the visible activity through the initial commit
+and delayed row measurements; same-direction input during a slow fetch must not invalidate the
+subsequent geometry phase, while any input after compensation must cancel it. Exact-boundary and
+covered spacers must not chain another page; exposed spacers may refill. Full real-session
+acceptance must check activity identity/top, not raw scrollTop or a count of correction calls.

@@ -33,6 +33,32 @@ describe('Web transcript scroll ownership', () => {
         expect(port.scrollToOffset).not.toHaveBeenCalled();
         c.dispose();
     });
+    it('bounds late layout reconciliation by idle, deadline and any new user intent', () => {
+        const { coordinator: c } = setup();
+        for (const cancel of [() => c.userIntent('older'), () => c.userIntent('newer'), () => c.jump(),
+            () => c.reset(), () => vi.advanceTimersByTime(250)]) {
+            c.userIntent('older'); const id = c.beginHistory('page', 'older')!;
+            c.compensate(id, 300); c.finishHistory(id);
+            expect(c.reconcileLayout(id, 330)).toBe(true);
+            cancel(); expect(c.reconcileLayout(id, 350)).toBe(false);
+        }
+        c.userIntent('older'); const id = c.beginHistory('deadline', 'older')!;
+        c.compensate(id, 300); c.finishHistory(id);
+        for (let i = 0; i < 6; i++) { vi.advanceTimersByTime(200); c.activity(); }
+        expect(c.reconcileLayout(id, 350)).toBe(false);
+        c.dispose();
+    });
+    it('keeps late geometry protection when the user scrolled while the history fetch was pending', () => {
+        const { coordinator: c } = setup();
+        c.userIntent('older'); const id = c.beginHistory('slow-page', 'older')!;
+        c.userIntent('older'); c.userIntent('older');
+        expect(c.compensate(id, 300)).toBe(true);
+        c.finishHistory(id);
+        expect(c.reconcileLayout(id, 350)).toBe(true);
+        c.userIntent('older');
+        expect(c.reconcileLayout(id, 400)).toBe(false);
+        c.dispose();
+    });
     it('captures only after idle, without allocating a timer per scroll event', () => {
         const { coordinator: c } = setup();
         c.onSettled = vi.fn();
