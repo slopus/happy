@@ -147,13 +147,12 @@ export function isClaudeBypassEquivalent(mode: PermissionMode | undefined): bool
 export function resolveRemoteClaudePermissionMode(
     currentMode: PermissionMode | undefined,
     incomingMode: PermissionMode | undefined,
-    sandboxEnabled: boolean,
 ): PermissionMode | undefined {
     if (!incomingMode) {
         return currentMode;
     }
 
-    const nextMode = applySandboxPermissionPolicy(incomingMode, sandboxEnabled);
+    const nextMode = incomingMode;
     if (isClaudeBypassEquivalent(currentMode) && nextMode === 'default') {
         return currentMode;
     }

@@ -103,10 +103,13 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     let machineId = settings?.machineId
     const sandboxConfig = options.noSandbox ? undefined : settings?.sandboxConfig;
     const sandboxEnabled = Boolean(sandboxConfig?.enabled);
-    const initialPermissionMode = applySandboxPermissionPolicy(
-        resolveInitialClaudePermissionMode(options.permissionMode, options.claudeArgs),
-        sandboxEnabled,
-    );
+    // Configuring a sandbox must not relax approval here. claudeLocal is the
+    // only Claude path that initializes one, and it appends
+    // --dangerously-skip-permissions itself, inside the branch where
+    // initializeSandbox has actually succeeded. The remote path never
+    // initializes a sandbox, so forcing bypass from configuration alone left
+    // it approving every tool call with nothing confining it.
+    const initialPermissionMode = resolveInitialClaudePermissionMode(options.permissionMode, options.claudeArgs);
     const dangerouslySkipPermissions =
         initialPermissionMode === 'bypassPermissions' ||
         initialPermissionMode === 'yolo' ||
@@ -673,7 +676,6 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             messagePermissionMode = resolveRemoteClaudePermissionMode(
                 currentPermissionMode,
                 normalizeRemotePermissionMode(message.meta.permissionMode),
-                sandboxEnabled,
             );
             currentPermissionMode = messagePermissionMode;
             const ignoredDefaultDowngrade =
