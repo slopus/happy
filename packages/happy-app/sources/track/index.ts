@@ -1,7 +1,7 @@
 import Constants from 'expo-constants';
 import * as Updates from 'expo-updates';
 import { tracking } from './tracking';
-import type { Metadata, Session } from '@/sync/storageTypes';
+import type { Metadata } from '@/sync/storageTypes';
 
 // Re-export tracking for direct access
 export { tracking } from './tracking';
@@ -36,13 +36,18 @@ export function trackConnectAttempt() {
     tracking?.capture('connect_attempt');
 }
 
-export function trackSessionSwitched(session: Pick<Session, 'id' | 'createdAt' | 'activeAt' | 'updatedAt'>) {
-    tracking?.capture('session_switched', {
-        session_id: session.id,
-        session_created_at: session.createdAt,
-        last_active_at: session.activeAt,
-        last_updated_at: session.updatedAt,
-    });
+/**
+ * Counts a switch. Deliberately carries no properties.
+ *
+ * This event used to send the relay's own Session id and three exact
+ * server-side timestamps. The distinct id PostHog sees is derived from the
+ * account secret and is unlinkable on its own, but those properties join
+ * straight back to the Session table, so the pair re-identified the profile.
+ * If per-session analysis is wanted later, it needs an identifier the relay
+ * cannot compute — a client-generated value stored only on the device.
+ */
+export function trackSessionSwitched() {
+    tracking?.capture('session_switched');
 }
 
 export type MessageSentSource = 'chat' | 'new_session' | 'option' | 'question' | 'voice';
