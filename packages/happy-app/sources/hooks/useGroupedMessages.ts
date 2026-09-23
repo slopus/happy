@@ -134,37 +134,70 @@ function collectAgentWorkGroups(messages: Message[], turnOf: number[], collapseC
         const finalTextIndex = visibleAgentIndexes.find((index) => messages[index].kind === 'agent-text');
         if (finalTextIndex === undefined) continue;
 
-        const hiddenIndexes = visibleAgentIndexes.filter((index) => index > finalTextIndex);
-        if (hiddenIndexes.length === 0) continue;
+        // Everything older than the turn's final text is foldable EXCEPT a
+        // user-selection element — an <options> block carried in an agent-text.
+        // (An AskUserQuestion card is already excluded above.) One sitting
+        // between tool calls splits the fold so it renders in its true
+        // chronological place instead of being pushed to one side of a single
+        // merged group. Walk newest-first; each maximal run becomes a group.
+        const candidates = visibleAgentIndexes.filter((index) => index > finalTextIndex);
 
-        const oldestIdx = Math.max(...hiddenIndexes);
-        const hiddenMessages = hiddenIndexes.map((index) => messages[index]);
         const turnUserMessageId = indexes
             .map((index) => messages[index])
             .find((message) => message.kind === 'user-text' && !message.pending && message.sendError === undefined)?.id ?? null;
-        const startedAt = Math.min(...hiddenMessages.map((msg) => msg.createdAt));
-        const completedAt = messages[finalTextIndex].createdAt;
-        // Members render flat when the group expands, so they are stored in
-        // the order they will be drawn.
-        hiddenMessages.reverse();
 
-        groups.push({
-            hiddenIndexes,
-            oldestIdx,
-            item: {
-                type: 'agent-work-group',
-                // Keyed by the final answer, the one member a turn is sure to
-                // have: history pages in oldest-last, so a turn's older work
-                // (and its opening prompt) can arrive after the group exists.
-                id: `work-${messages[finalTextIndex].id}`,
-                turnUserMessageId,
-                messages: hiddenMessages,
-                hasRunning: false,
-                hasPendingPermission: hasPendingPermission(hiddenMessages),
-                startedAt,
-                completedAt,
-            },
-        });
+        let run: number[] = [];
+        // The newest run completes at the final text; each older run completes
+        // at the selection element that split it off (drives the label and id).
+        let boundaryCreatedAt = messages[finalTextIndex].createdAt;
+        let boundaryId = messages[finalTextIndex].id;
+
+        const flushRun = () => {
+            if (run.length === 0) return;
+            const runIndexes = run;
+            run = [];
+            const oldestIdx = Math.max(...runIndexes);
+            const runMessages = runIndexes.map((index) => messages[index]);
+            const startedAt = Math.min(...runMessages.map((msg) => msg.createdAt));
+            // Members render flat when the group expands, so they are stored in
+            // the order they will be drawn.
+            runMessages.reverse();
+
+            groups.push({
+                hiddenIndexes: runIndexes,
+                oldestIdx,
+                item: {
+                    type: 'agent-work-group',
+                    // Keyed by the element the run ends at — the turn's final
+                    // answer for the newest run, the selection element that split
+                    // it off for an older one. Never by a member: history pages
+                    // arrive oldest-last, so a turn's older work can land after
+                    // the group exists and shift which member is oldest, while
+                    // the final answer is the one element a turn is sure to have.
+                    id: `work-${boundaryId}`,
+                    // Every run split out of one turn carries that turn's own
+                    // prompt id, so a turn the user is watching stays expanded
+                    // across all of its runs, not just the newest one.
+                    turnUserMessageId,
+                    messages: runMessages,
+                    hasRunning: false,
+                    hasPendingPermission: hasPendingPermission(runMessages),
+                    startedAt,
+                    completedAt: boundaryCreatedAt,
+                },
+            });
+        };
+
+        for (const index of candidates) {
+            if (isUserSelectionMessage(messages[index])) {
+                flushRun();
+                boundaryCreatedAt = messages[index].createdAt;
+                boundaryId = messages[index].id;
+                continue;
+            }
+            run.push(index);
+        }
+        flushRun();
     }
 
     return groups;
@@ -188,6 +221,28 @@ function isInvisibleMessage(msg: Message): boolean {
 /** User-sent file/image attachments should never be collapsed into a group */
 function isUserAttachment(msg: Message): boolean {
     return msg.kind === 'tool-call' && msg.tool.name === 'file';
+}
+
+// Matches a line that begins (after any leading same-line whitespace) with the
+// <options> tag — mirroring the per-line `line.trim().startsWith('<options>')`
+// trigger parseMarkdownBlock uses, so inline mentions of "<options>" in prose
+// don't match. `[^\S\n]` is "whitespace except newline", matching trim()'s reach.
+const OPTIONS_BLOCK_RE = /(?:^|\n)[^\S\n]*<options>/i;
+
+/**
+ * Messages that present a user choice and must never be folded into a collapsed
+ * work group, or the user cannot see or tap the choice. Interactive-question
+ * tool calls are already dropped from `visibleAgentIndexes`; this additionally
+ * catches the markdown <options> block, which rides in an agent-text message.
+ */
+function isUserSelectionMessage(msg: Message): boolean {
+    if (msg.kind === 'agent-text') {
+        return OPTIONS_BLOCK_RE.test(msg.text);
+    }
+    if (msg.kind === 'tool-call') {
+        return isInteractiveQuestionToolName(msg.tool.name);
+    }
+    return false;
 }
 
 function hasPendingPermission(messages: Message[]): boolean {
