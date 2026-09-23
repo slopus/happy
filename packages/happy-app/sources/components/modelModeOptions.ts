@@ -204,9 +204,10 @@ export function getAvailableModels(
     return getHardcodedModelModes(flavor, translate);
 }
 
-// New-session metadata is borrowed from an older session, not a live catalog.
-// Keep current suggestions visible while preserving catalog labels and custom models.
-export function getNewSessionModelModes(
+// Session metadata is a startup-time snapshot, including in running sessions.
+// Both pickers supplement it with current suggestions; this is not an access check.
+// Preserve catalog labels and custom models.
+export function getSuggestedModelModes(
     flavor: AgentFlavor,
     metadata: Metadata | null | undefined,
     translate: Translate,

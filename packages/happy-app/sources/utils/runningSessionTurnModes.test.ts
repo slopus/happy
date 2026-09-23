@@ -4,6 +4,36 @@ import { resolveRunningSessionTurnModes } from './runningSessionTurnModes';
 const translate = (key: string) => key;
 
 describe('resolveRunningSessionTurnModes', () => {
+    it('shows GPT-6 Sol and Luna in an existing session with a startup-time catalog', () => {
+        const session = {
+            modelMode: null, effortLevel: 'medium',
+            metadata: {
+                flavor: 'codex', currentModelCode: 'gpt-6-astra',
+                models: [
+                    { code: 'gpt-6-astra', value: 'gpt-6-astra', description: 'Frontier intelligence' },
+                    { code: 'gpt-5.6-sol', value: 'gpt-5.6-sol' },
+                    { code: 'gpt-5.6-terra', value: 'gpt-5.6-terra' },
+                    { code: 'gpt-5.6-luna', value: 'gpt-5.6-luna' },
+                ],
+            },
+        } as any;
+        const result = resolveRunningSessionTurnModes({ session, agentDefaultOverrides: {}, translate });
+        expect(result.availableModels.map((model) => model.key)).toEqual([
+            'default', 'gpt-6-astra', 'gpt-6-sol', 'gpt-6-luna',
+            'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna',
+        ]);
+        expect(result.modelMode?.key).toBe('gpt-6-astra');
+        expect(result.availableModels[1].description).toBe('Frontier intelligence');
+        for (const modelMode of ['gpt-6-sol', 'gpt-6-luna']) {
+            const selected = resolveRunningSessionTurnModes({
+                session: { ...session, modelMode }, agentDefaultOverrides: {}, translate,
+            });
+            expect(selected.modelMode?.key).toBe(modelMode);
+            expect(selected.effortLevel?.key).toBe('medium');
+            expect(selected.availableEffortLevels.some((level) => level.key === 'ultra')).toBe(false);
+        }
+    });
+
     it('prefers explicit per-session model and effort for the next turn', () => {
         const result = resolveRunningSessionTurnModes({
             session: {

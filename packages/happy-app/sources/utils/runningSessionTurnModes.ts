@@ -1,5 +1,5 @@
 import {
-    getAvailableModels,
+    getSuggestedModelModes,
     getEffortLevelsForModel,
     type EffortLevel,
     type ModeOption,
@@ -53,7 +53,7 @@ export function resolveRunningSessionTurnModes(args: {
     const metadata = session.metadata;
     const flavor = metadata?.flavor;
     const defaults = resolveAgentDefaultConfig(agentDefaultOverrides, flavor);
-    const availableModels = getAvailableModels(flavor, metadata, translate);
+    const availableModels = getSuggestedModelModes(flavor, metadata, translate);
     const modelMode = resolvePreferredOption(availableModels, [
         session.modelMode,
         metadata?.currentModelCode,
