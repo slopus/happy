@@ -27,6 +27,7 @@ import { UserProfile, RelationshipUpdatedEvent } from "./friendTypes";
 import { loadSettings, loadLocalSettings, saveLocalSettings, saveSettings, loadPurchases, savePurchases, loadProfile, saveProfile, loadSessionDrafts, saveSessionDrafts, loadRigComposerDraft, saveRigComposerDraft } from "./persistence";
 import { isAgentModePushPending } from "./agentModesPending";
 import { loadSessionLastMessageSentAt, saveSessionLastMessageSentAt } from "./persistence";
+import { projectKey } from '@/utils/projectPath';
 import type { CustomerInfo } from './revenueCat/types';
 import React from "react";
 import { sync } from "./sync";
@@ -380,6 +381,10 @@ interface StorageState {
     archivingSessionIds: Set<string>;
     markArchiving: (sessionId: string) => void;
     unmarkArchiving: (sessionId: string) => void;
+    // Starred project keys live in synced settings (settings.starredProjects),
+    // so a project starred on one device is starred on all of them.
+    toggleProjectStarred: (machineId: string, path: string) => void;
+    isProjectStarred: (machineId: string, path: string) => boolean;
 }
 
 // Helper function to build unified list view data from sessions and machines
@@ -1257,6 +1262,20 @@ export const storage = create<StorageState>()((set, get) => {
             });
             if (status === 'connected') rigComposerFlushAheadSessions();
         },
+        toggleProjectStarred: (machineId: string, path: string) => {
+            // Update through the same settings-change path any other setting
+            // uses (sync.applySettings → local apply + push), so the starred set
+            // reaches every device.
+            const key = projectKey(machineId, path);
+            const current = get().settings.starredProjects ?? [];
+            const next = current.includes(key)
+                ? current.filter(k => k !== key)
+                : [...current, key];
+            sync.applySettings({ starredProjects: next });
+        },
+        isProjectStarred: (machineId: string, path: string) => {
+            return (get().settings.starredProjects ?? []).includes(projectKey(machineId, path));
+        },
         updateSessionDraft: (sessionId: string, draft: string | null) => set((state) => {
             const session = state.sessions[sessionId];
             if (!session) return state;
@@ -1865,6 +1884,23 @@ export function useLocalSetting<K extends keyof LocalSettings>(name: K): LocalSe
 
 export function useIsSessionUnread(sessionId: string): boolean {
     return storage((state) => state.unreadSessionIds.has(sessionId));
+}
+
+export function useStarredProjects(): Set<string> {
+    // The Set is derived outside the store selector on purpose: fast-deep-equal's
+    // default build has no Set support and falls through to comparing
+    // `Object.keys()`, which is always `[]` for a Set — so under `useDeepEqual`
+    // every Set compares equal, the subscription never fires, and star toggles
+    // would not reorder the list until the subscriber remounted.
+    const starredKeys = storage(useShallow((state) => state.settings.starredProjects ?? []));
+    return React.useMemo(() => new Set(starredKeys), [starredKeys]);
+}
+
+export function useIsProjectStarred(machineId: string | undefined | null, path: string | undefined | null): boolean {
+    return storage((state) => {
+        if (!machineId || !path) return false;
+        return (state.settings.starredProjects ?? []).includes(projectKey(machineId, path));
+    });
 }
 
 // Artifact hooks

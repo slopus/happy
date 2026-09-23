@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { SessionListViewItem, useSessionListViewData, useSetting } from '@/sync/storage';
+import { SessionListViewItem, useSessionListViewData, useSetting, useStarredProjects } from '@/sync/storage';
 import { filterProjectGroupSessions } from '@/sync/projectGroups';
 
 /**
@@ -41,6 +41,10 @@ export function useVisibleSessionListViewData(): SessionListViewItem[] | null {
             }
         });
 
+        // Order is left exactly as the list data arrived in. Starred cards rise
+        // in `buildSessionProjectDisplayGroups` instead — that pass sorts the
+        // project cards by name as the last step before they render, so any
+        // order applied here would simply be overwritten.
         const result: SessionListViewItem[] = [];
         data.forEach((item, index) => {
             if (item.type === 'projects-header') {
@@ -75,6 +79,17 @@ export function useVisibleSessionListViewData(): SessionListViewItem[] | null {
 
         return result;
     }, [data, hideArchivedSessions]);
+}
+
+/**
+ * The starred project keys the home list orders by.
+ *
+ * Lives beside the visibility hook so the list and its keyboard shortcuts read
+ * one set; the ordering itself happens where the cards are finally sorted, in
+ * `buildSessionProjectDisplayGroups`.
+ */
+export function useSessionListStarredProjects(): ReadonlySet<string> {
+    return useStarredProjects();
 }
 
 /**

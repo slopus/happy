@@ -40,6 +40,8 @@ export const ja: TranslationStructure = {
     },
 
     common: {
+        star: 'スターを付ける',
+        unstar: 'スターを外す',
         // Simple string constants
         cancel: 'キャンセル',
         authenticate: '認証',
