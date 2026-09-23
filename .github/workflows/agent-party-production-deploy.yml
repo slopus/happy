@@ -1,0 +1,120 @@
+name: Deploy AgentParty companion to production
+run-name: '${{ github.event.workflow_run.head_commit.message || github.event.head_commit.message || github.ref_name }} · AgentParty 生产部署'
+
+on:
+  workflow_run:
+    workflows: [Deploy Paws Web to production (on merge to main)]
+    types: [completed]
+  workflow_dispatch:
+
+concurrency:
+  group: paws-agent-party-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    # A companion rollout never decides whether the canonical Web release passed.
+    # workflow_dispatch remains available for an explicit retry from current main.
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production-web
+    env:
+      PAWS_WEB_ORIGIN: https://47.115.228.20:8443
+      PAWS_DEPLOY_HOST: root@47.115.228.20
+      PAWS_DEPLOY_PORT: '22'
+      PAWS_RELEASE_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+      PAWS_RELEASE_REF: refs/heads/main
+    steps:
+      - name: Checkout successful Web revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.PAWS_RELEASE_SHA }}
+          fetch-depth: 0
+
+      - name: Guard exact successful Web release before AgentParty mutation
+        id: source
+        env:
+          PAWS_WEB_SKIP_SUPERSEDED: '1'
+        run: |
+          set -euo pipefail
+          test "$PAWS_RELEASE_REF" = 'refs/heads/main'
+          [[ "$PAWS_RELEASE_SHA" =~ ^[a-f0-9]{40}$ ]]
+          git fetch --no-tags origin main
+          git checkout -B main "$PAWS_RELEASE_SHA"
+          test "$(git rev-parse HEAD)" = "$PAWS_RELEASE_SHA"
+          test -z "$(git status --short)"
+          source scripts/web-release-source.sh
+          assert_web_release_is_current "$PWD" "$PAWS_RELEASE_SHA" "$(git rev-parse refs/remotes/origin/main)"
+          echo 'eligible=true' >> "$GITHUB_OUTPUT"
+
+      - name: Guard AgentParty deployment secret
+        if: ${{ steps.source.outputs.eligible == 'true' }}
+        env:
+          PAWS_AGENT_PARTY_ACCESS_TOKEN: ${{ secrets.PAWS_AGENT_PARTY_ACCESS_TOKEN }}
+        run: |
+          set -euo pipefail
+          [[ "$PAWS_AGENT_PARTY_ACCESS_TOKEN" =~ ^[A-Za-z0-9_-]{43,128}$ ]] || { echo '::error::Missing or invalid PAWS_AGENT_PARTY_ACCESS_TOKEN secret.'; exit 1; }
+
+      - name: Install pnpm
+        if: ${{ steps.source.outputs.eligible == 'true' }}
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node 24 for AgentParty
+        if: ${{ steps.source.outputs.eligible == 'true' }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        if: ${{ steps.source.outputs.eligible == 'true' }}
+        run: pnpm install --frozen-lockfile
+
+      - name: Build and stamp standalone AgentParty
+        if: ${{ steps.source.outputs.eligible == 'true' }}
+        run: |
+          set -euo pipefail
+          pnpm --filter @wangjs-jacky/paws-agent build
+          PAWS_AGENT_PARTY_STANDALONE=1 PAWS_AGENT_PARTY_BASE_PATH=/agent-party/ \
+            pnpm --filter @wangjs-jacky/paws-agent-party build
+          printf '%s\n' "$PAWS_RELEASE_SHA" > packages/paws-agent-party/dist/revision
+          node packages/paws-agent-party/scripts/production-smoke.mjs
+
+      - name: Deploy and verify AgentParty companion service
+        if: ${{ steps.source.outputs.eligible == 'true' }}
+        env:
+          PAWS_AGENT_PARTY_ACCESS_TOKEN: ${{ secrets.PAWS_AGENT_PARTY_ACCESS_TOKEN }}
+        run: bash scripts/deploy-agent-party.sh
+
+      - name: Write deployment summary
+        if: ${{ success() && steps.source.outputs.eligible == 'true' }}
+        run: |
+          {
+            echo '### AgentParty companion deployed'
+            echo ''
+            echo '| Field | Value |'
+            echo '| --- | --- |'
+            echo "| Origin | $PAWS_WEB_ORIGIN/agent-party/ |"
+            echo "| Commit | \`$PAWS_RELEASE_SHA\` |"
+            echo '| Trigger | Successful Web release |'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Write superseded deployment summary
+        if: ${{ success() && steps.source.outputs.superseded == 'true' }}
+        env:
+          SUPERSEDED_BY: ${{ steps.source.outputs.superseded_by }}
+        run: |
+          {
+            echo '### AgentParty deployment skipped'
+            echo ''
+            echo '此 Web 版本已被更新的 main 取代；未部署过期 AgentParty 构建。'
+            echo ''
+            echo "| Skipped commit | \`$PAWS_RELEASE_SHA\` |"
+            echo "| Superseding main | \`$SUPERSEDED_BY\` |"
+          } >> "$GITHUB_STEP_SUMMARY"

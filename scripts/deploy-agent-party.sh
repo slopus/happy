@@ -8,23 +8,25 @@ readonly SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 readonly REPO_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 readonly DEPLOY_HOST="${PAWS_DEPLOY_HOST:-root@47.115.228.20}"
 readonly DEPLOY_PORT="${PAWS_DEPLOY_PORT:-22}"
+readonly RELEASE_SHA="${PAWS_RELEASE_SHA:-${GITHUB_SHA:-}}"
+readonly RELEASE_REF="${PAWS_RELEASE_REF:-${GITHUB_REF:-}}"
 fail() { echo "AgentParty deployment: $*" >&2; exit 1; }
 
 [[ "${PAWS_WEB_ORIGIN:-}" == "$ORIGIN" ]] || fail 'Canonical Web origin required.'
 [[ "$DEPLOY_HOST" == 'root@47.115.228.20' && "$DEPLOY_PORT" == '22' ]] || fail 'Unexpected deployment target.'
 [[ "${PAWS_AGENT_PARTY_ACCESS_TOKEN:-}" =~ ^[A-Za-z0-9_-]{43,128}$ ]] || fail 'Missing or invalid PAWS_AGENT_PARTY_ACCESS_TOKEN secret.'
-[[ "${GITHUB_SHA:-}" =~ ^[a-f0-9]{40}$ ]] || fail 'An exact CI commit SHA is required.'
-[[ "${GITHUB_REF:-}" == 'refs/heads/main' ]] || fail 'Only merged main may deploy.'
+[[ "$RELEASE_SHA" =~ ^[a-f0-9]{40}$ ]] || fail 'An exact CI commit SHA is required.'
+[[ "$RELEASE_REF" == 'refs/heads/main' ]] || fail 'Only merged main may deploy.'
 git -C "$REPO_ROOT" fetch --quiet origin main
 [[ "$(git -C "$REPO_ROOT" branch --show-current)" == main ]] || fail 'Expected main branch.'
 [[ -z "$(git -C "$REPO_ROOT" status --short)" ]] || fail 'Expected clean worktree.'
-[[ "$(git -C "$REPO_ROOT" rev-parse HEAD)" == "$GITHUB_SHA" ]] || fail 'HEAD changed.'
+[[ "$(git -C "$REPO_ROOT" rev-parse HEAD)" == "$RELEASE_SHA" ]] || fail 'HEAD changed.'
 source "$SCRIPT_DIR/web-release-source.sh"
-assert_web_release_is_current "$REPO_ROOT" "$GITHUB_SHA" "$(git -C "$REPO_ROOT" rev-parse origin/main)"
-[[ "$(tr -d '[:space:]' < "$REPO_ROOT/packages/paws-agent-party/dist/revision")" == "$GITHUB_SHA" ]] || fail 'Artifact revision mismatch.'
+assert_web_release_is_current "$REPO_ROOT" "$RELEASE_SHA" "$(git -C "$REPO_ROOT" rev-parse origin/main)"
+[[ "$(tr -d '[:space:]' < "$REPO_ROOT/packages/paws-agent-party/dist/revision")" == "$RELEASE_SHA" ]] || fail 'Artifact revision mismatch.'
 [[ "${GITHUB_RUN_ID:-}" =~ ^[0-9]+$ && "${GITHUB_RUN_ATTEMPT:-}" =~ ^[0-9]+$ ]] || fail 'Expected CI run identifiers.'
-release_id="$GITHUB_SHA-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
-image="paws-agent-party:$GITHUB_SHA"
+release_id="$RELEASE_SHA-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+image="paws-agent-party:$RELEASE_SHA"
 remote_dir="/tmp/paws-agent-party-$release_id"
 stage="$(mktemp -d)"
 cleanup() { rm -f -- "$stage/image.tar.gz" "$stage/runtime.env" "$stage/Caddyfile.current" "$stage/Caddyfile.next"; rmdir -- "$stage"; }
@@ -40,11 +42,11 @@ caddy_sha="$(sha256sum "$stage/Caddyfile.current" | cut -d ' ' -f 1)"
 image_sha="$(sha256sum "$stage/image.tar.gz" | cut -d ' ' -f 1)"
 # Recheck after the image build, immediately before the first remote write.
 git -C "$REPO_ROOT" fetch --quiet origin main
-[[ "$(git -C "$REPO_ROOT" rev-parse HEAD)" == "$GITHUB_SHA" && -z "$(git -C "$REPO_ROOT" status --short)" ]] || fail 'Source changed during image build.'
-assert_web_release_is_current "$REPO_ROOT" "$GITHUB_SHA" "$(git -C "$REPO_ROOT" rev-parse origin/main)"
+[[ "$(git -C "$REPO_ROOT" rev-parse HEAD)" == "$RELEASE_SHA" && -z "$(git -C "$REPO_ROOT" status --short)" ]] || fail 'Source changed during image build.'
+assert_web_release_is_current "$REPO_ROOT" "$RELEASE_SHA" "$(git -C "$REPO_ROOT" rev-parse origin/main)"
 ssh -p "$DEPLOY_PORT" "$DEPLOY_HOST" install -d -m 700 "$remote_dir"
 scp -P "$DEPLOY_PORT" "$stage/image.tar.gz" "$stage/runtime.env" "$stage/Caddyfile.next" "$DEPLOY_HOST:$remote_dir/"
-ssh -p "$DEPLOY_PORT" "$DEPLOY_HOST" bash -s -- "$release_id" "$GITHUB_SHA" "$caddy_sha" "$image_sha" <<'REMOTE_SCRIPT'
+ssh -p "$DEPLOY_PORT" "$DEPLOY_HOST" bash -s -- "$release_id" "$RELEASE_SHA" "$caddy_sha" "$image_sha" <<'REMOTE_SCRIPT'
 set -euo pipefail
 release_id="$1"; revision="$2"; expected_caddy_sha="$3"; expected_image_sha="$4"
 [[ "$release_id" =~ ^[a-f0-9]{40}-[0-9]+-[0-9]+$ && "$revision" =~ ^[a-f0-9]{40}$ ]]

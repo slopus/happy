@@ -9,6 +9,7 @@ on:
       - 'scripts/web-release-source.sh'
       - 'scripts/web-production-deploy.test.mjs'
       - '.github/workflows/web-production-deploy.yml'
+      - '.github/workflows/agent-party-production-deploy.yml'
       - '.github/workflows/web-deployment-test.yml'
   push:
     branches: [main]
@@ -19,6 +20,7 @@ on:
       - 'scripts/web-release-source.sh'
       - 'scripts/web-production-deploy.test.mjs'
       - '.github/workflows/web-production-deploy.yml'
+      - '.github/workflows/agent-party-production-deploy.yml'
       - '.github/workflows/web-deployment-test.yml'
 
 permissions:

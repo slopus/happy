@@ -374,37 +374,6 @@ jobs:
           done
           REMOTE_SCRIPT
 
-      - name: Guard AgentParty deployment secret
-        if: ${{ steps.live_verify.outcome == 'success' }}
-        env:
-          PAWS_AGENT_PARTY_ACCESS_TOKEN: ${{ secrets.PAWS_AGENT_PARTY_ACCESS_TOKEN }}
-        run: |
-          set -euo pipefail
-          [[ "$PAWS_AGENT_PARTY_ACCESS_TOKEN" =~ ^[A-Za-z0-9_-]{43,128}$ ]] || { echo '::error::Missing or invalid PAWS_AGENT_PARTY_ACCESS_TOKEN secret.'; exit 1; }
-
-      - name: Setup Node 24 for AgentParty
-        if: ${{ steps.live_verify.outcome == 'success' }}
-        uses: actions/setup-node@v4
-        with:
-          node-version: 24
-
-      - name: Build and stamp standalone AgentParty
-        if: ${{ steps.live_verify.outcome == 'success' }}
-        run: |
-          set -euo pipefail
-          pnpm --filter @wangjs-jacky/paws-agent build
-          PAWS_AGENT_PARTY_STANDALONE=1 PAWS_AGENT_PARTY_BASE_PATH=/agent-party/ \
-            pnpm --filter @wangjs-jacky/paws-agent-party build
-          printf '%s\n' "$GITHUB_SHA" > packages/paws-agent-party/dist/revision
-          node packages/paws-agent-party/scripts/production-smoke.mjs
-
-      - name: Deploy and verify AgentParty companion service
-        id: agent_party
-        if: ${{ steps.live_verify.outcome == 'success' }}
-        env:
-          PAWS_AGENT_PARTY_ACCESS_TOKEN: ${{ secrets.PAWS_AGENT_PARTY_ACCESS_TOKEN }}
-        run: bash scripts/deploy-agent-party.sh
-
       - name: Roll back failed Web activation
         # Supersession can happen after sandbox route preparation. Restore that
         # preparation too; rollback errors must still fail the job.
@@ -510,7 +479,7 @@ jobs:
             echo "| Commit | \`$GITHUB_SHA\` |"
             echo "| Static storage | \`oss://$PAWS_WEB_OSS_BUCKET/web/releases/$GITHUB_SHA/\` |"
             echo '| Server Web files | Removed after verification |'
-            echo "| AgentParty | $PAWS_WEB_ORIGIN/agent-party/ |"
+            echo '| AgentParty | Released separately after this Web workflow succeeds |'
             echo "| MCP Apps | ${{ steps.mcp_rollout.outputs.enabled == 'true' && 'Enabled after sandbox verification' || 'Disabled (repository variable unset)' }} |"
           } >> "$GITHUB_STEP_SUMMARY"
 
