@@ -60,7 +60,7 @@ describe('session row press contract', () => {
         handlers.onPressIn();
         handlers.onPress();
         expect(mocks.router.push).toHaveBeenCalledExactlyOnceWith('/session/a');
-        expect(mocks.trackSessionSwitched).toHaveBeenCalledExactlyOnceWith({ id: 'a' });
+        expect(mocks.trackSessionSwitched).toHaveBeenCalledExactlyOnceWith();
         expect(mocks.perfMark).toHaveBeenCalledWith('session-open:a');
     });
 
