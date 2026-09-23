@@ -259,6 +259,13 @@ export const en = {
         nothingToPasteMessage: 'Copy an image first, then try again.',
     },
 
+    bashMode: {
+        // !-prefix bash command mode in the chat input
+        noOutput: 'no output',
+        exitCode: ({ code }: { code: number }) => `exited with code ${code}`,
+        failed: ({ error }: { error: string }) => `Could not run command: ${error}`,
+    },
+
     errors: {
         networkError: 'Network error occurred',
         serverError: 'Server error occurred',
