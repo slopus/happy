@@ -5,7 +5,7 @@ import type { PermissionModeKey } from '@/components/PermissionModeSelector';
 import { getRigReasoningSelection, getRigSelectedModelKey, isRigMetadata } from '@/sync/rig';
 import { formatPathRelativeToHome } from '@/utils/sessionUtils';
 
-const AGENT_TYPES: readonly NewSessionAgentType[] = ['claude', 'codex', 'gemini', 'openclaw', 'agy', 'rig'];
+const AGENT_TYPES: readonly NewSessionAgentType[] = ['claude', 'codex', 'gemini', 'opencode', 'openclaw', 'agy', 'rig'];
 
 function agentTypeOf(session: Session): NewSessionAgentType {
     if (isRigMetadata(session.metadata)) return 'rig';

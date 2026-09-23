@@ -15,6 +15,7 @@ const AGENT_COMMANDS = {
     claude: 'claude',
     codex: 'codex',
     gemini: 'gemini',
+    opencode: 'opencode',
     openclaw: 'openclaw',
     agy: 'agy',
 } as const satisfies Record<SpawnableAgent, string>;

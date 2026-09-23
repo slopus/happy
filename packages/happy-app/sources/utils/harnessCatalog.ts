@@ -11,6 +11,7 @@ export const HARNESS_NAMES: Record<NewSessionAgentType, string> = {
     rig: 'Happy',
     agy: 'Antigravity',
     gemini: 'Gemini',
+    opencode: 'OpenCode',
     openclaw: 'OpenClaw',
 };
 
@@ -33,6 +34,7 @@ export const HARNESS_ORDER: readonly NewSessionAgentType[] = [
     'claude',
     'codex',
     'agy',
+    'opencode',
     'rig',
 ];
 
@@ -65,6 +67,9 @@ export function isHarnessAvailable({
     // Antigravity is niche enough that an old or incomplete capability report
     // must not advertise it speculatively. Its daemon has to say it is installed.
     if (key === 'agy') return availability?.agy === true;
+    // Same for OpenCode: daemons predating its detection report nothing for it,
+    // and offering a harness the machine may not have is worse than omitting it.
+    if (key === 'opencode') return availability?.opencode === true;
     return !availability || availability[key] === true;
 }
 
@@ -76,9 +81,10 @@ export function isHarnessAvailable({
  * cannot. Two things keep the list from ever being empty — the current
  * selection is usually included, and a machine that reports no capabilities at
  * all (an older daemon, or none selected yet) falls back to the familiar
- * catalog. Antigravity is the exception to both fallbacks: it is only listed
- * after an explicit installation report. A retired harness is also exempt from
- * the first rule, because keeping it listed would strand someone on it.
+ * catalog. Antigravity and OpenCode are the exception to both fallbacks: they
+ * are only listed after an explicit installation report. A retired harness is
+ * also exempt from the first rule, because keeping it listed would strand
+ * someone on it.
  */
 export function listAvailableHarnesses({
     availability,
@@ -90,10 +96,10 @@ export function listAvailableHarnesses({
     selected?: NewSessionAgentType | null;
 }): HarnessOption[] {
     const keys = HARNESS_ORDER.filter((key) => (
-        (key === selected && key !== 'agy')
+        (key === selected && key !== 'agy' && key !== 'opencode')
         || isHarnessAvailable({ availability, happyAgentAvailable, key })
     ));
-    const fallback = HARNESS_ORDER.filter((key) => key !== 'agy');
+    const fallback = HARNESS_ORDER.filter((key) => key !== 'agy' && key !== 'opencode');
     return (keys.length > 0 ? keys : fallback).map((key) => ({
         key,
         name: HARNESS_NAMES[key],

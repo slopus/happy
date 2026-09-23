@@ -93,6 +93,31 @@ describe('harness catalog', () => {
         }).map((harness) => harness.key)).toEqual(['claude', 'codex']);
     });
 
+    it('never lists OpenCode without an explicit installation report', () => {
+        // Daemons predating OpenCode detection report nothing for it, and the
+        // app-side schema drops keys it does not declare, so an absent boolean
+        // must read as "not installed" rather than "assume it is there".
+        expect(listAvailableHarnesses({
+            availability: { claude: true, opencode: false },
+            happyAgentAvailable: false,
+            selected: 'opencode',
+        }).map((harness) => harness.key)).toEqual(['claude']);
+
+        expect(listAvailableHarnesses({
+            availability: null,
+            happyAgentAvailable: false,
+            selected: 'opencode',
+        }).map((harness) => harness.key)).toEqual(['claude', 'codex']);
+    });
+
+    it('lists OpenCode once the machine reports it', () => {
+        expect(listAvailableHarnesses({
+            availability: { claude: true, opencode: true },
+            happyAgentAvailable: false,
+            selected: null,
+        }).map((harness) => harness.key)).toEqual(['claude', 'opencode']);
+    });
+
     it('falls back to the whole catalog when a machine reports no capabilities', () => {
         expect(listAvailableHarnesses({
             availability: null,

@@ -8,6 +8,12 @@ describe('resolveAvatarHarness', () => {
         expect(resolveAvatarHarness('agy')).toBe('agy');
     });
 
+    it('badges OpenCode, which ships an icon of its own', () => {
+        expect(resolveAvatarHarness('opencode')).toBe('opencode');
+        // Its name starts the same way as the retired harness beside it.
+        expect(resolveAvatarHarness('openclaw')).toBeNull();
+    });
+
     it('uses Happy for the Rig client regardless of provider flavor', () => {
         expect(resolveAvatarHarness('codex', 'rig')).toBe('rig');
         expect(resolveAvatarHarness(null, 'rig')).toBe('rig');

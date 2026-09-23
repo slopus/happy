@@ -41,4 +41,23 @@ describe('CLI availability detection', () => {
 
     expect(detectCLIAvailability().agy).toBe(true);
   });
+
+  it('reports OpenCode from its command, on both platform paths', () => {
+    // The app offers this harness only on an explicit true, so a detection
+    // that silently never reports it is indistinguishable from not shipping it.
+    const onlyOpenCode = (command: string) => {
+      if (!/\bopencode\b/.test(command)) {
+        throw new Error('not installed');
+      }
+      return '' as never;
+    };
+
+    expect(detectCLIAvailability().opencode).toBe(false);
+
+    mockedExecSync.mockImplementation(onlyOpenCode as never);
+    expect(detectCLIAvailability().opencode).toBe(true);
+
+    mockedPlatform.mockReturnValue('win32');
+    expect(detectCLIAvailability().opencode).toBe(true);
+  });
 });

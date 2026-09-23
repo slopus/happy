@@ -319,7 +319,34 @@ export function getHardcodedPermissionModes(flavor: AgentFlavor, translate: Tran
     if (flavor === 'agy') {
         return getAgyPermissionModes(translate);
     }
+    if (flavor === 'opencode') {
+        return getOpenCodePermissionModes(translate);
+    }
     return getClaudePermissionModes(translate);
+}
+
+/**
+ * OpenCode publishes its real model catalog over ACP — configOptions on the
+ * session/new response — and getAvailableModels prefers that as soon as a
+ * session exists. Before the first session there is nothing truthful to list,
+ * so offer the agent's own default rather than another vendor's models. The
+ * fallback used to be Claude's catalog, which showed Opus and Sonnet on an
+ * OpenCode draft.
+ */
+export function getOpenCodeModelModes(): ModelMode[] {
+    return [{ key: 'default', name: 'default model', description: null }];
+}
+
+/**
+ * Same reasoning for modes. OpenCode reports its own (build, plan) over ACP;
+ * until it does, offer only the neutral default instead of Claude's vocabulary.
+ */
+export function getOpenCodePermissionModes(translate: Translate): PermissionMode[] {
+    return [{
+        key: 'default',
+        name: translate('agentInput.permissionMode.default'),
+        description: null,
+    }];
 }
 
 export function getOpenClawModelModes(): ModelMode[] {
@@ -352,6 +379,9 @@ export function getHardcodedModelModes(flavor: AgentFlavor, _translate: Translat
     }
     if (flavor === 'agy') {
         return getAgyModelModes();
+    }
+    if (flavor === 'opencode') {
+        return getOpenCodeModelModes();
     }
     return getClaudeModelModes();
 }

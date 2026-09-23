@@ -6,6 +6,8 @@ import {
     permissionModeSupportedByCli,
     getAgyModelModes,
     getAgyPermissionModes,
+    getOpenCodeModelModes,
+    getOpenCodePermissionModes,
     getAvailableModels,
     getAvailablePermissionModes,
     getCodexModelModes,
@@ -280,6 +282,39 @@ describe('modelModeOptions', () => {
         // not the claude list
         expect(keys).not.toContain('opus');
         expect(keys).not.toContain('sonnet');
+    });
+
+    it('gives opencode a neutral default, never the claude fallback', () => {
+        // OpenCode publishes its real catalog over ACP; these lists are only
+        // what the composer shows before any session exists. Falling through
+        // to Claude's put Opus and Sonnet in front of an OpenCode draft, and
+        // the CLI silently ignores a model its agent does not know.
+        const models = getAvailableModels('opencode', null, translate);
+
+        expect(models).toEqual(getOpenCodeModelModes());
+        const keys = models.map((model) => model.key);
+        expect(keys).toEqual(['default']);
+        expect(keys).not.toContain('opus');
+        expect(keys).not.toContain('sonnet');
+    });
+
+    it('gives opencode its own permission list, not claude vocabulary', () => {
+        const modes = getAvailablePermissionModes('opencode', null, translate);
+
+        expect(modes).toEqual(getOpenCodePermissionModes(translate));
+        expect(modes.map((mode) => mode.key)).not.toContain('acceptEdits');
+        expect(modes.map((mode) => mode.key)).not.toContain('bypassPermissions');
+    });
+
+    it('prefers the modes opencode reported over its neutral default', () => {
+        const modes = getAvailablePermissionModes('opencode', {
+            operatingModes: [
+                { code: 'build', value: 'build', description: null },
+                { code: 'plan', value: 'plan', description: null },
+            ],
+        } as any, translate);
+
+        expect(modes.map((mode) => mode.key)).toEqual(['plan', 'build']);
     });
 
     it('keeps a saved legacy agy model selectable without restoring it to the catalog', () => {
