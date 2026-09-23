@@ -117,20 +117,6 @@ export function resolveInitialClaudePermissionMode(
     return extractPermissionModeFromClaudeArgs(claudeArgs) ?? optionMode;
 }
 
-/**
- * Enforce sandbox permission policy for Claude.
- * When sandbox is enabled, we always force bypass permissions.
- */
-export function applySandboxPermissionPolicy(
-    mode: PermissionMode | undefined,
-    sandboxEnabled: boolean,
-): PermissionMode | undefined {
-    if (!sandboxEnabled) {
-        return mode;
-    }
-    return 'bypassPermissions';
-}
-
 export function isClaudeBypassEquivalent(mode: PermissionMode | undefined): boolean {
     return mode === 'bypassPermissions' || mode === 'yolo';
 }
