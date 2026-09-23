@@ -147,7 +147,7 @@ export const WorktreeTabStrip = React.memo(({ sessionId }: { sessionId: string }
     const select = React.useCallback((id: string) => {
         if (id === sessionId || id === selectedId) return;
         const session = storage.getState().sessions[id];
-        if (session) trackSessionSwitched(session);
+        if (session) trackSessionSwitched();
         router.setParams({ id });
     }, [router, selectedId, sessionId]);
 
