@@ -34,6 +34,18 @@ describe('resolveRunningSessionTurnModes', () => {
         }
     });
 
+    it.each(['gpt-6-sol', 'gpt-6-luna'])('resets stale ultra for %s in both picker and outgoing message', async (modelMode) => {
+        const { resolveMessageModeMeta } = await import('@/sync/messageMeta');
+        for (const effortLevel of ['ultra', null]) {
+            const session = { modelMode, effortLevel, metadata: {
+                flavor: 'codex', currentModelCode: 'gpt-6-astra', currentThoughtLevelCode: 'ultra',
+            } } as any;
+            const result = resolveRunningSessionTurnModes({ session, agentDefaultOverrides: {}, translate });
+            expect(result.effortLevel?.key).toBe('default');
+            expect(resolveMessageModeMeta(session).effort).toBeNull();
+        }
+    });
+
     it('prefers explicit per-session model and effort for the next turn', () => {
         const result = resolveRunningSessionTurnModes({
             session: {

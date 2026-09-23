@@ -332,6 +332,22 @@ export function getEffortLevelsForModel(flavor: AgentFlavor, modelKey: string, m
     return [];
 }
 
+// A model switch can retain an effort from the previous model in session state.
+// Keep picker and outbound metadata consistent without rewriting that state.
+export function normalizeModelEffortKey(
+    flavor: AgentFlavor,
+    modelKey: string,
+    effortKey: string | null | undefined,
+    metadata?: Metadata | null,
+): string | null | undefined {
+    if (flavor !== 'codex' || !['gpt-6-sol', 'gpt-6-luna'].includes(modelKey) || !effortKey) {
+        return effortKey;
+    }
+    return getEffortLevelsForModel(flavor, modelKey, metadata).some((level) => level.key === effortKey)
+        ? effortKey
+        : 'default';
+}
+
 // Default effort for a model — highest the model allows
 export function getDefaultEffortKeyForModel(flavor: AgentFlavor, modelKey: string): string | null {
     const levels = getEffortLevelsForModel(flavor, modelKey);

@@ -1,5 +1,6 @@
 import {
     getSuggestedModelModes,
+    normalizeModelEffortKey,
     getEffortLevelsForModel,
     type EffortLevel,
     type ModeOption,
@@ -60,7 +61,7 @@ export function resolveRunningSessionTurnModes(args: {
         defaults.modelMode,
     ]);
     const availableEffortLevels = getEffortLevelsForModel(flavor, modelMode?.key ?? 'default', metadata);
-    const effortLevel = availableEffortLevels.length > 0
+    const preferredEffort = availableEffortLevels.length > 0
         ? resolvePreferredOption(availableEffortLevels, [
             session.effortLevel,
             metadata?.currentThoughtLevelCode,
@@ -69,6 +70,11 @@ export function resolveRunningSessionTurnModes(args: {
             defaults.effortLevel ?? (availableEffortLevels.some((level) => level.key === 'default') ? 'default' : null),
         ])
         : null;
+
+    const normalizedEffortKey = normalizeModelEffortKey(flavor, modelMode?.key ?? 'default', preferredEffort?.key, metadata);
+    const effortLevel = normalizedEffortKey === preferredEffort?.key
+        ? preferredEffort
+        : availableEffortLevels.find((level) => level.key === normalizedEffortKey) ?? null;
 
     return {
         availableModels,
