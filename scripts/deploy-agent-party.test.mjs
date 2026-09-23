@@ -36,15 +36,19 @@ test('the companion runs in a separate workflow after a successful Web release',
   assert.match(workflow.jobs.deploy.if, /github\.ref == 'refs\/heads\/main'/);
 
   const verified = index('Guard exact successful Web release before AgentParty mutation');
-  const guard = index('Guard AgentParty deployment secret'); const node = index('Setup Node 24 for AgentParty'); const build = index('Build and stamp standalone AgentParty'); const deploy = index('Deploy and verify AgentParty companion service');
-  assert.ok(verified < guard && guard < node && node < build && build < deploy);
+  const guard = index('Guard AgentParty deployment secret'); const node = index('Setup Node 24 for AgentParty'); const ssh = index('Configure verified SSH access for AgentParty'); const build = index('Build and stamp standalone AgentParty'); const deploy = index('Deploy and verify AgentParty companion service');
+  assert.ok(verified < guard && guard < node && node < ssh && ssh < build && build < deploy);
   assert.equal(steps[node].with['node-version'], 24);
   assert.match(steps[build].run, /pnpm --filter @wangjs-jacky\/paws-agent build/);
   assert.match(steps[build].run, /PAWS_AGENT_PARTY_STANDALONE=1 PAWS_AGENT_PARTY_BASE_PATH=\/agent-party\//);
   assert.match(steps[build].run, /PAWS_RELEASE_SHA.*packages\/paws-agent-party\/dist\/revision/);
   assert.match(workflow.jobs.deploy.env.PAWS_RELEASE_SHA, /workflow_run\.head_sha/);
   assert.equal(workflow.jobs.deploy.env.PAWS_RELEASE_REF, 'refs/heads/main');
-  for (const i of [guard, node, build, deploy]) assert.match(steps[i].if, /steps\.source\.outputs\.eligible == 'true'/);
+  for (const i of [guard, node, ssh, build, deploy]) assert.match(steps[i].if, /steps\.source\.outputs\.eligible == 'true'/);
+  assert.match(steps[ssh].run, /PAWS_WEB_DEPLOY_SSH_PRIVATE_KEY/);
+  assert.match(steps[ssh].run, /chmod 600 ~\/\.ssh\/id_paws_web_deploy/);
+  assert.match(steps[ssh].run, /StrictHostKeyChecking yes/);
+  assert.match(steps[ssh].run, /47\.115\.228\.20 ssh-ed25519/);
   assert.equal(steps[deploy].env.PAWS_AGENT_PARTY_ACCESS_TOKEN, '${{ secrets.PAWS_AGENT_PARTY_ACCESS_TOKEN }}');
 
   const webSteps = webWorkflow.jobs.deploy.steps.map(step => step.name);

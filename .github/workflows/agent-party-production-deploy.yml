@@ -76,6 +76,25 @@ jobs:
         if: ${{ steps.source.outputs.eligible == 'true' }}
         run: pnpm install --frozen-lockfile
 
+      - name: Configure verified SSH access for AgentParty
+        if: ${{ steps.source.outputs.eligible == 'true' }}
+        run: |
+          set -euo pipefail
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "${{ secrets.PAWS_WEB_DEPLOY_SSH_PRIVATE_KEY }}" > ~/.ssh/id_paws_web_deploy
+          chmod 600 ~/.ssh/id_paws_web_deploy
+          cat >> ~/.ssh/config <<EOF
+          Host 47.115.228.20
+            IdentityFile ~/.ssh/id_paws_web_deploy
+            IdentitiesOnly yes
+            StrictHostKeyChecking yes
+          EOF
+          cat >> ~/.ssh/known_hosts <<'EOF'
+          47.115.228.20 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIVfo18lZ0KyBKfSB3phd1CnYAQSH7DAYwVJ49HQOwM+
+          47.115.228.20 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDDcZOQThFyWm+OCABirON7FmBZpTzNv7sSm4VVOpF+kaq4bkLH2wBsMJbpjxut+OZM9bPQZr6m75eU1gZGuYHEkrlU67P6PknEzJXGcE6++UP/iqmKoOZZ1HTWDxUrkn1uhpU40h34O2xxu6vZTyRS3qBPtysrdC1vfhw57kK1fznx5qA47WTMP1yyVQ+NfRPH69zkWFseuiuI5hhDVpy+nCSuVIWwB1yynR4i04iakGrmrRhfw5vgiPqVCW0LM52bxLokukCtNMPCRzD9Odu/gEVDeo10vix1sersYtaYY+kO1c1PXZt+N2wQVbwBzCj0xy58KBSSQuYwGN3SPS1yTudSZYHdpHTSYMZv6+wLqmkmHi0mKz/iJsOMc0g1RimGIiJv8w1Aw5pj3z8I59nK49w+9PrggrNfaU8eP8+lr8ATcH35Qd45SGt4djbd+X6yw06+bp/EU1YIEIJARA5w0jdlDFnohQN0WZS6w5UExu87GpylJm+3hQj+n6IjsM=
+          47.115.228.20 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBEmQUBstAnrOJApt7mRCo0vqiQKe9AG6IgWcwZ+X/RxBwVNPQnCPWjfR3GnxeZOsB5D/6XLIKQAyj/0/N79BlEU=
+          EOF
+
       - name: Build and stamp standalone AgentParty
         if: ${{ steps.source.outputs.eligible == 'true' }}
         run: |
