@@ -6,6 +6,7 @@ describe('resolveDaemonAgentCommand', () => {
         expect(resolveDaemonAgentCommand('claude')).toBe('claude');
         expect(resolveDaemonAgentCommand('codex')).toBe('codex');
         expect(resolveDaemonAgentCommand('gemini')).toBe('gemini');
+        expect(resolveDaemonAgentCommand('opencode')).toBe('opencode');
         expect(resolveDaemonAgentCommand('openclaw')).toBe('openclaw');
         expect(resolveDaemonAgentCommand('agy')).toBe('agy');
     });
