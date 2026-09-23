@@ -126,19 +126,15 @@ describe('applySandboxPermissionPolicy', () => {
 
 describe('resolveRemoteClaudePermissionMode', () => {
     it('preserves bypassPermissions when an app message sends the default mode', () => {
-        expect(resolveRemoteClaudePermissionMode('bypassPermissions', 'default', false)).toBe('bypassPermissions');
+        expect(resolveRemoteClaudePermissionMode('bypassPermissions', 'default')).toBe('bypassPermissions');
     });
 
     it('preserves yolo when an app message sends the default mode', () => {
-        expect(resolveRemoteClaudePermissionMode('yolo', 'default', false)).toBe('yolo');
+        expect(resolveRemoteClaudePermissionMode('yolo', 'default')).toBe('yolo');
     });
 
     it('still allows explicit plan mode after bypassPermissions was active', () => {
-        expect(resolveRemoteClaudePermissionMode('bypassPermissions', 'plan', false)).toBe('plan');
-    });
-
-    it('applies sandbox policy to incoming modes', () => {
-        expect(resolveRemoteClaudePermissionMode('default', 'plan', true)).toBe('bypassPermissions');
+        expect(resolveRemoteClaudePermissionMode('bypassPermissions', 'plan')).toBe('plan');
     });
 });
 
@@ -168,5 +164,22 @@ describe('MessageMetaSchema permission mode', () => {
     it('accepts a mode this CLI does not know without failing the message', () => {
         const parsed = MessageMetaSchema.safeParse({ permissionMode: 'mode-from-the-future' });
         expect(parsed.success).toBe(true);
+    });
+});
+
+describe('sandbox configuration does not relax remote approval', () => {
+    it('keeps an explicit plan request as plan', () => {
+        // Previously, a configured sandbox rewrote every incoming mode to
+        // bypassPermissions, including on the remote path where no sandbox is
+        // ever initialized.
+        expect(resolveRemoteClaudePermissionMode('default', 'plan')).toBe('plan');
+    });
+
+    it('keeps default as default', () => {
+        expect(resolveRemoteClaudePermissionMode('default', 'default')).toBe('default');
+    });
+
+    it('still refuses to downgrade a bypassing session on an ambient default', () => {
+        expect(resolveRemoteClaudePermissionMode('bypassPermissions', 'default')).toBe('bypassPermissions');
     });
 });
