@@ -267,6 +267,13 @@ describe('SessionConfigPanel composer layout', () => {
 
         act(() => renderer.root.findByProps({ testID: 'session-config-fast-toggle' }).props.onPress());
         expect(ref.current.getSelection().fastMode).toBe(true);
+
+        for (const model of ['gpt-6-sol', 'gpt-6-luna']) {
+            act(() => renderer.root.findByProps({ testID: 'session-config-model-trigger' }).props.onPress());
+            act(() => renderer.root.findByProps({ accessibilityLabel: model }).props.onPress());
+            expect(mocks.setModelMode).toHaveBeenCalledWith(model);
+            expect(ref.current.getSelection().modelKey).toBe(model);
+        }
     });
 
     it('clears a selected worktree when its machine or project scope changes', async () => {

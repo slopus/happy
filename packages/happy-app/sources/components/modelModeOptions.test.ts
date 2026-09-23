@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
     getAvailableModels,
+    getNewSessionModelModes,
     getAvailablePermissionModes,
     getEffortLevelsForModel,
     getCodexModelModes,
@@ -37,6 +38,8 @@ describe('modelModeOptions', () => {
         expect(models.map((model) => model.key)).toEqual([
             'default',
             'gpt-6-astra',
+            'gpt-6-sol',
+            'gpt-6-luna',
             'gpt-5.6-sol',
             'gpt-5.6-terra',
             'gpt-5.6-luna',
@@ -47,7 +50,61 @@ describe('modelModeOptions', () => {
         ]);
         expect(models[0].name).toBe('default model');
         expect(models[1].name).toBe('gpt-6-astra');
-        expect(models[2].name).toBe('gpt-5.6-sol');
+        expect(models[2].name).toBe('gpt-6-sol');
+    });
+
+    it('shows new Codex suggestions despite a stale session catalog without changing live options', () => {
+        const metadata = { models: [
+            { code: 'gpt-6-astra', value: 'Astra', description: 'From catalog' },
+            { code: 'gpt-5.6-sol', value: 'Older Sol' },
+            { code: 'custom-model', value: 'Custom' },
+        ] } as any;
+        const models = getNewSessionModelModes('codex', metadata, translate);
+        expect(models.map((model) => model.key)).toEqual([
+            'default', 'gpt-6-astra', 'gpt-6-sol', 'gpt-6-luna', 'gpt-5.6-sol', 'custom-model',
+        ]);
+        expect(models[1]).toEqual({ key: 'gpt-6-astra', name: 'Astra', description: 'From catalog' });
+        expect(getAvailableModels('codex', metadata, translate).map((model) => model.key))
+            .toEqual(['default', 'gpt-6-astra', 'gpt-5.6-sol', 'custom-model']);
+    });
+
+    it('preserves fresh model descriptions without duplicates or mutating metadata', () => {
+        const metadata = { models: [
+            { code: 'default', value: 'Default' },
+            { code: 'gpt-6-sol', value: 'Sol', description: 'Live description' },
+            { code: 'gpt-6-luna', value: 'Luna' },
+        ] } as any;
+        const original = JSON.stringify(metadata);
+        const models = getNewSessionModelModes('codex', metadata, translate);
+        expect(models.map((model) => model.key)).toEqual(['default', 'gpt-6-astra', 'gpt-6-sol', 'gpt-6-luna']);
+        expect(models[2].description).toBe('Live description');
+        expect(JSON.stringify(metadata)).toBe(original);
+    });
+
+    it('leaves custom provider catalogs alone and uses current fallbacks without metadata', () => {
+        const metadata = { models: [{ code: 'private-model', value: 'Private' }] } as any;
+        for (const flavor of ['codex', 'gemini']) {
+            expect(getNewSessionModelModes(flavor, metadata, translate))
+                .toEqual(getAvailableModels(flavor, metadata, translate));
+        }
+        expect(getNewSessionModelModes('codex', null, translate)).toEqual(getCodexModelModes());
+    });
+
+    it.each(['gpt-6-sol', 'gpt-6-luna'])('does not inherit Astra-only efforts for %s', (model) => {
+        const metadata = { thoughtLevels: [{ code: 'ultra', value: 'ultra' }] } as any;
+        expect(getEffortLevelsForModel('codex', model, metadata).map((level) => level.key))
+            .toEqual(['default', 'low', 'medium', 'high', 'xhigh', 'max']);
+    });
+
+    it('respects the live effort catalog when it belongs to the selected new model', () => {
+        const metadata = {
+            currentModelCode: 'gpt-6-sol',
+            thoughtLevels: [{ code: 'high', value: 'High from catalog' }],
+        } as any;
+        expect(getEffortLevelsForModel('codex', 'gpt-6-sol', metadata)).toEqual([
+            { key: 'default', name: 'default effort', description: null },
+            { key: 'high', name: 'High from catalog', description: null },
+        ]);
     });
 
     it('only exposes Gemini permission modes that the CLI accepts', () => {
