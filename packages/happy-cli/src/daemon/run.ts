@@ -1,4 +1,5 @@
 import fs from 'fs/promises';
+import { resolveDaemonAgentCommand } from '@/daemon/agentCommand';
 import os from 'os';
 import * as tmp from 'tmp';
 import axios from 'axios';
@@ -435,8 +436,17 @@ export async function startDaemon(): Promise<void> {
 
           // Construct command for the CLI
           const cliPath = join(projectPath(), 'dist', 'index.mjs');
-          // Determine agent command - support claude, codex, gemini, openclaw, and agy
-          const agent = options.agent === 'gemini' ? 'gemini' : (options.agent === 'codex' ? 'codex' : (options.agent === 'openclaw' ? 'openclaw' : (options.agent === 'agy' ? 'agy' : 'claude')));
+          // Same resolution as the plain-process path below, so an agent can
+          // never start correctly without tmux and silently start Claude with it.
+          let agent: string;
+          try {
+            agent = resolveDaemonAgentCommand(options.agent);
+          } catch (error) {
+            return {
+              type: 'error',
+              errorMessage: error instanceof Error ? error.message : String(error)
+            };
+          }
           const resumeId = agent === 'claude'
             ? options.resumeClaudeSessionId
             : (agent === 'codex' ? options.resumeCodexThreadId : undefined);
@@ -531,30 +541,14 @@ export async function startDaemon(): Promise<void> {
         if (!useTmux) {
           logger.debug(`[DAEMON RUN] Using regular process spawning`);
 
-          // Construct arguments for the CLI - support claude, codex, and gemini
           let agentCommand: string;
-          switch (options.agent) {
-            case 'claude':
-            case undefined:
-              agentCommand = 'claude';
-              break;
-            case 'codex':
-              agentCommand = 'codex';
-              break;
-            case 'gemini':
-              agentCommand = 'gemini';
-              break;
-            case 'openclaw':
-              agentCommand = 'openclaw';
-              break;
-            case 'agy':
-              agentCommand = 'agy';
-              break;
-            default:
-              return {
-                type: 'error',
-                errorMessage: `Unsupported agent type: '${options.agent}'. Please update your CLI to the latest version.`
-              };
+          try {
+            agentCommand = resolveDaemonAgentCommand(options.agent);
+          } catch (error) {
+            return {
+              type: 'error',
+              errorMessage: error instanceof Error ? error.message : String(error)
+            };
           }
           const args = [
             agentCommand,
