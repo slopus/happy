@@ -30,7 +30,7 @@ import { Typography } from '@/constants/Typography';
 import { layout } from './layout';
 import { t } from '@/text';
 import { useNewSessionDraft } from '@/hooks/useNewSessionDraft';
-import { useAllMachines, useProjects, useSessions, useSetting } from '@/sync/storage';
+import { useAllMachines, useProjects, useSessions, useSessionsById, useSetting } from '@/sync/storage';
 import { getCodeAgentDefaults, resolveAgentDefaultConfig } from '@/sync/agentDefaults';
 import { formatLastSeen, formatPathRelativeToHome } from '@/utils/sessionUtils';
 import { isMachineOnline } from '@/utils/machineUtils';
@@ -50,14 +50,17 @@ import {
     resolveWorktreeCreationMachine,
 } from '@/sync/machineChoices';
 import type { Session } from '@/sync/storageTypes';
+import { findLastAgentCatalog } from '@/utils/lastAgentCatalog';
+import {
+    preferredModelKeys,
+    preferredPermissionKeys,
+    resolveComposerModelModes,
+    resolveComposerPermissionModes,
+} from '@/utils/newSessionModeSelection';
 import {
     getEffortLevelsForModel,
-    getHardcodedModelModes,
-    getHardcodedPermissionModes,
-    filterPermissionModesForCli,
     getSupportsWorktree,
     groupModelModesByProvider,
-    includeConfiguredModel,
     truncateModelLabel,
     type ModeOption,
 } from './modelModeOptions';
@@ -1037,32 +1040,42 @@ export const HomeDock = React.memo(({
             effortLevel: rigCreation.defaultEffortForModel(rigCreation.defaultModelKey),
         }
         : resolveAgentDefaultConfig(defaultOverrides, agentType, happyCliVersion), [agentType, defaultOverrides, happyCliVersion, rigCreation]);
+    // An ACP agent publishes its catalog only once a session exists, so the
+    // new-chat chips reuse what it reported last on this computer. Without
+    // this the picker offers another vendor's models until the chat starts.
+    const sessionsById = useSessionsById();
+    const lastCatalog = React.useMemo(
+        () => findLastAgentCatalog(sessionsById, agentType, resolvedMachineId),
+        [sessionsById, agentType, resolvedMachineId],
+    );
     const permissionOptions = React.useMemo(
-        // The CLI daemon on the picked computer is what will parse the mode;
-        // older CLIs drop the whole prompt on modes they do not know (`auto`).
-        () => rigCreation?.permissionModes ?? filterPermissionModesForCli(
-            getHardcodedPermissionModes(agentType, t),
+        () => rigCreation?.permissionModes ?? resolveComposerPermissionModes({
+            flavor: agentType,
+            lastCatalog,
             happyCliVersion,
-        ),
-        [agentType, happyCliVersion, rigCreation],
+            translate: t,
+        }),
+        [agentType, happyCliVersion, rigCreation, lastCatalog],
     );
     const modelOptions = React.useMemo(
-        () => rigCreation?.models ?? includeConfiguredModel(
-            agentType,
-            getHardcodedModelModes(agentType, t),
-            defaults.modelMode,
-        ),
-        [agentType, defaults.modelMode, rigCreation],
+        () => rigCreation?.models ?? resolveComposerModelModes({
+            flavor: agentType,
+            lastCatalog,
+            configuredModelKey: defaults.modelMode,
+            translate: t,
+        }),
+        [agentType, defaults.modelMode, rigCreation, lastCatalog],
     );
     // The code default last: when the saved and configured modes were both
     // filtered out for an old CLI, land there rather than on whichever mode
     // happens to lead the list.
-    const currentPermission = resolveOption(permissionOptions, [
+    const currentPermission = resolveOption(permissionOptions, preferredPermissionKeys(
         permissionMode,
+        lastCatalog,
         defaults.permissionMode,
         rigCreation ? null : getCodeAgentDefaults(agentType, happyCliVersion).permissionMode,
-    ]);
-    const currentModel = resolveOption(modelOptions, [modelMode, defaults.modelMode]);
+    ));
+    const currentModel = resolveOption(modelOptions, preferredModelKeys(modelMode, lastCatalog, defaults.modelMode));
     const effortOptions = React.useMemo(
         () => rigCreation
             ? rigCreation.effortsForModel(currentModel?.key).map((key) => ({ key, name: key }))

@@ -1715,6 +1715,10 @@ export function useSessions() {
     return storage(useShallow((state) => state.isDataReady ? state.sessionsData : null));
 }
 
+export function useSessionsById(): Record<string, Session> {
+    return storage(useShallow((state) => state.sessions));
+}
+
 export function useSession(id: string): Session | null {
     return storage(useShallow((state) => state.sessions[id] ?? null));
 }
