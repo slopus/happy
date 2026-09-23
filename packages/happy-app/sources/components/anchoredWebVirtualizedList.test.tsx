@@ -27,6 +27,46 @@ const props = (data: number[]) => ({ data, getItem: (rows: number[], index: numb
 });
 afterEach(() => { vi.restoreAllMocks(); });
 
+it.each(['input', 'replacement', 'disconnect'])('retains a growing group’s visible Skill through delayed geometry, then yields on %s', async cancel => {
+    let list: any; let renderer: any; let skillTop = 8;
+    const skill = { isConnected: true, getBoundingClientRect: () => ({ top: skillTop, bottom: skillTop + 24 }) };
+    const group = { isConnected: true, getAttribute: () => 'wire-1',
+        getBoundingClientRect: () => ({ top: -600, bottom: 2400 }), querySelectorAll: () => [skill] };
+    const node = { scrollTop: 700, getBoundingClientRect: () => ({ top: 0, bottom: 600 }),
+        querySelectorAll: () => [group], addEventListener() {}, removeEventListener() {} };
+    const write = vi.fn(({ offset }: { offset: number }) => { skillTop -= offset - node.scrollTop; node.scrollTop = offset; });
+    const coordinator = new WebTranscriptScrollCoordinator(() => ({ scrollToOffset: write, scrollToIndex() {}, scrollToEnd() {} }));
+    const before = [1]; let after = [0, 1];
+    const Row = ({ phase }: { phase: number }) => {
+        React.useLayoutEffect(() => { if (phase === 1) skillTop += 1120; }, [phase]);
+        return <span />;
+    };
+    const render = (phase: number) => <List {...props(phase ? after : before)}
+        ref={(value: any) => { list = value; }} scrollCoordinator={coordinator}
+        renderItem={({ item }: { item: number }) => item === 1 ? <Row phase={phase} /> : <span />} />;
+    await act(async () => { renderer = TestRenderer.create(render(0)); });
+    list._scrollRef = { getScrollableNode: () => node, scrollTo: vi.fn() };
+    try {
+        coordinator.userIntent('older'); const id = coordinator.beginHistory('page', 'older')!;
+        await act(async () => renderer.update(render(1)));
+        expect(skillTop).toBe(8);
+        expect(write).toHaveBeenCalledExactlyOnceWith({ offset: 1820, animated: false });
+        coordinator.finishHistory(id);
+        // ResizeObserver/layout measurement arrives after the data commit.
+        skillTop += 147;
+        await act(async () => renderer.update(render(2)));
+        expect(skillTop).toBe(8);
+        expect(write).toHaveBeenLastCalledWith({ offset: 1967, animated: false });
+        if (cancel === 'input') coordinator.userIntent('older');
+        if (cancel === 'replacement') after = [...after];
+        if (cancel === 'disconnect') skill.isConnected = false;
+        skillTop += 40;
+        await act(async () => renderer.update(render(3)));
+        expect(skillTop).toBe(48);
+        expect(write).toHaveBeenCalledTimes(2);
+    } finally { act(() => renderer.unmount()); coordinator.dispose(); }
+});
+
 it('coordinated commits measure only a history transaction and never apply an estimated fallback', async () => {
     let list: any; let renderer: any; let rowTop = 100;
     const measure = vi.fn(() => ({ top: rowTop, bottom: rowTop + 100 }));

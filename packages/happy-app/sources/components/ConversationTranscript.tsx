@@ -314,7 +314,10 @@ export const ConversationTranscript = React.memo((props: ConversationTranscriptP
             const spacer = Math.max(0, extent.current[direction === 'older' ? 'leading' : 'trailing']);
             const distance = node ? direction === 'older' ? node.scrollTop - spacer
                 : node.scrollHeight - node.clientHeight - node.scrollTop - spacer : Infinity;
-            if (spacer > 0 && distance <= 2 * (node?.clientHeight ?? 0)) loadBoundaryRef.current(direction, false, true);
+            // Refill only an exposed blank extent. A two-screen prefetch here
+            // chained whole pages into one growing Skills row after the user's
+            // gesture had already ended, repeatedly displacing its contents.
+            if (spacer > 0 && distance < -0.5) loadBoundaryRef.current(direction, false, true);
             else boundaryFill.current = null;
         });
         return () => cancelAnimationFrame(frame);

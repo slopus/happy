@@ -13,6 +13,7 @@ export function createAnchoredWebVirtualizedList(Base: any): any {
     const key = (props: any, index: number): string => props.keyExtractor(props.getItem(props.data, index), index);
     return class AnchoredWebVirtualizedList extends Base {
         private appliedAnchorRevision = 0;
+        private pendingLayoutAnchor: { node: HTMLElement; offset: number; transaction: number } | null = null;
         constructor(props: any) {
             super(props);
             if (!this.state?.cellsAroundViewport || !this._scrollMetrics || typeof props.getItemLayout !== 'function') {
@@ -60,6 +61,11 @@ export function createAnchoredWebVirtualizedList(Base: any): any {
             if (this.props.inverted) return null;
             const coordinator = this.props.scrollCoordinator;
             const transaction = coordinator?.history;
+            const pending = this.pendingLayoutAnchor;
+            if (pending && (!coordinator?.canReconcileLayout(pending.transaction)
+                || previous.data !== this.props.data)) this.pendingLayoutAnchor = null;
+            if (this.pendingLayoutAnchor && previous.data === this.props.data
+                && previous.getItemLayout !== this.props.getItemLayout) return this.pendingLayoutAnchor;
             if (coordinator && (!transaction || transaction.compensated || previous.data === this.props.data)) return null;
             if (transaction && this.props.historyBoundaryKeys?.[transaction.direction === 'older' ? 0 : 1] === transaction.key) return null;
             const scroll = this._scrollRef?.getScrollableNode?.() as HTMLElement | undefined;
@@ -81,6 +87,17 @@ export function createAnchoredWebVirtualizedList(Base: any): any {
                 if (nodeKey && !survivingKeys.has(nodeKey)) continue;
                 const bounds = node.getBoundingClientRect();
                 if (bounds.bottom > viewport.top && bounds.top < viewport.bottom) {
+                    // A folded work row still contains its Skills/subagent
+                    // strip. Older pages prepend *inside* that retained row.
+                    // Pin the first visible stable activity instead of its
+                    // unchanged outer top (or the response far below it).
+                    for (const activity of node.querySelectorAll?.<HTMLElement>('[data-transcript-activity]') ?? []) {
+                        const rect = activity.getBoundingClientRect();
+                        const visible = Math.min(rect.bottom, viewport.bottom) - Math.max(rect.top, viewport.top);
+                        if (visible >= Math.min(12, rect.bottom - rect.top) && rect.bottom > rect.top) {
+                            return { node: activity, offset: rect.top - viewport.top, transaction: transaction?.id };
+                        }
+                    }
                     const anchor = { node, offset: bounds.top - viewport.top, transaction: transaction?.id };
                     // Paging can split a summary while retaining its outer key.
                     // Keep the visible text/media below it in place, rather than
@@ -104,6 +121,12 @@ export function createAnchoredWebVirtualizedList(Base: any): any {
             if (this.props.scrollCoordinator) {
                 if (snapshot?.transaction !== undefined && measured !== null
                     && this.props.scrollCoordinator.compensate(snapshot.transaction, measured)) {
+                    this.pendingLayoutAnchor = { ...snapshot, transaction: snapshot.transaction };
+                    this._scrollMetrics = { ...this._scrollMetrics, offset: measured };
+                    this.props.onAnchorOffsetChange?.(measured);
+                } else if (snapshot?.transaction !== undefined && measured !== null && scroll
+                    && Math.abs(scroll.scrollTop - measured) > 0.5
+                    && this.props.scrollCoordinator.reconcileLayout(snapshot.transaction, measured)) {
                     this._scrollMetrics = { ...this._scrollMetrics, offset: measured };
                     this.props.onAnchorOffsetChange?.(measured);
                 }

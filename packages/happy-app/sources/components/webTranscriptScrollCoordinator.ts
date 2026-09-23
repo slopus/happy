@@ -24,6 +24,7 @@ export class WebTranscriptScrollCoordinator {
     private idleTimer: ReturnType<typeof setTimeout> | null = null;
     private pendingRow: { key: string; align: () => void } | null = null;
     private disposed = false;
+    private layoutCorrection: { id: number; revision: number; expiresAt: number } | null = null;
     onSettled: () => void = () => {};
 
     constructor(private readonly target: () => TranscriptScrollPort | null) {}
@@ -35,6 +36,7 @@ export class WebTranscriptScrollCoordinator {
     };
 
     userIntent(direction?: ScrollDirection) {
+        this.layoutCorrection = null;
         this.revision++;
         this.pendingRow = null;
         if (this.history && direction !== this.history.direction) this.history = null;
@@ -61,7 +63,20 @@ export class WebTranscriptScrollCoordinator {
     compensate(id: number, offset: number): boolean {
         if (!this.history || this.history.id !== id || this.history.compensated || !Number.isFinite(offset)) return false;
         this.history.compensated = true;
+        this.layoutCorrection = { id, revision: this.revision, expiresAt: Date.now() + 1000 };
         mark('anchor-compensation');
+        this.driver.scrollToOffset({ offset: Math.max(0, offset), animated: false });
+        return true;
+    }
+
+    canReconcileLayout(id: number) {
+        return this.layoutCorrection?.id === id && this.isCurrent(this.layoutCorrection.revision)
+            && Date.now() < this.layoutCorrection.expiresAt && this.interaction !== 'settled';
+    }
+
+    reconcileLayout(id: number, offset: number) {
+        if (!this.canReconcileLayout(id) || !Number.isFinite(offset)) return false;
+        mark('layout-reconcile');
         this.driver.scrollToOffset({ offset: Math.max(0, offset), animated: false });
         return true;
     }
@@ -71,6 +86,7 @@ export class WebTranscriptScrollCoordinator {
     }
 
     jump(key?: string, align?: () => void) {
+        this.layoutCorrection = null;
         this.history = null;
         this.direction = undefined;
         this.interaction = 'programmaticJump';
@@ -97,6 +113,7 @@ export class WebTranscriptScrollCoordinator {
             const remaining = 250 - (Date.now() - this.lastActivity);
             if (remaining > 0) { this.idleTimer = setTimeout(check, remaining); return; }
             this.idleTimer = null;
+            this.layoutCorrection = null;
             this.interaction = 'settled';
             if (this.canCapture()) { mark('reading-capture'); this.onSettled(); }
         };
@@ -104,6 +121,7 @@ export class WebTranscriptScrollCoordinator {
     }
 
     reset() {
+        this.layoutCorrection = null;
         this.revision++;
         this.history = null;
         this.pendingRow = null;

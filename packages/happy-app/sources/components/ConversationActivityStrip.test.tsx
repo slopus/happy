@@ -70,6 +70,19 @@ function toolMessage(id: string, name: string, input: Record<string, unknown>, c
 }
 
 describe('ConversationActivityStrip', () => {
+    it('keeps a stable inner scroll anchor when older activities change the display order', () => {
+        const skill = toolMessage('2', 'Skill', { skill: 'ego-browser' });
+        const older = toolMessage('1', 'Skill', { skill: 'systematic-debugging' });
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<ConversationActivityStrip messages={[skill]} />); });
+        const anchor = () => renderer.root.findByProps({ testID: 'activity-skill-ego-browser' }).props.dataSet.transcriptActivity;
+        const before = anchor();
+        expect(before).toContain('skill');
+        act(() => renderer.update(<ConversationActivityStrip messages={[older, skill]} />));
+        expect(anchor()).toBe(before);
+        expect(renderer.root.findAll((node: any) => node.props.testID?.startsWith('activity-skill-'))).toHaveLength(2);
+        act(() => renderer.unmount());
+    });
     it('keeps an open Skill preview mounted when older history changes its sorting position', () => {
         const skill = toolMessage('2', 'Skill', { skill: 'ego-browser' });
         const frame = toolMessage('3', 'file', { source: 'browser_step', ref: 'attachment://3', name: '3.png',

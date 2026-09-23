@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { ActivityIndicator, Pressable, Text, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Message } from '@/sync/typesMessage';
@@ -13,6 +13,12 @@ import { useSubagentInspector } from './subagent/SubagentInspectorContext';
 import { SkillBrowserProgress } from './SkillBrowserProgress';
 
 export const ConversationActivitySuppressedContext = React.createContext(false);
+
+// Inner history anchors: a work group can grow by thousands of pixels while
+// retaining its outer render key. Keep the visible activity, not the group top.
+function activityAnchor(kind: string, id: string) {
+    return Platform.OS === 'web' ? { dataSet: { transcriptActivity: JSON.stringify([kind, id]) } } : {};
+}
 
 export const ConversationActivityStrip = React.memo(function ConversationActivityStrip(props: {
     messages: Message[];
@@ -44,6 +50,7 @@ export const ConversationActivityStrip = React.memo(function ConversationActivit
                     />
                 ) : inspector ? (
                     <Pressable
+                        {...activityAnchor('subagent', activity.id)}
                         accessibilityLabel={t('toolGroup.openSubagentDetails', {
                             title: activity.title ?? activity.id,
                         })}
@@ -73,6 +80,7 @@ export const ConversationActivityStrip = React.memo(function ConversationActivit
                     </Pressable>
                 ) : (
                     <View
+                        {...activityAnchor('subagent', activity.id)}
                         key={`subagent-${activity.id}`}
                         style={[styles.subagentRow, { paddingLeft: 8 + activity.depth * 16 }]}
                         testID={`activity-subagent-${activity.id}`}
@@ -135,7 +143,7 @@ function SkillActivityRow(props: { activity: SkillConversationActivity }) {
 
     if (!canExpand) {
         return (
-            <View style={rowStyle} testID={`activity-skill-${activity.name}`}>
+            <View {...activityAnchor('skill', activity.id)} style={rowStyle} testID={`activity-skill-${activity.name}`}>
                 <View style={styles.skillLine}>
                     <View style={styles.skillCopy}>{content}</View>
                     <SkillBrowserProgress invocationMessageIds={activity.invocationMessageIds} />
@@ -145,7 +153,7 @@ function SkillActivityRow(props: { activity: SkillConversationActivity }) {
     }
 
     return (
-        <View style={styles.skillLine}>
+        <View {...activityAnchor('skill', activity.id)} style={styles.skillLine}>
         <Pressable
             accessibilityLabel={t(
                 expanded ? 'toolGroup.closeSkillDetails' : 'toolGroup.openSkillDetails',
