@@ -33,7 +33,7 @@ import { KeyboardAvoidingView, KeyboardStickyView } from 'react-native-keyboard-
 import Constants from 'expo-constants';
 import { useHeaderHeight } from '@/utils/responsive';
 import { t } from '@/text';
-import { useAllMachines, useLocalSetting, useProjects, useSessions, useSetting, storage } from '@/sync/storage';
+import { useAllMachines, useLocalSetting, useProjects, useSessions, useSessionsById, useSetting, storage } from '@/sync/storage';
 import type { NewSessionAgentType } from '@/sync/persistence';
 import { sync } from '@/sync/sync';
 import { isMachineOnline } from '@/utils/machineUtils';
@@ -58,12 +58,8 @@ import {
     resolveWorktreeCreationMachine,
 } from '@/sync/machineChoices';
 import {
-    filterPermissionModesForCli,
-    getHardcodedPermissionModes,
-    getHardcodedModelModes,
     getEffortLevelsForModel,
     getSupportsWorktree,
-    includeConfiguredModel,
     type PermissionMode,
     type ModelMode,
     type EffortLevel,
@@ -90,7 +86,15 @@ import {
     rememberSpawnedSession,
     resolveSpawnRequestId,
 } from '@/sync/spawnRequestId';
-import { resolvePermissionStyle, resolveSelectedOption } from '@/utils/newSessionModeSelection';
+import {
+    preferredModelKeys,
+    preferredPermissionKeys,
+    resolveComposerModelModes,
+    resolveComposerPermissionModes,
+    resolvePermissionStyle,
+    resolveSelectedOption,
+} from '@/utils/newSessionModeSelection';
+import { findLastAgentCatalog } from '@/utils/lastAgentCatalog';
 import { resolveHappyAgentSpawnTarget } from '@/sync/happyAgentSpawn';
 import { MobileGlassSurface } from '@/components/MobileGlass';
 import { getNativeGlassInteractivity } from '@/components/glassInteractionPolicy';
@@ -110,6 +114,7 @@ const agentIcons = {
     codex: require('@/assets/images/icon-gpt.png'),
     openclaw: require('@/assets/images/icon-openclaw.png'),
     gemini: require('@/assets/images/icon-gemini.png'),
+    opencode: require('@/assets/images/icon-opencode.png'),
     agy: require('@/assets/images/icon-agy.png'),
 };
 
@@ -120,6 +125,7 @@ const ALL_AGENTS: { key: AgentKey; label: string }[] = [
     { key: 'claude', label: 'claude code' },
     { key: 'codex', label: 'codex' },
     { key: 'agy', label: 'antigravity' },
+    { key: 'opencode', label: 'opencode' },
     { key: 'rig', label: 'happy' },
 ];
 
@@ -1094,12 +1100,22 @@ function NewSessionScreen() {
     // Derive options from agent type. The CLI daemon on the picked computer is
     // what will parse the mode; older CLIs drop the whole prompt on modes they
     // do not know (`auto`), so those are not offered.
+    // An ACP agent publishes its catalog only once a session exists, so the
+    // composer reuses what this agent reported last on the picked computer.
+    // The home dock does the same, through the same helpers.
+    const sessionsById = useSessionsById();
+    const lastCatalog = React.useMemo(
+        () => findLastAgentCatalog(sessionsById, selectedAgent, selectedChoice?.id ?? selectedMachineId),
+        [sessionsById, selectedAgent, selectedChoice?.id, selectedMachineId],
+    );
     const permissionModes = React.useMemo<PermissionMode[]>(
-        () => rigCreation?.permissionModes ?? filterPermissionModesForCli(
-            getHardcodedPermissionModes(selectedAgent, t),
+        () => rigCreation?.permissionModes ?? resolveComposerPermissionModes({
+            flavor: selectedAgent,
+            lastCatalog,
             happyCliVersion,
-        ),
-        [happyCliVersion, selectedAgent, rigCreation],
+            translate: t,
+        }),
+        [happyCliVersion, selectedAgent, rigCreation, lastCatalog],
     );
     const effectiveAgentDefaults = React.useMemo(() => rigCreation
         ? {
@@ -1109,12 +1125,13 @@ function NewSessionScreen() {
         }
         : resolveAgentDefaultConfig(agentDefaultOverrides, selectedAgent, happyCliVersion), [agentDefaultOverrides, happyCliVersion, selectedAgent, rigCreation]);
     const modelModes = React.useMemo<ModelMode[]>(
-        () => rigCreation?.models ?? includeConfiguredModel(
-            selectedAgent,
-            getHardcodedModelModes(selectedAgent, t),
-            effectiveAgentDefaults.modelMode,
-        ),
-        [selectedAgent, effectiveAgentDefaults.modelMode, rigCreation],
+        () => rigCreation?.models ?? resolveComposerModelModes({
+            flavor: selectedAgent,
+            lastCatalog,
+            configuredModelKey: effectiveAgentDefaults.modelMode,
+            translate: t,
+        }),
+        [selectedAgent, effectiveAgentDefaults.modelMode, rigCreation, lastCatalog],
     );
 
     const currentModel = resolveSelectedOption(modelModes, modelIndex);
@@ -1134,19 +1151,21 @@ function NewSessionScreen() {
 
     // Reset indices when agent/default settings change.
     React.useEffect(() => {
-        setPermissionIndex(findPreferredModeIndex(permissionModes, [
+        setPermissionIndex(findPreferredModeIndex(permissionModes, preferredPermissionKeys(
             draft.permissionMode,
+            lastCatalog,
             effectiveAgentDefaults.permissionMode,
             // When the saved and default modes were both filtered out for an
             // old CLI, land on the flavor's code default rather than whichever
             // mode happens to lead the list.
             rigCreation ? null : getCodeAgentDefaults(selectedAgent, happyCliVersion).permissionMode,
-        ]));
+        )));
 
-        setModelIndex(findPreferredModeIndex(modelModes, [
+        setModelIndex(findPreferredModeIndex(modelModes, preferredModelKeys(
             draft.modelMode,
+            lastCatalog,
             effectiveAgentDefaults.modelMode,
-        ]));
+        )));
 
         if (!canPickWorktree) setWorktreeKey('__none__');
     }, [
@@ -1161,6 +1180,7 @@ function NewSessionScreen() {
         rigCreation,
         happyCliVersion,
         selectedAgent,
+        lastCatalog,
     ]);
 
     // Reset effort when model changes
