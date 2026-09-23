@@ -1,3 +1,4 @@
+import { normalizeModelEffortKey } from '@/components/modelModeOptions';
 import type { Session } from './storageTypes';
 import type { Settings } from './settings';
 import { getAgentDefaultOverride, getCodeAgentDefaults } from './agentDefaults';
@@ -45,10 +46,11 @@ export function resolveMessageModeMeta(
         meta.model = modelMode === 'default' ? null : modelMode;
     }
 
-    const effort = session.effortLevel
+    const requestedEffort = session.effortLevel
         ?? session.metadata?.currentThoughtLevelCode
         ?? agentOverrides.effortLevel
         ?? codeDefaults.effortLevel;
+    const effort = normalizeModelEffortKey(flavor, modelMode ?? 'default', requestedEffort, session.metadata);
     const supportsEffort = !flavor
         || flavor === 'claude'
         || flavor === 'codex';

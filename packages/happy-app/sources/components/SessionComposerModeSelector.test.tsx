@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { resolveRunningSessionTurnModes } from '@/utils/runningSessionTurnModes';
 import { SessionComposerModeSelector } from './SessionComposerModeSelector';
 
 // @ts-expect-error react-test-renderer has no declarations in this workspace.
@@ -62,6 +63,31 @@ describe('SessionComposerModeSelector', () => {
 
     afterEach(() => {
         consoleErrorSpy.mockRestore();
+    });
+
+    it.each(['gpt-6-sol', 'gpt-6-luna'])('offers %s from an existing session catalog', (model) => {
+        const modes = resolveRunningSessionTurnModes({
+            session: { modelMode: null, effortLevel: null, metadata: {
+                flavor: 'codex', currentModelCode: 'gpt-6-astra',
+                models: [{ code: 'gpt-6-astra', value: 'gpt-6-astra' }],
+            } } as any,
+            agentDefaultOverrides: {}, translate: (key) => key,
+        });
+        const onModelChange = vi.fn();
+        let renderer: any;
+        act(() => {
+            renderer = TestRenderer.create(<SessionComposerModeSelector
+                online model={modes.modelMode} modelOptions={modes.availableModels}
+                effort={modes.effortLevel} effortOptions={modes.availableEffortLevels}
+                onModelChange={onModelChange} onEffortChange={vi.fn()}
+            />);
+        });
+        act(() => renderer.root.findByProps({ testID: 'session-composer-model-trigger' }).props.onPress());
+        const picker = renderer.root.findByType('PickerContent');
+        expect(picker.props.items.some((item: any) => item.key === model)).toBe(true);
+        act(() => picker.props.onSelect(model));
+        expect(onModelChange).toHaveBeenCalledWith(model);
+        act(() => renderer.unmount());
     });
 
     it('opens model and effort pickers independently', () => {

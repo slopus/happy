@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
     getAvailableModels,
-    getNewSessionModelModes,
+    getSuggestedModelModes,
     getAvailablePermissionModes,
     getEffortLevelsForModel,
     getCodexModelModes,
@@ -59,7 +59,7 @@ describe('modelModeOptions', () => {
             { code: 'gpt-5.6-sol', value: 'Older Sol' },
             { code: 'custom-model', value: 'Custom' },
         ] } as any;
-        const models = getNewSessionModelModes('codex', metadata, translate);
+        const models = getSuggestedModelModes('codex', metadata, translate);
         expect(models.map((model) => model.key)).toEqual([
             'default', 'gpt-6-astra', 'gpt-6-sol', 'gpt-6-luna', 'gpt-5.6-sol', 'custom-model',
         ]);
@@ -75,7 +75,7 @@ describe('modelModeOptions', () => {
             { code: 'gpt-6-luna', value: 'Luna' },
         ] } as any;
         const original = JSON.stringify(metadata);
-        const models = getNewSessionModelModes('codex', metadata, translate);
+        const models = getSuggestedModelModes('codex', metadata, translate);
         expect(models.map((model) => model.key)).toEqual(['default', 'gpt-6-astra', 'gpt-6-sol', 'gpt-6-luna']);
         expect(models[2].description).toBe('Live description');
         expect(JSON.stringify(metadata)).toBe(original);
@@ -84,10 +84,10 @@ describe('modelModeOptions', () => {
     it('leaves custom provider catalogs alone and uses current fallbacks without metadata', () => {
         const metadata = { models: [{ code: 'private-model', value: 'Private' }] } as any;
         for (const flavor of ['codex', 'gemini']) {
-            expect(getNewSessionModelModes(flavor, metadata, translate))
+            expect(getSuggestedModelModes(flavor, metadata, translate))
                 .toEqual(getAvailableModels(flavor, metadata, translate));
         }
-        expect(getNewSessionModelModes('codex', null, translate)).toEqual(getCodexModelModes());
+        expect(getSuggestedModelModes('codex', null, translate)).toEqual(getCodexModelModes());
     });
 
     it.each(['gpt-6-sol', 'gpt-6-luna'])('does not inherit Astra-only efforts for %s', (model) => {

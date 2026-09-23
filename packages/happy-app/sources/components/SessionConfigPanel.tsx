@@ -32,7 +32,7 @@ import { useShallow } from 'zustand/react/shallow';
 import type { Machine, Session } from '@/sync/storageTypes';
 import {
     getHardcodedPermissionModes,
-    getNewSessionModelModes,
+    getSuggestedModelModes,
     getEffortLevelsForModel,
     getSupportsWorktree,
     type PermissionMode,
@@ -946,7 +946,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
             [selectedAgent, selectedMachineId, sessions],
         );
         const modelModes = React.useMemo<ModelMode[]>(
-            () => getNewSessionModelModes(selectedAgent, modelMetadata, t),
+            () => getSuggestedModelModes(selectedAgent, modelMetadata, t),
             [modelMetadata, selectedAgent],
         );
         const configExperience = React.useMemo(

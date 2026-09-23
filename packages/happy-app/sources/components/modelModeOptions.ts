@@ -204,9 +204,10 @@ export function getAvailableModels(
     return getHardcodedModelModes(flavor, translate);
 }
 
-// New-session metadata is borrowed from an older session, not a live catalog.
-// Keep current suggestions visible while preserving catalog labels and custom models.
-export function getNewSessionModelModes(
+// Session metadata is a startup-time snapshot, including in running sessions.
+// Both pickers supplement it with current suggestions; this is not an access check.
+// Preserve catalog labels and custom models.
+export function getSuggestedModelModes(
     flavor: AgentFlavor,
     metadata: Metadata | null | undefined,
     translate: Translate,
@@ -329,6 +330,22 @@ export function getEffortLevelsForModel(flavor: AgentFlavor, modelKey: string, m
         return getCodexEffortLevels();
     }
     return [];
+}
+
+// A model switch can retain an effort from the previous model in session state.
+// Keep picker and outbound metadata consistent without rewriting that state.
+export function normalizeModelEffortKey(
+    flavor: AgentFlavor,
+    modelKey: string,
+    effortKey: string | null | undefined,
+    metadata?: Metadata | null,
+): string | null | undefined {
+    if (flavor !== 'codex' || !['gpt-6-sol', 'gpt-6-luna'].includes(modelKey) || !effortKey) {
+        return effortKey;
+    }
+    return getEffortLevelsForModel(flavor, modelKey, metadata).some((level) => level.key === effortKey)
+        ? effortKey
+        : 'default';
 }
 
 // Default effort for a model — highest the model allows
