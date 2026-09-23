@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { applySandboxPermissionPolicy, extractPermissionModeFromClaudeArgs, mapToClaudeMode, normalizeRemotePermissionMode, resolveInitialClaudePermissionMode, resolveRemoteClaudePermissionMode } from './permissionMode';
+import { extractPermissionModeFromClaudeArgs, mapToClaudeMode, normalizeRemotePermissionMode, resolveInitialClaudePermissionMode, resolveRemoteClaudePermissionMode } from './permissionMode';
 import { MessageMetaSchema, type PermissionMode } from '@/api/types';
 
 describe('mapToClaudeMode', () => {
@@ -106,21 +106,6 @@ describe('resolveInitialClaudePermissionMode', () => {
 
     it('falls back to option mode when claude args have no mode', () => {
         expect(resolveInitialClaudePermissionMode('bypassPermissions', ['--foo'])).toBe('bypassPermissions');
-    });
-});
-
-describe('applySandboxPermissionPolicy', () => {
-    it('forces bypassPermissions when sandbox is enabled', () => {
-        expect(applySandboxPermissionPolicy('default', true)).toBe('bypassPermissions');
-        expect(applySandboxPermissionPolicy(undefined, true)).toBe('bypassPermissions');
-    });
-
-    it('forces bypassPermissions for plan mode when sandbox is enabled', () => {
-        expect(applySandboxPermissionPolicy('plan', true)).toBe('bypassPermissions');
-    });
-
-    it('returns original mode when sandbox is disabled', () => {
-        expect(applySandboxPermissionPolicy('acceptEdits', false)).toBe('acceptEdits');
     });
 });
 
