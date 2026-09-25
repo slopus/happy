@@ -24,6 +24,14 @@ vi.mock('./utils/sessionScanner', () => ({
     createSessionScanner: mockCreateSessionScanner,
 }));
 
+// Without this mock the suite would read the developer's real
+// ~/.claude/sessions. Worse, if an assertion times out and throws, the
+// launcher's finally never runs, leaving the 500ms poll interval alive in the
+// vitest worker where it goes on scanning that real directory.
+vi.mock('./utils/claudeStatusWatcher', () => ({
+    startClaudeStatusWatcher: () => () => { },
+}));
+
 vi.mock('@/ui/logger', () => ({
     logger: {
         debug: vi.fn(),
