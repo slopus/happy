@@ -18,10 +18,6 @@ describe('mapToClaudeMode', () => {
     });
 
     describe('Claude modes pass through unchanged', () => {
-        it('passes through default', () => {
-            expect(mapToClaudeMode('default')).toBe('default');
-        });
-
         it('passes through acceptEdits', () => {
             expect(mapToClaudeMode('acceptEdits')).toBe('acceptEdits');
         });
@@ -42,7 +38,7 @@ describe('mapToClaudeMode', () => {
         ];
 
         it('returns a valid Claude mode for every PermissionMode', () => {
-            const validClaudeModes = ['auto', 'default', 'acceptEdits', 'bypassPermissions', 'plan'];
+            const validClaudeModes = ['auto', 'default', 'acceptEdits', 'bypassPermissions', 'plan', undefined];
 
             allModes.forEach(mode => {
                 const result = mapToClaudeMode(mode);
@@ -62,6 +58,24 @@ describe('mapToClaudeMode', () => {
     // letting Claude apply its own configuration.
     it('keeps an unset mode unset rather than inventing one', () => {
         expect(mapToClaudeMode(undefined)).toBeUndefined();
+    });
+
+    // Regression (#1695): app builds predating the client-side fix send the
+    // literal 'default' with every spawn. Forwarding it produces an explicit
+    // `--permission-mode default` on the Claude command line, and a flag
+    // outranks settings.json — a user whose permissions.defaultMode is 'auto'
+    // silently loses it and is prompted on nearly every tool call. Both wire
+    // spellings of "no override" have to reach the SDK as undefined.
+    it('treats a literal Claude default as no override', () => {
+        expect(mapToClaudeMode('default')).toBeUndefined();
+    });
+
+    // Codex's own ask-first policies still need a concrete mode: for them
+    // "ask" is the pick, not the absence of one, so they must not fall back
+    // to whatever the user configured for Claude.
+    it('still maps the Codex ask-first modes to a literal default', () => {
+        expect(mapToClaudeMode('safe-yolo')).toBe('default');
+        expect(mapToClaudeMode('read-only')).toBe('default');
     });
 });
 
