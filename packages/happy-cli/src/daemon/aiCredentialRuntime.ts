@@ -473,9 +473,18 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
         rotation: apiKeyRotationStatus(),
       }
     }
+    // Only once the list is verified to be exactly the imported bundle can
+    // "every enabled account needs login" be blamed on the bundle itself.
+    const noUsableAccountKind = (current: ClaudeListDetails) => {
+      if (importedAccountIdentities === null) return 'CLAUDE_APPLY_VERIFICATION_FAILED'
+      const enabled = current.accounts.filter((account) => account.disabled !== true)
+      return enabled.length > 0 && enabled.every((account) => account.usageStatus === 'relogin_required')
+        ? 'CLAUDE_APPLY_RELOGIN_REQUIRED'
+        : 'CLAUDE_APPLY_VERIFICATION_FAILED'
+    }
     if (!details.activeUsable) {
       if (details.usableAccountNumber === null) {
-        throw new AiCredentialRuntimeError('CLAUDE_APPLY_VERIFICATION_FAILED')
+        throw new AiCredentialRuntimeError(noUsableAccountKind(details))
       }
       await deps.execFile('cswap', [
         'switch', String(details.usableAccountNumber), '--force', '--json',
@@ -487,7 +496,7 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
       details = parseClaudeListDetails(status.stdout)
       verifyImportedAccounts(details)
       if (!details.activeUsable) {
-        throw new AiCredentialRuntimeError('CLAUDE_APPLY_VERIFICATION_FAILED')
+        throw new AiCredentialRuntimeError(noUsableAccountKind(details))
       }
     }
     await deps.supervisor.enable()

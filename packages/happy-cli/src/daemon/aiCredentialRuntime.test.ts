@@ -1096,7 +1096,11 @@ describe('AI credential machine runtime', () => {
       await expect(runtime.apply({
         provider: 'claude', payload: claudeOauthPayload([{ email: 'owner@example.com' }]),
       })).rejects.toMatchObject({
-        kind: failure === 'command_failure' ? 'CLAUDE_APPLY_FAILED' : 'CLAUDE_APPLY_VERIFICATION_FAILED',
+        kind: failure === 'command_failure'
+          ? 'CLAUDE_APPLY_FAILED'
+          : failure === 'relogin_required'
+            ? 'CLAUDE_APPLY_RELOGIN_REQUIRED'
+            : 'CLAUDE_APPLY_VERIFICATION_FAILED',
         message: expect.not.stringContaining('secret-command-output'),
       })
 
@@ -1304,11 +1308,99 @@ describe('AI credential machine runtime', () => {
       payload: claudeOauthPayload([{
         email: 'new-company@example.com', organizationUuid: 'new-org',
       }]),
-    })).rejects.toMatchObject({ kind: 'CLAUDE_APPLY_VERIFICATION_FAILED' })
+    })).rejects.toMatchObject({ kind: 'CLAUDE_APPLY_RELOGIN_REQUIRED' })
 
     expect(accounts).toEqual([
       { number: 2, email: 'new-company@example.com', organizationUuid: 'new-org', usageStatus: 'relogin_required' },
     ])
+    expect(supervisor.enable).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    {
+      name: 'every imported account requires login',
+      statuses: [{ usageStatus: 'relogin_required' }, { usageStatus: 'relogin_required' }],
+      kind: 'CLAUDE_APPLY_RELOGIN_REQUIRED',
+    },
+    {
+      name: 'the only enabled imported account requires login',
+      statuses: [{ usageStatus: 'relogin_required' }, { usageStatus: 'ok', disabled: true }],
+      kind: 'CLAUDE_APPLY_RELOGIN_REQUIRED',
+    },
+    {
+      name: 'only some imported accounts require login',
+      statuses: [{ usageStatus: 'relogin_required' }, { usageStatus: 'rate_limited' }],
+      kind: 'CLAUDE_APPLY_VERIFICATION_FAILED',
+    },
+    {
+      name: 'every imported account is disabled',
+      statuses: [
+        { usageStatus: 'relogin_required', disabled: true },
+        { usageStatus: 'relogin_required', disabled: true },
+      ],
+      kind: 'CLAUDE_APPLY_VERIFICATION_FAILED',
+    },
+  ])('reports $kind when $name', async ({ statuses, kind }) => {
+    const accounts = statuses.map((status, index) => ({
+      number: index + 1,
+      email: `account-${index + 1}@example.com`,
+      organizationUuid: 'org-a',
+      ...status,
+    }))
+    const execFile = vi.fn(async (command: string, args: string[]) => {
+      if (command === 'cswap' && args[0] === '--version') {
+        return { stdout: 'cswap 0.25.0', stderr: '' }
+      }
+      if (command === 'cswap' && args[0] === 'list') {
+        return {
+          stdout: JSON.stringify({ schemaVersion: 1, activeAccountNumber: null, accounts }),
+          stderr: '',
+        }
+      }
+      return { stdout: '', stderr: '' }
+    })
+    const { runtime, supervisor } = setup({ execFile })
+
+    await expect(runtime.apply({
+      provider: 'claude',
+      payload: claudeOauthPayload(accounts.map(({ email }) => ({ email, organizationUuid: 'org-a' }))),
+    })).rejects.toMatchObject({ kind })
+
+    expect(supervisor.enable).not.toHaveBeenCalled()
+  })
+
+  it('reports relogin required when the imported account expires after switching to it', async () => {
+    let switched = false
+    const execFile = vi.fn(async (command: string, args: string[]) => {
+      if (command === 'cswap' && args[0] === '--version') {
+        return { stdout: 'cswap 0.25.0', stderr: '' }
+      }
+      if (command === 'cswap' && args[0] === 'switch') switched = true
+      if (command === 'cswap' && args[0] === 'list') {
+        return {
+          stdout: JSON.stringify({
+            schemaVersion: 1,
+            activeAccountNumber: switched ? 1 : null,
+            accounts: [{
+              number: 1, email: 'owner@example.com', organizationUuid: 'org-a',
+              usageStatus: switched ? 'relogin_required' : 'ok',
+            }],
+          }),
+          stderr: '',
+        }
+      }
+      return { stdout: '', stderr: '' }
+    })
+    const { runtime, supervisor } = setup({ execFile })
+
+    await expect(runtime.apply({
+      provider: 'claude',
+      payload: claudeOauthPayload([{ email: 'owner@example.com', organizationUuid: 'org-a' }]),
+    })).rejects.toMatchObject({ kind: 'CLAUDE_APPLY_RELOGIN_REQUIRED' })
+
+    expect(execFile).toHaveBeenCalledWith(
+      'cswap', ['switch', '1', '--force', '--json'], expect.anything(),
+    )
     expect(supervisor.enable).not.toHaveBeenCalled()
   })
 
