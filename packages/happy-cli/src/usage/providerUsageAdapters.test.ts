@@ -196,4 +196,49 @@ describe('applied AI auth source reporting', () => {
             env: { HAPPY_AI_AUTH_SOURCE: 'personal-subscription-v2' },
         }).aiAuth).toBeUndefined();
     });
+
+    describe('an observed org deployment login (src/claude/aiAuthObservation.ts)', () => {
+        it('fills in a source the daemon wrote as unknown', () => {
+            // The daemon writes `unknown` for every spawn it could not place,
+            // which is exactly when the run's own observation is worth reporting.
+            expect(createClaudeUsageEvent({
+                ...claudeInput,
+                env: { HAPPY_AI_AUTH_SOURCE: 'unknown', HAPPY_AI_AUTH_CONNECTION_VERSION: '' },
+                observedAiAuthSource: 'org-bundle-observed',
+            }).aiAuth).toEqual({ appliedSource: 'org-bundle-observed', connectionVersion: null });
+            expect(createClaudeTurnUsageEvent({
+                sessionId: claudeInput.sessionId,
+                occurredAt: claudeInput.occurredAt,
+                resultUuid: 'result-uuid-1',
+                usage: claudeInput.usage,
+                env: {},
+                observedAiAuthSource: 'org-bundle-observed',
+            }).aiAuth).toEqual({ appliedSource: 'org-bundle-observed', connectionVersion: null });
+        });
+
+        it('never overrides a source the daemon or a managed run established', () => {
+            expect(createClaudeUsageEvent({
+                ...claudeInput,
+                env: { HAPPY_AI_AUTH_SOURCE: 'platform-glm' },
+                observedAiAuthSource: 'org-bundle-observed',
+            }).aiAuth).toEqual({ appliedSource: 'platform-glm', connectionVersion: null });
+        });
+
+        it('never pairs with a connection version it was not observed under', () => {
+            expect(createClaudeUsageEvent({
+                ...claudeInput,
+                env: { HAPPY_AI_AUTH_SOURCE: 'unknown', HAPPY_AI_AUTH_CONNECTION_VERSION: '4' },
+                observedAiAuthSource: 'org-bundle-observed',
+            }).aiAuth).toEqual({ appliedSource: 'unknown', connectionVersion: 4 });
+        });
+
+        it('is not something the environment can claim', () => {
+            // Only the in-process observation may produce it: a value in
+            // HAPPY_AI_AUTH_SOURCE would also approve an explicit selection.
+            expect(createClaudeUsageEvent({
+                ...claudeInput,
+                env: { HAPPY_AI_AUTH_SOURCE: 'org-bundle-observed' },
+            }).aiAuth).toBeUndefined();
+        });
+    });
 });

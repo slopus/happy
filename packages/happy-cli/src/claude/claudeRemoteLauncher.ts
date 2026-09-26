@@ -13,6 +13,7 @@ import { MessageBuffer } from "@/ui/ink/messageBuffer";
 import { RemoteModeDisplay } from "@/ui/ink/RemoteModeDisplay";
 import React from "react";
 import { claudeRemote, type ClaudeActiveInputSender, type ClaudeTurnLatencyInput } from "./claudeRemote";
+import type { ClaudeAuthObservation, ObservedAiAuthSource } from "./aiAuthObservation";
 import { PermissionHandler } from "./utils/permissionHandler";
 import { Future } from "@/utils/future";
 import type { QueueLatencyTrace } from "@/utils/MessageQueue2";
@@ -220,6 +221,13 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
     let bindChannelPermission: (
         permissionId: string, toolName: string, instanceSeq: number,
     ) => void = () => { };
+    /*
+     * The current run's observation of its Claude login, and what it said when each log message
+     * arrived. Captured on arrival because the queue sends later — possibly after the run that
+     * observed it is over — and a message must carry what its own run saw, not the next one's.
+     */
+    let aiAuthObservation: ClaudeAuthObservation | null = null;
+    const observedAiAuthByLogMessage = new WeakMap<object, ObservedAiAuthSource>();
     const orderingTarget: ChannelTurnOrderingTarget = {
         setPendingTurnRequestId: (requestId) => session.client.setPendingTurnRequestId(requestId),
         sendFinalAnswerForChannelTurn: (text) => session.client.sendFinalAnswerForChannelTurn(text),
@@ -227,7 +235,11 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
         // The dispatcher carries ordinary log messages as `unknown` because it also carries the
         // markers; the client's own signature is the narrower one.
         sendClaudeSessionMessage: (logMessage) =>
-            session.client.sendClaudeSessionMessage(logMessage as Parameters<typeof session.client.sendClaudeSessionMessage>[0]),
+            session.client.sendClaudeSessionMessage(
+                logMessage as Parameters<typeof session.client.sendClaudeSessionMessage>[0],
+                undefined,
+                observedAiAuthByLogMessage.get(logMessage as object),
+            ),
         // Late-bound: the queue needs the target, and the wiring needs the queue.
         bindChannelPermission: (permissionId, toolName, instanceSeq) =>
             bindChannelPermission(permissionId, toolName, instanceSeq),
@@ -302,7 +314,10 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
         // 턴 종료 result 는 transcript 로 가지 않는다 — 사용량 보정만 세션에 넘긴다
         // (Z.AI 호환 경로의 assistant usage 0 문제, src/usage/claudeTurnUsage.ts).
         if (message.type === 'result') {
-            session.client.applyClaudeTurnResult(message as unknown as { uuid?: unknown; usage?: unknown; modelUsage?: unknown });
+            session.client.applyClaudeTurnResult(
+                message as unknown as { uuid?: unknown; usage?: unknown; modelUsage?: unknown },
+                aiAuthObservation?.current(),
+            );
             /*
              * The SDK's own final answer (Saycode specs/desktop-messenger-channels — R14).
              *
@@ -375,6 +390,8 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
         // Convert SDK message to log format and send to client
         const logMessage = sdkToLogConverter.convert(message);
         if (logMessage) {
+            const observedAiAuth = aiAuthObservation?.current();
+            if (observedAiAuth) observedAiAuthByLogMessage.set(logMessage, observedAiAuth);
             // Add permissions field to tool result content
             if (logMessage.type === 'user' && logMessage.message?.content) {
                 const content = Array.isArray(logMessage.message.content)
@@ -897,6 +914,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                     claudeEnvVars: session.claudeEnvVars,
                     claudeArgs: session.claudeArgs,
                     onMessage,
+                    onAiAuthObservationReady: (observation) => { aiAuthObservation = observation; },
                     onStreamEvent: streamRelay.handleStreamEvent,
                     onTurnLatency: (diagnostic) => session.client.sendTurnLatency(diagnostic),
                     onCompletionEvent: (message: string) => {

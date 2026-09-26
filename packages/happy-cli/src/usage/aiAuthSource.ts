@@ -49,6 +49,9 @@ export const AI_AUTH_SOURCES = [
     'platform-gateway',
     /** Not established. Never inferred. */
     'unknown',
+    // `org-bundle-observed` is deliberately absent: it is an in-process
+    // observation (src/claude/aiAuthObservation.ts), never a value the
+    // environment may carry — HAPPY_AI_AUTH_SOURCE also approves selections.
 ] as const
 
 export type AiAuthSource = (typeof AI_AUTH_SOURCES)[number]

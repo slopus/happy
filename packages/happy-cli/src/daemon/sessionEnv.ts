@@ -22,6 +22,7 @@
  * HAPPY_CHECKPOINT_* binds protected checkpoint state to one daemon-verified
  * project/worktree. It follows the same no-implicit-inheritance rule.
  */
+import { CLAUDE_AUTH_OVERRIDE_ENV_KEYS } from '@/claude/utils/claudeAuthOverrideEnv'
 import {
     CHECKPOINT_SPAWN_CONTEXT_ENV_KEY,
     readCheckpointSpawnContext,
@@ -150,14 +151,11 @@ export function stripManagedCredentialConflicts(
     const effectiveRequested = { ...requested }
     for (const key of Object.keys(managed)) delete effectiveRequested[key]
     if (managed.ANTHROPIC_BASE_URL === 'https://api.z.ai/api/anthropic') {
-        delete effectiveRequested.ANTHROPIC_API_KEY
-        delete effectiveRequested.CLAUDE_CODE_OAUTH_TOKEN
+        // ANTHROPIC_AUTH_TOKEN and ANTHROPIC_BASE_URL are in the shared list but
+        // are set by the Z.AI lease itself, so the loop above already removed them.
+        for (const key of CLAUDE_AUTH_OVERRIDE_ENV_KEYS) delete effectiveRequested[key]
         delete effectiveRequested.ANTHROPIC_MODEL
         delete effectiveRequested.ANTHROPIC_SMALL_FAST_MODEL
-        delete effectiveRequested.ANTHROPIC_CUSTOM_HEADERS
-        delete effectiveRequested.CLAUDE_CODE_USE_BEDROCK
-        delete effectiveRequested.CLAUDE_CODE_USE_VERTEX
-        delete effectiveRequested.CLAUDE_CODE_USE_FOUNDRY
     }
     return effectiveRequested
 }

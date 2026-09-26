@@ -824,6 +824,33 @@ describe('ApiSessionClient v3 messages API migration', () => {
         await client.close();
     });
 
+    it('reports an observed org deployment login only on the events it was handed with', async () => {
+        const client = new ApiSessionClient('fake-token', session);
+        mockAxiosPost.mockImplementation(async (_url: string, payload: { messages: Array<{ localId: string }> }) => ({
+            data: { messages: payload.messages.map((message, index) => ({ id: `msg-${index + 1}`, seq: index + 1, localId: message.localId, createdAt: 1, updatedAt: 1 })) },
+        }));
+        const assistant = (id: string) => ({
+            type: 'assistant',
+            uuid: `sdk-uuid-${id}`,
+            timestamp: 1_788_000_000_000,
+            message: { id, model: 'claude-sonnet-4-5', content: [], usage: { input_tokens: 0, output_tokens: 0 } },
+        } as any);
+        client.sendClaudeSessionMessage(assistant('msg-observed'), undefined, 'org-bundle-observed');
+        client.applyClaudeTurnResult({ uuid: 'result-observed', usage: { input_tokens: 5, output_tokens: 1 } }, 'org-bundle-observed');
+        // A local-mode transcript line has no observation to hand over.
+        await client.sendClaudeSessionMessageFromLocalTranscript(assistant('msg-local'));
+
+        const aiAuth = mockSocket.emit.mock.calls
+            .filter(([name]: [string]) => name === 'provider-usage-report')
+            .map(([, event]: [string, any]) => [event.sourceEventId, event.aiAuth]);
+        expect(aiAuth).toEqual([
+            ['test-session-id:anthropic:msg-observed', { appliedSource: 'org-bundle-observed', connectionVersion: null }],
+            ['test-session-id:anthropic:turn:result-observed', { appliedSource: 'org-bundle-observed', connectionVersion: null }],
+            ['test-session-id:anthropic:msg-local', undefined],
+        ]);
+        await client.close();
+    });
+
     it('preserves the Studio optimistic id on a Claude initial prompt', async () => {
         const client = new ApiSessionClient('fake-token', session);
         mockAxiosPost.mockResolvedValueOnce({

@@ -19,7 +19,9 @@ const configuredClaudeList = JSON.stringify({
   accounts: [{ number: 1, email: 'owner@example.com', active: true }],
 })
 
-function claudeOauthPayload(accounts: Array<{ email: string; organizationUuid?: string }>): string {
+function claudeOauthPayload(
+  accounts: Array<{ email: string; organizationUuid?: string; organizationName?: string }>,
+): string {
   return JSON.stringify({
     version: 1,
     encrypted: false,
@@ -28,6 +30,7 @@ function claudeOauthPayload(accounts: Array<{ email: string; organizationUuid?: 
       number: index + 1,
       email: account.email,
       organizationUuid: account.organizationUuid ?? '',
+      organizationName: account.organizationName ?? '',
       credentials: { claudeAiOauth: { accessToken: `oauth-${index + 1}` } },
       config: { oauthAccount: { emailAddress: account.email } },
     })),
@@ -2294,5 +2297,187 @@ describe('AI credential machine runtime', () => {
       if (previousToolBin === undefined) delete process.env.UV_TOOL_BIN_DIR
       else process.env.UV_TOOL_BIN_DIR = previousToolBin
     }
+  })
+})
+
+describe('org deployment provenance (specs/agent-ai-source-routing observation increment)', () => {
+  const HOME = '/home/operator'
+  const provenance = { companyId: 'co-1', bundleId: 'bundle-1', bundleVersion: 3 }
+
+  /** cswap that imports one OAuth account and reports it active once switched. */
+  function workingClaudeExecFile(options: { failVerification?: boolean } = {}) {
+    let activated = false
+    return vi.fn(async (command: string, args: string[]): Promise<AiCredentialCommandResult> => {
+      if (command === 'cswap' && args[0] === '--version') return { stdout: 'cswap 0.25.0', stderr: '' }
+      if (command === 'cswap' && args[0] === 'switch') activated = true
+      if (command === 'cswap' && args[0] === 'list') {
+        return {
+          stdout: JSON.stringify({
+            schemaVersion: 1,
+            activeAccountNumber: 7,
+            accounts: [{
+              number: 7,
+              email: options.failVerification ? 'someone-else@example.com' : 'owner@example.com',
+              organizationUuid: 'org-a',
+              organizationName: 'Corp Inc',
+              usageStatus: activated ? 'ok' : 'relogin_required',
+            }],
+          }),
+          stderr: '',
+        }
+      }
+      if (command === 'npm' && args[0] === 'root') return { stdout: '/global/node_modules\n', stderr: '' }
+      if (command === 'codex-multi-auth' && args[0] === '--version') return { stdout: '2.16.0\n', stderr: '' }
+      return { stdout: '', stderr: '' }
+    })
+  }
+
+  // The outer export names the organization differently from what cswap
+  // imported: the record must carry what was verified after the import, since
+  // that is what the login metadata and accountInfo() will report.
+  const payload = claudeOauthPayload([
+    { email: 'owner@example.com', organizationUuid: 'org-a', organizationName: 'Outer Name' },
+  ])
+
+  async function recorded(files: Map<string, string>) {
+    const { readActiveClaudeProvenance } = await import('./aiCredentialProvenance')
+    return readActiveClaudeProvenance({
+      homeDir: HOME,
+      readFile: async (path) => files.get(path)
+        ?? Promise.reject(Object.assign(new Error('missing'), { code: 'ENOENT' })),
+    })
+  }
+
+  /** The raw record on disk — "records nothing" must hold for the file, not only for the reader. */
+  function wroteAppliedRecord(files: Map<string, string>): boolean {
+    const raw = files.get(`${HOME}/.happy/ai-credential-provenance.json`)
+    if (raw === undefined) return false
+    return (JSON.parse(raw) as { claude?: { state?: string } }).claude?.state === 'applied'
+  }
+
+  it('records the deployment and the verified account identities after a successful apply', async () => {
+    const { runtime, files } = setup({ execFile: workingClaudeExecFile() })
+
+    const response = await runtime.apply({ provider: 'claude', payload, provenance })
+
+    await expect(recorded(files)).resolves.toEqual({
+      ...provenance,
+      generation: response.applyGeneration,
+      identities: new Set([JSON.stringify(['owner@example.com', 'org-a', 'Corp Inc'])]),
+    })
+  })
+
+  it('does not put the account identities in the RPC response — they would reach the server', async () => {
+    const { runtime } = setup({ execFile: workingClaudeExecFile() })
+    const response = await runtime.apply({ provider: 'claude', payload, provenance })
+    expect(JSON.stringify(response)).not.toContain('owner@example.com')
+  })
+
+  it('records nothing when the server sent no provenance (trial, older server)', async () => {
+    const { runtime, files } = setup({ execFile: workingClaudeExecFile() })
+    await runtime.apply({ provider: 'claude', payload })
+    await expect(recorded(files)).resolves.toBeNull()
+    expect(wroteAppliedRecord(files)).toBe(false)
+  })
+
+  it('records nothing for a malformed provenance', async () => {
+    const { runtime, files } = setup({ execFile: workingClaudeExecFile() })
+    await runtime.apply({ provider: 'claude', payload, provenance: { ...provenance, bundleVersion: 0 } })
+    await expect(recorded(files)).resolves.toBeNull()
+    expect(wroteAppliedRecord(files)).toBe(false)
+  })
+
+  it('records nothing when the bundle accounts cannot be identified — nothing was verified', async () => {
+    // An encrypted export hides the account list, so applyClaude skips the
+    // identity check. The apply still succeeds; it just proves nothing.
+    const { runtime, files } = setup()
+    await expect(runtime.apply({
+      provider: 'claude',
+      payload: JSON.stringify({ version: 1, encrypted: true, data: 'opaque' }),
+      provenance,
+    })).resolves.toMatchObject({ provider: 'claude', configured: true })
+    await expect(recorded(files)).resolves.toBeNull()
+    expect(wroteAppliedRecord(files)).toBe(false)
+  })
+
+  it('records nothing for a trial lease, even if provenance came along', async () => {
+    const { runtime, files } = setup({ execFile: workingClaudeExecFile() })
+    await runtime.apply({
+      provider: 'claude',
+      payload,
+      provenance,
+      trialLease: { leaseId: 'lease-1', contentHash: 'a'.repeat(64), bundleVersion: 1 },
+    })
+    await expect(recorded(files)).resolves.toBeNull()
+    expect(wroteAppliedRecord(files)).toBe(false)
+  })
+
+  it('drops an earlier record when a later apply fails verification', async () => {
+    const execFile = workingClaudeExecFile()
+    const { runtime, files } = setup({ execFile })
+    await runtime.apply({ provider: 'claude', payload, provenance })
+    await expect(recorded(files)).resolves.not.toBeNull()
+
+    const failing = workingClaudeExecFile({ failVerification: true })
+    execFile.mockImplementation(failing)
+    await expect(runtime.apply({ provider: 'claude', payload, provenance })).rejects.toThrow()
+
+    await expect(recorded(files)).resolves.toBeNull()
+  })
+
+  it('drops the Claude record when a Z.AI lease replaces the Claude credential', async () => {
+    const { runtime, files } = setup({ execFile: workingClaudeExecFile() })
+    await runtime.apply({ provider: 'claude', payload, provenance })
+
+    await runtime.apply({
+      provider: 'zai',
+      payload: JSON.stringify({ version: 1, kind: 'zai-anthropic', apiKey: 'zai-secret-key' }),
+    })
+
+    await expect(recorded(files)).resolves.toBeNull()
+  })
+
+  it('fences off the Claude record on a Z.AI apply even when the invalidation write fails', async () => {
+    // A Z.AI lease purges the Claude login. The explicit invalidation is only a
+    // write, and writes can fail; the generation bump is what makes it certain.
+    const { runtime, files, writeFile } = setup({ execFile: workingClaudeExecFile() })
+    await runtime.apply({ provider: 'claude', payload, provenance })
+    await expect(recorded(files)).resolves.not.toBeNull()
+
+    const original = writeFile.getMockImplementation()!
+    writeFile.mockImplementation(async (path: string, content: string) => {
+      if (path.includes('ai-credential-provenance')) throw new Error('disk full')
+      return original(path, content)
+    })
+    await runtime.apply({
+      provider: 'zai',
+      payload: JSON.stringify({ version: 1, kind: 'zai-anthropic', apiKey: 'zai-secret-key' }),
+    })
+
+    await expect(recorded(files)).resolves.toBeNull()
+  })
+
+  it('keeps the Claude record when only the Codex credential changes', async () => {
+    const { runtime, files } = setup({ execFile: workingClaudeExecFile() })
+    await runtime.apply({ provider: 'claude', payload, provenance })
+
+    await runtime.apply({ provider: 'codex', payload: JSON.stringify(codexMultiAuthBundle()) }).catch(() => undefined)
+
+    await expect(recorded(files)).resolves.not.toBeNull()
+  })
+
+  it('still applies the credential when the record cannot be written, and says so', async () => {
+    const warn = vi.fn()
+    const { runtime, writeFile } = setup({ execFile: workingClaudeExecFile(), warn })
+    // Wrap the harness writer so every other file still lands in its map.
+    const original = writeFile.getMockImplementation()!
+    writeFile.mockImplementation(async (path: string, content: string) => {
+      if (path.includes('ai-credential-provenance')) throw new Error('disk full')
+      return original(path, content)
+    })
+
+    await expect(runtime.apply({ provider: 'claude', payload, provenance }))
+      .resolves.toMatchObject({ provider: 'claude', configured: true })
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('provenance'))
   })
 })

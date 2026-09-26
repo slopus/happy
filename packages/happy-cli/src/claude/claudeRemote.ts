@@ -49,6 +49,7 @@ import { CheckpointWriterProcessTree } from '@/checkpoint/checkpointWriterProces
 import { randomUUID } from 'node:crypto';
 import type { ContentBlockParam } from '@anthropic-ai/sdk/resources';
 import { managedSettingSources } from '@/managed/managedStartup';
+import { observeClaudeQueryAuth, type ClaudeAuthObservation } from './aiAuthObservation';
 import type { LessonReviewWorker } from '@/memory/lessonReviewWorker';
 import type { LessonTurnKind } from '@/memory/lessonTurnEvidence';
 import {
@@ -218,6 +219,12 @@ export async function claudeRemote(opts: {
     onMcpControllerReady?: (controller: Pick<McpRuntimeRecovery, 'reconnectServer'> | null) => void,
     onActiveInputReady?: (sender: ClaudeActiveInputSender | null) => void,
     onSDKMetadata?: (metadata: { tools?: string[]; slashCommands?: string[]; mcpServers?: { name: string; status: string }[]; skills?: string[]; plugins?: { name: string; path: string }[] }) => void,
+    /**
+     * This run's observation of its Claude login (src/claude/aiAuthObservation.ts),
+     * then `null` once the run is over. Not started for a managed run, whose
+     * source the envelope already decided.
+     */
+    onAiAuthObservationReady?: (observation: ClaudeAuthObservation | null) => void,
     exitAfterFirstTurn?: boolean,
     /** How long a run-once result may wait on background work before ending anyway. */
     backgroundWaitBudgetMs?: number,
@@ -754,6 +761,10 @@ function readTurnText(content: unknown): string {
     let heldResult: SDKMessage | null = null;
     let backgroundWaitExpiry: Promise<SDKMessage> | null = null;
     let backgroundWaitTimer: ReturnType<typeof setTimeout> | undefined;
+    const aiAuthObservation = opts.onAiAuthObservationReady && opts.managedRun !== true
+        ? observeClaudeQueryAuth(response)
+        : null;
+    if (aiAuthObservation) opts.onAiAuthObservationReady?.(aiAuthObservation);
     try {
         logger.debug(`[claudeRemote] Starting to iterate over response`);
 
@@ -848,6 +859,7 @@ function readTurnText(content: unknown): string {
                 updateThinking(true);
 
                 const systemInit = message as SDKSystemMessage;
+                aiAuthObservation?.noteTurnApiKeySource(systemInit.apiKeySource);
 
                 // Session id is still in memory, wait until session file is written to disk
                 // Start a watcher for to detect the session id
@@ -1148,6 +1160,10 @@ function readTurnText(content: unknown): string {
         }
     } finally {
         clearTimeout(backgroundWaitTimer);
+        if (aiAuthObservation) {
+            aiAuthObservation.dispose();
+            opts.onAiAuthObservationReady?.(null);
+        }
         opts.lessonProposalTurn?.cancel();
         opts.signal?.removeEventListener('abort', cancelProposal);
         queryClosed = true;

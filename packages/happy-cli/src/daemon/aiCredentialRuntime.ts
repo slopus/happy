@@ -3,6 +3,7 @@ import { spawn } from 'node:child_process'
 import { chmod, mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { delimiter, join } from 'node:path'
+import { logger } from '@/ui/logger'
 import {
   getCodexMultiAuthProxyStatus,
   isManagedCodexRotationSettings,
@@ -13,6 +14,12 @@ import {
   ZAI_CLAUDE_MODELS,
   ZAI_CLAUDE_TIMEOUT_MS,
 } from '../managed/zaiClaudeEnvironment'
+import {
+  AI_CREDENTIAL_PROVENANCE_PATH,
+  parseClaudeProvenanceInput,
+  serializeAppliedClaudeProvenance,
+  serializeInvalidatedClaudeProvenance,
+} from './aiCredentialProvenance'
 import { overlayManagedCredentialEnvironment } from './sessionEnv'
 
 const MAX_PAYLOAD_BYTES = 1024 * 1024
@@ -89,6 +96,8 @@ export type AiCredentialRuntimeDependencies = {
   chmod(path: string, mode: number): Promise<void>
   rm(path: string, options?: { recursive?: boolean; force?: boolean }): Promise<void>
   makeTempDir(): Promise<string>
+  /** Unexpected but non-fatal conditions, e.g. a provenance record that could not be written. */
+  warn?(message: string): void
   supervisor: Supervisor
   codexProxyStatus?: () => { activeRoutes: number }
 }
@@ -467,10 +476,13 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
         }
       }
       return {
-        provider: 'claude' as const,
-        configured: true,
-        credentialKind: 'api_key' as const,
-        rotation: apiKeyRotationStatus(),
+        result: {
+          provider: 'claude' as const,
+          configured: true,
+          credentialKind: 'api_key' as const,
+          rotation: apiKeyRotationStatus(),
+        },
+        verifiedAccounts: importedAccountIdentities === null ? null : details.accounts,
       }
     }
     // Only once the list is verified to be exactly the imported bundle can
@@ -501,9 +513,14 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
     }
     await deps.supervisor.enable()
     return {
-      provider: 'claude' as const,
-      configured: true,
-      rotation: deps.supervisor.status(),
+      result: {
+        provider: 'claude' as const,
+        configured: true,
+        rotation: deps.supervisor.status(),
+      },
+      // What cswap holds after the import, checked against the payload's
+      // accounts. `null` when the payload's accounts could not be identified.
+      verifiedAccounts: importedAccountIdentities === null ? null : details.accounts,
     }
   }
 
@@ -767,10 +784,56 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
     return { provider: 'zai' as const, configured: true, accountCount: 1 }
   }
 
+  function provenancePath(): string {
+    return join(deps.homeDir, AI_CREDENTIAL_PROVENANCE_PATH)
+  }
+
+  /**
+   * Bookkeeping for the observed-source check. A failure here must never fail
+   * the apply itself — the credential is already in place — so it is reported
+   * and swallowed. The generation fence keeps an unwritten record harmless.
+   */
+  async function writeClaudeProvenance(content: string): Promise<void> {
+    try {
+      await deps.mkdir(join(deps.homeDir, '.happy'), { recursive: true, mode: 0o700 })
+      await writeAtomicFile(deps, provenancePath(), content)
+    } catch (error) {
+      deps.warn?.(`[ai-credential] could not write the Claude provenance record: ${
+        error instanceof Error ? error.message : String(error)
+      }`)
+    }
+  }
+
+  async function recordClaudeProvenance(
+    input: { trialLease?: unknown; provenance?: unknown },
+    applyGeneration: number,
+    verifiedAccounts: ClaudeListDetails['accounts'] | null,
+  ): Promise<void> {
+    if (input.trialLease !== undefined) return
+    const provenance = parseClaudeProvenanceInput(input.provenance)
+    if (!provenance || !verifiedAccounts || verifiedAccounts.length === 0) return
+    // Taken from cswap's own list after the import, not from the payload: the
+    // organization name is what the login metadata and accountInfo() will
+    // report, and the payload's copy of it was never checked.
+    const text = (value: unknown) => (typeof value === 'string' ? value : '')
+    const identities = new Set(verifiedAccounts.map((account) => JSON.stringify([
+      account.email,
+      text(account.organizationUuid),
+      text(account.organizationName),
+    ])))
+    await writeClaudeProvenance(serializeAppliedClaudeProvenance({
+      ...provenance,
+      generation: applyGeneration,
+      identities,
+    }))
+  }
+
   async function apply(input: {
     provider: AiCredentialProvider
     payload: string
     trialLease?: TrialAiCredentialLeaseMarker
+    /** Sent only by the org deployment: which company bundle this is. */
+    provenance?: unknown
   }) {
     const selected = provider(input?.provider)
     if (typeof input?.payload !== 'string') {
@@ -781,6 +844,14 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
       `${selected.toUpperCase()}_APPLY_FAILED`,
       async () => {
         const applyGeneration = await reserveApplyGeneration(selected)
+        // A Claude record is only believed for the current claude generation.
+        // A Claude apply just bumped it; a Z.AI apply purges the Claude login,
+        // so it bumps it too — the fence then holds even if the explicit
+        // invalidation below cannot be written.
+        if (selected === 'zai') await reserveApplyGeneration('claude')
+        if (selected === 'claude' || selected === 'zai') {
+          await writeClaudeProvenance(serializeInvalidatedClaudeProvenance(applyGeneration))
+        }
         let requestedLease: TrialAiCredentialLeaseMarker | undefined
         let marker: TrialAiCredentialMarkerFile | undefined
         let previousLease: TrialAiCredentialLeaseMarker | undefined
@@ -806,8 +877,9 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
             await writeTrialMarker(marker)
             markerChanged = true
           }
-          const result = selected === 'claude'
-            ? await applyClaude(input.payload)
+          const claudeApplied = selected === 'claude' ? await applyClaude(input.payload) : null
+          const result = claudeApplied
+            ? claudeApplied.result
             : selected === 'zai'
               ? await applyZai(input.payload)
               : await applyCodex(input.payload)
@@ -833,6 +905,7 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
               }
             }
           }
+          if (claudeApplied) await recordClaudeProvenance(input, applyGeneration, claudeApplied.verifiedAccounts)
           return { ...result, applyGeneration }
         } catch (error) {
           if (requestedLease && marker && markerChanged) {
@@ -1448,6 +1521,7 @@ export function createNodeAiCredentialRuntime(
     rm,
     makeTempDir: () => mkdtemp(join(stagingParent(), 'happy-ai-credential-')),
     supervisor,
+    warn: (message) => logger.debug(message),
   })
 }
 

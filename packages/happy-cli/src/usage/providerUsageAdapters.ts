@@ -4,6 +4,7 @@ import {
     type ProviderUsageEventV1,
 } from '@slopus/happy-wire';
 import { readAiAuthConnectionVersion, resolveAppliedAiAuthSource } from './aiAuthSource';
+import type { ObservedAiAuthSource } from '@/claude/aiAuthObservation';
 
 type ClaudeUsage = {
     input_tokens: number;
@@ -41,11 +42,20 @@ type UsageEventEnvironment = Record<string, string | undefined>;
  * column and an unrecognised token into the same `unknown` bucket, so an
  * omitted report says exactly as much as a written `unknown` would, while
  * keeping the event identical to what a daemon without this field produces.
+ *
+ * `observed` is the run's own observation (src/claude/aiAuthObservation.ts),
+ * handed in by the caller rather than read from the environment. It only fills
+ * a gap: anything the daemon or a managed run established wins.
  */
-function aiAuthReport(env: UsageEventEnvironment): AiAuthReportV1 | undefined {
+function aiAuthReport(
+    env: UsageEventEnvironment,
+    observed?: ObservedAiAuthSource,
+): AiAuthReportV1 | undefined {
     const appliedSource = resolveAppliedAiAuthSource({ env });
     const connectionVersion = readAiAuthConnectionVersion(env);
-    if (appliedSource === 'unknown' && connectionVersion === null) return undefined;
+    if (appliedSource === 'unknown' && connectionVersion === null) {
+        return observed ? { appliedSource: observed, connectionVersion: null } : undefined;
+    }
     return { appliedSource, connectionVersion };
 }
 
@@ -62,6 +72,7 @@ export function createClaudeUsageEvent(input: {
     model?: string | null;
     usage: ClaudeUsage;
     env?: UsageEventEnvironment;
+    observedAiAuthSource?: ObservedAiAuthSource;
 }): ProviderUsageEventV1 {
     const providerEventId = input.messageId?.trim() || input.transcriptUuid.trim();
     const cacheRead = input.usage.cache_read_input_tokens ?? 0;
@@ -88,7 +99,7 @@ export function createClaudeUsageEvent(input: {
         },
         cost: null,
         quality: 'exact',
-        aiAuth: aiAuthReport(input.env ?? process.env),
+        aiAuth: aiAuthReport(input.env ?? process.env, input.observedAiAuthSource),
     });
 }
 
@@ -103,6 +114,7 @@ export function createClaudeTurnUsageEvent(input: {
     model?: string | null;
     usage: ClaudeUsage;
     env?: UsageEventEnvironment;
+    observedAiAuthSource?: ObservedAiAuthSource;
 }): ProviderUsageEventV1 {
     return createClaudeUsageEvent({
         sessionId: input.sessionId,
@@ -112,6 +124,7 @@ export function createClaudeTurnUsageEvent(input: {
         model: input.model,
         usage: input.usage,
         env: input.env,
+        observedAiAuthSource: input.observedAiAuthSource,
     });
 }
 

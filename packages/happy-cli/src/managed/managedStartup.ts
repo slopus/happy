@@ -11,6 +11,7 @@
  * descriptor number left lying around is either closed or, later, reused for
  * something else entirely.
  */
+import { CLAUDE_AUTH_OVERRIDE_ENV_KEYS } from '@/claude/utils/claudeAuthOverrideEnv';
 import { logger } from '@/ui/logger';
 import {
     findGatewayRoute,
@@ -194,11 +195,9 @@ export function stripAgentModelArguments(args: string[] | undefined): string[] |
  * billing somebody else's key and sending the run's content to a provider the
  * approval never covered.
  */
-const PROVIDER_CREDENTIAL_ENV = [
-    'ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_BASE_URL',
-    'ANTHROPIC_CUSTOM_HEADERS', 'ANTHROPIC_MODEL', 'ANTHROPIC_SMALL_FAST_MODEL',
-    'CLAUDE_CODE_OAUTH_TOKEN', 'CLAUDE_CODE_USE_BEDROCK', 'CLAUDE_CODE_USE_VERTEX',
-    'CLAUDE_CODE_USE_FOUNDRY',
+const PROVIDER_CREDENTIAL_ENV: readonly string[] = [
+    ...CLAUDE_AUTH_OVERRIDE_ENV_KEYS,
+    'ANTHROPIC_MODEL', 'ANTHROPIC_SMALL_FAST_MODEL',
     'OPENAI_API_KEY', 'OPENAI_BASE_URL', 'OPENAI_ORG_ID', 'OPENAI_PROJECT',
     'GEMINI_API_KEY', 'GOOGLE_API_KEY', 'XAI_API_KEY',
 ];

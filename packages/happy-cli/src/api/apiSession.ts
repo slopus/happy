@@ -34,6 +34,7 @@ import {
 } from '@slopus/happy-wire';
 import { ClaudeTurnUsageTracker } from '@/usage/claudeTurnUsage';
 import { createClaudeTurnUsageEvent, createClaudeUsageEvent } from '@/usage/providerUsageAdapters';
+import type { ObservedAiAuthSource } from '@/claude/aiAuthObservation';
 
 const DAEMON_RUNTIME_REPORT_MAX_INTERVAL_MS = 30_000;
 
@@ -1304,7 +1305,7 @@ export class ApiSessionClient extends EventEmitter {
         }
     }
 
-    private applyClaudeSessionMessageSideEffects(body: RawJSONLines) {
+    private applyClaudeSessionMessageSideEffects(body: RawJSONLines, observedAiAuthSource?: ObservedAiAuthSource) {
         // Track usage from assistant messages
         if (body.type === 'assistant' && body.message?.usage) {
             let sourceEventId: string | undefined;
@@ -1324,6 +1325,7 @@ export class ApiSessionClient extends EventEmitter {
                     transcriptUuid: body.uuid,
                     model: typeof rawMessage.model === 'string' ? rawMessage.model : null,
                     usage: body.message.usage,
+                    observedAiAuthSource,
                 });
                 sourceEventId = providerUsageEvent.sourceEventId;
                 this.sendProviderUsageEvent(providerUsageEvent);
@@ -1439,11 +1441,17 @@ export class ApiSessionClient extends EventEmitter {
         this.enqueueSessionProtocolEnvelopes(mapped.envelopes, false);
     }
 
-    sendClaudeSessionMessage(body: RawJSONLines, localId?: string) {
+    /**
+     * `observedAiAuthSource` is the remote run's own observation of its login
+     * (src/claude/aiAuthObservation.ts), captured when the SDK message arrived.
+     * It is an argument so that nothing else — a local-mode transcript line,
+     * a later run — can pick it up.
+     */
+    sendClaudeSessionMessage(body: RawJSONLines, localId?: string, observedAiAuthSource?: ObservedAiAuthSource) {
         const mapped = mapClaudeLogMessageToSessionEnvelopes(body, this.claudeSessionProtocolState);
         this.claudeSessionProtocolState.currentTurnId = mapped.currentTurnId;
         this.enqueueSessionProtocolEnvelopes(mapped.envelopes, true, localId);
-        this.applyClaudeSessionMessageSideEffects(body);
+        this.applyClaudeSessionMessageSideEffects(body, observedAiAuthSource);
         // A `tool-call-start` may have just named the turn a waiting prompt belongs to.
         this.drainChannelPermissionBinds();
     }
@@ -1785,7 +1793,7 @@ export class ApiSessionClient extends EventEmitter {
         uuid?: unknown;
         usage?: unknown;
         modelUsage?: unknown;
-    }) {
+    }, observedAiAuthSource?: ObservedAiAuthSource) {
         // 같은 result 가 두 번 전달돼도(SDK 재전달) 한 턴은 한 번만 본다.
         if (typeof result.uuid === 'string' && result.uuid === this.lastClaudeTurnResultUuid) return;
         if (typeof result.uuid === 'string') this.lastClaudeTurnResultUuid = result.uuid;
@@ -1803,6 +1811,7 @@ export class ApiSessionClient extends EventEmitter {
                 resultUuid: result.uuid,
                 model: fallback.model,
                 usage: fallback.usage,
+                observedAiAuthSource,
             });
             sourceEventId = providerUsageEvent.sourceEventId;
             this.sendProviderUsageEvent(providerUsageEvent);
