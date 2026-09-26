@@ -2,6 +2,7 @@ import { createLessonTurnObservations } from '@/memory/lessonTurnObservations';
 import { createLessonProposalTurn } from '@/utils/lessonProposalTurn';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { claudeRemote } from './claudeRemote';
+import * as sandbox from '@/sandbox/claudeProcessSandbox';
 import { query } from '@/claude/sdk';
 import type { EnhancedMode } from './loop';
 
@@ -17,6 +18,39 @@ const mode: EnhancedMode = {
 describe('claudeRemote', () => {
     beforeEach(() => {
         vi.mocked(query).mockReset();
+    });
+
+    it('refuses a mandatory session without config before starting the SDK', async () => {
+        await expect(claudeRemote({
+            sessionId: null, path: process.cwd(), allowedTools: [],
+            sandboxPolicyMode: 'mandatory', sandbox: { enabled: false },
+            hookSettingsPath: '/tmp/synthetic-settings.json',
+            nextMessage: async () => ({ message: 'synthetic prompt', mode }),
+            onReady: vi.fn(), canCallTool: async () => ({ behavior: 'allow' }) as any,
+            isAborted: () => false, onSessionFound: vi.fn(), onThinkingChange: vi.fn(), onMessage: vi.fn(),
+        })).rejects.toMatchObject({ name: 'MandatorySandboxError', reason: 'missing-config' });
+        expect(query).not.toHaveBeenCalled();
+    });
+
+    it('resumes separate-UID Claude state without reading or waiting on its private transcript', async () => {
+        const close = vi.fn();
+        const prepare = vi.spyOn(sandbox, 'prepareClaudeProcessSandbox').mockResolvedValue({ claudeConfigDir: '/home/agent-sbx/.claude', spawn: vi.fn(), close });
+        const found = vi.fn();
+        vi.mocked(query).mockReturnValue({ async *[Symbol.asyncIterator]() {
+            yield { type: 'system', subtype: 'init', session_id: 'synthetic-resumed', tools: [], slash_commands: [], mcp_servers: [] };
+            yield { type: 'result', subtype: 'success' };
+        } } as any);
+        let count = 0;
+        try {
+            await claudeRemote({ sessionId: 'synthetic-resume', path: process.cwd(), allowedTools: [], sandboxPolicyMode: 'mandatory',
+                hookSettingsPath: '/tmp/synthetic-settings.json', nextMessage: async () => count++ === 0 ? { message: 'synthetic', mode } : null,
+                onReady: vi.fn(), canCallTool: async () => ({ behavior: 'allow' }) as any, isAborted: () => false,
+                onSessionFound: found, onThinkingChange: vi.fn(), onMessage: vi.fn() });
+            expect(vi.mocked(query).mock.calls[0][0].options?.resume).toBe('synthetic-resume');
+            expect(vi.mocked(query).mock.calls[0][0].options?.settingsPath).toBeUndefined();
+            expect(found).toHaveBeenCalledWith('synthetic-resumed');
+            expect(close).toHaveBeenCalled();
+        } finally { prepare.mockRestore(); }
     });
 
     it('reports that the provider never started when mode switching aborts before the first message', async () => {

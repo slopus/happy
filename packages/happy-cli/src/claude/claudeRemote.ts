@@ -1,3 +1,6 @@
+import { prepareClaudeProcessSandbox, type ClaudeProcessSandbox } from '@/sandbox/claudeProcessSandbox';
+import type { SandboxConfig } from '@/persistence';
+import type { SandboxPolicyMode } from '@/sandbox/sandboxPolicy';
 import type { ClaudeLessonReviewLifecycle } from './session';
 import type { LessonProposalTurn } from '@/utils/lessonProposalTurn';
 import { EnhancedMode } from "./loop";
@@ -176,6 +179,8 @@ export async function claudeRemote(opts: {
     orchestratorMcpServers?: Record<string, unknown>,
     mcpConfig?: McpConfigSource,
     sandbox?: QueryOptions['sandbox'],
+    sandboxConfig?: SandboxConfig,
+    sandboxPolicyMode?: SandboxPolicyMode,
     permissionsDeny?: string[],
 
     // Dynamic parameters
@@ -217,10 +222,24 @@ export async function claudeRemote(opts: {
     /** How long a run-once result may wait on background work before ending anyway. */
     backgroundWaitBudgetMs?: number,
 }) {
+    let processSandbox: ClaudeProcessSandbox | undefined;
+    try {
+        return await runClaudeRemote(opts, async input => {
+            processSandbox = await prepareClaudeProcessSandbox(input);
+            return processSandbox;
+        });
+    } finally {
+        await processSandbox?.close();
+    }
+}
 
+async function runClaudeRemote(
+    opts: Parameters<typeof claudeRemote>[0],
+    prepareSandbox: typeof prepareClaudeProcessSandbox,
+) {
     // Check if session is valid
     let startFrom = opts.sessionId;
-    if (opts.sessionId && !opts.completeTurn && !claudeCheckSession(opts.sessionId, opts.path)) {
+    if (opts.sandboxPolicyMode !== 'mandatory' && opts.sessionId && !opts.completeTurn && !claudeCheckSession(opts.sessionId, opts.path)) {
         startFrom = null;
     }
     
@@ -351,6 +370,17 @@ export async function claudeRemote(opts: {
     const providerPath = initialTurn?.providerPath ?? opts.path;
     const providerSandbox = initialTurn?.claudeSandbox ?? opts.sandbox;
 
+    const processSandbox = opts.sandboxPolicyMode === 'mandatory'
+        ? await prepareSandbox({
+            sandboxConfig: opts.sandboxConfig,
+            sessionPath: providerPath,
+            additionalDenyRead: providerSandbox?.filesystem?.denyRead,
+            additionalDenyWrite: providerSandbox?.filesystem?.denyWrite,
+            mcpSocketPath: (opts.mcpServers?.happy as { env?: Record<string, string> } | undefined)?.env?.SAYCODE_MCP_SOCKET,
+        }) : undefined;
+    // Claude owns its separate-UID session state; the Happy UID cannot pre-read it.
+
+
     // Handle /compact command
     let isCompactCommand = false;
     if (specialCommand.type === 'compact') {
@@ -423,13 +453,14 @@ export async function claudeRemote(opts: {
         disallowedTools: initial.mode.disallowedTools,
         effort: initial.mode.effort,
         agents: workerAgents.agents,
-        settingSources,
+        settingSources: processSandbox ? [] : settingSources,
         skills: skillGovernance.skills,
         canCallTool: (toolName: string, input: unknown, options: { signal: AbortSignal; toolUseID: string }) => opts.canCallTool(toolName, input, mode, options),
         abort: opts.signal,
-        settingsPath: opts.hookSettingsPath,
+        settingsPath: processSandbox ? undefined : opts.hookSettingsPath,
         promptSuggestions: true,
-        sandbox: providerSandbox,
+        // The outer UID and OS boundary already covers Bash and every other tool.
+        sandbox: processSandbox ? { enabled: false } : providerSandbox,
         permissionsDeny: opts.permissionsDeny,
         /*
          * Installed for a managed run as well as for checkpoint protection.
@@ -440,9 +471,9 @@ export async function claudeRemote(opts: {
          * delivered rather than when the process dies. This seam is the only
          * place that holds the object the kernel reports to.
          */
-        spawnClaudeCodeProcess: (writerProcessTree || opts.providerExitObserver)
+        spawnClaudeCodeProcess: (processSandbox || writerProcessTree || opts.providerExitObserver)
             ? (spawnOptions) => {
-                const child = spawn(spawnOptions.command, spawnOptions.args, {
+                const child = processSandbox ? processSandbox.spawn(spawnOptions) : spawn(spawnOptions.command, spawnOptions.args, {
                     cwd: spawnOptions.cwd,
                     env: spawnOptions.env,
                     signal: spawnOptions.signal,
@@ -833,9 +864,11 @@ function readTurnText(content: unknown): string {
 
                 // Session id is still in memory, wait until session file is written to disk
                 // Start a watcher for to detect the session id
-                if (systemInit.session_id) {
+                if (systemInit.session_id && processSandbox) {
+                    opts.onSessionFound(systemInit.session_id);
+                } else if (systemInit.session_id) {
                     logger.debug(`[claudeRemote] Waiting for session file to be written to disk: ${systemInit.session_id}`);
-                    const projectDir = getProjectPath(providerPath);
+                    const projectDir = getProjectPath(providerPath, processSandbox?.claudeConfigDir);
                     const found = await awaitFileExist(join(projectDir, `${systemInit.session_id}.jsonl`), 30000);
                     logger.debug(`[claudeRemote] Session file found: ${systemInit.session_id} ${found}`);
                     if (!found) {

@@ -1,0 +1,8 @@
+Agent Browser PoC A01 task. Use ONLY the mcp__happy__browser_task_* tools (no other browser tools, no shell, no curl).
+1. browser_task_create_space with profileId "__PROFILE__", then browser_task_create for that space.
+2. browser_task_open_page: http://a.poc-one.test:8080/barrier?run=__RUN__&key=__KEY__
+3. The page shows WAITING until an external event happens. Submit ONE batch (browser_task_submit_batch) with a single waitFor step: until {kind:"text", text:"NONCE:"}, timeoutMs 120000. If it returns before the nonce appears, submit the same wait again (same taskId) — never create a new task.
+4. When the page shows "NONCE: <value>", call browser_task_observe to read the nonce and find the "Answer" input and the "Submit answer" button refs.
+5. Submit a NEW batch on the same taskId: fill the Answer input with exactly the nonce, then click "Submit answer".
+6. Observe again to confirm, then browser_task_finish the task, then browser_task_close_space for the space you created.
+Reply with one line: A01-DONE taskId=<taskId> nonce=<nonce>.

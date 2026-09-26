@@ -694,6 +694,7 @@ export async function runClaude(principal: RunnerPrincipal, options: StartOption
     const lessonProposalTurn = createLessonProposalTurn();
     // Start Happy MCP server
     const happyServer = await startHappyServer(session, {
+        mandatorySandbox: sandboxPolicyMode === 'mandatory',
         ...(principal.kind === 'account' ? { proposeLesson: lessonProposalTurn.submit } : {}),
         protectedBashCwd: checkpointComposition.protectedBashCwd,
         trackProtectedBashProcess: checkpointComposition.trackProtectedWriter,
@@ -1730,10 +1731,7 @@ export async function runClaude(principal: RunnerPrincipal, options: StartOption
     }
     const aplusMcpServers = initialAplusMcpSnapshot?.servers ?? {};
     const baseMcpServers = {
-        'happy': {
-            type: 'http' as const,
-            url: happyServer.url,
-        },
+        'happy': happyServer.mcpConfig,
     };
 
     // Create claude loop

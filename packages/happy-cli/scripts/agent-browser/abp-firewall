@@ -1,0 +1,191 @@
+#!/usr/bin/env bash
+# abp-firewall — owner firewall rules of the Agent Browser sandbox (S1 contract):
+# agent-sbx may reach only the loopback CONNECT proxy, abp-proxy only public
+# TCP 443. abp-firewall.service runs `apply` at boot before the proxy, the stack
+# and the Happy daemon; the session preflight refuses to start Claude unless the
+# live OUTPUT chains begin with exactly these rules, in this order.
+#
+# The IPv4 file ends with the jump to ABP-FENCE, the admission fence abp-stack
+# fills while it drains the Runtime (upgrade, key rotation, stop).
+#
+# Browser egress (abp-egress.service, after Docker): /etc/abp/egress.rules{4,6}
+# hold `set <name> <cidr>`, `chain <name> <spec>` and `jump <parent> <spec>`
+# lines. The chains (ABP-EGRESS from DOCKER-USER/FORWARD, ABP-INPUT from INPUT)
+# and the ipset deny sets are built under new names and swapped in, so rules are
+# never absent while browsers run.
+#
+#   abp-firewall apply          insert /etc/abp/firewall.rules{4,6} as the first OUTPUT rules (idempotent)
+#   abp-firewall check          exit 0 only if both OUTPUT chains start with those rules
+#   abp-firewall remove         delete every copy of those rules and the fence chain
+#   abp-firewall apply-egress   install the browser egress chains, jumps and sets
+#   abp-firewall check-egress   exit 0 only if they are live and first in their parent chains
+#   abp-firewall remove-egress  delete them
+set -euo pipefail
+export PATH=/usr/sbin:/usr/bin:/sbin:/bin LC_ALL=C
+RULES_DIR=${ABP_FIREWALL_RULES_DIR:-/etc/abp}
+
+rules() { grep '^-A OUTPUT ' "$RULES_DIR/firewall.rules$1"; }
+tool() { if [ "$1" = 4 ]; then echo iptables; else echo ip6tables; fi; }
+
+# Every copy of one rule ("-A OUTPUT <spec>"), for remove.
+delete_rule() {
+    local family=$1 spec
+    read -ra spec <<<"${2#-A OUTPUT }"
+    while "$(tool "$family")" -w -t filter -D OUTPUT "${spec[@]}" 2>/dev/null; do :; done
+}
+
+# OUTPUT rules in iptables-save form, normalized like the session preflight.
+live_rules() {
+    "$(tool "$1")" -w -t filter -S OUTPUT | grep '^-A OUTPUT ' \
+        | sed -E 's/ --reject-with (icmp-port-unreachable|icmp6-port-unreachable)$//' || true
+}
+
+# Never removes a rule before its replacement is in place: the new copies go on
+# top first, then older copies further down are deleted by position (bottom up),
+# so agent-sbx and abp-proxy are never without their REJECT rules.
+apply() {
+    local family rule position spec count index
+    local -a list live
+    iptables -w -t filter -N ABP-FENCE 2>/dev/null || true
+    for family in 4 6; do
+        mapfile -t list < <(rules "$family")
+        count=${#list[@]}
+        [ "$count" -gt 0 ] || { echo "abp-firewall: no rules in $RULES_DIR/firewall.rules$family" >&2; exit 1; }
+        mapfile -t live < <(live_rules "$family")
+        if [ "$(printf '%s\n' "${live[@]:0:count}")" != "$(printf '%s\n' "${list[@]}")" ]; then
+            position=1
+            for rule in "${list[@]}"; do
+                read -ra spec <<<"${rule#-A OUTPUT }"
+                "$(tool "$family")" -w -t filter -I OUTPUT "$position" "${spec[@]}"
+                position=$((position + 1))
+            done
+            mapfile -t live < <(live_rules "$family")
+        fi
+        for ((index = ${#live[@]} - 1; index >= count; index--)); do
+            for rule in "${list[@]}"; do
+                if [ "${live[index]}" = "$rule" ]; then
+                    "$(tool "$family")" -w -t filter -D OUTPUT "$((index + 1))"
+                    break
+                fi
+            done
+        done
+    done
+    check
+}
+
+check() {
+    local family expected live failed=0
+    for family in 4 6; do
+        expected=$(rules "$family")
+        # Same normalization as the session preflight (sandboxPreflight.assertFirewallRules).
+        live=$("$(tool "$family")-save" -t filter | grep '^-A OUTPUT ' \
+            | sed -E 's/ --reject-with (icmp-port-unreachable|icmp6-port-unreachable)$//' \
+            | head -n "$(printf '%s\n' "$expected" | wc -l)")
+        if [ "$live" != "$expected" ]; then
+            echo "abp-firewall: IPv$family OUTPUT does not start with the installed owner rules" >&2
+            failed=1
+        fi
+    done
+    return "$failed"
+}
+
+remove() {
+    local family rule
+    for family in 4 6; do
+        [ -r "$RULES_DIR/firewall.rules$family" ] || continue
+        while IFS= read -r rule; do delete_rule "$family" "$rule"; done < <(rules "$family")
+    done
+    iptables -w -t filter -F ABP-FENCE 2>/dev/null || true
+    iptables -w -t filter -X ABP-FENCE 2>/dev/null || true
+}
+
+# ---- browser egress -------------------------------------------------------------------------------
+egress_lines() { grep -E "^$2 " "$RULES_DIR/egress.rules$1" | cut -d' ' -f2- || true; }
+names() { egress_lines "$1" "$2" | cut -d' ' -f1 | awk '!seen[$0]++'; }
+normalize() { sed -E 's/ --reject-with (icmp-port-unreachable|icmp6-port-unreachable)$//'; }
+builtin_chain() { case "$1" in INPUT | FORWARD | OUTPUT) return 0 ;; *) return 1 ;; esac; }
+
+apply_egress() {
+    local family=$1 t name line parent spec target inet
+    t=$(tool "$family")
+    [ -s "$RULES_DIR/egress.rules$family" ] || { echo "abp-firewall: $RULES_DIR/egress.rules$family is missing" >&2; exit 1; }
+    if [ "$family" = 4 ]; then inet=inet; else inet=inet6; fi
+    for name in $(names "$family" set); do
+        ipset create "$name" hash:net family "$inet" -exist
+        ipset create "$name-n" hash:net family "$inet" -exist
+        ipset flush "$name-n"
+        while read -r set cidr; do
+            if [ "$set" = "$name" ]; then ipset add "$name-n" "$cidr" -exist; fi
+        done < <(egress_lines "$family" set)
+        ipset swap "$name-n" "$name"
+        ipset destroy "$name-n"
+    done
+    for name in $(names "$family" chain); do
+        "$t" -w -N "$name-n" 2>/dev/null || "$t" -w -F "$name-n"
+        while IFS= read -r line; do
+            [ "${line%% *}" = "$name" ] || continue
+            read -ra spec <<<"${line#* }"
+            "$t" -w -A "$name-n" "${spec[@]}"
+        done < <(egress_lines "$family" chain)
+    done
+    # New jumps first (to the new chains), then the old jumps, then swap the chain names.
+    while IFS= read -r line; do
+        parent=${line%% *}
+        builtin_chain "$parent" || "$t" -w -N "$parent" 2>/dev/null || true
+        target=${line##* }
+        read -ra spec <<<"${line#* }"
+        "$t" -w -I "$parent" 1 "${spec[@]:0:${#spec[@]}-1}" "$target-n"
+        while "$t" -w -D "$parent" "${spec[@]}" 2>/dev/null; do :; done
+    done < <(egress_lines "$family" jump)
+    for name in $(names "$family" chain); do
+        if "$t" -w -S "$name" >/dev/null 2>&1; then "$t" -w -F "$name"; "$t" -w -X "$name"; fi
+        "$t" -w -E "$name-n" "$name"
+    done
+}
+
+check_egress() {
+    local family=$1 t name line parent failed=0 expected live
+    t=$(tool "$family")
+    for name in $(names "$family" chain); do
+        expected=$(egress_lines "$family" chain | grep -E "^$name " | cut -d' ' -f2-)
+        live=$("$t" -w -S "$name" 2>/dev/null | grep "^-A $name " | sed "s/^-A $name //" | normalize || true)
+        [ "$live" = "$expected" ] || { echo "abp-firewall: IPv$family chain $name differs from $RULES_DIR/egress.rules$family" >&2; failed=1; }
+    done
+    while IFS= read -r line; do
+        parent=${line%% *}
+        live=$("$t" -w -S "$parent" 2>/dev/null | grep "^-A $parent " | head -n 1 || true)
+        [ "$live" = "-A $parent ${line#* }" ] || { echo "abp-firewall: IPv$family $parent does not start with the jump ${line#* }" >&2; failed=1; }
+    done < <(egress_lines "$family" jump)
+    for name in $(names "$family" set); do
+        expected=$(egress_lines "$family" set | awk -v n="$name" '$1 == n { print $2 }' | sort)
+        live=$(ipset save "$name" 2>/dev/null | awk '$1 == "add" { print $3 }' | sort || true)
+        [ "$live" = "$expected" ] || { echo "abp-firewall: ipset $name differs from $RULES_DIR/egress.rules$family" >&2; failed=1; }
+    done
+    return "$failed"
+}
+
+remove_egress() {
+    local family=$1 t name line parent
+    t=$(tool "$family")
+    [ -r "$RULES_DIR/egress.rules$family" ] || return 0
+    while IFS= read -r line; do
+        parent=${line%% *}
+        read -ra spec <<<"${line#* }"
+        while "$t" -w -D "$parent" "${spec[@]}" 2>/dev/null; do :; done
+    done < <(egress_lines "$family" jump)
+    for name in $(names "$family" chain); do
+        "$t" -w -F "$name" 2>/dev/null || true
+        "$t" -w -X "$name" 2>/dev/null || true
+    done
+    for name in $(names "$family" set); do ipset destroy "$name" 2>/dev/null || true; done
+}
+
+case "${1:-}" in
+    apply) apply ;;
+    check) check ;;
+    remove) remove ;;
+    apply-egress) apply_egress 4; apply_egress 6; check_egress 4 && check_egress 6 ;;
+    check-egress) status=0; check_egress 4 || status=1; check_egress 6 || status=1; exit "$status" ;;
+    remove-egress) remove_egress 4; remove_egress 6 ;;
+    *) echo "usage: abp-firewall apply|check|remove|apply-egress|check-egress|remove-egress" >&2; exit 2 ;;
+esac

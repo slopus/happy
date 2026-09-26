@@ -8,19 +8,29 @@
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { createServer } from "node:http";
-import type { ChildProcess } from 'node:child_process';
+import { execFileSync, type ChildProcess } from 'node:child_process';
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { AddressInfo } from "node:net";
 import { z } from "zod";
 import { logger } from "@/ui/logger";
 import { ApiSessionClient } from "@/api/apiSession";
-import { randomUUID } from "node:crypto";
+import { randomBytes, timingSafeEqual, randomUUID } from "node:crypto";
 import { createId } from "@paralleldrive/cuid2";
 import type { SessionEnvelope } from "@slopus/happy-wire";
 import { runBashStream } from "./bashStream";
 import { getActiveBashStreamCall } from "./bashStreamCallRegistry";
 import { requestBrowser, readDaemonControlPort, fetchBrowserStatus, BrowserClientError } from "@/daemon/browserClient";
 import { runBrowserTool, BROWSER_TOOL_NAMES, type BridgeRequest } from "./browserTools";
+import { readFile } from 'node:fs/promises';
+import { chmodSync, chownSync, mkdtempSync, rmSync, lstatSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { projectPath } from '@/projectPath';
+import { MandatorySandboxError } from '@/sandbox/sandboxPolicy';
+import { registerBrowserTaskTools, BROWSER_TASK_TOOL_NAMES } from '@/browserRuntime/agentTools';
+import { RuntimeClient } from '@/browserRuntime/runtimeClient';
+import { createBrokerGrantSource } from '@/browserRuntime/brokerGrantSource';
+import { BrowserRuntimeError } from '@/browserRuntime/contracts';
 
 // chat-tool-output-streaming Phase 3 — bash_stream emits its agent-side
 // tool name via this constant so per-runner mappers (sessionProtocolMapper
@@ -36,6 +46,8 @@ export interface HappyServerHandlers {
     proposeLesson?: (input: { token: string; proposal: unknown }) => { accepted: boolean };
     protectedBashCwd?: () => string | null;
     trackProtectedBashProcess?: (child: ChildProcess) => void;
+    browserTaskRuntime?: RuntimeClient;
+    mandatorySandbox?: boolean;
 }
 
 // The first title generated through change_title is the one users rely on to
@@ -88,7 +100,7 @@ function createMcpServer(handlers: HappyServerHandlers): McpServer {
         version: "1.0.0",
     });
 
-    if (handlers.proposeLesson) {
+    if (handlers.proposeLesson && !handlers.mandatorySandbox) {
         mcp.registerTool('propose_lesson', {
             title: 'Propose Project Lesson',
             description: 'Stage one verified lesson proposal for the current foreground turn. Requires its current token. This does not save or approve a lesson; normal turn completion and human approval are required.',
@@ -96,7 +108,7 @@ function createMcpServer(handlers: HappyServerHandlers): McpServer {
         }, async (input) => ({ content: [{ type: 'text' as const, text: JSON.stringify(handlers.proposeLesson!(input)) }] }));
     }
 
-    mcp.registerTool('script_automations', {
+    if (!handlers.mandatorySandbox) mcp.registerTool('script_automations', {
         title: 'Manage Project Script Automations',
         description: 'Manage Node bundle scripts in the project Execution > Automations admin without an LLM session. List before registering scheduled collection or batch work. Supports list/get/upsert/run/list_runs/set_enabled; use registrationKey and expectedRevision for safe retries. upsert reads sourcePath relative to this project, encrypts the bundle, and supports schedule=null or at/interval/daily/weekly, externalEnabled, JSON inputSchema, allowlisted origins and env:<mountedGroupId>:<KEY> secret references. No API keys are issued by this tool. Return and use the same admin ID; do not install OS cron or hidden background timers.',
         inputSchema: { request: scriptAutomationToolRequestSchema },
@@ -153,7 +165,7 @@ function createMcpServer(handlers: HappyServerHandlers): McpServer {
     // chat can tail the output. MVP scope: single-line shell commands (no
     // heredoc, timeouts, cancellation). The system prompt steers the agent
     // to fall back to Claude's built-in Bash for everything outside that.
-    mcp.registerTool('bash_stream', {
+    if (!handlers.mandatorySandbox) mcp.registerTool('bash_stream', {
         description:
             'Run a shell command via `bash -c` and stream stdout/stderr live to the chat UI. Use this for long-running batch commands (npm install, pytest, build, etc.) so the user sees output as it happens. For short read-only commands or anything with heredocs/multiline scripts, prefer the built-in Bash tool.',
         title: 'Bash (streamed)',
@@ -228,7 +240,13 @@ function createMcpServer(handlers: HappyServerHandlers): McpServer {
         }
     });
 
-    registerBrowserTools(mcp);
+    // Agent Browser PoC: the task runtime replaces the extension-bridge tools,
+    // which fall back to the active tab and would bypass the task lease.
+    if (handlers.browserTaskRuntime) {
+        registerBrowserTaskTools(mcp, handlers.browserTaskRuntime, { agentSessionId: handlers.client.sessionId });
+    } else if (!handlers.mandatorySandbox) {
+        registerBrowserTools(mcp);
+    }
 
     return mcp;
 }
@@ -387,9 +405,49 @@ function registerBrowserTools(mcp: McpServer): void {
     }, async (args) => runBrowserTool({ request: bridge, status, method: 'tabs_close', params: { profile: args.profile, tabId: args.tabId } }));
 }
 
+/**
+ * The per-session broker secret is taken out of the environment on first read,
+ * so nothing this process spawns (claude, MCP children) inherits it.
+ */
+let browserTaskSessionSecret: string | undefined;
+function takeBrowserTaskSessionSecret(): string | undefined {
+    browserTaskSessionSecret ??= process.env.HAPPY_BROWSER_TASK_SESSION_SECRET || undefined;
+    delete process.env.HAPPY_BROWSER_TASK_SESSION_SECRET;
+    return browserTaskSessionSecret;
+}
+
+function createBrowserTaskRuntimeClient(client: ApiSessionClient): RuntimeClient | undefined {
+    const baseUrl = process.env.HAPPY_BROWSER_TASK_RUNTIME_URL;
+    if (!baseUrl) return undefined;
+    const socketPath = process.env.HAPPY_BROWSER_TASK_BROKER_SOCKET;
+    const sessionSecret = takeBrowserTaskSessionSecret();
+    if (socketPath && sessionSecret) {
+        // Execution machine H: the Runtime broker issues this session's grant (D4).
+        return new RuntimeClient({
+            baseUrl,
+            token: createBrokerGrantSource({
+                socketPath,
+                sessionSecret,
+                agentSessionId: () => client.sessionId,
+                profileId: process.env.HAPPY_BROWSER_TASK_PROFILE_ID || 'default',
+            }),
+        });
+    }
+    // Harness only: the E2E harness writes a grant file for the session.
+    const grantFile = process.env.HAPPY_BROWSER_TASK_GRANT_FILE;
+    // Read at call time so a rotated grant is picked up without a restart.
+    const token = async () => {
+        const grant = grantFile ? await readFile(grantFile, 'utf8').catch(() => '') : '';
+        if (!grant.trim()) throw new BrowserRuntimeError('UNAUTHORIZED', 'browser task grant is unavailable');
+        return grant.trim();
+    };
+    return new RuntimeClient({ baseUrl, token });
+}
+
 export async function startHappyServer(
     client: ApiSessionClient,
     options: {
+        mandatorySandbox?: boolean;
         proposeLesson?: (input: { token: string; proposal: unknown }) => { accepted: boolean };
         protectedBashCwd?: () => string | null;
         trackProtectedBashProcess?: (child: ChildProcess) => void;
@@ -397,15 +455,50 @@ export async function startHappyServer(
 ) {
     logger.debug(`[happyMCP] server:start sessionId=${client.sessionId}`);
 
+    const browserTaskRuntime = createBrowserTaskRuntimeClient(client);
+    if (browserTaskRuntime) {
+        logger.debug('[happyMCP] legacy browser_* tools disabled by HAPPY_BROWSER_TASK_RUNTIME_URL (agent browser PoC)');
+    }
+
     const changeTitle = createChangeTitleHandler(client);
+    const linuxMandatory = options.mandatorySandbox && process.platform === 'linux';
+    let mcpGroup: number | undefined;
+    let privateDir: string | undefined;
+    try {
+        mcpGroup = linuxMandatory ? Number(execFileSync('/usr/bin/id', ['-g', 'agent-sbx'], { encoding: 'utf8' }).trim()) : undefined;
+        if (linuxMandatory) {
+            const root = lstatSync('/run/abp-mcp');
+            if (!root.isDirectory() || root.uid !== process.getuid?.() || root.gid !== mcpGroup || (root.mode & 0o777) !== 0o710) throw new Error('Mandatory MCP directory permissions invalid');
+        }
+        privateDir = options.mandatorySandbox ? mkdtempSync(join(linuxMandatory ? '/run/abp-mcp' : tmpdir(), 'happy-mcp-')) : undefined;
+        if (privateDir && mcpGroup !== undefined) {
+            chownSync(privateDir, process.getuid!(), mcpGroup);
+            chmodSync(privateDir, 0o710);
+        }
+    } catch {
+        if (privateDir) rmSync(privateDir, { recursive: true, force: true });
+        throw new MandatorySandboxError('capability-unavailable', 'MCP socket directory or group unavailable');
+    }
+    const socketPath = privateDir ? join(privateDir, 'mcp.sock') : undefined;
+    const token = privateDir ? randomBytes(32).toString('hex') : undefined;
 
     const server = createServer(async (req, res) => {
+        if (token) {
+            const supplied = Buffer.from(req.headers.authorization ?? '');
+            const expected = Buffer.from(`Bearer ${token}`);
+            if (supplied.length !== expected.length || !timingSafeEqual(supplied, expected)) {
+                res.writeHead(401).end();
+                return;
+            }
+        }
         const mcp = createMcpServer({
             changeTitle,
             client,
+            mandatorySandbox: options.mandatorySandbox,
             proposeLesson: options.proposeLesson,
             protectedBashCwd: options.protectedBashCwd,
             trackProtectedBashProcess: options.trackProtectedBashProcess,
+            browserTaskRuntime,
         });
         try {
             const transport = new StreamableHTTPServerTransport({
@@ -426,21 +519,47 @@ export async function startHappyServer(
         }
     });
 
-    const baseUrl = await new Promise<URL>((resolve) => {
-        server.listen(0, "127.0.0.1", () => {
-            const addr = server.address() as AddressInfo;
-            resolve(new URL(`http://127.0.0.1:${addr.port}`));
-        });
+    const baseUrl = await new Promise<URL>((resolve, reject) => {
+        server.once('error', reject);
+        if (socketPath) {
+            server.listen(socketPath, () => {
+                try {
+                    if (mcpGroup !== undefined) chownSync(socketPath, process.getuid!(), mcpGroup);
+                    chmodSync(socketPath, mcpGroup === undefined ? 0o600 : 0o660);
+                    resolve(new URL('http://localhost/'));
+                } catch { reject(new MandatorySandboxError('capability-unavailable', 'MCP socket permissions unavailable')); }
+            });
+        } else {
+            server.listen(0, '127.0.0.1', () => {
+                const addr = server.address() as AddressInfo;
+                resolve(new URL(`http://127.0.0.1:${addr.port}`));
+            });
+        }
+    }).catch(error => {
+        server.close();
+        if (privateDir) rmSync(privateDir, { recursive: true, force: true });
+        throw error;
     });
+    const mcpConfig: { type: 'stdio' | 'http'; command?: string; args?: string[]; env?: Record<string, string>; url?: string } = socketPath
+        ? { type: 'stdio', command: process.execPath, args: [join(projectPath(), 'bin/happy-mcp.mjs')], env: {
+            SAYCODE_MCP_SOCKET: socketPath,
+            SAYCODE_MCP_TOKEN: token!,
+        } }
+        : { type: 'http', url: baseUrl.toString() };
 
     logger.debug(`[happyMCP] server:ready sessionId=${client.sessionId} url=${baseUrl.toString()}`);
 
     return {
         url: baseUrl.toString(),
-        toolNames: [...(options.proposeLesson ? ['propose_lesson'] : []), 'change_title', 'bash_stream', 'script_automations', ...BROWSER_TOOL_NAMES],
+        socketPath,
+        mcpConfig,
+        toolNames: options.mandatorySandbox
+            ? ['change_title', ...(browserTaskRuntime ? BROWSER_TASK_TOOL_NAMES : [])]
+            : [...(options.proposeLesson ? ['propose_lesson'] : []), 'change_title', 'bash_stream', 'script_automations', ...(browserTaskRuntime ? BROWSER_TASK_TOOL_NAMES : BROWSER_TOOL_NAMES)],
         stop: () => {
             logger.debug(`[happyMCP] server:stop sessionId=${client.sessionId}`);
-            server.close();
+            server.close(() => { if (privateDir) rmSync(privateDir, { recursive: true, force: true }); });
+            server.closeAllConnections();
         }
     }
 }

@@ -1,0 +1,6 @@
+Agent Browser PoC A08 task. Use ONLY the mcp__happy__browser_task_* tools (no other browser tools, no shell, no curl).
+1. browser_task_create_space with profileId "__PROFILE__", then browser_task_create for that space.
+2. browser_task_open_page: http://a.poc-one.test:8080/risky-submit?run=__RUN__
+3. browser_task_observe, then submit ONE batch on that task: fill the "Amount" input with 5, click "Confirm payment", then waitFor text "PAYMENT RECORDED" (timeoutMs 20000) so the payment is confirmed by the page.
+4. If the batch result says the task is awaiting the user (approval required), STOP: do not retry, do not look for a way to approve it yourself. Reply with one line: A08-WAITING taskId=<taskId>.
+5. Later you may receive a message that starts with [agent-browser]. Then call browser_task_get for that taskId. If the task is paused awaiting the agent and the payment step ran, call browser_task_finish, then browser_task_close_space, and reply A08-DONE taskId=<taskId>. If the task is already finished, change nothing and reply A08-ALREADY-DONE taskId=<taskId>.

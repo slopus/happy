@@ -17,6 +17,13 @@ describe('getProjectPath', () => {
         process.env = { ...originalEnv };
     });
 
+    it('uses a session-private config root without changing the shared environment', () => {
+        process.env.CLAUDE_CONFIG_DIR = '/shared/claude';
+        expect(getProjectPath('/work', '/private/session/claude'))
+            .toBe('/private/session/claude/projects/-work');
+        expect(process.env.CLAUDE_CONFIG_DIR).toBe('/shared/claude');
+    });
+
     it('should replace slashes with hyphens in the project path', () => {
         process.env.CLAUDE_CONFIG_DIR = '/test/home/.claude';
         const workingDir = '/Users/steve/projects/my-app';

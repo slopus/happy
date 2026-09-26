@@ -277,3 +277,60 @@ describe('foreground lesson proposal tool', () => {
         } finally { server.stop(); }
     });
 });
+
+describe('browser task runtime PoC flag', () => {
+    async function listNames(url: string): Promise<string[]> {
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' },
+            body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }),
+        });
+        const raw = await response.text();
+        const payload = JSON.parse(raw.startsWith('event:') ? raw.slice(raw.indexOf('data: ') + 6) : raw);
+        return payload.result.tools.map((tool: { name: string }) => tool.name);
+    }
+    const client = () => ({ hasTitle: () => false, sendClaudeSessionMessage: vi.fn(), sessionId: 'test' } as unknown as ApiSessionClient);
+
+    it('keeps legacy browser tools and no browser_task tools without the flag', async () => {
+        vi.stubEnv('HAPPY_BROWSER_TASK_RUNTIME_URL', '');
+        const server = await startHappyServer(client());
+        try {
+            const names = await listNames(server.url);
+            expect(names).toContain('browser_tabs');
+            expect(names.some((n) => n.startsWith('browser_task_'))).toBe(false);
+        } finally {
+            server.stop();
+            vi.unstubAllEnvs();
+        }
+    });
+
+    it('takes the broker session secret out of the environment so spawned children never inherit it', async () => {
+        vi.stubEnv('HAPPY_BROWSER_TASK_RUNTIME_URL', 'http://127.0.0.1:1');
+        vi.stubEnv('HAPPY_BROWSER_TASK_BROKER_SOCKET', '/nonexistent/broker.sock');
+        vi.stubEnv('HAPPY_BROWSER_TASK_SESSION_SECRET', 'synthetic-session-secret');
+        const server = await startHappyServer(client());
+        try {
+            expect(process.env.HAPPY_BROWSER_TASK_SESSION_SECRET).toBeUndefined();
+            expect(server.toolNames).toContain('browser_task_submit_batch');
+        } finally {
+            server.stop();
+            vi.unstubAllEnvs();
+        }
+    });
+
+    it('replaces legacy browser tools with browser_task tools when the flag is set', async () => {
+        vi.stubEnv('HAPPY_BROWSER_TASK_RUNTIME_URL', 'http://127.0.0.1:1');
+        vi.stubEnv('HAPPY_BROWSER_TASK_GRANT_FILE', '/nonexistent/grant');
+        const server = await startHappyServer(client());
+        try {
+            const names = await listNames(server.url);
+            expect(names).toContain('browser_task_submit_batch');
+            expect(names.filter((n) => n.startsWith('browser_') && !n.startsWith('browser_task_'))).toEqual([]);
+            expect(server.toolNames).toContain('browser_task_submit_batch');
+            expect(server.toolNames).not.toContain('browser_tabs');
+        } finally {
+            server.stop();
+            vi.unstubAllEnvs();
+        }
+    });
+});

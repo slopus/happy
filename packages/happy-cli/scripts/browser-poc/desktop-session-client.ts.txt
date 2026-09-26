@@ -1,0 +1,20 @@
+// Copy to <desktop checkout>/.abp-harness/sessionClient.ts (keep it untracked there).
+// The real-agent harness (src/browserRuntime/e2e/realAgentHarness.ts) runs it with
+// `node_modules/.bin/vite-node --config vite.cli.config.ts .abp-harness/sessionClient.ts`
+// from ABP_SESSION_CLIENT_DIR, so prompts reach the session through the server exactly like the Desktop.
+// Harness-only client (not committed): sends a user message to an existing
+// session through the server, exactly like the Desktop/saycode client does.
+import { loadContext, withTransport } from '#cli/io/context'
+import { createAgentRuntime } from '#cli/io/agentRuntime'
+
+const [cmd, sessionId, ...rest] = process.argv.slice(2)
+const context = loadContext()
+await context.selectWorkspace(undefined)
+const out = await withTransport(context, async (transport) => {
+  const runtime = createAgentRuntime(context, transport, {})
+  if (cmd === 'send') return runtime.sendPrompt(sessionId, rest.join(' '))
+  if (cmd === 'read') return runtime.readSequencedMessages(sessionId, Number(rest[0] ?? 10))
+  throw new Error('usage: send <sid> <text> | read <sid> [n]')
+})
+process.stdout.write(JSON.stringify(out) + '\n')
+process.exit(0)

@@ -3,7 +3,7 @@ import { promises as fs } from 'node:fs'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { stageUserCredentials, unstageUserCredentials, sweepOrphanUserHomeDirs } from './stageUserCredentials'
+import { credentialStagingParents, stageUserCredentials, unstageUserCredentials, sweepOrphanUserHomeDirs } from './stageUserCredentials'
 
 describe('stageUserCredentials', () => {
   it('writes an access.key file containing the user token and secret', async () => {
@@ -150,5 +150,47 @@ describe('sweepOrphanUserHomeDirs', () => {
     const missing = join(tmpdir(), 'definitely-not-there-' + Date.now())
     const removed = await sweepOrphanUserHomeDirs([], missing)
     expect(removed).toEqual([])
+  })
+})
+
+describe('staging parent change (a machine that became mandatory)', () => {
+  let oldParent: string
+  let newParent: string
+
+  beforeEach(() => {
+    oldParent = mkdtempSync(join(tmpdir(), 'old-staging-'))
+    newParent = mkdtempSync(join(tmpdir(), 'new-staging-'))
+  })
+
+  afterEach(() => {
+    rmSync(oldParent, { recursive: true, force: true })
+    rmSync(newParent, { recursive: true, force: true })
+  })
+
+  it('keeps the OS tmp dir as a trusted parent next to the current one, once each', () => {
+    expect(credentialStagingParents('/home/agent/.happy-staging')).toEqual(['/home/agent/.happy-staging', tmpdir()])
+    expect(credentialStagingParents(tmpdir())).toEqual([tmpdir()])
+  })
+
+  it('unstages a directory staged under an earlier parent', async () => {
+    const staged = mkdtempSync(join(oldParent, 'happy-session-'))
+    await unstageUserCredentials(staged, [newParent, oldParent])
+    await expect(fs.access(staged)).rejects.toThrow()
+  })
+
+  it('still refuses a directory under neither parent', async () => {
+    const elsewhere = mkdtempSync(join(tmpdir(), 'elsewhere-'))
+    const staged = mkdtempSync(join(elsewhere, 'happy-session-'))
+    await expect(unstageUserCredentials(staged, [newParent, oldParent])).rejects.toThrow(/refusing/)
+    rmSync(elsewhere, { recursive: true, force: true })
+  })
+
+  it('sweeps orphans under every trusted parent, keeping live ones', async () => {
+    const orphanOld = mkdtempSync(join(oldParent, 'happy-session-'))
+    const orphanNew = mkdtempSync(join(newParent, 'happy-session-'))
+    const live = mkdtempSync(join(oldParent, 'happy-session-'))
+    const removed = await sweepOrphanUserHomeDirs([live], [newParent, oldParent])
+    expect(removed.sort()).toEqual([orphanNew, orphanOld].sort())
+    await fs.access(live)
   })
 })

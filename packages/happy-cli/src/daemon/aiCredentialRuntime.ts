@@ -1,6 +1,7 @@
+import { stagingParent } from './stagedCredentialRoot'
 import { spawn } from 'node:child_process'
 import { chmod, mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises'
-import { homedir, tmpdir } from 'node:os'
+import { homedir } from 'node:os'
 import { delimiter, join } from 'node:path'
 import {
   getCodexMultiAuthProxyStatus,
@@ -1436,7 +1437,7 @@ export function createNodeAiCredentialRuntime(
     rename,
     chmod,
     rm,
-    makeTempDir: () => mkdtemp(join(tmpdir(), 'happy-ai-credential-')),
+    makeTempDir: () => mkdtemp(join(stagingParent(), 'happy-ai-credential-')),
     supervisor,
   })
 }

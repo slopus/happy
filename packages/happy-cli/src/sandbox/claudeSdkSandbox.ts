@@ -16,9 +16,9 @@
  * 설정으로 내려가며(설치된 SDK 0.3.179 가 런타임에서 소비하는 것을 확인),
  * 주 대상은 Bash 실행 경계다. **CLI 프로세스 전체의 OS 경계가 아니다** — Read/
  * Write/MCP 를 포함한 전 도구가 이 filesystem 값으로 막힌다고 단정하면 안 된다.
- * 프로세스 전체 경계는 자식 프로세스를 직접 감싸야 하고(local 경로가 그렇게 한다),
- * remote 에서 같은 것을 하려면 SDK 의 spawnClaudeCodeProcess 훅이 필요하다 —
- * 그 훅은 동기 반환이라 비동기 wrapWithSandbox 를 그대로 쓸 수 없어 별도 작업이다.
+ * mandatory remote 의 전체 프로세스 경계는 claudeProcessSandbox.ts 가 맡는다.
+ * query 전에 래퍼를 준비하고 spawnClaudeCodeProcess 에 연결한다. 이 파일의
+ * filesystem 제약도 바깥 경계에 합치며, 중첩 SDK sandbox 는 켜지 않는다.
  */
 import type { SandboxSettings } from '@anthropic-ai/claude-agent-sdk';
 import type { SandboxConfig } from '@/persistence';

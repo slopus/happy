@@ -73,6 +73,9 @@
         "types": "./dist/managed/imageRuntimeEntry.d.mts",
         "default": "./dist/managed/imageRuntimeEntry.mjs"
       }
+    },
+    "./sandbox/egressProxyMain": {
+      "import": "./dist/sandbox/egressProxyMain.mjs"
     }
   },
   "files": [
@@ -89,6 +92,7 @@
     "cli": "tsx src/index.ts",
     "dev": "tsx src/index.ts",
     "typecheck": "tsc --noEmit",
+    "test:browser-poc": "vitest run --project browser-poc",
     "bundle:server": "node scripts/bundle-server.cjs",
     "bundle:server:all": "node scripts/bundle-server.cjs --all-platforms",
     "bundle:webapp": "node scripts/bundle-webapp.cjs",
@@ -104,8 +108,8 @@
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "^0.14.1",
-    "@anthropic-ai/claude-agent-sdk": "^0.3.276",
-    "@anthropic-ai/sandbox-runtime": "^0.0.37",
+    "@anthropic-ai/claude-agent-sdk": "0.3.276",
+    "@anthropic-ai/sandbox-runtime": "0.0.37",
     "@anthropic-ai/sdk": "0.96.0",
     "@buzzni/saycode-cli": "0.6.0",
     "@modelcontextprotocol/sdk": "1.29.0",

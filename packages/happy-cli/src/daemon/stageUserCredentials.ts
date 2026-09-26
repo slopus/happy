@@ -1,21 +1,31 @@
 /**
- * Stage a requesting user's Happy credentials in a per-spawn tmp directory so
+ * Stage a requesting user's Happy credentials in a per-spawn private directory so
  * the child CLI authenticates as that user instead of inheriting the daemon's
  * shared ~/.happy-dev/access.key. The directory layout mirrors the daemon's
  * happyHomeDir so the child's existing readCredentials() works unchanged.
  */
 
 import { promises as fs } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { stagingParent } from './stagedCredentialRoot'
 import { basename, dirname, resolve } from 'node:path'
 import { join } from 'node:path'
 import * as tmp from 'tmp'
+import { tmpdir } from 'node:os'
 
 export interface StagedUserCredentials {
   homeDir: string
 }
 
 const STAGED_DIR_PREFIX = 'happy-session-'
+
+/**
+ * Parents a staged directory may live under: the current one, plus the OS tmp dir, where every
+ * directory staged before the machine became mandatory still sits. Both are fixed locations, never
+ * caller input, so accepting either keeps unstage/sweep from becoming an arbitrary-directory wipe.
+ */
+export function credentialStagingParents(current: string = stagingParent()): string[] {
+  return [...new Set([current, tmpdir()])]
+}
 
 export async function stageUserCredentials(
   happyToken: string,
@@ -26,7 +36,7 @@ export async function stageUserCredentials(
    */
   daemonStateFile?: string,
 ): Promise<StagedUserCredentials> {
-  const userHomeDir = tmp.dirSync({ prefix: STAGED_DIR_PREFIX })
+  const userHomeDir = tmp.dirSync({ prefix: STAGED_DIR_PREFIX, tmpdir: stagingParent(), mode: 0o700 })
   await fs.mkdir(join(userHomeDir.name, 'logs'), { recursive: true })
   await fs.writeFile(
     join(userHomeDir.name, 'access.key'),
@@ -63,21 +73,22 @@ export async function stageUserCredentials(
  * Remove a previously staged user-credentials directory. Refuses paths that
  * are not under the expected parent directory with the expected prefix so a
  * bad caller cannot turn this into an arbitrary-directory wipe. Missing
- * directories are treated as a no-op (idempotent). `expectedParent` defaults
- * to the OS tmp dir; callers can override for tests or when staging somewhere
- * else.
+ * directories are treated as a no-op (idempotent). `expectedParents` defaults
+ * to credentialStagingParents() (the current parent and the OS tmp dir).
+ * Callers can override it for isolated tests.
  */
 export async function unstageUserCredentials(
   homeDir: string,
-  expectedParent: string = tmpdir(),
+  expectedParents: string | string[] = credentialStagingParents(),
 ): Promise<void> {
   const resolved = resolve(homeDir)
   const parent = await fs.realpath(dirname(resolved)).catch(() => resolve(dirname(resolved)))
-  const expected = await fs.realpath(expectedParent).catch(() => resolve(expectedParent))
+  const expected = await Promise.all((Array.isArray(expectedParents) ? expectedParents : [expectedParents])
+    .map((candidate) => fs.realpath(candidate).catch(() => resolve(candidate))))
   const name = basename(resolved)
-  if (parent !== expected || !name.startsWith(STAGED_DIR_PREFIX)) {
+  if (!expected.includes(parent) || !name.startsWith(STAGED_DIR_PREFIX)) {
     throw new Error(
-      `refusing to unstage ${homeDir}: must be a direct child of ${expected} with prefix ${STAGED_DIR_PREFIX}`,
+      `refusing to unstage ${homeDir}: must be a direct child of ${expected.join(' or ')} with prefix ${STAGED_DIR_PREFIX}`,
     )
   }
   await fs.rm(resolved, { recursive: true, force: true })
@@ -89,35 +100,36 @@ export function isStagedUserCredentialsDir(name: string): boolean {
 }
 
 /**
- * Remove staged directories under the OS tmp dir that are not referenced by
+ * Remove staged directories under every trusted staging parent that are not referenced by
  * any currently-live session. Intended to be called on daemon startup so
  * crash-interrupted spawns do not leak credentials into /tmp indefinitely.
  */
 export async function sweepOrphanUserHomeDirs(
   knownLiveDirs: Iterable<string>,
-  parentDir: string = tmpdir(),
+  parentDirs: string | string[] = credentialStagingParents(),
 ): Promise<string[]> {
   const keep = new Set<string>()
   for (const d of knownLiveDirs) keep.add(resolve(d))
 
-  let entries: string[]
-  try {
-    entries = await fs.readdir(parentDir)
-  } catch {
-    return []
-  }
-
   const removed: string[] = []
-  for (const name of entries) {
-    if (!isStagedUserCredentialsDir(name)) continue
-    const full = resolve(parentDir, name)
-    if (keep.has(full)) continue
+  for (const parentDir of Array.isArray(parentDirs) ? parentDirs : [parentDirs]) {
+    let entries: string[]
     try {
-      await unstageUserCredentials(full, parentDir)
-      removed.push(full)
+      entries = await fs.readdir(parentDir)
     } catch {
-      // Best-effort: ignore errors from a single dir so one permission issue
-      // cannot block the entire sweep.
+      continue
+    }
+    for (const name of entries) {
+      if (!isStagedUserCredentialsDir(name)) continue
+      const full = resolve(parentDir, name)
+      if (keep.has(full)) continue
+      try {
+        await unstageUserCredentials(full, parentDir)
+        removed.push(full)
+      } catch {
+        // Best-effort: ignore errors from a single dir so one permission issue
+        // cannot block the entire sweep.
+      }
     }
   }
   return removed

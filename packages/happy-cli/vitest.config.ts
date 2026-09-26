@@ -12,10 +12,26 @@ export default defineConfig({
                 test: {
                     name: 'unit',
                     include: ['src/**/*.test.ts', 'scripts/**/*.test.ts'],
-                    exclude: ['src/**/*.integration.test.ts'],
+                    exclude: ['src/**/*.integration.test.ts', 'src/**/*.poc.test.ts'],
                     setupFiles: ['./src/testing/unit.setup.ts'],
                     sequence: {
                         groupOrder: 0,
+                    },
+                },
+            },
+            {
+                // Agent Browser PoC suites drive a real local Chrome.
+                extends: true,
+                test: {
+                    name: 'browser-poc',
+                    include: ['src/browserRuntime/**/*.poc.test.ts'],
+                    fileParallelism: false,
+                    maxWorkers: 1,
+                    minWorkers: 1,
+                    testTimeout: 120_000,
+                    hookTimeout: 120_000,
+                    sequence: {
+                        groupOrder: 3,
                     },
                 },
             },

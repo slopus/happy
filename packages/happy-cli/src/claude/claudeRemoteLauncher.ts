@@ -1,3 +1,4 @@
+import { MandatorySandboxError } from '@/sandbox/sandboxPolicy';
 import { randomUUID } from "node:crypto";
 import type { Metadata } from '@/api/types';
 import { render } from "ink";
@@ -634,6 +635,8 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                     permissionsDeny: buildMandatoryRemoteDenyRules(
                         session.sandboxPolicyMode ?? 'owner-choice',
                     ),
+                    sandboxConfig: session.sandboxConfig,
+                    sandboxPolicyMode: session.sandboxPolicyMode,
                     sandbox: resolveClaudeRemoteSandbox({
                         checkpointSandbox: session.checkpointComposition?.claudeSandbox,
                         sandboxConfig: session.sandboxConfig,
@@ -949,6 +952,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                     session.client.sendSessionEvent({ type: 'message', message: 'Aborted by user' });
                 }
             } catch (e) {
+                if (e instanceof MandatorySandboxError) throw e;
                 logger.debug('[remote]: launch error', e);
                 if (!exitReason) {
                     session.client.closeClaudeSessionTurn('failed');

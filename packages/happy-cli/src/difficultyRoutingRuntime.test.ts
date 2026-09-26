@@ -44,24 +44,27 @@ const baseInput = {
 }
 
 function grantResponse(overrides: Record<string, unknown> = {}) {
+  // One clock reading: expiresAt - issuedAt must equal ttlMs exactly (and relayDeadlineAt - issuedAt
+  // relayTtlMs), which separate Date.now() calls break whenever a millisecond ticks between them.
+  const now = Date.now()
   return {
     ok: true,
     grant: {
       version: 1,
       grantId: 'grant-1',
       policyRevision: 7,
-      expiresAt: Date.now() + 60_000,
+      expiresAt: now + 60_000,
       sourceMachineId: 'source-1',
       hostMachineId: 'host-1',
       hostProcessKeyId: 'key-1',
       hostProcessPublicKey: encodeBase64(new Uint8Array(32).fill(1)),
       maxInputChars: 8000,
       modelMaxInputTokens: 512,
-      relayDeadlineAt: Date.now() + 3000,
+      relayDeadlineAt: now + 3000,
       // The client negotiates timing v2, so a compliant server always answers on it.
       timingVersion: 2,
       requestId: 'client-1',
-      issuedAt: Date.now(),
+      issuedAt: now,
       ttlMs: 60_000,
       relayTtlMs: 3_000,
       ...overrides,

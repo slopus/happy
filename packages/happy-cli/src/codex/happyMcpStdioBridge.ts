@@ -11,6 +11,7 @@
  * Note: This process must not print to stdout as it would break MCP STDIO.
  */
 
+import { unixMcpFetch } from '@/claude/utils/unixMcpFetch';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
@@ -32,7 +33,8 @@ function parseArgs(argv: string[]): { url: string | null } {
 async function main() {
   // Resolve target HTTP MCP URL
   const { url: urlFromArgs } = parseArgs(process.argv.slice(2));
-  const baseUrl = urlFromArgs || process.env.HAPPY_HTTP_MCP_URL || '';
+  const socketPath = process.env.SAYCODE_MCP_SOCKET;
+  const baseUrl = socketPath ? 'http://localhost/' : urlFromArgs || process.env.HAPPY_HTTP_MCP_URL || '';
   const requestHeaders = process.env.HAPPY_HTTP_MCP_HEADERS
     ? JSON.parse(process.env.HAPPY_HTTP_MCP_HEADERS) as Record<string, string>
     : undefined;
@@ -59,6 +61,7 @@ async function main() {
 
     const transport = new StreamableHTTPClientTransport(new URL(baseUrl), {
       requestInit: requestHeaders ? { headers: requestHeaders } : undefined,
+      fetch: socketPath ? unixMcpFetch(socketPath, process.env.SAYCODE_MCP_TOKEN ?? '') : undefined,
     });
     // Retain the client before connect: stdin may close during initialization.
     httpClient = client;

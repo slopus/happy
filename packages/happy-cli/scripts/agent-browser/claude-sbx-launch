@@ -1,0 +1,93 @@
+#!/usr/bin/node
+'use strict';
+/** Fixed root-owned launcher. stdin: metadata NUL, then argc NUL-delimited argv, then SDK stdin. */
+const { spawn, execFileSync } = require('node:child_process');
+const { lstatSync, realpathSync } = require('node:fs');
+const path = require('node:path');
+
+const allowed = new Set(['LANG', 'LC_ALL', 'LC_CTYPE', 'TERM', 'TZ', 'ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN', 'CLAUDE_CODE_ENTRYPOINT', 'ANTHROPIC_MODEL', 'ANTHROPIC_SMALL_FAST_MODEL', 'CLAUDE_CODE_MAX_OUTPUT_TOKENS', 'MAX_THINKING_TOKENS', 'SAYCODE_MCP_SOCKET', 'SAYCODE_MCP_TOKEN']);
+function filterEnv(input) {
+    return { ...Object.fromEntries(Object.entries(input).filter(([key, value]) => allowed.has(key) && typeof value === 'string' && !value.includes('\0'))),
+        PATH: '/usr/local/bin:/usr/bin:/bin', HOME: '/home/agent-sbx', USER: 'agent-sbx',
+        CLAUDE_CONFIG_DIR: '/home/agent-sbx/.claude', TMPDIR: '/tmp',
+        HTTPS_PROXY: 'http://127.0.0.1:3128', HTTP_PROXY: 'http://127.0.0.1:3128',
+        https_proxy: 'http://127.0.0.1:3128', http_proxy: 'http://127.0.0.1:3128',
+        CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1', DISABLE_AUTOUPDATER: '1' };
+}
+function validate(meta, args) {
+    if (!meta || meta.version !== 1 || !Number.isSafeInteger(meta.argc) || meta.argc < 1 || meta.argc > 65536 || args.length !== meta.argc || !args[0].startsWith('/') || !path.isAbsolute(meta.cwd) || !meta.env || typeof meta.env !== 'object') throw Error();
+    if (!Array.isArray(meta.denyRead) || !Array.isArray(meta.denyWrite) || [...meta.denyRead, ...meta.denyWrite].some(p => typeof p !== 'string' || !path.isAbsolute(p) || p.includes('\0'))) throw Error();
+}
+function contains(parent, child) {
+    return parent === child || child.startsWith(parent === '/' ? '/' : parent + '/');
+}
+function normalizeRestrictions(read, write) {
+    const roots = paths => {
+        const normalized = [...new Set(paths.map(p => path.resolve(p)))];
+        return normalized.filter(p => !normalized.some(parent => parent !== p && contains(parent, p)));
+    };
+    const masks = roots(read);
+    return { read: masks, write: roots(write).filter(p => !masks.some(parent => contains(parent, p))) };
+}
+function bwrapArgs(meta, args) {
+    validate(meta, args);
+    const cwd = realpathSync(meta.cwd);
+    if (!cwd.startsWith('/work/') && cwd !== '/work') throw Error();
+    const restrictions = normalizeRestrictions(['/home/agent', '/etc/abp', '/var/lib/abp', '/var/lib/nscd', '/var/cache/nscd', '/var/lib/sss', ...meta.denyRead], meta.denyWrite);
+    const result = [...(meta.networkBlocked ? ['--unshare-net'] : []), '--unshare-user', '--unshare-pid', '--unshare-uts', '--unshare-ipc', '--die-with-parent', '--new-session', '--cap-drop', 'ALL', '--ro-bind', '/', '/', '--proc', '/proc', '--dev', '/dev', '--tmpfs', '/tmp', '--tmpfs', '/var/tmp', '--bind', '/home/agent-sbx', '/home/agent-sbx', '--bind', cwd, cwd];
+    // Never bind a host source covered by a read mask, including inaccessible Happy descendants.
+    for (const p of restrictions.write) {
+        if (contains('/run', p)) continue;
+        try { lstatSync(p); result.push('--ro-bind', p, p); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+    }
+    // Host services must not resolve names or send traffic on behalf of the sandbox UID.
+    result.push('--tmpfs', '/run', '--ro-bind', '/run/abp-mcp', '/run/abp-mcp');
+    // Read masks are last: an ancestor write bind must never restore their host contents.
+    for (const p of restrictions.read) {
+        try {
+            const stat = lstatSync(p);
+            result.push(...(stat.isDirectory() ? ['--tmpfs', p, '--remount-ro', p] : ['--ro-bind', '/dev/null', p]));
+        } catch (error) { if (error.code !== 'ENOENT') throw error; }
+    }
+    return [...result, '--remount-ro', '/run', '--chdir', cwd, '--', ...args];
+}
+function main() {
+    if (process.argv.length !== 3 || process.argv[2] !== '0' || execFileSync('/usr/bin/id', ['-un'], { encoding: 'utf8' }).trim() !== 'agent-sbx') throw Error();
+    let buffer = Buffer.alloc(0), meta, args = [], size = 0, child;
+    const parent = process.ppid;
+    const stop = () => { child?.kill('SIGKILL'); if (!child) process.exit(125); };
+    process.on('SIGTERM', stop); process.on('SIGINT', stop);
+    const watch = setInterval(() => { if (process.ppid !== parent) stop(); }, 100);
+    const deadline = setTimeout(stop, 10000);
+    const consume = data => {
+        buffer = Buffer.concat([buffer, data]);
+        while (true) {
+            const end = buffer.indexOf(0);
+            if (end < 0) { if (size + buffer.length > 4 * 1024 * 1024) stop(); return; }
+            const value = buffer.subarray(0, end).toString('utf8');
+            size += end + 1;
+            if (size > 4 * 1024 * 1024) { stop(); return; }
+            buffer = buffer.subarray(end + 1);
+            try {
+                if (!meta) {
+                    meta = JSON.parse(value);
+                    if (meta.version !== 1 || !Number.isSafeInteger(meta.argc) || meta.argc < 1 || meta.argc > 65536) throw Error();
+                } else args.push(value);
+                if (args.length !== meta.argc) continue;
+                const argv = bwrapArgs(meta, args);
+                process.stdin.pause(); process.stdin.removeListener('data', consume); clearTimeout(deadline);
+                child = spawn('/usr/bin/bwrap', argv, { env: filterEnv(meta.env), stdio: ['pipe', 'inherit', 'inherit'] });
+                child.stdin.on('error', () => {});
+                child.once('error', () => process.exit(125));
+                child.once('exit', code => { clearInterval(watch); process.exit(code ?? 125); });
+                child.stdin.write(buffer); buffer = Buffer.alloc(0);
+                process.stdin.pipe(child.stdin); process.stdin.resume();
+                return;
+            } catch { stop(); return; }
+        }
+    };
+    process.stdin.on('data', consume);
+    process.stdin.on('end', () => { if (!child) stop(); });
+}
+module.exports = { filterEnv, validate, normalizeRestrictions, bwrapArgs };
+if (require.main === module) { try { main(); } catch { process.exit(125); } }

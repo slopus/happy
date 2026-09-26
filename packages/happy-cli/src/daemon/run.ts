@@ -136,6 +136,8 @@ import {
   type StopSessionContext,
   type StopSessionResult,
 } from './sessionIdleReaper';
+import { createBrowserTaskSessionBroker, spawnResumedWithBrowserTaskRegistration, startBrowserTaskReconciliation, type BrowserTaskSessionBroker } from './browserTaskBroker';
+import { findBrowserAttentionSession, startBrowserAttentionWatcher } from './browserAttentionDelivery';
 import {
   createProcFs,
   createProcProcessProbe,
@@ -707,6 +709,7 @@ export async function startDaemon(): Promise<void> {
   let stopLogHousekeeping: () => void = () => undefined;
   let stopClaudeSwapSupervisor: () => void = () => undefined;
   let stopScriptWorker: () => Promise<void> = async () => undefined;
+  let stopBrowserAttention: () => Promise<void> = async () => undefined;
   try {
     // npm 12 blocks install scripts it was not told to allow, so a plain
     // `npm i -g` can leave the postinstall artifacts behind. Restore them before
@@ -1642,6 +1645,21 @@ export async function startDaemon(): Promise<void> {
     ): Promise<Record<string, string>> => ({});
 
     // Spawn a new session (sessionId reserved for future --resume functionality)
+    // Execution machine H only: per-session Agent Browser grants via the Runtime broker.
+    // A corrupt revocation queue disables browser grants (fail closed) and is left for repair.
+    let browserTaskBroker: BrowserTaskSessionBroker | undefined;
+    try {
+      browserTaskBroker = createBrowserTaskSessionBroker(process.env, undefined, {
+        pendingRevocationsFile: join(configuration.happyHomeDir, 'browser-task-revocations.json'),
+      });
+    } catch (error) {
+      logger.warn(`[DAEMON RUN] Browser task broker disabled: ${error instanceof Error ? error.message : 'unknown error'}`);
+    }
+    const stopBrowserTaskReconciliation = startBrowserTaskReconciliation(browserTaskBroker);
+    const reportBrowserTaskRevokeFailure = (error: unknown): void => {
+      logger.warn(`[DAEMON RUN] ${error instanceof Error ? error.message : 'Browser task revocation failed'}`);
+    };
+
     const spawnSession = async (
       options: SpawnSessionOptions,
       trustedMcpContext?: AutomationMcpSpawnContext,
@@ -1703,6 +1721,12 @@ export async function startDaemon(): Promise<void> {
       }
 
       let stagedDeferredContinuationContextFile: string | undefined;
+      let browserTaskRegistration: { registrationId: string; sessionSecret: string } | undefined;
+      const releaseBrowserTaskRegistration = async (): Promise<void> => {
+        const registration = browserTaskRegistration;
+        browserTaskRegistration = undefined;
+        if (registration) await browserTaskBroker?.revoke({ registrationId: registration.registrationId }).catch(reportBrowserTaskRevokeFailure);
+      };
       const cleanupStagedDeferredContinuationContext = (): void => {
         if (!stagedDeferredContinuationContextFile) return;
         const file = stagedDeferredContinuationContextFile;
@@ -1725,6 +1749,13 @@ export async function startDaemon(): Promise<void> {
             if (result.type !== 'success') {
               cleanupStagedDeferredContinuationContext();
             }
+            // The Happy session id exists only now; an unbound registration never issues a grant.
+            // Attribute the registration to the session's host pid, never to this restartable daemon.
+            if (browserTaskRegistration && !(result.type === 'success'
+              && await browserTaskBroker?.bind(browserTaskRegistration.registrationId, result.sessionId,
+                Array.from(pidToTrackedSession.values()).find((session) => session.happySessionId === result.sessionId)?.pid))) {
+              await releaseBrowserTaskRegistration();
+            }
             if (result.type !== 'success') return result;
             const reported: SpawnSessionResult = appliedAiAuthSource === undefined
               ? result
@@ -1740,6 +1771,7 @@ export async function startDaemon(): Promise<void> {
             };
           } catch (error) {
             cleanupStagedDeferredContinuationContext();
+            await releaseBrowserTaskRegistration();
             throw error;
           }
         };
@@ -2014,6 +2046,11 @@ export async function startDaemon(): Promise<void> {
             additionalDirectoryResult.accepted,
           );
         }
+        browserTaskRegistration = await browserTaskBroker?.register();
+        if (browserTaskRegistration) {
+          // Session process only; it removes the secret from its env before spawning claude.
+          extraEnv.HAPPY_BROWSER_TASK_SESSION_SECRET = browserTaskRegistration.sessionSecret;
+        }
 
         // Isolated sessions must not inherit unrelated daemon credentials.
         const hasSandbox = extraEnv.HAPPY_PROJECT_SANDBOX_CONFIG !== undefined;
@@ -2218,6 +2255,7 @@ export async function startDaemon(): Promise<void> {
         }));
       } catch (error) {
         cleanupStagedDeferredContinuationContext();
+        await releaseBrowserTaskRegistration();
         const errorMessage = error instanceof Error ? error.message : String(error);
         logger.debug('[DAEMON RUN] Failed to spawn session:', error);
         return {
@@ -2721,14 +2759,21 @@ export async function startDaemon(): Promise<void> {
           }
         }
 
-        const result = await spawnTrackedHappyProcess({
-          args: launch.args,
-          cwd: launch.cwd,
-          // resume 는 이 spawn 하나에 한해 lineage 를 명시적으로 부여한다 —
-          // 상속분은 scrub 하고 이 세션의 값만 아래에서 다시 넣는다.
+        const result = await spawnResumedWithBrowserTaskRegistration({
+          broker: browserTaskBroker,
+          agentSessionId: happySessionId,
           env: resumedEnvironment,
-          userHomeDir: credentialDecision.kind === 'user-staged' ? credentialDecision.homeDir : undefined,
-          resumeTargetSessionId: happySessionId,
+          spawn: (env) => spawnTrackedHappyProcess({
+            args: launch.args,
+            cwd: launch.cwd,
+            // resume 는 이 spawn 하나에 한해 lineage 를 명시적으로 부여한다 —
+            // 상속분은 scrub 하고 이 세션의 값만 아래에서 다시 넣는다.
+            env,
+            userHomeDir: credentialDecision.kind === 'user-staged' ? credentialDecision.homeDir : undefined,
+            resumeTargetSessionId: happySessionId,
+          }),
+          ownerPid: () => Array.from(pidToTrackedSession.values()).find((session) => session.happySessionId === happySessionId)?.pid,
+          onRevokeFailure: reportBrowserTaskRevokeFailure,
         });
         return result.type === 'error'
           ? { ...result, code: 'SESSION_RESUME_FAILED' }
@@ -3193,6 +3238,8 @@ export async function startDaemon(): Promise<void> {
         logger.debug(`[DAEMON RUN] Child exit of PID ${pid} not yet on a receipt; deferred`);
       }
       if (tracked?.happySessionId) autonomousQualityGateRegistry.noteSessionStopped(tracked.happySessionId);
+      // Revokes the session's broker registration and every agent grant it received.
+      if (tracked?.happySessionId) void browserTaskBroker?.revoke({ agentSessionId: tracked.happySessionId }).catch(reportBrowserTaskRevokeFailure);
       const preservedForResume = tracked ? preserveSessionForResume(tracked, `process-exit:${pid}`) : false;
       if (!preservedForResume) {
         logger.debug(`[DAEMON RUN] Removing exited process PID ${pid} from tracking`);
@@ -4705,6 +4752,9 @@ export async function startDaemon(): Promise<void> {
     const cleanupAndShutdown = async (source: 'happy-app' | 'happy-cli' | 'os-signal' | 'exception', errorMessage?: string) => {
       logger.debug(`[DAEMON RUN] Starting proper cleanup (source: ${source}, errorMessage: ${errorMessage})...`);
 
+      stopBrowserTaskReconciliation();
+      await stopBrowserAttention();
+
       // Clear health check interval
       if (restartOnStaleVersionAndHeartbeat) {
         clearInterval(restartOnStaleVersionAndHeartbeat);
@@ -4758,12 +4808,27 @@ export async function startDaemon(): Promise<void> {
       process.exit(0);
     };
 
+    stopBrowserAttention = startBrowserAttentionWatcher({
+      happyHomeDir: configuration.happyHomeDir,
+      serverUrl: configuration.serverUrl,
+      machineId,
+      findSession: (sessionId) => findBrowserAttentionSession(
+        sessionId, pidToTrackedSession.values(), sessionIdToFinishedSession, isPidAlive,
+      ),
+      isAlive: (pid) => pid > 0 && isPidAlive(pid),
+      readToken: async (session) => session.userHomeDir
+        ? readStagedTokenFromHomeDir(session.userHomeDir)
+        : credentials.token,
+      log: (message) => logger.debug(message),
+    });
+
     logger.debug('[DAEMON RUN] Daemon started successfully, waiting for shutdown request');
 
     // Wait for shutdown request
     const shutdownRequest = await resolvesWhenShutdownRequested;
     await cleanupAndShutdown(shutdownRequest.source, shutdownRequest.errorMessage);
   } catch (error) {
+    await stopBrowserAttention();
     stopLogHousekeeping();
     stopClaudeSwapSupervisor();
     await stopScriptWorker().catch((shutdownError) => logger.debug('[script-automations] Shutdown report remains in outbox', shutdownError));
