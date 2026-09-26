@@ -93,7 +93,7 @@ const WINDOW_PAGE = 60;
  * viewports of the oldest rendered message.
  */
 const START_REACHED_VIEWPORTS = 1;
-/** Stop automatic paging after this many pages without an older rendered boundary. */
+/** Stop automatic paging after this many pages that reach no further back (see oldestBoundary). */
 const MAX_INVISIBLE_OLDER_PAGES = 5;
 // Visual gap between the button's bottom edge and the composer card's top
 // edge. scrollButtonInset is measured to the card itself, so this is exact.
@@ -151,6 +151,25 @@ function windowEndForTurn(messages: Message[], desiredEnd: number): number {
     return end;
 }
 
+/**
+ * Identity of the far end of the list, for judging whether a page of history
+ * took the reader any further back.
+ *
+ * Usually that is just the oldest row. The exception is a collapsed work group:
+ * it is keyed by the message its run completes at (see collectAgentWorkGroups),
+ * so it keeps its id while the older part of its turn is still arriving. A page
+ * that lands there adds no row, yet it does reach further back — and one turn of
+ * agent work can span many pages before the prompt that opened it arrives. The
+ * group's oldest member is therefore part of its identity. Expanding a group, or
+ * live rows arriving at the newest end, still leaves this unchanged.
+ */
+function oldestBoundary(items: readonly ListItem[]): string | null {
+    const oldest = items[items.length - 1];
+    if (!oldest) return null;
+    if (oldest.type === 'work-header') return `${oldest.id}:${oldest.group.messages[0]?.id ?? ''}`;
+    return oldest.id;
+}
+
 export const ChatList = React.memo((props: {
     session: Session;
     active?: boolean;
@@ -183,14 +202,17 @@ export const ChatList = React.memo((props: {
 
 /**
  * Renders past the oldest message: the older-history spinner, Retry after a
- * failed page, or Load more after the invisible-page budget, then a spacer
- * keeping it clear of the header bar.
+ * failed page, or Load more after the invisible-page budget, directly above the
+ * oldest message, with a spacer beyond it keeping it clear of the header bar.
  *
  * This is the list's *footer* because the list is inverted — the far end of
- * the data is the top of the screen. The two children are in visual order
- * bottom-to-top for the same reason: each cell is counter-flipped, so within
- * this component layout reads normally, but its position relative to the
- * conversation is mirrored.
+ * the data is the top of the screen. FlashList counter-flips the footer as a
+ * whole, as it does each cell, so inside this component layout reads
+ * top-to-bottom like any other view: the spacer comes first and sits under the
+ * header bar, and the status slot comes last, against the oldest message. The
+ * other way round, the slot ends up at the very top of the content, which on a
+ * phone is behind the header and the status bar — Load more and Retry would be
+ * the only way forward and could be neither seen nor tapped.
  *
  * The status slot is always mounted at a fixed height. It sits beyond every
  * row, so a height change here moves the whole conversation.
@@ -200,12 +222,12 @@ const OlderEnd = React.memo((props: { status: 'idle' | 'loading' | 'error' | 'lo
     const safeArea = useSafeAreaInsets();
     return (
         <View>
+            <View style={{ height: props.topContentInset ?? headerHeight + safeArea.top + 32 }} />
             <View style={{ height: 32, alignItems: 'center', justifyContent: 'center' }}>
                 {props.status === 'loading' && <ActivityIndicator size="small" />}
                 {props.status === 'error' && <RoundButton size="small" display="inverted" title={t('common.retry')} onPress={props.onAction} />}
                 {props.status === 'load-more' && <RoundButton size="small" display="inverted" title={t('common.loadMore')} onPress={props.onAction} />}
             </View>
-            <View style={{ height: props.topContentInset ?? headerHeight + safeArea.top + 32 }} />
         </View>
     );
 });
@@ -665,9 +687,10 @@ const ChatListInternal = React.memo((props: {
     // page bumps the counter so the effect re-checks with fresh props.
     const pendingOlderRef = React.useRef<Promise<boolean> | null>(null);
     // A settled page is assessed after its rows have had a chance to enter the
-    // window. Compare the oldest item's identity, not the row count: live rows
-    // and group expansion must not reset the budget. null means an empty list;
-    // undefined means no page is awaiting assessment.
+    // window. Compare the far end's identity (oldestBoundary), not the row
+    // count: live rows and group expansion must not reset the budget, while a
+    // page that extends the oldest collapsed turn must. null means an empty
+    // list; undefined means no page is awaiting assessment.
     const olderPageRef = React.useRef<string | null | undefined>(undefined);
     const invisibleOlderPagesRef = React.useRef(0);
     const [olderSettled, setOlderSettled] = React.useState(0);
@@ -699,7 +722,7 @@ const ChatListInternal = React.memo((props: {
         const pageBaseline = olderPageRef.current;
         if (pageBaseline !== undefined && pendingOlderRef.current === null) {
             olderPageRef.current = undefined;
-            if ((listItemsRef.current[listItemsRef.current.length - 1]?.id ?? null) !== pageBaseline) {
+            if (oldestBoundary(listItemsRef.current) !== pageBaseline) {
                 invisibleOlderPagesRef.current = 0;
                 setOlderBlocked(null);
             } else {
@@ -723,7 +746,7 @@ const ChatListInternal = React.memo((props: {
         // scroll or store change, so it cannot spin.
         const request = sync.loadOlderMessages(sessionId);
         pendingOlderRef.current = request;
-        olderPageRef.current = listItemsRef.current[listItemsRef.current.length - 1]?.id ?? null;
+        olderPageRef.current = oldestBoundary(listItemsRef.current);
         request.then(
             (advanced) => {
                 if (pendingOlderRef.current !== request) return;
