@@ -304,16 +304,29 @@ describe.skipIf(!enabled)('managed session data routes (real Fastify + PostgreSQ
             expect(read.statusCode).toBe(200);
         });
 
-        it.each([undefined, 'seq'])('looks itself up, and only itself (projection %s)', async (projection) => {
+        it.each([undefined, 'seq', 'version'])('looks itself up, and only itself (projection %s)', async (projection) => {
             const found = await request({
                 method: 'POST', url: '/v2/sessions/lookup',
                 token: scopedToken, body: { ids: [sessionId], ...(projection ? { projection } : {}) },
             });
             expect(found.statusCode).toBe(200);
             expect(found.json().sessions.map((s: { id: string }) => s.id)).toEqual([sessionId]);
-            if (projection) {
-                const stored = await db.session.findUniqueOrThrow({ where: { id: sessionId } });
+            const stored = await db.session.findUniqueOrThrow({ where: { id: sessionId } });
+            if (projection === 'seq') {
                 expect(found.json()).toEqual({ sessions: [{ id: sessionId, seq: stored.seq }] });
+            }
+            if (projection === 'version') {
+                expect(found.json()).toEqual({ sessions: [{
+                    id: sessionId,
+                    seq: stored.seq,
+                    createdAt: stored.createdAt.getTime(),
+                    updatedAt: stored.updatedAt.getTime(),
+                    active: stored.active,
+                    activeAt: stored.lastActiveAt.getTime(),
+                    metadataVersion: stored.metadataVersion,
+                    agentStateVersion: stored.agentStateVersion,
+                    hasDataEncryptionKey: stored.dataEncryptionKey !== null,
+                }] });
             }
         });
 
@@ -580,6 +593,16 @@ describe.skipIf(!enabled)('managed session data routes (real Fastify + PostgreSQ
             expect(response.statusCode).toBe(200);
             expect(response.json().sessions[0].dataEncryptionKey)
                 .toBe(envelope.toString('base64'));
+
+            // The version projection reports the envelope this viewer would
+            // receive, so a client comparing it never mistakes the owner's.
+            const versions = await request({
+                method: 'POST', url: '/v2/sessions/lookup',
+                token: minted.token, body: { ids: [sessionId], projection: 'version' },
+            });
+            expect(versions.statusCode).toBe(200);
+            expect(versions.json().sessions[0].hasDataEncryptionKey).toBe(true);
+            expect(versions.json().sessions[0]).not.toHaveProperty('dataEncryptionKey');
         });
 
         it('leaves an owner reading their own transcript with the session\'s envelope', async () => {
@@ -626,7 +649,7 @@ describe.skipIf(!enabled)('managed session data routes (real Fastify + PostgreSQ
             }), 403);
         });
 
-        it.each([undefined, 'seq'])('refuses a lookup that reaches wider than the grant (projection %s)', async (projection) => {
+        it.each([undefined, 'seq', 'version'])('refuses a lookup that reaches wider than the grant (projection %s)', async (projection) => {
             for (const ids of [[otherSessionId], [sessionId, otherSessionId]]) {
                 const response = await expectInert(() => request({
                     method: 'POST', url: '/v2/sessions/lookup', token: scopedToken,

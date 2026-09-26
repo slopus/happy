@@ -131,7 +131,7 @@ export function sessionRoutes(app: Fastify) {
         schema: {
             body: z.object({
                 ids: z.array(z.string().min(1)).min(1).max(200),
-                projection: z.literal('seq').optional(),
+                projection: z.enum(['seq', 'version']).optional(),
             })
         }
     }, async (request, reply) => {
@@ -178,6 +178,53 @@ export function sessionRoutes(app: Fastify) {
         const viewerEnvelope = grantViewer
             ? { sessionId: grantViewer.sessionId, key: grantViewer.viewerDataEncryptionKey ?? null }
             : null;
+        const servedDataEncryptionKey = (v: { id: string; dataEncryptionKey: Uint8Array | null }) => (
+            viewerEnvelope && viewerEnvelope.sessionId === v.id
+                ? (viewerEnvelope.key
+                    ? Buffer.from(viewerEnvelope.key).toString('base64')
+                    : null)
+                : (v.dataEncryptionKey
+                    ? Buffer.from(v.dataEncryptionKey).toString('base64')
+                    : null)
+        );
+        /*
+         * The runtime poll asks for this on every tick and fetches the full row
+         * only when a version or key presence moved: encrypted bodies change
+         * through the version-CAS socket handlers (versions bump) or a rewrap,
+         * which re-encrypts them without a bump but only while filling a
+         * missing envelope — key presence changes with it.
+         */
+        if (request.body.projection === 'version') {
+            const rows = await db.session.findMany({
+                where: { accountId: userId, id: { in: uniqueIds } },
+                select: {
+                    id: true,
+                    seq: true,
+                    createdAt: true,
+                    updatedAt: true,
+                    metadataVersion: true,
+                    agentStateVersion: true,
+                    dataEncryptionKey: true,
+                    active: true,
+                    lastActiveAt: true,
+                },
+            });
+            return reply.send({
+                sessions: rows
+                    .sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0))
+                    .map((v) => ({
+                        id: v.id,
+                        seq: v.seq,
+                        createdAt: v.createdAt.getTime(),
+                        updatedAt: v.updatedAt.getTime(),
+                        active: v.active,
+                        activeAt: v.lastActiveAt.getTime(),
+                        metadataVersion: v.metadataVersion,
+                        agentStateVersion: v.agentStateVersion,
+                        hasDataEncryptionKey: servedDataEncryptionKey(v) !== null,
+                    })),
+            });
+        }
         const sessions = await db.session.findMany({
             where: {
                 accountId: userId,
@@ -211,13 +258,7 @@ export function sessionRoutes(app: Fastify) {
                     metadataVersion: v.metadataVersion,
                     agentState: v.agentState,
                     agentStateVersion: v.agentStateVersion,
-                    dataEncryptionKey: viewerEnvelope && viewerEnvelope.sessionId === v.id
-                        ? (viewerEnvelope.key
-                            ? Buffer.from(viewerEnvelope.key).toString('base64')
-                            : null)
-                        : (v.dataEncryptionKey
-                            ? Buffer.from(v.dataEncryptionKey).toString('base64')
-                            : null),
+                    dataEncryptionKey: servedDataEncryptionKey(v),
                 }))
         });
     });
