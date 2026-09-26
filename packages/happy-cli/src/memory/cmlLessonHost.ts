@@ -170,6 +170,12 @@ export async function loadCmlLessonHost(
 export interface LessonHostHandle {
     service: LessonHostService;
     projectHash: string;
+    /**
+     * The workspace this store was opened for — the path a lesson lookup must
+     * name. Not the provider's cwd: a checkpoint-protected turn runs in its own
+     * repository, which CML would not resolve onto this project's store.
+     */
+    projectPath?: string;
     hashCandidatePayload(payload: unknown): string;
     close(): Promise<void>;
 }
@@ -206,6 +212,7 @@ export async function openLessonHost(input: {
             handle: {
                 service: opened.service,
                 projectHash: opened.projectHash,
+                projectPath: input.workspaceDir,
                 hashCandidatePayload: (payload) => loaded.modules.hashLessonCandidatePayload(payload),
                 close: () => opened.close(),
             },
