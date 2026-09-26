@@ -27,6 +27,7 @@ export class RpcHandlerManager {
      * future change — cannot become a bypass simply by existing.
      * Null on every BYOS machine, which leaves dispatch exactly as it was.
      */
+    private methodPolicy: ((method: string) => { error: string; code: string } | null) | null = null;
     private managedAllowlist: ReadonlySet<string> | null = null;
 
     constructor(config: RpcHandlerConfig) {
@@ -61,6 +62,11 @@ export class RpcHandlerManager {
      */
     setManagedAllowlist(methods: readonly string[]): void {
         this.managedAllowlist = new Set(methods);
+    }
+
+    /** Internal host policy, independent of managed identity and enforced for late registrations too. */
+    setMethodPolicy(policy: (method: string) => { error: string; code: string } | null): void {
+        this.methodPolicy = policy;
     }
 
     /** Registered method names without the machine scope prefix. */
@@ -102,6 +108,10 @@ export class RpcHandlerManager {
 
     private async executeRequest(request: RpcRequest, trace?: ReturnType<typeof createRpcLatency>): Promise<any> {
         try {
+            const prefix = `${this.scopePrefix}:`;
+            const bareMethod = request.method.startsWith(prefix) ? request.method.slice(prefix.length) : request.method;
+            const refusal = this.methodPolicy?.(bareMethod);
+            if (refusal) return encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, refusal));
             if (this.managedAllowlist) {
                 const prefix = `${this.scopePrefix}:`;
                 const bare = request.method.startsWith(prefix)

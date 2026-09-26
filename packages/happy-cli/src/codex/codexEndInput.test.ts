@@ -6,7 +6,7 @@
  * `endInputAndAwaitExit` could report one that did not happen.
  */
 import { EventEmitter } from 'node:events';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { CodexAppServerClient } from './codexAppServerClient';
 
@@ -38,6 +38,15 @@ function client(proc: unknown): { endInputAndAwaitExit: CodexAppServerClient['en
 }
 
 describe('endInputAndAwaitExit', () => {
+    afterEach(() => vi.useRealTimers());
+    it('cancels an exit observation and releases its listener without signalling', async () => {
+        const { proc, signals } = processDouble(); const controller = new AbortController();
+        const pending = client(proc).endInputAndAwaitExit(1000, controller.signal);
+        controller.abort();
+        expect(await pending).toEqual({ exited: false, code: null, signal: null });
+        expect(proc.listenerCount('exit')).toBe(0); expect(signals).toEqual([]);
+    });
+
     it('shouldEndStdinAndSendNoSignalAtAll', async () => {
         const { proc, signals, endedCount } = processDouble();
         const instance = client(proc);
@@ -106,5 +115,37 @@ describe('endInputAndAwaitExit', () => {
         proc.emit('exit', null, 'SIGTERM');
 
         expect(await settled).toEqual({ exited: true, code: null, signal: 'SIGTERM' });
+    });
+});
+
+
+describe('endInputAndAwaitExit retry cleanup', () => {
+    afterEach(() => vi.useRealTimers());
+    it('removes only its own listener and deadline after a timeout', async () => {
+        vi.useFakeTimers();
+        const { proc } = processDouble();
+        const other = () => {};
+        proc.on('exit', other);
+        const result = client(proc).endInputAndAwaitExit(10);
+        await vi.advanceTimersByTimeAsync(10);
+        expect(await result).toEqual({ exited: false, code: null, signal: null });
+        expect(proc.listeners('exit')).toEqual([other]);
+        expect(vi.getTimerCount()).toBe(0);
+    });
+    it('cleans up when ending stdin throws', async () => {
+        vi.useFakeTimers();
+        const { proc } = processDouble();
+        proc.stdin = { end: () => { throw new Error('closed pipe'); } };
+        expect(await client(proc).endInputAndAwaitExit(1000)).toEqual({ exited: false, code: null, signal: null });
+        expect(proc.listenerCount('exit')).toBe(0);
+        expect(vi.getTimerCount()).toBe(0);
+    });
+    it('clears the deadline after synchronous exit from stdin.end', async () => {
+        vi.useFakeTimers();
+        const { proc } = processDouble();
+        proc.stdin = { end: () => { proc.emit('exit', 0, null); } };
+        expect(await client(proc).endInputAndAwaitExit(1000)).toEqual({ exited: true, code: 0, signal: null });
+        expect(proc.listenerCount('exit')).toBe(0);
+        expect(vi.getTimerCount()).toBe(0);
     });
 });

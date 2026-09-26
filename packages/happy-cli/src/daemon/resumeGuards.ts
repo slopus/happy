@@ -29,10 +29,11 @@ export function hasLiveDaemonChild(
     happySessionId: string,
     trackedSessions: Iterable<{ happySessionId?: string; resumeTargetSessionId?: string; pid: number }>,
     isPidAlive: (pid: number) => boolean,
+    ownsUnresolvedJob: (pid: number) => boolean = () => false,
 ): boolean {
     for (const session of trackedSessions) {
         const attachedTo = session.happySessionId ?? session.resumeTargetSessionId;
-        if (attachedTo === happySessionId && isPidAlive(session.pid)) return true;
+        if (attachedTo === happySessionId && (ownsUnresolvedJob(session.pid) || isPidAlive(session.pid))) return true;
     }
     return false;
 }
@@ -82,4 +83,10 @@ export function shareInFlight<T>(
     });
     inflight.set(key, promise);
     return promise;
+}
+
+/** The control listener starts before network-dependent daemon initialization finishes. */
+export function createLaunchReadinessGate() {
+    let ready = false;
+    return { isReady: () => ready, markReady: () => { ready = true; } };
 }

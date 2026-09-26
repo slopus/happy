@@ -1,3 +1,4 @@
+import { attachStandaloneDrain, type StandaloneDrain } from './standaloneDrain';
 /**
  * HTTP control server for daemon management
  * Provides endpoints for listing sessions, stopping sessions, and daemon shutdown
@@ -98,7 +99,9 @@ export function startDaemonControlServer({
   getMachineEncryption = () => null,
   managedRuntime = false,
   verifyManagedReport,
+  standaloneDrain,
 }: {
+  standaloneDrain?: StandaloneDrain;
   getChildren: () => TrackedSession[];
   stopSession: (sessionId: string, context?: StopSessionContext) => StopSessionResult;
   spawnSession: (options: SpawnSessionOptions) => Promise<SpawnSessionResult>;
@@ -189,6 +192,17 @@ export function startDaemonControlServer({
       }
       if (request.headers.authorization !== `Bearer ${controlSecret}`) {
         await reply.code(401).send({ error: 'unauthorized' });
+        return;
+      }
+      if (standaloneDrain) {
+        const path = new URL(request.url, 'http://127.0.0.1').pathname;
+        const allowed = new Set(['/session-started', '/session-runtime', '/list', '/spawn-session', '/stop-session', '/stop',
+          '/allocate-port', '/release-port', '/get-port', '/port-registry', '/standalone-drain/capabilities',
+          '/standalone-drain/begin', '/standalone-drain/status', '/standalone-drain/commit', '/standalone-drain/terminate']);
+        if (!allowed.has(path)) {
+          await reply.code(403).send({ error: 'Endpoint unavailable in the standalone Windows Codex trial',
+            code: 'STANDALONE_WINDOWS_TRIAL_UNSUPPORTED' });
+        }
       }
     });
 
@@ -197,7 +211,7 @@ export function startDaemonControlServer({
     // at `verifyClient` (attachTerminalWsRoute).
     // The terminal WebSocket is a shell into the runtime and bypasses the RPC
     // dispatch gate entirely, so a managed runtime does not attach it at all.
-    const terminalWs = managedRuntime ? null : attachTerminalWsRoute(app.server, {
+    const terminalWs = managedRuntime || standaloneDrain ? null : attachTerminalWsRoute(app.server, {
       path: '/terminal',
       controlSecret,
       allowedRoot,
@@ -373,8 +387,9 @@ export function startDaemonControlServer({
           200: z.object({
             success: z.boolean(),
             stopped: z.boolean(),
-            reason: z.enum(['not-found', 'active', 'managed-generation']).optional(),
-            guard: z.string().optional()
+            reason: z.enum(['not-found', 'active', 'managed-generation', 'standalone-drain', 'standalone-unowned', 'standalone-blocked']).optional(),
+            guard: z.string().optional(),
+            detail: z.string().optional()
           })
         }
       }
@@ -394,7 +409,8 @@ export function startDaemonControlServer({
         success: false,
         stopped: false,
         reason: result.reason,
-        ...(result.reason === 'active' ? { guard: result.guard } : {})
+        ...(result.reason === 'active' ? { guard: result.guard } : {}),
+        ...('detail' in result ? { detail: result.detail } : {})
       };
     });
 
@@ -849,16 +865,18 @@ export function startDaemonControlServer({
       });
     }
 
+    attachStandaloneDrain(app, managedRuntime ? undefined : standaloneDrain, requestShutdown);
+
     // Stop daemon
     typed.post('/stop', {
       schema: {
         response: {
-          200: z.object({
-            status: z.string()
-          })
+          200: z.object({ status: z.string() }),
+          409: z.object({ status: z.string() })
         }
       }
-    }, async () => {
+    }, async (_request, reply) => {
+      if (standaloneDrain) { reply.code(409); return { status: 'drain-required' }; }
       logger.debug('[CONTROL SERVER] Stop daemon request received');
 
       // Give time for response to arrive

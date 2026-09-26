@@ -29,12 +29,14 @@ export function waitForSessionWebhook({
   label = '',
   logger,
   timeouts = readSessionStartTimeoutConfig(),
+  signal,
 }: {
   pid: number;
   pidToAwaiter: Map<number, (session: TrackedSession) => void>;
   label?: string;
   logger: { debug: (message: string, ...args: unknown[]) => void };
   timeouts?: { softTimeoutMs: number; finalTimeoutMs: number };
+  signal?: AbortSignal;
 }): Promise<SpawnSessionResult> {
   const suffix = label ? ` ${label}` : '';
   logger.debug(`[DAEMON RUN] Waiting for session webhook for PID ${pid}${suffix}`);
@@ -43,34 +45,31 @@ export function waitForSessionWebhook({
     let delayed = false;
     let settled = false;
 
+    let completed: (session: TrackedSession) => void;
+    const finish = (result: SpawnSessionResult) => {
+      if (settled) return;
+      settled = true; clearTimeout(softTimeout); clearTimeout(finalTimeout);
+      signal?.removeEventListener('abort', abort);
+      if (pidToAwaiter.get(pid) === completed) pidToAwaiter.delete(pid);
+      resolve(result);
+    };
+    const abort = () => finish({ type: 'error', errorMessage: `Session startup cancelled for PID ${pid}${suffix}` });
     const softTimeout = setTimeout(() => {
       delayed = true;
       logger.debug(`[DAEMON RUN] Session webhook still pending for PID ${pid}${suffix} after ${timeouts.softTimeoutMs}ms`);
     }, timeouts.softTimeoutMs);
-
     const finalTimeout = setTimeout(() => {
-      settled = true;
-      pidToAwaiter.delete(pid);
       logger.debug(`[DAEMON RUN] Session webhook timeout for PID ${pid}${suffix} after ${timeouts.finalTimeoutMs}ms`);
-      resolve({
-        type: 'error',
-        errorMessage: `Session webhook timeout for PID ${pid}${suffix}`
-      });
+      finish({ type: 'error', errorMessage: `Session webhook timeout for PID ${pid}${suffix}` });
     }, timeouts.finalTimeoutMs);
-
-    pidToAwaiter.set(pid, (completedSession) => {
+    completed = (completedSession) => {
       if (settled) return;
-      settled = true;
-      clearTimeout(softTimeout);
-      clearTimeout(finalTimeout);
-      if (delayed) {
-        logger.debug(`[DAEMON RUN] Session ${completedSession.happySessionId} spawned after delayed webhook for PID ${pid}${suffix}`);
-      }
+      if (delayed) logger.debug(`[DAEMON RUN] Session ${completedSession.happySessionId} spawned after delayed webhook for PID ${pid}${suffix}`);
       logger.debug(`[DAEMON RUN] Session ${completedSession.happySessionId} fully spawned with webhook${suffix}`);
-      resolve({
-        type: 'success',
-        sessionId: completedSession.happySessionId!
-      });
-    });
+      finish({ type: 'success', sessionId: completedSession.happySessionId! });
+    };
+    pidToAwaiter.set(pid, completed);
+    signal?.addEventListener('abort', abort, { once: true });
+    if (signal?.aborted) abort();
   });
 }

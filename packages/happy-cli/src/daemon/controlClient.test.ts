@@ -131,6 +131,18 @@ describe('stopDaemon', () => {
     vi.clearAllMocks()
   })
 
+  it.each([409, 401, 403])('preserves the daemon when HTTP stop is refused (%s)', async (status) => {
+    const state = stateWithPid(process.pid)
+    mocks.mockReadDaemonStateSnapshot.mockResolvedValue({ state, raw: JSON.stringify(state) })
+    const killSpy = vi.spyOn(process, 'kill').mockReturnValue(true)
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({ ok: false, status } as Response)
+    try {
+      await expect(stopDaemon()).rejects.toThrow(`HTTP ${status}`)
+      expect(killSpy.mock.calls.every(([, signal]) => signal === 0)).toBe(true)
+      expect(mocks.mockClearDaemonState).not.toHaveBeenCalled()
+    } finally { killSpy.mockRestore(); fetchSpy.mockRestore() }
+  })
+
   it('does not signal a reused pid after stale daemon state was marked stopped', async () => {
     const state = { ...stateWithPid(process.pid), state: 'stopped' as const }
     mocks.mockReadDaemonStateSnapshot.mockResolvedValue({ state, raw: JSON.stringify(state) })

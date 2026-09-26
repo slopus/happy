@@ -132,6 +132,7 @@ export abstract class BasePermissionHandler {
                 this.notifySettled(response.id, 'answered');
 
                 // Move request to completed in agent state
+                const completedAt = Date.now();
                 this.session.updateAgentState((currentState) => {
                     const request = currentState.requests?.[response.id];
                     if (!request) return currentState;
@@ -145,7 +146,7 @@ export abstract class BasePermissionHandler {
                             ...currentState.completedRequests,
                             [response.id]: {
                                 ...request,
-                                completedAt: Date.now(),
+                                completedAt,
                                 status: response.approved ? 'approved' : 'denied',
                                 decision: result.decision
                             }
@@ -163,6 +164,7 @@ export abstract class BasePermissionHandler {
      * Add a pending request to the agent state.
      */
     protected addPendingRequestToState(toolCallId: string, toolName: string, input: unknown): void {
+        const createdAt = Date.now();
         this.session.updateAgentState((currentState) => ({
             ...currentState,
             requests: {
@@ -170,7 +172,7 @@ export abstract class BasePermissionHandler {
                 [toolCallId]: {
                     tool: toolName,
                     arguments: input,
-                    createdAt: Date.now()
+                    createdAt
                 }
             }
         }));
@@ -183,7 +185,7 @@ export abstract class BasePermissionHandler {
      * user presses the abort/stop button — it unblocks any pending tool approval so the provider
      * can process the turn cancellation.
      */
-    abortAll(): void {
+    abortAll(reason: string = 'Aborted by user'): void {
         const pendingSnapshot = Array.from(this.pendingRequests.entries());
         if (pendingSnapshot.length === 0) return;
 
@@ -201,6 +203,7 @@ export abstract class BasePermissionHandler {
         }
 
         // Move pending requests to completed as canceled in agent state
+        const completedAt = Date.now();
         this.session.updateAgentState((currentState) => {
             const pendingRequests = currentState.requests || {};
             const completedRequests = { ...currentState.completedRequests };
@@ -208,9 +211,9 @@ export abstract class BasePermissionHandler {
             for (const [id, request] of Object.entries(pendingRequests)) {
                 completedRequests[id] = {
                     ...request,
-                    completedAt: Date.now(),
+                    completedAt,
                     status: 'canceled',
-                    reason: 'Aborted by user'
+                    reason
                 };
             }
 
@@ -254,6 +257,7 @@ export abstract class BasePermissionHandler {
             }
 
             // Clear requests in agent state
+            const completedAt = Date.now();
             this.session.updateAgentState((currentState) => {
                 const pendingRequests = currentState.requests || {};
                 const completedRequests = { ...currentState.completedRequests };
@@ -262,7 +266,7 @@ export abstract class BasePermissionHandler {
                 for (const [id, request] of Object.entries(pendingRequests)) {
                     completedRequests[id] = {
                         ...request,
-                        completedAt: Date.now(),
+                        completedAt,
                         status: 'canceled',
                         reason
                     };

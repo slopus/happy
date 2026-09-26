@@ -1,3 +1,4 @@
+import { createLaunchReadinessGate } from './resumeGuards'
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -1128,3 +1129,85 @@ describe('managed runtime report paths — real HTTP, per-launch capability only
         expect(await res.json()).toMatchObject({ code: 'MANAGED_CAPABILITY_REQUIRED' });
     });
 });
+
+describe('standalone Windows control admission', () => {
+  it('keeps lifecycle and drain routes while refusing host spawn and unknown endpoints', async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'trial-control-'))
+    const { StandaloneDrain } = await import('./standaloneDrain')
+    const drain = new StandaloneDrain({ instanceId: 'trial-instance',
+      targets: [{ platform: 'win32', arch: 'x64', provider: 'codex', mode: 'standard' }],
+      freeze: async () => ({ launchIds: [], unresolved: false }),
+      drain: async () => ({ stored: true, runtimeExited: true, jobEmpty: true }),
+    })
+    const server = await startDaemonControlServer({
+      standaloneDrain: drain, getChildren: () => [], stopSession: () => ({ stopped: false, reason: 'not-found' }),
+      spawnSession: async () => ({ type: 'error', errorMessage: 'unused' }), requestShutdown: () => {}, onHappySessionWebhook: () => {},
+      portRegistry: createPortRegistry({ filePath: path.join(dir, 'ports.json'), portMin: 30000, portMax: 30010, isPortBindable: async () => true }),
+    })
+    const request = (route: string, secret = server.controlSecret) => realFetch(`http://127.0.0.1:${server.port}${route}`, {
+      method: 'POST', headers: { Authorization: `Bearer ${secret}`, 'Content-Type': 'application/json' }, body: '{}',
+    })
+    try {
+      for (const route of ['/start-server', '/stop-server', '/browser/request', '/proxy-http', '/terminal', '/future-host-spawn']) {
+        const response = await request(route)
+        expect(response.status).toBe(403)
+        expect(await response.json()).toMatchObject({ code: 'STANDALONE_WINDOWS_TRIAL_UNSUPPORTED' })
+      }
+      expect((await request('/stop')).status).toBe(409)
+      expect((await request('/list')).status).toBe(200)
+      expect((await request('/standalone-drain/capabilities')).status).toBe(200)
+      expect((await request('/list', 'wrong-secret')).status).toBe(401)
+    } finally { await server.stop(); rmSync(dir, { recursive: true, force: true }) }
+  })
+})
+
+it('refuses an early authenticated spawn before reading uninitialized dependencies and accepts retry after startup', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'control-startup-'))
+  const readiness = createLaunchReadinessGate()
+  let touches = 0
+  let dependency = (): { sessionId: string } => { throw new ReferenceError('lessonStudioOrigin before initialization') }
+  const server = await startDaemonControlServer({
+    getChildren: () => [], stopSession: () => ({ stopped: false, reason: 'not-found' }),
+    spawnSession: async () => {
+      if (!readiness.isReady()) return { type: 'error', errorMessage: 'Daemon is initializing; retry the launch shortly' }
+      touches += 1
+      return { type: 'success', sessionId: dependency().sessionId }
+    },
+    requestShutdown: () => {}, onHappySessionWebhook: () => {},
+    portRegistry: createPortRegistry({ filePath: path.join(dir, 'ports.json'), portMin: 30000, portMax: 30010, isPortBindable: async () => true }),
+  })
+  const spawn = () => realFetch(`http://127.0.0.1:${server.port}/spawn-session`, {
+    method: 'POST', headers: { Authorization: `Bearer ${server.controlSecret}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ directory: dir, agent: 'codex' }),
+  })
+  try {
+    const early = await spawn()
+    expect(early.status).toBe(500)
+    expect(await early.json()).toEqual({ success: false, error: 'Daemon is initializing; retry the launch shortly' })
+    expect(touches).toBe(0)
+    // Simulate the actual listener-before-network-bootstrap TDZ ordering.
+    const lessonHost = { sessionId: 'initialized-session' }
+    // The real callback below uses the same dependency through its closure.
+    dependency = () => lessonHost
+    readiness.markReady()
+    const retry = await spawn()
+    expect(retry.status).toBe(200)
+    expect(await retry.json()).toMatchObject({ sessionId: 'initialized-session' })
+    expect(touches).toBe(1)
+  } finally { await server.stop(); rmSync(dir, { recursive: true, force: true }) }
+})
+
+it.each(['standalone-unowned', 'standalone-blocked'] as const)('preserves %s on the authenticated stop-session boundary', async reason => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'control-stop-refusal-'))
+  const server = await startDaemonControlServer({
+    getChildren: () => [], stopSession: () => ({ stopped: false, reason, detail: 'unavailable' }),
+    spawnSession: async () => ({ type: 'error', errorMessage: 'unused' }), requestShutdown: () => {}, onHappySessionWebhook: () => {},
+    portRegistry: createPortRegistry({ filePath: path.join(dir, 'ports.json'), portMin: 30000, portMax: 30010, isPortBindable: async () => true }),
+  })
+  try {
+    const response = await realFetch(`http://127.0.0.1:${server.port}/stop-session`, { method: 'POST',
+      headers: { Authorization: `Bearer ${server.controlSecret}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: 'session-1' }) })
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({ stopped: false, reason, detail: 'unavailable' })
+  } finally { await server.stop(); rmSync(dir, { recursive: true, force: true }) }
+})

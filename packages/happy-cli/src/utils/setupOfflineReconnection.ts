@@ -24,6 +24,7 @@ export interface SetupOfflineReconnectionOptions {
      * of its own — the parent holds the only key for the one it was given.
      */
     managedRun?: boolean;
+    sessionOptions?: { trackShutdownStorage?: boolean };
     /** API client instance */
     api: ApiClient;
     /** Unique session tag */
@@ -102,7 +103,7 @@ export function setupOfflineReconnection(opts: SetupOfflineReconnectionOptions):
                 resolveManagedOfflineFallback(managedRun);
                 const resp = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
                 if (!resp) throw new Error('Server unavailable');
-                const realSession = api.sessionSyncClient(resp);
+                const realSession = api.sessionSyncClient(resp, opts.sessionOptions);
                 // Notify caller to swap the session reference
                 onSessionSwap(realSession);
                 return realSession;
@@ -115,7 +116,7 @@ export function setupOfflineReconnection(opts: SetupOfflineReconnectionOptions):
 
         return { session, reconnectionHandle, isOffline: true };
     } else {
-        session = api.sessionSyncClient(response);
+        session = api.sessionSyncClient(response, opts.sessionOptions);
         return { session, reconnectionHandle: null, isOffline: false };
     }
 }

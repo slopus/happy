@@ -171,3 +171,31 @@ describe('ApiMachineClient Codex fork RPCs', () => {
         });
     });
 });
+
+describe('standalone Windows machine admission', () => {
+    it.each(['bash', 'start-server', 'browser-setup:launch', 'browser-viewer:start-bound', 'gui-display:ensure',
+        'difficulty-routing:classify', 'ai-credential:rotation', 'autonomous-quality-gate:start',
+        'codex-fork-thread', 'codex-thread-transfer', 'lesson-host-v1', 'ripgrep', 'difftastic', 'unreviewed-late-method'])
+    ('refuses %s before its handler can spawn outside a session Job', async method => {
+        const { ApiMachineClient } = await import('./apiMachine');
+        const { encodeBase64, decodeBase64, encrypt, decrypt } = await import('./encryption');
+        const machine = machineClient(); const client = new ApiMachineClient('token', machine);
+        client.setWindowsStandaloneTrial(); client.setRPCHandlers(rpcHandlers());
+        const manager = (client as any).rpcHandlerManager;
+        const handler = vi.fn(async () => ({ unsafe: true })); manager.registerHandler(method, handler);
+        const encrypted = await manager.handleRequest({ method: `machine-1:${method}`, params: encodeBase64(encrypt(machine.encryptionKey, 'legacy', {})) });
+        expect(decrypt(machine.encryptionKey, 'legacy', decodeBase64(encrypted))).toMatchObject({ code: 'STANDALONE_WINDOWS_TRIAL_UNSUPPORTED' });
+        expect(handler).not.toHaveBeenCalled();
+    });
+    it('keeps normal Codex session launch admitted through the native-owning spawn boundary', async () => {
+        const { ApiMachineClient } = await import('./apiMachine');
+        const { encodeBase64, decodeBase64, encrypt, decrypt } = await import('./encryption');
+        const machine = machineClient(); const client = new ApiMachineClient('token', machine);
+        const spawnSession = vi.fn(async () => ({ type: 'success', sessionId: 'owned-session' }));
+        client.setWindowsStandaloneTrial(); client.setRPCHandlers(rpcHandlers({ spawnSession }));
+        const encrypted = await (client as any).rpcHandlerManager.handleRequest({ method: 'machine-1:spawn-happy-session',
+            params: encodeBase64(encrypt(machine.encryptionKey, 'legacy', { directory: '/tmp/project', agent: 'codex' })) });
+        expect(decrypt(machine.encryptionKey, 'legacy', decodeBase64(encrypted))).toMatchObject({ type: 'success', sessionId: 'owned-session' });
+        expect(spawnSession).toHaveBeenCalledOnce();
+    });
+});

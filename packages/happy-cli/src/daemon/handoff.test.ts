@@ -2,6 +2,17 @@ import { describe, expect, it, vi } from 'vitest'
 import { handoffToReplacedBundle, prepareDaemonStartup, resolveStatePreservation } from './handoff'
 
 describe('prepareDaemonStartup', () => {
+  it('never adopts or stops the process reusing a proven-gone candidate PID', async () => {
+    const preflightCandidate = vi.fn(async () => {})
+    const runningVersionMatches = vi.fn(async () => true)
+    const stopRunningDaemon = vi.fn(async () => {})
+    expect(await prepareDaemonStartup({ preflightCandidate, runningVersionMatches, stopRunningDaemon,
+      previousDaemonGone: true })).toBe('start')
+    expect(preflightCandidate).toHaveBeenCalledOnce()
+    expect(runningVersionMatches).not.toHaveBeenCalled()
+    expect(stopRunningDaemon).not.toHaveBeenCalled()
+  })
+
   it('does not inspect or stop the running daemon when candidate preflight fails', async () => {
     const events: string[] = []
     const preflightCandidate = vi.fn(async () => {
