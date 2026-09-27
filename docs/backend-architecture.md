@@ -404,3 +404,23 @@ graph TB
 - Presence: `packages/happy-server/sources/app/presence`
 - Storage: `packages/happy-server/sources/storage`
 - Prisma schema: `packages/happy-server/prisma/schema.prisma`
+
+## Checkpoint event compatibility
+
+`POST /v3/sessions/:sessionId/events` has two existing producers for
+`checkpoint-snapshot` and `checkpoint-rewind`: encrypted web file history and
+daemon protected-checkpoint receipts. A body with no `checkpoint` field uses
+ordinary session-event persistence; it has no protection or idempotency metadata.
+A supplied envelope must pass the strict versioned schema and uses checkpoint
+idempotent persistence. Invalid or null metadata must never fall back to legacy
+persistence. Both paths retain account authentication and session ownership checks.
+
+GET with `type=checkpoint-snapshot` or `type=checkpoint-rewind` returns only
+records that carry an envelope unless the caller sends `include_legacy=1`.
+Released Desktop builds reject a whole timeline on one envelope-less record and
+cannot be updated all at once, so the server keeps legacy records away from them.
+The filter runs in the query, so `limit` and `hasMore` count only returned rows.
+With `include_legacy=1`, legacy records come back without an envelope; the web
+history reader opts in and uses the encrypted content. Retire this compatibility
+only after web producers and stored history have migrated to a distinct event
+type. No database migration or plaintext inspection is needed.
