@@ -1,4 +1,6 @@
-import { describe, it, expect } from 'vitest';
+import { runInNewContext } from 'node:vm'
+import { SUPPORTED_CODEX_MULTI_AUTH_VERSIONS } from '../../src/utils/codexMultiAuthVersions'
+import { describe, it, expect, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -7,6 +9,8 @@ const SCRIPT = join(__dirname, '..', 'install-companion-tools.cjs');
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const {
     shouldInstallCompanionTools,
+    hasSupportedCodexMultiAuth,
+    SUPPORTED_CODEX_MULTI_AUTH_VERSIONS: scriptVersions,
     shouldInstallUvTools,
     shellQuote,
     CODEX_MULTI_AUTH_VERSION,
@@ -96,19 +100,14 @@ describe('shouldInstallUvTools', () => {
     });
 });
 
-// Happy resolves this exact version out of the npm global root
-// (aiCredentialRuntime.hasPinnedGlobalCodexMultiAuthPackage,
-// codexMultiAuthProxy.startPinnedRuntimeRotationProxy). The postinstall used to
-// install `latest` over it, which left 2.14.0 where 2.8.5 was required and made
-// both paths throw right after a Happy install. Pinning only helps while the
-// constants stay in lockstep, so a drift has to fail here.
+// The packaged postinstall cannot import TypeScript; enforce parity with runtime policy.
 describe('CODEX_MULTI_AUTH_VERSION', () => {
-    it('matches the version the daemon runtime pins', () => {
-        expect(CODEX_MULTI_AUTH_VERSION).toBe(pinnedVersionIn('daemon/aiCredentialRuntime.ts', 'CODEX_MULTI_AUTH_VERSION'));
+    it('matches the runtime installation default', () => {
+        expect(CODEX_MULTI_AUTH_VERSION).toBe(pinnedVersionIn('utils/codexMultiAuthVersions.ts', 'CODEX_MULTI_AUTH_VERSION'));
     });
 
-    it('matches the version the codex proxy pins', () => {
-        expect(CODEX_MULTI_AUTH_VERSION).toBe(pinnedVersionIn('codex/codexMultiAuthProxy.ts', 'CODEX_MULTI_AUTH_VERSION'));
+    it('matches the supported runtime versions', () => {
+        expect(scriptVersions).toEqual(SUPPORTED_CODEX_MULTI_AUTH_VERSIONS);
     });
 });
 
@@ -161,4 +160,36 @@ describe('COMPANION_INSTALL_TIMEOUT_MS', () => {
         expect(timeouts.length).toBeGreaterThan(0);
         expect(COMPANION_INSTALL_TIMEOUT_MS).toBe(Math.max(...timeouts));
     });
+});
+
+describe('preserving a compatible companion installation', () => {
+    it.each(['2.16.0', '2.17.0'])('keeps matching CLI/global package %s', (version) => {
+        const run = vi.fn((command: string) => ({ status: 0, stdout: command === 'npm' ? '/global' : version }));
+        expect(hasSupportedCodexMultiAuth(run, () => JSON.stringify({ version }))).toBe(true);
+    });
+    it.each(['2.18.0', '2.15.0'])('does not accept unverified runtime %s', (version) => {
+        expect(hasSupportedCodexMultiAuth(() => ({ status: 0, stdout: version }), () => JSON.stringify({ version }))).toBe(false);
+    });
+    it('does not keep conflicting executable and global package versions', () => {
+        expect(hasSupportedCodexMultiAuth((command: string) => ({ status: 0, stdout: command === 'npm' ? '/global' : '2.17.0' }), () => JSON.stringify({ version: '2.16.0' }))).toBe(false);
+    });
+    it('treats command failures as unavailable', () => {
+        expect(hasSupportedCodexMultiAuth(() => ({ status: 1, stdout: '2.17.0' }), () => '{}')).toBe(false);
+    });
+});
+
+it.each(['2.17.0', '2.18.0'])('postinstall keeps only compatible existing runtime %s', (version) => {
+    const run = vi.fn((command: string, args: string[]) => ({
+        status: 0, stdout: command === 'npm' && args[0] === 'root' ? '/global' : version,
+    }));
+    const module = { exports: {} };
+    const requireMock = Object.assign((name: string) => name === 'node:child_process' ? { spawnSync: run }
+        : name === 'node:fs' ? { readFileSync: () => JSON.stringify({ version }) }
+        : { join }, { main: module });
+    runInNewContext(readFileSync(SCRIPT, 'utf8'), {
+        require: requireMock, module,
+        process: { platform: 'linux', env: { npm_config_global: 'true' } },
+        console: { log() {}, warn() {} },
+    });
+    expect(run.mock.calls.some(([command, args]) => command === 'npm' && args[0] === 'install')).toBe(version === '2.18.0');
 });

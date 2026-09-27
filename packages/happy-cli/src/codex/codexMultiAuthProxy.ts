@@ -1,3 +1,4 @@
+import { isSupportedCodexMultiAuthVersion, SUPPORTED_CODEX_MULTI_AUTH_VERSIONS } from '../utils/codexMultiAuthVersions'
 import { randomBytes } from 'node:crypto'
 import { execFile as execFileCallback } from 'node:child_process'
 import { readFile } from 'node:fs/promises'
@@ -8,7 +9,6 @@ import { promisify } from 'node:util'
 
 const QUOTA_REMAINING_THRESHOLD = 5
 const PROVIDER_ID = 'codex-multi-auth-runtime-proxy'
-const CODEX_MULTI_AUTH_VERSION = '2.16.0'
 const execFile = promisify(execFileCallback)
 
 type ProxyServer = { baseUrl: string; close(): Promise<void> }
@@ -40,7 +40,7 @@ export async function prepareCodexMultiAuthProxy(
 ): Promise<PreparedCodexMultiAuthProxy | null> {
   const deps: ProxyDependencies = {
     readFile: (path) => readFile(path, 'utf8'),
-    startProxy: startPinnedRuntimeRotationProxy,
+    startProxy: startSupportedRuntimeRotationProxy,
     createClientKey: () => randomBytes(32).toString('base64url'),
     ...overrides,
   }
@@ -91,7 +91,7 @@ export async function prepareCodexMultiAuthProxy(
   }
 }
 
-async function startPinnedRuntimeRotationProxy(options: {
+async function startSupportedRuntimeRotationProxy(options: {
   clientApiKey: string
   quotaRemainingPercentThreshold: number
 }): Promise<ProxyServer> {
@@ -100,8 +100,8 @@ async function startPinnedRuntimeRotationProxy(options: {
   if (!globalRoot) throw new Error('npm global package root is unavailable')
   const packageRoot = join(globalRoot, 'codex-multi-auth')
   const packageJson = JSON.parse(await readFile(join(packageRoot, 'package.json'), 'utf8')) as unknown
-  if (!isObject(packageJson) || packageJson.version !== CODEX_MULTI_AUTH_VERSION) {
-    throw new Error(`Managed codex-multi-auth ${CODEX_MULTI_AUTH_VERSION} is not installed`)
+  if (!isObject(packageJson) || !isSupportedCodexMultiAuthVersion(packageJson.version)) {
+    throw new Error(`Unsupported codex-multi-auth version ${isObject(packageJson) && typeof packageJson.version === 'string' && /^\d+\.\d+\.\d+$/.test(packageJson.version) ? packageJson.version : 'unknown'}; supported: ${SUPPORTED_CODEX_MULTI_AUTH_VERSIONS.join(', ')}`)
   }
   const moduleUrl = pathToFileURL(join(
     packageRoot,
@@ -109,15 +109,11 @@ async function startPinnedRuntimeRotationProxy(options: {
     'lib',
     'runtime-rotation-proxy.js',
   )).href
-  // Rollup cannot statically analyze an absolute file URL. The URL is derived
-  // only from Node's resolution of the pinned package, never from user input.
-  const importPinnedModule = Function(
-    'moduleUrl',
-    'return import(moduleUrl)',
-  ) as (value: string) => Promise<{
+  // The companion module must be loaded from npm's global root, not bundled.
+  const importModule = Function('moduleUrl', 'return import(moduleUrl)') as (url: string) => Promise<{
     startRuntimeRotationProxy(value: typeof options): Promise<ProxyServer>
   }>
-  const runtimeModule = await importPinnedModule(moduleUrl)
+  const runtimeModule = await importModule(moduleUrl)
   return runtimeModule.startRuntimeRotationProxy(options)
 }
 
