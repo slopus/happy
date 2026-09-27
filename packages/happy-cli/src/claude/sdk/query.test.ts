@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -17,10 +17,67 @@ describe('query adapter', () => {
         sdkQuery.mockClear();
         configDirectory = mkdtempSync(join(tmpdir(), 'happy-plugin-config-'));
         vi.stubEnv('CLAUDE_CONFIG_DIR', configDirectory);
+        vi.stubEnv('HAPPY_CLAUDE_PATH', undefined);
     });
     afterEach(() => {
         vi.unstubAllEnvs();
         rmSync(configDirectory, { recursive: true, force: true });
+    });
+
+    function lastOptions(): Record<string, unknown> {
+        return (sdkQuery.mock.calls as unknown as [{ options: Record<string, unknown> }][]).at(-1)![0].options;
+    }
+
+    it('uses the SDK bundled executable unless a local path is explicitly configured', () => {
+        query({ prompt: 'continue' });
+        expect(lastOptions().pathToClaudeCodeExecutable).toBeUndefined();
+    });
+
+    it('resolves an explicit executable symlink and preserves resume and sandbox spawning', () => {
+        const executable = join(configDirectory, 'claude');
+        symlinkSync(process.execPath, executable);
+        vi.stubEnv('HAPPY_CLAUDE_PATH', executable);
+        const spawnClaudeCodeProcess = vi.fn();
+        const sandbox = { enabled: true, failIfUnavailable: true };
+        query({ prompt: 'continue', options: {
+            resume: 'existing-session', model: 'claude-opus-5-5', effort: 'low',
+            spawnClaudeCodeProcess, sandbox,
+        } });
+        const options = lastOptions();
+        expect(options.pathToClaudeCodeExecutable).toBe(realpathSync(process.execPath));
+        expect(options.resume).toBe('existing-session');
+        expect(options.model).toBe('claude-opus-5-5');
+        expect(options.effort).toBe('low');
+        expect(options.spawnClaudeCodeProcess).toBe(spawnClaudeCodeProcess);
+        expect(options.sandbox).toEqual(sandbox);
+    });
+
+    it('accepts a readable JavaScript CLI entrypoint without requiring native execute permissions', () => {
+        const executable = join(configDirectory, 'cli.js');
+        writeFileSync(executable, '// CLI entrypoint', { mode: 0o600 });
+        vi.stubEnv('HAPPY_CLAUDE_PATH', executable);
+        query({ prompt: 'continue' });
+        expect(lastOptions().pathToClaudeCodeExecutable).toBe(realpathSync(executable));
+    });
+
+    it.each(['', 'claude', './claude', '/missing/claude', 'bad\0path'])(
+        'rejects invalid explicit path %j without falling back or invoking the SDK', (path) => {
+            vi.stubEnv('HAPPY_CLAUDE_PATH', path);
+            expect(() => query({ prompt: 'continue' })).toThrow(/HAPPY_CLAUDE_PATH/);
+            expect(sdkQuery.mock.calls.length).toBe(0);
+        },
+    );
+
+    it('rejects directories and non-executable native files', () => {
+        vi.stubEnv('HAPPY_CLAUDE_PATH', configDirectory);
+        expect(() => query({ prompt: 'continue' })).toThrow(/HAPPY_CLAUDE_PATH/);
+        if (process.platform !== 'win32') {
+            const executable = join(configDirectory, 'claude');
+            writeFileSync(executable, 'not executable', { mode: 0o600 });
+            vi.stubEnv('HAPPY_CLAUDE_PATH', executable);
+            expect(() => query({ prompt: 'continue' })).toThrow(/HAPPY_CLAUDE_PATH/);
+        }
+        expect(sdkQuery.mock.calls.length).toBe(0);
     });
 
     function writePlugin(servers: Record<string, unknown>, name = 'sales') {
