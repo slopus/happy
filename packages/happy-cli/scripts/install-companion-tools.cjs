@@ -4,26 +4,9 @@
  * Best-effort postinstall step: put the companion CLIs `codex-multi-auth`
  * (npm) and `claude-swap` (uv) in place alongside a global `happy`.
  *
- * BOTH are PINNED, never tracked to latest, because Happy manages both itself
- * and demands exact versions:
- *
- *   codex-multi-auth  aiCredentialRuntime.hasPinnedGlobalCodexMultiAuthPackage
- *                     and codexMultiAuthProxy.startPinnedRuntimeRotationProxy
- *                     read the npm global root and require
- *                     CODEX_MULTI_AUTH_VERSION exactly, else they throw
- *                     CODEX_MULTI_AUTH_VERSION_MISMATCH / "Managed
- *                     codex-multi-auth <v> is not installed".
- *   claude-swap       aiCredentialRuntime.ensureClaudeSwap matches
- *                     `cswap --version` against a regex hard-coded to
- *                     CLAUDE_SWAP_VERSION. The binary is named `cswap`, which
- *                     is why grepping for "claude-swap" alone suggests Happy
- *                     does not use it.
- *
- * Installing `latest` over either one makes Happy reinstall its pinned copy at
- * runtime, and the next Happy update clobbers it again. Pre-installing the
- * pinned versions instead spares that first use the on-demand install.
- * installCompanionTools.test.ts fails if either constant drifts from the
- * source of truth in src/daemon/aiCredentialRuntime.ts.
+ * Install a fixed default only when no tested Codex runtime is present.
+ * Claude Swap continues to require its exact pin. The compatibility list is
+ * checked against src/utils/codexMultiAuthVersions.ts by the script tests.
  *
  * Two conditions gate the normal path:
  *
@@ -52,11 +35,14 @@
  */
 
 const { spawnSync } = require('node:child_process');
+const { readFileSync } = require('node:fs');
+const { join } = require('node:path');
 
 const IS_WINDOWS = process.platform === 'win32';
 
-// Must equal the same-named constants in src/daemon/aiCredentialRuntime.ts.
+// Codex policy matches src/utils/codexMultiAuthVersions.ts; Claude matches aiCredentialRuntime.ts.
 const CODEX_MULTI_AUTH_VERSION = '2.16.0';
+const SUPPORTED_CODEX_MULTI_AUTH_VERSIONS = ['2.16.0', '2.17.0'];
 const CLAUDE_SWAP_VERSION = '0.25.0';
 
 // An unbounded child here would hang `npm install -g happy` itself. Matches the
@@ -124,12 +110,29 @@ function installTool(name, command, args) {
     }
 }
 
+function hasSupportedCodexMultiAuth(run = spawnSync, read = readFileSync) {
+    try {
+        const options = { encoding: 'utf8', shell: IS_WINDOWS, timeout: 10_000 };
+        const cli = run('codex-multi-auth', ['--version'], options);
+        const version = cli.stdout?.trim();
+        if (cli.status !== 0 || !SUPPORTED_CODEX_MULTI_AUTH_VERSIONS.includes(version)) return false;
+        const root = run('npm', ['root', '--global'], options);
+        if (root.status !== 0 || !root.stdout?.trim()) return false;
+        return JSON.parse(read(join(root.stdout.trim(), 'codex-multi-auth', 'package.json'), 'utf8')).version === version;
+    } catch {
+        // The installation below is the recovery path for an unavailable package.
+        return false;
+    }
+}
+
 function main() {
     if (!shouldInstallCompanionTools(process.env)) {
         return;
     }
     const codexMultiAuth = `codex-multi-auth@${CODEX_MULTI_AUTH_VERSION}`;
-    installTool(codexMultiAuth, 'npm', ['install', '-g', codexMultiAuth]);
+    if (!hasSupportedCodexMultiAuth()) {
+        installTool(codexMultiAuth, 'npm', ['install', '-g', codexMultiAuth]);
+    }
     if (shouldInstallUvTools(process.env)) {
         const claudeSwap = `claude-swap==${CLAUDE_SWAP_VERSION}`;
         // `--python` mirrors ensureClaudeSwap so both resolve the same runtime.
@@ -143,6 +146,8 @@ function main() {
 }
 
 module.exports = {
+    hasSupportedCodexMultiAuth,
+    SUPPORTED_CODEX_MULTI_AUTH_VERSIONS,
     shouldInstallCompanionTools,
     shouldInstallUvTools,
     shellQuote,

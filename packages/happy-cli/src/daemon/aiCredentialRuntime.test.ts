@@ -772,6 +772,31 @@ describe('AI credential machine runtime', () => {
     expect(JSON.parse(captured.payload)).toEqual(bundle)
   })
 
+  it.each(['2.16.0', '2.17.0'])('captures and reapplies the actual supported runtime %s without installing', async (version) => {
+    const execFile = vi.fn(async (command: string, args: string[]) => ({
+      stdout: command === 'codex-multi-auth' && args[0] === '--version' ? version
+        : command === 'npm' && args[0] === 'root' ? '/global/node_modules' : '',
+      stderr: '',
+    }))
+    const { runtime, files } = setup({ execFile })
+    files.set('/global/node_modules/codex-multi-auth/package.json', JSON.stringify({ version }))
+    const bundle = codexMultiAuthBundle()
+    files.set('/home/operator/.codex/multi-auth/openai-codex-accounts.json', JSON.stringify(bundle.accounts))
+    files.set('/home/operator/.codex/multi-auth/settings.json', JSON.stringify(bundle.settings))
+    const captured = await runtime.capture({ provider: 'codex' })
+    expect(JSON.parse(captured.payload)).toEqual({ ...bundle, packageVersion: version })
+    await expect(runtime.apply(captured)).resolves.toMatchObject({ configured: true, accountCount: 3 })
+    expect(execFile.mock.calls.some(([command, args]) => command === 'npm' && args[0] === 'install')).toBe(false)
+  })
+
+  it.each(['2.16.0', '2.18.0'])('rejects capture when CLI 2.17.0 disagrees with global package %s', async (version) => {
+    const { runtime, files } = setup({ execFile: vi.fn(async (command: string) => ({
+      stdout: command === 'npm' ? '/global/node_modules' : '2.17.0', stderr: '',
+    })) })
+    files.set('/global/node_modules/codex-multi-auth/package.json', JSON.stringify({ version }))
+    await expect(runtime.capture({ provider: 'codex' })).rejects.toMatchObject({ kind: 'CODEX_MULTI_AUTH_VERSION_MISMATCH', message: expect.stringContaining(`installed=2.17.0 global=${version} supported=2.16.0,2.17.0`) })
+  })
+
   it('rejects Codex capture when the installed multi-auth package is not the pinned version', async () => {
     const { runtime, files } = setup({
       execFile: vi.fn(async (command: string, args: string[]) => {
@@ -850,7 +875,7 @@ describe('AI credential machine runtime', () => {
     expect(JSON.stringify(execFile.mock.calls)).not.toContain('refresh-a')
   })
 
-  it('applies a Codex bundle captured by the previous 2.15.0 pin because its storage format is unchanged', async () => {
+  it.each(['2.15.0', '2.17.0'])('applies a compatible bundle from %s on runtime 2.16.0', async (packageVersion) => {
     const execFile = vi.fn(async (command: string, args: string[]) => {
       if (command === 'codex-multi-auth' && args[0] === '--version') {
         return { stdout: '2.16.0\n', stderr: '' }
@@ -864,7 +889,7 @@ describe('AI credential machine runtime', () => {
 
     await expect(runtime.apply({
       provider: 'codex',
-      payload: JSON.stringify({ ...codexMultiAuthBundle(), packageVersion: '2.15.0' }),
+      payload: JSON.stringify({ ...codexMultiAuthBundle(), packageVersion }),
     })).resolves.toMatchObject({ provider: 'codex', configured: true, accountCount: 3 })
   })
 

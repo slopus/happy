@@ -1,3 +1,4 @@
+import { CODEX_MULTI_AUTH_VERSION, isSupportedCodexMultiAuthVersion, SUPPORTED_CODEX_MULTI_AUTH_VERSIONS } from '../utils/codexMultiAuthVersions'
 import { stagingParent } from './stagedCredentialRoot'
 import { spawn } from 'node:child_process'
 import { chmod, mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises'
@@ -25,14 +26,11 @@ import { overlayManagedCredentialEnvironment } from './sessionEnv'
 const MAX_PAYLOAD_BYTES = 1024 * 1024
 const CLAUDE_SWAP_VERSION = '0.25.0'
 const CLAUDE_STATUS_TIMEOUT_MS = 120_000
-const CODEX_MULTI_AUTH_VERSION = '2.16.0'
-// Bundles captured by an earlier pin stay deployable when that release wrote
-// the same account (v3) and settings (v1) files. 2.15.0 and 2.16.0 ship an
-// identical `dist/lib/storage`, so a vault bundle captured before this bump
-// must not start failing apply the moment machines update.
+// Keep readable historical bundles separate from supported installed runtimes.
+// 2.17.0 retains the OAuth account v3 / settings v1 contract (verified by package smoke).
 const READABLE_CODEX_MULTI_AUTH_BUNDLE_VERSIONS: ReadonlySet<string> = new Set([
   '2.15.0',
-  CODEX_MULTI_AUTH_VERSION,
+  ...SUPPORTED_CODEX_MULTI_AUTH_VERSIONS,
 ])
 const CODEX_MULTI_AUTH_THRESHOLD = 5
 
@@ -336,14 +334,14 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
         const result = await deps.execFile('cswap', ['export', '-'], { maxOutputBytes: MAX_PAYLOAD_BYTES })
         payload = result.stdout
       } else {
-        await assertPinnedCodexMultiAuthInstalled()
+        const packageVersion = await assertSupportedCodexMultiAuthInstalled()
         try {
           const accounts = JSON.parse(await deps.readFile(join(codexMultiAuthDir(), 'openai-codex-accounts.json')))
           const settings = JSON.parse(await deps.readFile(join(codexMultiAuthDir(), 'settings.json')))
           payload = JSON.stringify({
             version: 1,
             kind: 'codex-multi-auth',
-            packageVersion: CODEX_MULTI_AUTH_VERSION,
+            packageVersion,
             accounts,
             settings,
           })
@@ -605,47 +603,49 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
   }
 
   async function ensureCodexMultiAuth(): Promise<void> {
-    const installed = await hasPinnedCodexMultiAuthInstalled()
+    const installed = await supportedCodexMultiAuthInstalled()
     if (!installed) {
       await deps.execFile('npm', [
         'install', '--global', `codex-multi-auth@${CODEX_MULTI_AUTH_VERSION}`,
       ], { timeoutMs: 300_000 })
-      if (!await hasPinnedCodexMultiAuthInstalled()) {
+      if (!await supportedCodexMultiAuthInstalled()) {
         throw new AiCredentialRuntimeError('CODEX_MULTI_AUTH_VERSION_MISMATCH')
       }
     }
     await deps.execFile('codex', ['--version'])
   }
 
-  async function assertPinnedCodexMultiAuthInstalled(): Promise<void> {
-    if (!await hasPinnedCodexMultiAuthInstalled()) {
-      throw new AiCredentialRuntimeError('CODEX_MULTI_AUTH_VERSION_MISMATCH')
-    }
+  async function assertSupportedCodexMultiAuthInstalled(): Promise<string> {
+    const installed = await inspectCodexMultiAuthInstallation()
+    if (isSupportedCodexMultiAuthVersion(installed.cli) && installed.cli === installed.global) return installed.cli
+    const error = new AiCredentialRuntimeError('CODEX_MULTI_AUTH_VERSION_MISMATCH')
+    error.message += ` [codex-multi-auth installed=${installed.cli} global=${installed.global} supported=${SUPPORTED_CODEX_MULTI_AUTH_VERSIONS.join(',')}]`
+    throw error
   }
 
-  async function hasPinnedCodexMultiAuthInstalled(): Promise<boolean> {
+  async function supportedCodexMultiAuthInstalled(): Promise<string | null> {
+    const installed = await inspectCodexMultiAuthInstallation()
+    return isSupportedCodexMultiAuthVersion(installed.cli) && installed.cli === installed.global ? installed.cli : null
+  }
+
+  async function inspectCodexMultiAuthInstallation(): Promise<{ cli: string; global: string }> {
+    const installed = { cli: 'unknown', global: 'unknown' }
+    const safeVersion = (value: unknown): string => typeof value === 'string' && /^\d{1,6}\.\d{1,6}\.\d{1,6}$/.test(value) ? value : 'unknown'
     try {
-      const version = await deps.execFile('codex-multi-auth', ['--version'])
-      return version.stdout.trim() === CODEX_MULTI_AUTH_VERSION
-        && await hasPinnedGlobalCodexMultiAuthPackage()
+      installed.cli = safeVersion((await deps.execFile('codex-multi-auth', ['--version'])).stdout.trim())
     } catch {
-      return false
+      // Preserve unknown for the diagnostic; never include command output or secrets.
     }
-  }
-
-  async function hasPinnedGlobalCodexMultiAuthPackage(): Promise<boolean> {
     try {
       const root = nonEmptyTrimmed((await deps.execFile('npm', ['root', '--global'])).stdout)
-      if (!root) return false
-      const packageJson = JSON.parse(await deps.readFile(join(
-        root,
-        'codex-multi-auth',
-        'package.json',
-      ))) as unknown
-      return isObject(packageJson) && packageJson.version === CODEX_MULTI_AUTH_VERSION
+      if (root) {
+        const packageJson = JSON.parse(await deps.readFile(join(root, 'codex-multi-auth', 'package.json'))) as unknown
+        installed.global = isObject(packageJson) ? safeVersion(packageJson.version) : 'unknown'
+      }
     } catch {
-      return false
+      // Missing/unreadable global metadata is a failed compatibility check.
     }
+    return installed
   }
 
   async function applyCodexMultiAuth(bundle: CodexMultiAuthBundle) {
@@ -1048,7 +1048,7 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
           settings: JSON.parse(await deps.readFile(join(root, 'settings.json'))),
         }))
         if (!bundle) throw new AiCredentialRuntimeError('CODEX_MULTI_AUTH_PAYLOAD_INVALID')
-        await assertPinnedCodexMultiAuthInstalled()
+        await assertSupportedCodexMultiAuthInstalled()
         await deps.execFile('codex-multi-auth', ['check'], {
           maxOutputBytes: MAX_PAYLOAD_BYTES,
           timeoutMs: CLAUDE_STATUS_TIMEOUT_MS,
