@@ -15,6 +15,7 @@ const sessionState = vi.hoisted(() => ({
     messages: [] as Message[], isLoaded: true, hasMoreOlder: true, isLoadingOlder: false,
     hasMoreNewer: false, isLoadingNewer: false, isAtLatest: true,
 }));
+const dimensions = vi.hoisted(() => ({ width: 1200, height: 800, fontScale: 1 }));
 const liveState = vi.hoisted(() => ({ previews: [] as SessionTextPreview[], renderEdges: false }));
 vi.mock('@/sync/sessionTextStream', () => ({ useSessionTextPreviews: () => liveState.previews }));
 const grouped = vi.hoisted(() => ({ items: null as any[] | null, renderRows: false,
@@ -43,7 +44,7 @@ vi.mock('react-native', () => ({
     Text: 'Text',
     View: 'View',
     ScrollView: 'ScrollView',
-    useWindowDimensions: () => ({ width: 1200, height: 800 }),
+    useWindowDimensions: () => dimensions,
 }));
 vi.mock('@expo/vector-icons', () => ({ Octicons: 'Octicons' }));
 vi.mock('react-native-reanimated', () => ({
@@ -130,6 +131,68 @@ describe('ConversationTranscript older history pagination', () => {
         vi.unstubAllGlobals();
         (Platform as any).OS = 'web';
         delete (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT;
+    });
+
+    it('fills a collapsed initial Web page without a gesture and stops when full', async () => {
+        const flush = installFrameQueue();
+        const load = vi.fn();
+        let contentHeight = 130;
+        const node = document.createElement('div');
+        const content = document.createElement('div');
+        node.appendChild(content);
+        Object.defineProperty(node, 'clientHeight', { value: 800 });
+        content.getBoundingClientRect = () => ({ height: contentHeight } as DOMRect);
+        const render = (oldest: string, loading = false, sessionId = 'initial-fill') => <ConversationTranscript metadata={null}
+            sessionId={sessionId} messages={[userMessage(oldest)]} hasMoreOlder
+            isAtLatest isLoadingOlder={loading} onLoadOlder={load} />;
+        let renderer: any;
+        await act(async () => { renderer = TestRenderer.create(render('20'), {
+            createNodeMock: (element: any) => element.type === 'FlatList' ? { getScrollableNode: () => node } : null,
+        }); });
+        await flush(); await flush();
+        expect(load).toHaveBeenCalledTimes(1);
+        act(() => byId(renderer, 'conversation-transcript-list').props.onContentSizeChange(600, 130));
+        await flush(); await flush();
+        expect(load).toHaveBeenCalledTimes(1);
+        await act(async () => renderer.update(render('10', true)));
+        await flush(); await flush();
+        expect(load).toHaveBeenCalledTimes(1);
+        await act(async () => renderer.update(render('10')));
+        await flush(); await flush();
+        expect(load).toHaveBeenCalledTimes(2);
+        contentHeight = 900;
+        await act(async () => renderer.update(render('5')));
+        await flush(); await flush();
+        expect(load).toHaveBeenCalledTimes(2);
+        contentHeight = 130;
+        act(() => byId(renderer, 'conversation-transcript-list').props.onContentSizeChange(600, 130));
+        await flush(); await flush();
+        expect(load).toHaveBeenCalledTimes(2);
+        await act(async () => renderer.update(render('20', false, 'another-session')));
+        await flush(); await flush();
+        expect(load).toHaveBeenCalledTimes(3);
+        act(() => renderer.unmount());
+    });
+
+    it.each(['gesture', 'error', 'history', 'exhausted'])('does not bootstrap Web history after %s', async reason => {
+        const flush = installFrameQueue();
+        const load = vi.fn();
+        const node = document.createElement('div');
+        const content = document.createElement('div');
+        node.appendChild(content);
+        Object.defineProperty(node, 'clientHeight', { value: 800 });
+        content.getBoundingClientRect = () => ({ height: 130 } as DOMRect);
+        let renderer: any;
+        await act(async () => { renderer = TestRenderer.create(<ConversationTranscript metadata={null}
+            messages={[userMessage('20')]} hasMoreOlder={reason !== 'exhausted'}
+            isAtLatest={reason !== 'history'} olderError={reason === 'error' ? 'history-window-capacity' : undefined}
+            onLoadOlder={load} />, {
+            createNodeMock: (element: any) => element.type === 'FlatList' ? { getScrollableNode: () => node } : null,
+        }); });
+        if (reason === 'gesture') act(() => byId(renderer, 'conversation-transcript-list').props.onScrollBeginDrag());
+        await flush(); await flush();
+        expect(load).not.toHaveBeenCalled();
+        act(() => renderer.unmount());
     });
 
     it('keeps an overlapping folded group mounted when paging changes both boundary members', async () => {
@@ -260,6 +323,7 @@ describe('ConversationTranscript older history pagination', () => {
         let renderer: any;
         await act(async () => { renderer = TestRenderer.create(render(messages)); });
         const list = () => byId(renderer, 'conversation-transcript-list');
+        act(() => list().props.onLayout({ nativeEvent: { layout: { width: 800, height: 800 } } }));
         act(() => { for (const item of list().props.data) list().props.renderItem({ item }).props.onLayout({
             nativeEvent: { layout: { height: 100 } } }); });
         await act(async () => renderer.update(render(messages.slice(0, 5))));
@@ -1103,8 +1167,31 @@ describe('ConversationTranscript older history pagination', () => {
         expect(list.props.getItemLayout(list.props.data, 1)).toMatchObject({ offset: 321 });
         act(() => list.props.onLayout({ nativeEvent: { layout: { width: 600, height: 800 } } }));
         list = byId(renderer, 'conversation-transcript-list');
+        expect(list.props.getItemLayout(list.props.data, 1)).toMatchObject({ offset: 321 });
+        act(() => list.props.onLayout({ nativeEvent: { layout: { width: 900, height: 800 } } }));
+        list = byId(renderer, 'conversation-transcript-list');
         expect(list.props.getItemLayout(list.props.data, 1)).toMatchObject({ offset: 160 });
         act(() => renderer.unmount());
+    });
+
+    it('invalidates row heights when font scale actually changes', async () => {
+        let renderer: any;
+        const messages = [userMessage('new'), userMessage('old')];
+        const render = () => <ConversationTranscript metadata={null} messages={messages} />;
+        try {
+            await act(async () => { renderer = TestRenderer.create(render()); });
+            let list = byId(renderer, 'conversation-transcript-list');
+            act(() => list.props.renderItem({ item: list.props.data[0] }).props.onLayout({
+                nativeEvent: { layout: { height: 321 } },
+            }));
+            dimensions.fontScale = 1.5;
+            await act(async () => renderer.update(<ConversationTranscript metadata={null} messages={[...messages]} />));
+            list = byId(renderer, 'conversation-transcript-list');
+            expect(list.props.getItemLayout(list.props.data, 1).offset).toBe(160);
+        } finally {
+            dimensions.fontScale = 1;
+            act(() => renderer.unmount());
+        }
     });
 
     it('preserves an image row key through pagination without expanding the synchronous render region', async () => {

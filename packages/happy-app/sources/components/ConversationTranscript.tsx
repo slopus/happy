@@ -146,6 +146,7 @@ export const ConversationTranscript = React.memo((props: ConversationTranscriptP
     const attempted = React.useRef(new Set<string>());
     const jumpPending = React.useRef(false);
     const jumpRequest = React.useRef<object | null>(null);
+    const initialWebFill = React.useRef(true);
     const userScrollStarted = React.useRef(false);
     const userScrollDirection = React.useRef<'older' | 'newer' | undefined>(undefined);
     const userScrollOffset = React.useRef<number | null>(null);
@@ -233,7 +234,10 @@ export const ConversationTranscript = React.memo((props: ConversationTranscriptP
             if (!rowKeys.current.has(key)) rowHeights.current.delete(key);
         }
     }, [listItems]);
+    const previousFontScale = React.useRef(fontScale);
     React.useEffect(() => {
+        if (previousFontScale.current === fontScale) return;
+        previousFontScale.current = fontScale;
         rowHeights.current.clear();
         extent.current = { session: props.sessionId, keys: [], leading: 0, trailing: 0 };
         measurementDebt.current.clear();
@@ -372,6 +376,7 @@ export const ConversationTranscript = React.memo((props: ConversationTranscriptP
     const cancelReadingRestoreRef = React.useRef(reading.cancelRestore);
     cancelReadingRestoreRef.current = reading.cancelRestore;
     const claimScroll = React.useCallback(() => {
+        initialWebFill.current = false;
         coordinator?.userIntent();
         if (coordinator) { jumpPending.current = false; jumpRequest.current = null; }
         userScrollStarted.current = true;
@@ -725,6 +730,43 @@ export const ConversationTranscript = React.memo((props: ConversationTranscriptP
         loadBoundary('older');
     }, [boundaryAttemptKey, contentGeneration, contentMeasurement, loadBoundary, viewportHeight]);
     React.useEffect(() => {
+        setAnchorSheetOpen(false);
+        if (indexRetryTimerRef.current) clearTimeout(indexRetryTimerRef.current);
+        jumpPending.current = false;
+        jumpRequest.current = null;
+        attempted.current.clear();
+        initialWebFill.current = true;
+        boundaryFill.current = null;
+        userScrollStarted.current = false;
+        userScrollDirection.current = undefined;
+        userScrollOffset.current = null;
+        setBoundaries({ older: false, newer: false });
+    }, [props.sessionId]);
+    React.useEffect(() => {
+        if (Platform.OS !== 'web' || inverted || !isAtLatest || !initialWebFill.current
+            || props.isLoadingOlder || props.olderError || props.hasMoreOlder !== true) return;
+        // A raw history page can collapse to one short work row. Measure the
+        // committed content (scrollHeight is at least clientHeight) and fetch
+        // only enough older pages to fill the first viewport. Do not require a
+        // wheel event, and never restart this bootstrap after the reader moves.
+        let secondFrame: number | null = null;
+        const firstFrame = requestAnimationFrame(() => {
+            secondFrame = requestAnimationFrame(() => {
+                if (!initialWebFill.current) return;
+                const node = (flatListRef.current as any)?.getScrollableNode?.() as HTMLElement | undefined;
+                const content = node?.firstElementChild?.getBoundingClientRect();
+                if (!node || node.clientHeight <= 0 || !content || content.height <= 0) return;
+                if (content.height >= node.clientHeight) initialWebFill.current = false;
+                else loadBoundary('older', false, true);
+            });
+        });
+        return () => {
+            cancelAnimationFrame(firstFrame);
+            if (secondFrame !== null) cancelAnimationFrame(secondFrame);
+        };
+    }, [inverted, isAtLatest, props.isLoadingOlder, props.olderError, props.hasMoreOlder,
+        loadBoundary, contentGeneration, contentMeasurement, heightRevision, viewportHeight, webHeaderHeight]);
+    React.useEffect(() => {
         if (props.newerError) jumpPending.current = false;
         else if (jumpPending.current && isAtLatest) { jumpPending.current = false; scrollLatest(); }
     }, [isAtLatest, props.newerError, scrollLatest]);
@@ -769,24 +811,13 @@ export const ConversationTranscript = React.memo((props: ConversationTranscriptP
     const openAnchorSheet = React.useCallback(() => setAnchorSheetOpen(true), []);
     const closeAnchorSheet = React.useCallback(() => setAnchorSheetOpen(false), []);
 
-    React.useEffect(() => {
-        setAnchorSheetOpen(false);
-        if (indexRetryTimerRef.current) clearTimeout(indexRetryTimerRef.current);
-        jumpPending.current = false;
-        jumpRequest.current = null;
-        attempted.current.clear();
-        boundaryFill.current = null;
-        userScrollStarted.current = false;
-        userScrollDirection.current = undefined;
-        userScrollOffset.current = null;
-        setBoundaries({ older: false, newer: false });
-    }, [props.sessionId]);
 
     React.useEffect(() => {
         if (Platform.OS !== 'web') return;
         const node = (flatListRef.current as any)?.getScrollableNode?.() as HTMLElement | undefined;
         if (!node) return;
         const claim = (delta?: number) => {
+            initialWebFill.current = false;
             jumpPending.current = false;
             jumpRequest.current = null;
             const direction = delta === undefined ? undefined : delta < 0 ? 'older' : 'newer';
@@ -905,8 +936,14 @@ export const ConversationTranscript = React.memo((props: ConversationTranscriptP
                     const { width, height } = event.nativeEvent.layout;
                     setViewportHeight(height);
                     if (Platform.OS === 'web' && width !== listWidth.current) {
-                        reading.pin();
+                        const previousWidth = listWidth.current;
                         listWidth.current = width;
+                        // Children can report their actual sizes before the first
+                        // viewport layout. Those measurements already belong to
+                        // this width; discarding them leaves estimated blank space
+                        // until the rows happen to mount or resize again.
+                        if (previousWidth === null) return;
+                        reading.pin();
                         rowHeights.current.clear();
                         extent.current = { session: props.sessionId, keys: [], leading: 0, trailing: 0 };
                         measurementDebt.current.clear();
