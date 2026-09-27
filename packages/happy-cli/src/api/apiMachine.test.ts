@@ -881,6 +881,93 @@ describe('ApiMachineClient socket reconnection', () => {
         client.shutdown();
     });
 
+    it('does not advertise channel support or AI auth selection from a managed runtime', async () => {
+        // A managed runtime serves only `managed:*` RPCs, so the ordinary spawn path those two
+        // advertisements promise is refused there; a stored copy is cleared rather than kept.
+        mockSocket.emitWithAck.mockImplementation(async (event: string, data: any) => {
+            if (event === 'machine-update-metadata') {
+                return { result: 'success', version: 1, metadata: data.metadata };
+            }
+            if (event === 'machine-update-state') {
+                return { result: 'success', version: 1, daemonState: data.daemonState };
+            }
+            return { result: 'success' };
+        });
+        const machine = makeMachine();
+        machine.metadata = {
+            ...machine.metadata!,
+            channelSupport: CHANNEL_SUPPORT_CAPABILITY,
+            aiAuthSelection: AI_AUTH_SELECTION_CAPABILITY,
+        };
+        const client = new ApiMachineClient('fake-token', machine);
+        client.setRPCHandlers({
+            spawnSession: vi.fn(), stopSession: vi.fn(), requestShutdown: vi.fn(),
+            portRegistry: {} as any, aiCredentialRuntime: {} as any,
+        });
+        client.setManagedRuntime({} as any);
+        client.connect();
+        socketHandlers.connect![0]!();
+
+        await vi.waitFor(() => {
+            expect(machine.metadata?.channelSupport).toBeUndefined();
+            expect(machine.metadata?.aiAuthSelection).toBeUndefined();
+        });
+        client.shutdown();
+    });
+
+    it('starts no second advertisement update while one is still waiting for the server', async () => {
+        // The server copy only changes on acknowledgement, so a slow one used to read as stale on
+        // every keep-alive and pile up updates, each with its own retry loop.
+        vi.useFakeTimers();
+        let metadataUpdates = 0;
+        mockSocket.emitWithAck.mockImplementation(async (event: string, data: any) => {
+            if (event === 'machine-update-metadata') {
+                metadataUpdates += 1;
+                return new Promise(() => undefined);
+            }
+            if (event === 'machine-update-state') {
+                return { result: 'success', version: 1, daemonState: data.daemonState };
+            }
+            return { result: 'success' };
+        });
+        const client = new ApiMachineClient('fake-token', makeMachine());
+        client.connect();
+        socketHandlers.connect![0]!();
+        await vi.advanceTimersByTimeAsync(0);
+        const first = metadataUpdates;
+        await vi.advanceTimersByTimeAsync(60_000);
+
+        expect(first).toBeGreaterThan(0);
+        expect(metadataUpdates).toBe(first);
+        client.shutdown();
+    });
+
+    it('starts another advertisement update once the unanswered one has waited past its bound', async () => {
+        // A single-flight guard that only an acknowledgement clears would block every capability
+        // change forever if that acknowledgement never came.
+        vi.useFakeTimers();
+        let metadataUpdates = 0;
+        mockSocket.emitWithAck.mockImplementation(async (event: string, data: any) => {
+            if (event === 'machine-update-metadata') {
+                metadataUpdates += 1;
+                return new Promise(() => undefined);
+            }
+            if (event === 'machine-update-state') {
+                return { result: 'success', version: 1, daemonState: data.daemonState };
+            }
+            return { result: 'success' };
+        });
+        const client = new ApiMachineClient('fake-token', makeMachine());
+        client.connect();
+        socketHandlers.connect![0]!();
+        await vi.advanceTimersByTimeAsync(0);
+        const first = metadataUpdates;
+        await vi.advanceTimersByTimeAsync(5 * 60_000);
+
+        expect(metadataUpdates).toBeGreaterThan(first);
+        client.shutdown();
+    });
+
     it('clears stale autonomous quality-gate capability when RPC handlers are unavailable', async () => {
         vi.useFakeTimers();
         mockSocket.emitWithAck.mockImplementation(async (event: string, data: any) => {
