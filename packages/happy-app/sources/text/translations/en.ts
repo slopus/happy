@@ -844,6 +844,7 @@ export const en: TranslationStructure = {
     sessionHistory: {
         // Used by session history screen
         title: 'Session History',
+        failedToRefreshSessions: 'Failed to refresh session list',
         failedToLoadMore: 'Failed to load more session history',
         empty: 'No sessions found',
         archiveTitle: 'Archived Sessions',

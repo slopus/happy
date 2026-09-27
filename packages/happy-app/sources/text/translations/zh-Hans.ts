@@ -819,6 +819,7 @@ export const zhHans: TranslationStructure = {
     sessionHistory: {
         // Used by session history screen
         title: '会话历史',
+        failedToRefreshSessions: '会话列表刷新失败',
         failedToLoadMore: '加载更多历史记录失败',
         empty: '未找到会话',
         archiveTitle: '已归档会话',

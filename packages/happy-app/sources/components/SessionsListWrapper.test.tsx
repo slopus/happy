@@ -31,7 +31,7 @@ describe('session list recovery', () => {
         useSessionListSyncState.setState({ bootstrap: 'error', history: 'idle' });
         act(() => { renderer = TestRenderer.create(<SessionsListWrapper />); });
         expect(renderer.root.findAllByType('ActivityIndicator')).toHaveLength(0);
-        expect(renderer.root.findByProps({ children: 'server.failedToConnectToServer' })).toBeTruthy();
+        expect(renderer.root.findByProps({ children: 'sessionHistory.failedToRefreshSessions' })).toBeTruthy();
         const retry = renderer.root.findByProps({ accessibilityRole: 'button', accessibilityLabel: 'common.retry' });
         act(() => retry.props.onPress());
         expect(useSessionListSyncState.getState().bootstrap).toBe('loading');
@@ -46,7 +46,7 @@ describe('session list recovery', () => {
         act(() => useSessionListSyncState.setState({ history: 'error' }));
         expect(renderer.root.findAllByType('Text')).toContain(content);
         expect(renderer.root.findByProps({ children: 'sessionHistory.failedToLoadMore' })).toBeTruthy();
-        expect(renderer.root.findAllByProps({ children: 'server.failedToConnectToServer' })).toHaveLength(0);
+        expect(renderer.root.findAllByProps({ children: 'sessionHistory.failedToRefreshSessions' })).toHaveLength(0);
         const retry = renderer.root.findByProps({ accessibilityRole: 'button', accessibilityLabel: 'common.retry' });
         act(() => retry.props.onPress());
         expect(useSessionListSyncState.getState().history).toBe('loading');
@@ -57,7 +57,7 @@ describe('session list recovery', () => {
         data.rows = [{}];
         useSessionListSyncState.setState({ bootstrap: 'error', history: 'error' });
         act(() => { renderer = TestRenderer.create(<SessionsListWrapper />); });
-        expect(renderer.root.findByProps({ children: 'server.failedToConnectToServer' })).toBeTruthy();
+        expect(renderer.root.findByProps({ children: 'sessionHistory.failedToRefreshSessions' })).toBeTruthy();
         expect(renderer.root.findAllByProps({ children: 'sessionHistory.failedToLoadMore' })).toHaveLength(0);
         const retry = renderer.root.findByProps({ accessibilityRole: 'button', accessibilityLabel: 'common.retry' });
         act(() => retry.props.onPress());

@@ -790,6 +790,7 @@ export const pl: TranslationStructure = {
     sessionHistory: {
         // Used by session history screen
         title: 'Historia sesji',
+        failedToRefreshSessions: 'Nie udało się odświeżyć listy sesji',
         failedToLoadMore: 'Nie udało się wczytać starszej historii sesji',
         empty: 'Nie znaleziono sesji',
         archiveTitle: 'Zarchiwizowane sesje',

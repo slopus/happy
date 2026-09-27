@@ -773,6 +773,7 @@ export const es: TranslationStructure = {
     sessionHistory: {
         // Used by session history screen
         title: 'Historial de sesiones',
+        failedToRefreshSessions: 'No se pudo actualizar la lista de sesiones',
         failedToLoadMore: 'No se pudo cargar más historial de sesiones',
         empty: 'No se encontraron sesiones',
         archiveTitle: 'Sesiones archivadas',

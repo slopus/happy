@@ -1,3 +1,4 @@
+import { SessionRequestError } from './apiSessions';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Native update identity has its own tests; these suites do not host Expo modules.
@@ -220,7 +221,7 @@ describe('active-first session bootstrap', () => {
         mocks.state.sessions = {};
         mocks.state.sessionMessages = {};
         mocks.state.readyCount = 0;
-        mocks.fetchActive.mockResolvedValue([]);
+        mocks.fetchActive.mockReset().mockResolvedValue([]);
         mocks.fetchPage.mockResolvedValue({ sessions: [], nextCursor: null, hasNext: false });
         mocks.fetchSnapshot.mockResolvedValue(null);
         mocks.apiRequest.mockResolvedValue(response({ messages: [], hasMore: false }));
@@ -314,6 +315,67 @@ describe('active-first session bootstrap', () => {
             await syncForTest.bootstrapSessions();
             expect(notifications).toHaveLength(beforeRepeat);
         } finally { clearTimeout(timer); observer.mockRestore(); }
+    });
+
+    it.each([new SessionRequestError('network'), new SessionRequestError('timeout'), new SessionRequestError('http', 503)])('recovers %s automatically without replacing cached rows with an error', async (failure) => {
+        vi.useFakeTimers();
+        mocks.state.sessions.cached = hydrated(snapshot('cached'));
+        mocks.fetchActive.mockRejectedValueOnce(failure);
+        mocks.fetchActive.mockResolvedValueOnce([snapshot('recovered')]);
+        const request = syncForTest.bootstrapSessions();
+        try {
+            await vi.advanceTimersByTimeAsync(0);
+            expect(useSessionListSyncState.getState().bootstrap).toBe('loading');
+            expect(mocks.state.sessions.cached).toBeDefined();
+            await vi.advanceTimersByTimeAsync(5_000);
+            await request;
+            expect(useSessionListSyncState.getState().bootstrap).toBe('ready');
+            expect(mocks.state.sessions.recovered).toBeDefined();
+            expect(mocks.state.sessions.cached).toBeDefined();
+        } finally { vi.useRealTimers(); }
+    });
+
+    it('settles persistent transient failure after bounded retries and permits manual recovery', async () => {
+        vi.useFakeTimers();
+        mocks.fetchActive.mockRejectedValue(new SessionRequestError('network'));
+        const request = syncForTest.bootstrapSessions();
+        try {
+            await vi.advanceTimersByTimeAsync(5_000);
+            await request;
+            expect(useSessionListSyncState.getState().bootstrap).toBe('error');
+            expect(mocks.fetchActive).toHaveBeenCalledTimes(3);
+            expect(vi.getTimerCount()).toBe(0);
+            mocks.fetchActive.mockResolvedValue([snapshot('manual')]);
+            await syncForTest.bootstrapSessions();
+            expect(mocks.state.sessions.manual).toBeDefined();
+            expect(useSessionListSyncState.getState().bootstrap).toBe('ready');
+        } finally { vi.useRealTimers(); }
+    });
+
+    it.each([new SessionRequestError('http', 401), new SessionRequestError('http', 403), new SessionRequestError('invalid-response')])('does not repeatedly request a permanent failure: %s', async (failure) => {
+        vi.useFakeTimers();
+        mocks.fetchActive.mockRejectedValue(failure);
+        try {
+            await syncForTest.bootstrapSessions();
+            expect(useSessionListSyncState.getState().bootstrap).toBe('error');
+            expect(mocks.fetchActive).toHaveBeenCalledTimes(1);
+            expect(vi.getTimerCount()).toBe(0);
+        } finally { vi.useRealTimers(); }
+    });
+
+    it('does not retry a previous account after ownership changes during backoff', async () => {
+        vi.useFakeTimers();
+        mocks.fetchActive.mockRejectedValueOnce(new SessionRequestError('network'));
+        const request = syncForTest.bootstrapSessions();
+        try {
+            await vi.advanceTimersByTimeAsync(0);
+            syncForTest.encryption = { ...syncForTest.encryption };
+            syncForTest.resetSessionListOwner();
+            await vi.advanceTimersByTimeAsync(5_000);
+            await request;
+            expect(useSessionListSyncState.getState().bootstrap).toBe('idle');
+            expect(mocks.fetchActive).toHaveBeenCalledTimes(1);
+        } finally { vi.useRealTimers(); }
     });
 
     it('settles failed bootstrap callers and releases one shared attempt for explicit retry', async () => {

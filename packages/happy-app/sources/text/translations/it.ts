@@ -771,6 +771,7 @@ export const it: TranslationStructure = {
     sessionHistory: {
         // Used by session history screen
         title: 'Cronologia sessioni',
+        failedToRefreshSessions: 'Impossibile aggiornare la lista delle sessioni',
         failedToLoadMore: 'Impossibile caricare altra cronologia delle sessioni',
         empty: 'Nessuna sessione trovata',
         archiveTitle: 'Sessioni archiviate',

@@ -19,7 +19,7 @@ export function SessionListRecovery() {
     if (bootstrap !== 'error' && history !== 'error') return null;
     const retryBootstrap = bootstrap === 'error';
     return <View style={styles.container} accessibilityLiveRegion="polite">
-        <Text style={styles.message}>{t(retryBootstrap ? 'server.failedToConnectToServer' : 'sessionHistory.failedToLoadMore')}</Text>
+        <Text style={styles.message}>{t(retryBootstrap ? 'sessionHistory.failedToRefreshSessions' : 'sessionHistory.failedToLoadMore')}</Text>
         <Pressable
             accessibilityRole="button"
             accessibilityLabel={t('common.retry')}

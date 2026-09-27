@@ -752,6 +752,7 @@ export const ru: TranslationStructure = {
     sessionHistory: {
         // Used by session history screen
         title: 'История сессий',
+        failedToRefreshSessions: 'Не удалось обновить список сессий',
         failedToLoadMore: 'Не удалось загрузить более раннюю историю сессий',
         empty: 'Сессии не найдены',
         archiveTitle: 'Архивные сессии',

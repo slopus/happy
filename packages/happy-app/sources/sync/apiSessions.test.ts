@@ -62,10 +62,10 @@ describe('session snapshot API readers', () => {
         const read = () => reader === 'page' ? fetchSessionSnapshotPage(credentials, { limit: 25 })
             : fetchActiveSessionSnapshots(credentials, 25);
         const request = read().then(
-            () => { outcome = 'success'; }, () => { outcome = 'failed'; },
+            () => { outcome = 'success'; }, error => { outcome = error.kind; },
         );
         await vi.advanceTimersByTimeAsync(20_000);
-        expect(outcome).toBe('failed');
+        expect(outcome).toBe('timeout');
         await request;
         expect(signal?.aborted).toBe(true);
         expect(vi.getTimerCount()).toBe(0);
@@ -73,6 +73,24 @@ describe('session snapshot API readers', () => {
         vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(body)));
         await expect(read()).resolves.toEqual(reader === 'page' ? body : body.sessions);
         expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it.each([[401, false], [403, false], [429, true], [503, true]])(
+        'classifies HTTP %s without exposing response contents', async (status, retryable) => {
+            vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ secret: 'private-response' }, status)));
+            const error = await fetchActiveSessionSnapshots(credentials, 25).catch(error => error);
+            expect(error).toMatchObject({ kind: 'http', status, retryable });
+            expect(error.message).not.toContain('private-response');
+        },
+    );
+
+    it('classifies malformed response separately from a transient network failure', async () => {
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ sessions: [{}] })));
+        await expect(fetchActiveSessionSnapshots(credentials, 25)).rejects.toMatchObject({ kind: 'invalid-response', retryable: false });
+        vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('private request URL')));
+        const error = await fetchActiveSessionSnapshots(credentials, 25).catch(error => error);
+        expect(error).toMatchObject({ kind: 'network', retryable: true });
+        expect(error.message).not.toContain('private request URL');
     });
 
     it('fetches and validates one encoded session id', async () => {

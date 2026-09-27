@@ -106,6 +106,7 @@ import { getPluginCatalog } from './plugins';
 import { shouldMarkSessionEventUnread } from '@/utils/sessionAttentionBadge';
 import { PluginCatalogStore, type PluginCatalogSnapshot } from './pluginCatalogStore';
 import {
+    SessionRequestError,
     fetchActiveSessionSnapshots,
     fetchLegacySessionSnapshots,
     fetchSessionSnapshot,
@@ -2400,13 +2401,29 @@ class Sync {
         const owner = this.captureHistoryOwner('');
         useSessionListSyncState.setState({ bootstrap: 'loading' });
         const request = (async () => {
-            try {
-                await this.fetchActiveSessions();
+            // Keep callers bounded: InvalidateSync cannot retry a swallowed error,
+            // while throwing here would leave startup/route callers waiting forever.
+            for (let attempt = 0; attempt < 3; attempt++) {
                 if (!owner.isCurrent()) return;
-                storage.getState().applyReady();
-                useSessionListSyncState.setState({ bootstrap: 'ready' });
-            } catch {
-                if (owner.isCurrent()) useSessionListSyncState.setState({ bootstrap: 'error' });
+                const startedAt = Date.now();
+                try {
+                    await this.fetchActiveSessions();
+                    if (!owner.isCurrent()) return;
+                    storage.getState().applyReady();
+                    useSessionListSyncState.setState({ bootstrap: 'ready' });
+                    return;
+                } catch (error) {
+                    if (!owner.isCurrent()) return;
+                    const failure = error instanceof SessionRequestError ? error : null;
+                    const retry = failure?.retryable === true && attempt < 2;
+                    log.log(`session-list-refresh-failed kind=${failure?.kind ?? 'sync'} status=${failure?.status ?? 'none'} attempt=${attempt + 1} elapsedMs=${Date.now() - startedAt} retry=${retry}`);
+                    if (!retry) {
+                        useSessionListSyncState.setState({ bootstrap: 'error' });
+                        return;
+                    }
+                    // Preserve cached rows and suppress a premature failure banner.
+                    await new Promise<void>(resolve => setTimeout(resolve, attempt === 0 ? 1_000 : 3_000));
+                }
             }
         })().finally(() => {
             if (this.sessionBootstrapInFlight === request) this.sessionBootstrapInFlight = null;
