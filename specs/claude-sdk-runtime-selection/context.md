@@ -1,6 +1,6 @@
 ---
 기능: claude-sdk-runtime-selection
-상태: 구현·로컬 검증 완료, 설치본 미반영
+상태: 구현·로컬 검증 완료, 1.1.10-aplus.249 릴리스 준비
 마지막 갱신: 2026-09-27
 ---
 
@@ -18,3 +18,6 @@ Happy CLI의 SDK pin을 0.3.276에서 0.3.283으로 갱신했다. 내장 Claude�
 ## 반영 범위와 재개
 소스와 lockfile, spec을 vendor/happy에 수정했다. 설치된 전역 Happy/운영 daemon/Desktop runtime은 교체하지 않았다. Desktop 자식 생성·패널·재개 및 Linux mandatory sandbox와 Windows 실제 실행은 이번 변경으로 검증하지 않았다. 관련 단위 회귀가 실제 OS 검증을 대신하지 않는다.
 배포하려면 변경된 Happy의 릴리스 artifact를 준비·검증하고 외부 release 직전에 사용자 승인을 받아 공식 CI publisher로 발행한 뒤 Desktop pin/설치본을 갱신한다. 기존 다른 사용자의 untracked memory 파일은 변경하지 않았다.
+
+## 릴리스
+사용자의 명시적 릴리스 요청(2026-09-27)에 따라 PR #563 merge b73fc749 기준 1.1.10-aplus.249를 준비한다. 버전 변경 main 반영 → matching tag push → 공식 Actions publish/registry smoke → 상위 vendor 포인터 반영 순서다. 실행 중인 사용자 daemon은 임의 종료하지 않는다.
