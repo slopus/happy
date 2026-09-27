@@ -3,6 +3,8 @@ import { createLessonProposalTurn } from '@/utils/lessonProposalTurn';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { claudeRemote } from './claudeRemote';
 import * as sandbox from '@/sandbox/claudeProcessSandbox';
+import { McpConfigSynchronizer } from './mcpConfigSynchronizer';
+import { McpRuntimeRecovery } from './mcpRuntimeRecovery';
 import { query } from '@/claude/sdk';
 import type { EnhancedMode } from './loop';
 
@@ -1071,6 +1073,180 @@ describe('lessons at the provider boundary', () => {
     }
 
     const ticket = { id: 'ticket-1' } as any;
+
+    it('measures preparation separately and submits after lessons on initial and subsequent turns', async () => {
+        let clock = 100;
+        const now = vi.spyOn(performance, 'now').mockImplementation(() => clock);
+        const diagnostic = vi.fn();
+        const sync = vi.spyOn(McpConfigSynchronizer.prototype, 'sync').mockImplementation(async () => { clock += 20; });
+        const recovery = vi.spyOn(McpRuntimeRecovery.prototype, 'recoverFailedServers').mockImplementation(async () => { clock += 30; });
+        let sent = 0;
+        const turns = providerCapturing(async push => {
+            clock += 40;
+            push({ type: 'stream_event', parent_tool_use_id: null,
+                event: { type: 'content_block_delta', delta: { type: 'text_delta', text: 'OK' } } });
+            push({ type: 'result', subtype: 'success' });
+        });
+        try {
+            await claudeRemote(baseOptions({
+                nextMessage: async () => ++sent <= 2 ? { message: 'hello', mode,
+                    latency: { attribution: 'exclusive', inputCount: 1,
+                        traces: [{ id: `trace-${sent}`, receivedAt: clock, queueMs: 0 }] } } : null,
+                beforeTurn: async () => { clock += 10; },
+                onTurnLatency: diagnostic,
+                mcpConfig: { baseServers: {}, initialAplusServers: {}, fetchAplusServers: vi.fn() },
+                lessonProposalTurn: createLessonProposalTurn(),
+                lessons: { sessionId: 'test', sessionKind: 'foreground', review: {
+                    prepareReviewTurn: async () => { clock += 50; return { revision: 1 }; },
+                    reviewFinishedTurn: vi.fn(async () => 'reviewed'),
+                }, turn: {
+                    recall: async () => { clock += 70; return { outcome: 'empty' }; },
+                    acknowledge: vi.fn(),
+                } },
+            }));
+            expect(turns).toHaveLength(2);
+            expect(turns.every(t => String(t.sent).endsWith('hello'))).toBe(true);
+            expect(diagnostic).toHaveBeenCalledTimes(2);
+            for (const [index, [value]] of diagnostic.mock.calls.entries()) {
+                expect(value.sdkSubmitMs).toBe(index === 0 ? 130 : 180);
+                expect(value.firstSdkTextMs).toBe(index === 0 ? 170 : 220);
+                expect(value.preparation).toEqual(expect.arrayContaining([
+                    { stage: 'before-turn', durationMs: 10, outcome: 'resolved' },
+                    { stage: 'lesson-recall', durationMs: 70, outcome: 'resolved' },
+                    { stage: 'lesson-proposal', durationMs: 50, outcome: 'resolved' },
+                ]));
+            }
+            expect(diagnostic.mock.calls[0][0].preparation).toEqual([
+                { stage: 'before-turn', durationMs: 10, outcome: 'resolved' },
+                { stage: 'lesson-recall', durationMs: 70, outcome: 'resolved' },
+                { stage: 'lesson-proposal', durationMs: 50, outcome: 'resolved' },
+            ]);
+            expect(diagnostic.mock.calls[1][0].preparation).toEqual([
+                { stage: 'mcp-sync', durationMs: 20, outcome: 'resolved' },
+                { stage: 'before-turn', durationMs: 10, outcome: 'resolved' },
+                { stage: 'mcp-recovery', durationMs: 30, outcome: 'resolved' },
+                { stage: 'lesson-recall', durationMs: 70, outcome: 'resolved' },
+                { stage: 'lesson-proposal', durationMs: 50, outcome: 'resolved' },
+            ]);
+        } finally { now.mockRestore(); sync.mockRestore(); recovery.mockRestore(); }
+    });
+
+    it.each([false, true])('preserves lesson fallback and input when the preparation clock fails (traced=%s)', async traced => {
+        let brokenClock = false;
+        let readsDuringRecall = 0;
+        const now = vi.spyOn(performance, 'now').mockImplementation(() => {
+            if (brokenClock) { readsDuringRecall++; brokenClock = false; throw Error('clock unavailable'); }
+            return 100;
+        });
+        const diagnostic = vi.fn();
+        const turns = providerCapturing(async push => { push({ type: 'result', subtype: 'success' }); });
+        try {
+            await claudeRemote(baseOptions({
+                exitAfterFirstTurn: true,
+                nextMessage: async () => ({ message: 'original', mode, ...(traced ? { latency: {
+                    attribution: 'exclusive', inputCount: 1, traces: [{ id: 'trace', receivedAt: 0, queueMs: 0 }],
+                } } : {}) }),
+                onTurnLatency: diagnostic,
+                lessons: { sessionId: 'test', turn: { recall: async () => {
+                    brokenClock = traced;
+                    throw Error('private recall failure');
+                }, acknowledge: vi.fn() } },
+            }));
+            expect(turns[0].sent).toBe('original');
+            expect(diagnostic).toHaveBeenCalledTimes(traced ? 1 : 0);
+            expect(readsDuringRecall).toBe(traced ? 1 : 0);
+            if (traced) expect(diagnostic.mock.calls[0][0]).toMatchObject({ outcome: 'no-text', firstSdkTextMs: null,
+                preparation: [{ stage: 'lesson-recall', durationMs: null, outcome: 'rejected' }] });
+        } finally { now.mockRestore(); }
+    });
+
+    it('keeps preparation spans with their input when follow-up preparation overlaps', async () => {
+        let releaseFirst!: () => void;
+        const firstSync = new Promise<void>(resolve => { releaseFirst = resolve; });
+        let syncCalls = 0;
+        const sync = vi.spyOn(McpConfigSynchronizer.prototype, 'sync').mockImplementation(async () => {
+            if (++syncCalls === 1) await firstSync;
+        });
+        const diagnostic = vi.fn();
+        let sent = 0;
+        const delivered: string[] = [];
+        vi.mocked(query).mockImplementation((args: any) => ({
+            setPermissionMode: vi.fn(), mcpServerStatus: vi.fn(async () => []),
+            async *[Symbol.asyncIterator]() {
+                const input = args.prompt[Symbol.asyncIterator]();
+                await input.next();
+                yield { type: 'result', subtype: 'success' };
+                // A background completion can open another wait while the first is preparing.
+                yield { type: 'result', subtype: 'success' };
+                for (let i = 0; i < 2; i++) {
+                    const message = await input.next();
+                    delivered.push(message.value.message.content);
+                    yield { type: 'stream_event', parent_tool_use_id: null,
+                        event: { type: 'content_block_delta', delta: { type: 'text_delta', text: 'OK' } } };
+                    releaseFirst();
+                }
+                yield { type: 'result', subtype: 'success' };
+            },
+        }) as any);
+        try {
+            await claudeRemote(baseOptions({
+                nextMessage: async () => {
+                    sent++;
+                    return sent <= 3 ? { message: `message-${sent}`, mode, ...(sent > 1 ? { latency: {
+                        attribution: 'exclusive', inputCount: 1, traces: [{ id: `trace-${sent}`, receivedAt: 0, queueMs: 0 }],
+                    } } : {}) } : null;
+                },
+                beforeTurn: async () => undefined,
+                mcpConfig: { baseServers: {}, initialAplusServers: {}, fetchAplusServers: vi.fn() },
+                onTurnLatency: diagnostic,
+            }));
+            expect(delivered).toEqual(['message-3', 'message-2']);
+            expect(diagnostic.mock.calls.map(([d]) => d.id)).toEqual(['trace-3', 'trace-2']);
+            for (const [d] of diagnostic.mock.calls) expect(d.preparation.map((span: { stage: string }) => span.stage))
+                .toEqual(['mcp-sync', 'before-turn', 'mcp-recovery']);
+        } finally { releaseFirst(); sync.mockRestore(); }
+    });
+
+    it.each(['always', 'finish', 'span-start'])('keeps both turns running when the %s diagnostic clock fails', async failure => {
+        let failClock = failure === 'always' || failure === 'span-start';
+        let calls = 0;
+        const now = vi.spyOn(performance, 'now').mockImplementation(() => {
+            calls++;
+            if (failClock) {
+                if (failure === 'span-start') failClock = false;
+                throw Error('diagnostic clock unavailable');
+            }
+            return 100;
+        });
+        let sent = 0;
+        const diagnostic = vi.fn();
+        const turns = providerCapturing(async push => {
+            if (failure === 'finish') failClock = true;
+            push({ type: 'stream_event', parent_tool_use_id: null,
+                event: { type: 'content_block_delta', delta: { type: 'text_delta', text: 'OK' } } });
+            push({ type: 'result', subtype: 'success' });
+        });
+        try {
+            await claudeRemote(baseOptions({
+                beforeTurn: async () => undefined,
+                nextMessage: async () => {
+                    if (failure === 'finish') failClock = false;
+                    return ++sent <= 2 ? { message: 'keep running', mode, latency: {
+                        attribution: 'exclusive', inputCount: 1, traces: [{ id: `trace-${sent}`, receivedAt: 0, queueMs: 0 }],
+                    } } : null;
+                },
+                onTurnLatency: diagnostic,
+            }));
+            expect(turns.map(t => t.sent)).toEqual(['keep running', 'keep running']);
+            expect(calls).toBeGreaterThan(0);
+            if (failure === 'span-start') {
+                expect(diagnostic).toHaveBeenCalledTimes(2);
+                expect(diagnostic.mock.calls[0][0].preparation).toEqual([
+                    { stage: 'before-turn', durationMs: null, outcome: 'resolved' },
+                ]);
+            } else expect(diagnostic).not.toHaveBeenCalled();
+        } finally { now.mockRestore(); }
+    });
 
     it.each(['/compact', '/review changes'])('preserves native command input with lesson generation enabled (%s)', async command => {
         const proposalTurn = createLessonProposalTurn();

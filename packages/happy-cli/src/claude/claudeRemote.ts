@@ -66,6 +66,12 @@ export type ClaudeTurnLatencyInput = {
     traces: Array<{ id: string; receivedAt: number; queueMs: number }>;
 };
 
+type PreparationSpan = {
+    stage: 'mcp-sync' | 'before-turn' | 'mcp-recovery' | 'lesson-recall' | 'lesson-proposal';
+    durationMs: number | null;
+    outcome: 'resolved' | 'rejected';
+};
+
 export type ClaudeTurnLatencyDiagnostic = {
     version: 1;
     type: 'turn-latency';
@@ -76,6 +82,7 @@ export type ClaudeTurnLatencyDiagnostic = {
     sdkSubmitMs: number;
     firstSdkTextMs: number | null;
     outcome: 'text' | 'no-text';
+    preparation?: PreparationSpan[];
 };
 
 /**
@@ -296,19 +303,37 @@ async function runClaudeRemote(
         if (opts.signal?.aborted) reviewAbort.abort();
     };
 
-    let activeTurnLatency: { input: ClaudeTurnLatencyInput; sdkSubmitMs: number } | null = null;
-    const activateTurnLatency = (input: ClaudeTurnLatencyInput | undefined) => {
+    const readLatencyClock = () => {
+        try { const value = performance.now(); return Number.isFinite(value) ? value : null; }
+        catch { return null; }
+    };
+    const preparationFor = (input?: ClaudeTurnLatencyInput): PreparationSpan[] | undefined =>
+        input?.traces.length && opts.onTurnLatency ? [] : undefined;
+    const measurePreparation = async <T>(spans: PreparationSpan[] | undefined, stage: PreparationSpan['stage'], action: () => T | Promise<T>): Promise<T> => {
+        if (!spans) return action();
+        const start = readLatencyClock();
+        let outcome: PreparationSpan['outcome'] = 'rejected';
+        try { const result = await action(); outcome = 'resolved'; return result; }
+        finally {
+            const end = readLatencyClock();
+            spans.push({ stage, durationMs: start === null || end === null || end < start ? null : end - start, outcome });
+        }
+    };
+    let activeTurnLatency: { input: ClaudeTurnLatencyInput; sdkSubmitMs: number; preparation?: PreparationSpan[] } | null = null;
+    const activateTurnLatency = (input: ClaudeTurnLatencyInput | undefined, preparation?: PreparationSpan[]) => {
         if (!input || input.traces.length === 0) {
             activeTurnLatency = null;
             return;
         }
-        activeTurnLatency = { input, sdkSubmitMs: performance.now() };
+        const sdkSubmitMs = readLatencyClock();
+        activeTurnLatency = sdkSubmitMs === null ? null : { input, sdkSubmitMs, preparation };
     };
     const finishTurnLatency = (outcome: ClaudeTurnLatencyDiagnostic['outcome']) => {
         const active = activeTurnLatency;
         activeTurnLatency = null;
         if (!active) return;
-        const now = performance.now();
+        const now = readLatencyClock();
+        if (now === null) return;
         for (const trace of active.input.traces) {
             try {
                 opts.onTurnLatency?.({
@@ -321,6 +346,7 @@ async function runClaudeRemote(
                     sdkSubmitMs: Math.max(0, active.sdkSubmitMs - trace.receivedAt),
                     firstSdkTextMs: outcome === 'text' ? Math.max(0, now - trace.receivedAt) : null,
                     outcome,
+                    ...(active.preparation ? { preparation: active.preparation.map(span => ({ ...span })) } : {}),
                 });
             } catch {
                 logger.debug('[claudeRemote] Turn latency diagnostic delivery failed');
@@ -373,7 +399,8 @@ async function runClaudeRemote(
         return;
     }
 
-    const initialTurn = await opts.beforeTurn?.();
+    const preparation = preparationFor(initial.latency);
+    const initialTurn = opts.beforeTurn ? await measurePreparation(preparation, 'before-turn', opts.beforeTurn) : undefined;
     const providerPath = initialTurn?.providerPath ?? opts.path;
     const providerSandbox = initialTurn?.claudeSandbox ?? opts.sandbox;
 
@@ -590,6 +617,7 @@ function readTurnText(content: unknown): string {
         content: string | ContentBlockParam[],
         turnId: string,
         signal: AbortSignal,
+        spans?: PreparationSpan[],
     ): Promise<{ content: string | ContentBlockParam[]; ticket: LessonDeliveryTicket | null }> => {
         if (!lessonTurn) return { content, ticket: null };
         const query = typeof content === 'string'
@@ -603,11 +631,11 @@ function readTurnText(content: unknown): string {
         if (!query.trim()) {
             return { content, ticket: null };
         }
-        const outcome = await lessonTurn.recall({
+        const outcome = await measurePreparation(spans, 'lesson-recall', () => lessonTurn.recall({
             turnId,
             query,
             signal: opts.signal ? AbortSignal.any([signal, opts.signal]) : signal,
-        }).catch(() => null);
+        })).catch(() => null);
         if (!outcome || outcome.outcome !== 'selected') {
             return { content, ticket: null };
         }
@@ -623,7 +651,7 @@ function readTurnText(content: unknown): string {
 
     const isCommandInput = (content: unknown) => /^\/\S/.test(readTurnText(content).trimStart());
     let queryClosed = false;
-    const withLessons = async (content: string | ContentBlockParam[]) => {
+    const withLessons = async (content: string | ContentBlockParam[], spans?: PreparationSpan[]) => {
         // Native slash commands must remain the first provider input token.
         if (isCommandInput(content)) {
             pendingLessonTicket = null;
@@ -633,12 +661,12 @@ function readTurnText(content: unknown): string {
         const owningTurnId = currentTurnId;
         const owningSignal = reviewAbort.signal;
         const current = () => !queryClosed && currentTurnId === owningTurnId && !owningSignal.aborted && !opts.signal?.aborted;
-        const recalled = await recallWithLessons(content, owningTurnId, owningSignal);
+        const recalled = await recallWithLessons(content, owningTurnId, owningSignal, spans);
         if (!current()) return content;
         pendingLessonTicket = recalled.ticket;
         opts.lessonProposalTurn?.cancel();
         const instruction = lessonSessionKind === 'foreground' && !opts.signal?.aborted && lessonReview?.prepareReviewTurn && opts.lessonProposalTurn
-            ? await opts.lessonProposalTurn.prepare(owningTurnId, () => lessonReview.prepareReviewTurn!()) : '';
+            ? await measurePreparation(spans, 'lesson-proposal', () => opts.lessonProposalTurn!.prepare(owningTurnId, () => lessonReview.prepareReviewTurn!())) : '';
         if (!current()) return content;
         if (!instruction) return recalled.content;
         return typeof recalled.content === 'string' ? `${instruction}\n\n${recalled.content}`
@@ -647,13 +675,14 @@ function readTurnText(content: unknown): string {
 
     // Push initial message
     let messages = new PushableAsyncIterable<SDKUserMessage>();
-    activateTurnLatency(initial.latency);
+    const initialContent = await withLessons(initial.message, preparation);
+    activateTurnLatency(initial.latency, preparation);
     messages.push({
         type: 'user',
         parent_tool_use_id: null,
         message: {
             role: 'user',
-            content: await withLessons(initial.message),
+            content: initialContent,
         },
     });
 
@@ -1075,9 +1104,10 @@ function readTurnText(content: unknown): string {
                         messages.end();
                     } else {
                         preemptReview();
-                        await mcpConfigSynchronizer?.sync();
+                        const preparation = preparationFor(next.latency);
+                        if (mcpConfigSynchronizer) await measurePreparation(preparation, 'mcp-sync', () => mcpConfigSynchronizer.sync());
                         try {
-                            const nextTurn = await opts.beforeTurn?.();
+                            const nextTurn = opts.beforeTurn ? await measurePreparation(preparation, 'before-turn', opts.beforeTurn) : undefined;
                             if (nextTurn?.providerPath && nextTurn.providerPath !== providerPath) {
                                 throw new Error('checkpoint protection requires a provider restart for the next turn');
                             }
@@ -1096,7 +1126,7 @@ function readTurnText(content: unknown): string {
                         // 이 await 는 acceptsPromptSuggestion 플립 뒤에 와야 한다.
                         // 앞에 두면 직전 턴의 늦은 prompt_suggestion 이 새 턴으로
                         // 새어든다.
-                        await mcpRecovery.recoverFailedServers();
+                        await measurePreparation(preparation, 'mcp-recovery', () => mcpRecovery.recoverFailedServers());
                         mode = next.mode;
                         // Content can be structured blocks; only plain text is
                         // usable as a recall query or as review evidence — but
@@ -1111,9 +1141,9 @@ function readTurnText(content: unknown): string {
                          * result that arrives from the previous turn must not
                          * be attached to this one.
                          */
-                        const withBlock = await withLessons(next.message);
+                        const withBlock = await withLessons(next.message, preparation);
                         if (queryClosed || messages.done || opts.signal?.aborted) return;
-                        activateTurnLatency(next.latency);
+                        activateTurnLatency(next.latency, preparation);
                         messages.push({ type: 'user', parent_tool_use_id: null, message: { role: 'user', content: withBlock } });
                         // Steering may only follow the primary input, never overtake its recall.
                         acceptsActiveInput = true;
