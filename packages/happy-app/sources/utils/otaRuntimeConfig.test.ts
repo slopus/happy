@@ -130,11 +130,13 @@ describe('OTA native runtime isolation', () => {
         expect(previewWorkflow).toContain('--variant preview --channel preview');
         expect(previewWorkflow).toContain('patches/fix-expo-camera-scanner-transitions.cjs');
         expect(previewWorkflow).toContain('scripts/postinstall.cjs');
+        expect(previewWorkflow).toContain("'!packages/happy-app/scripts/**'");
         expect(previewWorkflow).toContain("github.head_ref != 'automation/sync-image-effects'");
         expect(productionWorkflow).not.toContain('github.event.inputs.channel');
         expect(productionWorkflow).toContain('--variant production --channel production');
         expect(productionWorkflow).toContain('patches/fix-expo-camera-scanner-transitions.cjs');
         expect(productionWorkflow).toContain('scripts/postinstall.cjs');
+        expect(productionWorkflow).toContain("'!packages/happy-app/scripts/**'");
         expect(packageJson.scripts['ota:selfhost:preview']).toContain('--variant preview --channel preview');
         expect(packageJson.scripts['ota:selfhost']).toContain('--variant production --channel production');
     });

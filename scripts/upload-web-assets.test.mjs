@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { chmod, copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -14,6 +14,7 @@ async function createFixture(marker = revision) {
     const dist = join(directory, 'dist');
     const fakeBin = join(directory, 'bin');
     const logPath = join(directory, 'aliyun.log');
+    const statePath = join(directory, 'oss.json');
     await mkdir(join(dist, '_expo', 'static'), { recursive: true });
     await mkdir(join(dist, 'assets', 'fonts'), { recursive: true });
     await mkdir(join(dist, '.well-known'), { recursive: true });
@@ -28,54 +29,118 @@ async function createFixture(marker = revision) {
         writeFile(join(dist, 'metadata.json'), '{}'),
         writeFile(join(dist, '.well-known', 'apple-app-site-association'), '{}'),
         writeFile(join(dist, '.well-known', 'assetlinks.json'), '[]'),
+        writeFile(statePath, '{}'),
     ]);
     const fakeAliyun = join(fakeBin, 'aliyun');
-    await writeFile(fakeAliyun, `#!/usr/bin/env bash\nprintf '%s\\n' "$*" >> "$FAKE_ALIYUN_LOG"\nexit 0\n`);
+    await copyFile(fileURLToPath(new URL('./test-helpers/fake-aliyun.cjs', import.meta.url)), fakeAliyun);
     await chmod(fakeAliyun, 0o755);
-    return { directory, dist, fakeBin, logPath };
+    return { directory, dist, fakeBin, logPath, statePath };
 }
 
-async function runUpload(marker = revision) {
-    const fixture = await createFixture(marker);
+async function runUpload(fixture, extraEnv = {}) {
+    const result = spawnSync('bash', [scriptPath, fixture.dist], {
+        encoding: 'utf8',
+        env: { ...process.env, PATH: `${fixture.fakeBin}:${process.env.PATH}`,
+            FAKE_ALIYUN_LOG: fixture.logPath, FAKE_OSS_STATE: fixture.statePath,
+            PAWS_WEB_OSS_BUCKET: 'test-web-bucket', ...extraEnv },
+    });
+    return { ...result, log: await readFile(fixture.logPath, 'utf8').catch(() => '') };
+}
+
+test('uploads immutable release once, then copies live assets inside OSS', async () => {
+    const fixture = await createFixture();
     try {
-        const result = spawnSync('bash', [scriptPath, fixture.dist], {
-            encoding: 'utf8',
-            env: {
-                ...process.env,
-                PATH: `${fixture.fakeBin}:${process.env.PATH}`,
-                FAKE_ALIYUN_LOG: fixture.logPath,
-                PAWS_WEB_OSS_BUCKET: 'test-web-bucket',
-            },
-        });
-        const log = await readFile(fixture.logPath, 'utf8').catch(() => '');
-        return { ...result, log };
+        const result = await runUpload(fixture);
+        assert.equal(result.status, 0, result.stderr);
+        const releasePrefix = `web/releases/${revision}/`;
+        const state = JSON.parse(await readFile(fixture.statePath, 'utf8'));
+        assert.ok(state[`${releasePrefix}index.html`]);
+        assert.deepEqual(state['_expo/static/app.js'], state[`${releasePrefix}_expo/static/app.js`]);
+        assert.deepEqual(state['assets/fonts/Ionicons.abc.ttf'], state[`${releasePrefix}assets/fonts/Ionicons.abc.ttf`]);
+        assert.deepEqual(state['canvaskit.wasm'], state[`${releasePrefix}canvaskit.wasm`]);
+        assert.match(result.log, /ossutil cp -r .*web\/releases\/.*--checksum/);
+        assert.match(result.log, /canvaskit\.wasm.*--copy-props none.*--content-type application\/wasm/);
+        assert.match(result.log, /metadata\.json.*--cache-control no-cache/);
+        assert.match(result.log, /\.well-known\/.*--cache-control no-cache/);
     } finally {
         await rm(fixture.directory, { recursive: true, force: true });
     }
-}
+});
 
-test('uploads a complete immutable release without inspecting object ACLs', async () => {
-    const result = await runUpload();
+test('retry reuses an already verified immutable release', async () => {
+    const fixture = await createFixture();
+    try {
+        const first = await runUpload(fixture);
+        assert.equal(first.status, 0, first.stderr);
+        await writeFile(fixture.logPath, '');
+        const retry = await runUpload(fixture);
+        assert.equal(retry.status, 0, retry.stderr);
+        assert.match(retry.stdout, /0 uploaded/);
+        assert.doesNotMatch(retry.log, /ossutil cp -r \/tmp\/paws-oss-upload-/);
+    } finally {
+        await rm(fixture.directory, { recursive: true, force: true });
+    }
+});
 
-    assert.equal(result.status, 0, result.stderr);
-    const releaseUpload = `ossutil cp -r`;
-    const releaseDestination = `oss://test-web-bucket/web/releases/${revision}/`;
-    const releasePosition = result.log.indexOf(releaseUpload);
-    const expoPosition = result.log.indexOf('oss://test-web-bucket/_expo/');
-    assert.ok(releasePosition >= 0, result.log);
-    assert.ok(result.log.includes(releaseDestination), result.log);
-    assert.ok(expoPosition > releasePosition, result.log);
-    assert.match(result.log, /oss:\/\/test-web-bucket\/_expo\/.*--cache-control public,max-age=31536000,immutable/);
-    assert.match(result.log, /oss:\/\/test-web-bucket\/assets\/.*--cache-control public,max-age=31536000,immutable/);
-    assert.match(result.log, /oss:\/\/test-web-bucket\/metadata\.json.*--cache-control no-cache/);
-    assert.match(result.log, /oss:\/\/test-web-bucket\/\.well-known\/.*--cache-control no-cache/);
-    assert.doesNotMatch(result.log, /ossutil stat/);
+test('retry uploads only files missing after an interrupted batch', async () => {
+    const fixture = await createFixture();
+    try {
+        const interrupted = await runUpload(fixture, { FAKE_FAIL_AFTER: '2' });
+        assert.notEqual(interrupted.status, 0);
+        const partial = JSON.parse(await readFile(fixture.statePath, 'utf8'));
+        assert.equal(Object.keys(partial).length, 2);
+        const retry = await runUpload(fixture);
+        assert.equal(retry.status, 0, retry.stderr);
+        assert.match(retry.stdout, /2 reused/);
+        const completed = JSON.parse(await readFile(fixture.statePath, 'utf8'));
+        assert.ok(completed[`web/releases/${revision}/index.html`]);
+        assert.ok(completed['_expo/static/app.js']);
+    } finally {
+        await rm(fixture.directory, { recursive: true, force: true });
+    }
+});
+
+test('checks every page when an immutable release has more than 1000 objects', async () => {
+    const fixture = await createFixture();
+    try {
+        const state = {};
+        for (let index = 0; index < 1001; index++) {
+            state[`web/releases/${revision}/extra-${String(index).padStart(4, '0')}`] = {
+                size: 1, md5: '0'.repeat(32),
+            };
+        }
+        await writeFile(fixture.statePath, JSON.stringify(state));
+        const result = await runUpload(fixture);
+        assert.equal(result.status, 0, result.stderr);
+        assert.match(result.log, /--continuation-token 1000/);
+    } finally {
+        await rm(fixture.directory, { recursive: true, force: true });
+    }
+});
+
+test('rejects a different object under the same immutable revision', async () => {
+    const fixture = await createFixture();
+    try {
+        assert.equal((await runUpload(fixture)).status, 0);
+        const state = JSON.parse(await readFile(fixture.statePath, 'utf8'));
+        state[`web/releases/${revision}/index.html`].md5 = '0'.repeat(32);
+        await writeFile(fixture.statePath, JSON.stringify(state));
+        const retry = await runUpload(fixture);
+        assert.notEqual(retry.status, 0);
+        assert.match(retry.stderr, /Immutable OSS object differs/);
+    } finally {
+        await rm(fixture.directory, { recursive: true, force: true });
+    }
 });
 
 test('rejects an invalid release marker before invoking OSS', async () => {
-    const result = await runUpload('main');
-
-    assert.notEqual(result.status, 0);
-    assert.match(result.stderr, /40-character lowercase Git SHA/);
-    assert.equal(result.log, '');
+    const fixture = await createFixture('main');
+    try {
+        const result = await runUpload(fixture);
+        assert.notEqual(result.status, 0);
+        assert.match(result.stderr, /40-character lowercase Git SHA/);
+        assert.equal(result.log, '');
+    } finally {
+        await rm(fixture.directory, { recursive: true, force: true });
+    }
 });

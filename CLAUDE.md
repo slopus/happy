@@ -402,6 +402,8 @@ NODE_ENV=production APP_ENV="$VARIANT" \
 ### 机制速记
 
 - 自建 OTA 把 `expo export` 的产物上传到**阿里云 OSS 桶 `happy-app-ota-jacky`**（`oss-cn-hangzhou`），脚本 `scripts/publish-ota.js`。
+- 新发布的主包与资源按内容哈希放在 `updates/<platform>/shared/{bundles,assets}/`，预览和生产 manifest 可以引用相同对象；发布时先核对 OSS 对象的大小与 MD5，只上传缺失内容。`manifests/<platform>/<runtime>/<channel>/<stamp>.json` 仍是独立版本和回滚入口。清理共享对象前必须确认所有保留的历史 manifest 都不再引用它，不能仅按上传日期删除。
+- 发布用 OSS 凭证需要对目标桶拥有 `oss:ListObjects`、`oss:GetObject` 和 `oss:PutObject`；Web 的同桶复制也依赖这些权限。缺少列举权限时发布应直接失败，不能把远端对象当作不存在重新上传。
 - 当前 production 使用 **`runtimeVersion: 24`**，development/preview 使用 **runtime 23**（见 `scripts/ota-runtime-config.js`）。2026-09-04 因修正 `expo-camera` iOS 扫描器的原生转场 Promise，两个频道分别从 runtime 23/22 前移；旧二进制因此不会收到依赖新 Promise 语义的 OTA。**runtimeVersion 必须和装机包完全一致**，否则该机器永远跳过这次更新——各 runtime 是互不相通的独立通道 `manifests/<platform>/<runtime>/<channel>/`。改 runtime 只改共享配置，并运行对应契约测试；必须先出包含原生补丁的安装包，不能把此变更发布到旧 runtime。
 - **频道（channel）分流**：App 端 `updates.url` 指向 FC 服务 `happy-oa-server-...fcapp.run`，请求头 `expo-channel-name` **按构建变体注入**（`app.config.js` 的 `otaChannel` 映射）：
   - **dev / preview 包 → `preview` 频道**（给开发在真机预览 PR）

@@ -21,6 +21,7 @@ const os = require('os');
 const crypto = require('crypto');
 const { execFileSync } = require('child_process');
 const { assertVariantOtaTarget, defaultRuntimeVersion } = require('./ota-runtime-config.js');
+const { syncDirectory } = require('../../../scripts/oss-upload-sync.cjs');
 
 // ---- 解析命令行参数（--channel / --platform / --runtime-version） ----
 function parseArgs(argv) {
@@ -62,7 +63,7 @@ const CHANNEL = ARGS.channel || 'production';  // 频道（--channel 覆盖）�
 const RUNTIME_VERSION = ARGS.runtimeVersion || process.env.HAPPY_OTA_RUNTIME_VERSION || defaultRuntimeVersion(CHANNEL);
 const VARIANT = ARGS.variant || process.env.APP_ENV;
 const WRITE_LATEST = !ARGS.skipLatest;          // PR 预览可跳过 latest，避免覆盖其他 PR
-const DIST_DIR = path.join(__dirname, '..', 'dist'); // expo export 输出目录
+const DIST_DIR = process.env.OTA_DIST_DIR || path.join(__dirname, '..', 'dist'); // expo export 输出目录
 const ALIYUN_BIN = process.env.ALIYUN_BIN || 'aliyun'; // aliyun CLI 可执行名/路径
 const OSS_UPLOAD_ENDPOINT = process.env.OSS_UPLOAD_ENDPOINT || `https://${REGION}.aliyuncs.com`;
 const OSS_ADDRESSING_STYLE = process.env.OSS_ADDRESSING_STYLE || 'virtual';
@@ -200,18 +201,6 @@ function ossUpload(localPath, ossKey, contentType) {
   console.log('  已上传:', ossKey);
 }
 
-// 整目录递归上传到 OSS 指定前缀（assets 有几百个文件，逐个起进程太慢，一次性传）
-function ossUploadDir(localDir, ossPrefix) {
-  execFileSync(
-    ALIYUN_BIN,
-    ['ossutil', 'cp', localDir.replace(/\/?$/, '/'), `oss://${BUCKET}/${ossPrefix}`,
-      '-r', '--force',
-      '--endpoint', OSS_UPLOAD_ENDPOINT,
-      '--addressing-style', OSS_ADDRESSING_STYLE],
-    { stdio: ['ignore', 'inherit', 'inherit'] }
-  );
-}
-
 // ---- 主流程 ----
 async function main() {
   // 0) 自检 aliyun 是否可用
@@ -240,17 +229,18 @@ async function main() {
   const git = gitInfo();
   const display = displayInfo(git);
 
-  // 3) 本次发布目录（时间戳，保证唯一、可回滚）
+  // 3) 每次发布仍有独立的 manifest/stamp，供选版本和回滚使用。
   const stamp = String(Date.now());
-  const baseKey = `updates/${PLATFORM}/${RUNTIME_VERSION}/${stamp}`;
-  console.log('本次发布目录:', baseKey);
+  const sharedPrefix = `updates/${PLATFORM}/shared`;
+  console.log('本次发布版本:', stamp);
   console.log('上传端点:', OSS_UPLOAD_ENDPOINT, '· addressing:', OSS_ADDRESSING_STYLE);
 
-  // 4) JS 主包（launchAsset）
+  // 4) 主包和资源按内容哈希存储。新版本只上传 OSS 中缺少的对象；
+  //    旧 manifest 引用的对象始终保留，不随频道 latest 切换而失效。
   const bundleRelPath = fileMeta.bundle;
   const bundleBuf = fs.readFileSync(path.join(DIST_DIR, bundleRelPath));
-  const bundleKey = `${baseKey}/bundle.js`;
-  ossUpload(path.join(DIST_DIR, bundleRelPath), bundleKey, 'application/javascript');
+  const bundleSha256 = crypto.createHash('sha256').update(bundleBuf).digest('hex');
+  const bundleKey = `${sharedPrefix}/bundles/${bundleSha256}.js`;
   const launchAsset = {
     hash: sha256Base64URL(bundleBuf),
     key: md5Hex(bundleBuf),
@@ -258,23 +248,45 @@ async function main() {
     url: `${OSS_PUBLIC_BASE}/${bundleKey}`,
   };
 
-  // 5) 资源 assets：整目录递归上传一次（dist/assets/ 下全是扁平 hash 文件名）
+  // 5) staging 目录的文件名即内容哈希。上传器先核对 OSS ETag/大小，
+  //    仅批量传不存在的文件；同名但内容不同则报错，避免破坏不可变 URL。
   const assetList = fileMeta.assets || [];
-  if (assetList.length > 0) {
-    console.log(`上传 assets 目录（${assetList.length} 个引用 / 去重后若干）...`);
-    ossUploadDir(path.join(DIST_DIR, 'assets'), `${baseKey}/assets/`);
+  const staging = fs.mkdtempSync(path.join(os.tmpdir(), 'paws-ota-assets-'));
+  let assets;
+  try {
+    const stagedBundle = path.join(staging, 'bundles');
+    const stagedAssets = path.join(staging, 'assets');
+    fs.mkdirSync(stagedBundle);
+    fs.mkdirSync(stagedAssets);
+    fs.copyFileSync(path.join(DIST_DIR, bundleRelPath), path.join(stagedBundle, `${bundleSha256}.js`));
+    assets = assetList.map((a) => {
+      const assetBuf = fs.readFileSync(path.join(DIST_DIR, a.path));
+      const sha256 = crypto.createHash('sha256').update(assetBuf).digest('hex');
+      const ext = String(a.ext || '').toLowerCase();
+      if (!/^[a-z0-9]+$/.test(ext)) throw new Error(`无效的 OTA asset 扩展名: ${a.ext}`);
+      const name = `${sha256}.${ext}`;
+      const stagedPath = path.join(stagedAssets, name);
+      if (!fs.existsSync(stagedPath)) fs.writeFileSync(stagedPath, assetBuf);
+      return {
+        hash: sha256Base64URL(assetBuf),
+        key: md5Hex(assetBuf),
+        contentType: mimeOf(ext),
+        fileExtension: '.' + a.ext,
+        url: `${OSS_PUBLIC_BASE}/${sharedPrefix}/assets/${name}`,
+      };
+    });
+    syncDirectory(stagedBundle, BUCKET, `${sharedPrefix}/bundles/`, {
+      cacheControl: 'public,max-age=31536000,immutable',
+      contentType: 'application/javascript',
+    });
+    if (assets.length > 0) {
+      syncDirectory(stagedAssets, BUCKET, `${sharedPrefix}/assets/`, {
+        cacheControl: 'public,max-age=31536000,immutable',
+      });
+    }
+  } finally {
+    fs.rmSync(staging, { recursive: true, force: true });
   }
-  // 再在本地为每个 asset 算 hash/key、拼 manifest 条目（url 用 a.path，即 assets/<hash>）
-  const assets = assetList.map((a) => {
-    const assetBuf = fs.readFileSync(path.join(DIST_DIR, a.path));
-    return {
-      hash: sha256Base64URL(assetBuf),
-      key: md5Hex(assetBuf),
-      contentType: mimeOf(a.ext),
-      fileExtension: '.' + a.ext,
-      url: `${OSS_PUBLIC_BASE}/${baseKey}/${a.path}`,
-    };
-  });
 
   // 6) 组装 manifest（extra.git 记录本次发布对应的 commit，回退时据此辨认是哪个版本）
   const manifest = {
@@ -287,7 +299,8 @@ async function main() {
     extra: { git, display },
   };
 
-  // 7) 上传 manifest 到频道下的时间戳版本；按需覆盖 latest.json。先写临时文件再传。
+  // 7) 先写入历史 manifest 和版本元信息，最后才切换 latest 指针。
+  //    任何早期上传失败都不会让生产设备看到不完整的版本。
   //    路径含 channel 段：manifests/<platform>/<runtime>/<channel>/latest.json
   const tmpManifest = path.join(os.tmpdir(), `ota-manifest-${stamp}.json`);
   fs.writeFileSync(tmpManifest, JSON.stringify(manifest, null, 2));
@@ -295,21 +308,23 @@ async function main() {
   const manifestKey = `${channelPrefix}/latest.json`;
   // 同时按时间戳留一份备份，方便回滚
   const stampedManifestKey = `${channelPrefix}/${stamp}.json`;
-  ossUpload(tmpManifest, stampedManifestKey, 'application/json');
-  if (WRITE_LATEST) {
-    ossUpload(tmpManifest, manifestKey, 'application/json');
-  } else {
-    console.log('  跳过 latest.json 覆盖:', manifestKey);
-  }
-  fs.unlinkSync(tmpManifest);
-
   // 8) 额外上传一份轻量「版本元信息」（meta），只含时间戳 + git + display。
   //    回退脚本读这个小文件即可展示「这是哪个 commit」，无需下载体积较大的整份 manifest。
   const meta = { stamp, createdAt: manifest.createdAt, id: manifest.id, channel: CHANNEL, git, display };
   const tmpMeta = path.join(os.tmpdir(), `ota-meta-${stamp}.json`);
   fs.writeFileSync(tmpMeta, JSON.stringify(meta, null, 2));
-  ossUpload(tmpMeta, `meta/${PLATFORM}/${RUNTIME_VERSION}/${CHANNEL}/${stamp}.json`, 'application/json');
-  fs.unlinkSync(tmpMeta);
+  try {
+    ossUpload(tmpManifest, stampedManifestKey, 'application/json');
+    ossUpload(tmpMeta, `meta/${PLATFORM}/${RUNTIME_VERSION}/${CHANNEL}/${stamp}.json`, 'application/json');
+    if (WRITE_LATEST) {
+      ossUpload(tmpManifest, manifestKey, 'application/json');
+    } else {
+      console.log('  跳过 latest.json 覆盖:', manifestKey);
+    }
+  } finally {
+    fs.rmSync(tmpMeta, { force: true });
+    fs.rmSync(tmpManifest, { force: true });
+  }
 
   console.log('\n✅ 发布完成！');
   console.log('频道:', CHANNEL, '· 平台:', PLATFORM, '· runtimeVersion:', RUNTIME_VERSION);

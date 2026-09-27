@@ -25,6 +25,7 @@ on:
             - 'patches/fix-expo-camera-scanner-transitions.cjs'
             - 'scripts/postinstall.cjs'
             # Documentation and tests do not change the shipped Expo bundle.
+            - '!packages/happy-app/scripts/**'
             - '!packages/happy-app/**/*.md'
             - '!packages/happy-app/**/*.test.*'
             - '!packages/happy-app/**/*.spec.*'

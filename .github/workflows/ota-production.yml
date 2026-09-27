@@ -24,6 +24,7 @@ on:
       # Documentation and tests do not change the shipped Expo bundle. Keep
       # them from publishing a production OTA merely because they live under
       # packages/happy-app.
+      - '!packages/happy-app/scripts/**'
       - '!packages/happy-app/**/*.md'
       - '!packages/happy-app/**/*.test.*'
       - '!packages/happy-app/**/*.spec.*'

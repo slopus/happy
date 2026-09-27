@@ -4,6 +4,9 @@ on:
   pull_request:
     paths:
       - 'scripts/deploy-web*'
+      - 'scripts/upload-web-assets*'
+      - 'scripts/oss-upload-sync.cjs'
+      - 'scripts/test-helpers/fake-aliyun.cjs'
       - 'scripts/deploy-agent-party*'
       - 'scripts/configure-production-agent-party-caddy*'
       - 'scripts/web-release-source.sh'
@@ -15,6 +18,9 @@ on:
     branches: [main]
     paths:
       - 'scripts/deploy-web*'
+      - 'scripts/upload-web-assets*'
+      - 'scripts/oss-upload-sync.cjs'
+      - 'scripts/test-helpers/fake-aliyun.cjs'
       - 'scripts/deploy-agent-party*'
       - 'scripts/configure-production-agent-party-caddy*'
       - 'scripts/web-release-source.sh'
@@ -39,4 +45,4 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile --ignore-scripts --filter monorepo
       - name: Verify deployment and supersession guards
-        run: node --test scripts/deploy-web.test.mjs scripts/web-production-deploy.test.mjs scripts/deploy-agent-party.test.mjs scripts/configure-production-agent-party-caddy.test.mjs
+        run: node --test scripts/deploy-web.test.mjs scripts/web-production-deploy.test.mjs scripts/upload-web-assets.test.mjs scripts/deploy-agent-party.test.mjs scripts/configure-production-agent-party-caddy.test.mjs

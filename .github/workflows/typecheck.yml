@@ -44,3 +44,6 @@ jobs:
 
             - name: Verify Android build variant contract
               run: pnpm --filter happy-app exec vitest run sources/utils/otaRuntimeConfig.test.ts
+
+            - name: Verify OTA upload reuse and manifest compatibility
+              run: node --test packages/happy-app/scripts/publish-ota.test.mjs
