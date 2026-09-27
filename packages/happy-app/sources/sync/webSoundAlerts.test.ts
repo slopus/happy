@@ -1,16 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 
 const mocks = vi.hoisted(() => ({
     getState: vi.fn(),
     subscribe: vi.fn(),
     play: vi.fn(async () => {}),
+    sources: [] as string[],
 }));
 
 vi.mock('react-native', () => ({ Platform: { OS: 'web' } }));
 vi.mock('./storage', () => ({ storage: { getState: mocks.getState, subscribe: mocks.subscribe } }));
 vi.mock('@/utils/sessionUtils', () => ({ resolveSessionState: (session: { state: string }) => ({ state: session.state }) }));
 
-import { playWebSessionEventSound, previewWebSound, startWebSoundAlerts } from './webSoundAlerts';
+import { playWebSessionEventSound, previewWebSound, startWebSoundAlerts, WEB_SOUND_CHOICES } from './webSoundAlerts';
 
 const defaults = {
     enabled: true, volume: 0.3, scope: 'all', muteViewedSession: false,
@@ -19,6 +22,7 @@ const defaults = {
 
 beforeEach(() => {
     mocks.play.mockClear();
+    mocks.sources.length = 0;
     mocks.getState.mockReturnValue({
         localSettings: { webSound: structuredClone(defaults) },
         currentViewingSessionId: null,
@@ -35,13 +39,24 @@ beforeEach(() => {
     });
     vi.stubGlobal('Audio', class {
         volume = 1;
-        constructor(public src: string) {}
+        constructor(public src: string) { mocks.sources.push(src); }
         pause() {}
         play = mocks.play;
     });
 });
 
 describe('web sound alerts', () => {
+    it('uses sound URLs that the production assets route uploads', async () => {
+        for (const choice of WEB_SOUND_CHOICES) {
+            if (choice !== 'off') await previewWebSound(choice, 0.3);
+        }
+        expect(mocks.sources).toHaveLength(5);
+        for (const src of mocks.sources) {
+            expect(src).toMatch(/^\/assets\/sounds\/codeisland\/8bit_\w+\.wav$/);
+            expect(existsSync(join(process.cwd(), 'public', src.slice(1)))).toBe(true);
+        }
+    });
+
     it('plays completion only for a real session transition, once per turn', () => {
         startWebSoundAlerts();
         const onChange = mocks.subscribe.mock.calls[0][0];

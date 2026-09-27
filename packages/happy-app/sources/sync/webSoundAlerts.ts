@@ -12,11 +12,11 @@ export type SoundChoice = WebSoundSettings['sounds'][SoundEvent];
 export const WEB_SOUND_CHOICES: readonly SoundChoice[] = ['off', 'approval', 'complete', 'error', 'start', 'submit'];
 
 const soundFiles: Record<Exclude<SoundChoice, 'off'>, string> = {
-    approval: '/sounds/codeisland/8bit_approval.wav',
-    complete: '/sounds/codeisland/8bit_complete.wav',
-    error: '/sounds/codeisland/8bit_error.wav',
-    start: '/sounds/codeisland/8bit_start.wav',
-    submit: '/sounds/codeisland/8bit_submit.wav',
+    approval: '/assets/sounds/codeisland/8bit_approval.wav',
+    complete: '/assets/sounds/codeisland/8bit_complete.wav',
+    error: '/assets/sounds/codeisland/8bit_error.wav',
+    start: '/assets/sounds/codeisland/8bit_start.wav',
+    submit: '/assets/sounds/codeisland/8bit_submit.wav',
 };
 
 const claimedEvents = new Set<string>();

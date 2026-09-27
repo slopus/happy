@@ -13,6 +13,7 @@ const revision = '1234567890abcdef1234567890abcdef12345678';
 async function createDist() {
     const directory = await mkdtemp(join(tmpdir(), 'paws-web-verify-'));
     await mkdir(join(directory, 'assets'), { recursive: true });
+    await mkdir(join(directory, 'assets', 'sounds', 'codeisland'), { recursive: true });
     await mkdir(join(directory, '_expo'), { recursive: true });
     await mkdir(join(directory, '.well-known'), { recursive: true });
     await writeFile(join(directory, 'index.html'), '<html><head></head><body><script src="/_expo/app.js"></script></body></html>');
@@ -20,6 +21,9 @@ async function createDist() {
     await writeFile(join(directory, 'assets', 'Ionicons.abc123.ttf'), 'ionicons');
     await writeFile(join(directory, 'assets', 'Octicons.def456.ttf'), 'octicons');
     await writeFile(join(directory, 'assets', 'fixture.abc123.png'), 'image');
+    for (const name of ['approval', 'complete', 'error', 'start', 'submit']) {
+        await writeFile(join(directory, 'assets', 'sounds', 'codeisland', `8bit_${name}.wav`), 'RIFF');
+    }
     await writeFile(join(directory, '_expo', 'app.js'), 'app');
     await writeFile(join(directory, 'metadata.json'), '{}');
     await writeFile(join(directory, 'canvaskit.wasm'), 'wasm');
@@ -37,6 +41,9 @@ async function runVerifier({
     includeFontCors = true,
     mode = 'live',
     scriptContentType = 'application/javascript; charset=utf-8',
+    audioContentType = 'audio/vnd.wave',
+    htmlAudioName = null,
+    htmlAudioBodyName = null,
     immutableCache = true,
     legacyRedirectLocation = 'canonical',
     legacyRedirectStatus = 308,
@@ -63,6 +70,15 @@ async function runVerifier({
             response.setHeader('Content-Type', 'image/png');
             response.setHeader('Cache-Control', 'public,max-age=31536000,immutable');
             response.end('image');
+            return;
+        }
+        if (request.url?.endsWith('.wav')) {
+            response.statusCode = 200;
+            response.setHeader('Content-Type', htmlAudioName && request.url.endsWith(`8bit_${htmlAudioName}.wav`)
+                ? 'text/html; charset=utf-8' : audioContentType);
+            response.setHeader('Cache-Control', 'public,max-age=31536000,immutable');
+            response.end(htmlAudioBodyName && request.url.endsWith(`8bit_${htmlAudioBodyName}.wav`)
+                ? '<html>fallback</html>' : 'RIFF');
             return;
         }
         if (request.url === `/web/releases/${revision}/index.html`) {
@@ -149,7 +165,7 @@ async function runVerifier({
             });
             let stdout = '';
             let stderr = '';
-            const killTimer = setTimeout(() => child.kill('SIGKILL'), 2_000);
+            const killTimer = setTimeout(() => child.kill('SIGKILL'), 5_000);
             child.stdout.on('data', (chunk) => { stdout += chunk; });
             child.stderr.on('data', (chunk) => { stderr += chunk; });
             child.on('close', (status) => {
@@ -260,6 +276,27 @@ test('rejects an immutable release asset with the wrong MIME type before activat
 
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /MIME type/i);
+});
+
+test('rejects an audio asset that resolves to the SPA HTML fallback', async () => {
+    const result = await runVerifier({ audioContentType: 'text/html; charset=utf-8', requestTimeoutMs: 1500 });
+
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /audio asset.*MIME type/i);
+});
+
+test('rejects an HTML fallback for a non-completion sound', async () => {
+    const result = await runVerifier({ htmlAudioName: 'submit', requestTimeoutMs: 1500 });
+
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /audio asset.*8bit_submit\.wav.*MIME type/i);
+});
+
+test('rejects HTML mislabeled with an audio MIME type', async () => {
+    const result = await runVerifier({ htmlAudioBodyName: 'error', requestTimeoutMs: 1500 });
+
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /audio asset.*8bit_error\.wav.*content mismatch/i);
 });
 
 test('rejects an immutable entry without immutable cache headers before activation', async () => {
