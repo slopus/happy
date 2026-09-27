@@ -19,6 +19,7 @@
  * as it did before this existed.
  */
 import { resolve } from 'node:path';
+import packageJson from '../../package.json';
 
 import type { SessionEnvelope } from '@slopus/happy-wire';
 
@@ -48,6 +49,20 @@ import {
     lessonSettingsPath,
 } from './lessonSettingsStore';
 import type { LessonTurnKind } from './lessonTurnEvidence';
+
+// Captured in this process, never read from a newly installed package on disk.
+// This cohort is not a claim that the daemon or loaded CML has the same version.
+const processStartedAt = new Date(Date.now() - process.uptime() * 1_000).toISOString();
+type BootstrapOutcome = 'start' | 'missing_account' | 'missing_machine' | 'missing_origin'
+    | 'missing_project' | 'missing_state_root' | 'owner_not_host' | 'public_key_unavailable'
+    | 'invalid_public_key' | 'snapshot_grant_unavailable' | 'runtime_unavailable'
+    | 'grant_rejected' | 'runtime_incomplete' | 'caller_unavailable' | 'ready' | 'timeout' | 'exception' | 'late_closed';
+function reportBootstrap(outcome: BootstrapOutcome, phase: 'bootstrap' | 'readiness' = 'bootstrap'): null {
+    logger.debug(`[lesson-host] phase=${phase} outcome=${outcome}`, {
+        cliVersion: packageJson.version, processStartedAt,
+    });
+    return null;
+}
 
 /**
  * How long the whole bootstrap may take.
@@ -170,10 +185,12 @@ export function createLazyLessonSessionHost(
                 const built = await (input.bootstrap ?? (() => bootstrapLessonSessionHost(input)))();
                 if (built && disposed) {
                     await built.close().catch(() => undefined);
+                    reportBootstrap('late_closed');
                 } else if (!disposed) {
                     ready = built;
                 }
             } catch {
+                reportBootstrap('exception');
                 // A transient network failure must not disable this session forever.
             } finally {
                 retryAt = Date.now() + 5_000;
@@ -208,7 +225,7 @@ export function createLazyLessonSessionHost(
             cancelled.removeEventListener('abort', onAbort);
         }
         if (cancelled.aborted) return null;
-        if (!ready && starting) logger.debug('[lesson-host] readiness timeout; later turns can retry');
+        if (!ready && starting) reportBootstrap('timeout', 'readiness');
         return ready;
     };
 
@@ -292,14 +309,17 @@ export async function createLessonSessionHost(input: {
      * comment claimed it closed itself, and nothing did.
      */
     const work = bootstrapLessonSessionHost(input).then((built) => {
-        if (built && expired) void built.close().catch(() => undefined);
+        if (built && expired) {
+            reportBootstrap('late_closed');
+            void built.close().catch(() => undefined);
+        }
         return built;
     });
     try {
         const raced = await Promise.race([work, deadline]);
         if (raced === 'timeout') {
-            logger.debug('[lesson-host] bootstrap exceeded its budget; session runs without lessons');
-            return null;
+            // Eager callers only; production lazy startup reports readiness timeout.
+            return reportBootstrap('timeout');
         }
         return raced;
     } finally {
@@ -321,13 +341,17 @@ async function bootstrapLessonSessionHost(input: {
     env?: NodeJS.ProcessEnv;
     announceCandidate?: (envelope: SessionEnvelope) => void;
 }): Promise<LessonSessionHost | null> {
+    reportBootstrap('start');
     const env = input.env ?? process.env;
     const origin = studioOrigin(env);
     const spawnContext = readCheckpointSpawnContext(env);
     const projectId = spawnContext?.projectId ?? null;
     // Four things, all required. Any one missing and this session has no
     // lesson host — which is a state, not a failure.
-    if (!input.accountToken || !input.machineId || !origin || !projectId) return null;
+    if (!input.accountToken) return reportBootstrap('missing_account');
+    if (!input.machineId) return reportBootstrap('missing_machine');
+    if (!origin) return reportBootstrap('missing_origin');
+    if (!projectId) return reportBootstrap('missing_project');
     /*
      * The daemon's root, whatever this provider's own `HAPPY_HOME_DIR` is.
      *
@@ -337,8 +361,7 @@ async function bootstrapLessonSessionHost(input: {
      */
     const stateRoot = lessonStateRoot(env);
     if (!stateRoot) {
-        logger.debug('[lesson-host] daemon state root unknown; unsupported');
-        return null;
+        return reportBootstrap('missing_state_root');
     }
     /*
      * Only the side the daemon named injects.
@@ -349,14 +372,13 @@ async function bootstrapLessonSessionHost(input: {
      * honoured, not re-made.
      */
     if (readLessonOwner(env) !== 'host') {
-        logger.debug('[lesson-host] host injection is not enabled for this launch');
-        return null;
+        return reportBootstrap('owner_not_host');
     }
 
     const publicKey = await fetchLessonGrantPublicKey({
         studioBaseUrl: origin, token: input.accountToken, machineId: input.machineId,
     });
-    if (!publicKey) return null;
+    if (!publicKey) return reportBootstrap('public_key_unavailable');
 
     let verifier;
     try {
@@ -366,7 +388,7 @@ async function bootstrapLessonSessionHost(input: {
             audience: lessonGrantAudience(origin),
         });
     } catch {
-        return null;
+        return reportBootstrap('invalid_public_key');
     }
 
     // The daemon strips caller environment and forwards only the consumed grant.
@@ -376,16 +398,30 @@ async function bootstrapLessonSessionHost(input: {
         ? { sessionId: input.sessionId, callerGrant: env.HAPPY_APLUS_MCP_CALLER_GRANT ?? '' }
         : undefined;
 
+    let snapshotUnavailable = false;
+    let grantRejected = false;
+    const diagnosticVerifier = {
+        ...verifier,
+        verify: (args: Parameters<typeof verifier.verify>[0]) => {
+            const result = verifier.verify(args);
+            // Observe the supervisor's existing refusal; do not change it or
+            // retain claims, envelopes or failure details in the diagnostic.
+            if (!result.ok || result.claims.projectId !== projectId) grantRejected = true;
+            return result;
+        },
+    };
     const supervisor = createLessonHostSupervisor({
-        routeVerifier: () => verifier,
+        routeVerifier: () => diagnosticVerifier,
         requestSnapshotGrant: async (project) => {
             if (sessionBound) await refreshMcpCallerGrantIfExpiring(input.accountToken!, input.machineId!, {
                 projectId: project, sessionId: input.sessionId,
             });
-            return requestLessonSnapshotGrant({
+            const grant = await requestLessonSnapshotGrant({
                 studioBaseUrl: origin, token: input.accountToken!, machineId: input.machineId!, projectId: project,
                 sessionAuthority: sessionAuthority(),
             });
+            snapshotUnavailable = !grant;
+            return grant;
         },
         machineId: () => input.machineId,
         studioBaseUrl: () => origin,
@@ -401,13 +437,14 @@ async function bootstrapLessonSessionHost(input: {
     }
     if (!runtime) {
         await supervisor.close();
-        return null;
+        return reportBootstrap(snapshotUnavailable ? 'snapshot_grant_unavailable'
+            : grantRejected ? 'grant_rejected' : 'runtime_unavailable');
     }
     const host = runtime.host();
     const issuer = runtime.issuer();
     if (!host || !issuer) {
         await supervisor.close();
-        return null;
+        return reportBootstrap('runtime_incomplete');
     }
 
     /*
@@ -422,7 +459,7 @@ async function bootstrapLessonSessionHost(input: {
     const userId = supervisor.openedUserId(projectId);
     if (!userId) {
         await supervisor.close();
-        return null;
+        return reportBootstrap('caller_unavailable');
     }
 
     const settings = createLessonSettingsStore(lessonSettingsPath(stateRoot, projectId));
@@ -444,37 +481,50 @@ async function bootstrapLessonSessionHost(input: {
         return { projectId, userId, machineId: input.machineId!, sessionId: input.sessionId };
     };
 
-    return {
-        // Read now, before the runner deletes the markers.
-        sessionKind: readLessonSessionKind(env),
-        turn: createLessonTurnHost({
-            host,
-            issuer,
-            settings,
-            identity: liveIdentity,
-        }),
-        review: createLessonReviewWorker({
-            host,
-            issuer,
-            settings,
-            budget: new LessonReviewBudget(lessonReviewLedgerPath(stateRoot)),
-            identity: liveIdentity,
-            onOutcome: (outcome, reason) => {
-                logger.debug(`[lesson-review] ${outcome}${reason ? ` (${reason})` : ''}`);
-                /*
-                 * Written where the UI can read it. The worker runs in the
-                 * provider process and the snapshot is served by the daemon,
-                 * so an in-memory value would leave the UI reporting a state
-                 * nothing ever updates.
-                 */
-                void outcomes.record(outcome, reason);
-            },
-            ...(input.announceCandidate
-                ? { onCandidate: (candidate) => input.announceCandidate!(lessonCandidateEnvelope(candidate)) }
-                : {}),
-        }),
-        close: () => supervisor.close(),
-    };
+    let built: LessonSessionHost;
+    try {
+        built = {
+            // Read now, before the runner deletes the markers.
+            sessionKind: readLessonSessionKind(env),
+            turn: createLessonTurnHost({
+                host,
+                issuer,
+                settings,
+                identity: liveIdentity,
+                // Selection and normal-end ACK are different evidence. Neither
+                // asserts that a model read the full body or applied the lesson.
+                onOutcome: outcome => logger.debug(
+                    `[lesson-host] phase=${outcome === 'delivered' ? 'ack' : 'recall'} outcome=${outcome}`,
+                ),
+            }),
+            review: createLessonReviewWorker({
+                host,
+                issuer,
+                settings,
+                budget: new LessonReviewBudget(lessonReviewLedgerPath(stateRoot)),
+                identity: liveIdentity,
+                onOutcome: (outcome, reason) => {
+                    logger.debug(`[lesson-review] ${outcome}${reason ? ` (${reason})` : ''}`);
+                    /*
+                     * Written where the UI can read it. The worker runs in the
+                     * provider process and the snapshot is served by the daemon,
+                     * so an in-memory value would leave the UI reporting a state
+                     * nothing ever updates.
+                     */
+                    void outcomes.record(outcome, reason);
+                },
+                ...(input.announceCandidate
+                    ? { onCandidate: (candidate) => input.announceCandidate!(lessonCandidateEnvelope(candidate)) }
+                    : {}),
+            }),
+            close: () => supervisor.close(),
+        };
+    } catch (error) {
+        await supervisor.close();
+        throw error;
+    }
+    reportBootstrap('ready');
+    return built;
 }
 
 
