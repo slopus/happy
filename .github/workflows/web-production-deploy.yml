@@ -19,7 +19,8 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # Cross-region OSS uploads can exceed 30 minutes before activation begins.
+    timeout-minutes: 60
     environment: production-web
     env:
       PAWS_WEB_ORIGIN: https://47.115.228.20:8443
