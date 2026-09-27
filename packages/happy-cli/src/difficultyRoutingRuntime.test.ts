@@ -225,6 +225,28 @@ describe('difficulty routing runtime', () => {
     })
   })
 
+  // routine and hard share claude-opus-5-5 (effort low/high). A substitution only
+  // knows the model, so it must read the shared model as hard — as Desktop's
+  // difficultyForModel does — not silently drop the turn to low effort.
+  it('substitutes a model shared by routine and hard at the hard pair', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({
+      ...grantResponse(),
+      aiModelPolicy: {
+        source: 'member',
+        allowedSelectionKeys: ['claude:claude-opus-5-5'],
+        defaultSelectionKey: 'claude:claude-opus-5-5',
+      },
+    })))
+
+    const decision = await resolveDifficultyRouting({
+      ...baseInput,
+      current: { model: 'claude-opus-5-5', effort: 'high' },
+    })
+
+    expect(asDecision(decision).route).toMatchObject({ model: 'claude-opus-5-5', effort: 'high' })
+    expect(asDecision(decision).pending.base).toMatchObject({ difficulty: 'hard', model: 'claude-opus-5-5', effort: 'high' })
+  })
+
   it('falls back to the allowed default model when the current model is also disallowed', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => Response.json({
       ...grantResponse(),
@@ -1426,7 +1448,7 @@ describe('cross-generation floor preservation (R2, R3)', () => {
       agent: 'claude',
       clientRequestId: 'local-1',
       model: 'claude-opus-5-5',
-      effort: 'low',
+      effort: 'medium',
       now: Date.now(),
     })).toBeNull()
   })
