@@ -8,6 +8,7 @@ import {
   pickDifficultyRoutingPrompt,
 } from './difficultyRouting'
 import {
+  KNOWN_ROUTE_TIERS,
   USER_REQUEST_MODELS,
   classifyDifficultyHeuristic,
   isKnownRoutePair,
@@ -474,7 +475,7 @@ function buildDecision(args: {
   // it is a one-turn override, not a new floor — and a policy substitution is
   // taken at face value, because a floor the org forbids can never be run.
   const baseTier: Difficulty = allowed.substituted
-    ? (catalogTierForModel(input.agent, routed.model) ?? escalated.stickyDifficulty ?? args.difficulty)
+    ? (catalogRouteForModel(input.agent, routed.model)?.tier ?? escalated.stickyDifficulty ?? args.difficulty)
     : (escalated.stickyDifficulty ?? args.difficulty)
   const base: RoutingRouteSnapshot = {
     difficulty: baseTier,
@@ -727,16 +728,35 @@ function tierRank(difficulty: Difficulty): number {
 }
 
 /**
- * Which catalog tier a model belongs to. A substituted model whose tier is
- * unknown has no comparable floor — efforts are per-model labels, not a numeric
- * scale, so guessing one would be inventing a comparison the catalog denies.
+ * Which tier, and which exact pair, a model means when only the model is known.
+ * A substituted model whose tier is unknown has no comparable floor — efforts
+ * are per-model labels, not a numeric scale, so guessing one would be inventing
+ * a comparison the catalog denies.
+ *
+ * routine and hard share one model (effort low/high), so a model-only lookup is
+ * ambiguous; it resolves to the highest tier, as Desktop's `difficultyForModel`
+ * does — keeping a floor too high for a turn is cheaper than losing it. A model
+ * the current catalog no longer routes to (claude-sonnet-5, an org's only
+ * allowed model) keeps the pair it ran as in its own generation.
  */
-function catalogTierForModel(agent: RoutableAgent, model: string | undefined): Difficulty | null {
+function catalogRouteForModel(
+  agent: RoutableAgent,
+  model: string | undefined,
+): { tier: Difficulty; pair: { model: string; effort: string } } | null {
   if (!model) return null
-  for (const [tier, route] of Object.entries(USER_REQUEST_MODELS[agent])) {
-    if (route.model === model) return tier as Difficulty
+  let match: { tier: Difficulty; pair: { model: string; effort: string } } | null = null
+  for (const tier of TIER_ORDER) {
+    const route = USER_REQUEST_MODELS[agent][tier]
+    if (route.model === model) match = { tier, pair: route }
   }
-  return null
+  if (match) return match
+  for (const entry of KNOWN_ROUTE_TIERS) {
+    if (entry.agent !== agent || entry.model !== model) continue
+    if (!match || tierRank(entry.tier) > tierRank(match.tier)) {
+      match = { tier: entry.tier, pair: { model: entry.model, effort: entry.effort } }
+    }
+  }
+  return match
 }
 
 /**
@@ -1040,14 +1060,14 @@ function resolveRouteAllowedByAiPolicy(
     : defaultModelForAgent(policy, agent)
   if (!substitute) return null
 
-  const tier = catalogTierForModel(agent, substitute)
-  if (!tier) {
+  const known = catalogRouteForModel(agent, substitute)
+  if (!known) {
     // Allowed by policy but absent from the routing catalog: no effort in this
     // catalog is known to be valid for it. Fail rather than pair it blindly.
     logRoutingOutcome('decision-discarded', { reason: 'substituted-model-not-in-catalog' })
     return null
   }
-  const pair = USER_REQUEST_MODELS[agent][tier]
+  const { tier, pair } = known
   return {
     route: { ...route, model: pair.model, effort: pair.effort, difficulty: tier },
     substituted: true,

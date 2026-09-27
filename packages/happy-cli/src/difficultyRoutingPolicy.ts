@@ -5,7 +5,9 @@
 // Shared-only quality v2 removes bare CJK explanation trivial shortcuts;
 // Desktop OFF behavior is intentionally unchanged.
 // 2026-09-23: Desktop 이 hard/trivial 목적지를 GPT-6 세대와 Opus 5.5 로 옮겨 같이 따라간다.
-// routine 이 gpt-5.6-terra 에 남은 것도 Desktop 과 같다 — GPT-6 에 terra 대응 등급이 없다.
+// 2026-09-27: Desktop #1060(2026-09-24)을 따라 routine 도 claude-opus-5-5/low ·
+// gpt-6-sol/low 로 옮긴다. routine 과 hard 가 모델을 공유하므로 모델만으로 등급을
+// 되읽는 곳은 hard 로 치우친다 (Desktop taskRouter.ts `difficultyForModel` 과 같다).
 // 세 모델 모두 최신 CLI 에서만 실행된다 (Claude Code 2.1.280+, Codex 0.157.0+).
 
 export type RoutableAgent = 'claude' | 'codex'
@@ -28,13 +30,13 @@ export type SendModelOptionsResult = {
 export const USER_REQUEST_MODELS: Record<RoutableAgent, Record<Difficulty, RouteDecision>> = {
   claude: {
     trivial: { model: 'claude-haiku-4-5', effort: 'low' },
-    routine: { model: 'claude-sonnet-5', effort: 'high' },
+    routine: { model: 'claude-opus-5-5', effort: 'low' },
     hard: { model: 'claude-opus-5-5', effort: 'high' },
     escalated: { model: 'claude-fable-5-1', effort: 'high' },
   },
   codex: {
     trivial: { model: 'gpt-6-luna', effort: 'low' },
-    routine: { model: 'gpt-5.6-terra', effort: 'high' },
+    routine: { model: 'gpt-6-sol', effort: 'low' },
     hard: { model: 'gpt-6-sol', effort: 'high' },
     escalated: { model: 'gpt-6-astra', effort: 'medium' },
   },
@@ -77,16 +79,19 @@ export const KNOWN_ROUTE_TIERS: ReadonlyArray<{
   { agent: 'claude', model: 'claude-sonnet-5', effort: 'high', tier: 'routine' },
   { agent: 'claude', model: 'claude-opus-5', effort: 'high', tier: 'hard' },
   { agent: 'claude', model: 'claude-fable-5-1', effort: 'high', tier: 'escalated' },
-  // --- claude, generation shipped by Desktop ---
+  // --- claude, generation shipped by Desktop. routine and hard share the model;
+  //     only effort tells them apart. ---
+  { agent: 'claude', model: 'claude-opus-5-5', effort: 'low', tier: 'routine' },
   { agent: 'claude', model: 'claude-opus-5-5', effort: 'high', tier: 'hard' },
   // --- codex, generation shipped by this CLI ---
   { agent: 'codex', model: 'gpt-5.6-luna', effort: 'low', tier: 'trivial' },
   { agent: 'codex', model: 'gpt-5.6-terra', effort: 'high', tier: 'routine' },
   { agent: 'codex', model: 'gpt-5.6-sol', effort: 'high', tier: 'hard' },
   { agent: 'codex', model: 'gpt-6-astra', effort: 'medium', tier: 'escalated' },
-  // --- codex, generation shipped by Desktop. `routine` stays on gpt-5.6-terra
-  //     in both: the GPT-6 generation has no terra-equivalent rung. ---
+  // --- codex, generation shipped by Desktop. routine and hard share gpt-6-sol;
+  //     only effort tells them apart. ---
   { agent: 'codex', model: 'gpt-6-luna', effort: 'low', tier: 'trivial' },
+  { agent: 'codex', model: 'gpt-6-sol', effort: 'low', tier: 'routine' },
   { agent: 'codex', model: 'gpt-6-sol', effort: 'high', tier: 'hard' },
 ]
 

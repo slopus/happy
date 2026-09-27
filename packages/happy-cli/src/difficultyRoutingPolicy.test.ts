@@ -4,6 +4,7 @@ import {
   classifyDifficultyHeuristic,
   resolveEscalation,
   routeSendModelOptionsWithDifficulty,
+  tierForKnownRoutePair,
 } from './difficultyRoutingPolicy'
 
 describe('difficulty routing policy parity snapshot', () => {
@@ -11,17 +12,29 @@ describe('difficulty routing policy parity snapshot', () => {
     expect(USER_REQUEST_MODELS).toEqual({
       claude: {
         trivial: { model: 'claude-haiku-4-5', effort: 'low' },
-        routine: { model: 'claude-sonnet-5', effort: 'high' },
+        routine: { model: 'claude-opus-5-5', effort: 'low' },
         hard: { model: 'claude-opus-5-5', effort: 'high' },
         escalated: { model: 'claude-fable-5-1', effort: 'high' },
       },
       codex: {
         trivial: { model: 'gpt-6-luna', effort: 'low' },
-        routine: { model: 'gpt-5.6-terra', effort: 'high' },
+        routine: { model: 'gpt-6-sol', effort: 'low' },
         hard: { model: 'gpt-6-sol', effort: 'high' },
         escalated: { model: 'gpt-6-astra', effort: 'medium' },
       },
     })
+  })
+
+  it('tells routine and hard apart by effort now that they share a model', () => {
+    expect(tierForKnownRoutePair('claude', 'claude-opus-5-5', 'low')).toBe('routine')
+    expect(tierForKnownRoutePair('claude', 'claude-opus-5-5', 'high')).toBe('hard')
+    expect(tierForKnownRoutePair('codex', 'gpt-6-sol', 'low')).toBe('routine')
+    expect(tierForKnownRoutePair('codex', 'gpt-6-sol', 'high')).toBe('hard')
+  })
+
+  it('still reads the retired routine pairs as routine', () => {
+    expect(tierForKnownRoutePair('claude', 'claude-sonnet-5', 'high')).toBe('routine')
+    expect(tierForKnownRoutePair('codex', 'gpt-5.6-terra', 'high')).toBe('routine')
   })
 
   it('keeps the sticky floor instead of downgrading easier follow-ups', () => {
