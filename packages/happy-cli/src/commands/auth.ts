@@ -4,7 +4,7 @@ import { authAndSetupMachineIfNeeded } from '@/ui/auth';
 import { configuration } from '@/configuration';
 import { existsSync, rmSync } from 'node:fs';
 import { createInterface } from 'node:readline';
-import { stopDaemon, checkIfDaemonRunningAndCleanupStaleState } from '@/daemon/controlClient';
+import { stopDaemon, checkIfDaemonRunningAndCleanupStaleState, DaemonStopRefused } from '@/daemon/controlClient';
 import { logger } from '@/ui/logger';
 import os from 'node:os';
 
@@ -91,6 +91,11 @@ async function handleAuthLogin(args: string[]): Promise<void> {
       await stopDaemon();
       console.log(chalk.gray('✓ Stopped daemon'));
     } catch (error) {
+      if (error instanceof DaemonStopRefused) {
+        // The daemon is still running; clearing its identity underneath it would orphan it.
+        console.error(chalk.red(daemonStopRefusedMessage(error)));
+        process.exit(1);
+      }
       logger.debug('Daemon was not running or failed to stop:', error);
     }
 
@@ -135,6 +140,10 @@ async function handleAuthLogin(args: string[]): Promise<void> {
   }
 }
 
+function daemonStopRefusedMessage(error: DaemonStopRefused): string {
+  return `Daemon refused to stop (${error.message}). Stop or drain it from the app first; nothing was removed.`;
+}
+
 async function handleAuthLogout(): Promise<void> {
   // "auth logout will essentially clear the private key that originally came from the phone"
   const happyDir = configuration.happyHomeDir;
@@ -167,7 +176,10 @@ async function handleAuthLogout(): Promise<void> {
       try {
         await stopDaemon();
         console.log(chalk.gray('Stopped daemon'));
-      } catch { }
+      } catch (error) {
+        // The daemon is still running; removing its home directory would orphan it.
+        if (error instanceof DaemonStopRefused) throw new Error(daemonStopRefusedMessage(error));
+      }
 
       // Remove entire happy directory (as current logout does)
       if (existsSync(happyDir)) {

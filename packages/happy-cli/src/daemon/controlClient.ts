@@ -271,7 +271,7 @@ export async function spawnDaemonSession(directory: string, sessionId?: string):
   return result;
 }
 
-class DaemonStopRefused extends Error {}
+export class DaemonStopRefused extends Error {}
 
 export async function stopDaemonHttp(): Promise<void> {
   const result = await daemonPost('/stop');

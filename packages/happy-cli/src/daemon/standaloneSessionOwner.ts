@@ -92,6 +92,11 @@ export class StandaloneSessionOwner {
         } else if (reserved && (!launchCalled || this.dependencies.isNoProcessError?.(error))) {
           await this.dependencies.journal.notLaunched(this.instanceId, id, { processCreated: false });
           this.retire(entry);
+        } else if (!reserved) {
+          // No launch was attempted. Any intent a failed write left behind stays unknown and
+          // is recounted by reconciliation instead of wedging this in-memory entry forever.
+          this.retire(entry);
+          void this.reconcilePending().catch(() => {});
         }
         throw error;
       }

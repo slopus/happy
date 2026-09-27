@@ -143,6 +143,23 @@ describe('StandaloneSessionOwner', () => {
     expect(f.launch).not.toHaveBeenCalled(); expect(f.journal.notLaunched).toHaveBeenCalledOnce();
     expect(f.owner.unresolvedLaunchCount).toBe(0);
   });
+  it('retires a journal reservation failure that wrote no intent and keeps admission open', async () => {
+    const f = await fixture(); f.journal.reserve.mockRejectedValueOnce(new Error('Standalone journal ACL protection failed'));
+    await expect(f.owner.prepare(f.input)).rejects.toThrow('ACL protection failed');
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(f.launch).not.toHaveBeenCalled(); expect(f.journal.notLaunched).not.toHaveBeenCalled();
+    expect(f.owner.unresolvedLaunchCount).toBe(0); expect(f.owner.acceptingLaunches).toBe(true);
+    await expect(f.owner.prepare(f.input)).resolves.toMatchObject({ pid: 101 });
+  });
+  it('keeps an intent left behind by a failed journal reservation unresolved', async () => {
+    const f = await fixture();
+    f.journal.reserve.mockImplementationOnce(async (_instance: string, id: string) => { f.intents.add(id); throw new Error('Journal readback mismatch'); });
+    await expect(f.owner.prepare(f.input)).rejects.toThrow('readback mismatch');
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(f.journal.notLaunched).not.toHaveBeenCalled(); expect(f.intents.size).toBe(1);
+    expect(f.owner.unresolvedLaunchCount).toBe(1); expect(f.owner.acceptingLaunches).toBe(false);
+    expect((await f.owner.freeze(signal(), budget)).unresolved).toBe(true);
+  });
   it('records a forced suspended-root rollback separately even when freeze races failed readiness', async () => {
     const f = await fixture(); const release = deferred<void>();
     f.launch.mockImplementationOnce(async input => {
