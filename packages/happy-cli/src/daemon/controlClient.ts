@@ -183,7 +183,7 @@ async function daemonPost(
       const errorMessage = `Request failed: ${path}, HTTP ${response.status}`;
       logger.debug(`[CONTROL CLIENT] ${errorMessage}`);
       return {
-        error: errorMessage
+        error: errorMessage, status: response.status
       };
     }
     
@@ -271,8 +271,15 @@ export async function spawnDaemonSession(directory: string, sessionId?: string):
   return result;
 }
 
+class DaemonStopRefused extends Error {}
+
 export async function stopDaemonHttp(): Promise<void> {
-  await daemonPost('/stop');
+  const result = await daemonPost('/stop');
+  // A responding server refused shutdown: never convert this into a force kill.
+  if (result?.error) {
+    if (result.status >= 400) throw new DaemonStopRefused(result.error);
+    throw new Error(result.error);
+  }
 }
 
 /**
@@ -427,6 +434,7 @@ export async function stopDaemon() {
       logger.debug('Daemon stopped gracefully via HTTP');
       return;
     } catch (error) {
+      if (error instanceof DaemonStopRefused) throw error;
       logger.debug('HTTP stop failed, will force kill', error);
     }
 
@@ -438,6 +446,7 @@ export async function stopDaemon() {
       logger.debug('Daemon already dead');
     }
   } catch (error) {
+    if (error instanceof DaemonStopRefused) throw error;
     logger.debug('Error stopping daemon', error);
   }
 }

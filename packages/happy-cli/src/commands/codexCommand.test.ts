@@ -108,4 +108,18 @@ describe('handleCodexCommand', () => {
       permissionMode: 'yolo',
     })
   })
+
+it('strips standalone launch credentials before authentication or any subprocess work', async () => {
+  const bootstrap = { version: 1, instanceId: 'instance-1', launchId: 'launch-1', port: 12345, secret: 'a'.repeat(64) };
+  process.env.HAPPY_STANDALONE_LAUNCH_V1 = JSON.stringify(bootstrap);
+  mocks.mockAuthAndSetupMachineIfNeeded.mockImplementationOnce(async () => {
+    expect(process.env.HAPPY_STANDALONE_LAUNCH_V1).toBeUndefined();
+    return { credentials: { token: 'token' } };
+  });
+  try {
+    await handleCodexCommand(['--started-by', 'daemon']);
+    expect(mocks.mockRunCodex).toHaveBeenLastCalledWith(expect.objectContaining({ standaloneLaunch: bootstrap }));
+  } finally { delete process.env.HAPPY_STANDALONE_LAUNCH_V1; }
+});
+
 })

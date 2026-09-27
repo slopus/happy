@@ -610,8 +610,9 @@ export class ApiClient {
     }
   }
 
-  sessionSyncClient(session: Session): ApiSessionClient {
+  sessionSyncClient(session: Session, options: { trackShutdownStorage?: boolean } = {}): ApiSessionClient {
     if (this.principal.kind === 'managed-session') {
+      if (options.trackShutdownStorage) throw new Error('Standalone storage tracking is not a managed runtime capability');
       applySessionUrlEnv(process.env, session.id, configuration.webappUrl);
       // The explicit mode, never inferred: it decides whether redirects are
       // followed and which origin may see this bearer.
@@ -626,7 +627,7 @@ export class ApiClient {
     // (specs/desktop-issue-pr-session-link R2). The confirmed current id wins
     // over stale values inherited from a parent or an earlier resume process.
     applySessionUrlEnv(process.env, session.id, configuration.webappUrl);
-    return new ApiSessionClient(this.bearer(), session);
+    return new ApiSessionClient(this.bearer(), session, undefined, options);
   }
 
   machineSyncClient(machine: Machine): ApiMachineClient {

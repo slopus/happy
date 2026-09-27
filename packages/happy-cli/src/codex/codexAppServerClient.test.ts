@@ -161,6 +161,532 @@ describe('CodexAppServerClient sandbox integration', () => {
         process.env.RUST_LOG = originalRustLog;
     });
 
+    it('marks runtime dispatch once at the actual request, after both checkpoint hooks', async () => {
+        const { CodexRuntimeProducerGate } = await import('./codexRuntimeProducerGate');
+        const gate = new CodexRuntimeProducerGate({ hasUndeliveredInput: () => false,
+            canFreezeInbound: () => true, freezeInbound: () => true, stopLoop: () => {} });
+        gate.beginPreparing(); const observed: unknown[] = [];
+        const checkpoint = vi.fn(() => observed.push(gate.blocker()));
+        const dispatch = vi.fn(() => gate.markDispatched());
+        const proc = createMockProcess({ onRequest: (msg, stdout) => {
+            if (msg.method !== 'turn/start') return;
+            observed.push(gate.blocker());
+            setTimeout(() => {
+                pushJsonLine(stdout, { id: msg.id, result: { turn: { id: 'dispatch-turn' } } });
+                pushJsonLine(stdout, { method: 'turn/started', params: { threadId: 'thread', turn: { id: 'dispatch-turn' } } });
+                pushJsonLine(stdout, { method: 'turn/completed', params: { threadId: 'thread', turn: { id: 'dispatch-turn', status: 'completed' } } });
+            }, 0);
+        } });
+        mockSpawn.mockReturnValue(proc);
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient(undefined, undefined, undefined, undefined, undefined, checkpoint);
+        client.setTurnDispatchHandler(dispatch);
+        await client.connect(); (client as any)._threadId = 'thread';
+        try {
+            await client.sendTurnAndWait('owned prompt');
+            expect(checkpoint).toHaveBeenCalledTimes(2);
+            expect(dispatch).toHaveBeenCalledOnce();
+            expect(observed).toEqual(['turn-preparing', 'turn-preparing', null]);
+        } finally { await client.disconnect(); }
+    });
+
+    it('rejects a refused runtime dispatch without writing or retaining a pending request', async () => {
+        const methods: string[] = [];
+        const proc = createMockProcess({ onRequest: msg => { if (msg.method) methods.push(msg.method); } });
+        mockSpawn.mockReturnValue(proc);
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        client.setTurnDispatchHandler(() => { throw new Error('runtime claim refused'); });
+        await client.connect(); (client as any)._threadId = 'thread';
+        try {
+            await expect(client.sendTurnAndWait('owned prompt')).rejects.toThrow('runtime claim refused');
+            expect(methods).not.toContain('turn/start');
+            expect((client as any).pending.size).toBe(0);
+            expect((client as any).pendingTurnCompletion).toBeNull();
+        } finally { await client.disconnect(); }
+    });
+
+    it('holds burst output at the storage gate and drains buffered lines after root exit before reconnect', async () => {
+        const proc = createMockProcess(); mockSpawn.mockReturnValue(proc);
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        const events: string[] = []; let release!: () => void;
+        const gate = new Promise<void>(resolve => { release = resolve; });
+        const onFailure = vi.fn();
+        client.setOutputStorageGate({ wait: async () => { if (events.length === 1) await gate; }, onFailure });
+        client.setEventHandler(event => { if (event.type === 'agent_message' && typeof event.message === 'string') events.push(event.message); });
+        await client.connect();
+        const line = (message: string) => JSON.stringify({ method: 'codex/event', params: { msg: { type: 'agent_message', message } } }) + '\n';
+        proc.stdout.push(line('first') + line('second')); proc.stdout.push(null);
+        await waitFor(() => events.length > 0);
+        expect(events).toEqual(['first']);
+        proc.exitCode = 0; proc.emit('exit', 0, null);
+        await expect(client.connect()).rejects.toThrow(/output.*drain/i);
+        let drained = false; const done = client.waitForOutputDrain().then(() => { drained = true; });
+        await new Promise(resolve => setTimeout(resolve, 10)); expect(drained).toBe(false);
+        release(); await done; expect(events).toEqual(['first', 'second']);
+        expect(onFailure).not.toHaveBeenCalled(); await client.disconnect();
+    });
+
+    it('cancels storage-blocked turn admission without sending or restarting the provider', async () => {
+        const requests: string[] = [];
+        const proc = createMockProcess({ onRequest: (msg, stdout) => {
+            requests.push(msg.method ?? '');
+            if (msg.method === 'thread/start') pushJsonLine(stdout, { id: msg.id, result: { thread: { id: 't1' } } });
+        } });
+        mockSpawn.mockReturnValue(proc);
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        let blocked = false; let waiting = false;
+        client.setOutputStorageGate({ wait: async signal => {
+            if (!blocked) return;
+            waiting = true;
+            await new Promise<void>((_, reject) => signal.addEventListener('abort', () => reject(new Error('aborted')), { once: true }));
+        }, onFailure: vi.fn() });
+        await client.connect(); await client.startThread({ cwd: '/tmp/project' });
+        blocked = true;
+        const turn = client.sendTurnAndWait('hold this prompt');
+        const rejected = expect(turn).rejects.toThrow(/abort/i);
+        await waitFor(() => waiting);
+        expect(requests).not.toContain('turn/start');
+        const result = await client.abortTurnWithFallback();
+        expect(result.forcedRestart).toBe(false);
+        await rejected;
+        expect(proc.kill).not.toHaveBeenCalled();
+        await client.disconnect();
+    });
+
+    it('reconnects after deliberate output cancellation while retaining incomplete-output evidence', async () => {
+        mockSpawn.mockImplementation(() => createMockProcess());
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        const onFailure = vi.fn();
+        client.setOutputStorageGate({ wait: async () => {}, onFailure });
+        await client.connect(); await client.disconnect();
+        await client.connect();
+        expect(mockSpawn).toHaveBeenCalledTimes(2);
+        expect(onFailure).toHaveBeenCalledTimes(1);
+        await client.disconnect();
+    });
+
+    it('bounds root-exit drain when a descendant retains stdout', async () => {
+        const proc = createMockProcess(); mockSpawn.mockReturnValue(proc);
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient(); const onFailure = vi.fn();
+        client.setOutputStorageGate({ wait: async () => {}, onFailure });
+        await client.connect();
+        vi.useFakeTimers();
+        try {
+            proc.exitCode = 0; proc.emit('exit', 0, null);
+            const rejected = expect(client.waitForOutputDrain()).rejects.toThrow(/abort/i);
+            await vi.advanceTimersByTimeAsync(5000); await rejected;
+            expect(onFailure).toHaveBeenCalledTimes(1);
+            await client.disconnect();
+        } finally { vi.useRealTimers(); }
+    });
+
+    it('drains idle stdout before disconnect without poisoning storage evidence', async () => {
+        const proc = createMockProcess(); mockSpawn.mockReturnValue(proc);
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient(); const onFailure = vi.fn();
+        client.setOutputStorageGate({ wait: async () => {}, onFailure });
+        proc.stdin.once('finish', () => proc.stdout.push(null));
+        await client.connect(); await client.disconnect();
+        expect(onFailure).not.toHaveBeenCalled();
+    });
+
+    it('freezes a prepared turn before its late dispatch and refuses reconnect or forceful disconnect', async () => {
+        const requests: string[] = [];
+        const proc = createMockProcess({ onRequest: (msg, stdout) => {
+            requests.push(msg.method ?? '');
+            if (msg.method === 'thread/start') pushJsonLine(stdout, { id: msg.id, result: { thread: { id: 'freeze-thread' } } });
+        } });
+        mockSpawn.mockReturnValue(proc);
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        client.setOutputStorageGate({ wait: async () => {}, onFailure: vi.fn() });
+        await client.connect(); await client.startThread({ cwd: '/tmp/project' });
+        let release!: () => void; let preparing = false;
+        const turn = client.sendTurn('late', { beforeTurn: () => { preparing = true; return new Promise<void>(resolve => { release = resolve; }); } });
+        const rejected = expect(turn).rejects.toThrow(/frozen/i);
+        await waitFor(() => preparing);
+        expect(client.freezeInputForShutdown()).toBe(true); release(); await rejected;
+        expect(requests).not.toContain('turn/start');
+        await expect(client.connect()).rejects.toThrow(/frozen/i);
+        await expect(client.disconnect()).rejects.toThrow(/frozen/i);
+        expect(proc.kill).not.toHaveBeenCalled();
+        proc.stdout.push(null); proc.exitCode = 0; proc.emit('exit', 0, null);
+        await client.waitForOutputDrain();
+    });
+
+    it('joins identical disconnects instead of running cleanup twice', async () => {
+        const proc = createMockProcess(); mockSpawn.mockReturnValue(proc);
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        client.setOutputStorageGate({ wait: async () => {}, onFailure: vi.fn() });
+        await client.connect();
+        await Promise.all([client.disconnect(), client.disconnect()]);
+        expect(proc.kill).toHaveBeenCalledTimes(1);
+    });
+
+    it('coordinates real client EOF, final burst output and storage proof without inventing runtime evidence', async () => {
+        const proc = createMockProcess(); mockSpawn.mockReturnValue(proc);
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const { CodexSessionDrain } = await import('./codexSessionDrain');
+        const { SessionStorageBarrier } = await import('../api/sessionStorageBarrier');
+        const barrier = new SessionStorageBarrier(); const messages: string[] = [];
+        const client = new CodexAppServerClient();
+        client.setOutputStorageGate({ wait: signal => barrier.waitForCapacity(1, 10, signal), onFailure: () => barrier.fail('unconfirmed-write') });
+        client.setEventHandler(event => {
+            if (event.type !== 'agent_message') return;
+            messages.push(String(event.message)); const confirm = barrier.track(1);
+            setTimeout(() => confirm(true), 10);
+        });
+        await client.connect();
+        proc.stdin.once('finish', () => {
+            proc.stdout.push(['one', 'two', 'three'].map(message => JSON.stringify({ method: 'codex/event', params: { msg: { type: 'agent_message', message } } })).join('\n') + '\n');
+            proc.stdout.push(null); proc.exitCode = 0; proc.emit('exit', 0, null);
+        });
+        const coordinator = new CodexSessionDrain('owned-launch', client, {
+            tracksShutdownStorage: true,
+            flushForShutdown: (ms, signal) => barrier.wait(ms, signal),
+            isStorageConfirmationCurrent: proof => barrier.isCurrent(proof),
+        }, async () => {});
+        const receipt = await coordinator.drain(1000);
+        expect(receipt).toMatchObject({ status: 'provider-drained', stored: true, runtimeExited: false, jobEmpty: false });
+        expect(messages).toEqual(['one', 'two', 'three']);
+        expect(proc.kill).not.toHaveBeenCalled();
+        expect(coordinator.isCurrent(receipt)).toBe(true);
+        barrier.track()(true); expect(coordinator.isCurrent(receipt)).toBe(false);
+        await client.disconnect();
+        expect(proc.kill).not.toHaveBeenCalled();
+    });
+
+    it('leaves unsupported clients unfrozen so ordinary cleanup remains possible', async () => {
+        mockSpawn.mockReturnValue(createMockProcess());
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient(); await client.connect();
+        const cancel = vi.fn(); client.setApprovalHandler(async () => 'denied', cancel);
+        expect(client.freezeInputForShutdown()).toBe(false);
+        expect(cancel).not.toHaveBeenCalled();
+        await expect(client.disconnect()).resolves.toBeUndefined();
+    });
+
+    it('refuses protected checkpoint sessions before changing admission', async () => {
+        mockSpawn.mockReturnValue(createMockProcess());
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        client.setOutputStorageGate({ wait: async () => {}, onFailure: vi.fn() }); await client.connect();
+        (client as any).completeTurn = vi.fn();
+        expect(client.freezeInputForShutdown()).toBe(false);
+        await expect(client.disconnect()).resolves.toBeUndefined();
+    });
+
+    it('never forwards a late approval after input freezes', async () => {
+        const writes: MockRpcMessage[] = [];
+        const proc = createMockProcess({ onRequest: msg => writes.push(msg) }); mockSpawn.mockReturnValue(proc);
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient(); let release!: () => void;
+        client.setOutputStorageGate({ wait: async () => {}, onFailure: vi.fn() });
+        client.setApprovalHandler(async () => { await new Promise<void>(resolve => { release = resolve; }); return 'approved'; });
+        await client.connect();
+        pushJsonLine(proc.stdout, { id: 77, method: 'item/commandExecution/requestApproval', params: { threadId: 't', turnId: 'turn', itemId: 'i', command: 'echo fixture', cwd: '/tmp/project' } });
+        await waitFor(() => !!release);
+        expect(client.freezeInputForShutdown()).toBe(true); release();
+        await new Promise(resolve => setTimeout(resolve, 10));
+        expect(writes.some(msg => msg.id === 77)).toBe(false);
+        proc.stdout.push(null); proc.exitCode = 0; proc.emit('exit', 0, null);
+        await client.waitForOutputDrain();
+    });
+
+    it('waits for approval producer final writes after stdout EOF', async () => {
+        const proc = createMockProcess(); mockSpawn.mockReturnValue(proc);
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient(); let release!: () => void;
+        let finalWrite = false, drained = false;
+        client.setOutputStorageGate({ wait: async () => {}, onFailure: vi.fn() });
+        client.setApprovalHandler(async () => {
+            await new Promise<void>(resolve => { release = resolve; });
+            finalWrite = true; return 'approved';
+        });
+        await client.connect();
+        pushJsonLine(proc.stdout, { id: 78, method: 'execCommandApproval', params: {} });
+        await waitFor(() => !!release);
+        expect(client.freezeInputForShutdown()).toBe(true);
+        proc.stdout.push(null); proc.exitCode = 0; proc.emit('exit', 0, null);
+        const drain = client.waitForOutputDrain().then(() => { drained = true; });
+        await new Promise(resolve => setTimeout(resolve, 20));
+        try { expect(drained).toBe(false); }
+        finally { release(); await drain; }
+        expect(finalWrite).toBe(true);
+    });
+
+    it('cancels existing approvals on freeze and does not admit buffered new approvals', async () => {
+        const proc = createMockProcess(); mockSpawn.mockReturnValue(proc);
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient(); let release!: () => void;
+        const handler = vi.fn(async () => {
+            await new Promise<void>(resolve => { release = resolve; }); return 'abort' as const;
+        });
+        const cancel = vi.fn(() => release());
+        client.setOutputStorageGate({ wait: async () => {}, onFailure: vi.fn() });
+        client.setApprovalHandler(handler, cancel);
+        await client.connect();
+        pushJsonLine(proc.stdout, { id: 79, method: 'execCommandApproval', params: {} });
+        await waitFor(() => !!release);
+        expect(client.freezeInputForShutdown()).toBe(true);
+        pushJsonLine(proc.stdout, { id: 80, method: 'execCommandApproval', params: {} });
+        proc.stdout.push(null); proc.exitCode = 0; proc.emit('exit', 0, null);
+        await client.waitForOutputDrain();
+        expect(cancel).toHaveBeenCalledOnce();
+        expect(handler).toHaveBeenCalledOnce();
+    });
+
+    it('fails storage observation if approval cancellation throws without reopening input', async () => {
+        const proc = createMockProcess(); mockSpawn.mockReturnValue(proc);
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient(); const failed = vi.fn();
+        client.setOutputStorageGate({ wait: async () => {}, onFailure: failed });
+        client.setApprovalHandler(async () => 'denied', () => { throw new Error('cancel failed'); });
+        await client.connect(); expect(client.freezeInputForShutdown()).toBe(true);
+        proc.stdout.push(null); proc.exitCode = 0; proc.emit('exit', 0, null);
+        await expect(client.waitForOutputDrain()).rejects.toThrow('approval');
+        expect(failed).toHaveBeenCalledOnce();
+        expect(client.freezeInputForShutdown()).toBe(false);
+    });
+
+    it('keeps an uncooperative approval producer blocked within the coordinator deadline', async () => {
+        const proc = createMockProcess(); mockSpawn.mockReturnValue(proc);
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const { CodexSessionDrain } = await import('./codexSessionDrain');
+        const client = new CodexAppServerClient(); let release!: () => void;
+        const failed = vi.fn();
+        client.setOutputStorageGate({ wait: async () => {}, onFailure: failed });
+        client.setApprovalHandler(async () => {
+            await new Promise<void>(resolve => { release = resolve; }); return 'abort';
+        });
+        await client.connect();
+        pushJsonLine(proc.stdout, { id: 81, method: 'execCommandApproval', params: {} });
+        await waitFor(() => !!release);
+        proc.stdout.push(null); proc.exitCode = 0; proc.emit('exit', 0, null);
+        const storage = { tracksShutdownStorage: true,
+            flushForShutdown: vi.fn(async () => ({ stored: true as const, revision: 1 })),
+            isStorageConfirmationCurrent: () => true };
+        const coordinator = new CodexSessionDrain('pending-approval', client, storage, async () => {});
+        try {
+            const receipt = await coordinator.drain(40);
+            expect(receipt).toMatchObject({ status: 'blocked', reason: 'deadline', stored: false });
+            expect(storage.flushForShutdown).not.toHaveBeenCalled();
+            expect(failed).toHaveBeenCalledOnce();
+            expect(proc.kill).not.toHaveBeenCalled();
+        } finally { release(); await client.waitForOutputDrain(); }
+    });
+
+    it('settles the real permission handler cancellation state before output drain completes', async () => {
+        const proc = createMockProcess(); mockSpawn.mockReturnValue(proc);
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const { CodexPermissionHandler } = await import('./utils/permissionHandler');
+        let state: any = {};
+        const session = { rpcHandlerManager: { registerHandler: vi.fn() },
+            updateAgentState: (update: (value: any) => any) => { state = update(state); } };
+        const permissions = new CodexPermissionHandler(session as any);
+        const client = new CodexAppServerClient();
+        client.setOutputStorageGate({ wait: async () => {}, onFailure: vi.fn() });
+        client.setApprovalHandler(async params => (await permissions.handleToolCall(params.callId, 'CodexBash', {})).decision,
+            () => permissions.abortAll());
+        await client.connect();
+        pushJsonLine(proc.stdout, { id: 82, method: 'execCommandApproval', params: { callId: 'pending-real' } });
+        await waitFor(() => !!state.requests?.['pending-real']);
+        expect(client.freezeInputForShutdown()).toBe(true);
+        proc.stdout.push(null); proc.exitCode = 0; proc.emit('exit', 0, null);
+        await client.waitForOutputDrain();
+        expect(state.requests).toEqual({});
+        expect(state.completedRequests['pending-real'].status).toBe('canceled');
+    });
+
+    it('settles an already-admitted approval that registers only after shutdown freeze', async () => {
+        const proc = createMockProcess(); mockSpawn.mockReturnValue(proc);
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const { CodexPermissionHandler } = await import('./utils/permissionHandler');
+        const session = { rpcHandlerManager: { registerHandler: vi.fn() }, updateAgentState: vi.fn() };
+        const permissions = new CodexPermissionHandler(session as any);
+        const client = new CodexAppServerClient(); let release!: () => void;
+        client.setOutputStorageGate({ wait: async () => {}, onFailure: vi.fn() });
+        client.setApprovalHandler(async params => {
+            await new Promise<void>(resolve => { release = resolve; });
+            return (await permissions.handleToolCall(params.callId, 'CodexBash', {})).decision;
+        }, () => permissions.closeForShutdown());
+        await client.connect();
+        pushJsonLine(proc.stdout, { id: 84, method: 'execCommandApproval', params: { callId: 'delayed' } });
+        await waitFor(() => !!release); expect(client.freezeInputForShutdown()).toBe(true);
+        release(); proc.stdout.push(null); proc.exitCode = 0; proc.emit('exit', 0, null);
+        try {
+            await client.waitForOutputDrain();
+            expect(session.updateAgentState).not.toHaveBeenCalled();
+        } finally { permissions.abortAll(); }
+    });
+
+    it('observes asynchronous cancellation failures instead of releasing a storage proof', async () => {
+        const proc = createMockProcess(); mockSpawn.mockReturnValue(proc);
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient(); const failed = vi.fn();
+        client.setOutputStorageGate({ wait: async () => {}, onFailure: failed });
+        client.setApprovalHandler(async () => 'denied', async () => { throw new Error('async cancel failed'); });
+        await client.connect(); expect(client.freezeInputForShutdown()).toBe(true);
+        proc.stdout.push(null); proc.exitCode = 0; proc.emit('exit', 0, null);
+        await expect(client.waitForOutputDrain()).rejects.toThrow('approval');
+        expect(failed).toHaveBeenCalledOnce();
+    });
+
+    it('marks storage incomplete when ordinary opt-in disconnect leaves an approval pending', async () => {
+        const proc = createMockProcess(); mockSpawn.mockReturnValue(proc);
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient(); const failed = vi.fn(); let release!: () => void;
+        client.setOutputStorageGate({ wait: async () => {}, onFailure: failed });
+        client.setApprovalHandler(async () => {
+            await new Promise<void>(resolve => { release = resolve; }); return 'denied';
+        });
+        await client.connect();
+        pushJsonLine(proc.stdout, { id: 83, method: 'execCommandApproval', params: {} });
+        await waitFor(() => !!release);
+        proc.stdout.push(null); proc.exitCode = 0; proc.emit('exit', 0, null);
+        try {
+            await client.disconnect();
+            expect(failed).toHaveBeenCalledOnce();
+            expect(proc.kill).not.toHaveBeenCalled();
+        } finally { release(); await client.waitForOutputDrain(); }
+    });
+
+    it('marks a never-settling cancellation incomplete at the coordinator deadline', async () => {
+        const proc = createMockProcess(); mockSpawn.mockReturnValue(proc);
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const { CodexSessionDrain } = await import('./codexSessionDrain');
+        const client = new CodexAppServerClient(); const failed = vi.fn(); let release!: () => void;
+        client.setOutputStorageGate({ wait: async () => {}, onFailure: failed });
+        client.setApprovalHandler(async () => 'denied', () => new Promise<void>(resolve => { release = resolve; }));
+        await client.connect();
+        proc.stdout.push(null); proc.exitCode = 0; proc.emit('exit', 0, null);
+        const storage = { tracksShutdownStorage: true,
+            flushForShutdown: vi.fn(async () => ({ stored: true as const, revision: 1 })),
+            isStorageConfirmationCurrent: () => true };
+        const coordinator = new CodexSessionDrain('pending-cancellation', client, storage, async () => {});
+        try {
+            expect(await coordinator.drain(40)).toMatchObject({ status: 'blocked', reason: 'deadline', stored: false });
+            expect(failed).toHaveBeenCalledOnce();
+            expect(storage.flushForShutdown).not.toHaveBeenCalled();
+        } finally { release(); await client.waitForOutputDrain(); }
+    });
+
+    it('waits for a conflicting restart disconnect and cancels its later respawn', async () => {
+        let turnStarted = false;
+        const proc = createMockProcess({ onRequest: (msg, stdout) => {
+            if (msg.method === 'thread/start') pushJsonLine(stdout, { id: msg.id, result: { thread: { id: 'stop-thread' } } });
+            if (msg.method === 'turn/start') { turnStarted = true; pushJsonLine(stdout, { id: msg.id, result: { turn: { id: 'pending-turn' } } }); }
+        } }); mockSpawn.mockReturnValue(proc);
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        client.setOutputStorageGate({ wait: async () => {}, onFailure: vi.fn() });
+        await client.connect(); await client.startThread({ cwd: '/tmp/project' });
+        const turn = client.sendTurnAndWait('pending'); await waitFor(() => turnStarted);
+        proc.stdin.once('finish', () => proc.stdout.push(null));
+        const restart = client.reconnectAndResumeThread({ preservePendingTurnCompletion: true });
+        const cancelled = expect(restart).rejects.toThrow(/cancel/i);
+        await expect(client.disconnect()).resolves.toBeUndefined(); await cancelled;
+        await expect(turn).resolves.toEqual({ aborted: true });
+        expect(mockSpawn).toHaveBeenCalledTimes(1);
+    });
+
+    it('runs queued cleanup even when an earlier await-exit disconnect fails', async () => {
+        vi.useFakeTimers();
+        try {
+            const proc = createMockProcess({ exitDelayMs: 60000 }); mockSpawn.mockReturnValue(proc);
+            const { CodexAppServerClient } = await import('./codexAppServerClient');
+            const client = new CodexAppServerClient(); const connecting = client.connect();
+            await vi.advanceTimersByTimeAsync(50); await connecting;
+            const first = (client as any).disconnectInternal({ awaitProcessExit: true });
+            const refused = expect(first).rejects.toThrow(/did not exit/);
+            const stopped = expect(client.disconnect()).resolves.toBeUndefined();
+            await vi.advanceTimersByTimeAsync(6000); await refused; await stopped;
+            expect(proc.kill).toHaveBeenCalledTimes(2);
+        } finally { vi.useRealTimers(); }
+    });
+
+    it('refuses cleanup during a frozen drain even if the root has already exited', async () => {
+        const proc = createMockProcess(); mockSpawn.mockReturnValue(proc);
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient(); let blocked = false; let release!: () => void;
+        const gate = new Promise<void>(resolve => { release = resolve; });
+        client.setOutputStorageGate({ wait: async () => { if (blocked) await gate; }, onFailure: vi.fn() });
+        await client.connect(); expect(client.freezeInputForShutdown()).toBe(true);
+        blocked = true; proc.stdout.push(null); proc.exitCode = 0; proc.emit('exit', 0, null);
+        const finished = client.waitForOutputDrain().catch(() => {});
+        await expect(client.disconnect()).rejects.toThrow(/frozen/);
+        release(); await finished;
+    });
+
+    it('refuses freeze during initialize without interrupting that connection', async () => {
+        const proc = createMockProcess({ initializeDelayMs: 100 }); mockSpawn.mockReturnValue(proc);
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        client.setOutputStorageGate({ wait: async () => {}, onFailure: vi.fn() });
+        const connecting = client.connect(); await waitFor(() => mockSpawn.mock.calls.length > 0);
+        expect(client.freezeInputForShutdown()).toBe(false);
+        await connecting; expect(client.isConnected).toBe(true);
+        proc.stdin.once('finish', () => proc.stdout.push(null));
+        await client.disconnect();
+    });
+
+    it('allows only one shutdown observation owner and cleanup after a blocked dead-root drain', async () => {
+        const proc = createMockProcess(); mockSpawn.mockReturnValue(proc);
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const { CodexSessionDrain } = await import('./codexSessionDrain');
+        const client = new CodexAppServerClient();
+        client.setOutputStorageGate({ wait: async () => {}, onFailure: vi.fn() }); await client.connect();
+        proc.stdin.once('finish', () => { proc.exitCode = 0; proc.emit('exit', 0, null); });
+        const drain = new CodexSessionDrain('dead-root', client, {
+            tracksShutdownStorage: true, flushForShutdown: async () => ({ stored: false, reason: 'unsupported' }),
+            isStorageConfirmationCurrent: () => false,
+        }, async () => {});
+        const pending = drain.drain(20);
+        expect(client.freezeInputForShutdown()).toBe(false);
+        expect((await pending).stored).toBe(false);
+        await expect(client.disconnect()).resolves.toBeUndefined();
+        expect(proc.kill).not.toHaveBeenCalled();
+    });
+
+    it('does not announce or attempt a forced restart when shutdown freezes during abort grace', async () => {
+        let interrupted = false; let started = false;
+        const proc = createMockProcess({ onRequest: (msg, stdout) => {
+            if (msg.method === 'thread/start') pushJsonLine(stdout, { id: msg.id, result: { thread: { id: 'frozen-abort' } } });
+            if (msg.method === 'turn/start') { started = true; pushJsonLine(stdout, { id: msg.id, result: { turn: { id: 't' } } }); }
+            if (msg.method === 'turn/interrupt') { interrupted = true; pushJsonLine(stdout, { id: msg.id, result: {} }); }
+        } }); mockSpawn.mockReturnValue(proc);
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient(); const events: unknown[] = [];
+        client.setOutputStorageGate({ wait: async () => {}, onFailure: vi.fn() }); client.setEventHandler(event => events.push(event));
+        await client.connect(); await client.startThread({ cwd: '/tmp/project' });
+        const turn = client.sendTurnAndWait('wait'); await waitFor(() => started);
+        const stopping = client.abortTurnWithFallback({ gracePeriodMs: 50 });
+        const result = expect(stopping).resolves.toMatchObject({ forcedRestart: false });
+        await waitFor(() => interrupted); expect(client.freezeInputForShutdown()).toBe(true); await result;
+        expect(events).not.toContainEqual(expect.objectContaining({ forced_restart: true }));
+        proc.stdout.push(null); proc.exitCode = 0; proc.emit('exit', 0, null);
+        await client.waitForOutputDrain(); await turn;
+    });
+
+    it('preserves a saved thread when a later spawn throws before creating resources', async () => {
+        const proc = createMockProcess({ onRequest: (msg, stdout) => {
+            if (msg.method === 'thread/start') pushJsonLine(stdout, { id: msg.id, result: { thread: { id: 'saved-thread' } } });
+        } }); mockSpawn.mockReturnValue(proc);
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient(); await client.connect(); await client.startThread({ cwd: '/tmp/project' });
+        await (client as any).disconnectInternal({ preserveThreadState: true, awaitProcessExit: true });
+        mockSpawn.mockImplementationOnce(() => { throw new Error('synchronous spawn fixture'); });
+        await expect(client.connect()).rejects.toThrow('synchronous spawn fixture');
+        expect(client.threadId).toBe('saved-thread');
+        await client.disconnect(); expect(client.threadId).toBe(null);
+    });
+
     it('reports goal action support for Codex versions with goal action requests', async () => {
         const { CodexAppServerClient } = await import('./codexAppServerClient');
 
@@ -967,7 +1493,8 @@ describe('CodexAppServerClient sandbox integration', () => {
         // fails, so materializing the workspace would fail later with a confusing error. Fail closed.
         vi.useFakeTimers();
         try {
-            mockSpawn.mockImplementation(() => createMockProcess({ exitDelayMs: 60_000 }));
+            const proc = createMockProcess({ exitDelayMs: 60_000 });
+            mockSpawn.mockReturnValue(proc);
             const beforeTurn = vi.fn(async () => {});
             const { CodexAppServerClient } = await import('./codexAppServerClient');
             const client = new CodexAppServerClient(sandboxConfig, beforeTurn);
@@ -975,6 +1502,8 @@ describe('CodexAppServerClient sandbox integration', () => {
             await vi.advanceTimersByTimeAsync(50);
             await connecting;
 
+            const pending = (client as any).request('test/late-exit', {}, 120_000);
+            const rejected = expect(pending).rejects.toThrow(/exited/i);
             const preparing = client.prepareProtectedTurn();
             const assertion = expect(preparing).rejects.toThrow('did not exit');
             await vi.advanceTimersByTimeAsync(10_000);
@@ -988,6 +1517,9 @@ describe('CodexAppServerClient sandbox integration', () => {
             await vi.advanceTimersByTimeAsync(10_000);
             await retryAssertion;
             expect(beforeTurn).not.toHaveBeenCalled();
+            proc.exitCode = 0; proc.emit('exit', 0, null);
+            await rejected;
+
         } finally {
             vi.useRealTimers();
         }
@@ -1411,7 +1943,7 @@ describe('CodexAppServerClient sandbox integration', () => {
         await client.disconnect();
     });
 
-    it('keeps a queued turn behind thread resume during a forced restart', async () => {
+    it.each([false, true, 'eof'])('keeps a queued turn behind thread resume during a forced restart (storage gate=%s)', async (tracked) => {
         const firstProcessRequests: MockRpcMessage[] = [];
         const secondProcessRequests: MockRpcMessage[] = [];
         let resumeCompleted = false;
@@ -1445,6 +1977,13 @@ describe('CodexAppServerClient sandbox integration', () => {
                     setTimeout(() => pushJsonLine(stdout, { id: msg.id, result: {} }), 0);
                 }
             },
+        });
+
+        if (tracked === 'eof') proc1.stdin.once('finish', () => {
+            pushJsonLine(proc1.stdout, { method: 'turn/completed', params: {
+                threadId: 'thread-restart-order', turn: { id: 'turn-before-restart', status: 'completed', error: null },
+            } });
+            proc1.stdout.push(null);
         });
 
         const proc2 = createMockProcess({
@@ -1492,6 +2031,7 @@ describe('CodexAppServerClient sandbox integration', () => {
 
         const { CodexAppServerClient } = await import('./codexAppServerClient');
         const client = new CodexAppServerClient();
+        if (tracked) client.setOutputStorageGate({ wait: async () => {}, onFailure: vi.fn() });
         await client.connect();
         await client.startThread({
             model: 'gpt-test',
@@ -1508,7 +2048,7 @@ describe('CodexAppServerClient sandbox integration', () => {
             gracePeriodMs: 1,
             forceRestartOnTimeout: true,
         });
-        await waitFor(() => secondProcessRequests.some((msg) => msg.method === 'turn/start'));
+        await waitFor(() => secondProcessRequests.some((msg) => msg.method === 'turn/start'), 4000);
 
         expect(resumeCompleted).toBe(true);
         expect(secondProcessRequests.findIndex((msg) => msg.method === 'thread/resume')).toBeLessThan(

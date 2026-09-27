@@ -168,7 +168,10 @@ export type StopSessionResult =
    * nothing either way, so the stop goes to the supervisor instead and this
    * path reports that it did not do it itself.
    */
-  | { stopped: false; reason: 'managed-generation'; detail: string };
+  | { stopped: false; reason: 'managed-generation'; detail: string }
+  | { stopped: false; reason: 'standalone-drain'; detail: string }
+  | { stopped: false; reason: 'standalone-unowned'; detail: string }
+  | { stopped: false; reason: 'standalone-blocked'; detail: string };
 
 const POLICY_STOP_SOURCES = new Set(['project-session-idle-stop', 'session-idle-reaper', 'session-zombie-sweep', 'session-empty-reaper']);
 

@@ -1,3 +1,5 @@
+import { SessionStateWrites } from './sessionStateWrites';
+import { SessionStorageBarrier } from './sessionStorageBarrier';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiSessionClient, toolCallStartLaunchesBackgroundJob } from './apiSession';
 import { buildInitialPromptUserRecord } from '@/utils/initialPrompt';
@@ -57,7 +59,8 @@ vi.mock('@/configuration', () => ({
 vi.mock('@/ui/logger', () => ({
     logger: {
         debug: vi.fn(),
-        debugLargeJson: vi.fn()
+        debugLargeJson: vi.fn(),
+        warn: vi.fn()
     }
 }));
 
@@ -181,6 +184,7 @@ describe('ApiSessionClient v3 messages API migration', () => {
             }),
             off: vi.fn(),
             emit: vi.fn(),
+            timeout: vi.fn(function (this: unknown) { return this; }),
             emitWithAck: vi.fn(async () => ({ result: 'error' })),
             volatile: {
                 emit: vi.fn()
@@ -1873,6 +1877,167 @@ describe('ApiSessionClient v3 messages API migration', () => {
         expect(mockAxiosGet.mock.calls[0][1].params.after_seq).toBe(1);
     });
 
+    describe('shutdown inbound admission', () => {
+        const user = { role: 'user', content: { type: 'text', text: 'durable next input' } };
+        const tracked = () => new ApiSessionClient('fake-token', session, undefined, { trackShutdownStorage: true });
+
+        it('freezes live input before routing and stops catch-up without closing the transport', async () => {
+            const client = tracked(); const received = vi.fn(); client.onUserMessage(received);
+            try {
+                expect(client.freezeInboundMessagesForShutdown()).toBe(true);
+                expect(client.freezeInboundMessagesForShutdown()).toBe(true);
+                emitSocketEvent('update', createNewMessageUpdate(1, encryptContent(session, user)));
+                await (client as any).fetchMessages();
+                (client as any).startReceivePolling();
+                expect(received).not.toHaveBeenCalled();
+                expect((client as any).lastSeq).toBe(0);
+                expect((client as any).receivePollInterval).toBeNull();
+                expect(mockAxiosGet).not.toHaveBeenCalled();
+                expect(mockSocket.close).not.toHaveBeenCalled();
+            } finally { await client.close(); }
+        });
+
+        it('does not apply a catch-up response started before the freeze', async () => {
+            const client = tracked(); const received = vi.fn(); client.onUserMessage(received);
+            let release!: (value: unknown) => void;
+            mockAxiosGet.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+            const pending = (client as any).fetchMessages();
+            try {
+                await waitForCheck(() => expect(release).toBeTypeOf('function'));
+                expect(client.freezeInboundMessagesForShutdown()).toBe(true);
+                release({ data: { messages: [{ seq: 1, content: { t: 'encrypted', c: encryptContent(session, user) } }], hasMore: true } });
+                await pending;
+                expect(received).not.toHaveBeenCalled();
+                expect((client as any).lastSeq).toBe(0);
+                expect(mockAxiosGet).toHaveBeenCalledOnce();
+            } finally { await client.close(); }
+        });
+
+        it.each([undefined, 0])('preserves the frozen resume boundary and earlier cap %s while output ACKs continue', async cap => {
+            const client = tracked(); client.onUserMessage(() => {});
+            emitSocketEvent('update', createNewMessageUpdate(1, encryptContent(session, user)));
+            if (cap !== undefined) client.capRuntimeProcessedSeq(cap);
+            mockAxiosPost.mockImplementation(async (_url, body) => ({ data: { messages: body.messages.map((m: { localId: string }) => ({ id: 'stored', seq: 90, localId: m.localId })) } }));
+            try {
+                expect(client.freezeInboundMessagesForShutdown()).toBe(true);
+                client.sendClaudeSessionMessage(buildInitialPromptUserRecord('last output', 'sess-1'), 'output');
+                await expect(client.flushForShutdown(1000)).resolves.toMatchObject({ stored: true });
+                client.capRuntimeProcessedSeq(90);
+                mockNotifyDaemonSessionRuntime.mockClear();
+                client.keepAlive(true, 'remote');
+                expect(mockNotifyDaemonSessionRuntime).toHaveBeenCalledWith('test-session-id', expect.objectContaining({ lastProcessedSeq: cap ?? 1 }));
+            } finally { await client.close(); }
+        });
+
+        it('refuses freeze with undelivered input and inside a delivery callback without losing that input', async () => {
+            const client = tracked();
+            try {
+                emitSocketEvent('update', createNewMessageUpdate(1, encryptContent(session, user)));
+                expect(client.freezeInboundMessagesForShutdown()).toBe(false);
+                const received = vi.fn(() => { expect(client.freezeInboundMessagesForShutdown()).toBe(false); });
+                client.onUserMessage(received);
+                expect(received).toHaveBeenCalledOnce();
+                expect(client.freezeInboundMessagesForShutdown()).toBe(true);
+            } finally { await client.close(); }
+        });
+
+        it('reports the pinned cursor immediately instead of waiting for a keepAlive', async () => {
+            const client = tracked(); client.onUserMessage(() => {});
+            try {
+                emitSocketEvent('update', createNewMessageUpdate(1, encryptContent(session, user)));
+                mockNotifyDaemonSessionRuntime.mockClear();
+                expect(client.freezeInboundMessagesForShutdown()).toBe(true);
+                expect(mockNotifyDaemonSessionRuntime).toHaveBeenLastCalledWith('test-session-id', expect.objectContaining({ lastProcessedSeq: 1 }));
+            } finally { await client.close(); }
+        });
+
+        it('does not treat echoed own user-text or file envelopes as incoming input', async () => {
+            const client = tracked(); const received = vi.fn(), files = vi.fn();
+            client.onUserMessage(received); client.onFileEvent(files); let nextSeq = 1;
+            mockAxiosPost.mockImplementation(async (_url, body) => ({ data: { messages: body.messages.map((m: { content: string; localId: string }) => {
+                const seq = nextSeq++;
+                emitSocketEvent('update', createNewMessageUpdate(seq, m.content));
+                return { id: 'own-' + seq, seq, localId: m.localId };
+            }) } }));
+            try {
+                client.sendSessionProtocolMessage({ id: 'echo-text', time: 1, role: 'user', ev: { t: 'text', text: 'own steer echo' } });
+                client.sendSessionProtocolMessage({ id: 'echo-file', time: 1, role: 'user', ev: { t: 'file', ref: 'own-file', name: 'own.png', size: 1 } });
+                await expect(client.flushForShutdown(1000)).resolves.toMatchObject({ stored: true });
+                expect(received).not.toHaveBeenCalled(); expect(files).not.toHaveBeenCalled();
+                expect((client as any).lastSeq).toBe(2);
+            } finally { await client.close(); }
+        });
+
+        it('does not let an outgoing ACK skip unseen input before the freeze', async () => {
+            const client = tracked(); client.onUserMessage(() => {});
+            emitSocketEvent('update', createNewMessageUpdate(1, encryptContent(session, user)));
+            mockAxiosPost.mockImplementation(async (_url, body) => ({ data: { messages: body.messages.map((m: { localId: string }) => ({ id: 'stored', seq: 9, localId: m.localId })) } }));
+            try {
+                client.sendClaudeSessionMessage(buildInitialPromptUserRecord('output', 'sess-1'), 'output');
+                await client.waitForStorageCapacity();
+                await waitForCheck(() => expect((client as any).pendingOutbox).toHaveLength(0));
+                expect((client as any).lastSeq).toBe(1);
+                expect(client.freezeInboundMessagesForShutdown()).toBe(true);
+                mockNotifyDaemonSessionRuntime.mockClear(); client.keepAlive(true, 'remote');
+                expect(mockNotifyDaemonSessionRuntime).toHaveBeenCalledWith('test-session-id', expect.objectContaining({ lastProcessedSeq: 1 }));
+            } finally { await client.close(); }
+        });
+
+        it('advances only contiguous own ACKs before freeze, keeping the next input on the live path', async () => {
+            const client = tracked(); const received = vi.fn(); client.onUserMessage(received); let seq = 1;
+            mockAxiosPost.mockImplementation(async (_url, body) => ({ data: { messages: body.messages.map((m: { localId: string }) => ({ id: 'stored', seq, localId: m.localId })) } }));
+            try {
+                client.sendCodexMessage({ type: 'message', text: 'owned output' });
+                await waitForCheck(() => expect((client as any).pendingOutbox).toHaveLength(0));
+                expect((client as any).lastSeq).toBe(1);
+                emitSocketEvent('update', createNewMessageUpdate(2, encryptContent(session, user)));
+                expect(received).toHaveBeenCalledOnce(); expect(mockAxiosGet).not.toHaveBeenCalled();
+                expect(client.freezeInboundMessagesForShutdown()).toBe(true);
+                seq = 3; client.sendCodexMessage({ type: 'message', text: 'final output' });
+                await expect(client.flushForShutdown(1000)).resolves.toMatchObject({ stored: true });
+                expect((client as any).lastSeq).toBe(2);
+            } finally { await client.close(); }
+        });
+
+        it('refuses unclaimed attachments and leaves their contents available to the admitted message', async () => {
+            const client = tracked(); const attachment = { data: new Uint8Array([1]), mimeType: 'image/png', name: 'input.png' };
+            try {
+                client.trackAttachmentDownload(Promise.resolve(attachment));
+                expect(client.canFreezeInboundMessagesForShutdown()).toBe(false);
+                expect(client.freezeInboundMessagesForShutdown()).toBe(false);
+                expect(await client.drainAttachmentsForUserMessage()).toEqual([attachment]);
+                expect(client.freezeInboundMessagesForShutdown()).toBe(true);
+            } finally { await client.close(); }
+        });
+
+        it('does not deliver files or generic messages after freeze and keeps metadata updates alive', async () => {
+            const client = tracked(); const files = vi.fn(), messages = vi.fn();
+            client.onFileEvent(files); client.on('message', messages);
+            try {
+                expect(client.freezeInboundMessagesForShutdown()).toBe(true);
+                emitSocketEvent('update', createNewMessageUpdate(1, encryptContent(session, {
+                    role: 'session', content: { type: 'session', data: { id: 'file-1', time: 1, role: 'user',
+                        ev: { t: 'file', ref: 'fixture', name: 'input.png', size: 1 } } },
+                })));
+                emitSocketEvent('update', createNewMessageUpdate(2, encryptContent(session, { role: 'agent', content: { type: 'text', text: 'event' } })));
+                emitSocketEvent('update', { body: { t: 'update-session', metadata: { version: 1, value: encryptContent(session, { ...session.metadata, name: 'updated' }) } } });
+                expect(files).not.toHaveBeenCalled(); expect(messages).not.toHaveBeenCalled();
+                expect((client as any).pendingFileEvents).toHaveLength(0);
+                expect(client.getMetadata()?.name).toBe('updated');
+                expect((client as any).lastSeq).toBe(0);
+            } finally { await client.close(); }
+        });
+
+        it('leaves ordinary sessions unchanged when tracking is not enabled', async () => {
+            const client = new ApiSessionClient('fake-token', session); const received = vi.fn(); client.onUserMessage(received);
+            try {
+                expect(client.freezeInboundMessagesForShutdown()).toBe(false);
+                emitSocketEvent('update', createNewMessageUpdate(1, encryptContent(session, user)));
+                expect(received).toHaveBeenCalledOnce();
+            } finally { await client.close(); }
+        });
+    });
+
     it('applies first live new-message update directly when lastSeq is 0', async () => {
         const client = new ApiSessionClient('fake-token', session);
         const onUserMessage = vi.fn();
@@ -2379,6 +2544,369 @@ describe('ApiSessionClient v3 messages API migration', () => {
         expect(mockSocket.close).toHaveBeenCalledTimes(1);
         expect(mockAxiosGet).not.toHaveBeenCalled();
         expect(mockAxiosPost).not.toHaveBeenCalled();
+    });
+
+    describe('shutdown storage acknowledgement', () => {
+        const enqueue = (client: ApiSessionClient) => client.sendClaudeSessionMessage(buildInitialPromptUserRecord('final', 'sess-1'), 'output');
+        it('keeps missing-ACK message bytes charged until explicit replay confirms storage', async () => {
+            mockAxiosPost.mockResolvedValue({ data: { messages: [] } });
+            const client = new ApiSessionClient('fake-token', session, undefined, { trackShutdownStorage: true, storageHighWaterBytes: 1 });
+            enqueue(client);
+            await waitForCheck(() => expect((client as any).pendingOutbox).toHaveLength(0));
+            let admitted = false; const ready = client.waitForStorageCapacity().then(() => { admitted = true; });
+            await Promise.resolve(); await Promise.resolve(); expect(admitted).toBe(false);
+            mockAxiosPost.mockImplementation(async (_url, body) => ({ data: { messages: body.messages.map((m: { localId: string }) => ({ id: 'stored', seq: 1, localId: m.localId })) } }));
+            await expect(client.flushForShutdown(1000)).resolves.toMatchObject({ stored: true });
+            await ready; expect(admitted).toBe(true); await client.close();
+        });
+        it('retries missing ACKs automatically so capacity wait can recover', async () => {
+            mockAxiosPost.mockResolvedValueOnce({ data: { messages: [] } });
+            mockAxiosPost.mockImplementation(async (_url, body) => ({ data: { messages: body.messages.map((m: { localId: string }) => ({ id: 'stored', seq: 1, localId: m.localId })) } }));
+            const client = new ApiSessionClient('fake-token', session, undefined, { trackShutdownStorage: true, storageHighWaterBytes: 1 });
+            try {
+                enqueue(client);
+                await waitForCheck(() => expect((client as any).unconfirmedOutbox).toHaveLength(1));
+                await client.waitForStorageCapacity();
+                expect(mockAxiosPost).toHaveBeenCalledTimes(2);
+                expect(mockAxiosPost.mock.calls[1][1]).toEqual(mockAxiosPost.mock.calls[0][1]);
+            } finally { await client.close(); }
+        }, 4000);
+        it('settles blocked output admission when the API closes', async () => {
+            const client = new ApiSessionClient('fake-token', session, undefined, { trackShutdownStorage: true, storageHighWaterWrites: 1 });
+            mockAxiosPost.mockImplementation(() => new Promise(() => {})); enqueue(client);
+            const ready = client.waitForStorageCapacity(); const rejected = expect(ready).rejects.toThrow(/closed/);
+            await client.close(); await rejected;
+        });
+        it('holds storage capacity until the actual ACK and releases cancelled capacity waiters', async () => {
+            const barrier = new SessionStorageBarrier();
+            const confirmed = barrier.track(10);
+            let admitted = false;
+            const ready = barrier.waitForCapacity(10, 10).then(() => { admitted = true; });
+            await Promise.resolve(); await Promise.resolve(); expect(admitted).toBe(false);
+            const controller = new AbortController();
+            const cancelled = barrier.waitForCapacity(10, 10, controller.signal);
+            const rejected = expect(cancelled).rejects.toThrow(/abort/i);
+            controller.abort(); await rejected;
+            confirmed(true); await ready; expect(admitted).toBe(true);
+        });
+        it('keeps failed shutdown evidence without blocking capacity for later writes', async () => {
+            const barrier = new SessionStorageBarrier();
+            const confirmed = barrier.track();
+            let admitted = false;
+            const ready = barrier.waitForCapacity(100, 1).then(() => { admitted = true; });
+            await Promise.resolve(); await Promise.resolve(); expect(admitted).toBe(false);
+            confirmed(false); await ready;
+            await expect(barrier.wait(100)).resolves.toEqual({ stored: false, reason: 'unconfirmed-write' });
+        });
+        it('does not overwrite a newer external state after an ambiguous lost ACK', async () => {
+            mockSocket.emitWithAck.mockRejectedValueOnce(new Error('lost ACK'));
+            mockSocket.emitWithAck.mockImplementation(async () => ({ result: 'version-mismatch', metadata: encryptContent(session, { ...session.metadata, codexThreadId: 'newer-external' }), version: session.metadataVersion + 2 }));
+            const client = new ApiSessionClient('fake-token', session, undefined, { trackShutdownStorage: true });
+            const update = vi.fn(metadata => ({ ...metadata, codexThreadId: 'older-intent' }));
+            client.updateMetadata(update);
+            await expect(client.flushForShutdown(1000)).resolves.toEqual({ stored: false, reason: 'unconfirmed-write' });
+            expect(update).toHaveBeenCalledTimes(1);
+            expect(mockSocket.emitWithAck).toHaveBeenCalledTimes(2);
+            expect(client.getMetadata()?.codexThreadId).toBe('newer-external');
+            await client.close();
+        });
+        it('records an invalid state transform permanently but lets later valid writes proceed', async () => {
+            mockSocket.emitWithAck.mockImplementation(async (_event: string, data: { metadata: string; expectedVersion: number }) => ({ result: 'success', metadata: data.metadata, version: data.expectedVersion + 1 }));
+            const client = new ApiSessionClient('fake-token', session, undefined, { trackShutdownStorage: true });
+            const invalid = vi.fn(() => { throw new Error('invalid local state'); });
+            client.updateMetadata(invalid);
+            client.updateMetadata(metadata => ({ ...metadata, codexThreadId: 'later-valid' }));
+            await waitForCheck(() => expect(client.getMetadata()?.codexThreadId).toBe('later-valid'));
+            expect(invalid).toHaveBeenCalledTimes(1);
+            await expect(client.flushForShutdown(1000)).resolves.toEqual({ stored: false, reason: 'unconfirmed-write' });
+            await client.close();
+        });
+        it('preserves the ordinary client hard-error attempt and warning behavior', async () => {
+            const client = new ApiSessionClient('fake-token', session);
+            client.updateMetadata(metadata => metadata);
+            await new Promise(resolve => setTimeout(resolve, 10));
+            expect(mockSocket.emitWithAck).toHaveBeenCalledTimes(1);
+            expect(logger.warn).not.toHaveBeenCalled();
+            await client.close();
+        });
+        it('automatically retries normal state writes after a transient failure without requiring shutdown', async () => {
+            vi.useFakeTimers();
+            mockSocket.emitWithAck.mockRejectedValue(new Error('temporary transport outage'));
+            const client = new ApiSessionClient('fake-token', session, undefined, { trackShutdownStorage: true });
+            client.updateMetadata(metadata => ({ ...metadata, codexThreadId: 'live-recovered' }));
+            await vi.advanceTimersByTimeAsync(1);
+            expect(mockSocket.emitWithAck).toHaveBeenCalledTimes(3);
+            const sent = mockSocket.emitWithAck.mock.calls[0][1];
+            expect(mockSocket.emitWithAck.mock.calls.every(([, data]: [string, { metadata: string; expectedVersion: number }]) => data.metadata === sent.metadata && data.expectedVersion === sent.expectedVersion)).toBe(true);
+            mockSocket.emitWithAck.mockImplementation(async (_event: string, data: { metadata: string; expectedVersion: number }) => ({ result: 'success', metadata: data.metadata, version: data.expectedVersion + 1 }));
+            await vi.advanceTimersByTimeAsync(1100);
+            expect(client.getMetadata()?.codexThreadId).toBe('live-recovered');
+            await client.close(); expect(vi.getTimerCount()).toBe(0);
+        });
+        it('recognizes a committed state write after its first ACK was lost without reapplying the handler', async () => {
+            let committed: { metadata: string; expectedVersion: number };
+            mockSocket.emitWithAck.mockImplementationOnce(async (_event: string, data: { metadata: string; expectedVersion: number }) => { committed = data; throw new Error('lost ACK'); });
+            mockSocket.emitWithAck.mockImplementation(async () => ({ result: 'version-mismatch', metadata: committed.metadata, version: committed.expectedVersion + 1 }));
+            const client = new ApiSessionClient('fake-token', session, undefined, { trackShutdownStorage: true });
+            const update = vi.fn(metadata => ({ ...metadata, codexThreadId: 'stored-on-first-attempt' }));
+            client.updateMetadata(update);
+            await expect(client.flushForShutdown(1000)).resolves.toMatchObject({ stored: true });
+            expect(update).toHaveBeenCalledTimes(1);
+            expect(mockSocket.emitWithAck).toHaveBeenCalledTimes(2);
+            await client.close();
+        });
+        it('bounds repeated metadata version conflicts instead of entering legacy backoff', async () => {
+            mockSocket.emitWithAck.mockImplementation(async (_event: string, data: { metadata: string; expectedVersion: number }) => ({ result: 'version-mismatch', metadata: encryptContent(session, session.metadata), version: data.expectedVersion + 1 }));
+            const client = new ApiSessionClient('fake-token', session, undefined, { trackShutdownStorage: true });
+            client.updateMetadata(metadata => ({ ...metadata, codexThreadId: 'bounded' }));
+            await expect(client.flushForShutdown(1000)).resolves.toEqual({ stored: false, reason: 'unconfirmed-write' });
+            expect(mockSocket.emitWithAck).toHaveBeenCalledTimes(3);
+            expect(mockSocket.timeout.mock.calls.every(([ms]: [number]) => ms > 0 && ms <= 1000)).toBe(true);
+            mockSocket.emitWithAck.mockImplementation(async (_event: string, data: { metadata: string; expectedVersion: number }) => ({ result: 'success', metadata: data.metadata, version: data.expectedVersion + 1 }));
+            await expect(client.flushForShutdown(1000)).resolves.toMatchObject({ stored: true });
+            await client.close();
+        });
+        it('uses the remaining drain budget for state ACKs and stops attempts after timeout', async () => {
+            vi.useFakeTimers();
+            mockSocket.timeout.mockImplementation((ms: number) => ({ emitWithAck: () => new Promise((_resolve, reject) => setTimeout(() => reject(new Error('ACK timeout')), ms)) }));
+            const client = new ApiSessionClient('fake-token', session, undefined, { trackShutdownStorage: true });
+            client.updateAgentState(state => ({ ...state, requests: {} }));
+            const result = client.flushForShutdown(25);
+            await vi.advanceTimersByTimeAsync(25);
+            await expect(result).resolves.toEqual({ stored: false, reason: 'deadline' });
+            await vi.advanceTimersByTimeAsync(1000);
+            expect(mockSocket.timeout).toHaveBeenCalledTimes(1);
+            expect(mockSocket.timeout.mock.calls[0][0]).toBeLessThanOrEqual(25);
+            await client.close();
+            expect(vi.getTimerCount()).toBe(0);
+        });
+        it('retains disconnected state writes for retry without buffering socket requests', async () => {
+            const client = new ApiSessionClient('fake-token', session, undefined, { trackShutdownStorage: true });
+            mockSocket.connected = false;
+            client.updateMetadata(metadata => ({ ...metadata, codexThreadId: 'offline' }));
+            await new Promise(resolve => setTimeout(resolve, 10));
+            expect(mockSocket.emitWithAck).not.toHaveBeenCalled();
+            mockSocket.connected = true;
+            mockSocket.emitWithAck.mockImplementation(async (_event: string, data: { metadata: string; expectedVersion: number }) => ({ result: 'success', metadata: data.metadata, version: data.expectedVersion + 1 }));
+            emitSocketEvent('connect');
+            await waitForCheck(() => expect(client.getMetadata()?.codexThreadId).toBe('offline'));
+            await client.close();
+        });
+        it('holds successor state changes behind a failed predecessor instead of applying them twice', async () => {
+            const barrier = new SessionStorageBarrier();
+            const writes = new SessionStateWrites(barrier, vi.fn());
+            let available = false;
+            const first = vi.fn(async () => available);
+            const successor = vi.fn(async () => true);
+            writes.enqueue(first);
+            await waitForCheck(() => expect(first).toHaveBeenCalledTimes(3));
+            writes.enqueue(successor);
+            await new Promise(resolve => setTimeout(resolve, 20));
+            expect(successor).not.toHaveBeenCalled();
+            available = true; writes.retry(() => true);
+            await expect(barrier.wait(1000)).resolves.toMatchObject({ stored: true });
+            expect(successor).toHaveBeenCalledTimes(1);
+        });
+        it('does not apply a queued state write again after retry already processed it', async () => {
+            const barrier = new SessionStorageBarrier();
+            const writes = new SessionStateWrites(barrier, vi.fn());
+            const apply = vi.fn(async () => true);
+            writes.retry(() => true); writes.enqueue(apply);
+            await expect(barrier.wait(1000)).resolves.toMatchObject({ stored: true });
+            await new Promise(resolve => setTimeout(resolve, 20));
+            expect(apply).toHaveBeenCalledTimes(1);
+        });
+        it('pauses newer messages after a missing ACK until explicit replay', async () => {
+            mockAxiosPost.mockResolvedValue({ data: { messages: [] } });
+            const client = new ApiSessionClient('fake-token', session, undefined, { trackShutdownStorage: true });
+            enqueue(client);
+            await waitForCheck(() => expect((client as any).unconfirmedOutbox).toHaveLength(1));
+            client.sendClaudeSessionMessage(buildInitialPromptUserRecord('newer', 'sess-1'), 'newer');
+            await new Promise(resolve => setTimeout(resolve, 20));
+            expect(mockAxiosPost).toHaveBeenCalledTimes(1);
+            mockAxiosPost.mockImplementation(async (_url, body) => ({ data: { messages: body.messages.map((m: { localId: string }, i: number) => ({ id: `stored-${i}`, seq: i + 1, localId: m.localId })) } }));
+            await expect(client.flushForShutdown(1000)).resolves.toMatchObject({ stored: true });
+            expect(mockAxiosPost.mock.calls[1][1].messages.map((m: { localId: string }) => m.localId)).toEqual(['output', 'newer']);
+            await client.close();
+        });
+        it('waits for both final output and queued resume metadata ACK', async () => {
+            mockAxiosPost.mockImplementation(async (_url, body) => ({ data: { messages: body.messages.map((m: { localId: string }, i: number) => ({ id: `stored-${i}`, seq: i + 1, localId: m.localId })) } }));
+            let acknowledge!: () => void;
+            mockSocket.emitWithAck.mockImplementation((_event: string, data: { metadata: string; expectedVersion: number }) => new Promise(resolve => {
+                acknowledge = () => resolve({ result: 'success', metadata: data.metadata, version: data.expectedVersion + 1 });
+            }));
+            const client = new ApiSessionClient('fake-token', session, undefined, { trackShutdownStorage: true });
+            client.updateMetadata(metadata => ({ ...metadata, codexThreadId: 'resume-thread' }));enqueue(client);
+            let settled = false;
+            const result = client.flushForShutdown(1000).then(value => { settled = true; return value; });
+            await waitForCheck(() => expect(mockSocket.emitWithAck).toHaveBeenCalled());
+            expect(settled).toBe(false);acknowledge();
+            await expect(result).resolves.toMatchObject({ stored: true });await client.close();
+        });
+        it('refuses a 2xx without all ACKs even after the outbox emptied', async () => {
+            const client = new ApiSessionClient('fake-token', session, undefined, { trackShutdownStorage: true });
+            mockAxiosPost.mockResolvedValue({ data: { messages: [] } });enqueue(client);
+            await waitForCheck(() => expect((client as any).pendingOutbox).toHaveLength(0));
+            await expect(client.flushForShutdown(100)).resolves.toEqual({ stored: false, reason: 'unconfirmed-write' });await client.close();
+        });
+        it.each(['error', 'wrong-content', 'stale-version'])('refuses metadata ACK %s', async outcome => {
+            mockSocket.emitWithAck.mockImplementation(async (_event: string, data: { metadata: string; expectedVersion: number }) => outcome === 'error'
+                ? { result: 'error' } : { result: 'success', metadata: outcome === 'wrong-content' ? encryptContent(session, session.metadata) : data.metadata, version: outcome === 'stale-version' ? data.expectedVersion : data.expectedVersion + 1 });
+            const client = new ApiSessionClient('fake-token', session, undefined, { trackShutdownStorage: true });
+            client.updateMetadata(metadata => ({ ...metadata, codexThreadId: 'must-persist' }));
+            await expect(client.flushForShutdown(100)).resolves.toEqual({ stored: false, reason: 'unconfirmed-write' });await client.close();
+        });
+        it('preserves a timeout verdict after a late ACK and releases its timer', async () => {
+            vi.useFakeTimers();let acknowledge!: () => void;
+            mockSocket.emitWithAck.mockImplementation((_event: string, data: { metadata: string }) => new Promise(resolve => {
+                acknowledge = () => resolve({ result: 'success', metadata: data.metadata, version: 1 });
+            }));
+            const client = new ApiSessionClient('fake-token', session, undefined, { trackShutdownStorage: true });
+            client.updateMetadata(metadata => ({ ...metadata, codexThreadId: 'late' }));
+            const result = client.flushForShutdown(30);await vi.advanceTimersByTimeAsync(30);
+            await expect(result).resolves.toEqual({ stored: false, reason: 'deadline' });
+            acknowledge();await vi.advanceTimersByTimeAsync(0);
+            await expect(result).resolves.toEqual({ stored: false, reason: 'deadline' });
+            await expect(client.flushForShutdown(30)).resolves.toMatchObject({ stored: true });
+            await client.close();expect(vi.getTimerCount()).toBe(0);
+        });
+        it.each(['disconnect', 'close', 'abort'])('settles an unfinished write on %s', async reason => {
+            const client = new ApiSessionClient('fake-token', session, undefined, { trackShutdownStorage: true });
+            mockAxiosPost.mockImplementation(() => new Promise(() => {}));enqueue(client);
+            const cancellation = new AbortController();const result = client.flushForShutdown(10000, cancellation.signal);
+            if (reason === 'disconnect') { mockSocket.connected = false; emitSocketEvent('disconnect', 'transport close'); }
+            else if (reason === 'close') await client.close();else cancellation.abort();
+            await expect(result).resolves.toEqual({ stored: false, reason: reason === 'disconnect' ? 'disconnected' : reason === 'close' ? 'closed' : 'aborted' });await client.close();
+        });
+        it('recovers from a transient metadata error without permanently poisoning shutdown', async () => {
+            mockSocket.emitWithAck.mockResolvedValueOnce({ result: 'error' }).mockImplementation(async (_event: string, data: { metadata: string; expectedVersion: number }) => ({ result: 'success', metadata: data.metadata, version: data.expectedVersion + 1 }));
+            const client = new ApiSessionClient('fake-token', session, undefined, { trackShutdownStorage: true });
+            client.updateMetadata(metadata => ({ ...metadata, codexThreadId: 'recoverable' }));
+            await expect(client.flushForShutdown(100)).resolves.toMatchObject({ stored: true });
+            expect(mockSocket.emitWithAck).toHaveBeenCalledTimes(2);await client.close();
+        });
+        it('preserves unconfirmed message bytes for an explicit shutdown retry', async () => {
+            mockAxiosPost.mockResolvedValue({ data: { messages: [] } });
+            const client = new ApiSessionClient('fake-token', session, undefined, { trackShutdownStorage: true });enqueue(client);
+            await expect(client.flushForShutdown(100)).resolves.toEqual({ stored: false, reason: 'unconfirmed-write' });
+            const first = mockAxiosPost.mock.calls[0][1].messages;
+            mockAxiosPost.mockImplementation(async (_url, body) => ({ data: { messages: body.messages.map((m: { localId: string }, i: number) => ({ id: `stored-${i}`, seq: i + 1, localId: m.localId })) } }));
+            await expect(client.flushForShutdown(100)).resolves.toMatchObject({ stored: true });
+            expect(mockAxiosPost.mock.calls.at(-1)![1].messages).toEqual(first);await client.close();
+        });
+        it('includes metadata calls still queued behind the metadata lock', async () => {
+            vi.useFakeTimers();const acknowledgements: Array<() => void> = [];
+            mockSocket.emitWithAck.mockImplementation((_event: string, data: { metadata: string; expectedVersion: number }) => new Promise(resolve => {
+                acknowledgements.push(() => resolve({ result: 'success', metadata: data.metadata, version: data.expectedVersion + 1 }));
+            }));
+            const client = new ApiSessionClient('fake-token', session, undefined, { trackShutdownStorage: true });
+            client.updateMetadata(metadata => ({ ...metadata, codexThreadId: 'first' }));
+            client.updateMetadata(metadata => ({ ...metadata, codexThreadId: 'final' }));
+            let settled = false;const result = client.flushForShutdown(1000).then(value => { settled = true;return value; });
+            await vi.advanceTimersByTimeAsync(0);acknowledgements[0]();await vi.advanceTimersByTimeAsync(1);
+            expect(settled).toBe(false);expect(acknowledgements).toHaveLength(2);
+            acknowledgements[1]();await expect(result).resolves.toMatchObject({ stored: true });
+            expect(client.getMetadata()?.codexThreadId).toBe('final');await client.close();
+        });
+        it('rejects an ACK after the monotonic deadline even before its timer runs', async () => {
+            const clock = vi.spyOn(performance, 'now').mockReturnValue(0);
+            let acknowledge!: () => void;
+            mockAxiosPost.mockImplementation(() => new Promise(resolve => { acknowledge = () => resolve({ data: { messages: [{ id: 'stored', seq: 1, localId: 'output' }] } }); }));
+            const client = new ApiSessionClient('fake-token', session, undefined, { trackShutdownStorage: true });
+            try {
+                enqueue(client);const result = client.flushForShutdown(30);clock.mockReturnValue(31);acknowledge();
+                await expect(result).resolves.toEqual({ stored: false, reason: 'deadline' });
+            } finally { clock.mockRestore();await client.close(); }
+        });
+        it('preserves late output and metadata and requires a fresh confirmation', async () => {
+            const client = new ApiSessionClient('fake-token', session, undefined, { trackShutdownStorage: true });
+            const proof = await client.flushForShutdown(100);expect(proof.stored).toBe(true);
+            expect(client.isStorageConfirmationCurrent(proof)).toBe(true);
+            expect(client.isStorageConfirmationCurrent({ ...proof })).toBe(false);
+            mockAxiosPost.mockImplementation(async (_url, body) => ({ data: { messages: body.messages.map((m: { localId: string }) => ({ id: 'late', seq: 1, localId: m.localId })) } }));
+            mockSocket.emitWithAck.mockImplementation(async (_event: string, data: { metadata: string; expectedVersion: number }) => ({ result: 'success', metadata: data.metadata, version: data.expectedVersion + 1 }));
+            expect(() => enqueue(client)).not.toThrow();
+            expect(client.isStorageConfirmationCurrent(proof)).toBe(false);
+            expect(() => client.updateMetadata(metadata => metadata)).not.toThrow();
+            await expect(client.flushForShutdown(100)).resolves.toMatchObject({ stored: true });await client.close();
+        });
+        it('preserves an HTTP batch in flight when shutdown starts with newer queued output', async () => {
+            let acknowledge!: () => void;
+            mockAxiosPost.mockImplementationOnce((_url, body) => new Promise(resolve => { acknowledge = () => resolve({ data: { messages: body.messages.map((m: { localId: string }) => ({ id: 'first', seq: 1, localId: m.localId })) } }); }));
+            const client = new ApiSessionClient('fake-token', session, undefined, { trackShutdownStorage: true });enqueue(client);
+            await waitForCheck(() => expect(mockAxiosPost).toHaveBeenCalledTimes(1));
+            client.sendClaudeSessionMessage(buildInitialPromptUserRecord('second', 'sess-1'), 'second');
+            mockAxiosPost.mockImplementation(async (_url, body) => ({ data: { messages: body.messages.map((m: { localId: string }) => ({ id: 'second', seq: 2, localId: m.localId })) } }));
+            const result = client.flushForShutdown(100);acknowledge();
+            await expect(result).resolves.toMatchObject({ stored: true });
+            expect(mockAxiosPost.mock.calls.at(-1)![1].messages.map((m: { localId: string }) => m.localId)).toEqual(['second']);await client.close();
+        });
+        it('waits for permission state cleanup acknowledgement', async () => {
+            let acknowledge!: () => void;
+            mockSocket.emitWithAck.mockImplementation((_event: string, data: { agentState: string; expectedVersion: number }) => new Promise(resolve => {
+                acknowledge = () => resolve({ result: 'success', agentState: data.agentState, version: data.expectedVersion + 1 });
+            }));
+            const client = new ApiSessionClient('fake-token', session, undefined, { trackShutdownStorage: true });client.updateAgentState(state => ({ ...state, requests: {} }));
+            let settled = false;const result = client.flushForShutdown(100).then(value => { settled = true;return value; });
+            await waitForCheck(() => expect(mockSocket.emitWithAck).toHaveBeenCalled());expect(settled).toBe(false);
+            acknowledge();await expect(result).resolves.toMatchObject({ stored: true });await client.close();
+        });
+        it('aborts an in-flight HTTP request at the drain deadline and retries identical bytes', async () => {
+            vi.useFakeTimers();let requestSignal!: AbortSignal;
+            mockAxiosPost.mockImplementation((_url, _body, options) => new Promise((_resolve, reject) => {
+                requestSignal = options.signal;
+                requestSignal?.addEventListener('abort', () => reject(new Error('request aborted')), { once: true });
+            }));
+            const client = new ApiSessionClient('fake-token', session, undefined, { trackShutdownStorage: true });enqueue(client);
+            const firstBody = mockAxiosPost.mock.calls[0][1];const result = client.flushForShutdown(30);
+            await vi.advanceTimersByTimeAsync(30);
+            await expect(result).resolves.toEqual({ stored: false, reason: 'deadline' });
+            expect(requestSignal?.aborted).toBe(true);
+            mockAxiosPost.mockImplementation(async (_url, body) => ({ data: { messages: body.messages.map((m: { localId: string }) => ({ id: 'stored', seq: 1, localId: m.localId })) } }));
+            await expect(client.flushForShutdown(25)).resolves.toMatchObject({ stored: true });
+            expect(mockAxiosPost.mock.calls.at(-1)![1]).toEqual(firstBody);
+            expect(mockAxiosPost.mock.calls.at(-1)![2].timeout).toBeLessThanOrEqual(25);
+            await client.close();expect(vi.getTimerCount()).toBe(0);
+        });
+        it('does not restart a shared drain budget when another caller joins', async () => {
+            vi.useFakeTimers();mockAxiosPost.mockImplementation((_url, _body, options) => new Promise((_resolve, reject) => {
+                options.signal?.addEventListener('abort', () => reject(new Error('request aborted')), { once: true });
+            }));
+            const client = new ApiSessionClient('fake-token', session, undefined, { trackShutdownStorage: true });enqueue(client);
+            const first = client.flushForShutdown(30);await vi.advanceTimersByTimeAsync(20);
+            const second = client.flushForShutdown(1000);await vi.advanceTimersByTimeAsync(10);
+            await expect(first).resolves.toEqual({ stored: false, reason: 'deadline' });
+            await expect(second).resolves.toEqual({ stored: false, reason: 'deadline' });await client.close();
+        });
+        it('bounds hard metadata errors and replays the failed write before later updates', async () => {
+            mockSocket.emitWithAck.mockResolvedValue({ result: 'error' });
+            const client = new ApiSessionClient('fake-token', session, undefined, { trackShutdownStorage: true });
+            client.updateMetadata(metadata => ({ ...metadata, codexThreadId: 'old', summary: { text: 'retained', updatedAt: 1 } }));
+            await waitForCheck(() => expect(mockSocket.emitWithAck).toHaveBeenCalledTimes(3));
+            mockSocket.emitWithAck.mockImplementation(async (_event: string, data: { metadata: string; expectedVersion: number }) => ({ result: 'success', metadata: data.metadata, version: data.expectedVersion + 1 }));
+            client.updateMetadata(metadata => ({ ...metadata, codexThreadId: 'latest' }));
+            await expect(client.flushForShutdown(1000)).resolves.toMatchObject({ stored: true });
+            expect(client.getMetadata()).toMatchObject({ codexThreadId: 'latest', summary: { text: 'retained' } });await client.close();
+        });
+        it('lets legacy flush explicitly resume an outbox paused by a failed drain', async () => {
+            vi.useFakeTimers();mockAxiosPost.mockImplementation((_url, _body, options) => new Promise((_resolve, reject) => {
+                options.signal?.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
+            }));
+            const client = new ApiSessionClient('fake-token', session, undefined, { trackShutdownStorage: true });enqueue(client);
+            const pending = client.flushForShutdown(30);await vi.advanceTimersByTimeAsync(30);await pending;
+            mockAxiosPost.mockImplementation(async (_url, body) => ({ data: { messages: body.messages.map((m: { localId: string }) => ({ id: 'stored', seq: 1, localId: m.localId })) } }));
+            mockSocket.emit.mockImplementation((event: string, callback: () => void) => { if(event==='ping')callback(); });
+            await client.flush();expect(mockAxiosPost).toHaveBeenCalledTimes(2);await client.close();
+        });
+        it('does not advertise storage confirmation for an ordinary legacy client', async () => {
+            const client = new ApiSessionClient('fake-token', session);
+            await expect(client.flushForShutdown(100)).resolves.toEqual({ stored: false, reason: 'unsupported' });
+            await client.close();
+        });
+        it('does not count an empty disconnected client as stored', async () => {
+            const client = new ApiSessionClient('fake-token', session, undefined, { trackShutdownStorage: true });mockSocket.connected = false;
+            await expect(client.flushForShutdown(100)).resolves.toEqual({ stored: false, reason: 'disconnected' });await client.close();
+        });
     });
 
     describe('managed durable message acknowledgement', () => {

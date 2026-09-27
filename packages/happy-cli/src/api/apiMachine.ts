@@ -589,6 +589,18 @@ function describeStopResult(sessionId: string, result: StopSessionResult) {
         return { message: 'Session not tracked', stopped: false as const, reason: 'not-found' as const };
     }
 
+    if (result.reason === 'standalone-unowned' || result.reason === 'standalone-blocked') {
+        return { error: result.reason === 'standalone-unowned'
+            ? 'Windows session is not owned by this daemon; no stop was requested'
+            : 'Windows session drain is blocked; no new stop was requested',
+            stopped: false as const, reason: result.reason, detail: result.detail };
+    }
+
+    if (result.reason === 'standalone-drain') {
+        return { message: 'Windows session drain requested; exit is not yet confirmed',
+            stopped: false as const, reason: 'standalone-drain' as const, detail: result.detail };
+    }
+
     if (result.reason === 'managed-generation') {
         // The stop went to the supervisor, which is the only side that
         // can kill a managed generation and observe it empty. Saying
@@ -730,6 +742,7 @@ export class ApiMachineClient {
     } | null = null;
     /** Set only on a verified managed runtime; null on every BYOS machine. */
     private managedHandlers: ManagedRpcHandlers | null = null;
+    private windowsStandaloneTrial = false;
     private daemonSessionStateRpcAvailable = false;
     private isolatedViewerStarts = new Map<string, Promise<IsolatedViewerStartResult>>();
     private isolatedViewerMutation: Promise<void> = Promise.resolve();
@@ -874,6 +887,20 @@ export class ApiMachineClient {
         );
     }
 
+    /** Internal opt-in trial policy; install before connecting the machine transport. */
+    setWindowsStandaloneTrial(): void {
+        this.windowsStandaloneTrial = true;
+        // Only audited operations that cannot create unfenced host children are admitted.
+        // Session launch/resume use the daemon's native owner; recovery's preflight refuses separately.
+        const allowed = new Set(['spawn-happy-session', 'resume-happy-session', 'recover-happy-session',
+            'stop-session', 'daemon-session-state', 'readFile', 'readFileChunk', 'writeFile', 'listDirectory',
+            'renameFile', 'deleteFile', 'copyFile', 'ensureDirectory', 'getDirectoryTree',
+            'allocate-port', 'get-port', 'release-port']);
+        this.rpcHandlerManager.setMethodPolicy(method => allowed.has(method) ? null : {
+            error: 'Method unavailable in the standalone Windows Codex trial', code: 'STANDALONE_WINDOWS_TRIAL_UNSUPPORTED',
+        });
+    }
+
     /**
      * Enables the managed dispatch surface. Must be called before
      * `setRPCHandlers`, which applies the restrictions as its last step.
@@ -908,7 +935,7 @@ export class ApiMachineClient {
         this.recoverSessionHandler = recoverSession ?? null;
         this.linkSpawnedSessionHandler = linkSpawnedSession ?? null;
 
-        if (autonomousQualityGate) {
+        if (autonomousQualityGate && !this.windowsStandaloneTrial) {
             this.rpcHandlerManager.registerHandler('autonomous-quality-gate:start', autonomousQualityGate.start);
             this.rpcHandlerManager.registerHandler('autonomous-quality-gate:status', autonomousQualityGate.status);
             this.rpcHandlerManager.registerHandler('autonomous-quality-gate:control', autonomousQualityGate.control);
@@ -924,7 +951,7 @@ export class ApiMachineClient {
             );
         }
 
-        if (difficultyRouting) {
+        if (difficultyRouting && !this.windowsStandaloneTrial) {
             this.rpcHandlerManager.registerHandler('difficulty-routing:classify', (params) => (
                 difficultyRouting.classify(params as never)
             ));
@@ -945,7 +972,7 @@ export class ApiMachineClient {
         // Handlers live in automationRpcHandlers.ts so they unit-test without
         // an RpcHandlerManager; directory validation reuses this.allowedRoot,
         // the same root the spawn/file RPC surface enforces.
-        if (automationStore) {
+        if (automationStore && !this.windowsStandaloneTrial) {
             const automationHandlers = createAutomationRpcHandlers({
                 store: automationStore,
                 allowedRoot: this.allowedRoot,
@@ -3426,11 +3453,11 @@ export class ApiMachineClient {
         );
         // Not attached on a managed runtime: the preview WebSocket proxy reaches the host outside
         // the RPC dispatch gate, so the allowlist there would not see it.
-        if (!this.managedHandlers) this.socket.on('proxy-ws-open', async (params, ack) => {
+        if (!this.managedHandlers && !this.windowsStandaloneTrial) this.socket.on('proxy-ws-open', async (params, ack) => {
             ack(await this.openPreviewWsTunnel(params));
         });
         // The bound variants reach the host the same way, so the same gate applies.
-        if (!this.managedHandlers) this.socket.on(PREVIEW_BOUND_WS_OPEN_EVENT as any, async (params: any, ack: (response: any) => void) => {
+        if (!this.managedHandlers && !this.windowsStandaloneTrial) this.socket.on(PREVIEW_BOUND_WS_OPEN_EVENT as any, async (params: any, ack: (response: any) => void) => {
             ack(await this.openPreviewWsTunnelBound(params));
         });
         // specs/runtime-isolation-hardening (H3, P3) — viewer-bound relays and
@@ -3442,7 +3469,7 @@ export class ApiMachineClient {
         this.socket.on(PREVIEW_VIEWER_BOUND_PROXY_EVENT as any, async (params: any, ack: (response: any) => void) => {
             ack(await this.relayPreviewViewerBoundHttp(params));
         });
-        if (!this.managedHandlers) this.socket.on(PREVIEW_VIEWER_BOUND_WS_OPEN_EVENT as any, async (params: any, ack: (response: any) => void) => {
+        if (!this.managedHandlers && !this.windowsStandaloneTrial) this.socket.on(PREVIEW_VIEWER_BOUND_WS_OPEN_EVENT as any, async (params: any, ack: (response: any) => void) => {
             ack(await this.openPreviewViewerWsTunnelBound(params));
         });
         this.socket.on(
@@ -3470,7 +3497,7 @@ export class ApiMachineClient {
         const machineId = this.machine.id;
         // Not attached on a managed runtime: the forwarded terminal opener reaches the host outside
         // the RPC dispatch gate, so the allowlist there would not see it.
-        if (!this.managedHandlers) this.socket.on('terminal-open-fwd', async (msg, ack) => {
+        if (!this.managedHandlers && !this.windowsStandaloneTrial) this.socket.on('terminal-open-fwd', async (msg, ack) => {
             try {
                 const { sessionId, params } = msg || {};
                 if (!sessionId || typeof sessionId !== 'string') {
@@ -3626,7 +3653,7 @@ export class ApiMachineClient {
 
         // Not attached on a managed runtime: forwarded terminal frames reaches the host outside
         // the RPC dispatch gate, so the allowlist there would not see it.
-        if (!this.managedHandlers) this.socket.on('terminal-frame-fwd', (msg) => {
+        if (!this.managedHandlers && !this.windowsStandaloneTrial) this.socket.on('terminal-frame-fwd', (msg) => {
             const { sessionId, data } = msg || {};
             const entry = getDaemonTerminalSession(sessionId);
             if (!entry || typeof data !== 'string') return;
@@ -3650,7 +3677,7 @@ export class ApiMachineClient {
          * terminal-frame-fwd: forwarded terminal events reach the host outside
          * the RPC dispatch gate, so the allowlist there would not see this.
          */
-        if (!this.managedHandlers) this.socket.on('terminal-resume-fwd', (msg) => {
+        if (!this.managedHandlers && !this.windowsStandaloneTrial) this.socket.on('terminal-resume-fwd', (msg) => {
             const { sessionId, afterSeq } = msg || {};
             const entry = getDaemonTerminalSession(sessionId);
             if (!entry) return;

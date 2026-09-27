@@ -1,9 +1,16 @@
+import { runBashStream } from './bashStream';
+import { CodexRuntimeProducerGate } from '@/codex/codexRuntimeProducerGate';
 import { mkdir, mkdtemp, readFile, realpath, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { createChangeTitleHandler, startHappyServer } from './startHappyServer';
 import type { ApiSessionClient } from '@/api/apiSession';
+
+vi.mock('./bashStream', async original => {
+    const actual = await original<typeof import('./bashStream')>();
+    return { ...actual, runBashStream: vi.fn(actual.runBashStream) };
+});
 
 vi.mock('@/ui/logger', () => ({
     logger: {
@@ -38,6 +45,76 @@ async function callTool(serverUrl: string, id: number, name: string, args: Recor
     const raw = await response.text();
     return JSON.parse(raw.startsWith('event:') ? raw.slice(raw.indexOf('data: ') + 6) : raw);
 }
+
+describe('Happy MCP shutdown admission', () => {
+    it('keeps a running bash tool owned across freeze until actual completion', async () => {
+        const gate = new CodexRuntimeProducerGate({ hasUndeliveredInput: () => false,
+            canFreezeInbound: () => true, freezeInbound: () => true, stopLoop: () => {} });
+        let release!: () => void;
+        vi.mocked(runBashStream).mockImplementationOnce(() => new Promise(resolve => {
+            release = () => resolve({ exitCode: 0, stdout: 'last output', stderr: '' });
+        }));
+        const server = await startHappyServer(makeFakeClient(false), { admitTool: work => gate.admit(work, 'writer') });
+        let running: Promise<any> | undefined;
+        try {
+            running = callTool(server.url, 2, 'bash_stream', { command: 'fixture-only' });
+            await vi.waitFor(() => expect(release).toBeTypeOf('function'));
+            gate.freeze(); gate.loopExited();
+            expect(gate.hasLiveProducers()).toBe(true);
+            const calls = vi.mocked(runBashStream).mock.calls.length;
+            const refused = await callTool(server.url, 3, 'bash_stream', { command: 'must-not-run' });
+            expect(refused.result.isError).toBe(true);
+            expect(refused.result.content[0].text).toBe('Tool unavailable during session shutdown');
+            expect(vi.mocked(runBashStream).mock.calls.length).toBe(calls);
+            release();
+            expect((await running).result.content[0].text).toContain('last output');
+            await gate.quiesce(new AbortController().signal);
+            expect(gate.hasLiveProducers()).toBe(false);
+        } finally { release?.(); await running; server.stop(); }
+    });
+    it('refuses every advertised tool before its callback runs', async () => {
+        const admitTool = vi.fn(async () => { throw new Error('closed'); });
+        const proposal = vi.fn(() => ({ accepted: true }));
+        const server = await startHappyServer(makeFakeClient(false), { admitTool, proposeLesson: proposal });
+        const args: Record<string, Record<string, unknown>> = {
+            propose_lesson: { token: '00000000-0000-4000-8000-000000000001', proposal: {} },
+            change_title: { title: 'no-write' }, bash_stream: { command: 'no-execution' },
+            script_automations: { request: { operation: 'list' } },
+            browser_click: { ref: '@e1' }, browser_fill: { ref: '@e1', value: 'x' },
+            browser_scroll: { deltaY: 1 }, browser_navigate: { url: 'https://example.com' },
+            browser_open_tab: { url: 'https://example.com' }, browser_close_tab: { tabId: 1 },
+        };
+        try {
+            const response = await fetch(server.url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' },
+                body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }),
+            });
+            expect(response.status).toBe(200);
+            const raw = await response.text();
+            const listed = JSON.parse(raw.startsWith('event:') ? raw.slice(raw.indexOf('data: ') + 6) : raw);
+            const names: string[] = listed.result.tools.map((tool: { name: string }) => tool.name);
+            expect(names.length).toBeGreaterThan(0);
+            for (const [index, name] of names.entries()) {
+                const result = await callTool(server.url, index + 10, name, args[name] ?? {});
+                expect(result.result?.content[0].text, name).toBe('Tool unavailable during session shutdown');
+                expect(admitTool).toHaveBeenCalledTimes(index + 1);
+            }
+            expect(proposal).not.toHaveBeenCalled();
+        } finally { server.stop(); }
+    });
+    it('refuses title writes before invoking the tool body', async () => {
+        const client = makeFakeClient(false);
+        const admitTool = vi.fn(async () => { throw new Error('Runtime input is closed'); });
+        const server = await startHappyServer(client, { admitTool });
+        try {
+            const reply = await callTool(server.url, 1, 'change_title', { title: 'Refused title' });
+            expect(reply.result?.isError).toBe(true);
+            expect(client.sendClaudeSessionMessage).not.toHaveBeenCalled();
+            expect(admitTool).toHaveBeenCalledOnce();
+        } finally { server.stop(); }
+    });
+});
 
 describe('createChangeTitleHandler', () => {
     it('sets the title when the session has none yet', async () => {

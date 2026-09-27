@@ -219,3 +219,14 @@ it('preserves the encrypted error response for a malformed untraced request', as
     const response = await manager.handleRequest(null as never);
     expect(decrypt(KEY, 'legacy', decodeBase64(response))).toHaveProperty('error');
 });
+
+it('enforces a separate internal method policy before dispatch including later registrations', async () => {
+    const manager = makeManager(); let invoked = 0;
+    manager.setMethodPolicy(method => method === 'read-safe' ? null : { error: 'Trial method unavailable', code: 'TRIAL_UNAVAILABLE' });
+    manager.registerHandler('read-safe', async () => ({ read: true }));
+    manager.registerHandler('later-spawn', async () => { invoked++; return {}; });
+    expect(await call(manager, 'read-safe', {})).toEqual({ read: true });
+    expect(await call(manager, 'later-spawn', {})).toEqual({ error: 'Trial method unavailable', code: 'TRIAL_UNAVAILABLE' });
+    expect(await call(manager, 'unknown-later-method', {})).toMatchObject({ code: 'TRIAL_UNAVAILABLE' });
+    expect(invoked).toBe(0);
+});

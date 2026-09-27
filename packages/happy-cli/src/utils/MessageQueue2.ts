@@ -356,10 +356,10 @@ export class MessageQueue2<T> {
      * Wait for messages and return all messages with the same mode as a single string
      * Returns { message: string, mode: T } or null if aborted/closed
      */
-    async waitForMessagesAndGetAsString(abortSignal?: AbortSignal): Promise<CollectedBatch<T> | null> {
+    async waitForMessagesAndGetAsString(abortSignal?: AbortSignal, claim?: () => boolean): Promise<CollectedBatch<T> | null> {
         // If we have messages, return them immediately
         if (this.queue.length > 0) {
-            return this.collectBatch();
+            return this.collectBatch(claim);
         }
 
         // If closed or already aborted, return null
@@ -374,17 +374,19 @@ export class MessageQueue2<T> {
             return null;
         }
 
-        return this.collectBatch();
+        return this.collectBatch(claim);
     }
 
     /**
      * Collect a batch of messages with the same mode, respecting isolation requirements
      */
-    private collectBatch(): CollectedBatch<T> | null {
+    private collectBatch(claim?: () => boolean): CollectedBatch<T> | null {
         if (this.queue.length === 0) {
             return null;
         }
 
+        // Claim ownership before dequeue and before the async caller can yield. Refusal preserves the batch.
+        if (claim && !claim()) return null;
         const firstItem = this.queue[0];
         const sameModeMessages: string[] = [];
         const collectedAttachments: PendingAttachment[] = [];

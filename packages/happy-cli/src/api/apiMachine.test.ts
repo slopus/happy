@@ -1040,6 +1040,14 @@ describe('stop-session verifyExit contract', () => {
     const stopHandler = (client: ApiMachineClient) => (client as any).rpcHandlerManager
         .registerHandler.mock.calls.find(([method]: [string]) => method === 'stop-session')?.[1];
 
+    it.each(['standalone-unowned', 'standalone-blocked'])('returns an actionable refusal for %s without claiming a stop request', async reason => {
+        const client = new ApiMachineClient('fake-token', makeMachine());
+        client.setRPCHandlers(handlers({ stopSession: vi.fn(() => ({ stopped: false, reason, detail: 'unavailable' })) }) as any);
+        const result = await stopHandler(client)({ sessionId: 'session-1' });
+        expect(result).toMatchObject({ stopped: false, reason, detail: 'unavailable', error: expect.stringContaining('no') });
+        expect(result.message).toBeUndefined();
+    });
+
     it('answers a legacy request exactly as before, with no verification field', async () => {
         const client = new ApiMachineClient('fake-token', makeMachine());
         const stopSessionWithExitVerification = vi.fn();

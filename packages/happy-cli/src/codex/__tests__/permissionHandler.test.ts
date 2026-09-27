@@ -25,6 +25,54 @@ function createSessionMock() {
 }
 
 describe('CodexPermissionHandler', () => {
+    it.each(['approved', 'aborted', 'reset', 'auto-approved'])('keeps %s permission timestamps stable when state transforms replay', async mode => {
+        const clock = vi.spyOn(Date, 'now').mockReturnValue(100);
+        try {
+            const { session } = createSessionMock();
+            const handler = new CodexPermissionHandler(session as any);
+            const pending = handler.handleToolCall('fixture', mode === 'auto-approved' ? 'change_title' : 'Bash', { command: 'pwd' });
+            if (mode === 'approved') {
+                const permission = session.rpcHandlerManager.registerHandler.mock.calls.find(([name]) => name === 'permission');
+                await permission![1]({ id: 'fixture', approved: true });
+            } else if (mode === 'aborted') handler.abortAll();
+            else if (mode === 'reset') { void pending.catch(() => {}); handler.reset(); }
+            await pending.catch(() => {});
+            const replay = () => session.updateAgentState.mock.calls.reduce((state, [update]) => update(state), {});
+            const original = replay();
+            clock.mockReturnValue(200);
+            expect(replay()).toEqual(original);
+        } finally { clock.mockRestore(); }
+    });
+    it('permanently refuses late approval registration, including auto-approval, after shutdown', async () => {
+        const { session, getState } = createSessionMock(); const handler = new CodexPermissionHandler(session as any);
+        const pending = handler.handleToolCall('before-close', 'Bash', {});
+        handler.closeForShutdown();
+        await expect(pending).resolves.toEqual({ decision: 'abort' });
+        expect(getState().completedRequests['before-close'].reason).toBe('Session shutting down');
+        const writes = session.updateAgentState.mock.calls.length;
+        await expect(handler.handleToolCall('safe-late', 'change_title', {})).resolves.toEqual({ decision: 'abort' });
+        const late = handler.handleToolCall('late', 'Bash', {});
+        // Avoid orphaning the pending resolver in the Red run.
+        handler.abortAll();
+        await expect(late).resolves.toEqual({ decision: 'abort' });
+        expect(session.updateAgentState).toHaveBeenCalledTimes(writes);
+    });
+
+    it.each(['Bash', 'change_title'])('closes even an empty handler before a late %s request', async tool => {
+        const { session } = createSessionMock(); const handler = new CodexPermissionHandler(session as any);
+        handler.closeForShutdown();
+        await expect(handler.handleToolCall('late-empty', tool, {})).resolves.toEqual({ decision: 'abort' });
+        expect(session.updateAgentState).not.toHaveBeenCalled();
+    });
+
+    it('keeps ordinary user abort reusable for a later approval', async () => {
+        const { session, getState } = createSessionMock(); const handler = new CodexPermissionHandler(session as any);
+        const first = handler.handleToolCall('first', 'Bash', {}); handler.abortAll(); await first;
+        expect(getState().completedRequests.first.reason).toBe('Aborted by user');
+        const next = handler.handleToolCall('next', 'Bash', {});
+        expect(getState().requests.next).toBeDefined(); handler.abortAll(); await next;
+    });
+
     it('auto-approves the safe change_title tool', async () => {
         const { session, getState } = createSessionMock();
         const handler = new CodexPermissionHandler(session as any);

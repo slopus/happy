@@ -18,6 +18,7 @@ import { spawn as crossSpawn } from 'cross-spawn';
 import { createInterface, type Interface as ReadlineInterface } from 'node:readline';
 import { logger } from '@/ui/logger';
 import { CodexBackgroundTasks, type CodexBackgroundTask } from './codexBackgroundTasks';
+import { readCodexOutput } from './codexOutputReader';
 import type {
     InitializeParams,
     NewConversationParams,
@@ -246,6 +247,20 @@ function applyCheckpointTurnPreparation<
 export class CodexAppServerClient {
     private process: ChildProcess | null = null;
     private readline: ReadlineInterface | null = null;
+    private outputGate: { wait: (signal: AbortSignal) => Promise<void>; onFailure: () => void } | null = null;
+    private outputReadAbort: AbortController | null = null;
+    private outputDrain: Promise<void> | null = null;
+    private outputSettled = true;
+    private disconnectingEpoch: number | null = null;
+    private preserveDisconnectingTurn = false;
+    private shutdownInputFrozen = false;
+    private disconnectRevision = 0;
+    private initializedEpoch = -1;
+    private reconnecting = 0;
+    private shutdownObservationFinished = false;
+    private disconnectOperation: { key: string; promise: Promise<void> } | null = null;
+    private outputFailed = false;
+    private turnAdmissionAbort: AbortController | null = null;
     private nextId = 1;
     private pending = new Map<number, PendingRequest>();
     private processEpoch = 0;
@@ -255,6 +270,7 @@ export class CodexAppServerClient {
     private readonly beforeTurn?: () => Promise<CheckpointTurnPreparation | void>;
     private readonly completeTurn?: CheckpointSessionComposition['completeTurn'];
     private readonly markTurnDispatched?: () => void;
+    private onTurnDispatch?: () => void;
     private readonly protectedWriterTree: CheckpointWriterProcessTree | null;
     private sandboxCleanup: (() => Promise<void>) | null = null;
     private multiAuthProxy: PreparedCodexMultiAuthProxy | null = null;
@@ -376,6 +392,10 @@ export class CodexAppServerClient {
     // Handlers set by the consumer (runCodex.ts)
     private eventHandler: ((msg: EventMsg) => void) | null = null;
     private approvalHandler: ApprovalHandler | null = null;
+    private cancelPendingApprovals: (() => void | Promise<void>) | null = null;
+    private approvalCancellation: Promise<void> | null = null;
+    private approvalShutdownFailed = false;
+    private readonly serverRequestTasks = new Set<Promise<void>>();
 
     // specs/linux-checkpoint-enforcement-backend R4 — the turn workspace materialized by beforeTurn()
     // must exist before the wrapped process starts: bubblewrap binds a mount point on the host for
@@ -432,12 +452,89 @@ export class CodexAppServerClient {
             .sort((left, right) => left.name.localeCompare(right.name));
     }
 
+    setOutputStorageGate(gate: { wait: (signal: AbortSignal) => Promise<void>; onFailure: () => void }): void {
+        if (this.process) throw new Error('Set output storage gate before spawning Codex');
+        this.outputGate = gate;
+    }
+    async waitForOutputDrain(): Promise<void> {
+        await this.outputDrain;
+        // EOF only settles parsing; approval callbacks may still publish final state.
+        await this.approvalCancellation;
+        if (this.approvalShutdownFailed) throw new Error('Codex approval cancellation failed');
+        await Promise.all([...this.serverRequestTasks]);
+    }
+
+    /** Permanent for this client/launch. The runtime must separately freeze its other producers. */
+    freezeInputForShutdown(): boolean {
+        if (this.shutdownInputFrozen || !this.outputGate || !this.process || this.disconnectOperation || this.outputFailed || this.completeTurn
+            || this.initializedEpoch !== this.processEpoch || this.reconnecting > 0) return false;
+        this.shutdownInputFrozen = true;
+        this.shutdownObservationFinished = false;
+        this.turnAdmissionAbort?.abort();
+        const failed = () => { this.approvalShutdownFailed = true; this.failOutputStorage(); };
+        try {
+            this.approvalCancellation = Promise.resolve(this.cancelPendingApprovals?.())
+                .catch(failed).finally(() => { this.approvalCancellation = null; });
+        } catch { failed(); }
+        return true;
+    }
+
+    /** Coordinator releases observation ownership; input stays permanently frozen. */
+    finishShutdownObservation(): void { this.shutdownObservationFinished = true; }
+
+    private hasPendingOutputProducers(): boolean {
+        return !this.outputSettled || this.serverRequestTasks.size > 0 || this.approvalCancellation !== null;
+    }
+
+    cancelOutputDrain(): void {
+        if (this.hasPendingOutputProducers()) this.failOutputStorage();
+        this.outputReadAbort?.abort();
+    }
+
+    private assertInputOpen(): void {
+        if (this.shutdownInputFrozen) throw new Error('Codex input is frozen for shutdown');
+    }
+
+    private failOutputStorage(): void {
+        if (this.outputFailed) return;
+        this.outputFailed = true;
+        try { this.outputGate?.onFailure(); }
+        catch { logger.warn('[CodexAppServer] Output failure observer failed'); }
+    }
+
+    private async admitTurn(): Promise<void> {
+        this.assertInputOpen();
+        if (!this.outputGate) return;
+        if (this.turnAdmissionAbort) throw new Error('A turn is already waiting for storage');
+        const controller = new AbortController();
+        this.turnAdmissionAbort = controller;
+        let cancel!: () => void;
+        const cancelled = new Promise<never>((_, reject) => {
+            cancel = () => reject(new Error('Codex turn admission aborted'));
+            controller.signal.addEventListener('abort', cancel, { once: true });
+        });
+        try {
+            await Promise.race([this.outputGate.wait(controller.signal), cancelled]);
+            if (controller.signal.aborted) throw new Error('Codex turn admission aborted');
+            if (!this.connected || this.outputFailed || this.disconnectingEpoch === this.processEpoch) throw new Error('Codex output is unavailable');
+        } finally {
+            controller.signal.removeEventListener('abort', cancel);
+            if (this.turnAdmissionAbort === controller) this.turnAdmissionAbort = null;
+        }
+    }
+
+
+    /** Runtime claim commits at the request write, not the earlier checkpoint preparation hooks. */
+    setTurnDispatchHandler(handler: () => void): void { this.onTurnDispatch = handler; }
+
     setEventHandler(handler: (msg: EventMsg) => void): void {
         this.eventHandler = handler;
     }
 
-    setApprovalHandler(handler: ApprovalHandler): void {
+    /** Replaces the handler/cancellation pair; omitting cancellation clears the old hook. */
+    setApprovalHandler(handler: ApprovalHandler, cancelPending?: () => void | Promise<void>): void {
         this.approvalHandler = handler;
+        this.cancelPendingApprovals = cancelPending ?? null;
     }
 
     private extractTurnId(params: any): string | null {
@@ -941,6 +1038,9 @@ export class CodexAppServerClient {
     // ─── Lifecycle ──────────────────────────────────────────────
 
     async connect(): Promise<void> {
+        const revision = this.disconnectRevision;
+        this.assertInputOpen();
+        if ((this.outputFailed && this.process) || (!this.connected && !this.outputSettled)) throw new Error('Codex output must drain before reconnect');
         if (this.connected) return;
 
         if (this.multiAuthProxy || this.multiAuthProxyCleanup) {
@@ -1050,6 +1150,8 @@ export class CodexAppServerClient {
         // Native child_process.spawn fails with ENOENT for .cmd shims (issues #980, #1016).
         let proc: ReturnType<typeof crossSpawn>;
         try {
+            this.assertInputOpen();
+            if (revision !== this.disconnectRevision) throw new Error('Codex connection cancelled by disconnect');
             proc = crossSpawn(command, args, {
                 stdio: ['pipe', 'pipe', 'pipe'],
                 env,
@@ -1067,13 +1169,15 @@ export class CodexAppServerClient {
             logger.debug('[CodexAppServer] Process error:', err);
         });
 
-        proc.on('exit', (code, signal) => {
+        let epochOutputDrain: Promise<void> | null = null;
+        const finishExit = (code: number | null, signal: NodeJS.Signals | null) => {
             logger.debug(`[CodexAppServer] Process exited: code=${code} signal=${signal}`);
             // Ignore stale process exits from prior generations during reconnect.
             if (this.process !== proc || this.processEpoch !== epoch) {
                 logger.debug('[CodexAppServer] Ignoring stale process exit');
                 return;
             }
+            if (this.disconnectingEpoch === epoch) return;
             this.connected = false;
             if (this.backgroundTimer) clearTimeout(this.backgroundTimer);
             this.backgroundTimer = null;
@@ -1088,6 +1192,20 @@ export class CodexAppServerClient {
             }
             // Resolve pending turn completion (treat as abort)
             this.resolvePendingTurn(true);
+        };
+
+        proc.on('exit', (code, signal) => {
+            if (this.process !== proc || this.processEpoch !== epoch) return;
+            this.connected = false;
+            // A root exit can precede consumption of the final stdout bytes.
+            if (epochOutputDrain) {
+                const abort = this.outputReadAbort;
+                const timer = setTimeout(() => abort?.abort(), 5000);
+                timer.unref?.();
+                const done = () => { clearTimeout(timer); finishExit(code, signal); };
+                void epochOutputDrain.then(done, done);
+            }
+            else finishExit(code, signal);
         });
 
         // Pipe stderr for debug logging
@@ -1098,11 +1216,35 @@ export class CodexAppServerClient {
         });
 
         // Parse newline-delimited JSON from stdout
-        this.readline = createInterface({ input: proc.stdout! });
-        this.readline.on('line', (line) => {
-            if (this.process !== proc || this.processEpoch !== epoch) return;
-            this.handleLine(line, epoch);
-        });
+        if (this.outputGate) {
+            const gate = this.outputGate;
+            this.outputReadAbort = new AbortController();
+            this.outputSettled = false;
+            this.outputFailed = false;
+            this.outputDrain = readCodexOutput(proc.stdout!, {
+                signal: this.outputReadAbort.signal, beforeLine: gate.wait,
+                onLine: line => { if (this.process === proc && this.processEpoch === epoch) this.handleLine(line, epoch); },
+            }).then(() => this.flushAgentMessageDeltas());
+            epochOutputDrain = this.outputDrain;
+            void this.outputDrain.then(() => { this.outputSettled = true; }, () => {
+                this.outputSettled = true;
+                this.failOutputStorage();
+                if (this.process !== proc || this.processEpoch !== epoch || this.disconnectingEpoch === epoch) return;
+                this.connected = false;
+                for (const [id, request] of this.pending) {
+                    if (request.epoch !== epoch) continue;
+                    request.reject(new Error('Codex output could not be drained')); this.pending.delete(id);
+                }
+                this.resolvePendingTurn(true);
+                logger.warn('[CodexAppServer] Output storage stream failed; completion is unconfirmed');
+            });
+        } else {
+            this.readline = createInterface({ input: proc.stdout! });
+            this.readline.on('line', (line) => {
+                if (this.process !== proc || this.processEpoch !== epoch) return;
+                this.handleLine(line, epoch);
+            });
+        }
 
         // Perform initialize handshake
         const initParams: InitializeParams = {
@@ -1117,7 +1259,9 @@ export class CodexAppServerClient {
         };
         try {
             await this.request('initialize', initParams);
+            if (revision !== this.disconnectRevision) throw new Error('Codex connection cancelled by disconnect');
             this.notify('initialized');
+            this.initializedEpoch = epoch;
             this.connected = true;
             logger.debug('[CodexAppServer] Connected and initialized');
         } catch (error) {
@@ -1140,11 +1284,13 @@ export class CodexAppServerClient {
      * caller decides whether to fall back to `disconnect()`, and that fallback
      * is a kill, so it is never quiescence.
      */
-    async endInputAndAwaitExit(budgetMs: number): Promise<{
+    async endInputAndAwaitExit(budgetMs: number, signal?: AbortSignal): Promise<{
         exited: boolean;
         code: number | null;
         signal: string | null;
     }> {
+        if (!Number.isFinite(budgetMs) || budgetMs <= 0 || budgetMs > 30000) throw new Error('Invalid exit observation budget');
+        if (signal?.aborted) return { exited: false, code: null, signal: null };
         const proc = this.process;
         // Nothing to end. Reported as not-exited rather than as a clean exit:
         // "there was no process" is not "the process finished writing".
@@ -1160,25 +1306,54 @@ export class CodexAppServerClient {
             return { exited: true, code: proc.exitCode ?? null, signal: proc.signalCode ?? null };
         }
 
-        const left = new Promise<{ code: number | null; signal: string | null } | null>((resolve) => {
-            proc.once('exit', (code, signal) => resolve({ code, signal }));
-            const deadline = setTimeout(() => resolve(null), budgetMs);
+        return new Promise((resolve) => {
+            let settled = false;
+            const finish = (outcome: { exited: boolean; code: number | null; signal: string | null }) => {
+                if (settled) return;
+                settled = true;
+                clearTimeout(deadline);
+                proc.removeListener('exit', onExit);
+                signal?.removeEventListener('abort', onAbort);
+                resolve(outcome);
+            };
+            const onAbort = () => finish({ exited: false, code: null, signal: null });
+            const onExit = (code: number | null, signal: string | null) => finish({ exited: true, code, signal });
+            const deadline = setTimeout(() => finish({ exited: false, code: null, signal: null }), budgetMs);
             deadline.unref?.();
+            proc.once('exit', onExit);
+            signal?.addEventListener('abort', onAbort, { once: true });
+            if (signal?.aborted) { onAbort(); return; }
+            try {
+                // Register before EOF: even synchronous exit must settle and release the deadline.
+                proc.stdin?.end();
+            } catch {
+                finish({ exited: false, code: null, signal: null });
+            }
         });
-
-        try {
-            // The only thing sent. No `kill`, in this method or after it.
-            proc.stdin?.end();
-        } catch {
-            return { exited: false, code: null, signal: null };
-        }
-
-        const outcome = await left;
-        if (!outcome) return { exited: false, code: null, signal: null };
-        return { exited: true, code: outcome.code, signal: outcome.signal };
     }
 
-    private async disconnectInternal(opts?: {
+    private disconnectInternal(opts?: Parameters<CodexAppServerClient['performDisconnectInternal']>[0]): Promise<void> {
+        const key = JSON.stringify([!!opts?.preserveThreadState, !!opts?.preservePendingTurnCompletion, !!opts?.awaitProcessExit]);
+        if (this.disconnectOperation) {
+            return this.disconnectOperation.key === key ? this.disconnectOperation.promise
+                : this.disconnectOperation.promise.then(() => this.disconnectInternal(opts), () => this.disconnectInternal(opts));
+        }
+        if (this.shutdownInputFrozen && (opts !== undefined || !this.shutdownObservationFinished
+            || (this.process && this.process.exitCode == null && this.process.signalCode == null))) {
+            return Promise.reject(new Error('Codex input is frozen for shutdown'));
+        }
+        if (this.shutdownInputFrozen && !this.outputSettled) {
+            if (!this.outputDrain) return Promise.reject(new Error('Codex output is unavailable'));
+            return this.outputDrain.then(() => this.disconnectInternal(opts), () => this.disconnectInternal(opts));
+        }
+        const promise = this.performDisconnectInternal(opts);
+        this.disconnectOperation = { key, promise };
+        const clear = () => { if (this.disconnectOperation?.promise === promise) this.disconnectOperation = null; };
+        void promise.then(clear, clear);
+        return promise;
+    }
+
+    private async performDisconnectInternal(opts?: {
         preserveThreadState?: boolean;
         preservePendingTurnCompletion?: boolean;
         /**
@@ -1203,94 +1378,127 @@ export class CodexAppServerClient {
         const epoch = this.processEpoch;
         logger.debug(`[CodexAppServer] Disconnecting; pid=${pid ?? 'none'}`);
 
-        this.readline?.close();
-        this.readline = null;
-
+        this.disconnectingEpoch = epoch;
+        this.preserveDisconnectingTurn = opts?.preservePendingTurnCompletion === true;
         try {
-            proc?.stdin?.end();
-            proc?.kill('SIGTERM');
-        } catch { /* ignore */ }
-
-        // Force kill after 2s (unref so timer doesn't block process exit)
-        if (pid) {
-            const killTimer = setTimeout(() => {
+            this.turnAdmissionAbort?.abort();
+            if (this.outputGate && !this.outputSettled) {
+                // An orderly EOF can preserve the storage verdict on idle auth/restart paths.
+                // This is a local grace period, not a runtime/Job shutdown receipt.
+                try { proc?.stdin?.end(); } catch { /* settle through the fallback below */ }
+                let timer: ReturnType<typeof setTimeout> | undefined;
                 try {
-                    process.kill(pid, 0); // check alive
-                    process.kill(pid, 'SIGKILL');
-                } catch { /* already dead */ }
-            }, 2000);
-            killTimer.unref();
-            proc?.once('exit', () => clearTimeout(killTimer));
-        }
+                    await Promise.race([
+                        this.outputDrain?.catch(() => {}),
+                        new Promise<void>(resolve => { timer = setTimeout(resolve, 1000); timer.unref?.(); }),
+                    ]);
+                } finally { if (timer) clearTimeout(timer); }
+            }
+            if (this.outputGate && this.hasPendingOutputProducers()) this.failOutputStorage();
+            this.outputReadAbort?.abort();
+            await this.outputDrain?.catch(() => {});
+            this.clearAgentMessageDeltas();
+            this.readline?.close();
+            this.readline = null;
 
-        if (opts?.awaitProcessExit && proc && proc.exitCode == null && proc.signalCode == null) {
-            // The SIGKILL timer above fires at 2s; anything still alive after the cap is unkillable
-            // (uninterruptible I/O), and its bwrap mount points cannot be released. Fail closed
-            // rather than run the sandbox cleanup — and the next gate — on a stale process.
-            let exitTimer: ReturnType<typeof setTimeout> | undefined;
-            let onExit: (() => void) | undefined;
+            const alive = proc && proc.exitCode == null && proc.signalCode == null;
             try {
-                await new Promise<void>((resolve, reject) => {
-                    onExit = () => resolve();
-                    proc.once('exit', onExit);
-                    exitTimer = setTimeout(
-                        () => reject(new Error('Codex process did not exit before the sandbox cleanup')),
-                        CodexAppServerClient.PROCESS_EXIT_WAIT_MS,
-                    );
-                    exitTimer.unref();
-                });
-            } finally {
-                if (exitTimer) clearTimeout(exitTimer);
-                if (onExit) proc.off('exit', onExit);
+                proc?.stdin?.end();
+                if (alive) proc?.kill('SIGTERM');
+            } catch { /* ignore */ }
+
+            // Force kill after 2s (unref so timer doesn't block process exit)
+            if (pid && alive) {
+                const killTimer = setTimeout(() => {
+                    if (proc.exitCode != null || proc.signalCode != null) return;
+                    try {
+                        process.kill(pid, 0); // check alive
+                        process.kill(pid, 'SIGKILL');
+                    } catch { /* already dead */ }
+                }, 2000);
+                killTimer.unref();
+                proc?.once('exit', () => clearTimeout(killTimer));
+            }
+
+            if (opts?.awaitProcessExit && proc && proc.exitCode == null && proc.signalCode == null) {
+                // The SIGKILL timer above fires at 2s; anything still alive after the cap is unkillable
+                // (uninterruptible I/O), and its bwrap mount points cannot be released. Fail closed
+                // rather than run the sandbox cleanup — and the next gate — on a stale process.
+                let exitTimer: ReturnType<typeof setTimeout> | undefined;
+                let onExit: (() => void) | undefined;
+                try {
+                    await new Promise<void>((resolve, reject) => {
+                        onExit = () => resolve();
+                        proc.once('exit', onExit);
+                        exitTimer = setTimeout(
+                            () => reject(new Error('Codex process did not exit before the sandbox cleanup')),
+                            CodexAppServerClient.PROCESS_EXIT_WAIT_MS,
+                        );
+                        exitTimer.unref();
+                    });
+                } finally {
+                    if (exitTimer) clearTimeout(exitTimer);
+                    if (onExit) proc.off('exit', onExit);
+                }
+            }
+
+            this.process = null;
+            this.connected = false;
+            this._turnId = null;
+            this.notificationProtocol = 'unknown';
+            this.completedTurnIds.clear();
+            // Statuses describe the dead process's MCP servers; the next process
+            // re-reports. Keeping them would blame stale servers in later aborts.
+            this.mcpServerStatuses.clear();
+            this.pendingInactivityAbort = null;
+            // Approvals belonging to the dead process can never be answered; drop them
+            // so a later turn's watchdog is not left permanently disarmed.
+            this.outstandingServerRequests = 0;
+            if (!opts?.preserveThreadState) {
+                this._threadId = null;
+                this.threadDefaults = null;
+            }
+
+            // Fail in-flight requests from this process generation.
+            for (const [id, req] of this.pending) {
+                if (req.epoch !== epoch) continue;
+                req.reject(new Error(`Codex process disconnected while waiting for ${req.method}`));
+                this.pending.delete(id);
+            }
+
+            // A forced restart keeps the current caller pending until the replacement
+            // process has initialized and resumed the thread. This prevents the queue
+            // loop from dispatching its next turn against an unresumed app-server.
+            if (!opts?.preservePendingTurnCompletion) {
+                this.resolvePendingTurn(true);
+            }
+
+            if (this.sandboxCleanup) {
+                try { await this.sandboxCleanup(); } catch { /* ignore */ }
+                this.sandboxCleanup = null;
+            }
+            this.sandboxEnabled = false;
+
+            if (this.multiAuthProxy || this.multiAuthProxyCleanup) {
+                await this.cleanupMultiAuthProxy();
+            }
+
+            logger.debug('[CodexAppServer] Disconnected');
+        } finally {
+            if (this.disconnectingEpoch === epoch) {
+                this.disconnectingEpoch = null;
+                this.preserveDisconnectingTurn = false;
             }
         }
-
-        this.process = null;
-        this.connected = false;
-        this._turnId = null;
-        this.notificationProtocol = 'unknown';
-        this.completedTurnIds.clear();
-        // Statuses describe the dead process's MCP servers; the next process
-        // re-reports. Keeping them would blame stale servers in later aborts.
-        this.mcpServerStatuses.clear();
-        this.pendingInactivityAbort = null;
-        // Approvals belonging to the dead process can never be answered; drop them
-        // so a later turn's watchdog is not left permanently disarmed.
-        this.outstandingServerRequests = 0;
-        if (!opts?.preserveThreadState) {
-            this._threadId = null;
-            this.threadDefaults = null;
-        }
-
-        // Fail in-flight requests from this process generation.
-        for (const [id, req] of this.pending) {
-            if (req.epoch !== epoch) continue;
-            req.reject(new Error(`Codex process disconnected while waiting for ${req.method}`));
-            this.pending.delete(id);
-        }
-
-        // A forced restart keeps the current caller pending until the replacement
-        // process has initialized and resumed the thread. This prevents the queue
-        // loop from dispatching its next turn against an unresumed app-server.
-        if (!opts?.preservePendingTurnCompletion) {
-            this.resolvePendingTurn(true);
-        }
-
-        if (this.sandboxCleanup) {
-            try { await this.sandboxCleanup(); } catch { /* ignore */ }
-            this.sandboxCleanup = null;
-        }
-        this.sandboxEnabled = false;
-
-        if (this.multiAuthProxy || this.multiAuthProxyCleanup) {
-            await this.cleanupMultiAuthProxy();
-        }
-
-        logger.debug('[CodexAppServer] Disconnected');
     }
 
     async disconnect(): Promise<void> {
+        this.disconnectRevision++;
         await this.disconnectInternal();
+        // A queued public stop also settles state preserved by an already-finished restart.
+        this.resolvePendingTurn(true);
+        this._threadId = null;
+        this.threadDefaults = null;
     }
 
     /**
@@ -1614,13 +1822,25 @@ export class CodexAppServerClient {
     }
 
     /** Explicit, idle-only recovery. Unlike legacy reconnect, failure never discards the thread. */
+    private async withReconnect<T>(work: () => Promise<T>): Promise<T> {
+        this.reconnecting++;
+        try { return await work(); }
+        finally { this.reconnecting--; }
+    }
+
     async reconnectForAuth(): Promise<CodexAuthCheck> {
+        return this.withReconnect(() => this.reconnectForAuthInternal());
+    }
+
+    private async reconnectForAuthInternal(): Promise<CodexAuthCheck> {
+        const revision = this.disconnectRevision;
         const threadId = this._threadId;
         const defaults = this.threadDefaults;
         if (!threadId || this.authRecoveryBusy || this.authRecoverySource === 'managed') throw new CodexAuthRecoveryError('restart-failed');
         let phase: 'restart-failed' | 'account-check-failed' | 'resume-failed' = 'restart-failed';
         try {
             await this.disconnectInternal({ preserveThreadState: true, awaitProcessExit: true });
+            if (revision !== this.disconnectRevision) throw new CodexAuthRecoveryError('restart-failed');
             await this.connect();
             phase = 'account-check-failed';
             // A rotation proxy owns authentication itself. account/read cannot verify its payer.
@@ -1655,18 +1875,26 @@ export class CodexAppServerClient {
             if (resumed.threadId !== threadId) throw new CodexAuthRecoveryError('resume-failed');
             return account;
         } catch (error) {
-            this._threadId = threadId;
-            this.threadDefaults = defaults;
+            if (revision === this.disconnectRevision) {
+                this._threadId = threadId;
+                this.threadDefaults = defaults;
+            }
             throw error instanceof CodexAuthRecoveryError ? error : new CodexAuthRecoveryError(phase);
         }
     }
 
     async reconnectAndResumeThread(opts?: { preservePendingTurnCompletion?: boolean }): Promise<boolean> {
+        return this.withReconnect(() => this.reconnectAndResumeThreadInternal(opts));
+    }
+
+    private async reconnectAndResumeThreadInternal(opts?: { preservePendingTurnCompletion?: boolean }): Promise<boolean> {
+        const revision = this.disconnectRevision;
         const threadId = this._threadId;
         await this.disconnectInternal({
             preserveThreadState: !!threadId,
             preservePendingTurnCompletion: opts?.preservePendingTurnCompletion,
         });
+        if (revision !== this.disconnectRevision) throw new Error('Codex restart cancelled by disconnect');
         await this.connect();
 
         if (!threadId) {
@@ -1696,6 +1924,7 @@ export class CodexAppServerClient {
     }
 
     private resolvePendingTurn(aborted: boolean): void {
+        if (this.disconnectingEpoch === this.processEpoch && this.preserveDisconnectingTurn) return;
         if (!this.pendingTurnCompletion) return;
         if (this.pendingTurnCompletion.inactivityTimer) {
             clearTimeout(this.pendingTurnCompletion.inactivityTimer);
@@ -1821,6 +2050,7 @@ export class CodexAppServerClient {
         gracePeriodMs?: number;
         forceRestartOnTimeout?: boolean;
     }): Promise<{ hadActiveTurn: boolean; aborted: boolean; forcedRestart: boolean; resumedThread: boolean }> {
+        this.turnAdmissionAbort?.abort();
         const hadActiveTurn = this.hasPendingTurnCompletion();
 
         // No active turn pending in this client call-site.
@@ -1845,6 +2075,9 @@ export class CodexAppServerClient {
             return { hadActiveTurn: true, aborted: true, forcedRestart: false, resumedThread: false };
         }
 
+        if (this.shutdownInputFrozen) {
+            return { hadActiveTurn: true, aborted: false, forcedRestart: false, resumedThread: false };
+        }
         const shouldForceRestart = opts?.forceRestartOnTimeout ?? true;
         if (!shouldForceRestart) {
             return { hadActiveTurn: true, aborted: false, forcedRestart: false, resumedThread: false };
@@ -1897,8 +2130,10 @@ export class CodexAppServerClient {
             throw new Error('No active thread. Call startThread first.');
         }
 
+        this.assertInputOpen();
         const turnPreparation = this.consumePreparedTurn(opts)
             ?? await this.resolveBeforeTurn(opts)?.();
+        this.assertInputOpen();
         // From here the prompt goes to the provider: whatever happens next, the turn's workspace is
         // no longer discardable. specs/linux-checkpoint-enforcement-backend R4.
         this.markTurnDispatched?.();
@@ -1986,11 +2221,15 @@ export class CodexAppServerClient {
             await new Promise(resolve => setTimeout(resolve, 0));
         }
 
+        await this.admitTurn();
+
         // Clear any stale watchdog snapshot so it can only describe this turn's abort.
         this.pendingInactivityAbort = null;
 
+        this.assertInputOpen();
         const turnPreparation = this.consumePreparedTurn(opts)
             ?? await this.resolveBeforeTurn(opts)?.();
+        this.assertInputOpen();
         // From here the prompt goes to the provider: whatever happens next, the turn's workspace is
         // no longer discardable. specs/linux-checkpoint-enforcement-backend R4.
         this.markTurnDispatched?.();
@@ -2057,6 +2296,7 @@ export class CodexAppServerClient {
     }
 
     async steerTurn(prompt: string): Promise<void> {
+        this.assertInputOpen();
         if (!this._threadId || !this._turnId) {
             throw new Error('No active Codex turn');
         }
@@ -2131,12 +2371,15 @@ export class CodexAppServerClient {
     private static readonly REQUEST_TIMEOUT_MS = 30_000;
 
     private request(method: string, params?: unknown, timeoutMs?: number): Promise<unknown> {
+        if (this.shutdownInputFrozen && method !== 'turn/interrupt') return Promise.reject(new Error('Codex input is frozen for shutdown'));
         const timeout = timeoutMs ?? CodexAppServerClient.REQUEST_TIMEOUT_MS;
         return new Promise((resolve, reject) => {
             if (!this.process?.stdin?.writable) {
                 reject(new Error(`Cannot send ${method}: stdin not writable`));
                 return;
             }
+            // No await between this observer and stdin.write; preparation remains non-drainable until here.
+            if (method === 'turn/start') this.onTurnDispatch?.();
             const id = this.nextId++;
 
             const timer = setTimeout(() => {
@@ -2159,6 +2402,7 @@ export class CodexAppServerClient {
     }
 
     private notify(method: string, params?: unknown): void {
+        if (this.shutdownInputFrozen) return;
         if (!this.process?.stdin?.writable) return;
         const msg: JsonRpcRequest = { jsonrpc: '2.0', method, params };
         this.process.stdin.write(JSON.stringify(msg) + '\n');
@@ -2166,6 +2410,7 @@ export class CodexAppServerClient {
     }
 
     private respond(id: number, result: unknown, sourceEpoch: number): void {
+        if (this.shutdownInputFrozen) return;
         if (sourceEpoch !== this.processEpoch) {
             logger.debug(`[CodexAppServer] Ignoring response from stale epoch for id=${id}`);
             return;
@@ -2212,13 +2457,15 @@ export class CodexAppServerClient {
         if (msg.id != null && msg.method) {
             this.outstandingServerRequests += 1;
             this.schedulePendingTurnInactivityTimeout();
-            this.handleServerRequest(msg.id, msg.method, msg.params, sourceEpoch).catch((err) => {
+            const task = this.handleServerRequest(msg.id, msg.method, msg.params, sourceEpoch).catch((err) => {
                 logger.debug('[CodexAppServer] Error handling server request:', err);
             }).finally(() => {
+                this.serverRequestTasks.delete(task);
                 if (sourceEpoch !== this.processEpoch) return;
                 this.outstandingServerRequests = Math.max(0, this.outstandingServerRequests - 1);
                 this.schedulePendingTurnInactivityTimeout();
             });
+            this.serverRequestTasks.add(task);
             return;
         }
 
@@ -2308,6 +2555,8 @@ export class CodexAppServerClient {
     }
 
     private async handleServerRequest(id: number, method: string, params: any, sourceEpoch: number): Promise<void> {
+        // A buffered approval must not create a new runtime producer after freeze.
+        if (this.shutdownInputFrozen) return;
         if (method === 'mcpServer/elicitation/request') {
             const toolName = this.parseToolNameFromElicitationMessage(params?.message) ?? params?.serverName ?? 'McpTool';
             const decision = await this.handleApproval({

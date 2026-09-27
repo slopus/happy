@@ -82,6 +82,8 @@
     "dist",
     "bin",
     "scripts",
+    "scripts/build-windows-session-launcher.cjs",
+    "native/windowsSessionLauncher.cs",
     "browser-extension",
     "browser-session-image",
     "tools/archives",

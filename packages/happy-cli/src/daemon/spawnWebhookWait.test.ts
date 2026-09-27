@@ -74,4 +74,22 @@ describe('spawn webhook wait', () => {
     });
     expect(awaiters.has(123)).toBe(false);
   });
+  it('cancels the webhook waiter and both timers when native resume fails', async () => {
+    vi.useFakeTimers(); const logger = { debug: vi.fn() }; const awaiters = new Map<number, (s: any) => void>();
+    const cancellation = new AbortController();
+    const result = waitForSessionWebhook({ pid: 123, pidToAwaiter: awaiters, logger, signal: cancellation.signal,
+      timeouts: { softTimeoutMs: 15, finalTimeoutMs: 60 } });
+    cancellation.abort();
+    expect(await result).toEqual({ type: 'error', errorMessage: 'Session startup cancelled for PID 123' });
+    expect(awaiters.size).toBe(0); expect(vi.getTimerCount()).toBe(0);
+    await vi.advanceTimersByTimeAsync(100);
+    expect(logger.debug).not.toHaveBeenCalledWith(expect.stringContaining('timeout'));
+  });
+  it('cancelling an old waiter does not delete a replacement waiter for the same PID', async () => {
+    vi.useFakeTimers(); const awaiters = new Map<number, (s: any) => void>(); const cancellation = new AbortController();
+    const result = waitForSessionWebhook({ pid: 123, pidToAwaiter: awaiters, logger: { debug: vi.fn() }, signal: cancellation.signal });
+    const replacement = vi.fn(); awaiters.set(123, replacement); cancellation.abort(); await result;
+    expect(awaiters.get(123)).toBe(replacement); expect(vi.getTimerCount()).toBe(0);
+  });
+
 });

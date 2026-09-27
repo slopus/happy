@@ -41,6 +41,7 @@ import { runScriptAutomationTool, scriptAutomationToolRequestSchema } from './sc
 export const BASH_STREAM_AGENT_TOOL_NAME = 'mcp__happy__bash_stream';
 
 export interface HappyServerHandlers {
+    admitTool?: <T>(work: () => Promise<T>) => Promise<T>;
     changeTitle: (title: string, branchSlug?: string) => Promise<{ success: boolean; error?: string }>;
     client: ApiSessionClient;
     proposeLesson?: (input: { token: string; proposal: unknown }) => { accepted: boolean };
@@ -94,7 +95,21 @@ export function createChangeTitleHandler(client: ApiSessionClient) {
     };
 }
 
+function createToolRunner(admitTool: HappyServerHandlers['admitTool']) {
+    // Track the actual callback, not HTTP response lifetime (disconnect does not stop a tool).
+    return async <T,>(work: () => Promise<T>) => {
+        if (!admitTool) return work();
+        let started = false;
+        try { return await admitTool(() => { started = true; return work(); }); }
+        catch (error) {
+            if (started) throw error;
+            return { isError: true, content: [{ type: 'text' as const, text: 'Tool unavailable during session shutdown' }] };
+        }
+    };
+}
+
 function createMcpServer(handlers: HappyServerHandlers): McpServer {
+    const runTool = createToolRunner(handlers.admitTool);
     const mcp = new McpServer({
         name: "Happy MCP",
         version: "1.0.0",
@@ -105,14 +120,14 @@ function createMcpServer(handlers: HappyServerHandlers): McpServer {
             title: 'Propose Project Lesson',
             description: 'Stage one verified lesson proposal for the current foreground turn. Requires its current token. This does not save or approve a lesson; normal turn completion and human approval are required.',
             inputSchema: { token: z.string().uuid(), proposal: z.record(z.string(), z.unknown()) },
-        }, async (input) => ({ content: [{ type: 'text' as const, text: JSON.stringify(handlers.proposeLesson!(input)) }] }));
+        }, async (input) => runTool(async () => ({ content: [{ type: 'text' as const, text: JSON.stringify(handlers.proposeLesson!(input)) }] })));
     }
 
     if (!handlers.mandatorySandbox) mcp.registerTool('script_automations', {
         title: 'Manage Project Script Automations',
         description: 'Manage Node bundle scripts in the project Execution > Automations admin without an LLM session. List before registering scheduled collection or batch work. Supports list/get/upsert/run/list_runs/set_enabled; use registrationKey and expectedRevision for safe retries. upsert reads sourcePath relative to this project, encrypts the bundle, and supports schedule=null or at/interval/daily/weekly, externalEnabled, JSON inputSchema, allowlisted origins and env:<mountedGroupId>:<KEY> secret references. No API keys are issued by this tool. Return and use the same admin ID; do not install OS cron or hidden background timers.',
         inputSchema: { request: scriptAutomationToolRequestSchema },
-    }, async ({ request }) => {
+    }, async ({ request }) => runTool(async () => {
         try {
             const metadata = handlers.client.getMetadata();
             if (!metadata?.path) throw new Error('SCRIPT_PROJECT_CONTEXT_REQUIRED');
@@ -122,7 +137,7 @@ function createMcpServer(handlers: HappyServerHandlers): McpServer {
             const code = error instanceof Error && /^[A-Z0-9_-]{1,100}$/.test(error.message) ? error.message : 'SCRIPT_MANAGEMENT_FAILED';
             return { isError: true, content: [{ type: 'text' as const, text: code }] };
         }
-    });
+    }));
 
     mcp.registerTool('change_title', {
         description: 'Change the title of the current chat session',
@@ -133,7 +148,7 @@ function createMcpServer(handlers: HappyServerHandlers): McpServer {
                 'A short English kebab-case slug (2-4 words) summarizing the same task, for use as a git branch name.'
             ),
         },
-    }, async (args) => {
+    }, async (args) => runTool(async () => {
         const response = await handlers.changeTitle(args.title, args.branchSlug);
         logger.debugLargeJson('[happyMCP] Response:', response);
 
@@ -158,7 +173,7 @@ function createMcpServer(handlers: HappyServerHandlers): McpServer {
                 isError: true,
             };
         }
-    });
+    }));
 
     // chat-tool-output-streaming Phase 3 — bash_stream wraps `bash -c` and
     // forwards stdout/stderr line-by-line via onBashStreamProgress so the
@@ -173,7 +188,7 @@ function createMcpServer(handlers: HappyServerHandlers): McpServer {
             command: z.string().describe('Shell command to execute via `bash -c`'),
             cwd: z.string().optional().describe('Working directory (defaults to the daemon cwd)'),
         },
-    }, async (args) => {
+    }, async (args) => runTool(async () => {
         logger.debug(`[bash_stream:tool] invoked command=${String(args.command).slice(0, 100)}`);
         try {
             const protectedCwd = handlers.protectedBashCwd?.();
@@ -238,14 +253,14 @@ function createMcpServer(handlers: HappyServerHandlers): McpServer {
                 isError: true,
             };
         }
-    });
+    }));
 
     // Agent Browser PoC: the task runtime replaces the extension-bridge tools,
     // which fall back to the active tab and would bypass the task lease.
     if (handlers.browserTaskRuntime) {
         registerBrowserTaskTools(mcp, handlers.browserTaskRuntime, { agentSessionId: handlers.client.sessionId });
     } else if (!handlers.mandatorySandbox) {
-        registerBrowserTools(mcp);
+        registerBrowserTools(mcp, runTool);
     }
 
     return mcp;
@@ -256,7 +271,7 @@ function createMcpServer(handlers: HappyServerHandlers): McpServer {
  * logged-in Chrome. The session reaches the browser through the daemon
  * (`/browser/request`), which relays to the extension over a loopback socket.
  */
-function registerBrowserTools(mcp: McpServer): void {
+function registerBrowserTools(mcp: McpServer, runTool: ReturnType<typeof createToolRunner>): void {
     const bridge: BridgeRequest = async (method, params, opts) => {
         const viewerKey = process.env.HAPPY_BROWSER_VIEWER_KEY
         if (process.env.HAPPY_BROWSER_VIEWER_SCOPE_REQUIRED === '1' && !viewerKey) {
@@ -293,7 +308,7 @@ function registerBrowserTools(mcp: McpServer): void {
         inputSchema: {
             profile: z.string().optional().describe('Which connected Chrome profile to act on. Only needed when browser_capabilities or an AMBIGUOUS_PROFILE error says more than one is connected.'),
         },
-    }, async (args) => runBrowserTool({ request: bridge, status, method: 'tabs_list', params: { profile: args.profile } }));
+    }, async (args) => runTool(async () => runBrowserTool({ request: bridge, status, method: 'tabs_list', params: { profile: args.profile } })));
 
     mcp.registerTool('browser_snapshot', {
         description:
@@ -303,7 +318,7 @@ function registerBrowserTools(mcp: McpServer): void {
             tabId: z.number().optional().describe('Tab to snapshot (defaults to the active tab)'),
             profile: z.string().optional().describe('Which connected Chrome profile to act on. Only needed when browser_capabilities or an AMBIGUOUS_PROFILE error says more than one is connected.'),
         },
-    }, async (args) => runBrowserTool({ request: bridge, status, method: 'snapshot', params: { profile: args.profile, tabId: args.tabId } }));
+    }, async (args) => runTool(async () => runBrowserTool({ request: bridge, status, method: 'snapshot', params: { profile: args.profile, tabId: args.tabId } })));
 
     mcp.registerTool('browser_screenshot', {
         description:
@@ -314,7 +329,7 @@ function registerBrowserTools(mcp: McpServer): void {
             fullPage: z.boolean().optional().describe('Capture the whole scrollable page instead of just the visible area. Needs the optional debugger permission, which only the user can enable.'),
             profile: z.string().optional().describe('Which connected Chrome profile to act on. Only needed when browser_capabilities or an AMBIGUOUS_PROFILE error says more than one is connected.'),
         },
-    }, async (args) => runBrowserTool({ request: bridge, status, method: 'screenshot', params: { profile: args.profile, tabId: args.tabId, fullPage: args.fullPage } }));
+    }, async (args) => runTool(async () => runBrowserTool({ request: bridge, status, method: 'screenshot', params: { profile: args.profile, tabId: args.tabId, fullPage: args.fullPage } })));
 
     mcp.registerTool('browser_click', {
         description:
@@ -326,7 +341,7 @@ function registerBrowserTools(mcp: McpServer): void {
             trusted: z.boolean().optional().describe('Dispatch a real (isTrusted) mouse event instead of a scripted click. Only needed when a page ignores scripted clicks. Requires the optional debugger permission, which only the user can enable. Not supported for elements inside an iframe (a @fN:eM ref) — use a normal click there.'),
             profile: z.string().optional().describe('Which connected Chrome profile to act on. Only needed when browser_capabilities or an AMBIGUOUS_PROFILE error says more than one is connected.'),
         },
-    }, async (args) => runBrowserTool({ request: bridge, status, method: 'click', params: { profile: args.profile, ref: args.ref, tabId: args.tabId, trusted: args.trusted } }));
+    }, async (args) => runTool(async () => runBrowserTool({ request: bridge, status, method: 'click', params: { profile: args.profile, ref: args.ref, tabId: args.tabId, trusted: args.trusted } })));
 
     mcp.registerTool('browser_fill', {
         description:
@@ -339,7 +354,7 @@ function registerBrowserTools(mcp: McpServer): void {
             trusted: z.boolean().optional().describe('Type as real (isTrusted) input instead of setting the value directly. Needed for editors that ignore scripted input. Requires the optional debugger permission, which only the user can enable. Not supported for elements inside an iframe (a @fN:eM ref) — use a normal fill there.'),
             profile: z.string().optional().describe('Which connected Chrome profile to act on. Only needed when browser_capabilities or an AMBIGUOUS_PROFILE error says more than one is connected.'),
         },
-    }, async (args) => runBrowserTool({ request: bridge, status, method: 'fill', params: { profile: args.profile, ref: args.ref, value: args.value, tabId: args.tabId, trusted: args.trusted } }));
+    }, async (args) => runTool(async () => runBrowserTool({ request: bridge, status, method: 'fill', params: { profile: args.profile, ref: args.ref, value: args.value, tabId: args.tabId, trusted: args.trusted } })));
 
     mcp.registerTool('browser_scroll', {
         description:
@@ -354,7 +369,7 @@ function registerBrowserTools(mcp: McpServer): void {
         }).refine((args) => (args.deltaX ?? 0) !== 0 || (args.deltaY ?? 0) !== 0, {
             message: 'At least one of deltaX or deltaY must be non-zero',
         }),
-    }, async (args) => runBrowserTool({
+    }, async (args) => runTool(async () => runBrowserTool({
         request: bridge,
         status,
         method: 'scroll',
@@ -365,7 +380,7 @@ function registerBrowserTools(mcp: McpServer): void {
             deltaX: args.deltaX ?? 0,
             deltaY: args.deltaY ?? 0,
         },
-    }));
+    })));
 
     mcp.registerTool('browser_navigate', {
         description: "Navigate a tab in the user's Chrome to a URL. This invalidates any refs from an earlier browser_snapshot of that tab — re-snapshot after navigating.",
@@ -375,7 +390,7 @@ function registerBrowserTools(mcp: McpServer): void {
             tabId: z.number().optional().describe('Tab to navigate (defaults to the active tab)'),
             profile: z.string().optional().describe('Which connected Chrome profile to act on. Only needed when browser_capabilities or an AMBIGUOUS_PROFILE error says more than one is connected.'),
         },
-    }, async (args) => runBrowserTool({ request: bridge, status, method: 'navigate', params: { profile: args.profile, url: args.url, tabId: args.tabId } }));
+    }, async (args) => runTool(async () => runBrowserTool({ request: bridge, status, method: 'navigate', params: { profile: args.profile, url: args.url, tabId: args.tabId } })));
 
     mcp.registerTool('browser_open_tab', {
         description: "Open a new tab in the user's Chrome at a URL.",
@@ -384,7 +399,7 @@ function registerBrowserTools(mcp: McpServer): void {
             url: z.string().describe('URL to open'),
             profile: z.string().optional().describe('Which connected Chrome profile to act on. Only needed when browser_capabilities or an AMBIGUOUS_PROFILE error says more than one is connected.'),
         },
-    }, async (args) => runBrowserTool({ request: bridge, status, method: 'tabs_open', params: { profile: args.profile, url: args.url } }));
+    }, async (args) => runTool(async () => runBrowserTool({ request: bridge, status, method: 'tabs_open', params: { profile: args.profile, url: args.url } })));
 
     mcp.registerTool('browser_capabilities', {
         description:
@@ -393,7 +408,7 @@ function registerBrowserTools(mcp: McpServer): void {
         inputSchema: {
             profile: z.string().optional().describe('Which connected Chrome profile to act on. Only needed when browser_capabilities or an AMBIGUOUS_PROFILE error says more than one is connected.'),
         },
-    }, async (args) => runBrowserTool({ request: bridge, status, method: 'capabilities', params: { profile: args.profile } }));
+    }, async (args) => runTool(async () => runBrowserTool({ request: bridge, status, method: 'capabilities', params: { profile: args.profile } })));
 
     mcp.registerTool('browser_close_tab', {
         description: "Close a tab in the user's Chrome. Use browser_tabs first to find the tabId.",
@@ -402,7 +417,7 @@ function registerBrowserTools(mcp: McpServer): void {
             tabId: z.number().describe('Tab id from browser_tabs'),
             profile: z.string().optional().describe('Which connected Chrome profile to act on. Only needed when browser_capabilities or an AMBIGUOUS_PROFILE error says more than one is connected.'),
         },
-    }, async (args) => runBrowserTool({ request: bridge, status, method: 'tabs_close', params: { profile: args.profile, tabId: args.tabId } }));
+    }, async (args) => runTool(async () => runBrowserTool({ request: bridge, status, method: 'tabs_close', params: { profile: args.profile, tabId: args.tabId } })));
 }
 
 /**
@@ -448,6 +463,7 @@ export async function startHappyServer(
     client: ApiSessionClient,
     options: {
         mandatorySandbox?: boolean;
+        admitTool?: <T>(work: () => Promise<T>) => Promise<T>;
         proposeLesson?: (input: { token: string; proposal: unknown }) => { accepted: boolean };
         protectedBashCwd?: () => string | null;
         trackProtectedBashProcess?: (child: ChildProcess) => void;
@@ -493,6 +509,7 @@ export async function startHappyServer(
         }
         const mcp = createMcpServer({
             changeTitle,
+            admitTool: options.admitTool,
             client,
             mandatorySandbox: options.mandatorySandbox,
             proposeLesson: options.proposeLesson,

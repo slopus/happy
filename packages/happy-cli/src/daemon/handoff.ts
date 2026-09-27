@@ -31,12 +31,16 @@ export async function prepareDaemonStartup({
   preflightCandidate,
   runningVersionMatches,
   stopRunningDaemon,
+  previousDaemonGone = false,
 }: {
   preflightCandidate: () => Promise<void>
   runningVersionMatches: () => Promise<boolean>
   stopRunningDaemon: () => Promise<void>
+  /** Exact process-incarnation evidence, never inferred merely from a stale state flag. */
+  previousDaemonGone?: boolean
 }): Promise<'start' | 'already-running'> {
   await preflightCandidate()
+  if (previousDaemonGone) return 'start'
 
   if (await runningVersionMatches()) {
     return 'already-running'

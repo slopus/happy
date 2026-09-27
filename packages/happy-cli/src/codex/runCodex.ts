@@ -1,4 +1,7 @@
 import type { CodexBackgroundTask } from './codexBackgroundTasks';
+import { CodexLaunchControl } from './codexLaunchControl';
+import type { StandaloneLaunchBootstrap } from '../daemon/standaloneLaunchProtocol';
+import { CodexRuntimeProducerGate } from './codexRuntimeProducerGate';
 import { createLessonProposalTurn } from '@/utils/lessonProposalTurn';
 import { CodexAuthRecovery } from './codexAuthRecovery';
 import { render } from "ink";
@@ -177,6 +180,7 @@ type ClaimedUserMessage = {
  */
 export async function runCodex(opts: {
     principal: RunnerPrincipal;
+    standaloneLaunch?: StandaloneLaunchBootstrap;
     startedBy?: 'daemon' | 'terminal';
     noSandbox?: boolean;
     resumeThreadId?: string;
@@ -199,6 +203,9 @@ export async function runCodex(opts: {
     // Shield killall/pkill against broad kills before anything is spawned —
     // Codex has no PreToolUse hook system, so the PATH shim is its only guard.
     const managedStartup = opts.principal?.kind === 'managed' ? opts.principal.startup : null;
+    if (opts.standaloneLaunch && (managedStartup || opts.startedBy !== 'daemon')) throw new Error('Standalone launch requires an unmanaged daemon session');
+    const launchControl = opts.standaloneLaunch ? await CodexLaunchControl.connect(opts.standaloneLaunch) : undefined;
+    try {
     const accountToken = opts.principal?.kind === 'account' ? opts.principal.credentials.token : null;
     if (managedStartup) {
         // Before every consumer, not merely before the API client. The initial
@@ -350,6 +357,7 @@ export async function runCodex(opts: {
         serverAvailable: response !== null,
         prepared: preparedInitialPrompt,
     });
+    if (opts.standaloneLaunch && (!response || sandboxConfig?.checkpointProtection)) throw new Error('Standalone drain requires an online standard session');
     if (!response && sandboxConfig?.checkpointProtection) {
         throw new Error('checkpoint protection requires an authoritative server session');
     }
@@ -392,6 +400,7 @@ export async function runCodex(opts: {
         metadata,
         state,
         response,
+        sessionOptions: opts.standaloneLaunch ? { trackShutdownStorage: true } : undefined,
         onSessionSwap: (newSession) => {
             session = newSession;
             // Update permission handler with new session to avoid stale reference
@@ -443,6 +452,15 @@ export async function runCodex(opts: {
      */
     let codexPendingRequestId: string | null = null;
     let codexCurrentRequestId: string | null = null;
+    let shouldExit = false;
+    let pending: CollectedBatch<EnhancedMode> | null = null;
+    // Only a launch-bound local channel can invoke drain; never a session RPC.
+    const runtimeGate = session.tracksShutdownStorage && !managedStartup ? new CodexRuntimeProducerGate({
+        hasUndeliveredInput: () => pending !== null || messageQueue.size() > 0,
+        canFreezeInbound: () => !reconnectionHandle && session === initialSession && session.canFreezeInboundMessagesForShutdown(),
+        freezeInbound: () => session.freezeInboundMessagesForShutdown(),
+        stopLoop: () => { shouldExit = true; messageQueue.close(); },
+    }) : undefined;
 
     session.onFileEvent((fileEvent) => {
         const ev = fileEvent.content.data.ev;
@@ -767,11 +785,16 @@ export async function runCodex(opts: {
             logger.debug('[managed] Refusing a user turn that did not come from an admitted run');
             return;
         }
-        preemptLessonReview();
-        const attachmentsPromise = session.drainAttachmentsForUserMessage();
-        return handleUserMessage({ message, attachmentsPromise });
+        const accept = () => {
+            preemptLessonReview();
+            const attachmentsPromise = session.drainAttachmentsForUserMessage();
+            return handleUserMessage({ message, attachmentsPromise });
+        };
+        return runtimeGate ? runtimeGate.admit(accept).catch(error => {
+            logger.warn('[Codex] User input admission refused', { errorName: error instanceof Error ? error.name : typeof error });
+        }) : accept();
     });
-    const initialPromptDelivered = await prepareCodexSessionStart({
+    const deliverInitialPrompt = () => prepareCodexSessionStart({
         // An offline start has no session to confirm against; the guard above
         // (`assertCodexAutomationServerAvailable`) already refused that case,
         // and `prepareCodexSessionStart` refuses again if no confirmer reaches
@@ -819,6 +842,7 @@ export async function runCodex(opts: {
             }
         } : undefined,
     });
+    const initialPromptDelivered = await (runtimeGate ? runtimeGate.admit(deliverInitialPrompt) : deliverInitialPrompt());
     // A run-once marker is only valid together with the fresh prompt supplied by
     // the automation daemon. This prevents an incomplete or accidentally resumed
     // startup from treating a later interactive message as the automation turn.
@@ -841,6 +865,7 @@ export async function runCodex(opts: {
     }, 2000);
 
     const sendReady = () => {
+        if (runtimeGate?.isClosed()) return;
         session.sendSessionEvent({ type: 'ready' });
         try {
             api.push().sendSessionNotification({
@@ -936,7 +961,6 @@ export async function runCodex(opts: {
     let codexTurnId = '';
 
     let abortController = new AbortController();
-    let shouldExit = false;
 
     /**
      * Handles aborting the current task/inference without exiting the process.
@@ -944,6 +968,7 @@ export async function runCodex(opts: {
      * happening but keeps the session alive for new prompts.
      */
     async function handleAbort() {
+        if (runtimeGate?.isFrozen()) return;
         preemptLessonReview();
         if (abortInProgress) {
             await abortInProgress;
@@ -1001,6 +1026,14 @@ export async function runCodex(opts: {
      * Kill terminates the entire process.
      */
     const handleKillSession = async (killOpts?: { stampArchive?: boolean }) => {
+        if (runtimeGate?.isFrozen()) {
+            // The drain owns EOF and storage. A kill cannot race it by closing
+            // the API or reporting a clean exit while a blocked child is live.
+            const decision = await runtimeGate.waitForShutdownDecision();
+            if (decision === 'blocked') throw new Error('Session shutdown is blocked with live runtime ownership');
+            return;
+        }
+        runtimeGate?.beginTermination();
         logger.debug('[Codex] Kill session requested - terminating process');
         await handleAbort();
         logger.debug('[Codex] Abort completed, proceeding with termination');
@@ -1012,10 +1045,11 @@ export async function runCodex(opts: {
             // metadata alone so the session stays resumable.
             if (session) {
                 if (killOpts?.stampArchive ?? true) {
+                    const lifecycleStateSince = Date.now();
                     session.updateMetadata((currentMetadata) => ({
                         ...currentMetadata,
                         lifecycleState: 'archived',
-                        lifecycleStateSince: Date.now(),
+                        lifecycleStateSince,
                         archivedBy: 'cli',
                         archiveReason: 'User terminated'
                     }));
@@ -1056,7 +1090,20 @@ export async function runCodex(opts: {
     // Register abort handler
     session.rpcHandlerManager.registerHandler('abort', handleAbort);
 
-    registerKillSessionHandler(session.rpcHandlerManager, handleKillSession);
+    if (runtimeGate) {
+        session.rpcHandlerManager.registerHandler('killSession', async () => {
+            if (runtimeGate.isFrozen()) {
+                const decision = await runtimeGate.waitForShutdownDecision();
+                return decision === 'blocked'
+                    ? { success: false, message: 'Session shutdown is blocked with live runtime ownership' }
+                    : { success: true, message: 'Session shutdown is completing' };
+            }
+            void handleKillSession();
+            return { success: true, message: 'Killing happy-cli process' };
+        });
+    } else {
+        registerKillSessionHandler(session.rpcHandlerManager, handleKillSession);
+    }
 
     // The daemon stops sessions with a bare SIGTERM (daemon/run.ts) — the idle
     // reaper, the stop-session RPC and Ctrl-C all land here, never on the
@@ -1066,7 +1113,13 @@ export async function runCodex(opts: {
     // the Codex runner never grew them.
     const handleTerminationSignal = createTerminationSignalHandler({
         terminate: handleKillSession,
-        forceExit: (code) => process.exit(code),
+        forceExit: (code) => {
+            if (runtimeGate?.isFrozen()) {
+                logger.warn('[Codex] Signal timeout cannot force-exit a frozen runtime with live ownership');
+                return;
+            }
+            process.exit(code);
+        },
     });
     process.on('SIGTERM', () => { void handleTerminationSignal('SIGTERM'); });
     process.on('SIGINT', () => { void handleTerminationSignal('SIGINT'); });
@@ -1078,7 +1131,9 @@ export async function runCodex(opts: {
     // sessions via onSessionSwap (offline start → reconnect).
     onSessionArchived = (archiveOpts?: { stampArchive?: boolean }) => {
         logger.debug('[Codex] Session archived server-side, terminating...', archiveOpts);
-        void handleKillSession(archiveOpts);
+        void handleKillSession(archiveOpts).catch(error => {
+            logger.warn('[Codex] Archived session remains blocked with live runtime ownership', error);
+        });
     };
     session.on('archived', onSessionArchived);
 
@@ -1139,11 +1194,22 @@ export async function runCodex(opts: {
         checkpointComposition.markTurnDispatched,
     );
 
-    const authRecovery = new CodexAuthRecovery(client, () => shouldExit || thinking || messageQueue.size() > 0);
+    if (runtimeGate) client.setTurnDispatchHandler(() => runtimeGate.markDispatched());
+    if (session.tracksShutdownStorage) {
+        client.setOutputStorageGate({
+            wait: signal => session.waitForStorageCapacity(signal),
+            onFailure: () => session.markStorageOutputIncomplete(),
+        });
+    }
+
+    const admitRpc = <T,>(work: () => Promise<T>): Promise<T> => runtimeGate ? runtimeGate.admit(work) : work();
+    const authRecovery = new CodexAuthRecovery(client, () => shouldExit || thinking || messageQueue.size() > 0 || !!runtimeGate?.isClosed());
     session.rpcHandlerManager.registerHandler('codex-auth-status', async () => authRecovery.status());
-    session.rpcHandlerManager.registerHandler('codex-auth-recover', async (params: Record<string, unknown>) => authRecovery.recover(params));
+    session.rpcHandlerManager.registerHandler('codex-auth-recover', async (params: Record<string, unknown>) =>
+        runtimeGate?.isClosed() ? authRecovery.recover(params) : admitRpc(() => authRecovery.recover(params)));
 
     registerCodexSteerHandler({
+        admit: admitRpc,
         client: {
             steerTurn: async (text) => {
                 const frame = activeLessonTurn;
@@ -1320,8 +1386,12 @@ export async function runCodex(opts: {
         }), { queue: messageQueue, deferredContinuation }),
         now: () => Date.now(),
     });
+    // Accepting a channel prompt records a user row and queues a turn, so it is input work:
+    // after a shutdown freeze it is refused before anything is recorded (a retry starts clean).
     session.rpcHandlerManager.registerHandler('channel-prompt', async (params: unknown) =>
-        channelAcceptance.accept(params));
+        runtimeGate?.isClosed()
+            ? { ok: false as const, error: 'this session is shutting down' }
+            : admitRpc(() => channelAcceptance.accept(params)));
     session.rpcHandlerManager.registerHandler('channel-authorize', async (params: unknown) => channelAcceptance.authorize(params));
     session.rpcHandlerManager.registerHandler('channel-cancel', async (params: unknown) => {
         const result = channelAcceptance.cancel(params);
@@ -1331,7 +1401,7 @@ export async function runCodex(opts: {
         return result;
     });
 
-    session.rpcHandlerManager.registerHandler('goal-action', async (params: Record<string, unknown>) => {
+    session.rpcHandlerManager.registerHandler('goal-action', (params: Record<string, unknown>) => admitRpc(async () => {
         authRecovery.assertReady();
         const command = parseCodexGoalActionParams(params);
         if (!command) {
@@ -1357,12 +1427,17 @@ export async function runCodex(opts: {
         }
 
         return { ok: true };
-    });
+    }));
 
     // Approval handler: routes server → client approval requests to our permission handler.
     // Installed from its own module so the path an app-server request takes is the tested one.
     installCodexApprovalBoundary({
-        client,
+        // The boundary installs the handler; shutdown also needs the pending-approval
+        // cancellation hook on the same install, so it is attached here.
+        client: {
+            setApprovalHandler: (handler) => client.setApprovalHandler(handler, () => permissionHandler.closeForShutdown()),
+            get threadId() { return client.threadId; },
+        },
         permissionHandler,
         runtimeId: session.runtimeId,
         turnState: () => ({
@@ -1579,6 +1654,7 @@ export async function runCodex(opts: {
 
     // Start Happy MCP server (HTTP) and prepare STDIO bridge config for Codex
     const happyServer = await startHappyServer(session, {
+        ...(runtimeGate ? { admitTool: <T,>(work: () => Promise<T>) => runtimeGate.admit(work, 'writer') } : {}),
         ...(accountToken !== null ? { proposeLesson: lessonProposalTurn.submit } : {}),
         protectedBashCwd: checkpointComposition.protectedBashCwd,
         trackProtectedBashProcess: checkpointComposition.trackProtectedWriter,
@@ -1598,12 +1674,13 @@ export async function runCodex(opts: {
     const initialAplusMcpResult = initialAplusMcpSnapshot?.result ?? null;
     let configStatuses = initialAplusMcpResult ? mcpConfigFailureStatuses(initialAplusMcpResult) : [];
     const initialAplusMcpServers = initialAplusMcpSnapshot?.servers ?? {};
+    const initialMcpCheckedAt = Date.now();
     session.updateMetadata((current) => ({
         ...current,
         mcpServers: [
             ...Object.keys(initialAplusMcpServers)
                 .filter((name) => !configStatuses.some((entry) => entry.name === name))
-                .map((name) => ({ name, status: 'reconnecting' as const, checkedAt: Date.now() })),
+                .map((name) => ({ name, status: 'reconnecting' as const, checkedAt: initialMcpCheckedAt })),
             ...configStatuses,
         ],
     }));
@@ -1688,7 +1765,8 @@ export async function runCodex(opts: {
     };
     session.rpcHandlerManager.registerHandler('mcp-status', async (params: { sessionId?: string }) => {
         if (params.sessionId !== session.sessionId) throw new Error('Session mismatch');
-        return { statuses: await reportMcpStatuses() };
+        if (runtimeGate?.isClosed()) return { statuses: session.getMetadata()?.mcpServers ?? [] };
+        return { statuses: await (runtimeGate ? runtimeGate.admit(reportMcpStatuses, 'writer') : reportMcpStatuses()) };
     });
 
     let appendSystemPromptInjected = false;
@@ -1741,7 +1819,6 @@ export async function runCodex(opts: {
             }
         }
 
-        let pending: CollectedBatch<EnhancedMode> | null = null;
 
         /*
          * A managed Codex run can be asked to end its input without being
@@ -1787,9 +1864,15 @@ export async function runCodex(opts: {
             );
         };
 
+        if (opts.standaloneLaunch) {
+            if (!runtimeGate) throw new Error('Standalone runtime storage gate unavailable');
+            launchControl!.bind(client, session, runtimeGate);
+        }
+
         while (!shouldExit) {
             logActiveHandles('loop-top');
             let message: CollectedBatch<EnhancedMode> | null = pending;
+            if (message && runtimeGate && !runtimeGate.tryBeginPreparing()) break;
             pending = null;
             if (!message) {
                 /*
@@ -1803,7 +1886,7 @@ export async function runCodex(opts: {
                 }
                 // Capture the current signal to distinguish idle-abort from queue close
                 const waitSignal = abortController.signal;
-                const batch = await messageQueue.waitForMessagesAndGetAsString(waitSignal);
+                const batch = await messageQueue.waitForMessagesAndGetAsString(waitSignal, runtimeGate ? () => runtimeGate.tryBeginPreparing() : undefined);
                 if (!batch) {
                     // If wait was aborted (e.g., remote abort with no active inference), ignore and continue
                     if (waitSignal.aborted && !shouldExit) {
@@ -1841,483 +1924,522 @@ export async function runCodex(opts: {
              */
             codexPendingRequestId = message.channelRequestId ?? null;
 
-            /*
-             * Relayed channel text is never read as session control. This is a *second* parser,
-             * on the consumer side: a channel turn reaches the queue through the session's own
-             * RPC and never passes the enqueue handler, but it does arrive here — where `/clear`
-             * wipes the Codex thread state. Gating only the enqueue side would leave an external
-             * sender able to reset a session's context (Saycode specs/desktop-messenger-channels).
-             */
-            preemptLessonReview();
-            lessonReviewAbort = new AbortController();
-            const owningReviewSignal = lessonReviewAbort.signal;
-            const owningForegroundSignal = abortController.signal;
-
-            await authRecovery.beginTurn();
-            if (shouldExit) { authRecovery.endTurn(); break; }
-            if (shouldHandleCodexClear(message) && authRecovery.status().state !== 'failed') {
-                authRecovery.endTurn();
-                logger.debug('[Codex] Handling /clear command - resetting Codex thread state');
-                /*
-                 * The provider's context really is being reset here, so this is
-                 * where the routing epoch ends — not where /clear was accepted.
-                 * Turns accepted in between still run and keep their receipts.
-                 */
-                difficultyRoutingCommitter.startEpoch();
-                client.clearThreadState();
-                currentTurnId = null;
-                currentProviderTurnId = null;
-                codexStartedSubagents = new Set<string>();
-                codexActiveSubagents = new Set<string>();
-                codexProviderSubagentToSessionSubagent = new Map<string, string>();
-                permissionHandler.reset();
-                reasoningProcessor.abort();
-                diffProcessor.reset();
-                appendSystemPromptInjected = false;
-                thinking = false;
-                session.keepAlive(thinking, 'remote');
-                messageBuffer.addMessage('Context was reset', 'status');
-                session.sendSessionEvent({ type: 'message', message: 'Context was reset' });
-                session.updateMetadata((currentMetadata) => {
-                    const nextMetadata = { ...currentMetadata };
-                    delete nextMetadata.codexThreadId;
-                    return nextMetadata;
-                });
-                emitReadyIfIdle({
-                    pending,
-                    queueSize: () => messageQueue.size(),
-                    shouldExit,
-                    sendReady,
-                });
-                continue;
-            }
-
-            // Display user messages in the UI
-            if (message.message.trim().length > 0) {
-                messageBuffer.addMessage(message.message, 'user');
-            }
-
-            let routingApplied = false;
             try {
-                authRecovery.assertReady();
-                if (checkpointComposition.completeTurn) {
-                    // specs/linux-checkpoint-enforcement-backend R4 — open the checkpoint turn (and
-                    // materialize its workspace) before codex is wrapped and spawned. On Linux bwrap
-                    // binds mount points into the writable root the moment it starts, so a workspace
-                    // prepared afterwards would be materialized into a non-empty directory.
-                    await client.prepareProtectedTurn();
-                    if (!client.isConnected) {
-                        const expectedThreadId = client.threadId;
-                        const resumed = await client.reconnectAndResumeThread();
-                        if (expectedThreadId && !resumed) {
-                            throw new Error('checkpoint protection could not resume the Codex thread');
-                        }
-                    }
-                }
-                // Map permission mode to approval policy and sandbox.
-                // With app-server, these are per-turn — no restart needed on mode change.
-                const sandboxManagedByHappy = client.sandboxEnabled;
-                const executionPolicy = resolveCodexExecutionPolicy(
-                    message.mode.permissionMode,
-                    sandboxManagedByHappy,
-                );
+                /*
+                 * Relayed channel text is never read as session control. This is a *second* parser,
+                 * on the consumer side: a channel turn reaches the queue through the session's own
+                 * RPC and never passes the enqueue handler, but it does arrive here — where `/clear`
+                 * wipes the Codex thread state. Gating only the enqueue side would leave an external
+                 * sender able to reset a session's context (Saycode specs/desktop-messenger-channels).
+                 */
+                preemptLessonReview();
+                lessonReviewAbort = new AbortController();
+                const owningReviewSignal = lessonReviewAbort.signal;
+                const owningForegroundSignal = abortController.signal;
 
-                // 샌드박스 초기화가 실패했고, 이 턴의 모드가 하필 네트워크를 잃는
-                // 네이티브 정책으로 떨어지는 경우다. 조용히 돌면 몇 분 뒤 턴 안의
-                // 네트워크 호출이 DNS 에서 실패할 때가 돼서야 드러난다 — 그 자리에서
-                // 사유를 밝히고 턴을 멈춘다. 네트워크가 남는 모드는 그대로 진행한다.
-                if (
-                    client.sandboxInitFailed
-                    && isSandboxFallbackNetworkLoss(sandboxConfig, executionPolicy.sandbox)
-                ) {
-                    const notice = `Sandbox initialization failed, so permission mode `
-                        + `'${message.mode.permissionMode}' falls back to Codex's native read-only `
-                        + `policy, which has no network access at all — but this session requested `
-                        + `network (networkMode=${sandboxConfig?.networkMode}). Refusing to run the `
-                        + `turn without it. Original error: ${client.sandboxInitFailureReason}`;
-                    logger.warn(`[Codex] ${notice}`);
-                    messageBuffer.addMessage(notice, 'status');
-                    session.sendSessionEvent({ type: 'message', message: notice });
+                await authRecovery.beginTurn();
+                if (shouldExit) { authRecovery.endTurn(); break; }
+                if (shouldHandleCodexClear(message) && authRecovery.status().state !== 'failed') {
+                    authRecovery.endTurn();
+                    logger.debug('[Codex] Handling /clear command - resetting Codex thread state');
+                    /*
+                     * The provider's context really is being reset here, so this is
+                     * where the routing epoch ends — not where /clear was accepted.
+                     * Turns accepted in between still run and keep their receipts.
+                     */
+                    difficultyRoutingCommitter.startEpoch();
+                    client.clearThreadState();
+                    currentTurnId = null;
+                    currentProviderTurnId = null;
+                    codexStartedSubagents = new Set<string>();
+                    codexActiveSubagents = new Set<string>();
+                    codexProviderSubagentToSessionSubagent = new Map<string, string>();
+                    permissionHandler.reset();
+                    reasoningProcessor.abort();
+                    diffProcessor.reset();
+                    appendSystemPromptInjected = false;
+                    thinking = false;
+                    session.keepAlive(thinking, 'remote');
+                    messageBuffer.addMessage('Context was reset', 'status');
+                    session.sendSessionEvent({ type: 'message', message: 'Context was reset' });
+                    session.updateMetadata((currentMetadata) => {
+                        const nextMetadata = { ...currentMetadata };
+                        delete nextMetadata.codexThreadId;
+                        return nextMetadata;
+                    });
+                    emitReadyIfIdle({
+                        pending,
+                        queueSize: () => messageQueue.size(),
+                        shouldExit,
+                        sendReady,
+                    });
                     continue;
                 }
 
-                const mcpSync = await mcpConfigSynchronizer.sync({
-                    threadId: client.threadId,
-                    resumeThread: client.threadId
-                        ? async ({ threadId, mcpServers }) => {
-                            const nextDeveloperInstructions = buildCodexDeveloperInstructions({
-                                connectorGuidance: buildConnectorGuidance(mcpServers),
-                                agentOrchestrationPrompt: AGENT_ORCHESTRATION_SYSTEM_PROMPT,
-                                mode: message.mode,
-                            });
-                            const resumed = await client.resumeThread({
-                                threadId,
-                                writableRoots: additionalDirectories,
-                                mcpServers,
-                                developerInstructions: nextDeveloperInstructions ?? null,
-                            });
-                            currentDeveloperInstructions = nextDeveloperInstructions;
-                            return resumed;
-                        }
-                        : undefined,
-                });
-
-                const nextDeveloperInstructions = buildCodexDeveloperInstructions({
-                    connectorGuidance: buildConnectorGuidance(mcpSync.mcpServers),
-                    agentOrchestrationPrompt: AGENT_ORCHESTRATION_SYSTEM_PROMPT,
-                    mode: message.mode,
-                });
-                if (client.threadId && nextDeveloperInstructions !== currentDeveloperInstructions) {
-                    await client.resumeThread({
-                        threadId: client.threadId,
-                        writableRoots: additionalDirectories,
-                        mcpServers: mcpSync.mcpServers,
-                        developerInstructions: nextDeveloperInstructions ?? null,
-                    });
-                    currentDeveloperInstructions = nextDeveloperInstructions;
+                // Display user messages in the UI
+                if (message.message.trim().length > 0) {
+                    messageBuffer.addMessage(message.message, 'user');
                 }
 
-                // Start thread on first turn (thread persists across mode changes)
-                let activeThreadId = client.threadId;
-                if (!client.hasActiveThread() || !activeThreadId) {
-                    const startedThread = await client.startThread({
-                        model: message.mode.model,
-                        cwd: process.cwd(),
+                let routingApplied = false;
+                try {
+                    authRecovery.assertReady();
+                    if (checkpointComposition.completeTurn) {
+                        // specs/linux-checkpoint-enforcement-backend R4 — open the checkpoint turn (and
+                        // materialize its workspace) before codex is wrapped and spawned. On Linux bwrap
+                        // binds mount points into the writable root the moment it starts, so a workspace
+                        // prepared afterwards would be materialized into a non-empty directory.
+                        await client.prepareProtectedTurn();
+                        if (!client.isConnected) {
+                            const expectedThreadId = client.threadId;
+                            const resumed = await client.reconnectAndResumeThread();
+                            if (expectedThreadId && !resumed) {
+                                throw new Error('checkpoint protection could not resume the Codex thread');
+                            }
+                        }
+                    }
+                    // Map permission mode to approval policy and sandbox.
+                    // With app-server, these are per-turn — no restart needed on mode change.
+                    const sandboxManagedByHappy = client.sandboxEnabled;
+                    const executionPolicy = resolveCodexExecutionPolicy(
+                        message.mode.permissionMode,
+                        sandboxManagedByHappy,
+                    );
+
+                    // 샌드박스 초기화가 실패했고, 이 턴의 모드가 하필 네트워크를 잃는
+                    // 네이티브 정책으로 떨어지는 경우다. 조용히 돌면 몇 분 뒤 턴 안의
+                    // 네트워크 호출이 DNS 에서 실패할 때가 돼서야 드러난다 — 그 자리에서
+                    // 사유를 밝히고 턴을 멈춘다. 네트워크가 남는 모드는 그대로 진행한다.
+                    if (
+                        client.sandboxInitFailed
+                        && isSandboxFallbackNetworkLoss(sandboxConfig, executionPolicy.sandbox)
+                    ) {
+                        const notice = `Sandbox initialization failed, so permission mode `
+                            + `'${message.mode.permissionMode}' falls back to Codex's native read-only `
+                            + `policy, which has no network access at all — but this session requested `
+                            + `network (networkMode=${sandboxConfig?.networkMode}). Refusing to run the `
+                            + `turn without it. Original error: ${client.sandboxInitFailureReason}`;
+                        logger.warn(`[Codex] ${notice}`);
+                        messageBuffer.addMessage(notice, 'status');
+                        session.sendSessionEvent({ type: 'message', message: notice });
+                        continue;
+                    }
+
+                    const mcpSync = await mcpConfigSynchronizer.sync({
+                        threadId: client.threadId,
+                        resumeThread: client.threadId
+                            ? async ({ threadId, mcpServers }) => {
+                                const nextDeveloperInstructions = buildCodexDeveloperInstructions({
+                                    connectorGuidance: buildConnectorGuidance(mcpServers),
+                                    agentOrchestrationPrompt: AGENT_ORCHESTRATION_SYSTEM_PROMPT,
+                                    mode: message.mode,
+                                });
+                                const resumed = await client.resumeThread({
+                                    threadId,
+                                    writableRoots: additionalDirectories,
+                                    mcpServers,
+                                    developerInstructions: nextDeveloperInstructions ?? null,
+                                });
+                                currentDeveloperInstructions = nextDeveloperInstructions;
+                                return resumed;
+                            }
+                            : undefined,
+                    });
+
+                    const nextDeveloperInstructions = buildCodexDeveloperInstructions({
+                        connectorGuidance: buildConnectorGuidance(mcpSync.mcpServers),
+                        agentOrchestrationPrompt: AGENT_ORCHESTRATION_SYSTEM_PROMPT,
+                        mode: message.mode,
+                    });
+                    if (client.threadId && nextDeveloperInstructions !== currentDeveloperInstructions) {
+                        await client.resumeThread({
+                            threadId: client.threadId,
+                            writableRoots: additionalDirectories,
+                            mcpServers: mcpSync.mcpServers,
+                            developerInstructions: nextDeveloperInstructions ?? null,
+                        });
+                        currentDeveloperInstructions = nextDeveloperInstructions;
+                    }
+
+                    // Start thread on first turn (thread persists across mode changes)
+                    let activeThreadId = client.threadId;
+                    if (!client.hasActiveThread() || !activeThreadId) {
+                        const startedThread = await client.startThread({
+                            model: message.mode.model,
+                            cwd: process.cwd(),
+                            approvalPolicy: executionPolicy.approvalPolicy,
+                            sandbox: executionPolicy.sandbox,
+                            writableRoots: additionalDirectories,
+                            mcpServers: mcpSync.mcpServers,
+                            developerInstructions: nextDeveloperInstructions,
+                        });
+                        activeThreadId = startedThread.threadId;
+                        currentDeveloperInstructions = nextDeveloperInstructions;
+                        session.updateMetadata((currentMetadata) => ({
+                            ...currentMetadata,
+                            codexThreadId: startedThread.threadId,
+                        }));
+                    }
+
+                    const runtimeRecovery = await mcpRuntimeRecovery.recoverBeforeTurn({
+                        threadId: activeThreadId,
+                        mcpServers: mcpSync.mcpServers,
+                        expectedServerNames: listConfiguredExternalServices(mcpSync.mcpServers),
+                        developerInstructions: currentDeveloperInstructions,
+                    });
+                    await reportMcpStatuses();
+                    if (runtimeRecovery.status !== 'ready') {
+                        const metadataStatuses = buildCodexMcpRecoveryMetadataStatuses({
+                            recovery: runtimeRecovery,
+                            connectorNames: readExpectedConnectors(),
+                            checkedAt: Date.now(),
+                        });
+                        for (const metadataStatus of metadataStatuses) {
+                            session.updateMetadata((currentMetadata) => ({
+                                ...currentMetadata,
+                                mcpServers: [
+                                    ...(currentMetadata.mcpServers ?? []).filter(
+                                        (server) => server.name !== metadataStatus.name,
+                                    ),
+                                    metadataStatus,
+                                ],
+                            }));
+                        }
+                    }
+
+                    const goalCommand = parseCodexGoalCommand(message.message);
+                    if (goalCommand && await handleCodexGoalCommand(goalCommand, activeThreadId)) {
+                        continue;
+                    }
+
+                    const includeAppendSystemPrompt = Boolean(
+                        message.mode.saycodeSystemPromptEnabled === undefined
+                        && message.mode.appendSystemPrompt
+                        && !appendSystemPromptInjected,
+                    );
+                    const imageInputs = await prepareCodexImageInputItems(message.attachments, {
+                        sessionId: session.sessionId,
+                    });
+                    if ((message.attachments?.length ?? 0) > 0) {
+                        logger.debug('[Codex] Prepared image inputs for turn', {
+                            inputCount: imageInputs.inputItems.length,
+                            skippedCount: imageInputs.skipped,
+                        });
+                    }
+                    const hasUserText = message.message.trim().length > 0;
+                    if ((message.attachments?.length ?? 0) > 0 && imageInputs.inputItems.length === 0 && !hasUserText) {
+                        session.sendSessionEvent({
+                            type: 'message',
+                            message: 'No supported images were available to send to Codex.',
+                        });
+                        continue;
+                    }
+                    /*
+                     * Lessons are recalled here, immediately before the input is
+                     * assembled, and on a bounded budget: a slow or unreachable
+                     * memory service costs this turn nothing. The review signal
+                     * stops memory work when a new message arrives without
+                     * aborting the provider's foreground turn.
+                     */
+                    lessonProposalTurn.cancel();
+                    codexTurnId = `${session.sessionId}:${randomUUID()}`;
+                    const lessonFrame = {
+                        turnId: codexTurnId, userMessages: [message.message],
+                        controller: lessonReviewAbort, acceptingSteer: false, pendingSteer: false,
+                    };
+                    activeLessonTurn = lessonFrame;
+                    const lessonRecall = lessonTurn
+                        ? await lessonTurn.recall({
+                            turnId: codexTurnId,
+                            query: message.message,
+                            signal: owningReviewSignal,
+                        })
+                        : null;
+                    let reviewInstruction = lessonSessionKind === 'foreground' && !owningReviewSignal.aborted && lessonReview?.prepareReviewTurn
+                        ? await lessonProposalTurn.prepare(codexTurnId, () => lessonReview.prepareReviewTurn!()) : '';
+                    if (owningForegroundSignal.aborted) { lessonProposalTurn.cancel(); continue; }
+                    if (owningReviewSignal.aborted) { lessonProposalTurn.cancel(); reviewInstruction = ''; }
+                    const turnPrompt = (reviewInstruction ? `${reviewInstruction}\n\n` : '') + buildCodexTurnPrompt({
+                        message: message.message,
+                        mode: message.mode,
+                        includeAppendSystemPrompt,
+                        hasTitle: session.hasTitle(),
+                        ...(lessonRecall?.outcome === 'selected' ? { lessonBlock: lessonRecall.block } : {}),
+                    });
+
+                    // Prepared images/thread/checkpoint may have awaited since dequeue. Cancellation
+                    // must still win here; once this synchronous boundary is crossed the turn runs.
+                    if (message.channelRequestId !== undefined
+                        && (!await channelAcceptance.prepareExecution(message.channelRequestId)
+                        || !channelAcceptance.beginExecution(message.channelRequestId))) {
+                        codexPendingRequestId = null;
+                        lessonProposalTurn.cancel();
+                        continue;
+                    }
+                    lessonFrame.acceptingSteer = true;
+                    /*
+                     * The engine-applied boundary: this batch's model and effort are
+                     * about to become the turn's settings. Everything before this
+                     * point — classification, acceptance, queueing — could still have
+                     * been cancelled without the conversation ever running on the
+                     * routed model, which is why the floor waits until here.
+                     *
+                     * Committed *before* the await, not after: the settings are
+                     * applied by the call itself, so a turn that then fails or is
+                     * cancelled mid-flight still ran on this model.
+                     */
+                    const appliedRoute = difficultyRoutingCommitter.commitApplied(message.requestIds, codexTurnId!);
+                    routingApplied = true;
+                    const result = await client.sendTurnAndWait(turnPrompt, {
+                        model: appliedRoute ? appliedRoute.model : message.mode.model,
                         approvalPolicy: executionPolicy.approvalPolicy,
                         sandbox: executionPolicy.sandbox,
                         writableRoots: additionalDirectories,
-                        mcpServers: mcpSync.mcpServers,
-                        developerInstructions: nextDeveloperInstructions,
+                        effort: appliedRoute
+                            ? (isSupportedCodexReasoningEffort(appliedRoute.effort) ? appliedRoute.effort : undefined)
+                            : message.mode.effort,
+                        extraInputItems: imageInputs.inputItems,
                     });
-                    activeThreadId = startedThread.threadId;
-                    currentDeveloperInstructions = nextDeveloperInstructions;
-                    session.updateMetadata((currentMetadata) => ({
-                        ...currentMetadata,
-                        codexThreadId: startedThread.threadId,
-                    }));
-                }
-
-                const runtimeRecovery = await mcpRuntimeRecovery.recoverBeforeTurn({
-                    threadId: activeThreadId,
-                    mcpServers: mcpSync.mcpServers,
-                    expectedServerNames: listConfiguredExternalServices(mcpSync.mcpServers),
-                    developerInstructions: currentDeveloperInstructions,
-                });
-                await reportMcpStatuses();
-                if (runtimeRecovery.status !== 'ready') {
-                    const metadataStatuses = buildCodexMcpRecoveryMetadataStatuses({
-                        recovery: runtimeRecovery,
-                        connectorNames: readExpectedConnectors(),
-                        checkedAt: Date.now(),
-                    });
-                    for (const metadataStatus of metadataStatuses) {
-                        session.updateMetadata((currentMetadata) => ({
-                            ...currentMetadata,
-                            mcpServers: [
-                                ...(currentMetadata.mcpServers ?? []).filter(
-                                    (server) => server.name !== metadataStatus.name,
-                                ),
-                                metadataStatus,
-                            ],
-                        }));
+                    lessonFrame.acceptingSteer = false;
+                    if (lessonFrame.pendingSteer) preemptLessonReview();
+                    if (includeAppendSystemPrompt) {
+                        appendSystemPromptInjected = true;
                     }
-                }
 
-                const goalCommand = parseCodexGoalCommand(message.message);
-                if (goalCommand && await handleCodexGoalCommand(goalCommand, activeThreadId)) {
-                    continue;
-                }
+                    if (result.aborted) {
+                        // Turn was aborted (user abort or permission cancel).
+                        // UI handling already done by the event handler (turn_aborted).
+                        logger.debug('[Codex] Turn aborted');
+                    }
 
-                const includeAppendSystemPrompt = Boolean(
-                    message.mode.saycodeSystemPromptEnabled === undefined
-                    && message.mode.appendSystemPrompt
-                    && !appendSystemPromptInjected,
-                );
-                const imageInputs = await prepareCodexImageInputItems(message.attachments, {
-                    sessionId: session.sessionId,
-                });
-                if ((message.attachments?.length ?? 0) > 0) {
-                    logger.debug('[Codex] Prepared image inputs for turn', {
-                        inputCount: imageInputs.inputItems.length,
-                        skippedCount: imageInputs.skipped,
-                    });
-                }
-                const hasUserText = message.message.trim().length > 0;
-                if ((message.attachments?.length ?? 0) > 0 && imageInputs.inputItems.length === 0 && !hasUserText) {
-                    session.sendSessionEvent({
-                        type: 'message',
-                        message: 'No supported images were available to send to Codex.',
-                    });
-                    continue;
-                }
-                /*
-                 * Lessons are recalled here, immediately before the input is
-                 * assembled, and on a bounded budget: a slow or unreachable
-                 * memory service costs this turn nothing. The review signal
-                 * stops memory work when a new message arrives without
-                 * aborting the provider's foreground turn.
-                 */
-                lessonProposalTurn.cancel();
-                codexTurnId = `${session.sessionId}:${randomUUID()}`;
-                const lessonFrame = {
-                    turnId: codexTurnId, userMessages: [message.message],
-                    controller: lessonReviewAbort, acceptingSteer: false, pendingSteer: false,
-                };
-                activeLessonTurn = lessonFrame;
-                const lessonRecall = lessonTurn
-                    ? await lessonTurn.recall({
-                        turnId: codexTurnId,
-                        query: message.message,
-                        signal: owningReviewSignal,
-                    })
-                    : null;
-                let reviewInstruction = lessonSessionKind === 'foreground' && !owningReviewSignal.aborted && lessonReview?.prepareReviewTurn
-                    ? await lessonProposalTurn.prepare(codexTurnId, () => lessonReview.prepareReviewTurn!()) : '';
-                if (owningForegroundSignal.aborted) { lessonProposalTurn.cancel(); continue; }
-                if (owningReviewSignal.aborted) { lessonProposalTurn.cancel(); reviewInstruction = ''; }
-                const turnPrompt = (reviewInstruction ? `${reviewInstruction}\n\n` : '') + buildCodexTurnPrompt({
-                    message: message.message,
-                    mode: message.mode,
-                    includeAppendSystemPrompt,
-                    hasTitle: session.hasTitle(),
-                    ...(lessonRecall?.outcome === 'selected' ? { lessonBlock: lessonRecall.block } : {}),
-                });
-
-                // Prepared images/thread/checkpoint may have awaited since dequeue. Cancellation
-                // must still win here; once this synchronous boundary is crossed the turn runs.
-                if (message.channelRequestId !== undefined
-                    && (!await channelAcceptance.prepareExecution(message.channelRequestId)
-                    || !channelAcceptance.beginExecution(message.channelRequestId))) {
-                    codexPendingRequestId = null;
+                    if (lessonTurn && lessonRecall?.outcome === 'selected' && !result.aborted) {
+                        /*
+                         * The acknowledgement, and only now. `sendTurnAndWait`
+                         * resolving without an abort is the first point at which
+                         * the provider is known to have taken this input —
+                         * assembling the prompt was not, and neither was sending
+                         * it. Recording delivery earlier would claim a delivery
+                         * that an abort could still have prevented.
+                         *
+                         * Its own catch: a memory failure must not fall into the
+                         * turn's error handler, which closes the turn as aborted
+                         * and writes a failure into the transcript.
+                         */
+                        await lessonTurn.acknowledge(lessonRecall.ticket).catch(() => false);
+                    }
+                    if (result.aborted) preemptLessonReview();
+                    if (lessonReview && !result.aborted) {
+                        const observed = codexTurnObservations.take();
+                        /*
+                         * A normally-ended turn, with what this host actually saw
+                         * of it. The worker validates this turn's proposal against
+                         * its evidence, permissions and settings. Not awaited:
+                         * candidate persistence never blocks the chat, and the
+                         * same abort signal stops it when the user speaks again.
+                         */
+                        const reviewWork = () => lessonReview.reviewFinishedTurn({
+                            ...lessonProposalTurn.take(codexTurnId),
+                            record: {
+                                sessionId: session.sessionId,
+                                turnId: codexTurnId,
+                                // The real kind of this turn. Hard-coding
+                                // `foreground` would let automation and review
+                                // turns teach the project.
+                                kind: lessonSessionKind,
+                                endedNormally: true,
+                                hadPriorAssistantTurn: codexTurnCounter > 0,
+                                userMessages: [...lessonFrame.userMessages],
+                                agentSummary: observed.summary,
+                                recoveredFailures: observed.recoveredFailures,
+                            },
+                            signal: lessonFrame.controller.signal,
+                        });
+                        // Review is optional: after shutdown freeze no new candidate job may start.
+                        void (runtimeGate ? runtimeGate.admit(reviewWork, 'writer') : reviewWork()).catch(() => undefined);
+                    }
+                    codexTurnCounter += 1;
+                } catch (error) {
+                    preemptLessonReview();
+                    // Only actual errors reach here (process crash, connection failure, etc.)
+                    // No task_complete/turn_aborted was ever received for this turn, so the
+                    // session-protocol mapper's turn state is left open. Without an explicit
+                    // close here, the durable transcript keeps an unclosed turn forever (the
+                    // 'thinking' ephemeral below still gets set false, but that is live-only
+                    // and does not repair what a reload/observer reads from history), and the
+                    // dangling currentTurnId would make the mapper treat the NEXT task_started
+                    // as a nested continuation (task_started no-ops while currentTurnId is set),
+                    // silently dropping turn-start too. Synthesize the same close the mapper
+                    // would have produced from a real turn_aborted, reusing its guard logic
+                    // (harmless no-op if currentTurnId is already null).
+                    logger.warn('Error in codex session:', error);
+                    const failureMessage = describeCheckpointFailure(error) ?? 'Process exited unexpectedly';
+                    messageBuffer.addMessage(failureMessage, 'status');
+                    session.sendSessionEvent({ type: 'message', message: failureMessage });
+                    // Carries the correlation in and reads it back, like the normal event path. A
+                    // dispatch or process failure is still the answer to whatever request was waiting
+                    // on it; a fresh state object here would drop the id and leave the caller waiting.
+                    const failureState: CodexTurnState = {
+                        currentTurnId,
+                        currentProviderTurnId,
+                        startedSubagents: codexStartedSubagents,
+                        activeSubagents: codexActiveSubagents,
+                        providerSubagentToSessionSubagent: codexProviderSubagentToSessionSubagent,
+                        pendingRequestId: codexPendingRequestId,
+                        currentRequestId: codexCurrentRequestId,
+                        providerTurnToProtocol: codexProviderTurnToProtocol,
+                    };
+                    const closed = mapCodexMcpMessageToSessionEnvelopes(
+                        { type: 'turn_aborted', status: 'failed' },
+                        failureState,
+                    );
+                    codexPendingRequestId = failureState.pendingRequestId ?? null;
+                    codexCurrentRequestId = failureState.currentRequestId ?? null;
+                    currentTurnId = closed.currentTurnId;
+                    currentProviderTurnId = closed.currentProviderTurnId;
+                    codexStartedSubagents = closed.startedSubagents;
+                    codexActiveSubagents = closed.activeSubagents;
+                    codexProviderSubagentToSessionSubagent = closed.providerSubagentToSessionSubagent;
+                    for (const envelope of closed.envelopes) {
+                        session.sendSessionProtocolMessage(envelope);
+                    }
+                } finally {
+                    if (!routingApplied) {
+                        difficultyRoutingCommitter.discardPending(message.requestIds ?? [], owningForegroundSignal.aborted ? 'cancelled' : 'failed');
+                    }
+                    activeLessonTurn = null;
                     lessonProposalTurn.cancel();
-                    continue;
-                }
-                lessonFrame.acceptingSteer = true;
-                /*
-                 * The engine-applied boundary: this batch's model and effort are
-                 * about to become the turn's settings. Everything before this
-                 * point — classification, acceptance, queueing — could still have
-                 * been cancelled without the conversation ever running on the
-                 * routed model, which is why the floor waits until here.
-                 *
-                 * Committed *before* the await, not after: the settings are
-                 * applied by the call itself, so a turn that then fails or is
-                 * cancelled mid-flight still ran on this model.
-                 */
-                const appliedRoute = difficultyRoutingCommitter.commitApplied(message.requestIds, codexTurnId!);
-                routingApplied = true;
-                const result = await client.sendTurnAndWait(turnPrompt, {
-                    model: appliedRoute ? appliedRoute.model : message.mode.model,
-                    approvalPolicy: executionPolicy.approvalPolicy,
-                    sandbox: executionPolicy.sandbox,
-                    writableRoots: additionalDirectories,
-                    effort: appliedRoute
-                        ? (isSupportedCodexReasoningEffort(appliedRoute.effort) ? appliedRoute.effort : undefined)
-                        : message.mode.effort,
-                    extraInputItems: imageInputs.inputItems,
-                });
-                lessonFrame.acceptingSteer = false;
-                if (lessonFrame.pendingSteer) preemptLessonReview();
-                if (includeAppendSystemPrompt) {
-                    appendSystemPromptInjected = true;
-                }
-
-                if (result.aborted) {
-                    // Turn was aborted (user abort or permission cancel).
-                    // UI handling already done by the event handler (turn_aborted).
-                    logger.debug('[Codex] Turn aborted');
-                }
-
-                if (lessonTurn && lessonRecall?.outcome === 'selected' && !result.aborted) {
-                    /*
-                     * The acknowledgement, and only now. `sendTurnAndWait`
-                     * resolving without an abort is the first point at which
-                     * the provider is known to have taken this input —
-                     * assembling the prompt was not, and neither was sending
-                     * it. Recording delivery earlier would claim a delivery
-                     * that an abort could still have prevented.
-                     *
-                     * Its own catch: a memory failure must not fall into the
-                     * turn's error handler, which closes the turn as aborted
-                     * and writes a failure into the transcript.
-                     */
-                    await lessonTurn.acknowledge(lessonRecall.ticket).catch(() => false);
-                }
-                if (result.aborted) preemptLessonReview();
-                if (lessonReview && !result.aborted) {
-                    const observed = codexTurnObservations.take();
-                    /*
-                     * A normally-ended turn, with what this host actually saw
-                     * of it. The worker validates this turn's proposal against
-                     * its evidence, permissions and settings. Not awaited:
-                     * candidate persistence never blocks the chat, and the
-                     * same abort signal stops it when the user speaks again.
-                     */
-                    void lessonReview.reviewFinishedTurn({
-                        ...lessonProposalTurn.take(codexTurnId),
-                        record: {
-                            sessionId: session.sessionId,
-                            turnId: codexTurnId,
-                            // The real kind of this turn. Hard-coding
-                            // `foreground` would let automation and review
-                            // turns teach the project.
-                            kind: lessonSessionKind,
-                            endedNormally: true,
-                            hadPriorAssistantTurn: codexTurnCounter > 0,
-                            userMessages: [...lessonFrame.userMessages],
-                            agentSummary: observed.summary,
-                            recoveredFailures: observed.recoveredFailures,
-                        },
-                        signal: lessonFrame.controller.signal,
-                    }).catch(() => undefined);
-                }
-                codexTurnCounter += 1;
-            } catch (error) {
-                preemptLessonReview();
-                // Only actual errors reach here (process crash, connection failure, etc.)
-                // No task_complete/turn_aborted was ever received for this turn, so the
-                // session-protocol mapper's turn state is left open. Without an explicit
-                // close here, the durable transcript keeps an unclosed turn forever (the
-                // 'thinking' ephemeral below still gets set false, but that is live-only
-                // and does not repair what a reload/observer reads from history), and the
-                // dangling currentTurnId would make the mapper treat the NEXT task_started
-                // as a nested continuation (task_started no-ops while currentTurnId is set),
-                // silently dropping turn-start too. Synthesize the same close the mapper
-                // would have produced from a real turn_aborted, reusing its guard logic
-                // (harmless no-op if currentTurnId is already null).
-                logger.warn('Error in codex session:', error);
-                const failureMessage = describeCheckpointFailure(error) ?? 'Process exited unexpectedly';
-                messageBuffer.addMessage(failureMessage, 'status');
-                session.sendSessionEvent({ type: 'message', message: failureMessage });
-                // Carries the correlation in and reads it back, like the normal event path. A
-                // dispatch or process failure is still the answer to whatever request was waiting
-                // on it; a fresh state object here would drop the id and leave the caller waiting.
-                const failureState: CodexTurnState = {
-                    currentTurnId,
-                    currentProviderTurnId,
-                    startedSubagents: codexStartedSubagents,
-                    activeSubagents: codexActiveSubagents,
-                    providerSubagentToSessionSubagent: codexProviderSubagentToSessionSubagent,
-                    pendingRequestId: codexPendingRequestId,
-                    currentRequestId: codexCurrentRequestId,
-                    providerTurnToProtocol: codexProviderTurnToProtocol,
-                };
-                const closed = mapCodexMcpMessageToSessionEnvelopes(
-                    { type: 'turn_aborted', status: 'failed' },
-                    failureState,
-                );
-                codexPendingRequestId = failureState.pendingRequestId ?? null;
-                codexCurrentRequestId = failureState.currentRequestId ?? null;
-                currentTurnId = closed.currentTurnId;
-                currentProviderTurnId = closed.currentProviderTurnId;
-                codexStartedSubagents = closed.startedSubagents;
-                codexActiveSubagents = closed.activeSubagents;
-                codexProviderSubagentToSessionSubagent = closed.providerSubagentToSessionSubagent;
-                for (const envelope of closed.envelopes) {
-                    session.sendSessionProtocolMessage(envelope);
+                    // specs/linux-checkpoint-enforcement-backend R4 — the checkpoint turn is opened before
+                    // codex is spawned, so a message that never reached completeTurn (refused turn, resume
+                    // failure, thrown dispatch) would otherwise leave the turn open and block the next gate.
+                    // abortTurn() no-ops after a completed turn.
+                    client.abortPreparedTurn();
+                    try {
+                        await checkpointComposition.abortTurn?.();
+                    } catch (error) {
+                        logger.debug('[codex]: checkpoint abortTurn failed', error);
+                    }
+                    authRecovery.endTurn();
+                    // Reset permission handler, reasoning processor, and diff processor
+                    permissionHandler.reset();
+                    reasoningProcessor.abort();  // Use abort to properly finish any in-progress tool calls
+                    diffProcessor.reset();
+                    thinking = false;
+                    session.keepAlive(thinking, 'remote');
+                    emitReadyIfIdle({
+                        pending,
+                        queueSize: () => messageQueue.size(),
+                        shouldExit,
+                        sendReady,
+                    });
+                    if (exitAfterFirstTurn) {
+                        logger.debug('[codex]: Automation turn completed, exiting run-once session');
+                        shouldExit = true;
+                    }
+                    // Clear after checkpoint cleanup: it may finish pending command events.
+                    // Aborted/failed turns must not teach a recovery in the next turn.
+                    codexTurnObservations.take();
+                    logActiveHandles('after-turn');
                 }
             } finally {
-                if (!routingApplied) {
-                    difficultyRoutingCommitter.discardPending(message.requestIds ?? [], owningForegroundSignal.aborted ? 'cancelled' : 'failed');
-                }
-                activeLessonTurn = null;
-                lessonProposalTurn.cancel();
-                // specs/linux-checkpoint-enforcement-backend R4 — the checkpoint turn is opened before
-                // codex is spawned, so a message that never reached completeTurn (refused turn, resume
-                // failure, thrown dispatch) would otherwise leave the turn open and block the next gate.
-                // abortTurn() no-ops after a completed turn.
-                client.abortPreparedTurn();
-                try {
-                    await checkpointComposition.abortTurn?.();
-                } catch (error) {
-                    logger.debug('[codex]: checkpoint abortTurn failed', error);
-                }
-                authRecovery.endTurn();
-                // Reset permission handler, reasoning processor, and diff processor
-                permissionHandler.reset();
-                reasoningProcessor.abort();  // Use abort to properly finish any in-progress tool calls
-                diffProcessor.reset();
-                thinking = false;
-                session.keepAlive(thinking, 'remote');
-                emitReadyIfIdle({
-                    pending,
-                    queueSize: () => messageQueue.size(),
-                    shouldExit,
-                    sendReady,
-                });
-                if (exitAfterFirstTurn) {
-                    logger.debug('[codex]: Automation turn completed, exiting run-once session');
-                    shouldExit = true;
-                }
-                // Clear after checkpoint cleanup: it may finish pending command events.
-                // Aborted/failed turns must not teach a recovery in the next turn.
-                codexTurnObservations.take();
-                logActiveHandles('after-turn');
+                runtimeGate?.endTurn();
             }
         }
 
     } finally {
-        preemptLessonReview();
-        await reportManagedStop();
-        /*
-         * The bridge points at this run's loop. Left registered, a stop
-         * arriving later would be applied to a loop that has ended, or handed
-         * to the next run, which nobody asked to stop.
-         */
-        registerManagedGracefulStop(null);
-        // Clean up resources when main loop exits
-        logger.debug('[codex]: Final cleanup start');
-        logActiveHandles('cleanup-start');
-
-        // Cancel offline reconnection if still running
-        if (reconnectionHandle) {
-            logger.debug('[codex]: Cancelling offline reconnection');
-            reconnectionHandle.cancel();
-        }
-
+        let loopExitRecorded = false;
         try {
-            logger.debug('[codex]: sendSessionDeath');
-            session.sendSessionDeath();
-            logger.debug('[codex]: flush begin');
-            await session.flush();
-            logger.debug('[codex]: flush done');
-            logger.debug('[codex]: session.close begin');
-            await session.close();
-            logger.debug('[codex]: session.close done');
-        } catch (e) {
-            logger.debug('[codex]: Error while closing session', e);
-        }
-        logger.debug('[codex]: client.disconnect begin');
-        await client.disconnect();
-        // Closes the project store this session opened. Its own catch: memory
-        // cleanup must not be the thing that fails a shutdown.
-        await lessonSession?.close().catch(() => undefined);
-        await checkpointComposition.dispose?.();
-        logger.debug('[codex]: client.disconnect done');
-        // Stop Happy MCP server
-        logger.debug('[codex]: happyServer.stop');
-        happyServer.stop();
+            preemptLessonReview();
+            if (runtimeGate) {
+                // Seal synchronously before stopping the listener; existing callbacks retain their promises.
+                const producers = runtimeGate.closeAdmissionAndWait();
+                happyServer.stop();
+                if (runtimeGate.isFrozen()) {
+                    // The coordinator still owns provider EOF and storage proof.
+                    // The loop has finished its writes; the gate still tracks
+                    // admitted writers separately. A blocked decision must be
+                    // handled even when one of those writers never settles.
+                    runtimeGate.loopExited();
+                    loopExitRecorded = true;
+                    const decision = await runtimeGate.waitForShutdownDecision();
+                    if (decision === 'blocked') {
+                        clearInterval(keepAliveInterval);
+                        process.exitCode = 1;
+                        if (process.stdin.isTTY) {
+                            try { process.stdin.setRawMode(false); } catch { }
+                        }
+                        logger.warn('[Codex] Shutdown blocked; retaining API and provider ownership');
+                        await new Promise<never>(() => {});
+                    }
+                }
+                await producers;
+            }
+            await reportManagedStop();
+            /*
+             * The bridge points at this run's loop. Left registered, a stop
+             * arriving later would be applied to a loop that has ended, or handed
+             * to the next run, which nobody asked to stop.
+             */
+            registerManagedGracefulStop(null);
+            // Clean up resources when main loop exits
+            logger.debug('[codex]: Final cleanup start');
+            logActiveHandles('cleanup-start');
 
-        // Clean up ink UI
-        if (process.stdin.isTTY) {
-            logger.debug('[codex]: setRawMode(false)');
-            try { process.stdin.setRawMode(false); } catch { }
-        }
-        // Stop reading from stdin so the process can exit
-        if (hasTTY) {
-            logger.debug('[codex]: stdin.pause()');
-            try { process.stdin.pause(); } catch { }
-        }
-        // Clear periodic keep-alive to avoid keeping event loop alive
-        logger.debug('[codex]: clearInterval(keepAlive)');
-        clearInterval(keepAliveInterval);
-        if (inkInstance) {
-            logger.debug('[codex]: inkInstance.unmount()');
-            inkInstance.unmount();
-        }
-        messageBuffer.clear();
+            // Cancel offline reconnection if still running
+            if (reconnectionHandle) {
+                logger.debug('[codex]: Cancelling offline reconnection');
+                reconnectionHandle.cancel();
+            }
 
-        logActiveHandles('cleanup-end');
-        logger.debug('[codex]: Final cleanup completed');
+            try {
+                logger.debug('[codex]: sendSessionDeath');
+                session.sendSessionDeath();
+                logger.debug('[codex]: flush begin');
+                await session.flush();
+                logger.debug('[codex]: flush done');
+                logger.debug('[codex]: session.close begin');
+                await session.close();
+                logger.debug('[codex]: session.close done');
+            } catch (e) {
+                logger.debug('[codex]: Error while closing session', e);
+            }
+            logger.debug('[codex]: client.disconnect begin');
+            await client.disconnect();
+            // Closes the project store this session opened. Its own catch: memory
+            // cleanup must not be the thing that fails a shutdown.
+            await lessonSession?.close().catch(() => undefined);
+            await checkpointComposition.dispose?.();
+            logger.debug('[codex]: client.disconnect done');
+            // Stop Happy MCP server
+            logger.debug('[codex]: happyServer.stop');
+            if (!runtimeGate) happyServer.stop();
+
+            // Clean up ink UI
+            if (process.stdin.isTTY) {
+                logger.debug('[codex]: setRawMode(false)');
+                try { process.stdin.setRawMode(false); } catch { }
+            }
+            // Stop reading from stdin so the process can exit
+            if (hasTTY) {
+                logger.debug('[codex]: stdin.pause()');
+                try { process.stdin.pause(); } catch { }
+            }
+            // Clear periodic keep-alive to avoid keeping event loop alive
+            logger.debug('[codex]: clearInterval(keepAlive)');
+            clearInterval(keepAliveInterval);
+            if (inkInstance) {
+                logger.debug('[codex]: inkInstance.unmount()');
+                inkInstance.unmount();
+            }
+            messageBuffer.clear();
+
+            logActiveHandles('cleanup-end');
+            logger.debug('[codex]: Final cleanup completed');
+        } finally {
+            clearInterval(keepAliveInterval);
+            if (!loopExitRecorded) runtimeGate?.loopExited();
+        }
+    }
+    } finally {
+        launchControl?.close();
     }
 }

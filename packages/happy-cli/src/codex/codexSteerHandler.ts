@@ -14,6 +14,7 @@ type CodexSteerHandlerInput = {
         sendSessionProtocolMessage(envelope: SessionEnvelope): void;
     };
     onFailure(message: string): void;
+    admit?: <T>(work: () => Promise<T>) => Promise<T>;
     /** A managed Cloud run: steering is refused before the turn is touched. */
     managedRun?: boolean;
 };
@@ -37,9 +38,12 @@ export function registerCodexSteerHandler(input: CodexSteerHandlerInput): void {
         }
 
         try {
-            await input.client.steerTurn(text);
-            input.session.sendSessionProtocolMessage(createEnvelope('user', { t: 'text', text }));
-            return { success: true };
+            const work = async () => {
+                await input.client.steerTurn(text);
+                input.session.sendSessionProtocolMessage(createEnvelope('user', { t: 'text', text }));
+                return { success: true as const };
+            };
+            return await (input.admit ? input.admit(work) : work());
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             input.onFailure(message);

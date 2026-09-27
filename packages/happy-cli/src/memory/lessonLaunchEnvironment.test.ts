@@ -39,7 +39,7 @@ describe('lessonCallerSharesIdentity', () => {
 });
 
 describe('applyLessonLaunchEnvironment', () => {
-    it('keeps lesson ownership when the spawn RPC omits its optional machineId', async () => {
+    it.each([false, true])('applies daemon lesson eligibility without an RPC machineId (Windows trial=%s)', async trial => {
         // Execute the real spawn binding and eligibility expression without
         // starting a daemon or importing its CLI side effects.
         const source = readFileSync(new URL('../daemon/run.ts', import.meta.url), 'utf8');
@@ -72,14 +72,20 @@ describe('applyLessonLaunchEnvironment', () => {
         findInputs(spawn!);
         expect(binding).not.toBe('');
         expect(eligibility).not.toBe('');
-        const eligible = new Function('machineId', 'options', 'managedIdentity', 'lessonStudioOrigin',
+        const eligible = new Function('machineId', 'options', 'managedIdentity', 'lessonStudioOrigin', 'standaloneWindows',
             `return (() => { const ${binding}; return ${eligibility}; })();`
-        )('daemon-machine', { directory: '/workspace' }, { status: 'inactive' }, 'https://studio.example');
+        )('daemon-machine', { directory: '/workspace' }, { status: 'inactive' }, 'https://studio.example', trial ? {} : undefined);
+        const loadPackage = vi.fn(load);
+        const hostIsReady = vi.fn(async () => false);
         const { decision } = await applyLessonLaunchEnvironment({
-            ...base, environment: {}, callerToken: base.daemonToken, eligible, hasSessionAuthority: true,
-            hostIsReady: async () => false,
+            ...base, load: loadPackage, environment: {}, callerToken: base.daemonToken, eligible, hasSessionAuthority: true,
+            hostIsReady,
         });
-        expect(decision).toEqual({ owner: 'host', reason: 'host-not-ready' });
+        expect(decision).toEqual(trial
+            ? { owner: 'native', reason: 'host-unavailable' }
+            : { owner: 'host', reason: 'host-not-ready' });
+        expect(loadPackage).toHaveBeenCalledTimes(trial ? 0 : 1);
+        expect(hostIsReady).not.toHaveBeenCalled();
     });
 
     it('keeps a verified session caller behind the host gate before session registration', async () => {

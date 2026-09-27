@@ -1,3 +1,4 @@
+import { takeStandaloneLaunchBootstrap } from '@/daemon/standaloneLaunchProtocol'
 import { authAndSetupMachineIfNeeded } from '@/ui/auth'
 import { configuration } from '@/configuration'
 import { readManagedStartup } from '@/managed/managedStartup'
@@ -8,6 +9,7 @@ import { ensureDaemonRunning } from '@/daemon/ensureDaemonRunning'
 import type { PermissionMode } from '@/api/types'
 
 export async function handleCodexCommand(args: string[]): Promise<void> {
+  const standaloneLaunch = takeStandaloneLaunchBootstrap(process.env)
   let startedBy: 'daemon' | 'terminal' | undefined = undefined
   let permissionMode: PermissionMode | undefined = undefined
   const sandboxArgs = extractNoSandboxFlag(args)
@@ -23,9 +25,12 @@ export async function handleCodexCommand(args: string[]): Promise<void> {
     }
   }
 
+  if (standaloneLaunch && startedBy !== 'daemon') throw new Error('Standalone launch requires daemon startup')
+
   // See main.ts: a managed Cloud spawn skips account auth, machine
   // registration and the daemon entirely.
   const managed = await readManagedStartup(process.env, Date.now(), configuration.serverUrl)
+  if (managed && standaloneLaunch) throw new Error('Managed runtime cannot adopt a standalone launch')
   if (managed) {
     await runCodex({
       principal: { kind: 'managed', startup: managed },
@@ -42,6 +47,7 @@ export async function handleCodexCommand(args: string[]): Promise<void> {
 
   await runCodex({
     principal: { kind: 'account', credentials },
+    ...(standaloneLaunch ? { standaloneLaunch } : {}),
     startedBy,
     noSandbox: sandboxArgs.noSandbox,
     resumeThreadId: codexArgs.resumeThreadId ?? undefined,

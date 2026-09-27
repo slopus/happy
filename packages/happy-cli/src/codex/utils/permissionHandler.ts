@@ -29,6 +29,14 @@ export type { PermissionResult, PendingRequest };
  * Codex-specific permission handler.
  */
 export class CodexPermissionHandler extends BasePermissionHandler {
+    private shutdownClosed = false;
+
+    /** A launch shutdown is permanent; ordinary user abortAll remains reusable. */
+    closeForShutdown(): void {
+        this.shutdownClosed = true;
+        this.abortAll('Session shutting down');
+    }
+
     // Exact tool names that should always be auto-approved. Include the bare
     // form (used by Codex elicitation messages like `tool "change_title"`)
     // and the MCP-qualified form for defense in depth.
@@ -166,9 +174,11 @@ export class CodexPermissionHandler extends BasePermissionHandler {
             channelTurn?: { turnId: string; channelRequestId: string | null; runtimeId: string };
         },
     ): Promise<PermissionResult> {
+        if (this.shutdownClosed) return { decision: 'abort' };
         if (this.shouldAutoApprove(toolName, toolCallId, context)) {
             logger.debug(`${this.getLogPrefix()} Auto-approving tool ${toolName} (${toolCallId})`);
 
+            const completedAt = Date.now();
             this.session.updateAgentState((currentState) => ({
                 ...currentState,
                 completedRequests: {
@@ -176,8 +186,8 @@ export class CodexPermissionHandler extends BasePermissionHandler {
                     [toolCallId]: {
                         tool: toolName,
                         arguments: input,
-                        createdAt: Date.now(),
-                        completedAt: Date.now(),
+                        createdAt: completedAt,
+                        completedAt,
                         status: 'approved',
                         decision: 'approved',
                     },

@@ -1,8 +1,26 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { MessageQueue2 } from './MessageQueue2';
 import { hashObject } from './deterministicJson';
 
 describe('MessageQueue2', () => {
+    it.each([false, true])('claims synchronously before removing a batch (waiting=%s)', async (waiting) => {
+        const queue = new MessageQueue2<string>(mode => mode);
+        const claim = vi.fn(() => { expect(queue.size()).toBe(1); return true; });
+        if (!waiting) queue.push('owned input', 'local');
+        const result = queue.waitForMessagesAndGetAsString(undefined, claim);
+        if (waiting) queue.push('owned input', 'local');
+        await Promise.resolve();
+        expect(claim).toHaveBeenCalledOnce();
+        expect((await result)?.message).toBe('owned input');
+    });
+    it('preserves an unclaimed batch and its attachments', async () => {
+        const queue = new MessageQueue2<string>(mode => mode);
+        const attachments = [{ data: new Uint8Array([1]), mimeType: 'image/png', name: 'test.png' }];
+        queue.pushIsolated('/clear', 'local', attachments);
+        expect(await queue.waitForMessagesAndGetAsString(undefined, () => false)).toBeNull();
+        expect(queue.size()).toBe(1);
+        expect(await queue.waitForMessagesAndGetAsString()).toMatchObject({ message: '/clear', attachments });
+    });
     it('should create a queue', () => {
         const queue = new MessageQueue2<string>(mode => mode);
         expect(queue.size()).toBe(0);

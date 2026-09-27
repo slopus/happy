@@ -9,7 +9,8 @@ import { backoff, delay, isSessionGoneError } from '@/utils/time';
 import { configuration } from '@/configuration';
 import { RawJSONLines } from '@/claude/types';
 import { randomUUID } from 'node:crypto';
-import { AsyncLock } from '@/utils/lock';
+import { SessionStateWrites, SessionStateWriteRefused } from './sessionStateWrites';
+import { SessionStorageBarrier, type StorageConfirmation } from './sessionStorageBarrier';
 import { deriveKey } from '@/utils/deriveKey';
 import { RpcHandlerManager } from './rpc/RpcHandlerManager';
 import { createRpcRequestListener } from './rpc/rpcRequestListener';
@@ -404,8 +405,8 @@ export class ApiSessionClient extends EventEmitter {
      */
     private pendingDownloads: Promise<{ data: Uint8Array; mimeType: string; name: string } | null>[] = [];
     readonly rpcHandlerManager: RpcHandlerManager;
-    private agentStateLock = new AsyncLock();
-    private metadataLock = new AsyncLock();
+    private readonly agentStateWrites: SessionStateWrites;
+    private readonly metadataWrites: SessionStateWrites;
     private encryptionKey: Uint8Array;
     private encryptionVariant: 'legacy' | 'dataKey';
     /** 예약된 다음 dial. non-null 이면 재연결 cadence 가 돌고 있다는 뜻이다. */
@@ -457,8 +458,22 @@ export class ApiSessionClient extends EventEmitter {
         activeSubagents: new Set<string>(),
     };
     private lastSeq = 0;
+    private shutdownReceiveSeq: number | null = null;
+    private inputDeliveryDepth = 0;
     private runtimeProcessedSeqCap: number | null = null;
-    private pendingOutbox: Array<{ content: string; localId: string }> = [];
+    private pendingOutbox: Array<{ content: string; localId: string; confirmStorage: (confirmed: boolean) => void }> = [];
+    private readonly storageBarrier = new SessionStorageBarrier();
+    private unconfirmedOutbox: typeof this.pendingOutbox = [];
+    private outboxRequest: AbortController | null = null;
+    private outboxInFlightCount = 0;
+    private outboxPaused = false;
+    private outboxRetryTimer: ReturnType<typeof setTimeout> | null = null;
+    private outboxRetryDelayMs = 1000;
+    private stateWritesPaused = false;
+    private stateRetryDelayMs = 1000;
+    private stateRetryTimer: ReturnType<typeof setTimeout> | null = null;
+    private shutdownStorageDeadline: number | null = null;
+    private shutdownStorageFlush: Promise<StorageConfirmation> | null = null;
     private readonly sendSync: InvalidateSync;
     /**
      * Callers waiting for a specific message to be acknowledged. Registered
@@ -506,8 +521,14 @@ export class ApiSessionClient extends EventEmitter {
         return this.managed?.serverOrigin ?? null;
     }
 
-    constructor(token: string, session: Session, managed?: ManagedCredentialMode) {
+    constructor(token: string, session: Session, managed?: ManagedCredentialMode, private readonly options: { trackShutdownStorage?: boolean; storageHighWaterBytes?: number; storageHighWaterWrites?: number } = {}) {
         super()
+        for (const value of [options.storageHighWaterBytes, options.storageHighWaterWrites]) {
+            if (value !== undefined && (!Number.isSafeInteger(value) || value <= 0)) throw new Error('Invalid storage high water mark');
+        }
+        const storage = options.trackShutdownStorage ? this.storageBarrier : null;
+        this.metadataWrites = new SessionStateWrites(storage, () => logger.warn('[API] Metadata storage could not be confirmed'), () => this.canWriteSessionState(), () => this.scheduleStateRetry());
+        this.agentStateWrites = new SessionStateWrites(storage, () => logger.warn('[API] Agent state storage could not be confirmed'), () => this.canWriteSessionState(), () => this.scheduleStateRetry());
         this.token = token;
         // Before the socket, before the handlers, before anything is sent.
         //
@@ -582,6 +603,8 @@ export class ApiSessionClient extends EventEmitter {
 
         this.socket.on('connect', () => {
             logger.debug('Socket connected successfully');
+            this.stateRetryDelayMs = 1000;
+            this.resumeStateWrites();
             // dial 성공: cadence 를 끝내고 백오프를 첫 단계로 되돌린다.
             this.stopSmartReconnect();
             this.reconnectAttempts = 0;
@@ -610,6 +633,7 @@ export class ApiSessionClient extends EventEmitter {
 
         this.socket.on('disconnect', (reason) => {
             logger.debug(`[API] Socket disconnected: ${reason}`);
+            this.storageBarrier.interrupt('disconnected');
             // dial 이 (성공 후든 핸드셰이크 중이든) 끝났다는 신호. 다음 tick 이
             // in-flight 예산을 기다리지 않고 바로 dial 할 수 있게 지운다.
             this.reconnectDialStartedAt = null;
@@ -638,6 +662,7 @@ export class ApiSessionClient extends EventEmitter {
                 }
 
                 if (data.body.t === 'new-message') {
+                    if (this.shutdownReceiveSeq !== null) return;
                     const messageSeq = data.body.message?.seq;
                     const isSkippedCatchupMessage =
                         typeof messageSeq === 'number' && this.skippedInitialMessageSeqs.delete(messageSeq);
@@ -658,7 +683,8 @@ export class ApiSessionClient extends EventEmitter {
                             ? (body as { content: { type: string } }).content.type
                             : 'unknown',
                     });
-                    this.routeIncomingMessage(body, data.body.message.id);
+                    const messageId = data.body.message.id;
+                    this.deliverInput(() => this.routeIncomingMessage(body, messageId));
                     this.lastSeq = Math.max(this.lastSeq, messageSeq);
                 } else if (data.body.t === 'update-session') {
                     if (data.body.metadata && data.body.metadata.version > this.metadataVersion) {
@@ -726,17 +752,41 @@ export class ApiSessionClient extends EventEmitter {
         this.socket.connect();
     }
 
+    /** Pure admission check; accepted async callbacks and turns need their own runtime gate. */
+    canFreezeInboundMessagesForShutdown(): boolean {
+        return this.options.trackShutdownStorage === true && !this.closed && !this.syncFatalHandled
+            && this.inputDeliveryDepth === 0 && this.pendingMessages.length === 0
+            && this.pendingFileEvents.length === 0 && this.pendingDownloads.length === 0;
+    }
+
+    /** Permanent for this API instance. Stops durable input, not ACKs, state updates or control RPCs. */
+    freezeInboundMessagesForShutdown(): boolean {
+        if (this.shutdownReceiveSeq !== null) return true;
+        if (!this.canFreezeInboundMessagesForShutdown()) return false;
+        this.shutdownReceiveSeq = this.lastSeq;
+        this.stopReceivePolling();
+        // Best effort only; the future daemon receipt must persist this boundary explicitly.
+        this.reportDaemonRuntime(this.currentThinking, true);
+        return true;
+    }
+
+    private deliverInput(callback: () => void): void {
+        this.inputDeliveryDepth += 1;
+        try { callback(); }
+        finally { this.inputDeliveryDepth -= 1; }
+    }
+
     onUserMessage(callback: (data: UserMessage) => void) {
         this.pendingMessageCallback = callback;
-        while (this.pendingMessages.length > 0) {
-            callback(this.pendingMessages.shift()!);
+        while (this.shutdownReceiveSeq === null && this.pendingMessages.length > 0) {
+            this.deliverInput(() => callback(this.pendingMessages.shift()!));
         }
     }
 
     onFileEvent(callback: (data: FileEventMessage) => void) {
         this.pendingFileEventCallback = callback;
-        while (this.pendingFileEvents.length > 0) {
-            callback(this.pendingFileEvents.shift()!);
+        while (this.shutdownReceiveSeq === null && this.pendingFileEvents.length > 0) {
+            this.deliverInput(() => callback(this.pendingFileEvents.shift()!));
         }
     }
 
@@ -964,6 +1014,7 @@ export class ApiSessionClient extends EventEmitter {
     }
 
     private async fetchMessages() {
+        if (this.shutdownReceiveSeq !== null) return;
         // On reconnect, skip only messages that existed before the agent reattached.
         const skipRouting = this.skipInitialMessages;
         const skipThroughSeq = this.skipExistingMessagesThroughSeq;
@@ -990,6 +1041,8 @@ export class ApiSessionClient extends EventEmitter {
                 }
             );
 
+            // A request admitted before freeze may finish after it. Its rows stay durable for resume.
+            if (this.shutdownReceiveSeq !== null) return;
             const messages = Array.isArray(response.data.messages) ? response.data.messages : [];
             let maxSeq = afterSeq;
 
@@ -1020,7 +1073,7 @@ export class ApiSessionClient extends EventEmitter {
 
                 try {
                     const body = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(message.content.c));
-                    this.routeIncomingMessage(body, message.id);
+                    this.deliverInput(() => this.routeIncomingMessage(body, message.id));
                 } catch (error) {
                     logger.debug('[API] Failed to decrypt fetched message', {
                         sessionId: this.sessionId,
@@ -1051,6 +1104,7 @@ export class ApiSessionClient extends EventEmitter {
 
     private startReceivePolling() {
         this.stopReceivePolling();
+        if (this.shutdownReceiveSeq !== null) return;
         this.receivePollInterval = setInterval(() => {
             if (this.socket.connected) {
                 this.receiveSync.invalidate();
@@ -1080,6 +1134,7 @@ export class ApiSessionClient extends EventEmitter {
         this.syncFatalHandled = true;
         // Nothing will be flushed after this, so no acknowledgement can arrive.
         this.settleAllMessageAcks('sync-failed');
+        this.storageBarrier.fail('sync-failed');
         // A sync 404/410 is NOT proof the session row is gone: happy-server
         // returns the identical 404 for "row deleted" and "row exists under
         // another account" (2026-07-23 incident — the session was alive, the
@@ -1197,26 +1252,60 @@ export class ApiSessionClient extends EventEmitter {
         // latest-first paginated loading (fetchLatestMessagesPage); nothing
         // needs the write path to reorder.
         while (this.pendingOutbox.length > 0) {
+            if (this.outboxPaused) return;
+            const remaining = this.shutdownStorageDeadline === null ? 60_000 : this.shutdownStorageDeadline - performance.now();
+            if (remaining <= 0) return;
             const batchSize = Math.min(this.pendingOutbox.length, ApiSessionClient.MAX_OUTBOX_BATCH_SIZE);
             const batch = this.pendingOutbox.slice(0, batchSize);
 
-            const response = await axios.post<V3PostSessionMessagesResponse>(
-                `${configuration.serverUrl}/v3/sessions/${encodeURIComponent(this.sessionId)}/messages`,
-                {
-                    messages: batch
-                },
-                {
-                    headers: this.authHeaders(),
-                    timeout: 60000
-                }
-            );
+            const request = new AbortController();
+            this.outboxRequest = request;
+            this.outboxInFlightCount = batch.length;
+            let data: V3PostSessionMessagesResponse;
+            try {
+                const response = await axios.post<V3PostSessionMessagesResponse>(
+                    `${configuration.serverUrl}/v3/sessions/${encodeURIComponent(this.sessionId)}/messages`,
+                    { messages: batch.map(({ content, localId }) => ({ content, localId })) },
+                    { headers: this.authHeaders(), timeout: Math.min(60_000, Math.max(1, Math.floor(remaining))), signal: request.signal },
+                );
+                data = response.data;
+            } catch (error) {
+                // A failed drain keeps the exact queue for an explicit retry; no fatal sync or implicit replay.
+                if (request.signal.aborted) return;
+                throw error;
+            } finally {
+                if (this.outboxRequest === request) { this.outboxRequest = null; this.outboxInFlightCount = 0; }
+            }
 
-            const messages = Array.isArray(response.data.messages) ? response.data.messages : [];
+            const messages = Array.isArray(data.messages) ? data.messages : [];
             const maxSeq = messages.reduce((acc, message) => (
                 message.seq > acc ? message.seq : acc
             ), this.lastSeq);
-            this.lastSeq = maxSeq;
+            // An outgoing ACK must not jump over unseen input. Only a contiguous prefix
+            // of confirmed rows from our own batch can advance a tracked receive cursor.
+            if (!this.options.trackShutdownStorage) this.lastSeq = maxSeq;
+            else if (this.shutdownReceiveSeq === null) {
+                const ownSeqs = batch.flatMap(item => {
+                    const ack = readMessageAck(messages, item.localId);
+                    return ack.ok ? [ack.seq] : [];
+                }).sort((a, b) => a - b);
+                for (const seq of ownSeqs) {
+                    if (seq <= this.lastSeq) continue;
+                    if (seq !== this.lastSeq + 1) break;
+                    this.lastSeq = seq;
+                }
+            }
             this.pendingOutbox.splice(0, batch.length);
+            let unconfirmed = false;
+            for (const item of batch) {
+                if (readMessageAck(messages, item.localId).ok) item.confirmStorage(true);
+                else if (this.options.trackShutdownStorage) { this.unconfirmedOutbox.push(item); unconfirmed = true; }
+            }
+            if (unconfirmed) {
+                this.outboxPaused = true;
+                this.storageBarrier.interrupt('unconfirmed-write');
+                this.scheduleOutboxRetry();
+            } else { this.outboxRetryDelayMs = 1000; }
             // Resolution rides the existing flush rather than a second POST, so
             // ordering against everything already queued is unchanged. Only the
             // localIds this batch actually carried are considered: a response
@@ -1282,7 +1371,8 @@ export class ApiSessionClient extends EventEmitter {
         const encrypted = encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, content));
         this.pendingOutbox.push({
             content: encrypted,
-            localId: localId ?? randomUUID()
+            localId: localId ?? randomUUID(),
+            confirmStorage: this.options.trackShutdownStorage ? this.storageBarrier.track(Buffer.byteLength(encrypted)) : () => {},
         });
         if (invalidate) {
             this.sendSync.invalidate();
@@ -1770,7 +1860,7 @@ export class ApiSessionClient extends EventEmitter {
             // Resume skip-baseline: the last seq delivered to the agent loop.
             // Without it the daemon falls back to the server-head seq, which
             // swallows messages that arrive while the session has no process.
-            lastProcessedSeq: this.runtimeProcessedSeqCap ?? this.lastSeq,
+            lastProcessedSeq: Math.min(this.runtimeProcessedSeqCap ?? this.lastSeq, this.shutdownReceiveSeq ?? Infinity),
             mode: this.currentMode,
         });
     }
@@ -1906,66 +1996,169 @@ export class ApiSessionClient extends EventEmitter {
      * its scoped credentials have exited.
      */
     capRuntimeProcessedSeq(throughSeq: number) {
-        this.runtimeProcessedSeqCap = Math.max(0, throughSeq);
+        const cap = Math.max(0, throughSeq);
+        this.runtimeProcessedSeqCap = this.shutdownReceiveSeq === null
+            ? cap : Math.min(this.runtimeProcessedSeqCap ?? this.shutdownReceiveSeq, cap);
     }
 
+    private clearOutboxRetry() {
+        if (this.outboxRetryTimer) clearTimeout(this.outboxRetryTimer);
+        this.outboxRetryTimer = null;
+    }
+
+    private scheduleOutboxRetry() {
+        if (this.closed || this.shutdownStorageFlush || this.outboxRetryTimer) return;
+        const delayMs = Math.ceil(this.outboxRetryDelayMs * (0.8 + Math.random() * 0.2));
+        this.outboxRetryDelayMs = Math.min(30_000, this.outboxRetryDelayMs * 2);
+        this.outboxRetryTimer = setTimeout(() => {
+            this.outboxRetryTimer = null;
+            if (this.closed || this.shutdownStorageFlush) return;
+            const replay = this.unconfirmedOutbox.splice(0);
+            this.pendingOutbox = [...this.pendingOutbox.slice(0, this.outboxInFlightCount), ...replay, ...this.pendingOutbox.slice(this.outboxInFlightCount)];
+            this.outboxPaused = false;
+            this.sendSync.invalidate();
+        }, delayMs);
+        this.outboxRetryTimer.unref?.();
+    }
+
+    private clearStateRetry() {
+        if (this.stateRetryTimer) clearTimeout(this.stateRetryTimer);
+        this.stateRetryTimer = null;
+    }
+
+    private scheduleStateRetry() {
+        if (!this.options.trackShutdownStorage || this.shutdownStorageFlush || !this.canWriteSessionState() || this.stateRetryTimer) return;
+        const delayMs = Math.ceil(this.stateRetryDelayMs * (0.8 + Math.random() * 0.2));
+        this.stateRetryDelayMs = Math.min(30_000, this.stateRetryDelayMs * 2);
+        this.stateRetryTimer = setTimeout(() => { this.stateRetryTimer = null; this.resumeStateWrites(); }, delayMs);
+        this.stateRetryTimer.unref?.();
+    }
+
+    private resumeStateWrites() {
+        if (!this.options.trackShutdownStorage || this.shutdownStorageFlush || !this.canWriteSessionState()) return;
+        this.clearStateRetry();
+        const active = () => !this.shutdownStorageFlush && this.canWriteSessionState();
+        this.metadataWrites.retry(active);
+        this.agentStateWrites.retry(active);
+    }
+
+    private canWriteSessionState(): boolean {
+        return !this.closed && (!this.options.trackShutdownStorage || (this.socket.connected && !this.stateWritesPaused
+            && (this.shutdownStorageDeadline === null || performance.now() < this.shutdownStorageDeadline)));
+    }
+
+    private stateAckTimeout(): number {
+        // Normal latency gets 5s; a pre-drain request can retain this bounded settlement tail.
+        return this.shutdownStorageDeadline === null ? 5000
+            : Math.max(1, Math.min(1000, Math.floor(this.shutdownStorageDeadline - performance.now())));
+    }
+
+    private runStateWrite(apply: () => Promise<boolean>): Promise<boolean> {
+        // SessionStateWrites bounds tracked retries, including transport errors and version conflicts.
+        return this.options.trackShutdownStorage ? apply() : backoff(apply);
+    }
+
+    /** With storage tracking enabled, handlers must be pure and safe to replay against newer state (idempotent). */
     updateMetadata(handler: (metadata: Metadata) => Metadata) {
-        this.metadataLock.inLock(async () => {
-            await backoff(async () => {
-                let updated = handler(this.metadata!); // Weird state if metadata is null - should never happen but here we are
-                const answer = await this.socket.emitWithAck('update-metadata', { sid: this.sessionId, expectedVersion: this.metadataVersion, metadata: encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, updated)) });
-                if (answer.result === 'success') {
-                    this.metadata = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(answer.metadata));
-                    this.metadataVersion = answer.version;
-                } else if (answer.result === 'version-mismatch') {
-                    if (answer.version > this.metadataVersion) {
-                        this.metadataVersion = answer.version;
-                        this.metadata = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(answer.metadata));
-                    }
-                    throw new Error('Metadata version mismatch');
-                } else if (answer.result === 'error') {
-                    // Hard error - ignore
+        let attempt: { encrypted: string; expectedVersion: number; uncertain: boolean } | null = null;
+        this.metadataWrites.enqueue(() => this.runStateWrite(async () => {
+            if (this.closed) return false;
+            if (!attempt || !this.options.trackShutdownStorage) {
+                try {
+                    const updated = handler(this.metadata!);
+                    attempt = { expectedVersion: this.metadataVersion, encrypted: encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, updated)), uncertain: false };
+                } catch (error) {
+                    if (this.options.trackShutdownStorage) throw new SessionStateWriteRefused('Invalid local metadata transform');
+                    throw error;
                 }
-            });
-        });
+            }
+            const { expectedVersion, encrypted } = attempt;
+            const data = { sid: this.sessionId, expectedVersion, metadata: encrypted };
+            const answer = this.options.trackShutdownStorage
+                ? await this.socket.timeout(this.stateAckTimeout()).emitWithAck('update-metadata', data).catch(error => { if (attempt) attempt.uncertain = true; throw error; })
+                : await this.socket.emitWithAck('update-metadata', data);
+            if (answer.result === 'success' || (this.options.trackShutdownStorage && answer.result === 'version-mismatch'
+                && answer.metadata === encrypted && answer.version === expectedVersion + 1)) {
+                this.metadata = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(answer.metadata));
+                this.metadataVersion = answer.version;
+                return answer.metadata === encrypted && Number.isSafeInteger(answer.version) && answer.version === expectedVersion + 1;
+            } else if (answer.result === 'version-mismatch') {
+                if (answer.version > this.metadataVersion) {
+                    this.metadataVersion = answer.version;
+                    this.metadata = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(answer.metadata));
+                }
+                if (this.options.trackShutdownStorage && attempt.uncertain) throw new SessionStateWriteRefused('Metadata changed after an unconfirmed write');
+                attempt = null;
+                throw new Error('Metadata version mismatch');
+            } else if (answer.result === 'error') {
+                return false;
+            }
+            return false;
+        }));
     }
 
     /**
      * Update session agent state
-     * @param handler - Handler function that returns the updated agent state
+     * @param handler - Pure update; with storage tracking enabled it must be idempotent under replay against newer state.
      */
     updateAgentState(handler: (metadata: AgentState) => AgentState) {
+        let attempt: { encrypted: string | null; expectedVersion: number; uncertain: boolean } | null = null;
         logger.debugLargeJson('Updating agent state', this.agentState);
-        this.agentStateLock.inLock(async () => {
-            await backoff(async () => {
-                let updated = handler(this.agentState || {});
-                const answer = await this.socket.emitWithAck('update-state', { sid: this.sessionId, expectedVersion: this.agentStateVersion, agentState: updated ? encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, updated)) : null });
-                if (answer.result === 'success') {
-                    this.agentState = answer.agentState ? decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(answer.agentState)) : null;
-                    this.agentStateVersion = answer.version;
-                    logger.debug('Agent state updated', this.agentState);
-                    // agentState.requests feeds pendingUserInput for the daemon
-                    // idle guard — re-report promptly instead of waiting for the
-                    // next keep-alive tick (dedupe suppresses no-op reports).
-                    this.reportDaemonRuntime(this.currentThinking);
-                } else if (answer.result === 'version-mismatch') {
-                    if (answer.version > this.agentStateVersion) {
-                        this.agentStateVersion = answer.version;
-                        this.agentState = answer.agentState ? decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(answer.agentState)) : null;
-                    }
-                    throw new Error('Agent state version mismatch');
-                } else if (answer.result === 'error') {
-                    // console.error('Agent state update error', answer);
-                    // Hard error - ignore
+        this.agentStateWrites.enqueue(() => this.runStateWrite(async () => {
+            if (this.closed) return false;
+            if (!attempt || !this.options.trackShutdownStorage) {
+                try {
+                    const updated = handler(this.agentState || {});
+                    attempt = { expectedVersion: this.agentStateVersion, encrypted: updated ? encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, updated)) : null, uncertain: false };
+                } catch (error) {
+                    if (this.options.trackShutdownStorage) throw new SessionStateWriteRefused('Invalid local agent state transform');
+                    throw error;
                 }
-            });
-        });
+            }
+            const { expectedVersion, encrypted } = attempt;
+            const data = { sid: this.sessionId, expectedVersion, agentState: encrypted };
+            const answer = this.options.trackShutdownStorage
+                ? await this.socket.timeout(this.stateAckTimeout()).emitWithAck('update-state', data).catch(error => { if (attempt) attempt.uncertain = true; throw error; })
+                : await this.socket.emitWithAck('update-state', data);
+            if (answer.result === 'success' || (this.options.trackShutdownStorage && answer.result === 'version-mismatch'
+                && encrypted !== null && answer.agentState === encrypted && answer.version === expectedVersion + 1)) {
+                this.agentState = answer.agentState ? decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(answer.agentState)) : null;
+                this.agentStateVersion = answer.version;
+                logger.debug('Agent state updated', this.agentState);
+                // agentState.requests feeds pendingUserInput for the daemon
+                // idle guard — re-report promptly instead of waiting for the
+                // next keep-alive tick (dedupe suppresses no-op reports).
+                this.reportDaemonRuntime(this.currentThinking);
+                return answer.agentState === encrypted && Number.isSafeInteger(answer.version) && answer.version === expectedVersion + 1;
+            } else if (answer.result === 'version-mismatch') {
+                if (answer.version > this.agentStateVersion) {
+                    this.agentStateVersion = answer.version;
+                    this.agentState = answer.agentState ? decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(answer.agentState)) : null;
+                }
+                if (this.options.trackShutdownStorage && attempt.uncertain) throw new SessionStateWriteRefused('Agent state changed after an unconfirmed write');
+                attempt = null;
+                throw new Error('Agent state version mismatch');
+            } else if (answer.result === 'error') {
+                return false;
+            }
+            return false;
+        }));
     }
 
     /**
      * Wait for socket buffer to flush
      */
     async flush(): Promise<void> {
+        if (!this.shutdownStorageFlush) {
+            this.clearOutboxRetry();
+            this.outboxRetryDelayMs = 1000;
+            const replay = this.unconfirmedOutbox.splice(0);
+            this.pendingOutbox = [...this.pendingOutbox.slice(0, this.outboxInFlightCount), ...replay, ...this.pendingOutbox.slice(this.outboxInFlightCount)];
+            this.outboxPaused = false;
+            this.stateWritesPaused = false;
+            this.stateRetryDelayMs = 1000;
+            this.resumeStateWrites();
+        }
         await Promise.race([
             this.sendSync.invalidateAndAwait(),
             delay(10000)
@@ -1983,11 +2176,69 @@ export class ApiSessionClient extends EventEmitter {
         });
     }
 
+    /** Call only after input dispatch and provider output/resume producers have quiesced. */
+    async flushForShutdown(budgetMs: number, signal?: AbortSignal): Promise<StorageConfirmation> {
+        if (!this.options.trackShutdownStorage) return { stored: false, reason: 'unsupported' };
+        if (this.shutdownStorageFlush) return this.shutdownStorageFlush;
+        if (this.closed) return { stored: false, reason: 'closed' };
+        if (this.syncFatalHandled) return { stored: false, reason: 'sync-failed' };
+        if (!this.socket.connected) return { stored: false, reason: 'disconnected' };
+        if (signal?.aborted) return { stored: false, reason: 'aborted' };
+        const confirmed = this.storageBarrier.wait(budgetMs, signal);
+        this.clearStateRetry();
+        this.clearOutboxRetry();
+        this.shutdownStorageDeadline = performance.now() + budgetMs;
+        this.outboxPaused = false;
+        this.stateWritesPaused = false;
+        // Keep the active batch's head stable, but replay older rows before unsent new rows.
+        const replay = this.unconfirmedOutbox.splice(0);
+        this.pendingOutbox = [...this.pendingOutbox.slice(0, this.outboxInFlightCount), ...replay, ...this.pendingOutbox.slice(this.outboxInFlightCount)];
+        const operation = confirmed.then(result => {
+            if (!result.stored) {
+                this.outboxPaused = true;
+                this.stateWritesPaused = true;
+                this.outboxRequest?.abort();
+            }
+            return result;
+        }).finally(() => {
+            this.shutdownStorageDeadline = null;
+            this.shutdownStorageFlush = null;
+        });
+        this.shutdownStorageFlush = operation;
+        const active = () => this.shutdownStorageFlush === operation && !this.outboxPaused;
+        this.metadataWrites.retry(active);
+        this.agentStateWrites.retry(active);
+        this.sendSync.invalidate();
+        return operation;
+    }
+
+    get tracksShutdownStorage(): boolean { return this.options.trackShutdownStorage === true; }
+
+    /** High-water flow control, not a reservation or a hard bound for uncooperative producers. */
+    waitForStorageCapacity(signal?: AbortSignal): Promise<void> {
+        if (!this.tracksShutdownStorage) return Promise.resolve();
+        if (this.closed) return Promise.reject(new Error('Storage client closed'));
+        return this.storageBarrier.waitForCapacity(this.options.storageHighWaterBytes ?? 16 * 1024 * 1024,
+            this.options.storageHighWaterWrites ?? 256, signal);
+    }
+
+    markStorageOutputIncomplete() {
+        if (this.tracksShutdownStorage) this.storageBarrier.fail('unconfirmed-write');
+    }
+
+    /** Recheck immediately before the runtime's final exit receipt; any later write invalidates it. */
+    isStorageConfirmationCurrent(proof: StorageConfirmation): boolean {
+        return this.options.trackShutdownStorage === true && this.storageBarrier.isCurrent(proof);
+    }
+
     async close() {
         logger.debug('[API] socket.close() called');
         // socket.close() 가 부를 disconnect 핸들러보다 먼저 세운다.
         this.closed = true;
+        this.clearStateRetry();
+        this.clearOutboxRetry();
         this.settleAllMessageAcks('closed');
+        this.storageBarrier.interrupt('closed');
         this.sendSync.stop();
         this.receiveSync.stop();
         this.stopReceivePolling();

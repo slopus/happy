@@ -120,7 +120,11 @@ export interface PersistedTrackedSession {
  * File is preserved on shutdown (state='stopped') for session recovery.
  */
 export interface DaemonLocallyPersistedState {
+  /** Explicit isolated trial artifact identity; absent for normal releases. */
+  windowsCandidateId?: string;
   pid: number;
+  /** Verified native creation time; absent in older/non-Windows daemon records. */
+  windowsProcessIdentity?: { pid: number; creationFileTime: string };
   httpPort: number;
   startTime: string;
   startedWithCliVersion: string;

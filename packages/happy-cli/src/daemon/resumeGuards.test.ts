@@ -198,3 +198,9 @@ describe('shareInFlight', () => {
         expect(b).toBe('b');
     });
 });
+
+it('blocks a duplicate resume while the owned Job remains unresolved after root PID exit', () => {
+    const sessions = [{ happySessionId: 'session-1', pid: 99 }];
+    expect(hasLiveDaemonChild('session-1', sessions, () => false, pid => pid === 99)).toBe(true);
+    expect(hasLiveDaemonChild('session-1', sessions, () => false, () => false)).toBe(false);
+});
