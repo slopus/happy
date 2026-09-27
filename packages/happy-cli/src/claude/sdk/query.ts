@@ -4,9 +4,9 @@
  */
 
 import { query as sdkQuery, type Options, type Query } from '@anthropic-ai/claude-agent-sdk'
-import { readdirSync, readFileSync } from 'node:fs'
+import { accessSync, constants, realpathSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { isAbsolute, join } from 'node:path'
 import type { QueryOptions, QueryPrompt, SDKMessage } from './types'
 import type { SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
 import { ensureLocalProxyBypass } from '../utils/proxyBypass'
@@ -33,6 +33,7 @@ export function query(params: { prompt: QueryPrompt; options?: QueryOptions }): 
 
     // Map QueryOptions -> official Options
     const sdkOptions: Options = {
+        pathToClaudeCodeExecutable: resolveExplicitClaudeExecutable(),
         cwd: opts?.cwd,
         additionalDirectories: opts?.additionalDirectories,
         resume: opts?.resume,
@@ -186,4 +187,23 @@ function findEmptySyncedPluginServers(): string[] {
     // account must not be blocked by a stale blank copy in another account.
     return [...empty].filter(name => !configured.has(name)
         && ![...customPlugins].some(plugin => name.startsWith(`plugin:${plugin}:`)))
+}
+
+// Keep SDK's bundled default. An explicit override must never silently select
+// another install, and validation must not execute a probe outside the sandbox.
+function resolveExplicitClaudeExecutable(): string | undefined {
+    const configured = process.env.HAPPY_CLAUDE_PATH
+    if (configured === undefined) return undefined
+    if (!configured || configured.includes('\0') || !isAbsolute(configured)) {
+        throw new Error('HAPPY_CLAUDE_PATH must be an absolute Claude Code executable path')
+    }
+    try {
+        const executable = realpathSync(configured)
+        if (!statSync(executable).isFile()) throw new Error('not a file')
+        const javascript = /\.[cm]?js$/.test(executable)
+        accessSync(executable, constants.R_OK | (javascript ? 0 : constants.X_OK))
+        return executable
+    } catch {
+        throw new Error('HAPPY_CLAUDE_PATH must point to a readable CLI entrypoint or executable file')
+    }
 }
