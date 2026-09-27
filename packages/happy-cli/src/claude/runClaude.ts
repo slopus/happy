@@ -1,3 +1,4 @@
+/** Orchestrates Claude sessions, initial prompts, MCP tools and session lifecycle. */
 import { createLessonProposalTurn } from '@/utils/lessonProposalTurn';
 import { randomUUID } from 'node:crypto';
 
@@ -694,6 +695,7 @@ export async function runClaude(principal: RunnerPrincipal, options: StartOption
     const lessonProposalTurn = createLessonProposalTurn();
     // Start Happy MCP server
     const happyServer = await startHappyServer(session, {
+        exitAfterFirstTurn,
         mandatorySandbox: sandboxPolicyMode === 'mandatory',
         ...(principal.kind === 'account' ? { proposeLesson: lessonProposalTurn.submit } : {}),
         protectedBashCwd: checkpointComposition.protectedBashCwd,

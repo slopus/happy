@@ -1,3 +1,4 @@
+/** Claude startup, reconnect, run-once context and lifecycle regression contracts. */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TITLE_INSTRUCTION } from '@/utils/titlePrompt';
 import * as axIntegration from '@/orchestrator/prompts/integrate';
@@ -549,6 +550,7 @@ describe('runClaude remote JSONL scanner', () => {
 
         expect(harness.sessionClient.capRuntimeProcessedSeq).toHaveBeenCalledWith(42);
         expect(harness.loopOptions.exitAfterFirstTurn).toBe(true);
+        expect(mockStartHappyServer).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ exitAfterFirstTurn: true }));
         expect(process.env.HAPPY_AUTOMATION_RESUME_PROMPT).toBeUndefined();
 
         await harness.finish();
@@ -585,6 +587,7 @@ describe('runClaude remote JSONL scanner', () => {
         const harness = await startRemoteRunClaudeHarness();
 
         expect(harness.loopOptions.exitAfterFirstTurn).toBe(true);
+        expect(mockStartHappyServer).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ exitAfterFirstTurn: true }));
         expect(process.env.HAPPY_AUTOMATION_RUN_ONCE).toBeUndefined();
 
         await harness.finish();

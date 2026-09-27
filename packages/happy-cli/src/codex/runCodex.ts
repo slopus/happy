@@ -1,3 +1,4 @@
+/** Orchestrates Codex sessions, initial prompts, MCP tools and session lifecycle. */
 import type { CodexBackgroundTask } from './codexBackgroundTasks';
 import { CodexLaunchControl } from './codexLaunchControl';
 import type { StandaloneLaunchBootstrap } from '../daemon/standaloneLaunchProtocol';
@@ -1654,6 +1655,7 @@ export async function runCodex(opts: {
 
     // Start Happy MCP server (HTTP) and prepare STDIO bridge config for Codex
     const happyServer = await startHappyServer(session, {
+        exitAfterFirstTurn,
         ...(runtimeGate ? { admitTool: <T,>(work: () => Promise<T>) => runtimeGate.admit(work, 'writer') } : {}),
         ...(accountToken !== null ? { proposeLesson: lessonProposalTurn.submit } : {}),
         protectedBashCwd: checkpointComposition.protectedBashCwd,

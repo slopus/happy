@@ -65,21 +65,29 @@ interface DeliveryOptions {
     findSession(sessionId: string): TrackedSession | undefined
     isAlive(pid: number): boolean
     readToken(session: TrackedSession): Promise<string | null>
+    /** Existing daemon resume path, including broker registration and run-once prompt delivery. */
+    resumeSession?(input: { sessionId: string; directory: string; text: string; localId: string }): Promise<boolean>
 }
 
 export async function deliverBrowserAttention(event: AttentionEvent, signal: AbortSignal, options: DeliveryOptions): Promise<'sent' | 'ended' | 'unowned'> {
     const session = options.findSession(event.agentSessionId)
     if (!session) return 'unowned'
-    if (!options.isAlive(session.pid)) return 'ended'
+    const localId = `abp-${event.taskId}-${event.eventSeq}`
+    const text = `[agent-browser] task ${event.taskId} status=${event.status} eventSeq=${event.eventSeq}. Call getTask for the current state before continuing.`
+    const wake = async (): Promise<'sent' | 'ended'> => {
+        signal.throwIfAborted()
+        const directory = session.happySessionMetadataFromLocalWebhook?.path ?? session.directory
+        if (session.startedBy !== 'daemon' || !directory || !options.resumeSession) return 'ended'
+        return await options.resumeSession({ sessionId: event.agentSessionId, directory, text, localId }) ? 'sent' : 'ended'
+    }
+    if (!options.isAlive(session.pid)) return wake()
     if (session.startedBy !== 'daemon') return 'unowned'
     if (session.happySessionId !== event.agentSessionId) throw new Error('Attention session identity unavailable')
     if (!session.encryption) throw new Error('Attention session encryption unavailable')
     const token = await options.readToken(session)
     if (!token) throw new Error('Attention session credential unavailable')
     signal.throwIfAborted()
-    if (!options.isAlive(session.pid)) return 'ended'
-    const localId = `abp-${event.taskId}-${event.eventSeq}`
-    const text = `[agent-browser] task ${event.taskId} status=${event.status} eventSeq=${event.eventSeq}. Call getTask for the current state before continuing.`
+    if (!options.isAlive(session.pid)) return wake()
     const content = encodeBase64(encrypt(session.encryption.encryptionKey, session.encryption.encryptionVariant, {
         role: 'user', content: { type: 'text', text }, localKey: localId,
         meta: { sentFrom: 'daemon', source: 'agent-browser' },

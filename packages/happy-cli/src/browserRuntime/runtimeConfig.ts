@@ -42,6 +42,8 @@ const schema = z.object({
     brokerSocketPath: z.string().startsWith('/').default('/run/abp/broker.sock'),
     adminSocketPath: z.string().startsWith('/').default('/run/abp/admin.sock'),
     /** Group that may connect to the broker socket (abp-session); the Runtime chowns the socket to it. */
+    /** Grace period for resuming sessions after their process exits. */
+    brokerOrphanTtlMs: z.number().int().positive().default(60 * 60_000),
     brokerSocketGid: z.number().int().nonnegative().optional(),
     /** SHA-256 (hex) of the daemon token installed at /var/lib/abp/daemon-token. */
     daemonTokenSha256: z.string().regex(/^[0-9a-f]{64}$/).optional(),

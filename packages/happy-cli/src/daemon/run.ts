@@ -1,3 +1,4 @@
+/** Happy daemon lifecycle, child-session spawning and resumption, and browser attention delivery. */
 import { inspectStandaloneCandidatePresence, assertStandaloneCandidateIdentity, readStandaloneCandidateId, createStandaloneWindowsRuntime } from './standaloneWindowsRuntime';
 import { DIFFICULTY_CLASSIFIER_REVISION } from './difficultyRoutingArtifacts';
 import { healInstallArtifacts } from './installArtifactsHeal';
@@ -3247,7 +3248,7 @@ export async function startDaemon(): Promise<void> {
         logger.debug(`[DAEMON RUN] Child exit of PID ${pid} not yet on a receipt; deferred`);
       }
       if (tracked?.happySessionId) autonomousQualityGateRegistry.noteSessionStopped(tracked.happySessionId);
-      // Revokes the session's broker registration and every agent grant it received.
+      // Process exit revokes execution grants only; the broker's orphan TTL preserves tasks for resume.
       if (tracked?.happySessionId) void browserTaskBroker?.revoke({ agentSessionId: tracked.happySessionId }).catch(reportBrowserTaskRevokeFailure);
       const preservedForResume = tracked ? preserveSessionForResume(tracked, `process-exit:${pid}`) : false;
       if (!preservedForResume) {
@@ -4842,6 +4843,16 @@ export async function startDaemon(): Promise<void> {
       findSession: (sessionId) => findBrowserAttentionSession(
         sessionId, pidToTrackedSession.values(), sessionIdToFinishedSession, isPidAlive,
       ),
+      resumeSession: async ({ sessionId, directory, text, localId }) => {
+        // A concurrent resume owns a different prompt; retry attention after its webhook.
+        if (resumeInFlight.has(sessionId)) throw new Error('Attention session resume is already in progress');
+        const result = await resumeSession(sessionId, {
+          automation: { directory, initialPrompt: text, exitAfterFirstTurn: true,
+            environmentVariables: { HAPPY_INITIAL_PROMPT_LOCAL_ID: localId } },
+        });
+        if (result.type !== 'success') logger.debug(`[agent-browser] attention resume failed session=${sessionId}`);
+        return result.type === 'success';
+      },
       isAlive: (pid) => pid > 0 && isPidAlive(pid),
       readToken: async (session) => session.userHomeDir
         ? readStagedTokenFromHomeDir(session.userHomeDir)

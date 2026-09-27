@@ -420,6 +420,7 @@ export async function runRuntime(deps: RuntimeProcessDeps = {}): Promise<void> {
         broker = await startBroker({
             socketPath: config.brokerSocketPath, socketGid: config.brokerSocketGid, server: boundBroker, stateDir,
             daemonTokenSha256: config.daemonTokenSha256,
+            orphanTtlMs: config.brokerOrphanTtlMs,
             identity: { machineId: config.machineId, workspaceId: config.workspaceId },
             profiles: config.profilePrincipals,
             allowedOrigins: config.sites.map((site) => site.origin),

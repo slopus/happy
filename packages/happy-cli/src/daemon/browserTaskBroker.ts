@@ -6,7 +6,7 @@
  * daemon registers each spawned session with the Runtime broker, hands the
  * session process its per-session secret through the spawn environment,
  * binds the registration once the session reports its Happy session id, and
- * revokes it when the session ends. Startup and periodic reconciliation also
+ * revokes its grants when the process exits (logical tasks survive for the broker orphan TTL). Startup and periodic reconciliation also
  * revoke registrations whose Linux owner process is provably dead. A failed
  * registration only means the session has no browser grant; it never blocks the spawn.
  *
@@ -173,7 +173,8 @@ export function createBrowserTaskSessionBroker(
     }
     /** Confirmed (200) and invalid requests (400, never retryable) leave the queue. */
     const attempt = async (target: RevokeTarget): Promise<void> => {
-        const { status } = await send('/v1/sessions/revoke', { ...target })
+        // Explicitly preserve logical tasks on exits, reconciliation, and replacement registration.
+        const { status } = await send('/v1/sessions/revoke', { ...target, endSession: false })
         if (status !== 200 && status !== 400) return
         pending = pending.filter((entry) => key(entry) !== key(target))
         savePending()

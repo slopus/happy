@@ -1,3 +1,4 @@
+/** Runtime configuration validation and documented deployment defaults. */
 import { generateKeyPairSync } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
 import { parseRuntimeConfig } from './runtimeConfig'
@@ -29,6 +30,12 @@ describe('parseRuntimeConfig', () => {
         expect(parseRuntimeConfig({ ...valid(), maxAgentWindows: 6, maxSpacesPerProfile: 6 }).maxSpacesPerProfile).toBe(6)
         expect(() => parseRuntimeConfig({ ...valid(), maxAgentWindows: 3, maxSpacesPerProfile: 4 })).toThrow(/maxSpacesPerProfile/)
         expect(() => parseRuntimeConfig({ ...valid(), spaceIdleReclaimMs: 1_000 })).toThrow(/spaceIdleReclaimMs/)
+    })
+
+    it('configures logical-session orphan retention with a one-hour default', () => {
+        expect(parseRuntimeConfig(valid()).brokerOrphanTtlMs).toBe(3_600_000)
+        expect(parseRuntimeConfig({ ...valid(), brokerOrphanTtlMs: 120_000 }).brokerOrphanTtlMs).toBe(120_000)
+        expect(() => parseRuntimeConfig({ ...valid(), brokerOrphanTtlMs: 0 })).toThrow(/brokerOrphanTtlMs/)
     })
 
     it('rejects unknown keys and duplicate profiles', () => {

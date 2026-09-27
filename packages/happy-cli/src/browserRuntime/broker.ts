@@ -8,7 +8,7 @@
  *   GET  /v1/sessions           daemon token   → [{ registrationId, agentSessionId?, owner?, bootId?, createdAtMs, revoking }]
  *   POST /v1/sessions/register  daemon token   { owner?, bootId? } → { registrationId, sessionSecret }
  *   POST /v1/sessions/bind      daemon token   { registrationId, agentSessionId, owner? }
- *   POST /v1/sessions/revoke    daemon token   { agentSessionId } | { registrationId }
+ *   POST /v1/sessions/revoke    daemon token   { agentSessionId | registrationId, endSession?: true }
  *   POST /v1/agent-grants       session secret { agentSessionId, profileId } → { token, grantId, expiresAtMs }
  *   GET  /v1/attention?afterSeq=&waitMs=  daemon token → AttentionFeed
  *
@@ -21,6 +21,8 @@
  * Revocation first persists a tombstone (`revoking`), then revokes each grant,
  * then drops the registration: interrupted at any point, issuance stays
  * blocked and the grant ids stay known until a retry or restart finishes it.
+ * Process exits orphan logical sessions; only TTL expiry or explicit endSession
+ * cancels their tasks. Binding a replacement process clears the durable orphan mark.
  */
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto'
 import { chmod, chown, lstat, mkdir, open, readFile, rename, rm } from 'node:fs/promises'
@@ -52,8 +54,10 @@ interface Registration {
      * revokeGrant leaves it for the daemon's retry or the next start-up.
      */
     revoking?: true
+    /** Explicit logical-session termination, replayed after a crash. */
+    endSession?: true
 }
-interface RegistryFile { schemaVersion: 1; registrations: Record<string, Registration> }
+interface RegistryFile { schemaVersion: 1; registrations: Record<string, Registration>; orphanedSessions?: Record<string, number> }
 
 export interface BrokerOptions {
     socketPath: string
@@ -74,12 +78,16 @@ export interface BrokerOptions {
     socketGid?: number
     /** Delay before retrying a start-up revocation replay that failed. */
     recoveryRetryMs?: number
+    /** Logical sessions survive process exit for this long (default one hour). */
+    orphanTtlMs?: number
+    orphanSweepIntervalMs?: number
     now?: () => number
     log?: (line: string) => void
 }
 
 export interface Broker {
     close(): Promise<void>
+    sweepOrphans(): Promise<void>
     /** Grants of registrations being revoked; the task API must deny them until revocation completes. */
     revokingGrantIds(): ReadonlySet<string>
     /** Registrations whose revocation has not completed (readiness is false while any remain). */
@@ -97,8 +105,8 @@ const schemas = {
     register: z.object({ schemaVersion: z.literal(1), owner: sessionOwnerSchema.optional(), bootId: z.string().min(1).max(256).optional() }).strict(),
     bind: z.object({ schemaVersion: z.literal(1), registrationId: id, agentSessionId: id, owner: sessionOwnerSchema.optional() }).strict(),
     revoke: z.union([
-        z.object({ schemaVersion: z.literal(1), agentSessionId: id }).strict(),
-        z.object({ schemaVersion: z.literal(1), registrationId: id }).strict(),
+        z.object({ schemaVersion: z.literal(1), agentSessionId: id, endSession: z.boolean().optional() }).strict(),
+        z.object({ schemaVersion: z.literal(1), registrationId: id, endSession: z.boolean().optional() }).strict(),
     ]),
     grant: z.object({ schemaVersion: z.literal(1), agentSessionId: id, profileId: id }).strict(),
     attention: z.object({ afterSeq: z.coerce.number().int().nonnegative(), waitMs: z.coerce.number().int().nonnegative().max(MAX_SUBSCRIBE_WAIT_MS).default(0) }),
@@ -143,6 +151,8 @@ export async function startBroker(options: BrokerOptions): Promise<Broker> {
     } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw new BrowserRuntimeError('JOURNAL_UNAVAILABLE', 'Broker registry is unreadable')
     }
+    const orphaned = registry.orphanedSessions ??= {}
+    const orphanTtlMs = options.orphanTtlMs ?? 60 * 60_000
     let writeTail: Promise<void> = Promise.resolve()
     const persist = (): Promise<void> => {
         const snapshot = JSON.stringify(registry)
@@ -184,21 +194,34 @@ export async function startBroker(options: BrokerOptions): Promise<Broker> {
         // Set before persisting, so this process issues nothing more even if the write fails;
         // written on every attempt, so no grant is revoked before the tombstone is on disk.
         registration.revoking = true
+        if (registration.agentSessionId) orphaned[registration.agentSessionId] ??= now()
         await persist().catch(() => { throw new BrowserRuntimeError('RUNTIME_UNAVAILABLE', 'revocation could not be recorded', true) })
         for (const grantId of registration.grantIds) {
             await options.revokeGrant(grantId as GrantId)
                 .catch(() => { throw new BrowserRuntimeError('RUNTIME_UNAVAILABLE', 'grant revocation is incomplete', true) })
         }
         // Still under the tombstone: a failure or crash here is retried like a grant revocation.
-        if (registration.agentSessionId && options.endSession) {
+        if (registration.endSession && registration.agentSessionId && options.endSession) {
             await options.endSession(registration.agentSessionId)
                 .catch(() => { throw new BrowserRuntimeError('RUNTIME_UNAVAILABLE', 'session end is incomplete', true) })
+            delete orphaned[registration.agentSessionId]
         }
         delete registry.registrations[registrationId]
         await persist()
         log(`broker session revoked grants=${registration.grantIds.length}`)
         return registration.grantIds.length
     }
+
+    // Shares the bind/issue/revoke lock: a resume cannot bind halfway through reclamation.
+    const sweepOrphans = (): Promise<void> => exclusive(async () => {
+        for (const [agentSessionId, since] of Object.entries(orphaned)) {
+            if (now() - since < orphanTtlMs || !options.endSession
+                || Object.values(registry.registrations).some((r) => r.agentSessionId === agentSessionId)) continue
+            await options.endSession(agentSessionId)
+            delete orphaned[agentSessionId]
+            await persist()
+        }
+    })
 
     const routes: Record<string, (req: IncomingMessage, url: URL) => Promise<unknown>> = {
         'GET /v1/sessions': async (req) => {
@@ -229,6 +252,7 @@ export async function startBroker(options: BrokerOptions): Promise<Broker> {
                 if ((registration.agentSessionId && registration.agentSessionId !== body.agentSessionId)
                     || (other && other[0] !== body.registrationId)) throw new BrowserRuntimeError('CONFLICT', 'registration or session is already bound')
                 registration.agentSessionId = body.agentSessionId
+                delete orphaned[body.agentSessionId]
                 if (body.owner) registration.owner = body.owner
                 await persist()
                 return { bound: true }
@@ -241,7 +265,18 @@ export async function startBroker(options: BrokerOptions): Promise<Broker> {
                 const entry = 'registrationId' in body
                     ? (registry.registrations[body.registrationId] ? [body.registrationId, registry.registrations[body.registrationId]] as const : undefined)
                     : findByAgentSession(body.agentSessionId)
-                if (!entry) return { revoked: false, grants: 0 }
+                if (!entry) {
+                    if (body.endSession && 'agentSessionId' in body && options.endSession) {
+                        // Persist an immediately due orphan before ending an already detached session.
+                        orphaned[body.agentSessionId] = now() - orphanTtlMs
+                        await persist()
+                        await options.endSession(body.agentSessionId)
+                        delete orphaned[body.agentSessionId]
+                        await persist()
+                    }
+                    return { revoked: false, grants: 0 }
+                }
+                if (body.endSession) entry[1].endSession = true
                 const grants = await finishRevocation(...entry)
                 return { revoked: true, grants }
             })
@@ -311,11 +346,17 @@ export async function startBroker(options: BrokerOptions): Promise<Broker> {
         }
     }
     if (!options.server) await listenOnSocket(server, options.socketPath, 0o660, options.socketGid)
-    void replayRevocations()
+    void replayRevocations().then(sweepOrphans).catch(() => log('broker orphan recovery incomplete; retrying'))
+    const orphanTimer = setInterval(() => {
+        void sweepOrphans().catch(() => log('broker orphan sweep incomplete; retrying'))
+    }, options.orphanSweepIntervalMs ?? 60_000)
+    orphanTimer.unref()
     return {
+        sweepOrphans,
         close: () => {
             closed = true
             clearTimeout(recoveryTimer)
+            clearInterval(orphanTimer)
             return new Promise<void>((resolve) => { server.closeAllConnections(); server.close(() => resolve()) })
                 .then(() => exclusiveTail.catch(() => undefined)).then(() => writeTail.catch(() => undefined))
         },

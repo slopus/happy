@@ -1,3 +1,4 @@
+/** Durable browser task execution, logical-session continuity, approval validation and dispatch fences. */
 import { randomUUID } from 'node:crypto'
 import { BrowserRuntimeError, POC_LIMITS, SCHEMA_VERSION, TERMINAL_STATUSES, type ActionId, type AgentGrant, type AuthContext, type BatchId,
     type BatchResult, type BatchStep, type BrowserDriver, type BrowserInstanceId, type BrowserRuntimeApi, type GrantId,
@@ -187,7 +188,7 @@ export class BrowserRuntime implements BrowserRuntimeApi {
     }> {
         await this.recovery
         let task = this.requireTask(req.taskId)
-        this.authorizeTask(auth, 'openPage', task)
+        await this.authorizeTask(auth, 'openPage', task)
         const duplicate = this.taskRequest(task, auth, req.requestId, { operation: 'openPage', ...req })
         if (duplicate)
             return duplicate as {
@@ -435,9 +436,9 @@ export class BrowserRuntime implements BrowserRuntimeApi {
     }): Promise<Observation> {
         await this.recovery
         const task = this.requireTask(req.taskId)
-        this.authorizeTask(auth, 'observe', task)
+        await this.authorizeTask(auth, 'observe', task)
         this.assertTaskTab(task, req.tabId)
-        if (task.status === 'awaiting-user' && task.waitReason === 'approval'
+        if (task.waitReason === 'approval'
             && Object.values(task.approvals).some((approval) => approval.state === 'pending'
                 && task.batches[String(approval.batchId)]?.steps[Number(approval.nextStep)]?.tabId === req.tabId))
             throw new BrowserRuntimeError('CONFLICT', 'The tab snapshot is bound to a pending approval')
@@ -455,7 +456,7 @@ export class BrowserRuntime implements BrowserRuntimeApi {
     }): Promise<ScreenshotResult> {
         await this.recovery
         const task = this.requireTask(req.taskId)
-        this.authorizeTask(auth, 'screenshot', task)
+        await this.authorizeTask(auth, 'screenshot', task)
         this.assertTaskTab(task, req.tabId)
         return this.driver(task.profileId).screenshot(req.tabId, this.agentGrant(auth).allowedOrigins, { timeoutMs: 30000 })
     }
@@ -474,7 +475,7 @@ export class BrowserRuntime implements BrowserRuntimeApi {
     }> {
         await this.recovery
         const task = this.requireTask(req.taskId)
-        this.authorizeTask(auth, 'submitBatch', task)
+        await this.authorizeTask(auth, 'submitBatch', task)
         const duplicate = this.taskRequest(task, auth, req.requestId, { operation: 'submitBatch', ...req })
         if (duplicate)
             return duplicate as {
@@ -611,7 +612,7 @@ export class BrowserRuntime implements BrowserRuntimeApi {
     }): Promise<TaskView> {
         await this.recovery
         const task = this.requireTask(req.taskId)
-        this.authorizeTask(auth, 'finishTask', task)
+        await this.authorizeTask(auth, 'finishTask', task)
         if (task.stateVersion !== req.expectedVersion || task.status !== 'paused' || task.pauseReason !== 'awaiting-agent'
             || task.uncertainActions.length || Object.values(task.approvals).some((a) => a.state === 'pending'))
             throw new BrowserRuntimeError('CONFLICT', 'Task is not ready to finish')
@@ -620,7 +621,7 @@ export class BrowserRuntime implements BrowserRuntimeApi {
     }
     async getTask(auth: AuthContext, req: {
         taskId: TaskId
-    }): Promise<TaskView> { await this.recovery; const task = this.requireTask(req.taskId); this.authorizeTask(auth, 'getTask',
+    }): Promise<TaskView> { await this.recovery; const task = this.requireTask(req.taskId); await this.authorizeTask(auth, 'getTask',
         task); return this.view(task); }
     /** Interactive only (assertOperation refuses agent grants): unfinished tasks of the credential's owner on its profile. */
     async listTasks(auth: AuthContext, req: { profileId: ProfileId }): Promise<{ tasks: TaskView[] }> {
@@ -641,7 +642,7 @@ export class BrowserRuntime implements BrowserRuntimeApi {
     }): Promise<SubscribeResult> {
         await this.recovery
         const task = this.requireTask(req.taskId)
-        this.authorizeTask(auth, 'subscribe', task)
+        await this.authorizeTask(auth, 'subscribe', task)
         if (req.afterSeq < 0)
             throw new BrowserRuntimeError('INVALID_REQUEST', 'Invalid event cursor')
         if (req.afterSeq > task.highWatermarkSeq)
@@ -810,7 +811,7 @@ export class BrowserRuntime implements BrowserRuntimeApi {
         return 'closed'
     }
     /**
-     * The agent session ended (broker revocation at session exit): its spaces are marked
+     * The logical agent session ended (explicit termination or orphan TTL expiry): its spaces are marked
      * for reclamation (durably, so a restart finishes it) and its unfinished tasks go
      * through the cancel fence. reclaimSpaces closes them once their tasks allow.
      * Idempotent.
@@ -1015,7 +1016,7 @@ export class BrowserRuntime implements BrowserRuntimeApi {
                     && ['planned', 'intent-committed', 'dispatched'].includes(action.state)).map(([id]) => id as ActionId)
                 let reason: StoredTask['pauseReason'] | undefined
                 if (!grant || grant.expiresAtMs <= nowMs || this.options.store.isRevoked(grant.grantId)
-                    || Boolean(revokedBatchGrant && this.options.store.isRevoked(revokedBatchGrant.grantId))
+                    || Boolean(current.status === 'running' && revokedBatchGrant && this.options.store.isRevoked(revokedBatchGrant.grantId))
                     || revokedActionIds.length)
                     reason = 'grant-expired'
                 else if (Number(current.waitExpiresAtMs ?? 0) > 0 && Number(current.waitExpiresAtMs) <= nowMs)
@@ -1031,11 +1032,9 @@ export class BrowserRuntime implements BrowserRuntimeApi {
                         .includes(actions[id]?.state ?? '') && ['navigate', 'click', 'fill'].includes(String(actions[id]?.kind)))
                     for (const id of uncertainWrites)
                         actions[id] = { ...actions[id], state: 'uncertain' }
-                    const approvals = Object.fromEntries(Object.entries(current.approvals).map(([id, approval]) => [id, {
-                        ...approval,
-                        ...(approval.grantId && this.options.store.isRevoked(approval.grantId)
-                            && approval.state === 'pending' ? { state: 'expired' as const } : {}),
-                    }]))
+                    // Revocation fences execution, not user consent. Keep the approval's
+                    // digest and expiry; any later dispatch revalidates both under a live grant.
+                    const approvals = current.approvals
                     return {
                         patch: { status: 'paused', pauseReason: uncertainWrites.length ? 'outcome-unknown' : reason,
                             ...(uncertainWrites.length ? { actions, uncertainActions: [...new Set([...current.uncertainActions,
@@ -1067,11 +1066,13 @@ export class BrowserRuntime implements BrowserRuntimeApi {
         bindingHash: string
         requestId: RequestId
         decision: 'approve' | 'reject'
-    }): Promise<ApproveResult> {
+    }, continuationAuth?: AuthContext): Promise<ApproveResult> {
         await this.recovery
         const task = this.requireTask(req.taskId)
-        this.authorizeTask(auth, 'approve', task)
+        await this.authorizeTask(auth, continuationAuth ? 'resume' : 'approve', task)
         const approval = task.approvals[req.approvalId]
+        if (continuationAuth && !approval?.approvedByUser)
+            throw new BrowserRuntimeError('SCOPE_DENIED', 'User consent is required')
         if (!approval || approval.bindingHash !== req.bindingHash)
             throw new BrowserRuntimeError('APPROVAL_EXPIRED', 'Approval is no longer pending')
         if (approval.state === 'consumed' && approval.result)
@@ -1084,18 +1085,33 @@ export class BrowserRuntime implements BrowserRuntimeApi {
             throw new BrowserRuntimeError('APPROVAL_EXPIRED', 'Approval expired')
         }
         if (req.decision === 'reject') {
-            const cancelled = await this.commit(task, { status: 'cancelled', cancelRequested: true, approvals: { ...task.approvals,
+            const cancelled = await this.commit(task, { status: 'cancelled', cancelRequested: true,
+                pendingApproval: undefined, waitReason: undefined, waitExpiresAtMs: undefined, approvals: { ...task.approvals,
                 [req.approvalId]: { ...approval, state: 'rejected' } } }, 'approval-rejected', { approvalId: req.approvalId,
                     attention: 'approval-rejected' })
             for (const lease of this.leases.revokeTask(task.taskId))
                 await this.persistTabLease(task.taskId, task.taskSpaceId, lease.tabId, lease.leaseEpoch)
             return { outcome: 'rejected', task: this.view(cancelled) }
         }
-        const batchGrant = task.batches[String(approval.batchId)]?.grant
-        const originalGrant = (batchGrant?.grantId === approval.grantId ? batchGrant : task.agentGrant) as AgentGrant | undefined
-        if (!originalGrant || originalGrant.expiresAtMs <= this.clock.now() || this.options.store.isRevoked(originalGrant.grantId))
-            throw new BrowserRuntimeError('UNAUTHORIZED', 'Agent execution grant is no longer valid')
+        const originalGrant = task.agentGrant as AgentGrant | undefined
+        if (!originalGrant || originalGrant.expiresAtMs <= this.clock.now() || this.options.store.isRevoked(originalGrant.grantId)) {
+            // The human may approve after a run-once process exits. Consent is durable,
+            // but no browser operation is dispatched here. Attention wakes the owner;
+            // getTask rebinds its new grant and resume revalidates this exact form digest,
+            // document, browser and lease before consuming consent once.
+            const waiting = await this.options.store.mutate(task.taskId, (current) => {
+                const latest = current.approvals[req.approvalId]
+                if (current.cancelRequested || current.uncertainActions.length || !latest || latest.state !== 'pending'
+                    || latest.bindingHash !== req.bindingHash || Number(latest.expiresAtMs) <= this.clock.now())
+                    throw new BrowserRuntimeError('APPROVAL_EXPIRED', 'Approval changed before consent')
+                if (latest.approvedByUser) return null
+                return { patch: { approvals: { ...current.approvals, [req.approvalId]: { ...latest, approvedByUser: true } } },
+                    event: this.event('agent-attention-required', { approvalId: req.approvalId, attention: 'approval-approved' }, current.stateVersion + 1) }
+            })
+            return { outcome: 'approved', task: this.view(waiting ?? this.requireTask(task.taskId)) }
+        }
         const originalAuth: AuthContext = { credential: originalGrant, verifiedAtMs: this.clock.now() }
+        this.checkCredential(originalAuth, 'submitBatch', task.profileId, task.taskSpaceId)
         const batchRecord = task.batches[String(approval.batchId)] as {
             steps: BatchStep[]
             nextStep: number
@@ -1118,7 +1134,7 @@ export class BrowserRuntime implements BrowserRuntimeApi {
         // survive that bump only when recovery restored an otherwise idle tab,
         // no user owns this profile, and the same approval still blocks the task.
         const recoveredApprovalLease = lease.owner.kind === 'none'
-            && task.status === 'awaiting-user' && task.waitReason === 'approval'
+            && (task.status === 'awaiting-user' || task.status === 'paused' && task.pauseReason === 'grant-expired') && task.waitReason === 'approval'
             && !this.leases.isUserFenced(task.profileId)
             && lease.leaseEpoch > Number(approval.leaseEpoch)
             && task.tabLeaseEpochs?.[approvedStep.tabId] === lease.leaseEpoch
@@ -1167,14 +1183,17 @@ export class BrowserRuntime implements BrowserRuntimeApi {
             throw new BrowserRuntimeError('APPROVAL_EXPIRED', 'Approval binding changed')
         const consumed = await this.options.store.mutate(task.taskId, (current) => {
             const latestApproval = current.approvals[req.approvalId]
-            if (current.cancelRequested || current.status !== 'awaiting-user' || !latestApproval || latestApproval.state !== 'pending'
+            if (current.cancelRequested || current.uncertainActions.length
+                || !(current.status === 'awaiting-user' || current.status === 'paused' && current.pauseReason === 'grant-expired')
+                || !this.isCredentialLive(originalAuth) || !latestApproval || latestApproval.state !== 'pending'
                 || latestApproval.bindingHash !== req.bindingHash || Number(latestApproval.expiresAtMs) <= this.clock.now()) {
                 throw new BrowserRuntimeError('APPROVAL_EXPIRED', 'Approval changed before consumption')
             }
             const { [approvedStep.actionId]: _priorAction, ...remainingActions } = current.actions
             return {
-                patch: { status: 'running', pauseReason: undefined, waitReason: undefined, waitExpiresAtMs: undefined,
+                patch: { status: 'running', pauseReason: undefined, pendingApproval: undefined, waitReason: undefined, waitExpiresAtMs: undefined,
                     actions: remainingActions,
+                    batches: { ...current.batches, [String(approval.batchId)]: { ...current.batches[String(approval.batchId)], grant: originalGrant } },
                     approvals: { ...current.approvals, [req.approvalId]: { ...latestApproval, state: 'consumed' } } },
                 event: this.event('approval-consumed', { approvalId: req.approvalId }, current.stateVersion + 1),
             }
@@ -1196,7 +1215,7 @@ export class BrowserRuntime implements BrowserRuntimeApi {
     }): Promise<ControlResult> {
         await this.recovery
         const task = this.requireTask(req.taskId)
-        this.authorizeTask(auth, 'takeOver', task)
+        await this.authorizeTask(auth, 'takeOver', task)
         if (['succeeded', 'failed', 'cancelled'].includes(task.status))
             throw new BrowserRuntimeError('CONFLICT', 'Terminal tasks cannot be taken over')
         this.assertTaskTab(task, req.tabId)
@@ -1236,7 +1255,7 @@ export class BrowserRuntime implements BrowserRuntimeApi {
     }): Promise<ControlResult> {
         await this.recovery
         const task = this.requireTask(req.taskId)
-        this.authorizeTask(auth, 'releaseControl', task)
+        await this.authorizeTask(auth, 'releaseControl', task)
         if (['succeeded', 'failed', 'cancelled'].includes(task.status))
             throw new BrowserRuntimeError('CONFLICT', 'Terminal tasks cannot release control')
         this.assertTaskTab(task, req.tabId)
@@ -1261,7 +1280,7 @@ export class BrowserRuntime implements BrowserRuntimeApi {
     }): Promise<TaskView> {
         await this.recovery
         const task = this.requireTask(req.taskId)
-        this.authorizeTask(auth, 'resume', task)
+        await this.authorizeTask(auth, 'resume', task)
         if (['succeeded', 'failed', 'cancelled'].includes(task.status))
             throw new BrowserRuntimeError('CONFLICT', 'Terminal tasks cannot be resumed')
         const claimId = String(req.requestId)
@@ -1291,19 +1310,38 @@ export class BrowserRuntime implements BrowserRuntimeApi {
         requestId: RequestId
     }): Promise<TaskView> {
         const task = this.requireTask(req.taskId)
-        this.authorizeTask(auth, 'resume', task)
+        await this.authorizeTask(auth, 'resume', task)
         if (auth.credential.kind === 'interactive')
             return this.userResume(task)
         if (task.cancelRequested || ['user-control', 'quota', 'task-time-limit', 'outcome-unknown',
             'cancelled-with-unknown-effect'].includes(task.pauseReason ?? '') || task.uncertainActions.length)
             throw new BrowserRuntimeError('CONFLICT', 'Task pause cannot be resumed directly')
+        const pending = Object.entries(task.approvals).find(([, approval]) => approval.state === 'pending')
+        if (pending && task.waitReason === 'approval' && task.pauseReason !== 'approval-expired') {
+            if (task.stateVersion !== req.expectedVersion)
+                throw new BrowserRuntimeError('CONFLICT', 'Task changed before resume')
+            const [approvalId, approval] = pending
+            if (Number(approval.expiresAtMs) <= this.clock.now()) {
+                // Consent cannot extend an approval's lifetime. Re-enter the existing
+                // fresh-approval/replan path, including redacted-step recovery rules.
+                const expired = await this.commit(task, { status: 'paused', pauseReason: 'approval-expired' },
+                    'state-changed', { pauseReason: 'approval-expired' })
+                return this.resumeClaimedImpl(auth, { ...req, expectedVersion: expired.stateVersion })
+            }
+            if (approval.approvedByUser) {
+                const result = await this.approveImpl(auth, { taskId: task.taskId, approvalId: approvalId as ApprovalId,
+                    bindingHash: String(approval.bindingHash), requestId: req.requestId, decision: 'approve' }, auth)
+                return result.task
+            }
+            // Rebinding alone cannot manufacture consent; keep waiting for the user.
+            if (task.pauseReason === 'grant-expired')
+                return this.view(await this.commit(task, { status: 'awaiting-user', pauseReason: undefined }, 'state-changed', { status: 'awaiting-user' }))
+        }
         if (task.stateVersion !== req.expectedVersion || task.status !== 'paused' || !['awaiting-agent', 'user-input-complete',
             'approval-expired', 'grant-expired', 'browser-replaced'].includes(task.pauseReason ?? ''))
             throw new BrowserRuntimeError('CONFLICT', 'Task is not resumable')
         if (auth.credential.kind !== 'agent-grant')
             throw new BrowserRuntimeError('SCOPE_DENIED', 'Agent grant required to resume')
-        if (task.pauseReason === 'grant-expired')
-            task.agentGrant = auth.credential
         if (task.pauseReason === 'user-input-complete' && task.waitReason) {
             if (Number(task.waitExpiresAtMs ?? 0) > 0 && this.clock.now() > Number(task.waitExpiresAtMs))
                 return this.view(await this.commit(task, { status: 'paused', pauseReason: 'user-wait-expired' }, 'state-changed',
@@ -1460,7 +1498,7 @@ export class BrowserRuntime implements BrowserRuntimeApi {
         await this.recovery
         const started = this.clock.now()
         const task = this.requireTask(req.taskId)
-        this.authorizeTask(auth, 'cancel', task)
+        await this.authorizeTask(auth, 'cancel', task)
         if (['succeeded', 'failed', 'cancelled'].includes(task.status))
             return { status: 'cancel-accepted', task: this.view(task), fenceAckMs: Math.max(0, this.clock.now() - started) }
         const latest = await this.cancelTask(task)
@@ -1559,7 +1597,7 @@ export class BrowserRuntime implements BrowserRuntimeApi {
         run: () => Promise<T>,
     ): Promise<T> {
         await this.recovery
-        this.assertMutationScope(auth, payload)
+        await this.assertMutationScope(auth, payload)
         const key = requestKey(auth, requestId)
         const hash = payloadHash(payload)
         const stored = this.findDurableRequest(key)
@@ -1587,13 +1625,13 @@ export class BrowserRuntime implements BrowserRuntimeApi {
                 this.requestFlights.delete(key)
         }
     }
-    private assertMutationScope(auth: AuthContext, payload: unknown): void {
+    private async assertMutationScope(auth: AuthContext, payload: unknown): Promise<void> {
         if (!isRecord(payload) || typeof payload.operation !== 'string')
             throw new BrowserRuntimeError('INVALID_REQUEST', 'Mutation operation is missing')
         const operation = payload.operation as Operation
         if (typeof payload.taskId === 'string') {
             const task = this.requireTask(payload.taskId as TaskId)
-            this.authorizeTask(auth, operation, task)
+            await this.authorizeTask(auth, operation, task)
             return
         }
         if (typeof payload.taskSpaceId === 'string') {
@@ -1880,14 +1918,12 @@ export class BrowserRuntime implements BrowserRuntimeApi {
             }
             else if (!taskGrant || taskGrant.expiresAtMs <= this.clock.now()
                 || this.options.store.isRevoked(taskGrant.grantId) || revokedSegmentActions.length) {
-                const approvals = Object.fromEntries(Object.entries(task.approvals).map(([id, approval]) => [id, {
-                    ...approval,
-                    ...(approval.grantId && this.options.store.isRevoked(approval.grantId)
-                        && approval.state === 'pending' ? { state: 'expired' as const } : {}),
-                }]))
+                const approvals = task.approvals
+                const awaitingApproval = task.waitReason === 'approval'
+                    && Object.values(approvals).some((approval) => approval.state === 'pending')
                 patch = { status: 'paused', pauseReason: pendingWrites.length ? 'outcome-unknown' : 'grant-expired', actions,
                     approvals,
-                    ...batchPatch,
+                    ...(awaitingApproval && !pendingWrites.length ? {} : batchPatch),
                     ...(pendingWrites.length ? { uncertainActions: [...new Set([...task.uncertainActions,
                         ...pendingWrites.map(([id]) => id as ActionId)])] } : {}) }
             }
@@ -2079,6 +2115,13 @@ export class BrowserRuntime implements BrowserRuntimeApi {
                         decision = classifySiteAction(this.options.sites, effectiveStep, description)
                     if (decision === 'deny')
                         throw new BrowserRuntimeError('ORIGIN_DENIED', 'Site policy refuses this destination', false, false)
+                    // Refuse an incomplete plan before creating approval or sending browser input.
+                    // Reclassify approved steps too: approval bypasses the prompt, not the postcondition.
+                    if (['click', 'navigate'].includes(step.kind)
+                        && classifySiteAction(this.options.sites, effectiveStep, description) !== 'auto'
+                        && !steps.slice(index + 1).some(candidate => candidate.tabId === step.tabId && candidate.kind === 'waitFor'))
+                        throw new BrowserRuntimeError('INVALID_REQUEST',
+                            'Add a waitFor step (until text, url, or element of the expected result) on the same tab after this action and resubmit the batch with new requestId and actionId values.', false, false)
                 }
                 catch (error) {
                     // Description is read-only preflight; input has not been sent.
@@ -2505,13 +2548,26 @@ export class BrowserRuntime implements BrowserRuntimeApi {
     }
     private event(type: TaskEvent['type'], data: Record<string, unknown>, stateVersion: number,
         leaseEpoch = 0): StoreEventInput { return { type, atMs: this.clock.now(), stateVersion, leaseEpoch, data }; }
-    private authorizeTask(auth: AuthContext, operation: Operation, task: StoredTask): void {
+    private async authorizeTask(auth: AuthContext, operation: Operation, task: StoredTask): Promise<void> {
         this.checkCredential(auth, operation, task.profileId, task.taskSpaceId)
         if (task.owner.principalId !== auth.credential.principalId || task.owner.workspaceId !== auth.credential.workspaceId
             || task.owner.machineId !== auth.credential.machineId)
             throw new BrowserRuntimeError('SCOPE_DENIED', 'Task owner does not match credential')
         if (auth.credential.kind === 'agent-grant' && auth.credential.agentSessionId !== task.agentSessionId)
             throw new BrowserRuntimeError('SCOPE_DENIED', 'Agent session does not own task')
+        if (auth.credential.kind === 'agent-grant') {
+            const grant = auth.credential
+            // A logical session outlives its process. Persist the replacement grant before
+            // returning, without changing the caller's optimistic task version. Never
+            // rewrite an in-flight batch's grant: its old dispatch must remain fenced.
+            const rebound = await this.options.store.mutate(task.taskId, (current) => {
+                this.checkCredential(auth, operation, current.profileId, current.taskSpaceId)
+                if ((current.agentGrant as AgentGrant | undefined)?.grantId === grant.grantId) return null
+                return { patch: { agentGrant: grant, stateVersion: current.stateVersion },
+                    event: this.event('state-changed', { grantRebound: true }, current.stateVersion) }
+            })
+            if (rebound) Object.assign(task, rebound)
+        }
     }
     private checkCredential(auth: AuthContext, op: Operation, profileId: ProfileId, taskSpaceId?: TaskSpaceId): void {
         const credential = auth.credential

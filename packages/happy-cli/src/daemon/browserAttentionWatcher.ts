@@ -88,7 +88,9 @@ export class BrowserAttentionWatcher {
             signal.throwIfAborted()
             if (!expired && event.seq <= state.afterSeq) continue
             const result = await this.options.deliver(event, signal)
-            if (result !== 'sent') {
+            if (result === 'sent') {
+                this.options.log?.(`[agent-browser] attention delivered sessionId=${event.agentSessionId} taskId=${event.taskId} eventSeq=${event.eventSeq}`)
+            } else {
                 state = { ...state, skipped: [...state.skipped, { taskId: event.taskId, agentSessionId: event.agentSessionId, eventSeq: event.eventSeq, reason: result }].slice(-MAX_SKIPS) }
             }
             // A snapshot is a single checkpoint: partial delivery must replay it.

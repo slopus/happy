@@ -1,3 +1,4 @@
+/** Attention outbox persistence and runtime wake notification contracts. */
 import { chmod, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -219,7 +220,9 @@ describe('BrowserRuntime attention transitions', () => {
         await h.runtime.observe(h.auth, { taskId: h.task.taskId, tabId: h.opened.tabId })
         const current = await h.runtime.getTask(h.auth, { taskId: h.task.taskId })
         const batch = await h.runtime.submitBatch(h.auth, { taskId: h.task.taskId, expectedVersion: current.stateVersion, requestId: 'pay' as RequestId,
-            steps: [{ stepId: 'pay' as never, actionId: 'pay' as never, tabId: h.opened.tabId, kind: 'click', ref: '@e1' as never, timeoutMs: 1000 }] }, { waitMs: 1000 })
+            steps: [{ stepId: 'pay' as never, actionId: 'pay' as never, tabId: h.opened.tabId, kind: 'click', ref: '@e1' as never, timeoutMs: 1000 },
+                { stepId: 'check' as never, actionId: 'check' as never, tabId: h.opened.tabId, kind: 'waitFor',
+                    until: { kind: 'text', text: 'Payment complete' }, timeoutMs: 1000 }] }, { waitMs: 1000 })
         const approval = batch.result?.pendingApproval
         if (!approval) throw new Error('test requires a pending approval')
         expect(await h.reasons()).toEqual(['takeover-released', 'user-resumed'])

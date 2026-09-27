@@ -1,3 +1,4 @@
+/** Attention transport, process wakeup and durable delivery cursor contracts. */
 import { createHash } from 'node:crypto'
 import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
 import { createServer, type Server } from 'node:http'
@@ -50,6 +51,23 @@ describe('attention delivery over the existing encrypted server path', () => {
         acknowledge = true
         await expect(deliverBrowserAttention(event, new AbortController().signal, options)).resolves.toBe('sent')
         expect(requests).toHaveLength(2)
+    })
+
+    it('wakes a known ended chat with a stable automation prompt and checkpoints it once', async () => {
+        const dir = await tempDir()
+        const resumed: Array<{ sessionId: string; directory: string; text: string; localId: string }> = []
+        const options = { serverUrl: 'http://127.0.0.1:1',
+            findSession: () => ({ ...session, happySessionMetadataFromLocalWebhook: { path: '/work' } } as TrackedSession),
+            isAlive: () => false, readToken: async () => null,
+            resumeSession: async (input: typeof resumed[number]) => { resumed.push(input); return true },
+        }
+        const watcher = new BrowserAttentionWatcher({ store: createAttentionCursorStore(join(dir, 'cursor.json')),
+            poll: async () => ({ events: [event], nextSeq: 1, oldestSeq: 1 }),
+            deliver: (e, signal) => deliverBrowserAttention(e, signal, options) })
+        await watcher.pollOnce(); await watcher.pollOnce()
+        expect(resumed).toEqual([{ sessionId: 'session-1', directory: '/work', localId: 'abp-task-1-2',
+            text: '[agent-browser] task task-1 status=paused eventSeq=2. Call getTask for the current state before continuing.' }])
+        await expect(deliverBrowserAttention(event, new AbortController().signal, { ...options, resumeSession: async () => false })).resolves.toBe('ended')
     })
 
     it('skips ended/unowned sessions and retries missing encryption or credentials without posting', async () => {

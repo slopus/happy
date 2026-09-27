@@ -51,7 +51,7 @@ async function harness(owner?: SessionOwner, agentSessionId?: string, bootId?: s
 }
 
 const owner: SessionOwner = { bootId: 'boot-current', pid: 123, pidStartTime: '9876543210123456789' }
-const revoked = [{ schemaVersion: 1, registrationId: 'reg-1' }]
+const revoked = [{ schemaVersion: 1, registrationId: 'reg-1', endSession: false }]
 
 describe('browser registration reconciliation', () => {
     it('revokes a previous boot even when that pid is alive now', async () => {

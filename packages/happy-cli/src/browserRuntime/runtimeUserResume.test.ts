@@ -1,3 +1,4 @@
+/** Interactive resume fences and approval ownership contracts. */
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -87,7 +88,9 @@ describe('user resume from the client (interactive capability)', () => {
         h.driver.seedTab(h.opened.tabId, { url: 'https://fixture.test/start', elements: [{ ref: '@e1' as never, role: 'button', name: 'Pay now', visible: true, frameOrigin: 'https://fixture.test' }] })
         await h.runtime.observe(h.auth, { taskId: h.task.taskId, tabId: h.opened.tabId })
         const batch = await h.runtime.submitBatch(h.auth, { taskId: h.task.taskId, expectedVersion: (await h.runtime.getTask(h.auth, { taskId: h.task.taskId })).stateVersion,
-            requestId: 'pay' as RequestId, steps: [{ stepId: 'pay' as never, actionId: 'pay' as never, tabId: h.opened.tabId, kind: 'click', ref: '@e1' as never, timeoutMs: 1000 }] }, { waitMs: 1000 })
+            requestId: 'pay' as RequestId, steps: [{ stepId: 'pay' as never, actionId: 'pay' as never, tabId: h.opened.tabId, kind: 'click', ref: '@e1' as never, timeoutMs: 1000 },
+                { stepId: 'check' as never, actionId: 'check' as never, tabId: h.opened.tabId, kind: 'waitFor',
+                    until: { kind: 'text', text: 'Payment complete' }, timeoutMs: 1000 }] }, { waitMs: 1000 })
         expect(batch.result?.outcome).toBe('awaiting-user')
         await expect(h.userResume(batch.task.stateVersion)).rejects.toMatchObject({ code: 'CONFLICT' })
         expect(h.driver.dispatchCounts.get('pay') ?? 0).toBe(0)

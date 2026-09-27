@@ -1,3 +1,4 @@
+/** Durable task state, grants, approvals and journal storage. */
 import { createHash, randomUUID } from 'node:crypto'
 import { mkdir, open, readFile, readdir, rename, rm, truncate, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -33,6 +34,8 @@ export interface ActionRecord {
     browserInstanceId?: BrowserInstanceId
 }
 export interface ApprovalRecord {
+    /** User consent recorded while the owning process has no live execution grant. */
+    approvedByUser?: true
     approvalId?: ApprovalId
     actionId?: ActionId
     grantId?: string

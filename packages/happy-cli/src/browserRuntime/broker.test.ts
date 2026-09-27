@@ -302,15 +302,36 @@ describe('broker socket', () => {
         const h = await harness({ endSession: async () => { if (failing) throw new Error('journal down') } })
         await h.register('session-1')
         const unbound = await call(h.socketPath, 'POST', '/v1/sessions/register', h.daemon, { schemaVersion: 1 })
-        const failed = await call(h.socketPath, 'POST', '/v1/sessions/revoke', h.daemon, { schemaVersion: 1, agentSessionId: 'session-1' })
+        const failed = await call(h.socketPath, 'POST', '/v1/sessions/revoke', h.daemon, { schemaVersion: 1, agentSessionId: 'session-1', endSession: true })
         expect([failed.status, failed.body.error.retryable]).toEqual([503, true])
         expect(h.broker.pendingRevocations()).toBe(1)
         failing = false
-        expect((await call(h.socketPath, 'POST', '/v1/sessions/revoke', h.daemon, { schemaVersion: 1, agentSessionId: 'session-1' })).body.result).toEqual({ revoked: true, grants: 0 })
+        expect((await call(h.socketPath, 'POST', '/v1/sessions/revoke', h.daemon, { schemaVersion: 1, agentSessionId: 'session-1', endSession: true })).body.result).toEqual({ revoked: true, grants: 0 })
         expect(h.endedSessions).toEqual(['session-1'])
         // A registration never bound to a session has no session to end.
         await call(h.socketPath, 'POST', '/v1/sessions/revoke', h.daemon, { schemaVersion: 1, registrationId: unbound.body.result.registrationId })
         expect(h.endedSessions).toEqual(['session-1'])
+    })
+
+    it('keeps orphaned tasks until TTL, persists the mark, and clears it on resume', async () => {
+        const h = await harness()
+        await h.register()
+        await call(h.socketPath, 'POST', '/v1/sessions/revoke', h.daemon, { schemaVersion: 1, agentSessionId: 'session-1' })
+        expect(h.endedSessions).toEqual([])
+        expect(JSON.parse(await readFile(join(h.dir, 'broker-sessions.json'), 'utf8')).orphanedSessions).toEqual({ 'session-1': 1_000_000 })
+        await h.close(); cleanups.splice(cleanups.indexOf(h.close), 1)
+        const restarted = await harness({ dir: h.dir })
+        restarted.setNow(1_000_000 + 60 * 60_000 - 1)
+        await restarted.broker.sweepOrphans()
+        expect(restarted.endedSessions).toEqual([])
+        await restarted.register()
+        restarted.setNow(1_000_000 + 60 * 60_000 + 1)
+        await restarted.broker.sweepOrphans()
+        expect(restarted.endedSessions).toEqual([])
+        await call(restarted.socketPath, 'POST', '/v1/sessions/revoke', restarted.daemon, { schemaVersion: 1, agentSessionId: 'session-1' })
+        restarted.setNow(1_000_000 + 2 * 60 * 60_000 + 2)
+        await restarted.broker.sweepOrphans()
+        expect(restarted.endedSessions).toEqual(['session-1'])
     })
 
     it('keeps registrations across a Runtime restart', async () => {

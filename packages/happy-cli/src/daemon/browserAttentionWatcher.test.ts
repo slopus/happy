@@ -1,3 +1,4 @@
+/** Durable attention delivery, retry and safe operator logging contracts. */
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -16,6 +17,16 @@ const event = (seq: number): AttentionEvent => ({ seq, taskId: 'task-1' as Atten
 const feed = (...events: AttentionEvent[]): AttentionFeed => ({ events, nextSeq: events.at(-1)?.seq ?? 0, oldestSeq: 1 })
 
 describe('daemon attention watcher durability', () => {
+    it('logs only successful delivery identifiers, without message content or duplicate feed logs', async () => {
+        const { store } = await fixture(); const logs: string[] = []
+        const watcher = new BrowserAttentionWatcher({ store, log: message => { logs.push(message) },
+            poll: async () => feed(event(1), event(1), event(2), event(3)),
+            deliver: async e => e.seq === 1 ? 'sent' : e.seq === 2 ? 'ended' : 'unowned' })
+        await watcher.pollOnce()
+        await watcher.pollOnce()
+        expect(logs).toEqual(['[agent-browser] attention delivered sessionId=session-1 taskId=task-1 eventSeq=11'])
+    })
+
     it('persists acknowledged progress and ignores repeated feed entries across restart', async () => {
         const { store } = await fixture(); const sent: number[] = []; const cursors: number[] = []
         const options = { store, poll: async (after: number) => { cursors.push(after); return feed(event(1), event(1), event(2)) }, deliver: async (e: AttentionEvent) => { sent.push(e.seq); return 'sent' as const } }

@@ -1,3 +1,4 @@
+/** Daemon browser registration, grant revocation retries and resumed-process registration. */
 import { mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -53,7 +54,7 @@ describe('daemon browser task broker hook', () => {
         expect(calls.map((call) => [call.path, call.headers['x-abp-daemon-token'], call.body])).toEqual([
             ['/v1/sessions/register', 'synthetic-daemon-token-0123456789abcdef', { schemaVersion: 1, bootId: 'boot-fixture' }],
             ['/v1/sessions/bind', 'synthetic-daemon-token-0123456789abcdef', { schemaVersion: 1, registrationId: 'reg-1', agentSessionId: 'session-1' }],
-            ['/v1/sessions/revoke', 'synthetic-daemon-token-0123456789abcdef', { schemaVersion: 1, agentSessionId: 'session-1' }],
+            ['/v1/sessions/revoke', 'synthetic-daemon-token-0123456789abcdef', { schemaVersion: 1, agentSessionId: 'session-1', endSession: false }],
         ])
     })
 
@@ -65,7 +66,7 @@ describe('daemon browser task broker hook', () => {
         const broker = createBrowserTaskSessionBroker({ HAPPY_BROWSER_TASK_BROKER_SOCKET: '/run/abp/broker.sock', HAPPY_BROWSER_TASK_DAEMON_TOKEN_FILE: await tokenFile() }, request, { procRoot: await procRoot() })!
         expect(await registerResumedBrowserSession(broker, 'session-1')).toEqual({ registrationId: 'reg-2', sessionSecret: 'secret-2' })
         expect(calls.map((call) => [call.path, call.body])).toEqual([
-            ['/v1/sessions/revoke', { schemaVersion: 1, agentSessionId: 'session-1' }],
+            ['/v1/sessions/revoke', { schemaVersion: 1, agentSessionId: 'session-1', endSession: false }],
             ['/v1/sessions/register', { schemaVersion: 1, bootId: 'boot-fixture' }],
         ])
     })

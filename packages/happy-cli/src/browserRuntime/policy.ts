@@ -1,3 +1,4 @@
+/** Site action risk classification, form approval binding and observation redaction. */
 import { createHash } from 'node:crypto'
 import { z } from 'zod'
 import { BrowserRuntimeError, type AgentGrant, type BatchStep, type ElementDescription, type FormSubmission, type Observation } from './contracts'
@@ -78,7 +79,7 @@ export interface SitePolicy {
 }
 
 /** Potentially effectful kinds: without a rule saying otherwise they need the user. */
-const WRITE_CAPABLE: ReadonlySet<SiteActionKind> = new Set(['submit', 'form-click', 'click', 'fill'])
+const WRITE_CAPABLE: ReadonlySet<SiteActionKind> = new Set(['submit', 'form-click', 'click'])
 
 /**
  * The outcome of classifying one action: run it, ask the user to approve it, hand it
@@ -157,12 +158,15 @@ export function assertSiteAllowed(sites: SitePolicy[], url: string): void {
     if (!siteFor(sites, originOf(url))) throw new BrowserRuntimeError('ORIGIN_DENIED', 'Origin has no site policy')
 }
 
+/** Form-state selections follow fill rules; submitters and links retain their action classification. */
 export function siteActionKind(step: BatchStep, element?: ElementDescription): SiteActionKind | undefined {
     if (step.kind === 'navigate') return 'navigate'
     if (step.kind === 'fill') return 'fill'
     if (step.kind !== 'click') return undefined
     if (element?.submitsForm) return 'submit'
-    // Inside a form any click (a link too) may drive the form: it is a form click.
+    if (!element?.linkUrl && ['radio', 'checkbox', 'switch', 'option', 'menuitemradio', 'menuitemcheckbox']
+        .includes((element?.currentRole ?? element?.role ?? '').toLowerCase())) return 'fill'
+    // Other clicks inside a form (including links) may drive the form.
     if (element?.form || element?.formAction) return 'form-click'
     if (element?.linkUrl) return 'link'
     return 'click'
@@ -184,8 +188,9 @@ function isWebUrl(url: string | undefined): boolean {
  * (opaque: unreadable control, password or file content).
  * Held for approval whatever a rule says: an element without a snapshot label (a
  * relabel cannot be detected) or in a frame whose site has no policy.
- * Otherwise the first matching rule decides; unmatched submits, clicks and fills
- * need approval, links and navigation do not.
+ * Otherwise the first matching rule decides; unmatched submits and clicks
+ * need approval; plain fills, form-state selections, links and navigation do not. Submit approval binds
+ * the complete form digest, including the previously filled values.
  */
 export function classifySiteAction(sites: SitePolicy[], step: BatchStep, element?: ElementDescription): SiteDecision {
     const kind = siteActionKind(step, element)

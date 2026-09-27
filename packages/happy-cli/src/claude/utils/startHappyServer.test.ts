@@ -1,3 +1,4 @@
+/** Happy MCP registration, tool routing and session-specific guidance contracts. */
 import { runBashStream } from './bashStream';
 import { CodexRuntimeProducerGate } from '@/codex/codexRuntimeProducerGate';
 import { mkdir, mkdtemp, readFile, realpath, rm } from 'node:fs/promises';
@@ -204,6 +205,29 @@ describe('startHappyServer tool registration', () => {
     // The MCP server is rebuilt per request, so a malformed tool schema does
     // not fail at startup — it breaks every tool in the session at call time.
     // Listing the tools over the real transport is what catches that.
+    it('threads run-once session context into browser task registration', async () => {
+        vi.stubEnv('HAPPY_BROWSER_TASK_RUNTIME_URL', 'http://127.0.0.1:1');
+        const options = { exitAfterFirstTurn: true, mandatorySandbox: false };
+        let server: Awaited<ReturnType<typeof startHappyServer>> | undefined;
+        try {
+            server = await startHappyServer(makeFakeClient(false), options);
+            const response = await fetch(server.url, { method: 'POST',
+                headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' },
+                body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }),
+            });
+            const raw = await response.text();
+            const payload = JSON.parse(raw.startsWith('event:') ? raw.slice(raw.indexOf('data: ') + 6) : raw) as {
+                result: { tools: Array<{ name: string; description?: string }> };
+            };
+            const tools = payload.result.tools.filter((tool: { name: string }) => tool.name.startsWith('browser_task_'));
+            expect(tools.length).toBeGreaterThan(0);
+            for (const tool of tools) expect(tool.description).toContain('ends after the reply');
+        } finally {
+            server?.stop();
+            vi.unstubAllEnvs();
+        }
+    });
+
     it('serves every happy tool over tools/list', async () => {
         const client = { hasTitle: () => false, sendClaudeSessionMessage: vi.fn(), sessionId: 'test' } as unknown as ApiSessionClient;
         const server = await startHappyServer(client);
