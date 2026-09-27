@@ -6,7 +6,7 @@ import { createHeader } from '@/components/navigation/Header';
 import { Platform } from 'react-native';
 import { isRunningOnMac } from '@/utils/platform';
 import { useUnistyles } from 'react-native-unistyles';
-import { t } from '@/text';
+import { t, getCurrentLanguage } from '@/text';
 import { CardStackScene } from '@/components/CardStackScene';
 
 export const unstable_settings = {
@@ -69,6 +69,7 @@ export default function RootLayout() {
             <Stack.Screen name="agent-profiles" options={{ headerTitle: "我的群聊 Agent" }} />
             <Stack.Screen name="settings/agents" options={{ headerTitle: t('settings.agentDefaults') }} />
             <Stack.Screen name="settings/appearance" options={{ headerTitle: t('settings.appearance') }} />
+            <Stack.Screen name="settings/sound" options={{ headerTitle: getCurrentLanguage().startsWith('zh') ? '声音提醒' : 'Sound alerts' }} />
             <Stack.Screen name="settings/ask" options={{ headerTitle: t('settings.askApi') }} />
             <Stack.Screen name="settings/connect/claude" options={{ headerTitle: t('connectClaude.title') }} />
             <Stack.Screen name="settings/custom-instructions" options={{ headerTitle: t('settings.customInstructions') }} />

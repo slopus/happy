@@ -30,7 +30,7 @@ import { disconnectService } from '@/sync/apiServices';
 import { useProfile } from '@/sync/storage';
 import { getDisplayName } from '@/sync/profile';
 import { MascotSwitcher } from '@/components/MascotSwitcher';
-import { t, getLanguageNativeName, SUPPORTED_LANGUAGES } from '@/text';
+import { t, getCurrentLanguage, getLanguageNativeName, SUPPORTED_LANGUAGES } from '@/text';
 import * as Localization from 'expo-localization';
 import { loadAppConfig } from '@/sync/appConfig';
 import { getSettingsFeatureEntries } from '@/components/settingsFeatureEntries';
@@ -351,6 +351,13 @@ export const SettingsView = React.memo(function SettingsView() {
                     detail={languageDetailText}
                     onPress={() => router.push('/settings/language')}
                 />
+                {Platform.OS === 'web' && <Item
+                    title={getCurrentLanguage().startsWith('zh') ? '声音提醒' : 'Sound alerts'}
+                    subtitle={getCurrentLanguage().startsWith('zh') ? '设置任务状态音效、音量和提醒范围' : 'Choose sounds, volume, and alert scope'}
+                    icon={<Ionicons name="volume-medium-outline" size={29} color={theme.colors.accent} />}
+                    onPress={() => router.push('/settings/sound' as any)}
+                    testID="web-sound-settings-entry"
+                />}
             </ItemGroup>
 
             <ItemGroup title={t('settings.connectedAccounts')}>

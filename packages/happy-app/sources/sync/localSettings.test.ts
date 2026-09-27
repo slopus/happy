@@ -1,6 +1,28 @@
 import { describe, it, expect } from 'vitest';
 import { localSettingsDefaults, localSettingsParse } from './localSettings';
 
+describe('local web sound preferences', () => {
+    it('keeps sound off for existing installations until the user enables it', () => {
+        expect(localSettingsParse({}).webSound).toEqual(localSettingsDefaults.webSound);
+        expect(localSettingsDefaults.webSound.enabled).toBe(false);
+    });
+
+    it('restores a selected scope, volume and event sound', () => {
+        const webSound = {
+            ...localSettingsDefaults.webSound,
+            volume: 0.55,
+            scope: 'pinned' as const,
+            sounds: { ...localSettingsDefaults.webSound.sounds, question: 'off' as const },
+        };
+        expect(localSettingsParse({ webSound }).webSound).toEqual(webSound);
+    });
+
+    it('discards malformed sound settings safely', () => {
+        expect(localSettingsParse({ webSound: { enabled: true, volume: 9 } }).webSound)
+            .toEqual(localSettingsDefaults.webSound);
+    });
+});
+
 it('preserves local advisor image keys across persistence and accepts legacy image counts', () => {
     const messages = [
         { id: 'new', role: 'user', text: '', imageCount: 1, imageKeys: ['image-1.jpg'], createdAt: 1 },

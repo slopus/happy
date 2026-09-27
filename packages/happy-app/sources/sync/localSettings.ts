@@ -40,6 +40,29 @@ const RelationshipAdvisorConversationSchema = z.object({
 
 const ThemePackSchema = z.enum(THEME_PACK_IDS as [ThemePackId, ...ThemePackId[]]);
 
+const WebSoundChoiceSchema = z.enum(['off', 'approval', 'complete', 'error', 'start', 'submit']);
+export const WebSoundSettingsSchema = z.object({
+    enabled: z.boolean(),
+    volume: z.number().min(0).max(1),
+    scope: z.enum(['all', 'current', 'pinned']),
+    muteViewedSession: z.boolean(),
+    sounds: z.object({
+        completed: WebSoundChoiceSchema,
+        failed: WebSoundChoiceSchema,
+        permission: WebSoundChoiceSchema,
+        question: WebSoundChoiceSchema,
+        started: WebSoundChoiceSchema,
+    }),
+});
+
+export const webSoundSettingsDefaults: z.infer<typeof WebSoundSettingsSchema> = {
+    enabled: false,
+    volume: 0.3,
+    scope: 'all',
+    muteViewedSession: false,
+    sounds: { completed: 'complete', failed: 'error', permission: 'approval', question: 'approval', started: 'off' },
+};
+
 export const LocalSettingsSchema = z.object({
     // Developer settings (device-specific)
     debugMode: z.boolean().describe('Enable debug logging'),
@@ -69,6 +92,7 @@ export const LocalSettingsSchema = z.object({
     // 不随账号同步（同 agents/zenMode），避免被同步 churn 冲掉。
     agentSpaceId: z.string().nullable().describe('当前进入的「我的 Agent」空间（agent id），null 为全局视图'),
     hapticFeedbackEnabled: z.boolean().describe('Enable haptic (vibration) feedback for interactions'),
+    webSound: WebSoundSettingsSchema.catch(webSoundSettingsDefaults).describe('Browser-only session sound alerts'),
     askApi: z.object({
         apiKey: z.string().describe('DeepSeek-compatible API key for Ask mode'),
         baseUrl: z.string().describe('Optional DeepSeek-compatible API base URL for Ask mode'),
@@ -133,6 +157,7 @@ export const localSettingsDefaults: LocalSettings = {
     },
     agentSpaceId: null,
     hapticFeedbackEnabled: true,
+    webSound: webSoundSettingsDefaults,
     askApi: {
         apiKey: '',
         baseUrl: '',

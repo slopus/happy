@@ -7,6 +7,7 @@ import { SessionStreamEnvelopeSchema } from '@slopus/happy-wire';
 import { sessionTextStream } from './sessionTextStream';
 import { apiSocket, getCurrentAppState, getHappyClientId } from '@/sync/apiSocket';
 import { notifyUnreadMessage } from '@/sync/webTabTitle';
+import { playWebSessionEventSound, startWebSoundAlerts } from '@/sync/webSoundAlerts';
 import { AuthCredentials } from '@/auth/tokenStorage';
 import { Encryption } from '@/sync/encryption/encryption';
 import { decodeBase64, encodeBase64 } from '@/encryption/base64';
@@ -502,6 +503,8 @@ class Sync {
     private lastRecalculationTime = 0;
 
     constructor() {
+        // storage imports Sync, so subscribe after both modules finish initializing.
+        if (Platform.OS === 'web') setTimeout(startWebSoundAlerts, 0);
         subscribeLocalHistoryInvalidation(event => {
             if (event.scope !== this.localHistory?.scope || event.kind === 'session-deleted') return;
             const owner = this.sessionRouteOwnership.current();
@@ -5064,6 +5067,7 @@ class Sync {
         // unread counter on these only, ignore the noisy per-message stream.
         if (updateData.type === 'session-event') {
             notifyUnreadMessage();
+            playWebSessionEventSound(updateData);
             const currentState = storage.getState();
             if (shouldMarkSessionEventUnread(
                 this.appState,
