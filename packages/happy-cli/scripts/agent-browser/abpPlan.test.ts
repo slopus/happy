@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest'
 import { parseRuntimeConfig } from '../../src/browserRuntime/runtimeConfig'
 import {
     DEFAULT_RUNTIME_PORT, PATHS, browserCreateArgs, chromiumSeccompProfile, daemonEnv, egressRules, egressRulesFile, fenceRule, firewallRules,
-    firewallRulesFile, mergeInstallOptions, networkCreateArgs, permissionTable, runtimeConfig, runtimeCreateArgs, stackLayout, sudoersDropIn,
+    firewallRulesFile, happySettings, mergeInstallOptions, networkCreateArgs, permissionTable, runtimeConfig, runtimeCreateArgs, stackLayout, sudoersDropIn,
     systemdUnits, tmpfilesConf,
 } from './lib/abpPlan.mjs'
 
@@ -96,6 +96,41 @@ describe('install options', () => {
     it('never quotes key material in an error', () => {
         const secretish = '-----BEGIN PUBLIC KEY-----\nnot-a-key-SENTINEL\n-----END PUBLIC KEY-----\n'
         expect(() => mergeInstallOptions(base(), { issuers: [{ kid: 'k', publicKeyPem: secretish }] })).toThrow(/^(?![\s\S]*SENTINEL)/)
+    })
+})
+
+describe('Happy server of the agent', () => {
+    it('keeps the default server when --server-url is not given', () => {
+        expect(base().serverUrl).toBeUndefined()
+        expect(happySettings({ machineId: 'm' }, base())).toBeUndefined()
+    })
+
+    it('saves --server-url and writes it as serverUrl and webappUrl, keeping the other settings', () => {
+        const options = mergeInstallOptions(base(), { serverUrl: 'https://dev-studio.example' })
+        expect(options.serverUrl).toBe('https://dev-studio.example')
+        expect(mergeInstallOptions(options, {}).serverUrl).toBe('https://dev-studio.example')
+        expect(happySettings({ schemaVersion: 2, onboardingCompleted: true }, options)).toEqual({
+            schemaVersion: 2, onboardingCompleted: true, serverUrl: 'https://dev-studio.example', webappUrl: 'https://dev-studio.example',
+        })
+        expect(happySettings(undefined, options)).toEqual({ serverUrl: 'https://dev-studio.example', webappUrl: 'https://dev-studio.example' })
+    })
+
+    it('refuses a server URL that is not an https origin (http only for localhost)', () => {
+        for (const serverUrl of ['dev-studio.example', 'https://dev-studio.example/path', 'http://dev-studio.example', 'ftp://dev-studio.example']) {
+            expect(() => mergeInstallOptions(base(), { serverUrl }), serverUrl).toThrow(/serverUrl/)
+        }
+        expect(mergeInstallOptions(base(), { serverUrl: 'http://localhost:3005' }).serverUrl).toBe('http://localhost:3005')
+    })
+
+    it('refuses to move a machine registered with another server', () => {
+        const options = mergeInstallOptions(base(), { serverUrl: 'https://dev-studio.example' })
+        expect(() => happySettings({ serverUrl: 'https://prod-studio.example', machineId: 'm' }, options)).toThrow(/happy auth logout/)
+        expect(happySettings({ serverUrl: 'https://dev-studio.example', machineId: 'm' }, options)).toMatchObject({ machineId: 'm' })
+        // `happy auth login` without a server URL registers with Happy's default and writes no serverUrl.
+        expect(() => happySettings({ machineId: 'm' }, options)).toThrow(/registered with https:\/\/saycode\.ai/)
+        expect(happySettings({ machineId: 'm' }, mergeInstallOptions(base(), { serverUrl: 'https://saycode.ai' }))).toMatchObject({ machineId: 'm' })
+        // Not registered yet: switching is safe.
+        expect(happySettings({ serverUrl: 'https://prod-studio.example' }, options)).toMatchObject({ serverUrl: 'https://dev-studio.example' })
     })
 })
 

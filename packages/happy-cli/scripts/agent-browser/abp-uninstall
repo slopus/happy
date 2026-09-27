@@ -108,10 +108,12 @@ purge() {
     local id image
     for id in $(listed volume ls -q --filter "label=$LABEL"); do try docker volume rm "$id"; done
     if [ "$DRY_RUN" = 1 ]; then
-        try docker image rm "<current and previous digests from /var/lib/abp/stack-state.json>"
+        try docker image rm --force "<current and previous digests from /var/lib/abp/stack-state.json>"
     elif [ -s /var/lib/abp/stack-state.json ]; then
         for image in $(/usr/bin/node -e 'const s=JSON.parse(require("fs").readFileSync("/var/lib/abp/stack-state.json","utf8"));for(const d of [s.current,s.previous])if(d)console.log(d.runtime+"\n"+d.browser)'); do
-            try docker image rm "$image"
+            # --force: a digest tagged in several repositories is otherwise refused ("must be forced"). Docker still
+            # refuses an image a running container uses; the stack's containers are gone by now.
+            try docker image rm --force "$image"
         done
     fi
     try rm -rf /etc/abp /var/lib/abp /opt/abp /run/abp /run/abp-mcp

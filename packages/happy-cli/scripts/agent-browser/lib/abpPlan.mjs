@@ -89,6 +89,16 @@ function bareOrigin(value, field) {
   if (url.origin !== value || !["https:", "http:"].includes(url.protocol)) fail(field, "must be a bare origin such as https://shop.example");
   return value;
 }
+// The Happy (Studio) server the agent logs in to: https, or http only on this host.
+function serverOrigin(value) {
+  let url;
+  try { url = new URL(value); } catch { url = undefined; }
+  const local = ["localhost", "127.0.0.1", "[::1]"].includes(url?.hostname);
+  if (!url || url.origin !== value || !(url.protocol === "https:" || (url.protocol === "http:" && local))) {
+    fail("serverUrl", "must be an https origin such as https://studio.example (http only for localhost)");
+  }
+  return value;
+}
 function integer(value, field, min, max) {
   if (!Number.isInteger(value) || value < min || value > max) fail(field, `must be an integer ${min}..${max}`);
   return value;
@@ -159,6 +169,7 @@ export function mergeInstallOptions(saved, flags) {
   integer(merged.maxAgentWindows, "maxAgentWindows", 1, 16);
   integer(merged.retentionDays, "retentionDays", 1, 365);
   merged.viewerOrigins.forEach((origin, index) => bareOrigin(origin, `viewerOrigins[${index}]`));
+  if (merged.serverUrl !== undefined) serverOrigin(merged.serverUrl);
   if (merged.egressDomains.length > 64) fail("egressDomains", "at most 64");
   merged.egressDomains.forEach((domain, index) => { if (!DOMAIN.test(domain)) fail(`egressDomains[${index}]`, "must be an exact lowercase domain (no wildcard)"); });
   const pool = parseCidr(merged.browserSubnetPool);
@@ -357,6 +368,24 @@ export function tmpfilesConf() {
 
 /** Default sandbox config of H's daemon sessions (S1 whole-process sandbox; network via the egress proxy). */
 const SESSION_SANDBOX_CONFIG = { enabled: true, workspaceRoot: "/work", sessionIsolation: "workspace", extraWritePaths: [], networkMode: "allowed" };
+
+/**
+ * The agent's ~/.happy/settings.json with install.serverUrl applied (Happy reads serverUrl/webappUrl
+ * from it for `happy auth login` and the daemon alike), or undefined without --server-url. A machine
+ * already registered with another server keeps it: its credentials belong to that server. Without a
+ * serverUrl in its settings, a registered machine is on Happy's default server (src/configuration.ts).
+ */
+const HAPPY_DEFAULT_SERVER_URL = "https://saycode.ai";
+
+export function happySettings(existing, install) {
+  if (install.serverUrl === undefined) return undefined;
+  const settings = existing ?? {};
+  const registeredWith = settings.serverUrl ?? HAPPY_DEFAULT_SERVER_URL;
+  if (settings.machineId && registeredWith !== install.serverUrl) {
+    fail("serverUrl", `the agent is registered with ${registeredWith}; run sudo -iu agent happy auth logout first to move it`);
+  }
+  return { ...settings, serverUrl: install.serverUrl, webappUrl: install.serverUrl };
+}
 
 export function daemonEnv(install) {
   return [

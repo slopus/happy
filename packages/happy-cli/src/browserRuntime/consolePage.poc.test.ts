@@ -21,6 +21,8 @@ describe.skipIf(!chromePath)('console page (real Chrome)', () => {
     let server: http.Server
     let origin = ''
     const ops: Array<{ op: string; bearer: string; body: Record<string, unknown> }> = []
+    const defaultTasks = () => [{ taskId: 'task-1', status: 'awaiting-user', pauseReason: 'awaiting-user', tabs: ['tab-1'], updatedAtMs: Date.now() }]
+    let listedTasks: Array<Record<string, unknown>> = defaultTasks()
 
     beforeAll(async () => {
         server = http.createServer((req, res) => {
@@ -39,7 +41,7 @@ describe.skipIf(!chromePath)('console page (real Chrome)', () => {
             req.on('end', () => {
                 ops.push({ op: m[1], bearer: String(req.headers.authorization ?? '').replace(/^Bearer /, ''), body: JSON.parse(raw || '{}') })
                 const result = m[1] === 'listTasks'
-                    ? { tasks: [{ taskId: 'task-1', status: 'paused', pauseReason: 'awaiting-user', tabs: ['tab-1'], updatedAtMs: Date.now() }] }
+                    ? { tasks: listedTasks }
                     : m[1] === 'getTask'
                         ? { taskId: 'task-1', status: 'paused', stateVersion: 3, tabs: ['tab-1', 'tab-2'], uncertainActions: [], cancelRequested: false,
                             tabLeases: [{ tabId: 'tab-1', leaseEpoch: 7, owner: { kind: 'none' } }, { tabId: 'tab-2', leaseEpoch: 2, owner: { kind: 'none' } }] }
@@ -136,6 +138,44 @@ describe.skipIf(!chromePath)('console page (real Chrome)', () => {
         expect(await eventually(() => harness.evaluate(target, `document.getElementById('screen').src`), (src) => String(src).includes(encodeURIComponent('ticket=ticket-2')), 5_000))
             .toContain(encodeURIComponent('ticket=ticket-2'))
         await harness.closeTarget(target)
+    }, 30_000)
+
+    it('switches to a capability given by a later fragment change, and strips it again', async () => {
+        ops.length = 0
+        const first = token('hash-1', Date.now() + 600_000)
+        const target = await harness.openFrontTab(`${origin}/console#abp-cap=${first}&abp-exp=${Date.now() + 600_000}`)
+        await eventually(() => ops.some((entry) => entry.op === 'listTasks'), Boolean, 10_000)
+        ops.length = 0
+        const second = token('hash-2', Date.now() + 600_000)
+        await harness.evaluate(target, `location.hash = 'abp-cap=${second}&abp-exp=${Date.now() + 600_000}'`)
+        expect((await eventually(() => ops.find((entry) => entry.op === 'listTasks'), Boolean, 5_000))?.bearer).toBe(second)
+        expect(await harness.evaluate(target, 'location.hash')).toBe('')
+        await harness.closeTarget(target)
+    }, 30_000)
+
+    it('lists the tasks waiting for the user first and folds the other open tasks away', async () => {
+        ops.length = 0
+        const now = Date.now()
+        listedTasks = [
+            { taskId: 'task-idle', status: 'paused', pauseReason: 'awaiting-agent', tabs: [], updatedAtMs: now },
+            { taskId: 'task-approval', status: 'paused', pauseReason: 'awaiting-user', pendingApproval: { approvalId: 'a' }, tabs: [], updatedAtMs: now },
+            { taskId: 'task-login', status: 'awaiting-user', waitReason: 'handoff', tabs: [], updatedAtMs: now },
+            { taskId: 'task-running', status: 'running', tabs: [], updatedAtMs: now },
+        ]
+        try {
+            const cap = token('fold', Date.now() + 600_000)
+            const target = await harness.openFrontTab(`${origin}/console#abp-cap=${cap}&abp-exp=${Date.now() + 600_000}`)
+            await eventually(() => harness.evaluate(target, `document.querySelectorAll('#tasks button').length`), (n) => n === 4, 10_000)
+            const layout = await harness.evaluate(target, `JSON.stringify({
+                top: [...document.querySelectorAll('#tasks > button')].map((b) => b.textContent.split(' ')[0]),
+                folded: [...document.querySelectorAll('#tasks details button')].map((b) => b.textContent.split(' ')[0]),
+                open: document.querySelector('#tasks details').open,
+                summary: document.querySelector('#tasks summary').textContent })`)
+            expect(JSON.parse(String(layout))).toEqual({
+                top: ['task-approval', 'task-login'], folded: ['task-idle', 'task-running'], open: false, summary: '2 other open tasks',
+            })
+            await harness.closeTarget(target)
+        } finally { listedTasks = defaultTasks() }
     }, 30_000)
 
     it('opens the screen through a one-time viewer ticket for the capability profile', async () => {

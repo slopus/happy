@@ -107,6 +107,9 @@ sudo ./abp-install                       # re-run: resolves machineId, writes ru
   `--retention-days` (7), `--viewer-origin <tunnel origin>` (needs the viewer stream, S4),
   `--egress-domain` (replaces the proxy's default Claude domains), `--happy-prefix`,
   `--build-from <happy-cli>` instead of `--images`, `--no-start`.
+- `--server-url <https origin>` points the agent's Happy at another Studio server (dev, staging): written to
+  `/home/agent/.happy/settings.json` as `serverUrl`/`webappUrl` before `happy auth login`. Without it Happy
+  uses its built-in server. A machine already registered with another server is refused (`happy auth logout` first).
 - Secrets are created once: daemon token (hash in `runtime.json`), VNC password (same value in
   the Runtime and browser copies). The Runtime creates its agent key inside `abp-state`; it
   never leaves the volume.

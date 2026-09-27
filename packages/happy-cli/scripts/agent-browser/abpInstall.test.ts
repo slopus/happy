@@ -29,10 +29,10 @@ const bash = (script: string, args: string[]) => spawnSync('bash', [join(here, s
 
 describe('abp-plan CLI', () => {
     it('parses install flags, reading issuer keys and the site policy from files', () => {
-        const flags = parseOptionFlags(['--profile', 'main=user-1', '--profile', 'ops=user-2', '--issuer', `k1=${pemFile}`, '--sites', sitesFile, '--runtime-port', '38701', '--happy-prefix', '/opt/happy'])
+        const flags = parseOptionFlags(['--profile', 'main=user-1', '--profile', 'ops=user-2', '--issuer', `k1=${pemFile}`, '--sites', sitesFile, '--runtime-port', '38701', '--happy-prefix', '/opt/happy', '--server-url', 'https://dev-studio.example'])
         expect(flags.profiles).toEqual([{ profileId: 'main', principalId: 'user-1' }, { profileId: 'ops', principalId: 'user-2' }])
         expect(flags.issuers[0].publicKeyPem).toContain('BEGIN PUBLIC KEY')
-        expect(flags).toMatchObject({ runtimePort: 38701, happyPrefix: '/opt/happy', sites: [{ origin: 'https://shop.example' }] })
+        expect(flags).toMatchObject({ runtimePort: 38701, happyPrefix: '/opt/happy', serverUrl: 'https://dev-studio.example', sites: [{ origin: 'https://shop.example' }] })
         expect(() => parseOptionFlags(['--profile', 'main'])).toThrow(/<name>=<value>/)
         expect(() => parseOptionFlags(['--issuer', 'k1=/nonexistent/key.pem'])).toThrow(/unreadable/)
         expect(() => parseOptionFlags(['--bogus', 'x'])).toThrow(/unknown option/)
@@ -152,6 +152,17 @@ describe('abp-install --dry-run', () => {
         expect(out).toContain('+ runuser -u agent -- install -d -g abp-work -m 2770 /work/agent-workspace')
         expect(out).toContain('+ runuser -u agent -- setfacl -P -d -m g:abp-work:rwX,m::rwx /work/agent-workspace')
         expect(out).toMatch(/\+ migrate \/home\/agent\/workspace -> \/work\/agent-workspace \(as agent\)/)
+    })
+
+    it('points the agent at --server-url before the Happy login, and leaves the default server alone without it', () => {
+        const out = bash('abp-install', ['--dry-run', 'install', '--machine-id', 'machine-1', '--workspace-id', 'ws-1', '--profile', 'main=user-1',
+            '--issuer', `k1=${pemFile}`, '--sites', sitesFile, '--server-url', 'https://dev-studio.example']).stdout
+        expect(out).toContain('+ install -d -o agent -g agent -m 0700 /home/agent/.happy')
+        expect(out).toContain('+ write /home/agent/.happy/settings.json (agent:agent 0600')
+        expect(out).toContain('    |   "serverUrl": "https://dev-studio.example",')
+        expect(out).toContain('    |   "webappUrl": "https://dev-studio.example"')
+        expect(out).toContain('    |   "serverUrl": "https://dev-studio.example"')
+        expect(run().stdout).not.toContain('/home/agent/.happy/settings.json (')
     })
 
     it('generates secrets only when missing and never prints them', () => {
@@ -504,6 +515,8 @@ describe('abp-uninstall', () => {
         expect(purged.status).toBe(0)
         expect(purged.stdout).toMatch(/docker volume rm/)
         expect(purged.stdout).toMatch(/\+ rm -rf \/etc\/abp \/var\/lib\/abp/)
+        // A digest tagged in several repositories (abp-stack load and a build tag) is removed only with --force.
+        expect(purged.stdout).toMatch(/\+ docker image rm --force /)
     })
 
     it('fences new sessions, terminates every session process, and only then removes the owner firewall rules', () => {

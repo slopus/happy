@@ -8,7 +8,7 @@ import { existsSync, lstatSync, readdirSync, readFileSync, readlinkSync } from "
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
-  chromiumSeccompProfile, daemonEnv, egressRules, egressRulesFile, firewallRulesFile, mergeInstallOptions, permissionTable, runtimeConfig, stackLayout,
+  chromiumSeccompProfile, daemonEnv, egressRules, egressRulesFile, firewallRulesFile, happySettings, mergeInstallOptions, permissionTable, runtimeConfig, stackLayout,
   sudoersDropIn, systemdUnits, tmpfilesConf,
 } from "./lib/abpPlan.mjs";
 
@@ -52,6 +52,7 @@ export function parseOptionFlags(argv) {
       case "--viewer-origin": list("viewerOrigins", value); break;
       case "--egress-domain": list("egressDomains", value); break;
       case "--happy-prefix": flags.happyPrefix = value; break;
+      case "--server-url": flags.serverUrl = value; break;
       case "--browser-subnet-pool": flags.browserSubnetPool = value; break;
       case "--deny-cidr": list("denyCidrs", value); break;
       case "--test-allow-cidr": list("testAllowCidrs", value); break;
@@ -116,6 +117,12 @@ export function main(argv, out = (text) => process.stdout.write(text)) {
       if (token.length < 32) throw new Error("daemon token file is too short");
       const config = runtimeConfig(install, { sessionGid: Number(option(args, "--session-gid")), daemonTokenSha256: createHash("sha256").update(token).digest("hex") });
       return out(`${JSON.stringify(config, null, 2)}\n`);
+    }
+    case "happy-settings": {
+      // happy-settings --install <file> --settings <agent ~/.happy/settings.json>: prints the settings, or nothing without --server-url.
+      const settingsPath = option(args, "--settings");
+      const settings = happySettings(existsSync(settingsPath) ? readJson(settingsPath, "Happy settings") : undefined, readJson(option(args, "--install"), "install options"));
+      return settings ? out(`${JSON.stringify(settings, null, 2)}\n`) : undefined;
     }
     case "daemon-env": return out(daemonEnv(readJson(option(args, "--install"), "install options")));
     case "egress-policy": {

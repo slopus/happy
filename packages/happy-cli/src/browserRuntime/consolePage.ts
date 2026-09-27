@@ -67,9 +67,12 @@ window.addEventListener('message',function(event){
  if(event.source!==window.parent||event.origin!==location.origin)return;
  var d=event.data;if(!d||d.type!=='abp-capability'||typeof d.token!=='string'||typeof d.expiresAtMs!=='number')return;
  var first=!S.token;if(setCapability(d.token,d.expiresAtMs)&&first)listTasks()});
-(function readFragment(){var h=location.hash.replace(/^#/,'');if(!h)return;var q=new URLSearchParams(h);
- var token=q.get('abp-cap');if(token)setCapability(token,Number(q.get('abp-exp')));
- history.replaceState(null,'',location.pathname+location.search)})();
+/** The fragment is read on load and again on a later change (the host reopens the same page with a new capability). */
+function readFragment(){var h=location.hash.replace(/^#/,'');if(!h)return false;var q=new URLSearchParams(h);
+ var token=q.get('abp-cap'),used=!!token&&token!==S.token&&setCapability(token,Number(q.get('abp-exp')));
+ history.replaceState(null,'',location.pathname+location.search);return used}
+readFragment();
+window.addEventListener('hashchange',function(){if(readFragment())listTasks()});
 function op(name,body){return fetch('/v1/ops/'+name,{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+S.token},body:JSON.stringify(body)})
  .then(function(r){return r.json()}).then(function(j){if(!j.ok){var e=new Error(j.error.code+': '+j.error.message);e.body=j.error;throw e}return j.result})}
 function showTask(t){S.task=t;$('task').textContent=JSON.stringify({status:t.status,pauseReason:t.pauseReason,waitReason:t.waitReason,stateVersion:t.stateVersion,tabs:t.tabs,cancelRequested:t.cancelRequested,uncertainActions:t.uncertainActions},null,2);
@@ -78,10 +81,15 @@ function showTask(t){S.task=t;$('task').textContent=JSON.stringify({status:t.sta
 function listTasks(){if(!S.token)return;$('tasks').textContent='loading';
  op('listTasks',{profileId:S.profileId}).then(function(r){var box=$('tasks');box.textContent='';box.className='';
   if(!r.tasks.length){box.textContent='no open tasks';box.className='muted';return}
+  // Tasks waiting for the user come first; the others (running, parked for the agent) are folded away.
+  var others=document.createElement('details'),summary=document.createElement('summary'),folded=0;others.appendChild(summary);
   r.tasks.forEach(function(t){var b=document.createElement('button');b.type='button';
    b.textContent=t.taskId+' · '+t.status+(t.pauseReason?'/'+t.pauseReason:'')+(t.pendingApproval?' · approval':'')+' · '+new Date(t.updatedAtMs).toLocaleTimeString();
-   b.onclick=function(){$('taskId').value=t.taskId;$('tabId').value=(t.tabs&&t.tabs[0])||'';watch()};box.appendChild(b)})
+   b.onclick=function(){$('taskId').value=t.taskId;$('tabId').value=(t.tabs&&t.tabs[0])||'';watch()};
+   if(waitsForUser(t))box.appendChild(b);else{others.appendChild(b);folded++}});
+  if(folded){summary.textContent=folded+' other open task'+(folded>1?'s':'');box.appendChild(others)}
  },function(e){$('tasks').textContent=e.message;$('tasks').className='warn'})}
+function waitsForUser(t){return !!t.pendingApproval||t.status==='awaiting-user'||t.waitReason==='handoff'||t.pauseReason==='user-control'}
 /** The Runtime checks the selected tab's own lease epoch, not a global maximum. */
 function tabEpoch(){var tab=$('tabId').value.trim();var leases=(S.task&&S.task.tabLeases)||[];for(var i=0;i<leases.length;i++)if(leases[i].tabId===tab)return leases[i].leaseEpoch;return 0}
 function addEvent(e){if(S.seen[e.seq])return;S.seen[e.seq]=1;if(e.seq>S.cursor)S.cursor=e.seq;

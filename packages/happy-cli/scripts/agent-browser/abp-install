@@ -18,6 +18,7 @@
 #   --machine-id <id|auto> --workspace-id <id> --profile main=<principalId> (release 1: exactly main)
 #   --issuer <kid>=<public-key.pem>... --sites <policy.json> --runtime-port <n> --max-agent-windows <n>
 #   --retention-days <n> --viewer-origin <origin>... --egress-domain <domain>... --happy-prefix <dir>
+#   --server-url <https origin>  Happy/Studio server of the agent (default: Happy's built-in production server)
 #   --browser-subnet-pool <private /20> --deny-cidr <cidr>... --browser-dns <ipv4>...
 #   --test-allow-cidr <cidr ≤/24>...  TEST ONLY: acceptance fixtures on a private address (check warns)
 #
@@ -43,6 +44,7 @@ OPS_LOCK=/run/abp-stack-ops.lock
 # the sandbox launcher accepts only working directories whose realpath is under /work.
 AGENT_WORKSPACE=/work/agent-workspace
 AGENT_WORKSPACE_LINK=/home/agent/workspace
+AGENT_HAPPY_SETTINGS=/home/agent/.happy/settings.json
 CHANGED=" "
 WORK=""
 
@@ -567,7 +569,13 @@ main_install() {
 
     say "machine identity and Runtime configuration"
     local machine_id token_file=$DAEMON_TOKEN
-    machine_id=$(plan resolve-machine-id --install "$WORK/install.json" --settings /home/agent/.happy/settings.json 2>/dev/null || true)
+    # --server-url: `happy auth login` and the daemon both read the server from the agent's settings.
+    plan happy-settings --install "$WORK/install.json" --settings "$AGENT_HAPPY_SETTINGS" > "$WORK/happy-settings.json"
+    if [ -s "$WORK/happy-settings.json" ]; then
+        ensure_dir /home/agent/.happy agent agent 0700
+        write_file "$AGENT_HAPPY_SETTINGS" agent agent 0600 show < "$WORK/happy-settings.json"
+    fi
+    machine_id=$(plan resolve-machine-id --install "$WORK/install.json" --settings "$AGENT_HAPPY_SETTINGS" 2>/dev/null || true)
     if [ -n "$machine_id" ]; then
         plan install-options --saved "$WORK/install.json" --machine-id "$machine_id" > "$WORK/install.resolved.json"
         mv "$WORK/install.resolved.json" "$WORK/install.json"
@@ -624,7 +632,7 @@ main_install() {
         restart_or_start abp-stack.service "$RUNTIME_JSON" "$VARLIB/secrets/runtime/vnc-password" /etc/systemd/system/abp-stack.service \
             "$ETC/egress.rules4" "$ETC/seccomp-chromium.json"
         # Sessions outlive the daemon restart (KillMode=process).
-        restart_or_start abp-happy-daemon.service "$ETC/happy-daemon.env" /etc/systemd/system/abp-happy-daemon.service "$DAEMON_TOKEN" "$HAPPY_DIGEST"
+        restart_or_start abp-happy-daemon.service "$ETC/happy-daemon.env" /etc/systemd/system/abp-happy-daemon.service "$DAEMON_TOKEN" "$HAPPY_DIGEST" "$AGENT_HAPPY_SETTINGS"
     fi
     say "done. Next: see README (Claude login for agent-sbx), then: abp-install check"
 }
