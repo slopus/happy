@@ -23,6 +23,8 @@ export type ClaudeDrainDeps = {
     /** Settles when the launcher's message loop has ended. */
     loopFinished: Promise<void>;
     isLoopFinished: () => boolean;
+    /** The generation's last result was an interrupted turn (`error_during_execution`). */
+    lastTurnInterrupted: () => boolean;
     wait?: (ms: number) => Promise<void>;
     now?: () => number;
 };
@@ -33,6 +35,8 @@ export function createClaudeDrainProvider(deps: ClaudeDrainDeps): DrainProvider 
     const now = deps.now ?? (() => Date.now());
     const wait = deps.wait ?? ((ms: number) => new Promise<void>((resolve) => { setTimeout(resolve, ms).unref?.(); }));
     let frozen = false;
+    // Set once this drain interrupted a running turn through the SDK.
+    let interrupted = false;
 
     /** What is known right now: `null` until the provider has been seen to leave. */
     const exitNow = (): { exited: boolean; code: number | null; signal: string | null } | null => {
@@ -44,6 +48,16 @@ export function createClaudeDrainProvider(deps: ClaudeDrainDeps): DrainProvider 
         }
         const observed = generation.observed();
         if (!observed) return null;
+        /*
+         * Claude Code reports an interrupted turn in its exit code when its input then ends: after
+         * this drain's `interrupt()` the turn closes as `error_during_execution`, and the process
+         * leaves on its own with code 1 — no signal, nothing killed it (reproduced with SDK 0.3.283).
+         * That is the clean end of the turn the drain asked to stop, so it counts as exit 0; any
+         * other code, a signal or a kill still does not.
+         */
+        if (interrupted && deps.lastTurnInterrupted() && observed.code === 1 && observed.signal === null && !observed.forced) {
+            return { exited: true, code: 0, signal: null };
+        }
         // A requested kill or cancellation is not a flush, whatever the exit code said.
         return { exited: true, code: observed.code, signal: observed.signal ?? (observed.forced ? 'forced' : null) };
     };
@@ -56,7 +70,10 @@ export function createClaudeDrainProvider(deps: ClaudeDrainDeps): DrainProvider 
             return true;
         },
         async interruptTurn() {
-            await deps.activeTurn()?.interrupt();
+            const turn = deps.activeTurn();
+            if (!turn) return;
+            interrupted = true;
+            await turn.interrupt();
         },
         async endInputAndAwaitExit(budgetMs, signal) {
             deps.requestEndInput();

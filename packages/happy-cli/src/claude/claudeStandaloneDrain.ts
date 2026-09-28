@@ -12,6 +12,8 @@ export type ClaudeLauncherDrainPort = {
     generation: () => ProviderExitObserver | null;
     /** A batch the loop took off the queue but held back for the next generation (mode change). */
     hasHeldBackInput: () => boolean;
+    /** The last result the loop saw was an interrupted turn (`error_during_execution`). */
+    lastResultInterrupted: () => boolean;
 };
 
 /**
@@ -69,6 +71,7 @@ export class ClaudeStandaloneDrain {
             generation: () => this.launcher?.generation() ?? null,
             loopFinished: this.loopFinished,
             isLoopFinished: () => this.finished,
+            lastTurnInterrupted: () => this.launcher?.lastResultInterrupted() ?? false,
         };
     }
 }

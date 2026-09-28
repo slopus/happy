@@ -283,6 +283,8 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
      * would relay whatever text happened to be standing (Saycode specs/desktop-messenger-channels).
      */
     let lastResultSucceeded = true;
+    /** The drain reads it: after its interrupt Claude Code exits 1, which only an interrupted turn explains. */
+    let lastResultInterrupted = false;
     let ongoingToolCalls = new Map<string, { parentToolCallId: string | null }>();
     let notifiedQuestionToolCalls = new Set<string>();
 
@@ -335,6 +337,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
              */
             const result = message as unknown as { subtype?: unknown; is_error?: unknown; result?: unknown };
             lastResultSucceeded = result.subtype === 'success' && result.is_error !== true;
+            lastResultInterrupted = result.subtype === 'error_during_execution';
             // Only a successful result carries an answer. A failed one must not leave an earlier
             // candidate standing either — the queue marker with an empty text clears it, and the
             // terminal that follows then reports no answer rather than an old one.
@@ -556,7 +559,10 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
             cancelPendingPermissions: () => { permissionHandler.reset('Session is shutting down'); },
             generation: () => startedGeneration()?.observer ?? null,
             hasHeldBackInput: () => pending !== null,
+            lastResultInterrupted: () => lastResultInterrupted,
         });
+        // A dispatched turn has no result yet: an earlier turn's interrupt must not answer for it.
+        const dispatchTurn = () => { lastResultInterrupted = false; drain?.dispatched(); };
 
         // Track session ID to detect when it actually changes
         // This prevents context loss when mode changes (permission mode, model, etc.)
@@ -716,7 +722,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                                 mode = revisedMode;
                                 p = { ...p, mode: revisedMode };
                             }
-                            drain?.dispatched();
+                            dispatchTurn();
                             return { ...p, latency: toTurnLatency(p) };
                         }
 
@@ -856,7 +862,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                                 }
                                 contentBlocks.push({ type: 'text' as const, text: msg.message });
                                 logger.debug(`[remote] Combined ${contentBlocks.length - 1} image(s) with text message`);
-                                drain?.dispatched();
+                                dispatchTurn();
                                 return {
                                     message: contentBlocks,
                                     mode: msg.mode,
@@ -869,7 +875,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                             // this text was relayed rather than typed into the app. A channel
                             // batch normally reaches that parser via the `pending` branch above,
                             // but the handle travels on every path so no future route drops it.
-                            drain?.dispatched();
+                            dispatchTurn();
                             return {
                                 message: msg.message,
                                 mode: msg.mode,

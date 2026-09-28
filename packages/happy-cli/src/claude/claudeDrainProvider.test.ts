@@ -17,6 +17,7 @@ function fixture(overrides: Partial<ClaudeDrainDeps> = {}) {
         generation: () => (generationStarted ? { observed: () => observed } : null),
         loopFinished,
         isLoopFinished: () => loopDone,
+        lastTurnInterrupted: () => false,
         now: () => clock,
         wait: async (ms: number) => { clock += ms; },
         ...overrides,
@@ -88,4 +89,32 @@ describe('Claude drain provider', () => {
         await done;
         expect(drained).toBe(true);
     });
+
+    it('counts the exit 1 Claude Code gives after the drain interrupted its turn as clean, and nothing looser', async () => {
+        // Claude Code reports an interrupted turn (error_during_execution) in its exit code when its
+        // input then ends: code 1, no signal, not killed. Reproduced with SDK 0.3.283.
+        const interrupt = vi.fn(async () => undefined);
+        const drained = (overrides: Partial<ClaudeDrainDeps>, observed: { code: number; signal: string | null; forced: boolean }) => {
+            const f = fixture({ activeTurn: () => ({ interrupt }), lastTurnInterrupted: () => true, ...overrides });
+            f.exit(observed); f.finishLoop();
+            return f.provider;
+        };
+        const clean = drained({}, { code: 1, signal: null, forced: false });
+        await clean.interruptTurn();
+        await expect(clean.endInputAndAwaitExit(5_000)).resolves.toEqual({ exited: true, code: 0, signal: null });
+        // Not interrupted by this drain: the exit code stands.
+        await expect(drained({}, { code: 1, signal: null, forced: false }).endInputAndAwaitExit(5_000)).resolves.toEqual({ exited: true, code: 1, signal: null });
+        // The last result was not an interrupt.
+        const other = drained({ lastTurnInterrupted: () => false }, { code: 1, signal: null, forced: false });
+        await other.interruptTurn();
+        await expect(other.endInputAndAwaitExit(5_000)).resolves.toEqual({ exited: true, code: 1, signal: null });
+        // A kill or another code is never clean.
+        const killed = drained({}, { code: 1, signal: null, forced: true });
+        await killed.interruptTurn();
+        await expect(killed.endInputAndAwaitExit(5_000)).resolves.toEqual({ exited: true, code: 1, signal: 'forced' });
+        const crashed = drained({}, { code: 3, signal: null, forced: false });
+        await crashed.interruptTurn();
+        await expect(crashed.endInputAndAwaitExit(5_000)).resolves.toEqual({ exited: true, code: 3, signal: null });
+    });
 });
+

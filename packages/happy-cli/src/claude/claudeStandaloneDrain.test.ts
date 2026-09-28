@@ -9,7 +9,7 @@ function gate() {
 function launcher() {
     const observer = createProviderExitObserver();
     let held = false;
-    return { observer, hold: (value: boolean) => { held = value; }, port: { requestEndInput: vi.fn(), cancelPendingPermissions: vi.fn(), generation: () => observer, hasHeldBackInput: () => held } };
+    return { observer, hold: (value: boolean) => { held = value; }, port: { requestEndInput: vi.fn(), cancelPendingPermissions: vi.fn(), generation: () => observer, hasHeldBackInput: () => held, lastResultInterrupted: () => held } };
 }
 
 describe('Claude standalone drain hooks', () => {
@@ -78,4 +78,14 @@ describe('Claude standalone drain hooks', () => {
         l.hold(true);
         expect(drain.hasHeldBackInput()).toBe(true);
     });
+
+    it('tells the provider whether the last turn ended as an interrupt', () => {
+        const drain = new ClaudeStandaloneDrain(gate());
+        expect(drain.providerDeps().lastTurnInterrupted()).toBe(false);
+        const l = launcher();
+        drain.attachLauncher(l.port);
+        l.hold(true);
+        expect(drain.providerDeps().lastTurnInterrupted()).toBe(true);
+    });
 });
+

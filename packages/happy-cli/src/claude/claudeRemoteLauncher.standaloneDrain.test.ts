@@ -104,4 +104,50 @@ describe('Claude launcher under a Windows standalone drain', () => {
         expect(queue.size()).toBe(1);
         expect(drain.providerDeps().isLoopFinished()).toBe(true);
     });
+
+    it('tells the drain when the last turn ended as an interrupt', async () => {
+        const { queue, gate, drain, session } = harness();
+        vi.mocked(query).mockImplementation(({ prompt }) => {
+            const response = (async function* () {
+                yield { type: 'system', subtype: 'init', session_id: '', tools: [], mcp_servers: [] };
+                for await (const _message of prompt as AsyncIterable<SDKUserMessage>) {
+                    expect(drain.providerDeps().lastTurnInterrupted()).toBe(false);
+                    yield { type: 'result', subtype: 'error_during_execution', result: '', is_error: true, uuid: 'result-1' };
+                    expect(drain.providerDeps().lastTurnInterrupted()).toBe(true);
+                    gate.freeze();
+                }
+            })();
+            return Object.assign(response, { mcpServerStatus: async () => [], setPermissionMode: async () => {}, interrupt: async () => undefined }) as unknown as ReturnType<typeof query>;
+        });
+        queue.push('turn-0', { permissionMode: 'default', model: 'claude-sonnet-5' });
+        await expect(claudeRemoteLauncher(session)).resolves.toBe('exit');
+        expect(drain.providerDeps().lastTurnInterrupted()).toBe(true);
+    });
+
+    it('forgets an earlier interrupt once the next turn is dispatched, so it cannot vouch for that turn', async () => {
+        const { queue, gate, drain, session } = harness();
+        const seenAtDispatch: boolean[] = [];
+        vi.mocked(query).mockImplementation(({ prompt }) => {
+            const response = (async function* () {
+                yield { type: 'system', subtype: 'init', session_id: '', tools: [], mcp_servers: [] };
+                let turn = 0;
+                for await (const _message of prompt as AsyncIterable<SDKUserMessage>) {
+                    seenAtDispatch.push(drain.providerDeps().lastTurnInterrupted());
+                    turn += 1;
+                    if (turn === 1) {
+                        yield { type: 'result', subtype: 'error_during_execution', result: '', is_error: true, uuid: 'result-1' };
+                        queue.push('turn-1', { permissionMode: 'default', model: 'claude-sonnet-5' });
+                    } else {
+                        yield { type: 'result', subtype: 'success', result: '', is_error: false, uuid: 'result-2' };
+                        gate.freeze();
+                    }
+                }
+            })();
+            return Object.assign(response, { mcpServerStatus: async () => [], setPermissionMode: async () => {}, interrupt: async () => undefined }) as unknown as ReturnType<typeof query>;
+        });
+        queue.push('turn-0', { permissionMode: 'default', model: 'claude-sonnet-5' });
+        await expect(claudeRemoteLauncher(session)).resolves.toBe('exit');
+        expect(seenAtDispatch).toEqual([false, false]);
+    });
 });
+
