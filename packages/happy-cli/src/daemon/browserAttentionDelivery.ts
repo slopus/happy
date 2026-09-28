@@ -105,6 +105,11 @@ interface DeliveryOptions {
     readToken(session: TrackedSession): Promise<string | null>
     /** Existing daemon resume path, including broker registration and run-once prompt delivery. */
     resumeSession?(input: { sessionId: string; directory: string; text: string; localId: string }): Promise<boolean>
+    /**
+     * Sessions this daemon persisted before a restart (startedBy 'persisted' or 'recovered from persisted session')
+     * that may still be woken: a host keeps them parked across the restart (Studio Chat(beta)).
+     */
+    wakesAfterRestart?(session: TrackedSession): boolean
     /** Live sessions that must get the attention at their exit instead (see createHeldBrowserAttentions). */
     holdUntilExit?: { applies(session: TrackedSession): boolean; held: HeldBrowserAttentions }
 }
@@ -117,7 +122,9 @@ export async function deliverBrowserAttention(event: AttentionEvent, signal: Abo
     const directory = session.happySessionMetadataFromLocalWebhook?.path ?? session.directory
     const wake = async (): Promise<'sent' | 'ended'> => {
         signal.throwIfAborted()
-        if (session.startedBy !== 'daemon' || !directory || !options.resumeSession) return 'ended'
+        const reloaded = (session.startedBy === 'persisted' || session.startedBy === 'recovered from persisted session')
+            && options.wakesAfterRestart?.(session) === true
+        if ((session.startedBy !== 'daemon' && !reloaded) || !directory || !options.resumeSession) return 'ended'
         return await options.resumeSession({ sessionId: event.agentSessionId, directory, text, localId }) ? 'sent' : 'ended'
     }
     if (!options.isAlive(session.pid)) return wake()

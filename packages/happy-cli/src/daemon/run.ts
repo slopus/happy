@@ -4881,6 +4881,7 @@ export async function startDaemon(): Promise<void> {
         sessionId, pidToTrackedSession.values(), sessionIdToFinishedSession, isPidAlive,
       ),
       resumeSession: resumeForBrowserAttention,
+      wakesAfterRestart: (session) => session.agentEnvironment?.[BROWSER_CONTINUATION_ENV] === '1',
       holdUntilExit: {
         applies: (session) => session.agentEnvironment?.[BROWSER_CONTINUATION_ENV] === '1',
         held: heldBrowserAttentions,

@@ -70,6 +70,20 @@ describe('attention delivery over the existing encrypted server path', () => {
         await expect(deliverBrowserAttention(event, new AbortController().signal, { ...options, resumeSession: async () => false })).resolves.toBe('ended')
     })
 
+    it('wakes a parked Chat(beta) session reloaded after a daemon restart, and nothing else it did not start', async () => {
+        const resumed: unknown[] = []
+        const reloaded = { ...session, startedBy: 'persisted', happySessionMetadataFromLocalWebhook: { path: '/work' } } as TrackedSession
+        const options = (wakesAfterRestart: (s: TrackedSession) => boolean) => ({ serverUrl: 'http://127.0.0.1:1', findSession: () => reloaded,
+            isAlive: () => false, readToken: async () => null, resumeSession: async (input: unknown) => { resumed.push(input); return true }, wakesAfterRestart })
+        await expect(deliverBrowserAttention(event, new AbortController().signal, options(() => false))).resolves.toBe('ended')
+        expect(resumed).toEqual([])
+        await expect(deliverBrowserAttention(event, new AbortController().signal, options(() => true))).resolves.toBe('sent')
+        expect(resumed).toHaveLength(1)
+        // A session the user started from a terminal is never woken, whatever the predicate says.
+        const terminal = { ...reloaded, startedBy: 'happy directly - likely by user from terminal' } as TrackedSession
+        await expect(deliverBrowserAttention(event, new AbortController().signal, { ...options(() => true), findSession: () => terminal })).resolves.toBe('ended')
+    })
+
     describe('a live run-once chat whose host parks it (Chat(beta))', () => {
         const text = '[agent-browser] task task-1 status=paused eventSeq=2. Call getTask for the current state before continuing.'
         const parked = { ...session, happySessionMetadataFromLocalWebhook: { path: '/work' } } as TrackedSession
