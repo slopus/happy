@@ -161,18 +161,22 @@ describe.skipIf(!chromePath)('console page (real Chrome)', () => {
             { taskId: 'task-approval', status: 'paused', pauseReason: 'awaiting-user', pendingApproval: { approvalId: 'a' }, tabs: [], updatedAtMs: now },
             { taskId: 'task-login', status: 'awaiting-user', waitReason: 'handoff', tabs: [], updatedAtMs: now },
             { taskId: 'task-running', status: 'running', tabs: [], updatedAtMs: now },
+            // The chat turn ended during a login wait (its grant revoked): still the user's move.
+            { taskId: 'task-login-parked', status: 'paused', pauseReason: 'grant-expired', waitReason: 'login', tabs: [], updatedAtMs: now },
+            // A stale approval on a task being cancelled is nothing to act on.
+            { taskId: 'task-cancelling', status: 'paused', pauseReason: 'cancelled-with-unknown-effect', cancelRequested: true, pendingApproval: { approvalId: 'old' }, tabs: [], updatedAtMs: now },
         ]
         try {
             const cap = token('fold', Date.now() + 600_000)
             const target = await harness.openFrontTab(`${origin}/console#abp-cap=${cap}&abp-exp=${Date.now() + 600_000}`)
-            await eventually(() => harness.evaluate(target, `document.querySelectorAll('#tasks button').length`), (n) => n === 4, 10_000)
+            await eventually(() => harness.evaluate(target, `document.querySelectorAll('#tasks button').length`), (n) => n === 6, 10_000)
             const layout = await harness.evaluate(target, `JSON.stringify({
                 top: [...document.querySelectorAll('#tasks > button')].map((b) => b.textContent.split(' ')[0]),
                 folded: [...document.querySelectorAll('#tasks details button')].map((b) => b.textContent.split(' ')[0]),
                 open: document.querySelector('#tasks details').open,
                 summary: document.querySelector('#tasks summary').textContent })`)
             expect(JSON.parse(String(layout))).toEqual({
-                top: ['task-approval', 'task-login'], folded: ['task-idle', 'task-running'], open: false, summary: '2 other open tasks',
+                top: ['task-approval', 'task-login', 'task-login-parked'], folded: ['task-idle', 'task-running', 'task-cancelling'], open: false, summary: '3 other open tasks',
             })
             await harness.closeTarget(target)
         } finally { listedTasks = defaultTasks() }

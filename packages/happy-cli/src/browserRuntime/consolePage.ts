@@ -89,7 +89,9 @@ function listTasks(){if(!S.token)return;$('tasks').textContent='loading';
    if(waitsForUser(t))box.appendChild(b);else{others.appendChild(b);folded++}});
   if(folded){summary.textContent=folded+' other open task'+(folded>1?'s':'');box.appendChild(others)}
  },function(e){$('tasks').textContent=e.message;$('tasks').className='warn'})}
-function waitsForUser(t){return !!t.pendingApproval||t.status==='awaiting-user'||t.waitReason==='handoff'||t.pauseReason==='user-control'}
+/** Same rule as the Runtime's sessionWaiting: the user's move now (a stale approval on a task being cancelled is not). */
+function waitsForUser(t){if(t.cancelRequested)return false;return !!t.pendingApproval||t.status==='awaiting-user'||t.pauseReason==='user-control'
+ ||(t.pauseReason==='grant-expired'&&(t.waitReason==='login'||t.waitReason==='captcha'||t.waitReason==='handoff'))}
 /** The Runtime checks the selected tab's own lease epoch, not a global maximum. */
 function tabEpoch(){var tab=$('tabId').value.trim();var leases=(S.task&&S.task.tabLeases)||[];for(var i=0;i<leases.length;i++)if(leases[i].tabId===tab)return leases[i].leaseEpoch;return 0}
 function addEvent(e){if(S.seen[e.seq])return;S.seen[e.seq]=1;if(e.seq>S.cursor)S.cursor=e.seq;

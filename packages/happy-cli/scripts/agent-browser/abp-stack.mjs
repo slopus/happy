@@ -624,7 +624,8 @@ export function createStack(deps) {
         const poc = join(packageDir, "scripts/browser-poc/images");
         const own = join(packageDir, "scripts/agent-browser/images");
         for (const [from, name] of [[join(poc, "runtime-entrypoint.sh"), "runtime-entrypoint.sh"], [join(poc, "cdp-proxy.py"), "cdp-proxy.py"], [join(poc, "instance-server.py"), "instance-server.py"],
-          [join(own, "runtime.Dockerfile"), "runtime.Dockerfile"], [join(own, "browser.Dockerfile"), "browser.Dockerfile"], [join(own, "browser-entrypoint.sh"), "browser-entrypoint.sh"]]) {
+          [join(own, "runtime.Dockerfile"), "runtime.Dockerfile"], [join(own, "browser.Dockerfile"), "browser.Dockerfile"], [join(own, "browser-entrypoint.sh"), "browser-entrypoint.sh"],
+          [join(own, "chromium-policy.json"), "chromium-policy.json"]]) {
           deps.copyFile(from, join(staging, name));
         }
         const ids = {};

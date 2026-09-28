@@ -8,10 +8,13 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --gid 10871 browser && useradd --uid 10871 --gid 10871 --create-home --shell /usr/sbin/nologin browser \
     && mkdir -p /run/abp /home/browser/profile && chown -R browser:browser /run/abp /home/browser
+# The profile is shared across tasks: never offer to keep what a user typed in the viewer (logins, forms).
+COPY chromium-policy.json /etc/chromium/policies/managed/abp.json
 COPY browser-entrypoint.sh /usr/local/bin/browser-entrypoint
 COPY instance-server.py /usr/local/bin/instance-server
 COPY cdp-proxy.py /usr/local/bin/cdp-proxy
-RUN chmod 755 /usr/local/bin/browser-entrypoint /usr/local/bin/instance-server /usr/local/bin/cdp-proxy
+RUN chmod 755 /usr/local/bin/browser-entrypoint /usr/local/bin/instance-server /usr/local/bin/cdp-proxy \
+    && chmod 644 /etc/chromium/policies/managed/abp.json
 USER browser
 EXPOSE 5900 9223 9224
 ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/browser-entrypoint"]
