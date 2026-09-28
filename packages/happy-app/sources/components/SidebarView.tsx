@@ -753,7 +753,7 @@ export const SidebarView = React.memo(({
                         ) : advisorSidebarActive ? (
                             <PluginLeftSidebarSlot desktopDensity={desktopDensity} fillAvailableSpace onNavigate={go} />
                         ) : (
-                            <DesktopSidebarSessionsNavigation />
+                            <DesktopSidebarSessionsNavigation transparentSidebar={dreamskin} />
                         )}
                     </View>
                 </>

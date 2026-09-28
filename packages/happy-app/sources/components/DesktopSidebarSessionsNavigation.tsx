@@ -347,11 +347,11 @@ const stylesheet = StyleSheet.create((theme) => ({
     assignmentLabel: { color: theme.colors.text, flex: 1, fontSize: 13, ...Typography.default() },
 }));
 
-export const DesktopSidebarSessionsNavigation = React.memo(() => {
-    return <SidebarScrollProvider><SidebarSessionsNavigationContent /></SidebarScrollProvider>;
+export const DesktopSidebarSessionsNavigation = React.memo(({ transparentSidebar = false }: { transparentSidebar?: boolean }) => {
+    return <SidebarScrollProvider><SidebarSessionsNavigationContent transparentSidebar={transparentSidebar} /></SidebarScrollProvider>;
 });
 
-function SidebarSessionsNavigationContent() {
+function SidebarSessionsNavigationContent({ transparentSidebar }: { transparentSidebar: boolean }) {
     const [mode, setMode] = useLocalSettingMutable('desktopSidebarMode');
     const [, setListMode] = useLocalSettingMutable('desktopSidebarListMode');
     const styles = stylesheet;
@@ -399,7 +399,7 @@ function SidebarSessionsNavigationContent() {
                 ? <SessionHistoryList variant="sidebar" />
                 : mode === 'lists'
                 ? <SidebarListsView />
-                : <MainView sessionListLayout={mode === 'timeline' ? 'time' : 'projects'} variant="sidebar" />}
+                : <MainView sessionListLayout={mode === 'timeline' ? 'time' : 'projects'} variant="sidebar" transparentSidebar={transparentSidebar} />}
         </View>
     );
 }

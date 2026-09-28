@@ -9,6 +9,7 @@ import TestRenderer from 'react-test-renderer';
 
 const mocks = vi.hoisted(() => ({
     isTablet: false,
+    sessionListData: [] as any[],
 }));
 
 vi.mock('react-native', () => ({
@@ -40,7 +41,7 @@ vi.mock('@/sync/storage', () => ({
     useRealtimeStatus: () => 'disconnected',
 }));
 vi.mock('@/hooks/useVisibleSessionListViewData', () => ({
-    useVisibleSessionListViewData: () => [],
+    useVisibleSessionListViewData: () => mocks.sessionListData,
 }));
 vi.mock('@/utils/responsive', () => ({
     useIsTablet: () => mocks.isTablet,
@@ -60,6 +61,7 @@ describe('MainView 首页内容', () => {
 
     beforeEach(() => {
         mocks.isTablet = false;
+        mocks.sessionListData = [];
         (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
         consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation((...values: unknown[]) => {
             if (values[0] === 'react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer') return;
@@ -82,6 +84,26 @@ describe('MainView 首页内容', () => {
 
         expect(renderer.root.findAllByType('ComposeHome')).toHaveLength(1);
         expect(renderer.root.findAllByType('EmptyMainScreen')).toHaveLength(0);
+        act(() => renderer.unmount());
+    });
+
+    it.each(['projects', 'time'] as const)('passes the translucent sidebar through %s mode', (sessionListLayout) => {
+        mocks.sessionListData = [{ type: 'active-sessions', sessions: [] }];
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<MainView variant="sidebar" sessionListLayout={sessionListLayout} transparentSidebar />); });
+        expect(renderer.root.findByType('SessionsList').props).toMatchObject({ layoutMode: sessionListLayout, transparentSidebar: true });
+        act(() => renderer.unmount());
+    });
+
+    it('keeps the DreamSkin empty sidebar transparent and the default sidebar opaque', () => {
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<MainView variant="sidebar" transparentSidebar />); });
+        const empty = renderer.root.findByType('EmptySessionsTablet');
+        expect(empty.parent.props.style[1]).toBe(false);
+        act(() => renderer.unmount());
+
+        act(() => { renderer = TestRenderer.create(<MainView variant="sidebar" />); });
+        expect(renderer.root.findByType('EmptySessionsTablet').parent.props.style[1].backgroundColor).toBe('#111');
         act(() => renderer.unmount());
     });
 });

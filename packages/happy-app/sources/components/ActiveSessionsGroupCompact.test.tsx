@@ -135,6 +135,27 @@ describe('ActiveSessionsGroupCompact project expansion persistence', () => {
         mocks.pathname = '/';
     });
 
+    it.each(['projects', 'time'] as const)('lets the DreamSkin sidebar show through the %s list', (layoutMode) => {
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<SessionsList layoutMode={layoutMode} transparentSidebar />); });
+        const list = renderer.root.findByType('FlatList');
+        expect(list.parent.parent.props.style).toEqual([
+            expect.objectContaining({ flex: 1 }),
+            false,
+        ]);
+        const section: any = list.props.renderItem({ item: { type: 'header', title: 'Today' } });
+        expect(section.props.style).toEqual([
+            expect.objectContaining({ paddingHorizontal: 16 }),
+            false,
+        ]);
+        act(() => renderer.unmount());
+
+        act(() => { renderer = TestRenderer.create(<SessionsList layoutMode={layoutMode} />); });
+        const regularList = renderer.root.findByType('FlatList');
+        expect(regularList.parent.parent.props.style[1].backgroundColor).toBe('#111');
+        act(() => renderer.unmount());
+    });
+
     it('preserves pinned order, location and selected row when rendering an individual outer cell', () => {
         mocks.sessions = ['a', 'b', 'c'].map(id => ({ ...session, id }));
         mocks.pinnedOrder = ['c', 'a'];

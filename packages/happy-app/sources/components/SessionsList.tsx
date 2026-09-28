@@ -25,18 +25,18 @@ const stylesheet = StyleSheet.create((theme) => ({
         flexDirection: 'row',
         justifyContent: 'center',
         alignItems: 'stretch',
-        backgroundColor: theme.colors.groupped.background,
     },
+    containerOpaque: { backgroundColor: theme.colors.groupped.background },
     contentContainer: {
         flex: 1,
         maxWidth: layout.maxWidth,
     },
     headerSection: {
-        backgroundColor: theme.colors.groupped.background,
         paddingHorizontal: 16,
         paddingTop: 12,
         paddingBottom: 4,
     },
+    headerSectionOpaque: { backgroundColor: theme.colors.groupped.background },
     headerText: {
         color: theme.colors.groupped.sectionTitle,
         fontSize: 13,
@@ -138,7 +138,7 @@ const stylesheet = StyleSheet.create((theme) => ({
 
 type SidebarListItem = Exclude<SessionListViewItem, { type: 'active-sessions' }> | CompactSessionListItem;
 
-export function SessionsList({ layoutMode = 'projects' }: { layoutMode?: 'projects' | 'time' }) {
+export function SessionsList({ layoutMode = 'projects', transparentSidebar = false }: { layoutMode?: 'projects' | 'time'; transparentSidebar?: boolean }) {
     const scrollState = useSidebarScrollState<SidebarListItem>(layoutMode);
     const compactToolbar = useWindowDimensions().width < 600;
     const styles = stylesheet;
@@ -252,7 +252,7 @@ export function SessionsList({ layoutMode = 'projects' }: { layoutMode?: 'projec
         switch (item.type) {
             case 'header':
                 return (
-                    <View style={styles.headerSection}>
+                    <View style={[styles.headerSection, !transparentSidebar && styles.headerSectionOpaque]}>
                         <Text style={styles.headerText}>
                             {item.title}
                         </Text>
@@ -313,17 +313,18 @@ export function SessionsList({ layoutMode = 'projects' }: { layoutMode?: 'projec
                     />
                 );
         }
-    }, [selectedSessionId, toggleArchived, selectionMode, selectedIds, startSelection, toggleSelection]);
+    }, [selectedSessionId, toggleArchived, selectionMode, selectedIds, startSelection, toggleSelection, transparentSidebar]);
     const HeaderComponent = React.useCallback(() => {
         return (
             <UpdateBanner />
         );
     }, []);
 
-    if (!data) return <View style={styles.container} />;
+    const containerStyle = [styles.container, !transparentSidebar && styles.containerOpaque];
+    if (!data) return <View style={containerStyle} />;
 
     return (
-        <View style={styles.container}>
+        <View style={containerStyle}>
             <View style={styles.contentContainer}>
                 <FlatList
                     key={layoutMode}

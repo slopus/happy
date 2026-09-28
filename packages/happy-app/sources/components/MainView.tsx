@@ -13,6 +13,7 @@ import { useSessionListSyncState } from '@/sync/sessionListSyncState';
 interface MainViewProps {
     variant: 'phone' | 'sidebar';
     sessionListLayout?: 'projects' | 'time';
+    transparentSidebar?: boolean;
 }
 
 const styles = StyleSheet.create((theme) => ({
@@ -51,8 +52,8 @@ const styles = StyleSheet.create((theme) => ({
         flexBasis: 0,
         flexGrow: 1,
         flexDirection: 'column',
-        backgroundColor: theme.colors.groupped.background,
     },
+    emptyStateOpaque: { backgroundColor: theme.colors.groupped.background },
     titleContainer: {
         flex: 1,
         alignItems: 'center',
@@ -82,7 +83,7 @@ const styles = StyleSheet.create((theme) => ({
     },
 }));
 
-export const MainView = React.memo(({ sessionListLayout = 'projects', variant }: MainViewProps) => {
+export const MainView = React.memo(({ sessionListLayout = 'projects', transparentSidebar = false, variant }: MainViewProps) => {
     const { theme } = useUnistyles();
     const sessionListViewData = useVisibleSessionListViewData();
     const realtimeStatus = useRealtimeStatus();
@@ -105,7 +106,7 @@ export const MainView = React.memo(({ sessionListLayout = 'projects', variant }:
         if (sessionListViewData.length === 0) {
             return (
                 <View style={styles.sidebarContentContainer}>
-                    <View style={styles.emptyStateContainer}>
+                    <View style={[styles.emptyStateContainer, !transparentSidebar && styles.emptyStateOpaque]}>
                         <EmptySessionsTablet />
                     </View>
                 </View>
@@ -115,7 +116,7 @@ export const MainView = React.memo(({ sessionListLayout = 'projects', variant }:
         // Sessions list
         return (
             <View style={styles.sidebarContentContainer}>
-                <SessionsList layoutMode={sessionListLayout} />
+                <SessionsList layoutMode={sessionListLayout} transparentSidebar={transparentSidebar} />
             </View>
         );
     }

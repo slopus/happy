@@ -250,6 +250,15 @@ describe('DesktopSidebarSessionsNavigation', () => {
         act(() => renderer.unmount());
     });
 
+    it('preserves the DreamSkin sidebar surface when switching from Projects to Timeline', () => {
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<DesktopSidebarSessionsNavigation transparentSidebar />); });
+        expect(renderer.root.findByType('MainView').props).toMatchObject({ sessionListLayout: 'projects', transparentSidebar: true });
+        act(() => renderer.root.findByProps({ testID: 'desktop-sidebar-tab-timeline' }).props.onPress());
+        expect(renderer.root.findByType('MainView').props).toMatchObject({ sessionListLayout: 'time', transparentSidebar: true });
+        act(() => renderer.unmount());
+    });
+
     it('keeps List deletion inside the editor instead of exposing a row trash action', () => {
         let renderer: any;
         act(() => { renderer = TestRenderer.create(<DesktopSidebarSessionsNavigation />); });
