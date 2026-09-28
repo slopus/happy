@@ -31,6 +31,8 @@ export const PATHS = {
   adminSocket: "/run/abp/admin.sock",
   mcp: "/run/abp-mcp",
   work: "/work",
+  /** The agent's workspace as Studio and the Desktop address it: a link to /work/agent-workspace (abp-install). */
+  agentWorkspaceLink: "/home/agent/workspace",
   libexec: "/usr/local/libexec/abp",
   launcher: "/usr/local/libexec/abp/claude-sbx-launch",
   firewallReader: "/usr/local/libexec/abp/abp-firewall-read",
@@ -394,6 +396,10 @@ export function daemonEnv(install) {
     `HAPPY_BROWSER_TASK_BROKER_SOCKET=${PATHS.brokerSocket}`,
     `HAPPY_BROWSER_TASK_DAEMON_TOKEN_FILE=${PATHS.daemonToken}`,
     `HAPPY_BROWSER_TASK_PROFILE_ID=${install.agentProfileId}`,
+    // Machine RPCs (file reads, document list, bash and terminal cwd) accept paths under this root only. The
+    // server addresses everything as /home/agent/workspace/..., a link to /work/agent-workspace: rooted at the
+    // link, both the lexical and the realpath checks pass (a link is tolerated only as the root itself).
+    `HAPPY_WORKSPACE_ROOT=${PATHS.agentWorkspaceLink}`,
     // The machine policy is mandatory: a session without an enabled sandbox config refuses to
     // start. Every daemon session gets this one (writes bounded to its /work workspace).
     `HAPPY_PROJECT_SANDBOX_CONFIG='${JSON.stringify(SESSION_SANDBOX_CONFIG)}'`,
