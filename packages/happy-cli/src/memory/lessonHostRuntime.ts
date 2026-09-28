@@ -122,12 +122,17 @@ export async function requestLessonSnapshotGrant(input: {
                 },
             }),
         });
-        if (!response.ok) return null;
+        if (!response.ok) {
+            // Status and route kind only: the body can echo the caller grant.
+            logger.debug(`[lesson-host] snapshot grant refused ${response.status} (${input.sessionAuthority ? 'session' : 'account'})`);
+            return null;
+        }
         const body = await response.json() as { envelope?: unknown };
         return typeof body.envelope === 'string' && body.envelope.length > 0 && body.envelope.length <= 32_768
             ? body.envelope
             : null;
     } catch {
+        logger.debug(`[lesson-host] snapshot grant request ${controller.signal.aborted ? 'timed out' : 'failed'}`);
         return null;
     } finally {
         clearTimeout(timer);

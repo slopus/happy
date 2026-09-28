@@ -268,26 +268,34 @@ export function createLessonHostSupervisor(options: LessonHostSupervisorOptions)
              */
             if (!options.requestSnapshotGrant) return null;
             const refresh = refreshing.get(projectId) ?? (async (): Promise<string | null> => {
+                const startedAt = Date.now();
+                // Reason codes only; never the envelope or its claims.
+                const failed = (reason: string) => {
+                    logger.debug(`[lesson-host] lease renewal failed (${reason}) ${Date.now() - startedAt}ms`);
+                    return null;
+                };
                 const envelope = await options.requestSnapshotGrant!(projectId).catch(() => null);
                 const currentVerifier = verifier();
-                if (!envelope || !currentVerifier) return null;
+                if (!envelope) return failed('no-grant');
+                if (!currentVerifier) return failed('no-verifier');
                 const verified = currentVerifier.verify({
                     envelope,
                     request: {
                         version: 1, projectId, requestId: `open:${projectId}`, operation: 'snapshot',
                     },
                 });
-                if (!verified.ok || verified.claims.projectId !== projectId) return null;
+                if (!verified.ok || verified.claims.projectId !== projectId) return failed('unverified');
                 const live = runtimes.get(projectId);
-                if (!live) return null;
+                if (!live) return failed('closed');
                 /*
                  * A revoked caller gets a different answer — or none. Either
                  * way the store stays open for the UI, and host-initiated work
                  * stops until the studio names this caller again.
                  */
-                if (verified.claims.userId !== live.userId) return null;
-                if (verified.claims.workspaceDir !== live.workspaceDir) return null;
+                if (verified.claims.userId !== live.userId) return failed('caller-changed');
+                if (verified.claims.workspaceDir !== live.workspaceDir) return failed('workspace-changed');
                 live.leaseExpiresAt = verified.claims.expiresAt;
+                logger.debug(`[lesson-host] lease renewed ${Date.now() - startedAt}ms`);
                 return live.userId;
             })().finally(() => refreshing.delete(projectId));
             refreshing.set(projectId, refresh);
@@ -302,7 +310,10 @@ export function createLessonHostSupervisor(options: LessonHostSupervisorOptions)
                 return await Promise.race([
                     refresh,
                     new Promise<null>((resolve) => {
-                        timer = setTimeout(() => resolve(null), budgetMs);
+                        timer = setTimeout(() => {
+                            logger.debug(`[lesson-host] lease renewal exceeded the ${budgetMs}ms authorize budget`);
+                            resolve(null);
+                        }, budgetMs);
                         timer.unref?.();
                     }),
                 ]);

@@ -1,3 +1,4 @@
+import { logger } from '@/ui/logger';
 import { describe, expect, it, vi } from 'vitest';
 import { generateKeyPairSync, sign as signEd25519 } from 'node:crypto';
 
@@ -261,6 +262,57 @@ describe('authorization lease', () => {
         // An unreachable studio is not permission to carry on.
         expect(await supervisor.authorize('p1', 100)).toBeNull();
         await supervisor.close();
+    });
+});
+
+describe('lease renewal diagnostics', () => {
+    const openRequest = { version: 1, projectId: 'p1', requestId: 'open:p1', operation: 'snapshot' };
+
+    function shortLeaseFixture(renew: () => Promise<string | null>) {
+        let issued = 0;
+        return createLessonHostSupervisor({
+            routeVerifier: () => createLessonGrantVerifier({ publicKeyBase64, machineId: 'm1', audience: AUDIENCE }),
+            requestSnapshotGrant: async (projectId) => {
+                issued += 1;
+                if (issued > 1) return renew();
+                return grant({ ...openRequest, projectId }, { projectId, workspaceDir: '/ws/p1', iat: Date.now(), expiresAt: Date.now() + 30 });
+            },
+            machineId: () => 'm1',
+            studioBaseUrl: () => 'https://studio.example',
+            studioToken: () => 'secret-token',
+            settingsPathFor: (projectId) => `/tmp/${projectId}.json`,
+        });
+    }
+
+    it('logs why a lease renewal was refused and how long it took', async () => {
+        const debug = vi.spyOn(logger, 'debug');
+        const supervisor = shortLeaseFixture(async () => null);
+        try {
+            await supervisor.ensureOpen('p1');
+            await new Promise((resolve) => setTimeout(resolve, 40));
+            expect(await supervisor.authorize('p1', 200)).toBeNull();
+            expect(debug.mock.calls.map(([line]) => String(line)))
+                .toContainEqual(expect.stringMatching(/^\[lesson-host\] lease renewal failed \(no-grant\) \d+ms$/));
+        } finally {
+            debug.mockRestore();
+            await supervisor.close();
+        }
+    });
+
+    it('logs a lease renewal that outlasts the authorize budget', async () => {
+        const debug = vi.spyOn(logger, 'debug');
+        const supervisor = shortLeaseFixture(() => new Promise((resolve) => setTimeout(() => resolve(null), 80)));
+        try {
+            await supervisor.ensureOpen('p1');
+            await new Promise((resolve) => setTimeout(resolve, 40));
+            expect(await supervisor.authorize('p1', 10)).toBeNull();
+            const lines = debug.mock.calls.map(([line]) => String(line));
+            expect(lines).toContain('[lesson-host] lease renewal exceeded the 10ms authorize budget');
+            expect(lines.join('\n')).not.toContain('secret-token');
+        } finally {
+            debug.mockRestore();
+            await supervisor.close();
+        }
     });
 });
 
