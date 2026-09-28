@@ -1,8 +1,35 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { join } from 'node:path';
+import { homedir } from 'node:os';
+import { spawn as crossSpawn } from 'cross-spawn';
 import { EventEmitter } from 'node:events';
 import type { ChildProcess } from 'node:child_process';
-import { preflightInstalledHappyCLI, resolveHappyCliSpawnCommand, spawnDetachedHappyCLI, startDetachedHappyCLI } from './spawnHappyCLI';
+import { preflightInstalledHappyCLI, resolveHappyCliSpawnCommand, spawnHappyCLI, spawnDetachedHappyCLI, startDetachedHappyCLI } from './spawnHappyCLI';
+
+vi.mock('cross-spawn', () => ({ spawn: vi.fn(() => ({})) }));
+
+describe('daemon working directory', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it.each(['start', 'start-sync'])('starts daemon %s outside the caller worktree', (subcommand) => {
+    spawnHappyCLI(['daemon', subcommand], { cwd: '/tmp/automation-worktree', detached: true });
+    expect(crossSpawn).toHaveBeenLastCalledWith(expect.any(String), expect.any(Array),
+      expect.objectContaining({ cwd: homedir(), detached: true }));
+  });
+
+  it('can restart the daemon even after its inherited cwd has been deleted', () => {
+    vi.spyOn(process, 'cwd').mockImplementation(() => { throw new Error('ENOENT: uv_cwd'); });
+    expect(() => spawnHappyCLI(['daemon', 'start-sync'])).not.toThrow();
+    expect(crossSpawn).toHaveBeenLastCalledWith(expect.any(String), expect.any(Array),
+      expect.objectContaining({ cwd: homedir() }));
+  });
+
+  it('keeps the requested working directory for agent sessions', () => {
+    spawnHappyCLI(['claude'], { cwd: '/tmp/project-session' });
+    expect(crossSpawn).toHaveBeenLastCalledWith(expect.any(String), expect.any(Array),
+      expect.objectContaining({ cwd: '/tmp/project-session' }));
+  });
+});
 
 describe('resolveHappyCliSpawnCommand', () => {
   it('uses the source entrypoint when the current CLI is running from source', () => {
