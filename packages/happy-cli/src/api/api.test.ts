@@ -271,6 +271,39 @@ describe('Api server error handling', () => {
         });
     });
 
+    describe('getOrCreateSession with a key the caller chose', () => {
+        // The daemon creates a session for its channel host and must know the key it is sealed
+        // with — the host reads the session with it. So the caller supplies the key and the
+        // envelope, and this call uploads exactly those instead of minting its own.
+        it('uploads the supplied envelope and seals the session with the supplied key', async () => {
+            const dataKeyApi = await ApiClient.create({
+                token: 'fake-token',
+                encryption: { type: 'dataKey', publicKey: new Uint8Array(32), machineKey: new Uint8Array(32) },
+            });
+            const key = new Uint8Array(32).fill(7);
+            const wrapped = new Uint8Array([0, 1, 2, 3]);
+            mockPost.mockResolvedValue({
+                data: { session: { id: 's-1', seq: 0, metadata: testMetadata, metadataVersion: 0, agentState: null, agentStateVersion: 0 } },
+            });
+
+            const session = await dataKeyApi.getOrCreateSession({
+                tag: 'tag-1', metadata: testMetadata, state: null, dataKey: { key, wrapped },
+            });
+
+            expect(mockPost.mock.calls[0][1].dataEncryptionKey).toBe(wrapped);
+            expect(session?.encryptionKey).toBe(key);
+            expect(session?.encryptionVariant).toBe('dataKey');
+        });
+
+        it('refuses a supplied key on a legacy account, whose sessions have no per-session key', async () => {
+            await expect(api.getOrCreateSession({
+                tag: 'tag-1', metadata: testMetadata, state: null,
+                dataKey: { key: new Uint8Array(32), wrapped: new Uint8Array(4) },
+            })).rejects.toThrow('legacy');
+            expect(mockPost).not.toHaveBeenCalled();
+        });
+    });
+
     describe('getOrCreateMachine', () => {
         it('should retain the current daemon startup state when the server returns an existing machine', async () => {
             mockPost.mockResolvedValue({

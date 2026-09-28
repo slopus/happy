@@ -189,7 +189,15 @@ export class ApiClient {
   async getOrCreateSession(opts: {
     tag: string,
     metadata: Metadata,
-    state: AgentState | null
+    state: AgentState | null,
+    /**
+     * A session key the caller chose, with its envelope wrapped to the account public key.
+     *
+     * For a parent that creates the session and hands the key to someone else (the daemon's
+     * channel host): it must know the key the session is sealed with, so this call uploads
+     * exactly these bytes instead of minting its own. Legacy accounts have no per-session key.
+     */
+    dataKey?: { key: Uint8Array, wrapped: Uint8Array },
   }): Promise<Session | null> {
     if (this.principal.kind === 'managed-session') {
       // Refused here rather than at the server: a managed run that reached
@@ -203,7 +211,14 @@ export class ApiClient {
     let encryptionKey: Uint8Array;
     let encryptionVariant: 'legacy' | 'dataKey';
     const accountEncryption = this.accountCredential().encryption;
-    if (accountEncryption.type === 'dataKey') {
+    if (opts.dataKey && accountEncryption.type !== 'dataKey') {
+      throw new Error('a caller-chosen session key needs a dataKey account; a legacy account has none');
+    }
+    if (opts.dataKey) {
+      encryptionKey = opts.dataKey.key;
+      encryptionVariant = 'dataKey';
+      dataEncryptionKey = opts.dataKey.wrapped;
+    } else if (accountEncryption.type === 'dataKey') {
 
       // Generate new encryption key
       encryptionKey = getRandomBytes(32);

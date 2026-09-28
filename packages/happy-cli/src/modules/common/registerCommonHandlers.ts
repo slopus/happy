@@ -10,6 +10,7 @@ import { run as runRipgrep } from '@/modules/ripgrep/index';
 import { run as runDifftastic } from '@/modules/difftastic/index';
 import { RpcHandlerManager } from '../../api/rpc/RpcHandlerManager';
 import type { AiAuthSelection } from '@/daemon/sessionEnv';
+import type { ReconnectSessionEnvironment } from '@/daemon/reconnectSessionEnv';
 import type { AiAuthSource } from '@/usage/aiAuthSource';
 import { validatePath } from './pathSecurity';
 import { ensureDirectory } from './ensureDirectory';
@@ -305,6 +306,13 @@ export interface SpawnSessionOptions {
      * and nothing else; it conveys no identity or permission.
      */
     requireInitialPromptAck?: boolean;
+    /**
+     * Internal only. Attaches the child to a session the daemon already created (the channel host
+     * spawn), with the key the daemon sealed it with — the same HAPPY_RECONNECT_* handoff a resume
+     * uses. Never read from RPC params: `spawn-happy-session` names its fields, and a caller that
+     * could set this would point a new child at somebody else's session.
+     */
+    reconnectEnvironment?: ReconnectSessionEnvironment;
     /** Remove inherited daemon credentials before applying the explicit spawn environment. */
     filterInheritedCredentials?: boolean;
     /** Restrict an unattended automation session to repository reads. */

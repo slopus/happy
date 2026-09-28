@@ -910,6 +910,86 @@ describe('ApiMachineClient socket reconnection', () => {
         client.shutdown();
     });
 
+    describe('channel host', () => {
+        const advertisement = {
+            protocolVersion: 1 as const,
+            custody: 'available' as const,
+            isolation: 'available' as const,
+            providers: ['telegram'],
+            hostKey: 'host-public-key',
+            fingerprint: 'ab:cd',
+        };
+        const acknowledgeUpdates = () => mockSocket.emitWithAck.mockImplementation(async (event: string, data: any) => {
+            if (event === 'machine-update-metadata') return { result: 'success', version: 1, metadata: data.metadata };
+            if (event === 'machine-update-state') return { result: 'success', version: 1, daemonState: data.daemonState };
+            return { result: 'success' };
+        });
+
+        it('publishes the host advertisement on the keep-alive and withdraws it when the host goes away', async () => {
+            // Startup-only publishing would go stale: the child becomes ready after the machine
+            // registered, and it can die at any time after that.
+            vi.useFakeTimers();
+            acknowledgeUpdates();
+            const machine = makeMachine();
+            const client = new ApiMachineClient('fake-token', machine);
+            client.connect();
+            socketHandlers.connect![0]!();
+            await vi.waitFor(() => expect(machine.metadata?.channelSupport).toBeDefined());
+            expect(machine.metadata?.channelHost).toBeUndefined();
+
+            client.setChannelHostAdvertisement(advertisement);
+            await vi.advanceTimersByTimeAsync(20_000);
+            await vi.waitFor(() => expect(machine.metadata?.channelHost).toEqual(advertisement));
+
+            client.setChannelHostAdvertisement(undefined);
+            await vi.advanceTimersByTimeAsync(20_000);
+            await vi.waitFor(() => expect(machine.metadata?.channelHost).toBeUndefined());
+
+            client.shutdown();
+        });
+
+        it('clears a stored host advertisement a managed runtime never serves', async () => {
+            acknowledgeUpdates();
+            const machine = makeMachine();
+            machine.metadata = { ...machine.metadata!, channelHost: advertisement };
+            const client = new ApiMachineClient('fake-token', machine);
+            client.setChannelHostAdvertisement(advertisement);
+            client.setRPCHandlers({
+                spawnSession: vi.fn(), stopSession: vi.fn(), requestShutdown: vi.fn(),
+                portRegistry: {} as any, aiCredentialRuntime: {} as any,
+            });
+            client.setManagedRuntime({} as any);
+            client.connect();
+            socketHandlers.connect![0]!();
+
+            await vi.waitFor(() => expect(machine.metadata?.channelHost).toBeUndefined());
+            client.shutdown();
+        });
+
+        it('registers channel-host:call only when the daemon runs a host, and hands the params through', async () => {
+            const call = vi.fn(async () => ({ wire: { sealed: 'reply' } }));
+            const withHost = new ApiMachineClient('fake-token', makeMachine());
+            withHost.setRPCHandlers({
+                spawnSession: vi.fn(), stopSession: vi.fn(), requestShutdown: vi.fn(),
+                portRegistry: {} as any, aiCredentialRuntime: {} as any,
+                channelHostCall: call,
+            });
+            const registered = vi.mocked((withHost as any).rpcHandlerManager.registerHandler).mock.calls
+                .find(([method]: any[]) => method === 'channel-host:call');
+            expect(registered).toBeDefined();
+            await expect(registered![1]({ wire: { sealed: 'call' } })).resolves.toEqual({ wire: { sealed: 'reply' } });
+            expect(call).toHaveBeenCalledWith({ wire: { sealed: 'call' } });
+
+            const withoutHost = new ApiMachineClient('fake-token', makeMachine());
+            withoutHost.setRPCHandlers({
+                spawnSession: vi.fn(), stopSession: vi.fn(), requestShutdown: vi.fn(),
+                portRegistry: {} as any, aiCredentialRuntime: {} as any,
+            });
+            expect(vi.mocked((withoutHost as any).rpcHandlerManager.registerHandler).mock.calls
+                .some(([method]: any[]) => method === 'channel-host:call')).toBe(false);
+        });
+    });
+
     it('does not advertise channel support or AI auth selection from a managed runtime', async () => {
         // A managed runtime serves only `managed:*` RPCs, so the ordinary spawn path those two
         // advertisements promise is refused there; a stored copy is cleared rather than kept.

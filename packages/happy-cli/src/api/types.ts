@@ -200,6 +200,22 @@ export const MachineMetadataSchema = z.object({
       engines: z.array(z.enum(['claude', 'codex', 'gemini', 'openclaw', 'opencode', 'grok'])),
     }).optional(),
   }).optional(),
+  /**
+   * The daemon channel host (Saycode specs/happy-cli-channel-host, R16).
+   *
+   * Present only while the host child is running and has said `ready`: custody of its credentials
+   * works and its key is loaded. Removed when the child dies or reports itself unavailable, so a
+   * Desktop that assigned a connection here sees the loss instead of trusting a stale copy.
+   * `hostKey` is the host's own box public key that Desktop seals credential envelopes to.
+   */
+  channelHost: z.object({
+    protocolVersion: z.literal(1),
+    custody: z.literal('available'),
+    isolation: z.enum(['available', 'unavailable']),
+    providers: z.array(z.string()),
+    hostKey: z.string(),
+    fingerprint: z.string(),
+  }).optional(),
   autonomousQualityGateSupport: AutonomousQualityGateCapabilityAdvertisementSchema.optional(),
   additionalDirectories: z.object({
     version: z.literal(1),

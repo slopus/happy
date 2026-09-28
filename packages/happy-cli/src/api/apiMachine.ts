@@ -575,6 +575,13 @@ type MachineRpcHandlers = {
      */
     byosOfflineReceive?: ByosOfflineRpcHandlers;
     difficultyRouting?: DifficultyRoutingClassifierHost;
+    /**
+     * Desktop's sealed settings call to the daemon channel host (Saycode
+     * specs/happy-cli-channel-host). Present only on a daemon that supervises a host; it answers
+     * with the host's sealed reply or a closed code and never throws, so no error text reaches
+     * the generic RPC error log.
+     */
+    channelHostCall?: (params: unknown) => Promise<unknown>;
 }
 
 /**
@@ -758,6 +765,8 @@ export class ApiMachineClient {
     private managedHandlers: ManagedRpcHandlers | null = null;
     private windowsStandaloneTrial = false;
     private daemonSessionStateRpcAvailable = false;
+    /** What the channel host child last said it can serve; undefined while it is not ready. */
+    private channelHostAdvertisement: MachineMetadata['channelHost'] = undefined;
     private isolatedViewerStarts = new Map<string, Promise<IsolatedViewerStartResult>>();
     private isolatedViewerMutation: Promise<void> = Promise.resolve();
     private isolatedViewerRegistry = new BrowserViewerLeaseRegistry(
@@ -923,6 +932,15 @@ export class ApiMachineClient {
         this.managedHandlers = handlers;
     }
 
+    /**
+     * The channel host's advertisement, or undefined to withdraw it. Published by the keep-alive,
+     * which compares with the server's copy: the child becomes ready after registration and can
+     * die at any time, so a startup-only publish would go stale.
+     */
+    setChannelHostAdvertisement(advertisement: MachineMetadata['channelHost']): void {
+        this.channelHostAdvertisement = advertisement;
+    }
+
     setRPCHandlers({
         daemonSessionState,
         spawnSession,
@@ -940,6 +958,7 @@ export class ApiMachineClient {
         linkSpawnedSession,
         difficultyRouting,
         browserSessionWaiting,
+        channelHostCall,
     }: MachineRpcHandlers) {
         this.daemonSessionStateRpcAvailable = !!daemonSessionState;
         if (daemonSessionState) {
@@ -964,6 +983,10 @@ export class ApiMachineClient {
             this.rpcHandlerManager.registerHandler('autonomous-quality-gate:status', autonomousQualityGate.status);
             this.rpcHandlerManager.registerHandler('autonomous-quality-gate:control', autonomousQualityGate.control);
             this.autonomousQualityGateRpcAvailable = true;
+        }
+
+        if (channelHostCall) {
+            this.rpcHandlerManager.registerHandler('channel-host:call', channelHostCall);
         }
 
         if (byosOfflineReceive) {
@@ -3874,6 +3897,9 @@ export class ApiMachineClient {
                 !== JSON.stringify(advertisedChannelSupport);
             const aiAuthSelectionStale = JSON.stringify(this.machine.metadata?.aiAuthSelection)
                 !== JSON.stringify(advertisedAiAuthSelection);
+            const advertisedChannelHost = this.managedHandlers ? undefined : this.channelHostAdvertisement;
+            const channelHostStale = JSON.stringify(this.machine.metadata?.channelHost)
+                !== JSON.stringify(advertisedChannelHost);
 
             this.syncResumeSessionRpcRegistration();
 
@@ -3884,7 +3910,7 @@ export class ApiMachineClient {
             // Bounded: an acknowledgement that never comes must not block every later change.
             const awaitingServer = this.capabilityUpdateInFlight !== null
                 && Date.now() - this.capabilityUpdateInFlight.startedAt < CAPABILITY_UPDATE_WAIT_MS;
-            if (!awaitingServer && (cliAvailabilityChanged || resumeSupportChanged || cliVersionChanged || automationSupportChanged || autonomousQualityGateSupportChanged || automationServerKeyChanged || daemonSessionStateChanged || channelSupportStale || aiAuthSelectionStale)) {
+            if (!awaitingServer && (cliAvailabilityChanged || resumeSupportChanged || cliVersionChanged || automationSupportChanged || autonomousQualityGateSupportChanged || automationServerKeyChanged || daemonSessionStateChanged || channelSupportStale || aiAuthSelectionStale || channelHostStale)) {
                 this.lastKnownCLIAvailability = newAvailability;
                 this.lastKnownResumeSupport = newResumeSupport;
                 this.lastKnownCliVersion = newCliVersion;
@@ -3910,6 +3936,7 @@ export class ApiMachineClient {
                     additionalDirectories: ADDITIONAL_DIRECTORIES_CAPABILITY,
                     channelSupport: advertisedChannelSupport,
                     aiAuthSelection: advertisedAiAuthSelection,
+                    channelHost: advertisedChannelHost,
                     daemonSessionState: daemonSessionStateAvailable ? { version: 1 } : undefined,
                     happyCliVersion: newCliVersion,
                 })).catch((err) => {

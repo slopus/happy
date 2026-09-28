@@ -269,6 +269,14 @@ import {
 import { mergeAdditionalDirectoriesIntoSandboxEnvironment } from '@/utils/additionalDirectoriesEnv';
 import { CHANNEL_SUPPORT_CAPABILITY } from '@/channel/channelSupportCapability';
 import {
+  channelHostDirectories,
+  createChannelHostSupervisor,
+  resolveChannelHostEntry,
+  spawnChannelHostChild,
+  type ChannelHostSupervisor,
+} from '@/channelHost/channelHostSupervisor';
+import { createChannelHostSessions } from '@/channelHost/channelHostSessions';
+import {
   injectCheckpointSpawnContext,
   readCheckpointSpawnContext,
 } from '@/checkpoint/checkpointSpawnContext';
@@ -2012,6 +2020,12 @@ export async function startDaemon(): Promise<void> {
         }
         if (options.appendSystemPrompt !== undefined) {
           extraEnv.HAPPY_INITIAL_APPEND_SYSTEM_PROMPT = options.appendSystemPrompt;
+        }
+        // Channel host spawn: the daemon created this session and holds its key. Set after the
+        // caller's environment was scrubbed of lineage and expanded, so only this internal option
+        // can attach a child to an existing session.
+        if (options.reconnectEnvironment) {
+          Object.assign(extraEnv, options.reconnectEnvironment);
         }
         if (options.saycodeSystemPromptEnabled !== undefined) {
           extraEnv.HAPPY_INITIAL_SAYCODE_SYSTEM_PROMPT_ENABLED = String(
@@ -4426,11 +4440,67 @@ export async function startDaemon(): Promise<void> {
       ),
     });
 
+    // Channel host (Saycode specs/happy-cli-channel-host). Only an ordinary daemon runs one: a
+    // managed runtime serves managed RPCs only and the Windows trial admits no other children.
+    // Without Node >= 22.13 or a bundled saycode-cli that ships the host, nothing starts and
+    // nothing is advertised.
+    let channelHost: ChannelHostSupervisor | null = null;
+    const channelHostEntry = managedCredential?.ok || standaloneWindows ? null : resolveChannelHostEntry();
+    if (channelHostEntry?.ok) {
+      const channelHostSessions = createChannelHostSessions({
+        accountEncryption: credentials.encryption,
+        machine: {
+          machineId: machine.id,
+          host: os.hostname(),
+          os: os.platform(),
+          homeDir: os.homedir(),
+          happyHomeDir: configuration.happyHomeDir,
+          happyLibDir: projectPath(),
+          happyToolsDir: join(projectPath(), 'tools', 'unpacked'),
+          version: packageJson.version,
+        },
+        createSession: (input) => api.getOrCreateSession({ ...input, state: { controlledByUser: false } }),
+        spawnSession: (options) => spawnSession(options),
+      });
+      const channelHostDirs = channelHostDirectories(configuration.happyHomeDir);
+      channelHost = createChannelHostSupervisor({
+        spawnChild: () => spawnChannelHostChild(channelHostEntry.entry, configuration.happyHomeDir),
+        buildInit: () => ({
+          v: 1,
+          dataDir: channelHostDirs.dataDir,
+          extensionsDir: channelHostDirs.extensionsDir,
+          machine: {
+            id: machine.id,
+            platform: os.platform(),
+            hostname: initialMachineMetadata.host,
+            homeDir: os.homedir(),
+            // What this daemon advertises for the machine. It has no filesystem scope to report.
+            capabilities: {
+              channelSupport: CHANNEL_SUPPORT_CAPABILITY,
+              mcpCallerGrantPublicKey: encodeBase64(mcpCallerGrantKeyPair.publicKey),
+              happyCliVersion: packageJson.version,
+            },
+          },
+          happyBaseUrl: configuration.serverUrl,
+          happy: {
+            token: credentials.token,
+            secret: credentials.encryption.type === 'legacy' ? encodeBase64(credentials.encryption.secret) : null,
+          },
+        }),
+        onAdvertisement: (advertisement) => apiMachine.setChannelHostAdvertisement(advertisement),
+        handleRequest: (method, params) => channelHostSessions.handle(method, params),
+        log: (code) => logger.debug(`[channel-host] ${code}`),
+      });
+    } else if (channelHostEntry) {
+      logger.debug(`[channel-host] not started: ${channelHostEntry.code}`);
+    }
+
     // Set RPC handlers
     apiMachine.setRPCHandlers({
       daemonSessionState: createDaemonSessionStateHandler(getCurrentChildren),
       byosOfflineReceive,
       difficultyRouting: difficultyRoutingHost,
+      ...(channelHost ? { channelHostCall: channelHost.call } : {}),
       spawnSession,
       resumeSession,
       recoverSession,
@@ -4501,6 +4571,7 @@ export async function startDaemon(): Promise<void> {
     launchReadiness.markReady();
     // Connect to server
     apiMachine.connect();
+    channelHost?.start();
 
     // Emit session-end events for dead sessions from previous daemon run
     if (deadSessionsToCleanup.length > 0) {
@@ -4691,6 +4762,9 @@ export async function startDaemon(): Promise<void> {
             // isDaemonRunningCurrentlyInstalledHappyVersion() === true, and exits —
             // leaving nothing running once we also exit.
             claudeSwapSupervisor.shutdown();
+            // Before the replacement exists: it starts its own host, and two hosts must never
+            // overlap. stop() returns only once the child has exited (SIGKILL after its grace).
+            await channelHost?.stop();
             apiMachine.shutdown();
             await stopControlServer();
             await standaloneWindows?.owner.close();
@@ -4845,6 +4919,7 @@ export async function startDaemon(): Promise<void> {
       // Give time for metadata update to send
       await new Promise(resolve => setTimeout(resolve, 100));
 
+      await channelHost?.stop();
       apiMachine.shutdown();
       await stopControlServer();
       await standaloneWindows?.owner.close();
