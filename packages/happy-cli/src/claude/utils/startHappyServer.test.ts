@@ -1,6 +1,6 @@
 /** Happy MCP registration, tool routing and session-specific guidance contracts. */
 import { runBashStream } from './bashStream';
-import { CodexRuntimeProducerGate } from '@/codex/codexRuntimeProducerGate';
+import { RuntimeProducerGate } from '@/sessionDrain/runtimeProducerGate';
 import { mkdir, mkdtemp, readFile, realpath, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -49,7 +49,7 @@ async function callTool(serverUrl: string, id: number, name: string, args: Recor
 
 describe('Happy MCP shutdown admission', () => {
     it('keeps a running bash tool owned across freeze until actual completion', async () => {
-        const gate = new CodexRuntimeProducerGate({ hasUndeliveredInput: () => false,
+        const gate = new RuntimeProducerGate({ hasUndeliveredInput: () => false,
             canFreezeInbound: () => true, freezeInbound: () => true, stopLoop: () => {} });
         let release!: () => void;
         vi.mocked(runBashStream).mockImplementationOnce(() => new Promise(resolve => {

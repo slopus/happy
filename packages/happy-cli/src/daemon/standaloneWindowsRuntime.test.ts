@@ -96,3 +96,13 @@ it('never executes an unverified helper while inspecting a saved candidate incar
     expect(verify).toHaveBeenCalledOnce(); expect(probe).not.toHaveBeenCalled();
   } finally { kill.mockRestore(); probe.mockRestore(); verify.mockRestore(); }
 });
+
+it('launches and advertises exactly the providers with a session drain: Codex and Claude (the daemon default)', async () => {
+  const { acceptsStandaloneWindowsProvider, STANDALONE_WINDOWS_TARGETS } = await import('./standaloneWindowsRuntime');
+  expect(STANDALONE_WINDOWS_TARGETS).toEqual([
+    { platform: 'win32', arch: 'x64', provider: 'codex', mode: 'standard' },
+    { platform: 'win32', arch: 'x64', provider: 'claude', mode: 'standard' },
+  ]);
+  for (const accepted of ['codex', 'claude', undefined]) expect(acceptsStandaloneWindowsProvider(accepted)).toBe(true);
+  for (const refused of ['acp', 'opencode', 'grok', 'gemini', 'openclaw', '']) expect(acceptsStandaloneWindowsProvider(refused)).toBe(false);
+});

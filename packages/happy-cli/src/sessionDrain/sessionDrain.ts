@@ -1,4 +1,4 @@
-import type { CodexRuntimeProducerGate } from './codexRuntimeProducerGate';
+import type { RuntimeProducerGate } from './runtimeProducerGate';
 import type { StorageConfirmation } from '../api/sessionStorageBarrier';
 export type DrainProvider = {
     freezeInputForShutdown(): boolean;
@@ -13,7 +13,7 @@ type Storage = {
     flushForShutdown(budgetMs: number, signal?: AbortSignal): Promise<StorageConfirmation>;
     isStorageConfirmationCurrent(proof: StorageConfirmation): boolean;
 };
-export type CodexDrainReceipt = Readonly<{
+export type DrainReceipt = Readonly<{
     launchId: string; status: 'provider-drained' | 'blocked'; reason: string | null;
     ownership: 'none' | 'held' | 'unknown';
     providerExited: boolean; outputDrained: boolean; stored: boolean;
@@ -25,30 +25,30 @@ class DrainFailure extends Error {}
 const DRAIN_RELEASE_WINDOW_MS = 10_000;
 
 /** Runtime-side provider/storage coordination only. Never a daemon completion or Job receipt. */
-export class CodexSessionDrain {
-    private readonly issuedReceipts = new WeakSet<CodexDrainReceipt>();
-    private operation: Promise<CodexDrainReceipt> | null = null;
-    private receipt: CodexDrainReceipt | null = null;
+export class SessionDrain {
+    private readonly issuedReceipts = new WeakSet<DrainReceipt>();
+    private operation: Promise<DrainReceipt> | null = null;
+    private receipt: DrainReceipt | null = null;
     private proof: StorageConfirmation | null = null;
     private releaseTimer: ReturnType<typeof setTimeout> | null = null;
     constructor(readonly launchId: string, private readonly provider: DrainProvider, private readonly storage: Storage,
-        private readonly quiesceProducers: (signal: AbortSignal) => Promise<void>, private readonly runtime?: CodexRuntimeProducerGate) {
+        private readonly quiesceProducers: (signal: AbortSignal) => Promise<void>, private readonly runtime?: RuntimeProducerGate) {
         if (!/^[a-zA-Z0-9._-]{1,128}$/.test(launchId)) throw new Error('Invalid launch identity');
     }
 
     /** The first acquired freeze owns budget/cancellation. A refusal without mutation can be retried. */
-    drain(budgetMs: number, signal?: AbortSignal, releaseBudgetMs = DRAIN_RELEASE_WINDOW_MS): Promise<CodexDrainReceipt> {
+    drain(budgetMs: number, signal?: AbortSignal, releaseBudgetMs = DRAIN_RELEASE_WINDOW_MS): Promise<DrainReceipt> {
         if (this.operation) return this.operation;
         if (!Number.isFinite(budgetMs) || budgetMs <= 0 || budgetMs > 30000) throw new Error('Invalid drain budget');
         if (!Number.isFinite(releaseBudgetMs) || releaseBudgetMs <= 0 || releaseBudgetMs > DRAIN_RELEASE_WINDOW_MS) throw new Error('Invalid release budget');
         const deadline = performance.now() + budgetMs;
         // Reserve ownership before synchronous freeze callbacks can reenter drain.
-        let resolveOperation!: (receipt: CodexDrainReceipt) => void;
+        let resolveOperation!: (receipt: DrainReceipt) => void;
         let rejectOperation!: (error: unknown) => void;
-        const owned = new Promise<CodexDrainReceipt>((resolve, reject) => { resolveOperation = resolve; rejectOperation = reject; });
+        const owned = new Promise<DrainReceipt>((resolve, reject) => { resolveOperation = resolve; rejectOperation = reject; });
         this.operation = owned;
         let frozen = false;
-        let ownership: CodexDrainReceipt['ownership'] = 'none';
+        let ownership: DrainReceipt['ownership'] = 'none';
         let initialFailure: string | null = null;
         try {
             if (signal?.aborted) initialFailure = 'aborted';
@@ -154,7 +154,7 @@ export class CodexSessionDrain {
                     reason = 'drain-failed'; stored = false; this.proof = null;
                 }
             }
-            const receipt: CodexDrainReceipt = Object.freeze({ launchId: this.launchId, status: stored ? 'provider-drained' : 'blocked',
+            const receipt: DrainReceipt = Object.freeze({ launchId: this.launchId, status: stored ? 'provider-drained' : 'blocked',
                 ownership, reason, providerExited, outputDrained, stored, exitObserved, exitCode, exitSignal, runtimeExited: false, jobEmpty: false });
             this.issuedReceipts.add(receipt);
             if (ownership !== 'none') this.receipt = receipt;
@@ -175,13 +175,13 @@ export class CodexSessionDrain {
         return owned;
     }
 
-    isCurrent(receipt: CodexDrainReceipt): boolean {
+    isCurrent(receipt: DrainReceipt): boolean {
         return receipt === this.receipt && receipt.stored && this.proof !== null && !this.runtime?.isShutdownBlocked()
             && this.storage.isStorageConfirmationCurrent(this.proof);
     }
 
     /** The caller owns reply delivery and releases the runtime only after accepting this receipt. */
-    releaseRuntime(receipt: CodexDrainReceipt): void {
+    releaseRuntime(receipt: DrainReceipt): void {
         let current = false;
         try { current = this.isCurrent(receipt); } catch { /* Failed proof recheck is blocked, not releasable. */ }
         if (!this.runtime || !current) {
@@ -194,7 +194,7 @@ export class CodexSessionDrain {
     }
 
     /** The reply failed; keep resources owned and publish a blocked decision. */
-    abandonRuntime(receipt: CodexDrainReceipt): void {
+    abandonRuntime(receipt: DrainReceipt): void {
         if (!this.runtime || receipt !== this.receipt) throw new Error('Drain receipt is not current');
         if (this.releaseTimer) clearTimeout(this.releaseTimer);
         this.releaseTimer = null;
@@ -202,7 +202,7 @@ export class CodexSessionDrain {
     }
 
     /** Confirmed authorizes cleanup, not runtime/Job exit. A runtime gate is required to enforce its hold. */
-    outcome(receipt: CodexDrainReceipt): Promise<'none' | 'confirmed' | 'blocked'> {
+    outcome(receipt: DrainReceipt): Promise<'none' | 'confirmed' | 'blocked'> {
         if (!this.issuedReceipts.has(receipt)) return Promise.reject(new Error('Drain receipt was not issued by this coordinator'));
         if (receipt.ownership === 'none') return Promise.resolve('none');
         if (receipt.ownership === 'unknown' || !receipt.stored) return Promise.resolve('blocked');

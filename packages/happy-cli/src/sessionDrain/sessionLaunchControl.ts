@@ -1,31 +1,31 @@
 import { randomBytes } from 'node:crypto';
 import { WebSocket } from 'ws';
-import { CodexSessionDrain, type CodexDrainReceipt, type DrainProvider } from './codexSessionDrain';
-import type { CodexRuntimeProducerGate } from './codexRuntimeProducerGate';
+import { SessionDrain, type DrainReceipt, type DrainProvider } from './sessionDrain';
+import type { RuntimeProducerGate } from './runtimeProducerGate';
 import { launchAuthProof, equalLaunchProof, launchAuthenticationSchema, launchBootstrapSchema, launchCommandSchema, type StandaloneLaunchBootstrap } from '../daemon/standaloneLaunchProtocol';
 
 /** One child dials its reserving daemon. This channel never supplies OS/Job evidence. */
-export class CodexLaunchControl {
+export class SessionLaunchControl {
   private readonly socket: WebSocket;
-  private drain: CodexSessionDrain | undefined;
-  private runtime: CodexRuntimeProducerGate | undefined;
+  private drain: SessionDrain | undefined;
+  private runtime: RuntimeProducerGate | undefined;
   private readonly launchId: string;
   private readonly connected: Promise<void>;
-  private current: { nonce: string; receipt?: CodexDrainReceipt; controller: AbortController; intent: boolean } | null = null;
+  private current: { nonce: string; receipt?: DrainReceipt; controller: AbortController; intent: boolean } | null = null;
   private closed = false;
-  static async connect(bootstrap: StandaloneLaunchBootstrap): Promise<CodexLaunchControl> {
-    const control = new CodexLaunchControl(bootstrap);
+  static async connect(bootstrap: StandaloneLaunchBootstrap): Promise<SessionLaunchControl> {
+    const control = new SessionLaunchControl(bootstrap);
     try { await control.ready(); return control; }
     catch (error) { control.close(); throw error; }
   }
   constructor(bootstrap: StandaloneLaunchBootstrap, provider?: DrainProvider,
-    storage?: ConstructorParameters<typeof CodexSessionDrain>[2], runtime?: CodexRuntimeProducerGate) {
+    storage?: ConstructorParameters<typeof SessionDrain>[2], runtime?: RuntimeProducerGate) {
     const config = launchBootstrapSchema.parse(bootstrap);
     this.launchId = config.launchId;
     if (provider || storage || runtime) {
       if (!provider || !storage || !runtime) throw new Error('Incomplete standalone launch binding');
       this.runtime = runtime;
-      this.drain = new CodexSessionDrain(config.launchId, provider, storage, async () => {}, runtime);
+      this.drain = new SessionDrain(config.launchId, provider, storage, async () => {}, runtime);
     }
     const clientNonce = randomBytes(32).toString('hex');
     let authenticated = false;
@@ -97,13 +97,13 @@ export class CodexLaunchControl {
       } catch { readyReject(new Error('Standalone launch control invalid')); this.lost(); this.socket.close(1008, 'Invalid launch control'); }
     });
   }
-  bind(provider: DrainProvider, storage: ConstructorParameters<typeof CodexSessionDrain>[2], runtime: CodexRuntimeProducerGate): void {
+  bind(provider: DrainProvider, storage: ConstructorParameters<typeof SessionDrain>[2], runtime: RuntimeProducerGate): void {
     if (this.drain || this.closed || this.socket.readyState !== WebSocket.OPEN) throw new Error('Standalone launch binding unavailable');
     this.runtime = runtime;
-    this.drain = new CodexSessionDrain(this.launchId, provider, storage, async () => {}, runtime);
+    this.drain = new SessionDrain(this.launchId, provider, storage, async () => {}, runtime);
   }
   ready(): Promise<void> { return this.connected; }
-  private async begin(current: NonNullable<CodexLaunchControl['current']>, budgetMs: number, releaseBudgetMs: number) {
+  private async begin(current: NonNullable<SessionLaunchControl['current']>, budgetMs: number, releaseBudgetMs: number) {
     const drain = this.drain!;
     try {
       const receipt = await drain.drain(budgetMs, current.controller.signal, releaseBudgetMs);

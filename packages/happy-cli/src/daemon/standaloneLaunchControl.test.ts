@@ -2,8 +2,8 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { WebSocket, WebSocketServer } from 'ws';
 import type { AddressInfo } from 'node:net';
 import { StandaloneLaunchControl } from './standaloneLaunchControl';
-import { CodexLaunchControl } from '../codex/codexLaunchControl';
-import { CodexRuntimeProducerGate } from '../codex/codexRuntimeProducerGate';
+import { SessionLaunchControl } from '../sessionDrain/sessionLaunchControl';
+import { RuntimeProducerGate } from '../sessionDrain/runtimeProducerGate';
 import { consumeStandaloneLaunchBootstrap, launchAuthProof, type StandaloneLaunchBootstrap } from './standaloneLaunchProtocol';
 
 const cleanup: Array<() => Promise<void> | void> = [];
@@ -12,7 +12,7 @@ async function fixture() {
   const parent = await StandaloneLaunchControl.open('instance-1');
   cleanup.push(() => parent.close());
   const bootstrap = parent.reserve('launch-1');
-  const gate = new CodexRuntimeProducerGate({ hasUndeliveredInput: () => false,
+  const gate = new RuntimeProducerGate({ hasUndeliveredInput: () => false,
     canFreezeInbound: () => true, freezeInbound: () => true, stopLoop: () => { gate.loopExited(); } });
   const storage = { tracksShutdownStorage: true, flushForShutdown: vi.fn(async () => ({ stored: true as const, revision: 1 })),
     isStorageConfirmationCurrent: () => true };
@@ -42,7 +42,7 @@ it('uses a per-launch secret and rejects the daemon bearer or another launch ide
 });
 it('composes authenticated receipt, explicit release, and delivered outcome without claiming OS exit', async () => {
   const f = await fixture();
-  const child = new CodexLaunchControl(f.bootstrap, f.provider, f.storage, f.gate);
+  const child = new SessionLaunchControl(f.bootstrap, f.provider, f.storage, f.gate);
   cleanup.push(() => child.close());
   await child.ready();
   const proof = await f.parent.drain('launch-1', new AbortController().signal, { remainingMs: () => 30000 });
@@ -53,7 +53,7 @@ it('composes authenticated receipt, explicit release, and delivered outcome with
 });
 it('never releases an unclean provider receipt', async () => {
   const f = await fixture(); f.provider.endInputAndAwaitExit.mockResolvedValue({ exited: true, code: 1, signal: null });
-  const child = new CodexLaunchControl(f.bootstrap, f.provider, f.storage, f.gate);
+  const child = new SessionLaunchControl(f.bootstrap, f.provider, f.storage, f.gate);
   cleanup.push(() => child.close()); await child.ready();
   expect(await f.parent.drain('launch-1', new AbortController().signal, { remainingMs: () => 30000 })).toEqual({ stored: false, releaseAcknowledged: false });
   expect(await f.gate.waitForShutdownDecision()).toBe('blocked');
@@ -61,7 +61,7 @@ it('never releases an unclean provider receipt', async () => {
 });
 it('reserves reply and runtime/Job time before asking the provider to drain', async () => {
   const f = await fixture();
-  const child = new CodexLaunchControl(f.bootstrap, f.provider, f.storage, f.gate);
+  const child = new SessionLaunchControl(f.bootstrap, f.provider, f.storage, f.gate);
   cleanup.push(() => child.close()); await child.ready();
   expect(await f.parent.drain('launch-1', new AbortController().signal, { remainingMs: () => 5000 })).toEqual({ stored: false, releaseAcknowledged: false });
   expect(f.provider.freezeInputForShutdown).not.toHaveBeenCalled();
@@ -69,7 +69,7 @@ it('reserves reply and runtime/Job time before asking the provider to drain', as
 it('blocks a frozen runtime if its parent disappears before confirmation', async () => {
   const f = await fixture();
   f.provider.waitForOutputDrain.mockImplementation(() => new Promise(() => {}));
-  const child = new CodexLaunchControl(f.bootstrap, f.provider, f.storage, f.gate);
+  const child = new SessionLaunchControl(f.bootstrap, f.provider, f.storage, f.gate);
   cleanup.push(() => child.close()); await child.ready();
   const draining = f.parent.drain('launch-1', new AbortController().signal, { remainingMs: () => 30000 });
   await vi.waitFor(() => expect(f.provider.freezeInputForShutdown).toHaveBeenCalledOnce());
@@ -88,7 +88,7 @@ it('does not send the launch secret to a process that has taken over the port', 
     authorization = req.headers.authorization ?? '';
     socket.send(JSON.stringify({ type: 'authenticated', nonce: req.headers['x-launch-nonce'], proof: '0'.repeat(64) }));
   });
-  const child = new CodexLaunchControl({ ...f.bootstrap, port: (fake.address() as AddressInfo).port }, f.provider, f.storage, f.gate);
+  const child = new SessionLaunchControl({ ...f.bootstrap, port: (fake.address() as AddressInfo).port }, f.provider, f.storage, f.gate);
   cleanup.push(() => child.close());
   await expect(child.ready()).rejects.toThrow('control');
   expect(authorization).not.toContain(f.bootstrap.secret);
@@ -97,14 +97,14 @@ it('does not send the launch secret to a process that has taken over the port', 
 it('waits for the actual child decision if proof becomes stale after intent', async () => {
   const f = await fixture(); let checks = 0;
   f.storage.isStorageConfirmationCurrent = () => ++checks < 4;
-  const child = new CodexLaunchControl(f.bootstrap, f.provider, f.storage, f.gate);
+  const child = new SessionLaunchControl(f.bootstrap, f.provider, f.storage, f.gate);
   cleanup.push(() => child.close()); await child.ready();
   expect(await f.parent.drain('launch-1', new AbortController().signal, { remainingMs: () => 30000 })).toEqual({ stored: false, releaseAcknowledged: false });
   expect(await f.gate.waitForShutdownDecision()).toBe('blocked');
 });
 it('allows a new request after a mutation-free refusal', async () => {
   const f = await fixture(); f.provider.freezeInputForShutdown.mockReturnValueOnce(false);
-  const child = new CodexLaunchControl(f.bootstrap, f.provider, f.storage, f.gate);
+  const child = new SessionLaunchControl(f.bootstrap, f.provider, f.storage, f.gate);
   cleanup.push(() => child.close()); await child.ready();
   expect(await f.parent.drain('launch-1', new AbortController().signal, { remainingMs: () => 30000 })).toEqual({ stored: false, releaseAcknowledged: false });
   expect(await f.parent.drain('launch-1', new AbortController().signal, { remainingMs: () => 30000 })).toEqual({ stored: true, releaseAcknowledged: true });
@@ -172,7 +172,7 @@ it('retries a late mutation-free refusal without letting its retired nonce repla
 
 it('refuses pre-bind drain without mutation and accepts a retry after binding the real runtime', async () => {
   const f = await fixture();
-  const child = await CodexLaunchControl.connect(f.bootstrap);
+  const child = await SessionLaunchControl.connect(f.bootstrap);
   cleanup.push(() => child.close());
   expect(await f.parent.drain('launch-1', new AbortController().signal, { remainingMs: () => 30000 }))
     .toEqual({ stored: false, releaseAcknowledged: false });

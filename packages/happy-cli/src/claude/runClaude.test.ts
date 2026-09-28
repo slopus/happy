@@ -284,6 +284,9 @@ async function startRemoteRunClaudeHarness(opts: {
 
     return {
         api,
+        /** Ends the mocked loop with this exit code, as the launcher returning would. */
+        endLoop: (code: number) => loopDeferred.resolve(code),
+        runPromise,
         finish,
         goalActionHandler,
         loopOptions,
@@ -2087,5 +2090,59 @@ describe('runClaude remote JSONL scanner', () => {
         expect(queued).toHaveLength(2);
         expect(queued.map((item: any) => item.mode.saycodeSystemPromptEnabled)).toEqual([true, false]);
         await harness.finish();
+    });
+
+    describe('runClaude under a Windows standalone drain (W0-5c)', () => {
+        it('refuses a standalone launch the daemon did not start, before creating an API client', async () => {
+            const { StandaloneLaunchControl } = await import('@/daemon/standaloneLaunchControl');
+            const parent = await StandaloneLaunchControl.open('claude-terminal-instance');
+            try {
+                mockApiClientCreate.mockClear();
+                await expect(runClaude({ kind: 'account', credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } } } as any,
+                    { startingMode: 'remote', shouldStartDaemon: false, startedBy: 'terminal', standaloneLaunch: parent.reserve('claude-terminal-launch') }))
+                    .rejects.toThrow(/daemon-started/);
+                expect(mockApiClientCreate).not.toHaveBeenCalled();
+            } finally { await parent.close(); }
+        });
+
+        it('drains through the real launch channel: freeze, loop end, storage proof, daemon ACK, then cleanup', async () => {
+            const { StandaloneLaunchControl } = await import('@/daemon/standaloneLaunchControl');
+            const parent = await StandaloneLaunchControl.open('claude-drain-instance');
+            const bootstrap = parent.reserve('claude-drain-launch');
+            const order: string[] = [];
+            const harness = await startRemoteRunClaudeHarness({ runOptions: { startedBy: 'daemon', standaloneLaunch: bootstrap } });
+            const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => { throw new Error('process.exit'); }) as never);
+            try {
+                const client = harness.sessionClient as Record<string, unknown>;
+                Object.assign(client, {
+                    tracksShutdownStorage: true,
+                    canFreezeInboundMessagesForShutdown: () => true,
+                    freezeInboundMessagesForShutdown: vi.fn(() => { order.push('inbound-frozen'); return true; }),
+                    flushForShutdown: vi.fn(async () => { order.push('storage-flushed'); return { stored: true as const, revision: 1 }; }),
+                    isStorageConfirmationCurrent: () => true,
+                });
+                harness.sessionClient.close.mockImplementation(async () => { order.push('session-closed'); });
+                expect(harness.api.sessionSyncClient).toHaveBeenCalledWith(expect.anything(), { trackShutdownStorage: true });
+                const drain = harness.loopOptions.standaloneDrain;
+                expect(drain).toBeDefined();
+                drain.attachLauncher({
+                    // The launcher ends the SDK input once (the graceful stop is idempotent); its loop then returns.
+                    requestEndInput: () => {
+                        if (order.includes('input-ended')) return;
+                        order.push('input-ended'); drain.markLoopFinished(); harness.endLoop(0);
+                    },
+                    cancelPendingPermissions: () => { order.push('permissions-cancelled'); },
+                    generation: () => null,
+                    hasHeldBackInput: () => false,
+                });
+                const proof = await parent.drain(bootstrap.launchId, new AbortController().signal, { remainingMs: () => 30_000 });
+                expect(proof).toEqual({ stored: true, releaseAcknowledged: true });
+                await expect(harness.runPromise).rejects.toThrow('process.exit');
+                expect(order).toEqual(['permissions-cancelled', 'inbound-frozen', 'input-ended', 'storage-flushed', 'session-closed']);
+            } finally {
+                exitSpy.mockRestore();
+                await parent.close();
+            }
+        });
     });
 });

@@ -11,7 +11,7 @@ const fixture = vi.hoisted(() => ({
     onSend: null as null | (() => Promise<void>),
     onSteer: null as null | (() => Promise<void>),
     proposal: { name: 'Verified recovery' },
-    gate: null as import('./codexRuntimeProducerGate').CodexRuntimeProducerGate | null,
+    gate: null as import('../sessionDrain/runtimeProducerGate').RuntimeProducerGate | null,
     events: [] as string[],
     markDispatched: null as null | (() => void),
     send: vi.fn(),
@@ -91,10 +91,10 @@ vi.mock('@/codex/codexAppServerClient', () => ({ CodexAppServerClient: class {
     };
 } }));
 
-vi.mock('./codexRuntimeProducerGate', async (original) => {
-    const actual = await original<typeof import('./codexRuntimeProducerGate')>();
-    return { CodexRuntimeProducerGate: class extends actual.CodexRuntimeProducerGate {
-        constructor(ports: ConstructorParameters<typeof actual.CodexRuntimeProducerGate>[0]) { super(ports); fixture.gate = this; }
+vi.mock('../sessionDrain/runtimeProducerGate', async (original) => {
+    const actual = await original<typeof import('../sessionDrain/runtimeProducerGate')>();
+    return { RuntimeProducerGate: class extends actual.RuntimeProducerGate {
+        constructor(ports: ConstructorParameters<typeof actual.RuntimeProducerGate>[0]) { super(ports); fixture.gate = this; }
         override endTurn() { fixture.events.push('endTurn'); super.endTurn(); }
         override loopExited() { fixture.events.push('loopExited'); super.loopExited(); }
     } };
@@ -102,7 +102,7 @@ vi.mock('./codexRuntimeProducerGate', async (original) => {
 import { ApiClient } from '@/api/api';
 import { StandaloneLaunchControl } from '../daemon/standaloneLaunchControl';
 import type { StandaloneLaunchBootstrap } from '../daemon/standaloneLaunchProtocol';
-import { CodexSessionDrain, type CodexDrainReceipt } from './codexSessionDrain';
+import { SessionDrain, type DrainReceipt } from '../sessionDrain/sessionDrain';
 import { CodexAuthRecovery } from './codexAuthRecovery';
 const originalSignals = new Map<string, Function[]>();
 const originalExitCode = process.exitCode;
@@ -127,7 +127,7 @@ async function start(prompt = 'Test input', confirmed = false, review?: import('
 }
 async function finishFrozenFixture(running: Promise<void>) {
     await vi.waitFor(() => expect(fixture.events).toContain('loopExited'));
-    // Production confirmation belongs to CodexSessionDrain; these tests only
+    // Production confirmation belongs to SessionDrain; these tests only
     // exercise a directly frozen fixture and release it after their assertions.
     fixture.gate!.confirmShutdownStorage();
     await running;
@@ -169,12 +169,12 @@ describe('Codex runtime producer bookkeeping', () => {
     });
     it('composes loop and writer settlement with storage proof and receipt release', async () => {
         let releaseWriter!: () => void;
-        let drain!: CodexSessionDrain;
-        let pending!: Promise<CodexDrainReceipt>;
+        let drain!: SessionDrain;
+        let pending!: Promise<DrainReceipt>;
         const flushForShutdown = vi.fn(async () => ({ stored: true as const, revision: 1 }));
         fixture.onSend = async () => {
             void fixture.admitTool!(() => new Promise<void>(resolve => { releaseWriter = resolve; }));
-            drain = new CodexSessionDrain('composed-loop', {
+            drain = new SessionDrain('composed-loop', {
                 freezeInputForShutdown: () => true, interruptTurn: async () => {},
                 endInputAndAwaitExit: async () => ({ exited: true, code: 0, signal: null }),
                 waitForOutputDrain: async () => {}, cancelOutputDrain: () => {}, finishShutdownObservation: () => {},
@@ -199,9 +199,9 @@ describe('Codex runtime producer bookkeeping', () => {
         expect(fixture.disconnect).toHaveBeenCalledOnce();
     });
     it('keeps kill blocked when provider freeze throws after an unknown mutation', async () => {
-        let pending!: Promise<CodexDrainReceipt>;
+        let pending!: Promise<DrainReceipt>;
         fixture.onSend = async () => {
-            const drain = new CodexSessionDrain('unknown-loop', {
+            const drain = new SessionDrain('unknown-loop', {
                 freezeInputForShutdown: () => { throw new Error('partial provider freeze'); },
                 interruptTurn: async () => {},
                 endInputAndAwaitExit: async () => ({ exited: true, code: 0, signal: null }),

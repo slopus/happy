@@ -1,3 +1,4 @@
+import type { ClaudeStandaloneDrain } from './claudeStandaloneDrain';
 import type { LessonProposalTurn } from '@/utils/lessonProposalTurn';
 import { ApiClient, ApiSessionClient } from "@/lib";
 import { MessageQueue2 } from "@/utils/MessageQueue2";
@@ -30,6 +31,8 @@ export class Session {
     readonly managedSettingsLockdown?: boolean;
     /** A managed Cloud run: unbound instruction paths are closed. */
     readonly managedRun?: boolean;
+    /** A Windows standalone launch that the daemon can drain (W0-5c). */
+    readonly standaloneDrain?: ClaudeStandaloneDrain;
     /**
      * Project lesson recall and background review for this session.
      *
@@ -88,6 +91,7 @@ export class Session {
         claudeEnvVars?: Record<string, string>,
         managedSettingsLockdown?: boolean,
         managedRun?: boolean,
+        standaloneDrain?: ClaudeStandaloneDrain,
         lessons?: LessonSessionHost,
         lessonProposalTurn?: LessonProposalTurn,
         claudeArgs?: string[],
@@ -123,6 +127,7 @@ export class Session {
         this.claudeEnvVars = opts.claudeEnvVars;
         this.managedSettingsLockdown = opts.managedSettingsLockdown;
         this.managedRun = opts.managedRun;
+        this.standaloneDrain = opts.standaloneDrain;
         this.lessons = opts.lessons;
         this.lessonProposalTurn = opts.lessonProposalTurn;
         this.claudeArgs = opts.claudeArgs;

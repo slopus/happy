@@ -96,6 +96,11 @@ import { createSerialAsyncHandler } from '@/codex/utils/serialAsyncHandler';
 import { isDelegatedDifficultyRoutingMessage } from '@/difficultyRouting';
 import { createLazyLessonSessionHost } from '@/memory/lessonSessionHost';
 import { readLessonOwner } from '@/memory/lessonOwnerMarker';
+import type { StandaloneLaunchBootstrap } from '@/daemon/standaloneLaunchProtocol';
+import { SessionLaunchControl } from '@/sessionDrain/sessionLaunchControl';
+import { RuntimeProducerGate } from '@/sessionDrain/runtimeProducerGate';
+import { ClaudeStandaloneDrain } from './claudeStandaloneDrain';
+import { createClaudeDrainProvider } from './claudeDrainProvider';
 
 /**
  * How long a confirmed initial prompt waits for its acknowledgement before the
@@ -118,6 +123,8 @@ export interface StartOptions {
     noSandbox?: boolean
     /** JavaScript runtime to use for spawning Claude Code (default: 'node') */
     jsRuntime?: JsRuntime
+    /** A Windows standalone launch the daemon drains on app quit (W0-5c). */
+    standaloneLaunch?: StandaloneLaunchBootstrap
 }
 
 const DEFAULT_CLAUDE_PERMISSION_MODE: PermissionMode = 'yolo';
@@ -216,6 +223,12 @@ export async function runClaude(principal: RunnerPrincipal, options: StartOption
     // Shield killall/pkill against broad kills before anything is spawned —
     // everything this session launches inherits the shimmed PATH.
     installBroadKillShims();
+    // Authenticated before any API client or server session exists: a launch the
+    // daemon did not reserve must not create one.
+    if (options.standaloneLaunch && (managedStartup || options.startedBy !== 'daemon')) {
+        throw new Error('Standalone launch requires a daemon-started account session');
+    }
+    const launchControl = options.standaloneLaunch ? await SessionLaunchControl.connect(options.standaloneLaunch) : undefined;
     const automationRunOnceRequested = consumeAutomationRunOnce(process.env);
     const deferredContinuation = createDeferredContinuationContextConsumer(process.env);
 
@@ -353,6 +366,8 @@ export async function runClaude(principal: RunnerPrincipal, options: StartOption
     // Handle server unreachable case - run Claude locally with hot reconnection
     // Note: connectionState.notifyOffline() was already called by api.ts with error details
     if (!response) {
+        // The drain proves storage on the server; an offline local run cannot.
+        if (launchControl) throw new Error('Standalone launch requires an online session');
         if (sandboxConfig?.checkpointProtection) {
             throw new Error('checkpoint protection requires an authoritative server session');
         }
@@ -481,8 +496,11 @@ export async function runClaude(principal: RunnerPrincipal, options: StartOption
 
     stage('checkpoint-composition');
     // Create realtime session
-    const session = api.sessionSyncClient(response);
+    const session = launchControl ? api.sessionSyncClient(response, { trackShutdownStorage: true }) : api.sessionSyncClient(response);
     stage('session-client');
+    // Created with the message queue below; MCP tools admitted before then are refused by the gate itself.
+    let runtimeGate: RuntimeProducerGate | undefined;
+    let standaloneDrain: ClaudeStandaloneDrain | undefined;
     /**
      * Owns the routing floor across accept → engine-apply. Accepting a turn only
      * records a pending decision; the floor and the failure counters move when
@@ -700,6 +718,8 @@ export async function runClaude(principal: RunnerPrincipal, options: StartOption
         ...(principal.kind === 'account' ? { proposeLesson: lessonProposalTurn.submit } : {}),
         protectedBashCwd: checkpointComposition.protectedBashCwd,
         trackProtectedBashProcess: checkpointComposition.trackProtectedWriter,
+        // A tool call in flight finishes across a drain freeze; none starts after it.
+        ...(launchControl ? { admitTool: <T,>(work: () => Promise<T>) => (runtimeGate ? runtimeGate.admit(work, 'writer') : Promise.reject(new Error('Runtime input is not open'))) } : {}),
     });
     logger.debug(`[START] Happy MCP server started at ${happyServer.url}`);
 
@@ -767,6 +787,19 @@ export async function runClaude(principal: RunnerPrincipal, options: StartOption
         disallowedTools: mode.disallowedTools,
         effort: mode.effort,
     }));
+    if (launchControl) {
+        // Only the launch-bound local channel can drain this runtime; never a session RPC.
+        const gate = new RuntimeProducerGate({
+            hasUndeliveredInput: () => messageQueue.size() > 0 || Boolean(standaloneDrain?.hasHeldBackInput()),
+            canFreezeInbound: () => session.canFreezeInboundMessagesForShutdown(),
+            freezeInbound: () => session.freezeInboundMessagesForShutdown(),
+            stopLoop: () => { standaloneDrain?.providerDeps().requestEndInput(); },
+        });
+        runtimeGate = gate;
+        standaloneDrain = new ClaudeStandaloneDrain(gate);
+        launchControl.bind(createClaudeDrainProvider(standaloneDrain.providerDeps()), session, gate);
+    }
+    const admitRpc = <T,>(work: () => Promise<T>): Promise<T> => runtimeGate ? runtimeGate.admit(work) : work();
 
     // Forward messages to the queue
     // Permission modes: Use the unified 7-mode type, mapping happens at SDK boundary in claudeRemote.ts
@@ -972,8 +1005,12 @@ export async function runClaude(principal: RunnerPrincipal, options: StartOption
         }),
         now: () => Date.now(),
     });
+    // Accepting a channel prompt records a user row and queues a turn, so it is input work:
+    // after a shutdown freeze it is refused before anything is recorded (a retry starts clean).
     session.rpcHandlerManager.registerHandler('channel-prompt', async (params: unknown) =>
-        channelAcceptance.accept(params));
+        runtimeGate?.isClosed()
+            ? { ok: false as const, error: 'this session is shutting down' }
+            : admitRpc(() => channelAcceptance.accept(params)));
     session.rpcHandlerManager.registerHandler('channel-authorize', async (params: unknown) => channelAcceptance.authorize(params));
     session.rpcHandlerManager.registerHandler('channel-cancel', async (params: unknown) => {
         const result = channelAcceptance.cancel(params);
@@ -983,7 +1020,7 @@ export async function runClaude(principal: RunnerPrincipal, options: StartOption
         return result;
     });
 
-    session.rpcHandlerManager.registerHandler('goal-action', async (params: unknown) => {
+    session.rpcHandlerManager.registerHandler('goal-action', (params: unknown) => admitRpc(async () => {
         const actionParams = params && typeof params === 'object' && !Array.isArray(params)
             ? params as Record<string, unknown>
             : null;
@@ -1046,7 +1083,7 @@ export async function runClaude(principal: RunnerPrincipal, options: StartOption
                 reject(error instanceof Error ? error : new Error(String(error)));
             }
         });
-    });
+    }));
 
     // Exit when the session is archived from web/mobile, or when the message
     // sync dies on a non-retryable error (onSyncFatal). stampArchive=false
@@ -1545,7 +1582,11 @@ export async function runClaude(principal: RunnerPrincipal, options: StartOption
         }
         currentSession?.cancelLessonReview();
         const attachmentsPromise = session.drainAttachmentsForUserMessage();
-        return handleUserMessage({ message, attachmentsPromise });
+        if (!runtimeGate) return handleUserMessage({ message, attachmentsPromise });
+        // Accepting a message is input work a drain must wait for; after a freeze it is refused.
+        return runtimeGate.admit(() => handleUserMessage({ message, attachmentsPromise })).catch((error) => {
+            logger.debug('[standalone] User message refused after shutdown freeze', error);
+        });
     });
 
     // Daemon-spawned initial prompt (HAPPY_INITIAL_PROMPT, e.g. scheduled
@@ -1556,7 +1597,7 @@ export async function runClaude(principal: RunnerPrincipal, options: StartOption
     // prompt. See initialPrompt.ts for the full rationale. Always consumed
     // (so children never inherit the env), delivered only for fresh sessions —
     // a reconnect resumes an existing conversation.
-    await deliverPreparedClaudeSessionStart({
+    const deliverSessionStart = () => deliverPreparedClaudeSessionStart({
         prepared: preparedInitialPrompt,
         // Only when the daemon asked for it. On every other launch this is
         // undefined and delivery behaves exactly as it always has.
@@ -1604,6 +1645,8 @@ export async function runClaude(principal: RunnerPrincipal, options: StartOption
             }
         },
     });
+    // The initial prompt is input a drain must not freeze past while it is being delivered.
+    await (runtimeGate ? runtimeGate.admit(deliverSessionStart) : deliverSessionStart());
     // Setup signal handlers for graceful shutdown
     //
     // `archive`: whether to stamp lifecycleState='archived' on the way
@@ -1622,6 +1665,16 @@ export async function runClaude(principal: RunnerPrincipal, options: StartOption
     // because the session is genuinely toast at that point.
     const cleanup = async (opts: { archive?: boolean } = { archive: true }) => {
         logger.debug(`[START] Received termination signal, cleaning up (archive=${opts.archive ?? true})...`);
+        if (runtimeGate?.isFrozen()) {
+            // The drain owns provider EOF and storage proof. A kill or signal cannot
+            // close the API or report a clean exit while it decides; the loop's own
+            // exit path finishes after a confirmed decision.
+            const decision = await runtimeGate.waitForShutdownDecision();
+            if (decision === 'blocked') logger.warn('[standalone] Shutdown blocked; retaining API and provider ownership');
+            return;
+        }
+        // Seal before the first await so a drain cannot freeze behind this kill.
+        runtimeGate?.beginTermination();
 
         try {
             // Update lifecycle state to archived before closing — only
@@ -1709,7 +1762,21 @@ export async function runClaude(principal: RunnerPrincipal, options: StartOption
     // Browser-side "Archive" button routes through this RPC and DOES
     // want the metadata stamped — it's the user explicitly choosing to
     // retire the session, not just disconnecting.
-    registerKillSessionHandler(session.rpcHandlerManager, () => cleanup({ archive: true }));
+    if (runtimeGate) {
+        const gate = runtimeGate;
+        session.rpcHandlerManager.registerHandler('killSession', async () => {
+            if (gate.isFrozen()) {
+                const decision = await gate.waitForShutdownDecision();
+                return decision === 'blocked'
+                    ? { success: false, message: 'Session shutdown is blocked with live runtime ownership' }
+                    : { success: true, message: 'Session shutdown is completing' };
+            }
+            void cleanup({ archive: true });
+            return { success: true, message: 'Killing happy-cli process' };
+        });
+    } else {
+        registerKillSessionHandler(session.rpcHandlerManager, () => cleanup({ archive: true }));
+    }
     registerAxRpcHandlers(session.rpcHandlerManager, workingDirectory);
 
     // P6(b): aplus 자동 mcp 등록 — web-ui 의 /api/me/mcp-config 응답을
@@ -1845,6 +1912,7 @@ export async function runClaude(principal: RunnerPrincipal, options: StartOption
         claudeEnvVars: options.claudeEnvVars,
         managedSettingsLockdown: managedStartup !== null,
         managedRun: managedStartup !== null,
+        ...(standaloneDrain ? { standaloneDrain } : {}),
         claudeArgs: options.claudeArgs,
         sandboxConfig: checkpointComposition.sandboxConfig,
         checkpointComposition,
@@ -1858,6 +1926,25 @@ export async function runClaude(principal: RunnerPrincipal, options: StartOption
         process.removeListener('SIGTERM', closeLessonsOnSignal);
         process.removeListener('SIGINT', closeLessonsOnSignal);
         await closeLessons();
+    }
+
+    if (runtimeGate) {
+        // Seal synchronously; producers already admitted keep their promises.
+        const producers = runtimeGate.closeAdmissionAndWait();
+        if (runtimeGate.isFrozen()) {
+            // The loop has finished its writes; the drain still owns provider EOF
+            // and storage proof. Nothing below may run before it confirms.
+            runtimeGate.loopExited();
+            const decision = await runtimeGate.waitForShutdownDecision();
+            if (decision === 'blocked') {
+                process.exitCode = 1;
+                logger.warn('[standalone] Shutdown blocked; retaining API and provider ownership');
+                await new Promise<never>(() => {});
+            }
+        } else {
+            await producers;
+            runtimeGate.loopExited();
+        }
     }
 
     // Cleanup session resources (intervals, callbacks) - prevents memory leak
@@ -1885,6 +1972,7 @@ export async function runClaude(principal: RunnerPrincipal, options: StartOption
     cleanupHookSettingsFile(hookSettingsPath);
     logger.debug('Stopped Hook server and cleaned up settings file');
 
+    launchControl?.close();
     // Exit with the code from Claude
     process.exit(exitCode);
 }

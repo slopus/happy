@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { CodexRuntimeProducerGate } from './codexRuntimeProducerGate';
-import { CodexSessionDrain } from './codexSessionDrain';
+import { RuntimeProducerGate } from './runtimeProducerGate';
+import { SessionDrain } from './sessionDrain';
 
 function fixture() {
     const order: string[] = [];
@@ -18,18 +18,18 @@ function fixture() {
         isStorageConfirmationCurrent: vi.fn(() => true),
     };
     const quiesce = vi.fn(async (_signal: AbortSignal) => { order.push('producers'); });
-    const drain = new CodexSessionDrain('launch-1', provider, storage, quiesce);
+    const drain = new SessionDrain('launch-1', provider, storage, quiesce);
     return { drain, provider, storage, quiesce, order };
 }
 function runtimeFixture() {
     const f = fixture();
-    const gate = new CodexRuntimeProducerGate({ hasUndeliveredInput: () => false,
+    const gate = new RuntimeProducerGate({ hasUndeliveredInput: () => false,
         canFreezeInbound: () => true, freezeInbound: () => true, stopLoop: () => {} });
-    const drain = new CodexSessionDrain('runtime-release', f.provider, f.storage, f.quiesce, gate);
+    const drain = new SessionDrain('runtime-release', f.provider, f.storage, f.quiesce, gate);
     return { ...f, gate, drain };
 }
 afterEach(() => vi.useRealTimers());
-describe('CodexSessionDrain', () => {
+describe('SessionDrain', () => {
     it('binds mutation-free refusal outcomes to their receipt across retries', async () => {
         const f = runtimeFixture();
         f.provider.freezeInputForShutdown.mockReturnValueOnce(false);
@@ -188,7 +188,7 @@ describe('CodexSessionDrain', () => {
         expect(f.provider.freezeInputForShutdown).toHaveBeenCalledOnce();
     });
     it('joins the same operation when provider freeze reenters drain', async () => {
-        const f = fixture(); let nested: ReturnType<CodexSessionDrain['drain']> | undefined;
+        const f = fixture(); let nested: ReturnType<SessionDrain['drain']> | undefined;
         f.provider.freezeInputForShutdown.mockImplementationOnce(() => { nested = f.drain.drain(50); return true; });
         const first = f.drain.drain(1000);
         expect(nested).toBe(first);
@@ -197,10 +197,10 @@ describe('CodexSessionDrain', () => {
     });
     it('closes runtime admission when provider freeze changes the input precondition', async () => {
         const f = fixture(); let queued = false;
-        const runtime = new CodexRuntimeProducerGate({ hasUndeliveredInput: () => queued, canFreezeInbound: () => true,
+        const runtime = new RuntimeProducerGate({ hasUndeliveredInput: () => queued, canFreezeInbound: () => true,
             freezeInbound: () => true, stopLoop: vi.fn() });
         f.provider.freezeInputForShutdown.mockImplementationOnce(() => { queued = true; return true; });
-        const drain = new CodexSessionDrain('recheck', f.provider, f.storage, f.quiesce, runtime);
+        const drain = new SessionDrain('recheck', f.provider, f.storage, f.quiesce, runtime);
         const first = drain.drain(1000);
         expect(await first).toMatchObject({ reason: 'freeze-failed', stored: false });
         expect(drain.drain(1000)).toBe(first);
@@ -210,9 +210,9 @@ describe('CodexSessionDrain', () => {
     });
     it('caches a partial composite freeze and releases provider observation without storing', async () => {
         const f = fixture(); const stopLoop = vi.fn();
-        const runtime = new CodexRuntimeProducerGate({ hasUndeliveredInput: () => false, canFreezeInbound: () => true,
+        const runtime = new RuntimeProducerGate({ hasUndeliveredInput: () => false, canFreezeInbound: () => true,
             freezeInbound: () => false, stopLoop });
-        const drain = new CodexSessionDrain('partial', f.provider, f.storage, f.quiesce, runtime);
+        const drain = new SessionDrain('partial', f.provider, f.storage, f.quiesce, runtime);
         const first = drain.drain(1000);
         expect(await first).toMatchObject({ status: 'blocked', reason: 'freeze-failed', stored: false });
         expect(drain.drain(1000)).toBe(first);

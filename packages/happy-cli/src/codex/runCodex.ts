@@ -1,8 +1,8 @@
 /** Orchestrates Codex sessions, initial prompts, MCP tools and session lifecycle. */
 import type { CodexBackgroundTask } from './codexBackgroundTasks';
-import { CodexLaunchControl } from './codexLaunchControl';
+import { SessionLaunchControl } from '../sessionDrain/sessionLaunchControl';
 import type { StandaloneLaunchBootstrap } from '../daemon/standaloneLaunchProtocol';
-import { CodexRuntimeProducerGate } from './codexRuntimeProducerGate';
+import { RuntimeProducerGate } from '../sessionDrain/runtimeProducerGate';
 import { createLessonProposalTurn } from '@/utils/lessonProposalTurn';
 import { CodexAuthRecovery } from './codexAuthRecovery';
 import { render } from "ink";
@@ -205,7 +205,7 @@ export async function runCodex(opts: {
     // Codex has no PreToolUse hook system, so the PATH shim is its only guard.
     const managedStartup = opts.principal?.kind === 'managed' ? opts.principal.startup : null;
     if (opts.standaloneLaunch && (managedStartup || opts.startedBy !== 'daemon')) throw new Error('Standalone launch requires an unmanaged daemon session');
-    const launchControl = opts.standaloneLaunch ? await CodexLaunchControl.connect(opts.standaloneLaunch) : undefined;
+    const launchControl = opts.standaloneLaunch ? await SessionLaunchControl.connect(opts.standaloneLaunch) : undefined;
     try {
     const accountToken = opts.principal?.kind === 'account' ? opts.principal.credentials.token : null;
     if (managedStartup) {
@@ -456,7 +456,7 @@ export async function runCodex(opts: {
     let shouldExit = false;
     let pending: CollectedBatch<EnhancedMode> | null = null;
     // Only a launch-bound local channel can invoke drain; never a session RPC.
-    const runtimeGate = session.tracksShutdownStorage && !managedStartup ? new CodexRuntimeProducerGate({
+    const runtimeGate = session.tracksShutdownStorage && !managedStartup ? new RuntimeProducerGate({
         hasUndeliveredInput: () => pending !== null || messageQueue.size() > 0,
         canFreezeInbound: () => !reconnectionHandle && session === initialSession && session.canFreezeInboundMessagesForShutdown(),
         freezeInbound: () => session.freezeInboundMessagesForShutdown(),

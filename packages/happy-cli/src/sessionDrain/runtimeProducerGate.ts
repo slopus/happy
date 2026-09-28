@@ -1,5 +1,5 @@
 /** Internal launch lifecycle. Observation cancellation never settles a still-running producer. */
-export class CodexRuntimeProducerGate {
+export class RuntimeProducerGate {
     private frozen = false;
     private closing = false;
     private exited = false;
@@ -32,7 +32,7 @@ export class CodexRuntimeProducerGate {
     freeze(): void {
         if (this.frozen) throw new Error('Runtime input already frozen');
         // The provider has already committed. Even a changed/throwing preflight must close admission.
-        let blocker: ReturnType<CodexRuntimeProducerGate['blocker']>;
+        let blocker: ReturnType<RuntimeProducerGate['blocker']>;
         try { blocker = this.blocker(); }
         finally {
             this.frozen = true;

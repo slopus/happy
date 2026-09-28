@@ -1,5 +1,5 @@
 /** Happy daemon lifecycle, child-session spawning and resumption, and browser attention delivery. */
-import { inspectStandaloneCandidatePresence, assertStandaloneCandidateIdentity, readStandaloneCandidateId, createStandaloneWindowsRuntime } from './standaloneWindowsRuntime';
+import { inspectStandaloneCandidatePresence, assertStandaloneCandidateIdentity, readStandaloneCandidateId, createStandaloneWindowsRuntime, acceptsStandaloneWindowsProvider } from './standaloneWindowsRuntime';
 import { DIFFICULTY_CLASSIFIER_REVISION } from './difficultyRoutingArtifacts';
 import { healInstallArtifacts } from './installArtifactsHeal';
 import fs from 'fs/promises';
@@ -1656,7 +1656,7 @@ export async function startDaemon(): Promise<void> {
       trustedMcpContext?: AutomationMcpSpawnContext,
     ): Promise<SpawnSessionResult> => {
       if (!launchReadiness.isReady()) return { type: 'error', errorMessage: 'Daemon is initializing; retry the launch shortly' };
-      if (standaloneWindows && (!standaloneWindows.owner.acceptingLaunches || options.agent !== 'codex')) {
+      if (standaloneWindows && (!standaloneWindows.owner.acceptingLaunches || !acceptsStandaloneWindowsProvider(options.agent))) {
         return { type: 'error', errorMessage: 'Windows trial launch is closed or this provider is unsupported' };
       }
       // Spawn options can contain the encrypted one-use envelope as well as
@@ -2283,7 +2283,7 @@ export async function startDaemon(): Promise<void> {
        */
       resumeTargetSessionId?: string;
     }): Promise<SpawnSessionResult> => {
-      if (standaloneWindows && (!standaloneWindows.owner.acceptingLaunches || args[0] !== 'codex')) {
+      if (standaloneWindows && (!standaloneWindows.owner.acceptingLaunches || !acceptsStandaloneWindowsProvider(args[0]))) {
         return { type: 'error', errorMessage: 'Windows trial launch is closed or this provider is unsupported' };
       }
       const prepared = standaloneWindows ? await standaloneWindows.owner.prepare({ args, cwd, env }) : undefined;

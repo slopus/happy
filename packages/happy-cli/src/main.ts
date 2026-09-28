@@ -7,6 +7,7 @@
  */
 
 
+import { takeStandaloneLaunchBootstrap } from '@/daemon/standaloneLaunchProtocol'
 import { configuration } from '@/configuration'
 import chalk from 'chalk'
 import { runClaude, StartOptions } from '@/claude/runClaude'
@@ -864,7 +865,13 @@ ${chalk.bold.cyan('Claude Code Options (from `claude --help`):')}
     // It authenticates no account, registers no machine, and starts no daemon:
     // there is no local user here, and the runtime it runs inside is what the
     // control plane already knows about.
+    // Captured by index.ts before provider modules loaded; only a daemon launch carries one.
+    const standaloneLaunch = takeStandaloneLaunchBootstrap(process.env);
     const managed = await readManagedStartup(process.env, Date.now(), configuration.serverUrl);
+    if (managed && standaloneLaunch) {
+      console.error(chalk.red('Error:'), 'Managed runtime cannot adopt a standalone launch')
+      process.exit(1)
+    }
     if (managed) {
       /*
        * The arguments this process was started with, against the plan that was
@@ -913,7 +920,7 @@ ${chalk.bold.cyan('Claude Code Options (from `claude --help`):')}
 
     // Start the CLI
     try {
-      await runClaude({ kind: 'account', credentials }, options);
+      await runClaude({ kind: 'account', credentials }, standaloneLaunch ? { ...options, standaloneLaunch } : options);
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
       if (process.env.DEBUG) {

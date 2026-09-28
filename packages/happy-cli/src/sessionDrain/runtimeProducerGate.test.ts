@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
-import { CodexRuntimeProducerGate } from './codexRuntimeProducerGate';
-import { CodexSessionDrain } from './codexSessionDrain';
+import { RuntimeProducerGate } from './runtimeProducerGate';
+import { SessionDrain } from './sessionDrain';
 
 function fixture() {
     const ports = { hasUndeliveredInput: vi.fn(() => false), canFreezeInbound: vi.fn(() => true),
         freezeInbound: vi.fn(() => true), stopLoop: vi.fn() };
-    return { ports, gate: new CodexRuntimeProducerGate(ports) };
+    return { ports, gate: new RuntimeProducerGate(ports) };
 }
 describe('runtime producer shutdown gate', () => {
     it('seals ordinary cleanup admission and waits for real producer rejection', async () => {
@@ -109,7 +109,7 @@ describe('runtime producer shutdown gate', () => {
             endInputAndAwaitExit: vi.fn(async () => ({ exited: true, code: 0, signal: null })),
             waitForOutputDrain: vi.fn(async () => {}), cancelOutputDrain: vi.fn(), finishShutdownObservation: vi.fn() };
         const storage = { tracksShutdownStorage: true, flushForShutdown: vi.fn(async () => ({ stored: true as const, revision: 1 })), isStorageConfirmationCurrent: () => true };
-        const drain = new CodexSessionDrain('runtime-gate', provider, storage, async () => {}, gate);
+        const drain = new SessionDrain('runtime-gate', provider, storage, async () => {}, gate);
         ports.hasUndeliveredInput.mockReturnValue(true);
         expect(await drain.drain(1000)).toMatchObject({ status: 'blocked', reason: 'input-undelivered' });
         expect(provider.freezeInputForShutdown).not.toHaveBeenCalled();
@@ -136,7 +136,7 @@ describe('runtime producer shutdown gate', () => {
             waitForOutputDrain: async () => {}, cancelOutputDrain: () => {}, finishShutdownObservation: () => {} };
         const storage = { tracksShutdownStorage: true, flushForShutdown: vi.fn(async () => ({ stored: true as const, revision: 1 })),
             isStorageConfirmationCurrent: () => true };
-        const drain = new CodexSessionDrain('blocked-exit', provider, storage, async () => {}, gate);
+        const drain = new SessionDrain('blocked-exit', provider, storage, async () => {}, gate);
         const operation = drain.drain(1000);
         gate.loopExited();
         expect(await operation).toMatchObject({ status: 'blocked', reason: 'provider-exit-unclean' });

@@ -1,3 +1,4 @@
+import type { ClaudeStandaloneDrain } from './claudeStandaloneDrain';
 import type { LessonProposalTurn } from '@/utils/lessonProposalTurn';
 import { ApiSessionClient } from "@/api/apiSession"
 import { MessageQueue2 } from "@/utils/MessageQueue2"
@@ -59,6 +60,8 @@ interface LoopOptions {
     managedSettingsLockdown?: boolean
     /** A managed Cloud run: steering and goal-setting are refused. */
     managedRun?: boolean
+    /** A Windows standalone launch the daemon can drain (W0-5c). */
+    standaloneDrain?: ClaudeStandaloneDrain
     /** Built by the runner; see `Session.lessons`. */
     lessons?: LessonSessionHost
     lessonProposalTurn?: LessonProposalTurn
@@ -101,6 +104,7 @@ export async function loop(opts: LoopOptions): Promise<number> {
         claudeArgs: opts.claudeArgs,
         managedSettingsLockdown: opts.managedSettingsLockdown,
         managedRun: opts.managedRun,
+        standaloneDrain: opts.standaloneDrain,
         mcpServers: opts.mcpServers,
         mcpConfig: opts.mcpConfig,
         logPath: logPath,

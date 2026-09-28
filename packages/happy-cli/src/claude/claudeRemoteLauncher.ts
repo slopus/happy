@@ -172,11 +172,17 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
         if (!text.trim()) {
             return { success: false, error: 'Steer text is required' };
         }
-        if (!await activeInputSender?.(text)) {
-            return { success: false, error: 'No active Claude turn' };
-        }
-        session.onActiveUserInputAccepted?.(text);
-        return { success: true };
+        // Steering is input: refused once a standalone drain froze the runtime, tracked while it runs.
+        const gate = session.standaloneDrain?.gate;
+        if (gate?.isClosed()) return { success: false, error: 'This session is shutting down' };
+        const steer = async () => {
+            if (!await activeInputSender?.(text)) {
+                return { success: false, error: 'No active Claude turn' };
+            }
+            session.onActiveUserInputAccepted?.(text);
+            return { success: true };
+        };
+        return gate ? gate.admit(steer) : steer();
     });
     // Removed catch-all stdin handler - now handled by RemoteModeDisplay keyboard handlers
 
@@ -530,7 +536,9 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
          * Only for managed runs: an ordinary session ends when its user says
          * so, and nothing else may end one on its behalf.
          */
-        gracefulStop = session.managedRun
+        // A Windows standalone launch ends the same way when the daemon drains it (W0-5c).
+        const drain = session.standaloneDrain;
+        gracefulStop = session.managedRun || drain
             ? createManagedGracefulStop({
                 queueSize: () => session.queue.size(),
                 hasPending: () => pending !== null,
@@ -542,7 +550,13 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
             : null;
         // Reachable from the control channel, which was read long before this
         // loop existed. A stop asked for in between is applied here.
-        registerManagedGracefulStop(gracefulStop);
+        if (session.managedRun) registerManagedGracefulStop(gracefulStop);
+        drain?.attachLauncher({
+            requestEndInput: () => { gracefulStop?.request(); },
+            cancelPendingPermissions: () => { permissionHandler.reset('Session is shutting down'); },
+            generation: () => startedGeneration()?.observer ?? null,
+            hasHeldBackInput: () => pending !== null,
+        });
 
         // Track session ID to detect when it actually changes
         // This prevents context loss when mode changes (permission mode, model, etc.)
@@ -566,7 +580,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
              * actually starts.
              */
             const proof = generationProofs.begin((onStarted) => (
-                session.managedRun ? createProviderExitObserver(onStarted) : null
+                session.managedRun || drain ? createProviderExitObserver(onStarted) : null
             ));
             const sdkExit = proof?.observer ?? null;
             messageBuffer.addMessage('═'.repeat(40), 'status');
@@ -671,6 +685,8 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                     },
                     nextMessage: async () => {
                         if (pending) {
+                            // A held-back batch is a turn like any other: refused once input is closed.
+                            if (drain && !drain.claimTurn()) { exitReason = 'exit'; return null; }
                             let p = pending;
                             pending = null;
                             // This is the path an isolated channel turn actually takes: it was
@@ -700,6 +716,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                                 mode = revisedMode;
                                 p = { ...p, mode: revisedMode };
                             }
+                            drain?.dispatched();
                             return { ...p, latency: toTurnLatency(p) };
                         }
 
@@ -736,7 +753,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                             return null;
                         }
 
-                        let msg = await session.queue.waitForMessagesAndGetAsString(controller.signal);
+                        let msg = await session.queue.waitForMessagesAndGetAsString(controller.signal, drain ? () => drain.claimTurn() : undefined);
                         if (msg === null && gracefulStop?.requested() && !controller.signal.aborted) {
                             /*
                              * Woken by the stop rather than aborted — and the
@@ -752,6 +769,9 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                             if (proof) proof.inputExhausted = true;
                             exitReason = 'exit';
                         }
+                        // A kill seals the gate without requesting a stop; a batch it refused must
+                        // end the loop, or every relaunch meets the same refusal and spins forever.
+                        if (msg === null && drain?.gate.isClosed()) exitReason = 'exit';
 
                         // Check if mode has changed
                         if (msg) {
@@ -766,6 +786,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                             if ((modeHash && msg.hash !== modeHash) || engineModeChanged || msg.isolate) {
                                 logger.debug('[remote]: mode has changed, pending message');
                                 pending = msg;
+                                drain?.releaseClaim();
                                 return null;
                             }
                             modeHash = msg.hash;
@@ -835,6 +856,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                                 }
                                 contentBlocks.push({ type: 'text' as const, text: msg.message });
                                 logger.debug(`[remote] Combined ${contentBlocks.length - 1} image(s) with text message`);
+                                drain?.dispatched();
                                 return {
                                     message: contentBlocks,
                                     mode: msg.mode,
@@ -847,6 +869,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                             // this text was relayed rather than typed into the app. A channel
                             // batch normally reaches that parser via the `pending` branch above,
                             // but the handle travels on every path so no future route drops it.
+                            drain?.dispatched();
                             return {
                                 message: msg.message,
                                 mode: msg.mode,
@@ -890,6 +913,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                         );
                     },
                     onQueryReady: (q) => {
+                        drain?.setQuery({ interrupt: q.interrupt });
                         permissionHandler.setPermissionModeUpdater(async (mode) => {
                             await q.setPermissionMode(mode);
                         });
@@ -927,6 +951,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                         session.onSessionReset?.();
                     },
                     onReady: () => {
+                        drain?.turnEnded();
                         // Queued, not called: a terminal emitted ahead of the transcript closes a
                         // turn that has not received its text yet, and the later flush opens a
                         // second, unrelated one.
@@ -1016,6 +1041,9 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                 abortFuture?.resolve(undefined);
                 abortFuture = null;
                 logger.debug('[remote]: launch done');
+                // This generation is gone; no turn of it can still be running.
+                drain?.setQuery(null);
+                drain?.turnEnded();
                 permissionHandler.reset();
                 modeHash = null;
                 mode = null;
@@ -1042,7 +1070,8 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
          * reporting too early. So wait, bounded, for the exit this
          * generation is about.
          */
-        if (gracefulStop?.requested()) {
+        // The managed supervisor's verdict; a standalone drain reads the observer itself.
+        if (gracefulStop?.requested() && session.managedRun) {
             const generation = startedGeneration();
             // Which of the two silences this is: no generation to report
             // for, or one whose exit has not been seen yet.
@@ -1108,6 +1137,8 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
         if (abortFuture) { // Just in case of error
             abortFuture.resolve(undefined);
         }
+        // After the loop's last write: the drain may now count its output as drained.
+        session.standaloneDrain?.markLoopFinished();
     }
 
     return exitReason || 'exit';

@@ -162,8 +162,8 @@ describe('CodexAppServerClient sandbox integration', () => {
     });
 
     it('marks runtime dispatch once at the actual request, after both checkpoint hooks', async () => {
-        const { CodexRuntimeProducerGate } = await import('./codexRuntimeProducerGate');
-        const gate = new CodexRuntimeProducerGate({ hasUndeliveredInput: () => false,
+        const { RuntimeProducerGate } = await import('../sessionDrain/runtimeProducerGate');
+        const gate = new RuntimeProducerGate({ hasUndeliveredInput: () => false,
             canFreezeInbound: () => true, freezeInbound: () => true, stopLoop: () => {} });
         gate.beginPreparing(); const observed: unknown[] = [];
         const checkpoint = vi.fn(() => observed.push(gate.blocker()));
@@ -332,7 +332,7 @@ describe('CodexAppServerClient sandbox integration', () => {
     it('coordinates real client EOF, final burst output and storage proof without inventing runtime evidence', async () => {
         const proc = createMockProcess(); mockSpawn.mockReturnValue(proc);
         const { CodexAppServerClient } = await import('./codexAppServerClient');
-        const { CodexSessionDrain } = await import('./codexSessionDrain');
+        const { SessionDrain } = await import('../sessionDrain/sessionDrain');
         const { SessionStorageBarrier } = await import('../api/sessionStorageBarrier');
         const barrier = new SessionStorageBarrier(); const messages: string[] = [];
         const client = new CodexAppServerClient();
@@ -347,7 +347,7 @@ describe('CodexAppServerClient sandbox integration', () => {
             proc.stdout.push(['one', 'two', 'three'].map(message => JSON.stringify({ method: 'codex/event', params: { msg: { type: 'agent_message', message } } })).join('\n') + '\n');
             proc.stdout.push(null); proc.exitCode = 0; proc.emit('exit', 0, null);
         });
-        const coordinator = new CodexSessionDrain('owned-launch', client, {
+        const coordinator = new SessionDrain('owned-launch', client, {
             tracksShutdownStorage: true,
             flushForShutdown: (ms, signal) => barrier.wait(ms, signal),
             isStorageConfirmationCurrent: proof => barrier.isCurrent(proof),
@@ -458,7 +458,7 @@ describe('CodexAppServerClient sandbox integration', () => {
     it('keeps an uncooperative approval producer blocked within the coordinator deadline', async () => {
         const proc = createMockProcess(); mockSpawn.mockReturnValue(proc);
         const { CodexAppServerClient } = await import('./codexAppServerClient');
-        const { CodexSessionDrain } = await import('./codexSessionDrain');
+        const { SessionDrain } = await import('../sessionDrain/sessionDrain');
         const client = new CodexAppServerClient(); let release!: () => void;
         const failed = vi.fn();
         client.setOutputStorageGate({ wait: async () => {}, onFailure: failed });
@@ -472,7 +472,7 @@ describe('CodexAppServerClient sandbox integration', () => {
         const storage = { tracksShutdownStorage: true,
             flushForShutdown: vi.fn(async () => ({ stored: true as const, revision: 1 })),
             isStorageConfirmationCurrent: () => true };
-        const coordinator = new CodexSessionDrain('pending-approval', client, storage, async () => {});
+        const coordinator = new SessionDrain('pending-approval', client, storage, async () => {});
         try {
             const receipt = await coordinator.drain(40);
             expect(receipt).toMatchObject({ status: 'blocked', reason: 'deadline', stored: false });
@@ -560,7 +560,7 @@ describe('CodexAppServerClient sandbox integration', () => {
     it('marks a never-settling cancellation incomplete at the coordinator deadline', async () => {
         const proc = createMockProcess(); mockSpawn.mockReturnValue(proc);
         const { CodexAppServerClient } = await import('./codexAppServerClient');
-        const { CodexSessionDrain } = await import('./codexSessionDrain');
+        const { SessionDrain } = await import('../sessionDrain/sessionDrain');
         const client = new CodexAppServerClient(); const failed = vi.fn(); let release!: () => void;
         client.setOutputStorageGate({ wait: async () => {}, onFailure: failed });
         client.setApprovalHandler(async () => 'denied', () => new Promise<void>(resolve => { release = resolve; }));
@@ -569,7 +569,7 @@ describe('CodexAppServerClient sandbox integration', () => {
         const storage = { tracksShutdownStorage: true,
             flushForShutdown: vi.fn(async () => ({ stored: true as const, revision: 1 })),
             isStorageConfirmationCurrent: () => true };
-        const coordinator = new CodexSessionDrain('pending-cancellation', client, storage, async () => {});
+        const coordinator = new SessionDrain('pending-cancellation', client, storage, async () => {});
         try {
             expect(await coordinator.drain(40)).toMatchObject({ status: 'blocked', reason: 'deadline', stored: false });
             expect(failed).toHaveBeenCalledOnce();
@@ -639,11 +639,11 @@ describe('CodexAppServerClient sandbox integration', () => {
     it('allows only one shutdown observation owner and cleanup after a blocked dead-root drain', async () => {
         const proc = createMockProcess(); mockSpawn.mockReturnValue(proc);
         const { CodexAppServerClient } = await import('./codexAppServerClient');
-        const { CodexSessionDrain } = await import('./codexSessionDrain');
+        const { SessionDrain } = await import('../sessionDrain/sessionDrain');
         const client = new CodexAppServerClient();
         client.setOutputStorageGate({ wait: async () => {}, onFailure: vi.fn() }); await client.connect();
         proc.stdin.once('finish', () => { proc.exitCode = 0; proc.emit('exit', 0, null); });
-        const drain = new CodexSessionDrain('dead-root', client, {
+        const drain = new SessionDrain('dead-root', client, {
             tracksShutdownStorage: true, flushForShutdown: async () => ({ stored: false, reason: 'unsupported' }),
             isStorageConfirmationCurrent: () => false,
         }, async () => {});
