@@ -54,7 +54,7 @@ const SidebarNavigatorContent = React.memo(() => {
     const isTablet = useIsTablet();
     const { theme } = useUnistyles();
     const desktopSkinId = useLocalSetting('desktopSkinId');
-    const dreamskin = Platform.OS === 'web' && isTablet && desktopSkinId === 'dreamskin';
+    const dreamskin = Platform.OS === 'web' && isTablet && desktopSkinId !== 'default';
     const reducedTransparency = useReducedTransparency();
     const {
         leftExpandedWidth,
@@ -212,7 +212,7 @@ const SidebarNavigatorContent = React.memo(() => {
 
     return (
         <View style={{ flex: 1, backgroundColor: theme.colors.groupped.background }}>
-            {dreamskin && isDesktopLayout && <DesktopSkinCanvas />}
+            {dreamskin && isDesktopLayout && <DesktopSkinCanvas skin={desktopSkinId} />}
             <Drawer
                 screenOptions={drawerNavigationOptions}
                 drawerContent={(isDesktopLayout || auth.isAuthenticated) ? drawerContent : undefined}

@@ -10,13 +10,16 @@ import { fileURLToPath } from 'node:url';
 const verifierPath = fileURLToPath(new URL('./verify-web-release.mjs', import.meta.url));
 const revision = '1234567890abcdef1234567890abcdef12345678';
 
-async function createDist(includeSkin = true) {
+async function createDist(includeSkin = true, includeWarmSkin = true) {
     const directory = await mkdtemp(join(tmpdir(), 'paws-web-verify-'));
     await mkdir(join(directory, 'assets'), { recursive: true });
     await mkdir(join(directory, 'assets', 'sounds', 'codeisland'), { recursive: true });
     await mkdir(join(directory, '_expo'), { recursive: true });
     await mkdir(join(directory, '.well-known'), { recursive: true });
-    if (includeSkin) await mkdir(join(directory, 'desktop-skins', 'dreamskin'), { recursive: true });
+    if (includeSkin) {
+        await mkdir(join(directory, 'desktop-skins', 'dreamskin'), { recursive: true });
+        if (includeWarmSkin) await mkdir(join(directory, 'desktop-skins', 'warm-night'), { recursive: true });
+    }
     await writeFile(join(directory, 'index.html'), '<html><head></head><body><script src="/_expo/app.js"></script></body></html>');
     await writeFile(join(directory, '.paws-release-revision'), `${revision}\n`);
     await writeFile(join(directory, 'assets', 'Ionicons.abc123.ttf'), 'ionicons');
@@ -26,7 +29,10 @@ async function createDist(includeSkin = true) {
         await writeFile(join(directory, 'assets', 'sounds', 'codeisland', `8bit_${name}.wav`), 'RIFF');
     }
     await writeFile(join(directory, '_expo', 'app.js'), 'app');
-    if (includeSkin) await writeFile(join(directory, 'desktop-skins', 'dreamskin', 'background.55c64d0fcd6f9d5f.webp'), 'photo');
+    if (includeSkin) {
+        await writeFile(join(directory, 'desktop-skins', 'dreamskin', 'background.55c64d0fcd6f9d5f.webp'), 'photo');
+        if (includeWarmSkin) await writeFile(join(directory, 'desktop-skins', 'warm-night', 'background.55c64d0fcd6f9d5f.webp'), 'photo');
+    }
     await writeFile(join(directory, 'metadata.json'), '{}');
     await writeFile(join(directory, 'canvaskit.wasm'), 'wasm');
     await writeFile(join(directory, '.well-known', 'apple-app-site-association'), '{}');
@@ -56,8 +62,9 @@ async function runVerifier({
     skinCacheImmutable = true,
     skinContentMatches = true,
     includeSkin = true,
+    includeWarmSkin = true,
 } = {}) {
-    const directory = await createDist(includeSkin);
+    const directory = await createDist(includeSkin, includeWarmSkin);
     let healthRequests = 0;
     const server = http.createServer((request, response) => {
         const origin = `http://127.0.0.1:${server.address().port}`;
@@ -226,6 +233,12 @@ test('rejects a remote DreamSkin image with different bytes under the same immut
 
 test('rejects a DreamSkin Web release missing its background', async () => {
     const result = await runVerifier({ includeSkin: false });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /desktop skin background.*missing/i);
+});
+
+test('rejects a Web release missing the second desktop skin', async () => {
+    const result = await runVerifier({ includeWarmSkin: false });
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /desktop skin background.*missing/i);
 });

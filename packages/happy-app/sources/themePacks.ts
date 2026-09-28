@@ -1,6 +1,6 @@
 import { lightTheme, darkTheme } from './theme';
 import { ACCENTS, THEME_PACK_IDS, type AccentMode, type ThemePackId } from './themePacksData';
-import { DREAMSKIN_ACCENT, isDreamSkinActive, type DesktopSkinId } from './desktopSkin';
+import { DREAMSKIN_ACCENT, WARM_NIGHT_ACCENT, isPhotoSkinActive, type DesktopSkinId } from './desktopSkin';
 
 export { ACCENTS, THEME_PACK_IDS, type ThemePackId } from './themePacksData';
 
@@ -12,7 +12,7 @@ export { ACCENTS, THEME_PACK_IDS, type ThemePackId } from './themePacksData';
  * 文字、首页粒子），其余功能色（成功/错误/diff/终端/语法）全部继承基础主题。
  *
  * 每个包含亮(light)/暗(dark)两态。最终注册到 unistyles 的主题名为 `${packId}Light`
- * / `${packId}Dark`，共 7×2 = 14 套。
+ * / `${packId}Dark`，共 7×2 = 14 套；PC 照片皮肤另行注册深色主题。
  */
 
 /** 把一个 accent 覆盖到基础主题上，生成完整主题对象 */
@@ -65,6 +65,8 @@ builtThemes.dreamskinDark = {
             frame: 'transparent', border: 'rgba(255, 255, 255, 0.12)',
             rail: 'rgba(16, 20, 25, 0.90)', sidebar: 'rgba(24, 29, 36, 0.78)',
             reducedFrame: '#171C23', reducedRail: '#101419', reducedSidebar: '#181D24',
+            canvas: '#13171D', readingSolid: '#151A21', readingHidden: 'rgba(21,26,33,0.92)',
+            readingCompact: 'rgba(21,26,33,0.70)', readingWide: 'rgba(21,26,33,0.51)',
         },
         modal: { ...dreamskinBase.colors.modal, backdrop: 'rgba(0, 0, 0, 0.66)' },
         divider: '#3F3F3F',
@@ -76,7 +78,29 @@ builtThemes.dreamskinDark = {
     },
 };
 
-export const appThemes = builtThemes as Record<`${ThemePackId}Light` | `${ThemePackId}Dark` | 'dreamskinDark', typeof lightTheme>;
+const warmNightBase = applyAccent(darkTheme, WARM_NIGHT_ACCENT);
+builtThemes.warmNightDark = {
+    ...warmNightBase,
+    colors: {
+        ...warmNightBase.colors,
+        desktopSkin: {
+            frame: 'transparent', border: 'rgba(245, 239, 232, 0.14)',
+            rail: 'rgba(23, 21, 26, 0.90)', sidebar: 'rgba(34, 31, 36, 0.78)',
+            reducedFrame: '#17151A', reducedRail: '#17151A', reducedSidebar: '#221F24',
+            canvas: '#17151A', readingSolid: '#221F24', readingHidden: 'rgba(34,31,36,0.94)',
+            readingCompact: 'rgba(34,31,36,0.78)', readingWide: 'rgba(34,31,36,0.62)',
+        },
+        modal: { ...warmNightBase.colors.modal, backdrop: 'rgba(12, 10, 14, 0.70)' },
+        divider: '#514A4B',
+        header: { ...darkTheme.colors.header, background: '#221F24', tint: WARM_NIGHT_ACCENT.text },
+        button: {
+            ...warmNightBase.colors.button,
+            secondary: { ...darkTheme.colors.button.secondary, tint: WARM_NIGHT_ACCENT.textSecondary },
+        },
+    },
+};
+
+export const appThemes = builtThemes as Record<`${ThemePackId}Light` | `${ThemePackId}Dark` | 'dreamskinDark' | 'warmNightDark', typeof lightTheme>;
 
 export type AppThemeName = keyof typeof appThemes;
 
@@ -94,7 +118,10 @@ export function resolveDesktopThemeName(
     viewportWidth: number,
     pathname = '',
 ): AppThemeName {
-    return isDreamSkinActive(skin, platform, viewportWidth, pathname) ? 'dreamskinDark' : resolveThemeName(pack, isDark);
+    if (isPhotoSkinActive(skin, platform, viewportWidth, pathname)) {
+        return skin === 'warmNight' ? 'warmNightDark' : 'dreamskinDark';
+    }
+    return resolveThemeName(pack, isDark);
 }
 
 /** 保留当前主题包，仅切换亮暗模式。 */

@@ -539,7 +539,7 @@ const SessionViewContent = React.memo((props: { id: string }) => {
     const fileDiffsSidebarEnabled = useSetting('fileDiffsSidebar');
     const zenMode = useLocalSetting('zenMode');
     const desktopSkinId = useLocalSetting('desktopSkinId');
-    const dreamskin = Platform.OS === 'web' && isTablet && desktopSkinId === 'dreamskin';
+    const dreamskin = Platform.OS === 'web' && isTablet && desktopSkinId !== 'default';
     const desktopReadingWidth = useLocalSetting('desktopReadingWidth');
     const sidebarOrganization = useSetting('sidebarOrganization');
     const updateSidebarOrganization = useSettingUpdater('sidebarOrganization');
@@ -1265,7 +1265,7 @@ const SessionViewContent = React.memo((props: { id: string }) => {
                         style={{ flex: 1, position: 'relative', backgroundColor: 'transparent' }}
                         testID="desktop-workspace-main"
                     >
-                        <DesktopSkinCanvas reading photo={false} readingWidth={desktopReadingWidth} />
+                        <DesktopSkinCanvas reading photo={false} readingWidth={desktopReadingWidth} skin={desktopSkinId} />
                         {mainContent}
                     </View>
                 ) : mainContent}
@@ -1305,7 +1305,7 @@ const SessionViewContent = React.memo((props: { id: string }) => {
                 ]}
                 testID="desktop-workspace-main"
             >
-                {dreamskin && <DesktopSkinCanvas reading photo={false} readingWidth={desktopReadingWidth} />}
+                {dreamskin && <DesktopSkinCanvas reading photo={false} readingWidth={desktopReadingWidth} skin={desktopSkinId} />}
                 {mainContent}
                 <View
                     pointerEvents="box-none"

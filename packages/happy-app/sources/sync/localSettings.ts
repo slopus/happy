@@ -70,7 +70,7 @@ export const LocalSettingsSchema = z.object({
     voiceUpsellOverride: z.enum(['control', 'show-paywall-before-first-voice-chat', 'voice-onboarding-and-upsell']).nullable().describe('Developer-only local override for the voice-upsell PostHog flag'),
     themePreference: z.enum(['light', 'dark', 'adaptive']).describe('Theme preference: light, dark, or adaptive (follows system)'),
     themePack: z.enum(['caramel', 'gingham', 'terminal', 'acorn', 'sage', 'sakura', 'grape']).describe('Color theme pack (brand accent variant)'),
-    desktopSkinId: z.enum(['default', 'dreamskin']).catch('default').describe('PC Web-only visual skin; does not replace the saved color theme'),
+    desktopSkinId: z.enum(['default', 'dreamskin', 'warmNight']).catch('default').describe('PC Web-only visual skin; does not replace the saved color theme'),
     desktopReadingWidth: z.number().int().min(800).max(1280).catch(960).describe('Preferred DreamSkin session body width in CSS pixels'),
     lastPublicShareThemePack: ThemePackSchema.catch('caramel').describe('Last color theme selected for a new public share'),
     mascot: z.enum(['hoodie', 'explorer', 'astro', 'barista', 'ninja', 'scientist', 'florist']).describe('Mascot character shown on the empty home screen and settings header'),

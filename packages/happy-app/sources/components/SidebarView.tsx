@@ -394,7 +394,7 @@ export const SidebarView = React.memo(({
     const profile = useProfile();
     const [desktopSidebarMode, setDesktopSidebarMode] = useLocalSettingMutable('desktopSidebarMode');
     const desktopSkinId = useLocalSetting('desktopSkinId');
-    const dreamskin = Platform.OS === 'web' && desktopDensity && desktopSkinId === 'dreamskin';
+    const dreamskin = Platform.OS === 'web' && desktopDensity && desktopSkinId !== 'default';
     const reducedTransparency = useReducedTransparency();
     const [desktopSidebarListMode] = useLocalSettingMutable('desktopSidebarListMode');
     const [pluginMarketplaceOpen, setPluginMarketplaceOpen] = React.useState(false);

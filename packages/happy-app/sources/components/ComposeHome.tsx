@@ -161,7 +161,7 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
     const askApi = useLocalSetting('askApi');
     const zenMode = useLocalSetting('zenMode');
     const desktopSkinId = useLocalSetting('desktopSkinId');
-    const dreamskin = Platform.OS === 'web' && isTablet && desktopSkinId === 'dreamskin';
+    const dreamskin = Platform.OS === 'web' && isTablet && desktopSkinId !== 'default';
     const [desktopRightPanelCollapsed, setDesktopRightPanelCollapsed] = useLocalSettingMutable('desktopRightPanelCollapsed');
     const {
         leftVisible: desktopLeftSidebarVisible,

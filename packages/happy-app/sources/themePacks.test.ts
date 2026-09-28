@@ -43,6 +43,7 @@ describe('theme pack interactive surfaces', () => {
             'sakuraLight', 'sakuraDark',
             'grapeLight', 'grapeDark',
             'dreamskinDark',
+            'warmNightDark',
         ]);
         expect(resolveThemeName('gingham', false)).toBe('ginghamLight');
         expect(resolveThemeName('gingham', true)).toBe('ginghamDark');
@@ -71,6 +72,7 @@ describe('DreamSkin desktop theme', () => {
         expect(desktopNavigationBackground('#131313', 'dreamskin', 'web', 799, false)).toBe('#131313');
         expect(desktopNavigationBackground('#131313', 'dreamskin', 'ios', 1200, false)).toBe('#131313');
         expect(desktopNavigationBackground('#131313', 'dreamskin', 'web', 1200, true)).toBe('#131313');
+        expect(desktopNavigationBackground('#17151A', 'warmNight', 'web', 1200, false)).toBe('transparent');
     });
     it('uses the independent dark skin only on Web and restores the saved theme otherwise', () => {
         expect(resolveDesktopThemeName('gingham', false, 'dreamskin', 'web', 1200)).toBe('dreamskinDark');
@@ -78,6 +80,9 @@ describe('DreamSkin desktop theme', () => {
         expect(resolveDesktopThemeName('gingham', true, 'dreamskin', 'ios', 1200)).toBe('ginghamDark');
         expect(resolveDesktopThemeName('gingham', false, 'dreamskin', 'web', 799)).toBe('ginghamLight');
         expect(resolveDesktopThemeName('gingham', false, 'dreamskin', 'web', 1200, '/share/public-id')).toBe('ginghamLight');
+        expect(resolveDesktopThemeName('gingham', false, 'warmNight', 'web', 1200)).toBe('warmNightDark');
+        expect(resolveDesktopThemeName('gingham', false, 'warmNight', 'web', 799)).toBe('ginghamLight');
+        expect(resolveDesktopThemeName('gingham', false, 'warmNight', 'web', 1200, '/share/public-id')).toBe('ginghamLight');
     });
 
     it('maps interactive surfaces to the DreamSkin palette', () => {
@@ -90,5 +95,15 @@ describe('DreamSkin desktop theme', () => {
         expect(colors.desktopSkin.rail).toMatch(/^rgba\(/);
         expect(colors.desktopSkin.sidebar).toMatch(/^rgba\(/);
         expect(colors.modal.backdrop).toBe('rgba(0, 0, 0, 0.66)');
+    });
+    it('maps the second photo skin to warm interactive surfaces', () => {
+        const colors = appThemes.warmNightDark.colors;
+        expect(colors.groupped.background).toBe('#17151A');
+        expect(colors.surface).toBe('#221F24');
+        expect(colors.surfacePressed).toBe('#302B30');
+        expect(colors.surfaceSelected).toBe('#3D363C');
+        expect(colors.accent).toBe('#B98864');
+        expect(contrastRatio(colors.text, colors.surface)).toBeGreaterThanOrEqual(4.5);
+        expect(colors.desktopSkin.sidebar).toMatch(/^rgba\(/);
     });
 });

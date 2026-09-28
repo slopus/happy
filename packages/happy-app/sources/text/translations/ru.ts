@@ -598,6 +598,8 @@ export const ru: TranslationStructure = {
         desktopSkinDefaultDescription: 'Сохранить выбранные цвета и режим яркости',
         desktopSkinDreamskin: 'Уютный интерьер',
         desktopSkinDreamskinDescription: 'Фотофон и тёмные поверхности',
+        desktopSkinWarmNight: 'Тёплая ночь у окна',
+        desktopSkinWarmNightDescription: 'Сумеречная спальня и тёплые стеклянные панели',
         mascot: 'Маскот',
         mascotDescription: 'Выберите сурка, который встречает вас на главном экране',
         mascotOptions: {

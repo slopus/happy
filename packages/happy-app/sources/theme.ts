@@ -100,6 +100,8 @@ export const lightTheme = {
             frame: 'transparent', border: 'rgba(0, 0, 0, 0.12)',
             rail: 'rgba(255, 255, 255, 0.90)', sidebar: 'rgba(255, 255, 255, 0.78)',
             reducedFrame: '#FFFFFF', reducedRail: '#FFFFFF', reducedSidebar: '#FFFFFF',
+            canvas: '#FBF7F0', readingSolid: '#FFFFFF', readingHidden: '#FFFFFF',
+            readingCompact: '#FFFFFF', readingWide: '#FFFFFF',
         },
         button: {
             primary: {
@@ -330,6 +332,8 @@ export const darkTheme = {
             frame: 'transparent', border: 'rgba(255, 255, 255, 0.12)',
             rail: 'rgba(16, 20, 25, 0.90)', sidebar: 'rgba(24, 29, 36, 0.78)',
             reducedFrame: '#171C23', reducedRail: '#101419', reducedSidebar: '#181D24',
+            canvas: '#13171D', readingSolid: '#151A21', readingHidden: 'rgba(21,26,33,0.92)',
+            readingCompact: 'rgba(21,26,33,0.70)', readingWide: 'rgba(21,26,33,0.51)',
         },
         button: {
             primary: {

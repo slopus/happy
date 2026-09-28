@@ -24,7 +24,7 @@ type ChatListProps = { session: Session; followLatestRequest?: number; desktopMa
 export const ChatList = React.memo((props: ChatListProps) => {
     const desktopSkinId = useLocalSetting('desktopSkinId');
     const profile = useProfile();
-    const turnAvatar = Platform.OS === 'web' && desktopSkinId === 'dreamskin' && (props.desktopMainWidth ?? 0) >= 920
+    const turnAvatar = Platform.OS === 'web' && desktopSkinId !== 'default' && (props.desktopMainWidth ?? 0) >= 920
         ? { id: profile.id, imageUrl: getAvatarUrl(profile), thumbhash: profile.avatar?.thumbhash }
         : undefined;
     const childProps = { ...props, turnAvatar };

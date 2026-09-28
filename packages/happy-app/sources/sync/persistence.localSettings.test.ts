@@ -50,3 +50,13 @@ describe('independent DreamSkin test build', () => {
         expect(loadDesktopSkinId()).toBe('default');
     });
 });
+
+describe('PC photo skin preference', () => {
+    it('keeps the second skin on the device without changing the saved palette', () => {
+        const settings = loadLocalSettings();
+        saveLocalSettings({ ...settings, desktopSkinId: 'warmNight', themePack: 'gingham', themePreference: 'light' });
+
+        expect(loadDesktopSkinId()).toBe('warmNight');
+        expect(loadLocalSettings()).toMatchObject({ themePack: 'gingham', themePreference: 'light' });
+    });
+});

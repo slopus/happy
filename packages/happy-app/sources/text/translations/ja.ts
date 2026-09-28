@@ -620,6 +620,8 @@ export const ja: TranslationStructure = {
         desktopSkinDefaultDescription: '保存済みの配色と明暗設定を維持',
         desktopSkinDreamskin: 'くつろぎの室内',
         desktopSkinDreamskinDescription: '写真の背景と暗い閲覧面',
+        desktopSkinWarmNight: '窓辺の暖かな夜',
+        desktopSkinWarmNightDescription: '青い夕暮れの寝室と暖色のガラス面',
         mascot: 'マスコット',
         mascotDescription: 'ホーム画面で迎えるマーモットを選びましょう',
         mascotOptions: {

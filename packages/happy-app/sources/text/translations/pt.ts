@@ -618,6 +618,8 @@ export const pt: TranslationStructure = {
         desktopSkinDefaultDescription: 'Mantém as cores e o modo claro/escuro salvos',
         desktopSkinDreamskin: 'Interior acolhedor',
         desktopSkinDreamskinDescription: 'Foto de fundo e superfícies escuras',
+        desktopSkinWarmNight: 'Noite acolhedora à janela',
+        desktopSkinWarmNightDescription: 'Quarto ao entardecer e painéis de vidro quentes',
         mascot: 'Mascote',
         mascotDescription: 'Escolha a marmota que te recebe na tela inicial',
         mascotOptions: {

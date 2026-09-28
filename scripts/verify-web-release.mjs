@@ -223,13 +223,17 @@ const skinFiles = await listFiles(skinDirectory).catch((error) => {
     if (error?.code === 'ENOENT') return [];
     throw error;
 });
-if (skinFiles.length !== 1) throw new Error(`desktop skin background missing or ambiguous: found ${skinFiles.length}`);
+const requiredSkinIds = ['dreamskin', 'warm-night'];
+if (skinFiles.length !== requiredSkinIds.length) throw new Error(`desktop skin background missing or ambiguous: found ${skinFiles.length}`);
+const foundSkinIds = new Set();
 for (const skinPath of skinFiles) {
     const relativePath = relative(skinDirectory, skinPath).split(sep).join('/');
     const expectedHash = createHash('sha256').update(await readFile(skinPath)).digest('hex');
-    if (relativePath !== `dreamskin/background.${expectedHash.slice(0, 16)}.webp`) {
+    const skinId = relativePath.split('/')[0];
+    if (!requiredSkinIds.includes(skinId) || relativePath !== `${skinId}/background.${expectedHash.slice(0, 16)}.webp`) {
         throw new Error(`desktop skin background is not content-addressed: ${relativePath}`);
     }
+    foundSkinIds.add(skinId);
     const pathname = `/desktop-skins/${relativePath}`;
     const response = await fetchRequired('desktop skin background', `${normalizedOrigin}${pathname}`);
     assertMime('desktop skin background', pathname, response);
@@ -237,6 +241,7 @@ for (const skinPath of skinFiles) {
     const remoteHash = createHash('sha256').update(Buffer.from(await response.arrayBuffer())).digest('hex');
     if (remoteHash !== expectedHash) throw new Error(`desktop skin background SHA-256 mismatch: ${pathname}`);
 }
+if (foundSkinIds.size !== requiredSkinIds.length) throw new Error('desktop skin background missing for a required skin');
 
 const requiredSoundPaths = ['approval', 'complete', 'error', 'start', 'submit']
     .map((name) => `assets/sounds/codeisland/8bit_${name}.wav`);

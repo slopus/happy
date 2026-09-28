@@ -68,7 +68,7 @@ export function usePublicSessionAppearance(themePack: ThemePackId): {
         return () => {
             // A share can remain open while the viewport crosses the PC-only
             // breakpoint in either direction. Reconcile saved skin at return.
-            if (loadDesktopSkinId() === 'dreamskin' || previousThemeName === 'dreamskinDark') {
+            if (loadDesktopSkinId() !== 'default' || previousThemeName === 'dreamskinDark' || previousThemeName === 'warmNightDark') {
                 const preference = loadThemePreference();
                 const dark = preference === 'dark' || (preference === 'adaptive' && !!darkModeMediaQuery()?.matches);
                 const width = browserWindow()?.innerWidth ?? 0;

@@ -22,7 +22,7 @@ export default function RootLayout() {
     const isTablet = useIsTablet();
     const isDesktopWeb = Platform.OS === 'web' && isTablet;
     const desktopSkinId = useLocalSetting('desktopSkinId');
-    const photoSceneStyle = isDesktopWeb && desktopSkinId === 'dreamskin'
+    const photoSceneStyle = isDesktopWeb && desktopSkinId !== 'default'
         ? { backgroundColor: 'transparent' as const }
         : undefined;
 

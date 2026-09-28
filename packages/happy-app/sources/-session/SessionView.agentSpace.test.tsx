@@ -879,6 +879,19 @@ describe('SessionView Agent-space boundary', () => {
         act(() => renderer.unmount());
     });
 
+    it('keeps the same reading interactions with the Warm Night skin', () => {
+        mocks.isDataReady = true;
+        mocks.windowWidth = 960;
+        mocks.isTablet = true;
+        mocks.platformOS = 'web';
+        mocks.desktopSkinId = 'warmNight';
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<SessionView id="session-1" />); });
+        expect(renderer.root.findByType('RightSwipePanelHost').props.transparentBackground).toBe(true);
+        expect(renderer.root.findByType('DesktopSkinCanvas').props).toMatchObject({ reading: true, photo: false, skin: 'warmNight' });
+        act(() => renderer.unmount());
+    });
+
     it('uses the sidebar pin glyph and exposes a persistent body-width control in a wide DreamSkin session', () => {
         mocks.isDataReady = true;
         mocks.windowWidth = 1600;

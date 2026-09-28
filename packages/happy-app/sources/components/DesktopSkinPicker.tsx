@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { ImageBackground, Pressable, Text, View } from 'react-native';
 import { StyleSheet } from 'react-native-unistyles';
-import { DREAMSKIN_BACKGROUND_URL, type DesktopSkinId } from '@/desktopSkin';
+import { DREAMSKIN_BACKGROUND_URL, WARM_NIGHT_BACKGROUND_URL, type DesktopSkinId } from '@/desktopSkin';
 import { t } from '@/text';
 
 type Props = { value: DesktopSkinId; onChange: (id: DesktopSkinId) => void };
@@ -40,6 +40,22 @@ export function DesktopSkinPicker({ value, onChange }: Props) {
                 <Text style={styles.title}>{t('settingsAppearance.desktopSkinDreamskin')}</Text>
                 <Text style={styles.description}>{t('settingsAppearance.desktopSkinDreamskinDescription')}</Text>
             </Pressable>
+            <Pressable
+                accessibilityRole="radio"
+                accessibilityLabel={t('settingsAppearance.desktopSkinWarmNight')}
+                accessibilityState={{ selected: value === 'warmNight', checked: value === 'warmNight' }}
+                onPress={() => onChange('warmNight')}
+                style={({ pressed }) => [styles.option, value === 'warmNight' && styles.selected, pressed && styles.pressed]}
+                testID="desktop-skin-warm-night"
+            >
+                <ImageBackground source={{ uri: WARM_NIGHT_BACKGROUND_URL }} resizeMode="cover" style={styles.preview} imageStyle={styles.photo}>
+                    <View style={styles.warmPhotoVeil} />
+                    <View style={styles.warmPhotoSidebar} />
+                    <View style={styles.warmPhotoContent} />
+                </ImageBackground>
+                <Text style={styles.title}>{t('settingsAppearance.desktopSkinWarmNight')}</Text>
+                <Text style={styles.description}>{t('settingsAppearance.desktopSkinWarmNightDescription')}</Text>
+            </Pressable>
         </View>
     );
 }
@@ -66,6 +82,9 @@ const styles = StyleSheet.create((theme) => ({
     photoVeil: { backgroundColor: 'rgba(15, 18, 22, 0.32)', bottom: 0, left: 0, position: 'absolute', right: 0, top: 0 },
     photoPreviewSidebar: { backgroundColor: 'rgba(22, 25, 29, 0.82)', bottom: 0, left: 0, position: 'absolute', top: 0, width: 38 },
     photoPreviewContent: { alignSelf: 'center', backgroundColor: 'rgba(32, 36, 42, 0.78)', borderRadius: 5, height: 44, marginLeft: 54, width: 92 },
+    warmPhotoVeil: { backgroundColor: 'rgba(23, 21, 26, 0.38)', bottom: 0, left: 0, position: 'absolute', right: 0, top: 0 },
+    warmPhotoSidebar: { backgroundColor: 'rgba(34, 31, 36, 0.78)', bottom: 0, left: 0, position: 'absolute', top: 0, width: 38 },
+    warmPhotoContent: { alignSelf: 'center', backgroundColor: 'rgba(34, 31, 36, 0.76)', borderRadius: 5, height: 44, marginLeft: 54, width: 92 },
     title: { color: theme.colors.text, fontSize: 14, fontWeight: '600', marginTop: 8 },
     description: { color: theme.colors.textSecondary, fontSize: 11, lineHeight: 16, marginTop: 3 },
 }));

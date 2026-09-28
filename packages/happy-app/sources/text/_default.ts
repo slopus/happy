@@ -726,6 +726,8 @@ export const en = {
         desktopSkinDefaultDescription: 'Keep your saved colors and light mode',
         desktopSkinDreamskin: 'Cozy interior',
         desktopSkinDreamskinDescription: 'Photo background and dark reading surfaces',
+        desktopSkinWarmNight: 'Warm night by the window',
+        desktopSkinWarmNightDescription: 'Blue-hour bedroom and warm glass surfaces',
         mascot: 'Mascot',
         mascotDescription: 'Pick the groundhog that greets you on the home screen',
         mascotOptions: {

@@ -235,6 +235,21 @@ describe('usePublicSessionAppearance', () => {
         expect(runtime.setRootViewBackgroundColor).toHaveBeenLastCalledWith('#131313');
     });
 
+    it('restores the second photo skin after leaving a public share', () => {
+        savedSkin.value = 'warmNight';
+        runtime.themeName = 'caramelLight';
+        vi.stubGlobal('window', {
+            innerWidth: 1200,
+            localStorage: createLocalStorage(),
+            matchMedia: vi.fn(() => mediaQuery),
+        });
+        const hook = renderAppearance('gingham');
+
+        hook.unmount();
+        expect(runtime.setTheme).toHaveBeenLastCalledWith('warmNightDark');
+        expect(runtime.setRootViewBackgroundColor).toHaveBeenLastCalledWith('#17151A');
+    });
+
     it('supports legacy media-query listeners and removes them on explicit selection', () => {
         const legacyMediaQuery = createLegacyMediaQuery(true);
         vi.stubGlobal('window', {
