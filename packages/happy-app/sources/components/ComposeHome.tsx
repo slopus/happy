@@ -147,7 +147,7 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
     const navigation = useNavigation();
     const insets = useSafeAreaInsets();
     const isTablet = useIsTablet();
-    const { width: windowWidth } = useWindowDimensions();
+    const { width: windowWidth, height: windowHeight } = useWindowDimensions();
     const inTauri = isTauri();
     const isMacTauri = inTauri && typeof navigator !== 'undefined' && /Mac/.test(navigator.platform);
     const profile = useProfile();
@@ -160,6 +160,8 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
     }, [isDataReady]);
     const askApi = useLocalSetting('askApi');
     const zenMode = useLocalSetting('zenMode');
+    const desktopSkinId = useLocalSetting('desktopSkinId');
+    const dreamskin = Platform.OS === 'web' && isTablet && desktopSkinId === 'dreamskin';
     const [desktopRightPanelCollapsed, setDesktopRightPanelCollapsed] = useLocalSettingMutable('desktopRightPanelCollapsed');
     const {
         leftVisible: desktopLeftSidebarVisible,
@@ -837,8 +839,9 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
     ) : !isTablet ? (
         <CompactRightPanelToggleButton panelLabel={capabilityHubLabel} />
     ) : null;
+    const HomeBodyContainer = dreamskin ? ScrollView : View;
     const composeContent = (
-        <View style={[styles.container, Platform.OS === 'web' && isTablet && { backgroundColor: theme.colors.surface }]}>
+        <View style={[styles.container, Platform.OS === 'web' && isTablet && { backgroundColor: dreamskin ? 'transparent' : theme.colors.surface }]}>
             <Header
                 title={undefined}
                 headerShadowVisible={false}
@@ -892,8 +895,16 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
                 style={styles.body}
                 behavior="padding"
             >
-                <View style={styles.greetWrap}>
-                    <ComposeHomeParticles mode={theme.dark ? 'dark' : 'light'} />
+                <HomeBodyContainer
+                    style={styles.body}
+                    {...(dreamskin ? {
+                        contentContainerStyle: styles.dreamskinScrollContent,
+                        keyboardShouldPersistTaps: 'handled' as const,
+                        testID: 'dreamskin-home-scroll',
+                    } : {})}
+                >
+                <View style={[styles.greetWrap, dreamskin && windowHeight >= 700 && styles.dreamskinGreetWrap]}>
+                    {!dreamskin && <ComposeHomeParticles mode={theme.dark ? 'dark' : 'light'} />}
                     <View style={styles.greetingContent}>
                         <Text
                             style={[styles.greeting, isTablet && styles.greetingDesktop]}
@@ -1148,6 +1159,7 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
                     />
                     <Text style={styles.byline}>{t('composeHome.byline')}</Text>
                 </View>
+                </HomeBodyContainer>
             </KeyboardAvoidingView>
 
             {activeImageAgent && (
@@ -1182,7 +1194,7 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
     }
 
     return (
-        <View style={styles.desktopWorkspace}>
+        <View style={[styles.desktopWorkspace, dreamskin && { backgroundColor: 'transparent' }]}>
             <View style={styles.desktopWorkspaceMain} testID="desktop-workspace-main">
                 {composeContent}
             </View>
@@ -1317,11 +1329,19 @@ const styles = StyleSheet.create((theme) => ({
     body: {
         flex: 1,
     },
+    dreamskinScrollContent: {
+        flexGrow: 1,
+    },
     greetWrap: {
         flex: 1,
         justifyContent: 'flex-start',
         paddingHorizontal: 26,
         paddingTop: 28,
+    },
+    dreamskinGreetWrap: {
+        justifyContent: 'center',
+        paddingTop: 0,
+        minHeight: 96,
     },
     greetingContent: {
         width: '100%',

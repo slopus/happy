@@ -311,6 +311,7 @@ export const zhHans: TranslationStructure = {
         showPanel: ({ panel }: { panel: string }) => `展开${panel}`,
         hidePanel: ({ panel }: { panel: string }) => `收起${panel}`,
         resizePanel: ({ panel }: { panel: string }) => `调整${panel}宽度`,
+        readingWidth: '正文宽度',
         hidePanelShort: '收起',
         forward: '前进',
     },
@@ -658,6 +659,12 @@ export const zhHans: TranslationStructure = {
     },
 
     settingsAppearance: {
+        desktopSkinTitle: 'PC 端皮肤',
+        desktopSkinDescription: '选择 PC 网页版的整体外观',
+        desktopSkinDefault: '原有外观',
+        desktopSkinDefaultDescription: '保留当前配色与明暗偏好',
+        desktopSkinDreamskin: '休闲室内居家',
+        desktopSkinDreamskinDescription: '照片背景与深色阅读面',
         mascot: '吉祥物',
         mascotDescription: '选择主屏迎接你的土拨鼠形象',
         mascotOptions: {

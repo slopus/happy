@@ -51,6 +51,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('react-native', () => ({
+    Platform: { OS: 'web' },
     Text: 'Text',
     View: 'View',
     Pressable: 'Pressable',
@@ -69,6 +70,7 @@ vi.mock('@react-navigation/native', () => ({
     DrawerActions: { closeDrawer: () => ({ type: 'CLOSE_DRAWER' }) },
 }));
 vi.mock('react-native-unistyles', () => ({
+    useUnistyles: () => ({ theme: { colors: { desktopSkin: {} } } }),
     StyleSheet: {
         hairlineWidth: 1,
         create: (factory: unknown) => typeof factory === 'function'

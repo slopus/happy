@@ -58,7 +58,7 @@ export function DesktopStackNavigator({ children, initialRouteName, screenOption
                     event.preventDefault(); event.stopPropagation(); close();
                 }
             } } as any)}>
-                <Pressable accessible={false} style={[StyleSheet.absoluteFill, { backgroundColor: theme.colors.shadow.color, opacity: 0.42 }]} onPress={close} testID="desktop-modal-backdrop" />
+                <Pressable accessible={false} style={[StyleSheet.absoluteFill, { backgroundColor: theme.colors.modal.backdrop }]} onPress={close} testID="desktop-modal-backdrop" />
                 <View ref={panelRef} style={styles.panel} accessibilityViewIsModal accessibilityLabel={typeof title === 'string' ? title : fallbackTitle} {...({ role: 'dialog', 'aria-modal': true } as any)} testID="desktop-modal-panel">
                     <View style={styles.header}>
                         {state.index > start ? <Pressable accessibilityRole="button" accessibilityLabel={t('common.back')} onPress={() => navigation.goBack()} style={({ pressed }) => [styles.button, pressed && styles.pressed]} testID="desktop-modal-back"><Ionicons name="chevron-back" size={22} color={theme.colors.header.tint} /></Pressable> : <View style={styles.spacer} />}

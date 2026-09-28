@@ -74,6 +74,7 @@ vi.mock('@/components/ItemList', () => ({ ItemList: 'ItemList' }));
 vi.mock('@/hooks/useUnifiedAuthQrCode', () => ({ useUnifiedAuthQrCode: () => ({ connectAuthQrCode: vi.fn(), connectWithUrl: vi.fn(), isLoading: false }) }));
 vi.mock('@/sync/storage', () => ({
     useAllMachines: () => [], useLocalSettingMutable: (key: string) => [key === 'themePreference' ? 'light' : false, vi.fn()],
+    useLocalSetting: () => 'default',
     useProfile: () => ({ connectedServices: [] }), useSetting: (key: string) => key === 'preferredLanguage' ? 'en' : false,
 }));
 vi.mock('@/sync/sync', () => ({ sync: {} }));
@@ -87,13 +88,13 @@ vi.mock('react-native-unistyles', () => ({
         button: { primary: { background: '#00aaff', tint: '#000' } }, surfaceHigh: '#222',
         accent: '#00ff88', divider: '#333', surface: '#111', surfacePressed: '#222', surfaceSelected: '#333',
         text: '#fff', textLink: '#00aaff', textSecondary: '#aaa', header: { background: '#111', tint: '#fff' },
-        shadow: { color: '#000' }, status: { connected: '#0f0', connecting: '#ff0', disconnected: '#f00' },
+        shadow: { color: '#000' }, modal: { backdrop: 'rgba(0,0,0,.42)' }, status: { connected: '#0f0', connecting: '#ff0', disconnected: '#f00' },
     } }), absoluteFill: {}, hairlineWidth: 1 },
     useUnistyles: () => ({ theme: { colors: {
         button: { primary: { background: '#00aaff', tint: '#000' } }, surfaceHigh: '#222',
         accent: '#00ff88', divider: '#333', surface: '#111', surfacePressed: '#222', surfaceSelected: '#333',
         text: '#fff', textLink: '#00aaff', textSecondary: '#aaa', header: { background: '#111', tint: '#fff' },
-        shadow: { color: '#000' }, status: { connected: '#0f0', connecting: '#ff0', disconnected: '#f00' },
+        shadow: { color: '#000' }, modal: { backdrop: 'rgba(0,0,0,.42)' }, status: { connected: '#0f0', connecting: '#ff0', disconnected: '#f00' },
     } } }),
 }));
 vi.mock('@/hooks/useEnvironmentDashboard', () => ({ useEnvironmentDashboard: vi.fn() }));

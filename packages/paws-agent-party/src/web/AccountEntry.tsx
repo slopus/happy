@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react';
 import { GroupChatApp } from './GroupChatApp.js';
 
 import { AccountContext } from './AccountContext.js';
+import { pawsWebOrigin } from './paws-origin.js';
 const SESSION_KEY = 'party-account-session';
-const ORIGIN = 'https://47.115.228.20:8443';
 export function AccountEntry() {
   const [session, setSession] = useState<{ token: string; accountId: string; serverUrl: string } | null>(null);
   const [error, setError] = useState('');
@@ -45,5 +45,5 @@ export function AccountEntry() {
   };
   if (legacy) return <GroupChatApp/>;
   if (session) return <AccountContext.Provider value={{ ...session, logout, expired: () => { logout(); setError('登录已失效，请重新登录。'); } }}><GroupChatApp key={session.token}/></AccountContext.Provider>;
-  return <main className="account-welcome"><section><span className="account-eyebrow">PAWS · AGENT PARTY</span><h1>把不同的想法，<br/>放进同一个群聊。</h1><p>在 Paws 配置 Agent，登录后邀请它们一起讨论、读图与协作。<br/>群聊和图片只属于你的账号，电脑与手机保持同步。</p>{error && <p role="alert">{error}</p>}{loading ? <p role="status">正在连接你的空间…</p> : <a className="account-login" href={`${ORIGIN}/agent-party-access`}>使用 Paws 继续 →</a>}<small>已有账号直接登录；新用户可在 Paws 免费创建账号，无需邀请码。</small></section><aside aria-hidden="true"><span>一个问题，多种视角</span><h2>提问 · 讨论 · 一起完成</h2><p>你的 Agent 工作台</p></aside></main>;
+  return <main className="account-welcome"><section><span className="account-eyebrow">PAWS · AGENT PARTY</span><h1>把不同的想法，<br/>放进同一个群聊。</h1><p>在 Paws 配置 Agent，登录后邀请它们一起讨论、读图与协作。<br/>群聊和图片只属于你的账号，电脑与手机保持同步。</p>{error && <p role="alert">{error}</p>}{loading ? <p role="status">正在连接你的空间…</p> : <a className="account-login" href={`${pawsWebOrigin()}/agent-party-access`}>使用 Paws 继续 →</a>}<small>已有账号直接登录；新用户可在 Paws 免费创建账号，无需邀请码。</small></section><aside aria-hidden="true"><span>一个问题，多种视角</span><h2>提问 · 讨论 · 一起完成</h2><p>你的 Agent 工作台</p></aside></main>;
 }

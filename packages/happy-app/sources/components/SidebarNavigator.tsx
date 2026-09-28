@@ -4,9 +4,9 @@ import { Drawer } from 'expo-router/drawer';
 import { useIsTablet, useHeaderHeight } from '@/utils/responsive';
 import { SidebarView } from './SidebarView';
 import { useWindowDimensions, View, Pressable, Platform, BackHandler, Text } from 'react-native';
-import { useLocalSettingMutable } from '@/sync/storage';
+import { useLocalSetting, useLocalSettingMutable } from '@/sync/storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { usePathname, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
@@ -20,6 +20,8 @@ import {
     useDesktopWorkspaceLayout,
 } from '@/hooks/useDesktopWorkspaceLayout';
 import { DesktopPanelResizeHandle } from './DesktopPanelResizeHandle';
+import { DesktopSkinCanvas } from './DesktopSkinCanvas';
+import { useReducedTransparency } from '@/hooks/useReducedTransparency';
 import { DesktopShortcutTooltip } from './DesktopShortcutTooltip';
 import { KeyboardShortcutsProvider } from './KeyboardShortcuts';
 import {
@@ -51,6 +53,9 @@ const SidebarNavigatorContent = React.memo(() => {
     const auth = useAuth();
     const isTablet = useIsTablet();
     const { theme } = useUnistyles();
+    const desktopSkinId = useLocalSetting('desktopSkinId');
+    const dreamskin = Platform.OS === 'web' && isTablet && desktopSkinId === 'dreamskin';
+    const reducedTransparency = useReducedTransparency();
     const {
         leftExpandedWidth,
         leftPinned,
@@ -143,7 +148,7 @@ const SidebarNavigatorContent = React.memo(() => {
             headerShown: false,
             drawerType: 'permanent' as const,
             drawerStyle: {
-                backgroundColor: theme.colors.groupped.background,
+                backgroundColor: dreamskin && !reducedTransparency ? 'transparent' : theme.colors.groupped.background,
                 borderRightWidth: 0,
                 width: drawerWidth,
                 zIndex: 10,
@@ -151,7 +156,7 @@ const SidebarNavigatorContent = React.memo(() => {
             } as any,
             sceneStyle: Platform.OS === 'web' ? {
                 margin: DESKTOP_WORKSPACE_OUTER_GAP, marginLeft: 0, borderRadius: 20, overflow: 'hidden',
-                backgroundColor: theme.colors.surface,
+                backgroundColor: dreamskin && !reducedTransparency ? 'transparent' : theme.colors.surface,
             } : undefined,
             swipeEnabled: false,
             drawerActiveTintColor: 'transparent',
@@ -159,7 +164,7 @@ const SidebarNavigatorContent = React.memo(() => {
             drawerItemStyle: { display: 'none' as const },
             drawerLabelStyle: { display: 'none' as const },
         };
-    }, [isDesktopLayout, drawerWidth, windowWidth, auth.isAuthenticated, fullDrawerWidth, selectionMode, theme.colors.surface, theme.colors.groupped.background]);
+    }, [isDesktopLayout, drawerWidth, windowWidth, auth.isAuthenticated, fullDrawerWidth, selectionMode, theme.colors.surface, theme.colors.groupped.background, dreamskin, reducedTransparency]);
 
     const drawerContent = React.useCallback(
         ({ navigation }: { navigation: { closeDrawer: () => void } }) => (
@@ -183,6 +188,7 @@ const SidebarNavigatorContent = React.memo(() => {
                 } as any : {})}
                 style={[
                     styles.drawerContent,
+                    dreamskin && !reducedTransparency && { backgroundColor: 'transparent' },
                     isDesktopLayout && Platform.OS === 'web' && { width: drawerWidth },
                     Platform.OS === 'web' && {
                         pointerEvents: hideDrawer ? 'none' : 'auto',
@@ -201,11 +207,12 @@ const SidebarNavigatorContent = React.memo(() => {
                 />
             </View>
         ),
-        [leftExpandedWidth, drawerWidth, fixedRail, hideDrawer, isDesktopLayout, showSidebar, setLeftSidebarHovered, setLeftSidebarFocused]
+        [leftExpandedWidth, drawerWidth, fixedRail, hideDrawer, isDesktopLayout, showSidebar, setLeftSidebarHovered, setLeftSidebarFocused, dreamskin, reducedTransparency]
     );
 
     return (
         <View style={{ flex: 1, backgroundColor: theme.colors.groupped.background }}>
+            {dreamskin && isDesktopLayout && <DesktopSkinCanvas />}
             <Drawer
                 screenOptions={drawerNavigationOptions}
                 drawerContent={(isDesktopLayout || auth.isAuthenticated) ? drawerContent : undefined}

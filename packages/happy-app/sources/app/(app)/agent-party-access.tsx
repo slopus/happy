@@ -4,7 +4,7 @@ import { View, Text, Pressable, Platform, Linking } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useUnistyles } from 'react-native-unistyles';
 import { useAuth } from '@/auth/AuthContext';
-import { issuePartyTicket, PARTY_URL } from '@/components/agentParty/api';
+import { issuePartyTicket, getPartyUrl } from '@/components/agentParty/api';
 
 export default function AgentPartyAccess() {
     const { credentials } = useAuth();
@@ -20,7 +20,7 @@ export default function AgentPartyAccess() {
         setBusy(true); setError('');
         try {
             const ticket = await issuePartyTicket(credentials, request.signal);
-            const url = `${PARTY_URL}#ticket=${ticket}`;
+            const url = `${getPartyUrl()}#ticket=${ticket}`;
             if (Platform.OS === 'web') window.location.replace(url);
             else await Linking.openURL(url);
         } catch (error) { if (!request.signal.aborted) setError((error as Error).message); }

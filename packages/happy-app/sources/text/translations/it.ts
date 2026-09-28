@@ -288,6 +288,7 @@ export const it: TranslationStructure = {
         showPanel: ({ panel }: { panel: string }) => `Mostra ${panel}`,
         hidePanel: ({ panel }: { panel: string }) => `Nascondi ${panel}`,
         resizePanel: ({ panel }: { panel: string }) => `Ridimensiona ${panel}`,
+        readingWidth: 'Larghezza di lettura',
         hidePanelShort: 'Nascondi',
         forward: 'Avanti',
     },
@@ -610,6 +611,12 @@ export const it: TranslationStructure = {
     },
 
     settingsAppearance: {
+        desktopSkinTitle: 'Tema desktop',
+        desktopSkinDescription: 'Scegli l’aspetto di Paws sul PC',
+        desktopSkinDefault: 'Aspetto originale',
+        desktopSkinDefaultDescription: 'Mantieni colori e preferenza chiaro/scuro',
+        desktopSkinDreamskin: 'Interno accogliente',
+        desktopSkinDreamskinDescription: 'Sfondo fotografico e superfici scure',
         mascot: 'Mascotte',
         mascotDescription: 'Scegli la marmotta che ti accoglie nella schermata iniziale',
         mascotOptions: {

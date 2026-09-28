@@ -168,6 +168,9 @@ vi.mock('@/hooks/useDesktopWorkspaceLayout', () => ({
 vi.mock('@/hooks/useAgentSpace', () => ({ useAgentSpace: () => ({ enter: vi.fn(), exit: vi.fn() }), useSpaceAgentForSession: () => null }));
 vi.mock('@/hooks/useGlobalKeyboard', () => ({ useGlobalKeyboard: vi.fn() }));
 vi.mock('@/hooks/useSessionQuickActions', () => ({ useSessionQuickActions: () => ({ renameSessionToTitle: vi.fn(), renamingSession: false }) }));
+vi.mock('@/hooks/useSessionManagementPreferences', () => ({
+    useSessionManagementPreferences: () => ({ isPinned: () => false, togglePinned: vi.fn() }),
+}));
 vi.mock('@/hooks/useSessionTaskPermission', () => ({ useSessionTaskPermission: () => ({}) }));
 vi.mock('@/hooks/useSessionWorkingDirectory', () => ({ useSessionWorkingDirectory: () => ({}) }));
 vi.mock('@/hooks/useDraft', () => ({ useDraft: () => ({ clearDraft: vi.fn(), updateDraft: vi.fn() }) }));

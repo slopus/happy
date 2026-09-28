@@ -358,6 +358,7 @@ export const en = {
         showPanel: ({ panel }: { panel: string }) => `Show ${panel}`,
         hidePanel: ({ panel }: { panel: string }) => `Hide ${panel}`,
         resizePanel: ({ panel }: { panel: string }) => `Resize ${panel}`,
+        readingWidth: 'Reading width',
         hidePanelShort: 'Hide',
         forward: 'Forward',
     },
@@ -719,6 +720,12 @@ export const en = {
     },
 
     settingsAppearance: {
+        desktopSkinTitle: 'Desktop skin',
+        desktopSkinDescription: 'Choose an appearance for PC Web',
+        desktopSkinDefault: 'Original appearance',
+        desktopSkinDefaultDescription: 'Keep your saved colors and light mode',
+        desktopSkinDreamskin: 'Cozy interior',
+        desktopSkinDreamskinDescription: 'Photo background and dark reading surfaces',
         mascot: 'Mascot',
         mascotDescription: 'Pick the groundhog that greets you on the home screen',
         mascotOptions: {

@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
+import { DesktopSkinPicker } from '@/components/DesktopSkinPicker';
 import { ItemList } from '@/components/ItemList';
 import { useSettingMutable, useLocalSettingMutable } from '@/sync/storage';
 import { useUnistyles, StyleSheet } from 'react-native-unistyles';
@@ -10,10 +11,11 @@ import { runThemeTransition } from '@/components/ThemeTransition';
 import { GradientIcon } from '@/components/GradientIcon';
 import { ACCENTS } from '@/themePacks';
 import { Typography } from '@/constants/Typography';
-import { Pressable, View, Text } from 'react-native';
+import { Platform, Pressable, View, Text } from 'react-native';
 import { Image } from 'expo-image';
 import { MASCOT_IDS, getMascotImage, getMascotName, getMascotTheme } from '@/components/mascots';
 import { t } from '@/text';
+import { useIsTablet } from '@/utils/responsive';
 
 // Define known avatar styles for this version of the app
 type KnownAvatarStyle = 'pixelated' | 'gradient' | 'brutalist';
@@ -24,6 +26,7 @@ const isKnownAvatarStyle = (style: string): style is KnownAvatarStyle => {
 
 export default function AppearanceSettingsScreen() {
     const { theme } = useUnistyles();
+    const isTablet = useIsTablet();
     const [viewInline, setViewInline] = useSettingMutable('viewInline');
     const [expandTodos, setExpandTodos] = useSettingMutable('expandTodos');
     const [showLineNumbers, setShowLineNumbers] = useSettingMutable('showLineNumbers');
@@ -35,6 +38,7 @@ export default function AppearanceSettingsScreen() {
     const [showFlavorIcons, setShowFlavorIcons] = useSettingMutable('showFlavorIcons');
     const [themePreference, setThemePreference] = useLocalSettingMutable('themePreference');
     const [themePack, setThemePack] = useLocalSettingMutable('themePack');
+    const [desktopSkinId, setDesktopSkinId] = useLocalSettingMutable('desktopSkinId');
     const [mascot, setMascot] = useLocalSettingMutable('mascot');
     const [hapticFeedbackEnabled, setHapticFeedbackEnabled] = useLocalSettingMutable('hapticFeedbackEnabled');
 
@@ -93,6 +97,18 @@ export default function AppearanceSettingsScreen() {
                     })}
                 </View>
             </ItemGroup>
+
+            {Platform.OS === 'web' && isTablet && (
+                <ItemGroup title={t('settingsAppearance.desktopSkinTitle')} footer={t('settingsAppearance.desktopSkinDescription')}>
+                    <DesktopSkinPicker
+                        value={desktopSkinId}
+                        onChange={(next) => runThemeTransition(() => {
+                            setDesktopSkinId(next);
+                            applyTheme(themePack, themePreference);
+                        })}
+                    />
+                </ItemGroup>
+            )}
 
             {/* 吉祥物选择器 — 一排土拨鼠形象，点选即切换，空状态页/设置头部实时跟随 */}
             <ItemGroup title={t('settingsAppearance.mascot')} footer={t('settingsAppearance.mascotDescription')}>

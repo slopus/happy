@@ -4,6 +4,7 @@ import { StyleSheet } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
 import type { SessionTextPreview } from '@/sync/sessionTextStream';
 import { layout } from './layout';
+import { useDesktopReadingWidth } from './DesktopReadingWidth';
 
 /**
  * Uncommitted output is deliberately read-only. Do not send partial structured
@@ -12,9 +13,10 @@ import { layout } from './layout';
  * Staying in the transcript footer also keeps previews out of history anchors.
  */
 export const StreamingTextPreviews = React.memo((props: { previews: readonly SessionTextPreview[] }) => {
+    const readingWidth = useDesktopReadingWidth();
     if (props.previews.length === 0) return null;
     return <View testID="session-stream-previews" style={styles.container}>
-        <View style={styles.content}>
+        <View style={[styles.content, { maxWidth: readingWidth }]}>
             {props.previews.map(preview => <Text
                 key={JSON.stringify([preview.sessionId, preview.turnId, preview.itemId])}
                 testID="session-stream-preview-text"

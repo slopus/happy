@@ -1,4 +1,5 @@
 import { AccountContext } from './AccountContext.js';
+import { pawsAccountServerUrl, pawsWebOrigin } from './paws-origin.js';
 import { MessageCircle, Plus, Users, PanelLeftClose, PanelLeftOpen, MoreHorizontal, Trash2, X, HelpCircle, UserRound, Link2 } from 'lucide-react';
 import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { Message, PartyMeta } from '../../vendor/agents-party/src/core/types.js';
@@ -171,7 +172,7 @@ function TokenGate({ value, setValue, submit }: { value: string; setValue(value:
 function AgentDialog({ agents, machines, sessions, api, close, refresh }: { agents: AgentProfile[]; machines: MachinesResponse['machines']; sessions: ConfigurationSession[]; api: ReturnType<typeof createApi>; close(): void; refresh(): Promise<void> }) {
   const [editing, setEditing] = useState<AgentProfile | 'new' | null>(null);
   const account = useContext(AccountContext);
-  if (account) return <Modal title="我的 Agent" close={close}><p>这些 Agent 来自当前 Paws 账号。在 Paws 修改后，这里会自动更新；已有群聊保留邀请时的配置。</p>{agents.map(agent => <div className="profile-summary" key={agent.id}><RobotAvatar id={agent.id} avatarId={agent.avatarId}/><span><strong>{agent.name}</strong><small>{agent.instructions}</small></span></div>)}<a className="primary-action" href={`https://47.115.228.20:8443/agent-profiles?accountId=${encodeURIComponent(account.accountId)}`} target="_blank" rel="noreferrer">在 Paws 管理 Agent ↗</a></Modal>;
+  if (account) return <Modal title="我的 Agent" close={close}><p>这些 Agent 来自当前 Paws 账号。在 Paws 修改后，这里会自动更新；已有群聊保留邀请时的配置。</p>{agents.map(agent => <div className="profile-summary" key={agent.id}><RobotAvatar id={agent.id} avatarId={agent.avatarId}/><span><strong>{agent.name}</strong><small>{agent.instructions}</small></span></div>)}<a className="primary-action" href={`${pawsWebOrigin()}/agent-profiles?accountId=${encodeURIComponent(account.accountId)}`} target="_blank" rel="noreferrer">在 Paws 管理 Agent ↗</a></Modal>;
   return <Modal title="管理 Agent" close={close}>
     {editing ? <><button onClick={() => setEditing(null)}>← 返回我的 Agent</button><ProfileEditor key={editing === 'new' ? 'new' : editing.id} initial={editing === 'new' ? undefined : editing} machines={machines} sessions={sessions} api={api} onSave={async value => {
       await api(editing === 'new' ? '/api/group-chat/agents' : `/api/group-chat/agents/${editing.id}`, { method: editing === 'new' ? 'POST' : 'PATCH', body: JSON.stringify(value) }); await refresh(); setEditing(null);
@@ -255,6 +256,6 @@ function InviteDialog({ room, agents, machines, sessions, api, refresh, close }:
 
 function SessionLink({ sessionId }: { sessionId: string }) {
   const account = useContext(AccountContext);
-  const href = account ? `https://47.115.228.20:8443/accounts?${new URLSearchParams({ accountId: account.accountId, serverUrl: account.serverUrl, sessionId })}` : `https://47.115.228.20:8443/session/${encodeURIComponent(sessionId)}`;
+  const href = account ? `${pawsWebOrigin()}/accounts?${new URLSearchParams({ accountId: account.accountId, serverUrl: pawsAccountServerUrl(account.serverUrl), sessionId })}` : `${pawsWebOrigin()}/session/${encodeURIComponent(sessionId)}`;
   return <a href={href} target="_blank" rel="noreferrer">在 Paws 打开完整会话 ↗</a>;
 }

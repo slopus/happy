@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { pawsWebOrigin } from './paws-origin.js';
 import type { Message } from '@wangjs-jacky/paws-agent';
 import type { AgentMessagesResponse, RunSnapshot, RoleId } from '../contracts.js';
 import type { Api } from './api.js';
@@ -37,7 +38,7 @@ export function AgentDetails({ run, role, api, onClose }: { run: RunSnapshot; ro
     <header className="flex items-center justify-between"><h2 className="font-title text-lg">执行详情 · {role}</h2><Button variant="ghost" onClick={onClose}>关闭详情</Button></header>
     <p>{statusLabel[run.roles[role].status] ?? run.roles[role].status}</p>
     <p className="break-all">sessionId：{sessionId ?? '会话尚未创建；停止后晚到的会话仍会保留。'}</p>
-    {sessionId && <a className="text-link underline" href={`https://47.115.228.20:8443/session/${encodeURIComponent(sessionId)}`} target="_blank" rel="noreferrer">在 Paws 打开原始会话</a>}
+    {sessionId && <a className="text-link underline" href={`${pawsWebOrigin()}/session/${encodeURIComponent(sessionId)}`} target="_blank" rel="noreferrer">在 Paws 打开原始会话</a>}
     <p className="text-xs text-muted-foreground">停止只结束协调，远端可能继续。这里只显示已收到的持久化记录，不保证存在隐藏推理。</p>
     <h3 className="font-semibold">每轮来源关联</h3>
     {run.turns.filter(turn => turn.participant === role).map(turn => <details key={turn.taskMessageId} open className="rounded border border-border p-2 text-xs">

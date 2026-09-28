@@ -290,6 +290,7 @@ export const zhHant: TranslationStructure = {
         showPanel: ({ panel }: { panel: string }) => `展開${panel}`,
         hidePanel: ({ panel }: { panel: string }) => `收起${panel}`,
         resizePanel: ({ panel }: { panel: string }) => `調整${panel}寬度`,
+        readingWidth: '正文寬度',
         hidePanelShort: '收起',
         forward: '前進',
     },
@@ -612,6 +613,12 @@ export const zhHant: TranslationStructure = {
     },
 
     settingsAppearance: {
+        desktopSkinTitle: '電腦版外觀',
+        desktopSkinDescription: '選擇電腦網頁版的整體外觀',
+        desktopSkinDefault: '原有外觀',
+        desktopSkinDefaultDescription: '保留目前配色與明暗偏好',
+        desktopSkinDreamskin: '休閒室內居家',
+        desktopSkinDreamskinDescription: '照片背景與深色閱讀面',
         mascot: '吉祥物',
         mascotDescription: '選擇主畫面迎接你的土撥鼠形象',
         mascotOptions: {

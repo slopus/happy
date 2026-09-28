@@ -5,6 +5,8 @@ import type { MultiTextInputHandle } from '@/components/MultiTextInput';
 import { layout } from '@/components/layout';
 import { getSuggestions } from '@/components/autocomplete/suggestions';
 import { ChatHeaderView } from '@/components/ChatHeaderView';
+import { DesktopSkinCanvas } from '@/components/DesktopSkinCanvas';
+import { DesktopReadingWidthContext, useDesktopReadingWidth } from '@/components/DesktopReadingWidth';
 import { SessionHeaderChip } from '@/components/SessionHeaderChip';
 import { SessionInfoDropdown } from '@/components/SessionInfoDropdown';
 import { PublicSessionShareDialog } from '@/components/PublicSessionShareDialog';
@@ -58,13 +60,14 @@ import { GitFileStatus } from '@/sync/gitStatusFiles';
 import { useOverlayNav } from '@/-session/sessionOverlayNav';
 import { formatPathRelativeToHome, getResumeCommandBlock, getSessionName, useSessionStatus } from '@/utils/sessionUtils';
 import { useSessionQuickActions } from '@/hooks/useSessionQuickActions';
+import { useSessionManagementPreferences } from '@/hooks/useSessionManagementPreferences';
 import { useSessionTaskPermission } from '@/hooks/useSessionTaskPermission';
 import { useSessionWorkingDirectory } from '@/hooks/useSessionWorkingDirectory';
 import { useSessionResultSyncing } from '@/hooks/useSessionResultSyncing';
 import { isVersionSupported, MINIMUM_CLI_VERSION } from '@/utils/versionUtils';
 import * as Application from 'expo-application';
 import * as Clipboard from 'expo-clipboard';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, Octicons } from '@expo/vector-icons';
 import { useRouter, useNavigation } from 'expo-router';
 import { SessionRouteCoordinationError, type SessionRouteOwner } from '@/sync/sessionRouteOwnership';
 import { DrawerActions, useIsFocused } from '@react-navigation/native';
@@ -433,6 +436,79 @@ function SessionHeaderMoreAction({
     );
 }
 
+/** A session-local entry point backed by a device-local preference. */
+function DesktopReadingWidthControl() {
+    const { theme } = useUnistyles();
+    const [width, setWidth] = useLocalSettingMutable('desktopReadingWidth');
+    const [open, setOpen] = React.useState(false);
+    const rootRef = React.useRef<View>(null);
+
+    React.useEffect(() => {
+        if (!open || Platform.OS !== 'web' || typeof document === 'undefined') return;
+        const closeOutside = (event: PointerEvent) => {
+            const root = rootRef.current as unknown as HTMLElement | null;
+            if (event.target instanceof Node && !root?.contains(event.target)) setOpen(false);
+        };
+        const closeOnEscape = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') setOpen(false);
+        };
+        document.addEventListener('pointerdown', closeOutside);
+        document.addEventListener('keydown', closeOnEscape);
+        return () => {
+            document.removeEventListener('pointerdown', closeOutside);
+            document.removeEventListener('keydown', closeOnEscape);
+        };
+    }, [open]);
+
+    return <View ref={rootRef} style={[workspaceStyles.headerIconWrapper, { zIndex: open ? 1300 : 0 }]}>
+        <Pressable
+            accessibilityLabel={t('desktopWorkspace.readingWidth')}
+            accessibilityRole="button"
+            accessibilityState={{ expanded: open }}
+            onPress={() => setOpen((current) => !current)}
+            style={({ pressed }) => [workspaceStyles.headerIconButton, open && workspaceStyles.headerIconButtonSelected, pressed && workspaceStyles.headerIconButtonPressed]}
+            testID="dreamskin-reading-width-button"
+        >
+            <Ionicons name="resize-outline" size={20} color={theme.colors.header.tint} />
+        </Pressable>
+        {open && <View
+            accessibilityLabel={t('desktopWorkspace.readingWidth')}
+            style={{
+                position: 'absolute', top: 44, right: 0, width: 240, padding: 14, borderRadius: 12,
+                backgroundColor: theme.colors.surface, borderColor: theme.colors.divider, borderWidth: StyleSheet.hairlineWidth,
+                shadowColor: theme.colors.shadow.color, shadowOffset: { width: 0, height: 8 },
+                shadowOpacity: theme.colors.shadow.opacity, shadowRadius: 18, elevation: 12,
+            }}
+            testID="dreamskin-reading-width-menu"
+        >
+            <Text style={{ color: theme.colors.text, fontSize: 14, fontWeight: '600', marginBottom: 12 }}>
+                {t('desktopWorkspace.readingWidth')}
+            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                <Pressable
+                    accessibilityLabel={`${t('desktopWorkspace.readingWidth')} −`}
+                    accessibilityRole="button"
+                    accessibilityState={{ disabled: width <= 800 }}
+                    disabled={width <= 800}
+                    onPress={() => setWidth(Math.max(800, width - 80))}
+                    style={({ pressed }) => ({ width: 36, height: 36, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: pressed ? theme.colors.surfacePressed : theme.colors.surfaceHigh, opacity: width <= 800 ? 0.45 : 1 })}
+                    testID="dreamskin-reading-width-decrease"
+                ><Ionicons name="remove" size={19} color={theme.colors.text} /></Pressable>
+                <Text accessibilityLabel={`${width} px`} style={{ color: theme.colors.text, fontSize: 15, fontVariant: ['tabular-nums'], textAlign: 'center', flex: 1 }}>{width} px</Text>
+                <Pressable
+                    accessibilityLabel={`${t('desktopWorkspace.readingWidth')} +`}
+                    accessibilityRole="button"
+                    accessibilityState={{ disabled: width >= 1280 }}
+                    disabled={width >= 1280}
+                    onPress={() => setWidth(Math.min(1280, width + 80))}
+                    style={({ pressed }) => ({ width: 36, height: 36, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: pressed ? theme.colors.surfacePressed : theme.colors.surfaceHigh, opacity: width >= 1280 ? 0.45 : 1 })}
+                    testID="dreamskin-reading-width-increase"
+                ><Ionicons name="add" size={19} color={theme.colors.text} /></Pressable>
+            </View>
+        </View>}
+    </View>;
+}
+
 export const SessionView = React.memo((props: { id: string }) => (
     <SubagentInspectorProvider sessionId={props.id}>
         <SessionViewContent key={props.id} {...props} />
@@ -462,9 +538,15 @@ const SessionViewContent = React.memo((props: { id: string }) => {
     const isMacTauri = inTauri && typeof navigator !== 'undefined' && /Mac/.test(navigator.platform);
     const fileDiffsSidebarEnabled = useSetting('fileDiffsSidebar');
     const zenMode = useLocalSetting('zenMode');
+    const desktopSkinId = useLocalSetting('desktopSkinId');
+    const dreamskin = Platform.OS === 'web' && isTablet && desktopSkinId === 'dreamskin';
+    const desktopReadingWidth = useLocalSetting('desktopReadingWidth');
     const sidebarOrganization = useSetting('sidebarOrganization');
     const updateSidebarOrganization = useSettingUpdater('sidebarOrganization');
     const [desktopRightPanelCollapsed, setDesktopRightPanelCollapsed] = useLocalSettingMutable('desktopRightPanelCollapsed');
+    const pinScope = React.useMemo(() => [sessionId], [sessionId]);
+    const { isPinned, togglePinned } = useSessionManagementPreferences(pinScope, { prune: false });
+    const [desktopMainWidth, setDesktopMainWidth] = React.useState(0);
     const [rightDrawerOpen, setRightDrawerOpen] = React.useState(false);
     const [organizerOpen, setOrganizerOpen] = React.useState(false);
     const {
@@ -929,14 +1011,59 @@ const SessionViewContent = React.memo((props: { id: string }) => {
             onPress={() => setInfoPanelOpen((value) => !value)}
         />
     ) : null;
+    const showDreamskinHeaderActions = dreamskin && desktopMainWidth >= 1180 && !showDesktopRightPanel && showChip;
+    const isSessionPinned = dreamskin && isPinned(sessionId);
+    const shareSession = () => {
+        setInfoPanelOpen(false);
+        Modal.show({
+            accessibilityLabel: t('sessionShare.shareSession'),
+            component: PublicSessionShareDialog,
+            props: { sessionId, title: headerProps.title },
+        });
+    };
+    const dreamskinHeaderActions = showDreamskinHeaderActions ? (
+        <>
+            <View style={workspaceStyles.headerIconWrapper}>
+                <Pressable
+                    accessibilityLabel={t('sessionShare.shareSession')}
+                    accessibilityRole="button"
+                    hitSlop={8}
+                    onPress={shareSession}
+                    style={({ pressed }) => [workspaceStyles.headerIconButton, pressed && workspaceStyles.headerIconButtonPressed]}
+                    testID="dreamskin-session-share"
+                >
+                    <Ionicons name="share-outline" size={20} color={theme.colors.header.tint} />
+                </Pressable>
+            </View>
+            <View style={workspaceStyles.headerIconWrapper}>
+                <Pressable
+                    accessibilityLabel={t(isSessionPinned ? 'sessionInfo.unpinSession' : 'sessionInfo.pinSession')}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: isSessionPinned }}
+                    hitSlop={8}
+                    onPress={() => togglePinned(sessionId)}
+                    style={({ pressed }) => [workspaceStyles.headerIconButton, isSessionPinned && workspaceStyles.headerIconButtonSelected, pressed && workspaceStyles.headerIconButtonPressed]}
+                    testID="dreamskin-session-pin"
+                >
+                    <Octicons name="pin" size={19} color={isSessionPinned ? theme.colors.accent : theme.colors.header.tint} />
+                </Pressable>
+            </View>
+        </>
+    ) : null;
+    const readingWidthControl = dreamskin && desktopMainWidth >= 920 && !showDesktopRightPanel && showChip
+        ? <DesktopReadingWidthControl /> : null;
     const defaultHeaderRightSlot = (
         <View style={workspaceStyles.headerActions}>
+            {readingWidthControl}
+            {dreamskinHeaderActions}
             {moreButton}
             {rightPanelToggleButton}
         </View>
     );
     const overlayHeaderRightSlot = (
         <View style={workspaceStyles.headerActions}>
+            {readingWidthControl}
+            {dreamskinHeaderActions}
             {moreButton}
             {rightPanelToggleButton}
             {headerRightSlot}
@@ -994,6 +1121,7 @@ const SessionViewContent = React.memo((props: { id: string }) => {
                     zIndex: 1000
                 }}>
                     <ChatHeaderView
+                        backgroundColor={dreamskin ? 'transparent' : undefined}
                         title={headerProps.title}
                         folderName={headerProps.folderName}
                         isConnected={headerProps.isConnected}
@@ -1042,17 +1170,20 @@ const SessionViewContent = React.memo((props: { id: string }) => {
                         <Text style={{ color: theme.colors.textSecondary, fontSize: 15, marginTop: 8, textAlign: 'center', paddingHorizontal: 32 }}>{t('errors.sessionDeletedDescription')}</Text>
                     </View>
                 ) : (
-                    <SessionViewLoaded
-                        key={sessionId}
-                        composerHandleRef={sessionComposerHandleRef}
-                        onManageTags={() => setOrganizerOpen(true)}
-                        onRemoveTag={removeSessionTag}
-                        sessionId={sessionId}
-                        routeOwner={routeOwner}
-                        verifiedRouteOwnerEpoch={verifiedRouteOwnerEpoch}
-                        session={session}
-                        tags={sessionTags}
-                    />
+                    <DesktopReadingWidthContext.Provider value={dreamskin ? desktopReadingWidth : layout.maxWidth}>
+                        <SessionViewLoaded
+                            key={sessionId}
+                            composerHandleRef={sessionComposerHandleRef}
+                            onManageTags={() => setOrganizerOpen(true)}
+                            onRemoveTag={removeSessionTag}
+                            sessionId={sessionId}
+                            routeOwner={routeOwner}
+                            verifiedRouteOwnerEpoch={verifiedRouteOwnerEpoch}
+                            session={session}
+                            desktopMainWidth={desktopMainWidth}
+                            tags={sessionTags}
+                        />
+                    </DesktopReadingWidthContext.Provider>
                 )}
             </View>
 
@@ -1069,17 +1200,7 @@ const SessionViewContent = React.memo((props: { id: string }) => {
                     top={safeArea.top + headerHeight}
                     canCopySessionId={CAN_COPY_SESSION_ID}
                     onClose={() => setInfoPanelOpen(false)}
-                    onShareSession={() => {
-                        setInfoPanelOpen(false);
-                        Modal.show({
-                            accessibilityLabel: t('sessionShare.shareSession'),
-                            component: PublicSessionShareDialog,
-                            props: {
-                                sessionId,
-                                title: headerProps.title,
-                            },
-                        });
-                    }}
+                    onShareSession={shareSession}
                     onViewDetails={() => {
                         setInfoPanelOpen(false);
                         router.push(`/session/${sessionId}/info`);
@@ -1133,8 +1254,21 @@ const SessionViewContent = React.memo((props: { id: string }) => {
                 panelAccessibilityLabel={compactPanelLabel}
                 panelContent={rightPanel}
                 showEdgeHandle={false}
+                transparentBackground={dreamskin}
             >
-                {mainContent}
+                {dreamskin ? (
+                    <View
+                        onLayout={(event) => {
+                            const width = Math.round(event.nativeEvent.layout.width);
+                            setDesktopMainWidth((current) => current === width ? current : width);
+                        }}
+                        style={{ flex: 1, position: 'relative', backgroundColor: 'transparent' }}
+                        testID="desktop-workspace-main"
+                    >
+                        <DesktopSkinCanvas reading photo={false} readingWidth={desktopReadingWidth} />
+                        {mainContent}
+                    </View>
+                ) : mainContent}
             </RightSwipePanelHost>
         );
     }
@@ -1156,16 +1290,22 @@ const SessionViewContent = React.memo((props: { id: string }) => {
     // File browsing is a tab in that panel, so enabling it never removes quick
     // prompts or creates a fourth column.
     return (
-        <View style={{ flex: 1, flexDirection: 'row', backgroundColor: theme.colors.groupped.background }}>
+        <View style={{ flex: 1, flexDirection: 'row', backgroundColor: dreamskin ? 'transparent' : theme.colors.groupped.background }}>
             <View
+                onLayout={(event) => {
+                    const width = Math.round(event.nativeEvent.layout.width);
+                    setDesktopMainWidth((current) => current === width ? current : width);
+                }}
                 style={[
                     workspaceStyles.desktopMain,
+                    dreamskin && { backgroundColor: 'transparent' },
                     // Web-only: isolate the chat subtree's layout from the
                     // parent flex-row so right-panel layout work stays local.
                     Platform.OS === 'web' && ({ contain: 'layout style paint' } as any),
                 ]}
                 testID="desktop-workspace-main"
             >
+                {dreamskin && <DesktopSkinCanvas reading photo={false} readingWidth={desktopReadingWidth} />}
                 {mainContent}
                 <View
                     pointerEvents="box-none"
@@ -1384,6 +1524,7 @@ function SessionViewLoaded({
     routeOwner,
     verifiedRouteOwnerEpoch,
     session,
+    desktopMainWidth,
     composerHandleRef,
     onManageTags,
     onRemoveTag,
@@ -1393,6 +1534,7 @@ function SessionViewLoaded({
     routeOwner: SessionRouteOwner;
     verifiedRouteOwnerEpoch: number | null;
     session: Session;
+    desktopMainWidth: number;
     composerHandleRef: React.RefObject<ChatComposerHandle | null>;
     onManageTags: () => void;
     onRemoveTag: (tagId: string) => void;
@@ -1647,7 +1789,7 @@ function SessionViewLoaded({
                     verifiedRouteOwnerEpoch={verifiedRouteOwnerEpoch}
                     isLoaded={isLoaded}
                 >
-                    {(messages.length > 0 || !!session.metadata?.continuationOfSessionId) && <ChatList session={session} followLatestRequest={followLatestRequest} />}
+                    {(messages.length > 0 || !!session.metadata?.continuationOfSessionId) && <ChatList session={session} followLatestRequest={followLatestRequest} desktopMainWidth={desktopMainWidth} />}
                 </VerifiedSessionMessageContent>
             </Deferred>
         </>
@@ -2044,6 +2186,7 @@ function CenteredInputWidth(props: {
     children: React.ReactNode;
     horizontalPadding: number;
 }) {
+    const readingWidth = useDesktopReadingWidth();
     return (
         <View style={{
             width: '100%',
@@ -2052,7 +2195,7 @@ function CenteredInputWidth(props: {
         }}>
             <View style={{
                 width: '100%',
-                maxWidth: layout.maxWidth,
+                maxWidth: readingWidth,
             }}>
                 {props.children}
             </View>

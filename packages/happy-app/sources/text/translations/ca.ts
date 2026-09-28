@@ -288,6 +288,7 @@ export const ca: TranslationStructure = {
         showPanel: ({ panel }: { panel: string }) => `Mostra ${panel}`,
         hidePanel: ({ panel }: { panel: string }) => `Amaga ${panel}`,
         resizePanel: ({ panel }: { panel: string }) => `Redimensiona ${panel}`,
+        readingWidth: 'Amplada de lectura',
         hidePanelShort: 'Amaga',
         forward: 'Avança',
     },
@@ -612,6 +613,12 @@ export const ca: TranslationStructure = {
     },
 
     settingsAppearance: {
+        desktopSkinTitle: 'Tema d’escriptori',
+        desktopSkinDescription: 'Tria l’aspecte de Paws al PC',
+        desktopSkinDefault: 'Aspecte original',
+        desktopSkinDefaultDescription: 'Conserva els colors i el mode clar/fosc desats',
+        desktopSkinDreamskin: 'Interior acollidor',
+        desktopSkinDreamskinDescription: 'Fons fotogràfic i superfícies fosques',
         mascot: 'Mascota',
         mascotDescription: 'Tria la marmota que et rep a la pantalla d\'inici',
         mascotOptions: {

@@ -145,9 +145,10 @@ vi.mock('./storage', () => ({ storage: mocks.storage,
     useIsDataReady: () => true,
     useLocalSetting: (key: string) => key === 'sidebarOrganization' ? { lists: [], tags: [], sessions: {} } : false,
     useLocalSettingMutable: () => [false, vi.fn()],
+    useProfile: () => ({ id: 'test-profile', avatar: null }),
     useMachine: () => null,
     useSessionUsage: () => undefined,
-    useSetting: (key: string) => key === 'sidebarOrganization' ? { lists: [], tags: [], sessions: {} } : false,
+    useSetting: (key: string) => key === 'sidebarOrganization' ? { lists: [], tags: [], sessions: {} } : key === 'sessionPinnedOrder' ? [] : false,
     useSettingUpdater: () => vi.fn(),
 }));
 vi.mock('./apiSocket', () => ({

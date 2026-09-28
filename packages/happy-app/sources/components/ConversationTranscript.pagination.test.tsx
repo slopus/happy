@@ -21,6 +21,8 @@ vi.mock('@/sync/sessionTextStream', () => ({ useSessionTextPreviews: () => liveS
 const grouped = vi.hoisted(() => ({ items: null as any[] | null, renderRows: false,
     renders: [] as Array<{ id: string; expanded: boolean }> }));
 vi.mock('@/sync/storage', () => ({
+    useLocalSetting: () => 'default',
+    useProfile: () => ({ id: 'test-user' }),
     useSessionMessages: () => sessionState,
     useSession: () => ({ id: 'session', metadata: null }),
     useSetting: () => true,

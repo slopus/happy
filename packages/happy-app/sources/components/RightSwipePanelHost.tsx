@@ -30,6 +30,7 @@ type Props = {
     fullWidth?: boolean;
     mode?: Exclude<ResponsiveRightPanelMode, 'persistent'>;
     showEdgeHandle?: boolean;
+    transparentBackground?: boolean;
 };
 
 type PanelBackHandler = () => boolean;
@@ -114,6 +115,7 @@ export const RightSwipePanelHost = React.memo(function RightSwipePanelHost({
     panelAccessibilityLabel,
     panelContent,
     showEdgeHandle = true,
+    transparentBackground = false,
 }: Props) {
     const navigation = useNavigation();
     const isFocused = useIsFocused();
@@ -473,7 +475,7 @@ export const RightSwipePanelHost = React.memo(function RightSwipePanelHost({
                             const measuredWidth = Math.round(event.nativeEvent.layout.width);
                             if (measuredWidth > 0 && measuredWidth !== hostWidth) setHostWidth(measuredWidth);
                         }}
-                        style={styles.host}
+                        style={[styles.host, transparentBackground && { backgroundColor: 'transparent' }]}
                         testID="right-swipe-panel-host"
                     >
                         <Animated.View

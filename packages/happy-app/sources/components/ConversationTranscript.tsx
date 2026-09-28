@@ -35,6 +35,7 @@ import { getAgentMessageForkTargets, type MessageForkTarget } from '@/utils/mess
 import { BaseModal } from '@/modal/components/BaseModal';
 import { t } from '@/text';
 import { MessageView } from './MessageView';
+import { firstAgentTextIds } from './turnAvatars';
 import { AgentWorkGroupView, ToolGroupView } from './ToolGroupView';
 import { AttachmentGalleryView } from './AttachmentGalleryView';
 import { AnchorListSheet } from './AnchorListSheet';
@@ -56,6 +57,7 @@ type ForkFromMessage = (
 ) => void;
 
 export type ConversationTranscriptProps = {
+    turnAvatar?: { id: string; imageUrl: string | null; thumbhash?: string | null };
     metadata: Metadata | null;
     sessionId?: string;
     messages: Message[];
@@ -138,6 +140,8 @@ export const ConversationTranscript = React.memo((props: ConversationTranscriptP
         [props.messages, browserProgress.runs]);
     const defaultItems = useGroupedMessages(props.scopedItems ? [] : transcriptMessages, props.groupToolCalls ?? true, groupingOptions);
     const displayItems = props.scopedItems ?? defaultItems;
+    const showTurnAvatars = Platform.OS === 'web' && !!props.turnAvatar;
+    const firstAgentIds = React.useMemo(() => showTurnAvatars ? firstAgentTextIds(displayItems) : new Set<string>(), [displayItems, showTurnAvatars]);
     const inverted = props.inverted ?? Platform.OS !== 'web';
     const invertedRef = React.useRef(inverted);
     invertedRef.current = inverted;
@@ -544,6 +548,7 @@ export const ConversationTranscript = React.memo((props: ConversationTranscriptP
         return (
             <MessageView
                 message={item.message}
+                turnAvatar={showTurnAvatars && (item.message.kind === 'user-text' || firstAgentIds.has(item.message.id)) ? props.turnAvatar : undefined}
                 metadata={sourceMetadata}
                 sessionId={sourceId}
                 onForkFromMessage={readOnly ? undefined : props.onForkFromMessage}
@@ -562,6 +567,7 @@ export const ConversationTranscript = React.memo((props: ConversationTranscriptP
         );
     }, [
         agentForkTargets,
+        firstAgentIds,
         isGroupExpanded,
         handleToggleGroup,
         latestVisibleUserMessageId,
@@ -572,7 +578,9 @@ export const ConversationTranscript = React.memo((props: ConversationTranscriptP
         props.onForkFromMessage,
         props.forkingFromMessageId,
         props.sessionId,
+        props.turnAvatar,
         props.showMessageActions,
+        showTurnAvatars,
         theme,
     ]);
     const renderItem = React.useCallback(({ item }: { item: DisplayItem & { renderKey: string } }) => {

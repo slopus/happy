@@ -1,5 +1,6 @@
 import { lightTheme, darkTheme } from './theme';
 import { ACCENTS, THEME_PACK_IDS, type AccentMode, type ThemePackId } from './themePacksData';
+import { DREAMSKIN_ACCENT, isDreamSkinActive, type DesktopSkinId } from './desktopSkin';
 
 export { ACCENTS, THEME_PACK_IDS, type ThemePackId } from './themePacksData';
 
@@ -55,7 +56,27 @@ for (const spec of ACCENTS) {
     builtThemes[`${spec.id}Dark`] = applyAccent(darkTheme, spec.dark);
 }
 
-export const appThemes = builtThemes as Record<`${ThemePackId}Light` | `${ThemePackId}Dark`, typeof lightTheme>;
+const dreamskinBase = applyAccent(darkTheme, DREAMSKIN_ACCENT);
+builtThemes.dreamskinDark = {
+    ...dreamskinBase,
+    colors: {
+        ...dreamskinBase.colors,
+        desktopSkin: {
+            frame: 'transparent', border: 'rgba(255, 255, 255, 0.12)',
+            rail: 'rgba(16, 20, 25, 0.90)', sidebar: 'rgba(24, 29, 36, 0.78)',
+            reducedFrame: '#171C23', reducedRail: '#101419', reducedSidebar: '#181D24',
+        },
+        modal: { ...dreamskinBase.colors.modal, backdrop: 'rgba(0, 0, 0, 0.66)' },
+        divider: '#3F3F3F',
+        header: { ...darkTheme.colors.header, background: '#1D2024', tint: DREAMSKIN_ACCENT.text },
+        button: {
+            ...dreamskinBase.colors.button,
+            secondary: { ...darkTheme.colors.button.secondary, tint: DREAMSKIN_ACCENT.textSecondary },
+        },
+    },
+};
+
+export const appThemes = builtThemes as Record<`${ThemePackId}Light` | `${ThemePackId}Dark` | 'dreamskinDark', typeof lightTheme>;
 
 export type AppThemeName = keyof typeof appThemes;
 
@@ -63,6 +84,17 @@ export type AppThemeName = keyof typeof appThemes;
 export function resolveThemeName(pack: ThemePackId, isDark: boolean): AppThemeName {
     const id = (THEME_PACK_IDS.includes(pack) ? pack : 'caramel');
     return `${id}${isDark ? 'Dark' : 'Light'}` as AppThemeName;
+}
+
+export function resolveDesktopThemeName(
+    pack: ThemePackId,
+    isDark: boolean,
+    skin: DesktopSkinId,
+    platform: string,
+    viewportWidth: number,
+    pathname = '',
+): AppThemeName {
+    return isDreamSkinActive(skin, platform, viewportWidth, pathname) ? 'dreamskinDark' : resolveThemeName(pack, isDark);
 }
 
 /** 保留当前主题包，仅切换亮暗模式。 */

@@ -291,6 +291,7 @@ export const ja: TranslationStructure = {
         showPanel: ({ panel }: { panel: string }) => `${panel}を表示`,
         hidePanel: ({ panel }: { panel: string }) => `${panel}を非表示`,
         resizePanel: ({ panel }: { panel: string }) => `${panel}の幅を変更`,
+        readingWidth: '本文の幅',
         hidePanelShort: '非表示',
         forward: '進む',
     },
@@ -613,6 +614,12 @@ export const ja: TranslationStructure = {
     },
 
     settingsAppearance: {
+        desktopSkinTitle: 'デスクトップのスキン',
+        desktopSkinDescription: 'PC Web の外観を選択',
+        desktopSkinDefault: '元の外観',
+        desktopSkinDefaultDescription: '保存済みの配色と明暗設定を維持',
+        desktopSkinDreamskin: 'くつろぎの室内',
+        desktopSkinDreamskinDescription: '写真の背景と暗い閲覧面',
         mascot: 'マスコット',
         mascotDescription: 'ホーム画面で迎えるマーモットを選びましょう',
         mascotOptions: {

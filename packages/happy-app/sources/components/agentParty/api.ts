@@ -3,7 +3,12 @@ import { accountRuntimeCurrent, canonicalAccountServer } from '@/auth/accountRun
 import { getServerUrl } from '@/sync/serverConfig';
 
 export const PARTY_ORIGIN = 'https://47.115.228.20:8443';
-export const PARTY_URL = `${PARTY_ORIGIN}/agent-party/`;
+export const PARTY_STAGING_ORIGIN = 'https://47.115.228.20:8444';
+export function getPartyUrl(): string {
+    const accountOrigin = canonicalAccountServer(getServerUrl());
+    if (accountOrigin !== PARTY_ORIGIN && accountOrigin !== PARTY_STAGING_ORIGIN) throw Error('请切换到 Paws 服务器的账号。');
+    return `${accountOrigin}/agent-party/`;
+}
 export class CatalogError extends Error { constructor(message: string, public readonly status: number) { super(message); } }
 export type AgentProfile = { id: string; name: string; instructions: string; engine: 'codex'; model: string; effort: string; avatarId: number; machineId?: string; directory?: string; createdAt: number; updatedAt: number };
 export type AgentInput = Omit<AgentProfile, 'id' | 'createdAt' | 'updatedAt'>;
@@ -12,19 +17,21 @@ export type Directory = { path: string; parent?: string | null; directories: { n
 
 async function request<T>(path: string, token: string, signal: AbortSignal, init: RequestInit = {}): Promise<T> {
     if (!accountRuntimeCurrent()) throw Error('账号已切换，请重新打开。');
-    const response = await fetch(`${PARTY_URL}api/${path}`, { ...init, signal, headers: { Origin: PARTY_ORIGIN, 'content-type': 'application/json', authorization: `Bearer ${token}` } });
+    const response = await fetch(`${getPartyUrl()}api/${path}`, { ...init, signal, headers: { Origin: canonicalAccountServer(getServerUrl()), 'content-type': 'application/json', authorization: `Bearer ${token}` } });
     const value = await response.json();
     if (!accountRuntimeCurrent() || signal.aborted) throw Error('账号连接已取消。');
     if (!response.ok) throw new CatalogError(value.error || '连接失败，请重试。', response.status);
     return value;
 }
 export async function issuePartyTicket(credentials: AuthCredentials, signal: AbortSignal): Promise<string> {
-    if (canonicalAccountServer(getServerUrl()) !== PARTY_ORIGIN) throw Error('请切换到 Paws 正式服务器的账号。');
+    getPartyUrl();
     const result = await request<{ ticket: string }>('access/ticket', credentials.token, signal, { method: 'POST', body: JSON.stringify({ secret: credentials.secret }) });
     if (!/^[A-Za-z0-9_-]{43}$/.test(result.ticket)) throw Error('登录信息无效。');
     return result.ticket;
 }
 export async function connectAgentCatalog(credentials: AuthCredentials, signal: AbortSignal) {
+    const partyUrl = getPartyUrl();
+    const accountOrigin = canonicalAccountServer(getServerUrl());
     const authorize = async () => {
         const ticket = await issuePartyTicket(credentials, signal);
         return (await request<{ token: string }>('access/exchange', '', signal, { method: 'POST', body: JSON.stringify({ ticket }) })).token;
@@ -45,6 +52,6 @@ export async function connectAgentCatalog(credentials: AuthCredentials, signal: 
                 return request<T>(path, token, signal, init);
             }
         },
-        close: () => { void fetch(`${PARTY_URL}api/access/logout`, { method: 'POST', headers: { Origin: PARTY_ORIGIN, authorization: `Bearer ${token}` }, keepalive: true }).catch(() => undefined); },
+        close: () => { void fetch(`${partyUrl}api/access/logout`, { method: 'POST', headers: { Origin: accountOrigin, authorization: `Bearer ${token}` }, keepalive: true }).catch(() => undefined); },
     };
 }

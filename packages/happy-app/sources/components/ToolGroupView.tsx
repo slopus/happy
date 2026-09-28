@@ -14,6 +14,7 @@ import { MessageView } from './MessageView';
 import { TranscriptGroupExpansionContext, TranscriptReadingMarker } from './transcriptReading';
 import { Metadata } from '@/sync/storageTypes';
 import { layout } from './layout';
+import { useDesktopReadingWidth } from './DesktopReadingWidth';
 import { useElapsedTime } from '@/hooks/useElapsedTime';
 import { t } from '@/text';
 import { Message, ToolCallMessage } from '@/sync/typesMessage';
@@ -36,6 +37,7 @@ interface ToolGroupViewProps {
 }
 
 export const ToolGroupView = React.memo<ToolGroupViewProps>((props) => {
+    const readingWidth = useDesktopReadingWidth();
     const { group, metadata, sessionId, expanded, onToggle, nested, hideSingleToolChildren } = props;
     const router = useRouter();
     const summary = React.useMemo(() => generateGroupSummary(group.messages), [group.messages]);
@@ -69,7 +71,7 @@ export const ToolGroupView = React.memo<ToolGroupViewProps>((props) => {
     ), [metadata, sessionId]);
 
     const body = (
-        <View style={nested ? styles.nestedInnerContainer : styles.innerContainer}>
+        <View style={nested ? styles.nestedInnerContainer : [styles.innerContainer, { maxWidth: readingWidth }]}>
             <CollapseHeader
                 testID="conversation-tool-group-toggle"
                 expanded={expanded}
@@ -112,6 +114,7 @@ interface AgentWorkGroupViewProps {
 }
 
 export const AgentWorkGroupView = React.memo<AgentWorkGroupViewProps>((props) => {
+    const readingWidth = useDesktopReadingWidth();
     const durableExpansion = React.useContext(TranscriptGroupExpansionContext);
     const { group, metadata, sessionId, expanded, onToggle } = props;
     const summaryCategory = React.useMemo(() => getGroupSummaryCategory(group.messages), [group.messages]);
@@ -220,7 +223,7 @@ export const AgentWorkGroupView = React.memo<AgentWorkGroupViewProps>((props) =>
 
     return (
         <View style={styles.outerContainer}>
-            <View style={styles.innerContainer}>
+            <View style={[styles.innerContainer, { maxWidth: readingWidth }]}>
                 <CollapseHeader
                     testID="conversation-agent-work-toggle"
                     expanded={expanded}

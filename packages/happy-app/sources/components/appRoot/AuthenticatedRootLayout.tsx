@@ -8,7 +8,7 @@ import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { initialWindowMetrics, SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { View, Platform, AppState } from 'react-native';
+import { View, Platform, AppState, useWindowDimensions } from 'react-native';
 import { PostHogProvider } from 'posthog-react-native';
 import { useUnistyles } from 'react-native-unistyles';
 import { AuthCredentials, TokenStorage } from '@/auth/tokenStorage';
@@ -34,6 +34,8 @@ import { ImageViewerHost } from '@/components/ImageViewerHost';
 import { StatusBarProvider } from '@/components/StatusBarProvider';
 import { initConsoleLogging, setConsoleOutputEnabled } from '@/utils/consoleLogging';
 import { useLocalSetting } from '@/sync/storage';
+import { useReducedTransparency } from '@/hooks/useReducedTransparency';
+import { desktopNavigationBackground } from '@/desktopSkin';
 import { getPublicSessionShareRetrySessionId, getSessionRouteFromNotificationResponse } from '@/utils/notificationRouting';
 import { navigateToSession } from '@/hooks/useNavigateToSession';
 import { applyVoiceUpsellOverride } from '@/realtime/voiceExperiment';
@@ -115,13 +117,17 @@ function getDevWebQueryCredentials(): AuthCredentials | null {
 
 function usePawsNavigationTheme() {
     const { theme } = useUnistyles();
+    const desktopSkinId = useLocalSetting('desktopSkinId');
+    const { width } = useWindowDimensions();
+    const reducedTransparency = useReducedTransparency();
+    const background = desktopNavigationBackground(theme.colors.groupped.background, desktopSkinId, Platform.OS, width, reducedTransparency);
     return React.useMemo(() => {
         const base = theme.dark ? DarkTheme : DefaultTheme;
         return {
             ...base,
-            colors: { ...base.colors, background: theme.colors.groupped.background },
+            colors: { ...base.colors, background },
         };
-    }, [theme.colors.groupped.background, theme.dark]);
+    }, [background, theme.dark]);
 }
 
 export default function AuthenticatedRootLayout() {

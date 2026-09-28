@@ -1,7 +1,8 @@
 import { StyleSheet, UnistylesRuntime } from 'react-native-unistyles';
-import { appThemes, resolveThemeName, type ThemePackId, type AppThemeName } from './themePacks';
-import { loadThemePreference, loadThemePack } from './sync/persistence';
-import { Appearance, Platform } from 'react-native';
+import { appThemes, resolveDesktopThemeName, type ThemePackId, type AppThemeName } from './themePacks';
+import { loadThemePreference, loadThemePack, loadDesktopSkinId } from './sync/persistence';
+import { Appearance, Dimensions, Platform } from 'react-native';
+import { WEB_TABLET_MIN_WIDTH } from './utils/deviceCalculations';
 import * as SystemUI from 'expo-system-ui';
 
 //
@@ -32,8 +33,9 @@ function isDarkFor(pref: ThemePref): boolean {
 // Load persisted preferences
 const themePreference = loadThemePreference();
 const themePack = loadThemePack();
+const currentPathname = () => Platform.OS === 'web' && typeof window !== 'undefined' ? window.location.pathname : '';
 
-const initialThemeName: AppThemeName = resolveThemeName(themePack, isDarkFor(themePreference));
+const initialThemeName: AppThemeName = resolveDesktopThemeName(themePack, isDarkFor(themePreference), loadDesktopSkinId(), Platform.OS, Dimensions.get('window').width, currentPathname());
 
 //
 // Bootstrap
@@ -61,7 +63,7 @@ StyleSheet.configure({
  * 同时更新根视图背景色，避免切换时闪白/闪黑。
  */
 export function applyTheme(pack: ThemePackId, pref: ThemePref) {
-    const name = resolveThemeName(pack, isDarkFor(pref));
+    const name = resolveDesktopThemeName(pack, isDarkFor(pref), loadDesktopSkinId(), Platform.OS, Dimensions.get('window').width, currentPathname());
     UnistylesRuntime.setTheme(name);
     const color = appThemes[name].colors.groupped.background;
     UnistylesRuntime.setRootViewBackgroundColor(color);
@@ -85,6 +87,15 @@ Appearance.addChangeListener(() => {
 
 // Web：标签页重新可见时再同步一次（Appearance 在隐藏时可能漏掉变化）
 if (Platform.OS === 'web') {
+    let wasDesktopWidth = Dimensions.get('window').width >= WEB_TABLET_MIN_WIDTH;
+    Dimensions.addEventListener('change', ({ window }) => {
+        const isDesktopWidth = window.width >= WEB_TABLET_MIN_WIDTH;
+        if (isDesktopWidth !== wasDesktopWidth) {
+            wasDesktopWidth = isDesktopWidth;
+            if (currentPathname().startsWith('/share/')) return;
+            applyTheme(loadThemePack(), loadThemePreference());
+        }
+    });
     document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'visible') {
             const pref = loadThemePreference();

@@ -154,6 +154,15 @@ function findControl(renderer: any, testID: string) {
 }
 
 describe('RightSwipePanelHost close completion', () => {
+    it('keeps the compact DreamSkin reading canvas visible behind the drawer host', () => {
+        let renderer: any;
+        act(() => {
+            renderer = TestRenderer.create(<RightSwipePanelHost {...PANEL_ACCESSIBILITY_LABELS} enabled gestureEnabled={false} transparentBackground panelContent={<View />}><View /></RightSwipePanelHost>);
+        });
+        const host = renderer.root.findByProps({ testID: 'right-swipe-panel-host' });
+        expect(flattenStyle(host.props.style).backgroundColor).toBe('transparent');
+        act(() => renderer.unmount());
+    });
     const originalConsoleError = console.error;
     let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 

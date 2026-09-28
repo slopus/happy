@@ -93,7 +93,13 @@ export const lightTheme = {
             dot: '#007AFF',
         },
         modal: {
-            border: 'rgba(0, 0, 0, 0.1)'
+            border: 'rgba(0, 0, 0, 0.1)',
+            backdrop: 'rgba(0, 0, 0, 0.54)',
+        },
+        desktopSkin: {
+            frame: 'transparent', border: 'rgba(0, 0, 0, 0.12)',
+            rail: 'rgba(255, 255, 255, 0.90)', sidebar: 'rgba(255, 255, 255, 0.78)',
+            reducedFrame: '#FFFFFF', reducedRail: '#FFFFFF', reducedSidebar: '#FFFFFF',
         },
         button: {
             primary: {
@@ -317,7 +323,13 @@ export const darkTheme = {
             dot: '#0A84FF',
         },
         modal: {
-            border: 'rgba(255, 255, 255, 0.1)'
+            border: 'rgba(255, 255, 255, 0.1)',
+            backdrop: 'rgba(0, 0, 0, 0.62)',
+        },
+        desktopSkin: {
+            frame: 'transparent', border: 'rgba(255, 255, 255, 0.12)',
+            rail: 'rgba(16, 20, 25, 0.90)', sidebar: 'rgba(24, 29, 36, 0.78)',
+            reducedFrame: '#171C23', reducedRail: '#101419', reducedSidebar: '#181D24',
         },
         button: {
             primary: {

@@ -25,6 +25,18 @@ if [[ ! "$RELEASE_REVISION" =~ ^[0-9a-f]{40}$ ]]; then
     exit 1
 fi
 
+# Validate the immutable skin URL before the first OSS write.
+skin_dir="$DIST_DIR/desktop-skins/dreamskin"
+[[ -d "$skin_dir" ]] || { echo '错误：缺少 DreamSkin 背景资源。' >&2; exit 1; }
+skin_count="$(find "$DIST_DIR/desktop-skins" -type f | wc -l | tr -d '[:space:]')"
+[[ "$skin_count" == 1 ]] || { echo '错误：DreamSkin 背景资源必须恰好有一个。' >&2; exit 1; }
+skin_path="$(find "$skin_dir" -type f -print)"
+skin_name="${skin_path##*/}"
+[[ "$skin_name" =~ ^background\.([0-9a-f]{16})\.webp$ ]] || { echo '错误：DreamSkin 背景文件名缺少内容哈希。' >&2; exit 1; }
+skin_hash_prefix="${BASH_REMATCH[1]}"
+skin_hash="$(shasum -a 256 "$skin_path" | cut -d ' ' -f 1)"
+[[ "${skin_hash:0:16}" == "$skin_hash_prefix" ]] || { echo '错误：DreamSkin 背景文件名与内容 SHA-256 不一致。' >&2; exit 1; }
+
 if ! command -v aliyun >/dev/null 2>&1 || ! aliyun ossutil --help >/dev/null 2>&1; then
     echo "错误：需要带 ossutil 子命令的 aliyun CLI。" >&2
     exit 1
@@ -86,6 +98,7 @@ if [[ -d "$DIST_DIR/assets" ]]; then
         "oss://$OSS_BUCKET/web/releases/$RELEASE_REVISION/assets/" \
         "oss://$OSS_BUCKET/assets/"
 fi
+upload_file "$skin_path" "oss://$OSS_BUCKET/desktop-skins/dreamskin/$skin_name" "$IMMUTABLE_CACHE_CONTROL" "image/webp"
 
 for source_file in "$DIST_DIR/.well-known"/*; do
     [[ -f "$source_file" ]] || continue

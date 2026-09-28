@@ -18,7 +18,7 @@ vi.mock('@/hooks/useDesktopWorkspaceLayout', () => ({ DesktopWorkspaceLayoutIsol
 vi.mock('@/text', () => ({ t: (key: string) => key }));
 vi.mock('@/constants/Typography', () => ({ Typography: { default: () => ({}) } }));
 vi.mock('react-native-unistyles', () => {
-    const theme = { colors: { surface: 'surface', surfacePressed: 'pressed', divider: 'divider', shadow: { color: 'shadow' }, header: { tint: 'tint', background: 'header' } } };
+    const theme = { colors: { surface: 'surface', surfacePressed: 'pressed', divider: 'divider', shadow: { color: 'shadow' }, modal: { backdrop: 'rgba(0,0,0,.66)' }, header: { tint: 'tint', background: 'header' } } };
     return { StyleSheet: { create: (f: any) => f(theme), absoluteFill: {}, hairlineWidth: 1 }, useUnistyles: () => ({ theme }) };
 });
 import { DesktopStackNavigator, focusDesktopModalInitialTarget } from './DesktopAppStack';
@@ -73,6 +73,7 @@ describe('desktop app stack presentation', () => {
         expect(stacks[0].props.state.preloadedRoutes).toEqual([]);
         expect(stacks[1].props.state.preloadedRoutes).toEqual([]);
         expect(renderer.root.findByProps({ testID: 'desktop-modal-back' })).toBeDefined();
+        expect(renderer.root.findByProps({ testID: 'desktop-modal-backdrop' }).props.style[1]).toEqual({ backgroundColor: 'rgba(0,0,0,.66)' });
         expect(navigateDesktopModalBack(false)).toBe(true);
         expect(mocks.back).toHaveBeenCalled();
         act(() => renderer.root.findByProps({ testID: 'desktop-modal-close' }).props.onPress());

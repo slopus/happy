@@ -18,6 +18,8 @@ vi.mock('react-native-unistyles', () => ({
 vi.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0 }) }));
 vi.mock('@/utils/responsive', () => ({ useHeaderHeight: () => 0 }));
 vi.mock('@/sync/storage', () => ({
+    useLocalSetting: () => 'default',
+    useProfile: () => ({ id: 'test-user' }),
     useSession: (id: string) => ({ id, thinking: true, metadata: null }),
     useSessionMessages: () => ({ ...state, isLoaded: true }),
     useSetting: () => true,

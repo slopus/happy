@@ -11,6 +11,12 @@ const runtime = vi.hoisted(() => ({
     setTheme: vi.fn(),
     themeName: 'caramelDark' as string | undefined,
 }));
+const savedSkin = vi.hoisted(() => ({ value: 'default' }));
+
+vi.mock('@/sync/persistence', async (importOriginal) => ({
+    ...await importOriginal<typeof import('@/sync/persistence')>(),
+    loadDesktopSkinId: () => savedSkin.value,
+}));
 
 vi.mock('react-native', () => ({
     Platform: {
@@ -94,6 +100,7 @@ describe('usePublicSessionAppearance', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         runtime.themeName = 'caramelDark';
+        savedSkin.value = 'default';
         runtime.getTheme.mockReturnValue({ colors: { groupped: { background: '#1A1512' } } });
         mediaQuery = createMediaQuery(false);
         vi.stubGlobal('window', {
@@ -197,6 +204,35 @@ describe('usePublicSessionAppearance', () => {
         hook.unmount();
         expect(runtime.setTheme).toHaveBeenLastCalledWith('caramelDark');
         expect(runtime.setRootViewBackgroundColor).toHaveBeenLastCalledWith('#1A1512');
+    });
+
+    it('restores the saved Paws palette after a DreamSkin share is narrowed to phone width', () => {
+        runtime.themeName = 'dreamskinDark';
+        vi.stubGlobal('window', {
+            innerWidth: 600,
+            localStorage: createLocalStorage(),
+            matchMedia: vi.fn(() => mediaQuery),
+        });
+        const hook = renderAppearance('gingham');
+
+        hook.unmount();
+        expect(runtime.setTheme).toHaveBeenLastCalledWith('caramelLight');
+        expect(runtime.setRootViewBackgroundColor).toHaveBeenLastCalledWith('#FBF7F0');
+    });
+
+    it('restores DreamSkin when a share opens narrow and returns at desktop width', () => {
+        savedSkin.value = 'dreamskin';
+        runtime.themeName = 'caramelLight';
+        vi.stubGlobal('window', {
+            innerWidth: 1200,
+            localStorage: createLocalStorage(),
+            matchMedia: vi.fn(() => mediaQuery),
+        });
+        const hook = renderAppearance('gingham');
+
+        hook.unmount();
+        expect(runtime.setTheme).toHaveBeenLastCalledWith('dreamskinDark');
+        expect(runtime.setRootViewBackgroundColor).toHaveBeenLastCalledWith('#131313');
     });
 
     it('supports legacy media-query listeners and removes them on explicit selection', () => {

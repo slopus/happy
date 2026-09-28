@@ -29,6 +29,7 @@ vi.mock('react-native', () => ({
     AppState: { currentState: 'active' },
     Platform: { OS: 'web' },
     View: 'View',
+    useWindowDimensions: () => ({ width: 1440, height: 900, scale: 1, fontScale: 1 }),
 }));
 vi.mock('expo-splash-screen', () => ({
     hideAsync: vi.fn().mockResolvedValue(undefined),

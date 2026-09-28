@@ -1,4 +1,5 @@
 import { readdir, readFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 
 const [origin, indexPath, mode, browserOriginArgument] = process.argv.slice(2);
@@ -168,7 +169,7 @@ function assertMime(label, pathname, response) {
 
 function assertCachePolicy(label, pathname, response) {
     const cacheControl = response.headers.get('cache-control') ?? '';
-    const immutable = pathname.startsWith('/web/releases/') || pathname.startsWith('/_expo/') || pathname.startsWith('/assets/');
+    const immutable = pathname.startsWith('/web/releases/') || pathname.startsWith('/_expo/') || pathname.startsWith('/assets/') || pathname.startsWith('/desktop-skins/');
     if (immutable) {
         if (!/\bmax-age=31536000\b/i.test(cacheControl) || !/\bimmutable\b/i.test(cacheControl)) {
             throw new Error(`${label} cache-control is not immutable: ${cacheControl || '(missing)'}`);
@@ -216,6 +217,26 @@ const representativeImageUrl = assetUrlForFile(representativeImagePath);
 const representativeImageResponse = await fetchRequired('representative image asset', representativeImageUrl);
 assertMime('representative image asset', representativeImagePath, representativeImageResponse);
 assertCachePolicy('representative image asset', representativeImageUrl.slice(normalizedOrigin.length), representativeImageResponse);
+
+const skinDirectory = join(distDirectory, 'desktop-skins');
+const skinFiles = await listFiles(skinDirectory).catch((error) => {
+    if (error?.code === 'ENOENT') return [];
+    throw error;
+});
+if (skinFiles.length !== 1) throw new Error(`desktop skin background missing or ambiguous: found ${skinFiles.length}`);
+for (const skinPath of skinFiles) {
+    const relativePath = relative(skinDirectory, skinPath).split(sep).join('/');
+    const expectedHash = createHash('sha256').update(await readFile(skinPath)).digest('hex');
+    if (relativePath !== `dreamskin/background.${expectedHash.slice(0, 16)}.webp`) {
+        throw new Error(`desktop skin background is not content-addressed: ${relativePath}`);
+    }
+    const pathname = `/desktop-skins/${relativePath}`;
+    const response = await fetchRequired('desktop skin background', `${normalizedOrigin}${pathname}`);
+    assertMime('desktop skin background', pathname, response);
+    assertCachePolicy('desktop skin background', pathname, response);
+    const remoteHash = createHash('sha256').update(Buffer.from(await response.arrayBuffer())).digest('hex');
+    if (remoteHash !== expectedHash) throw new Error(`desktop skin background SHA-256 mismatch: ${pathname}`);
+}
 
 const requiredSoundPaths = ['approval', 'complete', 'error', 'start', 'submit']
     .map((name) => `assets/sounds/codeisland/8bit_${name}.wav`);

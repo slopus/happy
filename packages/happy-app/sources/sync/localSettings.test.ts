@@ -1,6 +1,21 @@
 import { describe, it, expect } from 'vitest';
 import { localSettingsDefaults, localSettingsParse } from './localSettings';
 
+it('keeps the desktop skin independent of the saved color pack and light preference', () => {
+    expect(localSettingsDefaults.desktopSkinId).toBe('default');
+    expect(localSettingsParse({ desktopSkinId: 'dreamskin', themePack: 'gingham', themePreference: 'light' })).toMatchObject({
+        desktopSkinId: 'dreamskin', themePack: 'gingham', themePreference: 'light',
+    });
+    expect(localSettingsParse({ desktopSkinId: 'unknown' }).desktopSkinId).toBe('default');
+});
+
+it('keeps a device-local reading width within the supported range', () => {
+    expect(localSettingsParse({}).desktopReadingWidth).toBe(960);
+    expect(localSettingsParse({ desktopReadingWidth: 1120 }).desktopReadingWidth).toBe(1120);
+    expect(localSettingsParse({ desktopReadingWidth: 500 }).desktopReadingWidth).toBe(960);
+    expect(localSettingsParse({ desktopReadingWidth: 'wide' }).desktopReadingWidth).toBe(960);
+});
+
 describe('local web sound preferences', () => {
     it('keeps sound off for existing installations until the user enables it', () => {
         expect(localSettingsParse({}).webSound).toEqual(localSettingsDefaults.webSound);

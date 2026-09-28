@@ -635,7 +635,10 @@ describe('active-first session bootstrap', () => {
         const lease = syncForTest.sessionMessageLoadGate.enter('warm-session');
         await syncForTest.fetchMessages('warm-session', syncForTest.sessionMessageLoadGate.begin(lease));
 
-        expect(mocks.apiRequest).toHaveBeenCalledWith(expect.stringContaining('before_seq='));
+        expect(mocks.apiRequest).toHaveBeenCalledWith(
+            expect.stringContaining('before_seq='),
+            expect.objectContaining({ signal: expect.any(AbortSignal) }),
+        );
         expect(mocks.state.sessionMessages['warm-session']).toMatchObject({ isLoaded: true });
     });
 
@@ -1282,6 +1285,7 @@ describe('deep-link session opening', () => {
         expect(mocks.fetchSnapshot).toHaveBeenCalledWith(syncForTest.credentials, 'deep-session');
         expect(mocks.apiRequest).toHaveBeenCalledWith(
             '/v3/sessions/deep-session/messages?before_seq=2147483647&limit=25',
+            expect.objectContaining({ signal: expect.any(AbortSignal) }),
         );
         target.resolve(snapshot('deep-session'));
         latest.resolve(response({

@@ -7,21 +7,30 @@ import { itemMessages } from './transcriptReading';
 import { Platform, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useHeaderHeight } from '@/utils/responsive';
-import { useSession, useSessionMessages, useSetting } from '@/sync/storage';
+import { useLocalSetting, useProfile, useSession, useSessionMessages, useSetting } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import type { Session } from '@/sync/storageTypes';
 import { isSessionTurnActive } from '@/hooks/useGroupedMessages';
 import { useSessionQuickActions } from '@/hooks/useSessionQuickActions';
 import { ChatFooter } from './ChatFooter';
 import { ConversationTranscript } from './ConversationTranscript';
+import { getAvatarUrl } from '@/sync/profile';
 import type { TranscriptReadingAdapter } from './transcriptReading';
 import { useSessionTextPreviews } from '@/sync/sessionTextStream';
 import { selectVisibleTextPreviews } from './sessionTextPreviewProjection';
 import { StreamingTextPreviews } from './StreamingTextPreviews';
 
-type ChatListProps = { session: Session; followLatestRequest?: number };
-export const ChatList = React.memo((props: ChatListProps) => props.session.metadata?.continuationOfSessionId
-    ? <ContinuationChatList key={props.session.id} {...props} /> : <SingleSessionChatList {...props} />);
+type ChatListProps = { session: Session; followLatestRequest?: number; desktopMainWidth?: number; turnAvatar?: { id: string; imageUrl: string | null; thumbhash?: string | null } };
+export const ChatList = React.memo((props: ChatListProps) => {
+    const desktopSkinId = useLocalSetting('desktopSkinId');
+    const profile = useProfile();
+    const turnAvatar = Platform.OS === 'web' && desktopSkinId === 'dreamskin' && (props.desktopMainWidth ?? 0) >= 920
+        ? { id: profile.id, imageUrl: getAvatarUrl(profile), thumbhash: profile.avatar?.thumbhash }
+        : undefined;
+    const childProps = { ...props, turnAvatar };
+    return props.session.metadata?.continuationOfSessionId
+        ? <ContinuationChatList key={props.session.id} {...childProps} /> : <SingleSessionChatList {...childProps} />;
+});
 
 const ContinuationChatList = React.memo((props: ChatListProps) => {
     const history = useContinuationHistory(props.session.id);
@@ -39,6 +48,7 @@ const ContinuationChatList = React.memo((props: ChatListProps) => {
     const items = React.useMemo(() => composeContinuationItems(sections, props.session.id,
         groupToolCalls, isSessionTurnActive(session)), [sections, props.session.id, groupToolCalls, session]);
     return <ConversationTranscript sessionId={props.session.id} metadata={session.metadata}
+        turnAvatar={props.turnAvatar}
         messages={messages} scopedItems={items} groupToolCalls={groupToolCalls}
         scopedViewport={(visible, direction) => {
             const section = direction === 'older' ? sections.at(-1) : sections[0];
@@ -137,6 +147,7 @@ const SingleSessionChatList = React.memo((props: ChatListProps) => {
 
     return (
         <ConversationTranscript
+            turnAvatar={props.turnAvatar}
             metadata={props.session.metadata}
             sessionId={props.session.id}
             messages={messages}

@@ -20,6 +20,7 @@ const SESSION_MANAGEMENT_KEY = 'session-management-v1';
 const PENDING_SIDEBAR_ORGANIZATION_BASE_KEY = 'pending-sidebar-organization-base-v1';
 const PENDING_SESSION_PINNED_ORDER_BASE_KEY = 'pending-session-pinned-order-base-v1';
 const PENDING_SESSION_PINNED_STATE_KEY = 'pending-session-pinned-state-v1';
+const STAGING_DREAMSKIN_SEEDED_KEY = 'staging-dreamskin-seeded-v1';
 
 export type NewSessionAgentType = 'ask' | 'claude' | 'codex' | 'gemini' | 'opencode' | 'openclaw';
 export type NewSessionSessionType = 'simple' | 'worktree';
@@ -175,18 +176,30 @@ export function loadPendingSessionPinnedOrderBase(): string[] | null {
     }
 }
 
+function seedStagingDreamSkinOnce(settings: LocalSettings): LocalSettings {
+    // Only the independent test-site build sets this flag. Keep the saved
+    // preference mutable so switching back to the original skin sticks.
+    if (process.env.EXPO_PUBLIC_DREAMSKIN_STAGING_DEFAULT !== '1' || mmkv.getBoolean(STAGING_DREAMSKIN_SEEDED_KEY)) {
+        return settings;
+    }
+    const seeded = { ...settings, desktopSkinId: 'dreamskin' as const };
+    mmkv.set('local-settings', JSON.stringify(seeded));
+    mmkv.set(STAGING_DREAMSKIN_SEEDED_KEY, true);
+    return seeded;
+}
+
 export function loadLocalSettings(): LocalSettings {
     const localSettings = mmkv.getString('local-settings');
     if (localSettings) {
         try {
             const parsed = JSON.parse(localSettings);
-            return localSettingsParse(parsed);
+            return seedStagingDreamSkinOnce(localSettingsParse(parsed));
         } catch (e) {
             console.error('Failed to parse local settings', e);
-            return { ...localSettingsDefaults };
+            return seedStagingDreamSkinOnce({ ...localSettingsDefaults });
         }
     }
-    return { ...localSettingsDefaults };
+    return seedStagingDreamSkinOnce({ ...localSettingsDefaults });
 }
 
 export function saveLocalSettings(settings: LocalSettings) {
@@ -232,6 +245,10 @@ export function loadThemePack(): LocalSettings['themePack'] {
         }
     }
     return localSettingsDefaults.themePack;
+}
+
+export function loadDesktopSkinId(): LocalSettings['desktopSkinId'] {
+    return loadLocalSettings().desktopSkinId;
 }
 
 export function loadPurchases(): Purchases {

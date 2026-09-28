@@ -6,7 +6,7 @@ import type { AttachmentPreview } from '@/sync/attachmentTypes';
 import type { AttachmentGalleryPresentation } from '@/utils/attachmentGalleryLayout';
 import { generateThumbhash } from '@/utils/thumbhash';
 import { getImagesFromClipboard } from '@/utils/pasteImages.web';
-import { layout } from './layout';
+import { useDesktopReadingWidth } from './DesktopReadingWidth';
 import { MultiTextInput, KeyPressEvent } from './MultiTextInput';
 import { Typography } from '@/constants/Typography';
 import { hapticsLight, hapticsError } from './haptics';
@@ -457,6 +457,7 @@ const AgentInputContextChips = React.memo(function AgentInputContextChips(p: Con
 });
 
 export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle, MessageComposerProps>((props, ref) => {
+    const readingWidth = useDesktopReadingWidth();
     const styles = stylesheet;
     const { theme } = useUnistyles();
     const { width: screenWidth } = useWindowDimensions();
@@ -760,7 +761,7 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
         ]}>
             <View style={[
                 styles.innerContainer,
-                { maxWidth: layout.maxWidth }
+                { maxWidth: readingWidth }
             ]} ref={composerContentRef} testID="message-composer-content">
                 {/* Autocomplete suggestions overlay */}
                 {suggestions.length > 0 && (

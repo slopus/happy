@@ -10,12 +10,13 @@ import { fileURLToPath } from 'node:url';
 const verifierPath = fileURLToPath(new URL('./verify-web-release.mjs', import.meta.url));
 const revision = '1234567890abcdef1234567890abcdef12345678';
 
-async function createDist() {
+async function createDist(includeSkin = true) {
     const directory = await mkdtemp(join(tmpdir(), 'paws-web-verify-'));
     await mkdir(join(directory, 'assets'), { recursive: true });
     await mkdir(join(directory, 'assets', 'sounds', 'codeisland'), { recursive: true });
     await mkdir(join(directory, '_expo'), { recursive: true });
     await mkdir(join(directory, '.well-known'), { recursive: true });
+    if (includeSkin) await mkdir(join(directory, 'desktop-skins', 'dreamskin'), { recursive: true });
     await writeFile(join(directory, 'index.html'), '<html><head></head><body><script src="/_expo/app.js"></script></body></html>');
     await writeFile(join(directory, '.paws-release-revision'), `${revision}\n`);
     await writeFile(join(directory, 'assets', 'Ionicons.abc123.ttf'), 'ionicons');
@@ -25,6 +26,7 @@ async function createDist() {
         await writeFile(join(directory, 'assets', 'sounds', 'codeisland', `8bit_${name}.wav`), 'RIFF');
     }
     await writeFile(join(directory, '_expo', 'app.js'), 'app');
+    if (includeSkin) await writeFile(join(directory, 'desktop-skins', 'dreamskin', 'background.55c64d0fcd6f9d5f.webp'), 'photo');
     await writeFile(join(directory, 'metadata.json'), '{}');
     await writeFile(join(directory, 'canvaskit.wasm'), 'wasm');
     await writeFile(join(directory, '.well-known', 'apple-app-site-association'), '{}');
@@ -51,8 +53,11 @@ async function runVerifier({
     requestTimeoutMs = 300,
     assetNeverResponds = false,
     entryNeverResponds = false,
+    skinCacheImmutable = true,
+    skinContentMatches = true,
+    includeSkin = true,
 } = {}) {
-    const directory = await createDist();
+    const directory = await createDist(includeSkin);
     let healthRequests = 0;
     const server = http.createServer((request, response) => {
         const origin = `http://127.0.0.1:${server.address().port}`;
@@ -65,11 +70,11 @@ async function runVerifier({
             response.end('font');
             return;
         }
-        if (request.url?.endsWith('.png')) {
+        if (request.url?.endsWith('.png') || request.url?.endsWith('.webp')) {
             response.statusCode = 200;
-            response.setHeader('Content-Type', 'image/png');
-            response.setHeader('Cache-Control', 'public,max-age=31536000,immutable');
-            response.end('image');
+            response.setHeader('Content-Type', request.url?.endsWith('.webp') ? 'image/webp' : 'image/png');
+            response.setHeader('Cache-Control', request.url?.startsWith('/desktop-skins/') && !skinCacheImmutable ? 'no-cache' : 'public,max-age=31536000,immutable');
+            response.end(request.url?.startsWith('/desktop-skins/') ? skinContentMatches ? 'photo' : 'changed' : 'image');
             return;
         }
         if (request.url?.endsWith('.wav')) {
@@ -202,8 +207,27 @@ test('accepts matching HTML and browser-readable Ionicons and Octicons', async (
     assert.match(result.stdout, /Ionicons/);
     assert.match(result.stdout, /Octicons/);
     assert.match(result.stdout, /representative image asset/);
+    assert.match(result.stdout, /desktop skin background/);
     assert.match(result.stdout, new RegExp(revision));
     assert.match(result.stdout, /legacy Web entry redirects to the canonical origin/i);
+});
+
+test('rejects a mutable DreamSkin background that would survive rollback', async () => {
+    const result = await runVerifier({ skinCacheImmutable: false });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /desktop skin background.*immutable/i);
+});
+
+test('rejects a remote DreamSkin image with different bytes under the same immutable URL', async () => {
+    const result = await runVerifier({ skinContentMatches: false });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /desktop skin background.*SHA-256/i);
+});
+
+test('rejects a DreamSkin Web release missing its background', async () => {
+    const result = await runVerifier({ includeSkin: false });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /desktop skin background.*missing/i);
 });
 
 test('rejects a legacy Web entry that still serves content instead of redirecting', async () => {

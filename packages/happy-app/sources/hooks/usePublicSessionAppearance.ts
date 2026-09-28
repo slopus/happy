@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { UnistylesRuntime } from 'react-native-unistyles';
-import { appThemes, resolveThemeName, type AppThemeName, type ThemePackId } from '@/themePacks';
+import { appThemes, resolveDesktopThemeName, resolveThemeName, type AppThemeName, type ThemePackId } from '@/themePacks';
+import { loadDesktopSkinId, loadThemePack, loadThemePreference } from '@/sync/persistence';
 
 export type PublicSessionAppearanceMode = 'light' | 'dark' | 'system';
 
@@ -65,6 +66,15 @@ export function usePublicSessionAppearance(themePack: ThemePackId): {
         const previousThemeName = UnistylesRuntime.themeName;
         const previousBackground = UnistylesRuntime.getTheme().colors.groupped.background;
         return () => {
+            // A share can remain open while the viewport crosses the PC-only
+            // breakpoint in either direction. Reconcile saved skin at return.
+            if (loadDesktopSkinId() === 'dreamskin' || previousThemeName === 'dreamskinDark') {
+                const preference = loadThemePreference();
+                const dark = preference === 'dark' || (preference === 'adaptive' && !!darkModeMediaQuery()?.matches);
+                const width = browserWindow()?.innerWidth ?? 0;
+                applyPublicTheme(resolveDesktopThemeName(loadThemePack(), dark, loadDesktopSkinId(), 'web', width));
+                return;
+            }
             if (previousThemeName) UnistylesRuntime.setTheme(previousThemeName);
             UnistylesRuntime.setRootViewBackgroundColor(previousBackground);
         };
