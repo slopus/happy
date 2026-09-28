@@ -228,6 +228,15 @@ describe('ChatList automatic history', () => {
             return [1, 3, 799].includes(seq) ? userMessage(`m${seq}`, seq) : agentMessage(`m${seq}`, seq);
         });
     }
+    // A current turn (t1300/t1299) over one long agent turn: final answer
+    // t1298, then 1296 rows of work, opened by the prompt at seq 1 — thirteen
+    // pages of history for a single collapsed group.
+    function longTurn(count: number) {
+        return Array.from({ length: count }, (_, index) => {
+            const seq = 1300 - index;
+            return [1, 1299].includes(seq) ? userMessage(`t${seq}`, seq) : agentMessage(`t${seq}`, seq);
+        });
+    }
     function thinking(count: number, from = 800) {
         return Array.from({ length: count }, (_, i) => ({ ...agentMessage(`thinking${from - i}`, from - i), isThinking: true }));
     }
@@ -315,6 +324,25 @@ describe('ChatList automatic history', () => {
         expect(renderer.root.findAllByType('ActivityIndicator')).toHaveLength(0);
         scroll(renderer, 30);
         expect(page.started()).toBe(2);
+    });
+
+    it('keeps paging through a turn whose work spans more pages than the invisible-page budget', async () => {
+        const renderer = open(longTurn(600));
+        const page = pendingPage();
+        layout(renderer);
+        expect(page.started()).toBe(1);
+        // Every page lands inside the same collapsed turn. The oldest row is
+        // still that turn's group, but the group now reaches further back —
+        // progress toward the turn's opener, not a page with nothing in it.
+        for (let count = 700; count <= 1200; count += 100) {
+            await settle(renderer, longTurn(count), true, page.finish);
+        }
+        expect(page.started()).toBe(7);
+        expect(renderer.root.findAllByType('RoundButton')).toHaveLength(0);
+        await settle(renderer, longTurn(1300), false, page.finish);
+        expect(messageIds(renderer)).toEqual(['t1300', 't1299', 't1298', 't1']);
+        expect(headerIds(renderer)).toEqual(['work-t1298']);
+        expect(page.started()).toBe(7);
     });
 
     it('keeps a group the reader expanded open while its older members and opener arrive', async () => {
