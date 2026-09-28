@@ -483,6 +483,9 @@ Conversation history is preserved on the server, but in-flight tool calls are in
         args: resolved.args,
         ...(standaloneLaunch ? { standaloneLaunch } : {}),
       });
+      // runAcp has flushed and closed its session. Leave now, like runClaude: left to
+      // drain on its own the process lingered ~10s, which a Windows app close waits out.
+      process.exit(0)
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
       if (process.env.DEBUG) {

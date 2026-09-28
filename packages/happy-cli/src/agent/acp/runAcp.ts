@@ -589,15 +589,17 @@ export async function runAcp(opts: {
   const happyServer = await startHappyServer(session, launchControl ? {
     admitTool: <T,>(work: () => Promise<T>) => (runtimeGate ? runtimeGate.admit(work, 'writer') : Promise.reject(new Error('Runtime input is not open'))),
   } : undefined);
+  // Launched via `node <path>` like Codex: agents that spawn without a shell (Grok on
+  // Windows) cannot execute a .mjs shebang script (os error 193).
   const bridgeCommand = join(projectPath(), 'bin', 'happy-mcp.mjs');
   const aplusMcpServers = bridgeAplusMcpServers(
     await fetchAplusMcpServers(opts.credentials.token, settings.machineId),
-    { bridgeCommand },
+    { bridgeCommand, nodeExecPath: process.execPath },
   );
   const mcpServers = mergeMcpServers({
     happy: {
-      command: bridgeCommand,
-      args: ['--url', happyServer.url],
+      command: process.execPath,
+      args: ['--no-warnings', '--no-deprecation', bridgeCommand, '--url', happyServer.url],
     },
   }, aplusMcpServers);
 

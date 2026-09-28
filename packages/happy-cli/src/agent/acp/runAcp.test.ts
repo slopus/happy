@@ -332,6 +332,24 @@ describe('runAcp', () => {
     });
   });
 
+  it('launches the Happy MCP bridge through node, which Windows agents can spawn without a shell', async () => {
+    const runPromise = runAcp({
+      credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } },
+      agentName: 'grok',
+      command: 'grok',
+      args: ['agent', 'stdio'],
+    });
+    await vi.waitFor(() => expect(mocks.backendState.startSessionCalls).toBe(1));
+    await mocks.getKillHandler()!();
+    await runPromise;
+
+    // A .mjs path is not an executable on Windows (os error 193); node runs it everywhere.
+    expect(mocks.backendState.constructorArgs.mcpServers.happy).toEqual({
+      command: process.execPath,
+      args: ['--no-warnings', '--no-deprecation', '/tmp/happy/bin/happy-mcp.mjs', '--url', 'http://127.0.0.1:9876'],
+    });
+  });
+
   it('wires backend messages through mapper into session envelopes', async () => {
     const runPromise = runAcp({
       credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } },
