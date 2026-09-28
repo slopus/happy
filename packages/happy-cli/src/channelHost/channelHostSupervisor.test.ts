@@ -196,6 +196,49 @@ describe('createChannelHostSupervisor', () => {
         expect(delays).toEqual([1000, 2000, 4000, 8000, 16000, 32000, 60000, 60000]);
     });
 
+    it('retries a child that exited without custody only hourly, not on the crash backoff', async () => {
+        const supervisor = make();
+        supervisor.start();
+        for (let attempt = 1; attempt <= 3; attempt++) {
+            children.at(-1)!.send({ t: 'unavailable', reason: 'CUSTODY_UNAVAILABLE' });
+            await flush();
+            children.at(-1)!.exit();
+            await flush();
+            await vi.advanceTimersByTimeAsync(3_600_000 - 1);
+            expect(children).toHaveLength(attempt);
+            await vi.advanceTimersByTimeAsync(1);
+            expect(children).toHaveLength(attempt + 1);
+        }
+        expect(logs).toContain('restart-scheduled:CUSTODY_UNAVAILABLE');
+    });
+
+    it.each(['NODE_TOO_OLD', 'INIT_INVALID'])('does not restart a child that exited as %s, which no retry can fix', async (reason) => {
+        const supervisor = make();
+        supervisor.start();
+        children[0].send({ t: 'unavailable', reason });
+        await flush();
+        children[0].exit();
+        await flush();
+        await vi.advanceTimersByTimeAsync(24 * 3_600_000);
+        expect(children).toHaveLength(1);
+        expect(logs).toContain(`restart-abandoned:${reason}`);
+    });
+
+    it('goes back to the crash backoff once a retried child crashes for another reason', async () => {
+        const supervisor = make();
+        supervisor.start();
+        children[0].send({ t: 'unavailable', reason: 'CUSTODY_UNAVAILABLE' });
+        await flush();
+        children[0].exit();
+        await flush();
+        await vi.advanceTimersByTimeAsync(3_600_000);
+        expect(children).toHaveLength(2);
+        children[1].exit();
+        await flush();
+        await vi.advanceTimersByTimeAsync(1_000);
+        expect(children).toHaveLength(3);
+    });
+
     it('forwards a sealed settings call and returns the sealed result, without opening it', async () => {
         const supervisor = make();
         supervisor.start();

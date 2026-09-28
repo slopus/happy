@@ -133,6 +133,9 @@ export function spawnChannelHostChild(entry: string, cwd: string): ChannelHostCh
 
 const UNAVAILABLE_REASONS = new Set(['CUSTODY_UNAVAILABLE', 'NODE_TOO_OLD', 'LOCK_HELD', 'INIT_INVALID']);
 
+/** A child that exits after one of these would say the same again: restarting it only churns processes. */
+const PERMANENT_UNAVAILABLE_REASONS = new Set(['NODE_TOO_OLD', 'INIT_INVALID']);
+
 function isNonEmptyString(value: unknown): value is string {
     return typeof value === 'string' && value.length > 0;
 }
@@ -167,10 +170,13 @@ export function createChannelHostSupervisor(deps: {
     /** Closed codes only. */
     log: (code: string) => void;
     restartDelayMs?: { initial: number; max: number };
+    /** Retry delay for a child that exited without custody — a keychain can be unlocked later. */
+    custodyRetryMs?: number;
     stopGraceMs?: number;
     settingsTimeoutMs?: number;
 }): ChannelHostSupervisor {
     const restartDelay = deps.restartDelayMs ?? { initial: 1_000, max: 60_000 };
+    const custodyRetryMs = deps.custodyRetryMs ?? 3_600_000;
     const stopGraceMs = deps.stopGraceMs ?? 10_000;
     const settingsTimeoutMs = deps.settingsTimeoutMs ?? 30_000;
 
@@ -178,6 +184,7 @@ export function createChannelHostSupervisor(deps: {
         child: ChannelHostChild;
         startedAt: number;
         ready: boolean;
+        unavailableReason: string | null;
         exited: Promise<void>;
         pending: Map<string, (result: ChannelHostCallResult) => void>;
     };
@@ -232,7 +239,9 @@ export function createChannelHostSupervisor(deps: {
             deps.log('ready');
             setReady(target, advertisement);
         } else if (message.t === 'unavailable') {
-            deps.log(`unavailable:${UNAVAILABLE_REASONS.has(message.reason as string) ? message.reason : 'UNKNOWN'}`);
+            const reason = UNAVAILABLE_REASONS.has(message.reason as string) ? message.reason as string : 'UNKNOWN';
+            deps.log(`unavailable:${reason}`);
+            target.unavailableReason = reason;
             setReady(target, undefined);
         } else if (message.t === 'settings-result' && isNonEmptyString(message.id)) {
             const resolve = target.pending.get(message.id);
@@ -245,11 +254,18 @@ export function createChannelHostSupervisor(deps: {
         }
     };
 
-    const scheduleRestart = () => {
+    const scheduleRestart = (unavailableReason: string | null = null) => {
         if (stopped || restartTimer) return;
-        const delay = nextDelay;
-        nextDelay = Math.min(nextDelay * 2, restartDelay.max);
-        deps.log('restart-scheduled');
+        let delay: number;
+        if (unavailableReason === 'CUSTODY_UNAVAILABLE') {
+            // Not a crash: the crash backoff stays where it was.
+            delay = custodyRetryMs;
+            deps.log(`restart-scheduled:${unavailableReason}`);
+        } else {
+            delay = nextDelay;
+            nextDelay = Math.min(nextDelay * 2, restartDelay.max);
+            deps.log('restart-scheduled');
+        }
         restartTimer = setTimeout(() => {
             restartTimer = null;
             launch();
@@ -272,6 +288,7 @@ export function createChannelHostSupervisor(deps: {
             child,
             startedAt: Date.now(),
             ready: false,
+            unavailableReason: null,
             exited: new Promise<void>((resolve) => { markExited = resolve; }),
             pending: new Map(),
         };
@@ -290,7 +307,11 @@ export function createChannelHostSupervisor(deps: {
                 target.pending.clear();
                 // A child that ran a whole backoff ceiling was healthy; its crash starts over.
                 if (Date.now() - target.startedAt >= restartDelay.max) nextDelay = restartDelay.initial;
-                scheduleRestart();
+                if (target.unavailableReason && PERMANENT_UNAVAILABLE_REASONS.has(target.unavailableReason)) {
+                    deps.log(`restart-abandoned:${target.unavailableReason}`);
+                } else {
+                    scheduleRestart(target.unavailableReason);
+                }
             }
             markExited();
         };
