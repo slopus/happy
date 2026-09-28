@@ -43,6 +43,16 @@ describe('registerHappyBridgeTools', () => {
         await registrations.find((tool) => tool.name === 'publish_preview')!.handler(args);
         expect(callTool).toHaveBeenCalledWith({ name: 'publish_preview', arguments: args });
     });
+    it('forwards preview inventory and scoped close calls', async () => {
+        const { server, registrations } = createServerMock();
+        const callTool = vi.fn(async () => ({ content: [{ type: 'text' as const, text: 'ok' }] }));
+        registerHappyBridgeTools(server, async () => ({ callTool }) as unknown as Client);
+        await registrations.find((tool) => tool.name === 'list_previews')!.handler({});
+        const args = { previewId: '11111111-1111-4111-8111-111111111111' };
+        await registrations.find((tool) => tool.name === 'close_preview')!.handler(args);
+        expect(callTool).toHaveBeenNthCalledWith(1, { name: 'list_previews', arguments: {} });
+        expect(callTool).toHaveBeenNthCalledWith(2, { name: 'close_preview', arguments: args });
+    });
     it('registers every first-party Happy bridge tool, including media delivery and finance_chart', () => {
         const { server, registrations } = createServerMock();
 

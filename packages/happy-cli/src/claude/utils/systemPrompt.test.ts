@@ -13,6 +13,8 @@ describe('systemPrompt', () => {
         expect(systemPrompt).toContain('mcp__happy__report_browser_step');
         expect(systemPrompt).toContain('mcp__happy__create_preview');
         expect(systemPrompt).toContain('mcp__happy__publish_preview');
+        expect(systemPrompt).toContain('mcp__happy__list_previews');
+        expect(systemPrompt).toContain('mcp__happy__close_preview');
         expect(systemPrompt).toContain('All previews use Cloudflare');
         expect(systemPrompt).toContain('do not launch a separate tunnel');
         expect(systemPrompt).toMatch(/meaningful completed and verified KEY STEPS/i);

@@ -55,6 +55,10 @@ export class CodexPermissionHandler extends BasePermissionHandler {
         'mcp__happy__create_preview',
         'publish_preview',
         'mcp__happy__publish_preview',
+        'list_previews',
+        'mcp__happy__list_previews',
+        'close_preview',
+        'mcp__happy__close_preview',
     ]);
 
     // Tool-call IDs that should auto-approve when they exactly match one of
@@ -69,6 +73,8 @@ export class CodexPermissionHandler extends BasePermissionHandler {
         'report_browser_step',
         'create_preview',
         'publish_preview',
+        'list_previews',
+        'close_preview',
     ];
 
     constructor(

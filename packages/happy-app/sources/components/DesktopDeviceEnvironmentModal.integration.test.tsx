@@ -108,7 +108,7 @@ vi.mock('@/sync/apiServices', () => ({ disconnectService: vi.fn() }));
 vi.mock('@/sync/profile', () => ({ getDisplayName: () => null }));
 vi.mock('@/components/MascotSwitcher', () => ({ MascotSwitcher: 'MascotSwitcher' }));
 vi.mock('@/text', () => ({
-    SUPPORTED_LANGUAGES: { en: {} }, getLanguageNativeName: () => 'English', t: (key: string, params?: { actions?: string }) => {
+    SUPPORTED_LANGUAGES: { en: {} }, getLanguageNativeName: () => 'English', getCurrentLanguage: () => 'en', t: (key: string, params?: { actions?: string }) => {
         if (key === 'deviceEnvironment.confirmMessage') return `GitHub authentication requires sign-in\n${params?.actions ?? ''}`;
         if (key === 'deviceEnvironment.confirmPawsMessage') return `npm global ownership is required\n${params?.actions ?? ''}`;
         return key;

@@ -131,7 +131,7 @@ describe('CodexPermissionHandler', () => {
         });
     });
 
-    it.each(['mcp__happy__create_preview', 'mcp__happy__publish_preview'])('auto-approves exact managed preview tool %s', async (toolName) => {
+    it.each(['mcp__happy__create_preview', 'mcp__happy__publish_preview', 'mcp__happy__list_previews', 'mcp__happy__close_preview'])('auto-approves exact managed preview tool %s', async (toolName) => {
         const { session } = createSessionMock();
         const handler = new CodexPermissionHandler(session as any);
         await expect(handler.handleToolCall(`call-${toolName}`, toolName, {})).resolves.toEqual({ decision: 'approved' });

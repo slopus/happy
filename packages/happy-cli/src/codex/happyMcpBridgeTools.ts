@@ -12,7 +12,7 @@ import { z } from 'zod';
 
 import { BROWSER_STEP_TOOL_DESCRIPTION } from '@/browser/browserStepReportingPrompt';
 
-export const HAPPY_MCP_BRIDGE_TOOL_NAMES = ['change_title', 'send_image', 'send_file', 'report_browser_step', 'archive_session', 'finance_chart', 'create_preview', 'publish_preview'] as const;
+export const HAPPY_MCP_BRIDGE_TOOL_NAMES = ['change_title', 'send_image', 'send_file', 'report_browser_step', 'archive_session', 'finance_chart', 'create_preview', 'publish_preview', 'list_previews', 'close_preview'] as const;
 
 type HappyMcpBridgeToolName = typeof HAPPY_MCP_BRIDGE_TOOL_NAMES[number];
 
@@ -183,5 +183,25 @@ export function registerHappyBridgeTools(
       inputSchema: { previewId: z.string().uuid(), mode: z.enum(['tunnel', 'hosted']).optional() },
     },
     async (args) => forwardHappyToolCall('publish_preview', { previewId: args.previewId, ...(args.mode ? { mode: args.mode } : {}) }, ensureHttpClient, 'Failed to publish preview')
+  );
+
+  server.registerTool(
+    'list_previews',
+    {
+      description: 'List active Cloudflare tunnel previews in this Happy session and show the remaining slots.',
+      title: 'List Session Previews',
+      inputSchema: {},
+    },
+    async () => forwardHappyToolCall('list_previews', {}, ensureHttpClient, 'Failed to list previews')
+  );
+
+  server.registerTool(
+    'close_preview',
+    {
+      description: 'Stop one active tunnel preview in this Happy session and release its slot. The public link stops working immediately. Use only when the user asks to close it.',
+      title: 'Close Session Preview',
+      inputSchema: { previewId: z.string().uuid() },
+    },
+    async (args) => forwardHappyToolCall('close_preview', { previewId: args.previewId }, ensureHttpClient, 'Failed to close preview')
   );
 }

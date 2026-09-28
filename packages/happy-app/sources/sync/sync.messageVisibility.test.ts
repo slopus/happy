@@ -3803,6 +3803,9 @@ describe('message visibility synchronization', () => {
         });
 
     it.each(['web', 'android'] as const)('renders a retryable no-IDB older failure on %s through mounted ChatList and clears it after retry', async platform => {
+        // The React renderer has no browser frame scheduler; this case does not exercise auto-fill.
+        vi.stubGlobal('requestAnimationFrame', (_callback: FrameRequestCallback) => 1);
+        vi.stubGlobal('cancelAnimationFrame', (_frame: number) => {});
         const { Platform } = await import('react-native');
         const previousPlatform = Platform.OS;
         (Platform as any).OS = platform;
