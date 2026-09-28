@@ -143,6 +143,20 @@ describe('useSessionStatus queue label priority', () => {
     });
 });
 
+it('shows that a failed turn still has a connected worker', () => {
+    const session = {
+        activeAt: 1,
+        presence: 'online',
+        thinking: false,
+        agentState: { turnStatus: { status: 'failed', updatedAt: 1 } },
+    } as Parameters<typeof useSessionStatus>[0];
+    expect(useSessionStatus(session)).toMatchObject({
+        state: 'failed',
+        isConnected: true,
+        statusText: 'status.failed · status.online',
+    });
+});
+
 describe('useSessionStatus result synchronization', () => {
     const session = {
         activeAt: 1,
@@ -177,7 +191,7 @@ describe('useSessionStatus result synchronization', () => {
 
     it.each([
         { state: 'running', thinking: true, agentState: session.agentState, label: 'status.running' },
-        { state: 'failed', thinking: false, agentState: { turnStatus: { status: 'failed', updatedAt: 2 } }, label: 'status.failed' },
+        { state: 'failed', thinking: false, agentState: { turnStatus: { status: 'failed', updatedAt: 2 } }, label: 'status.failed · status.online' },
         { state: 'permission_required', thinking: false, agentState: { ...session.agentState, requests: { permission: { tool: 'Bash', arguments: {}, createdAt: 1 } } }, label: 'status.permissionRequired' },
         { state: 'idle', thinking: false, agentState: null, label: 'status.idle' },
     ] as const)('preserves $state priority over result synchronization', ({ state, thinking, agentState, label }) => {

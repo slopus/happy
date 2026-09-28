@@ -3,7 +3,6 @@ import { resolveSessionResumeAvailability } from './sessionResumeAvailability';
 
 const resumable = {
     isConnected: true,
-    hasFailedTurn: true,
     hasMachineId: true,
     hasBackendResumeId: true,
     hasMachine: true,
@@ -11,17 +10,19 @@ const resumable = {
 };
 
 describe('resolveSessionResumeAvailability', () => {
-    it('exposes recovery for a failed turn even while transport presence is online', () => {
-        expect(resolveSessionResumeAvailability(resumable)).toBe('available');
+    it('does not restart an already connected worker after its previous turn failed', () => {
+        expect(resolveSessionResumeAvailability(resumable)).toBe('hidden');
+        expect(resolveSessionResumeAvailability({ ...resumable, isConnected: false })).toBe('available');
     });
 
-    it('keeps healthy connected sessions hidden', () => {
-        expect(resolveSessionResumeAvailability({ ...resumable, hasFailedTurn: false })).toBe('hidden');
+    it('keeps connected sessions hidden even without resume metadata', () => {
+        expect(resolveSessionResumeAvailability({ ...resumable, hasBackendResumeId: false })).toBe('hidden');
     });
 
     it('explains why a failed session cannot be resumed', () => {
-        expect(resolveSessionResumeAvailability({ ...resumable, machineOnline: false })).toBe('machine-offline');
-        expect(resolveSessionResumeAvailability({ ...resumable, hasBackendResumeId: false })).toBe('missing-backend-id');
-        expect(resolveSessionResumeAvailability({ ...resumable, rpcAvailable: false })).toBe('rpc-unavailable');
+        const disconnected = { ...resumable, isConnected: false };
+        expect(resolveSessionResumeAvailability({ ...disconnected, machineOnline: false })).toBe('machine-offline');
+        expect(resolveSessionResumeAvailability({ ...disconnected, hasBackendResumeId: false })).toBe('missing-backend-id');
+        expect(resolveSessionResumeAvailability({ ...disconnected, rpcAvailable: false })).toBe('rpc-unavailable');
     });
 });

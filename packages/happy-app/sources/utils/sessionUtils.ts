@@ -68,12 +68,14 @@ export function useSessionStatus(session: Session, isSyncingResults = false): Se
     const queuedMessages = resolved.isConnected ? (session.agentState?.queuedMessages ?? 0) : 0;
     const statusColor = showResultSyncing ? theme.colors.accent : colors[resolved.state];
     const statusLabel = showResultSyncing ? t('status.syncingResults') : getSessionStateLabel(resolved.state);
+    const outcomeAndPresence = resolved.state === 'failed' && resolved.isConnected
+        ? `${statusLabel} · ${t('status.online')}` : statusLabel;
 
     return {
         ...resolved,
         statusText: queuedMessages > 0 && resolved.state !== 'permission_required'
             ? t('status.queued', { count: queuedMessages })
-            : `${statusLabel}${offlineText}`,
+            : `${outcomeAndPresence}${offlineText}`,
         shouldShowStatus: true,
         statusColor,
         statusDotColor: statusColor,

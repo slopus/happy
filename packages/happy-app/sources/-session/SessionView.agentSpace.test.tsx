@@ -53,6 +53,16 @@ const mocks = vi.hoisted(() => ({
     renameSession: vi.fn(),
     renameSessionToTitle: vi.fn(),
     sessionAbort: vi.fn(),
+    sendMessage: vi.fn(),
+    resumeSession: vi.fn(),
+    hasPendingOutboxMessagesForSession: vi.fn(() => false),
+    canResume: false,
+    statusState: 'connected',
+    statusConnected: true,
+    isAtLatest: true,
+    hasMoreNewer: false,
+    historyLoaded: true,
+    verifiedOwnerEpoch: 1 as number | null,
     overlayPublish: vi.fn(),
     overlayReset: vi.fn(),
     abandonSessionRoute: vi.fn(),
@@ -81,7 +91,7 @@ const mocks = vi.hoisted(() => ({
             flavor: 'codex',
         },
         metadataVersion: 1,
-        agentState: null,
+        agentState: null as null | { turnStatus: { status: 'failed'; updatedAt: number; turnId: string } },
         agentStateVersion: 1,
         thinking: false,
         thinkingAt: 1,
@@ -267,11 +277,11 @@ vi.mock('@/hooks/useGlobalKeyboard', () => ({
 }));
 vi.mock('@/hooks/useSessionQuickActions', () => ({
     useSessionQuickActions: () => ({
-        canResume: false,
+        canResume: mocks.canResume,
         renameSession: mocks.renameSession,
         renameSessionToTitle: mocks.renameSessionToTitle,
         renamingSession: false,
-        resumeSession: vi.fn(),
+        resumeSession: mocks.resumeSession,
         resumingSession: false,
     }),
 }));
@@ -341,7 +351,9 @@ vi.mock('@/sync/storage', () => ({
     useSettingUpdater: () => mocks.updateSidebarOrganization,
     useMachine: () => null,
     useSession: () => mocks.sessionAvailable ? mocks.session : null,
-    useSessionMessages: () => ({ messages: mocks.sessionMessages, isLoaded: true }),
+    useSessionMessages: () => ({ messages: mocks.sessionMessages, isLoaded: mocks.historyLoaded,
+        isAtLatest: mocks.isAtLatest, hasMoreNewer: mocks.hasMoreNewer,
+        latestVerifiedOwnerEpoch: mocks.verifiedOwnerEpoch }),
     useSessionUsage: () => undefined,
     useSetting: (key: string) => {
         if (key === 'fileDiffsSidebar') return mocks.fileDiffsSidebarEnabled;
@@ -359,7 +371,8 @@ vi.mock('@/sync/sync', () => ({ sync: {
     abandonSessionRoute: mocks.abandonSessionRoute,
     onSessionVisible: vi.fn(),
     openSession: mocks.openSession,
-    sendMessage: vi.fn(),
+    sendMessage: mocks.sendMessage,
+    hasPendingOutboxMessagesForSession: mocks.hasPendingOutboxMessagesForSession,
     sessionRouteBecameInteractive: mocks.sessionRouteBecameInteractive,
 } }));
 vi.mock('@/modal', () => ({ Modal: { alert: vi.fn(), show: mocks.modalShow } }));
@@ -376,8 +389,8 @@ vi.mock('@/utils/sessionUtils', () => ({
     getResumeCommandBlock: () => null,
     getSessionName: () => 'Health session',
     useSessionStatus: () => ({
-        isConnected: true,
-        state: 'connected',
+        isConnected: mocks.statusConnected,
+        state: mocks.statusState,
         statusColor: '#ffffff',
         statusDotColor: '#00ff00',
         statusText: 'Online',
@@ -449,6 +462,16 @@ describe('SessionView Agent-space boundary', () => {
         mocks.openSubagent = undefined;
         mocks.globalRightSidebarShortcut = undefined;
         mocks.spaceAgent = null;
+        mocks.canResume = false;
+        mocks.statusState = 'connected';
+        mocks.statusConnected = true;
+        mocks.isAtLatest = true;
+        mocks.hasMoreNewer = false;
+        mocks.historyLoaded = true;
+        mocks.verifiedOwnerEpoch = 1;
+        mocks.session.agentState = null;
+        mocks.sendMessage.mockResolvedValue(undefined);
+        mocks.hasPendingOutboxMessagesForSession.mockReturnValue(false);
         mocks.useSpaceAgentForSession.mockImplementation(() => mocks.spaceAgent);
         mocks.openSession.mockImplementation(async () => mocks.sessionAvailable ? 'ready' : 'not-found');
         (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -459,6 +482,125 @@ describe('SessionView Agent-space boundary', () => {
     });
 
     afterEach(() => consoleErrorSpy.mockRestore());
+
+    it('continues a failed task on its connected worker without restarting it', async () => {
+        mocks.isDataReady = true;
+        mocks.statusState = 'failed';
+        mocks.session.agentState = { turnStatus: { status: 'failed', updatedAt: 1, turnId: 'turn-1' } };
+        const Focus = mocks.focusContext.Provider;
+        const tree = (focused: boolean) => <Focus value={focused}><SessionView id="session-1" /></Focus>;
+        let renderer: any;
+        await act(async () => { renderer = TestRenderer.create(tree(true)); });
+
+        const continueButton = renderer.root.findByProps({ testID: 'failed-session-continue-button' });
+        expect(renderer.root.findAllByProps({ testID: 'session-resume-button' })).toHaveLength(0);
+        await act(async () => { continueButton.props.onPress(); continueButton.props.onPress(); });
+
+        expect(mocks.sendMessage).toHaveBeenCalledTimes(1);
+        expect(mocks.sendMessage).toHaveBeenCalledWith('session-1', 'session.failedContinuePrompt', { source: 'chat' });
+        expect(mocks.resumeSession).not.toHaveBeenCalled();
+        const queuedButton = renderer.root.findByProps({ testID: 'failed-session-continue-button' });
+        expect(queuedButton.props.disabled).toBe(true);
+        await act(async () => { queuedButton.props.onPress(); });
+        expect(mocks.sendMessage).toHaveBeenCalledTimes(1);
+        act(() => renderer.unmount());
+        mocks.sessionMessages = [{
+            kind: 'user-text', id: 'follow-up', localId: 'follow-up', createdAt: 2,
+            text: 'Please continue this task',
+        }];
+        await act(async () => { renderer = TestRenderer.create(tree(true)); });
+        expect(renderer.root.findByProps({ testID: 'failed-session-continue-button' }).props.disabled).toBe(true);
+
+        mocks.session.agentState = { turnStatus: { status: 'failed', updatedAt: 3, turnId: 'turn-2' } };
+        await act(async () => { renderer.update(tree(false)); });
+        const newFailureButton = renderer.root.findByProps({ testID: 'failed-session-continue-button' });
+        expect(newFailureButton.props.disabled).toBe(false);
+        await act(async () => { newFailureButton.props.onPress(); });
+        expect(mocks.sendMessage).toHaveBeenCalledTimes(2);
+        act(() => renderer.unmount());
+    });
+
+    it('offers Resume only when the failed session is disconnected', async () => {
+        mocks.isDataReady = true;
+        mocks.statusState = 'failed';
+        mocks.statusConnected = false;
+        mocks.canResume = true;
+        let renderer: any;
+        await act(async () => { renderer = TestRenderer.create(<SessionView id="session-1" />); });
+
+        expect(renderer.root.findAllByProps({ testID: 'failed-session-continue-button' })).toHaveLength(0);
+        const resumeButton = renderer.root.findByProps({ testID: 'session-resume-button' });
+        await act(async () => { resumeButton.props.onPress(); });
+
+        expect(mocks.resumeSession).toHaveBeenCalledTimes(1);
+        expect(mocks.sendMessage).not.toHaveBeenCalled();
+        act(() => renderer.unmount());
+    });
+
+    it('does not offer another continuation when a newer user message already exists', async () => {
+        mocks.isDataReady = true;
+        mocks.statusState = 'failed';
+        mocks.session.agentState = { turnStatus: { status: 'failed', updatedAt: 1, turnId: 'turn-1' } };
+        mocks.sessionMessages = [{
+            kind: 'user-text', id: 'follow-up', localId: 'follow-up', createdAt: 2,
+            text: 'Please continue this task',
+        }];
+        let renderer: any;
+        await act(async () => { renderer = TestRenderer.create(<SessionView id="session-1" />); });
+
+        const continueButton = renderer.root.findByProps({ testID: 'failed-session-continue-button' });
+        expect(continueButton.props.disabled).toBe(true);
+        await act(async () => { continueButton.props.onPress(); });
+        expect(mocks.sendMessage).not.toHaveBeenCalled();
+        act(() => renderer.unmount());
+    });
+
+    it('blocks continuation while a previous message remains in the local outbox', async () => {
+        mocks.isDataReady = true;
+        mocks.statusState = 'failed';
+        mocks.session.agentState = { turnStatus: { status: 'failed', updatedAt: 1, turnId: 'turn-1' } };
+        mocks.hasPendingOutboxMessagesForSession.mockReturnValue(true);
+        let renderer: any;
+        await act(async () => { renderer = TestRenderer.create(<SessionView id="session-1" />); });
+
+        expect(renderer.root.findByProps({ testID: 'failed-session-continue-button' }).props.disabled).toBe(true);
+        expect(mocks.hasPendingOutboxMessagesForSession).toHaveBeenCalledWith('session-1');
+        act(() => renderer.unmount());
+    });
+
+    it('requires the latest history window before continuing a failed turn', async () => {
+        mocks.isDataReady = true;
+        mocks.statusState = 'failed';
+        mocks.session.agentState = { turnStatus: { status: 'failed', updatedAt: 1, turnId: 'turn-1' } };
+        mocks.isAtLatest = false;
+        mocks.hasMoreNewer = true;
+        let renderer: any;
+        await act(async () => { renderer = TestRenderer.create(<SessionView id="session-1" />); });
+
+        const continueButton = renderer.root.findByProps({ testID: 'failed-session-continue-button' });
+        expect(continueButton.props.disabled).toBe(true);
+        expect(continueButton.findByType('Text').children).toContain('session.failedContinueViewLatest');
+        await act(async () => { continueButton.props.onPress(); });
+        expect(mocks.sendMessage).not.toHaveBeenCalled();
+        act(() => renderer.unmount());
+    });
+
+    it('waits for a verified latest page before offering continuation', async () => {
+        mocks.isDataReady = true;
+        mocks.statusState = 'failed';
+        mocks.session.agentState = { turnStatus: { status: 'failed', updatedAt: 1, turnId: 'turn-1' } };
+        mocks.historyLoaded = false;
+        mocks.verifiedOwnerEpoch = null;
+        let renderer: any;
+        await act(async () => { renderer = TestRenderer.create(<SessionView id="session-1" />); });
+
+        const continueButton = renderer.root.findByProps({ testID: 'failed-session-continue-button' });
+        expect(continueButton.props.disabled).toBe(true);
+        expect(continueButton.findByType('Text').children).toContain('common.loading');
+        await act(async () => { continueButton.props.onPress(); });
+        expect(mocks.sendMessage).not.toHaveBeenCalled();
+        act(() => renderer.unmount());
+    });
 
     it('ignores canonical Agent matching in the phone header and panel', () => {
         mocks.spaceAgent = makeAgent();

@@ -57,10 +57,9 @@ function isRegenerateTitleRpcUnavailable(message: string | undefined): boolean {
         || message === 'Method not found';
 }
 
-function getResumeAvailability(session: Session, machine: Machine | null | undefined, isConnected: boolean, hasFailedTurn: boolean): ResumeAvailability {
+function getResumeAvailability(session: Session, machine: Machine | null | undefined, isConnected: boolean): ResumeAvailability {
     const availability = resolveSessionResumeAvailability({
         isConnected,
-        hasFailedTurn,
         hasMachineId: Boolean(session.metadata?.machineId),
         hasBackendResumeId: Boolean(session.metadata?.claudeSessionId || session.metadata?.codexThreadId),
         hasMachine: Boolean(machine),
@@ -147,8 +146,8 @@ export function useSessionQuickActions(
     const sessionManagement = useSessionManagementPreferences([session.id], { prune: false });
     const sessionPinned = sessionManagement.isPinned(session.id);
     const resumeAvailability = React.useMemo(
-        () => getResumeAvailability(session, machine, sessionStatus.isConnected, sessionStatus.state === 'failed'),
-        [machine, session, sessionStatus.isConnected, sessionStatus.state],
+        () => getResumeAvailability(session, machine, sessionStatus.isConnected),
+        [machine, session, sessionStatus.isConnected],
     );
 
     // Fork eligibility is separate from resume because fork works on both

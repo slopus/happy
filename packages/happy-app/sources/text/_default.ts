@@ -967,6 +967,10 @@ export const en = {
         inputPlaceholder: 'Type a message ...',
         inactiveArchived: 'This session is inactive.',
         failedRecoveryAvailable: 'This task failed. Resume from this device and Paws will restart the worker on the original machine.',
+        failedConnected: "The last turn failed, but this session is connected. Send a new message or continue the unfinished task.",
+failedContinueTask: "Continue unfinished task",
+        failedContinueViewLatest: "View the latest messages before continuing",
+        failedContinuePrompt: "Continue the unfinished task from the previous turn. Check existing changes and results first to avoid repeating work, then finish what remains.",
         resumeFromTerminal: 'To resume it from the terminal:',
         newChat: 'New chat',
         // Fork / duplicate / rewind flow (Claude only)

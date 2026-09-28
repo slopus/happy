@@ -1405,7 +1405,7 @@ function SessionViewLoaded({
     const isLandscape = useIsLandscape();
     const deviceType = useDeviceType();
     const isTablet = useIsTablet();
-    const { messages, isLoaded } = useSessionMessages(sessionId);
+    const { messages, isLoaded, isAtLatest, hasMoreNewer } = useSessionMessages(sessionId);
     const [followLatestRequest, setFollowLatestRequest] = React.useState(0);
     const acknowledgedCliVersions = useLocalSetting('acknowledgedCliVersions');
     const zenMode = useLocalSetting('zenMode');
@@ -1517,6 +1517,21 @@ function SessionViewLoaded({
     // handleSend reads the live message via the composer ref, so it doesn't
     // need to re-create on every keystroke.
     const sendInFlight = React.useRef(false);
+    const [continuingFailedTurn, setContinuingFailedTurn] = React.useState(false);
+    const continuedFailedTurnKey = React.useRef<string | null>(null);
+    const [renderedContinuedFailedTurnKey, setRenderedContinuedFailedTurnKey] = React.useState<string | null>(null);
+    const failedTurn = session.agentState?.turnStatus;
+    const failedTurnKey = `${failedTurn?.turnId ?? 'unknown'}:${failedTurn?.updatedAt ?? 0}`;
+    const failedTurnHasFollowUp = failedTurn?.status === 'failed' && (
+        messages.some(message => message.kind === 'user-text' && message.createdAt > failedTurn.updatedAt)
+        || sync.hasPendingOutboxMessagesForSession(sessionId)
+    );
+    const failedContinueQueued = renderedContinuedFailedTurnKey === failedTurnKey
+        || continuedFailedTurnKey.current === failedTurnKey || failedTurnHasFollowUp;
+    // Before the latest page is verified, an unseen follow-up may already exist.
+    const failedHistoryLoading = !isLoaded || verifiedRouteOwnerEpoch === null;
+    // An older history window cannot prove whether a follow-up already exists.
+    const failedHistoryBehind = !isAtLatest || hasMoreNewer;
     const handleSend = React.useCallback(() => {
         if (sendInFlight.current) return;
         const composer = composerHandleRef.current;
@@ -1537,6 +1552,28 @@ function SessionViewLoaded({
             })();
         }
     }, [composerHandleRef, sessionId, selectedImages, removeImage]);
+
+    const handleContinueFailedTurn = React.useCallback(() => {
+        if (sendInFlight.current || continuedFailedTurnKey.current === failedTurnKey
+            || failedContinueQueued || failedHistoryLoading || failedHistoryBehind) return;
+        sendInFlight.current = true;
+        setContinuingFailedTurn(true);
+        void (async () => {
+            try {
+                await sync.sendMessage(sessionId, t('session.failedContinuePrompt'), { source: 'chat' });
+                // Queue acceptance precedes worker execution; set the ref
+                // synchronously so another tap cannot enqueue a duplicate.
+                continuedFailedTurnKey.current = failedTurnKey;
+                setRenderedContinuedFailedTurnKey(failedTurnKey);
+                if (Platform.OS === 'web') setFollowLatestRequest(value => value + 1);
+            } catch {
+                Modal.alert(t('common.error'), t('common.retry'));
+            } finally {
+                sendInFlight.current = false;
+                setContinuingFailedTurn(false);
+            }
+        })();
+    }, [sessionId, failedContinueQueued, failedHistoryLoading, failedHistoryBehind, failedTurnKey]);
 
     const handleAbort = React.useCallback(() => {
         storage.getState().resetSessionAgentOverrides(sessionId);
@@ -1653,13 +1690,9 @@ function SessionViewLoaded({
         />
     );
 
-    // Disconnected sessions and terminal failures get the full Resume
-    // affordance regardless of
-    // whether they were explicitly archived or just lost their CLI (e.g.
-    // Ctrl-C in terminal — lifecycleState stays 'running', server flips
-    // active=false). InactiveArchivedHint handles both cases: shows the
-    // Resume button when canResume is true, and falls back to a useful
-    // diagnostic when the machine or saved metadata is unavailable.
+    // A disconnected worker can be resumed on its original machine. An online
+    // worker whose previous turn failed needs a new message in this session;
+    // restarting that worker would not retry the failed turn.
     const inactiveHint = (isDisconnected || isRecoverableFailure) ? (
         <CenteredInputWidth horizontalPadding={sessionInputHorizontalPadding}>
             <InactiveArchivedHint
@@ -1670,6 +1703,12 @@ function SessionViewLoaded({
                 onContinue={canContinue ? continueSession : undefined}
                 continuing={continuingSession}
                 failed={isRecoverableFailure}
+                connected={!isDisconnected}
+                onContinueFailed={handleContinueFailedTurn}
+                continuingFailed={continuingFailedTurn}
+                continueFailedQueued={failedContinueQueued}
+                continueFailedHistoryLoading={failedHistoryLoading}
+                continueFailedHistoryBehind={failedHistoryBehind}
                 unavailableMessage={resumeSessionSubtitle}
             />
         </CenteredInputWidth>
@@ -1851,6 +1890,12 @@ function InactiveArchivedHint(props: {
     onContinue?: () => void;
     continuing?: boolean;
     failed?: boolean;
+    connected?: boolean;
+    onContinueFailed?: () => void;
+    continuingFailed?: boolean;
+    continueFailedQueued?: boolean;
+    continueFailedHistoryLoading?: boolean;
+    continueFailedHistoryBehind?: boolean;
     unavailableMessage?: string;
 }) {
     const { theme } = useUnistyles();
@@ -1871,17 +1916,47 @@ function InactiveArchivedHint(props: {
             <View style={{ paddingHorizontal: 8, gap: 4 }}>
                 <Text style={hintTextStyle}>
                     {props.failed
-                        ? (props.canResume ? t('session.failedRecoveryAvailable') : props.unavailableMessage)
+                        ? (props.connected ? t('session.failedConnected')
+                            : props.canResume ? t('session.failedRecoveryAvailable') : props.unavailableMessage)
                         : t('session.inactiveArchived')}
                 </Text>
-                {props.canResume ? null : props.resumeCommandBlock && (
+                {props.canResume || props.connected ? null : props.resumeCommandBlock && (
                     <Text style={hintTextStyle}>
                         {t('session.resumeFromTerminal')}
                     </Text>
                 )}
             </View>
-            {props.canResume ? (
+            {props.failed && props.connected && props.onContinueFailed ? (
                 <Pressable
+                    testID="failed-session-continue-button"
+                    accessibilityRole="button"
+                    onPress={props.onContinueFailed}
+                    disabled={props.continuingFailed || props.continueFailedQueued || props.continueFailedHistoryLoading || props.continueFailedHistoryBehind}
+                    style={({ pressed }) => ({
+                        height: 40,
+                        borderRadius: 10,
+                        backgroundColor: theme.colors.button.primary.background,
+                        opacity: props.continuingFailed || props.continueFailedQueued || props.continueFailedHistoryLoading || props.continueFailedHistoryBehind ? 0.6 : pressed ? 0.8 : 1,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        marginHorizontal: 8,
+                    })}
+                >
+                    {props.continuingFailed ? (
+                        <ActivityIndicator size="small" color={theme.colors.button.primary.tint} />
+                    ) : (
+                        <Text style={{ color: theme.colors.button.primary.tint, fontSize: 15, fontWeight: '600' }}>
+                            {props.continueFailedQueued ? t('status.queued', { count: 1 })
+                                : props.continueFailedHistoryLoading ? t('common.loading')
+                                : props.continueFailedHistoryBehind ? t('session.failedContinueViewLatest')
+                                : t('session.failedContinueTask')}
+                        </Text>
+                    )}
+                </Pressable>
+            ) : props.canResume ? (
+                <Pressable
+                    testID="session-resume-button"
+                    accessibilityRole="button"
                     onPress={props.onResume}
                     disabled={props.resuming}
                     style={({ pressed }) => ({
