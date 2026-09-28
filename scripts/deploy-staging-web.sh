@@ -202,4 +202,5 @@ if ! verify_live "$revision"; then
     verify_live "$old_revision" basic
     exit 1
 fi
+remote "bash -s -- '$STAGING_ROOT' '$revision' '$old_revision'" < "$repo_root/scripts/prune-staging-web-releases.sh"
 echo "Rollback: bash scripts/deploy-staging-web.sh --rollback $old_revision"

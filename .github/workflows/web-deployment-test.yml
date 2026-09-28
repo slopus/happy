@@ -9,6 +9,9 @@ on:
       - 'scripts/test-helpers/fake-aliyun.cjs'
       - 'scripts/deploy-agent-party*'
       - 'scripts/configure-production-agent-party-caddy*'
+      - 'scripts/deploy-staging-web*'
+      - 'scripts/prune-staging-web-releases.sh'
+      - 'scripts/configure-staging-web-caddy*'
       - 'scripts/web-release-source.sh'
       - 'scripts/web-production-deploy.test.mjs'
       - '.github/workflows/web-production-deploy.yml'
@@ -23,6 +26,9 @@ on:
       - 'scripts/test-helpers/fake-aliyun.cjs'
       - 'scripts/deploy-agent-party*'
       - 'scripts/configure-production-agent-party-caddy*'
+      - 'scripts/deploy-staging-web*'
+      - 'scripts/prune-staging-web-releases.sh'
+      - 'scripts/configure-staging-web-caddy*'
       - 'scripts/web-release-source.sh'
       - 'scripts/web-production-deploy.test.mjs'
       - '.github/workflows/web-production-deploy.yml'
@@ -45,4 +51,4 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile --ignore-scripts --filter monorepo
       - name: Verify deployment and supersession guards
-        run: node --test scripts/deploy-web.test.mjs scripts/web-production-deploy.test.mjs scripts/upload-web-assets.test.mjs scripts/deploy-agent-party.test.mjs scripts/configure-production-agent-party-caddy.test.mjs
+        run: node --test scripts/deploy-web.test.mjs scripts/web-production-deploy.test.mjs scripts/upload-web-assets.test.mjs scripts/deploy-agent-party.test.mjs scripts/configure-production-agent-party-caddy.test.mjs scripts/deploy-staging-web.test.mjs scripts/configure-staging-web-caddy.test.mjs scripts/configure-staging-web-caddy.integration.test.mjs

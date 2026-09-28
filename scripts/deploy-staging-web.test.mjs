@@ -1,10 +1,13 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { readFile } from 'node:fs/promises';
+import { chmod, mkdtemp, mkdir, readFile, symlink, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 
 const script = fileURLToPath(new URL('./deploy-staging-web.sh', import.meta.url));
+const pruneScript = fileURLToPath(new URL('./prune-staging-web-releases.sh', import.meta.url));
 
 test('staging release script parses and rejects invalid rollback revisions before SSH', () => {
     const syntax = spawnSync('bash', ['-n', script], { encoding: 'utf8' });
@@ -52,4 +55,34 @@ if verify_live '${revision}'; then exit 43; else exit 0; fi
     const result = spawnSync('bash', ['-s'], { input: prelude + probe, encoding: 'utf8' });
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stderr, /HTML revision mismatch/);
+});
+
+test('staging release pruning keeps only the live release and one rollback release', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'paws-staging-prune-'));
+    const releases = join(root, 'releases');
+    const bin = join(root, 'bin');
+    const revisions = ['a', 'b', 'c', 'd'].map((prefix) => prefix.repeat(40));
+    await mkdir(releases, { recursive: true });
+    for (const revision of revisions) {
+        const release = join(releases, revision);
+        await mkdir(release);
+        await writeFile(join(release, '.paws-release-revision'), revision);
+    }
+    await symlink(join(releases, revisions[3]), join(root, 'current'));
+    await symlink(join(releases, revisions[2]), join(root, 'previous'));
+    await mkdir(bin);
+    await writeFile(join(bin, 'flock'), '#!/usr/bin/env bash\nexit 0\n');
+    await chmod(join(bin, 'flock'), 0o755);
+
+    const result = spawnSync('bash', [pruneScript, root, revisions[3], revisions[2]], {
+        encoding: 'utf8',
+        env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
+    });
+
+    assert.equal(result.status, 0, result.stderr);
+    const remaining = (await readFile(join(releases, revisions[3], '.paws-release-revision'), 'utf8')).trim();
+    assert.equal(remaining, revisions[3]);
+    await assert.rejects(readFile(join(releases, revisions[0], '.paws-release-revision')));
+    await assert.rejects(readFile(join(releases, revisions[1], '.paws-release-revision')));
+    assert.equal((await readFile(join(releases, revisions[2], '.paws-release-revision'), 'utf8')).trim(), revisions[2]);
 });
