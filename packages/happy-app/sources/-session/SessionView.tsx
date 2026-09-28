@@ -1423,7 +1423,7 @@ function SessionViewLoaded({
     const isAcknowledged = machineId && acknowledgedCliVersions[machineId] === cliVersion;
     const shouldShowCliWarning = isCliOutdated && !isAcknowledged;
 
-    const isSyncingResults = useSessionResultSyncing(session.id);
+    const isSyncingResults = useSessionResultSyncing(session.id, true);
     const sessionStatus = useSessionStatus(session, isSyncingResults);
     const sessionUsage = useSessionUsage(sessionId);
     const alwaysShowContextSize = useSetting('alwaysShowContextSize');

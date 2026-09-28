@@ -2,6 +2,7 @@ import * as React from 'react';
 import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { storage } from '@/sync/storage';
+import { sync } from '@/sync/sync';
 import { useSessionResultSyncing } from './useSessionResultSyncing';
 // @ts-expect-error react-test-renderer has no declarations in this workspace.
 import TestRenderer from 'react-test-renderer';
@@ -12,6 +13,7 @@ vi.mock('@/sync/storage', async () => {
     const { create } = await import('zustand');
     return { storage: create(() => ({ sessions: {}, sessionMessages: {} })) };
 });
+vi.mock('@/sync/sync', () => ({ sync: { ensureMessagesLoaded: vi.fn().mockResolvedValue(undefined) } }));
 
 const originalConsoleError = console.error;
 const renderers: Array<{ unmount(): void }> = [];
@@ -34,10 +36,10 @@ function setProgress({
     } as unknown as Parameters<typeof storage.setState>[0]);
 }
 
-function renderProgress() {
+function renderProgress(recover = false) {
     const result = { current: false, renders: 0 };
     function Harness() {
-        result.current = useSessionResultSyncing('current');
+        result.current = useSessionResultSyncing('current', recover);
         result.renders += 1;
         return null;
     }
@@ -56,10 +58,33 @@ beforeEach(() => {
 
 afterEach(() => {
     act(() => { renderers.splice(0).forEach((renderer) => renderer.unmount()); });
+    vi.useRealTimers();
+    vi.mocked(sync.ensureMessagesLoaded).mockClear();
     consoleErrorSpy.mockRestore();
 });
 
 describe('useSessionResultSyncing', () => {
+    it('retries a visible result gap until the missing messages are applied', async () => {
+        vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+        setProgress({ seq: 86, latestAppliedSeq: 75 });
+        renderProgress(true);
+        expect(sync.ensureMessagesLoaded).toHaveBeenCalledTimes(1);
+        await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+        expect(sync.ensureMessagesLoaded).toHaveBeenCalledTimes(3);
+
+        act(() => setProgress({ seq: 86, latestAppliedSeq: 86 }));
+        await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+        expect(sync.ensureMessagesLoaded).toHaveBeenCalledTimes(3);
+    });
+
+    it('does not recover an older history window', async () => {
+        vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+        setProgress({ isAtLatest: false });
+        renderProgress(true);
+        await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+        expect(sync.ensureMessagesLoaded).not.toHaveBeenCalled();
+    });
+
     it('updates when received messages enter the list and when new results arrive', () => {
         setProgress();
         const result = renderProgress();

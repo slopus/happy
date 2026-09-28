@@ -154,6 +154,39 @@ type V3GetSessionMessagesResponse = {
     nativeCacheGeneration?: object;
 };
 
+const MESSAGE_PAGE_DEADLINE_MS = 20_000;
+
+async function fetchMessagePageWithDeadline(path: string): Promise<{
+    status: number;
+    ok: boolean;
+    data: V3GetSessionMessagesResponse | null;
+}> {
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout>;
+    const deadline = new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => {
+            reject(new Error(`Message page request timed out: ${path}`));
+            controller.abort();
+        }, MESSAGE_PAGE_DEADLINE_MS);
+    });
+    try {
+        return await Promise.race([
+            (async () => {
+                const response = await apiSocket.request(path, { signal: controller.signal });
+                return {
+                    status: response.status,
+                    ok: response.ok,
+                    data: response.ok ? await response.json() as V3GetSessionMessagesResponse : null,
+                };
+            })(),
+            deadline,
+        ]);
+    } finally {
+        clearTimeout(timer!);
+        controller.abort();
+    }
+}
+
 type SessionOpenResolution = 'ready' | 'not-found';
 function memoryHistoryPage(current: HistoryWindow | undefined, page: V3GetSessionMessagesResponse,
     direction: 'older' | 'newer' | 'latest', limit = 300): HistoryWindow {
@@ -3902,7 +3935,11 @@ class Sync {
                 const change = await this.localHistory.readChange(sessionId);
                 if (!owner.isCurrent()) return;
                 if (change?.deleted) { this.removeSessionLocally(sessionId); return; }
-                const target = Math.max(change?.lastMessageSeq ?? 0, this.pendingHistoryTargets.get(sessionId) ?? 0);
+                const target = Math.max(
+                    change?.lastMessageSeq ?? 0,
+                    this.pendingHistoryTargets.get(sessionId) ?? 0,
+                    storage.getState().sessions[sessionId]?.seq ?? 0,
+                );
                 const projectedSeq = this.getSessionProjectedMessageSeq(sessionId) ?? 0;
                 if (!window.isAtLatest || (change && target <= projectedSeq)) return;
                 // Unknown target is reconciled through metadata, never by probing old bodies.
@@ -3952,7 +3989,7 @@ class Sync {
     ): Promise<V3GetSessionMessagesResponse> => {
         const owner = this.captureHistoryOwner(sessionId);
         const nativeCacheGeneration = sessionHistoryPageCache.generation;
-        const response = await apiSocket.request(
+        const response = await fetchMessagePageWithDeadline(
             `/v3/sessions/${sessionId}/messages?before_seq=${SEQ_BACKWARD_INITIAL_SENTINEL}&limit=${INITIAL_LATEST_MESSAGE_LIMIT}`,
         );
         if (!owner.isCurrent()) throw new SessionWriteCancelled();
@@ -3960,7 +3997,7 @@ class Sync {
         if (!response.ok) {
             throw new Error(`Failed to fetch initial page for ${sessionId}: ${response.status}`);
         }
-        const data = await response.json() as V3GetSessionMessagesResponse;
+        const data = response.data!;
         if (!owner.isCurrent()) throw new SessionWriteCancelled();
         const page = {
             messages: Array.isArray(data.messages) ? data.messages : [],
@@ -4101,7 +4138,7 @@ class Sync {
         let didInvalidateGit = false;
         while (true) {
             if (!owner.isCurrent()) return;
-            const response = await apiSocket.request(`/v3/sessions/${sessionId}/messages?after_seq=${afterSeq}&limit=100`);
+            const response = await fetchMessagePageWithDeadline(`/v3/sessions/${sessionId}/messages?after_seq=${afterSeq}&limit=100`);
             if (!owner.isCurrent()) return;
             if (response.status === 404) {
                 this.removeSessionLocally(sessionId);
@@ -4110,7 +4147,7 @@ class Sync {
             if (!response.ok) {
                 throw new Error(`Failed to forward-sync ${sessionId}: ${response.status}`);
             }
-            const data = await response.json() as V3GetSessionMessagesResponse;
+            const data = response.data!;
             if (!owner.isCurrent()) return;
             const messages = Array.isArray(data.messages) ? data.messages : [];
 
