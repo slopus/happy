@@ -7,9 +7,9 @@ import { BrowserRuntimeError } from './contracts'
 import { BROWSER_TASK_TOOL_NAMES, DEFAULT_BATCH_WAIT_MS, registerBrowserTaskTools } from './agentTools'
 import type { RuntimeClient } from './runtimeClient'
 
-async function connect(fake: Partial<Record<keyof RuntimeClient, ReturnType<typeof vi.fn>>>, exitAfterFirstTurn = false) {
+async function connect(fake: Partial<Record<keyof RuntimeClient, ReturnType<typeof vi.fn>>>, exitAfterFirstTurn = false, hostContinues = false) {
     const mcp = new McpServer({ name: 't', version: '1' })
-    const options = { agentSessionId: 'a1', profileId: 'main', exitAfterFirstTurn }
+    const options = { agentSessionId: 'a1', profileId: 'main', exitAfterFirstTurn, hostContinues }
     registerBrowserTaskTools(mcp, fake as unknown as RuntimeClient, options)
     const [a, b] = InMemoryTransport.createLinkedPair()
     const client = new Client({ name: 'c', version: '1' })
@@ -64,6 +64,20 @@ describe('browser task agent tools', () => {
                 if (exitAfterFirstTurn) expect(out.result.continuationMessage).toContain('project chat')
             }
         }
+    })
+
+    it('tells a run-once agent whose host keeps the chat parked to end the turn and wait for the console', async () => {
+        const task = { status: 'paused', pendingApproval: { approvalId: 'approval' } }
+        const client = await connect({ submitBatch: vi.fn(async () => ({ task, result: { outcome: 'awaiting-user', steps: [] } })) }, true, true)
+        const out = parse(await client.callTool({ name: 'browser_task_submit_batch', arguments: { taskId: 't', expectedVersion: 1, steps: [{ kind: 'observe', tabId: 'tab' }] } }))
+        expect(out.result.continuation).toBe('after-user-action')
+        expect(out.result.continuationMessage).toMatch(/console/)
+        expect(out.result.continuationMessage).toMatch(/\[agent-browser\]/)
+        expect(out.result.continuationMessage).not.toMatch(/project chat/)
+        const { tools } = await client.listTools()
+        const submit = tools.find((tool) => tool.name === 'browser_task_submit_batch')!
+        expect(submit.description).not.toMatch(/cannot continue here/)
+        expect(submit.description).toMatch(/woken/)
     })
 
     it('rejects press Enter instead of letting keyboard submission bypass approval', async () => {

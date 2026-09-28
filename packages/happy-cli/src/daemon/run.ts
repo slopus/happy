@@ -72,6 +72,7 @@ import {
   buildManagedSessionSpawnEnvironment,
   buildResumedSessionSpawnEnvironment,
   buildSpawnRequestEnvironment,
+  BROWSER_CONTINUATION_ENV,
   captureSaycodeAgentEnvironment,
   honorsManagedAiCredentials,
   overlayManagedCredentialEnvironment,
@@ -2026,6 +2027,8 @@ export async function startDaemon(): Promise<void> {
         }
         if (options.exitAfterFirstTurn) {
           extraEnv.HAPPY_AUTOMATION_RUN_ONCE = '1';
+          // Captured into the session's agentEnvironment, so an attention resume keeps it.
+          if (options.browserContinuation) extraEnv[BROWSER_CONTINUATION_ENV] = '1';
         }
         if (options.deferredContinuationContext) {
           const staged = await stageDeferredContinuationContext(
@@ -4409,6 +4412,7 @@ export async function startDaemon(): Promise<void> {
       portRegistry,
       automationStore,
       aiCredentialRuntime,
+      ...(browserTaskBroker ? { browserSessionWaiting: (sessionId: string) => browserTaskBroker!.waiting(sessionId) } : {}),
       autonomousQualityGate: createAutonomousQualityGateRpcHandlers(autonomousQualityGateRegistry),
       checkpoint: createCheckpointRpcHandlers({
         checkpointRoot: join(configuration.happyHomeDir, 'checkpoints'),

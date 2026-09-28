@@ -285,6 +285,15 @@ describe('Saycode agent resume environment', () => {
         })).toBeUndefined()
     })
 
+    it('captures the Chat(beta) browser continuation mark so a resumed turn keeps its guidance', () => {
+        const captured = captureSaycodeAgentEnvironment({ HAPPY_AUTOMATION_BROWSER_CONTINUATION: '1', HAPPY_AUTOMATION_RUN_ONCE: '1' })
+        expect(captured).toEqual({ HAPPY_AUTOMATION_BROWSER_CONTINUATION: '1' })
+        expect(captureSaycodeAgentEnvironment({ HAPPY_AUTOMATION_BROWSER_CONTINUATION: 'yes' })).toBeUndefined()
+        expect(buildResumedSessionSpawnEnvironment({
+            inherited: { PATH: '/usr/bin' }, explicit: {}, agentEnvironment: captured, sessionId: 'session-2',
+        })).toMatchObject({ HAPPY_AUTOMATION_BROWSER_CONTINUATION: '1' })
+    })
+
     it('captures only the validated Saycode agent capability fields', () => {
         expect(captureSaycodeAgentEnvironment({
             SAYCODE_AGENT_ENV: '1',

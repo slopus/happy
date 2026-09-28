@@ -207,6 +207,19 @@ describe('ApiMachineClient spawn/resume RPC passthrough', () => {
         }));
     });
 
+    it('forwards the browser continuation mark of a run-once host that parks the session', async () => {
+        const spawnSession = vi.fn().mockResolvedValue({ type: 'success', sessionId: 'happy-1' });
+        const { ApiMachineClient } = await import('./apiMachine');
+        const client = new ApiMachineClient('token', machineClient());
+        client.setRPCHandlers(rpcHandlers({ spawnSession }));
+
+        await handlersFrom(client).get('machine-1:spawn-happy-session')?.({
+            directory: '/tmp/project', agent: 'claude', initialPrompt: 'open the form', exitAfterFirstTurn: true, browserContinuation: true,
+        });
+
+        expect(spawnSession).toHaveBeenCalledWith(expect.objectContaining({ exitAfterFirstTurn: true, browserContinuation: true }));
+    });
+
     it.each(['claude', 'codex', 'gemini', 'grok', 'openclaw', 'opencode'])(
         'forwards deferred continuation context without starting an initial turn for %s',
         async (agent) => {
@@ -254,6 +267,8 @@ describe('ApiMachineClient spawn/resume RPC passthrough', () => {
         { params: { initialPrompt: 42 }, message: 'Initial prompt must be a non-empty string' },
         { params: { initialPrompt: 'review', exitAfterFirstTurn: 'true' }, message: 'Exit-after-first-turn must be a boolean' },
         { params: { agent: 'opencode', initialPrompt: 'review', exitAfterFirstTurn: true }, message: 'Run-once session is only supported for Claude and Codex' },
+        { params: { initialPrompt: 'review', exitAfterFirstTurn: true, browserContinuation: 'yes' }, message: 'Browser continuation must be a boolean' },
+        { params: { initialPrompt: 'review', browserContinuation: true }, message: 'Browser continuation is only for a run-once session' },
     ])('rejects invalid run-once spawn params: $message', async ({ params, message }) => {
         const spawnSession = vi.fn();
         const { ApiMachineClient } = await import('./apiMachine');

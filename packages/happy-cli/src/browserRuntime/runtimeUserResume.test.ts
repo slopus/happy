@@ -160,3 +160,50 @@ describe('user resume revalidates the task when it commits', () => {
         await h.store.close()
     })
 })
+
+describe('whether an agent session waits for the user (a host keeps a run-once chat parked meanwhile)', () => {
+    it('is true during a login wait and while the user holds control, and false for other sessions and after the end', async () => {
+        const h = await createHarness({ url: 'https://fixture.test/login' })
+        expect(await h.runtime.sessionWaiting('a')).toBe(true)
+        expect(await h.runtime.sessionWaiting('other')).toBe(false)
+        await h.runtime.endSession('a')
+        expect(await h.runtime.sessionWaiting('a')).toBe(false)
+        await h.store.close()
+    })
+
+    it('stays true for a login wait whose grant expired when the chat turn ended, but not once the user finished', async () => {
+        const h = await createHarness({ url: 'https://fixture.test/login' })
+        const expire = (pauseReason: 'grant-expired' | 'user-input-complete') => h.store.commit(h.task.taskId,
+            { status: 'paused', pauseReason, stateVersion: h.store.getTask(h.task.taskId)!.stateVersion + 1 },
+            { type: 'state-changed', atMs: 200, leaseEpoch: 0, data: {} })
+        await expire('grant-expired')
+        expect(await h.runtime.sessionWaiting('a')).toBe(true)
+        // The login wait ended (the reason stays recorded on the task): the agent continues, nobody waits for the user.
+        await expire('user-input-complete')
+        expect(await h.runtime.sessionWaiting('a')).toBe(false)
+        await h.store.close()
+    })
+
+    it('is false after the user finished a login and the run-once turn then ended (its grant revoked)', async () => {
+        const h = await createHarness({ url: 'https://fixture.test/login' })
+        const released = await h.takeOverAndRelease()
+        expect(released.pauseReason).toBe('user-input-complete')
+        await h.runtime.revokeGrant(h.auth.credential.grantId)
+        // The user's part is done; revocation fences execution but must not make the task look like a new wait.
+        expect(h.store.getTask(h.task.taskId)!.pauseReason).toBe('user-input-complete')
+        expect(await h.runtime.sessionWaiting('a')).toBe(false)
+        await h.store.close()
+    })
+
+    it('is true while the user holds control and false once it returns to the agent', async () => {
+        const h = await createHarness()
+        expect(await h.runtime.sessionWaiting('a')).toBe(false)
+        let during = false
+        const released = await h.takeOverAndRelease(() => { void h.runtime.sessionWaiting('a').then((value) => { during = value }) })
+        await new Promise((resolve) => setTimeout(resolve, 0))
+        expect(during).toBe(true)
+        expect(released.pauseReason).toBe('user-input-complete')
+        expect(await h.runtime.sessionWaiting('a')).toBe(false)
+        await h.store.close()
+    })
+})

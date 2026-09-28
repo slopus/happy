@@ -811,6 +811,18 @@ export class BrowserRuntime implements BrowserRuntimeApi {
         return 'closed'
     }
     /**
+     * An unfinished task of the agent session waits for the user: an approval, a login or other hand-off,
+     * or the user holding control. A run-once host keeps its chat parked meanwhile, so the attention that
+     * follows can resume the same session.
+     */
+    async sessionWaiting(agentSessionId: string): Promise<boolean> {
+        await this.recovery
+        return this.options.store.listTasks().some((task) => task.agentSessionId === agentSessionId && !FINISHED_STATUSES.has(task.status)
+            && (task.status === 'awaiting-user' || Boolean(task.pendingApproval) || task.pauseReason === 'user-control'
+                // The run-once turn ended (its grant revoked) while a login, captcha or hand-off waited for the user.
+                || (task.pauseReason === 'grant-expired' && (task.waitReason === 'login' || task.waitReason === 'captcha' || task.waitReason === 'handoff'))))
+    }
+    /**
      * The logical agent session ended (explicit termination or orphan TTL expiry): its spaces are marked
      * for reclamation (durably, so a restart finishes it) and its unfinished tasks go
      * through the cancel fence. reclaimSpaces closes them once their tasks allow.
@@ -1025,6 +1037,11 @@ export class BrowserRuntime implements BrowserRuntimeApi {
                     reason = 'task-time-limit'
                 if (reason) {
                     if (current.status === 'paused' && current.pauseReason === reason)
+                        return null
+                    // The user finished a login or hand-off and nothing runs until the agent resumes (with a new grant,
+                    // which resume accepts from here). Keep that record instead of turning it into a new wait.
+                    if (reason === 'grant-expired' && current.status === 'paused' && current.pauseReason === 'user-input-complete'
+                        && !revokedActionIds.length)
                         return null
                     fenceReason = reason
                     const actions = { ...current.actions }

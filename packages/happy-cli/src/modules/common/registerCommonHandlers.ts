@@ -294,6 +294,11 @@ export interface SpawnSessionOptions {
     /** Exit cleanly after the spawned agent completes its first turn. */
     exitAfterFirstTurn?: boolean;
     /**
+     * Run-once only: the host keeps the session parked while an Agent Browser task waits for the user
+     * (Studio Chat(beta)), so the agent is told the chat continues after the console action.
+     */
+    browserContinuation?: boolean;
+    /**
      * Internal only. Set by the daemon's managed dispatch wrapper, never read
      * from RPC params — a caller that supplied it would be choosing its own
      * delivery guarantees. Turns on confirmed delivery of the initial prompt

@@ -43,6 +43,8 @@ export interface BrowserTaskSessionBroker {
     retryPendingRevocations(): Promise<number>
     /** Whether a revocation of this target is still unconfirmed (queued for retry). */
     isRevocationPending(target: RevokeTarget): boolean
+    /** Whether a task of the session waits for the user; throws when the Runtime gives no answer. */
+    waiting(agentSessionId: string): Promise<boolean>
 }
 
 export interface BrowserTaskSessionBrokerOptions {
@@ -244,6 +246,12 @@ export function createBrowserTaskSessionBroker(
             } catch (error) {
                 logger.debug(`[DAEMON RUN] Browser task reconciliation unavailable: ${error instanceof Error ? error.message : 'unknown'}; retrying next tick`)
             }
+        },
+        async waiting(agentSessionId) {
+            const reply = await request(socketPath, 'GET', `/v1/sessions/waiting?agentSessionId=${encodeURIComponent(agentSessionId)}`, headers)
+            const waiting = reply.status === 200 && reply.body.ok ? (reply.body.result as { waiting?: unknown } | undefined)?.waiting : undefined
+            if (typeof waiting !== 'boolean') throw new Error(`Browser task session waiting query failed status=${reply.status}`)
+            return waiting
         },
         async revoke(target) {
             let saved = !queueDirty

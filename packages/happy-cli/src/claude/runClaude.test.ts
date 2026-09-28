@@ -548,12 +548,15 @@ describe('runClaude remote JSONL scanner', () => {
         process.env.HAPPY_INITIAL_PROMPT = 'apply reviewed findings';
         process.env.HAPPY_AUTOMATION_RESUME_PROMPT = '1';
         process.env.HAPPY_AUTOMATION_RUN_ONCE = '1';
+        // Kept by the daemon for the session (Studio Chat(beta) parks it while a browser task waits for the user).
+        process.env.HAPPY_AUTOMATION_BROWSER_CONTINUATION = '1';
 
         const harness = await startRemoteRunClaudeHarness();
 
         expect(harness.sessionClient.capRuntimeProcessedSeq).toHaveBeenCalledWith(42);
         expect(harness.loopOptions.exitAfterFirstTurn).toBe(true);
-        expect(mockStartHappyServer).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ exitAfterFirstTurn: true }));
+        expect(mockStartHappyServer).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ exitAfterFirstTurn: true, browserHostContinues: true }));
+        delete process.env.HAPPY_AUTOMATION_BROWSER_CONTINUATION;
         expect(process.env.HAPPY_AUTOMATION_RESUME_PROMPT).toBeUndefined();
 
         await harness.finish();

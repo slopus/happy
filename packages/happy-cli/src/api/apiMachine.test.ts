@@ -383,6 +383,35 @@ describe('ApiMachineClient socket reconnection', () => {
         );
     });
 
+    it('answers whether a browser task of a session waits for the user, only on a machine with the browser runtime', async () => {
+        const client = new ApiMachineClient('fake-token', makeMachine());
+        const manager = (client as any).rpcHandlerManager;
+        const browserSessionWaiting = vi.fn(async (sessionId: string) => sessionId === 'session-1');
+        client.setRPCHandlers({
+            spawnSession: vi.fn(),
+            stopSession: vi.fn(() => ({ stopped: true as const })),
+            requestShutdown: vi.fn(),
+            portRegistry: {} as any,
+            aiCredentialRuntime: {} as any,
+            browserSessionWaiting,
+        });
+        const handler = manager.registerHandler.mock.calls.find(([name]: [string]) => name === 'browser-session-waiting')?.[1];
+        expect(await handler({ sessionId: 'session-1' })).toEqual({ waiting: true });
+        expect(await handler({ sessionId: 'session-2' })).toEqual({ waiting: false });
+        await expect(handler({ sessionId: '' })).rejects.toThrow(/sessionId/);
+        await expect(handler(null)).rejects.toThrow(/sessionId/);
+
+        const plain = new ApiMachineClient('fake-token', makeMachine());
+        plain.setRPCHandlers({
+            spawnSession: vi.fn(),
+            stopSession: vi.fn(() => ({ stopped: true as const })),
+            requestShutdown: vi.fn(),
+            portRegistry: {} as any,
+            aiCredentialRuntime: {} as any,
+        });
+        expect((plain as any).rpcHandlerManager.registerHandler.mock.calls.some(([name]: [string]) => name === 'browser-session-waiting')).toBe(false);
+    });
+
     it('registers the checkpoint daemon RPC surface', () => {
         const client = new ApiMachineClient('fake-token', makeMachine());
         const manager = (client as any).rpcHandlerManager;

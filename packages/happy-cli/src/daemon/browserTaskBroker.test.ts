@@ -41,6 +41,18 @@ describe('daemon browser task broker hook', () => {
         expect(createBrowserTaskSessionBroker({ HAPPY_BROWSER_TASK_BROKER_SOCKET: '/run/abp/broker.sock', HAPPY_BROWSER_TASK_DAEMON_TOKEN_FILE: await tokenFile() })).toBeDefined()
     })
 
+    it('asks whether a session has a task waiting for the user, and fails rather than guessing when the Runtime does not answer', async () => {
+        const { calls, request } = recorder({
+            '/v1/sessions/waiting?agentSessionId=session%2F1': { status: 200, body: { ok: true, result: { waiting: true } } },
+            '/v1/sessions/waiting?agentSessionId=session-2': { status: 200, body: { ok: true, result: { waiting: false } } },
+        })
+        const broker = createBrowserTaskSessionBroker({ HAPPY_BROWSER_TASK_BROKER_SOCKET: '/run/abp/broker.sock', HAPPY_BROWSER_TASK_DAEMON_TOKEN_FILE: await tokenFile() }, request, { procRoot: await procRoot() })!
+        expect(await broker.waiting('session/1')).toBe(true)
+        expect(await broker.waiting('session-2')).toBe(false)
+        await expect(broker.waiting('session-3')).rejects.toThrow(/waiting/)
+        expect(calls[0]).toMatchObject({ method: 'GET', headers: { 'x-abp-daemon-token': 'synthetic-daemon-token-0123456789abcdef' } })
+    })
+
     it('registers at spawn, binds the reported session id, and revokes it at exit with the daemon token', async () => {
         const { calls, request } = recorder({
             '/v1/sessions/register': { status: 200, body: { ok: true, result: { registrationId: 'reg-1', sessionSecret: 'secret-1' } } },

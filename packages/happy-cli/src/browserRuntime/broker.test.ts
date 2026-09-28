@@ -29,7 +29,7 @@ function call(socketPath: string, method: string, path: string, headers: Record<
     })
 }
 
-async function harness(options: { dir?: string; revokeGrant?: (grantId: GrantId) => Promise<void>; recoveryRetryMs?: number; endSession?: (agentSessionId: string) => Promise<void> } = {}) {
+async function harness(options: { dir?: string; revokeGrant?: (grantId: GrantId) => Promise<void>; recoveryRetryMs?: number; endSession?: (agentSessionId: string) => Promise<void>; sessionWaiting?: (agentSessionId: string) => Promise<boolean> } = {}) {
     const dir = options.dir ?? await mkdtemp(join(tmpdir(), 'abp-broker-'))
     if (!options.dir) cleanups.push(() => rm(dir, { recursive: true, force: true }))
     const store = await TaskStore.open(dir)
@@ -50,6 +50,7 @@ async function harness(options: { dir?: string; revokeGrant?: (grantId: GrantId)
         now: () => now,
         recoveryRetryMs: options.recoveryRetryMs ?? 3_600_000,
         endSession: async (agentSessionId) => { await options.endSession?.(agentSessionId); endedSessions.push(agentSessionId) },
+        ...(options.sessionWaiting ? { sessionWaiting: options.sessionWaiting } : {}),
     })
     const close = async () => { await broker.close(); await store.close() }
     cleanups.push(close)
@@ -341,6 +342,20 @@ describe('broker socket', () => {
         cleanups.splice(cleanups.indexOf(h.close), 1)
         const restarted = await harness({ dir: h.dir })
         expect((await restarted.grant(sessionSecret)).status).toBe(200)
+    })
+
+    it('tells the daemon token only whether a session has a task waiting for the user', async () => {
+        const asked: string[] = []
+        const h = await harness({ sessionWaiting: async (agentSessionId) => { asked.push(agentSessionId); return agentSessionId === 'session-1' } })
+        const waiting = (id: string, headers = h.daemon) => call(h.socketPath, 'GET', `/v1/sessions/waiting?agentSessionId=${encodeURIComponent(id)}`, headers)
+        expect((await waiting('session-1')).body.result).toEqual({ waiting: true })
+        expect((await waiting('session-2')).body.result).toEqual({ waiting: false })
+        expect((await waiting('session-1', {} as typeof h.daemon)).status).toBe(401)
+        expect((await call(h.socketPath, 'GET', '/v1/sessions/waiting', h.daemon)).status).toBe(400)
+        expect(asked).toEqual(['session-1', 'session-2'])
+        // A Runtime without the query answers "not waiting", so a host never parks on a guess.
+        const plain = await harness()
+        expect((await call(plain.socketPath, 'GET', '/v1/sessions/waiting?agentSessionId=session-1', plain.daemon)).body.result).toEqual({ waiting: false })
     })
 
     it('serves the attention feed to the daemon token only', async () => {

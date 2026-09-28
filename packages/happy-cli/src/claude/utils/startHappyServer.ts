@@ -50,6 +50,8 @@ export interface HappyServerHandlers {
     browserTaskRuntime?: RuntimeClient;
     browserTaskProfileId?: string;
     exitAfterFirstTurn?: boolean;
+    /** The run-once host keeps the session parked while a browser task waits for the user. */
+    browserHostContinues?: boolean;
     mandatorySandbox?: boolean;
 }
 
@@ -260,7 +262,7 @@ function createMcpServer(handlers: HappyServerHandlers): McpServer {
     // Agent Browser PoC: the task runtime replaces the extension-bridge tools,
     // which fall back to the active tab and would bypass the task lease.
     if (handlers.browserTaskRuntime) {
-        registerBrowserTaskTools(mcp, handlers.browserTaskRuntime, { agentSessionId: handlers.client.sessionId, profileId: handlers.browserTaskProfileId ?? 'default', exitAfterFirstTurn: handlers.exitAfterFirstTurn });
+        registerBrowserTaskTools(mcp, handlers.browserTaskRuntime, { agentSessionId: handlers.client.sessionId, profileId: handlers.browserTaskProfileId ?? 'default', exitAfterFirstTurn: handlers.exitAfterFirstTurn, hostContinues: handlers.browserHostContinues });
     } else if (!handlers.mandatorySandbox) {
         registerBrowserTools(mcp, runTool);
     }
@@ -465,6 +467,8 @@ export async function startHappyServer(
     client: ApiSessionClient,
     options: {
         exitAfterFirstTurn?: boolean;
+        /** Set by the daemon for a Studio Chat(beta) session (HAPPY_AUTOMATION_BROWSER_CONTINUATION). */
+        browserHostContinues?: boolean;
         mandatorySandbox?: boolean;
         admitTool?: <T>(work: () => Promise<T>) => Promise<T>;
         proposeLesson?: (input: { token: string; proposal: unknown }) => { accepted: boolean };
@@ -522,6 +526,7 @@ export async function startHappyServer(
             browserTaskRuntime,
             browserTaskProfileId,
             exitAfterFirstTurn: options.exitAfterFirstTurn,
+            browserHostContinues: options.browserHostContinues,
         });
         try {
             const transport = new StreamableHTTPServerTransport({

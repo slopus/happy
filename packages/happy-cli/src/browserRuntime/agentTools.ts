@@ -80,18 +80,29 @@ const stepSchema = z.object({
     ]).optional(),
 })
 
-export function registerBrowserTaskTools(mcp: McpServer, client: RuntimeClient, opts: { agentSessionId: string; profileId: string; exitAfterFirstTurn?: boolean }): void {
+/**
+ * `exitAfterFirstTurn`: the session ends after this reply (a run-once chat). `hostContinues`: its host
+ * keeps the session parked while a task waits for the user (Studio Chat(beta)), so the attention after
+ * an approval, a login or a released takeover still wakes it.
+ */
+export function registerBrowserTaskTools(mcp: McpServer, client: RuntimeClient, opts: { agentSessionId: string; profileId: string; exitAfterFirstTurn?: boolean; hostContinues?: boolean }): void {
     const id = (v?: string) => v ?? randomUUID()
-    const sessionNote = opts.exitAfterFirstTurn
-        ? ' This chat ends after the reply. Steps that wait for approval, login or takeover cannot continue here; use a project chat. Do not promise to continue after approval.'
-        : ''
-    const continuation = (task: TaskView, batch?: BatchResult): { continuation?: 'unavailable-in-this-chat'; continuationMessage?: string } => {
+    const parked = Boolean(opts.exitAfterFirstTurn && opts.hostContinues)
+    const sessionNote = !opts.exitAfterFirstTurn ? ''
+        : parked
+            ? ' This chat turn ends after your reply. When a step waits for the user, tell them what to do in the Agent Browser console (approve, log in, release control) and end your reply; the chat is woken with an \'[agent-browser] task …\' message when they are done, and you continue then.'
+            : ' This chat ends after the reply. Steps that wait for approval, login or takeover cannot continue here; use a project chat. Do not promise to continue after approval.'
+    const continuation = (task: TaskView, batch?: BatchResult): { continuation?: 'unavailable-in-this-chat' | 'after-user-action'; continuationMessage?: string } => {
         const waitsForUser = task.status === 'awaiting-user' || task.pendingApproval || task.waitReason === 'handoff'
             || batch?.outcome === 'awaiting-user' || batch?.pendingApproval || batch?.waitReason === 'handoff'
-        return opts.exitAfterFirstTurn && waitsForUser ? {
+        if (!opts.exitAfterFirstTurn || !waitsForUser) return {}
+        return parked ? {
+            continuation: 'after-user-action',
+            continuationMessage: 'End your reply now and tell the user what to do in the Agent Browser console. This chat is woken with an [agent-browser] message when they are done; do not ask them to reply here.',
+        } : {
             continuation: 'unavailable-in-this-chat',
             continuationMessage: 'This chat ends after the reply and cannot continue after approval, login or takeover. Use a project chat; do not promise to continue here.',
-        } : {}
+        }
     }
 
     mcp.registerTool('browser_task_create_space', {

@@ -228,6 +228,28 @@ describe('startHappyServer tool registration', () => {
         }
     });
 
+    it('tells the browser tools when a run-once host keeps the chat parked for the console', async () => {
+        vi.stubEnv('HAPPY_BROWSER_TASK_RUNTIME_URL', 'http://127.0.0.1:1');
+        let server: Awaited<ReturnType<typeof startHappyServer>> | undefined;
+        try {
+            server = await startHappyServer(makeFakeClient(false), { exitAfterFirstTurn: true, browserHostContinues: true, mandatorySandbox: false });
+            const response = await fetch(server.url, { method: 'POST',
+                headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' },
+                body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }),
+            });
+            const raw = await response.text();
+            const payload = JSON.parse(raw.startsWith('event:') ? raw.slice(raw.indexOf('data: ') + 6) : raw) as {
+                result: { tools: Array<{ name: string; description?: string }> };
+            };
+            const tools = payload.result.tools.filter((tool: { name: string }) => tool.name.startsWith('browser_task_'))
+            expect(tools.length).toBeGreaterThan(0);
+            for (const tool of tools) expect(tool.description).toContain('the chat is woken');
+        } finally {
+            server?.stop();
+            vi.unstubAllEnvs();
+        }
+    });
+
     it('serves every happy tool over tools/list', async () => {
         const client = { hasTitle: () => false, sendClaudeSessionMessage: vi.fn(), sessionId: 'test' } as unknown as ApiSessionClient;
         const server = await startHappyServer(client);

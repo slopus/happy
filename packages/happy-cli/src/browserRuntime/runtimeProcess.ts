@@ -427,6 +427,7 @@ export async function runRuntime(deps: RuntimeProcessDeps = {}): Promise<void> {
             agentKey: keys.agentKey,
             revokeGrant: (grantId) => runtime.revokeGrant(grantId),
             endSession: async (agentSessionId) => { await runtime.endSession(agentSessionId); reclaim() },
+            sessionWaiting: (agentSessionId) => runtime.sessionWaiting(agentSessionId),
             attention,
             log,
         })

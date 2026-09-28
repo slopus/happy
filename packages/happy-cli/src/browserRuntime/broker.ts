@@ -11,6 +11,7 @@
  *   POST /v1/sessions/revoke    daemon token   { agentSessionId | registrationId, endSession?: true }
  *   POST /v1/agent-grants       session secret { agentSessionId, profileId } → { token, grantId, expiresAtMs }
  *   GET  /v1/attention?afterSeq=&waitMs=  daemon token → AttentionFeed
+ *   GET  /v1/sessions/waiting?agentSessionId=  daemon token → { waiting } (a task of the session waits for the user)
  *
  * The daemon registers at spawn (the Happy session id is not known yet) and
  * binds the registration once the session reports its id. Identity (principal,
@@ -74,6 +75,8 @@ export interface BrokerOptions {
     revokeGrant(grantId: GrantId): Promise<void>
     /** The bound agent session ended: cancel its tasks and reclaim its spaces (idempotent). */
     endSession?(agentSessionId: string): Promise<void>
+    /** Whether an unfinished task of the agent session waits for the user (approval, login hand-off, user control). */
+    sessionWaiting?(agentSessionId: string): Promise<boolean>
     attention: AttentionOutbox
     socketGid?: number
     /** Delay before retrying a start-up revocation replay that failed. */
@@ -109,6 +112,7 @@ const schemas = {
         z.object({ schemaVersion: z.literal(1), registrationId: id, endSession: z.boolean().optional() }).strict(),
     ]),
     grant: z.object({ schemaVersion: z.literal(1), agentSessionId: id, profileId: id }).strict(),
+    waiting: z.object({ agentSessionId: id }).strict(),
     attention: z.object({ afterSeq: z.coerce.number().int().nonnegative(), waitMs: z.coerce.number().int().nonnegative().max(MAX_SUBSCRIBE_WAIT_MS).default(0) }),
 }
 
@@ -308,6 +312,11 @@ export async function startBroker(options: BrokerOptions): Promise<Broker> {
                 await persist()
                 return { token, grantId, expiresAtMs }
             })
+        },
+        'GET /v1/sessions/waiting': async (req, url) => {
+            assertDaemon(req)
+            const query = parse(schemas.waiting, Object.fromEntries(url.searchParams))
+            return { waiting: options.sessionWaiting ? await options.sessionWaiting(query.agentSessionId) : false }
         },
         'GET /v1/attention': async (req, url) => {
             assertDaemon(req)
