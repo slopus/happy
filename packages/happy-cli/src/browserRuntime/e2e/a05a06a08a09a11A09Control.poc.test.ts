@@ -297,7 +297,9 @@ describe('A09 takeover / Stop / late effect', () => {
             const risky = await newTaskWithPage(agent, pageUrl(stack, SITE_A, '/risky-submit', {}, L), { taskSpaceId: S })
             ids.push(risky.taskId)
             const confirm = (await agent.observe({ taskId: risky.taskId, tabId: risky.tabId })).elements.find((e) => e.name === 'Confirm payment')!.ref
-            const pending = await agent.submitBatch({ taskId: risky.taskId, expectedVersion: risky.version, requestId: rid(), steps: [step(risky.tabId, 'click', { ref: confirm })] }, { waitMs: 30_000 })
+            // An approval-requiring click needs its postcondition in the same batch (checked before approval, #574).
+            const pending = await agent.submitBatch({ taskId: risky.taskId, expectedVersion: risky.version, requestId: rid(), steps: [step(risky.tabId, 'click', { ref: confirm }),
+                step(risky.tabId, 'waitFor', { until: { kind: 'text', text: 'PAYMENT RECORDED' }, timeoutMs: 15_000 })] }, { waitMs: 30_000 })
             expect(pending.result?.outcome).toBe('awaiting-user')
             await agent.cancel({ taskId: paused.taskId, requestId: rid() })
             codes.push(`awaiting-user:${(await expectCode(agent.closeSpace({ taskSpaceId: S, requestId: rid() }), 'CONFLICT', 'closeSpace with awaiting-user task')).code}`)

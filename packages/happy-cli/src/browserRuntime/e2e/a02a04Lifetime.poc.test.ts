@@ -163,6 +163,8 @@ describe('A02 awaiting-user is kept within userWaitMs', () => {
         const riskyBefore = (await stack.ledger()).filter((e) => e.kind === 'risky').length
         const submitted = await t.client.submitBatch({ taskId: t.taskId, expectedVersion: t.task.stateVersion, requestId: rid(), steps: [
             step(t.tabId, 'fill', { ref: amount.ref, value: '7' }), step(t.tabId, 'click', { ref: confirm.ref }),
+            // An approval-requiring click carries its postcondition in the same batch (checked before approval).
+            step(t.tabId, 'waitFor', { until: { kind: 'text', text: 'PAYMENT RECORDED' }, timeoutMs: 15_000 }),
         ] }, { waitMs: 30_000 })
         expect(submitted.result?.outcome).toBe('awaiting-user')
         const approval = submitted.result!.pendingApproval!

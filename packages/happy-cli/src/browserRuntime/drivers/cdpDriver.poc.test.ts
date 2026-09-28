@@ -152,6 +152,11 @@ describe.skipIf(!chromePath)('CdpDriver (real Chrome)', () => {
             <button id="pay" name="op" value="pay" style="width:120px;height:40px" ${buttonAttrs}>Pay</button></form>
             <script>const f = document.getElementById('f'), pay = document.getElementById('pay'), token = f.querySelector('[name=token]'); ${script}</script></body>`
         a.route('/guard-plain', guarded(''))
+        a.route('/guard-radio', `${HIT_SCRIPT}<body><form id="f" action="/hit/g-post" method="post">
+            <input name="amount" value="10">
+            <label><input type="radio" name="size" value="small" aria-label="Small">Small</label>
+            <label><input type="radio" name="size" value="large" aria-label="Large">Large</label>
+            <button id="pay" name="op" value="pay" style="width:120px;height:40px">Pay</button></form></body>`)
         a.route('/guard-hover-value', guarded(`onmouseover="token.value = 't2'"`))
         a.route('/guard-hover-action', guarded(`onmouseover="pay.setAttribute('formaction', '/hit/g-other')"`))
         a.route('/guard-hover-method', guarded(`onmouseover="f.method = 'get'"`))
@@ -749,6 +754,18 @@ describe.skipIf(!chromePath)('CdpDriver (real Chrome)', () => {
 
         it('submits exactly the described form when nothing changed', async () => {
             await clickExpecting('/guard-plain')
+            expect(await eventually(() => a.hits('g-post'), (n) => n === 1)).toBe(1)
+        })
+
+        it('submits right after a click on another control of the same form (the earlier click\'s guard does not linger)', async () => {
+            const tab = await open('/guard-radio', [a.origin])
+            const first = await driver.observe(tab.tabId, [a.origin], OPTS)
+            const radio = refOf(first, 'Small')
+            await driver.click(tab.tabId, radio, first.snapshotId, { ...OPTS, expect: expectationOf(await driver.describeRef(tab.tabId, radio, first.snapshotId, OPTS)) })
+            // Well inside the first guard's lifetime, as when a user approves the submit at once.
+            const second = await driver.observe(tab.tabId, [a.origin], OPTS)
+            const pay = refOf(second, 'Pay')
+            await driver.click(tab.tabId, pay, second.snapshotId, { ...OPTS, expect: expectationOf(await driver.describeRef(tab.tabId, pay, second.snapshotId, OPTS)) })
             expect(await eventually(() => a.hits('g-post'), (n) => n === 1)).toBe(1)
         })
 

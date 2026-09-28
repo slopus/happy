@@ -178,6 +178,8 @@ interface TabState {
 }
 
 interface SubmitGuard {
+    /** Matches the page guard's reports; others come from a superseded guard. */
+    id: string
     sessionId: string
     frameId: string
     expected: FormSubmission
@@ -1612,10 +1614,12 @@ export class CdpDriver implements BrowserDriver {
         setTimeout(() => {
             if (tab.submitGuard?.sessionId !== binding.sessionId || Date.now() >= tab.submitGuard.untilMs) conn.send('Runtime.disable', {}, binding.sessionId).catch(() => undefined)
         }, SUBMIT_GUARD_MS + 100)
+        // Reports carry this id: a superseded guard's (its expiry, say) must not settle this one.
+        const id = randomBytes(12).toString('hex')
         const { result } = await conn.send('Runtime.callFunctionOn', { functionDeclaration: SUBMIT_GUARD, objectId,
-            arguments: [{ value: expected }, { value: SUBMIT_GUARD_MS }], returnByValue: true }, binding.sessionId)
+            arguments: [{ value: expected }, { value: SUBMIT_GUARD_MS }, { value: id }], returnByValue: true }, binding.sessionId)
         if (result.value !== true) throw staleRef('the element is no longer in a form')
-        tab.submitGuard = { sessionId: binding.sessionId, frameId: binding.frameId, expected, untilMs: Date.now() + SUBMIT_GUARD_MS, lastStatus: 'armed', waiters: new Set() }
+        tab.submitGuard = { id, sessionId: binding.sessionId, frameId: binding.frameId, expected, untilMs: Date.now() + SUBMIT_GUARD_MS, lastStatus: 'armed', waiters: new Set() }
     }
 
     /**
@@ -1645,13 +1649,16 @@ export class CdpDriver implements BrowserDriver {
         for (const done of [...guard.waiters]) done()
     }
 
-    private onGuardReport(sessionId: string, status: string): void {
+    private onGuardReport(sessionId: string, payload: string): void {
         if (this.options.testHooks?.dropGuardReports?.()) return
+        let report: { id?: unknown; status?: unknown }
+        try { report = JSON.parse(payload) } catch { return }
         const tab = this.sessions.get(sessionId)?.tab
         const guard = tab?.submitGuard
         // The request check's verdict is final; late page reports cannot undo it.
-        if (!guard || guard.sessionId !== sessionId || ['blocked', 'sent'].includes(guard.lastStatus)) return
-        this.settleGuard(guard, status)
+        if (!guard || guard.sessionId !== sessionId || report.id !== guard.id || typeof report.status !== 'string'
+            || ['blocked', 'sent'].includes(guard.lastStatus)) return
+        this.settleGuard(guard, report.status)
     }
 
     /**

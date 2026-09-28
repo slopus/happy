@@ -439,7 +439,7 @@ ${FORM_SUBMISSION}
  * guard so the driver fails the resulting request before it is sent. Verdicts go
  * to the driver through the isolated-world binding `__abpGuardReport`.
  */
-export const SUBMIT_GUARD = String.raw`function armSubmitGuard(expected, ttlMs) {
+export const SUBMIT_GUARD = String.raw`function armSubmitGuard(expected, ttlMs, guardId) {
 ${FORM_SUBMISSION}
     const canonical = (value) => {
         if (value === null || typeof value !== 'object') return JSON.stringify(value)
@@ -452,10 +452,14 @@ ${FORM_SUBMISSION}
     const win = form.ownerDocument.defaultView
     const want = canonical(expected)
     const state = { status: 'armed' }
-    // The driver binding exists only in this isolated world; the page cannot call it.
+    // One guard per document: an earlier click's guard (a radio, a field) still armed for its lifetime
+    // would judge this click's submission against its own expectation and cancel it.
+    if (typeof globalThis.__abpDisarmSubmitGuard === 'function') globalThis.__abpDisarmSubmitGuard()
+    // The driver binding exists only in this isolated world; the page cannot call it. Reports carry the
+    // guard id so the driver ignores a superseded guard.
     const report = (status) => {
         state.status = status
-        if (typeof globalThis.__abpGuardReport === 'function') globalThis.__abpGuardReport(status)
+        if (typeof globalThis.__abpGuardReport === 'function') globalThis.__abpGuardReport(JSON.stringify({ id: guardId, status }))
     }
     const onSubmit = (event) => {
         if (event.target !== form || state.status !== 'armed') return
@@ -482,10 +486,16 @@ ${FORM_SUBMISSION}
     }
     win.addEventListener('submit', onSubmit, true)
     form.addEventListener('formdata', onFormData)
-    setTimeout(() => {
+    const disarm = () => {
+        clearTimeout(timer)
         win.removeEventListener('submit', onSubmit, true)
         form.removeEventListener('formdata', onFormData)
+        if (globalThis.__abpDisarmSubmitGuard === disarm) globalThis.__abpDisarmSubmitGuard = undefined
+    }
+    const timer = setTimeout(() => {
+        disarm()
         if (state.status === 'armed') report('expired')
     }, ttlMs)
+    globalThis.__abpDisarmSubmitGuard = disarm
     return true
 }`

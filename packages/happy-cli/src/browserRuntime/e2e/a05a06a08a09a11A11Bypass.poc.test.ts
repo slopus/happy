@@ -112,7 +112,9 @@ describe('A11 bypass, origin and secrets', () => {
         const t = await newTaskWithPage(agent, pageUrl(stack, SITE_A, '/risky-submit', {}, L))
         try {
             const confirm = (await agent.observe({ taskId: t.taskId, tabId: t.tabId })).elements.find((e) => e.name === 'Confirm payment')!.ref
-            const r = await agent.submitBatch({ taskId: t.taskId, expectedVersion: t.version, requestId: rid(), steps: [step(t.tabId, 'click', { ref: confirm })] }, { waitMs: 30_000 })
+            // An approval-requiring click carries its postcondition in the same batch (checked before approval).
+            const r = await agent.submitBatch({ taskId: t.taskId, expectedVersion: t.version, requestId: rid(), steps: [step(t.tabId, 'click', { ref: confirm }),
+                step(t.tabId, 'waitFor', { until: { kind: 'text', text: 'PAYMENT RECORDED' }, timeoutMs: 15_000 })] }, { waitMs: 30_000 })
             const pending = r.result!.pendingApproval!
             const approveReq = { taskId: t.taskId, approvalId: pending.approvalId, bindingHash: pending.bindingHash, requestId: rid(), decision: 'approve' as const }
             const codes = [

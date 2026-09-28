@@ -197,10 +197,13 @@ describe('A08 approval without a client', () => {
         const r = await reachApproval(`a08-revoked-${i}`)
         try {
             await admin(stack, '/admin/revoke-grant', { grantId: r.grantId })
-            const code = (await expectCode(approve(r), ['UNAUTHORIZED', 'APPROVAL_EXPIRED', 'SCOPE_DENIED'], 'approve after grant revocation')).code
+            // The user's consent is recorded (a run-once chat that ended keeps it for its resume, #574), but
+            // nothing runs without a live execution grant; the resumed agent's new grant revalidates it.
+            const outcome = (await approve(r)).outcome
+            expect(outcome).toBe('approved')
             const task = await waitForTask(r.ui, r.t.taskId, (t) => t.status === 'paused')
             const writes = await riskyWrites(r.L)
-            evidence('A08', { path: 'grant-revoked', i, code, status: task.status, pause: task.pauseReason, riskyWrites: writes })
+            evidence('A08', { path: 'grant-revoked', i, outcome, status: task.status, pause: task.pauseReason, riskyWrites: writes })
             expect(writes).toBe(0)
             expect(task.pauseReason).toBe('grant-expired')
         } finally {

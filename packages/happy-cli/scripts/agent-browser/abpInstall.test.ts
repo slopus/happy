@@ -154,14 +154,16 @@ describe('abp-install --dry-run', () => {
         expect(out).toMatch(/\+ migrate \/home\/agent\/workspace -> \/work\/agent-workspace \(as agent\)/)
     })
 
-    it('points the agent at --server-url before the Happy login, and leaves the default server alone without it', () => {
+    it('points the agent at --server-url before the Happy login', () => {
         const out = bash('abp-install', ['--dry-run', 'install', '--machine-id', 'machine-1', '--workspace-id', 'ws-1', '--profile', 'main=user-1',
             '--issuer', `k1=${pemFile}`, '--sites', sitesFile, '--server-url', 'https://dev-studio.example']).stdout
         expect(out).toContain('+ install -d -o agent -g agent -m 0700 /home/agent/.happy')
         expect(out).toContain('+ write /home/agent/.happy/settings.json (agent:agent 0600')
         expect(out).toContain('    |   "serverUrl": "https://dev-studio.example",')
         expect(out).toContain('    |   "webappUrl": "https://dev-studio.example"')
-        expect(out).toContain('    |   "serverUrl": "https://dev-studio.example"')
+    })
+
+    it('leaves the default server alone without --server-url', () => {
         expect(run().stdout).not.toContain('/home/agent/.happy/settings.json (')
     })
 
