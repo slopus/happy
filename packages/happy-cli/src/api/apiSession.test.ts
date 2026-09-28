@@ -2458,6 +2458,58 @@ describe('ApiSessionClient v3 messages API migration', () => {
         });
     });
 
+    it('caps steady idle gaps at thirty seconds and recovers a message saved just after a poll', async () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(0);
+        const client = new ApiSessionClient('fake-token', session);
+        const onUserMessage = vi.fn();
+        client.onUserMessage(onUserMessage);
+        const reads: number[] = [];
+        let saved = false;
+        const body = { role: 'user', content: { type: 'text', text: 'idle recovery' } };
+        mockAxiosGet.mockImplementation(async (url: unknown) => {
+            if (String(url).includes('/events')) return { data: { events: [], hasMore: false } };
+            reads.push(Date.now());
+            return { data: { messages: saved ? [{ id: 'idle-1', seq: 1,
+                content: { t: 'encrypted', c: encryptContent(session, body) },
+                localId: null, createdAt: 1000, updatedAt: 1000 }] : [], hasMore: false } };
+        });
+        emitSocketEvent('connect');
+        await vi.advanceTimersByTimeAsync(305_000);
+        expect(reads.slice(-4)).toEqual([215_000, 245_000, 275_000, 305_000]);
+        saved = true;
+        // Moving the wall clock backwards must not postpone the receive timer.
+        vi.setSystemTime(-3_600_000);
+        await vi.advanceTimersByTimeAsync(29_000);
+        expect(onUserMessage).not.toHaveBeenCalled();
+        await vi.advanceTimersByTimeAsync(1_000);
+        expect(onUserMessage).toHaveBeenCalledExactlyOnceWith({ ...body, serverMessageId: 'idle-1' });
+        await client.close();
+        const closedReads = reads.length;
+        await vi.advanceTimersByTimeAsync(60_000);
+        expect(reads).toHaveLength(closedReads);
+    });
+
+    it('resets an idle receive cadence when a live socket message arrives', async () => {
+        vi.useFakeTimers();
+        const client = new ApiSessionClient('fake-token', session);
+        mockAxiosGet.mockImplementation(async (url: unknown) => String(url).includes('/events')
+            ? { data: { events: [], hasMore: false } } : { data: { messages: [], hasMore: false } });
+        const reads = () => mockAxiosGet.mock.calls.filter(call => String(call[0]).includes('/messages')).length;
+        emitSocketEvent('connect');
+        await vi.advanceTimersByTimeAsync(305_000);
+        const before = reads();
+        emitSocketEvent('update', { body: { t: 'new-message', message: {
+            id: 'live-1', seq: 1, content: { t: 'encrypted', c: encryptContent(session, { role: 'user', content: { type: 'text', text: 'hello' } }) },
+        } } });
+        await vi.advanceTimersByTimeAsync(5_000);
+        expect(reads()).toBe(before + 1);
+        emitSocketEvent('disconnect', 'transport close');
+        await vi.advanceTimersByTimeAsync(60_000);
+        expect(reads()).toBe(before + 1);
+        await client.close();
+    });
+
     it('recovers a saved user message when the socket new-message update is missed', async () => {
         vi.useFakeTimers();
         const client = new ApiSessionClient('fake-token', session);

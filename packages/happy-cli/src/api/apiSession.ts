@@ -486,6 +486,8 @@ export class ApiSessionClient extends EventEmitter {
     }>();
     private readonly receiveSync: InvalidateSync;
     private receivePollInterval: NodeJS.Timeout | null = null;
+    private receivePollDelayMs = 5000;
+    private receivePollTicksRemaining = 1;
     private currentThinking = false;
     private openToolCallIds = new Set<string>();
     private openAskUserQuestionIds = new Set<string>();
@@ -663,6 +665,8 @@ export class ApiSessionClient extends EventEmitter {
 
                 if (data.body.t === 'new-message') {
                     if (this.shutdownReceiveSeq !== null) return;
+                    this.receivePollDelayMs = ApiSessionClient.RECEIVE_POLL_INTERVAL_MS;
+                    this.receivePollTicksRemaining = 1;
                     const messageSeq = data.body.message?.seq;
                     const isSkippedCatchupMessage =
                         typeof messageSeq === 'number' && this.skippedInitialMessageSeqs.delete(messageSeq);
@@ -1027,6 +1031,7 @@ export class ApiSessionClient extends EventEmitter {
             });
         }
 
+        const initialSeq = this.lastSeq;
         let afterSeq = this.lastSeq;
         while (true) {
             const response = await axios.get<V3GetSessionMessagesResponse>(
@@ -1097,6 +1102,11 @@ export class ApiSessionClient extends EventEmitter {
                 break;
             }
         }
+        // Empty catch-ups back off; socket delivery stays immediate. Even after
+        // prolonged inactivity, a lost socket update is recovered within 30s.
+        this.receivePollDelayMs = this.lastSeq > initialSeq
+            ? ApiSessionClient.RECEIVE_POLL_INTERVAL_MS
+            : Math.min(this.receivePollDelayMs * 2, 30_000);
     }
 
     private static readonly MAX_OUTBOX_BATCH_SIZE = 50;
@@ -1105,8 +1115,11 @@ export class ApiSessionClient extends EventEmitter {
     private startReceivePolling() {
         this.stopReceivePolling();
         if (this.shutdownReceiveSeq !== null) return;
+        this.receivePollDelayMs = ApiSessionClient.RECEIVE_POLL_INTERVAL_MS;
+        this.receivePollTicksRemaining = 1;
         this.receivePollInterval = setInterval(() => {
-            if (this.socket.connected) {
+            if (this.socket.connected && --this.receivePollTicksRemaining <= 0) {
+                this.receivePollTicksRemaining = this.receivePollDelayMs / ApiSessionClient.RECEIVE_POLL_INTERVAL_MS;
                 this.receiveSync.invalidate();
             }
         }, ApiSessionClient.RECEIVE_POLL_INTERVAL_MS);
