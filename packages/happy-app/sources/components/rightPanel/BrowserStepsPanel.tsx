@@ -15,22 +15,40 @@ function formatTime(timestamp: number): string {
     }).format(timestamp);
 }
 
+type StepImageSourceProps = {
+    sessionId?: string;
+    step: BrowserStep;
+    maxDimension?: number;
+    children: (image: { uri: string | null; loading: boolean }) => React.ReactNode;
+};
+
+function PrivateStepImageSource(props: StepImageSourceProps & { sessionId: string }) {
+    const image = useAttachmentImage(props.sessionId, props.step.ref, { maxDimension: props.maxDimension });
+    return <>{props.children(image)}</>;
+}
+
+function StepImageSource(props: StepImageSourceProps) {
+    // Anonymous public URLs must never enter the authenticated attachment loader.
+    return props.sessionId
+        ? <PrivateStepImageSource {...props} sessionId={props.sessionId} />
+        : <>{props.children({ uri: props.step.ref, loading: false })}</>;
+}
+
 const BrowserStepPreview = React.memo(function BrowserStepPreview(props: {
-    sessionId: string;
+    sessionId?: string;
     step: BrowserStep;
     onOpenImage: (source: ImageViewerSource) => void;
     imageButtonRef?: React.RefObject<View | null>;
 }) {
     const { theme } = useUnistyles();
-    const { uri, loading } = useAttachmentImage(props.sessionId, props.step.ref);
-    return (
+    return <StepImageSource sessionId={props.sessionId} step={props.step}>{({ uri, loading }) => (
         <Pressable
             ref={props.imageButtonRef}
             testID="browser-step-open-image"
             accessibilityRole="button"
             accessibilityLabel={props.step.label}
             onPress={() => props.onOpenImage({
-                uri: uri ?? '', sessionId: props.sessionId, attachmentRef: props.step.ref,
+                uri: uri ?? '', ...(props.sessionId ? { sessionId: props.sessionId, attachmentRef: props.step.ref } : {}),
                 filename: props.step.name, width: props.step.width, height: props.step.height,
             })}
             style={({ pressed }) => [styles.preview, { backgroundColor: pressed ? theme.colors.surfacePressed : theme.colors.surfaceHigh, borderColor: theme.colors.divider }]}
@@ -46,24 +64,23 @@ const BrowserStepPreview = React.memo(function BrowserStepPreview(props: {
                 <Ionicons name="expand-outline" size={18} color={theme.colors.text} />
             </View>
         </Pressable>
-    );
+    )}</StepImageSource>;
 });
 
 const BrowserStepThumbnail = React.memo(function BrowserStepThumbnail(props: {
-    sessionId: string;
+    sessionId?: string;
     step: BrowserStep;
 }) {
     const { theme } = useUnistyles();
-    const { uri } = useAttachmentImage(props.sessionId, props.step.ref, { maxDimension: 96 });
-    return (
+    return <StepImageSource sessionId={props.sessionId} step={props.step} maxDimension={96}>{({ uri }) => (
         <View style={[styles.thumbnail, { backgroundColor: theme.colors.surfaceHigh }]}>
             {uri ? <Image resizeMode="cover" source={{ uri }} style={styles.thumbnailImage} /> : <Ionicons color={theme.colors.textSecondary} name="image-outline" size={16} />}
         </View>
-    );
+    )}</StepImageSource>;
 });
 
 export const BrowserStepsPanel = React.memo(function BrowserStepsPanel(props: {
-    sessionId: string;
+    sessionId?: string;
     steps: BrowserStep[];
     onOpenImage: (source: ImageViewerSource) => void;
     imageButtonRef?: React.RefObject<View | null>;

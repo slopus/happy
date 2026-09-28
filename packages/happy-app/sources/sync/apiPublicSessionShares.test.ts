@@ -53,6 +53,33 @@ describe('apiPublicSessionShares', () => {
         expect(fetchMock.mock.calls[3][1].method).toBe('DELETE');
     });
 
+    it('retries once with legacy presentation when an older server rejects new metadata', async () => {
+        const fetchMock = vi.fn()
+            .mockResolvedValueOnce(new Response(JSON.stringify({ message: "body/snapshot/messages/0/blocks/0 Unrecognized key(s) in object: 'skillNames', 'browserRunId'" }), { status: 400 }))
+            .mockResolvedValueOnce(new Response(JSON.stringify({ publicId: 'id', publishedAt: 1 }), { status: 200 }));
+        vi.stubGlobal('fetch', fetchMock);
+        const snapshot = { version: 1 as const, title: 'Share', sharedAt: 1, messages: [{
+            id: '1', role: 'assistant' as const, createdAt: 1, blocks: [{
+                type: 'tool' as const, name: 'Skill', status: 'completed' as const,
+                skillNames: ['ego-browser'], browserRunId: 'public-run',
+            }],
+        }] };
+        await expect(publishPublicSessionShareDraft(credentials, 's', 'g', snapshot)).resolves.toMatchObject({ publicId: 'id' });
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+        const legacy = JSON.parse(fetchMock.mock.calls[1][1].body).snapshot;
+        expect(legacy.messages[0].blocks[0]).toEqual({ type: 'tool', name: 'Skill', status: 'completed' });
+        expect(snapshot.messages[0].blocks[0].skillNames).toEqual(['ego-browser']);
+    });
+
+    it.each([400, 401, 409, 500])('does not retry unrelated publish errors (%s)', async (status) => {
+        const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ message: 'Other failure' }), { status }));
+        vi.stubGlobal('fetch', fetchMock);
+        await expect(publishPublicSessionShareDraft(credentials, 's', 'g', {
+            version: 1, title: 'Share', sharedAt: 1, messages: [],
+        })).rejects.toThrow(`failed: ${status}`);
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
     it('prepares and uploads a plaintext asset through the authenticated Paws server', async () => {
         const fetchMock = vi.fn()
             .mockResolvedValueOnce(new Response(JSON.stringify({

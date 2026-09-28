@@ -6,6 +6,7 @@ import TestRenderer from 'react-test-renderer';
 import { BrowserStepsPanel } from './BrowserStepsPanel';
 import { useImageViewerStore } from '@/sync/imageViewer';
 
+const imageLoader = vi.hoisted(() => vi.fn(() => ({ loading: false, uri: null })));
 const history = vi.hoisted(() => ({ sessionMessages: {} as Record<string, any> }));
 vi.mock('@/sync/storage', () => ({ storage: { getState: () => history } }));
 
@@ -22,7 +23,7 @@ vi.mock('react-native-unistyles', () => ({
     StyleSheet: { create: (value: any) => typeof value === 'function' ? value() : value },
     useUnistyles: () => ({ theme: { colors: { divider: '#ddd', surface: '#fff', surfaceHigh: '#f4f4f4', surfaceSelected: '#eee', text: '#111', textSecondary: '#666' } } }),
 }));
-vi.mock('@/hooks/useAttachmentImage', () => ({ useAttachmentImage: () => ({ loading: false, uri: null }) }));
+vi.mock('@/hooks/useAttachmentImage', () => ({ useAttachmentImage: imageLoader }));
 vi.mock('@/text', () => ({
     t: (key: string, params?: { count?: number; current?: number; total?: number }) => ({
         'rightPanelCapabilityHub.browserProgress.timelineTitle': 'Localized timeline',
@@ -48,6 +49,19 @@ describe('BrowserStepsPanel', () => {
         if (renderer) act(() => renderer.unmount());
         renderer = undefined;
         consoleErrorSpy.mockRestore();
+    });
+
+    it('renders anonymous screenshots directly without private attachment loading', () => {
+        imageLoader.mockClear();
+        const onOpenImage = vi.fn();
+        const ref = 'https://public.test/frame.png';
+        act(() => { renderer = TestRenderer.create(<BrowserStepsPanel steps={[{
+            id: 'public', createdAt: 1, label: 'Shared screenshot', name: 'frame.png', ref,
+        }]} onOpenImage={onOpenImage} />); });
+        expect(imageLoader).not.toHaveBeenCalled();
+        expect(renderer.root.findAllByType('Image').map((node: any) => node.props.source.uri)).toEqual([ref, ref]);
+        act(() => renderer.root.findByProps({ testID: 'browser-step-open-image' }).props.onPress());
+        expect(onOpenImage).toHaveBeenCalledWith({ uri: ref, filename: 'frame.png', width: undefined, height: undefined });
     });
 
     it('keeps a long timeline inside its bounded scroll container', () => {

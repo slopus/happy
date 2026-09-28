@@ -60,6 +60,7 @@ export type ConversationTranscriptProps = {
     turnAvatar?: { id: string; imageUrl: string | null; thumbhash?: string | null };
     metadata: Metadata | null;
     sessionId?: string;
+    browserProgressScope?: string;
     messages: Message[];
     scopedItems?: DisplayItem[];
     scopedViewport?: (items: DisplayItem[], direction: 'older' | 'newer') => ReturnType<HistoryViewportReader>;
@@ -134,8 +135,9 @@ export const ConversationTranscript = React.memo((props: ConversationTranscriptP
     );
     const browserProgress = React.useMemo(() => ({
         sessionId: props.sessionId,
-        runs: props.sessionId ? getBrowserStepRuns(props.messages) : [],
-    }), [props.sessionId, props.messages]);
+        scopeKey: props.browserProgressScope ?? props.sessionId,
+        runs: props.sessionId || props.browserProgressScope ? getBrowserStepRuns(props.messages) : [],
+    }), [props.sessionId, props.browserProgressScope, props.messages]);
     const transcriptMessages = React.useMemo(() => hideLinkedBrowserSteps(props.messages, browserProgress.runs),
         [props.messages, browserProgress.runs]);
     const defaultItems = useGroupedMessages(props.scopedItems ? [] : transcriptMessages, props.groupToolCalls ?? true, groupingOptions);

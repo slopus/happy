@@ -75,7 +75,7 @@ export const BrowserStepsPopover = React.memo(function BrowserStepsPopover(props
     open: boolean;
     onClose: () => void;
     returnFocusRef?: React.RefObject<{ focus?: () => void } | null>;
-    sessionId: string;
+    sessionId?: string;
     steps: BrowserStep[];
 }) {
     const { theme } = useUnistyles();
@@ -88,11 +88,11 @@ export const BrowserStepsPopover = React.memo(function BrowserStepsPopover(props
         if (Platform.OS === 'web') requestAnimationFrame(() => imageButtonRef.current?.focus());
     }, []);
     const openImage = React.useCallback((source: ImageViewerSource) => {
-        const index = props.steps.findIndex(step => step.ref === source.attachmentRef);
+        const index = props.steps.findIndex(step => step.ref === (source.attachmentRef ?? source.uri));
         if (index < 0 || source.sessionId !== props.sessionId) return;
         const sources = props.steps.map(step => ({
-            uri: step.ref === source.attachmentRef ? source.uri : '',
-            sessionId: props.sessionId, attachmentRef: step.ref, filename: step.name,
+            uri: props.sessionId ? (step.ref === source.attachmentRef ? source.uri : '') : step.ref,
+            ...(props.sessionId ? { sessionId: props.sessionId, attachmentRef: step.ref } : {}), filename: step.name,
             width: step.width, height: step.height,
         }));
         setGallery({ sources, index });

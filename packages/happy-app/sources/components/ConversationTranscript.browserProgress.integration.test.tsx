@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import TestRenderer from 'react-test-renderer';
 import type { Message, ToolCallMessage } from '@/sync/typesMessage';
 import { ConversationTranscript } from './ConversationTranscript';
+import { publicSessionSnapshotToMessages } from '@/sync/publicSessionSnapshotAdapter';
 
 // Render list items rather than only inspecting FlatList.data. Grouping,
 // MessageView routing, activity aggregation, context and progress actions are real.
@@ -67,6 +68,26 @@ describe('inline browser evidence through the real transcript rendering chain', 
     beforeEach(() => { (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true; });
     afterEach(() => { if (renderer) act(() => renderer.unmount()); delete (globalThis as any).IS_REACT_ACT_ENVIRONMENT; });
     const byId = (testID: string) => renderer.root.find((node: any) => node.type === 'Pressable' && node.props.testID === testID);
+    it('collapses old public browser screenshots and opens anonymous evidence', async () => {
+        const messages = publicSessionSnapshotToMessages({ version: 1, title: 'Shared', sharedAt: 100,
+            messages: [{ id: 'old-frame', role: 'assistant', createdAt: 20, blocks: [{
+                type: 'attachment', attachmentId: 'asset', kind: 'image', source: 'browser_step',
+                name: 'screen.png', mimeType: 'image/png', size: 1,
+            }] }],
+        }, { attachmentUrl: () => 'https://public.test/screen.png' });
+        await act(async () => { renderer = TestRenderer.create(<ConversationTranscript metadata={null}
+            browserProgressScope="public:a" messages={messages} />); });
+        expect(renderer.root.findAllByType('BrowserStepsPopover')).toHaveLength(0);
+        expect(renderer.root.findAllByType('AttachmentGalleryView')).toHaveLength(0);
+        act(() => byId('browser-progress-trigger-legacy-browser-initial').props.onPress());
+        const popover = renderer.root.findByType('BrowserStepsPopover');
+        expect(popover.props.sessionId).toBeUndefined();
+        expect(popover.props.steps[0].ref).toBe('https://public.test/screen.png');
+        await act(async () => renderer.update(<ConversationTranscript metadata={null}
+            browserProgressScope="public:b" messages={messages} />));
+        expect(renderer.root.findAllByType('BrowserStepsPopover')).toHaveLength(0);
+    });
+
     it.each([false, true])('shows Codex frames without a Skill event only in Skills, grouping = %s', async (groupToolCalls) => {
         const second = tool('frame-2', 25, 'file', { ...frame.tool.input,
             ref: 'attachment://second', browserStep: { ...frame.tool.input.browserStep, label: 'Final result' } });

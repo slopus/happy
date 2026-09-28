@@ -30,6 +30,7 @@ function adaptBlock(
     block: PublicSessionBlockV1,
     blockIndex: number,
     attachmentUrl: ((attachmentId: string) => string) | undefined,
+    legacyBrowserRunId: string,
 ): Message | null {
     const id = messageId(message, blockIndex);
     if (block.type === 'text') {
@@ -85,6 +86,9 @@ function adaptBlock(
                     mimeType: block.mimeType,
                     encrypted: false,
                     source: block.source ?? 'user',
+                    ...(block.source === 'browser_step' ? { browserStep: block.browserStep ?? {
+                        label: block.name, runId: legacyBrowserRunId, skillName: 'ego-browser',
+                    } } : {}),
                     ...(block.image ? { image: block.image } : {}),
                 },
                 createdAt: message.createdAt,
@@ -103,7 +107,10 @@ function adaptBlock(
         tool: {
             name: block.name,
             state: toolState(block.status),
-            input: {},
+            input: {
+                ...(block.skillNames ? { skillNames: block.skillNames } : {}),
+                ...(block.browserRunId ? { runId: block.browserRunId } : {}),
+            },
             result: block.body,
             createdAt: message.createdAt,
             startedAt: message.createdAt,
@@ -124,9 +131,17 @@ export function publicSessionSnapshotToMessages(
     options: { attachmentUrl?: (attachmentId: string) => string } = {},
 ): Message[] {
     const messages: Message[] = [];
+    // Older snapshots lost run ownership. Group their screenshots within each
+    // user turn without attaching them to an unrelated named Skill invocation.
+    const legacyRunByMessage = new Map<string, string>();
+    let legacyRunId = 'legacy-browser-initial';
+    for (const message of [...snapshot.messages].reverse()) {
+        if (message.role === 'user') legacyRunId = `legacy-browser-${message.id}`;
+        legacyRunByMessage.set(message.id, legacyRunId);
+    }
     for (const message of snapshot.messages) {
         for (let blockIndex = message.blocks.length - 1; blockIndex >= 0; blockIndex -= 1) {
-            const adapted = adaptBlock(message, message.blocks[blockIndex], blockIndex, options.attachmentUrl);
+            const adapted = adaptBlock(message, message.blocks[blockIndex], blockIndex, options.attachmentUrl, legacyRunByMessage.get(message.id)!);
             if (adapted) messages.push(adapted);
         }
     }

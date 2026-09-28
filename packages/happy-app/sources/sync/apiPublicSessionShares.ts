@@ -190,14 +190,38 @@ export async function publishPublicSessionShareDraft(
     generation: string,
     snapshot: PublicSessionSnapshot,
 ): Promise<{ publicId: string; publishedAt: number }> {
-    const response = await fetch(
+    const publish = (value: PublicSessionSnapshot) => fetch(
         `${getServerUrl()}/v1/sessions/${encodeURIComponent(sessionId)}/share/drafts/${encodeURIComponent(generation)}/publish`,
         {
             method: 'PUT',
             headers: ownerHeaders(credentials, true),
-            body: JSON.stringify({ snapshot }),
+            body: JSON.stringify({ snapshot: value }),
         },
     );
+    let response = await publish(snapshot);
+    if (response.status === 400) {
+        const error = await response.clone().json().catch(() => null);
+        const message = typeof error?.message === 'string' ? error.message : '';
+        // Older strict schemas reject presentation additions before publishing.
+        // Retry this same draft once, dropping only the new optional metadata.
+        if (/unrecognized key/i.test(message) && /skillNames|browserRunId|browserStep/.test(message)) {
+            let changed = false;
+            const messages = snapshot.messages.map(item => ({ ...item, blocks: item.blocks.map(block => {
+                if (block.type === 'tool' && (block.skillNames || block.browserRunId)) {
+                    const { skillNames: _skills, browserRunId: _run, ...legacy } = block;
+                    changed = true;
+                    return legacy;
+                }
+                if (block.type === 'attachment' && block.browserStep) {
+                    const { browserStep: _step, ...legacy } = block;
+                    changed = true;
+                    return legacy;
+                }
+                return block;
+            }) }));
+            if (changed) response = await publish({ ...snapshot, messages });
+        }
+    }
     return expectJson(response, 'Publish public session share');
 }
 

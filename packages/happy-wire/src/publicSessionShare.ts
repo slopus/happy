@@ -14,6 +14,8 @@ const publicToolBlockSchema = z.object({
     type: z.literal('tool'),
     name: z.string().min(1).max(200),
     status: z.enum(['running', 'completed', 'failed', 'cancelled']),
+    skillNames: z.array(z.string().min(1).max(200)).max(100).optional(),
+    browserRunId: z.string().min(1).max(200).optional(),
     title: z.string().max(1_000).optional(),
     body: z.string().max(2_000_000).optional(),
 }).strict();
@@ -28,6 +30,11 @@ const publicAttachmentBlockSchema = z.object({
     mimeType: z.string().min(1).max(200),
     size: z.number().int().min(0).max(500 * 1024 * 1024),
     source: z.enum(['user', 'generated', 'browser_step']).optional(),
+    browserStep: z.object({
+        label: z.string().min(1).max(1_000),
+        runId: z.string().min(1).max(200),
+        skillName: z.enum(['ego-browser', 'ego-ops']),
+    }).strict().optional(),
     image: z.object({
         width: z.number().int().positive().max(100_000),
         height: z.number().int().positive().max(100_000),

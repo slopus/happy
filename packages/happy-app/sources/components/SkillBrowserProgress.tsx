@@ -18,12 +18,12 @@ export function SkillBrowserProgress(props: { invocationMessageIds: string[] }) 
     const [anchor, setAnchor] = React.useState<BrowserStepsAnchorRect>();
     const refs = React.useRef(new Map<string, View>());
     const selected = runs.find(run => selectionKey(run) === selectedId);
-    React.useEffect(() => { setSelectedId(null); }, [context?.sessionId]);
+    React.useEffect(() => { setSelectedId(null); }, [context?.sessionId, context?.scopeKey]);
     React.useEffect(() => {
         if (selectedId && !selected) setSelectedId(null);
     }, [selectedId, selected]);
 
-    if (!context?.sessionId || runs.length === 0) return null;
+    if (!context || (!context.sessionId && !context.scopeKey) || runs.length === 0) return null;
     return <>
         <View style={styles.actions}>
             {runs.map((run, index) => <Pressable
@@ -50,7 +50,7 @@ export function SkillBrowserProgress(props: { invocationMessageIds: string[] }) 
             </Pressable>)}
         </View>
         {selected ? <BrowserStepsPopover
-            key={`${context.sessionId}:${selectionKey(selected)}`}
+            key={`${context.scopeKey ?? context.sessionId}:${selectionKey(selected)}`}
             open
             dialogId={`browser-progress-dialog-${selected.id}`}
             sessionId={context.sessionId}

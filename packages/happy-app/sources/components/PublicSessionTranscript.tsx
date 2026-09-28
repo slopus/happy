@@ -33,6 +33,7 @@ export function PublicSessionTranscript({
             <View style={styles.transcript} testID="public-session-transcript-scroll-region">
                 <ConversationTranscript
                     metadata={null}
+                    browserProgressScope={`public:${publicId}`}
                     messages={messages}
                     groupToolCalls={snapshot.presentation?.groupToolCalls ?? true}
                     currentTurnActive={false}

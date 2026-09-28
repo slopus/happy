@@ -79,6 +79,19 @@ describe('BrowserStepsPopover', () => {
         consoleErrorSpy.mockRestore();
     });
 
+    it('opens every anonymous gallery page using its public URL', () => {
+        const steps = [{ ...step, ref: 'https://public.test/one.png' },
+            { ...step, id: 'step-2', ref: 'https://public.test/two.png' }];
+        act(() => { renderer = TestRenderer.create(<BrowserStepsPopover open onClose={vi.fn()} steps={steps} />); });
+        act(() => renderer.root.findByType('BrowserStepsPanel').props.onOpenImage({ uri: steps[0].ref }));
+        const gallery = renderer.root.findByType('SessionImageViewer');
+        expect(gallery.props.sources.map((source: any) => source.uri)).toEqual(steps.map(item => item.ref));
+        expect(gallery.props.sources.every((source: any) => !source.sessionId && !source.attachmentRef)).toBe(true);
+        expect(gallery.props.paginate).toBe(false);
+        act(() => gallery.props.onClose());
+        expect(renderer.root.findAllByType('SessionImageViewer')).toHaveLength(0);
+    });
+
     it('stays out of the tree until opened and renders as a standalone modal dialog', () => {
         act(() => {
             renderer = TestRenderer.create(

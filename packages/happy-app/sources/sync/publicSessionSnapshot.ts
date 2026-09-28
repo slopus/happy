@@ -1,4 +1,6 @@
 import { v4 as uuid } from 'uuid';
+import { getBrowserStepRuns } from '@/components/rightPanel/browserStepRunsModel';
+import { getSkillNamesFromTool } from '@/utils/conversationActivity';
 import type { PublicSessionCover, PublicSessionSnapshotV2, PublicSessionThemePack } from '@slopus/happy-wire';
 import type { Message, ToolCallMessage } from './typesMessage';
 import type {
@@ -11,7 +13,7 @@ import type {
 // Keep this aligned with the authenticated renderer's hidden tools. Public
 // snapshots never serialize raw tool input/result/description: those fields
 // routinely contain local paths, host details, credentials, and permission
-// state. The public contract exposes only the visible tool's name and status.
+// state. Only allowlisted display metadata may accompany the name and status.
 const HIDDEN_TOOL_NAMES = new Set([
     'CodexReasoning',
     'GeminiReasoning',
@@ -139,6 +141,16 @@ export function buildPublicSessionSnapshot(input: {
     const createAttachmentId = input.createAttachmentId ?? uuid;
     const attachmentByRef = new Map<string, PublicSessionAttachmentJob>();
     const publicMessages: PublicSessionMessageV1[] = [];
+    // Public run identities never expose source session/message/call IDs.
+    const runIdByInvocation = new Map<string, string>();
+    const browserStepByMessage = new Map<string, { label: string; runId: string; skillName: 'ego-browser' | 'ego-ops' }>();
+    for (const run of getBrowserStepRuns(input.messages)) {
+        const runId = runIdByInvocation.get(run.invocationMessageId) ?? `browser-run-${runIdByInvocation.size + 1}`;
+        runIdByInvocation.set(run.invocationMessageId, runId);
+        for (const step of run.steps) browserStepByMessage.set(step.id, {
+            label: step.label.slice(0, 1_000), runId, skillName: run.skillName,
+        });
+    }
     const addMessage = (message: Omit<PublicSessionMessageV1, 'id'>) => {
         publicMessages.push({ id: `message-${publicMessages.length + 1}`, ...message });
     };
@@ -171,15 +183,24 @@ export function buildPublicSessionSnapshot(input: {
         if (message.tool.name === 'file') {
             const mapped = mapFileTool(message, attachmentByRef, createAttachmentId);
             if (mapped) {
-                addMessage({ role: 'assistant', createdAt: message.createdAt, blocks: [mapped.block] });
+                const browserStep = browserStepByMessage.get(message.id);
+                addMessage({
+                    role: 'assistant', createdAt: message.createdAt,
+                    blocks: [{ ...mapped.block, ...(browserStep ? { browserStep } : {}) }],
+                });
             }
         } else if (!HIDDEN_TOOL_NAMES.has(message.tool.name)) {
+            const skillNames = getSkillNamesFromTool(message.tool)
+                .filter(name => /^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,199}$/.test(name)).slice(0, 100);
+            const browserRunId = runIdByInvocation.get(message.id);
             addMessage({
                 role: 'assistant',
                 createdAt: message.createdAt,
                 blocks: [{
                     type: 'tool',
                     name: message.tool.name,
+                    ...(skillNames.length ? { skillNames } : {}),
+                    ...(browserRunId ? { browserRunId } : {}),
                     status: message.tool.state === 'error' ? 'failed' : message.tool.state,
                 }],
             });

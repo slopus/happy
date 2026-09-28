@@ -567,7 +567,8 @@ describe('SidebarView Agent space exit', () => {
         });
 
         const primaryColumn = renderer.root.findByProps({ testID: 'desktop-primary-navigation-column' });
-        expect(primaryColumn.props.style).toEqual(expect.objectContaining({ width: 60, zIndex: 100 }));
+        const primaryColumnStyle = Object.assign({}, ...[primaryColumn.props.style].flat(Infinity));
+        expect(primaryColumnStyle).toEqual(expect.objectContaining({ width: 60, zIndex: 100 }));
         expect(primaryColumn.findAllByType('Pressable').map((node: any) => node.props.testID)).toEqual(expect.arrayContaining([
             'sidebar-new-session-button',
             'sidebar-inbox-button',
