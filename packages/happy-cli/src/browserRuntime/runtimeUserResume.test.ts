@@ -195,6 +195,18 @@ describe('whether an agent session waits for the user (a host keeps a run-once c
         await h.store.close()
     })
 
+    it('is true while an approved step runs (its attention follows), and false once its result is recorded', async () => {
+        const h = await createHarness()
+        const commit = (approvals: Record<string, unknown>, status: 'running' | 'paused') => h.store.commit(h.task.taskId,
+            { status, approvals: approvals as never, stateVersion: h.store.getTask(h.task.taskId)!.stateVersion + 1 },
+            { type: 'state-changed', atMs: 200, leaseEpoch: 0, data: {} })
+        await commit({ 'approval-1': { approvalId: 'approval-1', state: 'consumed' } }, 'running')
+        expect(await h.runtime.sessionWaiting('a')).toBe(true)
+        await commit({ 'approval-1': { approvalId: 'approval-1', state: 'consumed', result: { outcome: 'succeeded' } } }, 'paused')
+        expect(await h.runtime.sessionWaiting('a')).toBe(false)
+        await h.store.close()
+    })
+
     it('is true while the user holds control and false once it returns to the agent', async () => {
         const h = await createHarness()
         expect(await h.runtime.sessionWaiting('a')).toBe(false)

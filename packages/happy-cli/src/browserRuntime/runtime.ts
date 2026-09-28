@@ -820,7 +820,9 @@ export class BrowserRuntime implements BrowserRuntimeApi {
         return this.options.store.listTasks().some((task) => task.agentSessionId === agentSessionId && !FINISHED_STATUSES.has(task.status)
             && (task.status === 'awaiting-user' || Boolean(task.pendingApproval) || task.pauseReason === 'user-control'
                 // The run-once turn ended (its grant revoked) while a login, captcha or hand-off waited for the user.
-                || (task.pauseReason === 'grant-expired' && (task.waitReason === 'login' || task.waitReason === 'captcha' || task.waitReason === 'handoff'))))
+                || (task.pauseReason === 'grant-expired' && (task.waitReason === 'login' || task.waitReason === 'captcha' || task.waitReason === 'handoff'))
+                // The user approved and the step still runs: its approval-approved attention comes when it ends.
+                || Object.values(task.approvals).some((approval) => approval.state === 'consumed' && (approval as { result?: unknown }).result === undefined)))
     }
     /**
      * The logical agent session ended (explicit termination or orphan TTL expiry): its spaces are marked

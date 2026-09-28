@@ -54,6 +54,8 @@ export class AttentionOutbox {
     private closed = false
     private retryTimer?: NodeJS.Timeout
     private detach?: () => void
+    /** The daemon's delivery cursor: it polls with afterSeq only after delivering (or skipping) up to it. Unknown until it polls. */
+    private deliveredSeq?: number
 
     private constructor(private readonly stateDir: string, private readonly maxEvents: number, private readonly retryMs: number, private state: OutboxFile) {
         this.durableSeq = state.lastSeq
@@ -96,6 +98,7 @@ export class AttentionOutbox {
     }
 
     read(afterSeq: number): AttentionFeed {
+        this.deliveredSeq = Math.max(this.deliveredSeq ?? 0, afterSeq)
         const visible = this.state.events.filter((event) => event.seq <= this.durableSeq)
         const oldestSeq = visible[0]?.seq ?? this.durableSeq + 1
         // Expired only when events between the cursor and the oldest retained one were
@@ -117,6 +120,17 @@ export class AttentionOutbox {
             this.waiters.add(wake)
         })
         return this.read(afterSeq)
+    }
+
+    /**
+     * An attention for the agent session exists that the daemon has not delivered yet. Between an approval
+     * (or a release) and its delivery, a run-once host must keep the session so the delivery can resume it.
+     * False before the daemon's first poll (after a restart its cursor is unknown).
+     */
+    hasUndelivered(agentSessionId: string): boolean {
+        const delivered = this.deliveredSeq
+        if (delivered === undefined) return false
+        return this.state.events.some((event) => event.seq > delivered && event.agentSessionId === agentSessionId)
     }
 
     /** Resolves once every recorded event is durable; rejects if the write fails (it is retried). */

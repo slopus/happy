@@ -60,6 +60,44 @@ export function findBrowserAttentionSession(
     return ended ?? finished.get(sessionId)
 }
 
+export interface HeldBrowserAttention { sessionId: string; directory: string; text: string; localId: string }
+
+/**
+ * Attentions for live run-once chats whose host parks them (Studio Chat(beta)). Such a turn exits after its
+ * reply without reading a message posted meanwhile, so the attention waits for the exit and resumes the
+ * session then. In memory only: a daemon restart forgets them (the session is then no longer daemon-owned).
+ */
+export function createHeldBrowserAttentions(now: () => number = Date.now) {
+    const held = new Map<string, { attention: HeldBrowserAttention; answered: boolean }>()
+    /**
+     * The host asks "waiting?" once, at the turn end, which may come just after the exit took the attention
+     * to resume the session: that first question is still owed a true answer. Forgotten after 10 minutes.
+     */
+    const owed = new Map<string, number>()
+    return {
+        hold(attention: HeldBrowserAttention): void { held.set(attention.sessionId, { attention, answered: false }) },
+        has(sessionId: string): boolean { return held.has(sessionId) },
+        take(sessionId: string): HeldBrowserAttention | undefined {
+            const entry = held.get(sessionId)
+            held.delete(sessionId)
+            if (entry && !entry.answered) owed.set(sessionId, now())
+            return entry?.attention
+        },
+        /** For browser-session-waiting: true while held, and once for an attention taken before anyone asked. */
+        answerWaiting(sessionId: string): boolean {
+            const entry = held.get(sessionId)
+            if (entry) {
+                entry.answered = true
+                return true
+            }
+            const since = owed.get(sessionId)
+            owed.delete(sessionId)
+            return since !== undefined && now() - since < 10 * 60_000
+        },
+    }
+}
+export type HeldBrowserAttentions = ReturnType<typeof createHeldBrowserAttentions>
+
 interface DeliveryOptions {
     serverUrl: string
     findSession(sessionId: string): TrackedSession | undefined
@@ -67,6 +105,8 @@ interface DeliveryOptions {
     readToken(session: TrackedSession): Promise<string | null>
     /** Existing daemon resume path, including broker registration and run-once prompt delivery. */
     resumeSession?(input: { sessionId: string; directory: string; text: string; localId: string }): Promise<boolean>
+    /** Live sessions that must get the attention at their exit instead (see createHeldBrowserAttentions). */
+    holdUntilExit?: { applies(session: TrackedSession): boolean; held: HeldBrowserAttentions }
 }
 
 export async function deliverBrowserAttention(event: AttentionEvent, signal: AbortSignal, options: DeliveryOptions): Promise<'sent' | 'ended' | 'unowned'> {
@@ -74,14 +114,21 @@ export async function deliverBrowserAttention(event: AttentionEvent, signal: Abo
     if (!session) return 'unowned'
     const localId = `abp-${event.taskId}-${event.eventSeq}`
     const text = `[agent-browser] task ${event.taskId} status=${event.status} eventSeq=${event.eventSeq}. Call getTask for the current state before continuing.`
+    const directory = session.happySessionMetadataFromLocalWebhook?.path ?? session.directory
     const wake = async (): Promise<'sent' | 'ended'> => {
         signal.throwIfAborted()
-        const directory = session.happySessionMetadataFromLocalWebhook?.path ?? session.directory
         if (session.startedBy !== 'daemon' || !directory || !options.resumeSession) return 'ended'
         return await options.resumeSession({ sessionId: event.agentSessionId, directory, text, localId }) ? 'sent' : 'ended'
     }
     if (!options.isAlive(session.pid)) return wake()
     if (session.startedBy !== 'daemon') return 'unowned'
+    const hold = options.holdUntilExit
+    if (hold?.applies(session) && directory && options.resumeSession) {
+        hold.held.hold({ sessionId: event.agentSessionId, directory, text, localId })
+        // Exited in the meantime: the exit handler may already have looked. Whoever takes it resumes.
+        if (!options.isAlive(session.pid) && hold.held.take(event.agentSessionId)) return wake()
+        return 'sent'
+    }
     if (session.happySessionId !== event.agentSessionId) throw new Error('Attention session identity unavailable')
     if (!session.encryption) throw new Error('Attention session encryption unavailable')
     const token = await options.readToken(session)

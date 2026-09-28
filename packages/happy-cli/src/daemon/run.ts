@@ -141,7 +141,7 @@ import {
   type StopSessionResult,
 } from './sessionIdleReaper';
 import { createBrowserTaskSessionBroker, spawnResumedWithBrowserTaskRegistration, startBrowserTaskReconciliation, type BrowserTaskSessionBroker } from './browserTaskBroker';
-import { findBrowserAttentionSession, startBrowserAttentionWatcher } from './browserAttentionDelivery';
+import { createHeldBrowserAttentions, findBrowserAttentionSession, startBrowserAttentionWatcher, type HeldBrowserAttention } from './browserAttentionDelivery';
 import {
   createProcFs,
   createProcProcessProbe,
@@ -1643,6 +1643,8 @@ export async function startDaemon(): Promise<void> {
     // Execution machine H only: per-session Agent Browser grants via the Runtime broker.
     // A corrupt revocation queue disables browser grants (fail closed) and is left for repair.
     let browserTaskBroker: BrowserTaskSessionBroker | undefined;
+    // Attentions for live Chat(beta) run-once turns, delivered by resuming the session at its exit.
+    const heldBrowserAttentions = createHeldBrowserAttentions();
     try {
       browserTaskBroker = createBrowserTaskSessionBroker(process.env, undefined, {
         pendingRevocationsFile: join(configuration.happyHomeDir, 'browser-task-revocations.json'),
@@ -3245,6 +3247,29 @@ export async function startDaemon(): Promise<void> {
       });
 
     // Handle child process exit — preserve session data for resume
+    const resumeForBrowserAttention = async ({ sessionId, directory, text, localId }: HeldBrowserAttention): Promise<boolean> => {
+      // A concurrent resume owns a different prompt; retry attention after its webhook.
+      if (resumeInFlight.has(sessionId)) throw new Error('Attention session resume is already in progress');
+      const result = await resumeSession(sessionId, {
+        automation: { directory, initialPrompt: text, exitAfterFirstTurn: true,
+          environmentVariables: { HAPPY_INITIAL_PROMPT_LOCAL_ID: localId } },
+      });
+      if (result.type !== 'success') logger.debug(`[agent-browser] attention resume failed session=${sessionId}`);
+      return result.type === 'success';
+    };
+    const resumeHeldBrowserAttention = async (attention: HeldBrowserAttention): Promise<void> => {
+      for (let attempt = 1; attempt <= 5; attempt++) {
+        try {
+          const resumed = await resumeForBrowserAttention(attention);
+          logger.debug(`[agent-browser] held attention ${resumed ? 'resumed' : 'not resumed'} at exit sessionId=${attention.sessionId} localId=${attention.localId}`);
+          return;
+        } catch {
+          await new Promise((resolve) => setTimeout(resolve, 2_000 * attempt));
+        }
+      }
+      logger.debug(`[agent-browser] held attention dropped after retries sessionId=${attention.sessionId}`);
+    };
+
     const onChildExited = (pid: number) => {
       const tracked = pidToTrackedSession.get(pid);
       // A managed attempt's child is gone: its receipt records the exit (L1b).
@@ -3267,6 +3292,9 @@ export async function startDaemon(): Promise<void> {
       pidToAdoptedAt.delete(pid);
       if (tracked?.happySessionId) resumeCursorPersistedAt.delete(tracked.happySessionId);
       persistTrackedSessions();
+      const heldAttention = tracked?.happySessionId ? heldBrowserAttentions.take(tracked.happySessionId) : undefined;
+      if (heldAttention && preservedForResume) void resumeHeldBrowserAttention(heldAttention);
+      else if (heldAttention) logger.debug(`[agent-browser] held attention dropped: session not resumable sessionId=${heldAttention.sessionId}`);
       if (tracked?.userHomeDir) {
         const homeDir = tracked.userHomeDir;
         if (preservedForResume) {
@@ -4415,7 +4443,9 @@ export async function startDaemon(): Promise<void> {
       portRegistry,
       automationStore,
       aiCredentialRuntime,
-      ...(browserTaskBroker ? { browserSessionWaiting: (sessionId: string) => browserTaskBroker!.waiting(sessionId) } : {}),
+      ...(browserTaskBroker ? {
+        browserSessionWaiting: async (sessionId: string) => heldBrowserAttentions.answerWaiting(sessionId) || browserTaskBroker!.waiting(sessionId),
+      } : {}),
       autonomousQualityGate: createAutonomousQualityGateRpcHandlers(autonomousQualityGateRegistry),
       checkpoint: createCheckpointRpcHandlers({
         checkpointRoot: join(configuration.happyHomeDir, 'checkpoints'),
@@ -4850,15 +4880,10 @@ export async function startDaemon(): Promise<void> {
       findSession: (sessionId) => findBrowserAttentionSession(
         sessionId, pidToTrackedSession.values(), sessionIdToFinishedSession, isPidAlive,
       ),
-      resumeSession: async ({ sessionId, directory, text, localId }) => {
-        // A concurrent resume owns a different prompt; retry attention after its webhook.
-        if (resumeInFlight.has(sessionId)) throw new Error('Attention session resume is already in progress');
-        const result = await resumeSession(sessionId, {
-          automation: { directory, initialPrompt: text, exitAfterFirstTurn: true,
-            environmentVariables: { HAPPY_INITIAL_PROMPT_LOCAL_ID: localId } },
-        });
-        if (result.type !== 'success') logger.debug(`[agent-browser] attention resume failed session=${sessionId}`);
-        return result.type === 'success';
+      resumeSession: resumeForBrowserAttention,
+      holdUntilExit: {
+        applies: (session) => session.agentEnvironment?.[BROWSER_CONTINUATION_ENV] === '1',
+        held: heldBrowserAttentions,
       },
       isAlive: (pid) => pid > 0 && isPidAlive(pid),
       readToken: async (session) => session.userHomeDir

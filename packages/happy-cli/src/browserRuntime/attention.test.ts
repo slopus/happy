@@ -48,6 +48,28 @@ describe('AttentionOutbox', () => {
         await store.close()
     })
 
+    it('reports an attention of a session as undelivered until the daemon polls past it', async () => {
+        const dir = await tempDir()
+        const store = await TaskStore.open(dir)
+        const outbox = await AttentionOutbox.open(dir)
+        outbox.attach(store)
+        await store.createTask(storedTask('t1'), { type: 'task-created', atMs: 1, leaseEpoch: 0, data: {} })
+        // Before the daemon ever polled, nothing is known about its cursor: never claim a pending delivery.
+        await store.commit('t1' as TaskId, {}, attentionEvent('approval-approved'))
+        await outbox.flush()
+        expect(outbox.hasUndelivered('session-1')).toBe(false)
+        outbox.read(0)
+        expect(outbox.hasUndelivered('session-1')).toBe(true)
+        expect(outbox.hasUndelivered('session-2')).toBe(false)
+        // The daemon advances its cursor only after delivering, so the next poll's afterSeq acknowledges it.
+        outbox.read(1)
+        expect(outbox.hasUndelivered('session-1')).toBe(false)
+        await store.commit('t1' as TaskId, {}, attentionEvent('takeover-released'))
+        await outbox.flush()
+        expect(outbox.hasUndelivered('session-1')).toBe(true)
+        await store.close()
+    })
+
     it('recovers a transition committed to the task journal but lost before the outbox write, exactly once', async () => {
         const dir = await tempDir()
         const store = await TaskStore.open(dir)

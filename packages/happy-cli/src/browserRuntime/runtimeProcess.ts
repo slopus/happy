@@ -427,7 +427,8 @@ export async function runRuntime(deps: RuntimeProcessDeps = {}): Promise<void> {
             agentKey: keys.agentKey,
             revokeGrant: (grantId) => runtime.revokeGrant(grantId),
             endSession: async (agentSessionId) => { await runtime.endSession(agentSessionId); reclaim() },
-            sessionWaiting: (agentSessionId) => runtime.sessionWaiting(agentSessionId),
+            // Also while an approval or release has not reached the daemon yet: its delivery resumes the session.
+            sessionWaiting: async (agentSessionId) => await runtime.sessionWaiting(agentSessionId) || attention.hasUndelivered(agentSessionId),
             attention,
             log,
         })
