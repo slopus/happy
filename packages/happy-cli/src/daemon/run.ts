@@ -551,6 +551,9 @@ export function shouldRunScriptAutomations(input: {
 }
 
 export async function startDaemon(): Promise<void> {
+  // Direct `daemon start-sync` must not retain a disposable caller worktree.
+  process.chdir(os.homedir());
+
   // The daemon can be auto-(re)started by any happy CLI child — including a
   // resumed/forked session that carries HAPPY_RECONNECT_*/HAPPY_FORK* in its
   // environment. Those variables are per-spawn instructions, not daemon

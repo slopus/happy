@@ -52,6 +52,7 @@
 import { SpawnOptions, type ChildProcess } from 'child_process';
 import { spawn as crossSpawn } from 'cross-spawn';
 import { join, resolve } from 'node:path';
+import { homedir } from 'node:os';
 import { projectPath } from '@/projectPath';
 import { logger } from '@/ui/logger';
 import { existsSync, openSync, writeSync } from 'node:fs';
@@ -132,6 +133,11 @@ export function resolveHappyCliSpawnCommand(
  * @returns ChildProcess instance
  */
 export function spawnHappyCLI(args: string[], options: SpawnOptions = {}): ChildProcess {
+  // A daemon outlives the caller's automation worktree. Pin both startup
+  // commands before even reading process.cwd(), which may already be deleted.
+  if (args[0] === 'daemon' && (args[1] === 'start' || args[1] === 'start-sync')) {
+    options = { ...options, cwd: homedir() };
+  }
   const command = resolveHappyCliSpawnCommand(args);
 
   let directory: string | URL | undefined;
