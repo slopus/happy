@@ -57,9 +57,12 @@ test('uploads immutable release once, then copies live assets inside OSS', async
         assert.ok(state[`${releasePrefix}index.html`]);
         assert.deepEqual(state['_expo/static/app.js'], state[`${releasePrefix}_expo/static/app.js`]);
         assert.deepEqual(state['assets/fonts/Ionicons.abc.ttf'], state[`${releasePrefix}assets/fonts/Ionicons.abc.ttf`]);
-        assert.deepEqual(state['canvaskit.wasm'], state[`${releasePrefix}canvaskit.wasm`]);
+        assert.equal(state['canvaskit.wasm'].md5, state[`${releasePrefix}canvaskit.wasm`].md5);
+        assert.equal(state['canvaskit.wasm'].cacheControl, 'no-cache');
+        assert.equal(state['canvaskit.wasm'].contentType, 'application/wasm');
         assert.match(result.log, /ossutil cp -r .*web\/releases\/.*--checksum/);
         assert.match(result.log, /canvaskit\.wasm.*--copy-props none.*--content-type application\/wasm/);
+        assert.match(result.log, /ossutil set-props .*canvaskit\.wasm.*--cache-control no-cache.*--metadata-directive update/);
         assert.match(result.log, /metadata\.json.*--cache-control no-cache/);
         assert.match(result.log, /\.well-known\/.*--cache-control no-cache/);
     } finally {

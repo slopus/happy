@@ -104,6 +104,12 @@ for source_file in "$DIST_DIR"/*; do
                 --cache-control "$REVALIDATE_CACHE_CONTROL" \
                 --content-type application/wasm \
                 --endpoint "$OSS_UPLOAD_ENDPOINT" --addressing-style "$OSS_ADDRESSING_STYLE"
+            # ossutil cp can omit Cache-Control on an OSS-to-OSS copy even when
+            # passed above. Update the destination's properties explicitly.
+            aliyun ossutil set-props "oss://$OSS_BUCKET/$filename" \
+                --cache-control "$REVALIDATE_CACHE_CONTROL" \
+                --content-type application/wasm --metadata-directive update --force \
+                --endpoint "$OSS_UPLOAD_ENDPOINT" --addressing-style "$OSS_ADDRESSING_STYLE"
         else
             upload_file "$source_file" "oss://$OSS_BUCKET/$filename" "$REVALIDATE_CACHE_CONTROL"
         fi

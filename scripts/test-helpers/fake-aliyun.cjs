@@ -13,6 +13,15 @@ const flag = (name) => args[args.indexOf(name) + 1];
 const save = () => fs.writeFileSync(statePath, JSON.stringify(state));
 const strip = (uri) => uri.replace(/^oss:\/\/[^/]+\//, '');
 
+if (args[0] === 'ossutil' && args[1] === 'set-props') {
+  const key = strip(args[2]);
+  if (!state[key]) process.exit(1);
+  if (args.includes('--cache-control')) state[key].cacheControl = flag('--cache-control');
+  if (args.includes('--content-type')) state[key].contentType = flag('--content-type');
+  save();
+  process.exit(0);
+}
+
 if (args[0] === 'ossutil' && args[1] === 'api' && args[2] === 'list-objects-v2') {
   const keys = Object.keys(state).filter((key) => key.startsWith(flag('--prefix'))).sort();
   const start = args.includes('--continuation-token') ? Number(flag('--continuation-token')) : 0;
@@ -63,7 +72,17 @@ let copied = 0;
 for (const file of files) {
   const key = recursive ? targetPrefix + file.relative : targetPrefix;
   if (args.includes('--checksum') && JSON.stringify(state[key]) === JSON.stringify(file.value)) continue;
-  state[key] = { ...file.value };
+  const copyWithoutProps = source.startsWith('oss://') &&
+    args.includes('--copy-props') && flag('--copy-props') === 'none';
+  state[key] = copyWithoutProps
+    ? { size: file.value.size, md5: file.value.md5 }
+    : { ...file.value };
+  if (!source.startsWith('oss://') && args.includes('--cache-control')) {
+    state[key].cacheControl = flag('--cache-control');
+  }
+  if (!source.startsWith('oss://') && args.includes('--content-type')) {
+    state[key].contentType = flag('--content-type');
+  }
   if (key.startsWith('manifests/') && !source.startsWith('oss://') && !recursive) {
     state[key].text = fs.readFileSync(source, 'utf8');
   }
