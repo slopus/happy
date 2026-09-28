@@ -3,7 +3,7 @@ import { copyFile, constants } from 'node:fs/promises';
 import { join } from 'node:path';
 import { StandaloneDrain } from './standaloneDrain';
 import { StandaloneLaunchControl } from './standaloneLaunchControl';
-import { STANDALONE_DRAIN_PROVIDERS } from './standaloneLaunchProtocol';
+import { STANDALONE_DRAIN_PROVIDERS, standaloneDrainProviderForArgs } from './standaloneLaunchProtocol';
 import { StandaloneLaunchJournal, protectStandaloneObservationDirectory } from './standaloneLaunchJournal';
 import { StandaloneLaunchFailure, StandaloneSessionOwner } from './standaloneSessionOwner';
 import { launchWindowsSession, probeWindowsProcessIdentity, readWindowsSessionReceipt, verifyWindowsSessionLauncher, WindowsSessionLaunchError } from './windowsSessionLauncher';
@@ -13,8 +13,12 @@ import { resolveHappyCliSpawnCommand } from '../utils/spawnHappyCLI';
 export const STANDALONE_WINDOWS_TARGETS = STANDALONE_DRAIN_PROVIDERS.map(provider =>
   ({ platform: 'win32' as const, arch: 'x64' as const, provider, mode: 'standard' as const }));
 /** A spawn's agent (none means Claude, the daemon default) or the Happy CLI's first argument. */
-export function acceptsStandaloneWindowsProvider(agentOrCommand: string | undefined): boolean {
-  return (STANDALONE_DRAIN_PROVIDERS as readonly string[]).includes(agentOrCommand ?? 'claude');
+export function acceptsStandaloneWindowsProvider(agent: string | undefined): boolean {
+  return (STANDALONE_DRAIN_PROVIDERS as readonly string[]).includes(agent ?? 'claude');
+}
+/** The Happy CLI arguments of a launch; opencode runs as `acp opencode`. */
+export function acceptsStandaloneWindowsLaunch(args: readonly string[]): boolean {
+  return standaloneDrainProviderForArgs(args) !== undefined;
 }
 
 export function readStandaloneCandidateId(env: NodeJS.ProcessEnv): string | undefined {

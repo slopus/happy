@@ -6,7 +6,8 @@
  * error handling) is delegated to TransportHandler implementations.
  */
 
-import { spawn, type ChildProcess } from 'node:child_process';
+import type { ChildProcess } from 'node:child_process';
+import { spawn as crossSpawn } from 'cross-spawn';
 import { Readable, Writable } from 'node:stream';
 import {
   ClientSideConnection,
@@ -32,6 +33,7 @@ import type {
   McpServerConfig,
 } from '../core';
 import { logger } from '@/ui/logger';
+import { createProviderExitObserver, type ObservedSdkExit } from '@/managed/managedProviderExitObserver';
 import { delay } from '@/utils/time';
 import packageJson from '../../../package.json';
 
@@ -320,6 +322,9 @@ export class AcpBackend implements AgentBackend {
   private connection: ClientSideConnection | null = null;
   private acpSessionId: string | null = null;
   private disposed = false;
+  /** The agent process's own exit, and whether anything asked it to die (Desktop W0-5f). */
+  private readonly exitObserver = createProviderExitObserver();
+  private inputEnded = false;
   /** Track active tool calls to prevent duplicate events */
   private activeToolCalls = new Set<string>();
   private toolCallTimeouts = new Map<string, NodeJS.Timeout>();
@@ -385,25 +390,17 @@ export class AcpBackend implements AgentBackend {
       // Spawn the ACP agent process
       const args = this.options.args || [];
       
-      // On Windows, spawn via cmd.exe to handle .cmd files and PATH resolution
-      // This ensures proper stdio piping without shell buffering
-      if (process.platform === 'win32') {
-        const fullCommand = [this.options.command, ...args].join(' ');
-        this.process = spawn('cmd.exe', ['/c', fullCommand], {
-          cwd: this.options.cwd,
-          env: { ...process.env, ...this.options.env },
-          stdio: ['pipe', 'pipe', 'pipe'],
-          windowsHide: true,
-        });
-      } else {
-        this.process = spawn(this.options.command, args, {
-          cwd: this.options.cwd,
-          env: { ...process.env, ...this.options.env },
-          // Use 'pipe' for all stdio to capture output without printing to console
-          // stdout and stderr will be handled by our event listeners
-          stdio: ['pipe', 'pipe', 'pipe'],
-        });
-      }
+      // cross-spawn resolves npm .cmd shims on Windows and quotes each argument for
+      // cmd.exe; joining them into one `cmd.exe /c` line split and reinterpreted them.
+      this.process = crossSpawn(this.options.command, args, {
+        cwd: this.options.cwd,
+        env: { ...process.env, ...this.options.env },
+        // Use 'pipe' for all stdio to capture output without printing to console
+        // stdout and stderr will be handled by our event listeners
+        stdio: ['pipe', 'pipe', 'pipe'],
+        windowsHide: true,
+      });
+      this.exitObserver.watch(this.process);
       
       // Ensure stderr doesn't leak to console - redirect to logger only
       // This prevents gemini CLI debug output from appearing in user's console
@@ -1074,7 +1071,18 @@ export class AcpBackend implements AgentBackend {
       };
 
       logger.debugLargeJson(`[AcpBackend] Prompt request:`, promptRequest);
-      await this.connection.prompt(promptRequest);
+      // The SDK never settles a pending request when the stream closes, so an
+      // agent that ends on EOF before answering would strand this call. Once we
+      // closed its input ourselves, the connection closing is the turn's end.
+      const connection = this.connection;
+      const answered = await Promise.race([
+        connection.prompt(promptRequest).then(() => true),
+        connection.closed.then(() => this.inputEnded ? false : new Promise<never>(() => {})),
+      ]);
+      if (!answered) {
+        logger.debug('[AcpBackend] Agent ended after its input closed; the prompt went unanswered');
+        return;
+      }
       logger.debug('[AcpBackend] Prompt request sent to ACP connection');
       
       // Don't emit 'idle' here - it will be emitted after all message chunks are received
@@ -1271,14 +1279,29 @@ export class AcpBackend implements AgentBackend {
     this.emit({ type: 'permission-response', id: requestId, approved });
   }
 
+  /** Closes the agent's input so it can end on its own; nothing is killed. */
+  endInput(): void {
+    this.inputEnded = true;
+    this.process?.stdin?.end();
+  }
+
+  /** The agent process's exit, or `null` while it has not been seen to leave. */
+  processExit(): ObservedSdkExit | null {
+    return this.exitObserver.observed();
+  }
+
+  processId(): number | undefined {
+    return this.process?.pid;
+  }
+
   async dispose(): Promise<void> {
     if (this.disposed) return;
     
     logger.debug('[AcpBackend] Disposing backend');
     this.disposed = true;
 
-    // Try graceful shutdown first
-    if (this.connection && this.acpSessionId) {
+    // Try graceful shutdown first; a closed input cannot carry the cancel
+    if (this.connection && this.acpSessionId && !this.inputEnded) {
       try {
         // Send cancel to stop any ongoing work
         await Promise.race([
@@ -1290,29 +1313,30 @@ export class AcpBackend implements AgentBackend {
       }
     }
 
-    // Kill the process
-    if (this.process) {
-      // Try SIGTERM first, then SIGKILL after timeout
-      this.process.kill('SIGTERM');
-      
-      // Give process 1 second to terminate gracefully
-      await new Promise<void>((resolve) => {
+    // Kill the process, unless it already ended on its own
+    const child = this.process;
+    if (child && child.exitCode === null && child.signalCode === null) {
+      this.exitObserver.markForced();
+      const exited = new Promise<void>((resolve) => { child.once('exit', () => resolve()); });
+      if (process.platform === 'win32' && child.pid !== undefined) {
+        // A signal only ends the direct child on Windows; a shim's agent would survive it.
+        logger.debug('[AcpBackend] Killing process tree');
+        crossSpawn('taskkill', ['/pid', String(child.pid), '/t', '/f'], { stdio: 'ignore', windowsHide: true })
+          .on('error', (error) => logger.debug('[AcpBackend] taskkill failed:', error));
+        await Promise.race([exited, delay(3000)]);
+      } else {
+        // Try SIGTERM first, then SIGKILL after timeout
+        child.kill('SIGTERM');
+        // Give process 1 second to terminate gracefully
         const timeout = setTimeout(() => {
-          if (this.process) {
-            logger.debug('[AcpBackend] Force killing process');
-            this.process.kill('SIGKILL');
-          }
-          resolve();
+          logger.debug('[AcpBackend] Force killing process');
+          child.kill('SIGKILL');
         }, 1000);
-        
-        this.process?.once('exit', () => {
-          clearTimeout(timeout);
-          resolve();
-        });
-      });
-      
-      this.process = null;
+        await Promise.race([exited, delay(3000)]);
+        clearTimeout(timeout);
+      }
     }
+    this.process = null;
 
     // Clear timeouts
     if (this.idleTimeout) {

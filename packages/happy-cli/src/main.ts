@@ -469,6 +469,8 @@ Conversation history is preserved on the server, but in-flight tool calls are in
       // `happy grok` is `happy acp grok` with the agent name pinned, so every
       // remaining flag (-m, --reasoning-effort, ...) still reaches the Grok CLI.
       const resolved = resolveAcpAgentConfig(subcommand === 'grok' ? ['grok', ...acpArgs] : acpArgs);
+      // Captured by index.ts before provider modules loaded; only a daemon launch carries one.
+      const standaloneLaunch = takeStandaloneLaunchBootstrap(process.env);
       const { credentials } = await authAndSetupMachineIfNeeded();
       await ensureDaemonRunning()
 
@@ -479,6 +481,7 @@ Conversation history is preserved on the server, but in-flight tool calls are in
         agentName: resolved.agentName,
         command: resolved.command,
         args: resolved.args,
+        ...(standaloneLaunch ? { standaloneLaunch } : {}),
       });
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')

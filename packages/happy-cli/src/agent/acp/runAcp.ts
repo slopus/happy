@@ -34,6 +34,10 @@ import {
 } from './sessionConfigMetadata';
 import type { SessionConfigOption, SessionModeState, SessionModelState } from '@agentclientprotocol/sdk';
 import { createDeferredContinuationContextConsumer } from '@/utils/deferredContinuationContext';
+import type { StandaloneLaunchBootstrap } from '@/daemon/standaloneLaunchProtocol';
+import { SessionLaunchControl } from '@/sessionDrain/sessionLaunchControl';
+import { RuntimeProducerGate } from '@/sessionDrain/runtimeProducerGate';
+import { createAcpDrainProvider } from './acpDrainProvider';
 
 /** Max time without any backend activity before the turn is cancelled. */
 const TURN_INACTIVITY_TIMEOUT_MS = 5 * 60 * 1000;
@@ -477,7 +481,11 @@ export async function runAcp(opts: {
   verbose?: boolean;
   /** Max time without any backend activity before the turn is cancelled. */
   turnInactivityTimeoutMs?: number;
+  /** A Windows standalone daemon launch this runtime drains through (Desktop W0-5f). */
+  standaloneLaunch?: StandaloneLaunchBootstrap;
 }): Promise<void> {
+  if (opts.standaloneLaunch && opts.startedBy !== 'daemon') throw new Error('Standalone launch requires a daemon-started session');
+  const launchControl = opts.standaloneLaunch ? await SessionLaunchControl.connect(opts.standaloneLaunch) : undefined;
   const verbose = opts.verbose === true;
   const turnInactivityTimeoutMs = opts.turnInactivityTimeoutMs ?? TURN_INACTIVITY_TIMEOUT_MS;
   const sessionTag = randomUUID();
@@ -510,6 +518,7 @@ export async function runAcp(opts: {
   if (response) {
     logAcp('muted', `Happy Session ID: ${response.id}`);
   }
+  if (launchControl && !response) throw new Error('Standalone launch requires an online session');
 
   let session: ApiSessionClient;
   let permissionHandler: GenericAcpPermissionHandler;
@@ -522,6 +531,7 @@ export async function runAcp(opts: {
     metadata,
     state,
     response,
+    ...(launchControl ? { sessionOptions: { trackShutdownStorage: true } } : {}),
     onSessionSwap: (newSession) => {
       session = newSession;
       if (permissionHandler) {
@@ -570,7 +580,15 @@ export async function runAcp(opts: {
   // bashStreamCallRegistry (which AcpSessionManager populates on
   // tool-call-start). No per-runner wiring needed; the registry is the
   // single source of truth across runClaude/runAcp/runCodex/runGemini.
-  const happyServer = await startHappyServer(session);
+  // Only the launch-bound local channel can drain this runtime (Desktop W0-5f).
+  let runtimeGate: RuntimeProducerGate | undefined;
+  let draining = false;
+  let loopDone = false;
+  let markLoopDone!: () => void;
+  const loopFinished = new Promise<void>((resolve) => { markLoopDone = () => { loopDone = true; resolve(); }; });
+  const happyServer = await startHappyServer(session, launchControl ? {
+    admitTool: <T,>(work: () => Promise<T>) => (runtimeGate ? runtimeGate.admit(work, 'writer') : Promise.reject(new Error('Runtime input is not open'))),
+  } : undefined);
   const bridgeCommand = join(projectPath(), 'bin', 'happy-mcp.mjs');
   const aplusMcpServers = bridgeAplusMcpServers(
     await fetchAplusMcpServers(opts.credentials.token, settings.machineId),
@@ -667,7 +685,8 @@ export async function runAcp(opts: {
     logger.debug(`[${opts.agentName}] ${reason}; stopping ACP runner`);
     shouldExit = true;
     messageQueue.close();
-    clearPendingTurn(new Error(reason));
+    // The drain cancelled this turn on purpose; that is its end, not a failure.
+    clearPendingTurn(draining ? undefined : new Error(reason));
   };
 
   const sendEnvelopes = (envelopes: SessionEnvelope[]) => {
@@ -918,10 +937,42 @@ export async function runAcp(opts: {
 
   backend.onMessage(onBackendMessage);
 
+  if (launchControl) {
+    const gate = new RuntimeProducerGate({
+      hasUndeliveredInput: () => messageQueue.size() > 0,
+      canFreezeInbound: () => session.canFreezeInboundMessagesForShutdown(),
+      freezeInbound: () => session.freezeInboundMessagesForShutdown(),
+      stopLoop: () => { draining = true; shouldExit = true; messageQueue.close(); },
+    });
+    runtimeGate = gate;
+    launchControl.bind(createAcpDrainProvider({
+      ready: () => acpSessionId !== null && !loopDone,
+      freezeInput: () => { permissionHandler.reset('Session is shutting down'); },
+      activeTurn: () => {
+        const sessionToCancel = acpSessionId;
+        return pendingTurn && sessionToCancel ? { interrupt: () => backend.cancel(sessionToCancel) } : null;
+      },
+      requestEndInput: () => backend.endInput(),
+      processStarted: () => backend.processId() !== undefined || backend.processExit() !== null,
+      processExit: () => backend.processExit(),
+      loopFinished,
+      isLoopFinished: () => loopDone,
+    }), session, gate);
+  }
+
   session.onUserMessage((message) => {
     if (!message.content.text) {
       return;
     }
+    if (runtimeGate) {
+      void runtimeGate.admit(async () => enqueueUserMessage(message)).catch((error) => {
+        logger.debug(`[${opts.agentName}] Refused a user message while the runtime is closing:`, error);
+      });
+      return;
+    }
+    enqueueUserMessage(message);
+  });
+  function enqueueUserMessage(message: Parameters<Parameters<typeof session.onUserMessage>[0]>[0]): void {
 
     if (typeof message.meta?.permissionMode === 'string') {
       currentPermissionMode = message.meta.permissionMode;
@@ -944,7 +995,7 @@ export async function runAcp(opts: {
       deferredTurn?.rollback();
       throw error;
     }
-  });
+  }
   session.keepAlive(thinking, 'remote');
 
   const keepAliveInterval = setInterval(() => {
@@ -982,12 +1033,26 @@ export async function runAcp(opts: {
 
   session.rpcHandlerManager.registerHandler('abort', handleAbort);
   const handleKillSession = async () => {
+    if (runtimeGate?.isFrozen()) {
+      // The drain owns the agent's EOF and the storage proof; the loop's own exit
+      // path finishes after the decision.
+      await runtimeGate.waitForShutdownDecision();
+      return;
+    }
+    // Seal before the first await so a drain cannot freeze behind this kill.
+    runtimeGate?.beginTermination();
     shouldExit = true;
     messageQueue.close();
     clearPendingTurn(new Error('Session terminated'));
     await handleAbort();
   };
   registerKillSessionHandler(session.rpcHandlerManager, handleKillSession);
+  // Without a handler a signal ends the process at once, in the middle of a drain decision.
+  const onStandaloneSignal = () => { void handleKillSession(); };
+  if (launchControl) {
+    process.on('SIGTERM', onStandaloneSignal);
+    process.on('SIGINT', onStandaloneSignal);
+  }
 
   // Exit when the session is archived/deleted server-side: the web archive
   // button (ephemeral with reason='archived') or a fatal 404 from the
@@ -1030,6 +1095,9 @@ export async function runAcp(opts: {
       if (!acpSessionId) {
         throw new Error('ACP session is not started');
       }
+      if (runtimeGate && !runtimeGate.tryBeginPreparing()) {
+        break;
+      }
 
       logAcp('incoming', `Incoming prompt: ${formatUnknownForConsole(batch.message, ACP_EVENT_PREVIEW_CHARS)}`);
       sendEnvelopes(sessionManager.startTurn());
@@ -1041,9 +1109,10 @@ export async function runAcp(opts: {
         if (typeof batch.mode.model === 'string' && batch.mode.model.length > 0) {
           await switchModelIfRequested(batch.mode.model);
         }
+        runtimeGate?.markDispatched();
         await backend.sendPrompt(acpSessionId, appendTitleInstructionWhileUntitled(session, batch.message));
         await turnEnded;
-        sendEnvelopes(sessionManager.endTurn('completed'));
+        sendEnvelopes(sessionManager.endTurn(draining ? 'cancelled' : 'completed'));
         session.sendSessionEvent({ type: 'ready' });
         if (verbose) {
           logAcp('muted', `Outgoing prompt completion from ${opts.agentName}`);
@@ -1054,6 +1123,8 @@ export async function runAcp(opts: {
         logAcp('error', `Prompt error from ${opts.agentName}: ${error instanceof Error ? error.message : String(error)}`);
         clearPendingTurn(error instanceof Error ? error : new Error(String(error)));
         throw error;
+      } finally {
+        runtimeGate?.endTurn();
       }
     }
   } finally {
@@ -1066,6 +1137,27 @@ export async function runAcp(opts: {
     } catch (error) {
       logger.debug(`[${opts.agentName}] Failed to reset permission handler:`, error);
     }
+
+    if (runtimeGate) {
+      // Seal synchronously; producers already admitted keep their promises.
+      const producers = runtimeGate.closeAdmissionAndWait();
+      if (runtimeGate.isFrozen()) {
+        // The loop has finished its writes; the drain still owns the agent's EOF
+        // and the storage proof. Nothing below may run before it confirms.
+        runtimeGate.loopExited();
+        markLoopDone();
+        const decision = await runtimeGate.waitForShutdownDecision();
+        if (decision === 'blocked') {
+          process.exitCode = 1;
+          logger.warn('[standalone] Shutdown blocked; retaining API and agent ownership');
+          await new Promise<never>(() => {});
+        }
+      } else {
+        await producers;
+        runtimeGate.loopExited();
+      }
+    }
+    markLoopDone();
 
     backend.offMessage?.(onBackendMessage);
     await backend.dispose();
@@ -1090,5 +1182,8 @@ export async function runAcp(opts: {
     } catch (error) {
       logger.debug(`[${opts.agentName}] Session close failed:`, error);
     }
+    process.off('SIGTERM', onStandaloneSignal);
+    process.off('SIGINT', onStandaloneSignal);
+    launchControl?.close();
   }
 }

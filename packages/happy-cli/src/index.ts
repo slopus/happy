@@ -8,7 +8,7 @@ import { captureStandaloneLaunchBootstrap } from './daemon/standaloneLaunchProto
 import { handleAgentCommand } from './commands/agentCommand'
 
 const args = process.argv.slice(2)
-try { captureStandaloneLaunchBootstrap(process.env, args[0]) }
+try { captureStandaloneLaunchBootstrap(process.env, args) }
 catch { console.error('Invalid standalone launch bootstrap'); process.exit(1) }
 
 if (args[0] === 'agent') {

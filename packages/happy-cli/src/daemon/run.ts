@@ -1,5 +1,5 @@
 /** Happy daemon lifecycle, child-session spawning and resumption, and browser attention delivery. */
-import { inspectStandaloneCandidatePresence, assertStandaloneCandidateIdentity, readStandaloneCandidateId, createStandaloneWindowsRuntime, acceptsStandaloneWindowsProvider } from './standaloneWindowsRuntime';
+import { inspectStandaloneCandidatePresence, assertStandaloneCandidateIdentity, readStandaloneCandidateId, createStandaloneWindowsRuntime, acceptsStandaloneWindowsProvider, acceptsStandaloneWindowsLaunch } from './standaloneWindowsRuntime';
 import { DIFFICULTY_CLASSIFIER_REVISION } from './difficultyRoutingArtifacts';
 import { healInstallArtifacts } from './installArtifactsHeal';
 import fs from 'fs/promises';
@@ -2286,7 +2286,7 @@ export async function startDaemon(): Promise<void> {
        */
       resumeTargetSessionId?: string;
     }): Promise<SpawnSessionResult> => {
-      if (standaloneWindows && (!standaloneWindows.owner.acceptingLaunches || !acceptsStandaloneWindowsProvider(args[0]))) {
+      if (standaloneWindows && (!standaloneWindows.owner.acceptingLaunches || !acceptsStandaloneWindowsLaunch(args))) {
         return { type: 'error', errorMessage: 'Windows trial launch is closed or this provider is unsupported' };
       }
       const prepared = standaloneWindows ? await standaloneWindows.owner.prepare({ args, cwd, env }) : undefined;

@@ -1,8 +1,9 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { STANDALONE_DRAIN_PROVIDERS } from './standaloneLaunchProtocol';
 
 const id = z.string().min(1).max(128).regex(/^[a-zA-Z0-9._-]+$/);
-const targetSchema = z.object({ platform: z.literal('win32'), arch: z.enum(['x64', 'arm64']), provider: z.enum(['codex', 'claude']), mode: z.literal('standard') }).strict();
+const targetSchema = z.object({ platform: z.literal('win32'), arch: z.enum(['x64', 'arm64']), provider: z.enum(STANDALONE_DRAIN_PROVIDERS), mode: z.literal('standard') }).strict();
 const beginSchema = z.object({ requestId: id, expectedInstanceId: id, reason: z.enum(['app-quit', 'update', 'mode-switch']) }).strict();
 const snapshotSchema = z.object({ launchIds: z.array(id).max(256), unresolved: z.boolean() }).strict();
 const referenceSchema = z.object({ expectedInstanceId: id, operationId: id }).strict();

@@ -31,13 +31,19 @@ export const launchReplySchema = z.discriminatedUnion('type', [
 ]);
 
 /** The runtimes that implement the session drain; nothing else may run in the Windows standalone runtime. */
-export const STANDALONE_DRAIN_PROVIDERS = ['codex', 'claude'] as const;
-const DRAINABLE_COMMANDS: ReadonlySet<string> = new Set(STANDALONE_DRAIN_PROVIDERS);
+export const STANDALONE_DRAIN_PROVIDERS = ['codex', 'claude', 'opencode', 'grok'] as const;
+export type StandaloneDrainProvider = typeof STANDALONE_DRAIN_PROVIDERS[number];
+/** The provider a Happy CLI invocation runs, as the daemon spawns it; opencode runs over ACP (`acp opencode`). */
+export function standaloneDrainProviderForArgs(args: readonly string[]): StandaloneDrainProvider | undefined {
+  const [command, agent] = args;
+  if (command === 'acp') return agent === 'opencode' ? 'opencode' : undefined;
+  return command === 'codex' || command === 'claude' || command === 'grok' ? command : undefined;
+}
 // index.ts captures before loading provider modules with import-time side effects.
 let entryBootstrap: StandaloneLaunchBootstrap | undefined;
-export function captureStandaloneLaunchBootstrap(env: NodeJS.ProcessEnv, command: string | undefined): void {
+export function captureStandaloneLaunchBootstrap(env: NodeJS.ProcessEnv, args: readonly string[]): void {
   entryBootstrap = consumeStandaloneLaunchBootstrap(env);
-  if (entryBootstrap && !DRAINABLE_COMMANDS.has(command ?? '')) {
+  if (entryBootstrap && !standaloneDrainProviderForArgs(args)) {
     entryBootstrap = undefined; throw new Error('Standalone launch requires a drainable agent');
   }
 }

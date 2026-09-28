@@ -4,19 +4,19 @@ import { STANDALONE_LAUNCH_ENV, captureStandaloneLaunchBootstrap, takeStandalone
 const bootstrap = JSON.stringify({ version: 1, instanceId: 'instance', launchId: 'launch', port: 4000, secret: 'a'.repeat(64) });
 
 describe('standalone launch bootstrap capture', () => {
-    it('hands the bootstrap to the Codex and Claude runtimes that can drain', () => {
-        for (const command of ['codex', 'claude']) {
+    it('hands the bootstrap to the runtimes that can drain, as the daemon spawns them', () => {
+        for (const args of [['codex'], ['claude'], ['grok'], ['acp', 'opencode']]) {
             const env: NodeJS.ProcessEnv = { [STANDALONE_LAUNCH_ENV]: bootstrap };
-            captureStandaloneLaunchBootstrap(env, command);
+            captureStandaloneLaunchBootstrap(env, args);
             expect(env[STANDALONE_LAUNCH_ENV]).toBeUndefined();
             expect(takeStandaloneLaunchBootstrap({})).toMatchObject({ launchId: 'launch' });
         }
     });
 
     it('refuses a standalone launch of an agent without a drain, and leaves nothing to take', () => {
-        for (const command of ['acp', 'grok', 'gemini', undefined]) {
+        for (const args of [['acp'], ['acp', 'gemini'], ['acp', 'grok'], ['gemini'], ['openclaw'], []]) {
             const env: NodeJS.ProcessEnv = { [STANDALONE_LAUNCH_ENV]: bootstrap };
-            expect(() => captureStandaloneLaunchBootstrap(env, command)).toThrow(/Standalone launch/);
+            expect(() => captureStandaloneLaunchBootstrap(env, args)).toThrow(/Standalone launch/);
             expect(env[STANDALONE_LAUNCH_ENV]).toBeUndefined();
             expect(takeStandaloneLaunchBootstrap({})).toBeUndefined();
         }
