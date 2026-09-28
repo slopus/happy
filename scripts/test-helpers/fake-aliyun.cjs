@@ -21,7 +21,7 @@ if (args[0] === 'ossutil' && args[1] === 'api' && args[2] === 'list-objects-v2')
   }));
   fs.writeSync(1, JSON.stringify({
     Contents: page,
-    IsTruncated: start + 1000 < keys.length,
+    IsTruncated: String(start + 1000 < keys.length),
     NextContinuationToken: start + 1000 < keys.length ? String(start + 1000) : undefined,
   }));
   process.exit(0);

@@ -31,8 +31,10 @@ function listObjects(bucket, prefix) {
     const page = JSON.parse(aliyun(args));
     const contents = page.Contents ? [].concat(page.Contents) : [];
     for (const object of contents) objects.set(object.Key, object);
-    continuationToken = page.IsTruncated ? page.NextContinuationToken : undefined;
-    if (page.IsTruncated && !continuationToken) {
+    // ossutil renders the OSS XML boolean as a string ("false" is truthy).
+    const isTruncated = page.IsTruncated === true || page.IsTruncated === 'true';
+    continuationToken = isTruncated ? page.NextContinuationToken : undefined;
+    if (isTruncated && !continuationToken) {
       throw new Error(`OSS listing ${prefix} is truncated without a continuation token`);
     }
   } while (continuationToken);
