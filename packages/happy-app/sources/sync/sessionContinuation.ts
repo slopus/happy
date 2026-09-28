@@ -14,10 +14,12 @@ const preparedContexts = new Map<string, string>();
 async function prepareContext(id: string): Promise<string> {
     await sync.ensureMessagesLoaded(id);
     assertAccountRuntime();
-    if (storage.getState().sessionMessages[id]?.hasMoreNewer) await sync.jumpToLatestMessages(id);
+    // Either marker can expose a stale window while the other marker disagrees.
+    const visible = storage.getState().sessionMessages[id];
+    if (visible?.hasMoreNewer || visible?.isAtLatest === false) await sync.jumpToLatestMessages(id);
     assertAccountRuntime();
     const history = storage.getState().sessionMessages[id];
-    if (!history?.isLoaded || !history.isAtLatest || !storage.getState().sessions[id]) throw new Error('continuation-history-unavailable');
+    if (!history?.isLoaded || !history.isAtLatest || history.hasMoreNewer || !storage.getState().sessions[id]) throw new Error('continuation-history-unavailable');
     // The latest wire page may consist entirely of tool events. Walk a bounded
     // number of older pages until an actual user request is included, retaining
     // the latest text even if the visible history window shifts while paging.
