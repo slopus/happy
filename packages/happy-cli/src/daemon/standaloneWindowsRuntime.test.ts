@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import * as nativeLauncher from './windowsSessionLauncher';
-import { inspectStandaloneCandidatePresence, resolveCandidateDaemonPresence, candidateDaemonPresence, assertStandaloneCandidateIdentity, readStandaloneCandidateId, createStandaloneWindowsRuntime } from './standaloneWindowsRuntime';
+import { inspectStandaloneCandidatePresence, resolveCandidateDaemonPresence, candidateDaemonPresence, assertStandaloneCandidateIdentity, readStandaloneCandidateId, createStandaloneWindowsRuntime, freezeWithTerminals } from './standaloneWindowsRuntime';
 const platform = Object.getOwnPropertyDescriptor(process, 'platform')!;
 const arch = Object.getOwnPropertyDescriptor(process, 'arch')!;
 afterEach(() => { Object.defineProperty(process, 'platform', platform); Object.defineProperty(process, 'arch', arch); });
@@ -106,4 +106,20 @@ it('launches and advertises exactly the providers with a session drain: Codex, C
   // The Happy CLI arguments the daemon launches: opencode runs over ACP.
   for (const accepted of [['codex'], ['claude'], ['grok'], ['acp', 'opencode']]) expect(acceptsStandaloneWindowsLaunch(accepted)).toBe(true);
   for (const refused of [['acp'], ['acp', 'gemini'], ['opencode'], ['gemini'], []]) expect(acceptsStandaloneWindowsLaunch(refused)).toBe(false);
+});
+
+// Desktop specs/windows-build-support W0-5h: terminals are owned too, so an app-close drain closes
+// them with the sessions and cannot complete while one is not proven gone.
+it('closes terminals alongside the session freeze and reports an unproven one as unresolved', async () => {
+  const order: string[] = [];
+  const ownerFreeze = () => { order.push('sessions-frozen'); return Promise.resolve({ launchIds: ['a'], unresolved: false }); };
+  const closed = await freezeWithTerminals(ownerFreeze, () => { order.push('terminals-closed'); return Promise.resolve(['killed', 'already-gone'] as const); });
+  expect(closed).toEqual({ launchIds: ['a'], unresolved: false });
+  // The session gate closes first, in the same tick, so no terminal can open behind the teardown.
+  expect(order).toEqual(['sessions-frozen', 'terminals-closed']);
+
+  const escaped = await freezeWithTerminals(ownerFreeze, () => Promise.resolve(['killed', 'escaped'] as const));
+  expect(escaped).toEqual({ launchIds: ['a'], unresolved: true });
+  const unresolvedSessions = await freezeWithTerminals(() => Promise.resolve({ launchIds: [], unresolved: true }), () => Promise.resolve([]));
+  expect(unresolvedSessions.unresolved).toBe(true);
 });

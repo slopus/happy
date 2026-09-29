@@ -13,7 +13,9 @@
 
 import * as pty from 'node-pty'
 import { randomUUID } from 'node:crypto'
+import { existsSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
+import { join, win32 } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 
 export interface TerminateOpts {
@@ -91,7 +93,112 @@ export interface PtySession {
 
 const DEFAULT_SHELL = process.platform === 'win32' ? 'powershell.exe' : '/bin/bash'
 
+/**
+ * The Windows standalone runtime's verified session launcher, used as the root of every
+ * terminal (Desktop specs/windows-build-support W0-5h). node-pty cannot put the shell in a
+ * Job, so the launcher runs inside the pseudoconsole and creates the shell atomically in a
+ * kill-on-close Job; a terminal is closed only once its durable receipt shows that Job empty.
+ */
+export interface WindowsTerminalHost {
+    launcher: string
+    /** Protected directory for the per-terminal receipts. */
+    receiptDirectory: string
+    /** False once the runtime is draining: no new terminal may start behind the teardown. */
+    acceptingTerminals(): boolean
+}
+let windowsTerminalHost: WindowsTerminalHost | null = null
+export function configureWindowsTerminalHost(host: WindowsTerminalHost | null): void {
+    windowsTerminalHost = host
+}
+
+/** The launcher takes an absolute .exe; resolve a bare shell name against PATH. */
+function resolveWindowsShell(shell: string | undefined): string {
+    const requested = shell || process.env.SHELL || ''
+    if (!requested) return win32.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe')
+    if (win32.isAbsolute(requested) && /\.exe$/i.test(requested)) return requested
+    const name = /\.exe$/i.test(requested) ? requested : `${requested}.exe`
+    for (const directory of (process.env.PATH ?? process.env.Path ?? '').split(';').filter(Boolean)) {
+        const candidate = win32.join(directory, name)
+        if (win32.isAbsolute(candidate) && existsSync(candidate)) return candidate
+    }
+    throw new Error(`Terminal shell not found: ${requested}`)
+}
+
+function createHostedPtySession(opts: PtySessionOpts, host: WindowsTerminalHost): PtySession {
+    if (!host.acceptingTerminals()) throw new Error('Terminal launch gate closed')
+    const id = randomUUID()
+    const receipt = join(host.receiptDirectory, `${id}.json`)
+    const initialCols = opts.cols ?? 80
+    const initialRows = opts.rows ?? 24
+    const child = pty.spawn(host.launcher, ['--pty-host', '--terminal-id', id, '--receipt', receipt, '--',
+        resolveWindowsShell(opts.shell), ...(opts.args ?? [])], {
+        name: 'xterm-256color',
+        cols: initialCols,
+        rows: initialRows,
+        cwd: opts.cwd || homedir(),
+        env: { ...process.env, ...(opts.env ?? {}) } as { [key: string]: string },
+    })
+    let cols = initialCols
+    let rows = initialRows
+    // The launcher exits only after its Job is empty or the receipt could not be written.
+    let reaped = false
+    child.onExit(() => { reaped = true })
+
+    /** 'empty' only for this terminal's own receipt with an empty Job and no native error. */
+    const readReceipt = (): 'empty' | 'not-empty' | null => {
+        let text: string
+        try { text = readFileSync(receipt, 'utf8') } catch { return null }
+        try {
+            const parsed = JSON.parse(text) as Record<string, unknown>
+            return parsed.type === 'terminal-final' && parsed.terminalId === id && parsed.jobEmpty === true && parsed.nativeError === 0
+                ? 'empty' : 'not-empty'
+        } catch { return 'not-empty' }
+    }
+    const waitReceipt = async (ms: number) => {
+        const deadline = Date.now() + ms
+        while (Date.now() < deadline) {
+            const seen = readReceipt()
+            if (seen) return seen
+            await sleep(LIVENESS_POLL_MS)
+        }
+        return readReceipt()
+    }
+
+    return {
+        id,
+        userId: opts.userId,
+        pid: child.pid,
+        get cols() { return cols },
+        get rows() { return rows },
+        write(data: string) { child.write(data) },
+        resize(c: number, r: number) {
+            cols = c
+            rows = r
+            child.resize(c, r)
+        },
+        // Windows has no terminal signals: closing the pseudoconsole is the hang-up.
+        kill() { try { child.kill() } catch {/* already dead */} },
+        isAlive: () => !reaped,
+        async terminate(terminateOpts?: TerminateOpts): Promise<TerminateOutcome> {
+            const window = (terminateOpts?.graceMs ?? DEFAULT_GRACE_MS) + (terminateOpts?.killGraceMs ?? DEFAULT_KILL_GRACE_MS)
+            if (reaped) return (await waitReceipt(window)) === 'empty' ? 'already-gone' : 'escaped'
+            try { child.kill() } catch {/* already dead */}
+            return (await waitReceipt(window)) === 'empty' ? 'killed' : 'escaped'
+        },
+        onData(cb) {
+            const sub = child.onData(cb)
+            return () => sub.dispose()
+        },
+        onExit(cb) {
+            const sub = child.onExit(({ exitCode, signal }) => { cb(exitCode, signal ?? null) })
+            return () => sub.dispose()
+        },
+    }
+}
+
 export function createPtySession(opts: PtySessionOpts): PtySession {
+    const host = process.platform === 'win32' ? windowsTerminalHost : null
+    if (host) return createHostedPtySession(opts, host)
     const id = randomUUID()
     const shell = opts.shell || process.env.SHELL || DEFAULT_SHELL
     // Windows shells do not accept the POSIX login-shell flag.

@@ -6,6 +6,7 @@ import {
     getDaemonTerminalSessionCount,
     removeDaemonTerminalSession,
     killAllDaemonTerminalSessions,
+    terminateAllDaemonTerminalSessions,
     recordBytesIn,
     recordBytesOut,
     _resetDaemonTerminalSessionsForTest,
@@ -224,5 +225,21 @@ describe('daemonTerminalSessions', () => {
             await waitUntilDead(s, 2500)
             expect(s.isAlive()).toBe(false)
         })
+    })
+
+    // Desktop specs/windows-build-support W0-5h: an app-close drain must know every terminal is gone.
+    it('terminates every session and reports each outcome, leaving the registry empty', async () => {
+        const outcomes = ['killed', 'escaped'] as const
+        let n = 0
+        const fake = (): PtySession => {
+            const outcome = outcomes[n++]
+            return { id: `t${n}`, userId: 'u1', pid: 1, cols: 80, rows: 24, write() {}, resize() {}, kill() {}, isAlive: () => true,
+                terminate: async () => outcome, onData: () => () => {}, onExit: () => () => {} }
+        }
+        addDaemonTerminalSession('t1', fake(), { userId: 'u1' })
+        addDaemonTerminalSession('t2', fake(), { userId: 'u1' })
+
+        await expect(terminateAllDaemonTerminalSessions()).resolves.toEqual(['killed', 'escaped'])
+        expect(getDaemonTerminalSessionCount()).toBe(0)
     })
 })

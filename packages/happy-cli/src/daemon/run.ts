@@ -1,4 +1,5 @@
 /** Happy daemon lifecycle, child-session spawning and resumption, and browser attention delivery. */
+import { configureWindowsTerminalHost } from './remoteTerminal';
 import { inspectStandaloneCandidatePresence, assertStandaloneCandidateIdentity, readStandaloneCandidateId, createStandaloneWindowsRuntime, acceptsStandaloneWindowsProvider, acceptsStandaloneWindowsLaunch } from './standaloneWindowsRuntime';
 import { DIFFICULTY_CLASSIFIER_REVISION } from './difficultyRoutingArtifacts';
 import { healInstallArtifacts } from './installArtifactsHeal';
@@ -1231,7 +1232,8 @@ export async function startDaemon(): Promise<void> {
     standaloneWindows = await createStandaloneWindowsRuntime({ homeDir: configuration.happyHomeDir,
       env: process.env, managed: managedIdentity.status === 'active', getChildren: getCurrentChildren,
       onRetired: pid => onChildExited(pid) });
-    if (standaloneWindows) process.env.HAPPY_REMOTE_TERMINAL_POLICY = 'disabled';
+    // Terminals run under the verified launcher in their own Job and close with the drain (W0-5h).
+    if (standaloneWindows) configureWindowsTerminalHost(standaloneWindows.terminalHost);
     const autonomousQualityGateStore = await AutonomousQualityGateRunStore.open(
       join(configuration.happyHomeDir, 'autonomous-quality-gates.json'),
     );

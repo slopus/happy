@@ -10,7 +10,7 @@
  * to record activity for the idle timer.
  */
 
-import { type PtySession } from './remoteTerminal'
+import { type PtySession, type TerminateOutcome } from './remoteTerminal'
 import { createTerminalOutputBuffer, type TerminalOutputBuffer } from './terminalOutputBuffer'
 
 const DEFAULT_IDLE_TIMEOUT_MS = 15 * 60 * 1000
@@ -141,6 +141,21 @@ export function killAllDaemonTerminalSessions(): number {
         sessions.delete(id)
     }
     return killed
+}
+
+/**
+ * Like `killAllDaemonTerminalSessions`, but waits for every teardown and reports each outcome.
+ * An app-close drain (Desktop specs/windows-build-support W0-5h) may only finish once every
+ * terminal it owned is proven gone; `escaped` means it was not.
+ */
+export function terminateAllDaemonTerminalSessions(): Promise<TerminateOutcome[]> {
+    const pending: Promise<TerminateOutcome>[] = []
+    for (const [id, entry] of sessions) {
+        clearIdleTimer(entry)
+        pending.push(entry.session.terminate().catch((): TerminateOutcome => 'escaped'))
+        sessions.delete(id)
+    }
+    return Promise.all(pending)
 }
 
 /**

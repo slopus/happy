@@ -8,6 +8,8 @@ import { StandaloneLaunchJournal, protectStandaloneObservationDirectory } from '
 import { StandaloneLaunchFailure, StandaloneSessionOwner } from './standaloneSessionOwner';
 import { launchWindowsSession, probeWindowsProcessIdentity, readWindowsSessionReceipt, verifyWindowsSessionLauncher, WindowsSessionLaunchError } from './windowsSessionLauncher';
 import { resolveHappyCliSpawnCommand } from '../utils/spawnHappyCLI';
+import { terminateAllDaemonTerminalSessions } from './daemonTerminalSessions';
+import type { TerminateOutcome, WindowsTerminalHost } from './remoteTerminal';
 
 /** Drain targets this daemon advertises: one per provider with a session drain (Desktop W0-5). */
 export const STANDALONE_WINDOWS_TARGETS = STANDALONE_DRAIN_PROVIDERS.map(provider =>
@@ -79,6 +81,20 @@ export function assertStandaloneCandidateIdentity(requested: string | undefined,
     && requested !== existing.windowsCandidateId) throw new Error('A different trial daemon is running or could not be verified in this home. Stop that trial through its app, or use a separate isolated home for this candidate.');
 }
 
+/**
+ * The drain freeze for a runtime that also owns remote terminals (Desktop W0-5h). The session
+ * freeze runs first so its gate (which also gates terminals) closes before any await; the open
+ * terminals close alongside it. A terminal not proven gone leaves ownership unresolved.
+ */
+export async function freezeWithTerminals<T extends { unresolved: boolean }>(
+  freezeSessions: () => Promise<T>, closeTerminals: () => Promise<readonly TerminateOutcome[]>,
+): Promise<T> {
+  const sessions = freezeSessions();
+  const terminals = closeTerminals();
+  const [frozen, outcomes] = await Promise.all([sessions, terminals]);
+  return outcomes.some(outcome => outcome === 'escaped') ? { ...frozen, unresolved: true } : frozen;
+}
+
 /** Explicit local-trial composition. Public CLI versions alone never advertise this capability. */
 export async function createStandaloneWindowsRuntime(options: {
   homeDir: string; env: NodeJS.ProcessEnv; managed: boolean; getChildren(): readonly { pid: number }[]; onRetired?(pid: number, launchId: string): void;
@@ -98,6 +114,9 @@ export async function createStandaloneWindowsRuntime(options: {
     throw new Error('Standalone Windows launcher requires an unmanaged Windows x64 trial');
   }
   const { helperPath, nativeDirectory } = await prepareStandaloneLauncher(options.homeDir, source, digest);
+  // Terminal receipts live beside the native observations, never inside the strict namespace.
+  const terminalDirectory = join(options.homeDir, 'standalone-terminals-v1');
+  await protectStandaloneObservationDirectory(terminalDirectory, true);
   const identity = await probeWindowsProcessIdentity({ helperPath, helperSha256: digest }, process.pid);
   if (identity.status !== 'present') throw new Error('Cannot establish Windows daemon process identity');
   const windowsProcessIdentity = { pid: identity.pid, creationFileTime: identity.creationFileTime };
@@ -134,11 +153,13 @@ export async function createStandaloneWindowsRuntime(options: {
           cancelBeforeResume: native.cancelBeforeResume, terminate: native.terminate, exit: native.exit };
       },
     });
-    return { owner, windowsProcessIdentity, candidateId, drain: new StandaloneDrain({ instanceId,
+    const terminalHost: WindowsTerminalHost = { launcher: helperPath, receiptDirectory: terminalDirectory,
+      acceptingTerminals: () => owner.acceptingLaunches };
+    return { owner, windowsProcessIdentity, candidateId, terminalHost, drain: new StandaloneDrain({ instanceId,
       targets: STANDALONE_WINDOWS_TARGETS,
       canTerminate: id => owner.canTerminate(id),
       terminate: id => owner.resolveTermination(id),
-      freeze: (signal, budget) => owner.freeze(signal, budget),
+      freeze: (signal, budget) => freezeWithTerminals(() => owner.freeze(signal, budget), terminateAllDaemonTerminalSessions),
       drain: (launchId, signal, budget) => owner.drain(launchId, signal, budget),
     }) };
   } catch (error) { await control.close(); throw error; }
