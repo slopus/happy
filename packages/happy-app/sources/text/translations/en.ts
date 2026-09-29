@@ -1079,6 +1079,7 @@ export const en: TranslationStructure = {
         codeCopied: 'Code copied',
         copyFailed: 'Failed to copy',
         mermaidRenderFailed: 'Failed to render mermaid diagram',
+        mermaidCopied: 'Mermaid source copied',
     },
 
     artifacts: {
