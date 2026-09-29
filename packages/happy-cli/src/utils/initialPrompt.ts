@@ -1,10 +1,10 @@
 import { randomUUID } from 'node:crypto'
-import { readFileSync, rmSync } from 'node:fs'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { readFileSync, rmdirSync, rmSync } from 'node:fs'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { basename, dirname, join } from 'node:path'
 
 import type { RawJSONLines } from '@/claude/types'
+import { configuration } from '@/configuration'
 import type { PermissionMode } from '@/api/types'
 import { ZAI_CLAUDE_DEFAULT_MODEL } from '@/managed/zaiClaudeEnvironment'
 
@@ -35,6 +35,8 @@ export type StagedInitialPrompt = {
  * Only oversized prompts, which currently fail 100% of the time, take the
  * file path.
  */
+const STAGING_DIRECTORY_PREFIX = 'happy-initial-prompt-'
+
 export async function stageInitialPromptEnvironment(
   prompt: string,
   deps: { makeTempDir?: () => Promise<string> } = {},
@@ -42,8 +44,13 @@ export async function stageInitialPromptEnvironment(
   if (Buffer.byteLength(prompt, 'utf8') < INITIAL_PROMPT_INLINE_LIMIT_BYTES) {
     return { env: { HAPPY_INITIAL_PROMPT: prompt } }
   }
-  const makeTempDir = deps.makeTempDir
-    ?? (() => mkdtemp(join(tmpdir(), 'happy-initial-prompt-')))
+  // Inside the Happy home, which Desktop keeps owner-only on Windows; the OS temp
+  // directory can grant other principals access (specs/windows-build-support W0-5g).
+  const makeTempDir = deps.makeTempDir ?? (async () => {
+    const root = join(configuration.happyHomeDir, 'tmp')
+    await mkdir(root, { recursive: true })
+    return mkdtemp(join(root, STAGING_DIRECTORY_PREFIX))
+  })
   const directory = await makeTempDir()
   const file = join(directory, 'initial-prompt.txt')
   // 0600: the prompt carries untrusted repository text and project context.
@@ -75,6 +82,10 @@ export function consumePendingInitialPrompt(env: NodeJS.ProcessEnv): string | nu
     }
     try {
       rmSync(file, { force: true })
+      // The daemon staged it in its own mkdtemp directory; drop that too, or the
+      // directories pile up. Non-recursive: only ever an emptied staging directory.
+      const directory = dirname(file)
+      if (basename(directory).startsWith(STAGING_DIRECTORY_PREFIX)) rmdirSync(directory)
     } catch {
       // best-effort cleanup
     }
