@@ -1042,13 +1042,25 @@ function HistoryBoundary(props: { direction: 'older' | 'newer'; reached: boolean
         const timer = setTimeout(() => setVisible(true), 250);
         return () => clearTimeout(timer);
     }, [props.reached, props.loading]);
-    if (!props.reached || (!visible && !props.error)) return null;
-    return <View testID={`history-${props.direction}-notice`} style={{ ...(props.inline ? {} : { position: 'absolute' as const, [props.direction === 'older' ? 'top' : 'bottom']: 0, left: 0, right: 0 }),
-        minHeight: 36, paddingHorizontal: 16, paddingVertical: 6, gap: 4, backgroundColor: theme.colors.surface, alignItems: 'center', justifyContent: 'center' }}>
-        {props.error && props.message && <Text testID={`history-${props.direction}-error`} style={{ color: theme.colors.textSecondary, textAlign: 'center' }}>{props.message}</Text>}
-        {props.error ? props.retryable !== false && <Pressable testID={`history-${props.direction}-retry`} accessibilityRole="button" onPress={props.retry}>
-            <Text style={{ color: theme.colors.text }}>{t(props.error === 'history-window-capacity' ? 'common.continue' : 'common.retry')}</Text>
-        </Pressable> : <ActivityIndicator testID={`history-${props.direction}-loading`} size="small" />}
+    if (!props.reached || (!visible && !props.error) || (props.error && props.retryable === false && !props.message)) return null;
+    const content = <>
+        {props.error && props.message && <Text testID={`history-${props.direction}-error`} style={styles.historyNoticeMessage}>{props.message}</Text>}
+        {props.error ? props.retryable !== false && <View style={styles.historyNoticeRow}>
+            <Text style={styles.historyNoticeActionLabel}>{t(props.error === 'history-window-capacity' ? 'common.continue' : 'common.retry')}</Text>
+            <Octicons name="chevron-right" size={13} color={theme.colors.text} />
+        </View> : <View style={styles.historyNoticeRow}>
+            <ActivityIndicator testID={`history-${props.direction}-loading`} size="small" color={theme.colors.textSecondary} />
+            <Text style={styles.historyNoticeLoadingLabel}>{t('common.loading')}</Text>
+        </View>}
+    </>;
+    return <View testID={`history-${props.direction}-notice`} pointerEvents="box-none"
+        style={[props.inline ? styles.historyNoticeInline : styles.historyNoticeOverlay,
+            !props.inline && (props.direction === 'older' ? styles.historyNoticeTop : styles.historyNoticeBottom)]}>
+        {props.error && props.retryable !== false ? <Pressable testID={`history-${props.direction}-retry`}
+            accessibilityRole="button" onPress={props.retry}
+            style={({ pressed }) => [styles.historyNoticePill, props.message ? styles.historyNoticeWithMessage : undefined,
+                pressed && styles.historyNoticePressed]}>{content}</Pressable>
+            : <View pointerEvents="none" style={[styles.historyNoticePill, props.message ? styles.historyNoticeWithMessage : undefined]}>{content}</View>}
     </View>;
 }
 
@@ -1060,6 +1072,25 @@ function isCollapsibleDisplayItem(
 
 const styles = StyleSheet.create((theme) => ({
     container: { flex: 1 },
+    historyNoticeOverlay: {
+        position: 'absolute', left: 12, right: 12, alignItems: 'center', pointerEvents: 'box-none',
+    },
+    historyNoticeTop: { top: 10 },
+    historyNoticeBottom: { bottom: 10 },
+    historyNoticeInline: { paddingHorizontal: 12, paddingVertical: 10, alignItems: 'center' },
+    historyNoticePill: {
+        minHeight: 40, maxWidth: 440, paddingHorizontal: 16, paddingVertical: 8, gap: 4,
+        borderRadius: 20, borderWidth: 1, borderColor: theme.colors.divider,
+        backgroundColor: theme.colors.surface, alignItems: 'center', justifyContent: 'center',
+        shadowColor: theme.colors.shadow.color, shadowOffset: { width: 0, height: 2 },
+        shadowRadius: 6, shadowOpacity: theme.colors.shadow.opacity, elevation: 3,
+    },
+    historyNoticeWithMessage: { width: '100%' },
+    historyNoticePressed: { backgroundColor: theme.colors.surfacePressed },
+    historyNoticeMessage: { color: theme.colors.textSecondary, textAlign: 'center', fontSize: 13 },
+    historyNoticeRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+    historyNoticeActionLabel: { color: theme.colors.text, fontSize: 13, fontWeight: '600' },
+    historyNoticeLoadingLabel: { color: theme.colors.textSecondary, fontSize: 13 },
     scrollButtonContainer: {
         position: 'absolute', right: 16, bottom: 16, alignItems: 'flex-end', justifyContent: 'center', pointerEvents: 'box-none',
     },

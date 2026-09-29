@@ -1656,7 +1656,7 @@ describe('ConversationTranscript older history pagination', () => {
             hasMoreOlder olderError="missing" olderErrorMessage="Previous session unavailable" olderRetryable={retryable} onLoadOlder={retry} />); });
         expect(byId(renderer, 'history-older-error').props.children).toBe('Previous session unavailable');
         const banner = byId(renderer, 'history-older-notice');
-        expect(banner.props.style.position).not.toBe('absolute');
+        expect(banner.props.style.flat().some((style: { position?: string } | undefined) => style?.position === 'absolute')).toBe(false);
         expect(renderer.root.findAllByProps({ testID: 'history-older-retry' })).toHaveLength(retryable ? 1 : 0);
         expect(retry).not.toHaveBeenCalled();
         if (retryable) {
