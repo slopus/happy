@@ -1,0 +1,6 @@
+[
+  { "id": "wukong", "assetId": "wukong", "versionId": "ver_ab667004dad5bfec326d", "zipSha256": "b2892300bdfb1229a092c140c5fd5de41fa27b97db6ec7e827c3ae0f9d75af44" },
+  { "id": "firefly", "assetId": "firefly", "versionId": "ver_db0516661b1ac5bc1590", "zipSha256": "ff29404d4b277075c3a01dbecc63ddc3856ac5a601f97443fa7bee3c4f55c381" },
+  { "id": "evaWarm", "assetId": "eva-warm", "versionId": "ver_f836b53d9df32ab8ecf7", "zipSha256": "8fc427b28e2dd696b3cf35640fa05fc0c1ab7008bfb343f6c6aa6ebab1cd1696" },
+  { "id": "meadowSky", "assetId": "meadow-sky", "versionId": "ver_2da9f883d79a7bb3864b", "zipSha256": "1f23f1457ade893cf1ff1b9a8829c2796a6eec9b6680151dc8eeed99b34f6007" }
+]
