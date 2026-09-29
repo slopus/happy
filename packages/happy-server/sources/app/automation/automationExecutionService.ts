@@ -29,7 +29,7 @@ export async function registerAutomationMachineKey(
     accountId: string,
     machineId: string,
     input: { expectedKeyVersion: number; publicKey: Binary; protocolVersion: number },
-): Promise<Result<{ keyVersion: number; invalidatedProjectIds: string[] }>> {
+): Promise<Result<{ keyVersion: number; invalidatedProjectIds: string[]; targetChanged: boolean }>> {
     const current = await tx.machine.findFirst({
         where: { id: machineId, accountId },
         select: {
@@ -40,7 +40,10 @@ export async function registerAutomationMachineKey(
     });
     if (current?.automationPublicKey
         && Buffer.from(current.automationPublicKey).equals(Buffer.from(input.publicKey))) {
-        if (current.automationProtocolVersion !== input.protocolVersion) {
+        // 데몬은 재접속마다 같은 키를 다시 등록한다. 키도 프로토콜도 그대로면 target 은
+        // 바뀌지 않았으므로 호출자가 계정 전체 무효화를 보내지 않게 알린다.
+        const protocolChanged = current.automationProtocolVersion !== input.protocolVersion;
+        if (protocolChanged) {
             const changed = await tx.machine.updateMany({
                 where: { id: machineId, accountId, automationKeyVersion: current.automationKeyVersion },
                 data: { automationProtocolVersion: input.protocolVersion },
@@ -59,6 +62,7 @@ export async function registerAutomationMachineKey(
             value: {
                 keyVersion: current.automationKeyVersion,
                 invalidatedProjectIds: [...new Set(invalidated.map((followup) => followup.projectId as string))],
+                targetChanged: protocolChanged,
             },
         };
     }
@@ -81,6 +85,7 @@ export async function registerAutomationMachineKey(
         value: {
             keyVersion: input.expectedKeyVersion + 1,
             invalidatedProjectIds: [...new Set(invalidated.map((followup) => followup.projectId as string))],
+            targetChanged: true,
         },
     };
 }

@@ -87,8 +87,10 @@ export function automationSocketHandler(accountId: string, machineId: string, so
             ? 1
             : integer(data.protocolVersion, 1, Number.MAX_SAFE_INTEGER),
     })), async (value) => {
-        await emitAutomationUpdate(accountId, { projectId: null, reason: 'machine-key' });
-        const result = value as { invalidatedProjectIds?: string[] };
+        const result = value as { invalidatedProjectIds?: string[]; targetChanged?: boolean };
+        // 계정 전체 이벤트는 그 계정의 모든 Desktop 이 전 프로젝트를 다시 읽게 한다. 재접속한
+        // 데몬의 같은 키 재등록까지 보내면 CLI 일괄 업데이트 때 요청이 폭주한다.
+        if (result.targetChanged) await emitAutomationUpdate(accountId, { projectId: null, reason: 'machine-key' });
         await Promise.all((result.invalidatedProjectIds ?? []).map((projectId) =>
             emitProjectAutomationUpdate(projectId, { projectId, reason: 'sync' }, accountId),
         ));
