@@ -415,7 +415,10 @@ export async function startDaemon(): Promise<void> {
 
         // Get tmux session name from environment variables (now set by profile system)
         // Empty string means "use current/most recent session" (tmux default behavior)
-        let tmuxSessionName: string | undefined = extraEnv.TMUX_SESSION_NAME;
+        // Fall back to the daemon's own environment so TMUX_SESSION_NAME can also be
+        // configured for the daemon process itself (e.g. Docker ENV), since RPC callers
+        // such as the mobile app do not pass session environment variables.
+        let tmuxSessionName: string | undefined = extraEnv.TMUX_SESSION_NAME ?? process.env.TMUX_SESSION_NAME;
 
         // If tmux is not available or session name is explicitly undefined, fall back to regular spawning
         // Note: Empty string is valid (means use current/most recent tmux session)
