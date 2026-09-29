@@ -305,6 +305,8 @@ describe('lazy bootstrap boundaries', () => {
         const built = stub();
         let land!: (host: LessonSessionHost | null) => void;
         const bootstrap = vi.fn<() => Promise<LessonSessionHost | null>>()
+            // Spawn-time refusal, then the first turn's own refusal.
+            .mockResolvedValueOnce(null)
             .mockResolvedValueOnce(null)
             .mockImplementation(() => new Promise((resolve) => { land = resolve; }));
         const host = createLazyLessonSessionHost({
@@ -316,20 +318,24 @@ describe('lazy bootstrap boundaries', () => {
             : host.review!.reviewFinishedTurn({} as never);
         try {
             await new Promise((resolve) => setTimeout(resolve, 0));
+            // The spawn-time refusal does not back off the first turn.
             await call();
-            expect(bootstrap).toHaveBeenCalledTimes(1);
+            expect(bootstrap).toHaveBeenCalledTimes(2);
+            // A refusal a turn waited for does.
+            await call();
+            expect(bootstrap).toHaveBeenCalledTimes(2);
             clock.mockReturnValue(6_000);
             await Promise.all([call(), call(), call()]);
-            expect(bootstrap).toHaveBeenCalledTimes(2);
+            expect(bootstrap).toHaveBeenCalledTimes(3);
             clock.mockReturnValue(60_000);
             await call();
-            expect(bootstrap).toHaveBeenCalledTimes(2);
+            expect(bootstrap).toHaveBeenCalledTimes(3);
             land(built);
             await new Promise((resolve) => setTimeout(resolve, 0));
             expect(await host.turn!.acknowledge({} as never)).toBe(true);
             await host.close();
             await call();
-            expect(bootstrap).toHaveBeenCalledTimes(2);
+            expect(bootstrap).toHaveBeenCalledTimes(3);
             expect(built.closed).toBe(1);
         } finally {
             clock.mockRestore();

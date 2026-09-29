@@ -138,6 +138,44 @@ describe('production lazy host diagnostics', () => {
         }
         expect(mocks.close).toHaveBeenCalledTimes(2);
     });
+    it('retries on the first turn when the eager bootstrap was refused before the session was bound', async () => {
+        const clock = vi.spyOn(Date, 'now').mockReturnValue(1_000);
+        // Spawn-time refusal: the studio does not know the session's project yet.
+        mocks.snapshot.mockResolvedValueOnce(null);
+        mocks.turn.mockImplementation(options => ({
+            async recall() { options.onOutcome('no_match'); return { outcome: 'no_match' }; },
+        }));
+        const host = createLazyLessonSessionHost(input());
+        try {
+            await vi.waitFor(() => expectReason('snapshot_grant_unavailable'));
+            // The first message arrives ~2s later, inside the old 5s backoff.
+            clock.mockReturnValue(3_000);
+            expect(await host.turn!.recall({ turnId: 'private-turn', query: 'private-query' }))
+                .toEqual({ outcome: 'no_match' });
+            expect(mocks.snapshot).toHaveBeenCalledTimes(2);
+        } finally {
+            clock.mockRestore();
+            await host.close();
+        }
+    });
+    it('keeps the backoff after a refusal that a turn itself waited for', async () => {
+        const clock = vi.spyOn(Date, 'now').mockReturnValue(1_000);
+        mocks.snapshot.mockResolvedValue(null);
+        const host = createLazyLessonSessionHost(input());
+        try {
+            await vi.waitFor(() => expect(mocks.snapshot).toHaveBeenCalledTimes(1));
+            clock.mockReturnValue(3_000);
+            expect(await host.turn!.recall({ turnId: 'private-turn', query: 'private-query' }))
+                .toEqual({ outcome: 'unsupported' });
+            expect(mocks.snapshot).toHaveBeenCalledTimes(2);
+            clock.mockReturnValue(4_000);
+            await host.turn!.recall({ turnId: 'private-turn', query: 'private-query' });
+            expect(mocks.snapshot).toHaveBeenCalledTimes(2);
+        } finally {
+            clock.mockRestore();
+            await host.close();
+        }
+    });
     it('reports a thrown bootstrap without leaking the error or disabling the session permanently', async () => {
         mocks.key.mockRejectedValueOnce(new Error('private-token private-query'));
         const host = createLazyLessonSessionHost(input());

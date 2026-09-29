@@ -176,7 +176,7 @@ export function createLazyLessonSessionHost(
     // A hung studio must not cost every turn a budget; later turns see only a ready host.
     let readinessBudgetSpent = false;
     const shutdown = new AbortController();
-    const start = () => {
+    const start = (eager = false) => {
         if (disposed || ready || starting || Date.now() < retryAt) return;
         starting = true;
         // Failure is retried only by later turns, never a background timer.
@@ -193,12 +193,18 @@ export function createLazyLessonSessionHost(
                 reportBootstrap('exception');
                 // A transient network failure must not disable this session forever.
             } finally {
-                retryAt = Date.now() + 5_000;
+                /*
+                 * The spawn-time attempt runs before Desktop binds the session to
+                 * its project, so the studio routinely refuses it. The first
+                 * message arrives a few seconds later; backing off here would
+                 * skip recall on exactly that turn.
+                 */
+                retryAt = eager ? 0 : Date.now() + 5_000;
                 starting = false;
             }
         })();
     };
-    start();
+    start(true);
 
     const settled = () => {
         if (disposed) return null;
