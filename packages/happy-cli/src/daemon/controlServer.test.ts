@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import http, { IncomingMessage, ServerResponse } from 'node:http'
+import { WebSocket } from 'ws'
 import { AddressInfo } from 'node:net'
 import { createPortRegistry } from './portRegistry'
 import { startDaemonControlServer, type ManagedReportClaim } from './controlServer'
@@ -1131,7 +1132,7 @@ describe('managed runtime report paths — real HTTP, per-launch capability only
 });
 
 describe('standalone Windows control admission', () => {
-  it('keeps lifecycle and drain routes while refusing host spawn and unknown endpoints', async () => {
+  it('keeps lifecycle, drain and terminal routes while refusing host spawn and unknown endpoints', async () => {
     const dir = mkdtempSync(path.join(tmpdir(), 'trial-control-'))
     const { StandaloneDrain } = await import('./standaloneDrain')
     const drain = new StandaloneDrain({ instanceId: 'trial-instance',
@@ -1157,6 +1158,15 @@ describe('standalone Windows control admission', () => {
       expect((await request('/list')).status).toBe(200)
       expect((await request('/standalone-drain/capabilities')).status).toBe(200)
       expect((await request('/list', 'wrong-secret')).status).toBe(401)
+      // W0-5h: every shell is rooted in the runtime's pty host and closed on drain, so the
+      // loopback terminal socket is available; it keeps the same secret check.
+      const upgrade = (secret: string) => new Promise<string>(resolve => {
+        const ws = new WebSocket(`ws://127.0.0.1:${server.port}/terminal?token=${encodeURIComponent(secret)}`)
+        ws.on('open', () => { ws.close(); resolve('open') })
+        ws.on('error', () => resolve('refused'))
+      })
+      expect(await upgrade(server.controlSecret)).toBe('open')
+      expect(await upgrade('wrong-secret')).toBe('refused')
     } finally { await server.stop(); rmSync(dir, { recursive: true, force: true }) }
   })
 })

@@ -211,7 +211,9 @@ export function startDaemonControlServer({
     // at `verifyClient` (attachTerminalWsRoute).
     // The terminal WebSocket is a shell into the runtime and bypasses the RPC
     // dispatch gate entirely, so a managed runtime does not attach it at all.
-    const terminalWs = managedRuntime || standaloneDrain ? null : attachTerminalWsRoute(app.server, {
+    // The Windows standalone runtime does: every shell runs under its pty host
+    // and is closed on drain (Desktop specs/windows-build-support W0-5h).
+    const terminalWs = managedRuntime ? null : attachTerminalWsRoute(app.server, {
       path: '/terminal',
       controlSecret,
       allowedRoot,
