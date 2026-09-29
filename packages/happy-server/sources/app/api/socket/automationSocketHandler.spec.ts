@@ -338,7 +338,7 @@ describe('automationSocketHandler', () => {
     it('keeps the machine-key rotation account-wide', async () => {
         const handlers = bind();
         services.registerAutomationMachineKey.mockResolvedValue({
-            ok: true, value: { keyVersion: 4, invalidatedProjectIds: [] },
+            ok: true, value: { keyVersion: 4, invalidatedProjectIds: [], targetChanged: true },
         });
 
         await handlers.get('automation-key-register')!({
@@ -348,6 +348,28 @@ describe('automationSocketHandler', () => {
 
         expect(services.emitAutomationUpdate).toHaveBeenCalledWith(
             'account-1', { projectId: null, reason: 'machine-key' },
+        );
+    });
+
+    // 데몬은 소켓에 붙을 때마다 같은 키를 다시 등록한다. 계정 전체 이벤트는 그 계정의 모든
+    // Desktop 이 전 프로젝트를 다시 읽게 하므로, CLI 일괄 업데이트처럼 데몬 여러 대가
+    // 재접속하는 구간에 요청 폭주를 만든다 — 대상이 실제로 바뀐 경우에만 보낸다.
+    it('stays silent account-wide when a reconnecting daemon re-registers an unchanged key', async () => {
+        const handlers = bind();
+        services.registerAutomationMachineKey.mockResolvedValue({
+            ok: true, value: { keyVersion: 4, invalidatedProjectIds: ['project-1'], targetChanged: false },
+        });
+        const callback = vi.fn();
+
+        await handlers.get('automation-key-register')!({
+            expectedKeyVersion: 4,
+            publicKey: Buffer.from(new Uint8Array(32)).toString('base64'),
+        }, callback);
+
+        expect(callback).toHaveBeenCalledWith({ ok: true, value: expect.objectContaining({ keyVersion: 4 }) });
+        expect(services.emitAutomationUpdate).not.toHaveBeenCalled();
+        expect(services.emitProjectAutomationUpdate).toHaveBeenCalledWith(
+            'project-1', { projectId: 'project-1', reason: 'sync' }, 'account-1',
         );
     });
 
