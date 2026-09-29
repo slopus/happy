@@ -621,6 +621,8 @@ export const ca: TranslationStructure = {
         desktopSkinDreamskinDescription: 'Fons fotogràfic i superfícies fosques',
         desktopSkinWarmNight: 'Nit càlida a la finestra',
         desktopSkinWarmNightDescription: 'Dormitori al capvespre i plafons de vidre càlids',
+        desktopSkinLightDescription: 'Light photo skin with translucent reading surfaces',
+        desktopSkinDarkDescription: 'Dark photo skin with translucent reading surfaces',
         mascot: 'Mascota',
         mascotDescription: 'Tria la marmota que et rep a la pantalla d\'inici',
         mascotOptions: {

@@ -1,7 +1,7 @@
 import * as React from 'react';
-import { ImageBackground, Pressable, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 import { StyleSheet } from 'react-native-unistyles';
-import { DREAMSKIN_BACKGROUND_URL, WARM_NIGHT_BACKGROUND_URL, type DesktopSkinId } from '@/desktopSkin';
+import { PHOTO_DESKTOP_SKINS, desktopSkinBackgroundPosition, type DesktopSkinId } from '@/desktopSkin';
 import { t } from '@/text';
 
 type Props = { value: DesktopSkinId; onChange: (id: DesktopSkinId) => void };
@@ -24,38 +24,33 @@ export function DesktopSkinPicker({ value, onChange }: Props) {
                 <Text style={styles.title}>{t('settingsAppearance.desktopSkinDefault')}</Text>
                 <Text style={styles.description}>{t('settingsAppearance.desktopSkinDefaultDescription')}</Text>
             </Pressable>
-            <Pressable
-                accessibilityRole="radio"
-                accessibilityLabel={t('settingsAppearance.desktopSkinDreamskin')}
-                accessibilityState={{ selected: value === 'dreamskin', checked: value === 'dreamskin' }}
-                onPress={() => onChange('dreamskin')}
-                style={({ pressed }) => [styles.option, value === 'dreamskin' && styles.selected, pressed && styles.pressed]}
-                testID="desktop-skin-dreamskin"
-            >
-                <ImageBackground source={{ uri: DREAMSKIN_BACKGROUND_URL }} resizeMode="cover" style={styles.preview} imageStyle={styles.photo}>
-                    <View style={styles.photoVeil} />
-                    <View style={styles.photoPreviewSidebar} />
-                    <View style={styles.photoPreviewContent} />
-                </ImageBackground>
-                <Text style={styles.title}>{t('settingsAppearance.desktopSkinDreamskin')}</Text>
-                <Text style={styles.description}>{t('settingsAppearance.desktopSkinDreamskinDescription')}</Text>
-            </Pressable>
-            <Pressable
-                accessibilityRole="radio"
-                accessibilityLabel={t('settingsAppearance.desktopSkinWarmNight')}
-                accessibilityState={{ selected: value === 'warmNight', checked: value === 'warmNight' }}
-                onPress={() => onChange('warmNight')}
-                style={({ pressed }) => [styles.option, value === 'warmNight' && styles.selected, pressed && styles.pressed]}
-                testID="desktop-skin-warm-night"
-            >
-                <ImageBackground source={{ uri: WARM_NIGHT_BACKGROUND_URL }} resizeMode="cover" style={styles.preview} imageStyle={styles.photo}>
-                    <View style={styles.warmPhotoVeil} />
-                    <View style={styles.warmPhotoSidebar} />
-                    <View style={styles.warmPhotoContent} />
-                </ImageBackground>
-                <Text style={styles.title}>{t('settingsAppearance.desktopSkinWarmNight')}</Text>
-                <Text style={styles.description}>{t('settingsAppearance.desktopSkinWarmNightDescription')}</Text>
-            </Pressable>
+            {PHOTO_DESKTOP_SKINS.map((skin) => {
+                const title = skin.id === 'dreamskin' ? t('settingsAppearance.desktopSkinDreamskin')
+                    : skin.id === 'warmNight' ? t('settingsAppearance.desktopSkinWarmNight') : skin.name;
+                const description = skin.id === 'dreamskin' ? t('settingsAppearance.desktopSkinDreamskinDescription')
+                    : skin.id === 'warmNight' ? t('settingsAppearance.desktopSkinWarmNightDescription')
+                        : t(skin.appearance === 'light' ? 'settingsAppearance.desktopSkinLightDescription' : 'settingsAppearance.desktopSkinDarkDescription');
+                return (
+                    <Pressable
+                        key={skin.id}
+                        accessibilityRole="radio"
+                        accessibilityLabel={title}
+                        accessibilityState={{ selected: value === skin.id, checked: value === skin.id }}
+                        onPress={() => onChange(skin.id)}
+                        style={({ pressed }) => [styles.option, value === skin.id && styles.selected, pressed && styles.pressed]}
+                        testID={`desktop-skin-${skin.assetId}`}
+                    >
+                        <View style={[styles.preview, { backgroundImage: `url("${skin.backgroundUrl}")`,
+                            backgroundSize: 'cover', backgroundPosition: desktopSkinBackgroundPosition(skin.id), backgroundRepeat: 'no-repeat' } as any]}>
+                            <View style={[styles.photoVeil, { backgroundImage: skin.photoScrim } as any]} />
+                            <View style={[styles.photoSidebar, { backgroundColor: skin.desktopSkin.sidebar }]} />
+                            <View style={[styles.photoContent, { backgroundColor: skin.desktopSkin.readingCompact }]} />
+                        </View>
+                        <Text style={styles.title}>{title}</Text>
+                        <Text style={styles.description}>{description}{'publisher' in skin ? ` · ${skin.publisher}` : ''}</Text>
+                    </Pressable>
+                );
+            })}
         </View>
     );
 }
@@ -78,13 +73,9 @@ const styles = StyleSheet.create((theme) => ({
     defaultPreview: { backgroundColor: theme.colors.groupped.background, flexDirection: 'row' },
     defaultPreviewSidebar: { backgroundColor: theme.colors.surfaceHigh, width: 38 },
     defaultPreviewContent: { alignSelf: 'center', backgroundColor: theme.colors.surface, borderRadius: 5, height: 44, marginLeft: 15, width: 92 },
-    photo: { borderRadius: 8 },
-    photoVeil: { backgroundColor: 'rgba(15, 18, 22, 0.32)', bottom: 0, left: 0, position: 'absolute', right: 0, top: 0 },
-    photoPreviewSidebar: { backgroundColor: 'rgba(22, 25, 29, 0.82)', bottom: 0, left: 0, position: 'absolute', top: 0, width: 38 },
-    photoPreviewContent: { alignSelf: 'center', backgroundColor: 'rgba(32, 36, 42, 0.78)', borderRadius: 5, height: 44, marginLeft: 54, width: 92 },
-    warmPhotoVeil: { backgroundColor: 'rgba(23, 21, 26, 0.38)', bottom: 0, left: 0, position: 'absolute', right: 0, top: 0 },
-    warmPhotoSidebar: { backgroundColor: 'rgba(34, 31, 36, 0.78)', bottom: 0, left: 0, position: 'absolute', top: 0, width: 38 },
-    warmPhotoContent: { alignSelf: 'center', backgroundColor: 'rgba(34, 31, 36, 0.76)', borderRadius: 5, height: 44, marginLeft: 54, width: 92 },
+    photoVeil: { bottom: 0, left: 0, position: 'absolute', right: 0, top: 0 },
+    photoSidebar: { bottom: 0, left: 0, position: 'absolute', top: 0, width: 38 },
+    photoContent: { alignSelf: 'center', borderRadius: 5, height: 44, marginLeft: 54, width: 92 },
     title: { color: theme.colors.text, fontSize: 14, fontWeight: '600', marginTop: 8 },
     description: { color: theme.colors.textSecondary, fontSize: 11, lineHeight: 16, marginTop: 3 },
 }));

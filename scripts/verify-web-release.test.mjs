@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { copyFile, mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import http from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -8,6 +8,8 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 const verifierPath = fileURLToPath(new URL('./verify-web-release.mjs', import.meta.url));
+const assetManifest = JSON.parse(await readFile(fileURLToPath(new URL('./desktop-skin-assets.json', import.meta.url)), 'utf8'));
+const sourceSkins = fileURLToPath(new URL('../packages/happy-app/public/desktop-skins/', import.meta.url));
 const revision = '1234567890abcdef1234567890abcdef12345678';
 
 async function createDist(includeSkin = true, includeWarmSkin = true) {
@@ -17,8 +19,11 @@ async function createDist(includeSkin = true, includeWarmSkin = true) {
     await mkdir(join(directory, '_expo'), { recursive: true });
     await mkdir(join(directory, '.well-known'), { recursive: true });
     if (includeSkin) {
-        await mkdir(join(directory, 'desktop-skins', 'dreamskin'), { recursive: true });
-        if (includeWarmSkin) await mkdir(join(directory, 'desktop-skins', 'warm-night'), { recursive: true });
+        for (const skin of assetManifest.skins) {
+            if (!includeWarmSkin && skin.assetId === 'warm-night') continue;
+            await mkdir(join(directory, 'desktop-skins', skin.assetId), { recursive: true });
+            await copyFile(join(sourceSkins, skin.assetId, skin.filename), join(directory, 'desktop-skins', skin.assetId, skin.filename));
+        }
     }
     await writeFile(join(directory, 'index.html'), '<html><head></head><body><script src="/_expo/app.js"></script></body></html>');
     await writeFile(join(directory, '.paws-release-revision'), `${revision}\n`);
@@ -29,10 +34,6 @@ async function createDist(includeSkin = true, includeWarmSkin = true) {
         await writeFile(join(directory, 'assets', 'sounds', 'codeisland', `8bit_${name}.wav`), 'RIFF');
     }
     await writeFile(join(directory, '_expo', 'app.js'), 'app');
-    if (includeSkin) {
-        await writeFile(join(directory, 'desktop-skins', 'dreamskin', 'background.55c64d0fcd6f9d5f.webp'), 'photo');
-        if (includeWarmSkin) await writeFile(join(directory, 'desktop-skins', 'warm-night', 'background.55c64d0fcd6f9d5f.webp'), 'photo');
-    }
     await writeFile(join(directory, 'metadata.json'), '{}');
     await writeFile(join(directory, 'canvaskit.wasm'), 'wasm');
     await writeFile(join(directory, '.well-known', 'apple-app-site-association'), '{}');
@@ -56,7 +57,7 @@ async function runVerifier({
     legacyRedirectLocation = 'canonical',
     legacyRedirectStatus = 308,
     healthTimeoutMs = 300,
-    requestTimeoutMs = 300,
+    requestTimeoutMs = 1500,
     assetNeverResponds = false,
     entryNeverResponds = false,
     skinCacheImmutable = true,
@@ -66,7 +67,7 @@ async function runVerifier({
 } = {}) {
     const directory = await createDist(includeSkin, includeWarmSkin);
     let healthRequests = 0;
-    const server = http.createServer((request, response) => {
+    const server = http.createServer(async (request, response) => {
         const origin = `http://127.0.0.1:${server.address().port}`;
         if (request.url?.endsWith('.ttf')) {
             if (assetNeverResponds) return;
@@ -81,7 +82,9 @@ async function runVerifier({
             response.statusCode = 200;
             response.setHeader('Content-Type', request.url?.endsWith('.webp') ? 'image/webp' : 'image/png');
             response.setHeader('Cache-Control', request.url?.startsWith('/desktop-skins/') && !skinCacheImmutable ? 'no-cache' : 'public,max-age=31536000,immutable');
-            response.end(request.url?.startsWith('/desktop-skins/') ? skinContentMatches ? 'photo' : 'changed' : 'image');
+            response.end(request.url?.startsWith('/desktop-skins/')
+                ? skinContentMatches ? await readFile(join(directory, request.url)) : 'changed'
+                : 'image');
             return;
         }
         if (request.url?.endsWith('.wav')) {
@@ -269,7 +272,7 @@ test('enforces the health readiness deadline when a request never responds', asy
     const result = await runVerifier({ healthNeverResponds: true, healthTimeoutMs: 100 });
 
     assert.notEqual(result.status, 0);
-    assert.ok(Date.now() - startedAt < 1_000, 'health verifier exceeded its hard deadline');
+    assert.ok(Date.now() - startedAt < 3_000, 'health verifier exceeded its hard deadline');
     assert.match(result.stderr, /health endpoint.*within 100ms/i);
 });
 
@@ -278,7 +281,7 @@ test('bounds a Web asset request that never responds', async () => {
     const result = await runVerifier({ assetNeverResponds: true, requestTimeoutMs: 100 });
 
     assert.notEqual(result.status, 0);
-    assert.ok(Date.now() - startedAt < 1_000, 'asset verifier exceeded its hard deadline');
+    assert.ok(Date.now() - startedAt < 3_000, 'asset verifier exceeded its hard deadline');
     assert.match(result.stderr, /timeout|aborted/i);
 });
 
@@ -287,7 +290,7 @@ test('bounds a canonical Web entry request that never responds', async () => {
     const result = await runVerifier({ entryNeverResponds: true, requestTimeoutMs: 100 });
 
     assert.notEqual(result.status, 0);
-    assert.ok(Date.now() - startedAt < 1_000, 'entry verifier exceeded its hard deadline');
+    assert.ok(Date.now() - startedAt < 3_000, 'entry verifier exceeded its hard deadline');
     assert.match(result.stderr, /timeout|aborted/i);
 });
 

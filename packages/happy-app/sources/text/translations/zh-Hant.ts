@@ -621,6 +621,8 @@ export const zhHant: TranslationStructure = {
         desktopSkinDreamskinDescription: '照片背景與深色閱讀面',
         desktopSkinWarmNight: '暖夜・窗邊微光',
         desktopSkinWarmNightDescription: '藍調臥室與暖色玻璃閱讀面',
+        desktopSkinLightDescription: '淺色照片與半透明閱讀面',
+        desktopSkinDarkDescription: '深色照片與半透明閱讀面',
         mascot: '吉祥物',
         mascotDescription: '選擇主畫面迎接你的土撥鼠形象',
         mascotOptions: {

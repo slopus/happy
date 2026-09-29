@@ -5,6 +5,10 @@ on:
     paths:
       - 'scripts/deploy-web*'
       - 'scripts/upload-web-assets*'
+      - 'scripts/verify-web-release*'
+      - 'scripts/desktop-skin-assets.json'
+      - 'scripts/import-dreamskin-themes.mjs'
+      - 'packages/happy-app/public/desktop-skins/**'
       - 'scripts/oss-upload-sync.cjs'
       - 'scripts/test-helpers/fake-aliyun.cjs'
       - 'scripts/deploy-agent-party*'
@@ -22,6 +26,10 @@ on:
     paths:
       - 'scripts/deploy-web*'
       - 'scripts/upload-web-assets*'
+      - 'scripts/verify-web-release*'
+      - 'scripts/desktop-skin-assets.json'
+      - 'scripts/import-dreamskin-themes.mjs'
+      - 'packages/happy-app/public/desktop-skins/**'
       - 'scripts/oss-upload-sync.cjs'
       - 'scripts/test-helpers/fake-aliyun.cjs'
       - 'scripts/deploy-agent-party*'
@@ -51,4 +59,4 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile --ignore-scripts --filter monorepo
       - name: Verify deployment and supersession guards
-        run: node --test scripts/deploy-web.test.mjs scripts/web-production-deploy.test.mjs scripts/upload-web-assets.test.mjs scripts/deploy-agent-party.test.mjs scripts/configure-production-agent-party-caddy.test.mjs scripts/deploy-staging-web.test.mjs scripts/configure-staging-web-caddy.test.mjs scripts/configure-staging-web-caddy.integration.test.mjs
+        run: node --test scripts/deploy-web.test.mjs scripts/web-production-deploy.test.mjs scripts/upload-web-assets.test.mjs scripts/verify-web-release.test.mjs scripts/deploy-agent-party.test.mjs scripts/configure-production-agent-party-caddy.test.mjs scripts/deploy-staging-web.test.mjs scripts/configure-staging-web-caddy.test.mjs scripts/configure-staging-web-caddy.integration.test.mjs

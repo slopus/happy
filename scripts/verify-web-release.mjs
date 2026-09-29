@@ -1,6 +1,7 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { dirname, join, relative, resolve, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const [origin, indexPath, mode, browserOriginArgument] = process.argv.slice(2);
 
@@ -223,14 +224,18 @@ const skinFiles = await listFiles(skinDirectory).catch((error) => {
     if (error?.code === 'ENOENT') return [];
     throw error;
 });
-const requiredSkinIds = ['dreamskin', 'warm-night'];
-if (skinFiles.length !== requiredSkinIds.length) throw new Error(`desktop skin background missing or ambiguous: found ${skinFiles.length}`);
+const skinManifest = JSON.parse(await readFile(fileURLToPath(new URL('./desktop-skin-assets.json', import.meta.url)), 'utf8'));
+const requiredSkins = new Map(skinManifest.skins.map((skin) => [skin.assetId, skin.filename]));
+if (skinManifest.schemaVersion !== 1 || requiredSkins.size !== skinManifest.skins.length || skinFiles.length !== requiredSkins.size) {
+    throw new Error(`desktop skin background missing or ambiguous: found ${skinFiles.length}`);
+}
 const foundSkinIds = new Set();
 for (const skinPath of skinFiles) {
     const relativePath = relative(skinDirectory, skinPath).split(sep).join('/');
     const expectedHash = createHash('sha256').update(await readFile(skinPath)).digest('hex');
     const skinId = relativePath.split('/')[0];
-    if (!requiredSkinIds.includes(skinId) || relativePath !== `${skinId}/background.${expectedHash.slice(0, 16)}.webp`) {
+    if (requiredSkins.get(skinId) !== `background.${expectedHash.slice(0, 16)}.webp`
+        || relativePath !== `${skinId}/${requiredSkins.get(skinId)}`) {
         throw new Error(`desktop skin background is not content-addressed: ${relativePath}`);
     }
     foundSkinIds.add(skinId);
@@ -241,7 +246,7 @@ for (const skinPath of skinFiles) {
     const remoteHash = createHash('sha256').update(Buffer.from(await response.arrayBuffer())).digest('hex');
     if (remoteHash !== expectedHash) throw new Error(`desktop skin background SHA-256 mismatch: ${pathname}`);
 }
-if (foundSkinIds.size !== requiredSkinIds.length) throw new Error('desktop skin background missing for a required skin');
+if (foundSkinIds.size !== requiredSkins.size) throw new Error('desktop skin background missing for a required skin');
 
 const requiredSoundPaths = ['approval', 'complete', 'error', 'start', 'submit']
     .map((name) => `assets/sounds/codeisland/8bit_${name}.wav`);

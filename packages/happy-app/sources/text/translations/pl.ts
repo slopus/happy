@@ -638,6 +638,8 @@ export const pl: TranslationStructure = {
         desktopSkinDreamskinDescription: 'Tło ze zdjęciem i ciemne powierzchnie',
         desktopSkinWarmNight: 'Ciepła noc przy oknie',
         desktopSkinWarmNightDescription: 'Sypialnia o zmierzchu i ciepłe szklane panele',
+        desktopSkinLightDescription: 'Light photo skin with translucent reading surfaces',
+        desktopSkinDarkDescription: 'Dark photo skin with translucent reading surfaces',
         mascot: 'Maskotka',
         mascotDescription: 'Wybierz świstaka, który wita Cię na ekranie głównym',
         mascotOptions: {

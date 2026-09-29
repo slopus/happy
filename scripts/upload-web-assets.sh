@@ -25,23 +25,34 @@ if [[ ! "$RELEASE_REVISION" =~ ^[0-9a-f]{40}$ ]]; then
     exit 1
 fi
 
-# Validate every immutable skin URL before the first OSS write.
-skin_ids=(dreamskin warm-night)
+# Validate every immutable skin URL before the first OSS write. The importer
+# updates this manifest together with the hashed assets and runtime catalog.
+skin_specs_text="$(node -e '
+const manifest = require("./scripts/desktop-skin-assets.json");
+if (manifest.schemaVersion !== 1 || !Array.isArray(manifest.skins) || manifest.skins.length < 2) process.exit(1);
+for (const skin of manifest.skins) {
+    if (!/^[a-z][a-z0-9-]*$/.test(skin.assetId) || !/^background\.[0-9a-f]{16}\.webp$/.test(skin.filename)) process.exit(1);
+    console.log(skin.assetId + "/" + skin.filename);
+}
+')"
 skin_count="$(find "$DIST_DIR/desktop-skins" -type f | wc -l | tr -d '[:space:]')"
-[[ "$skin_count" == "${#skin_ids[@]}" ]] || { echo '错误：桌面皮肤背景资源数量不正确。' >&2; exit 1; }
+skin_expected_count="$(printf '%s\n' "$skin_specs_text" | wc -l | tr -d '[:space:]')"
+[[ "$skin_count" == "$skin_expected_count" ]] || { echo '错误：桌面皮肤背景资源数量不正确。' >&2; exit 1; }
 skin_paths=()
-for skin_id in "${skin_ids[@]}"; do
+while IFS= read -r skin_relative; do
+    skin_id="${skin_relative%%/*}"
+    expected_name="${skin_relative#*/}"
     skin_dir="$DIST_DIR/desktop-skins/$skin_id"
     [[ -d "$skin_dir" ]] || { echo "错误：缺少 $skin_id 背景资源。" >&2; exit 1; }
     skin_path="$(find "$skin_dir" -maxdepth 1 -type f -print)"
     [[ "$(printf '%s\n' "$skin_path" | sed '/^$/d' | wc -l | tr -d '[:space:]')" == 1 ]] || { echo "错误：$skin_id 背景资源数量不正确。" >&2; exit 1; }
     skin_name="${skin_path##*/}"
-    [[ "$skin_name" =~ ^background\.([0-9a-f]{16})\.webp$ ]] || { echo "错误：$skin_id 背景文件名缺少内容哈希。" >&2; exit 1; }
+    [[ "$skin_name" == "$expected_name" && "$skin_name" =~ ^background\.([0-9a-f]{16})\.webp$ ]] || { echo "错误：$skin_id 背景文件名与清单不一致。" >&2; exit 1; }
     skin_hash_prefix="${BASH_REMATCH[1]}"
     skin_hash="$(shasum -a 256 "$skin_path" | cut -d ' ' -f 1)"
     [[ "${skin_hash:0:16}" == "$skin_hash_prefix" ]] || { echo "错误：$skin_id 背景文件名与内容 SHA-256 不一致。" >&2; exit 1; }
     skin_paths+=("$skin_path")
-done
+done <<< "$skin_specs_text"
 
 if ! command -v aliyun >/dev/null 2>&1 || ! aliyun ossutil --help >/dev/null 2>&1; then
     echo "错误：需要带 ossutil 子命令的 aliyun CLI。" >&2

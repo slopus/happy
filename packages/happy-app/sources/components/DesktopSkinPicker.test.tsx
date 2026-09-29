@@ -43,6 +43,15 @@ describe('DesktopSkinPicker', () => {
         expect(onChange).toHaveBeenLastCalledWith('warmNight');
         act(() => renderer.update(<DesktopSkinPicker value="warmNight" onChange={onChange} />));
         expect(renderer.root.findByProps({ testID: 'desktop-skin-warm-night' }).props.accessibilityState.selected).toBe(true);
+        for (const [id, slug] of [
+            ['wukong', 'wukong'], ['firefly', 'firefly'], ['evaWarm', 'eva-warm'], ['meadowSky', 'meadow-sky'],
+        ] as const) {
+            const option = renderer.root.findByProps({ testID: `desktop-skin-${slug}` });
+            act(() => option.props.onPress());
+            expect(onChange).toHaveBeenLastCalledWith(id);
+            act(() => renderer.update(<DesktopSkinPicker value={id} onChange={onChange} />));
+            expect(renderer.root.findByProps({ testID: `desktop-skin-${slug}` }).props.accessibilityState.selected).toBe(true);
+        }
         act(() => renderer.root.findByProps({ testID: 'desktop-skin-default' }).props.onPress());
         expect(onChange).toHaveBeenLastCalledWith('default');
         act(() => renderer.unmount());

@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "skins": [
+    {
+      "id": "dreamskin",
+      "assetId": "dreamskin",
+      "filename": "background.c3c07e0cc5cb266a.webp"
+    },
+    {
+      "id": "warmNight",
+      "assetId": "warm-night",
+      "filename": "background.ae8eb2f7656ee63b.webp"
+    },
+    {
+      "id": "wukong",
+      "assetId": "wukong",
+      "filename": "background.4b821671aaed33e9.webp"
+    },
+    {
+      "id": "firefly",
+      "assetId": "firefly",
+      "filename": "background.5c0ab4b5711d9c2c.webp"
+    },
+    {
+      "id": "evaWarm",
+      "assetId": "eva-warm",
+      "filename": "background.4174f45e0a2ccb41.webp"
+    },
+    {
+      "id": "meadowSky",
+      "assetId": "meadow-sky",
+      "filename": "background.27ddd091d6de0346.webp"
+    }
+  ]
+}

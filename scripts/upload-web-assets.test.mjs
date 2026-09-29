@@ -7,9 +7,11 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 const scriptPath = fileURLToPath(new URL('./upload-web-assets.sh', import.meta.url));
+const assetManifest = JSON.parse(await readFile(fileURLToPath(new URL('./desktop-skin-assets.json', import.meta.url)), 'utf8'));
+const sourceSkins = fileURLToPath(new URL('../packages/happy-app/public/desktop-skins/', import.meta.url));
 const revision = '1234567890abcdef1234567890abcdef12345678';
 
-async function createFixture(marker = revision, skinName = 'background.55c64d0fcd6f9d5f.webp') {
+async function createFixture(marker = revision, skinName = null) {
     const directory = await mkdtemp(join(tmpdir(), 'paws-web-upload-'));
     const dist = join(directory, 'dist');
     const fakeBin = join(directory, 'bin');
@@ -17,8 +19,11 @@ async function createFixture(marker = revision, skinName = 'background.55c64d0fc
     const statePath = join(directory, 'oss.json');
     await mkdir(join(dist, '_expo', 'static'), { recursive: true });
     await mkdir(join(dist, 'assets', 'fonts'), { recursive: true });
-    await mkdir(join(dist, 'desktop-skins', 'dreamskin'), { recursive: true });
-    await mkdir(join(dist, 'desktop-skins', 'warm-night'), { recursive: true });
+    for (const skin of assetManifest.skins) {
+        await mkdir(join(dist, 'desktop-skins', skin.assetId), { recursive: true });
+        await copyFile(join(sourceSkins, skin.assetId, skin.filename),
+            join(dist, 'desktop-skins', skin.assetId, skin.assetId === 'dreamskin' && skinName ? skinName : skin.filename));
+    }
     await mkdir(join(dist, '.well-known'), { recursive: true });
     await mkdir(fakeBin, { recursive: true });
     await Promise.all([
@@ -26,8 +31,6 @@ async function createFixture(marker = revision, skinName = 'background.55c64d0fc
         writeFile(join(dist, '.paws-release-revision'), `${marker}\n`),
         writeFile(join(dist, '_expo', 'static', 'app.js'), 'app'),
         writeFile(join(dist, 'assets', 'fonts', 'Ionicons.abc.ttf'), 'font'),
-        writeFile(join(dist, 'desktop-skins', 'dreamskin', skinName), 'photo'),
-        writeFile(join(dist, 'desktop-skins', 'warm-night', 'background.55c64d0fcd6f9d5f.webp'), 'photo'),
         writeFile(join(dist, 'canvaskit.wasm'), 'wasm'),
         writeFile(join(dist, 'favicon.ico'), 'icon'),
         writeFile(join(dist, 'metadata.json'), '{}'),
@@ -61,10 +64,11 @@ test('uploads immutable release once, then copies live assets inside OSS', async
         assert.ok(state[`${releasePrefix}index.html`]);
         assert.deepEqual(state['_expo/static/app.js'], state[`${releasePrefix}_expo/static/app.js`]);
         assert.deepEqual(state['assets/fonts/Ionicons.abc.ttf'], state[`${releasePrefix}assets/fonts/Ionicons.abc.ttf`]);
-        assert.equal(state['desktop-skins/dreamskin/background.55c64d0fcd6f9d5f.webp'].cacheControl, 'public,max-age=31536000,immutable');
-        assert.equal(state['desktop-skins/dreamskin/background.55c64d0fcd6f9d5f.webp'].contentType, 'image/webp');
-        assert.equal(state['desktop-skins/warm-night/background.55c64d0fcd6f9d5f.webp'].cacheControl, 'public,max-age=31536000,immutable');
-        assert.equal(state['desktop-skins/warm-night/background.55c64d0fcd6f9d5f.webp'].contentType, 'image/webp');
+        for (const skin of assetManifest.skins) {
+            const object = state[`desktop-skins/${skin.assetId}/${skin.filename}`];
+            assert.equal(object.cacheControl, 'public,max-age=31536000,immutable');
+            assert.equal(object.contentType, 'image/webp');
+        }
         assert.equal(state['canvaskit.wasm'].md5, state[`${releasePrefix}canvaskit.wasm`].md5);
         assert.equal(state['canvaskit.wasm'].cacheControl, 'no-cache');
         assert.equal(state['canvaskit.wasm'].contentType, 'application/wasm');
@@ -161,7 +165,7 @@ test('rejects a stale DreamSkin hash before invoking OSS', async () => {
     try {
         const result = await runUpload(fixture);
         assert.notEqual(result.status, 0);
-        assert.match(result.stderr, /SHA-256 不一致/);
+        assert.match(result.stderr, /背景文件名与清单不一致/);
         assert.equal(result.log, '');
     } finally {
         await rm(fixture.directory, { recursive: true, force: true });

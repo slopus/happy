@@ -600,6 +600,8 @@ export const ru: TranslationStructure = {
         desktopSkinDreamskinDescription: 'Фотофон и тёмные поверхности',
         desktopSkinWarmNight: 'Тёплая ночь у окна',
         desktopSkinWarmNightDescription: 'Сумеречная спальня и тёплые стеклянные панели',
+        desktopSkinLightDescription: 'Light photo skin with translucent reading surfaces',
+        desktopSkinDarkDescription: 'Dark photo skin with translucent reading surfaces',
         mascot: 'Маскот',
         mascotDescription: 'Выберите сурка, который встречает вас на главном экране',
         mascotOptions: {

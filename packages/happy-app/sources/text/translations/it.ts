@@ -619,6 +619,8 @@ export const it: TranslationStructure = {
         desktopSkinDreamskinDescription: 'Sfondo fotografico e superfici scure',
         desktopSkinWarmNight: 'Notte calda alla finestra',
         desktopSkinWarmNightDescription: 'Camera al crepuscolo e pannelli di vetro caldi',
+        desktopSkinLightDescription: 'Light photo skin with translucent reading surfaces',
+        desktopSkinDarkDescription: 'Dark photo skin with translucent reading surfaces',
         mascot: 'Mascotte',
         mascotDescription: 'Scegli la marmotta che ti accoglie nella schermata iniziale',
         mascotOptions: {

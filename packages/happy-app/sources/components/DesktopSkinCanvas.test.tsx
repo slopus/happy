@@ -69,7 +69,7 @@ describe('DesktopSkinCanvas', () => {
         act(() => { renderer = TestRenderer.create(<DesktopSkinCanvas skin="warmNight" reading />); });
         const canvas = renderer.root.findByProps({ testID: 'dreamskin-photo-canvas' });
         act(() => canvas.props.onLayout({ nativeEvent: { layout: { width: 1200 } } }));
-        expect(renderer.root.findByProps({ testID: 'dreamskin-photo' }).props.source.uri).toBe(WARM_NIGHT_BACKGROUND_URL);
+        expect(renderer.root.findByProps({ testID: 'dreamskin-photo' }).props.style.backgroundImage).toBe(`url("${WARM_NIGHT_BACKGROUND_URL}")`);
         expect(renderer.root.findByProps({ testID: 'dreamskin-reading-surface' }).props.style.backgroundColor).toBe('rgba(34,31,36,0.62)');
         act(() => renderer.unmount());
         canvasTheme.colors.desktopSkin = {

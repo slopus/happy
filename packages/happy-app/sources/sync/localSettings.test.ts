@@ -9,6 +9,9 @@ it('keeps the desktop skin independent of the saved color pack and light prefere
     expect(localSettingsParse({ desktopSkinId: 'warmNight', themePack: 'gingham', themePreference: 'light' })).toMatchObject({
         desktopSkinId: 'warmNight', themePack: 'gingham', themePreference: 'light',
     });
+    for (const skin of ['wukong', 'firefly', 'evaWarm', 'meadowSky']) {
+        expect(localSettingsParse({ desktopSkinId: skin }).desktopSkinId).toBe(skin);
+    }
     expect(localSettingsParse({ desktopSkinId: 'unknown' }).desktopSkinId).toBe('default');
 });
 

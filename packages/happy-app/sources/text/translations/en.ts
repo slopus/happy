@@ -692,6 +692,8 @@ export const en: TranslationStructure = {
         desktopSkinDreamskinDescription: 'Photo background and dark reading surfaces',
         desktopSkinWarmNight: 'Warm night by the window',
         desktopSkinWarmNightDescription: 'Blue-hour bedroom and warm glass surfaces',
+        desktopSkinLightDescription: 'Light photo skin with translucent reading surfaces',
+        desktopSkinDarkDescription: 'Dark photo skin with translucent reading surfaces',
         mascot: 'Mascot',
         mascotDescription: 'Pick the groundhog that greets you on the home screen',
         mascotOptions: {
