@@ -3551,8 +3551,10 @@ export class ApiMachineClient {
         const machineVariant = this.machine.encryptionVariant;
         const machineId = this.machine.id;
         // Not attached on a managed runtime: the forwarded terminal opener reaches the host outside
-        // the RPC dispatch gate, so the allowlist there would not see it.
-        if (!this.managedHandlers && !this.windowsStandaloneTrial) this.socket.on('terminal-open-fwd', async (msg, ack) => {
+        // the RPC dispatch gate, so the allowlist there would not see it. The Windows standalone
+        // trial does attach it: its runtime roots every shell in the verified pty host and closes
+        // terminals on drain (Desktop specs/windows-build-support W0-5h).
+        if (!this.managedHandlers) this.socket.on('terminal-open-fwd', async (msg, ack) => {
             try {
                 const { sessionId, params } = msg || {};
                 if (!sessionId || typeof sessionId !== 'string') {
@@ -3708,7 +3710,7 @@ export class ApiMachineClient {
 
         // Not attached on a managed runtime: forwarded terminal frames reaches the host outside
         // the RPC dispatch gate, so the allowlist there would not see it.
-        if (!this.managedHandlers && !this.windowsStandaloneTrial) this.socket.on('terminal-frame-fwd', (msg) => {
+        if (!this.managedHandlers) this.socket.on('terminal-frame-fwd', (msg) => {
             const { sessionId, data } = msg || {};
             const entry = getDaemonTerminalSession(sessionId);
             if (!entry || typeof data !== 'string') return;
@@ -3732,7 +3734,7 @@ export class ApiMachineClient {
          * terminal-frame-fwd: forwarded terminal events reach the host outside
          * the RPC dispatch gate, so the allowlist there would not see this.
          */
-        if (!this.managedHandlers && !this.windowsStandaloneTrial) this.socket.on('terminal-resume-fwd', (msg) => {
+        if (!this.managedHandlers) this.socket.on('terminal-resume-fwd', (msg) => {
             const { sessionId, afterSeq } = msg || {};
             const entry = getDaemonTerminalSession(sessionId);
             if (!entry) return;

@@ -48,6 +48,7 @@ vi.mock('@/api/rpc/RpcHandlerManager', () => ({
         registerHandler = vi.fn();
         unregisterHandler = vi.fn();
         hasHandler = vi.fn(() => false);
+        setMethodPolicy = vi.fn();
     }
 }));
 
@@ -158,6 +159,18 @@ describe('ApiMachineClient socket reconnection', () => {
             if (previous === undefined) delete process.env.HAPPY_REMOTE_TERMINAL_POLICY;
             else process.env.HAPPY_REMOTE_TERMINAL_POLICY = previous;
         }
+    });
+
+    // Desktop specs/windows-build-support W0-5h: the standalone runtime roots every shell in its
+    // verified pty host and closes terminals on drain, so the relay opens; the preview relay stays off.
+    it('attaches the terminal relay but not the preview relay under the Windows standalone trial', () => {
+        const client = new ApiMachineClient('fake-token', makeMachine());
+        client.setWindowsStandaloneTrial();
+        client.connect();
+        for (const event of ['terminal-open-fwd', 'terminal-frame-fwd', 'terminal-resume-fwd']) {
+            expect(socketHandlers[event], event).toHaveLength(1);
+        }
+        expect(socketHandlers['proxy-ws-open']).toBeUndefined();
     });
 
     /*
