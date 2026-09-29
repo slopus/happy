@@ -108,6 +108,7 @@ function setup(
     execFile,
     readFile: vi.fn(async (path: string) => files.get(path) ?? Promise.reject(Object.assign(new Error('missing'), { code: 'ENOENT' }))),
     writeFile,
+    readdir: vi.fn(async () => []),
     mkdir: vi.fn(async () => undefined),
     rename: vi.fn(async (from: string, to: string) => {
       const value = files.get(from)
@@ -1540,6 +1541,60 @@ describe('AI credential machine runtime', () => {
     expect(execFile).toHaveBeenCalledWith('uv', [
       'tool', 'install', 'claude-swap==0.25.0', '--python', '>=3.12', '--force',
     ], expect.anything())
+  })
+
+  it('installs claude-swap with a physical uv Python when Windows refuses the version link', async () => {
+    const root = 'C:/Users/saycode test/AppData/Roaming/uv/python'
+    const physical = join(root, 'cpython-3.12.13-windows-x86_64-none', 'python.exe')
+    const execFile = vi.fn(async (command: string, args: string[]) => {
+      if (command === 'uv' && args[0] === 'python' && args[1] === 'find') {
+        throw new AiCredentialRuntimeError('COMMAND_FAILED')
+      }
+      if (command === 'uv' && args[0] === 'python' && args[1] === 'dir') {
+        return { stdout: `${root}\r\n`, stderr: '' }
+      }
+      if (command === physical && args[0] === '--version') {
+        return { stdout: 'Python 3.12.13', stderr: '' }
+      }
+      if (command === 'cswap' && args[0] === '--version') {
+        return { stdout: 'cswap 0.26.0', stderr: '' }
+      }
+      if (command === 'cswap' && args[0] === 'list') {
+        return { stdout: configuredClaudeList, stderr: '' }
+      }
+      if (args[0] === '--version' && command !== 'uv') throw new AiCredentialRuntimeError('COMMAND_NOT_AVAILABLE')
+      return { stdout: '', stderr: '' }
+    })
+    const readdir = vi.fn(async (path: string) => (path === root
+      ? ['.lock', 'cpython-3.12-windows-x86_64-none', 'cpython-3.12.13-windows-x86_64-none']
+      : []))
+    const { runtime } = setup({ execFile, readdir })
+
+    await runtime.apply({ provider: 'claude', payload: '{}' })
+
+    expect(execFile).toHaveBeenCalledWith('uv', [
+      'tool', 'install', 'claude-swap==0.25.0', '--python', physical, '--force',
+    ], expect.anything())
+  })
+
+  it('keeps the uv Python failure when no physical Python 3.12+ installation runs', async () => {
+    const execFile = vi.fn(async (command: string, args: string[]) => {
+      if (command === 'uv' && args[0] === 'python' && args[1] === 'find') {
+        throw new AiCredentialRuntimeError('COMMAND_FAILED')
+      }
+      if (command === 'uv' && args[0] === 'python' && args[1] === 'dir') {
+        return { stdout: '/uv/python\n', stderr: '' }
+      }
+      if (args[0] === '--version' && command !== 'uv') throw new AiCredentialRuntimeError('COMMAND_FAILED')
+      return { stdout: '', stderr: '' }
+    })
+    const readdir = vi.fn(async () => ['cpython-3.11.9-windows-x86_64-none', 'cpython-3.12.13-windows-x86_64-none'])
+    const { runtime } = setup({ execFile, readdir })
+
+    await expect(runtime.apply({ provider: 'claude', payload: '{}' }))
+      .rejects.toMatchObject({ kind: 'COMMAND_FAILED' })
+    expect(execFile).not.toHaveBeenCalledWith('uv', expect.arrayContaining(['tool', 'install']), expect.anything())
+    expect(execFile).not.toHaveBeenCalledWith(join('/uv/python', 'cpython-3.11.9-windows-x86_64-none', 'python.exe'), expect.anything())
   })
 
   it('does not accept a version string that merely contains the managed version', async () => {

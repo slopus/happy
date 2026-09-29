@@ -1,7 +1,7 @@
 import { CODEX_MULTI_AUTH_VERSION, isSupportedCodexMultiAuthVersion, SUPPORTED_CODEX_MULTI_AUTH_VERSIONS } from '../utils/codexMultiAuthVersions'
 import { stagingParent } from './stagedCredentialRoot'
 import { spawn } from 'node:child_process'
-import { chmod, mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { delimiter, join } from 'node:path'
 import { logger } from '@/ui/logger'
@@ -88,6 +88,7 @@ export type AiCredentialRuntimeDependencies = {
   env: Record<string, string | undefined>
   execFile(command: string, args: string[], options?: CommandOptions): Promise<AiCredentialCommandResult>
   readFile(path: string): Promise<string>
+  readdir(path: string): Promise<string[]>
   writeFile(path: string, content: string, options?: { mode?: number }): Promise<void>
   mkdir(path: string, options?: { recursive?: boolean; mode?: number }): Promise<unknown>
   rename(from: string, to: string): Promise<void>
@@ -354,9 +355,42 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
     }))
   }
 
+  async function claudeSwapPython(): Promise<string> {
+    try {
+      await deps.execFile('uv', ['python', 'find', '>=3.12'])
+      return '>=3.12'
+    } catch (error) {
+      // Windows can refuse uv's minor-version junction (os error 448); use the real patch install.
+      const physical = await physicalUvPython()
+      if (!physical) throw error
+      deps.warn?.('uv Python version link was unusable; using the physical patch installation')
+      return physical
+    }
+  }
+
+  async function physicalUvPython(): Promise<string | null> {
+    const root = (await deps.execFile('uv', ['python', 'dir'])).stdout.trim()
+    if (!root) return null
+    const installs = (await deps.readdir(root))
+      .map((name) => ({ name, version: /^cpython-3\.(\d+)\.(\d+)-/.exec(name) }))
+      .filter((entry) => entry.version && Number(entry.version[1]) >= 12)
+      .sort((a, b) => Number(b.version![1]) - Number(a.version![1]) || Number(b.version![2]) - Number(a.version![2]))
+    for (const { name } of installs) {
+      for (const python of [join(root, name, 'python.exe'), join(root, name, 'bin', 'python3')]) {
+        try {
+          await deps.execFile(python, ['--version'])
+          return python
+        } catch {
+          // Not this layout or not runnable; try the next candidate.
+        }
+      }
+    }
+    return null
+  }
+
   async function ensureClaudeSwap(): Promise<void> {
     await deps.execFile('uv', ['--version'])
-    await deps.execFile('uv', ['python', 'find', '>=3.12'])
+    const python = await claudeSwapPython()
     let installed = false
     try {
       const version = await deps.execFile('cswap', ['--version'])
@@ -367,7 +401,7 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
     if (!installed) {
       await deps.execFile('uv', [
         'tool', 'install', `claude-swap==${CLAUDE_SWAP_VERSION}`,
-        '--python', '>=3.12', '--force',
+        '--python', python, '--force',
       ], { timeoutMs: 300_000 })
     }
     await deps.execFile('cswap', ['config', 'set', 'autoswitch.threshold', '95'])
@@ -1514,6 +1548,7 @@ export function createNodeAiCredentialRuntime(
     env,
     execFile: runAiCredentialCommand,
     readFile: (path) => readFile(path, 'utf8'),
+    readdir: (path) => readdir(path),
     writeFile: async (path, content, options) => { await writeFile(path, content, options) },
     mkdir,
     rename,
