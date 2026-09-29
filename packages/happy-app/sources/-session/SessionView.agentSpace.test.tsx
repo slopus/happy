@@ -18,6 +18,8 @@ import { SessionView } from './SessionView';
 // @ts-expect-error The test only needs the small create/unmount surface typed below.
 import TestRenderer from 'react-test-renderer';
 
+vi.mock('@/components/ReadingWidthRail', () => ({ ReadingWidthRail: 'ReadingWidthRail' }));
+
 const mocks = vi.hoisted(() => ({
     closePanel: vi.fn(),
     pendingCloseCallback: null as (() => void) | null,
@@ -29,6 +31,7 @@ const mocks = vi.hoisted(() => ({
     desktopSkinId: 'default',
     desktopReadingWidth: 960,
     setDesktopReadingWidth: vi.fn(),
+    previewLocalSettings: vi.fn(),
     isTablet: false,
     focusContext: null as unknown as React.Context<boolean>,
     rightPanelRoute: true,
@@ -334,6 +337,7 @@ vi.mock('@/hooks/useAgentSpace', () => ({
 }));
 vi.mock('@/sync/storage', () => ({
     storage: {
+        setState: (updater: any) => mocks.previewLocalSettings(updater({ localSettings: { desktopReadingWidth: mocks.desktopReadingWidth } })),
         getState: () => ({
             sessions: { 'session-1': { draft: '' } },
             currentViewingSessionId: null,
@@ -907,8 +911,21 @@ describe('SessionView Agent-space boundary', () => {
         const widthButton = renderer.root.findByProps({ testID: 'dreamskin-reading-width-button' });
         act(() => widthButton.props.onPress());
         expect(renderer.root.findByProps({ testID: 'dreamskin-reading-width-menu' })).toBeDefined();
-        act(() => renderer.root.findByProps({ testID: 'dreamskin-reading-width-increase' }).props.onPress());
-        expect(mocks.setDesktopReadingWidth).toHaveBeenCalledWith(1040);
+        const slider = renderer.root.findByType('ReadingWidthRail');
+        expect(slider.props).toMatchObject({ min: 800, max: 1280, value: 960 });
+        expect(renderer.root.findByProps({ testID: 'desktop-right-panel-motion' }).props.style).toContainEqual({ display: 'none' });
+        for (const value of [800, 1037, 1280]) {
+            act(() => slider.props.onValueChange(value));
+            expect(mocks.previewLocalSettings).toHaveBeenLastCalledWith({ localSettings: { desktopReadingWidth: value } });
+        }
+        expect(mocks.setDesktopReadingWidth).not.toHaveBeenCalled();
+        act(() => slider.props.onValueCommit(1280));
+        expect(mocks.setDesktopReadingWidth).toHaveBeenCalledExactlyOnceWith(1280);
+        act(() => slider.props.onValueChange(1001));
+        act(() => slider.props.onValueCommit(1001));
+        expect(mocks.setDesktopReadingWidth).toHaveBeenLastCalledWith(1001);
+        expect(renderer.root.findAllByProps({ testID: 'dreamskin-reading-width-increase' })).toHaveLength(0);
+        expect(renderer.root.findAllByProps({ testID: 'dreamskin-reading-width-decrease' })).toHaveLength(0);
         expect(renderer.root.findByType('DesktopSkinCanvas').props.readingWidth).toBe(960);
         act(() => renderer.unmount());
     });

@@ -68,6 +68,7 @@ import { isVersionSupported, MINIMUM_CLI_VERSION } from '@/utils/versionUtils';
 import * as Application from 'expo-application';
 import * as Clipboard from 'expo-clipboard';
 import { Ionicons, Octicons } from '@expo/vector-icons';
+import { ReadingWidthRail } from '@/components/ReadingWidthRail';
 import { useRouter, useNavigation } from 'expo-router';
 import { SessionRouteCoordinationError, type SessionRouteOwner } from '@/sync/sessionRouteOwnership';
 import { DrawerActions, useIsFocused } from '@react-navigation/native';
@@ -440,6 +441,23 @@ function SessionHeaderMoreAction({
 function DesktopReadingWidthControl() {
     const { theme } = useUnistyles();
     const [width, setWidth] = useLocalSettingMutable('desktopReadingWidth');
+    const pendingWidth = React.useRef<number | null>(null);
+    const previewWidth = React.useCallback((value: number) => {
+        if (!Number.isFinite(value)) return;
+        const nextWidth = Math.min(1280, Math.max(800, Math.round(value)));
+        pendingWidth.current = nextWidth;
+        storage.setState((state) => ({ localSettings: { ...state.localSettings, desktopReadingWidth: nextWidth } }));
+    }, []);
+    const commitWidth = React.useCallback((value?: number) => {
+        const nextWidth = typeof value === 'number' && Number.isFinite(value)
+            ? Math.min(1280, Math.max(800, Math.round(value)))
+            : pendingWidth.current;
+        if (nextWidth === null) return;
+        setWidth(nextWidth);
+        pendingWidth.current = null;
+    }, [setWidth]);
+    // Keep dragging cheap: preview in memory and persist once the interaction ends.
+    React.useEffect(() => commitWidth, [commitWidth]);
     const [open, setOpen] = React.useState(false);
     const rootRef = React.useRef<View>(null);
 
@@ -447,10 +465,10 @@ function DesktopReadingWidthControl() {
         if (!open || Platform.OS !== 'web' || typeof document === 'undefined') return;
         const closeOutside = (event: PointerEvent) => {
             const root = rootRef.current as unknown as HTMLElement | null;
-            if (event.target instanceof Node && !root?.contains(event.target)) setOpen(false);
+            if (event.target instanceof Node && !root?.contains(event.target)) { commitWidth(); setOpen(false); }
         };
         const closeOnEscape = (event: KeyboardEvent) => {
-            if (event.key === 'Escape') setOpen(false);
+            if (event.key === 'Escape') { commitWidth(); setOpen(false); }
         };
         document.addEventListener('pointerdown', closeOutside);
         document.addEventListener('keydown', closeOnEscape);
@@ -458,7 +476,7 @@ function DesktopReadingWidthControl() {
             document.removeEventListener('pointerdown', closeOutside);
             document.removeEventListener('keydown', closeOnEscape);
         };
-    }, [open]);
+    }, [open, commitWidth]);
 
     return <View ref={rootRef} style={[workspaceStyles.headerIconWrapper, { zIndex: open ? 1300 : 0 }]}>
         <Pressable
@@ -474,37 +492,30 @@ function DesktopReadingWidthControl() {
         {open && <View
             accessibilityLabel={t('desktopWorkspace.readingWidth')}
             style={{
-                position: 'absolute', top: 44, right: 0, width: 240, padding: 14, borderRadius: 12,
+                position: 'absolute', top: 44, right: 0, width: 280, padding: 16, borderRadius: 12,
                 backgroundColor: theme.colors.surface, borderColor: theme.colors.divider, borderWidth: StyleSheet.hairlineWidth,
                 shadowColor: theme.colors.shadow.color, shadowOffset: { width: 0, height: 8 },
                 shadowOpacity: theme.colors.shadow.opacity, shadowRadius: 18, elevation: 12,
             }}
             testID="dreamskin-reading-width-menu"
         >
-            <Text style={{ color: theme.colors.text, fontSize: 14, fontWeight: '600', marginBottom: 12 }}>
-                {t('desktopWorkspace.readingWidth')}
-            </Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                <Pressable
-                    accessibilityLabel={`${t('desktopWorkspace.readingWidth')} −`}
-                    accessibilityRole="button"
-                    accessibilityState={{ disabled: width <= 800 }}
-                    disabled={width <= 800}
-                    onPress={() => setWidth(Math.max(800, width - 80))}
-                    style={({ pressed }) => ({ width: 36, height: 36, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: pressed ? theme.colors.surfacePressed : theme.colors.surfaceHigh, opacity: width <= 800 ? 0.45 : 1 })}
-                    testID="dreamskin-reading-width-decrease"
-                ><Ionicons name="remove" size={19} color={theme.colors.text} /></Pressable>
-                <Text accessibilityLabel={`${width} px`} style={{ color: theme.colors.text, fontSize: 15, fontVariant: ['tabular-nums'], textAlign: 'center', flex: 1 }}>{width} px</Text>
-                <Pressable
-                    accessibilityLabel={`${t('desktopWorkspace.readingWidth')} +`}
-                    accessibilityRole="button"
-                    accessibilityState={{ disabled: width >= 1280 }}
-                    disabled={width >= 1280}
-                    onPress={() => setWidth(Math.min(1280, width + 80))}
-                    style={({ pressed }) => ({ width: 36, height: 36, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: pressed ? theme.colors.surfacePressed : theme.colors.surfaceHigh, opacity: width >= 1280 ? 0.45 : 1 })}
-                    testID="dreamskin-reading-width-increase"
-                ><Ionicons name="add" size={19} color={theme.colors.text} /></Pressable>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                <Text style={{ color: theme.colors.text, fontSize: 14, fontWeight: '600' }}>
+                    {t('desktopWorkspace.readingWidth')}
+                </Text>
+                <Text style={{ color: theme.colors.text, fontSize: 14, fontVariant: ['tabular-nums'] }}>{width} px</Text>
             </View>
+            {Platform.OS === 'web' && <ReadingWidthRail
+                value={width}
+                min={800}
+                max={1280}
+                label={t('desktopWorkspace.readingWidth')}
+                accentColor={theme.colors.accent}
+                trackColor={theme.colors.divider}
+                iconColor={theme.colors.textSecondary}
+                onValueChange={previewWidth}
+                onValueCommit={(value) => { previewWidth(value); commitWidth(value); }}
+            />}
         </View>}
     </View>;
 }
@@ -696,7 +707,6 @@ const SessionViewContent = React.memo((props: { id: string }) => {
     const animatedRightPanelStyle = useAnimatedStyle(() => ({
         width: rightPanelAnim.value * rightPanelWidth,
         opacity: Platform.OS === 'web' ? 1 : rightPanelAnim.value,
-        overflow: Platform.OS === 'web' ? 'visible' as const : 'hidden' as const,
     }));
 
     const [sidebarMode, setSidebarMode] = React.useState<SidebarMode>('changes');
@@ -1363,6 +1373,7 @@ const SessionViewContent = React.memo((props: { id: string }) => {
                         workspaceStyles.desktopPanel,
                         { width: rightPanelWidth },
                         Platform.OS === 'web' && workspaceStyles.desktopPanelWeb,
+                        Platform.OS === 'web' && !showDesktopRightPanel && { display: 'none' },
                     ]}
                     testID="desktop-right-panel-motion"
                 >
