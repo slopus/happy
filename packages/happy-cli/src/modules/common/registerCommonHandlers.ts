@@ -300,6 +300,12 @@ export interface SpawnSessionOptions {
      */
     browserContinuation?: boolean;
     /**
+     * Shared Agent Browser machines: Studio's signed statement of who started this new chat (abp2
+     * session-user). The daemon hands it to the Runtime broker only (never to the child's env); the broker
+     * verifies it and binds the session to that user's browser profile.
+     */
+    browserAttestation?: string;
+    /**
      * Internal only. Set by the daemon's managed dispatch wrapper, never read
      * from RPC params — a caller that supplied it would be choosing its own
      * delivery guarantees. Turns on confirmed delivery of the initial prompt

@@ -2069,7 +2069,8 @@ export async function startDaemon(): Promise<void> {
         }
         // A fork or recovery continues an existing conversation under a new session id: say which, so the
         // Runtime refuses a conversation of an earlier profile assignment.
-        browserTaskRegistration = await browserTaskBroker?.register(browserTaskLineage(options));
+        // Studio's session-user attestation (a new chat on a shared machine) goes to the broker only.
+        browserTaskRegistration = await browserTaskBroker?.register(browserTaskLineage(options), options.browserAttestation);
         if (browserTaskRegistration) {
           // Session process only; it removes the secret from its env before spawning claude.
           extraEnv.HAPPY_BROWSER_TASK_SESSION_SECRET = browserTaskRegistration.sessionSecret;

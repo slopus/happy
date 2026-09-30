@@ -66,8 +66,11 @@ export function browserTaskLineage(options: { parentSessionId?: string; resumeCl
 }
 
 export interface BrowserTaskSessionBroker {
-    /** `lineage`: a fork or recovery (the Runtime refuses a conversation of an earlier profile assignment). */
-    register(lineage?: BrowserTaskLineage): Promise<{ registrationId: string; sessionSecret: string } | undefined>
+    /**
+     * `lineage`: a fork or recovery (the Runtime refuses a conversation of an earlier profile assignment).
+     * `attestation`: Studio's session-user attestation of a new chat (shared machines).
+     */
+    register(lineage?: BrowserTaskLineage, attestation?: string): Promise<{ registrationId: string; sessionSecret: string } | undefined>
     /**
      * True once bound, or while a transient refusal (admission held) is retried in the background, which
      * revokes the registration itself if the Runtime then denies it or the deadline passes. False: denied
@@ -277,10 +280,10 @@ export function createBrowserTaskSessionBroker(
     }
 
     const broker: BrowserTaskSessionBroker = {
-        async register(lineage) {
+        async register(lineage, attestation) {
             // The host boot id lets reconciliation drop this registration after a reboot even if no owner is ever bound.
             const bootId = await readBrowserTaskBootId(options.procRoot).catch(() => undefined)
-            const body = { ...bootId ? { bootId } : {}, ...lineage ? { lineage } : {} }
+            const body = { ...bootId ? { bootId } : {}, ...lineage ? { lineage } : {}, ...attestation ? { attestation } : {} }
             // Admission held (start-up cleanup, a reassignment being verified): wait a bounded time, so an
             // ordinary restart's hold does not leave the session without a browser for its whole life.
             const deadline = Date.now() + (options.registerRetryDeadlineMs ?? DEFAULT_REGISTER_RETRY_DEADLINE_MS)

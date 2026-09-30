@@ -70,6 +70,13 @@ describe('daemon browser task broker hook', () => {
         ])
     })
 
+    it("passes Studio's session-user attestation of a new chat to the broker at registration", async () => {
+        const { calls, request } = recorder({ '/v1/sessions/register': { status: 200, body: { ok: true, result: { registrationId: 'reg-1', sessionSecret: 'secret-1' } } } })
+        const broker = createBrowserTaskSessionBroker({ HAPPY_BROWSER_TASK_BROKER_SOCKET: '/run/abp/broker.sock', HAPPY_BROWSER_TASK_DAEMON_TOKEN_FILE: await tokenFile() }, request, { procRoot: await procRoot() })!
+        await broker.register(undefined, 'abp2.header.payload.signature')
+        expect(calls[0].body).toEqual({ schemaVersion: 1, bootId: 'boot-fixture', attestation: 'abp2.header.payload.signature' })
+    })
+
     it('on resume, first clears any registration still bound to the session (a queued exit revoke included), then registers afresh', async () => {
         const { calls, request } = recorder({
             '/v1/sessions/register': { status: 200, body: { ok: true, result: { registrationId: 'reg-2', sessionSecret: 'secret-2' } } },
