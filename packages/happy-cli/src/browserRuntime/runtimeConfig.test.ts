@@ -2,6 +2,7 @@
 import { generateKeyPairSync } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
 import { parseRuntimeConfig } from './runtimeConfig'
+import { sharedProfileId } from './tenancy'
 
 const publicKeyPem = generateKeyPairSync('ed25519').publicKey.export({ type: 'spki', format: 'pem' }).toString()
 const ASSIGNMENT = '0123456789abcdef0123456789abcdef'
@@ -29,9 +30,33 @@ describe('parseRuntimeConfig', () => {
         expect(parseRuntimeConfig({ ...valid(), admissionHold: true }).admissionHold).toBe(true)
     })
 
-    it('allows one profile under assignments (the broker ledger keys all profiles together; reassigning one would retire the others\' sessions)', () => {
+    it('allows one profile under assignments in dedicated tenancy (its broker ledger keys all profiles together)', () => {
         const second = { profileId: 'profile-b', principalId: 'user-2', assignmentId: 'b'.repeat(32) }
         expect(() => parseRuntimeConfig({ ...valid(), profiles: [...valid().profiles, second] })).toThrow(/one profile/)
+    })
+
+    it('defaults to dedicated tenancy, which keeps one profile', () => {
+        expect(parseRuntimeConfig(valid()).tenancyMode).toBe('dedicated')
+        expect(parseRuntimeConfig({ ...valid(), tenancyMode: 'dedicated' }).tenancyMode).toBe('dedicated')
+        expect(() => parseRuntimeConfig({ ...valid(), tenancyMode: 'other' })).toThrow(/tenancyMode/)
+    })
+
+    it('accepts shared tenancy with zero to eight per-user profiles named after their owner', () => {
+        const profile = (principalId: string, index: number) => ({ profileId: sharedProfileId(principalId), principalId, assignmentId: index.toString(16).padStart(32, '0') })
+        const empty = parseRuntimeConfig({ ...valid(), tenancyMode: 'shared', profiles: [] })
+        expect(empty.tenancyMode).toBe('shared')
+        expect(empty.profilePrincipals.size).toBe(0)
+        const eight = Array.from({ length: 8 }, (_, index) => profile(`user-${index}`, index))
+        expect(parseRuntimeConfig({ ...valid(), tenancyMode: 'shared', profiles: eight }).profileAssignments?.size).toBe(8)
+        expect(() => parseRuntimeConfig({ ...valid(), tenancyMode: 'shared', profiles: [...eight, profile('user-8', 8)] })).toThrow(/profiles/)
+        // A profile id that is not its owner's: the broker maps a session user to a profile by this name.
+        expect(() => parseRuntimeConfig({ ...valid(), tenancyMode: 'shared', profiles: [{ ...profile('user-1', 1), principalId: 'user-2' }] })).toThrow(/profileId/)
+        expect(() => parseRuntimeConfig({ ...valid(), tenancyMode: 'shared', schemaVersion: 1, profiles: [] })).toThrow(/schemaVersion|shared/)
+        expect(() => parseRuntimeConfig({ ...valid(), profiles: [] })).toThrow(/profiles/)
+    })
+
+    it('names a shared profile u- and the first 16 hex of the SHA-256 of its owner (vector shared with Studio)', () => {
+        expect(sharedProfileId('user-1')).toBe('u-c6c289e49e9c05b2')
     })
 
     it('requires schema 2 with an assignment per profile in production, and keeps schema 1 for the harness only', () => {

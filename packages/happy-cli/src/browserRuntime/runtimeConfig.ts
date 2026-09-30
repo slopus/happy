@@ -12,6 +12,7 @@ import { readFileSync } from 'node:fs'
 import { z } from 'zod'
 import type { TrustedIssuer } from './auth'
 import type { AuthMode, MachineId, PrincipalId, ProfileId, WorkspaceId } from './contracts'
+import { MAX_SHARED_PROFILES, TENANCY_MODES, sharedProfileId } from './tenancy'
 
 const id = z.string().min(1).max(256)
 const origin = z.string().refine((value) => {
@@ -32,12 +33,14 @@ const profileSchema = z.object({
 
 const schema = z.object({
     schemaVersion: z.union([z.literal(1), z.literal(2)]).default(1),
+    /** dedicated: one assigned user (default). shared: a profile per user, 0 to 8 (schema 2). */
+    tenancyMode: z.enum(TENANCY_MODES).default('dedicated'),
     /** A reassignment awaits verification: task API and broker closed until opened on the admin socket. */
     admissionHold: z.boolean().default(false),
     authMode: z.enum(['harness', 'production']),
     machineId: id,
     workspaceId: id,
-    profiles: z.array(profileSchema).min(1),
+    profiles: z.array(profileSchema),
     trustedIssuers: z.array(z.object({ kid: id, publicKeyPem: z.string().min(1).max(4096) }).strict()).default([]),
     /** Site policy entries; their action rules are validated by the policy module. */
     sites: z.array(z.object({ origin }).passthrough()).default([]),
@@ -67,6 +70,15 @@ const schema = z.object({
         if (seen.has(profile.profileId)) ctx.addIssue({ code: 'custom', path: ['profiles', index, 'profileId'], message: 'duplicate profileId' })
         seen.add(profile.profileId)
     }
+    if (config.tenancyMode === 'dedicated' && config.profiles.length === 0)
+        ctx.addIssue({ code: 'custom', path: ['profiles'], message: 'dedicated tenancy needs one profile' })
+    if (config.tenancyMode === 'shared') {
+        if (config.schemaVersion !== 2) ctx.addIssue({ code: 'custom', path: ['schemaVersion'], message: 'shared tenancy needs schema 2' })
+        if (config.profiles.length > MAX_SHARED_PROFILES) ctx.addIssue({ code: 'custom', path: ['profiles'], message: `shared tenancy runs at most ${MAX_SHARED_PROFILES} profiles` })
+        // The broker finds a session user's profile by this name.
+        for (const [index, profile] of config.profiles.entries())
+            if (profile.profileId !== sharedProfileId(profile.principalId)) ctx.addIssue({ code: 'custom', path: ['profiles', index, 'profileId'], message: "must be the owner's shared profile id (u-<16 hex of sha256(principalId)>)" })
+    }
     for (const [index, issuer] of config.trustedIssuers.entries()) {
         let type: string | undefined
         try { type = createPublicKey(issuer.publicKeyPem).asymmetricKeyType } catch { type = undefined }
@@ -77,10 +89,10 @@ const schema = z.object({
     if (config.schemaVersion === 2) {
         for (const [index, profile] of config.profiles.entries())
             if (!profile.assignmentId) ctx.addIssue({ code: 'custom', path: ['profiles', index, 'assignmentId'], message: 'schema 2 needs an assignmentId per profile' })
-        // The broker's session ledger keys every profile's assignment together, so reassigning one profile would
-        // retire sessions that use only the others. Until it is kept per profile, one profile per machine.
-        if (config.profiles.length > 1)
-            ctx.addIssue({ code: 'custom', path: ['profiles'], message: 'schema 2 supports one profile per machine until assignments are tracked per profile' })
+        // The dedicated broker ledger keys every profile's assignment together, so reassigning one profile would
+        // retire sessions that use only the others: one profile. The shared ledger keeps each profile apart.
+        if (config.tenancyMode === 'dedicated' && config.profiles.length > 1)
+            ctx.addIssue({ code: 'custom', path: ['profiles'], message: 'dedicated tenancy supports one profile per machine' })
     } else {
         for (const [index, profile] of config.profiles.entries())
             if (profile.assignmentId) ctx.addIssue({ code: 'custom', path: ['profiles', index, 'assignmentId'], message: 'needs schemaVersion 2' })
