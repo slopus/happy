@@ -107,6 +107,10 @@ export interface Broker {
     pendingRevocations(): number
     /** A logical session of an earlier assignment (or retired): its attention is not delivered. */
     isRetired(agentSessionId: string): boolean
+    /** Shared machines: users whose profile was requested on first use and not yet created (root abp-stack polls). */
+    profileRequests(): Array<{ principalId: string; requestedAtMs: number }>
+    /** Shared machines: abp-stack could not create the profile; its sessions are told why until `retryAfterMs` passes. */
+    refuseProfileRequest(principalId: string, reason: 'capacity' | 'memory', retryAfterMs: number): Promise<void>
 }
 
 /** The credential denylist for the task API: the Runtime's revocations plus grants still being revoked. */
@@ -332,7 +336,13 @@ export async function startBroker(options: BrokerOptions): Promise<Broker> {
                 const [, registration] = entry
                 if (!registration.agentSessionId) throw new BrowserRuntimeError('CONFLICT', 'session registration is not bound yet', true)
                 if (registration.agentSessionId !== body.agentSessionId) throw new BrowserRuntimeError('SCOPE_DENIED', 'secret belongs to another session')
-                const { principalId, profileId, assignmentId } = ledger.grant(registration, body.profileId)
+                let granted: ReturnType<typeof ledger.grant>
+                try { granted = ledger.grant(registration, body.profileId) } catch (error) {
+                    // A first request for the user's profile is recorded before the session is told to wait.
+                    if (error instanceof BrowserRuntimeError && error.code === 'PROFILE_PROVISIONING') await persist()
+                    throw error
+                }
+                const { principalId, profileId, assignmentId } = granted
                 const issuedAtMs = now()
                 const grantId = `grant-${randomUUID()}` as GrantId
                 const expiresAtMs = issuedAtMs + BROKER_GRANT_TTL_MS
@@ -409,6 +419,13 @@ export async function startBroker(options: BrokerOptions): Promise<Broker> {
         revokingGrantIds: () => new Set(Object.values(registry.registrations).filter((registration) => registration.revoking).flatMap((registration) => registration.grantIds)),
         pendingRevocations: () => Object.values(registry.registrations).filter((registration) => registration.revoking).length,
         isRetired: ledger.isRetired,
+        profileRequests: () => Object.entries(registry.profileRequests ?? {})
+            .flatMap(([principalId, request]) => request.state === 'requested' ? [{ principalId, requestedAtMs: request.atMs }] : []),
+        refuseProfileRequest: (principalId, reason, retryAfterMs) => exclusive(async () => {
+            if (registry.profileRequests?.[principalId]?.state !== 'requested') return
+            registry.profileRequests[principalId] = { state: 'refused', atMs: now(), reason, retryAtMs: now() + retryAfterMs }
+            await persist()
+        }),
     }
 }
 

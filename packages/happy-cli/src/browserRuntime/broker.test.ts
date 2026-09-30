@@ -626,6 +626,42 @@ describe('broker on a shared machine (a profile per session user)', () => {
         expect(verifyToken(g2.body.result.token, keys, 1_000_000).credential).toMatchObject({ principalId: 'user-2', profileId: U2, assignmentId: B1 })
     })
 
+    it("requests a profile for a user who has none (once), and says the browser is being prepared", async () => {
+        const h = await harness({ shared: { profiles: [['user-1', A1]] } })
+        const pending = await h.register('s2', { attestation: attest('user-2') })
+        const first = await grantFor(h, pending.sessionSecret, 's2')
+        denied(first, 'PROFILE_PROVISIONING')
+        expect(first.body.error.retryable).toBe(true)
+        denied(await grantFor(h, pending.sessionSecret, 's2'), 'PROFILE_PROVISIONING')
+        expect(h.broker.profileRequests()).toEqual([{ principalId: 'user-2', requestedAtMs: 1_000_000 }])
+        // Requests survive a restart until the profile exists.
+        await h.close()
+        const again = await harness({ dir: h.dir, shared: { profiles: [['user-1', A1]] } })
+        expect(again.broker.profileRequests()).toEqual([{ principalId: 'user-2', requestedAtMs: 1_000_000 }])
+        await again.close()
+        const added = await harness({ dir: h.dir, shared: both })
+        expect(added.broker.profileRequests()).toEqual([])
+    })
+
+    it('tells a refused user why, until the refusal expires or a new chat attests them again', async () => {
+        const h = await harness({ shared: { profiles: [['user-1', A1]] } })
+        const pending = await h.register('s2', { attestation: attest('user-2') })
+        denied(await grantFor(h, pending.sessionSecret, 's2'), 'PROFILE_PROVISIONING')
+        await h.broker.refuseProfileRequest('user-2', 'memory', 600_000)
+        expect(h.broker.profileRequests()).toEqual([])
+        const refused = await grantFor(h, pending.sessionSecret, 's2')
+        denied(refused, 'PROFILE_UNAVAILABLE')
+        expect(refused.body.error.retryable).toBe(false)
+        expect(refused.body.error.message).toMatch(/memory/)
+        h.setNow(1_000_001)
+        await h.register('s3', { attestation: attest('user-2', 1_000_001) })
+        denied(await grantFor(h, (await h.register('s4', { attestation: attest('user-2', 1_000_001) })).sessionSecret, 's4'), 'PROFILE_PROVISIONING')
+        expect(h.broker.profileRequests()).toEqual([{ principalId: 'user-2', requestedAtMs: 1_000_001 }])
+        await h.broker.refuseProfileRequest('user-2', 'capacity', 600_000)
+        h.setNow(1_600_002)
+        denied(await grantFor(h, pending.sessionSecret, 's2'), 'PROFILE_PROVISIONING')
+    })
+
     it('gives a session without an attested user no grant (an old daemon, or a spawn Studio did not attest)', async () => {
         const h = await harness({ shared: both })
         const plain = await h.register('s1')
@@ -635,7 +671,7 @@ describe('broker on a shared machine (a profile per session user)', () => {
     it("keeps a user's session pending until their profile exists, then confirms it in that profile's assignment", async () => {
         const first = await harness({ shared: { profiles: [['user-1', A1]] } })
         const pending = await first.register('s2', { attestation: attest('user-2') })
-        denied(await grantFor(first, pending.sessionSecret, 's2'))
+        denied(await grantFor(first, pending.sessionSecret, 's2'), 'PROFILE_PROVISIONING')
         await first.close()
         // The profile was added (a new Runtime): the same registration now gets user 2's grant.
         const added = await harness({ dir: first.dir, shared: both })

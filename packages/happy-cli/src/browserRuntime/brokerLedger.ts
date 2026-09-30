@@ -63,7 +63,14 @@ export interface RegistryFile {
     sessionTuples?: Record<string, SessionTuple | typeof RETIRED>
     /** Schema 2: provider conversation id → the tuple it was continued in, or RETIRED. Never pruned. */
     conversationTuples?: Record<string, SessionTuple | typeof RETIRED>
+    /** Schema 2: users whose profile a session asked for, until it exists (root abp-stack creates it). */
+    profileRequests?: Record<string, ProfileRequest>
 }
+
+/** A user's profile requested (waiting for abp-stack), or refused until `retryAtMs` (or a newer registration). */
+export type ProfileRequest =
+    | { state: 'requested'; atMs: number }
+    | { state: 'refused'; atMs: number; reason: 'capacity' | 'memory'; retryAtMs: number }
 
 export interface AssignmentLedger {
     /** A logical session of an earlier assignment (or retired): its attention is not delivered. */
@@ -90,6 +97,7 @@ export interface LedgerOptions {
     sessionHistory?(agentSessionId: string): Iterable<string | undefined>
     /** Shared machines: users whose profile was removed, and when (MAX_SAFE_INTEGER: blocked for good). */
     profileTombstones?: ReadonlyMap<PrincipalId, number>
+    now?: () => number
 }
 
 /**
@@ -210,6 +218,10 @@ export function dedicatedLedger(registry: RegistryFile, options: LedgerOptions):
 export function sharedLedger(registry: RegistryFile, options: LedgerOptions): AssignmentLedger {
     const ledger = registry.sessionTuples ??= {}
     const conversations = registry.conversationTuples ??= {}
+    const requests = registry.profileRequests ??= {}
+    const now = options.now ?? Date.now
+    // A request is done once its user's profile exists.
+    for (const principalId of Object.keys(requests)) if (options.profiles.get(sharedProfileId(principalId)) === principalId) delete requests[principalId]
     const currentValues = new Set(options.assignments?.values() ?? [])
     const retired = (tuple: SessionTuple | typeof RETIRED): boolean => {
         if (tuple === RETIRED) return true
@@ -287,7 +299,16 @@ export function sharedLedger(registry: RegistryFile, options: LedgerOptions): As
             if (retired(tuple)) refuse('the session was started in an earlier assignment of its browser profile')
             const profileId = tuple.profileId as ProfileId
             const principalId = options.profiles.get(profileId)
-            if (principalId === undefined) refuse("this user has no browser profile on this machine yet")
+            if (principalId === undefined) {
+                // Created on first use: requested for abp-stack (the broker persists it), unless refused lately.
+                const request = requests[tuple.principalId]
+                if (request?.state === 'refused' && now() < request.retryAtMs && registration.createdAtMs <= request.atMs)
+                    throw new BrowserRuntimeError('PROFILE_UNAVAILABLE', request.reason === 'capacity'
+                        ? 'this machine has no room for another browser profile (at most 8); ask the operator'
+                        : 'this machine does not have enough memory for another browser profile right now; ask the operator or try later')
+                if (request?.state !== 'requested') requests[tuple.principalId] = { state: 'requested', atMs: now() }
+                throw new BrowserRuntimeError('PROFILE_PROVISIONING', "the user's browser profile is being created; retry shortly", true)
+            }
             if (principalId !== tuple.principalId) refuse('the browser profile belongs to another user')
             const assignmentId = options.assignments?.get(profileId)
             if (!assignmentId) return refuse('the browser profile has no assignment')
