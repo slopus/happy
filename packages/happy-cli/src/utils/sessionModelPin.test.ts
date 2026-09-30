@@ -74,14 +74,31 @@ describe('applySessionModelPinTurn', () => {
         expect(result.patch).toBeNull();
     });
 
-    it('keeps an existing pin when a later turn auto-routes', () => {
+    // A client routes only when its own selection resolves to Auto/Default, so
+    // an auto turn is the user going back to Auto. Desktop and mobile never send
+    // `model: null` for a routable agent, so this is their only way to say it;
+    // keeping the old pin left every other device showing — and re-sending as a
+    // user pin — a model the user had just left.
+    it('clears an existing pin when a later turn auto-routes', () => {
         const result = applySessionModelPinTurn({
             pin: { model: 'claude-opus-5', effort: 'high' },
             published: { model: 'claude-opus-5', effort: 'high' },
             turn: turn({ specifiesModel: true, model: 'claude-haiku-4-5', source: 'auto' }),
         });
-        expect(result.pin).toEqual({ model: 'claude-opus-5', effort: 'high' });
-        expect(result.patch).toBeNull();
+        expect(result.pin).toEqual(NO_PIN);
+        expect(result.patch).toEqual({ currentModelCode: null, currentThoughtLevelCode: null });
+    });
+
+    // Shared org routing: the client sends only the Auto marker and lets the CLI
+    // pick the model, so the turn names no model at all.
+    it('clears an existing pin on an auto turn that carries no model', () => {
+        const result = applySessionModelPinTurn({
+            pin: { model: 'claude-opus-5', effort: 'high' },
+            published: { model: 'claude-opus-5', effort: 'high' },
+            turn: turn({ source: 'auto' }),
+        });
+        expect(result.pin).toEqual(NO_PIN);
+        expect(result.patch).toEqual({ currentModelCode: null, currentThoughtLevelCode: null });
     });
 
     // Absent marker = user pin, so desktop and web need no change.
@@ -251,6 +268,16 @@ describe('createSessionModelPinPublisher', () => {
         publisher.publish({ specifiesModel: true, model: 'claude-sonnet-5', specifiesEffort: true, effort: 'medium', source: 'auto' });
         publisher.publish({ specifiesModel: true, model: 'claude-haiku-4-5', specifiesEffort: true, effort: 'low', source: 'auto' });
         expect(written).toHaveLength(0);
+    });
+
+    it('deletes the advertised codes when the user goes back to Auto', () => {
+        const { publisher, written, latest } = harness();
+        publisher.publish({ specifiesModel: true, model: 'claude-opus-5', specifiesEffort: true, effort: 'high', source: 'user' });
+        publisher.publish({ specifiesModel: true, model: 'claude-sonnet-5', specifiesEffort: true, effort: 'medium', source: 'auto' });
+        publisher.publish({ specifiesModel: true, model: 'claude-haiku-4-5', specifiesEffort: true, effort: 'low', source: 'auto' });
+        expect(written).toHaveLength(2);
+        expect('currentModelCode' in latest()).toBe(false);
+        expect('currentThoughtLevelCode' in latest()).toBe(false);
     });
 
     it('restores the spawn-time pin after an abort reset', () => {

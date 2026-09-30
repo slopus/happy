@@ -475,7 +475,7 @@ function buildDecision(args: {
   // it is a one-turn override, not a new floor — and a policy substitution is
   // taken at face value, because a floor the org forbids can never be run.
   const baseTier: Difficulty = allowed.substituted
-    ? (catalogRouteForModel(input.agent, routed.model)?.tier ?? escalated.stickyDifficulty ?? args.difficulty)
+    ? (routed.difficulty ?? escalated.stickyDifficulty ?? args.difficulty)
     : (escalated.stickyDifficulty ?? args.difficulty)
   const base: RoutingRouteSnapshot = {
     difficulty: baseTier,
@@ -733,11 +733,14 @@ function tierRank(difficulty: Difficulty): number {
  * are per-model labels, not a numeric scale, so guessing one would be inventing
  * a comparison the catalog denies.
  *
- * routine and hard share one model (effort low/high), so a model-only lookup is
- * ambiguous; it resolves to the highest tier, as Desktop's `difficultyForModel`
- * does — keeping a floor too high for a turn is cheaper than losing it. A model
- * the current catalog no longer routes to (claude-sonnet-5, an org's only
- * allowed model) keeps the pair it ran as in its own generation.
+ * Tiers can share one model (codex gpt-6.1-sol is routine, hard and escalated
+ * by effort), so a model-only lookup is ambiguous; it resolves to the highest
+ * tier, as Desktop's `difficultyForModel` does — keeping a floor too high for a
+ * turn is cheaper than losing it. escalated is the exception: it is a one-turn
+ * override, never a floor, so a model it shares with a lower tier reads as that
+ * tier (Desktop likewise reads the escalated model as hard). A model the
+ * current catalog no longer routes to (claude-sonnet-5, an org's only allowed
+ * model) keeps the pair it ran as in its own generation.
  */
 function catalogRouteForModel(
   agent: RoutableAgent,
@@ -747,7 +750,8 @@ function catalogRouteForModel(
   let match: { tier: Difficulty; pair: { model: string; effort: string } } | null = null
   for (const tier of TIER_ORDER) {
     const route = USER_REQUEST_MODELS[agent][tier]
-    if (route.model === model) match = { tier, pair: route }
+    if (route.model !== model || (tier === 'escalated' && match)) continue
+    match = { tier, pair: route }
   }
   if (match) return match
   for (const entry of KNOWN_ROUTE_TIERS) {
@@ -757,6 +761,27 @@ function catalogRouteForModel(
     }
   }
   return match
+}
+
+/**
+ * The exact pair a model ran as for this tier, in the current table or an
+ * earlier one. Unlike `catalogRouteForModel` the tier is known here, so the
+ * model-only ambiguity does not arise: an allowlist written before a table
+ * change (claude-opus-5-5 but not claude-sonnet-5-5) keeps routine turns on
+ * opus-5-5/low, as they ran before, instead of raising them to hard.
+ */
+function knownRouteForModelAtTier(
+  agent: RoutableAgent,
+  model: string,
+  tier: Difficulty | undefined,
+): { tier: Difficulty; pair: { model: string; effort: string } } | null {
+  if (!tier) return null
+  const current = USER_REQUEST_MODELS[agent][tier]
+  if (current.model === model) return { tier, pair: current }
+  const entry = KNOWN_ROUTE_TIERS.find((known) => (
+    known.agent === agent && known.model === model && known.tier === tier
+  ))
+  return entry ? { tier, pair: { model: entry.model, effort: entry.effort } } : null
 }
 
 /**
@@ -1060,7 +1085,8 @@ function resolveRouteAllowedByAiPolicy(
     : defaultModelForAgent(policy, agent)
   if (!substitute) return null
 
-  const known = catalogRouteForModel(agent, substitute)
+  const known = knownRouteForModelAtTier(agent, substitute, route.difficulty)
+    ?? catalogRouteForModel(agent, substitute)
   if (!known) {
     // Allowed by policy but absent from the routing catalog: no effort in this
     // catalog is known to be valid for it. Fail rather than pair it blindly.

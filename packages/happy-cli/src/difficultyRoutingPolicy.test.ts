@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  KNOWN_ROUTE_TIERS,
   USER_REQUEST_MODELS,
   classifyDifficultyHeuristic,
   resolveEscalation,
@@ -12,24 +13,51 @@ describe('difficulty routing policy parity snapshot', () => {
     expect(USER_REQUEST_MODELS).toEqual({
       claude: {
         trivial: { model: 'claude-haiku-4-5', effort: 'low' },
-        routine: { model: 'claude-opus-5-5', effort: 'low' },
+        routine: { model: 'claude-sonnet-5-5', effort: 'medium' },
         hard: { model: 'claude-opus-5-5', effort: 'high' },
         escalated: { model: 'claude-fable-5-1', effort: 'medium' },
       },
       codex: {
         trivial: { model: 'gpt-6-luna', effort: 'low' },
-        routine: { model: 'gpt-6-sol', effort: 'low' },
-        hard: { model: 'gpt-6-sol', effort: 'high' },
-        escalated: { model: 'gpt-6-astra', effort: 'medium' },
+        routine: { model: 'gpt-6.1-sol', effort: 'low' },
+        hard: { model: 'gpt-6.1-sol', effort: 'high' },
+        escalated: { model: 'gpt-6.1-sol', effort: 'xhigh' },
       },
     })
   })
 
-  it('tells routine and hard apart by effort now that they share a model', () => {
+  it('reads every pair the table routes to as its own tier', () => {
+    for (const agent of ['claude', 'codex'] as const) {
+      for (const [tier, route] of Object.entries(USER_REQUEST_MODELS[agent])) {
+        expect(tierForKnownRoutePair(agent, route.model, route.effort)).toBe(tier)
+      }
+    }
+  })
+
+  it('tells gpt-6.1-sol routine, hard and escalated apart by effort alone', () => {
+    expect(tierForKnownRoutePair('codex', 'gpt-6.1-sol', 'low')).toBe('routine')
+    expect(tierForKnownRoutePair('codex', 'gpt-6.1-sol', 'high')).toBe('hard')
+    expect(tierForKnownRoutePair('codex', 'gpt-6.1-sol', 'xhigh')).toBe('escalated')
+    expect(tierForKnownRoutePair('claude', 'claude-sonnet-5-5', 'medium')).toBe('routine')
+  })
+
+  // Sessions mid-conversation carry a floor written under the previous table;
+  // dropping it would restart them cheap (stored-base-pair-unsupported).
+  it('still reads the previous generation pairs as their own tiers', () => {
     expect(tierForKnownRoutePair('claude', 'claude-opus-5-5', 'low')).toBe('routine')
     expect(tierForKnownRoutePair('claude', 'claude-opus-5-5', 'high')).toBe('hard')
     expect(tierForKnownRoutePair('codex', 'gpt-6-sol', 'low')).toBe('routine')
     expect(tierForKnownRoutePair('codex', 'gpt-6-sol', 'high')).toBe('hard')
+    expect(tierForKnownRoutePair('codex', 'gpt-6-astra', 'medium')).toBe('escalated')
+  })
+
+  it('never maps one pair to two tiers', () => {
+    const seen = new Map<string, string>()
+    for (const entry of KNOWN_ROUTE_TIERS) {
+      const key = `${entry.agent}:${entry.model}:${entry.effort}`
+      expect(seen.get(key) ?? entry.tier, key).toBe(entry.tier)
+      seen.set(key, entry.tier)
+    }
   })
 
   it('reads both claude escalated efforts as escalated', () => {
@@ -68,7 +96,7 @@ describe('difficulty routing policy parity snapshot', () => {
     expect(routed).toMatchObject({
       difficulty: 'hard',
       rawDifficulty: 'hard',
-      model: 'gpt-6-sol',
+      model: 'gpt-6.1-sol',
       effort: 'high',
     })
     expect(routed).not.toHaveProperty('source')
@@ -88,6 +116,14 @@ describe('difficulty routing policy parity snapshot', () => {
     })
   })
 
+  it('escalates a stuck codex hard session to gpt-6.1-sol xhigh', () => {
+    const routed = routeSendModelOptionsWithDifficulty('codex', 'debug this deadlock', {}, 'hard', 'routine')
+    expect(resolveEscalation('codex', 'debug this deadlock', routed, { hardTurns: 2 })).toMatchObject({
+      routed: { difficulty: 'escalated', model: 'gpt-6.1-sol', effort: 'xhigh' },
+      stickyDifficulty: 'hard',
+    })
+  })
+
   it('resolution reports reset the hard-turn counter without lowering the route', () => {
     const routed = routeSendModelOptionsWithDifficulty('codex', 'all good, it works now', {}, 'routine', 'hard')
     expect(resolveEscalation('codex', 'all good, it works now', routed, { hardTurns: 2 })).toMatchObject({
@@ -95,7 +131,7 @@ describe('difficulty routing policy parity snapshot', () => {
       stickyDifficulty: 'hard',
       routed: {
         difficulty: 'hard',
-        model: 'gpt-6-sol',
+        model: 'gpt-6.1-sol',
         effort: 'high',
       },
     })

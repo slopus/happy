@@ -51,7 +51,7 @@ export function createClaudeDrainProvider(deps: ClaudeDrainDeps): DrainProvider 
         /*
          * Claude Code reports an interrupted turn in its exit code when its input then ends: after
          * this drain's `interrupt()` the turn closes as `error_during_execution`, and the process
-         * leaves on its own with code 1 — no signal, nothing killed it (reproduced with SDK 0.3.283).
+         * leaves on its own with code 1 — no signal, nothing killed it (reproduced with SDK 0.3.283 and 0.3.285).
          * That is the clean end of the turn the drain asked to stop, so it counts as exit 0; any
          * other code, a signal or a kill still does not.
          */

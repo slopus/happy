@@ -80,8 +80,8 @@ describe('sealed shared classifier flow', () => {
     expect(f.requests).toHaveLength(2)
     expect(f.authorize).toHaveBeenCalledTimes(2)
     expect(f.received).toEqual([{ type: 'classify', requestId: 'turn-flow', text, maxInputTokens: 512 }])
-    expect(asDecision(result).route).toMatchObject({ model: 'gpt-6-sol', effort: 'high', difficulty: 'hard' })
-    expect(asDecision(result).event.ev).toMatchObject({ t: 'difficulty-routing', result: { model: 'gpt-6-sol', classifierSource: 'p2-org-shared', policyRevision: 4 } })
+    expect(asDecision(result).route).toMatchObject({ model: 'gpt-6.1-sol', effort: 'high', difficulty: 'hard' })
+    expect(asDecision(result).event.ev).toMatchObject({ t: 'difficulty-routing', result: { model: 'gpt-6.1-sol', classifierSource: 'p2-org-shared', policyRevision: 4 } })
   })
   it('does not decrypt after revocation and falls back to local P1', async () => {
     const f = setup({ revoke: true })

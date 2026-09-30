@@ -92,7 +92,7 @@ describe('Claude drain provider', () => {
 
     it('counts the exit 1 Claude Code gives after the drain interrupted its turn as clean, and nothing looser', async () => {
         // Claude Code reports an interrupted turn (error_during_execution) in its exit code when its
-        // input then ends: code 1, no signal, not killed. Reproduced with SDK 0.3.283.
+        // input then ends: code 1, no signal, not killed. Reproduced with SDK 0.3.283 and 0.3.285.
         const interrupt = vi.fn(async () => undefined);
         const drained = (overrides: Partial<ClaudeDrainDeps>, observed: { code: number; signal: string | null; forced: boolean }) => {
             const f = fixture({ activeTurn: () => ({ interrupt }), lastTurnInterrupted: () => true, ...overrides });

@@ -225,9 +225,10 @@ describe('difficulty routing runtime', () => {
     })
   })
 
-  // routine and hard share claude-opus-5-5 (effort low/high). A substitution only
-  // knows the model, so it must read the shared model as hard — as Desktop's
-  // difficultyForModel does — not silently drop the turn to low effort.
+  // claude-opus-5-5 ran as routine (low) and hard (high) but never trivial. With
+  // no pair for the routed tier the substitution only knows the model, so it
+  // must read it as hard — as Desktop's difficultyForModel does — not silently
+  // drop the turn to low effort.
   it('substitutes a model shared by routine and hard at the hard pair', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => Response.json({
       ...grantResponse(),
@@ -245,6 +246,30 @@ describe('difficulty routing runtime', () => {
 
     expect(asDecision(decision).route).toMatchObject({ model: 'claude-opus-5-5', effort: 'high' })
     expect(asDecision(decision).pending.base).toMatchObject({ difficulty: 'hard', model: 'claude-opus-5-5', effort: 'high' })
+  })
+
+  // gpt-6.1-sol is routine, hard AND escalated. escalated is a one-turn
+  // override, never a floor, so a model-only substitution must stop at hard —
+  // Desktop's difficultyForModel reads the escalated model as hard too — rather
+  // than run every turn of an org that only allows gpt-6.1-sol at xhigh.
+  it('substitutes a model shared by hard and escalated at the hard pair', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({
+      ...grantResponse(),
+      aiModelPolicy: {
+        source: 'member',
+        allowedSelectionKeys: ['codex:gpt-6.1-sol'],
+        defaultSelectionKey: 'codex:gpt-6.1-sol',
+      },
+    })))
+
+    const decision = await resolveDifficultyRouting({
+      ...baseInput,
+      agent: 'codex',
+      current: { model: 'gpt-6.1-sol', effort: 'low' },
+    })
+
+    expect(asDecision(decision).route).toMatchObject({ model: 'gpt-6.1-sol', effort: 'high' })
+    expect(asDecision(decision).pending.base).toMatchObject({ difficulty: 'hard', model: 'gpt-6.1-sol', effort: 'high' })
   })
 
   it('falls back to the allowed default model when the current model is also disallowed', async () => {
@@ -1443,6 +1468,82 @@ describe('cross-generation floor preservation (R2, R3)', () => {
     expect(asDecision(decision).route).toMatchObject({ model: 'claude-opus-5', effort: 'high' })
   })
 
+  // The 2026-09-30 table moved routine to claude-sonnet-5-5/medium and codex
+  // routine/hard/escalated to gpt-6.1-sol. Floors written under the previous
+  // table must keep running exactly, not decline as an unsupported pair.
+  function storedBase(difficulty: 'routine' | 'hard', model: string, effort: string) {
+    return {
+      stateVersion: 2 as const,
+      revision: 3,
+      base: {
+        difficulty,
+        model,
+        effort,
+        provenance: 'engine-applied' as const,
+        policyVersion: 'org-shared-difficulty-routing.v1' as const,
+        policyRevision: 7,
+        appliedAt: Date.now(),
+      },
+    }
+  }
+
+  it('shouldRetainAPreviousTableRoutineFloorExactly (claude-opus-5-5/low)', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json(grantResponse())))
+
+    const decision = await resolveDifficultyRouting({
+      ...baseInput,
+      contentText: 'rename this variable',
+      state: storedBase('routine', 'claude-opus-5-5', 'low'),
+    })
+
+    expect(asDecision(decision).route).toMatchObject({ model: 'claude-opus-5-5', effort: 'low', difficulty: 'routine' })
+  })
+
+  it('shouldRetainAPreviousTableHardFloorExactly (gpt-6-sol/high)', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json(grantResponse())))
+
+    const decision = await resolveDifficultyRouting({
+      ...baseInput,
+      agent: 'codex',
+      contentText: 'rename this variable',
+      state: storedBase('hard', 'gpt-6-sol', 'high'),
+    })
+
+    expect(asDecision(decision).route).toMatchObject({ model: 'gpt-6-sol', effort: 'high', difficulty: 'hard' })
+  })
+
+  it('shouldRaiseAPreviousTableRoutineFloorToTheNewHardRoute', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json(grantResponse())))
+
+    const decision = await resolveDifficultyRouting({
+      ...baseInput,
+      agent: 'codex',
+      contentText: 'refactor the auth module',
+      state: storedBase('routine', 'gpt-6-sol', 'low'),
+    })
+
+    expect(asDecision(decision).route).toMatchObject({ model: 'gpt-6.1-sol', effort: 'high', difficulty: 'hard' })
+  })
+
+  it('shouldEscalateAPreviousTableHardFloorToTheNewEscalatedRoute', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json(grantResponse())))
+
+    const decision = await resolveDifficultyRouting({
+      ...baseInput,
+      agent: 'codex',
+      contentText: 'still broken, the same error again',
+      state: {
+        ...storedBase('hard', 'gpt-6-sol', 'high'),
+        escalation: { hardTurns: 3, updatedAt: Date.now() - 1000 },
+      },
+    })
+
+    expect(asDecision(decision).route).toMatchObject({ model: 'gpt-6.1-sol', effort: 'xhigh', difficulty: 'escalated' })
+    expect(asDecision(decision).pending.temporaryEscalation).toBe(true)
+    // The floor underneath stays the stored pair; the escalation is one turn.
+    expect(asDecision(decision).pending.base).toMatchObject({ difficulty: 'hard', model: 'gpt-6-sol', effort: 'high' })
+  })
+
   it('shouldStillRefuseAPairNoGenerationOffers', () => {
     expect(buildLocalAutoBootstrapDecision({
       agent: 'claude',
@@ -1586,5 +1687,92 @@ describe('previous actual applied route on the wire (R8)', () => {
 
     const result = (asDecision(decision).event.ev as { result: Record<string, unknown> }).result
     expect(result.previousApplied).toBeUndefined()
+  })
+})
+
+describe('org allowlist written before a table change', () => {
+  const originalConfigUrl = process.env.HAPPY_APLUS_MCP_CONFIG_URL
+  // A routine prompt is never confident, so it also asks the relay. Its failure
+  // feeds the module-level circuit breaker; a fresh module per test keeps that
+  // from reaching any other test.
+  let resolve: typeof resolveDifficultyRouting
+
+  beforeEach(async () => {
+    vi.resetModules()
+    resolve = (await import('./difficultyRoutingRuntime')).resolveDifficultyRouting
+    vi.useFakeTimers()
+    vi.setSystemTime(1_700_000_000_000)
+    process.env.HAPPY_APLUS_MCP_CONFIG_URL = 'https://web.example.test/api/me/mcp-config?project_id=p1'
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.restoreAllMocks()
+    if (originalConfigUrl === undefined) delete process.env.HAPPY_APLUS_MCP_CONFIG_URL
+    else process.env.HAPPY_APLUS_MCP_CONFIG_URL = originalConfigUrl
+  })
+
+  function allowlistFetch(allowedSelectionKeys: string[], defaultSelectionKey: string) {
+    return vi.fn(async (url: string) => {
+      if (!String(url).includes('/grant')) throw new Error('relay unavailable')
+      return Response.json({
+        ...grantResponse(),
+        aiModelPolicy: { source: 'organization', allowedSelectionKeys, defaultSelectionKey },
+      })
+    })
+  }
+
+  // The allowlist names claude-opus-5-5 but not claude-sonnet-5-5, so every
+  // routine turn is substituted. The routed tier is known here, and
+  // opus-5-5/low is the pair that tier ran as: reading the model as hard
+  // instead would raise the turn to high effort and make hard the session's
+  // floor, so the whole conversation would stay there.
+  it('shouldSubstituteAtThePairTheModelRanForTheRoutedTier (claude)', async () => {
+    vi.stubGlobal('fetch', allowlistFetch(
+      ['claude:claude-haiku-4-5', 'claude:claude-opus-5-5', 'claude:claude-fable-5-1'],
+      'claude:claude-opus-5-5',
+    ))
+
+    const decision = await resolve({
+      ...baseInput,
+      contentText: 'add a loading spinner to the settings page',
+      current: { model: 'claude-opus-5-5', effort: 'low' },
+    })
+
+    expect(asDecision(decision).route).toMatchObject({ model: 'claude-opus-5-5', effort: 'low', difficulty: 'routine' })
+    expect(asDecision(decision).pending.base).toMatchObject({ difficulty: 'routine', model: 'claude-opus-5-5', effort: 'low' })
+  })
+
+  it('shouldSubstituteAtThePairTheModelRanForTheRoutedTier (codex)', async () => {
+    vi.stubGlobal('fetch', allowlistFetch(
+      ['codex:gpt-6-luna', 'codex:gpt-6-sol', 'codex:gpt-6-astra'],
+      'codex:gpt-6-sol',
+    ))
+
+    const decision = await resolve({
+      ...baseInput,
+      agent: 'codex',
+      contentText: 'add a loading spinner to the settings page',
+      current: { model: 'gpt-6-sol', effort: 'low' },
+    })
+
+    expect(asDecision(decision).route).toMatchObject({ model: 'gpt-6-sol', effort: 'low', difficulty: 'routine' })
+    expect(asDecision(decision).pending.base).toMatchObject({ difficulty: 'routine', model: 'gpt-6-sol', effort: 'low' })
+  })
+
+  it('shouldKeepAHardTurnOnTheHardPairOfTheSubstitutedModel', async () => {
+    vi.stubGlobal('fetch', allowlistFetch(
+      ['codex:gpt-6-luna', 'codex:gpt-6-sol', 'codex:gpt-6-astra'],
+      'codex:gpt-6-sol',
+    ))
+
+    const decision = await resolve({
+      ...baseInput,
+      agent: 'codex',
+      contentText: 'refactor the auth module',
+      current: { model: 'gpt-6-sol', effort: 'low' },
+    })
+
+    expect(asDecision(decision).route).toMatchObject({ model: 'gpt-6-sol', effort: 'high', difficulty: 'hard' })
+    expect(asDecision(decision).pending.base).toMatchObject({ difficulty: 'hard', model: 'gpt-6-sol', effort: 'high' })
   })
 })
