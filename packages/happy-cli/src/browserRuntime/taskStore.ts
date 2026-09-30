@@ -111,7 +111,7 @@ export interface SpaceRecord {
     agentSessionId?: string
     /** Reclamation started (owning session ended, idle, operator): no new work, closed once its tasks allow. */
     reclaimingSinceMs?: number
-    reclaimReason?: 'session-ended' | 'idle' | 'operator'
+    reclaimReason?: 'session-ended' | 'idle' | 'operator' | 'principal-changed'
     /** Tabs a reclamation could not close (beforeunload); reported, retried. */
     reclaimBlockedTabs?: TabId[]
 }

@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { BrowserRuntimeError, POC_LIMITS, SCHEMA_VERSION, TERMINAL_STATUSES, type ActionId, type AgentGrant, type AuthContext, type BatchId,
     type BatchResult, type BatchStep, type BrowserDriver, type BrowserInstanceId, type BrowserRuntimeApi, type GrantId,
         type ApproveResult, type ControlResult, type RuntimeErrorBody, type SnapshotId, type InputOwner, type Operation,
-            type ProfileId, type RequestId, type TaskEvent, type TaskId, type TaskSpaceId, type TaskView, type TaskStatus,
+            type PrincipalId, type ProfileId, type RequestId, type TaskEvent, type TaskId, type TaskSpaceId, type TaskView, type TaskStatus,
                 type TabId, type ApprovalId,
                 type DispatchExpectation, type ElementDescription, type ElementRef, type Observation, type ScreenshotResult, type SubscribeResult } from './contracts'
 import { assertOperation } from './auth'
@@ -25,6 +25,11 @@ export interface BrowserRuntimeOptions {
     maxSpacesPerProfile?: number
     /** Close spaces whose tasks are all finished after this long without activity; off when absent. */
     spaceIdleReclaimMs?: number
+    /**
+     * Each profile's configured owner (runtime.json). At start-up, anything a previous owner left (open
+     * spaces, unfinished tasks, input control) is ended before tabs are restored; without it nothing is checked.
+     */
+    profilePrincipals?: ReadonlyMap<ProfileId, PrincipalId>
 }
 /** What one reclamation pass did (or could not do) for a space. */
 export interface SpaceReclaimReport {
@@ -1883,7 +1888,53 @@ export class BrowserRuntime implements BrowserRuntimeApi {
         }, 'recovered', { batchId, interrupted: true, failedStep: step?.stepId, mayHaveSideEffects })
         return interrupted
     }
+    private principalStateOk = true
+    /** False while a previous owner's state could not be ended (readiness). */
+    principalStateReady(): boolean {
+        return this.principalStateOk
+    }
+    /**
+     * A reassigned profile: the previous owner's open spaces close (reason principal-changed), their
+     * unfinished tasks end cancelled (uncertain outcomes kept on the record, which stays owner-protected),
+     * and their input control is released everywhere, closed spaces included. The same owner keeps all of it.
+     */
+    private async endPreviousOwners(): Promise<void> {
+        const owners = this.options.profilePrincipals
+        if (!owners) return
+        for (const space of this.options.store.listSpaces()) {
+            const configured = owners.get(space.profileId)
+            if (!configured) continue
+            const spaceOwner = space.owner?.principalId
+            if (spaceOwner && spaceOwner !== configured && !space.closed) {
+                for (const task of this.options.store.listTasks()) {
+                    if (task.taskSpaceId !== space.taskSpaceId || TERMINAL_STATUSES.includes(task.status)) continue
+                    await this.options.store.mutate(task.taskId, (current) => TERMINAL_STATUSES.includes(current.status) ? null : {
+                        patch: { status: 'cancelled', pauseReason: 'principal-changed', tabs: [], tabTargets: {}, pendingApproval: undefined,
+                            resumeClaimId: undefined, approvals: Object.fromEntries(Object.entries(current.approvals).map(([id, approval]) => [id,
+                                { ...approval, state: approval.state === 'pending' ? 'expired' : approval.state }])),
+                            stateVersion: current.stateVersion + 1 },
+                        event: this.event('state-changed', { status: 'cancelled', pauseReason: 'principal-changed' }, current.stateVersion + 1),
+                    })
+                }
+                await this.options.store.mutateSpace(space.taskSpaceId, (current) => ({
+                    tabs: [], tabTargets: {}, tabLeaseEpochs: {}, profileUserOwner: null, closed: true, reclaimReason: 'principal-changed',
+                    goneTabs: [...new Set([...(current.goneTabs ?? []), ...current.tabs])],
+                }))
+                continue
+            }
+            if (space.profileUserOwner && space.profileUserOwner.owner.principalId !== configured)
+                await this.options.store.mutateSpace(space.taskSpaceId, () => ({ profileUserOwner: null }))
+        }
+    }
     private async recoverExistingTasks(): Promise<void> {
+        try {
+            await this.endPreviousOwners()
+        }
+        catch {
+            // Starting with a previous owner's spaces, tasks or control would hand them to the new owner.
+            this.principalStateOk = false
+            return
+        }
         await this.restorePersistedTabs().catch(() => undefined)
         for (const task of this.options.store.listTasks()) {
             if (['succeeded', 'failed', 'cancelled'].includes(task.status))

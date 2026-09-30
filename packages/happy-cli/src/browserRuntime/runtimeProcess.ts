@@ -311,6 +311,7 @@ export async function runRuntime(deps: RuntimeProcessDeps = {}): Promise<void> {
     // Harness keeps the PoC space quota and no idle reclamation unless asked.
     const harnessIdleMs = process.env.ABP_SPACE_IDLE_RECLAIM_MS ? Number(process.env.ABP_SPACE_IDLE_RECLAIM_MS) : undefined
     const runtime = new BrowserRuntime({ store, drivers, sites,
+        ...(config ? { profilePrincipals: config.profilePrincipals } : {}),
         maxSpacesPerProfile: config?.maxSpacesPerProfile,
         spaceIdleReclaimMs: config?.spaceIdleReclaimMs ?? (Number.isFinite(harnessIdleMs) ? harnessIdleMs : undefined) })
 
@@ -464,6 +465,8 @@ export async function runRuntime(deps: RuntimeProcessDeps = {}): Promise<void> {
                 writerLock: Date.now() - heartbeatOkAtMs <= 3 * LOCK_HEARTBEAT_MS && (flockHeld || !production),
                 disk: Boolean(disk && disk.bavail * disk.bsize >= MIN_FREE_DISK_BYTES),
                 revocations: (broker?.pendingRevocations() ?? 0) === 0,
+                // A previous owner's spaces, tasks or control could not be ended (profile reassigned).
+                principalState: runtime.principalStateReady(),
             }
         },
         log: (line: string) => log(line),

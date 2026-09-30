@@ -183,6 +183,8 @@ export const PAUSE_REASONS = [
     'outcome-unknown',
     'browser-replaced',
     'cancelled-with-unknown-effect',
+    /** The profile was reassigned to another owner (abp-stack set-principal); the task ended with it. */
+    'principal-changed',
 ] as const
 export type PauseReason = (typeof PAUSE_REASONS)[number]
 
