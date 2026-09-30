@@ -141,7 +141,7 @@ import {
   type StopSessionContext,
   type StopSessionResult,
 } from './sessionIdleReaper';
-import { createBrowserTaskSessionBroker, spawnResumedWithBrowserTaskRegistration, startBrowserTaskReconciliation, type BrowserTaskSessionBroker } from './browserTaskBroker';
+import { browserTaskLineage, createBrowserTaskSessionBroker, spawnResumedWithBrowserTaskRegistration, startBrowserTaskReconciliation, type BrowserTaskSessionBroker } from './browserTaskBroker';
 import { createHeldBrowserAttentions, findBrowserAttentionSession, startBrowserAttentionWatcher, type HeldBrowserAttention } from './browserAttentionDelivery';
 import {
   createProcFs,
@@ -2066,7 +2066,9 @@ export async function startDaemon(): Promise<void> {
             additionalDirectoryResult.accepted,
           );
         }
-        browserTaskRegistration = await browserTaskBroker?.register();
+        // A fork or recovery continues an existing conversation under a new session id: say which, so the
+        // Runtime refuses a conversation of an earlier profile assignment.
+        browserTaskRegistration = await browserTaskBroker?.register(browserTaskLineage(options));
         if (browserTaskRegistration) {
           // Session process only; it removes the secret from its env before spawning claude.
           extraEnv.HAPPY_BROWSER_TASK_SESSION_SECRET = browserTaskRegistration.sessionSecret;

@@ -85,6 +85,34 @@ Saydo `specs/agent-browser-deploy/` D3 (verify), D4, D8, D9, D10 (Runtime side).
   `authMode: "production"` accepts interactive capabilities only as `abp2` (Ed25519, `aud` =
   machineId, `iss` = saycode-server, lifetime ≤ 5 min), keeps internally minted abp1 agent
   grants, creates the agent key inside the state volume, and serves admin on a 0600 unix socket.
+- Profile assignments (runtime.json schema 2, required in production; 2026-09-30): each profile has
+  an `assignmentId` (128-bit hex) that `abp-stack set-principal` draws anew for every reassignment
+  and every rollback, and keeps across ordinary restarts. At start-up, before any request (API,
+  viewer ticket, broker) is admitted, `BrowserRuntime` ends whatever another assignment (or owner)
+  left, also when the same owner is back (A → B → A): its spaces close (`principal-changed`, off the
+  quota), its unfinished tasks end `cancelled` with pending approvals expired and resume claims
+  cleared, in-flight writes become uncertain outcomes (kept by retention), input control is
+  released. Only then `assignments.json` records the assignment; a failed or interrupted cleanup
+  keeps every API call and broker route `RUNTIME_UNAVAILABLE` and runs again on the next start.
+  Spaces and tasks carry their assignment; agent grants carry theirs and are refused in any other
+  (token check and task API). The owner may still read an earlier assignment's records
+  (`getTask`, `subscribe`), nothing else. The broker revokes registrations of another assignment at
+  start (sessions ended) and keeps a durable ledger of each logical session's assignment, so a
+  resumed chat of an earlier assignment cannot bind again. Resumes, forks and recoveries register
+  with their lineage (parent session ids — a resume names the session itself — and
+  `claude:`/`codex:` conversation ids; trusted as the daemon token holder). A lineage is admitted
+  only when a parent bound in the current assignment vouches for it (or, without parents, every
+  conversation is recorded in it); anything known from another assignment, or unknown (from before
+  the ledger, or a lost state volume), is refused, so such a chat continues without a browser grant.
+  A fresh chat (no lineage) is always admitted. A registration refused with retryable
+  `RUNTIME_UNAVAILABLE` (admission held) is retried by the daemon for up to 60 s before the spawn;
+  a bind, in the background for up to 10 minutes (the unbound registration issues nothing); a denial, the
+  deadline or the session's end revokes it. Attention of earlier assignments or
+  retired sessions is suppressed (the feed cursor still advances). `admissionHold: true` (a
+  reassignment not yet verified by abp-stack) keeps admission closed until the root-only admin
+  socket's `POST /admin/open-admission { assignments }` (checked against config and the completed
+  cleanup); `GET /admin/ready` reports checks, admission, applied assignments and configured
+  profiles under the API fence.
 - Broker (`broker.ts`, `/run/abp/broker.sock` 0660): the daemon registers at spawn (the Happy
   session id does not exist yet), binds the registration when the session reports its id, and
   revokes it at exit; session processes get 55-minute grants with their per-session secret

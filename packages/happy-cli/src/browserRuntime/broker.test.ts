@@ -5,7 +5,7 @@ import { request } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { GrantId, PrincipalId, ProfileId } from './contracts'
+import { BrowserRuntimeError, type GrantId, type PrincipalId, type ProfileId } from './contracts'
 import { verifyToken } from './auth'
 import { AttentionOutbox } from './attention'
 import { BROKER_GRANT_TTL_MS, startBroker, withRevokingGrants, type Broker } from './broker'
@@ -29,7 +29,8 @@ function call(socketPath: string, method: string, path: string, headers: Record<
     })
 }
 
-async function harness(options: { dir?: string; owner?: string; revokeGrant?: (grantId: GrantId) => Promise<void>; recoveryRetryMs?: number; endSession?: (agentSessionId: string) => Promise<void>; sessionWaiting?: (agentSessionId: string) => Promise<boolean> } = {}) {
+const ASSIGNMENT = 'a'.repeat(32)
+async function harness(options: { dir?: string; owner?: string; assignment?: string | null; admit?: () => Promise<void>; sessionHistory?: (agentSessionId: string) => Array<string | undefined>; revokeGrant?: (grantId: GrantId) => Promise<void>; recoveryRetryMs?: number; endSession?: (agentSessionId: string) => Promise<void>; sessionWaiting?: (agentSessionId: string) => Promise<boolean> } = {}) {
     const dir = options.dir ?? await mkdtemp(join(tmpdir(), 'abp-broker-'))
     if (!options.dir) cleanups.push(() => rm(dir, { recursive: true, force: true }))
     const store = await TaskStore.open(dir)
@@ -44,6 +45,9 @@ async function harness(options: { dir?: string; owner?: string; revokeGrant?: (g
         daemonTokenSha256: createHash('sha256').update(DAEMON_TOKEN).digest('hex'),
         identity: { machineId: 'machine-h' as never, workspaceId: 'workspace-1' as never },
         profiles: new Map([['profile-a' as ProfileId, (options.owner ?? 'user-1') as PrincipalId]]),
+        ...(options.assignment === null ? {} : { assignments: new Map([['profile-a' as ProfileId, options.assignment ?? ASSIGNMENT]]) }),
+        ...(options.admit ? { admit: options.admit } : {}),
+        ...(options.sessionHistory ? { sessionHistory: options.sessionHistory } : {}),
         allowedOrigins: ['https://shop.example'],
         agentKey: keys.agentKey,
         revokeGrant: async (grantId) => { await options.revokeGrant?.(grantId); await store.revoke(grantId); revoked.push(grantId) },
@@ -114,7 +118,7 @@ describe('broker socket', () => {
         expect(expiresAtMs).toBe(1_000_000 + BROKER_GRANT_TTL_MS)
         const auth = verifyToken(token, keys, 1_000_000)
         expect(auth.credential).toMatchObject({ kind: 'agent-grant', grantId, agentSessionId: 'session-1', principalId: 'user-1',
-            workspaceId: 'workspace-1', machineId: 'machine-h', profileId: 'profile-a', allowedOrigins: ['https://shop.example'] })
+            workspaceId: 'workspace-1', machineId: 'machine-h', profileId: 'profile-a', allowedOrigins: ['https://shop.example'], assignmentId: ASSIGNMENT })
         expect(auth.credential.operations).not.toContain('approve')
     })
 
@@ -344,19 +348,177 @@ describe('broker socket', () => {
         expect((await restarted.grant(sessionSecret)).status).toBe(200)
     })
 
-    it("binds a registration to the profile's owner at registration: after a reassignment its session gets no grant, until that owner is back", async () => {
-        const h = await harness()
+    it('permanently refuses the old secret and grant after reassignment, including A to B to A', async () => {
+        const h = await harness({ assignment: '1'.repeat(32) })
         const { sessionSecret } = await h.register()
+        const { token } = (await h.grant(sessionSecret)).body.result
         await h.close()
         cleanups.splice(cleanups.indexOf(h.close), 1)
-        const reassigned = await harness({ dir: h.dir, owner: 'user-2' })
-        const denied = await reassigned.grant(sessionSecret)
-        expect(denied.status).toBe(403)
-        expect(denied.body.error.code).toBe('SCOPE_DENIED')
+        const reassigned = await harness({ dir: h.dir, owner: 'user-2', assignment: '2'.repeat(32) })
+        // Revoked at start-up (tombstoned first), its session ended.
+        expect((await reassigned.grant(sessionSecret)).status).toBe(401)
+        await vi.waitFor(() => expect(reassigned.endedSessions).toEqual(['session-1']))
         await reassigned.close()
         cleanups.splice(cleanups.indexOf(reassigned.close), 1)
-        const back = await harness({ dir: h.dir, owner: 'user-1' })
-        expect((await back.grant(sessionSecret)).status).toBe(200)
+        const back = await harness({ dir: h.dir, owner: 'user-1', assignment: '3'.repeat(32) })
+        expect((await back.grant(sessionSecret)).status).toBe(401)
+        // The first assignment's grant, unexpired and signed by the same key, fails the assignment check.
+        const policy = { authMode: 'production' as const, profileAssignments: new Map([['profile-a' as ProfileId, '3'.repeat(32)]]) }
+        expect(() => verifyToken(token, keys, 1_000_000, new Set(), policy)).toThrow(/earlier assignment/)
+        expect(verifyToken(token, keys, 1_000_000, new Set(), { ...policy, profileAssignments: new Map([['profile-a' as ProfileId, '1'.repeat(32)]]) })).toBeTruthy()
+        // A resumed chat of the first assignment registers anew but cannot bind its old session id.
+        const fresh = await call(back.socketPath, 'POST', '/v1/sessions/register', back.daemon, { schemaVersion: 1 })
+        const rebind = await call(back.socketPath, 'POST', '/v1/sessions/bind', back.daemon, { schemaVersion: 1, registrationId: fresh.body.result.registrationId, agentSessionId: 'session-1' })
+        expect(rebind.status).toBe(403)
+        expect(rebind.body.error.message).toMatch(/earlier assignment/)
+        // A new chat works.
+        const bound = await call(back.socketPath, 'POST', '/v1/sessions/bind', back.daemon, { schemaVersion: 1, registrationId: fresh.body.result.registrationId, agentSessionId: 'session-new' })
+        expect(bound.status).toBe(200)
+        expect((await back.grant(fresh.body.result.sessionSecret, { agentSessionId: 'session-new' })).body.result.token).toBeTruthy()
+    })
+
+    it('keeps a resumed session of the same assignment bindable, and refuses one whose records are of an earlier assignment', async () => {
+        const history: Record<string, Array<string | undefined>> = { 'session-old': ['9'.repeat(32)], 'session-untagged': [undefined], 'session-1': [ASSIGNMENT] }
+        const h = await harness({ sessionHistory: (id) => history[id] ?? [] })
+        const first = await h.register('session-1')
+        await call(h.socketPath, 'POST', '/v1/sessions/revoke', h.daemon, { schemaVersion: 1, agentSessionId: 'session-1' })
+        // Resume in the same assignment: a new registration binds the same logical session.
+        const resumed = await call(h.socketPath, 'POST', '/v1/sessions/register', h.daemon, { schemaVersion: 1 })
+        expect((await call(h.socketPath, 'POST', '/v1/sessions/bind', h.daemon, { schemaVersion: 1, registrationId: resumed.body.result.registrationId, agentSessionId: 'session-1' })).status).toBe(200)
+        expect(first.sessionSecret).not.toBe(resumed.body.result.sessionSecret)
+        for (const id of ['session-old', 'session-untagged']) {
+            const other = await call(h.socketPath, 'POST', '/v1/sessions/register', h.daemon, { schemaVersion: 1 })
+            expect((await call(h.socketPath, 'POST', '/v1/sessions/bind', h.daemon, { schemaVersion: 1, registrationId: other.body.result.registrationId, agentSessionId: id })).status).toBe(403)
+        }
+    })
+
+    it('lets a bind be retried (same registration, same session), also after a restart in the same assignment', async () => {
+        const h = await harness()
+        const registered = await call(h.socketPath, 'POST', '/v1/sessions/register', h.daemon, { schemaVersion: 1 })
+        const bind = (target: typeof h) => call(target.socketPath, 'POST', '/v1/sessions/bind', target.daemon,
+            { schemaVersion: 1, registrationId: registered.body.result.registrationId, agentSessionId: 'session-1' })
+        expect((await bind(h)).status).toBe(200)
+        expect((await bind(h)).status).toBe(200)
+        await h.close()
+        cleanups.splice(cleanups.indexOf(h.close), 1)
+        const restarted = await harness({ dir: h.dir })
+        expect((await bind(restarted)).status).toBe(200)
+        expect((await restarted.grant(registered.body.result.sessionSecret)).status).toBe(200)
+        expect(restarted.broker.isRetired('session-1')).toBe(false)
+    })
+
+    it('refuses a fork or recovery of an earlier assignment\'s conversation under a new session id, and allows one of the current assignment', async () => {
+        const first = await harness({ assignment: '1'.repeat(32) })
+        await first.register('session-a1')
+        // A fork in the first assignment records the Claude conversation it continues.
+        const fork1 = await call(first.socketPath, 'POST', '/v1/sessions/register', first.daemon,
+            { schemaVersion: 1, lineage: { parentSessionIds: ['session-a1'], conversationIds: ['claude:conv-1'] } })
+        expect(fork1.status).toBe(200)
+        expect((await call(first.socketPath, 'POST', '/v1/sessions/bind', first.daemon,
+            { schemaVersion: 1, registrationId: fork1.body.result.registrationId, agentSessionId: 'session-a1-fork' })).status).toBe(200)
+        await first.close()
+        cleanups.splice(cleanups.indexOf(first.close), 1)
+
+        // The same owner is back in a third assignment.
+        const back = await harness({ dir: first.dir, assignment: '3'.repeat(32) })
+        const register = (lineage: { parentSessionIds?: string[]; conversationIds?: string[] }) => call(back.socketPath, 'POST', '/v1/sessions/register', back.daemon, { schemaVersion: 1, lineage })
+        for (const lineage of [
+            { parentSessionIds: ['session-a1'] },
+            { parentSessionIds: ['session-a1-fork'], conversationIds: ['claude:conv-2'] },
+            // The provider conversation alone (its parent unknown here) is enough.
+            { parentSessionIds: ['session-unknown'], conversationIds: ['claude:conv-1'] },
+        ]) {
+            const denied = await register(lineage)
+            expect([denied.status, denied.body.error.code]).toEqual([403, 'SCOPE_DENIED'])
+        }
+        // A fork of a conversation of the current assignment works, and so does a fork of that fork.
+        const fresh = await back.register('session-a3')
+        expect(fresh.sessionSecret).toBeTruthy()
+        const fork3 = await register({ parentSessionIds: ['session-a3'], conversationIds: ['claude:conv-3'] })
+        expect(fork3.status).toBe(200)
+        expect((await call(back.socketPath, 'POST', '/v1/sessions/bind', back.daemon,
+            { schemaVersion: 1, registrationId: fork3.body.result.registrationId, agentSessionId: 'session-a3-fork' })).status).toBe(200)
+        expect((await register({ parentSessionIds: ['session-a3-fork'], conversationIds: ['claude:conv-3'] })).status).toBe(200)
+        // Lineage is bounded input.
+        expect((await register({ parentSessionIds: Array.from({ length: 17 }, (_, index) => `s-${index}`) })).status).toBe(400)
+    })
+
+    it("refuses a fork whose parent's retained records belong to an earlier assignment (a session the ledger never saw)", async () => {
+        const h = await harness({ sessionHistory: (id) => (id === 'session-before' ? [undefined] : id === 'session-old' ? ['9'.repeat(32)] : []) })
+        for (const parent of ['session-before', 'session-old']) {
+            const denied = await call(h.socketPath, 'POST', '/v1/sessions/register', h.daemon, { schemaVersion: 1, lineage: { parentSessionIds: [parent] } })
+            expect(denied.status).toBe(403)
+        }
+        // A parent the ledgers never saw cannot be vouched for either.
+        expect((await call(h.socketPath, 'POST', '/v1/sessions/register', h.daemon, { schemaVersion: 1, lineage: { parentSessionIds: ['session-never-seen'] } })).status).toBe(403)
+    })
+
+    it('admits a resume or fork only when the current assignment vouches for its lineage; unknown history fails closed', async () => {
+        const h = await harness()
+        await h.register('session-current')
+        const register = (lineage?: { parentSessionIds?: string[]; conversationIds?: string[] }) =>
+            call(h.socketPath, 'POST', '/v1/sessions/register', h.daemon, { schemaVersion: 1, ...lineage ? { lineage } : {} })
+        // Resume of a session bound in this assignment (the daemon names the session itself as parent).
+        expect((await register({ parentSessionIds: ['session-current'] })).status).toBe(200)
+        // Fork of it that resumes a provider conversation never seen before: vouched for by the parent, then recorded.
+        const fork = await register({ parentSessionIds: ['session-current'], conversationIds: ['claude:conv-new'] })
+        expect(fork.status).toBe(200)
+        expect((await call(h.socketPath, 'POST', '/v1/sessions/bind', h.daemon, { schemaVersion: 1, registrationId: fork.body.result.registrationId, agentSessionId: 'session-fork' })).status).toBe(200)
+        // Now known in this assignment, the conversation alone is enough.
+        expect((await register({ conversationIds: ['claude:conv-new'] })).status).toBe(200)
+        // Unknown: a session from before the ledger, a provider conversation alone, an unknown parent with it.
+        for (const lineage of [{ parentSessionIds: ['session-pre-v2'] }, { conversationIds: ['claude:conv-unknown'] },
+            { parentSessionIds: ['session-pre-v2'], conversationIds: ['claude:conv-new'] },
+            { parentSessionIds: ['session-current', 'session-pre-v2'] }]) {
+            expect((await register(lineage)).status).toBe(403)
+        }
+        // A fresh chat has no lineage.
+        expect((await register()).status).toBe(200)
+    })
+
+    it('after a lost state volume (no ledger), refuses to resume any earlier session, and still starts fresh chats', async () => {
+        const before = await harness()
+        await before.register('session-1')
+        await before.close()
+        cleanups.splice(cleanups.indexOf(before.close), 1)
+        const lost = await harness()
+        const resume = await call(lost.socketPath, 'POST', '/v1/sessions/register', lost.daemon, { schemaVersion: 1, lineage: { parentSessionIds: ['session-1'] } })
+        expect([resume.status, resume.body.error.message]).toEqual([403, expect.stringMatching(/current assignment/)])
+        expect((await call(lost.socketPath, 'POST', '/v1/sessions/register', lost.daemon, { schemaVersion: 1 })).status).toBe(200)
+    })
+
+    it('revokes registrations made before assignments were recorded (first schema 2 start), and retires their sessions', async () => {
+        const legacy = await harness({ assignment: null })
+        await legacy.register('session-legacy')
+        await legacy.close()
+        cleanups.splice(cleanups.indexOf(legacy.close), 1)
+        const h = await harness({ dir: legacy.dir })
+        await vi.waitFor(() => expect(h.endedSessions).toEqual(['session-legacy']))
+        expect(h.broker.isRetired('session-legacy')).toBe(true)
+        expect(h.broker.isRetired('session-unknown')).toBe(false)
+        expect((await call(h.socketPath, 'GET', '/v1/sessions/waiting?agentSessionId=session-legacy', h.daemon)).body.result).toEqual({ waiting: false })
+        const fresh = await call(h.socketPath, 'POST', '/v1/sessions/register', h.daemon, { schemaVersion: 1 })
+        expect((await call(h.socketPath, 'POST', '/v1/sessions/bind', h.daemon, { schemaVersion: 1, registrationId: fresh.body.result.registrationId, agentSessionId: 'session-legacy' })).status).toBe(403)
+        // Durable: still retired after another restart in the same assignment.
+        await h.close()
+        cleanups.splice(cleanups.indexOf(h.close), 1)
+        const again = await harness({ dir: legacy.dir })
+        expect(again.broker.isRetired('session-legacy')).toBe(true)
+    })
+
+    it('admits no register, bind, grant or attention while the Runtime is closed; list and revoke still work', async () => {
+        let open = true
+        const h = await harness({ admit: async () => { if (!open) throw new BrowserRuntimeError('RUNTIME_UNAVAILABLE', 'held', true) } })
+        const { registrationId, sessionSecret } = await h.register()
+        open = false
+        expect((await call(h.socketPath, 'POST', '/v1/sessions/register', h.daemon, { schemaVersion: 1 })).body.error.code).toBe('RUNTIME_UNAVAILABLE')
+        expect((await call(h.socketPath, 'POST', '/v1/sessions/bind', h.daemon, { schemaVersion: 1, registrationId, agentSessionId: 'session-1' })).body.error.code).toBe('RUNTIME_UNAVAILABLE')
+        expect((await h.grant(sessionSecret)).body.error.code).toBe('RUNTIME_UNAVAILABLE')
+        expect((await call(h.socketPath, 'GET', '/v1/attention?afterSeq=0&waitMs=0', h.daemon)).body.error.code).toBe('RUNTIME_UNAVAILABLE')
+        expect((await call(h.socketPath, 'GET', '/v1/sessions', h.daemon)).status).toBe(200)
+        expect((await call(h.socketPath, 'POST', '/v1/sessions/revoke', h.daemon, { schemaVersion: 1, registrationId })).status).toBe(200)
+        open = true
+        expect((await h.grant(sessionSecret)).status).toBe(401)
     })
 
     it("refuses a registration from before owners were recorded (whose owner cannot be told)", async () => {

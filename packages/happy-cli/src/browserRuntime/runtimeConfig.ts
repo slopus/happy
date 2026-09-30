@@ -26,10 +26,14 @@ const profileSchema = z.object({
     instanceUrl: z.string().url().optional(),
     /** x11vnc of the browser container on the profile network (`host:port`), for the Runtime viewer. */
     vncAddress: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9.-]{0,252}:\d{1,5}$/, 'must be host:port').optional(),
+    /** The profile's current assignment (schema 2). */
+    assignmentId: z.string().regex(/^[0-9a-f]{32}$/, 'must be 32 lowercase hex characters').optional(),
 }).strict()
 
 const schema = z.object({
-    schemaVersion: z.literal(1).default(1),
+    schemaVersion: z.union([z.literal(1), z.literal(2)]).default(1),
+    /** A reassignment awaits verification: task API and broker closed until opened on the admin socket. */
+    admissionHold: z.boolean().default(false),
     authMode: z.enum(['harness', 'production']),
     machineId: id,
     workspaceId: id,
@@ -70,7 +74,16 @@ const schema = z.object({
     }
     if (config.maxSpacesPerProfile !== undefined && config.maxSpacesPerProfile > config.maxAgentWindows)
         ctx.addIssue({ code: 'custom', path: ['maxSpacesPerProfile'], message: 'must not exceed maxAgentWindows' })
+    if (config.schemaVersion === 2) {
+        for (const [index, profile] of config.profiles.entries())
+            if (!profile.assignmentId) ctx.addIssue({ code: 'custom', path: ['profiles', index, 'assignmentId'], message: 'schema 2 needs an assignmentId per profile' })
+    } else {
+        for (const [index, profile] of config.profiles.entries())
+            if (profile.assignmentId) ctx.addIssue({ code: 'custom', path: ['profiles', index, 'assignmentId'], message: 'needs schemaVersion 2' })
+        if (config.admissionHold) ctx.addIssue({ code: 'custom', path: ['admissionHold'], message: 'needs schemaVersion 2' })
+    }
     if (config.authMode === 'production') {
+        if (config.schemaVersion !== 2) ctx.addIssue({ code: 'custom', path: ['schemaVersion'], message: 'production needs schema 2 (profile assignments); reinstall with abp-install' })
         if (config.trustedIssuers.length === 0) ctx.addIssue({ code: 'custom', path: ['trustedIssuers'], message: 'production needs at least one trusted issuer' })
         if (!config.daemonTokenSha256) ctx.addIssue({ code: 'custom', path: ['daemonTokenSha256'], message: 'production needs the daemon token hash' })
     }
@@ -83,6 +96,8 @@ export interface RuntimeConfig extends Omit<z.infer<typeof schema>, 'authMode' |
     workspaceId: WorkspaceId
     trustedIssuers: TrustedIssuer[]
     profilePrincipals: ReadonlyMap<ProfileId, PrincipalId>
+    /** Each profile's assignment (schema 2); undefined for a schema 1 (harness) file. */
+    profileAssignments?: ReadonlyMap<ProfileId, string>
 }
 
 export function parseRuntimeConfig(value: unknown): RuntimeConfig {
@@ -99,6 +114,9 @@ export function parseRuntimeConfig(value: unknown): RuntimeConfig {
         machineId: config.machineId as MachineId,
         workspaceId: config.workspaceId as WorkspaceId,
         profilePrincipals: new Map(config.profiles.map((profile) => [profile.profileId as ProfileId, profile.principalId as PrincipalId])),
+        ...config.schemaVersion === 2
+            ? { profileAssignments: new Map(config.profiles.map((profile) => [profile.profileId as ProfileId, profile.assignmentId as string])) }
+            : {},
     }
 }
 

@@ -6,7 +6,7 @@
  * sandbox) can connect. The agent HMAC key never leaves the Runtime.
  *
  *   GET  /v1/sessions           daemon token   → [{ registrationId, agentSessionId?, owner?, bootId?, createdAtMs, revoking }]
- *   POST /v1/sessions/register  daemon token   { owner?, bootId? } → { registrationId, sessionSecret }
+ *   POST /v1/sessions/register  daemon token   { owner?, bootId?, lineage? } → { registrationId, sessionSecret }
  *   POST /v1/sessions/bind      daemon token   { registrationId, agentSessionId, owner? }
  *   POST /v1/sessions/revoke    daemon token   { agentSessionId | registrationId, endSession?: true }
  *   POST /v1/agent-grants       session secret { agentSessionId, profileId } → { token, grantId, expiresAtMs }
@@ -24,6 +24,21 @@
  * blocked and the grant ids stay known until a retry or restart finishes it.
  * Process exits orphan logical sessions; only TTL expiry or explicit endSession
  * cancels their tasks. Binding a replacement process clears the durable orphan mark.
+ *
+ * Profile assignments (runtime.json schema 2; abp-stack set-principal draws a new one
+ * each time): a registration records the assignments it was made in and gets grants
+ * only while they are current, and each grant carries its assignment. At start-up,
+ * registrations of another assignment are revoked (their sessions ended) for good, and
+ * a durable ledger remembers every logical session's assignment: binding a session id of
+ * an earlier assignment (a resumed old chat) is refused, also when its owner is back.
+ * Resumes, forks and recoveries send their lineage (parent session ids — for a resume the
+ * session itself — and provider conversation ids) at registration. A lineage is admitted only
+ * when a parent bound in the current assignment vouches for it (or, without parents, every
+ * conversation is recorded in it); anything known from another assignment, or unknown (from
+ * before the ledger, or a lost state volume), is refused. Conversation ids are kept in a
+ * second durable ledger. A fresh chat (no lineage) is always admitted.
+ * `admit` closes register, bind, grants and the attention feed until the Runtime has
+ * ended the earlier assignment's state and any pending reassignment has been verified.
  */
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto'
 import { chmod, chown, lstat, mkdir, open, readFile, rename, rm } from 'node:fs/promises'
@@ -53,6 +68,10 @@ interface Registration {
      * that is still the owner: after a reassignment the session gets nothing, until that owner is back.
      */
     principals?: Record<string, string>
+    /** Each profile's assignment when the session was registered; grants only while it is current. */
+    assignments?: Record<string, string>
+    /** What the session continues (fork, recovery), as the daemon reported at registration. */
+    lineage?: SessionLineage
     grantIds: string[]
     /**
      * Revocation started: no grant is issued any more, and the registration (with
@@ -63,7 +82,21 @@ interface Registration {
     /** Explicit logical-session termination, replayed after a crash. */
     endSession?: true
 }
-interface RegistryFile { schemaVersion: 1; registrations: Record<string, Registration>; orphanedSessions?: Record<string, number> }
+interface RegistryFile {
+    schemaVersion: 1
+    registrations: Record<string, Registration>
+    orphanedSessions?: Record<string, number>
+    /**
+     * Logical session id → the assignments it was bound in (canonical key) or RETIRED. Never pruned: a session
+     * of an earlier assignment cannot be bound again (sessions are few; ids are not secret).
+     */
+    sessionAssignments?: Record<string, string>
+    /** Provider conversation id (e.g. `claude:<id>`) → the assignments it was continued in; never pruned. */
+    conversationAssignments?: Record<string, string>
+}
+interface SessionLineage { parentSessionIds?: string[]; conversationIds?: string[] }
+/** Ledger value of a session from before assignments were recorded (or whose registration had none). */
+const RETIRED = 'retired'
 
 export interface BrokerOptions {
     socketPath: string
@@ -75,6 +108,12 @@ export interface BrokerOptions {
     identity: { machineId: MachineId; workspaceId: WorkspaceId }
     /** Profiles sessions may use, with their owning principal. */
     profiles: ReadonlyMap<ProfileId, PrincipalId>
+    /** Each profile's current assignment (runtime.json schema 2). Without it (harness) assignments are not checked. */
+    assignments?: ReadonlyMap<ProfileId, string>
+    /** Rejects while the Runtime admits no new work (start-up cleanup, a reassignment awaiting verification). */
+    admit?(): Promise<void>
+    /** Assignment ids a logical session's retained tasks and spaces were created in (undefined: untagged). */
+    sessionHistory?(agentSessionId: string): Iterable<string | undefined>
     allowedOrigins: string[]
     agentKey: string | Buffer
     revokeGrant(grantId: GrantId): Promise<void>
@@ -100,6 +139,8 @@ export interface Broker {
     revokingGrantIds(): ReadonlySet<string>
     /** Registrations whose revocation has not completed (readiness is false while any remain). */
     pendingRevocations(): number
+    /** A logical session of an earlier assignment (or retired): its attention is not delivered. */
+    isRetired(agentSessionId: string): boolean
 }
 
 /** The credential denylist for the task API: the Runtime's revocations plus grants still being revoked. */
@@ -110,7 +151,8 @@ export function withRevokingGrants(revoked: ReadonlySet<string>, broker?: Pick<B
 
 const id = z.string().min(1).max(256)
 const schemas = {
-    register: z.object({ schemaVersion: z.literal(1), owner: sessionOwnerSchema.optional(), bootId: z.string().min(1).max(256).optional() }).strict(),
+    register: z.object({ schemaVersion: z.literal(1), owner: sessionOwnerSchema.optional(), bootId: z.string().min(1).max(256).optional(),
+        lineage: z.object({ parentSessionIds: z.array(id).max(16).optional(), conversationIds: z.array(id).max(16).optional() }).strict().optional() }).strict(),
     bind: z.object({ schemaVersion: z.literal(1), registrationId: id, agentSessionId: id, owner: sessionOwnerSchema.optional() }).strict(),
     revoke: z.union([
         z.object({ schemaVersion: z.literal(1), agentSessionId: id, endSession: z.boolean().optional() }).strict(),
@@ -122,6 +164,9 @@ const schemas = {
 }
 
 const sha256 = (value: string | Buffer): Buffer => createHash('sha256').update(value).digest()
+/** Canonical ledger key of a profile → assignment map. */
+const assignmentKey = (assignments: Readonly<Record<string, string>>): string =>
+    JSON.stringify(Object.entries(assignments).sort(([left], [right]) => left.localeCompare(right)))
 
 function header(req: IncomingMessage, name: string): string {
     const value = req.headers[name]
@@ -161,7 +206,34 @@ export async function startBroker(options: BrokerOptions): Promise<Broker> {
         if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw new BrowserRuntimeError('JOURNAL_UNAVAILABLE', 'Broker registry is unreadable')
     }
     const orphaned = registry.orphanedSessions ??= {}
+    const ledger = registry.sessionAssignments ??= {}
     const orphanTtlMs = options.orphanTtlMs ?? 60 * 60_000
+    const currentAssignments = options.assignments && Object.fromEntries(options.assignments)
+    const currentKey = currentAssignments && assignmentKey(currentAssignments)
+    const registrationKey = (registration: Registration): string => (registration.assignments ? assignmentKey(registration.assignments) : RETIRED)
+    const conversations = registry.conversationAssignments ??= {}
+    const isRetired = (agentSessionId: string): boolean => currentKey !== undefined && agentSessionId in ledger && ledger[agentSessionId] !== currentKey
+    const currentValues = new Set(Object.values(currentAssignments ?? {}))
+    /** A logical session of another assignment: the ledger says so, or its retained tasks and spaces were made in one (or before assignments). */
+    const sessionOfEarlierAssignment = (agentSessionId: string): boolean => isRetired(agentSessionId)
+        || [...options.sessionHistory?.(agentSessionId) ?? []].some((assignment) => !assignment || !currentValues.has(assignment))
+    /**
+     * Whether a continued conversation (resume, fork, recovery) cannot be shown to belong to the current assignment.
+     * Refused: any parent session or conversation known from another assignment (ledger or retained records), and
+     * any lineage the ledgers cannot vouch for — an unknown parent (from before the ledger, or a lost state volume)
+     * or an unknown conversation — unless a parent bound in the current assignment proves it current (then a
+     * conversation first seen here is that parent's and gets recorded). A fresh chat has no lineage and is allowed.
+     */
+    const lineageOfEarlierAssignment = (lineage: SessionLineage | undefined): boolean => {
+        if (currentKey === undefined) return false
+        const parents = lineage?.parentSessionIds ?? []
+        const conversationIds = lineage?.conversationIds ?? []
+        if (parents.some(sessionOfEarlierAssignment)
+            || conversationIds.some((conversation) => conversation in conversations && conversations[conversation] !== currentKey)) return true
+        const knownCurrentParent = parents.length > 0 && parents.every((parent) => ledger[parent] === currentKey)
+        if (knownCurrentParent) return false
+        return parents.length > 0 || conversationIds.some((conversation) => conversations[conversation] !== currentKey)
+    }
     let writeTail: Promise<void> = Promise.resolve()
     const persist = (): Promise<void> => {
         const snapshot = JSON.stringify(registry)
@@ -221,6 +293,25 @@ export async function startBroker(options: BrokerOptions): Promise<Broker> {
         return registration.grantIds.length
     }
 
+    // A registration of another assignment is revoked for good (its session ended) before anything is served:
+    // marked here, so its grants are denied from the first request, then replayed like any revocation.
+    if (currentKey !== undefined) {
+        let stale = 0
+        for (const registration of Object.values(registry.registrations)) {
+            const key = registrationKey(registration)
+            if (registration.agentSessionId && !(registration.agentSessionId in ledger)) ledger[registration.agentSessionId] = key
+            for (const conversation of registration.lineage?.conversationIds ?? []) conversations[conversation] ??= key
+            if (key === currentKey || registration.revoking) continue
+            registration.revoking = true
+            if (registration.agentSessionId) registration.endSession = true
+            stale++
+        }
+        if (stale) {
+            await persist().catch(() => { throw new BrowserRuntimeError('JOURNAL_UNAVAILABLE', 'Broker registry could not be written') })
+            log(`broker: ${stale} registration(s) of an earlier profile assignment revoked`)
+        }
+    }
+
     // Shares the bind/issue/revoke lock: a resume cannot bind halfway through reclamation.
     const sweepOrphans = (): Promise<void> => exclusive(async () => {
         for (const [agentSessionId, since] of Object.entries(orphaned)) {
@@ -243,11 +334,15 @@ export async function startBroker(options: BrokerOptions): Promise<Broker> {
         'POST /v1/sessions/register': async (req) => {
             assertDaemon(req)
             const body = parse(schemas.register, await readJson(req))
+            await options.admit?.()
             return exclusive(async () => {
+                if (lineageOfEarlierAssignment(body.lineage))
+                    throw new BrowserRuntimeError('SCOPE_DENIED', 'the conversation cannot be shown to belong to the current assignment of the profile; start a new chat')
                 const registrationId = `reg-${randomUUID()}`
                 const sessionSecret = randomBytes(32).toString('base64url')
                 registry.registrations[registrationId] = { secretSha256: sha256(sessionSecret).toString('hex'), createdAtMs: now(), grantIds: [],
-                    principals: Object.fromEntries(options.profiles), ...(body.owner ? { owner: body.owner } : {}), ...(body.bootId ? { bootId: body.bootId } : {}) }
+                    principals: Object.fromEntries(options.profiles), ...(currentAssignments ? { assignments: currentAssignments } : {}),
+                    ...(body.owner ? { owner: body.owner } : {}), ...(body.bootId ? { bootId: body.bootId } : {}), ...(body.lineage ? { lineage: body.lineage } : {}) }
                 await persist()
                 return { registrationId, sessionSecret }
             })
@@ -255,12 +350,22 @@ export async function startBroker(options: BrokerOptions): Promise<Broker> {
         'POST /v1/sessions/bind': async (req) => {
             assertDaemon(req)
             const body = parse(schemas.bind, await readJson(req))
+            await options.admit?.()
             return exclusive(async () => {
                 const registration = registry.registrations[body.registrationId]
                 if (!registration || registration.revoking) throw new BrowserRuntimeError('SCOPE_DENIED', 'unknown registration')
                 const other = findByAgentSession(body.agentSessionId)
                 if ((registration.agentSessionId && registration.agentSessionId !== body.agentSessionId)
                     || (other && other[0] !== body.registrationId)) throw new BrowserRuntimeError('CONFLICT', 'registration or session is already bound')
+                if (currentKey !== undefined) {
+                    // A logical session belongs to the assignment it was first bound in (a resumed chat of an earlier
+                    // assignment is refused, also when that owner is back): the ledger, and its retained records.
+                    if (sessionOfEarlierAssignment(body.agentSessionId) || lineageOfEarlierAssignment(registration.lineage))
+                        throw new BrowserRuntimeError('SCOPE_DENIED', 'the session was started in an earlier assignment of the profile; start a new chat')
+                    if (registrationKey(registration) !== currentKey) throw new BrowserRuntimeError('SCOPE_DENIED', 'the registration belongs to an earlier assignment of the profile')
+                    ledger[body.agentSessionId] = currentKey
+                    for (const conversation of registration.lineage?.conversationIds ?? []) conversations[conversation] ??= currentKey
+                }
                 registration.agentSessionId = body.agentSessionId
                 delete orphaned[body.agentSessionId]
                 if (body.owner) registration.owner = body.owner
@@ -295,6 +400,7 @@ export async function startBroker(options: BrokerOptions): Promise<Broker> {
             const secret = header(req, 'x-abp-session-secret')
             if (!secret) throw new BrowserRuntimeError('UNAUTHORIZED', 'session is not registered')
             const body = parse(schemas.grant, await readJson(req))
+            await options.admit?.()
             return exclusive(async () => {
                 // Looked up only now: the registration may have been revoked while the body arrived.
                 const secretSha256 = sha256(secret).toString('hex')
@@ -307,6 +413,9 @@ export async function startBroker(options: BrokerOptions): Promise<Broker> {
                 if (!principalId) throw new BrowserRuntimeError('SCOPE_DENIED', 'profile is not allowed')
                 // Registrations from before owners were recorded have no owner to compare: refused (a new spawn registers again).
                 if (registration.principals?.[body.profileId] !== principalId) throw new BrowserRuntimeError('SCOPE_DENIED', 'the session was started for another owner of this profile')
+                const assignmentId = currentAssignments?.[body.profileId]
+                if (currentAssignments && (!assignmentId || registration.assignments?.[body.profileId] !== assignmentId))
+                    throw new BrowserRuntimeError('SCOPE_DENIED', 'the session was started in an earlier assignment of this profile')
                 const issuedAtMs = now()
                 const grantId = `grant-${randomUUID()}` as GrantId
                 const expiresAtMs = issuedAtMs + BROKER_GRANT_TTL_MS
@@ -314,6 +423,7 @@ export async function startBroker(options: BrokerOptions): Promise<Broker> {
                     kind: 'agent-grant', grantId, principalId, workspaceId: options.identity.workspaceId, machineId: options.identity.machineId,
                     agentSessionId: body.agentSessionId as AgentSessionId, profileId: body.profileId as ProfileId,
                     allowedOrigins: [...options.allowedOrigins], operations: [...AGENT_OPERATIONS], taskSpaceIds: [], issuedAtMs, expiresAtMs,
+                    ...(assignmentId ? { assignmentId } : {}),
                 }, { agentKey: options.agentKey }, issuedAtMs)
                 // Recorded before it is handed out, so a revoke always covers it.
                 registration.grantIds.push(grantId)
@@ -324,11 +434,13 @@ export async function startBroker(options: BrokerOptions): Promise<Broker> {
         'GET /v1/sessions/waiting': async (req, url) => {
             assertDaemon(req)
             const query = parse(schemas.waiting, Object.fromEntries(url.searchParams))
+            if (isRetired(query.agentSessionId)) return { waiting: false }
             return { waiting: options.sessionWaiting ? await options.sessionWaiting(query.agentSessionId) : false }
         },
         'GET /v1/attention': async (req, url) => {
             assertDaemon(req)
             const query = parse(schemas.attention, Object.fromEntries(url.searchParams))
+            await options.admit?.()
             return options.attention.wait(query.afterSeq, query.waitMs)
         },
     }
@@ -379,6 +491,7 @@ export async function startBroker(options: BrokerOptions): Promise<Broker> {
         },
         revokingGrantIds: () => new Set(Object.values(registry.registrations).filter((registration) => registration.revoking).flatMap((registration) => registration.grantIds)),
         pendingRevocations: () => Object.values(registry.registrations).filter((registration) => registration.revoking).length,
+        isRetired,
     }
 }
 

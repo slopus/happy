@@ -15,6 +15,8 @@ import { approvalBinding, assertAllowedOrigin, assertSiteAllowed, classifySiteAc
 import { RECLAIMING_SPACE_RESERVE, TaskStore, type SpaceRecord, type StoredTask, type StoreEventInput } from './taskStore'
 import { browserInstanceMatches, inFlightWriteActions } from './recovery'
 import { transitionTask } from './stateMachine'
+/** Operations that only read a task's record: allowed on an earlier assignment's records for their owner. */
+const HISTORY_READ_OPERATIONS: ReadonlySet<Operation> = new Set<Operation>(['getTask', 'subscribe', 'listTasks'])
 export interface BrowserRuntimeOptions {
     store: TaskStore
     drivers: Map<ProfileId, BrowserDriver> | Record<string, BrowserDriver>
@@ -30,6 +32,11 @@ export interface BrowserRuntimeOptions {
      * spaces, unfinished tasks, input control) is ended before tabs are restored; without it nothing is checked.
      */
     profilePrincipals?: ReadonlyMap<ProfileId, PrincipalId>
+    /**
+     * Each profile's current assignment (runtime.json schema 2). Everything of another assignment is ended at
+     * start-up, even when the same owner is back, and spaces, tasks and grants are bound to it.
+     */
+    profileAssignments?: ReadonlyMap<ProfileId, string>
 }
 /** What one reclamation pass did (or could not do) for a space. */
 export interface SpaceReclaimReport {
@@ -103,7 +110,9 @@ export class BrowserRuntime implements BrowserRuntimeApi {
             BrowserDriver
         ][])
         this.clock = options.clock ?? systemClock
-        this.recovery = this.recoverExistingTasks().catch(() => undefined)
+        // Rejects (every API call then fails RUNTIME_UNAVAILABLE) when another assignment's state could not be ended.
+        this.recovery = this.startUp()
+        this.recovery.catch(() => undefined)
     }
     createSpace: BrowserRuntimeApi['createSpace'] = (auth, req) =>
         this.withRequestFlight(auth, req.requestId, { operation: 'createSpace', ...req }, () => this.createSpaceImpl(auth, req))
@@ -149,7 +158,8 @@ export class BrowserRuntime implements BrowserRuntimeApi {
         await this.options.store.createSpace({ taskSpaceId, profileId: req.profileId, createdAtMs: this.clock.now(), tabs: [],
             tabTargets: {}, tabLeaseEpochs: {},
             owner: identity(auth), requestKey: requestKeyValue, requestHash: payloadHash({ operation: 'createSpace', ...req }),
-                dedupe: {}, ...(auth.credential.kind === 'agent-grant' ? { agentSessionId: auth.credential.agentSessionId } : {}) },
+                dedupe: {}, ...(auth.credential.kind === 'agent-grant' ? { agentSessionId: auth.credential.agentSessionId } : {}),
+                ...(this.options.profileAssignments?.has(req.profileId) ? { assignmentId: this.options.profileAssignments.get(req.profileId) } : {}) },
             this.options.maxSpacesPerProfile)
         return { taskSpaceId }
     }
@@ -176,7 +186,8 @@ export class BrowserRuntime implements BrowserRuntimeApi {
                 tabs: [], tabTargets: {}, tabLeaseEpochs: {}, uncertainActions: [], createdAtMs: now, updatedAtMs: now,
                     owner: identity(auth), agentGrant: credential,
                     actions: {}, approvals: {}, batches: {}, dedupe: {},
-                    browserInstanceId: this.driver(space.profileId).browserInstanceId() }
+                    browserInstanceId: this.driver(space.profileId).browserInstanceId(),
+                    ...(space.assignmentId !== undefined ? { assignmentId: space.assignmentId } : {}) }
         const saved = await this.options.store.createTask(task, this.event('task-created', { taskSpaceId: req.taskSpaceId }, 0))
         const stored = await this.saveRequest(saved, auth, req.requestId, { operation: 'createTask', ...req }, this.view(saved))
         return this.view(stored)
@@ -1888,53 +1899,100 @@ export class BrowserRuntime implements BrowserRuntimeApi {
         }, 'recovered', { batchId, interrupted: true, failedStep: step?.stepId, mayHaveSideEffects })
         return interrupted
     }
-    private principalStateOk = true
-    /** False while a previous owner's state could not be ended (readiness). */
+    private assignmentState: 'pending' | 'ready' | 'failed' = 'pending'
+    /** Whether the task (if known) was created in its profile's current assignment; always true without assignments. */
+    isCurrentAssignmentTask(taskId: string): boolean {
+        const assignments = this.options.profileAssignments
+        const task = assignments && this.options.store.taskAssignment(taskId)
+        return !task || task.assignmentId === assignments?.get(task.profileId)
+    }
+    /** Resolves once start-up (cleanup and recovery) is done; rejects RUNTIME_UNAVAILABLE if the cleanup failed. */
+    started(): Promise<void> {
+        return this.recovery
+    }
+    /** True once anything of other assignments or owners has been ended (readiness; the API is closed otherwise). */
     principalStateReady(): boolean {
-        return this.principalStateOk
+        return this.assignmentState === 'ready'
+    }
+    /** For the admin readiness check: the cleanup state and the assignments it was completed for. */
+    assignmentReport(): { state: 'pending' | 'ready' | 'failed'; applied?: Readonly<Record<string, string>> } {
+        const applied = this.options.store.getAppliedAssignments()
+        return { state: this.assignmentState, ...applied ? { applied } : {} }
     }
     /**
-     * A reassigned profile: the previous owner's open spaces close (reason principal-changed), their
-     * unfinished tasks end cancelled (uncertain outcomes kept on the record, which stays owner-protected),
-     * and their input control is released everywhere, closed spaces included. The same owner keeps all of it.
+     * Start-up, before tabs are restored or any request is served: whatever another assignment of a profile
+     * (abp-stack set-principal draws a new one each time, so also the same owner coming back) or another
+     * owner left is ended. Its spaces close (reason principal-changed) and stop counting against the quota;
+     * its unfinished tasks end cancelled with their pending approvals expired and resume claims cleared;
+     * writes that may have reached the page become uncertain outcomes, which retention keeps; input control
+     * is released everywhere. The records stay owner-protected. Only then is the assignment recorded, so an
+     * interrupted cleanup runs again on the next start. An ordinary restart (same assignment) changes nothing.
      */
-    private async endPreviousOwners(): Promise<void> {
+    private async endOtherAssignments(): Promise<void> {
+        const assignments = this.options.profileAssignments
         const owners = this.options.profilePrincipals
-        if (!owners) return
-        for (const space of this.options.store.listSpaces()) {
-            const configured = owners.get(space.profileId)
-            if (!configured) continue
-            const spaceOwner = space.owner?.principalId
-            if (spaceOwner && spaceOwner !== configured && !space.closed) {
-                for (const task of this.options.store.listTasks()) {
-                    if (task.taskSpaceId !== space.taskSpaceId || TERMINAL_STATUSES.includes(task.status)) continue
-                    await this.options.store.mutate(task.taskId, (current) => TERMINAL_STATUSES.includes(current.status) ? null : {
-                        patch: { status: 'cancelled', pauseReason: 'principal-changed', tabs: [], tabTargets: {}, pendingApproval: undefined,
-                            resumeClaimId: undefined, approvals: Object.fromEntries(Object.entries(current.approvals).map(([id, approval]) => [id,
-                                { ...approval, state: approval.state === 'pending' ? 'expired' : approval.state }])),
-                            stateVersion: current.stateVersion + 1 },
-                        event: this.event('state-changed', { status: 'cancelled', pauseReason: 'principal-changed' }, current.stateVersion + 1),
-                    })
-                }
-                await this.options.store.mutateSpace(space.taskSpaceId, (current) => ({
-                    tabs: [], tabTargets: {}, tabLeaseEpochs: {}, profileUserOwner: null, closed: true, reclaimReason: 'principal-changed',
-                    goneTabs: [...new Set([...(current.goneTabs ?? []), ...current.tabs])],
-                }))
+        const store = this.options.store
+        const applied = store.getAppliedAssignments()
+        const current = (profileId: ProfileId) => assignments?.get(profileId)
+        const foreignSpace = (space: SpaceRecord): boolean => {
+            if (assignments && (applied?.[space.profileId] !== current(space.profileId) || space.assignmentId !== current(space.profileId)))
+                return true
+            const configured = owners?.get(space.profileId)
+            return Boolean(configured && space.owner?.principalId && space.owner.principalId !== configured)
+        }
+        const archived = new Set<TaskSpaceId>()
+        for (const space of store.listSpaces()) {
+            const configured = owners?.get(space.profileId)
+            if (foreignSpace(space)) {
+                archived.add(space.taskSpaceId)
+                await store.mutateSpace(space.taskSpaceId, (latest) => latest.closed && !latest.tabs.length && !latest.profileUserOwner
+                    && !Object.keys(latest.tabLeaseEpochs ?? {}).length && !Object.keys(latest.tabTargets ?? {}).length ? null : {
+                    tabs: [], tabTargets: {}, tabLeaseEpochs: {}, profileUserOwner: null, closed: true,
+                    reclaimReason: latest.closed ? latest.reclaimReason : 'principal-changed',
+                    goneTabs: [...new Set([...(latest.goneTabs ?? []), ...latest.tabs])],
+                })
                 continue
             }
-            if (space.profileUserOwner && space.profileUserOwner.owner.principalId !== configured)
-                await this.options.store.mutateSpace(space.taskSpaceId, () => ({ profileUserOwner: null }))
+            if (space.profileUserOwner && configured && space.profileUserOwner.owner.principalId !== configured)
+                await store.mutateSpace(space.taskSpaceId, () => ({ profileUserOwner: null }))
         }
+        for (const task of store.listTasks()) {
+            const foreign = archived.has(task.taskSpaceId)
+                || (assignments !== undefined && applied?.[task.profileId] !== current(task.profileId))
+                || (assignments !== undefined && task.assignmentId !== current(task.profileId))
+                || Boolean(owners?.get(task.profileId) && task.owner.principalId !== owners?.get(task.profileId))
+            if (!foreign || TERMINAL_STATUSES.includes(task.status)) continue
+            await store.mutate(task.taskId, (latest) => {
+                if (TERMINAL_STATUSES.includes(latest.status)) return null
+                const inFlight = inFlightWriteActions(latest)
+                const uncertainActions = [...new Set([...latest.uncertainActions, ...inFlight])]
+                const pauseReason = latest.pauseReason ?? (uncertainActions.length ? 'cancelled-with-unknown-effect' as const : 'principal-changed' as const)
+                return {
+                    patch: { status: 'cancelled', pauseReason, assignmentArchived: true, uncertainActions, tabs: [], tabTargets: {}, tabLeaseEpochs: {},
+                        pendingApproval: undefined, resumeClaimId: undefined,
+                        actions: { ...latest.actions, ...Object.fromEntries(inFlight.map((id) => [id, { ...latest.actions[id], state: 'uncertain' as const }])) },
+                        approvals: Object.fromEntries(Object.entries(latest.approvals).map(([id, approval]) => [id,
+                            { ...approval, state: approval.state === 'pending' ? 'expired' as const : approval.state }])),
+                        stateVersion: latest.stateVersion + 1 },
+                    event: this.event('state-changed', { status: 'cancelled', pauseReason, archived: 'assignment-changed', uncertainActions: inFlight }, latest.stateVersion + 1),
+                }
+            })
+        }
+        if (assignments) await store.commitAssignments(Object.fromEntries(assignments))
     }
-    private async recoverExistingTasks(): Promise<void> {
+    private async startUp(): Promise<void> {
         try {
-            await this.endPreviousOwners()
+            await this.endOtherAssignments()
+            this.assignmentState = 'ready'
         }
         catch {
-            // Starting with a previous owner's spaces, tasks or control would hand them to the new owner.
-            this.principalStateOk = false
-            return
+            // Serving with another assignment's spaces, tasks, approvals or control would hand them over: closed instead.
+            this.assignmentState = 'failed'
+            throw new BrowserRuntimeError('RUNTIME_UNAVAILABLE', 'The state of a previous profile assignment could not be ended; see the Runtime log', false)
         }
+        await this.recoverExistingTasks().catch(() => undefined)
+    }
+    private async recoverExistingTasks(): Promise<void> {
         await this.restorePersistedTabs().catch(() => undefined)
         for (const task of this.options.store.listTasks()) {
             if (['succeeded', 'failed', 'cancelled'].includes(task.status))
@@ -2623,6 +2681,9 @@ export class BrowserRuntime implements BrowserRuntimeApi {
         leaseEpoch = 0): StoreEventInput { return { type, atMs: this.clock.now(), stateVersion, leaseEpoch, data }; }
     private async authorizeTask(auth: AuthContext, operation: Operation, task: StoredTask): Promise<void> {
         this.checkCredential(auth, operation, task.profileId, task.taskSpaceId)
+        if (this.options.profileAssignments && !HISTORY_READ_OPERATIONS.has(operation)
+            && task.assignmentId !== this.options.profileAssignments.get(task.profileId))
+            throw new BrowserRuntimeError('SCOPE_DENIED', 'Task belongs to an earlier assignment of the profile')
         if (task.owner.principalId !== auth.credential.principalId || task.owner.workspaceId !== auth.credential.workspaceId
             || task.owner.machineId !== auth.credential.machineId)
             throw new BrowserRuntimeError('SCOPE_DENIED', 'Task owner does not match credential')
@@ -2648,6 +2709,16 @@ export class BrowserRuntime implements BrowserRuntimeApi {
             machineId: credential.machineId, profileId, ...(taskSpaceId ? { taskSpaceId } : {}) })
         if (!this.isCredentialLive(auth))
             throw new BrowserRuntimeError('UNAUTHORIZED', 'Credential has expired or been revoked')
+        // Defense in depth behind the token check: nothing of another assignment is usable.
+        const assignment = this.options.profileAssignments?.get(profileId)
+        if (this.options.profileAssignments) {
+            if (credential.kind === 'agent-grant' && (!assignment || credential.assignmentId !== assignment))
+                throw new BrowserRuntimeError('SCOPE_DENIED', 'Grant belongs to an earlier assignment of the profile')
+            // The owner may still read an earlier assignment's records (owner checks apply); nothing else.
+            const space = taskSpaceId && !HISTORY_READ_OPERATIONS.has(op) ? this.options.store.getSpace(taskSpaceId) : undefined
+            if (space && space.assignmentId !== assignment)
+                throw new BrowserRuntimeError('SCOPE_DENIED', 'Task space belongs to an earlier assignment of the profile')
+        }
     }
     private isCredentialLive(auth: AuthContext): boolean {
         const credential = auth.credential

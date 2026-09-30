@@ -112,6 +112,8 @@ export interface SpaceRecord {
     /** Reclamation started (owning session ended, idle, operator): no new work, closed once its tasks allow. */
     reclaimingSinceMs?: number
     reclaimReason?: 'session-ended' | 'idle' | 'operator' | 'principal-changed'
+    /** Assignment of the profile the space was created in (configured Runtime); another assignment cannot use it. */
+    assignmentId?: string
     /** Tabs a reclamation could not close (beforeunload); reported, retried. */
     reclaimBlockedTabs?: TabId[]
 }
@@ -140,6 +142,8 @@ export class TaskStore {
     private readonly tasks = new Map<TaskId, StoredTask>()
     private readonly spaces = new Map<TaskSpaceId, SpaceRecord>()
     private readonly revocations = new Set<string>()
+    /** Profile assignments whose start-up cleanup completed (assignments.json); undefined before the first. */
+    private appliedAssignments?: Record<string, string>
     private readonly taskTails = new Map<TaskId, Promise<void>>()
     private metadataTail: Promise<void> = Promise.resolve()
     private readonly unreadableTasks = new Set<TaskId>()
@@ -154,6 +158,7 @@ export class TaskStore {
             await store.acquire()
             await store.loadMetadata()
             await store.loadRevocations()
+            await store.loadAssignments()
             await store.loadTasks()
             // A deletion a crash interrupted is finished now, or on the next retention run.
             await store.resumePurges().catch(() => undefined)
@@ -252,6 +257,21 @@ export class TaskStore {
         await this.writeRevocations()
     }
     getRevocations(): ReadonlySet<string> { return new Set(this.revocations); }
+    /** The profile assignments the last completed start-up cleanup was done for (undefined: never). */
+    getAppliedAssignments(): Readonly<Record<string, string>> | undefined { return this.appliedAssignments && { ...this.appliedAssignments }; }
+    /** Records (fsync) that everything of other assignments has been ended: written only after that cleanup. */
+    async commitAssignments(assignments: Record<string, string>): Promise<void> {
+        await this.withMetadataQueue(async () => {
+            await this.assertWriter()
+            try {
+                await this.atomicWrite(join(this.stateDir, 'assignments.json'), { schemaVersion: SCHEMA_VERSION, assignments }, 'metadata')
+            }
+            catch {
+                throw journalError()
+            }
+            this.appliedAssignments = { ...assignments }
+        })
+    }
     /** Called after each task commit is durable. Listeners must not block; errors are ignored. */
     onCommitted(listener: (task: StoredTask, event: TaskEvent) => void): () => void {
         this.commitListeners.add(listener)
@@ -264,6 +284,11 @@ export class TaskStore {
     }
     /** True for every task the store has, including ones whose journal is unreadable. */
     knowsTask(id: string): boolean { return this.tasks.has(id as TaskId) || this.unreadableTasks.has(id as TaskId) }
+    /** A task's profile and assignment without copying the task (attention filtering); undefined when unknown. */
+    taskAssignment(id: string): { profileId: ProfileId; assignmentId?: string } | undefined {
+        const task = this.tasks.get(id as TaskId)
+        return task && { profileId: task.profileId, ...(typeof task.assignmentId === 'string' ? { assignmentId: task.assignmentId } : {}) }
+    }
     /**
      * Retention (retentionDays): deletes terminal tasks without uncertain actions whose
      * last change is older than `retentionMs`, with their journal, checkpoint (approvals,
@@ -588,6 +613,21 @@ export class TaskStore {
         catch (error) {
             if ((error as NodeJS.ErrnoException).code !== 'ENOENT')
                 throw error
+        }
+    }
+    private async loadAssignments(): Promise<void> {
+        try {
+            const metadata = JSON.parse(await readFile(join(this.stateDir, 'assignments.json'), 'utf8')) as {
+                schemaVersion: number
+                assignments: Record<string, string>
+            }
+            if (metadata.schemaVersion !== SCHEMA_VERSION || !metadata.assignments || typeof metadata.assignments !== 'object')
+                throw journalError('Unknown assignment record schema')
+            this.appliedAssignments = metadata.assignments
+        }
+        catch (error) {
+            if ((error as NodeJS.ErrnoException).code !== 'ENOENT')
+                throw error instanceof BrowserRuntimeError ? error : journalError('Assignment record is unreadable')
         }
     }
     private async writeMetadata(): Promise<void> {

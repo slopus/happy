@@ -48,6 +48,10 @@ export interface AdminServerInput {
     metrics(): Promise<unknown>
     /** Immediate revocation of an interactive capability (e.g. a lost viewer). */
     revokeCapability(capabilityId: string): Promise<void>
+    /** `GET /admin/ready`: readiness checks, admission, applied assignments and configured profiles (answers under the API fence). */
+    readiness?(): Promise<unknown>
+    /** `POST /admin/open-admission { assignments }`: opens admission once exactly these assignments are in place and cleaned up. */
+    openAdmission?(assignments: Record<string, string>): Promise<unknown>
 }
 
 export interface AdminServer { port?: number; close(): Promise<void> }
@@ -68,10 +72,17 @@ export async function startAdminServer(input: AdminServerInput): Promise<AdminSe
                     return sendJson(res, 200, { ok: true, result: { drivers, pinnedProfiles: input.runtime.pinnedProfiles(), memory: process.memoryUsage() } })
                 }
                 if (req.method === 'GET' && path === '/admin/metrics') return sendJson(res, 200, { ok: true, result: await input.metrics() })
+                if (req.method === 'GET' && path === '/admin/ready' && input.readiness) return sendJson(res, 200, { ok: true, result: await input.readiness() })
                 if (req.method === 'GET' && path === '/admin/spaces' && input.runtime.spaceReport)
                     return sendJson(res, 200, { ok: true, result: { spaces: input.runtime.spaceReport() } })
                 if (req.method !== 'POST') return sendJson(res, 404, { ok: false, error: { code: 'UNSUPPORTED_OPERATION' } })
                 const body = await readBody(req)
+                if (path === '/admin/open-admission' && input.openAdmission) {
+                    const assignments = body.assignments
+                    if (!assignments || typeof assignments !== 'object' || Array.isArray(assignments) || Object.values(assignments).some((value) => typeof value !== 'string'))
+                        throw new BrowserRuntimeError('INVALID_REQUEST', 'assignments must map profile ids to assignment ids')
+                    return sendJson(res, 200, { ok: true, result: await input.openAdmission(assignments as Record<string, string>) })
+                }
                 if (path === '/admin/revoke-grant') {
                     await input.runtime.revokeGrant(String(body.grantId) as GrantId)
                     return sendJson(res, 200, { ok: true, result: { revoked: true } })

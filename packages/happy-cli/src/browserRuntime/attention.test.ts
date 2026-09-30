@@ -27,6 +27,33 @@ const attentionEvent = (reason: string) => ({ type: 'agent-attention-required' a
 const plainEvent = { type: 'state-changed' as const, atMs: 2, leaseEpoch: 0, data: {} }
 
 describe('AttentionOutbox', () => {
+    it('hides entries of an earlier assignment (queued before the reassignment, terminal tasks too) while the cursor still advances', async () => {
+        const dir = await tempDir()
+        const store = await TaskStore.open(dir)
+        const outbox = await AttentionOutbox.open(dir)
+        outbox.attach(store)
+        await store.createTask({ ...storedTask('old'), status: 'succeeded', pauseReason: undefined }, { type: 'task-created', atMs: 1, leaseEpoch: 0, data: {} })
+        await store.createTask({ ...storedTask('new'), agentSessionId: 'session-2' as never }, { type: 'task-created', atMs: 1, leaseEpoch: 0, data: {} })
+        await store.commit('old' as TaskId, {}, attentionEvent('approval-rejected'))
+        await store.commit('new' as TaskId, {}, attentionEvent('approval-approved'))
+        await store.commit('old' as TaskId, {}, attentionEvent('approval-rejected'))
+        await outbox.flush()
+        outbox.read(0)
+        expect(outbox.hasUndelivered('session-1')).toBe(true)
+        // Reassigned: the Runtime suppresses the earlier assignment's task (here: by id).
+        outbox.suppress((event) => event.taskId === 'old')
+        expect(outbox.hasUndelivered('session-1')).toBe(false)
+        const feed = outbox.read(0)
+        expect(feed).toMatchObject({ nextSeq: 3 })
+        expect('events' in feed && feed.events.map((event) => event.taskId)).toEqual(['new'])
+        // Only suppressed entries after the cursor: an immediate answer that moves the cursor past them.
+        expect(await outbox.wait(2, 30_000)).toEqual({ events: [], nextSeq: 3, oldestSeq: 1 })
+        // A cursor the outbox cannot serve gets the snapshot, without the earlier assignment's entries.
+        const snapshot = outbox.read(99)
+        expect('code' in snapshot && snapshot.snapshot.map((event) => event.taskId)).toEqual(['new'])
+        await store.close()
+    })
+
     it('records only attention-tagged transitions and keeps its sequence across reopen', async () => {
         const dir = await tempDir()
         const store = await TaskStore.open(dir)

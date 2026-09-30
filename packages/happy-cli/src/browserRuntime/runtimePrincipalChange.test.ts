@@ -45,7 +45,7 @@ async function restart(dir: string, owner: string, clock: FakeClock, store?: Tas
     const reopened = store ?? await TaskStore.open(dir)
     const runtime = new BrowserRuntime({ store: reopened, drivers: new Map([[profileId, new FakeBrowserDriver()]]), clock, sites,
         profilePrincipals: new Map([[profileId, owner as PrincipalId]]) })
-    await (runtime as unknown as { recovery: Promise<void> }).recovery
+    await runtime.started().catch(() => undefined)
     return { runtime, store: reopened }
 }
 
@@ -56,7 +56,8 @@ describe('profile reassigned to another owner', () => {
         const space = store.getSpace(a.space.taskSpaceId)!
         expect(space).toMatchObject({ closed: true, reclaimReason: 'principal-changed', tabs: [], profileUserOwner: null })
         const task = store.getTask(a.task.taskId)!
-        expect(task).toMatchObject({ status: 'cancelled', pauseReason: 'principal-changed', tabs: [] })
+        // The left uncertain outcome keeps the task marked as possibly having had an effect.
+        expect(task).toMatchObject({ status: 'cancelled', pauseReason: 'user-control', assignmentArchived: true, tabs: [] })
         expect(task.uncertainActions).toEqual(['action-left'])
         expect(runtime.leases.owner(a.opened.tabId, profileId).owner).toEqual({ kind: 'none' })
         expect(runtime.principalStateReady()).toBe(true)
@@ -82,6 +83,8 @@ describe('profile reassigned to another owner', () => {
         store.mutateSpace = async () => { throw new Error('disk full') }
         const { runtime } = await restart(a.dir, 'user-b', a.clock, store)
         expect(runtime.principalStateReady()).toBe(false)
+        await expect(runtime.createSpace({ credential: grantFor('user-b'), verifiedAtMs: a.clock.now() },
+            { profileId, requestId: 'failed-cleanup' as RequestId })).rejects.toMatchObject({ code: 'RUNTIME_UNAVAILABLE' })
         await store.close()
     })
 })

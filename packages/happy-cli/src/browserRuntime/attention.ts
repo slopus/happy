@@ -17,6 +17,11 @@
  * `unresolved` keeps each task's latest attention entry until an agent batch
  * follows it, independent of the bounded event retention, so the
  * expired-cursor snapshot never loses a task that still needs its agent.
+ *
+ * Suppression (profile reassignment): entries of an earlier assignment's task or of
+ * a retired agent session are never shown and never count as undelivered, whether
+ * they were queued before the reassignment or not; `nextSeq` still moves past them,
+ * so the daemon's cursor progresses and no old session is woken.
  */
 import { randomUUID } from 'node:crypto'
 import { mkdir, open, readFile, rename, rm } from 'node:fs/promises'
@@ -56,6 +61,7 @@ export class AttentionOutbox {
     private detach?: () => void
     /** The daemon's delivery cursor: it polls with afterSeq only after delivering (or skipping) up to it. Unknown until it polls. */
     private deliveredSeq?: number
+    private suppressed: (event: AttentionEvent) => boolean = () => false
 
     private constructor(private readonly stateDir: string, private readonly maxEvents: number, private readonly retryMs: number, private state: OutboxFile) {
         this.durableSeq = state.lastSeq
@@ -73,6 +79,11 @@ export class AttentionOutbox {
         // Files written before `unresolved` existed: the retained events are all that is known.
         state.unresolved ??= Object.fromEntries(state.events.map((event) => [event.taskId, event]))
         return new AttentionOutbox(stateDir, options.maxEvents ?? DEFAULT_MAX_EVENTS, options.retryMs ?? DEFAULT_RETRY_MS, state)
+    }
+
+    /** Entries for which `predicate` holds are hidden from the feed, the snapshot and hasUndelivered (cursor still advances). */
+    suppress(predicate: (event: AttentionEvent) => boolean): void {
+        this.suppressed = predicate
     }
 
     /** Start recording tagged commits of `store`, and forget tasks it deletes (retention). */
@@ -107,13 +118,14 @@ export class AttentionOutbox {
             return { code: 'CURSOR_EXPIRED', events: [], snapshot: this.snapshot(), nextSeq: this.durableSeq, oldestSeq }
         }
         const events = visible.filter((event) => event.seq > afterSeq)
-        return { events: structuredClone(events), nextSeq: events.at(-1)?.seq ?? afterSeq, oldestSeq }
+        return { events: structuredClone(events.filter((event) => !this.suppressed(event))), nextSeq: events.at(-1)?.seq ?? afterSeq, oldestSeq }
     }
 
     /** Long poll: resolves as soon as a durable event after `afterSeq` exists, or after waitMs. */
     async wait(afterSeq: number, waitMs: number): Promise<AttentionFeed> {
         const first = this.read(afterSeq)
-        if ('code' in first || first.events.length > 0 || waitMs <= 0) return first
+        // Only suppressed entries: still return at once, so the cursor moves past them.
+        if ('code' in first || first.events.length > 0 || first.nextSeq !== afterSeq || waitMs <= 0) return first
         await new Promise<void>((resolve) => {
             const wake = () => { clearTimeout(timer); this.waiters.delete(wake); resolve() }
             const timer = setTimeout(wake, waitMs)
@@ -130,7 +142,7 @@ export class AttentionOutbox {
     hasUndelivered(agentSessionId: string): boolean {
         const delivered = this.deliveredSeq
         if (delivered === undefined) return false
-        return this.state.events.some((event) => event.seq > delivered && event.agentSessionId === agentSessionId)
+        return this.state.events.some((event) => event.seq > delivered && event.agentSessionId === agentSessionId && !this.suppressed(event))
     }
 
     /** Resolves once every recorded event is durable; rejects if the write fails (it is retried). */
@@ -203,7 +215,7 @@ export class AttentionOutbox {
     /** Durable unresolved entries whose task still needs its agent. */
     private snapshot(): AttentionEvent[] {
         return Object.values(this.state.unresolved ?? {}).filter((entry) => {
-            if (entry.seq > this.durableSeq) return false
+            if (entry.seq > this.durableSeq || this.suppressed(entry)) return false
             const task = this.store?.getTask(entry.taskId)
             if (!task) return false
             const handled = (this.store?.events(entry.taskId, entry.eventSeq) ?? []).some((event) => event.type === 'batch-accepted')

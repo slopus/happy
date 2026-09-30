@@ -15,6 +15,11 @@ export interface VerifyPolicy {
     trustedIssuers?: readonly TrustedIssuer[]
     /** Configured profile owners. When set, a credential for an unlisted profile or another principal is refused. */
     profilePrincipals?: ReadonlyMap<ProfileId, PrincipalId>
+    /**
+     * Each profile's current assignment (runtime.json). When set, an agent grant is accepted only if it was
+     * issued in that assignment: grants of an earlier assignment stay refused after the owner comes back.
+     */
+    profileAssignments?: ReadonlyMap<ProfileId, string>
 }
 const harnessPolicy: VerifyPolicy = { authMode: 'harness' }
 const forbiddenAgentOperations = new Set<Operation>([...INTERACTIVE_OPERATIONS, 'listTasks'])
@@ -119,6 +124,10 @@ function assertConfiguredScope(credential: Credential, policy: VerifyPolicy): vo
     if (policy.profilePrincipals) {
         const owner = policy.profilePrincipals.get(credential.profileId)
         if (!owner || owner !== credential.principalId) throw new BrowserRuntimeError('SCOPE_DENIED', 'Principal does not own the profile')
+    }
+    if (policy.profileAssignments && credential.kind === 'agent-grant') {
+        const assignment = policy.profileAssignments.get(credential.profileId)
+        if (!assignment || credential.assignmentId !== assignment) throw new BrowserRuntimeError('SCOPE_DENIED', 'Grant belongs to an earlier assignment of the profile')
     }
 }
 

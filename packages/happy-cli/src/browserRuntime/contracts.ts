@@ -117,6 +117,11 @@ export interface AgentGrant {
     taskSpaceIds: TaskSpaceId[]
     issuedAtMs: number
     expiresAtMs: number
+    /**
+     * The profile assignment the grant was issued in (abp-stack set-principal draws a new one each time).
+     * A configured Runtime refuses a grant of any other assignment, even when the same owner is back.
+     */
+    assignmentId?: string
 }
 
 export interface InteractiveCapability {
