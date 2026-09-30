@@ -9,7 +9,7 @@ the Saycode server flag is on (S7); nothing here changes the server or Desktop.
 | File | Role |
 |---|---|
 | `abp-install` | install, update (idempotent re-run) and `check`; `--dry-run` prints every action |
-| `abp-stack.mjs` (installed as `/usr/local/sbin/abp-stack`) | `up`, `down`, `status`, `upgrade`, `rollback`, `rotate-keys`, `set-principal`, `load`, `build`, `run` (systemd only) |
+| `abp-stack.mjs` (installed as `/usr/local/sbin/abp-stack`) | `up`, `down`, `status`, `upgrade`, `rollback`, `rotate-keys`, `set-principal`, `prune-profiles`, `load`, `build`, `run` (systemd only) |
 | `abp-uninstall` | remove services; keeps volumes, config and secrets unless `--purge` |
 | `abp-firewall` | owner firewall rules (`apply`, `check`, `remove`), run by `abp-firewall.service` |
 | `abp-plan.mjs`, `lib/abpPlan.mjs` | every generated file, table and container argument (unit-tested) |
@@ -32,7 +32,7 @@ the Saycode server flag is on (S7); nothing here changes the server or Desktop.
 | `/etc/aplus/sandbox-policy.json` | root 0644 | `{"mode":"mandatory"}`; `claude-sandbox.json` only with `--egress-domain` |
 | `/opt/abp/happy` (`--happy-prefix`) | root, not group/world writable | Happy package; `/usr/local/bin/happy` links to it |
 | systemd | | `abp-firewall` (oneshot, before everything: owner rules + fence chain) → `abp-egress` (oneshot after and PartOf Docker: browser egress rules) → `abp-egress-proxy` (User=abp-proxy), `abp-stack` (Requires firewall + egress, `flock -n -F` so node gets SIGTERM, Restart=always), `abp-happy-daemon` (User=agent, `happy daemon start-sync`/`stop`, KillMode=process) |
-| Docker | label `ai.saycode.abp=stack` | per profile: network `abp-net-<profile>` on bridge `br-abp-<8 hex>` with the i-th /24 of `--browser-subnet-pool` (default 10.249.240.0/20; gateway .1, browser .2, Runtime .3), only that browser + Runtime; volumes `abp-state` (journal, agent key, flock) and `abp-profile-<profile>` |
+| Docker | label `ai.saycode.abp=stack` | per profile: network `abp-net-<profile>` on bridge `br-abp-<8 hex>` with the i-th /24 of `--browser-subnet-pool` (default 10.249.240.0/20; gateway .1, browser .2, Runtime .3), only that browser + Runtime; volumes `abp-state` (journal, agent key, flock) and one browser volume per profile **and owner**, `abp-profile-<profile>-<16 hex of sha256(owner)>` (labels `role=profile`, `profile`, `principal`) |
 | locks | | `/run/abp-stack.lock` (one `abp-stack run`), `/run/abp-stack-ops.lock` (one of abp-install, upgrade, rollback, rotate-keys, set-principal, up/down at a time) |
 
 Only the Runtime API is published, on `127.0.0.1:38700`. Admin (unix socket), CDP, x11vnc and
@@ -178,7 +178,9 @@ retry after about a minute (existing Happy behaviour, not specific to this insta
 | start / stop | `abp-stack up` (waits for ready) / `abp-stack down` (Runtime first; running tasks recover paused) |
 | logs | `journalctl -u abp-stack -u abp-happy-daemon -u abp-egress-proxy`; `docker logs abp-runtime` |
 | metrics | `curl --unix-socket /run/abp/admin.sock http://admin/admin/metrics` (root) |
-| reassign the machine | `abp-stack set-principal <profileId> <studio userId>` (restarts the Runtime) |
+| reassign the machine | After changing the dedicated user in Studio's admin screen, run `abp-stack set-principal <profileId> <studio userId>` on H (Studio does not tell H). It stops the whole stack, switches install.json/runtime.json, and starts it on **the new owner's browser volume**; the previous owner's volume (their logins) stays detached, and comes back if they are assigned again. Verified (mount, owners, ready); otherwise the previous owner is put back. Sessions started for the previous owner get no grant any more, their open spaces close and unfinished tasks end (`principal-changed`). `abp-install --profile` refuses owner changes. |
+| previous owners' logins | kept `--profile-retention-days` (default 30; 0 = removed at the reassignment), then removed by `abp-profile-prune.timer` (daily, so 30–31 days) or `abp-stack prune-profiles [--older-than-days N]`. Never a current owner's volume or one in use. Volumes without a mark (lost state file) are kept and shown by `status`; `prune-profiles --adopt-orphans` starts their retention. Plain `abp-uninstall` keeps the volumes and stops pruning; `--purge` fails if a volume cannot be removed |
+| upgrading from before per-owner volumes | the old `abp-profile-<profile>` volume (whose owner cannot be told) is removed on the first start: the assigned user logs in to sites once more. Going back to an operations package from before per-owner volumes is not supported |
 | config change | re-run `abp-install` with the flags; each service restarts only when its inputs changed (the message names the input): stack ← runtime.json, VNC secret, egress rules, seccomp, its unit; daemon ← env, token, unit, **Happy package digest**; egress proxy ← unit, egress policy, **Happy package digest**. The firewall units are re-applied with `reload-or-restart` (a restart would restart everything that `Requires=` them) |
 | new Happy package | `abp-install --happy-tarball <new.tgz>`: the content digest of the installed package (`/var/lib/abp/happy-package.sha256`) changes, so the daemon (sessions stay alive, KillMode=process) and the egress proxy restart onto the new code; the stack is untouched |
 
