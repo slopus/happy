@@ -52,6 +52,14 @@ export interface AdminServerInput {
     readiness?(): Promise<unknown>
     /** `POST /admin/open-admission { assignments }`: opens admission once exactly these assignments are in place and cleaned up. */
     openAdmission?(assignments: Record<string, string>): Promise<unknown>
+    /**
+     * Shared machines: `GET /admin/profile-requests` lists the users whose profile a session asked for (root
+     * abp-stack creates them); `POST /admin/profile-requests/refuse { principalId, reason, retryAfterMs }`.
+     */
+    profileRequests?: {
+        list(): Array<{ principalId: string; requestedAtMs: number }>
+        refuse(principalId: string, reason: 'capacity' | 'memory', retryAfterMs: number): Promise<void>
+    }
 }
 
 export interface AdminServer { port?: number; close(): Promise<void> }
@@ -75,6 +83,8 @@ export async function startAdminServer(input: AdminServerInput): Promise<AdminSe
                 if (req.method === 'GET' && path === '/admin/ready' && input.readiness) return sendJson(res, 200, { ok: true, result: await input.readiness() })
                 if (req.method === 'GET' && path === '/admin/spaces' && input.runtime.spaceReport)
                     return sendJson(res, 200, { ok: true, result: { spaces: input.runtime.spaceReport() } })
+                if (req.method === 'GET' && path === '/admin/profile-requests' && input.profileRequests)
+                    return sendJson(res, 200, { ok: true, result: { requests: input.profileRequests.list() } })
                 if (req.method !== 'POST') return sendJson(res, 404, { ok: false, error: { code: 'UNSUPPORTED_OPERATION' } })
                 const body = await readBody(req)
                 if (path === '/admin/open-admission' && input.openAdmission) {
@@ -82,6 +92,14 @@ export async function startAdminServer(input: AdminServerInput): Promise<AdminSe
                     if (!assignments || typeof assignments !== 'object' || Array.isArray(assignments) || Object.values(assignments).some((value) => typeof value !== 'string'))
                         throw new BrowserRuntimeError('INVALID_REQUEST', 'assignments must map profile ids to assignment ids')
                     return sendJson(res, 200, { ok: true, result: await input.openAdmission(assignments as Record<string, string>) })
+                }
+                if (path === '/admin/profile-requests/refuse' && input.profileRequests) {
+                    const { principalId, reason, retryAfterMs } = body
+                    if (typeof principalId !== 'string' || !principalId || (reason !== 'capacity' && reason !== 'memory')
+                        || typeof retryAfterMs !== 'number' || !Number.isInteger(retryAfterMs) || retryAfterMs < 0 || retryAfterMs > 24 * 60 * 60_000)
+                        throw new BrowserRuntimeError('INVALID_REQUEST', 'principalId, reason (capacity|memory) and retryAfterMs are required')
+                    await input.profileRequests.refuse(principalId, reason, retryAfterMs)
+                    return sendJson(res, 200, { ok: true, result: { refused: true } })
                 }
                 if (path === '/admin/revoke-grant') {
                     await input.runtime.revokeGrant(String(body.grantId) as GrantId)

@@ -552,6 +552,10 @@ export async function runRuntime(deps: RuntimeProcessDeps = {}): Promise<void> {
             viewer?.revokeCapability(capabilityId)
             return store.revoke(capabilityId)
         },
+        ...(broker && config?.tenancyMode === 'shared' ? { profileRequests: {
+            list: () => broker!.profileRequests(),
+            refuse: (principalId: string, reason: 'capacity' | 'memory', retryAfterMs: number) => broker!.refuseProfileRequest(principalId, reason, retryAfterMs),
+        } } : {}),
         // abp-stack verifies a reassignment under its fence (host packets to the API port are reset): here.
         readiness: async () => ({
             checks: await readyChecks(),
