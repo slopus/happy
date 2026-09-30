@@ -14,6 +14,7 @@ import { appThemes } from '@/themePacks';
 import TestRenderer from 'react-test-renderer';
 
 const mocks = vi.hoisted(() => ({
+    scrollToEnd: vi.fn(),
     calculateTotals: vi.fn(),
     credentials: { token: 'test' } as { token: string } | null,
     currentMachineId: null as string | null,
@@ -123,7 +124,12 @@ const emptyTotals = {
 async function renderUsagePanel() {
     let renderer: any;
     await act(async () => {
-        renderer = TestRenderer.create(<UsagePanel />);
+        renderer = TestRenderer.create(<UsagePanel />, {
+            createNodeMock: (element: { props: { testID?: string } }) =>
+                element.props.testID === 'codex-usage-heatmap-scroll'
+                    ? { scrollToEnd: mocks.scrollToEnd }
+                    : null,
+        });
     });
     await act(async () => {
         await Promise.resolve();
@@ -165,11 +171,11 @@ describe('UsagePanel', () => {
         consoleErrorSpy.mockRestore();
     });
 
-    it('keeps the 53-week grid within an extremely narrow container', () => {
+    it('keeps days readable in an extremely narrow container', () => {
         const width = 180;
         const metrics = getCodexHeatmapCellMetrics(width);
 
-        expect(53 * metrics.cellSize + 52 * metrics.gap).toBeLessThanOrEqual(width);
+        expect(metrics).toEqual({ cellSize: 16, gap: 4 });
     });
 
     it('removes month labels that would overlap at narrow widths', () => {
@@ -584,7 +590,7 @@ describe('UsagePanel', () => {
         act(() => renderer.unmount());
     });
 
-    it('fits all 365 days into a narrow heatmap instead of hiding earlier months offscreen', async () => {
+    it('preserves readable cells and all 365 days in a horizontally scrollable mobile calendar', async () => {
         mocks.getUsageForPeriod.mockResolvedValue({ usage: [] });
         mocks.machines = [{
             daemonState: {
@@ -636,8 +642,11 @@ describe('UsagePanel', () => {
         }];
 
         const renderer = await renderUsagePanel();
-        const heatmap = renderer.root.findByProps({ testID: 'codex-usage-heatmap' });
+        const heatmap = renderer.root.findByProps({ testID: 'codex-usage-heatmap-scroll' });
         act(() => heatmap.props.onLayout({ nativeEvent: { layout: { width: 358 } } }));
+        act(() => heatmap.props.onContentSizeChange(1080, 172));
+        expect(mocks.scrollToEnd).toHaveBeenCalledWith({ animated: false });
+        expect(heatmap.props.horizontal).toBe(true);
 
         const cells = renderer.root.findAll((node: any) => (
             typeof node.props.testID === 'string' && node.props.testID.startsWith('codex-usage-day-')
@@ -659,11 +668,11 @@ describe('UsagePanel', () => {
             const styles = typeof cell.props.style === 'function'
                 ? cell.props.style({ pressed: false })
                 : cell.props.style;
-            return styles.some((style: any) => style?.width === 5 && style?.height === 5)
+            return styles.some((style: any) => style?.width === 16 && style?.height === 16)
                 && styles.every((style: any) => style?.flex === undefined);
         })).toBe(true);
-        expect(renderer.root.findAllByProps({ testID: 'codex-usage-heatmap-scroll' })).toHaveLength(0);
-        expect(heatmapGrid.props.style).toContainEqual({ gap: 1 });
+        expect(renderer.root.findAllByProps({ testID: 'codex-usage-heatmap-scroll' })).toHaveLength(1);
+        expect(heatmapGrid.props.style).toContainEqual({ gap: 4 });
         expect(heatmapGrid?.children).toHaveLength(53);
         expect(renderer.root.findAll((node: any) => (
             typeof node.props.testID === 'string'

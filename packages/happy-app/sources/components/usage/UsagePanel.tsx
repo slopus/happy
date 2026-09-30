@@ -39,8 +39,8 @@ interface CodexUsageDay {
 const CODEX_HEATMAP_DAYS = 365;
 const CODEX_HEATMAP_MAX_CELL_SIZE = 16;
 const CODEX_HEATMAP_MAX_GAP = 4;
-const CODEX_HEATMAP_MIN_CELL_SIZE = 1;
-const CODEX_HEATMAP_MIN_GAP = 0;
+const CODEX_HEATMAP_MIN_CELL_SIZE = 16;
+const CODEX_HEATMAP_MIN_GAP = 4;
 const CODEX_HEATMAP_MONTH_LABEL_SPACING = 24;
 const CODEX_USAGE_REFRESH_RPC_TIMEOUT_MS = 60_000;
 
@@ -338,11 +338,11 @@ const styles = StyleSheet.create((theme) => ({
         fontSize: 13,
     },
     heatmapSection: {
-        gap: 20,
-        marginHorizontal: 16,
+        gap: 14,
+        marginHorizontal: 12,
         marginTop: 20,
         marginBottom: 24,
-        padding: 20,
+        padding: 12,
         borderRadius: 16,
         borderWidth: StyleSheet.hairlineWidth,
         borderColor: theme.colors.divider,
@@ -378,8 +378,12 @@ const styles = StyleSheet.create((theme) => ({
         flexDirection: 'row',
         gap: 5,
     },
+    heatmapScroll: {
+        flexGrow: 0,
+    },
     heatmapCalendar: {
-        paddingTop: 20,
+        paddingTop: 28,
+        paddingBottom: 8,
         position: 'relative',
     },
     heatmapMonthLabel: {
@@ -422,25 +426,24 @@ const styles = StyleSheet.create((theme) => ({
         zIndex: 1,
     },
     heatmapDetail: {
-        gap: 16,
-        padding: 20,
+        gap: 12,
+        padding: 12,
         borderRadius: 12,
         backgroundColor: theme.colors.surfaceHigh,
     },
     heatmapSelection: {
         color: theme.colors.text,
-        fontSize: 18,
+        fontSize: 14,
         fontWeight: '600',
-        lineHeight: 27,
+        lineHeight: 21,
     },
     heatmapBreakdown: {
         flexDirection: 'row',
-        flexWrap: 'wrap',
-        gap: 24,
+        gap: 12,
     },
     heatmapMetric: {
-        minWidth: 100,
-        flexGrow: 1,
+        minWidth: 0,
+        flex: 1,
         gap: 6,
     },
     heatmapMetricLabel: {
@@ -449,7 +452,7 @@ const styles = StyleSheet.create((theme) => ({
     },
     heatmapMetricValue: {
         color: theme.colors.text,
-        fontSize: 20,
+        fontSize: 16,
         fontWeight: '600',
     },
     statRow: {
@@ -548,6 +551,7 @@ export const UsagePanel: React.FC<{ sessionId?: string }> = ({ sessionId }) => {
     });
     const [selectedCodexUsageDate, setSelectedCodexUsageDate] = useState<string | null>(null);
     const [hoveredCodexUsageDate, setHoveredCodexUsageDate] = useState<string | null>(null);
+    const heatmapScrollRef = React.useRef<ScrollView>(null);
     const [heatmapWidth, setHeatmapWidth] = useState(
         53 * CODEX_HEATMAP_MAX_CELL_SIZE + 52 * CODEX_HEATMAP_MAX_GAP,
     );
@@ -791,80 +795,92 @@ export const UsagePanel: React.FC<{ sessionId?: string }> = ({ sessionId }) => {
                             ))}
                         </View>
                     </View>
-                    <View
-                        onLayout={(event) => setHeatmapWidth(event.nativeEvent.layout.width)}
-                        style={styles.heatmapCalendar}
-                        testID="codex-usage-heatmap"
+                    <ScrollView
+                        ref={heatmapScrollRef}
+                        horizontal
+                        nestedScrollEnabled
+                        style={styles.heatmapScroll}
+                        testID="codex-usage-heatmap-scroll"
+                        onLayout={(event) => {
+                            setHeatmapWidth(event.nativeEvent.layout.width);
+                            heatmapScrollRef.current?.scrollToEnd({ animated: false });
+                        }}
+                        onContentSizeChange={() => heatmapScrollRef.current?.scrollToEnd({ animated: false })}
                     >
-                        {visibleCodexHeatmapMonthLabels.map((month) => (
-                            <Text
-                                key={month.key}
-                                testID={`codex-usage-month-${month.key}`}
-                                style={[
-                                    styles.heatmapMonthLabel,
-                                    { left: month.weekIndex * (codexHeatmapMetrics.cellSize + codexHeatmapMetrics.gap) },
-                                ]}
-                            >
-                                {month.label}
-                            </Text>
-                        ))}
                         <View
-                            style={[styles.heatmapGrid, { gap: codexHeatmapMetrics.gap }]}
-                            testID="codex-usage-heatmap-grid"
+                            style={[styles.heatmapCalendar, { width: codexHeatmapWeeks.length * (codexHeatmapMetrics.cellSize + codexHeatmapMetrics.gap) - codexHeatmapMetrics.gap + 24 }]}
+                            testID="codex-usage-heatmap"
                         >
-                            {codexHeatmapWeeks.map((week, weekIndex) => (
-                                <View
-                                    key={weekIndex}
-                                    testID={`codex-usage-week-${weekIndex}`}
-                                    style={[styles.heatmapWeek, { gap: codexHeatmapMetrics.gap }]}
+                            {visibleCodexHeatmapMonthLabels.map((month) => (
+                                <Text
+                                    key={month.key}
+                                    testID={`codex-usage-month-${month.key}`}
+                                    style={[
+                                        styles.heatmapMonthLabel,
+                                        { left: month.weekIndex * (codexHeatmapMetrics.cellSize + codexHeatmapMetrics.gap) },
+                                    ]}
                                 >
-                                    {week.map((day, dayIndex) => {
-                                            if (!day) {
-                                                return <View key={`empty-${dayIndex}`} style={[
-                                                    styles.heatmapCellPlaceholder,
-                                                    { height: codexHeatmapMetrics.cellSize, width: codexHeatmapMetrics.cellSize },
-                                                ]} />;
-                                            }
-                                            const isActive = day.totalTokens > 0;
-                                            const isSelected = day.date === selectedCodexUsageDay?.date;
-                                            const isHovered = day.date === hoveredCodexUsageDate;
-                                            const opacity = isActive
-                                                ? getCodexHeatmapOpacity(day.totalTokens, maxCodexHeatmapTokens)
-                                                : 1;
-                                            return (
-                                                <Pressable
-                                                    key={day.date}
-                                                    testID={`codex-usage-day-${day.date}`}
-                                                    style={({ pressed }) => [
-                                                        styles.heatmapCell,
-                                                        { height: codexHeatmapMetrics.cellSize, width: codexHeatmapMetrics.cellSize },
-                                                        isActive ? styles.heatmapCellActive : styles.heatmapCellInactive,
-                                                        isActive && !isSelected && !isHovered && !pressed && { opacity },
-                                                        (isSelected || isHovered) && styles.heatmapCellSelected,
-                                                        isHovered && styles.heatmapCellHovered,
-                                                        pressed && styles.heatmapCellPressed,
-                                                    ]}
-                                                    onPress={() => setSelectedCodexUsageDate(day.date)}
-                                                    onHoverIn={Platform.OS === 'web'
-                                                        ? () => setHoveredCodexUsageDate(day.date)
-                                                        : undefined}
-                                                    onHoverOut={Platform.OS === 'web'
-                                                        ? () => setHoveredCodexUsageDate((current) => current === day.date ? null : current)
-                                                        : undefined}
-                                                    accessibilityRole="button"
-                                                    accessibilityState={{ selected: isSelected }}
-                                                    accessibilityLabel={t('machine.codexUsageHeatmapDay', {
-                                                        date: day.date,
-                                                        tokens: formatCodexActivityTokens(day.totalTokens, currentLanguage),
-                                                        sessions: day.sessions,
-                                                    })}
-                                                />
-                                            );
-                                    })}
-                                </View>
+                                    {month.label}
+                                </Text>
                             ))}
+                            <View
+                                style={[styles.heatmapGrid, { gap: codexHeatmapMetrics.gap }]}
+                                testID="codex-usage-heatmap-grid"
+                            >
+                                {codexHeatmapWeeks.map((week, weekIndex) => (
+                                    <View
+                                        key={weekIndex}
+                                        testID={`codex-usage-week-${weekIndex}`}
+                                        style={[styles.heatmapWeek, { gap: codexHeatmapMetrics.gap }]}
+                                    >
+                                        {week.map((day, dayIndex) => {
+                                                if (!day) {
+                                                    return <View key={`empty-${dayIndex}`} style={[
+                                                        styles.heatmapCellPlaceholder,
+                                                        { height: codexHeatmapMetrics.cellSize, width: codexHeatmapMetrics.cellSize },
+                                                    ]} />;
+                                                }
+                                                const isActive = day.totalTokens > 0;
+                                                const isSelected = day.date === selectedCodexUsageDay?.date;
+                                                const isHovered = day.date === hoveredCodexUsageDate;
+                                                const opacity = isActive
+                                                    ? getCodexHeatmapOpacity(day.totalTokens, maxCodexHeatmapTokens)
+                                                    : 1;
+                                                return (
+                                                    <Pressable
+                                                        key={day.date}
+                                                        testID={`codex-usage-day-${day.date}`}
+                                                        style={({ pressed }) => [
+                                                            styles.heatmapCell,
+                                                            { height: codexHeatmapMetrics.cellSize, width: codexHeatmapMetrics.cellSize },
+                                                            isActive ? styles.heatmapCellActive : styles.heatmapCellInactive,
+                                                            isActive && !isSelected && !isHovered && !pressed && { opacity },
+                                                            (isSelected || isHovered) && styles.heatmapCellSelected,
+                                                            isHovered && styles.heatmapCellHovered,
+                                                            pressed && styles.heatmapCellPressed,
+                                                        ]}
+                                                        onPress={() => setSelectedCodexUsageDate(day.date)}
+                                                        onHoverIn={Platform.OS === 'web'
+                                                            ? () => setHoveredCodexUsageDate(day.date)
+                                                            : undefined}
+                                                        onHoverOut={Platform.OS === 'web'
+                                                            ? () => setHoveredCodexUsageDate((current) => current === day.date ? null : current)
+                                                            : undefined}
+                                                        accessibilityRole="button"
+                                                        accessibilityState={{ selected: isSelected }}
+                                                        accessibilityLabel={t('machine.codexUsageHeatmapDay', {
+                                                            date: day.date,
+                                                            tokens: formatCodexActivityTokens(day.totalTokens, currentLanguage),
+                                                            sessions: day.sessions,
+                                                        })}
+                                                    />
+                                                );
+                                        })}
+                                    </View>
+                                ))}
+                            </View>
                         </View>
-                    </View>
+                    </ScrollView>
                     {displayedCodexUsageDay && (
                         <View style={styles.heatmapDetail} testID="codex-usage-detail">
                             <Text style={styles.heatmapSelection}>
