@@ -247,6 +247,30 @@ describe('difficulty routing runtime', () => {
     expect(asDecision(decision).pending.base).toMatchObject({ difficulty: 'hard', model: 'claude-opus-5-5', effort: 'high' })
   })
 
+  // gpt-6.1-sol is routine, hard AND escalated. escalated is a one-turn
+  // override, never a floor, so a model-only substitution must stop at hard —
+  // Desktop's difficultyForModel reads the escalated model as hard too — rather
+  // than run every turn of an org that only allows gpt-6.1-sol at xhigh.
+  it('substitutes a model shared by hard and escalated at the hard pair', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({
+      ...grantResponse(),
+      aiModelPolicy: {
+        source: 'member',
+        allowedSelectionKeys: ['codex:gpt-6.1-sol'],
+        defaultSelectionKey: 'codex:gpt-6.1-sol',
+      },
+    })))
+
+    const decision = await resolveDifficultyRouting({
+      ...baseInput,
+      agent: 'codex',
+      current: { model: 'gpt-6.1-sol', effort: 'low' },
+    })
+
+    expect(asDecision(decision).route).toMatchObject({ model: 'gpt-6.1-sol', effort: 'high' })
+    expect(asDecision(decision).pending.base).toMatchObject({ difficulty: 'hard', model: 'gpt-6.1-sol', effort: 'high' })
+  })
+
   it('falls back to the allowed default model when the current model is also disallowed', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => Response.json({
       ...grantResponse(),
@@ -1441,6 +1465,82 @@ describe('cross-generation floor preservation (R2, R3)', () => {
     })
 
     expect(asDecision(decision).route).toMatchObject({ model: 'claude-opus-5', effort: 'high' })
+  })
+
+  // The 2026-09-30 table moved routine to claude-sonnet-5-5/medium and codex
+  // routine/hard/escalated to gpt-6.1-sol. Floors written under the previous
+  // table must keep running exactly, not decline as an unsupported pair.
+  function storedBase(difficulty: 'routine' | 'hard', model: string, effort: string) {
+    return {
+      stateVersion: 2 as const,
+      revision: 3,
+      base: {
+        difficulty,
+        model,
+        effort,
+        provenance: 'engine-applied' as const,
+        policyVersion: 'org-shared-difficulty-routing.v1' as const,
+        policyRevision: 7,
+        appliedAt: Date.now(),
+      },
+    }
+  }
+
+  it('shouldRetainAPreviousTableRoutineFloorExactly (claude-opus-5-5/low)', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json(grantResponse())))
+
+    const decision = await resolveDifficultyRouting({
+      ...baseInput,
+      contentText: 'rename this variable',
+      state: storedBase('routine', 'claude-opus-5-5', 'low'),
+    })
+
+    expect(asDecision(decision).route).toMatchObject({ model: 'claude-opus-5-5', effort: 'low', difficulty: 'routine' })
+  })
+
+  it('shouldRetainAPreviousTableHardFloorExactly (gpt-6-sol/high)', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json(grantResponse())))
+
+    const decision = await resolveDifficultyRouting({
+      ...baseInput,
+      agent: 'codex',
+      contentText: 'rename this variable',
+      state: storedBase('hard', 'gpt-6-sol', 'high'),
+    })
+
+    expect(asDecision(decision).route).toMatchObject({ model: 'gpt-6-sol', effort: 'high', difficulty: 'hard' })
+  })
+
+  it('shouldRaiseAPreviousTableRoutineFloorToTheNewHardRoute', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json(grantResponse())))
+
+    const decision = await resolveDifficultyRouting({
+      ...baseInput,
+      agent: 'codex',
+      contentText: 'refactor the auth module',
+      state: storedBase('routine', 'gpt-6-sol', 'low'),
+    })
+
+    expect(asDecision(decision).route).toMatchObject({ model: 'gpt-6.1-sol', effort: 'high', difficulty: 'hard' })
+  })
+
+  it('shouldEscalateAPreviousTableHardFloorToTheNewEscalatedRoute', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json(grantResponse())))
+
+    const decision = await resolveDifficultyRouting({
+      ...baseInput,
+      agent: 'codex',
+      contentText: 'still broken, the same error again',
+      state: {
+        ...storedBase('hard', 'gpt-6-sol', 'high'),
+        escalation: { hardTurns: 3, updatedAt: Date.now() - 1000 },
+      },
+    })
+
+    expect(asDecision(decision).route).toMatchObject({ model: 'gpt-6.1-sol', effort: 'xhigh', difficulty: 'escalated' })
+    expect(asDecision(decision).pending.temporaryEscalation).toBe(true)
+    // The floor underneath stays the stored pair; the escalation is one turn.
+    expect(asDecision(decision).pending.base).toMatchObject({ difficulty: 'hard', model: 'gpt-6-sol', effort: 'high' })
   })
 
   it('shouldStillRefuseAPairNoGenerationOffers', () => {

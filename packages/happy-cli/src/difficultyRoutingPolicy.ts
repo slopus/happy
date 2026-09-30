@@ -11,6 +11,12 @@
 // 2026-09-27: claude escalated 도 Desktop(2026-09-24 사용자 지시)을 따라 fable-5-1 의
 // effort 를 high → medium 으로 내린다. 옛 fable-5-1/high 는 escalated 로 계속 인식한다.
 // 세 모델 모두 최신 CLI 에서만 실행된다 (Claude Code 2.1.280+, Codex 0.157.0+).
+// 2026-09-30: Desktop 과 같이 claude routine 을 claude-sonnet-5-5/medium 으로, codex
+// routine/hard/escalated 를 gpt-6.1-sol 의 low/high/xhigh 로 옮긴다. codex 는 이제 세 칸이
+// 한 모델을 공유해 effort 로만 갈리고, 모델만으로 되읽을 때 escalated 는 hard 로 읽는다
+// (escalated 는 한 턴짜리이지 floor 가 아니다 — Desktop difficultyForModel 과 같다).
+// 옛 opus-5-5/low · gpt-6-sol/low·high · gpt-6-astra/medium 도 계속 인식한다.
+// 두 모델은 Claude Code 2.1.284+ · Codex 0.159+ 에서만 실행된다.
 
 export type RoutableAgent = 'claude' | 'codex'
 export type Difficulty = 'trivial' | 'routine' | 'hard' | 'escalated'
@@ -32,15 +38,15 @@ export type SendModelOptionsResult = {
 export const USER_REQUEST_MODELS: Record<RoutableAgent, Record<Difficulty, RouteDecision>> = {
   claude: {
     trivial: { model: 'claude-haiku-4-5', effort: 'low' },
-    routine: { model: 'claude-opus-5-5', effort: 'low' },
+    routine: { model: 'claude-sonnet-5-5', effort: 'medium' },
     hard: { model: 'claude-opus-5-5', effort: 'high' },
     escalated: { model: 'claude-fable-5-1', effort: 'medium' },
   },
   codex: {
     trivial: { model: 'gpt-6-luna', effort: 'low' },
-    routine: { model: 'gpt-6-sol', effort: 'low' },
-    hard: { model: 'gpt-6-sol', effort: 'high' },
-    escalated: { model: 'gpt-6-astra', effort: 'medium' },
+    routine: { model: 'gpt-6.1-sol', effort: 'low' },
+    hard: { model: 'gpt-6.1-sol', effort: 'high' },
+    escalated: { model: 'gpt-6.1-sol', effort: 'xhigh' },
   },
 }
 
@@ -69,6 +75,8 @@ export const USER_REQUEST_MODELS: Record<RoutableAgent, Record<Difficulty, Route
  * Sourced 2026-09-23 from the Desktop worktree
  * `src/domain/operationModels.ts` (USER_REQUEST_MODELS), which is the
  * definitive table for the generation this CLI does not yet route to.
+ * Extended 2026-09-30 with the Sonnet 5.5 / GPT-6.1 Sol pairs; every earlier
+ * pair stays so floors written under the previous tables are still read.
  */
 export const KNOWN_ROUTE_TIERS: ReadonlyArray<{
   agent: RoutableAgent
@@ -81,21 +89,28 @@ export const KNOWN_ROUTE_TIERS: ReadonlyArray<{
   { agent: 'claude', model: 'claude-sonnet-5', effort: 'high', tier: 'routine' },
   { agent: 'claude', model: 'claude-opus-5', effort: 'high', tier: 'hard' },
   { agent: 'claude', model: 'claude-fable-5-1', effort: 'high', tier: 'escalated' },
-  // --- claude, generation shipped by Desktop. routine and hard share the model;
+  // --- claude, 2026-09-23..27 table. routine and hard shared the model;
   //     only effort tells them apart. ---
   { agent: 'claude', model: 'claude-opus-5-5', effort: 'low', tier: 'routine' },
   { agent: 'claude', model: 'claude-opus-5-5', effort: 'high', tier: 'hard' },
   { agent: 'claude', model: 'claude-fable-5-1', effort: 'medium', tier: 'escalated' },
+  // --- claude, 2026-09-30 table (Claude Code 2.1.284+) ---
+  { agent: 'claude', model: 'claude-sonnet-5-5', effort: 'medium', tier: 'routine' },
   // --- codex, generation shipped by this CLI ---
   { agent: 'codex', model: 'gpt-5.6-luna', effort: 'low', tier: 'trivial' },
   { agent: 'codex', model: 'gpt-5.6-terra', effort: 'high', tier: 'routine' },
   { agent: 'codex', model: 'gpt-5.6-sol', effort: 'high', tier: 'hard' },
   { agent: 'codex', model: 'gpt-6-astra', effort: 'medium', tier: 'escalated' },
-  // --- codex, generation shipped by Desktop. routine and hard share gpt-6-sol;
+  // --- codex, 2026-09-23..27 table. routine and hard shared gpt-6-sol;
   //     only effort tells them apart. ---
   { agent: 'codex', model: 'gpt-6-luna', effort: 'low', tier: 'trivial' },
   { agent: 'codex', model: 'gpt-6-sol', effort: 'low', tier: 'routine' },
   { agent: 'codex', model: 'gpt-6-sol', effort: 'high', tier: 'hard' },
+  // --- codex, 2026-09-30 table (Codex 0.159+). routine, hard and escalated
+  //     share gpt-6.1-sol; only effort tells them apart. ---
+  { agent: 'codex', model: 'gpt-6.1-sol', effort: 'low', tier: 'routine' },
+  { agent: 'codex', model: 'gpt-6.1-sol', effort: 'high', tier: 'hard' },
+  { agent: 'codex', model: 'gpt-6.1-sol', effort: 'xhigh', tier: 'escalated' },
 ]
 
 /**

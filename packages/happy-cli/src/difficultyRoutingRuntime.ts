@@ -733,11 +733,14 @@ function tierRank(difficulty: Difficulty): number {
  * are per-model labels, not a numeric scale, so guessing one would be inventing
  * a comparison the catalog denies.
  *
- * routine and hard share one model (effort low/high), so a model-only lookup is
- * ambiguous; it resolves to the highest tier, as Desktop's `difficultyForModel`
- * does — keeping a floor too high for a turn is cheaper than losing it. A model
- * the current catalog no longer routes to (claude-sonnet-5, an org's only
- * allowed model) keeps the pair it ran as in its own generation.
+ * Tiers can share one model (codex gpt-6.1-sol is routine, hard and escalated
+ * by effort), so a model-only lookup is ambiguous; it resolves to the highest
+ * tier, as Desktop's `difficultyForModel` does — keeping a floor too high for a
+ * turn is cheaper than losing it. escalated is the exception: it is a one-turn
+ * override, never a floor, so a model it shares with a lower tier reads as that
+ * tier (Desktop likewise reads the escalated model as hard). A model the
+ * current catalog no longer routes to (claude-sonnet-5, an org's only allowed
+ * model) keeps the pair it ran as in its own generation.
  */
 function catalogRouteForModel(
   agent: RoutableAgent,
@@ -747,7 +750,8 @@ function catalogRouteForModel(
   let match: { tier: Difficulty; pair: { model: string; effort: string } } | null = null
   for (const tier of TIER_ORDER) {
     const route = USER_REQUEST_MODELS[agent][tier]
-    if (route.model === model) match = { tier, pair: route }
+    if (route.model !== model || (tier === 'escalated' && match)) continue
+    match = { tier, pair: route }
   }
   if (match) return match
   for (const entry of KNOWN_ROUTE_TIERS) {
