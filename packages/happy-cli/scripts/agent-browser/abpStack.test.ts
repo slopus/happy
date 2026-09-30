@@ -1054,6 +1054,13 @@ describe('installed daemon compatibility', () => {
         await expect(createStack(h.deps).start()).rejects.toThrow(/Happy package.*contract 2/)
         expect([...h.containers.values()].every((c) => !c.running)).toBe(true)
     })
+
+    it("does not stop a running stack when a supervisor tick lands inside abp-install's package swap (marker briefly absent)", () => {
+        const h = fakeHost()
+        h.files.delete('/opt/abp/happy/lib/node_modules/@buzzni/happy-cli/scripts/agent-browser/contract.json')
+        expect(() => createStack(h.deps).superviseOnce(new Map())).not.toThrow()
+        expect([...h.containers.values()].every((c) => c.running)).toBe(true)
+    })
 })
 
 

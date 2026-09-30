@@ -220,8 +220,12 @@ export function createStack(deps) {
     try { contract = readJson(marker); } catch {}
     if (contract?.contractVersion !== 2) throw refusal("installed Happy package requires assignment/lineage contract 2; install the current --happy-tarball");
   }
-  function assertStable(allowStartRecovery = false) {
-    assertPackageContract(install());
+  /**
+   * checkPackage false (the periodic supervisor): abp-install swaps the package with two renames, and a tick
+   * between them must not stop a running stack; start, up, set-principal and upgrade still check it.
+   */
+  function assertStable(allowStartRecovery = false, { checkPackage = true } = {}) {
+    if (checkPackage) assertPackageContract(install());
     const state = readState();
     if (!allowStartRecovery && deps.exists(START_REQUEST)) throw refusal("unfinished service startup; use abp-stack up or assignment/migration recovery");
     if (state.migrationHold) throw refusal("incomplete legacy migration; preserve both volumes and inspect before recovery");
@@ -647,7 +651,7 @@ export function createStack(deps) {
           lastEgressCheckMs = deps.now();
         }
         if (readState().transition || readState().migrationHold || deps.exists(START_REQUEST)) return;
-        assertStable();
+        assertStable(false, { checkPackage: false });
         let maintenance;
         try { maintenance = Number(deps.readFile(MAINTENANCE_FLAG)); }
         catch (error) { if (error.code !== "ENOENT") throw error; }
