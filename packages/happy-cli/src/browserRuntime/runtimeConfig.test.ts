@@ -71,4 +71,10 @@ describe('parseRuntimeConfig', () => {
         expect(() => parseRuntimeConfig({ ...valid(), viewerOrigins: ['https://tunnel.example/viewer'] })).toThrow(/viewerOrigins/)
         expect(() => parseRuntimeConfig({ ...valid(), profiles: [{ ...valid().profiles[0], vncAddress: 'http://browser:5900' }] })).toThrow(/vncAddress/)
     })
+
+    it('accepts the Studio origins that may hand the console its capability', () => {
+        expect(parseRuntimeConfig({ ...valid(), consoleHostOrigins: ['https://studio.example'] }).consoleHostOrigins).toEqual(['https://studio.example'])
+        expect(parseRuntimeConfig(valid()).consoleHostOrigins).toEqual([])
+        expect(() => parseRuntimeConfig({ ...valid(), consoleHostOrigins: ['https://studio.example/chats'] })).toThrow(/consoleHostOrigins/)
+    })
 })

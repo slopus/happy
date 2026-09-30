@@ -110,6 +110,9 @@ sudo ./abp-install                       # re-run: resolves machineId, writes ru
 - `--server-url <https origin>` points the agent's Happy at another Studio server (dev, staging): written to
   `/home/agent/.happy/settings.json` as `serverUrl`/`webappUrl` before `happy auth login`. Without it Happy
   uses its built-in server. A machine already registered with another server is refused (`happy auth logout` first).
+  Its origin (without the flag, Happy's built-in server `https://saycode.ai`) becomes the Runtime's
+  `consoleHostOrigins`: Studio web opens the console through its preview relay in a new window and hands it
+  the capability as `window.opener`.
 - Secrets are created once: daemon token (hash in `runtime.json`), VNC password (same value in
   the Runtime and browser copies). The Runtime creates its agent key inside `abp-state`; it
   never leaves the volume.

@@ -49,6 +49,8 @@ const schema = z.object({
     daemonTokenSha256: z.string().regex(/^[0-9a-f]{64}$/).optional(),
     /** Origins the viewer WebSocket accepts besides loopback ones. Defense in depth only: the one-time viewer ticket is the boundary. */
     viewerOrigins: z.array(origin).default([]),
+    /** Studio web origins that open the console through the preview relay and hand it its capability (window.opener). */
+    consoleHostOrigins: z.array(origin).default([]),
     maxAgentWindows: z.number().int().min(1).max(16).default(4),
     /** Open task spaces per profile; default min(4, maxAgentWindows), never above maxAgentWindows. */
     maxSpacesPerProfile: z.number().int().min(1).max(16).optional(),

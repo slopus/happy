@@ -20,6 +20,7 @@ describe.skipIf(!chromePath)('console page (real Chrome)', () => {
     let harness: HarnessCdp
     let server: http.Server
     let origin = ''
+    const port = () => (server.address() as AddressInfo).port
     const ops: Array<{ op: string; bearer: string; body: Record<string, unknown> }> = []
     const defaultTasks = () => [{ taskId: 'task-1', status: 'awaiting-user', pauseReason: 'awaiting-user', tabs: ['tab-1'], updatedAtMs: Date.now() }]
     let listedTasks: Array<Record<string, unknown>> = defaultTasks()
@@ -28,6 +29,21 @@ describe.skipIf(!chromePath)('console page (real Chrome)', () => {
         server = http.createServer((req, res) => {
             const url = new URL(req.url ?? '/', 'http://localhost')
             if (url.pathname === '/console') { res.writeHead(200, { 'content-type': 'text/html' }); res.end(renderConsolePage()); return }
+            if (url.pathname === '/console-hosted') {
+                // Studio web opens the console in a new window: the host is window.opener on another origin.
+                const hostOrigins = url.searchParams.get('trust') === 'none' ? ['http://studio.poc-three.test'] : [`http://studio.poc-one.test:${port()}`]
+                res.writeHead(200, { 'content-type': 'text/html' }); res.end(renderConsolePage({ hostOrigins })); return
+            }
+            if (url.pathname === '/studio') {
+                // The opener answers each capability request with the next token in line.
+                res.writeHead(200, { 'content-type': 'text/html' })
+                res.end(`<!doctype html><script>window.__requests = 0; window.addEventListener('message', (e) => {
+                    if (!e.data || e.data.type !== 'abp-capability-request' || e.source !== window.__console) return
+                    window.__requests++; window.__requestOrigin = e.origin
+                    e.source.postMessage({ type: 'abp-capability', token: window.__tokens.shift(), expiresAtMs: Date.now() + 600_000 }, e.origin)
+                })</script>`)
+                return
+            }
             if (url.pathname === '/forge') {
                 // A same-origin frame posting from its own script context: event.source is this frame, not window.parent.
                 res.writeHead(200, { 'content-type': 'text/html' })
@@ -189,6 +205,41 @@ describe.skipIf(!chromePath)('console page (real Chrome)', () => {
         await eventually(() => ops.some((entry) => entry.op === 'listTasks'), Boolean, 10_000)
         await harness.evaluate(target, `document.getElementById('openScreen').click()`)
         expect(await eventually(() => ops.find((entry) => entry.op === 'viewerTicket'), Boolean, 5_000)).toMatchObject({ bearer: cap, body: { profileId: 'profile-a' } })
+        // Also kept on the console window: a preview relay strips the frame's query (vnc_lite.html restores it from here).
+        expect(await eventually(() => harness.evaluate(target, 'window.__abpViewerPath'), Boolean, 5_000)).toMatch(/^v1\/viewer\/websockify\?ticket=ticket-/)
         await harness.closeTarget(target)
+    }, 30_000)
+
+    /** The opener page, once its script has run (openFrontTab does not wait for the load). */
+    const openStudio = async () => {
+        const studio = await harness.openFrontTab(`http://studio.poc-one.test:${port()}/studio`)
+        await eventually(() => harness.evaluate(studio, 'typeof window.__requests'), (type) => type === 'number', 10_000)
+        return studio
+    }
+
+    it('takes its capability from the Studio window that opened it, and only from a trusted origin', async () => {
+        ops.length = 0
+        const cap = token('opener', Date.now() + 600_000)
+        const studio = await openStudio()
+        await harness.evaluate(studio, `window.__tokens = [${JSON.stringify(cap)}]; window.__console = window.open(${JSON.stringify(`${origin}/console-hosted`)}); !!window.__console`, { userGesture: true })
+        expect((await eventually(() => ops.find((entry) => entry.op === 'listTasks'), Boolean, 10_000))?.bearer).toBe(cap)
+        expect(await harness.evaluate(studio, 'window.__requestOrigin')).toBe(origin)
+        await harness.evaluate(studio, 'window.__console.close()')
+        await harness.closeTarget(studio)
+    }, 30_000)
+
+    it('ignores an opener whose origin is not a configured host', async () => {
+        ops.length = 0
+        const studio = await openStudio()
+        await harness.evaluate(studio, `window.__tokens = [${JSON.stringify(token('untrusted', Date.now() + 600_000))}]; window.__console = window.open(${JSON.stringify(`${origin}/console-hosted?trust=none`)}); !!window.__console`, { userGesture: true })
+        await new Promise((resolve) => setTimeout(resolve, 3_000))
+        // The request is addressed to the configured origin only, so this opener never hears it.
+        expect(await harness.evaluate(studio, 'window.__requests')).toBe(0)
+        // Nor is a capability it pushes unasked accepted: the answer must come from a configured origin.
+        await harness.evaluate(studio, `window.__console.postMessage({ type: 'abp-capability', token: ${JSON.stringify(token('pushed', Date.now() + 600_000))}, expiresAtMs: Date.now() + 600_000 }, '*')`)
+        await new Promise((resolve) => setTimeout(resolve, 1_000))
+        expect(ops.some((entry) => entry.op === 'listTasks')).toBe(false)
+        await harness.evaluate(studio, 'window.__console.close()')
+        await harness.closeTarget(studio)
     }, 30_000)
 })

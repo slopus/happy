@@ -77,6 +77,18 @@ const VIEWER_CSP = "default-src 'self'; script-src 'self' 'unsafe-inline'; style
     + "connect-src 'self'; media-src 'self'; object-src 'none'; base-uri 'none'"
 
 /**
+ * Put last in vnc_lite.html's <head>. The Saycode preview relay (Studio web entry)
+ * injects a script at the start of <head> that strips the address to its path,
+ * dropping `?path=…ticket=…`; noVNC's module reads the address only after parsing,
+ * so this restores it first from the console that framed the page (same origin
+ * only; a cross-origin parent throws and is ignored). Without a relay the query is
+ * still there and this does nothing.
+ */
+const VIEWER_PATH_RESTORE = "<script>(function(){try{if(location.search||window.parent===window)return;"
+    + "var p=window.parent.location.origin===location.origin&&window.parent.__abpViewerPath;"
+    + "if(typeof p==='string')history.replaceState(null,'',location.pathname+'?path='+encodeURIComponent(p))}catch(e){}})()</script>"
+
+/**
  * Serves the pinned noVNC client (the Runtime image copies the Debian novnc
  * package files; no CDN). `/viewer/` is vnc_lite.html. Returns false for
  * anything that is not a known file type inside `root` (symlinks resolved).
@@ -99,7 +111,12 @@ export async function serveViewerAsset(root: string, pathname: string, res: Serv
     } catch {
         return false
     }
-    const body = await readFile(file)
+    let body: Buffer | string = await readFile(file)
+    if (relative === 'vnc_lite.html') {
+        const html = body.toString('utf8')
+        const end = html.indexOf('</head>')
+        if (end >= 0) body = html.slice(0, end) + VIEWER_PATH_RESTORE + html.slice(end)
+    }
     res.writeHead(200, { 'content-type': type, 'cache-control': 'no-cache', 'x-content-type-options': 'nosniff',
         'referrer-policy': 'no-referrer', 'content-security-policy': VIEWER_CSP })
     res.end(body)

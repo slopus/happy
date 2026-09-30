@@ -1275,8 +1275,9 @@ export class BrowserRuntime implements BrowserRuntimeApi {
         await this.recovery
         const task = this.requireTask(req.taskId)
         await this.authorizeTask(auth, 'releaseControl', task)
-        if (['succeeded', 'failed', 'cancelled'].includes(task.status))
-            throw new BrowserRuntimeError('CONFLICT', 'Terminal tasks cannot release control')
+        // A task can end (cancel, stop) while the user holds control. The lease still fences the whole
+        // profile, so its owner must be able to give it back; the finished task itself is left as it is.
+        const finished = ['succeeded', 'failed', 'cancelled'].includes(task.status)
         this.assertTaskTab(task, req.tabId)
         const current = this.leases.owner(req.tabId, task.profileId)
         const interactive = auth.credential as Extract<AuthContext['credential'], {
@@ -1288,6 +1289,8 @@ export class BrowserRuntime implements BrowserRuntimeApi {
         const epoch = this.leases.release(req.tabId, task.profileId)
         await this.persistTabLease(task.taskId, task.taskSpaceId, req.tabId, epoch, null)
         await this.persistProfileUserOwner(task.profileId, null)
+        if (finished)
+            return { leaseEpoch: epoch, owner: { kind: 'none' }, task: this.view(this.requireTask(task.taskId)) }
         const next = await this.commit(task, { status: 'paused', pauseReason: 'user-input-complete' }, 'input-owner-changed',
             { tabId: req.tabId, owner: 'none', attention: 'takeover-released' }, epoch)
         return { leaseEpoch: epoch, owner: { kind: 'none' }, task: this.view(next) }

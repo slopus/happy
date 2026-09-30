@@ -33,6 +33,7 @@
  *   ABP_SITE_POLICY          JSON sites[] (policy.parseSitePolicies), harness mode; config mode uses runtime.json sites[]
  *   ABP_VNC_PASSWORD_FILE    per-run x11vnc password (or ABP_VNC_PASSWORD); enables the viewer (D2). Read before dropping root.
  *   ABP_VIEWER_ORIGINS       comma-separated tunnel origins for the viewer (harness; config: viewerOrigins)
+ *   ABP_CONSOLE_HOST_ORIGINS comma-separated Studio origins that may hand the console its capability (harness; config: consoleHostOrigins)
  *   ABP_VIEWER_ASSETS_DIR    pinned noVNC client served at /viewer/ (default /usr/share/novnc)
  */
 import { randomBytes } from 'node:crypto'
@@ -468,6 +469,7 @@ export async function runRuntime(deps: RuntimeProcessDeps = {}): Promise<void> {
         log: (line: string) => log(line),
         ...(viewer ? { viewer } : {}),
         ...(existsSync(viewerAssetsDir) ? { viewerAssetsDir } : {}),
+        consoleHostOrigins: config?.consoleHostOrigins ?? (process.env.ABP_CONSOLE_HOST_ORIGINS ?? '').split(',').filter(Boolean),
     })
     const admin: AdminServer = await startAdminServer({
         runtime, drivers,

@@ -75,6 +75,8 @@ export interface RuntimeServerOptions {
     viewer?: Pick<ViewerProxy, 'issueTicket' | 'handleUpgrade' | 'close'>
     /** Pinned noVNC client files served at /viewer/. */
     viewerAssetsDir?: string
+    /** Studio web origins the console accepts a capability from as its opener. */
+    consoleHostOrigins?: readonly string[]
 }
 
 export interface RuntimeServer { url: string; port: number; close(): Promise<void> }
@@ -183,7 +185,7 @@ export async function startRuntimeServer(opts: RuntimeServerOptions): Promise<Ru
                     'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store',
                     'content-security-policy': "default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:",
                 })
-                return res.end(renderConsolePage())
+                return res.end(renderConsolePage({ hostOrigins: opts.consoleHostOrigins ?? [] }))
             }
             if (req.method === 'GET' && url.pathname.startsWith(VIEWER_ASSET_PREFIX) && opts.viewerAssetsDir
                 && await serveViewerAsset(opts.viewerAssetsDir, url.pathname, res)) return

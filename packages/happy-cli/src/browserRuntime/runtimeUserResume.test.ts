@@ -41,6 +41,32 @@ async function createHarness(options: { grantExpiresAtMs?: number; url?: string 
     return { store, clock, profileId, driver, runtime, auth, ui, task, opened, epoch, takeOverAndRelease, userResume }
 }
 
+describe('user control of a finished task', () => {
+    it('lets the owner release control after the task was cancelled, so the profile is not fenced for good', async () => {
+        const h = await createHarness()
+        const taken = await h.runtime.takeOver(h.ui, { taskId: h.task.taskId, tabId: h.opened.tabId, expectedEpoch: h.epoch(h.opened.tabId), requestId: 'take' as RequestId })
+        await h.runtime.cancel(h.auth, { taskId: h.task.taskId, requestId: 'cancel' as RequestId })
+        expect((await h.runtime.getTask(h.auth, { taskId: h.task.taskId })).status).toBe('cancelled')
+
+        const released = await h.runtime.releaseControl(h.ui, { taskId: h.task.taskId, tabId: h.opened.tabId, expectedEpoch: taken.leaseEpoch, requestId: 'release' as RequestId })
+        expect(released.owner).toEqual({ kind: 'none' })
+        // The task stays as it ended; only the input lease is given back.
+        expect(released.task.status).toBe('cancelled')
+        expect(h.runtime.leases.owner(h.opened.tabId, h.profileId).owner).toEqual({ kind: 'none' })
+        await h.store.close()
+    })
+
+    it('still refuses another viewer releasing it', async () => {
+        const h = await createHarness()
+        const taken = await h.runtime.takeOver(h.ui, { taskId: h.task.taskId, tabId: h.opened.tabId, expectedEpoch: h.epoch(h.opened.tabId), requestId: 'take' as RequestId })
+        await h.runtime.cancel(h.auth, { taskId: h.task.taskId, requestId: 'cancel' as RequestId })
+        const other = { ...h.ui, credential: { ...h.ui.credential, viewerSessionId: 'other-viewer' } }
+        await expect(h.runtime.releaseControl(other, { taskId: h.task.taskId, tabId: h.opened.tabId, expectedEpoch: taken.leaseEpoch, requestId: 'release' as RequestId }))
+            .rejects.toMatchObject({ code: 'STALE_LEASE' })
+        await h.store.close()
+    })
+})
+
 describe('user resume from the client (interactive capability)', () => {
     it('returns a released takeover to awaiting-agent and lets the agent submit again', async () => {
         const h = await createHarness()

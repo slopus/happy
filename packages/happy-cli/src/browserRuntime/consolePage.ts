@@ -17,8 +17,16 @@
  * screen is reconnected with a fresh ticket after each renewal (a viewer connection
  * ends with the capability it was ticketed with). Take over/release use the selected
  * tab's own lease epoch from getTask().tabLeases.
+ *
+ * Studio web opens the page in a new window through its preview relay, which
+ * strips the URL (fragment included) on load. There the host is `window.opener`
+ * on the Studio origin: requests go to it addressed to each configured
+ * `hostOrigins` entry (so another opener never hears them), and an answer is
+ * accepted only from `window.opener` on one of those origins.
  */
-export function renderConsolePage(): string {
+export function renderConsolePage(opts: { hostOrigins?: readonly string[] } = {}): string {
+    // JSON in an inline script: escape '<' so an origin can never close the tag.
+    const hostOrigins = JSON.stringify(opts.hostOrigins ?? []).replace(/</g, '\\u003c')
     return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Browser Task Console</title>
@@ -50,10 +58,14 @@ section{border:1px solid var(--line);padding:10px;margin:10px 0}pre{white-space:
 (function(){
 var $=function(i){return document.getElementById(i)};
 var S={cursor:0,seen:{},task:null,gen:0,token:'',expiresAtMs:0,profileId:'',renewTimer:0,screenOpen:false};
-var RENEW_BEFORE_MS=60000,RENEW_RETRY_MS=10000;
+var RENEW_BEFORE_MS=60000,RENEW_RETRY_MS=10000,HOST_ORIGINS=${hostOrigins};
 function rid(){return (crypto.randomUUID?crypto.randomUUID():String(Date.now())+Math.random())}
 function decodePart(p){try{return JSON.parse(atob(p.replace(/-/g,'+').replace(/_/g,'/')))}catch(e){return null}}
-function askHost(){clearTimeout(S.renewTimer);window.parent.postMessage({type:'abp-capability-request'},location.origin);S.renewTimer=setTimeout(askHost,RENEW_RETRY_MS)}
+function askHost(){clearTimeout(S.renewTimer);window.parent.postMessage({type:'abp-capability-request'},location.origin);
+ if(window.opener)HOST_ORIGINS.forEach(function(o){try{window.opener.postMessage({type:'abp-capability-request'},o)}catch(e){}});
+ S.renewTimer=setTimeout(askHost,RENEW_RETRY_MS)}
+function fromHost(event){return (event.source===window.parent&&event.origin===location.origin)
+ ||(!!window.opener&&event.source===window.opener&&HOST_ORIGINS.indexOf(event.origin)>=0)}
 function setCapability(token,expiresAtMs){var renewal=!!S.token;
  var parts=String(token||'').split('.');var payload=parts.length>=3?decodePart(parts[parts.length===4?2:1]):null;
  if(!payload||typeof payload.profileId!=='string'){$('capState').textContent='capability is not readable';return false}
@@ -64,7 +76,7 @@ function scheduleRenewal(){clearTimeout(S.renewTimer);if(!S.expiresAtMs)return;
  var wait=Math.max(0,S.expiresAtMs-RENEW_BEFORE_MS-Date.now());
  S.renewTimer=setTimeout(askHost,wait)}
 window.addEventListener('message',function(event){
- if(event.source!==window.parent||event.origin!==location.origin)return;
+ if(!fromHost(event))return;
  var d=event.data;if(!d||d.type!=='abp-capability'||typeof d.token!=='string'||typeof d.expiresAtMs!=='number')return;
  var first=!S.token;if(setCapability(d.token,d.expiresAtMs)&&first)listTasks()});
 /** The fragment is read on load and again on a later change (the host reopens the same page with a new capability). */
@@ -116,7 +128,8 @@ $('resume').onclick=function(){if(S.task)act(op('resume',{taskId:S.task.taskId,e
 $('stop').onclick=function(){act(op('cancel',{taskId:$('taskId').value.trim(),requestId:rid()}))};
 /** A viewer connection is bound to the capability it was ticketed with: renewal reconnects it. */
 function openScreen(){op('viewerTicket',{profileId:S.profileId}).then(function(r){S.screenOpen=true;
- $('screen').src='/viewer/vnc_lite.html?path='+encodeURIComponent('v1/viewer/websockify?ticket='+encodeURIComponent(r.ticket));$('screenBox').hidden=false
+ var path='v1/viewer/websockify?ticket='+encodeURIComponent(r.ticket);window.__abpViewerPath=path;
+ $('screen').src='/viewer/vnc_lite.html?path='+encodeURIComponent(path);$('screenBox').hidden=false
 },function(e){$('actionResult').textContent=e.message})}
 $('openScreen').onclick=openScreen;
 // Reload, back navigation or a restored panel arrive without a fragment: ask the host now.

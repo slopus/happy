@@ -352,8 +352,11 @@ describe('BrowserRuntime durable request contract', () => {
             requestId: 'resume-terminal' as RequestId })).rejects.toMatchObject({ code: 'CONFLICT' })
         await expect(h.runtime.takeOver(uiAuth, { taskId: h.task.taskId, tabId: h.opened.tabId,
             expectedEpoch: epoch, requestId: 'takeover-terminal' as RequestId })).rejects.toMatchObject({ code: 'CONFLICT' })
-        await expect(h.runtime.releaseControl(uiAuth, { taskId: h.task.taskId, tabId: h.opened.tabId,
-            expectedEpoch: epoch, requestId: 'release-terminal' as RequestId })).rejects.toMatchObject({ code: 'CONFLICT' })
+        // Giving the input lease back does not revive the task either (it would otherwise fence the profile for good).
+        const released = await h.runtime.releaseControl(uiAuth, { taskId: h.task.taskId, tabId: h.opened.tabId,
+            expectedEpoch: epoch, requestId: 'release-terminal' as RequestId })
+        expect(released.task.status).toBe('succeeded')
+        expect(released.task.stateVersion).toBe(finished.stateVersion)
         await h.store.close()
     })
 

@@ -225,6 +225,9 @@ export function runtimeConfig(install, { sessionGid, daemonTokenSha256 }) {
     brokerSocketGid: sessionGid,
     daemonTokenSha256,
     ...install.viewerOrigins.length ? { viewerOrigins: install.viewerOrigins } : {},
+    // Studio web opens the console through its preview relay and hands it the capability as window.opener:
+    // the Studio the agent's Happy talks to (--server-url, else Happy's built-in server).
+    consoleHostOrigins: [new URL(install.serverUrl ?? HAPPY_DEFAULT_SERVER_URL).origin],
     maxAgentWindows: install.maxAgentWindows,
     retentionDays: install.retentionDays,
   };

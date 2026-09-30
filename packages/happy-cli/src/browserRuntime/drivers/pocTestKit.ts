@@ -185,10 +185,10 @@ export class HarnessCdp {
     }
 
     /** Evaluate in the page main world of a top-level target (test manipulation only). */
-    async evaluate(targetId: string, expression: string): Promise<any> {
+    async evaluate(targetId: string, expression: string, opts: { userGesture?: boolean } = {}): Promise<any> {
         const { sessionId } = await this.conn.send('Target.attachToTarget', { targetId, flatten: true })
         try {
-            const result = await this.conn.send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true }, sessionId)
+            const result = await this.conn.send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true, userGesture: opts.userGesture === true }, sessionId)
             if (result.exceptionDetails) throw new Error(`harness evaluate failed: ${result.exceptionDetails.text}`)
             return result.result?.value
         } finally {
