@@ -466,6 +466,14 @@ export function createStack(deps) {
     await releaseAdmission(options);
   }
 
+  /** The network exists with its subnet, gateway and bridge name; one that differs is recreated. */
+  function ensureNetwork(network) {
+    const found = docker(["network", "inspect", "-f", NETWORK_FORMAT, network.network], { allowFail: true });
+    if (found.status === 0 && found.stdout === `${network.subnet} ${network.gateway} ${network.bridge}`) return;
+    if (found.status === 0) docker(["network", "rm", network.network]);
+    docker(networkCreateArgs(network));
+  }
+
   function createAndStartBrowser(plan, browser, image) {
     docker(browserCreateArgs(plan, browser, image));
     docker(["start", browser.container]);
@@ -596,12 +604,7 @@ export function createStack(deps) {
         const old = docker(["ps", "-aq", "--filter", `label=${STACK_LABEL}`]).stdout.split("\n").filter(Boolean);
         for (const name of old) stopAndRemove(name, name === plan.runtime.container ? 30 : BROWSER_STOP_S);
         checkLegacyVolumes(plan.browsers, !request);
-        for (const browser of plan.browsers) {
-          const found = docker(["network", "inspect", "-f", NETWORK_FORMAT, browser.network], { allowFail: true });
-          if (found.status === 0 && found.stdout === `${browser.subnet} ${browser.gateway} ${browser.bridge}`) continue;
-          if (found.status === 0) docker(["network", "rm", browser.network]);
-          docker(networkCreateArgs(browser));
-        }
+        for (const browser of plan.browsers) ensureNetwork(browser);
         // Only the current owners' volumes: a previous owner's stays detached indefinitely.
         if (docker(["volume", "inspect", plan.runtime.volume], { allowFail: true }).status !== 0) docker(["volume", "create", `--label=${STACK_LABEL}`, plan.runtime.volume]);
         for (const browser of plan.browsers) ensureProfileVolume(browser);
