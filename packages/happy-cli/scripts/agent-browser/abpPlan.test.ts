@@ -25,7 +25,7 @@ const base = () => mergeInstallOptions(undefined, {
 describe('install options', () => {
     it('defaults the Runtime API to loopback port 38700 and keeps identity from flags', () => {
         const options = base()
-        expect(options).toMatchObject({ schemaVersion: 1, machineId: 'machine-1', workspaceId: 'ws-1', runtimePort: DEFAULT_RUNTIME_PORT, maxAgentWindows: 4, retentionDays: 7, agentProfileId: 'main', happyPrefix: '/opt/abp/happy' })
+        expect(options).toMatchObject({ schemaVersion: 2, machineId: 'machine-1', workspaceId: 'ws-1', runtimePort: DEFAULT_RUNTIME_PORT, maxAgentWindows: 4, retentionDays: 7, agentProfileId: 'main', happyPrefix: '/opt/abp/happy' })
         expect(DEFAULT_RUNTIME_PORT).toBe(38700)
     })
 
@@ -33,7 +33,7 @@ describe('install options', () => {
         const saved = base()
         const merged = mergeInstallOptions(saved, { profiles: [{ profileId: 'main', principalId: 'user-2' }] })
         expect(merged.machineId).toBe('machine-1')
-        expect(merged.profiles).toEqual([{ profileId: 'main', principalId: 'user-2' }])
+        expect(merged.profiles).toEqual([{ profileId: 'main', principalId: 'user-2', assignmentId: expect.stringMatching(/^[0-9a-f]{32}$/) }])
         expect(merged.trustedIssuers).toEqual(saved.trustedIssuers)
     })
 
@@ -75,7 +75,7 @@ describe('install options', () => {
     it('allows exactly one profile named main in release 1 (the Desktop requests profile main)', () => {
         expect(() => mergeInstallOptions(base(), { profiles: [{ profileId: 'ops', principalId: 'u' }] })).toThrow(/exactly one profile named main/)
         expect(() => mergeInstallOptions(base(), { profiles: [{ profileId: 'main', principalId: 'u1' }, { profileId: 'ops', principalId: 'u2' }] })).toThrow(/exactly one profile named main/)
-        expect(mergeInstallOptions(base(), { profiles: [{ profileId: 'main', principalId: 'u9' }] }).profiles).toEqual([{ profileId: 'main', principalId: 'u9' }])
+        expect(mergeInstallOptions(base(), { profiles: [{ profileId: 'main', principalId: 'u9' }] }).profiles).toEqual([{ profileId: 'main', principalId: 'u9', assignmentId: expect.stringMatching(/^[0-9a-f]{32}$/) }])
     })
 
     it('refuses a private key given as the issuer key and never echoes it', () => {
@@ -143,7 +143,7 @@ describe('runtime.json', () => {
             profiles: [{ profileId: 'main', principalId: 'user-1' }],
         })
         // Endpoints come from ABP_PROFILES (the stack), so the file carries identity only.
-        expect(Object.keys(config.profiles[0]).sort()).toEqual(['principalId', 'profileId'])
+        expect(Object.keys(config.profiles[0]).sort()).toEqual(['assignmentId', 'principalId', 'profileId'])
         expect(() => parseRuntimeConfig(config)).not.toThrow()
     })
 
@@ -241,10 +241,8 @@ describe('system files', () => {
 
     it('orders firewall before proxy, stack and daemon, and supervises the stack and daemon', () => {
         const units = systemdUnits({ happyPrefix: '/opt/abp/happy' })
-        expect(Object.keys(units).sort()).toEqual(['abp-egress-proxy.service', 'abp-egress.service', 'abp-firewall.service', 'abp-happy-daemon.service', 'abp-profile-prune.service', 'abp-profile-prune.timer', 'abp-stack.service'])
-        // Previous owners' browser volumes are pruned daily (a missed run catches up after boot).
-        expect(units['abp-profile-prune.service']).toMatch(/Type=oneshot[\s\S]*ExecStart=\/usr\/local\/sbin\/abp-stack prune-profiles/)
-        expect(units['abp-profile-prune.timer']).toMatch(/OnCalendar=daily[\s\S]*Persistent=true[\s\S]*WantedBy=timers\.target/)
+        expect(Object.keys(units).sort()).toEqual(['abp-egress-proxy.service', 'abp-egress.service', 'abp-firewall.service', 'abp-happy-daemon.service', 'abp-stack.service'])
+        expect(units['abp-profile-prune.timer']).toBeUndefined()
         expect(units['abp-firewall.service']).toMatch(/Type=oneshot[\s\S]*RemainAfterExit=yes/)
         expect(units['abp-firewall.service']).toMatch(/Before=.*abp-egress-proxy\.service.*abp-stack\.service.*abp-happy-daemon\.service/)
         expect(units['abp-stack.service']).toMatch(/Restart=always/)
@@ -480,11 +478,23 @@ describe('per-user profile volumes', () => {
         expect(plan.volumes).toEqual(['abp-state', profileVolumeName('main', 'user-9')])
     })
 
-    it('keeps a previous owner\'s volume 30 days by default, 0 to remove it at reassignment', () => {
+    it('removes all legacy automatic profile-retention settings', () => {
         const base = { machineId: 'm', workspaceId: 'w', profiles: [{ profileId: 'main', principalId: 'u' }],
             issuers: [{ kid: 'k1', publicKeyPem: generateKeyPairSync('ed25519').publicKey.export({ type: 'spki', format: 'pem' }).toString() }] }
-        expect(mergeInstallOptions(undefined, base).profileRetentionDays).toBe(30)
-        expect(mergeInstallOptions(undefined, { ...base, profileRetentionDays: 0 }).profileRetentionDays).toBe(0)
-        expect(() => mergeInstallOptions(undefined, { ...base, profileRetentionDays: -1 })).toThrow(/profileRetentionDays/)
+        expect(mergeInstallOptions(undefined, base).profileRetentionDays).toBeUndefined()
+        expect(mergeInstallOptions(undefined, { ...base, profileRetentionDays: 0 }).profileRetentionDays).toBeUndefined()
+        expect(mergeInstallOptions(undefined, { ...base, profileRetentionDays: -1 }).profileRetentionDays).toBeUndefined()
+    })
+})
+
+
+describe('assignment config upgrade', () => {
+    it('migrates schema 1 once and preserves the generation across installer reruns', () => {
+        const old = { ...base(), schemaVersion: 1, profiles: [{ profileId: 'main', principalId: 'user-1' }] }
+        const upgraded = mergeInstallOptions(old, {})
+        expect(upgraded.schemaVersion).toBe(2)
+        expect(upgraded.profiles[0].assignmentId).toMatch(/^[0-9a-f]{32}$/)
+        expect(mergeInstallOptions(upgraded, { profiles: old.profiles }).profiles).toEqual(upgraded.profiles)
+        expect(mergeInstallOptions(upgraded, { profiles: [{ profileId: 'main', principalId: 'user-2' }] }).profiles[0].assignmentId).not.toBe(upgraded.profiles[0].assignmentId)
     })
 })

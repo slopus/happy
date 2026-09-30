@@ -39,3 +39,12 @@ describe('browser image Chromium policy', () => {
         expect(readFileSync(join(here, 'abp-stack.mjs'), 'utf8')).toMatch(/const BROWSER_STOP_S = 25;/)
     })
 })
+
+
+describe('image assignment contract', () => {
+    it.each(['runtime', 'browser'])('labels the final %s image stage', (role) => {
+        const dockerfile = readFileSync(join(here, `images/${role}.Dockerfile`), 'utf8')
+        const stages = dockerfile.split(/^FROM /m)
+        expect(stages.at(-1)).toMatch(/^LABEL ai\.saycode\.abp\.contract="2"$/m)
+    })
+})
