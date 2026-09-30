@@ -1,19 +1,23 @@
 import * as React from 'react';
 import { act } from 'react';
+import { Platform } from 'react-native';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // @ts-expect-error react-test-renderer has no declarations in this workspace.
 import TestRenderer from 'react-test-renderer';
 
 const mocks = vi.hoisted(() => ({
+    browseDirectory: vi.fn(),
     listWorktrees: vi.fn().mockResolvedValue([]),
     modelTriggerFocus: vi.fn(),
     pickerCloseFocus: vi.fn(),
     setEffortLevel: vi.fn(),
     setModelMode: vi.fn(),
     setPermissionMode: vi.fn(),
+    setPath: vi.fn(),
     setSessionType: vi.fn(),
     setWorktreeKey: vi.fn(),
+    viewport: { width: 390, height: 900 },
 }));
 
 vi.mock('react-native', async () => {
@@ -47,6 +51,7 @@ vi.mock('react-native', async () => {
     return {
         ActivityIndicator: 'ActivityIndicator',
         Image: 'Image',
+        KeyboardAvoidingView: 'KeyboardAvoidingView',
         LayoutAnimation: { configureNext: vi.fn(), Presets: { easeInEaseOut: {} } },
         Modal,
         Platform: { OS: 'web', select: (options: any) => options.web ?? options.default },
@@ -55,7 +60,7 @@ vi.mock('react-native', async () => {
         Text: 'Text',
         TextInput: 'TextInput',
         View: 'View',
-        useWindowDimensions: () => ({ width: 1440, height: 900 }),
+        useWindowDimensions: () => mocks.viewport,
     };
 });
 vi.mock('expo-glass-effect', () => ({ GlassView: 'GlassView' }));
@@ -120,7 +125,7 @@ vi.mock('@/hooks/useNewSessionDraft', async () => {
         sessionType: 'simple',
         worktreeKey: null,
         setMachineId: vi.fn(),
-        setPath: vi.fn(),
+        setPath: mocks.setPath,
         setAgentType: vi.fn(),
         setPermissionMode: mocks.setPermissionMode,
         setModelMode: mocks.setModelMode,
@@ -141,7 +146,7 @@ vi.mock('@/hooks/useNewSessionDraft', async () => {
 vi.mock('zustand/react/shallow', () => ({ useShallow: (selector: unknown) => selector }));
 vi.mock('@/utils/machineUtils', () => ({ isMachineOnline: () => true }));
 vi.mock('@/utils/worktree', () => ({ listWorktrees: mocks.listWorktrees }));
-vi.mock('@/sync/ops', () => ({ machineBrowseDirectory: vi.fn() }));
+vi.mock('@/sync/ops', () => ({ machineBrowseDirectory: mocks.browseDirectory }));
 vi.mock('@/utils/pathUtils', () => ({ resolveAbsolutePath: (path: string) => path }));
 vi.mock('@/utils/sessionUtils', () => ({
     formatLastSeen: () => 'now',
@@ -212,6 +217,9 @@ describe('SessionConfigPanel composer layout', () => {
     let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
     beforeEach(() => {
+        (Platform as { OS: string }).OS = 'web';
+        mocks.viewport.width = 1440;
+        mocks.viewport.height = 900;
         vi.useFakeTimers();
         vi.clearAllMocks();
         (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -219,6 +227,7 @@ describe('SessionConfigPanel composer layout', () => {
     });
 
     afterEach(() => {
+        (Platform as { OS: string }).OS = 'web';
         if (renderer) act(() => renderer.unmount());
         renderer = undefined;
         consoleErrorSpy.mockRestore();
@@ -274,6 +283,74 @@ describe('SessionConfigPanel composer layout', () => {
             expect(mocks.setModelMode).toHaveBeenCalledWith(model);
             expect(ref.current.getSelection().modelKey).toBe(model);
         }
+    });
+
+    it('opens the Android folder browser in a modal and closes it after choosing a folder', async () => {
+        (Platform as { OS: string }).OS = 'android';
+        mocks.viewport.width = 390;
+        mocks.viewport.height = 420;
+        mocks.browseDirectory.mockResolvedValue({
+            success: true,
+            path: '/Users/test/happy',
+            home: '/Users/test',
+            directories: [{ name: 'app', path: '/Users/test/happy/app', isProjectRoot: false }],
+        });
+        await act(async () => {
+            renderer = TestRenderer.create(<SessionConfigPanel layout="composer" collapsible={false} />);
+            await Promise.resolve();
+        });
+
+        act(() => renderer.root.findByProps({ testID: 'session-config-path-trigger' }).props.onPress());
+        expect(renderer.root.findByProps({ testID: 'session-config-picker-path' }).props.accessibilityViewIsModal).toBe(true);
+        expect(renderer.root.findByType('KeyboardAvoidingView').props.behavior).toBe('height');
+        expect(renderer.root.findAllByProps({ testID: 'session-config-inline-picker-path' })).toHaveLength(0);
+
+        await act(async () => {
+            renderer.root.findByProps({ accessibilityLabel: 'Browse folders' }).props.onPress();
+            await Promise.resolve();
+        });
+        const selectFolder = renderer.root.findByProps({ accessibilityLabel: 'Select /Users/test/happy' });
+        let ancestor = selectFolder.parent;
+        let scrollsWithShortScreen = false;
+        while (ancestor && ancestor.props.testID !== 'session-config-picker-path') {
+            if (ancestor.type === 'ScrollView' && ancestor.props.nestedScrollEnabled) {
+                scrollsWithShortScreen = true;
+            }
+            ancestor = ancestor.parent;
+        }
+        expect(scrollsWithShortScreen).toBe(true);
+        act(() => selectFolder.props.onPress());
+        expect(mocks.setPath).toHaveBeenCalledWith('/Users/test/happy');
+        expect(renderer.root.findAllByProps({ testID: 'session-config-picker-path' })).toHaveLength(0);
+    });
+
+    it('opens Android model options in a modal and closes it on Back', async () => {
+        (Platform as { OS: string }).OS = 'android';
+        mocks.viewport.width = 390;
+        mocks.viewport.height = 420;
+        await act(async () => {
+            renderer = TestRenderer.create(<SessionConfigPanel layout="composer" collapsible={false} />);
+            await Promise.resolve();
+        });
+
+        act(() => renderer.root.findByProps({ testID: 'session-config-model-trigger' }).props.onPress());
+        expect(renderer.root.findByProps({ testID: 'session-config-picker-model' }).props.accessibilityViewIsModal).toBe(true);
+        expect(renderer.root.findAllByProps({ testID: 'session-config-inline-picker-model' })).toHaveLength(0);
+        const lastModel = renderer.root.findByProps({ accessibilityLabel: 'gpt-5.6-terra' });
+        let ancestor = lastModel.parent;
+        let scrollableAncestors = 0;
+        let innerListSupportsNestedScroll = false;
+        while (ancestor && ancestor.props.testID !== 'session-config-picker-model') {
+            if (ancestor.type === 'ScrollView') {
+                scrollableAncestors += 1;
+                if (scrollableAncestors === 1) innerListSupportsNestedScroll = ancestor.props.nestedScrollEnabled === true;
+            }
+            ancestor = ancestor.parent;
+        }
+        expect(scrollableAncestors).toBeGreaterThanOrEqual(2);
+        expect(innerListSupportsNestedScroll).toBe(true);
+        act(() => renderer.root.findByType('Modal').props.onRequestClose());
+        expect(renderer.root.findAllByProps({ testID: 'session-config-picker-model' })).toHaveLength(0);
     });
 
     it('clears a selected worktree when its machine or project scope changes', async () => {

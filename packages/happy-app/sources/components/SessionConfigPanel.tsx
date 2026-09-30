@@ -7,6 +7,7 @@ import {
     TextInput,
     ScrollView,
     LayoutAnimation,
+    KeyboardAvoidingView,
     type GestureResponderEvent,
     TextInputSelectionChangeEventData,
     NativeSyntheticEvent,
@@ -126,6 +127,7 @@ function getPermissionStyle(key: string): PermissionStyle | null {
 // way to scroll them. nestedScrollEnabled lets it scroll inside a parent
 // ScrollView on Android.
 function OptionListContainer({ embedded, children }: { embedded: boolean; children: React.ReactNode }) {
+    const { height } = useWindowDimensions();
     if (embedded) {
         return (
             <ScrollView
@@ -139,7 +141,11 @@ function OptionListContainer({ embedded, children }: { embedded: boolean; childr
         );
     }
     return (
-        <ScrollView style={pickerStyles.optionList} keyboardShouldPersistTaps="handled">
+        <ScrollView
+            style={[pickerStyles.optionList, Platform.OS === 'android' && { maxHeight: Math.min(360, height * 0.48) }]}
+            nestedScrollEnabled={Platform.OS === 'android'}
+            keyboardShouldPersistTaps="handled"
+        >
             {children}
         </ScrollView>
     );
@@ -312,6 +318,7 @@ export function PathPickerContent({
     emptyRecentLabel?: string;
 }) {
     const { theme } = useUnistyles();
+    const { height } = useWindowDimensions();
     const inputRef = React.useRef<TextInput>(null);
     const currentValue = value ?? '';
     const [selection, setSelection] = React.useState<{ start: number; end: number } | undefined>(undefined);
@@ -512,7 +519,7 @@ export function PathPickerContent({
                         // way to scroll. nestedScrollEnabled lets it scroll inside the
                         // parent ScrollView on Android.
                         <ScrollView
-                            style={pickerStyles.dirScroll}
+                            style={[pickerStyles.dirScroll, Platform.OS === 'android' && { maxHeight: Math.min(300, height * 0.36) }]}
                             contentContainerStyle={pickerStyles.embeddedOptionListContent}
                             nestedScrollEnabled
                             keyboardShouldPersistTaps="handled"
@@ -551,6 +558,8 @@ export function PathPickerContent({
                     {!!browsePath && (
                         <Pressable
                             onPress={() => selectFolder(browsePath)}
+                            accessibilityRole={Platform.OS === 'android' ? 'button' : undefined}
+                            accessibilityLabel={Platform.OS === 'android' ? `Select ${browsePath}` : undefined}
                             style={(p) => [
                                 pickerStyles.selectButton,
                                 { backgroundColor: theme.colors.button.primary.background },
@@ -587,6 +596,8 @@ export function PathPickerContent({
                     {canBrowse && (
                         <Pressable
                             onPress={startBrowsing}
+                            accessibilityRole={Platform.OS === 'android' ? 'button' : undefined}
+                            accessibilityLabel={Platform.OS === 'android' ? 'Browse folders' : undefined}
                             style={(p) => [
                                 pickerStyles.option,
                                 embedded && pickerStyles.embeddedOption,
@@ -687,8 +698,8 @@ export interface SessionConfigPanelHandle {
 
 export interface SessionConfigPanelProps {
     /**
-     * 'inline' — phone/narrow: full-width config box; native pickers expand
-     * inline, while regular desktop Web pickers open in a bounded modal.
+     * 'inline' — phone/narrow: full-width config box; Android pickers open in
+     * bottom sheets, iOS pickers expand inline, and desktop Web uses a modal.
      * 'sidebar' — desktop: config box with embedded popovers; the host owns the
      * shell-level click-away backdrop (see onPickerOpenChange/closePickers).
      * 'composer' — compact controls inside the new-session message composer.
@@ -1043,8 +1054,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
             setIsConfigExpanded(v => !v);
         }, []);
 
-        // Expand/collapse a picker inline under its row. Animate on native so the
-        // option list slides in/out (web inline popovers don't need LayoutAnimation).
+        // iOS uses an inline picker. Android and regular Web render a modal.
         const togglePicker = React.useCallback((type: PickerType, event?: GestureResponderEvent) => {
             if (
                 Platform.OS === 'web'
@@ -1055,15 +1065,15 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
             ) {
                 pickerTriggerRefs.current[type] = event.currentTarget;
             }
-            if (Platform.OS !== 'web') {
+            if (Platform.OS === 'ios') {
                 LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
             }
             setActivePicker(v => v === type ? null : type);
         }, [isSidebar]);
 
-        // Collapse the open picker (option picked / dismissed), animated on native.
+        // Collapse the open picker (option picked / dismissed).
         const dismissPicker = React.useCallback(() => {
-            if (Platform.OS !== 'web') {
+            if (Platform.OS === 'ios') {
                 LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
             }
             setActivePicker(null);
@@ -1273,10 +1283,11 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
             closePickers: dismissPicker,
         }), [currentPermission?.key, currentModelKey, draft.effortLevel, resolvedModeSelection.effortLevel, worktreeKey, fastMode, dismissPicker]);
 
-        // Native and sidebar pickers remain embedded. The regular desktop Web
-        // layout uses a bounded modal below so long model lists cannot stretch the
-        // configuration panel beyond the viewport.
+        // Android uses a bottom sheet so options do not expand inside the
+        // composer. iOS and desktop sidebars retain their existing inline layout.
         const isWeb = Platform.OS === 'web';
+        const isAndroid = Platform.OS === 'android';
+        const usesModalPicker = !isSidebar && (isWeb || isAndroid);
         const renderPickerContent = React.useCallback((type: PickerType, embedded: boolean) => (
             type === 'path' ? (
                 <PathPickerContent
@@ -1310,13 +1321,13 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
         ]);
 
         const renderActivePickerPopover = React.useCallback((type: PickerType) => {
-            if (activePicker !== type || (isWeb && !isSidebar)) {
+            if (activePicker !== type || usesModalPicker) {
                 return null;
             }
 
             const embedded = isSidebar || !isWeb;
             return (
-                <View style={[
+                <View testID={`session-config-inline-picker-${type}`} style={[
                     styles.popover,
                     isSidebar
                         ? styles.sidebarPopover
@@ -1333,7 +1344,79 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
             isWeb,
             renderPickerContent,
             theme.colors.header.background,
+            usesModalPicker,
         ]);
+
+        const modalBody = activePicker && usesModalPicker ? (
+            <>
+                <Pressable
+                    testID="session-config-picker-scrim"
+                    style={styles.webPickerScrim}
+                    onPress={dismissPicker}
+                    accessibilityRole="button"
+                    accessibilityLabel={t('devTools.close')}
+                />
+                <View
+                    ref={isWeb ? webPickerDialogRef : undefined}
+                    role="dialog"
+                    accessibilityViewIsModal
+                    testID={`session-config-picker-${activePicker}`}
+                    style={isAndroid ? [
+                        styles.androidPickerSheet,
+                        { maxHeight: Math.min(640, viewport.height * 0.82) },
+                    ] : [
+                        styles.webPickerDialog,
+                        {
+                            width: Math.min(520, Math.max(0, viewport.width - 64)),
+                            maxHeight: Math.min(560, Math.max(0, viewport.height - 64)),
+                        },
+                    ]}
+                >
+                    {isAndroid && <View style={styles.androidPickerHandle} />}
+                    <Pressable
+                        ref={isWeb ? webPickerCloseRef : undefined}
+                        testID="session-config-picker-close"
+                        onPress={dismissPicker}
+                        accessibilityRole="button"
+                        accessibilityLabel={t('devTools.close')}
+                        style={({ pressed }) => [
+                            isAndroid ? styles.androidPickerClose : styles.webPickerClose,
+                            pressed && styles.configRowPressed,
+                        ]}
+                    >
+                        <Ionicons name="close" size={18} color={theme.colors.textSecondary} />
+                    </Pressable>
+                    {isAndroid ? (
+                        <ScrollView
+                            style={styles.androidPickerContentScroll}
+                            nestedScrollEnabled
+                            keyboardShouldPersistTaps="handled"
+                        >
+                            {renderPickerContent(activePicker, false)}
+                        </ScrollView>
+                    ) : renderPickerContent(activePicker, false)}
+                </View>
+            </>
+        ) : null;
+
+        const modalPicker = modalBody ? (
+            <Modal
+                visible
+                transparent
+                animationType={isAndroid ? 'slide' : 'fade'}
+                onRequestClose={dismissPicker}
+            >
+                {isAndroid ? (
+                    <KeyboardAvoidingView behavior="height" style={styles.androidPickerModalRoot}>
+                        {modalBody}
+                    </KeyboardAvoidingView>
+                ) : (
+                    <View style={styles.webPickerModalRoot}>
+                        {modalBody}
+                    </View>
+                )}
+            </Modal>
+        ) : null;
 
         if (isComposer) {
             return (
@@ -1480,49 +1563,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                         {renderActivePickerPopover('effort')}
                     </View>
 
-                    {isWeb && activePicker && (
-                        <Modal
-                            visible
-                            transparent
-                            animationType="fade"
-                            onRequestClose={dismissPicker}
-                        >
-                            <View style={styles.webPickerModalRoot}>
-                                <Pressable
-                                    testID="session-config-picker-scrim"
-                                    style={styles.webPickerScrim}
-                                    onPress={dismissPicker}
-                                    accessibilityRole="button"
-                                    accessibilityLabel={t('devTools.close')}
-                                />
-                                <View
-                                    ref={webPickerDialogRef}
-                                    role="dialog"
-                                    accessibilityViewIsModal
-                                    testID={`session-config-picker-${activePicker}`}
-                                    style={[
-                                        styles.webPickerDialog,
-                                        {
-                                            width: Math.min(520, Math.max(0, viewport.width - 64)),
-                                            maxHeight: Math.min(560, Math.max(0, viewport.height - 64)),
-                                        },
-                                    ]}
-                                >
-                                    <Pressable
-                                        ref={webPickerCloseRef}
-                                        testID="session-config-picker-close"
-                                        onPress={dismissPicker}
-                                        accessibilityRole="button"
-                                        accessibilityLabel={t('devTools.close')}
-                                        style={({ pressed }) => [styles.webPickerClose, pressed && styles.configRowPressed]}
-                                    >
-                                        <Ionicons name="close" size={18} color={theme.colors.textSecondary} />
-                                    </Pressable>
-                                    {renderPickerContent(activePicker, false)}
-                                </View>
-                            </View>
-                        </Modal>
-                    )}
+                    {modalPicker}
                 </>
             );
         }
@@ -1838,58 +1879,49 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                     )}
                 </View>
 
-                {isWeb && !isSidebar && activePicker && (
-                    <Modal
-                        visible
-                        transparent
-                        animationType="fade"
-                        onRequestClose={dismissPicker}
-                    >
-                        <View style={styles.webPickerModalRoot}>
-                            <Pressable
-                                testID="session-config-picker-scrim"
-                                style={styles.webPickerScrim}
-                                onPress={dismissPicker}
-                                accessibilityRole="button"
-                                accessibilityLabel={t('devTools.close')}
-                            />
-                            <View
-                                ref={webPickerDialogRef}
-                                role="dialog"
-                                accessibilityViewIsModal
-                                testID={`session-config-picker-${activePicker}`}
-                                style={[
-                                    styles.webPickerDialog,
-                                    {
-                                        width: Math.min(520, Math.max(0, viewport.width - 64)),
-                                        maxHeight: Math.min(560, Math.max(0, viewport.height - 64)),
-                                    },
-                                ]}
-                            >
-                                <Pressable
-                                    ref={webPickerCloseRef}
-                                    testID="session-config-picker-close"
-                                    onPress={dismissPicker}
-                                    accessibilityRole="button"
-                                    accessibilityLabel={t('devTools.close')}
-                                    style={({ pressed }) => [
-                                        styles.webPickerClose,
-                                        pressed && styles.configRowPressed,
-                                    ]}
-                                >
-                                    <Ionicons name="close" size={18} color={theme.colors.textSecondary} />
-                                </Pressable>
-                                {renderPickerContent(activePicker, false)}
-                            </View>
-                        </View>
-                    </Modal>
-                )}
+                {modalPicker}
             </>
         );
     },
 );
 
 const styles = StyleSheet.create((theme) => ({
+    androidPickerModalRoot: {
+        flex: 1,
+        justifyContent: 'flex-end',
+    },
+    androidPickerSheet: {
+        width: '100%',
+        flexShrink: 1,
+        borderTopLeftRadius: 24,
+        borderTopRightRadius: 24,
+        backgroundColor: theme.colors.header.background,
+        paddingTop: 8,
+        paddingBottom: 16,
+        overflow: 'hidden',
+    },
+    androidPickerHandle: {
+        width: 36,
+        height: 4,
+        alignSelf: 'center',
+        borderRadius: 2,
+        backgroundColor: theme.colors.divider,
+        marginBottom: 4,
+    },
+    androidPickerClose: {
+        width: 44,
+        height: 36,
+        alignSelf: 'flex-end',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginRight: 12,
+        borderRadius: 18,
+        backgroundColor: theme.colors.surface,
+    },
+    androidPickerContentScroll: {
+        flexGrow: 0,
+        flexShrink: 1,
+    },
     webPickerModalRoot: {
         flex: 1,
         alignItems: 'center',
