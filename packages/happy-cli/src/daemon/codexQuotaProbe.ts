@@ -1,11 +1,8 @@
-import { tmpdir } from 'node:os';
-import { CodexAppServerClient } from '@/codex/codexAppServerClient';
+import { CodexAppServerClient, type CodexAccountRateLimitsResponse } from '@/codex/codexAppServerClient';
 import type { AccountApi } from './codexAccountLaunch';
 import { CodexAccountLaunch } from './codexAccountLaunch';
 import { prepareCodexQuotaProbe, finishCodexQuotaProbe } from './codexQuotaProbeRecovery';
 
-const PROBE_TIMEOUT_MS = 45_000;
-const PROBE_PROMPT = 'Reply with exactly: ok';
 class ProbeShutdownError extends Error {}
 
 function applyCodexNetworkEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
@@ -13,20 +10,11 @@ function applyCodexNetworkEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   return proxyUrl ? { ...env, HTTP_PROXY: proxyUrl, HTTPS_PROXY: proxyUrl, http_proxy: proxyUrl, https_proxy: proxyUrl } : env;
 }
 
-async function runProbeTurn(environment: NodeJS.ProcessEnv): Promise<void> {
-  // App-server is the same protocol used by Paws Codex sessions. Unlike
-  // `codex exec`, it persists the token-count notification (including the
-  // weekly rate-limit snapshot) in this temporary CODEX_HOME.
+async function readRateLimits(environment: NodeJS.ProcessEnv): Promise<CodexAccountRateLimitsResponse> {
   const client = new CodexAppServerClient(undefined, { type: 'spawn' }, environment);
   try {
     await client.connect();
-    await client.startThread({ cwd: tmpdir(), approvalPolicy: 'never', sandbox: 'read-only' });
-    const { aborted } = await client.sendTurnAndWait(PROBE_PROMPT, {
-      approvalPolicy: 'never',
-      sandbox: 'read-only',
-      turnTimeoutMs: PROBE_TIMEOUT_MS,
-    });
-    if (aborted) throw new Error('Codex quota probe did not complete');
+    return await client.readAccountRateLimits();
   } finally {
     try { await client.disconnect({ waitForExit: true }); }
     catch { throw new ProbeShutdownError('Codex probe shutdown could not be confirmed'); }
@@ -35,23 +23,23 @@ async function runProbeTurn(environment: NodeJS.ProcessEnv): Promise<void> {
 
 export type CodexQuotaProbeResult = { type: 'success'; accepted: boolean } | { type: 'error'; errorMessage: string };
 
-/** Runs one explicitly requested, isolated Codex turn. It creates no Paws chat session or retained history. */
+/** Reads account rate limits without starting a Codex turn or spending model tokens. */
 export async function refreshCodexAccountQuota(api: AccountApi, machineId: string, grant: string): Promise<CodexQuotaProbeResult> {
-  return withCodexQuotaProbe(api, machineId, grant, runProbeTurn);
+  return withCodexQuotaProbe(api, machineId, grant, readRateLimits);
 }
 
-/** Keep credential finalization independent from model, quota parsing and reporting failures. */
+/** Keep credential finalization independent from rate-limit reads and reporting failures. */
 export async function withCodexQuotaProbe(
   api: AccountApi, machineId: string, grant: string,
-  runTurn: (environment: NodeJS.ProcessEnv) => Promise<void>,
+  readLimits: (environment: NodeJS.ProcessEnv) => Promise<CodexAccountRateLimitsResponse>,
 ): Promise<CodexQuotaProbeResult> {
   let launch: CodexAccountLaunch | undefined;
   let result: CodexQuotaProbeResult;
   try {
     launch = await prepareCodexQuotaProbe(api, machineId, grant);
-    await runTurn(applyCodexNetworkEnv(launch.environment(process.env)));
+    const limits = await readLimits(applyCodexNetworkEnv(launch.environment(process.env)));
     await launch.syncProbeCredential();
-    const { accepted } = await launch.reportQuotaProbe();
+    const { accepted } = await launch.reportQuotaProbe(limits);
     result = { type: 'success', accepted };
   } catch (error) {
     if (error instanceof ProbeShutdownError) {

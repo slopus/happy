@@ -114,6 +114,14 @@ function isInvalidInitializeParams(error: unknown): boolean {
 
 export type CodexApprovalAuthority = 'desktop' | 'paws';
 
+export type CodexAccountRateLimitsResponse = {
+    rateLimits: {
+        limitId?: string | null;
+        primary?: { usedPercent?: number; windowDurationMins?: number; resetsAt?: number } | null;
+        secondary?: { usedPercent?: number; windowDurationMins?: number; resetsAt?: number } | null;
+    } | null;
+};
+
 export type CodexAppServerConnection =
     | { type: 'spawn' }
     | {
@@ -1523,6 +1531,10 @@ export class CodexAppServerClient {
 
     async readAccountUsage(): Promise<GetAccountTokenUsageResponse> {
         return await this.request('account/usage/read') as GetAccountTokenUsageResponse;
+    }
+
+    async readAccountRateLimits(): Promise<CodexAccountRateLimitsResponse> {
+        return await this.request('account/rateLimits/read', undefined, 15_000) as CodexAccountRateLimitsResponse;
     }
 
     async listMcpServerStatus(

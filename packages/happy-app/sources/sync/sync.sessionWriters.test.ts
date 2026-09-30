@@ -515,7 +515,7 @@ describe('real session writer composition', () => {
         const jumping = sync.jumpToLatestMessages('writer-session');
         expect(boundary).not.toHaveBeenCalled();
         subject.historyWindowLoads.delete('writer-session'); older.resolve(); await jumping;
-        expect(boundary).toHaveBeenCalledWith('writer-session', 'latest');
+        expect(boundary).toHaveBeenCalledWith('writer-session', 'latest', undefined, false);
         subject.localHistory = null;
     });
 

@@ -22,12 +22,13 @@ let uploads: number;
 let version: number;
 let saved: typeof auth;
 let lastUpload: Record<string, unknown> | undefined;
+let lastQuota: Record<string, unknown> | undefined;
 let sequence: number;
 
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'paws-probe-test-'));
   (configuration as { happyHomeDir: string }).happyHomeDir = root;
-  failUpload = false; failQuota = false; uploads = 0; version = 1; saved = auth; lastUpload = undefined; sequence = 0;
+  failUpload = false; failQuota = false; uploads = 0; version = 1; saved = auth; lastUpload = undefined; lastQuota = undefined; sequence = 0;
   // Exercise real HTTP and files without live accounts or module mocks.
   server = createServer(async (req, res) => {
     const chunks: Buffer[] = [];
@@ -40,6 +41,7 @@ beforeEach(async () => {
       if (failUpload) { res.statusCode = 503; result = { error: 'synthetic-private-error' }; }
       else { saved = body.auth; version++; result = { profile: { id: 'profile', credentialVersion: version } }; }
     } else if (req.url === '/quota') {
+      lastQuota = body;
       res.statusCode = failQuota ? 503 : 200; result = { accepted: !failQuota };
     } else result = {};
     res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify(result));
@@ -66,25 +68,40 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true });
 });
 
-async function writeProbeOutput(env: NodeJS.ProcessEnv): Promise<void> {
+async function writeProbeOutput(env: NodeJS.ProcessEnv) {
   const home = env.CODEX_HOME!;
   await writeFile(join(home, 'auth.json'), JSON.stringify(rotated));
-  await mkdir(join(home, 'sessions'), { recursive: true });
-  await writeFile(join(home, 'sessions', 'rollout-probe.jsonl'), JSON.stringify({ timestamp: new Date().toISOString(), type: 'event_msg', payload: {
-    type: 'token_count', info: { total_token_usage: { input_tokens: 1 } },
-    rate_limits: { primary: { used_percent: 12, resets_at: Math.floor(Date.now() / 1000) + 3600, window_minutes: 10080 } },
-  } }) + '\n');
+  return { rateLimits: { limitId: 'codex', primary: { usedPercent: 12, resetsAt: Math.floor(Date.now() / 1000) + 3600, windowDurationMins: 10080 } } };
 }
 const pendingHomes = async (): Promise<string[]> => (await readdir(join(root, 'codex-quota-probes'))).map(name => join(root, 'codex-quota-probes', name));
 
 describe('quota probe credential preservation', () => {
+  it('reports Codex rate limits directly without a model turn or session file', async () => {
+    const reset = Math.floor(Date.now() / 1000) + 86400;
+    const result = await withCodexQuotaProbe(api, 'machine', 'g'.repeat(43), async () => ({
+      rateLimits: { limitId: 'codex', primary: { usedPercent: 30, windowDurationMins: 10080, resetsAt: reset }, secondary: null },
+    }));
+    expect(result).toEqual({ type: 'success', accepted: true });
+    expect(lastQuota).toMatchObject({ weeklyUsedPercent: 30, weeklyResetsAt: new Date(reset * 1000).toISOString() });
+    expect(await pendingHomes()).toEqual([]);
+  });
+
+  it('rejects a model-specific rate limit instead of reporting it as account quota', async () => {
+    const result = await withCodexQuotaProbe(api, 'machine', 'g'.repeat(43), async () => ({
+      rateLimits: { limitId: 'gpt-5.6-sol', primary: { usedPercent: 90, windowDurationMins: 10080, resetsAt: Math.floor(Date.now() / 1000) + 86400 } },
+    }));
+    expect(result.type).toBe('error');
+    expect(lastQuota).toBeUndefined();
+    expect(await pendingHomes()).toEqual([]);
+  });
+
   it('uploads rotated credentials and removes a successful probe', async () => {
     const result = await withCodexQuotaProbe(api, 'machine', 'g'.repeat(43), writeProbeOutput);
     expect(result).toEqual({ type: 'success', accepted: true });
     expect(saved).toEqual(rotated); expect(uploads).toBe(1); expect(await pendingHomes()).toEqual([]);
   });
 
-  it('saves rotation even when the model request fails afterwards', async () => {
+  it('saves rotation even when the rate-limit read fails afterwards', async () => {
     const result = await withCodexQuotaProbe(api, 'machine', 'g'.repeat(43), async env => {
       await writeProbeOutput(env); throw new Error('synthetic-private-error');
     });
@@ -138,8 +155,9 @@ describe('quota probe credential preservation', () => {
 
   it('skips a running producer and entries belonging to another machine', async () => {
     await withCodexQuotaProbe(api, 'machine', 'g'.repeat(43), async env => {
-      await writeProbeOutput(env); await retryPendingCodexProbeCredentials(api, 'machine');
+      const limits = await writeProbeOutput(env); await retryPendingCodexProbeCredentials(api, 'machine');
       expect(uploads).toBe(0); expect(await stat(env.CODEX_HOME!)).toBeDefined();
+      return limits;
     });
     saved = auth; failUpload = true; await withCodexQuotaProbe(api, 'machine', 'g'.repeat(43), writeProbeOutput);
     failUpload = false; const before = uploads;

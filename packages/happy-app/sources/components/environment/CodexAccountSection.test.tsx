@@ -87,7 +87,7 @@ describe('Codex account UI with real metadata API and controller', () => {
     it('refreshes only through an explicitly confirmed opaque grant on the account-bound device', async () => {
         mocks.confirm.mockResolvedValue(true); mocks.rpc.mockResolvedValue({ type: 'success', accepted: true }); await render();
         await press(`codex-account-refresh-${id}`);
-        expect(mocks.confirm).toHaveBeenCalledWith('Refresh Codex quota?', expect.stringContaining('small amount'), expect.objectContaining({ confirmText: 'Refresh quota' }));
+        expect(mocks.confirm).toHaveBeenCalledWith('Refresh Codex quota?', expect.stringContaining('does not start a model turn'), expect.objectContaining({ confirmText: 'Refresh quota' }));
         expect(requests.filter(request => request.method === 'POST')).toEqual([{ url: 'https://test/v1/codex-session-grants', method: 'POST', body: { machineId: 'a' } }]);
         expect(mocks.rpc).toHaveBeenCalledWith('a', 'refresh-codex-account-quota', { grant: 'a'.repeat(43) }, expect.objectContaining({ timeoutMs: 60_000 }));
     });

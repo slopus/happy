@@ -1476,6 +1476,28 @@ describe('CodexAppServerClient sandbox integration', () => {
         await client.disconnect();
     });
 
+    it('reads account rate limits without starting a model turn', async () => {
+        const requests: MockRpcMessage[] = [];
+        const limits = { rateLimits: { limitId: 'codex', primary: { usedPercent: 30, windowDurationMins: 10080, resetsAt: 1791047013 } } };
+        const proc = createMockProcess({
+            pid: 2553,
+            onRequest: (message, stdout) => {
+                requests.push(message);
+                if (message.method === 'account/rateLimits/read' && message.id != null) {
+                    setTimeout(() => pushJsonLine(stdout, { id: message.id, result: limits }), 0);
+                }
+            },
+        });
+        mockSpawn.mockImplementation(() => proc);
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        await client.connect();
+        await expect(client.readAccountRateLimits()).resolves.toEqual(limits);
+        expect(requests.map(request => request.method)).not.toContain('thread/start');
+        expect(requests.map(request => request.method)).not.toContain('turn/start');
+        await client.disconnect();
+    });
+
     it('lists MCP server status through app-server RPC', async () => {
         const requests: MockRpcMessage[] = [];
         const response = {

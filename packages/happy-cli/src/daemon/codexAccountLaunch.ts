@@ -10,6 +10,7 @@ import { retainCodexAccountHistory, rememberCodexAccountSession, copyCodexSource
 import { configuration } from '@/configuration';
 import type { SpawnSessionOptions, SpawnSessionResult } from '@/modules/common/registerCommonHandlers';
 import { CODEX_ACCOUNT_UNSET_ENV } from '@/codex/codexAccountConfig';
+import type { CodexAccountRateLimitsResponse } from '@/codex/codexAppServerClient';
 import { writeCodexAccountLaunchState, type CodexAccountLaunchState } from '@/codex/codexAccountLaunchState';
 import { createCodexSessionHome, preserveFinishedCodexSession } from '@/codex/codexSessionHome';
 import { readCodexCredentialAdoption } from '@/codex/codexCredentialAdoption';
@@ -125,14 +126,16 @@ export class CodexAccountLaunch {
     return env;
   }
 
-  /** Publish the rate-limit event produced by an explicit, no-history quota probe. */
-  async reportQuotaProbe(): Promise<{ accepted: boolean }> {
-    const snapshot = await collectCodexUsageSnapshot({ codexHome: this.home, maxDays: 1 });
-    const event = snapshot.latestEvent;
-    const weekly = weeklyRateLimit(event?.rateLimits);
-    const observed = event?.rateLimitsTimestamp;
+  /** Publish the account-level weekly window returned directly by Codex. */
+  async reportQuotaProbe(response: CodexAccountRateLimitsResponse): Promise<{ accepted: boolean }> {
+    const limits = response?.rateLimits;
+    if (!limits || (limits.limitId != null && limits.limitId !== 'codex')) {
+      throw new Error('Codex did not return account-level rate limits');
+    }
+    const weekly = [limits.secondary, limits.primary].find(window => window?.windowDurationMins === 10080);
+    const observed = new Date().toISOString();
     if (typeof weekly?.usedPercent !== 'number' || !Number.isFinite(weekly.usedPercent) || weekly.usedPercent < 0 || weekly.usedPercent > 100 ||
-        typeof weekly.resetsAt !== 'number' || !Number.isFinite(weekly.resetsAt) || !observed || !Number.isFinite(Date.parse(observed)) || Date.parse(observed) < this.startedAt) {
+        typeof weekly.resetsAt !== 'number' || !Number.isFinite(weekly.resetsAt)) {
       throw new Error('Codex did not return a current weekly quota snapshot');
     }
     const reset = new Date(weekly.resetsAt * 1000);
