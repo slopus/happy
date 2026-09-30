@@ -1183,10 +1183,10 @@ export async function startDaemon(): Promise<void> {
 
         lastCodexUsageScanAt = now;
         try {
-          const [codexUsage, codexAccountUsage] = await Promise.all([
-            collectCodexUsageSnapshot(),
-            collectCodexAccountUsage(365),
-          ]);
+          const codexAccountUsage = await collectCodexAccountUsage(365);
+          const codexUsage = await collectCodexUsageSnapshot({
+            additionalCodexHomes: codexAccountUsage.map((entry) => entry.usage.codexHome),
+          });
           const signature = JSON.stringify([
             codexUsageSignature(codexUsage),
             codexAccountUsage.map((entry) => [entry.profileId, codexUsageSignature(entry.usage)]),
@@ -1216,10 +1216,11 @@ export async function startDaemon(): Promise<void> {
 
       lastImmediateCodexUsageScanAt = now;
       lastCodexUsageScanAt = now;
-      const [recentCodexUsage, recentCodexAccountUsage] = await Promise.all([
-        collectCodexUsageSnapshot({ maxDays: 1 }),
-        collectCodexAccountUsage(1),
-      ]);
+      const recentCodexAccountUsage = await collectCodexAccountUsage(1);
+      const recentCodexUsage = await collectCodexUsageSnapshot({
+        maxDays: 1,
+        additionalCodexHomes: recentCodexAccountUsage.map((entry) => entry.usage.codexHome),
+      });
       await apiMachine.updateDaemonState((state: DaemonState | null) => {
         const codexUsage = mergeRecentCodexUsageSnapshot(state?.codexUsage, recentCodexUsage);
         const previousByProfile = new Map((state?.codexAccountUsage || []).map((entry) => [entry.profileId, entry.usage]));

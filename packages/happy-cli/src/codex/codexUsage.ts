@@ -57,6 +57,7 @@ export interface CodexUsageSnapshot {
 
 interface CollectCodexUsageOptions {
     codexHome?: string;
+    additionalCodexHomes?: string[];
     now?: Date;
     timeZone?: string;
     maxDays?: number;
@@ -318,20 +319,20 @@ async function readCodexSessionMetadataWithRipgrep(
 }
 
 async function expandCodexFilesWithReplayParents(
-    codexHome: string,
-    sessionsDir: string,
+    codexHomes: string[],
     recentFiles: string[],
     firstDateKey: string,
     warnings: string[],
     ripgrepCommands?: string[],
 ): Promise<string[]> {
-    const allActiveFiles = await walkJsonlFiles(sessionsDir, warnings);
-    const allArchivedFiles = await walkJsonlFiles(join(codexHome, 'archived_sessions'), warnings);
     const allFilesByName = new Map<string, string>();
-    for (const filePath of [...allActiveFiles, ...allArchivedFiles]) {
-        const name = basename(filePath);
-        if (!allFilesByName.has(name)) {
-            allFilesByName.set(name, filePath);
+    for (const home of codexHomes) {
+        const active = await walkJsonlFiles(join(home, 'sessions'), warnings);
+        const archived = await walkJsonlFiles(join(home, 'archived_sessions'), warnings);
+        for (const filePath of [...active, ...archived]) {
+            // Keep differing copies across homes for event-level deduplication.
+            const key = join(home, basename(filePath));
+            if (!allFilesByName.has(key)) allFilesByName.set(key, filePath);
         }
     }
     const allFiles = [...allFilesByName.values()];
@@ -348,11 +349,11 @@ async function expandCodexFilesWithReplayParents(
         }));
     }
 
-    const filesBySessionId = new Map<string, string>();
+    const filesBySessionId = new Map<string, string[]>();
     for (const filePath of allFiles) {
         const sessionId = metadataByFile.get(filePath)?.sessionId;
-        if (sessionId && !filesBySessionId.has(sessionId)) {
-            filesBySessionId.set(sessionId, filePath);
+        if (sessionId) {
+            filesBySessionId.set(sessionId, [...(filesBySessionId.get(sessionId) || []), filePath]);
         }
     }
 
@@ -371,10 +372,12 @@ async function expandCodexFilesWithReplayParents(
     while (pending.length > 0) {
         const child = pending.pop()!;
         const parentId = metadataByFile.get(child)?.parentId;
-        const parent = parentId ? filesBySessionId.get(parentId) : undefined;
-        if (parent && parent !== child && !selected.has(parent)) {
-            selected.add(parent);
-            pending.push(parent);
+        const parents = parentId ? filesBySessionId.get(parentId) || [] : [];
+        for (const parent of parents) {
+            if (parent !== child && !selected.has(parent)) {
+                selected.add(parent);
+                pending.push(parent);
+            }
         }
     }
     return [...selected];
@@ -706,7 +709,10 @@ function replayFilteredEvents(
 function dedupeCodexUsageEvents(parsedFiles: ParsedCodexUsageFile[]): ParsedCodexUsageEvent[] {
     const filesBySessionId = new Map<string, ParsedCodexUsageFile>();
     for (const parsedFile of parsedFiles) {
-        if (parsedFile.metadata.sessionId && !filesBySessionId.has(parsedFile.metadata.sessionId)) {
+        if (parsedFile.metadata.sessionId && (
+            !filesBySessionId.has(parsedFile.metadata.sessionId)
+            || filesBySessionId.get(parsedFile.metadata.sessionId)!.events.length < parsedFile.events.length
+        )) {
             filesBySessionId.set(parsedFile.metadata.sessionId, parsedFile);
         }
     }
@@ -720,7 +726,12 @@ function dedupeCodexUsageEvents(parsedFiles: ParsedCodexUsageFile[]): ParsedCode
                 continue;
             }
             fingerprints.add(fingerprint);
-            events.push(event);
+            // A retained copy may contain newer events than the default home.
+            // Count those events under the same logical session, not a second path.
+            const canonicalFile = parsedFile.metadata.sessionId
+                ? filesBySessionId.get(parsedFile.metadata.sessionId)?.filePath
+                : undefined;
+            events.push(canonicalFile ? { ...event, filePath: canonicalFile } : event);
         }
     }
     return events;
@@ -832,14 +843,15 @@ export async function collectCodexUsageSnapshot(options: CollectCodexUsageOption
     const maxDays = Math.max(1, Math.floor(options.maxDays ?? 365));
     const warnings: string[] = [];
     const dateKeys = recentLocalDateKeys(now, timeZone, maxDays);
-    const recentFiles = await listRecentCodexSessionFiles(codexHome, sessionsDir, dateKeys, warnings);
+    // Parse all homes together so copied rollouts and fork replay are deduplicated
+    // before daily aggregation; adding per-account daily totals would double-count.
+    const homes = [...new Set([codexHome, ...(options.additionalCodexHomes || [])])];
+    const recentFiles: string[] = [];
+    for (const home of homes) {
+        recentFiles.push(...await listRecentCodexSessionFiles(home, join(home, 'sessions'), dateKeys, warnings));
+    }
     const files = await expandCodexFilesWithReplayParents(
-        codexHome,
-        sessionsDir,
-        recentFiles,
-        dateKeys[0],
-        warnings,
-        options.ripgrepCommands,
+        homes, recentFiles, dateKeys[0], warnings, options.ripgrepCommands,
     );
     const byDate = new Map<string, SessionUsageAccumulator>();
     const firstDateKey = dateKeys[0];

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync, utimesSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -50,6 +50,63 @@ describe('collectCodexUsageSnapshot', () => {
         for (const dir of created.splice(0)) {
             rmSync(dir, { recursive: true, force: true });
         }
+    });
+
+    it('includes historical usage from every supplied account home without counting retained copies twice', async () => {
+        const codexHome = mkdtempSync(join(tmpdir(), 'codex-all-homes-'));
+        created.push(codexHome);
+        const accountA = join(codexHome, 'account-a');
+        const accountB = join(codexHome, 'account-b');
+        const header = sessionMeta('2026-07-05T01:00:00.000Z', 'shared-session');
+        const first = tokenCount('2026-07-05T02:00:00.000Z', { input_tokens: 100, output_tokens: 10, total_tokens: 110 });
+        const second = tokenCount('2026-07-05T03:00:00.000Z', { input_tokens: 200, output_tokens: 20, total_tokens: 220 });
+        const path = ['sessions', '2026', '07', '05', 'rollout-shared.jsonl'];
+        writeJsonl(join(codexHome, ...path), [header, first]);
+        writeJsonl(join(accountA, ...path), [header, first, second]);
+        writeJsonl(join(accountB, 'archived_sessions', 'rollout-2026-07-06-other.jsonl'), [
+            sessionMeta('2026-07-06T01:00:00.000Z', 'other-session'),
+            tokenCount('2026-07-06T02:00:00.000Z', { input_tokens: 300, output_tokens: 30, total_tokens: 330 }),
+        ]);
+        const options = { codexHome, now: new Date('2026-09-30T12:00:00Z'), timeZone: 'UTC', ripgrepCommands: [] };
+        const defaultOnly = await collectCodexUsageSnapshot(options);
+        expect(defaultOnly.days.map(day => day.totalTokens)).toEqual([110]);
+        const all = await collectCodexUsageSnapshot({ ...options, additionalCodexHomes: [accountA, accountB, accountA] });
+        expect(all.days.map(day => ({ date: day.date, tokens: day.totalTokens, sessions: day.sessions }))).toEqual([
+            { date: '2026-07-05', tokens: 330, sessions: 1 },
+            { date: '2026-07-06', tokens: 330, sessions: 1 },
+        ]);
+        const todayOnly = await collectCodexUsageSnapshot({ ...options, additionalCodexHomes: [accountA, accountB], maxDays: 1 });
+        expect(todayOnly.days).toEqual([]);
+    });
+
+    it('resolves an old parent across homes during a one-day scan and counts only new account usage', async () => {
+        const codexHome = mkdtempSync(join(tmpdir(), 'codex-cross-home-parent-'));
+        created.push(codexHome);
+        const account = join(codexHome, 'account');
+        const parentPath = join(codexHome, 'sessions/2026/07/05/rollout-parent.jsonl');
+        const usage = { input_tokens: 100, output_tokens: 10, total_tokens: 110 };
+        writeJsonl(parentPath, [sessionMeta('2026-07-05T01:00:00Z', 'parent'), tokenCount('2026-07-05T02:00:00Z', usage)]);
+        utimesSync(parentPath, new Date('2026-07-05'), new Date('2026-07-05'));
+        const extra = { input_tokens: 50, output_tokens: 5, total_tokens: 55 };
+        const completeParent = join(account, 'sessions/2026/07/05/rollout-parent.jsonl');
+        writeJsonl(completeParent, [sessionMeta('2026-07-05T01:00:00Z', 'parent'),
+            tokenCount('2026-07-05T02:00:00Z', usage), tokenCount('2026-07-05T03:00:00Z', extra)]);
+        utimesSync(completeParent, new Date('2026-07-05'), new Date('2026-07-05'));
+        const child = [sessionMeta('2026-09-30T01:00:00Z', 'child', 'parent'),
+            tokenCount('2026-09-30T02:00:00Z', usage),
+            tokenCount('2026-09-30T02:30:00Z', extra),
+            tokenCount('2026-09-30T03:00:00Z', { input_tokens: 200, output_tokens: 20, total_tokens: 220 })];
+        writeJsonl(join(account, 'sessions/2026/09/30/rollout-child.jsonl'), child);
+        writeJsonl(join(codexHome, 'sessions/2026/09/30/rollout-independent.jsonl'), [
+            sessionMeta('2026-09-30T04:00:00Z', 'independent'),
+            tokenCount('2026-09-30T05:00:00Z', { input_tokens: 300, output_tokens: 30, total_tokens: 330 }),
+        ]);
+        const copy = join(codexHome, 'second-account');
+        writeJsonl(join(copy, 'sessions/2026/09/30/rollout-child.jsonl'), child);
+        const result = await collectCodexUsageSnapshot({ codexHome, additionalCodexHomes: [account, copy],
+            now: new Date('2026-09-30T12:00:00Z'), timeZone: 'UTC', maxDays: 1, ripgrepCommands: [] });
+        expect(result.days).toHaveLength(1);
+        expect(result.today).toMatchObject({ totalTokens: 550, sessions: 2, tokenCountEvents: 2 });
     });
 
     it('aggregates token_count events by local day', async () => {
