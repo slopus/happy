@@ -1,4 +1,5 @@
 const OTA_RUNTIME_VERSION_BY_VARIANT = Object.freeze(require('../ota-runtime-versions.json'));
+const IOS_OTA_RUNTIME_VERSION_BY_VARIANT = Object.freeze(require('../ota-ios-runtime-versions.json'));
 
 const BUILD_VARIANT_CONTRACT = Object.freeze({
     development: Object.freeze({
@@ -29,26 +30,41 @@ function getBuildVariantConfig(variant) {
     return config;
 }
 
-function assertVariantOtaTarget(variant, channel, runtimeVersion) {
+function runtimeVersionsForPlatform(platform) {
+    if (platform === 'android') return OTA_RUNTIME_VERSION_BY_VARIANT;
+    if (platform === 'ios') return IOS_OTA_RUNTIME_VERSION_BY_VARIANT;
+    throw new Error(`Unknown OTA platform: ${platform}`);
+}
+
+function getIosRuntimeVersion(variant) {
+    getBuildVariantConfig(variant);
+    return IOS_OTA_RUNTIME_VERSION_BY_VARIANT[variant];
+}
+
+function assertVariantOtaTarget(variant, channel, runtimeVersion, platform = 'android') {
     const config = getBuildVariantConfig(variant);
-    if (channel !== config.otaChannel || runtimeVersion !== config.runtimeVersion) {
+    const expectedRuntimeVersion = runtimeVersionsForPlatform(platform)[variant];
+    if (channel !== config.otaChannel || runtimeVersion !== expectedRuntimeVersion) {
         throw new Error(
             `OTA target mismatch for ${variant}: expected channel=${config.otaChannel} ` +
-            `runtime=${config.runtimeVersion}, received channel=${channel} runtime=${runtimeVersion}`
+            `runtime=${expectedRuntimeVersion}, received channel=${channel} runtime=${runtimeVersion}`
         );
     }
 }
 
-function defaultRuntimeVersion(channel) {
+function defaultRuntimeVersion(channel, platform = 'android') {
+    const versions = runtimeVersionsForPlatform(platform);
     return channel === 'production'
-        ? OTA_RUNTIME_VERSION_BY_VARIANT.production
-        : OTA_RUNTIME_VERSION_BY_VARIANT.preview;
+        ? versions.production
+        : versions.preview;
 }
 
 module.exports = {
     BUILD_VARIANT_CONTRACT,
+    IOS_OTA_RUNTIME_VERSION_BY_VARIANT,
     OTA_RUNTIME_VERSION_BY_VARIANT,
     assertVariantOtaTarget,
     defaultRuntimeVersion,
     getBuildVariantConfig,
+    getIosRuntimeVersion,
 };

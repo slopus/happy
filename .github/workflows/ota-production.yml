@@ -8,7 +8,7 @@ run-name: '${{ github.event.head_commit.message || github.ref_name }} · OTA 生
 #
 # 前提（不满足则本次 OTA 对线上无效，但不会报错）：
 # - 必须是纯 JS 改动（无原生变更）。原生变了应重新出 APK，OTA 推不动。
-# - runtimeVersion 必须仍与线上装机包一致（当前 production=24，见 ota-runtime-versions.json）。
+# - runtimeVersion 必须仍与线上装机包一致（见 ota-runtime-versions.json）。
 #
 # 安全：只在本仓库 push 到 main 时运行。需在仓库 Secrets 配置
 # ALIYUN_OSS_ACCESS_KEY_ID / ALIYUN_OSS_ACCESS_KEY_SECRET（与 preview 共用）。
@@ -66,8 +66,11 @@ jobs:
           while IFS= read -r file; do
             case "$file" in
               packages/happy-app/app.config.js|\
+              packages/happy-app/expo-project.json|\
+              packages/happy-app/google-services.json|\
               packages/happy-app/package.json|\
               packages/happy-app/ota-runtime-versions.json|\
+              packages/happy-app/ota-ios-runtime-versions.json|\
               packages/happy-app/eas.json|\
               packages/happy-app/android/*|\
               packages/happy-app/ios/*|\

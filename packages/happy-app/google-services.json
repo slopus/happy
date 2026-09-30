@@ -1,13 +1,13 @@
 {
   "project_info": {
-    "project_number": "902947412706",
-    "project_id": "happy-coder-9fe36",
-    "storage_bucket": "happy-coder-9fe36.firebasestorage.app"
+    "project_number": "728670122353",
+    "project_id": "paws-502e2",
+    "storage_bucket": "paws-502e2.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:902947412706:android:36343adcbad4fca41b9cbb",
+        "mobilesdk_app_id": "1:728670122353:android:284951e436a3889e57c6d0",
         "android_client_info": {
           "package_name": "build.paws"
         }
@@ -15,7 +15,7 @@
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyDzdshwzE3tHcc1klD6qIPpReCoAiG2Mxs"
+          "current_key": "AIzaSyAvCQoChGDV24PsyL_nwHDmlGqPJmfznik"
         }
       ],
       "services": {
@@ -26,7 +26,7 @@
     },
     {
       "client_info": {
-        "mobilesdk_app_id": "1:902947412706:android:eb8bccdbb85f0a371b9cbb",
+        "mobilesdk_app_id": "1:728670122353:android:e63dde6a4a0acb0557c6d0",
         "android_client_info": {
           "package_name": "build.paws.dev"
         }
@@ -34,7 +34,7 @@
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyDzdshwzE3tHcc1klD6qIPpReCoAiG2Mxs"
+          "current_key": "AIzaSyAvCQoChGDV24PsyL_nwHDmlGqPJmfznik"
         }
       ],
       "services": {
@@ -45,7 +45,7 @@
     },
     {
       "client_info": {
-        "mobilesdk_app_id": "1:902947412706:android:03fd92ac3c9813651b9cbb",
+        "mobilesdk_app_id": "1:728670122353:android:6666ac6054194eff57c6d0",
         "android_client_info": {
           "package_name": "build.paws.preview"
         }
@@ -53,7 +53,7 @@
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyDzdshwzE3tHcc1klD6qIPpReCoAiG2Mxs"
+          "current_key": "AIzaSyAvCQoChGDV24PsyL_nwHDmlGqPJmfznik"
         }
       ],
       "services": {

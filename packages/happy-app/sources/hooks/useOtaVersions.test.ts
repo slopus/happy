@@ -12,7 +12,7 @@ describe('useOtaVersions runtime defaults', () => {
         vi.restoreAllMocks();
     });
 
-    it('fetches preview runtime 23 metadata by default', async () => {
+    it('fetches preview runtime 24 metadata by default', async () => {
         const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
             ok: true,
             json: async () => ({
@@ -29,16 +29,16 @@ describe('useOtaVersions runtime defaults', () => {
             channel: 'preview',
         });
 
-        expect(DEFAULT_OTA_RUNTIME_VERSION).toBe('23');
-        expect(PREVIEW_OTA_RUNTIME_VERSION).toBe('23');
-        expect(PRODUCTION_OTA_RUNTIME_VERSION).toBe('24');
-        expect(getDefaultOtaRuntimeVersion('preview')).toBe('23');
+        expect(DEFAULT_OTA_RUNTIME_VERSION).toBe('24');
+        expect(PREVIEW_OTA_RUNTIME_VERSION).toBe('24');
+        expect(PRODUCTION_OTA_RUNTIME_VERSION).toBe('25');
+        expect(getDefaultOtaRuntimeVersion('preview')).toBe('24');
         expect(fetchMock).toHaveBeenCalledWith(
-            'https://happy-app-ota-jacky.oss-cn-hangzhou.aliyuncs.com/meta/android/23/preview/1783710188454.json',
+            'https://happy-app-ota-jacky.oss-cn-hangzhou.aliyuncs.com/meta/android/24/preview/1783710188454.json',
         );
     });
 
-    it('fetches production runtime 24 metadata by default', async () => {
+    it('fetches production runtime 25 metadata by default', async () => {
         const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
             ok: true,
             json: async () => ({
@@ -55,9 +55,23 @@ describe('useOtaVersions runtime defaults', () => {
             channel: 'production',
         });
 
-        expect(getDefaultOtaRuntimeVersion('production')).toBe('24');
+        expect(getDefaultOtaRuntimeVersion('production')).toBe('25');
         expect(fetchMock).toHaveBeenCalledWith(
-            'https://happy-app-ota-jacky.oss-cn-hangzhou.aliyuncs.com/meta/android/24/production/1783710188454.json',
+            'https://happy-app-ota-jacky.oss-cn-hangzhou.aliyuncs.com/meta/android/25/production/1783710188454.json',
+        );
+    });
+
+    it('preserves the existing iOS runtime when selecting OTA metadata', async () => {
+        const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+            ok: true,
+            json: async () => ({ id: 'ios-update-id', channel: 'production', git: {} }),
+        } as Response);
+
+        expect(getDefaultOtaRuntimeVersion('preview', 'ios')).toBe('23');
+        expect(getDefaultOtaRuntimeVersion('production', 'ios')).toBe('24');
+        await fetchOtaVersion('production', '1783710188454', 'ios');
+        expect(fetchMock).toHaveBeenCalledWith(
+            'https://happy-app-ota-jacky.oss-cn-hangzhou.aliyuncs.com/meta/ios/24/production/1783710188454.json',
         );
     });
 });

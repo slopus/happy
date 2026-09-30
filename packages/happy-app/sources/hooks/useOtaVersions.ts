@@ -5,6 +5,7 @@ import {
     type OtaVersion,
 } from '@/utils/otaVersions';
 import otaRuntimeVersions from '../../ota-runtime-versions.json';
+import iosRuntimeVersions from '../../ota-ios-runtime-versions.json';
 
 export type { OtaVersion };
 
@@ -24,8 +25,9 @@ export const PREVIEW_OTA_RUNTIME_VERSION = otaRuntimeVersions.preview;
 export const PRODUCTION_OTA_RUNTIME_VERSION = otaRuntimeVersions.production;
 export const DEFAULT_OTA_RUNTIME_VERSION = PREVIEW_OTA_RUNTIME_VERSION;
 
-export function getDefaultOtaRuntimeVersion(channel: string | null | undefined): string {
-    return channel === 'production' ? PRODUCTION_OTA_RUNTIME_VERSION : PREVIEW_OTA_RUNTIME_VERSION;
+export function getDefaultOtaRuntimeVersion(channel: string | null | undefined, platform: string = 'android'): string {
+    const versions = platform === 'ios' ? iosRuntimeVersions : otaRuntimeVersions;
+    return channel === 'production' ? versions.production : versions.preview;
 }
 
 export interface OtaVersionsState {
@@ -72,11 +74,11 @@ async function fetchOtaVersionBatch(channel: string, platform: string, runtime: 
     return metas.filter((version): version is OtaVersion => version !== null);
 }
 
-export async function fetchOtaVersion(channel: string, stamp: string, platform: string = 'android', runtime: string = getDefaultOtaRuntimeVersion(channel)): Promise<OtaVersion | null> {
+export async function fetchOtaVersion(channel: string, stamp: string, platform: string = 'android', runtime: string = getDefaultOtaRuntimeVersion(channel, platform)): Promise<OtaVersion | null> {
     return fetchOtaVersionMeta(channel, platform, runtime, stamp);
 }
 
-export function useOtaVersion(stamp: string | null, channel: string = 'preview', platform: string = 'android', runtime: string = getDefaultOtaRuntimeVersion(channel)): OtaVersionDetailState {
+export function useOtaVersion(stamp: string | null, channel: string = 'preview', platform: string = 'android', runtime: string = getDefaultOtaRuntimeVersion(channel, platform)): OtaVersionDetailState {
     const [version, setVersion] = React.useState<OtaVersion | null>(null);
     const [loading, setLoading] = React.useState(true);
     const [error, setError] = React.useState<string | null>(null);
@@ -120,7 +122,7 @@ export function useOtaVersion(stamp: string | null, channel: string = 'preview',
     return { version, loading, error, refresh };
 }
 
-export function useOtaVersions(channel: string = 'preview', platform: string = 'android', runtime: string = getDefaultOtaRuntimeVersion(channel)): OtaVersionsState {
+export function useOtaVersions(channel: string = 'preview', platform: string = 'android', runtime: string = getDefaultOtaRuntimeVersion(channel, platform)): OtaVersionsState {
     const [versions, setVersions] = React.useState<OtaVersion[]>([]);
     const [loading, setLoading] = React.useState(true);
     const [loadingMore, setLoadingMore] = React.useState(false);
