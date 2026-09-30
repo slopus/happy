@@ -48,6 +48,14 @@ vi.mock('@/utils/broadKillShims', () => ({ installBroadKillShims: mockInstallBro
 vi.mock('@/ui/doctor', () => ({ getEnvironmentInfo: async () => ({}) }));
 vi.mock('@/daemon/run', () => ({ initialMachineMetadata: () => ({}) }));
 
+// Imported statically, as runClaude.test.ts does: loading runClaude's whole
+// module graph costs ~1.1–1.3s of CPU on a cold worker, and on a loaded host
+// that stretched past the 5s test timeout when it happened inside the first
+// test's body. Collection has no per-test timeout, so each test now measures
+// only the run it asserts on. The branch env is read when runClaude runs, so
+// setting it per test before the call is unchanged.
+import { runClaude } from './runClaude';
+
 const ORIGINAL_ENV = { ...process.env };
 
 /** The real shape, so a fixture that drifts from it fails to compile. */
@@ -127,7 +135,6 @@ afterEach(() => {
 
 async function runOffline(env: Record<string, string>) {
     Object.assign(process.env, env);
-    const { runClaude } = await import('./runClaude');
     return runClaude({ kind: 'account', credentials: CREDENTIALS }, {});
 }
 

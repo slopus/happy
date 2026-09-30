@@ -19,6 +19,7 @@ Happy CLI의 SDK pin을 0.3.276에서 0.3.283으로 갱신했다. 내장 Claude�
 Sonnet 5.5 routine 라우팅(feat/sonnet-5-5-gpt-6-1-sol)에 맞춰 pin을 0.3.283 → 0.3.285(내장 Claude Code 2.1.283 → 2.1.285)로 올렸다.
 - 이유: 2.1.283은 claude-sonnet-5-5를 모르는 모델로 취급해 "isn't described by this version's model catalog … auto-compact keeps this session within 200k tokens"(`[claude-code:unrecognized_model]`)를 출력한다. 2.1.285는 경고 없이 실행된다. 내장 바이너리 문자열 검사로도 `claude-sonnet-5-5`가 2.1.283에는 0회, 2.1.285에는 12회 나온다. 이 브랜치가 claude-sonnet-5-5/medium을 조직 공유 routine 경로로 만들므로 내장 런타임이 이 모델을 알아야 한다.
 - 드레인 동작 재확인: 0.3.285 실 SDK로 스트리밍 턴 중 `interrupt()` → `error_during_execution` → 입력 종료 시 프로세스가 code 1, signal 없음, killed=false로 끝나는 것을 재현했다(claudeDrainProvider의 "exit 1은 clean" 규칙 유지).
+- 오진 기록: `runClaudeOfflineAck.test.ts` 첫 테스트가 0.3.285에서 5초 타임아웃을 넘긴 것은 SDK 비용이 아니다. 두 버전을 번갈아 측정한 결과 runClaude 모듈 그래프 로드 CPU가 1.1–1.3초로 같고 SDK 단독 import도 55–70ms로 같았다. 벽시계 시간만 호스트 부하(load avg 225–312, 14코어)에 따라 2–11초로 흔들렸다. 테스트 본문 안에서 동적 import하던 것을 정적 import로 옮겨 수집 단계로 뺐다.
 - 재검토 조건: routine/기본 라우팅 표에 새 Claude 모델이 들어갈 때(내장 카탈로그에 있는지 `[claude-code:unrecognized_model]`로 확인), SDK를 다시 올릴 때 드레인 exit code 규칙이 바뀌었을 때, 또는 HAPPY_CLAUDE_PATH 외부 바이너리 기본 사용으로 전환할 때.
 
 ## 반영 범위와 재개
