@@ -455,9 +455,13 @@ a fresh frozen evaluation; do not retune against the recorded test.
 2026-09-30 routine runs `claude-sonnet-5-5/medium`, and codex routine, hard and
 escalated all run `gpt-6.1-sol` at low/high/xhigh (Claude Code 2.1.284+, Codex
 0.159+; both verified with a real turn). `KNOWN_ROUTE_TIERS` keeps every earlier
-pair so floors stored under a previous table are still retained exactly. When
-an org policy forces a model-only substitution and tiers share that model, the
-highest non-escalated tier wins: escalated is a one-turn override, and Desktop's
+pair so floors stored under a previous table are still retained exactly. An
+org policy substitution first takes the pair the substitute model ran as for
+the routed tier, in this table or an earlier one, so an allowlist written
+before a table change (claude-opus-5-5 without claude-sonnet-5-5) keeps routine
+turns on opus-5-5/low instead of raising them and the floor to hard. Only when
+no such pair exists is the substitution model-only; if tiers share that model,
+the highest non-escalated tier wins: escalated is a one-turn override, and Desktop's
 `difficultyForModel` also reads the escalated model as hard. Revisit when
 Desktop changes that reading, or when a shared catalog package replaces the
 snapshot.

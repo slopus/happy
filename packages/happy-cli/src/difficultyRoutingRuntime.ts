@@ -764,6 +764,27 @@ function catalogRouteForModel(
 }
 
 /**
+ * The exact pair a model ran as for this tier, in the current table or an
+ * earlier one. Unlike `catalogRouteForModel` the tier is known here, so the
+ * model-only ambiguity does not arise: an allowlist written before a table
+ * change (claude-opus-5-5 but not claude-sonnet-5-5) keeps routine turns on
+ * opus-5-5/low, as they ran before, instead of raising them to hard.
+ */
+function knownRouteForModelAtTier(
+  agent: RoutableAgent,
+  model: string,
+  tier: Difficulty | undefined,
+): { tier: Difficulty; pair: { model: string; effort: string } } | null {
+  if (!tier) return null
+  const current = USER_REQUEST_MODELS[agent][tier]
+  if (current.model === model) return { tier, pair: current }
+  const entry = KNOWN_ROUTE_TIERS.find((known) => (
+    known.agent === agent && known.model === model && known.tier === tier
+  ))
+  return entry ? { tier, pair: { model: entry.model, effort: entry.effort } } : null
+}
+
+/**
  * A rejected grant used to collapse to `{ ok: false }` with no reason on four
  * different paths, so the field log could not tell a broken response from a
  * failed check. Name the stage; keep whatever reason the server did send.
@@ -1064,7 +1085,8 @@ function resolveRouteAllowedByAiPolicy(
     : defaultModelForAgent(policy, agent)
   if (!substitute) return null
 
-  const known = catalogRouteForModel(agent, substitute)
+  const known = knownRouteForModelAtTier(agent, substitute, route.difficulty)
+    ?? catalogRouteForModel(agent, substitute)
   if (!known) {
     // Allowed by policy but absent from the routing catalog: no effort in this
     // catalog is known to be valid for it. Fail rather than pair it blindly.
