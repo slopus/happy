@@ -61,6 +61,31 @@ async function leftInFirstAssignment() {
 }
 
 describe('profile assignments', () => {
+    it('settles the assignment cleanup before task recovery finishes (broker admission waits only for the cleanup)', async () => {
+        const dir = await mkdtemp(join(tmpdir(), 'abp-assignment-')); dirs.push(dir)
+        const proto = BrowserRuntime.prototype as unknown as { recoverExistingTasks(this: BrowserRuntime): Promise<void> }
+        const original = proto.recoverExistingTasks
+        let release!: () => void
+        const gate = new Promise<void>((resolve) => { release = resolve })
+        proto.recoverExistingTasks = function (this: BrowserRuntime) { return gate.then(() => original.call(this)) }
+        try {
+            const store = await TaskStore.open(dir)
+            const runtime = new BrowserRuntime({ store, drivers: new Map([[profileId, new FakeBrowserDriver()]]), clock: new FakeClock(100), sites,
+                profilePrincipals: new Map([[profileId, 'user-a' as never]]), profileAssignments: new Map([[profileId, FIRST]]) })
+            await runtime.assignmentsSettled()
+            let started = false
+            void runtime.started().then(() => { started = true })
+            await new Promise((resolve) => setTimeout(resolve, 20))
+            expect(started).toBe(false)
+            expect(runtime.principalStateReady()).toBe(true)
+            release()
+            await runtime.started()
+            await store.close()
+        } finally {
+            proto.recoverExistingTasks = original
+        }
+    })
+
     it('stamps spaces and tasks with the assignment and records it once start-up is done', async () => {
         const a = await leftInFirstAssignment()
         const store = await TaskStore.open(a.dir)

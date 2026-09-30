@@ -423,7 +423,8 @@ export async function runRuntime(deps: RuntimeProcessDeps = {}): Promise<void> {
     let admissionOpen = !config?.admissionHold
     if (!admissionOpen) log('admission on hold: a profile reassignment awaits verification (abp-stack)')
     const admit = async (): Promise<void> => {
-        await runtime.started()
+        // Only the cleanup, not the whole task recovery: the daemon's broker calls time out after 10 s.
+        await runtime.assignmentsSettled()
         if (!admissionOpen) throw new BrowserRuntimeError('RUNTIME_UNAVAILABLE', 'The Runtime admits no work while a profile reassignment is verified', true)
     }
     // Attention of an earlier assignment's task or of a retired session never wakes a session.

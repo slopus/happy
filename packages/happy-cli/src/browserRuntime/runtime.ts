@@ -104,14 +104,17 @@ export class BrowserRuntime implements BrowserRuntimeApi {
     private readonly eventWaiters = new Map<TaskId, Set<() => void>>()
     private readonly requestFlights = new Map<string, { hash: string; promise: Promise<unknown> }>()
     private readonly recovery: Promise<void>
+    private readonly cleanup: Promise<void>
     constructor(private readonly options: BrowserRuntimeOptions) {
         this.drivers = options.drivers instanceof Map ? options.drivers : new Map(Object.entries(options.drivers) as [
             ProfileId,
             BrowserDriver
         ][])
         this.clock = options.clock ?? systemClock
-        // Rejects (every API call then fails RUNTIME_UNAVAILABLE) when another assignment's state could not be ended.
-        this.recovery = this.startUp()
+        // Both reject (every API call then fails RUNTIME_UNAVAILABLE) when another assignment's state could not be ended.
+        this.cleanup = this.settleAssignments()
+        this.cleanup.catch(() => undefined)
+        this.recovery = this.cleanup.then(() => this.recoverExistingTasks().catch(() => undefined))
         this.recovery.catch(() => undefined)
     }
     createSpace: BrowserRuntimeApi['createSpace'] = (auth, req) =>
@@ -1910,6 +1913,14 @@ export class BrowserRuntime implements BrowserRuntimeApi {
     started(): Promise<void> {
         return this.recovery
     }
+    /**
+     * Resolves once the cleanup of other assignments is done (before task recovery, which can take long);
+     * rejects RUNTIME_UNAVAILABLE if it failed. Admission (broker, viewer) waits for this; task operations
+     * still wait for the whole start-up themselves.
+     */
+    assignmentsSettled(): Promise<void> {
+        return this.cleanup
+    }
     /** True once anything of other assignments or owners has been ended (readiness; the API is closed otherwise). */
     principalStateReady(): boolean {
         return this.assignmentState === 'ready'
@@ -1980,7 +1991,7 @@ export class BrowserRuntime implements BrowserRuntimeApi {
         }
         if (assignments) await store.commitAssignments(Object.fromEntries(assignments))
     }
-    private async startUp(): Promise<void> {
+    private async settleAssignments(): Promise<void> {
         try {
             await this.endOtherAssignments()
             this.assignmentState = 'ready'
@@ -1990,7 +2001,6 @@ export class BrowserRuntime implements BrowserRuntimeApi {
             this.assignmentState = 'failed'
             throw new BrowserRuntimeError('RUNTIME_UNAVAILABLE', 'The state of a previous profile assignment could not be ended; see the Runtime log', false)
         }
-        await this.recoverExistingTasks().catch(() => undefined)
     }
     private async recoverExistingTasks(): Promise<void> {
         await this.restorePersistedTabs().catch(() => undefined)
