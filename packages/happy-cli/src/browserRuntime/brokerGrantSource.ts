@@ -43,11 +43,18 @@ export interface BrokerGrantSourceOptions {
     retryDelaysMs?: readonly number[]
 }
 
-/** Returns a token getter for RuntimeClient. */
-export function createBrokerGrantSource(options: BrokerGrantSourceOptions): () => Promise<string> {
+/** A token getter for RuntimeClient, and the profile its grants are for. */
+export interface BrokerGrantSource {
+    (): Promise<string>
+    /** The profile the broker granted: on a shared machine the session user's, whatever was requested. */
+    grantedProfileId(): Promise<string>
+}
+
+export function createBrokerGrantSource(options: BrokerGrantSourceOptions): BrokerGrantSource {
     const now = options.now ?? Date.now
     const delays = options.retryDelaysMs ?? DEFAULT_RETRY_DELAYS_MS
     let current: { token: string; expiresAtMs: number } | undefined
+    let grantedProfileId: string | undefined
     let pending: Promise<string> | undefined
 
     const fetchGrant = async (): Promise<string> => {
@@ -59,9 +66,11 @@ export function createBrokerGrantSource(options: BrokerGrantSourceOptions): () =
             } catch {
                 reply = undefined
             }
-            const result = reply?.body.result as { token?: unknown; expiresAtMs?: unknown } | undefined
+            const result = reply?.body.result as { token?: unknown; expiresAtMs?: unknown; profileId?: unknown } | undefined
             if (reply?.status === 200 && typeof result?.token === 'string' && typeof result.expiresAtMs === 'number') {
                 current = { token: result.token, expiresAtMs: result.expiresAtMs }
+                // Older Runtimes do not name it: the requested profile.
+                grantedProfileId = typeof result.profileId === 'string' ? result.profileId : options.profileId
                 return result.token
             }
             // Retry only what can resolve by itself: an unreachable broker or a not-yet-bound session.
@@ -73,7 +82,7 @@ export function createBrokerGrantSource(options: BrokerGrantSourceOptions): () =
         }
     }
 
-    return async () => {
+    const token = async (): Promise<string> => {
         if (current && now() < current.expiresAtMs - RENEW_BEFORE_EXPIRY_MS) return current.token
         pending ??= fetchGrant().catch((error: unknown) => {
             // A broker hiccup during renewal keeps the still-valid grant; a refusal (revoked) never does.
@@ -84,4 +93,10 @@ export function createBrokerGrantSource(options: BrokerGrantSourceOptions): () =
         }).finally(() => { pending = undefined })
         return pending
     }
+    return Object.assign(token, {
+        grantedProfileId: async () => {
+            await token()
+            return grantedProfileId ?? options.profileId
+        },
+    })
 }

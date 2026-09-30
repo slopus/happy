@@ -458,7 +458,9 @@ export function daemonEnv(install) {
     `HAPPY_BROWSER_TASK_RUNTIME_URL=http://127.0.0.1:${install.runtimePort}`,
     `HAPPY_BROWSER_TASK_BROKER_SOCKET=${PATHS.brokerSocket}`,
     `HAPPY_BROWSER_TASK_DAEMON_TOKEN_FILE=${PATHS.daemonToken}`,
-    `HAPPY_BROWSER_TASK_PROFILE_ID=${install.agentProfileId}`,
+    `HAPPY_BROWSER_TASK_TENANCY=${install.tenancyMode ?? "dedicated"}`,
+    // A shared machine's sessions use the profile the broker grants them (their user's).
+    ...install.tenancyMode === "shared" ? [] : [`HAPPY_BROWSER_TASK_PROFILE_ID=${install.agentProfileId}`],
     // Machine RPCs (file reads, document list, bash and terminal cwd) accept paths under this root only. The
     // server addresses everything as /home/agent/workspace/..., a link to /work/agent-workspace: rooted at the
     // link, both the lexical and the realpath checks pass (a link is tolerated only as the root itself).

@@ -85,7 +85,14 @@ const stepSchema = z.object({
  * keeps the session parked while a task waits for the user (Studio Chat(beta)), so the attention after
  * an approval, a login or a released takeover still wakes it.
  */
-export function registerBrowserTaskTools(mcp: McpServer, client: RuntimeClient, opts: { agentSessionId: string; profileId: string; exitAfterFirstTurn?: boolean; hostContinues?: boolean }): void {
+export function registerBrowserTaskTools(mcp: McpServer, client: RuntimeClient, opts: {
+    agentSessionId: string
+    /** The session's granted profile; on a shared machine known only from the broker's grant. */
+    profileId: string | (() => Promise<string>)
+    exitAfterFirstTurn?: boolean
+    hostContinues?: boolean
+}): void {
+    const grantedProfile = typeof opts.profileId === 'string' ? async () => opts.profileId as string : opts.profileId
     const id = (v?: string) => v ?? randomUUID()
     const parked = Boolean(opts.exitAfterFirstTurn && opts.hostContinues)
     const sessionNote = !opts.exitAfterFirstTurn ? ''
@@ -109,7 +116,7 @@ export function registerBrowserTaskTools(mcp: McpServer, client: RuntimeClient, 
         title: 'Create browser task space',
         description: 'Create an isolated task space (tab group) in the granted browser profile. profileId defaults to the session’s granted profile.' + sessionNote,
         inputSchema: { profileId: z.string().min(1).optional(), requestId: reqId },
-    }, async (a) => { const r = id(a.requestId); return run(r, () => client.createSpace({ profileId: (a.profileId ?? opts.profileId) as never, requestId: r as never })) })
+    }, async (a) => { const r = id(a.requestId); return run(r, async () => client.createSpace({ profileId: (a.profileId ?? await grantedProfile()) as never, requestId: r as never })) })
 
     mcp.registerTool('browser_task_create', {
         title: 'Create browser task',

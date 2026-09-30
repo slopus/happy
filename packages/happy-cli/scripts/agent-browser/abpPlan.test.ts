@@ -363,6 +363,13 @@ describe('shared machine networks', () => {
         expect(chain.at(-1)).toBe('-j REJECT')
     })
 
+    it('tells the daemon it runs on a shared machine, with no fixed profile (sessions use their user\'s)', () => {
+        const env = daemonEnv(shared([['user-1', 0]])).split('\n')
+        expect(env).toContain('HAPPY_BROWSER_TASK_TENANCY=shared')
+        expect(env.some((line: string) => line.startsWith('HAPPY_BROWSER_TASK_PROFILE_ID='))).toBe(false)
+        expect(daemonEnv(base()).split('\n')).toContain('HAPPY_BROWSER_TASK_TENANCY=dedicated')
+    })
+
     it("carries removed users' tombstones into runtime.json", () => {
         const install = shared([['user-1', 0]], { profileTombstones: [{ principalId: 'user-2', removedAtMs: 5 }] })
         const config = runtimeConfig(install, { sessionGid: 1, daemonTokenSha256: 'b'.repeat(64) })

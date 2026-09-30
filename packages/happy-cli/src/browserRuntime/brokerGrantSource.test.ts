@@ -44,6 +44,16 @@ describe('broker grant source', () => {
         expect(broker.requests).toEqual([{ path: '/v1/agent-grants', secret: SECRET, body: { schemaVersion: 1, agentSessionId: 'session-1', profileId: 'profile-a' } }])
     })
 
+    it("reports the profile the broker granted (a shared machine picks the session user's), else the requested one", async () => {
+        const named = await fakeBroker(() => ({ status: 200, body: { ok: true, result: { token: 't', grantId: 'g', expiresAtMs: Date.now() + 55 * 60_000, profileId: 'u-0123456789abcdef' } } }))
+        const shared = createBrokerGrantSource({ socketPath: named.socketPath, sessionSecret: SECRET, agentSessionId: () => 'session-1', profileId: 'default' })
+        expect(await shared.grantedProfileId()).toBe('u-0123456789abcdef')
+        // An older Runtime does not name it: the requested profile.
+        const plain = await fakeBroker(() => ok('t', Date.now() + 55 * 60_000))
+        const dedicated = createBrokerGrantSource({ socketPath: plain.socketPath, sessionSecret: SECRET, agentSessionId: () => 'session-1', profileId: 'main' })
+        expect(await dedicated.grantedProfileId()).toBe('main')
+    })
+
     it('renews five minutes before expiry, once for concurrent callers', async () => {
         let now = 1_000_000
         const broker = await fakeBroker((_body, _req, count) => ok(`t${count}`, now + 55 * 60_000))

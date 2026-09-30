@@ -99,6 +99,17 @@ describe('browser task agent tools', () => {
         expect(createSpace).toHaveBeenLastCalledWith(expect.objectContaining({ profileId: 'explicit' }))
     })
 
+    it('resolves the granted profile when it is known only from the grant (shared machine)', async () => {
+        const createSpace = vi.fn(async () => ({}))
+        const mcp = new McpServer({ name: 't', version: '1' })
+        registerBrowserTaskTools(mcp, { createSpace } as unknown as RuntimeClient, { agentSessionId: 'a1', profileId: async () => 'u-0123456789abcdef' })
+        const [a, b] = InMemoryTransport.createLinkedPair()
+        const client = new Client({ name: 'c', version: '1' })
+        await Promise.all([mcp.connect(a), client.connect(b)])
+        await client.callTool({ name: 'browser_task_create_space', arguments: {} })
+        expect(createSpace).toHaveBeenLastCalledWith(expect.objectContaining({ profileId: 'u-0123456789abcdef' }))
+    })
+
     it('generates a requestId when omitted and returns it', async () => {
         const cancel = vi.fn(async () => ({ status: 'cancel-accepted' }))
         const client = await connect({ cancel })
