@@ -1,3 +1,4 @@
+import { mergeCodexAccounts } from './aiCredentialAdditive'
 import { CODEX_MULTI_AUTH_VERSION, isSupportedCodexMultiAuthVersion, SUPPORTED_CODEX_MULTI_AUTH_VERSIONS } from '../utils/codexMultiAuthVersions'
 import { stagingParent } from './stagedCredentialRoot'
 import { spawn } from 'node:child_process'
@@ -17,6 +18,7 @@ import {
 } from '../managed/zaiClaudeEnvironment'
 import {
   AI_CREDENTIAL_PROVENANCE_PATH,
+  readActiveClaudeProvenance,
   parseClaudeProvenanceInput,
   serializeAppliedClaudeProvenance,
   serializeInvalidatedClaudeProvenance,
@@ -388,7 +390,7 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
     return null
   }
 
-  async function ensureClaudeSwap(): Promise<void> {
+  async function ensureClaudeSwap(preserveSettings = false): Promise<void> {
     await deps.execFile('uv', ['--version'])
     const python = await claudeSwapPython()
     let installed = false
@@ -404,8 +406,57 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
         '--python', python, '--force',
       ], { timeoutMs: 300_000 })
     }
+    if (preserveSettings) return
     await deps.execFile('cswap', ['config', 'set', 'autoswitch.threshold', '95'])
     await deps.execFile('cswap', ['config', 'set', 'autoswitch.strategy', 'consume-first'])
+  }
+
+  async function applyClaudeAdditive(payload: string, knownCompanyIdentities: Set<string>) {
+    const incoming = claudeImportedAccountIdentities(payload)
+    if (!incoming) throw new AiCredentialRuntimeError('AI_CREDENTIAL_MERGE_UNSUPPORTED')
+    await ensureClaudeSwap(true)
+    const list = async () => parseClaudeListDetails((await deps.execFile('cswap', ['list', '--json'], {
+      maxOutputBytes: MAX_PAYLOAD_BYTES, timeoutMs: CLAUDE_STATUS_TIMEOUT_MS,
+    })).stdout)
+    const before = await list()
+    const existing = new Set(before.accounts.map(claudeListAccountIdentity))
+    const envelope = JSON.parse(payload)
+    // Never send existing slots to import: even a plain import may auto-heal
+    // their dead-token status and clear disabled metadata.
+    envelope.accounts = envelope.accounts.filter((account: { email: string }) => !existing.has(claudeListAccountIdentity(account)))
+    if (envelope.accounts.length > 0) {
+      const tempDir = await deps.makeTempDir()
+      const file = join(tempDir, 'claude-swap.json')
+      try {
+        await deps.writeFile(file, JSON.stringify(envelope), { mode: 0o600 })
+        await deps.chmod(file, 0o600)
+        await deps.execFile('cswap', ['import', file])
+      } finally {
+        await deps.rm(tempDir, { recursive: true, force: true })
+      }
+    }
+    let after = await list()
+    const present = new Set(after.accounts.map(claudeListAccountIdentity))
+    if ([...existing, ...incoming].some(identity => !present.has(identity))
+      || before.accounts.some(account => {
+        const retained = after.accounts.find(candidate => claudeListAccountIdentity(candidate) === claudeListAccountIdentity(account))
+        return retained?.number !== account.number || retained?.disabled !== account.disabled
+      })) throw new AiCredentialRuntimeError('CLAUDE_APPLY_VERIFICATION_FAILED')
+    if (before.activeAccountNumber !== null) {
+      if (after.activeAccountNumber !== before.activeAccountNumber) {
+        throw new AiCredentialRuntimeError('CLAUDE_APPLY_VERIFICATION_FAILED')
+      }
+    } else if (after.activeAccountNumber !== null) {
+      await deps.execFile('cswap', ['switch', String(after.activeAccountNumber), '--force', '--json'], { timeoutMs: CLAUDE_STATUS_TIMEOUT_MS })
+      after = await list()
+      if (!after.activeUsable && after.activeCredentialKind !== 'api_key') throw new AiCredentialRuntimeError('CLAUDE_APPLY_VERIFICATION_FAILED')
+    }
+    return {
+      result: { provider: 'claude' as const, configured: true, accountCount: after.accounts.length, rotation: deps.supervisor.status() },
+      // Only newly imported slots are proven organizational material. Matching
+      // personal credentials were deliberately not overwritten by this import.
+      verifiedAccounts: after.accounts.filter(account => incoming.has(claudeListAccountIdentity(account)) && (!existing.has(claudeListAccountIdentity(account)) || knownCompanyIdentities.has(JSON.stringify([account.email, account.organizationUuid ?? '', account.organizationName ?? ''])))),
+    }
   }
 
   async function applyClaude(payload: string) {
@@ -556,9 +607,10 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
     }
   }
 
-  async function applyCodex(payload: string) {
+  async function applyCodex(payload: string, applyMode: 'merge' | 'replace' = 'replace') {
     const bundle = parseCodexMultiAuthBundle(payload)
-    if (bundle) return applyCodexMultiAuth(bundle)
+    if (bundle) return applyCodexMultiAuth(bundle, applyMode)
+    if (applyMode === 'merge') throw new AiCredentialRuntimeError('AI_CREDENTIAL_MERGE_UNSUPPORTED')
     const home = codexHome()
     const authPath = join(home, 'auth.json')
     const backupPath = join(home, 'auth.json.happy-backup')
@@ -682,7 +734,7 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
     return installed
   }
 
-  async function applyCodexMultiAuth(bundle: CodexMultiAuthBundle) {
+  async function applyCodexMultiAuth(bundle: CodexMultiAuthBundle, applyMode: 'merge' | 'replace') {
     await ensureCodexMultiAuth()
     const root = codexMultiAuthDir()
     await deps.mkdir(root, { recursive: true, mode: 0o700 })
@@ -690,6 +742,44 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
     const settings = enforceCodexRotationSettings(bundle.settings)
     const accountsPath = join(root, 'openai-codex-accounts.json')
     const settingsPath = join(root, 'settings.json')
+    if (applyMode === 'merge') {
+      let current = bundle
+      let savedSettings: CodexMultiAuthBundle['settings'] = { version: 1, pluginConfig: {} }
+      try {
+        const raw = await deps.readFile(accountsPath)
+        current = parseCodexMultiAuthBundle(JSON.stringify({ ...bundle, accounts: JSON.parse(raw) }))!
+        if (!current) throw new AiCredentialRuntimeError('CODEX_MULTI_AUTH_PAYLOAD_INVALID')
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+        // A live login without a pool must first be captured by onboarding;
+        // do not silently replace or strand that personal identity.
+        try {
+          await deps.readFile(join(codexHome(), 'auth.json'))
+          throw new AiCredentialRuntimeError('AI_CREDENTIAL_PERSONAL_CAPTURE_REQUIRED')
+        } catch (authError) {
+          if ((authError as NodeJS.ErrnoException).code !== 'ENOENT') throw authError
+        }
+      }
+      try {
+        savedSettings = JSON.parse(await deps.readFile(settingsPath))
+        if (!isObject(savedSettings) || savedSettings.version !== 1 || !isObject(savedSettings.pluginConfig)) {
+          throw new AiCredentialRuntimeError('CODEX_MULTI_AUTH_PAYLOAD_INVALID')
+        }
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+      }
+      const merged = mergeCodexAccounts(current.accounts, bundle.accounts)
+      await replaceCodexMultiAuthFiles(deps, [
+        { path: accountsPath, content: JSON.stringify(merged) },
+        { path: settingsPath, content: JSON.stringify(savedSettings) },
+      ], async () => {
+        if (await deps.readFile(accountsPath) !== JSON.stringify(merged)
+          || await deps.readFile(settingsPath) !== JSON.stringify(savedSettings)) {
+          throw new AiCredentialRuntimeError('CODEX_MULTI_AUTH_PAYLOAD_INVALID')
+        }
+      })
+      return { provider: 'codex' as const, configured: true, accountCount: merged.accounts.length }
+    }
     const applied = await replaceCodexMultiAuthFiles(deps, [
       { path: accountsPath, content: JSON.stringify(bundle.accounts) },
       { path: settingsPath, content: JSON.stringify(settings) },
@@ -866,6 +956,7 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
     provider: AiCredentialProvider
     payload: string
     trialLease?: TrialAiCredentialLeaseMarker
+    applyMode?: 'merge' | 'replace'
     /** Sent only by the org deployment: which company bundle this is. */
     provenance?: unknown
   }) {
@@ -874,9 +965,27 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
       throw new AiCredentialRuntimeError('INVALID_PAYLOAD')
     }
     assertPayloadSize(input.payload)
+    const applyMode = input.applyMode ?? 'replace'
+    if (applyMode !== 'merge' && applyMode !== 'replace') throw new AiCredentialRuntimeError('INVALID_PAYLOAD')
+    if (applyMode === 'merge' && (input.trialLease !== undefined || selected === 'zai')) {
+      throw new AiCredentialRuntimeError('AI_CREDENTIAL_MERGE_UNSUPPORTED')
+    }
     return serialize(() => withSafeErrors(
       `${selected.toUpperCase()}_APPLY_FAILED`,
       async () => {
+        if (applyMode === 'merge') {
+          const marker = await readTrialMarker()
+          if (marker.leases[selected] || (selected === 'claude' && marker.leases.zai)) {
+            throw new AiCredentialRuntimeError('AI_CREDENTIAL_MERGE_UNSUPPORTED')
+          }
+        }
+        const previousProvenance = selected === 'claude' && applyMode === 'merge'
+          ? await readActiveClaudeProvenance({ homeDir: deps.homeDir, readFile: deps.readFile })
+          : null
+        const incomingProvenance = parseClaudeProvenanceInput(input.provenance)
+        const knownCompanyIdentities = previousProvenance && incomingProvenance
+          && previousProvenance.companyId === incomingProvenance.companyId
+          ? previousProvenance.identities : new Set<string>()
         const applyGeneration = await reserveApplyGeneration(selected)
         // A Claude record is only believed for the current claude generation.
         // A Claude apply just bumped it; a Z.AI apply purges the Claude login,
@@ -911,12 +1020,14 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
             await writeTrialMarker(marker)
             markerChanged = true
           }
-          const claudeApplied = selected === 'claude' ? await applyClaude(input.payload) : null
+          const claudeApplied = selected === 'claude'
+            ? await (applyMode === 'merge' ? applyClaudeAdditive(input.payload, knownCompanyIdentities) : applyClaude(input.payload))
+            : null
           const result = claudeApplied
             ? claudeApplied.result
             : selected === 'zai'
               ? await applyZai(input.payload)
-              : await applyCodex(input.payload)
+              : await applyCodex(input.payload, applyMode)
           if (!requestedLease) {
             const nonTrialMarker = await readTrialMarker()
             const providersToClear: AiCredentialProvider[] = selected === 'claude'
@@ -940,7 +1051,7 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
             }
           }
           if (claudeApplied) await recordClaudeProvenance(input, applyGeneration, claudeApplied.verifiedAccounts)
-          return { ...result, applyGeneration }
+          return { ...result, applyGeneration, ...(input.applyMode ? { applyMode } : {}) }
         } catch (error) {
           if (requestedLease && marker && markerChanged) {
             if (previousLease) marker.leases[selected] = previousLease
@@ -1169,7 +1280,7 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
     })
   }
 
-  return { capture, apply, purge, status, rotation, sessionEnvironment }
+  return { capture, apply, purge, status, rotation, sessionEnvironment, capabilities: () => ({ version: 1, applyModes: ['merge', 'replace'] }) }
 }
 
 type ClaudeListDetails = {
@@ -1312,7 +1423,7 @@ type CodexMultiAuthAccount = CodexAccountIdentity & {
   [key: string]: unknown
 }
 
-type CodexMultiAuthBundle = {
+export type CodexMultiAuthBundle = {
   version: 1
   kind: 'codex-multi-auth'
   packageVersion: string

@@ -498,6 +498,20 @@ describe('ApiMachineClient socket reconnection', () => {
         }));
     });
 
+    it('exposes additive credential capability without receiving credentials', async () => {
+        const client = new ApiMachineClient('fake-token', makeMachine());
+        const capabilities = vi.fn(() => ({ version: 1, applyModes: ['merge', 'replace'] }));
+        client.setRPCHandlers({
+            spawnSession: vi.fn(), stopSession: vi.fn(), requestShutdown: vi.fn(),
+            portRegistry: {} as any,
+            aiCredentialRuntime: { capabilities } as any,
+        });
+        const handler = (client as any).rpcHandlerManager.registerHandler.mock.calls
+            .find(([method]: [string]) => method === 'ai-credential:capabilities')?.[1];
+        expect(handler({})).toEqual({ version: 1, applyModes: ['merge', 'replace'] });
+        expect(capabilities).toHaveBeenCalledWith();
+    });
+
     it('rejects malformed additional directories before spawning', async () => {
         const client = new ApiMachineClient('fake-token', makeMachine());
         const manager = (client as any).rpcHandlerManager;

@@ -132,6 +132,118 @@ function setup(
 }
 
 describe('AI credential machine runtime', () => {
+  it('adds Claude accounts, retains personal active/disabled slots and attributes only new shared identities', async () => {
+    const { runtime, files, calls, execFile, supervisor } = setup()
+    let accounts: Array<Record<string, unknown>> = [
+      { number: 7, email: 'personal@example.com', organizationUuid: '', active: true, usageStatus: 'ok' },
+      { number: 9, email: 'disabled@example.com', organizationUuid: '', disabled: true, usageStatus: 'relogin_required' },
+    ]
+    const original = execFile.getMockImplementation()!
+    execFile.mockImplementation(async (command, args, options) => {
+      if (command === 'cswap' && args[0] === 'list') return { stdout: JSON.stringify({ schemaVersion: 1, activeAccountNumber: 7, accounts }), stderr: '' }
+      if (command === 'cswap' && args[0] === 'import') {
+        calls.push({ command, args })
+        const payload = JSON.parse(files.get(args[1]!)!)
+        expect(payload.accounts.map((account: { email: string }) => account.email)).toEqual(['shared@example.com'])
+        accounts = [...accounts, { number: 10, email: 'shared@example.com', organizationUuid: '', usageStatus: 'ok' }]
+        return { stdout: '', stderr: '' }
+      }
+      return original(command, args, options)
+    })
+    const input = { provider: 'claude' as const, applyMode: 'merge' as const,
+      payload: claudeOauthPayload([{ email: 'shared@example.com' }, { email: 'disabled@example.com' }]),
+      provenance: { companyId: 'company-1', bundleId: 'bundle-1', bundleVersion: 1 } }
+    await runtime.apply(input)
+    await runtime.apply(input)
+    expect(accounts).toHaveLength(3)
+    expect(accounts[1]).toMatchObject({ number: 9, disabled: true })
+    expect(calls.filter(call => call.command === 'cswap' && call.args[0] === 'import')).toHaveLength(1)
+    expect(calls.some(call => call.command === 'cswap' && ['remove', 'switch', 'config'].includes(call.args[0]!))).toBe(false)
+    expect(supervisor.stop).not.toHaveBeenCalled()
+    expect(supervisor.enable).not.toHaveBeenCalled()
+    const provenance = JSON.parse(files.get('/home/operator/.happy/ai-credential-provenance.json')!)
+    expect(provenance.claude.identities).toEqual([['shared@example.com', '', '']])
+  })
+
+  it('rolls back both Codex files if an additive write fails without touching live auth', async () => {
+    const { runtime, files, writeFile } = setup()
+    const path = '/home/operator/.codex/multi-auth/openai-codex-accounts.json'
+    const settings = '/home/operator/.codex/multi-auth/settings.json'
+    const existing = JSON.stringify(codexMultiAuthBundle().accounts)
+    files.set(path, existing)
+    files.set(settings, 'original-settings')
+    files.set('/home/operator/.codex/auth.json', 'live-auth')
+    // Invalid prior state is rejected before any writes, rather than reset.
+    await expect(runtime.apply({ provider: 'codex', payload: JSON.stringify(codexMultiAuthBundle()), applyMode: 'merge' })).rejects.toThrow()
+    expect(files.get(path)).toBe(existing)
+    const validSettings = JSON.stringify({ version: 1, pluginConfig: {} })
+    files.set(settings, validSettings)
+    const originalWrite = writeFile.getMockImplementation()!
+    writeFile.mockImplementation(async (target, content) => {
+      if (target === `${settings}.happy-tmp`) throw new Error('disk full')
+      await originalWrite(target, content)
+    })
+    await expect(runtime.apply({ provider: 'codex', payload: JSON.stringify(codexMultiAuthBundle()), applyMode: 'merge' })).rejects.toThrow('CODEX_MULTI_AUTH_APPLY_FAILED')
+    expect(files.get(path)).toBe(existing)
+    expect(files.get(settings)).toBe(validSettings)
+    expect(files.get('/home/operator/.codex/auth.json')).toBe('live-auth')
+  })
+
+  it('merges shared Codex accounts without changing personal credentials, indexes, pin or settings', async () => {
+    const { runtime, files, calls } = setup()
+    const root = '/home/operator/.codex/multi-auth'
+    const personal = { ...codexMultiAuthBundle().accounts.accounts[0], accountId: 'personal', email: 'me@example.com', enabled: false }
+    const existing = { version: 3, accounts: [personal], activeIndex: 0, pinnedAccountIndex: 0, activeIndexByFamily: { codex: 0 } }
+    const settings = { version: 1, pluginConfig: { custom: true } }
+    files.set(`${root}/openai-codex-accounts.json`, JSON.stringify(existing))
+    files.set(`${root}/settings.json`, JSON.stringify(settings))
+    files.set('/home/operator/.codex/auth.json', 'personal-live-auth')
+    const input = { provider: 'codex' as const, payload: JSON.stringify(codexMultiAuthBundle()), applyMode: 'merge' as const }
+    await runtime.apply(input)
+    await runtime.apply(input)
+    const pool = JSON.parse(files.get(`${root}/openai-codex-accounts.json`)!)
+    expect(pool.accounts).toHaveLength(4)
+    expect(pool.accounts[0]).toEqual(personal)
+    expect(pool).toMatchObject({ activeIndex: 0, pinnedAccountIndex: 0, activeIndexByFamily: { codex: 0 } })
+    expect(JSON.parse(files.get(`${root}/settings.json`)!)).toEqual(settings)
+    expect(files.get('/home/operator/.codex/auth.json')).toBe('personal-live-auth')
+    expect(calls.some(call => call.command === 'codex-multi-auth' && ['forecast', 'check', 'switch'].includes(call.args[0]!))).toBe(false)
+  })
+
+  it('preserves existing Codex tokens when the same identity is sent again', async () => {
+    const { runtime, files } = setup()
+    const bundle = codexMultiAuthBundle()
+    bundle.accounts.accounts[0]!.refreshToken = 'newer-personal-token'
+    const path = '/home/operator/.codex/multi-auth/openai-codex-accounts.json'
+    files.set(path, JSON.stringify(bundle.accounts))
+    await runtime.apply({ provider: 'codex', payload: JSON.stringify(codexMultiAuthBundle()), applyMode: 'merge' })
+    expect(JSON.parse(files.get(path)!).accounts[0].refreshToken).toBe('newer-personal-token')
+  })
+
+  it('refuses to strand a live personal Codex login that has not been captured into the pool', async () => {
+    const { runtime, files } = setup()
+    files.set('/home/operator/.codex/auth.json', 'personal-live-auth')
+    await expect(runtime.apply({ provider: 'codex', payload: JSON.stringify(codexMultiAuthBundle()), applyMode: 'merge' })).rejects.toThrow('AI_CREDENTIAL_PERSONAL_CAPTURE_REQUIRED')
+    expect(files.get('/home/operator/.codex/auth.json')).toBe('personal-live-auth')
+    expect(files.has('/home/operator/.codex/multi-auth/openai-codex-accounts.json')).toBe(false)
+  })
+
+  it('creates a shared Codex pool when no personal login exists without enabling imported automatic rotation settings', async () => {
+    const { runtime, files } = setup()
+    const payload = codexMultiAuthBundle()
+    payload.settings.pluginConfig = { codexRuntimeRotationProxy: true }
+    const result = await runtime.apply({ provider: 'codex', payload: JSON.stringify(payload), applyMode: 'merge' })
+    expect(result).toMatchObject({ configured: true, applyMode: 'merge', accountCount: 3 })
+    expect(JSON.parse(files.get('/home/operator/.codex/multi-auth/settings.json')!)).toEqual({ version: 1, pluginConfig: {} })
+  })
+
+  it('rejects merge into a trial lease before changing any credentials', async () => {
+    const { runtime, files } = setup()
+    await expect(runtime.apply({ provider: 'codex', payload: JSON.stringify(codexMultiAuthBundle()), applyMode: 'merge', trialLease: { leaseId: 'trial', contentHash: 'a'.repeat(64), bundleVersion: 1 } })).rejects.toThrow('AI_CREDENTIAL_MERGE_UNSUPPORTED')
+    expect(files.has('/home/operator/.codex/multi-auth/openai-codex-accounts.json')).toBe(false)
+  })
+
+
   const trialLease = {
     leaseId: 'lease-claude-1',
     contentHash: 'a'.repeat(64),

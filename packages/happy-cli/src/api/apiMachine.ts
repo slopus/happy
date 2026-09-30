@@ -1033,6 +1033,7 @@ export class ApiMachineClient {
         this.rpcHandlerManager.registerHandler('ai-credential:export', (params) => (
             aiCredentialRuntime.capture(params)
         ));
+        this.rpcHandlerManager.registerHandler('ai-credential:capabilities', () => aiCredentialRuntime.capabilities());
         this.rpcHandlerManager.registerHandler('ai-credential:apply', (params) => (
             aiCredentialRuntime.apply(params)
         ));
