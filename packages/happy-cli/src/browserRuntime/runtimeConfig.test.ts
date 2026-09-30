@@ -29,6 +29,11 @@ describe('parseRuntimeConfig', () => {
         expect(parseRuntimeConfig({ ...valid(), admissionHold: true }).admissionHold).toBe(true)
     })
 
+    it('allows one profile under assignments (the broker ledger keys all profiles together; reassigning one would retire the others\' sessions)', () => {
+        const second = { profileId: 'profile-b', principalId: 'user-2', assignmentId: 'b'.repeat(32) }
+        expect(() => parseRuntimeConfig({ ...valid(), profiles: [...valid().profiles, second] })).toThrow(/one profile/)
+    })
+
     it('requires schema 2 with an assignment per profile in production, and keeps schema 1 for the harness only', () => {
         expect(() => parseRuntimeConfig({ ...valid(), schemaVersion: 1, profiles: [{ profileId: 'profile-a', principalId: 'user-1' }] })).toThrow(/schemaVersion/)
         expect(() => parseRuntimeConfig({ ...valid(), profiles: [{ profileId: 'profile-a', principalId: 'user-1' }] })).toThrow(/assignmentId/)

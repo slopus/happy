@@ -77,6 +77,10 @@ const schema = z.object({
     if (config.schemaVersion === 2) {
         for (const [index, profile] of config.profiles.entries())
             if (!profile.assignmentId) ctx.addIssue({ code: 'custom', path: ['profiles', index, 'assignmentId'], message: 'schema 2 needs an assignmentId per profile' })
+        // The broker's session ledger keys every profile's assignment together, so reassigning one profile would
+        // retire sessions that use only the others. Until it is kept per profile, one profile per machine.
+        if (config.profiles.length > 1)
+            ctx.addIssue({ code: 'custom', path: ['profiles'], message: 'schema 2 supports one profile per machine until assignments are tracked per profile' })
     } else {
         for (const [index, profile] of config.profiles.entries())
             if (profile.assignmentId) ctx.addIssue({ code: 'custom', path: ['profiles', index, 'assignmentId'], message: 'needs schemaVersion 2' })
