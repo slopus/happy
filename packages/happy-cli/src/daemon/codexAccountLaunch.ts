@@ -12,10 +12,11 @@ import type { SpawnSessionOptions, SpawnSessionResult } from '@/modules/common/r
 import { CODEX_ACCOUNT_UNSET_ENV } from '@/codex/codexAccountConfig';
 import { writeCodexAccountLaunchState, type CodexAccountLaunchState } from '@/codex/codexAccountLaunchState';
 import { createCodexSessionHome, preserveFinishedCodexSession } from '@/codex/codexSessionHome';
+import { readCodexCredentialAdoption } from '@/codex/codexCredentialAdoption';
 export { CODEX_ACCOUNT_UNSET_ENV } from '@/codex/codexAccountConfig';
 
 export type AccountApi = Pick<ApiClient, 'redeemCodexSessionGrant' | 'attachCodexSession' | 'updateCodexAccountCredential' | 'reportCodexAccountQuota' | 'reportCodexAccountStatus'>
-  & Partial<Pick<ApiClient, 'reportCodexAccountQuotaProbe' | 'createCodexSessionGrant'>>;
+  & Partial<Pick<ApiClient, 'reportCodexAccountQuotaProbe' | 'createCodexSessionGrant' | 'readCodexSessionCredential'>>;
 type PrepareOptions = NonNullable<Parameters<typeof prepareCodexHomeWithAuth>[1]> & { historyRoot?: string; sourceSessionId?: string; sourceThreadId?: string; sourceProfileId?: string; resumeExistingSession?: boolean; skipHistory?: boolean };
 const fingerprint = (auth: CodexAccountAuth) => createHash('sha256').update(JSON.stringify(auth)).digest('hex');
 const identityFingerprint = (launchId: string, accountId: string) => createHash('sha256').update(`${launchId}\0${accountId}`).digest('hex');
@@ -202,9 +203,34 @@ export class CodexAccountLaunch {
     let auth: CodexAccountAuth | undefined;
     try { auth = await readCodexAccountAuth(this.home); }
     catch { await this.reportStatus('needs-refresh'); }
+    const adopted = await readCodexCredentialAdoption(this.home).catch(() => undefined);
+    if (adopted && adopted.launchId === this.launchId && adopted.profileId === this.profileId &&
+      adopted.accountFingerprint === this.accountFingerprint && adopted.credentialVersion > this.currentVersion) {
+      this.currentVersion = adopted.credentialVersion;
+      this.authFingerprint = adopted.authFingerprint;
+      this.writeDisabled = false;
+    }
     if (auth && identityFingerprint(this.launchId, auth.tokens.account_id) !== this.accountFingerprint) {
       await this.reportStatus('invalid'); this.writeDisabled = true; this.identityInvalid = true;
-    } else if (!this.writeDisabled && auth && fingerprint(auth) !== this.authFingerprint) {
+    } else if (auth && (this.writeDisabled || fingerprint(auth) !== this.authFingerprint)) {
+      // worker 可能在 daemon 仍运行时采用新版凭证；写入前先与账号版本对齐。
+      if (this.api.readCodexSessionCredential) {
+        try {
+          const current = await this.api.readCodexSessionCredential(this.launchId, {
+            machineId: this.machineId, sourceSessionId: this.sourceSessionId, knownVersion: this.currentVersion,
+          });
+          if (current.profileId !== this.profileId) { this.writeDisabled = true; this.identityInvalid = true; }
+          else if (current.status === 'available' && current.auth &&
+            identityFingerprint(this.launchId, current.auth.tokens.account_id) === this.accountFingerprint &&
+            fingerprint(current.auth) === fingerprint(auth)) {
+            this.currentVersion = current.credentialVersion;
+            this.authFingerprint = fingerprint(auth);
+            this.writeDisabled = false;
+          }
+        } catch { /* 中继恢复后，下次定时同步会继续对齐。 */ }
+      }
+    }
+    if (!this.identityInvalid && !this.writeDisabled && auth && fingerprint(auth) !== this.authFingerprint) {
       try {
         const result = await this.api.updateCodexAccountCredential(this.profileId, { machineId: this.machineId, launchId: this.launchId, expectedVersion: this.currentVersion, auth });
         this.currentVersion = result.profile.credentialVersion;

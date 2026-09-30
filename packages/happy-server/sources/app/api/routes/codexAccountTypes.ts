@@ -53,6 +53,10 @@ export const reportCodexStatusSchema = z.object({
     status: z.enum(['needs-refresh', 'invalid']),
 }).strict();
 export type ReportCodexStatusRequest = z.infer<typeof reportCodexStatusSchema>;
+export const readCodexSessionCredentialSchema = z.object({
+    machineId: opaqueId, sourceSessionId: opaqueId, knownVersion: version.positive(),
+}).strict();
+export type ReadCodexSessionCredentialRequest = z.infer<typeof readCodexSessionCredentialSchema>;
 
 export interface CodexQuotaView {
     state: 'unknown' | 'current' | 'stale' | 'reset';
@@ -77,5 +81,12 @@ export interface BindCodexAccountResponse { binding: CodexMachineBinding }
 export interface CreateCodexGrantResponse { grant: string; expiresAt: string; profile: { id: string; displayName: string; credentialVersion: number } }
 // This response is daemon-only. Never reuse it in list / App-facing endpoints.
 export interface RedeemCodexGrantResponse { auth: CodexAuth; launchId: string; profile: { id: string; displayName: string; credentialVersion: number } }
+// 恢复的 worker 只能读取其所属会话的新版凭证。
+export interface ReadCodexSessionCredentialResponse {
+    profileId: string;
+    status: CodexAccountProfileView['status'];
+    credentialVersion: number;
+    auth?: CodexAuth;
+}
 export interface CodexSuccessResponse { success: true }
 export interface ReportCodexQuotaResponse { accepted: boolean }

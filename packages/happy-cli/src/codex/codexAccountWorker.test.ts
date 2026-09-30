@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { createHash } from 'node:crypto';
 import { mkdtemp, writeFile, mkdir, readFile, rm, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -6,6 +7,7 @@ import { cleanupOrphanedCodexAccountHome, codexAccountSessionMetadata, startCode
 import { CodexAccountLaunch, type AccountApi } from '@/daemon/codexAccountLaunch';
 import { CodexAccountRequestError } from '@/api/codexAccountTypes';
 import * as checkpoint from './codexAccountLaunchState';
+import { writeCodexCredentialAdoption } from './codexCredentialAdoption';
 const dirs: string[] = [];
 afterEach(async () => { vi.restoreAllMocks(); vi.useRealTimers(); await Promise.all(dirs.splice(0).map(h => rm(h, { recursive: true, force: true }))); });
 
@@ -30,7 +32,8 @@ async function checkpointFixture() {
   const launch = await CodexAccountLaunch.prepare(api, 'machine-a', 'g'.repeat(43), { sourceHome: root, historyRoot: join(root, 'cache') });
   dirs.push(launch.home);
   await launch.attach('session-a');
-  return { api, auth, launch, acceptedVersions, getVersion: () => version, getSavedAuth: () => savedAuth };
+  return { api, auth, launch, acceptedVersions, getVersion: () => version, getSavedAuth: () => savedAuth,
+    setServerCredential: (newAuth: typeof auth, newVersion: number) => { savedAuth = newAuth; version = newVersion; } };
 }
 
 function pauseFirstCheckpointRead() {
@@ -48,6 +51,45 @@ function pauseFirstCheckpointRead() {
 }
 
 describe('Codex worker account lifecycle', () => {
+  it('reconciles an adopted login and can upload its next rotation', async () => {
+    const f = await checkpointFixture();
+    const adopted = { tokens: { ...f.auth.tokens, refresh_token: 'refresh-v2' } };
+    const next = { tokens: { ...f.auth.tokens, refresh_token: 'refresh-v3' } };
+    const read = vi.fn(async (_launchId: string, input: { knownVersion: number }) => ({
+      profileId: 'profile-a', status: 'available' as const, credentialVersion: 2,
+      ...(input.knownVersion < 2 ? { auth: adopted } : {}),
+    }));
+    f.api.readCodexSessionCredential = read;
+    f.setServerCredential(adopted, 2);
+    await writeFile(join(f.launch.home, 'auth.json'), JSON.stringify(adopted));
+    await f.launch.sync();
+    expect(f.getVersion()).toBe(2);
+    expect((await checkpoint.readCodexAccountLaunchState(f.launch.home)).currentVersion).toBe(2);
+    await writeFile(join(f.launch.home, 'auth.json'), JSON.stringify(next));
+    await f.launch.sync();
+    expect(f.getVersion()).toBe(3);
+    expect(f.getSavedAuth()).toEqual(next);
+    await f.launch.finish();
+  });
+
+  it('keeps the adopted version when Codex rotates again before the daemon observes it', async () => {
+    const f = await checkpointFixture();
+    const adopted = { tokens: { ...f.auth.tokens, refresh_token: 'refresh-v2' } };
+    const next = { tokens: { ...f.auth.tokens, refresh_token: 'refresh-v3' } };
+    f.setServerCredential(adopted, 2);
+    await writeCodexCredentialAdoption(f.launch.home, {
+      launchId: f.launch.launchId, profileId: f.launch.profileId, credentialVersion: 2,
+      authFingerprint: createHash('sha256').update(JSON.stringify(adopted)).digest('hex'),
+      accountFingerprint: (await checkpoint.readCodexAccountLaunchState(f.launch.home)).accountFingerprint,
+    });
+    await writeFile(join(f.launch.home, 'auth.json'), JSON.stringify(next));
+    await f.launch.sync();
+    expect(f.getVersion()).toBe(3);
+    expect(f.getSavedAuth()).toEqual(next);
+    expect(f.acceptedVersions).toEqual([2]);
+    await f.launch.finish();
+  });
+
   it('rereads the final checkpoint after daemon death before cadence CAS and later exit flush', async () => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
     const f = await checkpointFixture();

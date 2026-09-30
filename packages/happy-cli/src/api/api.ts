@@ -326,6 +326,9 @@ export class ApiClient {
   attachCodexSession(launchId: string, request: { machineId: string; sourceSessionId: string }): Promise<{ success: true }> {
     return this.codexAccountRequest('POST', `codex-session-grants/${encodeURIComponent(launchId)}/session`, request);
   }
+  readCodexSessionCredential(launchId: string, request: { machineId: string; sourceSessionId: string; knownVersion: number }): Promise<import('./codexAccountTypes').CodexSessionCredential> {
+    return this.codexAccountRequest('POST', `codex-session-grants/${encodeURIComponent(launchId)}/credential`, request);
+  }
   updateCodexAccountCredential(profileId: string, request: CodexLaunchAttribution & { expectedVersion: number; auth: CodexAccountAuth }): Promise<{ profile: CodexAccountProfile }> {
     return this.codexAccountRequest('PUT', `codex-accounts/${encodeURIComponent(profileId)}/credential`, request);
   }

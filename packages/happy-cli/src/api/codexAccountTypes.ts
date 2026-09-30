@@ -9,6 +9,12 @@ export interface CodexGrantRedemption {
   auth: CodexAccountAuth; launchId: string;
   profile: Pick<CodexAccountProfile, 'id' | 'displayName' | 'credentialVersion'>;
 }
+export interface CodexSessionCredential {
+  profileId: string;
+  status: CodexAccountProfile['status'];
+  credentialVersion: number;
+  auth?: CodexAccountAuth;
+}
 export interface CodexLaunchAttribution { machineId: string; launchId: string }
 export interface CodexQuotaReport extends CodexLaunchAttribution {
   sourceSessionId: string; credentialVersion: number;

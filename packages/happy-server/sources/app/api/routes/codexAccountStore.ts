@@ -7,7 +7,7 @@ import { decryptString, encryptString } from '@/modules/encrypt';
 import {
     CODEX_AUTH_MAX_BYTES, CODEX_GRANT_TTL_MS, codexAuthSchema,
     type CodexAuth, type CodexAccountProfileView, type CodexMachineBinding, type CodexQuotaView,
-    type BindCodexAccountRequest, type UpdateCodexCredentialRequest, type ReportCodexQuotaRequest, type ReportCodexQuotaProbeRequest, type ReportCodexStatusRequest,
+    type BindCodexAccountRequest, type UpdateCodexCredentialRequest, type ReportCodexQuotaRequest, type ReportCodexQuotaProbeRequest, type ReportCodexStatusRequest, type ReadCodexSessionCredentialRequest,
     type CreateCodexGrantResponse, type RedeemCodexGrantResponse, type ListCodexAccountsResponse,
 } from './codexAccountTypes';
 
@@ -216,6 +216,27 @@ export const codexAccountStore = {
             await tx.codexSessionGrant.update({ where: { id: launchId }, data: { sourceSessionId } });
             await audit(tx, accountId, 'session-register', launch.codexAccountProfileId, machineId, launch.credentialVersion);
             return { success: true as const };
+        });
+    },
+    async readSessionCredential(accountId: string, launchId: string, input: ReadCodexSessionCredentialRequest) {
+        return transaction(accountId, async (tx) => {
+            const launch = await tx.codexSessionGrant.findFirst({ where: {
+                id: launchId, accountId, machineId: input.machineId,
+                sourceSessionId: input.sourceSessionId, redeemedAt: { not: null },
+            } });
+            if (!launch) return fail(409, 'launch-unavailable');
+            if (!await tx.session.findFirst({ where: { id: input.sourceSessionId, accountId } })) return fail(409, 'session-unavailable');
+            await ownedMachine(tx, accountId, input.machineId);
+            const profile = await ownedProfile(tx, accountId, launch.codexAccountProfileId);
+            const status = profileView(profile).status;
+            const result = {
+                profileId: profile.id, status, credentialVersion: profile.credentialVersion,
+            };
+            if (status !== 'available' || profile.credentialVersion <= input.knownVersion) return result;
+            const auth = codexAuthSchema.parse(JSON.parse(decryptString(path(accountId, profile.id), profile.credential)));
+            // 此会话采用新版凭证后，后续轮换从当前账号版本继续。
+            await tx.codexSessionGrant.update({ where: { id: launch.id }, data: { lastCredentialVersion: profile.credentialVersion } });
+            return { ...result, auth };
         });
     },
     async updateCredential(accountId: string, id: string, input: UpdateCodexCredentialRequest) {

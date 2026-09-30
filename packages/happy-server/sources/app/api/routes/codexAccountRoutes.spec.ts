@@ -168,6 +168,33 @@ describe('Codex account security against migrated PostgreSQL and real encryption
         expect((await issue()).profile.id).toBe(current.id);
     });
 
+    it('lets only the attached old session adopt a reuploaded credential for its original account', async () => {
+        const { profile, launchId, sourceSessionId } = await launch();
+        const url = `/v1/codex-session-grants/${launchId}/credential`;
+        const read = (knownVersion: number, override: Record<string, unknown> = {}) =>
+            request('POST', url, { machineId, sourceSessionId, knownVersion, ...override });
+        expect((await read(1)).json()).toMatchObject({ profileId: profile.id, status: 'available', credentialVersion: 1 });
+        expect((await read(1)).json()).not.toHaveProperty('auth');
+        for (const override of [{ sourceSessionId: 'other-session' }, { machineId: 'other-machine' }]) {
+            expect((await read(1, override)).statusCode).toBe(409);
+        }
+        const other = await upload('another-private-account');
+        await bind(other.id, 1);
+        const refreshed = { ...fakeAuth(), tokens: { ...fakeAuth().tokens, refresh_token: 'new-refresh-token' } };
+        expect((await request('POST', '/v1/codex-accounts/upload', { auth: refreshed })).json().profile)
+            .toMatchObject({ id: profile.id, credentialVersion: 2, status: 'available' });
+        expect((await read(1)).json()).toMatchObject({ profileId: profile.id, credentialVersion: 2, auth: refreshed });
+        expect((await read(2)).json()).not.toHaveProperty('auth');
+        const laterRotation = { ...refreshed, tokens: { ...refreshed.tokens, refresh_token: 'later-refresh-token' } };
+        expect((await request('PUT', `/v1/codex-accounts/${profile.id}/credential`, {
+            machineId, launchId, expectedVersion: 2, auth: laterRotation,
+        })).json().profile).toMatchObject({ credentialVersion: 3 });
+        expect((await read(2)).json()).toMatchObject({ credentialVersion: 3, auth: laterRotation });
+        const foreign = `${accountId}-foreign`;
+        await state.database.account.create({ data: { id: foreign, publicKey: foreign } });
+        expect((await request('POST', url, { machineId, sourceSessionId, knownVersion: 1 }, foreign)).statusCode).toBe(409);
+    });
+
     it('does not issue session account grants for missing audit, foreign sessions, or another machine', async () => {
         const original = await launch();
         const other = `${accountId}-other-machine`;

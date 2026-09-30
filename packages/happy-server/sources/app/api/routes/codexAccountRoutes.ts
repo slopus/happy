@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { CodexAccountError, codexAccountStore } from './codexAccountStore';
 import {
     CODEX_AUTH_MAX_BYTES, uploadCodexAccountSchema, renameCodexAccountSchema, bindCodexAccountSchema,
-    createCodexGrantSchema, redeemCodexGrantSchema, registerCodexSessionSchema, updateCodexCredentialSchema, reportCodexQuotaSchema, reportCodexQuotaProbeSchema, reportCodexStatusSchema,
+    createCodexGrantSchema, redeemCodexGrantSchema, registerCodexSessionSchema, updateCodexCredentialSchema, reportCodexQuotaSchema, reportCodexQuotaProbeSchema, reportCodexStatusSchema, readCodexSessionCredentialSchema,
 } from './codexAccountTypes';
 
 export * from './codexAccountTypes';
@@ -41,6 +41,10 @@ export function codexAccountRoutes(app: Fastify): void {
     app.post<{ Params: { id: string } }>('/v1/codex-session-grants/:id/session', options, (req, reply) => guarded(reply, () => {
         const input = registerCodexSessionSchema.parse(req.body);
         return codexAccountStore.registerSession(req.userId, profileId.parse(req.params.id), input.machineId, input.sourceSessionId);
+    }));
+    app.post<{ Params: { id: string } }>('/v1/codex-session-grants/:id/credential', options, (req, reply) => guarded(reply, () => {
+        const input = readCodexSessionCredentialSchema.parse(req.body);
+        return codexAccountStore.readSessionCredential(req.userId, profileId.parse(req.params.id), input);
     }));
     app.put<{ Params: { id: string } }>('/v1/codex-accounts/:id/credential', options, (req, reply) => guarded(reply, () => codexAccountStore.updateCredential(req.userId, profileId.parse(req.params.id), updateCodexCredentialSchema.parse(req.body))));
     app.put<{ Params: { id: string } }>('/v1/codex-accounts/:id/quota-snapshot', options, (req, reply) => guarded(reply, () => codexAccountStore.reportQuota(req.userId, profileId.parse(req.params.id), reportCodexQuotaSchema.parse(req.body))));
