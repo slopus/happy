@@ -42,6 +42,8 @@ const schema = z.object({
     workspaceId: id,
     profiles: z.array(profileSchema),
     trustedIssuers: z.array(z.object({ kid: id, publicKeyPem: z.string().min(1).max(4096) }).strict()).default([]),
+    /** Shared machines: users whose profile the operator removed, and when (abp-stack remove-profile). */
+    profileTombstones: z.array(z.object({ principalId: id, removedAtMs: z.number().int().nonnegative() }).strict()).max(1024).default([]),
     /** Site policy entries; their action rules are validated by the policy module. */
     sites: z.array(z.object({ origin }).passthrough()).default([]),
     runtimeHost: z.string().min(1).default('0.0.0.0'),
@@ -72,6 +74,8 @@ const schema = z.object({
     }
     if (config.tenancyMode === 'dedicated' && config.profiles.length === 0)
         ctx.addIssue({ code: 'custom', path: ['profiles'], message: 'dedicated tenancy needs one profile' })
+    if (config.tenancyMode === 'dedicated' && config.profileTombstones.length > 0)
+        ctx.addIssue({ code: 'custom', path: ['profileTombstones'], message: 'only a shared machine removes profiles' })
     if (config.tenancyMode === 'shared') {
         if (config.schemaVersion !== 2) ctx.addIssue({ code: 'custom', path: ['schemaVersion'], message: 'shared tenancy needs schema 2' })
         if (config.profiles.length > MAX_SHARED_PROFILES) ctx.addIssue({ code: 'custom', path: ['profiles'], message: `shared tenancy runs at most ${MAX_SHARED_PROFILES} profiles` })
@@ -105,13 +109,14 @@ const schema = z.object({
     }
 })
 
-export interface RuntimeConfig extends Omit<z.infer<typeof schema>, 'authMode' | 'machineId' | 'workspaceId' | 'trustedIssuers' | 'maxSpacesPerProfile'> {
+export interface RuntimeConfig extends Omit<z.infer<typeof schema>, 'authMode' | 'machineId' | 'workspaceId' | 'trustedIssuers' | 'maxSpacesPerProfile' | 'profileTombstones'> {
     maxSpacesPerProfile: number
     authMode: AuthMode
     machineId: MachineId
     workspaceId: WorkspaceId
     trustedIssuers: TrustedIssuer[]
     profilePrincipals: ReadonlyMap<ProfileId, PrincipalId>
+    profileTombstones: ReadonlyMap<PrincipalId, number>
     /** Each profile's assignment (schema 2); undefined for a schema 1 (harness) file. */
     profileAssignments?: ReadonlyMap<ProfileId, string>
 }
@@ -130,6 +135,7 @@ export function parseRuntimeConfig(value: unknown): RuntimeConfig {
         machineId: config.machineId as MachineId,
         workspaceId: config.workspaceId as WorkspaceId,
         profilePrincipals: new Map(config.profiles.map((profile) => [profile.profileId as ProfileId, profile.principalId as PrincipalId])),
+        profileTombstones: new Map(config.profileTombstones.map((entry) => [entry.principalId as PrincipalId, entry.removedAtMs])),
         ...config.schemaVersion === 2
             ? { profileAssignments: new Map(config.profiles.map((profile) => [profile.profileId as ProfileId, profile.assignmentId as string])) }
             : {},

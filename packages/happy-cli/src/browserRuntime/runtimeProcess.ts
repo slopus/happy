@@ -442,6 +442,7 @@ export async function runRuntime(deps: RuntimeProcessDeps = {}): Promise<void> {
             profiles: config.profilePrincipals,
             ...(config.profileAssignments ? { assignments: config.profileAssignments } : {}),
             tenancyMode: config.tenancyMode,
+            profileTombstones: config.profileTombstones,
             admit,
             sessionHistory: (agentSessionId) => [
                 ...store.listTasks().filter((task) => task.agentSessionId === agentSessionId).map((task) => task.assignmentId as string | undefined),

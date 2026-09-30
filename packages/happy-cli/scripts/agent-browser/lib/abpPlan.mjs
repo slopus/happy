@@ -183,6 +183,14 @@ function mergeSharedProfiles(merged, flags) {
     if (!/^[0-9a-f]{32}$/.test(profile.assignmentId ?? "")) fail(`profiles[${index}].assignmentId`, "must be 32 lowercase hex characters");
   }
   if (new Set(merged.profiles.map((profile) => profile.profileId)).size !== merged.profiles.length) fail("profiles", "a user has one profile");
+  merged.profiles.forEach((profile, index) => integer(profile.networkSlot, `profiles[${index}].networkSlot`, 0, MAX_SHARED_PROFILES - 1));
+  if (new Set(merged.profiles.map((profile) => profile.networkSlot)).size !== merged.profiles.length) fail("profiles.networkSlot", "each profile needs a slot of its own");
+  merged.profileTombstones ??= [];
+  if (!Array.isArray(merged.profileTombstones)) fail("profileTombstones", "must be a list");
+  merged.profileTombstones.forEach((entry, index) => {
+    if (!TEXT_ID.test(entry?.principalId ?? "")) fail(`profileTombstones[${index}].principalId`, "is required");
+    integer(entry.removedAtMs, `profileTombstones[${index}].removedAtMs`, 0, Number.MAX_SAFE_INTEGER);
+  });
   for (const field of ["machineId", "workspaceId"]) {
     if (typeof merged[field] !== "string" || !TEXT_ID.test(merged[field])) fail(field, "is required (1-256 printable characters)");
   }
@@ -258,6 +266,7 @@ export function runtimeConfig(install, { sessionGid, daemonTokenSha256 }) {
     machineId: install.machineId,
     workspaceId: install.workspaceId,
     profiles: install.profiles.map(({ profileId, principalId, assignmentId }) => ({ profileId, principalId, assignmentId })),
+    ...install.tenancyMode === "shared" ? { profileTombstones: install.profileTombstones ?? [] } : {},
     trustedIssuers: install.trustedIssuers,
     sites: install.sites,
     // Inside the container; the stack publishes it on 127.0.0.1 only, same port number.
@@ -358,7 +367,11 @@ export function fenceRule(runtimePort) {
  */
 export function egressRules(layout, install) {
   const chain = [];
-  for (const browser of layout.browsers) {
+  // A shared machine's rules cover every slot from the start: adding or removing a profile leaves them alone.
+  const targets = install.tenancyMode === "shared"
+    ? Array.from({ length: MAX_SHARED_PROFILES }, (_, slot) => slotAddresses(install, slot))
+    : layout.browsers;
+  for (const browser of targets) {
     const b = `${browser.browserIp}/32`;
     const r = `${browser.runtimeIp}/32`;
     chain.push(`-s ${r} -d ${b} -j RETURN`);
@@ -622,6 +635,7 @@ export function profileVolumeLabels(profileId, principalId) {
  * firewall can name exact addresses and match every browser bridge with br-abp+.
  */
 export function stackLayout(install) {
+  if (install.tenancyMode === "shared") return sharedStackLayout(install);
   const [pool] = parseCidr(install.browserSubnetPool ?? DEFAULT_BROWSER_SUBNET_POOL);
   const browsers = install.profiles.map(({ profileId, principalId }, index) => {
     const base = pool + index * 256;
@@ -651,6 +665,51 @@ export function stackLayout(install) {
       network: browsers[0].network,
       ip: browsers[0].runtimeIp,
       attach: browsers.slice(1).map((browser) => ({ network: browser.network, ip: browser.runtimeIp })),
+      volume: "abp-state",
+    },
+  };
+}
+
+/** The /24 of a shared machine's network slot: gateway .1, browser .2, Runtime .3. */
+function slotAddresses(install, slot) {
+  const [pool] = parseCidr(install.browserSubnetPool ?? DEFAULT_BROWSER_SUBNET_POOL);
+  const base = pool + slot * 256;
+  return { subnet: `${intToIp(base)}/24`, gateway: intToIp(base + 1), browserIp: intToIp(base + 2), runtimeIp: intToIp(base + 3) };
+}
+/** The last /24 of the pool, outside the profile slots: the Runtime's own network. */
+const RUNTIME_SLOT = 15;
+
+/**
+ * Shared machine layout: the Runtime lives on a network of its own (abp-runtime-net, bridge br-abp-rt, so the
+ * egress chain rejects anything it starts) and joins each profile's network. A profile's network, bridge and
+ * addresses come from its persistent slot, so adding or removing one profile moves no other.
+ */
+function sharedStackLayout(install) {
+  const runtimeSlot = slotAddresses(install, RUNTIME_SLOT);
+  const browsers = install.profiles.map(({ profileId, principalId, networkSlot }) => ({
+    profileId,
+    principalId,
+    container: `abp-browser-${profileId}`,
+    alias: `browser-${profileId}`,
+    network: `abp-net-s${networkSlot}`,
+    volume: profileVolumeName(profileId, principalId),
+    volumeLabels: profileVolumeLabels(profileId, principalId),
+    bridge: `br-abp-s${networkSlot}`,
+    ...slotAddresses(install, networkSlot),
+  }));
+  const runtimeNetwork = { network: "abp-runtime-net", subnet: runtimeSlot.subnet, gateway: runtimeSlot.gateway, bridge: "br-abp-rt" };
+  return {
+    runtimePort: install.runtimePort,
+    networks: [runtimeNetwork.network, ...browsers.map((browser) => browser.network)],
+    volumes: ["abp-state", ...browsers.map((browser) => browser.volume)],
+    browsers,
+    runtimeNetwork,
+    runtime: {
+      container: "abp-runtime",
+      alias: "runtime",
+      network: runtimeNetwork.network,
+      ip: runtimeSlot.browserIp,
+      attach: browsers.map((browser) => ({ network: browser.network, ip: browser.runtimeIp })),
       volume: "abp-state",
     },
   };
