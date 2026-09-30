@@ -54,6 +54,25 @@ describe('broker grant source', () => {
         expect(await dedicated.grantedProfileId()).toBe('main')
     })
 
+    it("waits up to 90 s while the user's profile is created, then gets the grant", async () => {
+        const provisioning = { status: 503, body: { ok: false, error: { code: 'PROFILE_PROVISIONING', message: 'being created', retryable: true, mayHaveSideEffects: false } } }
+        // The Runtime is recreated with the new profile meanwhile: unreachable and unavailable for a while too.
+        const unavailable = { status: 503, body: { ok: false, error: { code: 'RUNTIME_UNAVAILABLE', message: 'closed', retryable: true, mayHaveSideEffects: false } } }
+        const broker = await fakeBroker((_body, _req, count) => count < 10 ? provisioning : count < 14 ? unavailable : ok('t', Date.now() + 55 * 60_000))
+        const token = createBrokerGrantSource({ socketPath: broker.socketPath, sessionSecret: SECRET, agentSessionId: () => 'session-1', profileId: 'default', retryDelaysMs: [1], provisioningWaitMs: 5_000, provisioningPollMs: 1 })
+        expect(await token()).toBe('t')
+    })
+
+    it('gives up on a profile still not created after the wait, and passes a refusal on with its reason', async () => {
+        const broker = await fakeBroker(() => ({ status: 503, body: { ok: false, error: { code: 'PROFILE_PROVISIONING', message: 'being created', retryable: true, mayHaveSideEffects: false } } }))
+        const slow = createBrokerGrantSource({ socketPath: broker.socketPath, sessionSecret: SECRET, agentSessionId: () => 'session-1', profileId: 'default', retryDelaysMs: [1], provisioningWaitMs: 30, provisioningPollMs: 5 })
+        await expect(slow()).rejects.toMatchObject({ code: 'PROFILE_PROVISIONING' })
+        const refused = await fakeBroker(() => ({ status: 503, body: { ok: false, error: { code: 'PROFILE_UNAVAILABLE', message: 'not enough memory', retryable: false, mayHaveSideEffects: false } } }))
+        const full = createBrokerGrantSource({ socketPath: refused.socketPath, sessionSecret: SECRET, agentSessionId: () => 'session-1', profileId: 'default', retryDelaysMs: [1] })
+        await expect(full()).rejects.toMatchObject({ code: 'PROFILE_UNAVAILABLE', message: expect.stringMatching(/not enough memory/) })
+        expect(refused.requests).toHaveLength(1)
+    })
+
     it('renews five minutes before expiry, once for concurrent callers', async () => {
         let now = 1_000_000
         const broker = await fakeBroker((_body, _req, count) => ok(`t${count}`, now + 55 * 60_000))

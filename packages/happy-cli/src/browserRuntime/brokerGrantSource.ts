@@ -41,6 +41,9 @@ export interface BrokerGrantSourceOptions {
     profileId: string
     now?: () => number
     retryDelaysMs?: readonly number[]
+    /** Shared machines: how long to wait while the user's profile is created (default 90 s), polling this often (3 s). */
+    provisioningWaitMs?: number
+    provisioningPollMs?: number
 }
 
 /** A token getter for RuntimeClient, and the profile its grants are for. */
@@ -58,6 +61,9 @@ export function createBrokerGrantSource(options: BrokerGrantSourceOptions): Brok
     let pending: Promise<string> | undefined
 
     const fetchGrant = async (): Promise<string> => {
+        // Set once the broker says the user's profile is being created: that takes a new browser and a new
+        // Runtime (unreachable, then unavailable for a while), so every transient answer is waited out until then.
+        let provisioningUntil: number | undefined
         for (let attempt = 0; ; attempt++) {
             let reply: BrokerReply | undefined
             try {
@@ -75,8 +81,17 @@ export function createBrokerGrantSource(options: BrokerGrantSourceOptions): Brok
             }
             // Retry only what can resolve by itself: an unreachable broker or a not-yet-bound session.
             const retryable = !reply || reply.body.error?.retryable === true
-            if (!retryable || attempt >= delays.length) {
-                throw new BrowserRuntimeError('UNAUTHORIZED', `browser task grant is unavailable (${reply?.body.error?.code ?? 'broker unreachable'})`)
+            const code = reply?.body.error?.code
+            if (code === 'PROFILE_PROVISIONING') provisioningUntil ??= Date.now() + (options.provisioningWaitMs ?? 90_000)
+            if (retryable && provisioningUntil !== undefined && Date.now() < provisioningUntil) {
+                await new Promise((resolve) => setTimeout(resolve, options.provisioningPollMs ?? 3_000))
+                continue
+            }
+            if (!retryable || attempt >= delays.length || provisioningUntil !== undefined) {
+                // The agent is told what the user can do: wait for the profile, or ask the operator (the reason).
+                if (code === 'PROFILE_PROVISIONING' || code === 'PROFILE_UNAVAILABLE')
+                    throw new BrowserRuntimeError(code, reply?.body.error?.message ?? 'browser profile unavailable', code === 'PROFILE_PROVISIONING')
+                throw new BrowserRuntimeError('UNAUTHORIZED', `browser task grant is unavailable (${code ?? 'broker unreachable'})`)
             }
             await new Promise((resolve) => setTimeout(resolve, delays[attempt]))
         }
