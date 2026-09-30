@@ -447,6 +447,7 @@ export async function runRuntime(deps: RuntimeProcessDeps = {}): Promise<void> {
                 ...store.listSpaces().filter((space) => space.agentSessionId === agentSessionId).map((space) => space.assignmentId),
             ],
             allowedOrigins: config.sites.map((site) => site.origin),
+            trustedIssuers: config.trustedIssuers,
             agentKey: keys.agentKey,
             revokeGrant: (grantId) => runtime.revokeGrant(grantId),
             endSession: async (agentSessionId) => { await runtime.endSession(agentSessionId); reclaim() },

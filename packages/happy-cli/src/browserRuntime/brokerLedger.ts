@@ -24,6 +24,8 @@ export interface Registration {
     assignments?: Record<string, string>
     /** What the session continues (fork, recovery), as the daemon reported at registration. */
     lineage?: SessionLineage
+    /** The session user Studio attested at spawn (a new chat), if any. */
+    attestedPrincipalId?: string
     grantIds: string[]
     /**
      * Revocation started: no grant is issued any more, and the registration (with
@@ -56,13 +58,16 @@ export interface AssignmentLedger {
      * of another assignment for revocation (their sessions end). Returns how many were marked.
      */
     retireStale(registrations: Iterable<Registration>): number
-    /** The assignment fields a new registration records; throws when its lineage cannot be admitted. */
-    register(lineage: SessionLineage | undefined): Partial<Registration>
+    /** The assignment fields a new registration records; throws when its lineage or attested user cannot be admitted. */
+    register(lineage: SessionLineage | undefined, attested?: AttestedUser): Partial<Registration>
     /** Records a bind of the registration to the logical session; throws when it is not admitted. */
     bind(registration: Registration, agentSessionId: string): void
     /** The owner, profile and assignment a grant for the registration is issued in; throws when it is not admitted. */
     grant(registration: Registration, profileId: string): { principalId: PrincipalId; profileId: ProfileId; assignmentId?: string }
 }
+
+/** A verified session-user attestation. */
+export interface AttestedUser { principalId: PrincipalId; issuedAtMs: number }
 
 export interface LedgerOptions {
     profiles: ReadonlyMap<ProfileId, PrincipalId>
@@ -121,10 +126,11 @@ export function dedicatedLedger(registry: RegistryFile, options: LedgerOptions):
             }
             return stale
         },
-        register: (lineage) => {
+        register: (lineage, attested) => {
             if (lineageOfEarlierAssignment(lineage))
                 throw new BrowserRuntimeError('SCOPE_DENIED', 'the conversation cannot be shown to belong to the current assignment of the profile; start a new chat')
-            return { principals: Object.fromEntries(options.profiles), ...(currentAssignments ? { assignments: currentAssignments } : {}) }
+            return { principals: Object.fromEntries(options.profiles), ...(currentAssignments ? { assignments: currentAssignments } : {}),
+                ...(attested ? { attestedPrincipalId: attested.principalId } : {}) }
         },
         bind: (registration, agentSessionId) => {
             if (currentKey === undefined) return
@@ -141,6 +147,9 @@ export function dedicatedLedger(registry: RegistryFile, options: LedgerOptions):
             if (!principalId) throw new BrowserRuntimeError('SCOPE_DENIED', 'profile is not allowed')
             // Registrations from before owners were recorded have no owner to compare: refused (a new spawn registers again).
             if (registration.principals?.[profileId] !== principalId) throw new BrowserRuntimeError('SCOPE_DENIED', 'the session was started for another owner of this profile')
+            // Studio says another user started it: Studio treats the machine as shared, this install as dedicated.
+            if (registration.attestedPrincipalId !== undefined && registration.attestedPrincipalId !== principalId)
+                throw new BrowserRuntimeError('SCOPE_DENIED', "the session was started by a user who does not own this machine's browser profile")
             const assignmentId = currentAssignments?.[profileId]
             if (currentAssignments && (!assignmentId || registration.assignments?.[profileId] !== assignmentId))
                 throw new BrowserRuntimeError('SCOPE_DENIED', 'the session was started in an earlier assignment of this profile')

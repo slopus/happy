@@ -6,10 +6,10 @@
  * sandbox) can connect. The agent HMAC key never leaves the Runtime.
  *
  *   GET  /v1/sessions           daemon token   → [{ registrationId, agentSessionId?, owner?, bootId?, createdAtMs, revoking }]
- *   POST /v1/sessions/register  daemon token   { owner?, bootId?, lineage? } → { registrationId, sessionSecret }
+ *   POST /v1/sessions/register  daemon token   { owner?, bootId?, lineage?, attestation? } → { registrationId, sessionSecret }
  *   POST /v1/sessions/bind      daemon token   { registrationId, agentSessionId, owner? }
  *   POST /v1/sessions/revoke    daemon token   { agentSessionId | registrationId, endSession?: true }
- *   POST /v1/agent-grants       session secret { agentSessionId, profileId } → { token, grantId, expiresAtMs }
+ *   POST /v1/agent-grants       session secret { agentSessionId, profileId } → { token, grantId, expiresAtMs, profileId }
  *   GET  /v1/attention?afterSeq=&waitMs=  daemon token → AttentionFeed
  *   GET  /v1/sessions/waiting?agentSessionId=  daemon token → { waiting } (a task of the session waits for the user)
  *
@@ -45,7 +45,7 @@ import { chmod, chown, lstat, mkdir, open, readFile, rename, rm } from 'node:fs/
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { join } from 'node:path'
 import { z } from 'zod'
-import { mintAgentGrant } from './auth'
+import { mintAgentGrant, verifySessionUserAttestation, type TrustedIssuer } from './auth'
 import type { AttentionOutbox } from './attention'
 import { AGENT_OPERATIONS, BrowserRuntimeError, type AgentSessionId, type GrantId, type MachineId, type PrincipalId, type ProfileId, type WorkspaceId } from './contracts'
 import { MAX_SUBSCRIBE_WAIT_MS, httpStatusFor } from './server'
@@ -74,6 +74,8 @@ export interface BrokerOptions {
     /** Assignment ids a logical session's retained tasks and spaces were created in (undefined: untagged). */
     sessionHistory?(agentSessionId: string): Iterable<string | undefined>
     allowedOrigins: string[]
+    /** Studio issuers whose session-user attestations are accepted at registration. */
+    trustedIssuers?: readonly TrustedIssuer[]
     agentKey: string | Buffer
     revokeGrant(grantId: GrantId): Promise<void>
     /** The bound agent session ended: cancel its tasks and reclaim its spaces (idempotent). */
@@ -111,6 +113,7 @@ export function withRevokingGrants(revoked: ReadonlySet<string>, broker?: Pick<B
 const id = z.string().min(1).max(256)
 const schemas = {
     register: z.object({ schemaVersion: z.literal(1), owner: sessionOwnerSchema.optional(), bootId: z.string().min(1).max(256).optional(),
+        attestation: z.string().min(1).max(4096).optional(),
         lineage: z.object({ parentSessionIds: z.array(id).max(16).optional(), conversationIds: z.array(id).max(16).optional() }).strict().optional() }).strict(),
     bind: z.object({ schemaVersion: z.literal(1), registrationId: id, agentSessionId: id, owner: sessionOwnerSchema.optional() }).strict(),
     revoke: z.union([
@@ -254,8 +257,10 @@ export async function startBroker(options: BrokerOptions): Promise<Broker> {
             assertDaemon(req)
             const body = parse(schemas.register, await readJson(req))
             await options.admit?.()
+            const attested = body.attestation === undefined ? undefined
+                : verifySessionUserAttestation(body.attestation, { ...options.identity, trustedIssuers: options.trustedIssuers ?? [] }, now())
             return exclusive(async () => {
-                const assigned = ledger.register(body.lineage)
+                const assigned = ledger.register(body.lineage, attested)
                 const registrationId = `reg-${randomUUID()}`
                 const sessionSecret = randomBytes(32).toString('base64url')
                 registry.registrations[registrationId] = { secretSha256: sha256(sessionSecret).toString('hex'), createdAtMs: now(), grantIds: [],
@@ -332,7 +337,7 @@ export async function startBroker(options: BrokerOptions): Promise<Broker> {
                 // Recorded before it is handed out, so a revoke always covers it.
                 registration.grantIds.push(grantId)
                 await persist()
-                return { token, grantId, expiresAtMs }
+                return { token, grantId, expiresAtMs, profileId }
             })
         },
         'GET /v1/sessions/waiting': async (req, url) => {

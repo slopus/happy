@@ -1,12 +1,13 @@
 /** Broker authentication, durable registrations, grants and revocation recovery. */
-import { createHash } from 'node:crypto'
+import { createHash, generateKeyPairSync } from 'node:crypto'
 import { chmod, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { request } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { BrowserRuntimeError, type GrantId, type PrincipalId, type ProfileId } from './contracts'
-import { verifyToken } from './auth'
+import { signSessionUserAttestation, verifyToken } from './auth'
+import { INTERACTIVE_CAPABILITY_ISSUER } from './contracts'
 import { AttentionOutbox } from './attention'
 import { BROKER_GRANT_TTL_MS, startBroker, withRevokingGrants, type Broker } from './broker'
 import { TaskStore } from './taskStore'
@@ -30,6 +31,13 @@ function call(socketPath: string, method: string, path: string, headers: Record<
 }
 
 const ASSIGNMENT = 'a'.repeat(32)
+const issuer = generateKeyPairSync('ed25519')
+const trustedIssuers = [{ kid: 'k1', publicKeyPem: issuer.publicKey.export({ type: 'spki', format: 'pem' }).toString() }]
+/** A Studio session-user attestation for machine-h (valid 10 minutes from `issuedAtMs`). */
+const attest = (principalId: string, issuedAtMs = 1_000_000, key = issuer.privateKey) => signSessionUserAttestation({
+    kind: 'session-user', iss: INTERACTIVE_CAPABILITY_ISSUER, aud: 'machine-h', machineId: 'machine-h' as never, workspaceId: 'workspace-1' as never,
+    principalId: principalId as PrincipalId, issuedAtMs, expiresAtMs: issuedAtMs + 600_000,
+}, { kid: 'k1', privateKey: key })
 async function harness(options: { dir?: string; owner?: string; assignment?: string | null; admit?: () => Promise<void>; sessionHistory?: (agentSessionId: string) => Array<string | undefined>; revokeGrant?: (grantId: GrantId) => Promise<void>; recoveryRetryMs?: number; endSession?: (agentSessionId: string) => Promise<void>; sessionWaiting?: (agentSessionId: string) => Promise<boolean> } = {}) {
     const dir = options.dir ?? await mkdtemp(join(tmpdir(), 'abp-broker-'))
     if (!options.dir) cleanups.push(() => rm(dir, { recursive: true, force: true }))
@@ -50,6 +58,7 @@ async function harness(options: { dir?: string; owner?: string; assignment?: str
         ...(options.sessionHistory ? { sessionHistory: options.sessionHistory } : {}),
         allowedOrigins: ['https://shop.example'],
         agentKey: keys.agentKey,
+        trustedIssuers,
         revokeGrant: async (grantId) => { await options.revokeGrant?.(grantId); await store.revoke(grantId); revoked.push(grantId) },
         now: () => now,
         recoveryRetryMs: options.recoveryRetryMs ?? 3_600_000,
@@ -59,8 +68,8 @@ async function harness(options: { dir?: string; owner?: string; assignment?: str
     const close = async () => { await broker.close(); await store.close() }
     cleanups.push(close)
     const daemon = { 'x-abp-daemon-token': DAEMON_TOKEN }
-    const register = async (agentSessionId = 'session-1') => {
-        const registered = await call(socketPath, 'POST', '/v1/sessions/register', daemon, { schemaVersion: 1 })
+    const register = async (agentSessionId = 'session-1', extra: Record<string, unknown> = {}) => {
+        const registered = await call(socketPath, 'POST', '/v1/sessions/register', daemon, { schemaVersion: 1, ...extra })
         expect(registered.status).toBe(200)
         const bound = await call(socketPath, 'POST', '/v1/sessions/bind', daemon, { schemaVersion: 1, registrationId: registered.body.result.registrationId, agentSessionId })
         expect(bound.status).toBe(200)
@@ -532,6 +541,28 @@ describe('broker socket', () => {
         await writeFile(file, JSON.stringify(registry))
         const restarted = await harness({ dir: h.dir })
         expect((await restarted.grant(sessionSecret)).body.error.code).toBe('SCOPE_DENIED')
+    })
+
+    it("dedicated: refuses grants to a session whose attested user is not the profile's owner (Studio and H disagree on the mode)", async () => {
+        const h = await harness()
+        const other = await h.register('session-1', { attestation: attest('user-2') })
+        const denied = await h.grant(other.sessionSecret)
+        expect(denied.status).toBe(403)
+        expect(denied.body.error.code).toBe('SCOPE_DENIED')
+        const owner = await h.register('session-2', { attestation: attest('user-1') })
+        expect((await h.grant(owner.sessionSecret, { agentSessionId: 'session-2' })).status).toBe(200)
+        const unattested = await h.register('session-3')
+        const granted = await h.grant(unattested.sessionSecret, { agentSessionId: 'session-3' })
+        expect(granted.status).toBe(200)
+        expect(granted.body.result.profileId).toBe('profile-a')
+    })
+
+    it('refuses to register with an attestation it cannot verify (forged, expired, other machine)', async () => {
+        const h = await harness()
+        for (const attestation of [attest('user-1', 1_000_000, generateKeyPairSync('ed25519').privateKey), attest('user-1', 100_000), 'abp2.x.y.z']) {
+            const registered = await call(h.socketPath, 'POST', '/v1/sessions/register', h.daemon, { schemaVersion: 1, attestation })
+            expect(registered.status).toBe(401)
+        }
     })
 
     it('tells the daemon token only whether a session has a task waiting for the user', async () => {
