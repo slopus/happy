@@ -39,6 +39,7 @@ DAEMON_TOKEN=$VARLIB/daemon-token
 # Content digest of the installed Happy package: a change restarts the daemon and the egress proxy.
 HAPPY_DIGEST=$VARLIB/happy-package.sha256
 UNITS="abp-firewall.service abp-egress.service abp-egress-proxy.service abp-stack.service abp-happy-daemon.service"
+# Enabled and started like UNITS, but its service is a oneshot run by the timer.
 OPS_LOCK=/run/abp-stack-ops.lock
 # Desktop chats: the Saycode server makes the daemon create workspaces under ~agent/workspace, while
 # the sandbox launcher accepts only working directories whose realpath is under /work.
@@ -66,17 +67,28 @@ run() { if [ "$DRY_RUN" = 1 ]; then printf '+ %s\n' "$(quote "$@")"; else "$@"; 
 plan() { "$NODE" "$here/abp-plan.mjs" "$@"; }
 changed() { case "$CHANGED" in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
 # restart_or_start <unit> <input paths...>: restart the unit if write_file changed any input, else start it.
+start_unit() {
+    local action=$1 unit=$2
+    if [ "$unit" = abp-stack.service ]; then
+        # abp-install owns opsLock. The CLI delegates held container startup to systemd and
+        # verifies/opens admission under that same lock; a raw restart would deadlock startup.
+        if [ "$action" = start ] && [ "$DRY_RUN" = 0 ] && systemctl is-active --quiet "$unit"; then return 0; fi
+        if [ "$action" = restart ]; then run /usr/local/sbin/abp-stack up --restart; else run /usr/local/sbin/abp-stack up; fi
+    else
+        run systemctl "$action" "$unit"
+    fi
+}
 restart_or_start() {
     local unit=$1 input
     shift
     for input in "$@"; do
         if changed "$input"; then
             say "restarting $unit (changed: $input)"
-            run systemctl restart "$unit"
+            start_unit restart "$unit"
             return 0
         fi
     done
-    run systemctl start "$unit"
+    start_unit start "$unit"
 }
 cleanup() { if [ -n "$WORK" ]; then rm -rf "$WORK"; fi; }
 trap cleanup EXIT
@@ -397,6 +409,10 @@ replace_happy_package() {
         rm -rf "$stage"
         die "the staged Happy package is incomplete; $prefix is unchanged"
     fi
+    if [ "$DRY_RUN" = 0 ] && ! "$NODE" -e 'const fs=require("fs"); const c=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); if(c.contractVersion!==2)process.exit(1)' "$stage/lib/node_modules/@buzzni/happy-cli/scripts/agent-browser/contract.json"; then
+        run rm -rf "$stage"
+        die "the staged Happy package lacks browser assignment contract 2; $prefix is unchanged"
+    fi
     run touch "$stage/$HAPPY_PREFIX_MARKER"
     # Root-owned and not writable by anyone else (sandbox preflight), readable by agent, agent-sbx and abp-proxy.
     run chown -R root:root "$stage"
@@ -417,6 +433,9 @@ install_happy() {
         [ -d "$(dirname "$HAPPY_PREFIX")" ] || ensure_dir "$(dirname "$HAPPY_PREFIX")" root root 0755
         replace_happy_package "$HAPPY_PREFIX" "$HAPPY_TARBALL"
     fi
+    if [ "$DRY_RUN" = 0 ] && ! "$NODE" -e 'const fs=require("fs");const c=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));if(c.contractVersion!==2)process.exit(1)' "$HAPPY_PREFIX/lib/node_modules/@buzzni/happy-cli/scripts/agent-browser/contract.json"; then
+        die "installed Happy package requires assignment/lineage contract 2; provide the current --happy-tarball"
+    fi
     local entry=$HAPPY_PREFIX/lib/node_modules/@buzzni/happy-cli/dist/sandbox/egressProxyMain.mjs
     require_file "$HAPPY_PREFIX/bin/happy" "the Happy package (--happy-tarball)"
     require_file "$entry" "the egress proxy entry (Happy package with the sandbox stream)"
@@ -431,7 +450,7 @@ install_tools() {
     ensure_dir "$LIBEXEC" root root 0755
     ensure_dir "$LIBEXEC/lib" root root 0755
     local target
-    for target in claude-sbx-launch abp-firewall-read abp-firewall abp-stack.mjs abp-plan.mjs lib/abpPlan.mjs; do safe_path "$LIBEXEC/$target" file root; done
+    for target in claude-sbx-launch abp-firewall-read abp-firewall abp-stack.mjs abp-plan.mjs lib/abpPlan.mjs lib/profileCopy.mjs; do safe_path "$LIBEXEC/$target" file root; done
     run install -o root -g root -m 0755 "$here/claude-sbx-launch" "$LIBEXEC/claude-sbx-launch"
     # setuid-root reader of the filter tables only (S1 contract addition), usable by abp-session (agent).
     run cc -O2 -Wall -Wextra -Werror -o "$WORK/abp-firewall-read" "$here/abp-firewall-read.c"
@@ -440,6 +459,7 @@ install_tools() {
     run install -o root -g root -m 0644 "$here/abp-stack.mjs" "$LIBEXEC/abp-stack.mjs"
     run install -o root -g root -m 0644 "$here/abp-plan.mjs" "$LIBEXEC/abp-plan.mjs"
     run install -o root -g root -m 0644 "$here/lib/abpPlan.mjs" "$LIBEXEC/lib/abpPlan.mjs"
+    run install -o root -g root -m 0644 "$here/lib/profileCopy.mjs" "$LIBEXEC/lib/profileCopy.mjs"
     printf '#!/bin/sh\nexec /usr/bin/node %s/abp-stack.mjs "$@"\n' "$LIBEXEC" > "$WORK/wrapper"
     write_file /usr/local/sbin/abp-stack root root 0755 < "$WORK/wrapper"
 }
@@ -496,6 +516,9 @@ main_install() {
         export ABP_STACK_OPS_LOCKED=1
     fi
 
+    if [ "$DRY_RUN" = 0 ] && [ -f "$VARLIB/stack-state.json" ]; then
+        "$NODE" -e 'const s=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));if(s.transition||s.migrationHold||require("fs").existsSync("/run/abp-stack-start-request"))process.exit(1)' "$VARLIB/stack-state.json" || die "unfinished browser assignment/migration; recover with abp-stack before installing"
+    fi
     # Validate everything first: nothing is changed when the options are wrong.
     plan install-options --saved "$INSTALL_JSON" ${forward[@]+"${forward[@]}"} > "$WORK/install.json"
     # Browser DNS: the resolvers Docker's embedded DNS forwards to (the host's upstream servers), unless configured.
@@ -612,6 +635,10 @@ main_install() {
 
     say "systemd units"
     local name
+    # Retire the former destructive timer, including on --no-start upgrades.
+    run systemctl disable --now abp-profile-prune.timer 2>/dev/null || true
+    run systemctl stop abp-profile-prune.service 2>/dev/null || true
+    run rm -f /etc/systemd/system/abp-profile-prune.service /etc/systemd/system/abp-profile-prune.timer
     for name in $UNITS; do
         emit "/etc/systemd/system/$name" root root 0644 show unit --install "$WORK/install.json" --name "$name"
     done
@@ -716,6 +743,8 @@ main_check() {
     expect "$AGENT_WORKSPACE_LINK resolves to $AGENT_WORKSPACE (under /work)" test "$(readlink -f "$AGENT_WORKSPACE_LINK")" = "$AGENT_WORKSPACE"
     # shellcheck disable=SC2016 # the inner sh gets its paths as positional parameters
     expect "/work and $AGENT_WORKSPACE carry the abp-work default ACL" sh -c 'for d in /work "$1"; do getfacl -p "$d" 2>/dev/null | grep -qx "default:group:abp-work:rwx" || exit 1; done' sh "$AGENT_WORKSPACE"
+    expect "automatic profile pruning units removed" test ! -e /etc/systemd/system/abp-profile-prune.timer
+    expect "automatic profile pruning service removed" test ! -e /etc/systemd/system/abp-profile-prune.service
     expect "agent-sbx can read and create files in a daemon-created (umask 077) workspace" workspace_shared
     expect "sandbox policy is mandatory" grep -Eq '"mode"[[:space:]]*:[[:space:]]*"mandatory"' /etc/aplus/sandbox-policy.json
     expect "owner firewall rules lead OUTPUT (IPv4, IPv6)" "$LIBEXEC/abp-firewall" check

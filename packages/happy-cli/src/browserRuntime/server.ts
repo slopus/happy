@@ -65,6 +65,11 @@ export interface RuntimeServerOptions {
     /** waitForEvents is only used as a wake-up signal after an authorized subscribe; its result is ignored. */
     api: Omit<BrowserRuntimeApi, 'waitForEvents'> & { waitForEvents?(taskId: TaskId, afterSeq: number, waitMs: number): Promise<unknown> }
     verifyToken: (bearer: string) => AuthContext
+    /**
+     * Admission: resolves when operations may be served (start-up cleanup done, no reassignment awaiting
+     * verification) and rejects otherwise. Checked before any credential, for every operation (viewerTicket too).
+     */
+    admit?: () => Promise<void>
     host?: string
     port: number
     health: () => object
@@ -135,6 +140,7 @@ export async function startRuntimeServer(opts: RuntimeServerOptions): Promise<Ru
         const header = req.headers.authorization ?? ''
         const match = /^Bearer (\S+)$/.exec(header)
         if (!match) throw new BrowserRuntimeError('UNAUTHORIZED', 'missing bearer token')
+        await opts.admit?.()
         let auth: AuthContext
         try {
             auth = verifyToken(match[1])

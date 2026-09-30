@@ -282,7 +282,8 @@ export async function runRuntime(deps: RuntimeProcessDeps = {}): Promise<void> {
     const sites = loadSites(config)
     const adminPort = Number(process.env.ABP_ADMIN_PORT ?? '8788')
     const policy: VerifyPolicy = config
-        ? { authMode: config.authMode, machineId: config.machineId, workspaceId: config.workspaceId, trustedIssuers: config.trustedIssuers, profilePrincipals: config.profilePrincipals }
+        ? { authMode: config.authMode, machineId: config.machineId, workspaceId: config.workspaceId, trustedIssuers: config.trustedIssuers, profilePrincipals: config.profilePrincipals,
+            ...(config.profileAssignments ? { profileAssignments: config.profileAssignments } : {}) }
         : { authMode: 'harness' }
 
     // D9: the entrypoint holds an exclusive kernel flock (flock -n -F) before node
@@ -311,6 +312,8 @@ export async function runRuntime(deps: RuntimeProcessDeps = {}): Promise<void> {
     // Harness keeps the PoC space quota and no idle reclamation unless asked.
     const harnessIdleMs = process.env.ABP_SPACE_IDLE_RECLAIM_MS ? Number(process.env.ABP_SPACE_IDLE_RECLAIM_MS) : undefined
     const runtime = new BrowserRuntime({ store, drivers, sites,
+        ...(config ? { profilePrincipals: config.profilePrincipals } : {}),
+        ...(config?.profileAssignments ? { profileAssignments: config.profileAssignments } : {}),
         maxSpacesPerProfile: config?.maxSpacesPerProfile,
         spaceIdleReclaimMs: config?.spaceIdleReclaimMs ?? (Number.isFinite(harnessIdleMs) ? harnessIdleMs : undefined) })
 
@@ -414,6 +417,19 @@ export async function runRuntime(deps: RuntimeProcessDeps = {}): Promise<void> {
         },
     })
 
+    // Admission: nothing is served (task API, viewer tickets, broker register/bind/grants/attention) before the
+    // start-up cleanup of earlier assignments is done, nor while runtime.json holds admission for a reassignment
+    // that abp-stack has not verified yet; abp-stack opens it on the root-only admin socket.
+    let admissionOpen = !config?.admissionHold
+    if (!admissionOpen) log('admission on hold: a profile reassignment awaits verification (abp-stack)')
+    const admit = async (): Promise<void> => {
+        // Only the cleanup, not the whole task recovery: the daemon's broker calls time out after 10 s.
+        await runtime.assignmentsSettled()
+        if (!admissionOpen) throw new BrowserRuntimeError('RUNTIME_UNAVAILABLE', 'The Runtime admits no work while a profile reassignment is verified', true)
+    }
+    // Attention of an earlier assignment's task or of a retired session never wakes a session.
+    attention.suppress((event) => !runtime.isCurrentAssignmentTask(event.taskId) || Boolean(broker?.isRetired(event.agentSessionId)))
+
     // Before the task API: grants of revocations a crash interrupted must be denied
     // from the first request (the broker replays them in the background).
     let broker: Broker | undefined
@@ -424,6 +440,12 @@ export async function runRuntime(deps: RuntimeProcessDeps = {}): Promise<void> {
             orphanTtlMs: config.brokerOrphanTtlMs,
             identity: { machineId: config.machineId, workspaceId: config.workspaceId },
             profiles: config.profilePrincipals,
+            ...(config.profileAssignments ? { assignments: config.profileAssignments } : {}),
+            admit,
+            sessionHistory: (agentSessionId) => [
+                ...store.listTasks().filter((task) => task.agentSessionId === agentSessionId).map((task) => task.assignmentId as string | undefined),
+                ...store.listSpaces().filter((space) => space.agentSessionId === agentSessionId).map((space) => space.assignmentId),
+            ],
             allowedOrigins: config.sites.map((site) => site.origin),
             agentKey: keys.agentKey,
             revokeGrant: (grantId) => runtime.revokeGrant(grantId),
@@ -446,9 +468,24 @@ export async function runRuntime(deps: RuntimeProcessDeps = {}): Promise<void> {
     }) : undefined
     const viewerAssetsDir = process.env.ABP_VIEWER_ASSETS_DIR ?? '/usr/share/novnc'
 
+    const readyChecks = async (): Promise<Record<string, boolean>> => {
+        const disk = await statfs(stateDir).catch(() => undefined)
+        return {
+            browsers: profiles.every((profile) => drivers.get(profile.profileId)!.isConnected()),
+            writerLock: Date.now() - heartbeatOkAtMs <= 3 * LOCK_HEARTBEAT_MS && (flockHeld || !production),
+            disk: Boolean(disk && disk.bavail * disk.bsize >= MIN_FREE_DISK_BYTES),
+            revocations: (broker?.pendingRevocations() ?? 0) === 0,
+            // Another assignment's spaces, tasks or control ended (profile reassigned).
+            principalState: runtime.principalStateReady(),
+            admission: admissionOpen,
+        }
+    }
+    const configuredAssignments = config?.profileAssignments ? Object.fromEntries(config.profileAssignments) : undefined
+
     const startedAtMs = Date.now()
     const server = await startRuntimeServer({
         api,
+        admit,
         verifyToken: (bearer) => verifyToken(bearer, keys, Date.now(), withRevokingGrants(store.getRevocations(), broker), policy),
         host,
         port,
@@ -457,15 +494,7 @@ export async function runRuntime(deps: RuntimeProcessDeps = {}): Promise<void> {
             startedAtMs,
             profiles: profiles.map((profile) => ({ profileId: profile.profileId, connected: drivers.get(profile.profileId)!.isConnected() })),
         }),
-        ready: async () => {
-            const disk = await statfs(stateDir).catch(() => undefined)
-            return {
-                browsers: profiles.every((profile) => drivers.get(profile.profileId)!.isConnected()),
-                writerLock: Date.now() - heartbeatOkAtMs <= 3 * LOCK_HEARTBEAT_MS && (flockHeld || !production),
-                disk: Boolean(disk && disk.bavail * disk.bsize >= MIN_FREE_DISK_BYTES),
-                revocations: (broker?.pendingRevocations() ?? 0) === 0,
-            }
-        },
+        ready: readyChecks,
         log: (line: string) => log(line),
         ...(viewer ? { viewer } : {}),
         ...(existsSync(viewerAssetsDir) ? { viewerAssetsDir } : {}),
@@ -481,6 +510,23 @@ export async function runRuntime(deps: RuntimeProcessDeps = {}): Promise<void> {
         revokeCapability: (capabilityId) => {
             viewer?.revokeCapability(capabilityId)
             return store.revoke(capabilityId)
+        },
+        // abp-stack verifies a reassignment under its fence (host packets to the API port are reset): here.
+        readiness: async () => ({
+            checks: await readyChecks(),
+            admission: admissionOpen ? 'open' : 'hold',
+            assignment: runtime.assignmentReport(),
+            profiles: (config?.profiles ?? []).map(({ profileId, principalId, assignmentId }) => ({ profileId, principalId, ...(assignmentId ? { assignmentId } : {}) })),
+        }),
+        openAdmission: async (expected) => {
+            const report = runtime.assignmentReport()
+            const matches = (value: Readonly<Record<string, string>> | undefined) => JSON.stringify(Object.entries(value ?? {}).sort())
+                === JSON.stringify(Object.entries(configuredAssignments ?? {}).sort())
+            if (!configuredAssignments || !matches(expected) || !matches(report.applied) || report.state !== 'ready' || (broker?.pendingRevocations() ?? 0) > 0)
+                throw new BrowserRuntimeError('CONFLICT', 'admission stays closed: the assignments, their cleanup or the revocations are not what was verified')
+            if (!admissionOpen) log('admission opened by abp-stack')
+            admissionOpen = true
+            return { admission: 'open' }
         },
     })
     log(`listening api=${server.url} mode=${config?.authMode ?? 'harness'} admin=${admin.port ?? 'socket'} broker=${broker ? 'socket' : 'off'} flock=${flockHeld} profiles=${profiles.length} viewer=${viewer ? vncEndpoints.size : 'off'}`)

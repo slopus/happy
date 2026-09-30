@@ -54,6 +54,22 @@ describe('admin server', () => {
         expect(log).toEqual(['capability:cap-1', 'grant:g-1'])
     })
 
+    it('reports readiness and opens admission only through the root-only socket', async () => {
+        const dir = await mkdtemp(join(tmpdir(), 'abp-admin-')); cleanups.push(() => rm(dir, { recursive: true, force: true }))
+        const socketPath = join(dir, 'admin.sock')
+        const opened: unknown[] = []
+        const server: AdminServer = await startAdminServer({
+            runtime: fakeRuntime([]), drivers: new Map(), listen: { socketPath }, metrics: async () => ({}), revokeCapability: async () => undefined,
+            readiness: async () => ({ admission: 'hold', checks: { browsers: true } }),
+            openAdmission: async (assignments) => { opened.push(assignments); return { admission: 'open' } },
+        })
+        cleanups.push(() => server.close())
+        expect(await call({ socketPath }, 'GET', '/admin/ready')).toEqual({ status: 200, body: { ok: true, result: { admission: 'hold', checks: { browsers: true } } } })
+        expect((await call({ socketPath }, 'POST', '/admin/open-admission', {}, { assignments: ['x'] })).status).toBe(500)
+        expect((await call({ socketPath }, 'POST', '/admin/open-admission', {}, { assignments: { main: 'a'.repeat(32) } })).body.result).toEqual({ admission: 'open' })
+        expect(opened).toEqual([{ main: 'a'.repeat(32) }])
+    })
+
     it('lists spaces and closes one for the operator (abp-stack spaces list|close)', async () => {
         const dir = await mkdtemp(join(tmpdir(), 'abp-admin-')); cleanups.push(() => rm(dir, { recursive: true, force: true }))
         const closes: string[] = []

@@ -19,6 +19,33 @@ Xvfb :99 -screen 0 1280x900x24 -nolisten tcp &
 socat TCP-LISTEN:9223,bind=0.0.0.0,reuseaddr,fork TCP:127.0.0.1:9225 &
 python3 /usr/local/bin/cdp-proxy &
 python3 /usr/local/bin/instance-server &
+# docker stop: let Chromium exit on its own so recent cookies (a login just made in the viewer) are
+# written to the profile volume before the container goes; CDP shutdown + 20 s wait (Docker waits 30).
+chrome_pid=
+on_term() {
+  trap '' TERM INT
+  if [ -n "$chrome_pid" ] && kill -0 "$chrome_pid" 2>/dev/null; then
+    # SIGTERM can exit before Chromium's delayed cookie writes reach disk. Browser.close
+    # enters the normal shutdown path; a failed CDP request falls back with an explicit warning.
+    if ! timeout 6 python3 /usr/local/bin/browser-shutdown; then
+      echo "abp-browser: graceful shutdown request failed; using TERM (recent cookies may be lost)" >&2
+      pkill -TERM -x chromium 2>/dev/null || true
+    else
+      echo "abp-browser: Browser.close requested" >&2
+    fi
+    waited=0
+    # Network Service owns cookie writes. Wait for every Chromium process before PID 1 exits.
+    while pgrep -x chromium >/dev/null && [ "$waited" -lt 40 ]; do sleep 0.5; waited=$((waited + 1)); done
+    if pgrep -x chromium >/dev/null; then
+      echo "abp-browser: chromium did not exit within 20 s; killing it (recent cookies may be lost)" >&2
+      pkill -KILL -x chromium 2>/dev/null || true
+    else
+      echo "abp-browser: all Chromium processes exited" >&2
+    fi
+  fi
+  exit 0
+}
+trap on_term TERM INT
 while :; do
   rm -f /home/browser/profile/Singleton*
   # Drop the previous identity before the new Chromium accepts CDP connections,

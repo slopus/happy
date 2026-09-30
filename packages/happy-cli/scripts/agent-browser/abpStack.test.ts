@@ -1,7 +1,7 @@
 import { createHash, generateKeyPairSync } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
 import { createStack } from './abp-stack.mjs'
-import { mergeInstallOptions, PATHS } from './lib/abpPlan.mjs'
+import { mergeInstallOptions, PATHS, profileVolumeLabels, profileVolumeName } from './lib/abpPlan.mjs'
 
 const RUNTIME_OLD = 'sha256:' + 'a'.repeat(64)
 const BROWSER_OLD = 'sha256:' + 'b'.repeat(64)
@@ -43,39 +43,64 @@ function fakeHost(options: HostOptions = {}) {
             issuers: [{ kid: 'k1', publicKeyPem: generateKeyPairSync('ed25519').publicKey.export({ type: 'spki', format: 'pem' }).toString() }],
         }),
         // Two profiles exercise the per-profile loops; release 1 installs only main (see the set-principal test).
-        profiles: options.profiles ?? [{ profileId: 'main', principalId: 'user-1' }, { profileId: 'ops', principalId: 'user-2' }],
+        profiles: (options.profiles ?? [{ profileId: 'main', principalId: 'user-1' }, { profileId: 'ops', principalId: 'user-2' }]).map((p, i) => ({ ...p, assignmentId: String(i + 1).repeat(32) })),
     }
+    files.set(`${install.happyPrefix}/lib/node_modules/@buzzni/happy-cli/scripts/agent-browser/contract.json`, { data: '{"contractVersion":2}', mode: 0o644, owner: 'root', group: 'root' })
     files.set(PATHS.installConfig, { data: JSON.stringify(install), mode: 0o600, owner: 'root', group: 'root' })
     files.set(PATHS.runtimeConfig, { data: JSON.stringify({ daemonTokenSha256: 'e'.repeat(64) }), mode: 0o600, owner: 'root', group: 'root' })
     files.set(PATHS.stackState, { data: JSON.stringify({ schemaVersion: 1, current: options.current === undefined ? { runtime: RUNTIME_OLD, browser: BROWSER_OLD } : options.current, previous: options.previous ?? null, history: [] }), mode: 0o600, owner: 'root', group: 'root' })
+    const volumes = new Map<string, Record<string, string>>()
+    const ensureVolumes = () => {
+        for (const p of JSON.parse(files.get(PATHS.installConfig)!.data).profiles) {
+            const name = profileVolumeName(p.profileId, p.principalId)
+            if (!volumes.has(name)) volumes.set(name, Object.fromEntries(profileVolumeLabels(p.profileId, p.principalId).map((l: string) => l.split('='))))
+        }
+    }
+    ensureVolumes()
     const state = () => JSON.parse(files.get(PATHS.stackState)!.data)
     const running = [...(options.running ?? [])]
     const names = ['abp-runtime', ...install.profiles.map((profile: { profileId: string }) => `abp-browser-${profile.profileId}`)]
-    const containers = new Map<string, { running: boolean; image: string }>()
+    const containers = new Map<string, { running: boolean; image: string; mounts: string[] }>()
+    // As start() does: every browser mounts its current owner's volume (read from install.json).
     const recreateAll = (up: boolean) => {
         const current = state().current ?? { runtime: '', browser: '' }
-        for (const name of names) containers.set(name, { running: up, image: name === 'abp-runtime' ? current.runtime : current.browser })
+        const owners = new Map<string, string>(JSON.parse(files.get(PATHS.installConfig)!.data).profiles.map((p: { profileId: string; principalId: string }) => [p.profileId, p.principalId]))
+        for (const name of names) {
+            const profileId = name.replace('abp-browser-', '')
+            containers.set(name, { running: up, image: name === 'abp-runtime' ? current.runtime : current.browser,
+                mounts: name === 'abp-runtime' ? ['abp-state'] : [profileVolumeName(profileId, owners.get(profileId)!)] })
+        }
     }
     recreateAll(true)
     containers.get('abp-runtime')!.running = options.runtimeRunning ?? true
     let lockHeld = false
     // The fence resets host packets to the API port: while it is up, the Runtime does not answer.
+    let serviceActive = options.serviceActive ?? false
     let fenced = false
     let secretCount = 0
+    let clock = 1_000_000
     const deps = {
         run(cmd: string, args: string[], opts: { allowFail?: boolean } = {}): Result {
             const line = [cmd, ...args].join(' ')
             calls.push(line)
             const handlers: Array<[RegExp, Handler]> = [
                 ...options.handlers ?? [],
-                [/^systemctl is-active abp-stack\.service$/, () => (options.serviceActive ? { stdout: 'active' } : { status: 3, stdout: 'inactive' })],
-                [/^docker image inspect/, (a) => ({ stdout: a.at(-1) })],
+                [/^iptables -w -t filter -C ABP-FENCE /, () => ({ status: fenced ? 0 : 1 })],
+                [/^systemctl is-active abp-stack\.service$/, () => (serviceActive ? { stdout: 'active' } : { status: 3, stdout: 'inactive' })],
+                [/^docker image inspect/, (a) => ({ stdout: a.includes('{{index .Config.Labels "ai.saycode.abp.contract"}}') ? '2' : a.at(-1) })],
+                [/^docker volume inspect /, (a) => volumes.has(a.at(-1)!) ? { stdout: JSON.stringify([{ Name: a.at(-1), Labels: volumes.get(a.at(-1)!) }]) } : { status: 1, stderr: 'no such volume' }],
+                [/^docker volume ls -q$/, () => ({ stdout: [...volumes.keys()].join('\n') })],
+                [/^docker inspect -f \{\{json \.Mounts\}\}/, (a) => ({ stdout: JSON.stringify((containers.get(a.at(-1)!)?.mounts ?? []).map((Name) => ({ Name, Destination: '/home/browser/profile', Type: 'volume', RW: true }))) })],
                 [/^docker inspect -f \{\{\.State\.Running\}\} (\S+)$/, (a) => ({ stdout: String(containers.get(a.at(-1)!)?.running ?? false) })],
                 [/^docker inspect -f \{\{\.State\.Running\}\} \{\{index \.Config\.Labels "ai\.saycode\.abp\.image"\}\} (\S+)$/, (a) => {
                     const container = containers.get(a.at(-1)!)
                     return container ? { stdout: `${container.running} ${container.image}` } : { status: 1 }
                 }],
                 [new RegExp(`^${LABEL.replace(/[{}.]/g, '\\$&')}$`), () => ({ stdout: containers.get('abp-runtime')?.image ?? '' })],
+                [/^docker inspect -f \{\{range \.Mounts\}\}\{\{\.Name\}\} \{\{end\}\} (\S+)$/, (a) => {
+                    const container = containers.get(a.at(-1)!)
+                    return container ? { stdout: container.mounts.join(' ') } : { status: 1, stderr: 'No such object' }
+                }],
             ]
             let result: Result = { status: 0, stdout: '', stderr: '' }
             for (const [pattern, handler] of handlers) {
@@ -85,10 +110,13 @@ function fakeHost(options: HostOptions = {}) {
                 if (line === FENCE) fenced = true
                 if (line === UNFENCE) fenced = false
                 // abp-stack.service: its stop takes the stack down; its start recreates it and lifts the fence.
-                if (line === 'systemctl stop abp-stack.service') for (const container of containers.values()) container.running = false
-                if (line === 'systemctl start abp-stack.service') { recreateAll(true); fenced = false }
+                if (line === 'systemctl stop abp-stack.service') { serviceActive = false; for (const container of containers.values()) container.running = false }
+                if (line === 'systemctl start abp-stack.service') { serviceActive = true; ensureVolumes(); recreateAll(true); fenced = Boolean(state().transition) }
                 const name = args.at(-1)!
-                if (cmd === 'docker' && args[0] === 'create') containers.set(args[1].replace('--name=', ''), { running: false, image: name })
+                if (cmd === 'docker' && args[0] === 'volume' && args[1] === 'create') volumes.set(name, Object.fromEntries(args.filter((a) => a.startsWith('--label=')).map((a) => a.slice(8).split('='))))
+                if (cmd === 'docker' && args[0] === 'volume' && args[1] === 'rm') volumes.delete(name)
+                if (cmd === 'docker' && args[0] === 'create') containers.set(args[1].replace('--name=', ''), { running: false, image: name,
+                    mounts: args.filter((arg) => arg.startsWith('--mount=type=volume,')).map((arg) => /source=([^,]+)/.exec(arg)![1]) })
                 if (cmd === 'docker' && args[0] === 'start' && containers.has(name)) containers.get(name)!.running = true
                 if (cmd === 'docker' && ['stop', 'kill'].includes(args[0]) && containers.has(name)) containers.get(name)!.running = false
                 if (cmd === 'docker' && args[0] === 'restart' && containers.has(name)) containers.get(name)!.running = true
@@ -106,14 +134,20 @@ function fakeHost(options: HostOptions = {}) {
         writeFileAtomic(path: string, data: string, meta: { mode: number; owner: string; group: string }) { files.set(path, { data, ...meta }) },
         remove(path: string) { files.delete(path) },
         groupId: (name: string) => (name === 'abp-session' ? 990 : 1),
-        async ready() { return { status: fenced ? 0 : 200, body: {} } },
+        async ready() { return { status: fenced ? 0 : JSON.parse(files.get(PATHS.runtimeConfig)!.data).admissionHold ? 503 : 200, body: {} } },
+        async adminReady() {
+            const profiles = JSON.parse(files.get(PATHS.installConfig)!.data).profiles
+            return { admission: JSON.parse(files.get(PATHS.runtimeConfig)!.data).admissionHold ? 'hold' : 'open', checks: { browsers: true, writerLock: true, disk: true, revocations: true, principalState: true }, profiles,
+                assignment: { state: 'ready', applied: Object.fromEntries(profiles.map((p: any) => [p.profileId, p.assignmentId])) } }
+        },
+        async openAdmission(_assignments: Record<string, string>) { return true },
         async adminMetrics() {
             const value = running.length ? running.shift() : 0
             return value === undefined ? undefined : { tasks: { running: value } }
         },
         async brokerProbe(token: string) { return token === JSON.parse(files.get(PATHS.runtimeConfig)!.data).probeToken ? 401 : 200 },
-        async sleep() {},
-        now: () => 1_000_000,
+        async sleep(ms = 1000) { clock += ms },
+        now: () => clock,
         log: (line: string) => { logs.push(line) },
         secret: (kind: string) => `synthetic-${kind}-${++secretCount}`.padEnd(kind === 'vnc-password' ? 0 : 40, 'x').slice(0, kind === 'vnc-password' ? 8 : 64),
         async opLock() {
@@ -122,7 +156,7 @@ function fakeHost(options: HostOptions = {}) {
             return () => { lockHeld = false }
         },
     }
-    return { deps, calls, logs, files, state, containers }
+    return { deps, calls, logs, files, state, containers, volumes }
 }
 
 const indexOf = (calls: string[], pattern: RegExp | string) => calls.findIndex((line) => (typeof pattern === 'string' ? line === pattern : pattern.test(line)))
@@ -132,25 +166,42 @@ describe('abp-stack start', () => {
         const host = fakeHost({ handlers: [
             [/^docker network inspect -f .* abp-net-main$/, () => ({ stdout: '10.249.240.0/24 10.249.240.1 br-abp-wrong' })],
             [/^docker network inspect -f .* abp-net-ops$/, () => ({ status: 1 })],
-            [/^docker volume inspect abp-profile-ops/, () => ({ status: 1 })],
+
             [/^docker ps -aq --filter label=ai.saycode.abp=stack/, () => ({ stdout: 'old1\nold2' })],
         ] })
         await createStack(host.deps).start()
         const { calls } = host
         expect(calls[0]).toBe(`${FIREWALL} check-egress`)
-        const removeOld = indexOf(calls, 'docker rm -f old1 old2')
+        const removeOld = indexOf(calls, 'docker rm -f old2')
         // Containers go before their networks can be replaced.
         expect(indexOf(calls, 'docker network rm abp-net-main')).toBeGreaterThan(removeOld)
         expect(indexOf(calls, /^docker network create .*--subnet=10\.249\.240\.0\/24 .*abp-net-main$/)).toBeGreaterThan(indexOf(calls, 'docker network rm abp-net-main'))
         expect(indexOf(calls, /^docker network create .*--subnet=10\.249\.241\.0\/24 .*abp-net-ops$/)).toBeGreaterThan(removeOld)
-        expect(calls).toContain('docker volume create --label=ai.saycode.abp=stack abp-profile-ops')
+        const opsVolume = profileVolumeName('ops', 'user-2')
+        expect(host.volumes.has(opsVolume)).toBe(true)
         const browserCreate = indexOf(calls, /^docker create --name=abp-browser-main .*--ip=10\.249\.240\.2 .*sha256:b{64}$/)
         const runtimeCreate = indexOf(calls, /^docker create --name=abp-runtime .*--ip=10\.249\.240\.3 .*sha256:a{64}$/)
         expect(browserCreate).toBeGreaterThan(removeOld)
         expect(runtimeCreate).toBeGreaterThan(browserCreate)
         expect(calls).toContain('docker network connect --alias=runtime --ip=10.249.241.3 abp-net-ops abp-runtime')
-        expect(indexOf(calls, UNFENCE)).toBeGreaterThan(indexOf(calls, 'docker start abp-runtime'))
+        expect(calls.lastIndexOf(UNFENCE)).toBeGreaterThan(indexOf(calls, 'docker start abp-runtime'))
         expect(calls.some((line) => /volume rm|--no-sandbox/.test(line))).toBe(false)
+    })
+
+    it('preserves unknown-owner legacy data and refuses automatic attachment or deletion', async () => {
+        const host = fakeHost({ handlers: [[/^docker volume ls -q$/, () => ({ stdout: 'abp-state\nabp-profile-main' })]] })
+        await expect(createStack(host.deps).start()).rejects.toThrow(/legacy|migration/i)
+        expect(host.calls.some((line) => line.startsWith('docker volume rm'))).toBe(false)
+        expect(host.calls.some((line) => line.includes('source=abp-profile-main,'))).toBe(false)
+    })
+
+    it('rewrites runtime.json from install.json when their owners differ (an interrupted reassignment)', async () => {
+        const host = fakeHost()
+        host.files.set(PATHS.runtimeConfig, { data: JSON.stringify({ machineId: 'machine-1', daemonTokenSha256: 'e'.repeat(64), profiles: [{ profileId: 'main', principalId: 'user-old' }] }), mode: 0o600, owner: 'root', group: 'root' })
+        await createStack(host.deps).start()
+        const config = JSON.parse(host.files.get(PATHS.runtimeConfig)!.data)
+        expect(config.profiles).toEqual(JSON.parse(host.files.get(PATHS.installConfig)!.data).profiles)
+        expect(config.daemonTokenSha256).toBe('e'.repeat(64))
     })
 
     it('re-applies a missing egress firewall, and refuses to start any container when it cannot', async () => {
@@ -182,7 +233,7 @@ describe('abp-stack stop (admission fence, drain, verified stop)', () => {
         const stopRuntime = indexOf(calls, 'docker stop -t 30 abp-runtime')
         expect(stopRuntime).toBeGreaterThan(1)
         expect(host.logs.join('\n')).toMatch(/draining: 2 running/)
-        expect(indexOf(calls, 'docker stop -t 10 abp-browser-main')).toBeGreaterThan(stopRuntime)
+        expect(indexOf(calls, 'docker stop -t 30 abp-browser-main')).toBeGreaterThan(stopRuntime)
         expect(calls).toContain('docker inspect -f {{.State.Running}} abp-runtime')
         expect(calls.some((line) => line.startsWith('docker kill'))).toBe(false)
     })
@@ -263,7 +314,7 @@ describe('abp-stack supervise', () => {
             [/^docker inspect -f \{\{\.State\.Running\}\} \{\{\.State\.ExitCode\}\}/, () => ({ stdout: 'false 1' })],
         ] })
         createStack(host.deps).superviseOnce(new Map())
-        expect(host.calls).toContain('docker stop -t 10 abp-browser-main')
+        expect(host.calls).toContain('docker stop -t 30 abp-browser-main')
         expect(host.calls.some((line) => line.startsWith('docker start'))).toBe(false)
         expect(host.logs.join('\n')).toMatch(/egress firewall/)
     })
@@ -294,7 +345,7 @@ describe('abp-stack upgrade / rollback', () => {
         await expect(createStack(host.deps).upgrade({ ids: { runtime: RUNTIME_NEW, browser: BROWSER_NEW }, readyTimeoutMs: 5_000 })).rejects.toThrow(/rolled back/)
         expect(host.state()).toMatchObject({ current: { runtime: RUNTIME_OLD, browser: BROWSER_OLD } })
         expect(host.state().history.map((entry: { action: string; result: string }) => `${entry.action}:${entry.result}`)).toEqual(['upgrade:not-ready', 'auto-rollback:ready'])
-        expect(host.calls.filter((line) => line === 'systemctl start abp-stack.service')).toHaveLength(2)
+        expect(host.calls.filter((line) => line === 'systemctl start abp-stack.service')).toHaveLength(1)
     })
 
     it('rolls back when starting the new stack fails outright', async () => {
@@ -366,8 +417,8 @@ describe('abp-stack upgrade / rollback', () => {
             [/^systemctl stop abp-stack\.service$/, () => { stopped = true; return {} }],
             [/^docker inspect -f \{\{\.State\.Running\}\} abp-browser-ops$/, () => (stopped ? { status: 1, stderr: 'permission denied' } : { stdout: 'true' })],
         ] })
-        await expect(createStack(host.deps).upgrade({ ids: { runtime: RUNTIME_NEW, browser: BROWSER_NEW }, readyTimeoutMs: 5_000 })).rejects.toThrow(/rolled back|not ready either/)
-        expect(host.state().history.find((entry: { action: string }) => entry.action === 'upgrade')).toMatchObject({ result: 'failed', error: expect.stringMatching(/cannot determine whether abp-browser-ops is running/) })
+        await expect(createStack(host.deps).upgrade({ ids: { runtime: RUNTIME_NEW, browser: BROWSER_NEW }, readyTimeoutMs: 5_000 })).rejects.toThrow(/cannot determine whether abp-browser-ops is running/)
+        expect(host.calls).not.toContain('systemctl start abp-stack.service')
     })
 
     it('treats a stack whose Runtime is not running as quiesced, and says so', async () => {
@@ -404,6 +455,14 @@ describe('abp-stack upgrade on a running stack: only containers whose digest cha
     const MAINTENANCE = '/run/abp-stack-maintenance'
     const touched = (calls: string[], name: string) => calls.filter((line) => new RegExp(`^docker (stop|kill|rm|create --name=)[^ ]*.* ?${name}( |$)`).test(line) || line.startsWith(`docker create --name=${name} `))
 
+    it('refuses legacy adoption during upgrade and preserves its cookies', async () => {
+        const host = fakeHost({ serviceActive: true, profiles: [{ profileId: 'main', principalId: 'user-1' }],
+            handlers: [[/^docker volume ls -q$/, () => ({ stdout: 'abp-state\nabp-profile-main' })]] })
+        host.containers.get('abp-browser-main')!.mounts = ['abp-profile-main']
+        await expect(createStack(host.deps).upgrade({ ids: { runtime: RUNTIME_NEW, browser: BROWSER_OLD } })).rejects.toThrow(/legacy/)
+        expect(host.calls.some((line) => /volume rm|docker create/.test(line))).toBe(false)
+    })
+
     it('Runtime-only: fence and drain, replace the Runtime, keep every browser (profile, pages, pending approvals), lift the fence', async () => {
         const host = fakeHost({ serviceActive: true, running: [1, 0] })
         let flagDuringReplace = false
@@ -430,7 +489,7 @@ describe('abp-stack upgrade on a running stack: only containers whose digest cha
         expect(calls.indexOf(UNFENCE, start)).toBeGreaterThan(start)
         expect(flagDuringReplace).toBe(true)
         expect(host.files.has(MAINTENANCE)).toBe(false)
-        expect(host.containers.get('abp-browser-main')).toEqual({ running: true, image: BROWSER_OLD })
+        expect(host.containers.get('abp-browser-main')).toMatchObject({ running: true, image: BROWSER_OLD })
         expect(host.state()).toMatchObject({ current: { runtime: RUNTIME_NEW, browser: BROWSER_OLD }, previous: { runtime: RUNTIME_OLD, browser: BROWSER_OLD } })
         expect(host.state().history.at(-1)).toMatchObject({ action: 'upgrade', result: 'ready', replaced: ['runtime'], quiesce: { fence: 'verified' } })
     })
@@ -442,14 +501,14 @@ describe('abp-stack upgrade on a running stack: only containers whose digest cha
         expect(touched(calls, 'abp-runtime')).toEqual([])
         expect(calls).not.toContain('docker restart -t 30 abp-runtime')
         for (const [name, ip] of [['abp-browser-main', '10.249.240.2'], ['abp-browser-ops', '10.249.241.2']]) {
-            const stop = calls.indexOf(`docker stop -t 10 ${name}`)
+            const stop = calls.indexOf(`docker stop -t 30 ${name}`)
             expect(stop).toBeGreaterThan(calls.indexOf(FENCE))
             expect(calls.indexOf(`docker rm -f ${name}`)).toBeGreaterThan(stop)
             expect(indexOf(calls, new RegExp(`^docker create --name=${name} .*--ip=${ip.replace(/\./g, '\\.')} .*sha256:d{64}$`))).toBeGreaterThan(stop)
         }
         // New browsers only behind a live egress firewall.
         expect(indexOf(calls, /check-egress$/)).toBeLessThan(indexOf(calls, /^docker create --name=abp-browser-main/))
-        expect(host.containers.get('abp-runtime')).toEqual({ running: true, image: RUNTIME_OLD })
+        expect(host.containers.get('abp-runtime')).toMatchObject({ running: true, image: RUNTIME_OLD })
         expect(host.state().history.at(-1)).toMatchObject({ action: 'upgrade', result: 'ready', replaced: ['browser'] })
     })
 
@@ -470,7 +529,7 @@ describe('abp-stack upgrade on a running stack: only containers whose digest cha
         let clock = 0
         host.deps.now = () => (clock += 1_000)
         await expect(createStack(host.deps).upgrade({ ids: { runtime: RUNTIME_NEW, browser: BROWSER_OLD }, readyTimeoutMs: 5_000 })).rejects.toThrow(/rolled back/)
-        expect(host.containers.get('abp-runtime')).toEqual({ running: true, image: RUNTIME_OLD })
+        expect(host.containers.get('abp-runtime')).toMatchObject({ running: true, image: RUNTIME_OLD })
         expect(touched(host.calls, 'abp-browser-main')).toEqual([])
         expect(host.state().current).toEqual({ runtime: RUNTIME_OLD, browser: BROWSER_OLD })
         expect(host.state().history.map((entry: { action: string; result: string }) => `${entry.action}:${entry.result}`)).toEqual(['upgrade:not-ready', 'auto-rollback:ready'])
@@ -480,7 +539,7 @@ describe('abp-stack upgrade on a running stack: only containers whose digest cha
     it('Runtime-only whose new container cannot be created: the previous Runtime comes back', async () => {
         const host = fakeHost({ serviceActive: true, handlers: [[/^docker create --name=abp-runtime .*sha256:c{64}$/, () => ({ status: 1 })]] })
         await expect(createStack(host.deps).upgrade({ ids: { runtime: RUNTIME_NEW, browser: BROWSER_OLD }, readyTimeoutMs: 5_000 })).rejects.toThrow(/rolled back/)
-        expect(host.containers.get('abp-runtime')).toEqual({ running: true, image: RUNTIME_OLD })
+        expect(host.containers.get('abp-runtime')).toMatchObject({ running: true, image: RUNTIME_OLD })
         expect(host.state().history.map((entry: { action: string; result: string }) => `${entry.action}:${entry.result}`)).toEqual(['upgrade:failed', 'auto-rollback:ready'])
     })
 
@@ -500,7 +559,7 @@ describe('abp-stack upgrade on a running stack: only containers whose digest cha
 describe('abp-stack load', () => {
     it('loads the image archive and accepts it only when every manifest digest is present', () => {
         const manifest = JSON.stringify({ schemaVersion: 1, runtime: { id: RUNTIME_NEW }, browser: { id: BROWSER_NEW } })
-        const host = fakeHost({ handlers: [[/^docker image inspect/, (args) => ({ stdout: args.at(-1) === BROWSER_NEW ? 'sha256:' + '0'.repeat(64) : args.at(-1) })]] })
+        const host = fakeHost({ handlers: [[/^docker image inspect --format \{\{\.Id\}\}/, (args) => ({ stdout: args.at(-1) === BROWSER_NEW ? 'sha256:' + '0'.repeat(64) : args.at(-1) })]] })
         host.files.set('/imgs/manifest.json', { data: manifest, mode: 0o644, owner: 'root', group: 'root' })
         expect(() => createStack(host.deps).load('/imgs')).toThrow(/browser image digest mismatch/)
         expect(host.calls[0]).toBe('docker load -i /imgs/images.tar')
@@ -522,10 +581,10 @@ describe('abp-stack rotate-keys', () => {
         expect(restart).toBeGreaterThan(fence)
         expect(host.calls.indexOf('systemctl restart abp-happy-daemon.service')).toBeGreaterThan(restart)
         expect(host.calls).toContain('systemctl is-active abp-happy-daemon.service')
-        // The fence also blocks the readiness probe: it is lifted before waiting for the restarted Runtime.
+        // Readiness is checked on the root admin socket before the public fence is lifted.
         const unfence = host.calls.indexOf(UNFENCE, restart)
         expect(unfence).toBeGreaterThan(restart)
-        expect(host.calls.indexOf('docker inspect -f {{index .Config.Labels "ai.saycode.abp.image"}} abp-runtime', restart)).toBeGreaterThan(unfence)
+        expect(host.calls.indexOf('docker inspect -f {{.State.Running}} {{index .Config.Labels "ai.saycode.abp.image"}} abp-runtime', restart)).toBeLessThan(unfence)
         expect(host.state().history.at(-1)).toMatchObject({ action: 'rotate-keys', result: 'daemon-token' })
         expect([...host.calls, ...host.logs].join('\n')).not.toContain(token.data)
     })
@@ -574,15 +633,113 @@ describe('abp-stack rotate-keys', () => {
 })
 
 describe('abp-stack set-principal', () => {
-    it('reassigns a profile owner in both config files and restarts the Runtime behind the fence', async () => {
-        const host = fakeHost({ profiles: [{ profileId: 'main', principalId: 'user-1' }] })
+    const one = [{ profileId: 'main', principalId: 'user-1' }]
+    const owners = (host: ReturnType<typeof fakeHost>, path: string) => JSON.parse(host.files.get(path)!.data).profiles
+
+    it('does nothing when the profile already belongs to that owner', async () => {
+        const host = fakeHost({ profiles: one, serviceActive: true })
+        await createStack(host.deps).setPrincipal('main', 'user-1')
+        expect(host.calls.some((line) => /systemctl (stop|start)|ABP-FENCE -p/.test(line))).toBe(false)
+        await expect(createStack(host.deps).setPrincipal('nope', 'user-9')).rejects.toThrow(/unknown profile/)
+    })
+
+    it("stops the whole stack, switches both config files, and starts it on the new owner's volume; the previous volume is kept, detached", async () => {
+        const host = fakeHost({ profiles: one, serviceActive: true })
         await createStack(host.deps).setPrincipal('main', 'user-9')
-        expect(JSON.parse(host.files.get(PATHS.installConfig)!.data).profiles).toEqual([{ profileId: 'main', principalId: 'user-9' }])
-        const config = JSON.parse(host.files.get(PATHS.runtimeConfig)!.data)
-        expect(config.profiles).toEqual([{ profileId: 'main', principalId: 'user-9' }])
-        expect(config.daemonTokenSha256).toBe('e'.repeat(64))
-        expect(host.calls.indexOf('docker restart -t 30 abp-runtime')).toBeGreaterThan(host.calls.indexOf(FENCE))
-        expect(() => createStack(host.deps).setPrincipal('nope', 'user-9')).toThrow(/unknown profile/)
+        const { calls } = host
+        expect(indexOf(calls, 'systemctl stop abp-stack.service')).toBeGreaterThan(indexOf(calls, FENCE))
+        expect(indexOf(calls, 'systemctl start abp-stack.service')).toBeGreaterThan(indexOf(calls, 'systemctl stop abp-stack.service'))
+        expect(owners(host, PATHS.installConfig)).toEqual([{ profileId: 'main', principalId: 'user-9', assignmentId: expect.stringMatching(/^[0-9a-f]{32}$/) }])
+        expect(owners(host, PATHS.runtimeConfig)).toEqual([{ profileId: 'main', principalId: 'user-9', assignmentId: expect.stringMatching(/^[0-9a-f]{32}$/) }])
+        expect(JSON.parse(host.files.get(PATHS.runtimeConfig)!.data).daemonTokenSha256).toBe('e'.repeat(64))
+        expect(host.containers.get('abp-browser-main')!.mounts).toEqual([profileVolumeName('main', 'user-9')])
+        expect(host.state().profileVolumes).toEqual([
+            { profileId: 'main', volume: profileVolumeName('main', 'user-1'), detachedAtMs: 1_000_000 },
+            { profileId: 'main', volume: profileVolumeName('main', 'user-9') },
+        ])
+        expect(host.state().history.findLast((entry: { action: string }) => entry.action === 'set-principal')).toMatchObject({ profileId: 'main', result: 'ready' })
+        expect(host.state().applied.main.principalId).toBe('user-9')
+    })
+
+    it('clears the detached mark when a previous owner is assigned back', async () => {
+        const host = fakeHost({ profiles: one, serviceActive: true })
+        await createStack(host.deps).setPrincipal('main', 'user-9')
+        await createStack(host.deps).setPrincipal('main', 'user-1')
+        expect(host.containers.get('abp-browser-main')!.mounts).toEqual([profileVolumeName('main', 'user-1')])
+        expect(host.state().profileVolumes).toEqual([
+            { profileId: 'main', volume: profileVolumeName('main', 'user-1') },
+            { profileId: 'main', volume: profileVolumeName('main', 'user-9'), detachedAtMs: 1_000_000 },
+        ])
+    })
+
+    it('restores the previous owner, config and volume marks when the switched stack cannot be verified', async () => {
+        let inspected = 0
+        const host: ReturnType<typeof fakeHost> = fakeHost({ profiles: one, serviceActive: true, handlers: [
+            // The first check after the switch sees the old volume still mounted; later ones see the real mount.
+            [/^docker inspect -f \{\{json \.Mounts\}\} abp-browser-main$/, () => ({
+                stdout: JSON.stringify([{ Name: ++inspected === 1 ? profileVolumeName('main', 'user-1') : host.containers.get('abp-browser-main')!.mounts[0], Destination: '/home/browser/profile', Type: 'volume', RW: true }]) })],
+        ] })
+        await expect(createStack(host.deps).setPrincipal('main', 'user-9')).rejects.toThrow(/set-principal failed.*restored/)
+        expect(owners(host, PATHS.installConfig)).toMatchObject(one)
+        expect(owners(host, PATHS.installConfig)[0].assignmentId).not.toBe('1'.repeat(32))
+        expect(owners(host, PATHS.runtimeConfig)).toMatchObject(one)
+        expect(host.containers.get('abp-browser-main')!.mounts).toEqual([profileVolumeName('main', 'user-1')])
+        expect(host.state().profileVolumes ?? []).toEqual([])
+        expect(host.calls.filter((line) => line === 'systemctl start abp-stack.service')).toHaveLength(2)
+        expect(host.state().transition).toBeUndefined()
+    })
+
+    it('stops containers directly and reports an unverified supervisor after systemd stop fails', async () => {
+        let stops = 0
+        const host = fakeHost({ profiles: one, serviceActive: true, handlers: [
+            [/^docker inspect -f \{\{json \.Mounts\}\}/, () => ({ stdout: '[]' })],
+            [/^systemctl stop abp-stack.service$/, () => ({ status: ++stops > 1 ? 1 : 0 })],
+        ] })
+        await expect(createStack(host.deps).setPrincipal('main', 'user-9')).rejects.toThrow(/safety unverified.*supervisor/)
+        expect([...host.containers.values()].every((c) => !c.running)).toBe(true)
+        expect(host.calls).toContain('docker stop -t 30 abp-runtime')
+        expect(host.state().transition.phase).toBe('blocked')
+    })
+
+    it('reports unverified safety when the final fence fails, while still stopping containers', async () => {
+        let attempts = 0
+        const host = fakeHost({ profiles: one, serviceActive: true, handlers: [
+            [/^docker inspect -f \{\{json \.Mounts\}\}/, () => ({ stdout: '[]' })],
+            [/^iptables -w -t filter -A ABP-FENCE/, () => ({ status: ++attempts > 1 ? 1 : 0 })],
+        ] })
+        await expect(createStack(host.deps).setPrincipal('main', 'user-9')).rejects.toThrow(/safety unverified.*fence/)
+        expect(host.state().transition.phase).toBe('blocked')
+        expect([...host.containers.values()].every((c) => !c.running)).toBe(true)
+    })
+
+    it('leaves the stack stopped and fenced when even the restore cannot be verified', async () => {
+        const host = fakeHost({ profiles: one, serviceActive: true, handlers: [
+            [/^docker inspect -f \{\{json \.Mounts\}\}/, () => ({ stdout: '[]' })],
+        ] })
+        await expect(createStack(host.deps).setPrincipal('main', 'user-9')).rejects.toThrow(/restore failed/)
+        expect(host.calls.filter((line) => /^systemctl (start|stop) abp-stack\.service$/.test(line)).at(-1)).toBe('systemctl stop abp-stack.service')
+        // The fence is put back last, so nothing reaches the API until an operator acts.
+        expect(host.calls.filter((line) => line.includes('ABP-FENCE') && !line.includes('-C OUTPUT')).at(-1)).toBe(FENCE)
+    })
+})
+
+describe('indefinite profile retention', () => {
+    it('keeps the previous volume after reassignment even with the obsolete zero-day setting', async () => {
+        const host = fakeHost({ profiles: [{ profileId: 'main', principalId: 'user-1' }], serviceActive: true })
+        host.files.set(PATHS.installConfig, { ...host.files.get(PATHS.installConfig)!, data: JSON.stringify({ ...JSON.parse(host.files.get(PATHS.installConfig)!.data), profileRetentionDays: 0 }) })
+        await createStack(host.deps).setPrincipal('main', 'user-9')
+        expect(host.calls.some((line) => line.startsWith('docker volume rm'))).toBe(false)
+        expect(host.state().history.some((entry: { action: string }) => entry.action === 'prune-profiles')).toBe(false)
+    })
+})
+
+describe('mount inspection failures', () => {
+    it('aborts a runtime-only upgrade before replacing anything when a browser mount cannot be read', async () => {
+        const host = fakeHost({ serviceActive: true, handlers: [
+            [/^docker inspect -f .*Mounts.* abp-browser-main$/, () => ({ status: 1, stderr: 'daemon unavailable' })],
+        ] })
+        await expect(createStack(host.deps).upgrade({ ids: { runtime: RUNTIME_NEW, browser: BROWSER_OLD } })).rejects.toThrow()
+        expect(host.calls.some((c) => c.startsWith('docker create'))).toBe(false)
     })
 })
 
@@ -594,6 +751,31 @@ describe('abp-stack status', () => {
         [/^docker ps --filter label=ai.saycode.abp=stack --format/, () => ({ stdout: 'abp-runtime\t127.0.0.1:38700->38700/tcp\nabp-browser-main\t5900/tcp, 9223-9224/tcp\nabp-browser-ops\t' })],
         [/^docker exec abp-browser-\S+ sh -c/, () => ({ stdout: 'sandboxed 2\nnosandbox 0' })],
     ]
+
+    it.each([
+        { status: 1, stderr: 'daemon unavailable' },
+        { stdout: '[]' },
+        { stdout: JSON.stringify([{ Name: 'abp-profile-main', Destination: '/home/browser/profile', Type: 'volume', RW: true }]) },
+        { stdout: JSON.stringify([{ Name: profileVolumeName('main', 'user-1'), Destination: '/wrong', Type: 'volume', RW: true }]) },
+    ])('reports an unhealthy actual profile mount: %j', async (result) => {
+        const host = fakeHost({ handlers: [[/^docker inspect -f \{\{json \.Mounts\}\} abp-browser-main$/, () => result], ...healthy] })
+        const report = await createStack(host.deps).status()
+        expect(report.ok).toBe(false)
+        expect(report.checks).toContainEqual(expect.objectContaining({ name: 'profile mount abp-browser-main', ok: false }))
+    })
+
+    it("lists the current owners' volumes, the kept previous ones and unmarked ones (informational)", async () => {
+        const kept = profileVolumeName('main', 'user-old')
+        const unmarked = profileVolumeName('main', 'user-lost')
+        const host = fakeHost({ handlers: [...healthy, [/^docker volume ls -q --filter label=ai\.saycode\.abp\.role=profile$/, () => ({ stdout: [profileVolumeName('main', 'user-1'), kept, unmarked].join('\n') })]] })
+        host.files.set(PATHS.stackState, { ...host.files.get(PATHS.stackState)!, data: JSON.stringify({ ...host.state(), profileVolumes: [{ profileId: 'main', volume: kept, detachedAtMs: 0 }] }) })
+        const report = await createStack(host.deps).status()
+        const check = report.checks.find((entry: { name: string }) => entry.name === 'profile volumes')
+        expect(check).toMatchObject({ ok: true })
+        expect(check.detail).toContain(`current ${profileVolumeName('main', 'user-1')}`)
+        expect(check.detail).toContain('kept 1 (oldest detached 1970-01-01)')
+        expect(check.detail).toContain('unmarked 1')
+    })
 
     it('reports ready when only the Runtime port is published on loopback, egress rules are live and Chromium runs sandboxed', async () => {
         const host = fakeHost({ handlers: healthy })
@@ -614,5 +796,303 @@ describe('abp-stack status', () => {
         expect(report.ok).toBe(false)
         const failed = report.checks.filter((check: { ok: boolean }) => !check.ok).map((check: { name: string }) => check.name)
         expect(failed).toEqual(expect.arrayContaining(['published ports', 'chromium sandbox abp-browser-main', 'container abp-browser-ops', 'browser egress firewall']))
+    })
+})
+
+
+describe('assignment safety boundaries', () => {
+    const one = [{ profileId: 'main', principalId: 'user-1' }]
+    const putState = (host: ReturnType<typeof fakeHost>, patch: object) => host.files.set(PATHS.stackState, { ...host.files.get(PATHS.stackState)!, data: JSON.stringify({ ...host.state(), ...patch }) })
+
+    it('changes the execution generation on A to B to A while reusing A cookies', async () => {
+        const host = fakeHost({ profiles: one })
+        const stack = createStack(host.deps)
+        await stack.setPrincipal('main', 'user-2')
+        const b = host.state().applied.main.assignmentId
+        await stack.setPrincipal('main', 'user-1')
+        expect(host.state().applied.main.assignmentId).not.toBe(b)
+        expect(host.state().applied.main.assignmentId).not.toBe('1'.repeat(32))
+        expect(host.containers.get('abp-browser-main')!.mounts).toEqual([profileVolumeName('main', 'user-1')])
+    })
+
+    it.each(['prepared', 'committed', 'verified', 'blocked'])('keeps the supervisor and administrative mutations held for a %s journal', async (phase) => {
+        const host = fakeHost({ profiles: one })
+        const options = JSON.parse(host.files.get(PATHS.installConfig)!.data)
+        putState(host, { transition: { phase, profileId: 'main', before: options, target: options } })
+        const stack = createStack(host.deps)
+        stack.superviseOnce(new Map())
+        expect(host.calls.every((line) => line.includes('check-egress'))).toBe(true)
+        await expect(stack.upgrade({ ids: { runtime: RUNTIME_NEW, browser: BROWSER_NEW } })).rejects.toThrow(/transition/)
+        await expect(stack.rotateKeys()).rejects.toThrow(/transition/)
+        if (['committed', 'verified'].includes(phase)) {
+            await stack.start()
+            expect(host.calls.lastIndexOf(UNFENCE)).toBeLessThan(host.calls.indexOf('docker start abp-runtime'))
+            expect(JSON.parse(host.files.get(PATHS.runtimeConfig)!.data).admissionHold).toBe(true)
+        } else await expect(stack.start()).rejects.toThrow(/transition/)
+        await stack.setPrincipal(undefined, undefined, 'abort')
+        expect(host.state().transition).toBeUndefined()
+        expect(host.state().applied.main.assignmentId).not.toBe('1'.repeat(32))
+    })
+
+    it.each([['resume', 'user-2', 'user-1'], ['abort', 'user-1', 'user-2']])('marks the owner it leaves detached on --%s after install.json already switched', async (recovery, attached, detached) => {
+        const host = fakeHost({ profiles: one })
+        const before = JSON.parse(host.files.get(PATHS.installConfig)!.data)
+        const target = { ...before, profiles: [{ profileId: 'main', principalId: 'user-2', assignmentId: 'b'.repeat(32) }] }
+        // Interrupted after the commit: install.json already names the new owner.
+        host.files.set(PATHS.installConfig, { ...host.files.get(PATHS.installConfig)!, data: JSON.stringify(target) })
+        putState(host, { transition: { id: 'j', phase: 'committed', profileId: 'main', before, target, requested: target } })
+        await createStack(host.deps).setPrincipal(undefined, undefined, recovery as 'resume' | 'abort')
+        const marks = host.state().profileVolumes as Array<{ volume: string; detachedAtMs?: number }>
+        expect(marks.find((mark) => mark.volume === profileVolumeName('main', detached))?.detachedAtMs).toBe(1_000_000)
+        expect(marks.find((mark) => mark.volume === profileVolumeName('main', attached))?.detachedAtMs).toBeUndefined()
+        expect(host.containers.get('abp-browser-main')!.mounts).toEqual([profileVolumeName('main', attached)])
+    })
+
+    it('rejects direct identity edits after an applied assignment', async () => {
+        const host = fakeHost({ profiles: one })
+        await createStack(host.deps).start()
+        const config = JSON.parse(host.files.get(PATHS.installConfig)!.data)
+        config.profiles[0].principalId = 'intruder'
+        host.files.set(PATHS.installConfig, { ...host.files.get(PATHS.installConfig)!, data: JSON.stringify(config) })
+        await expect(createStack(host.deps).start()).rejects.toThrow(/direct edits/)
+    })
+
+    it('fails closed on volume inspection errors and wrong labels', async () => {
+        const unknown = fakeHost({ profiles: one, handlers: [[/^docker volume inspect abp-profile-/, () => ({ status: 1, stderr: 'daemon unavailable' })]] })
+        await expect(createStack(unknown.deps).start()).rejects.toThrow(/cannot inspect/)
+        expect(unknown.calls.some((line) => line.startsWith('docker volume create') && line.includes('abp-profile'))).toBe(false)
+        const wrong = fakeHost({ profiles: one })
+        wrong.volumes.set(profileVolumeName('main', 'user-1'), { 'ai.saycode.abp': 'stack' })
+        await expect(createStack(wrong.deps).start()).rejects.toThrow(/labels mismatch/)
+    })
+
+    it('rejects old-contract image rollback before quiescing', async () => {
+        const host = fakeHost({ previous: { runtime: RUNTIME_NEW, browser: BROWSER_NEW }, handlers: [[/ai.saycode.abp.contract/, () => ({ stdout: '1' })]] })
+        await expect(createStack(host.deps).rollback()).rejects.toThrow(/contract 2/)
+        expect(host.calls).not.toContain(FENCE)
+    })
+
+    it('deletes only the explicitly confirmed inactive, detached, correctly labelled volume', async () => {
+        const host = fakeHost({ profiles: one })
+        const volume = profileVolumeName('main', 'old-owner')
+        host.volumes.set(volume, Object.fromEntries(profileVolumeLabels('main', 'old-owner').map((l: string) => l.split('='))))
+        const stack = createStack(host.deps)
+        await expect(stack.deleteProfileVolume(volume, 'wrong')).rejects.toThrow(/exact/)
+        await expect(stack.deleteProfileVolume(profileVolumeName('main', 'user-1'), profileVolumeName('main', 'user-1'))).rejects.toThrow(/current/)
+        await stack.deleteProfileVolume(volume, volume)
+        expect(host.volumes.has(volume)).toBe(false)
+    })
+
+    it('requires ownership confirmation, preserves legacy source, and blocks incomplete copy targets', async () => {
+        const host = fakeHost({ profiles: one, handlers: [[/^docker run /, () => ({ status: 1, stderr: 'copy failed' })]] })
+        const source = 'abp-profile-main'
+        host.volumes.set(source, { 'ai.saycode.abp': 'stack' })
+        const stack = createStack(host.deps)
+        await expect(stack.migrateLegacyProfile('main', 'actual-owner', false)).rejects.toThrow(/owner-verified/)
+        await expect(stack.migrateLegacyProfile('main', 'actual-owner', true)).rejects.toThrow(/docker run failed/)
+        expect(host.volumes.has(source)).toBe(true)
+        expect(host.state().migrations[0].phase).toBe('copying')
+        await expect(stack.start()).rejects.toThrow(/migration/)
+        expect(host.calls.some((line) => line.startsWith('docker volume rm'))).toBe(false)
+        const originalRun = host.deps.run
+        host.deps.run = (cmd, args, opts) => cmd === 'docker' && args[0] === 'run'
+            ? { status: 0, stdout: JSON.stringify({ verified: true, sha256: 'a'.repeat(64) }), stderr: '' }
+            : originalRun(cmd, args, opts)
+        await expect(stack.migrateLegacyProfile('main', 'different-owner', true, true)).rejects.toThrow(/matching/)
+        await stack.migrateLegacyProfile('main', 'actual-owner', true, true)
+        expect(host.state().migrations[0].phase).toBe('verified')
+        expect(host.state().migrationHold).toBe(false)
+        expect(host.volumes.has(source)).toBe(true)
+    })
+})
+
+
+describe('assignment transaction write failures', () => {
+    it.each(['install', 'runtime', 'committed', 'applied'])('recovers a %s write failure with a new old-owner generation', async (point) => {
+        const host = fakeHost({ profiles: [{ profileId: 'main', principalId: 'user-1' }] })
+        const original = host.deps.writeFileAtomic
+        let failed = false
+        host.deps.writeFileAtomic = (path, data, meta) => {
+            const payload = JSON.parse(data)
+            const fail = point === 'install' && path === PATHS.installConfig
+                || point === 'runtime' && path === PATHS.runtimeConfig
+                || point === 'committed' && path === PATHS.stackState && payload.transition?.phase === 'committed'
+                || point === 'applied' && path === PATHS.stackState && payload.transition?.phase === 'verified'
+            if (!failed && fail) { failed = true; throw new Error('simulated disk failure') }
+            original(path, data, meta)
+        }
+        await expect(createStack(host.deps).setPrincipal('main', 'user-2')).rejects.toThrow(/previous owner restored/)
+        expect(host.state().transition).toBeUndefined()
+        expect(host.state().applied.main.principalId).toBe('user-1')
+        expect(host.state().applied.main.assignmentId).not.toBe('1'.repeat(32))
+    })
+})
+
+
+describe('post-review fail-closed lifecycle', () => {
+    const one = [{ profileId: 'main', principalId: 'user-1' }]
+    const putState = (h: ReturnType<typeof fakeHost>, patch: object) => h.files.set(PATHS.stackState, { ...h.files.get(PATHS.stackState)!, data: JSON.stringify({ ...h.state(), ...patch }) })
+    it('stops existing containers if startup identity validation fails', async () => {
+        const h = fakeHost({ profiles: one })
+        putState(h, { applied: { main: { principalId: 'another-user', assignmentId: 'a'.repeat(32) } } })
+        await expect(createStack(h.deps).start()).rejects.toThrow(/direct edits/)
+        expect([...h.containers.values()].every((c) => !c.running)).toBe(true)
+        expect(h.calls).toContain(FENCE)
+    })
+    it('stops existing containers if supervisor identity validation fails', () => {
+        const h = fakeHost({ profiles: one })
+        putState(h, { applied: { main: { principalId: 'another-user', assignmentId: 'a'.repeat(32) } } })
+        expect(() => createStack(h.deps).superviseOnce(new Map())).toThrow(/direct edits/)
+        expect([...h.containers.values()].every((c) => !c.running)).toBe(true)
+    })
+    it.each(['transition', 'migrationHold'])('keeps egress enforcement active during %s without restarting any container', (kind) => {
+        const h = fakeHost({ profiles: one, handlers: [[/check-egress$|apply-egress$/, () => ({ status: 1 })]] })
+        putState(h, { [kind]: kind === 'transition' ? { phase: 'committed' } : true })
+        createStack(h.deps).superviseOnce(new Map())
+        expect(h.containers.get('abp-browser-main')!.running).toBe(false)
+        expect(h.calls.some((c) => c.startsWith('docker start'))).toBe(false)
+    })
+    it('takes the operations lock for autonomous startup', async () => {
+        const h = fakeHost({ profiles: one })
+        const release = await h.deps.opLock()
+        await expect(createStack(h.deps).start()).rejects.toThrow(/another/)
+        expect(h.calls).toEqual([])
+        release()
+        await createStack(h.deps).start()
+    })
+    it('delegated startup preserves the lock-owner state and config, and never opens admission', async () => {
+        const h = fakeHost({ profiles: one })
+        const options = JSON.parse(h.files.get(PATHS.installConfig)!.data)
+        const identity = { main: { principalId: 'user-1', assignmentId: options.profiles[0].assignmentId } }
+        h.files.set(PATHS.runtimeConfig, { ...h.files.get(PATHS.runtimeConfig)!, data: JSON.stringify({ ...options, admissionHold: true }) })
+        h.files.set('/run/abp-stack-start-request', { data: JSON.stringify({ identity, images: h.state().current }), mode: 0o600, owner: 'root', group: 'root' })
+        const before = h.files.get(PATHS.stackState)!.data
+        const config = h.files.get(PATHS.runtimeConfig)!.data
+        let opened = false
+        h.deps.openAdmission = async () => { opened = true; return true }
+        const release = await h.deps.opLock()
+        await createStack(h.deps).start()
+        release()
+        expect(h.files.get(PATHS.stackState)!.data).toBe(before)
+        expect(h.files.get(PATHS.runtimeConfig)!.data).toBe(config)
+        expect(opened).toBe(false)
+    })
+    it('never copies an already migrated legacy source to another owner', async () => {
+        const h = fakeHost({ profiles: one })
+        h.volumes.set('abp-profile-main', { 'ai.saycode.abp': 'stack' })
+        putState(h, { migrations: [{ source: 'abp-profile-main', target: profileVolumeName('main', 'user-x'), phase: 'verified' }] })
+        await expect(createStack(h.deps).migrateLegacyProfile('main', 'user-y', true)).rejects.toThrow(/already has a migration owner/)
+        expect(h.calls.some((c) => c.startsWith('docker run'))).toBe(false)
+    })
+})
+
+
+describe('offline contract upgrade and migration recovery', () => {
+    it('stages compatible images with legacy data preserved and no container start, so migration can run', async () => {
+        const h = fakeHost({ profiles: [{ profileId: 'main', principalId: 'user-1' }], handlers: [
+            [/^docker volume ls -q$/, () => ({ stdout: 'abp-profile-main' })],
+        ] })
+        await createStack(h.deps).upgrade({ ids: { runtime: RUNTIME_NEW, browser: BROWSER_NEW }, noStart: true })
+        expect(h.state().current).toEqual({ runtime: RUNTIME_NEW, browser: BROWSER_NEW })
+        await createStack(h.deps).upgrade({ ids: { runtime: RUNTIME_NEW, browser: BROWSER_NEW }, noStart: true })
+        expect(h.state().previous).toEqual({ runtime: RUNTIME_OLD, browser: BROWSER_OLD })
+        expect(h.calls.some((c) => /volume rm|docker start|systemctl start/.test(c))).toBe(false)
+        expect([...h.containers.values()].every((c) => !c.running)).toBe(true)
+    })
+    it('stops and removes the journaled copier left by a crash before resuming the same owner', async () => {
+        const h = fakeHost({ profiles: [{ profileId: 'main', principalId: 'user-1' }] })
+        const source = 'abp-profile-main', target = profileVolumeName('main', 'old-owner'), name = 'abp-migrate-test'
+        h.volumes.set(source, { 'ai.saycode.abp': 'stack' })
+        h.volumes.set(target, Object.fromEntries(profileVolumeLabels('main', 'old-owner').map((l: string) => l.split('='))))
+        h.containers.set(name, { running: true, image: BROWSER_OLD, mounts: [source, target] })
+        h.files.set(PATHS.stackState, { ...h.files.get(PATHS.stackState)!, data: JSON.stringify({ ...h.state(), migrationHold: true,
+            migrations: [{ id: 'test', source, target, profileId: 'main', volumeLabels: profileVolumeLabels('main', 'old-owner'), phase: 'copying' }] }) })
+        const run = h.deps.run
+        h.deps.run = (cmd, args, opts) => {
+            if (cmd === 'docker' && args[0] === 'ps') {
+                if (args.includes('label=ai.saycode.abp=stack')) return { status: 0, stdout: h.containers.has(name) ? name : '', stderr: '' }
+                if (args.some((a) => a.startsWith('volume='))) return { status: 0, stdout: h.containers.has(name) ? name : '', stderr: '' }
+            }
+            if (cmd === 'docker' && args[0] === 'run') {
+                expect(h.containers.has(name)).toBe(false)
+                expect(args).toContain('--label=ai.saycode.abp=stack')
+                expect(args).toContain('--name=abp-migrate-test')
+                return { status: 0, stdout: JSON.stringify({ verified: true, sha256: 'f'.repeat(64) }), stderr: '' }
+            }
+            return run(cmd, args, opts)
+        }
+        await createStack(h.deps).migrateLegacyProfile('main', 'old-owner', true, true)
+        expect(h.state().migrations[0].phase).toBe('verified')
+        expect(h.volumes.has(source)).toBe(true)
+    })
+})
+
+
+describe('post-review operational recovery', () => {
+    it('clears a failed delegated start before automatic rollback and restores normal operations', async () => {
+        let active = false
+        const h = fakeHost({ profiles: [{ profileId: 'main', principalId: 'user-1' }], handlers: [
+            [/^systemctl is-active abp-stack.service$/, () => ({ stdout: active ? 'active' : 'inactive', status: active ? 0 : 3 })],
+            [/^systemctl start abp-stack.service$/, () => { active = true; return {} }],
+            [/^systemctl stop abp-stack.service$/, () => { active = false; return {} }],
+        ] })
+        const ready = h.deps.adminReady
+        let first = true
+        h.deps.adminReady = async () => { if (first) { first = false; throw new Error('new image unhealthy') } return ready() }
+        await expect(createStack(h.deps).upgrade({ ids: { runtime: RUNTIME_NEW, browser: BROWSER_NEW } })).rejects.toThrow(/rolled back/)
+        expect(h.files.has('/run/abp-stack-start-request')).toBe(false)
+        expect(h.state().current).toEqual({ runtime: RUNTIME_OLD, browser: BROWSER_OLD })
+        expect(() => createStack(h.deps).assertStable()).not.toThrow()
+        expect(JSON.parse(h.files.get(PATHS.runtimeConfig)!.data).admissionHold).toBe(false)
+    })
+    it('up verifies an already ready stack without restarting it', async () => {
+        const h = fakeHost({ profiles: [{ profileId: 'main', principalId: 'user-1' }], serviceActive: true })
+        await createStack(h.deps).up()
+        expect(h.calls.some((c) => /systemctl (stop|start)|docker (stop|start)/.test(c))).toBe(false)
+    })
+    it('durable startup rejection is non-restarting and does not duplicate fence rules', async () => {
+        const h = fakeHost({ current: null })
+        await expect(createStack(h.deps).start()).rejects.toMatchObject({ exitCode: 78 })
+        await expect(createStack(h.deps).start()).rejects.toMatchObject({ exitCode: 78 })
+        expect(h.calls.filter((c) => c === FENCE)).toHaveLength(1)
+    })
+})
+
+
+describe('installed daemon compatibility', () => {
+    it('refuses current-package reuse and image upgrade when the daemon lacks lineage contract 2', async () => {
+        const h = fakeHost()
+        h.files.delete('/opt/abp/happy/lib/node_modules/@buzzni/happy-cli/scripts/agent-browser/contract.json')
+        await expect(createStack(h.deps).upgrade({ ids: { runtime: RUNTIME_NEW, browser: BROWSER_NEW } })).rejects.toThrow(/Happy package.*contract 2/)
+        expect(h.calls.some((c) => c.startsWith('docker load') || c.startsWith('docker create'))).toBe(false)
+        await expect(createStack(h.deps).start()).rejects.toThrow(/Happy package.*contract 2/)
+        expect([...h.containers.values()].every((c) => !c.running)).toBe(true)
+    })
+
+    it("does not stop a running stack when a supervisor tick lands inside abp-install's package swap (marker briefly absent)", () => {
+        const h = fakeHost()
+        h.files.delete('/opt/abp/happy/lib/node_modules/@buzzni/happy-cli/scripts/agent-browser/contract.json')
+        expect(() => createStack(h.deps).superviseOnce(new Map())).not.toThrow()
+        expect([...h.containers.values()].every((c) => c.running)).toBe(true)
+    })
+})
+
+
+describe('startup restart intent and error classification', () => {
+    it('forced up applies installer inputs even when the old process is ready', async () => {
+        const h = fakeHost({ profiles: [{ profileId: 'main', principalId: 'user-1' }], serviceActive: true })
+        await createStack(h.deps).up({ restart: true })
+        expect(h.calls).toContain('systemctl stop abp-stack.service')
+        expect(h.calls).toContain('systemctl start abp-stack.service')
+    })
+    it('keeps transient egress and readiness failures restartable after stopping containers', async () => {
+        const h = fakeHost({ handlers: [[/check-egress$|apply-egress$/, () => ({ status: 1 })]] })
+        try { await createStack(h.deps).start(); throw new Error('should reject') }
+        catch (error: any) { expect(error.message).toMatch(/egress/); expect(error.exitCode).not.toBe(78) }
+        expect([...h.containers.values()].every((c) => !c.running)).toBe(true)
+        const delayed = fakeHost()
+        delayed.deps.adminReady = async () => { throw new Error('temporarily unavailable') }
+        try { await createStack(delayed.deps).start(); throw new Error('should reject') }
+        catch (error: any) { expect(error.message).toMatch(/temporarily unavailable/); expect(error.exitCode).not.toBe(78) }
     })
 })

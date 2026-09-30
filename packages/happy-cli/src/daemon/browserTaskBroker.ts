@@ -18,6 +18,17 @@
  * saved is reported to the caller. An unreadable or malformed queue file is
  * never read as empty: the broker refuses to start (no new browser grants)
  * and the file is left for repair.
+ *
+ * Lineage (profile reassignment): a fork or recovery spawn continues an existing
+ * conversation under a new Happy session id; the registration carries the parent
+ * session id and the provider conversation id so the Runtime can refuse a
+ * conversation of an earlier assignment (the daemon token is the trust boundary).
+ * A resume names its own session id as the parent, so a conversation the Runtime cannot
+ * show to be of the current assignment gets no browser grant.
+ * A registration or bind the Runtime answers with a retryable RUNTIME_UNAVAILABLE
+ * (admission held at start-up or while a reassignment is verified) is retried for a
+ * bounded time: registration in the foreground before the spawn (default 60 s), a bind
+ * in the background (default 10 minutes; a denial or the deadline revokes it).
  */
 import { randomUUID } from 'node:crypto'
 import { closeSync, fsyncSync, openSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
@@ -29,11 +40,39 @@ import { readBrowserTaskBootId, readBrowserTaskPidStartTime, readBrowserTaskSess
 
 const DEFAULT_DAEMON_TOKEN_FILE = '/var/lib/abp/daemon-token'
 const MAX_RETRY_DELAY_MS = 5 * 60_000
+const DEFAULT_BIND_RETRY_DEADLINE_MS = 10 * 60_000
+const DEFAULT_REGISTER_RETRY_DEADLINE_MS = 60_000
+const MAX_REGISTER_RETRY_DELAY_MS = 5_000
+const MAX_BIND_RETRY_DELAY_MS = 15_000
 
 type RevokeTarget = { registrationId: string } | { agentSessionId: string }
 
+/** What a new session continues: its parent Happy session and the provider conversation it resumes. */
+export interface BrowserTaskLineage { parentSessionIds?: string[]; conversationIds?: string[] }
+
+/**
+ * Lineage of a spawn from its options: a fork or recovery names the parent session and resumes a Claude
+ * session or Codex thread (namespaced by provider). Undefined for a fresh conversation.
+ */
+export function browserTaskLineage(options: { parentSessionId?: string; resumeClaudeSessionId?: string; resumeCodexThreadId?: string }): BrowserTaskLineage | undefined {
+    const parentSessionIds = options.parentSessionId ? [options.parentSessionId] : []
+    const conversationIds = [
+        ...options.resumeClaudeSessionId ? [`claude:${options.resumeClaudeSessionId}`] : [],
+        ...options.resumeCodexThreadId ? [`codex:${options.resumeCodexThreadId}`] : [],
+    ]
+    return parentSessionIds.length || conversationIds.length
+        ? { ...parentSessionIds.length ? { parentSessionIds } : {}, ...conversationIds.length ? { conversationIds } : {} }
+        : undefined
+}
+
 export interface BrowserTaskSessionBroker {
-    register(): Promise<{ registrationId: string; sessionSecret: string } | undefined>
+    /** `lineage`: a fork or recovery (the Runtime refuses a conversation of an earlier profile assignment). */
+    register(lineage?: BrowserTaskLineage): Promise<{ registrationId: string; sessionSecret: string } | undefined>
+    /**
+     * True once bound, or while a transient refusal (admission held) is retried in the background, which
+     * revokes the registration itself if the Runtime then denies it or the deadline passes. False: denied
+     * (or unreachable), and the caller revokes it.
+     */
     bind(registrationId: string, agentSessionId: string, pid?: number): Promise<boolean>
     /** Revoke only registrations with a provably dead Linux host process owner. */
     reconcile(): Promise<void>
@@ -56,6 +95,12 @@ export interface BrowserTaskSessionBrokerOptions {
     retryBaseMs?: number
     /** Replaces the queue file durably; tests inject write failures. */
     writeQueueFile?: (file: string, data: string) => void
+    /** How long a bind refused as temporarily unavailable is retried (default 10 minutes). */
+    bindRetryDeadlineMs?: number
+    /** How long a registration refused as temporarily unavailable is retried before the spawn goes on without a grant (default 60 s). */
+    registerRetryDeadlineMs?: number
+    /** First delay between those retries; doubles up to 15 seconds. */
+    bindRetryBaseMs?: number
 }
 
 export class PendingRevocationQueueError extends Error {
@@ -140,19 +185,19 @@ export function createBrowserTaskSessionBroker(
     const { socketPath, daemonToken } = config
     const headers = { 'x-abp-daemon-token': daemonToken }
     /** The reply status, or 0 when the socket was unreachable. */
-    const send = async (path: string, body: Record<string, unknown>): Promise<{ status: number; result?: Record<string, unknown> }> => {
+    const send = async (path: string, body: Record<string, unknown>): Promise<{ status: number; result?: Record<string, unknown>; transient?: boolean }> => {
         try {
             const reply = await request(socketPath, 'POST', path, headers, { schemaVersion: 1, ...body })
             if (reply.status === 200 && reply.body.ok) return { status: 200, result: reply.body.result as Record<string, unknown> }
             // Error codes only: bodies never carry secrets, but keep logs minimal anyway.
             logger.debug(`[DAEMON RUN] Browser task broker ${path} failed status=${reply.status} code=${reply.body.error?.code ?? '-'}`)
-            return { status: reply.status }
+            // The Runtime admits nothing for now (start-up cleanup, a reassignment being verified): worth retrying.
+            return { status: reply.status, transient: reply.status === 503 && reply.body.error?.code === 'RUNTIME_UNAVAILABLE' && reply.body.error?.retryable === true }
         } catch (error) {
             logger.debug(`[DAEMON RUN] Browser task broker ${path} unreachable: ${error instanceof Error ? error.message : 'unknown'}`)
             return { status: 0 }
         }
     }
-    const call = async (path: string, body: Record<string, unknown>): Promise<Record<string, unknown> | undefined> => (await send(path, body)).result
 
     const pendingFile = options.pendingRevocationsFile
     const retryBaseMs = options.retryBaseMs ?? 1_000
@@ -198,11 +243,55 @@ export function createBrowserTaskSessionBroker(
     }
     scheduleRetry()
 
+    const bindRetryDeadlineMs = options.bindRetryDeadlineMs ?? DEFAULT_BIND_RETRY_DEADLINE_MS
+    const bindRetryBaseMs = options.bindRetryBaseMs ?? 1_000
+    /** Binds retried in the background, by agent session id; a revoke of the session or registration stops one. */
+    const retryingBinds = new Map<string, { registrationId: string; stop(): void }>()
+    const retryBind = (registrationId: string, agentSessionId: string, body: Record<string, unknown>): void => {
+        retryingBinds.get(agentSessionId)?.stop()
+        const deadline = Date.now() + bindRetryDeadlineMs
+        let delayMs = bindRetryBaseMs
+        let timer: NodeJS.Timeout | undefined
+        let stopped = false
+        const stop = () => { stopped = true; clearTimeout(timer); if (retryingBinds.get(agentSessionId)?.registrationId === registrationId) retryingBinds.delete(agentSessionId) }
+        const giveUp = (why: string) => {
+            stop()
+            logger.debug(`[DAEMON RUN] Browser task bind ${why}; revoking the registration`)
+            void broker.revoke({ registrationId }).catch((error) => logger.debug(`[DAEMON RUN] Browser task revoke after bind failed: ${error instanceof Error ? error.message : 'unknown'}`))
+        }
+        const tick = async (): Promise<void> => {
+            if (stopped) return
+            const reply = await send('/v1/sessions/bind', body)
+            if (stopped) return
+            if (reply.status === 200) { stop(); logger.debug('[DAEMON RUN] Browser task bind succeeded after a retry'); return }
+            if (!reply.transient) return giveUp('denied')
+            if (Date.now() + delayMs > deadline) return giveUp('still unavailable at the deadline')
+            timer = setTimeout(() => void tick(), delayMs)
+            timer.unref()
+            delayMs = Math.min(delayMs * 2, MAX_BIND_RETRY_DELAY_MS)
+        }
+        retryingBinds.set(agentSessionId, { registrationId, stop })
+        timer = setTimeout(() => void tick(), delayMs)
+        timer.unref()
+        delayMs = Math.min(delayMs * 2, MAX_BIND_RETRY_DELAY_MS)
+    }
+
     const broker: BrowserTaskSessionBroker = {
-        async register() {
+        async register(lineage) {
             // The host boot id lets reconciliation drop this registration after a reboot even if no owner is ever bound.
             const bootId = await readBrowserTaskBootId(options.procRoot).catch(() => undefined)
-            const result = await call('/v1/sessions/register', bootId ? { bootId } : {})
+            const body = { ...bootId ? { bootId } : {}, ...lineage ? { lineage } : {} }
+            // Admission held (start-up cleanup, a reassignment being verified): wait a bounded time, so an
+            // ordinary restart's hold does not leave the session without a browser for its whole life.
+            const deadline = Date.now() + (options.registerRetryDeadlineMs ?? DEFAULT_REGISTER_RETRY_DEADLINE_MS)
+            let delayMs = options.bindRetryBaseMs ?? 1_000
+            let reply = await send('/v1/sessions/register', body)
+            while (reply.transient && Date.now() + delayMs <= deadline) {
+                await new Promise((resolve) => setTimeout(resolve, delayMs))
+                delayMs = Math.min(delayMs * 2, MAX_REGISTER_RETRY_DELAY_MS)
+                reply = await send('/v1/sessions/register', body)
+            }
+            const result = reply.result
             return typeof result?.registrationId === 'string' && typeof result.sessionSecret === 'string'
                 ? { registrationId: result.registrationId, sessionSecret: result.sessionSecret }
                 : undefined
@@ -216,7 +305,12 @@ export function createBrowserTaskSessionBroker(
                     logger.debug(`[DAEMON RUN] Browser task session owner unavailable: ${error instanceof Error ? error.message : 'unknown'}`)
                 }
             }
-            return Boolean(await call('/v1/sessions/bind', { registrationId, agentSessionId, ...(owner ? { owner } : {}) }))
+            const body = { registrationId, agentSessionId, ...(owner ? { owner } : {}) }
+            const first = await send('/v1/sessions/bind', body)
+            if (first.status === 200) return true
+            if (!first.transient) return false
+            retryBind(registrationId, agentSessionId, body)
+            return true
         },
         async reconcile() {
             try {
@@ -254,6 +348,13 @@ export function createBrowserTaskSessionBroker(
             return waiting
         },
         async revoke(target) {
+            // An ended session (or a released registration) must not be bound by a retry still pending.
+            for (const [agentSessionId, retrying] of [...retryingBinds]) {
+                if ('agentSessionId' in target ? target.agentSessionId === agentSessionId : target.registrationId === retrying.registrationId) {
+                    retrying.stop()
+                    if ('agentSessionId' in target) await broker.revoke({ registrationId: retrying.registrationId })
+                }
+            }
             let saved = !queueDirty
             if (!pending.some((entry) => key(entry) === key(target))) {
                 pending = [...pending, target]
@@ -281,7 +382,8 @@ export async function registerResumedBrowserSession(broker: BrowserTaskSessionBr
     if (!broker) return undefined
     await broker.revoke({ agentSessionId }).catch(() => undefined)
     if (broker.isRevocationPending({ agentSessionId })) return undefined
-    return broker.register()
+    // The session itself is the lineage: only a session bound in the current assignment gets a grant again.
+    return broker.register({ parentSessionIds: [agentSessionId] })
 }
 
 /**

@@ -4,7 +4,7 @@
 // arguments). Pure functions, no I/O, no dependency beyond node:crypto, so the
 // installed copy runs with /usr/bin/node alone and the unit tests pin it.
 // Errors name the field, never the value (issuer keys, tokens).
-import { createHash, createPublicKey } from "node:crypto";
+import { createHash, createPublicKey, randomBytes } from "node:crypto";
 
 export const DEFAULT_RUNTIME_PORT = 38700;
 export const PACKAGE_NAME = "@buzzni/happy-cli";
@@ -135,7 +135,8 @@ export function mergeInstallOptions(saved, flags) {
   if (!merged.agentProfileId || (flags.profiles && !flags.agentProfileId && !flags.profiles.some((p) => p.profileId === merged.agentProfileId))) {
     merged.agentProfileId = merged.profiles?.[0]?.profileId;
   }
-  if (merged.schemaVersion !== 1) fail("schemaVersion", "must be 1");
+  if (![1, 2].includes(merged.schemaVersion)) fail("schemaVersion", "must be 1 or 2");
+  merged.schemaVersion = 2;
   for (const field of ["machineId", "workspaceId"]) {
     if (typeof merged[field] !== "string" || !TEXT_ID.test(merged[field])) fail(field, "is required (1-256 printable characters)");
   }
@@ -148,7 +149,12 @@ export function mergeInstallOptions(saved, flags) {
     if (seen.has(profile.profileId)) fail(`profiles[${index}].profileId`, "is duplicated");
     seen.add(profile.profileId);
   }
-  merged.profiles = merged.profiles.map(({ profileId, principalId }) => ({ profileId, principalId }));
+  merged.profiles = merged.profiles.map(({ profileId, principalId, assignmentId }) => {
+    const previous = saved?.profiles?.find((p) => p.profileId === profileId && p.principalId === principalId);
+    const id = assignmentId ?? previous?.assignmentId ?? randomBytes(16).toString("hex");
+    if (!/^[0-9a-f]{32}$/.test(id)) fail("assignmentId", "must be 32 lowercase hex characters");
+    return { profileId, principalId, assignmentId: id };
+  });
   // Release 1: one dedicated user per machine and the Desktop asks for profile "main". The generators
   // below support several profiles; lift this check together with the Desktop when that ships.
   if (merged.profiles.length !== 1 || merged.profiles[0].profileId !== RELEASE_PROFILE) fail("profiles", `release 1 installs exactly one profile named ${RELEASE_PROFILE} (--profile ${RELEASE_PROFILE}=<studio userId>)`);
@@ -170,6 +176,8 @@ export function mergeInstallOptions(saved, flags) {
   integer(merged.runtimePort, "runtimePort", 1024, 65535);
   integer(merged.maxAgentWindows, "maxAgentWindows", 1, 16);
   integer(merged.retentionDays, "retentionDays", 1, 365);
+  // Old installations may carry this field; never carry an automatic deletion policy forward.
+  delete merged.profileRetentionDays;
   merged.viewerOrigins.forEach((origin, index) => bareOrigin(origin, `viewerOrigins[${index}]`));
   if (merged.serverUrl !== undefined) serverOrigin(merged.serverUrl);
   if (merged.egressDomains.length > 64) fail("egressDomains", "at most 64");
@@ -210,11 +218,12 @@ export function runtimeConfig(install, { sessionGid, daemonTokenSha256 }) {
   if (!/^[0-9a-f]{64}$/.test(daemonTokenSha256 ?? "")) fail("daemonTokenSha256", "must be the hex SHA-256 of the daemon token");
   integer(sessionGid, "abp-session gid", 1, 2 ** 31 - 1);
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
+    admissionHold: install.admissionHold === true,
     authMode: "production",
     machineId: install.machineId,
     workspaceId: install.workspaceId,
-    profiles: install.profiles.map(({ profileId, principalId }) => ({ profileId, principalId })),
+    profiles: install.profiles.map(({ profileId, principalId, assignmentId }) => ({ profileId, principalId, assignmentId })),
     trustedIssuers: install.trustedIssuers,
     sites: install.sites,
     // Inside the container; the stack publishes it on 127.0.0.1 only, same port number.
@@ -489,6 +498,7 @@ export function systemdUnits({ happyPrefix = PATHS.happyPrefix } = {}) {
       // Drain (up to 60 s) + Runtime stop (30 s) + browser stops.
       "TimeoutStopSec=150",
       "Restart=always",
+      "RestartPreventExitStatus=78",
       "RestartSec=5",
       "",
       "[Install]",
@@ -549,6 +559,26 @@ export function chromiumSeccompProfile(base) {
   };
 }
 
+const principalHash = (principalId) => createHash("sha256").update(principalId).digest("hex").slice(0, 16);
+
+/**
+ * Docker volume holding a profile's browser data (cookies, logins) for one owner. Derived only from
+ * install.json, so a reassignment mounts the new owner's volume and keeps the previous one detached;
+ * the owner appears only as a hash (fewer identifiers in `docker volume ls`, not a secret).
+ */
+export function profileVolumeName(profileId, principalId) {
+  return `abp-profile-${profileId}-${principalHash(principalId)}`;
+}
+
+/** The pre-per-user volume, whose owner cannot be told: never mounted automatically, retained until explicit migration/deletion. */
+export function legacyProfileVolumeName(profileId) {
+  return `abp-profile-${profileId}`;
+}
+
+export function profileVolumeLabels(profileId, principalId) {
+  return [STACK_LABEL, "ai.saycode.abp.role=profile", `ai.saycode.abp.profile=${profileId}`, `ai.saycode.abp.principal=${principalHash(principalId)}`];
+}
+
 /**
  * Production layout: one bridge per profile shared only by that browser and the Runtime.
  * Profile i gets the i-th /24 of the browser subnet pool (gateway .1, browser .2, Runtime .3) and a
@@ -557,14 +587,16 @@ export function chromiumSeccompProfile(base) {
  */
 export function stackLayout(install) {
   const [pool] = parseCidr(install.browserSubnetPool ?? DEFAULT_BROWSER_SUBNET_POOL);
-  const browsers = install.profiles.map(({ profileId }, index) => {
+  const browsers = install.profiles.map(({ profileId, principalId }, index) => {
     const base = pool + index * 256;
     return {
       profileId,
+      principalId,
       container: `abp-browser-${profileId}`,
       alias: `browser-${profileId}`,
       network: `abp-net-${profileId}`,
-      volume: `abp-profile-${profileId}`,
+      volume: profileVolumeName(profileId, principalId),
+      volumeLabels: profileVolumeLabels(profileId, principalId),
       bridge: `br-abp-${createHash("sha256").update(profileId).digest("hex").slice(0, 8)}`,
       subnet: `${intToIp(base)}/24`,
       gateway: intToIp(base + 1),

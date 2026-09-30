@@ -38,6 +38,17 @@ describe('abp-plan CLI', () => {
         expect(() => parseOptionFlags(['--bogus', 'x'])).toThrow(/unknown option/)
     })
 
+    it("refuses to change an installed profile's owner (that is abp-stack set-principal, which switches volumes)", () => {
+        let out = ''
+        planMain(['install-options', '--saved', join(dir, 'missing.json'), '--workspace-id', 'w', '--profile', 'main=user-1', '--issuer', `k=${pemFile}`], (text: string) => { out += text })
+        const saved = join(dir, 'owner-install.json')
+        writeFileSync(saved, out)
+        expect(() => planMain(['install-options', '--saved', saved, '--profile', 'main=user-2'], () => {})).toThrow(/abp-stack set-principal main <studio userId>/)
+        let again = ''
+        planMain(['install-options', '--saved', saved, '--profile', 'main=user-1'], (text: string) => { again += text })
+        expect(JSON.parse(again).profiles).toEqual([{ profileId: 'main', principalId: 'user-1', assignmentId: expect.stringMatching(/^[0-9a-f]{32}$/) }])
+    })
+
     it('keeps the machine id "auto" until the agent has logged in to Happy', () => {
         let out = ''
         planMain(['install-options', '--saved', join(dir, 'missing.json'), '--workspace-id', 'w', '--profile', 'main=u', '--issuer', `k=${pemFile}`], (text: string) => { out += text })
@@ -139,6 +150,8 @@ describe('abp-install --dry-run', () => {
         expect(out).toContain('+ write /etc/systemd/system/abp-stack.service (root:root 0644')
         expect(out).toContain('+ write /etc/abp/happy-daemon.env (root:root 0644')
         expect(out).toContain('+ systemctl enable abp-firewall.service abp-egress.service abp-egress-proxy.service abp-stack.service abp-happy-daemon.service')
+        expect(out).not.toContain('+ write /etc/systemd/system/abp-profile-prune.service')
+        expect(out).toContain('+ systemctl disable --now abp-profile-prune.timer')
         expect(out).toContain('+ write /etc/abp/egress.rules4 (root:root 0644')
         expect(out).toMatch(/ {4}\| jump DOCKER-USER -i br-abp\+ -j ABP-EGRESS/)
         // Re-applying the rules must not restart their dependents (Requires= propagates a restart to the
@@ -376,7 +389,7 @@ describe('abp-install Happy package replacement', () => {
         safe_path() { :; }; ensure_dir() { mkdir -p "$1"; }; chown() { :; }
         mv() { [ "$1" = -T ] && shift; command mv "$@"; }
         npm() { local p=""; while [ $# -gt 0 ]; do [ "$1" = --prefix ] && p=$2; shift; done; ${npmBody}; }
-        replace_happy_package "$2" /tmp/pkg.tgz`, 'test', join(here, 'abp-install'), prefix, legacyDefault], { encoding: 'utf8' })
+        replace_happy_package "$2" /tmp/pkg.tgz`, 'test', join(here, 'abp-install'), prefix, legacyDefault], { encoding: 'utf8', env: { ...process.env, ABP_NODE: process.execPath } })
     /** A previously installed Happy package (no marker yet: installs made before the marker existed). */
     const live = () => {
         const root = mkdtempSync(join(tmpdir(), '.abp-happy-'))
@@ -386,7 +399,17 @@ describe('abp-install Happy package replacement', () => {
         writeFileSync(join(prefix, 'bin', 'happy'), 'old')
         return { root, prefix }
     }
-    const complete = 'mkdir -p "$p/bin" "$p/lib/node_modules/@buzzni/happy-cli/dist/sandbox"; echo new > "$p/bin/happy"; : > "$p/lib/node_modules/@buzzni/happy-cli/dist/sandbox/egressProxyMain.mjs"'
+    const oldComplete = 'mkdir -p "$p/bin" "$p/lib/node_modules/@buzzni/happy-cli/dist/sandbox"; echo new > "$p/bin/happy"; : > "$p/lib/node_modules/@buzzni/happy-cli/dist/sandbox/egressProxyMain.mjs"'
+    const complete = oldComplete + '; mkdir -p "$p/lib/node_modules/@buzzni/happy-cli/scripts/agent-browser"; echo \'{"contractVersion":2}\' > "$p/lib/node_modules/@buzzni/happy-cli/scripts/agent-browser/contract.json"'
+
+    it('rejects a pre-assignment package before swapping the live prefix', () => {
+        const { root, prefix } = live()
+        const result = replace(prefix, oldComplete)
+        expect(result.status).not.toBe(0)
+        expect(result.stderr).toMatch(/contract 2/)
+        expect(readFileSync(join(prefix, 'bin', 'happy'), 'utf8')).toBe('old')
+        rmSync(root, { recursive: true, force: true })
+    })
 
     it('leaves the running package untouched when npm fails part-way (a full disk)', () => {
         const { root, prefix } = live()
@@ -513,6 +536,9 @@ describe('abp-uninstall', () => {
         expect(kept.stdout).toMatch(/\+ systemctl disable --now abp-happy-daemon\.service/)
         expect(kept.stdout).toMatch(/\+ \/usr\/local\/libexec\/abp\/abp-firewall remove$/m)
         expect(kept.stdout).not.toMatch(/volume rm|rm -rf \/etc\/abp|rm -rf \/var\/lib\/abp/)
+        // The prune timer goes first, so no pruning runs while the stack is being removed.
+        expect(kept.stdout).toMatch(/\+ systemctl disable --now abp-profile-prune\.timer/)
+        expect(kept.stdout).toMatch(/\+ rm -f .*\/etc\/systemd\/system\/abp-profile-prune\.service \/etc\/systemd\/system\/abp-profile-prune\.timer/)
         const purged = bash('abp-uninstall', ['--dry-run', '--purge'])
         expect(purged.status).toBe(0)
         expect(purged.stdout).toMatch(/docker volume rm/)
@@ -533,6 +559,30 @@ describe('abp-uninstall', () => {
         expect(at('+ pkill -TERM -u agent-sbx')).toBeGreaterThan(daemon)
         expect(at('+ pkill -TERM -u agent')).toBeGreaterThan(daemon)
         expect(rules).toBeGreaterThan(kill)
+    })
+
+    it('fails purge and preserves recovery state when Docker cannot enumerate volumes', () => {
+        const script = `set -euo pipefail; source "$1"
+            run() { printf '+ %s\\n' "$*"; }
+            docker() { return 1; }
+            DRY_RUN=0
+            purge`
+        const result = spawnSync('bash', ['-c', script, 'test', join(here, 'abp-uninstall')], { encoding: 'utf8' })
+        expect(result.status).toBe(1)
+        expect(result.stderr).toMatch(/cannot list volumes/)
+        expect(result.stdout).not.toContain('rm -rf /etc/abp')
+    })
+
+    it('fails a purge that could not remove a volume (browser logins left behind)', () => {
+        const script = `set -euo pipefail; source "$1"
+            run() { if [ "$1 $2 $3" = "docker volume rm" ] && [ "$4" = "abp-profile-main-0123456789abcdef" ]; then return 1; fi; printf '+ %s\\n' "$*"; }
+            docker() { printf 'abp-state\\nabp-profile-main-0123456789abcdef\\n'; }
+            DRY_RUN=0
+            purge`
+        const result = spawnSync('bash', ['-c', script, 'test', join(here, 'abp-uninstall')], { encoding: 'utf8' })
+        expect(result.status).toBe(1)
+        expect(result.stderr).toMatch(/purge incomplete, volumes not removed: abp-profile-main-0123456789abcdef/)
+        expect(result.stdout).toContain('+ docker volume rm abp-state')
     })
 
     it('keeps the firewall rules and fails when a session process survives SIGKILL', () => {
@@ -557,5 +607,32 @@ describe.skipIf(!shellcheck)('shellcheck', () => {
         const result = spawnSync('shellcheck', ['-x', ...['abp-install', 'abp-uninstall', 'abp-firewall', 'images/browser-entrypoint.sh'].map((file) => join(here, file))], { encoding: 'utf8' })
         expect(result.stdout + result.stderr).toBe('')
         expect(result.status).toBe(0)
+    })
+})
+
+
+describe('installer stack startup lock delegation', () => {
+    it('routes stack restart through the lock-owning CLI instead of raw systemctl startup', () => {
+        const script = `set -euo pipefail; source "$1"
+            run() { printf '%s\\n' "$*"; }
+            changed() { return 0; }
+            restart_or_start abp-stack.service /etc/abp/runtime.json`
+        const result = spawnSync('bash', ['-c', script, 'test', join(here, 'abp-install')], { encoding: 'utf8' })
+        expect(result.status).toBe(0)
+        expect(result.stdout).toContain('/usr/local/sbin/abp-stack up --restart')
+        expect(result.stdout).not.toContain('systemctl restart abp-stack.service')
+    })
+})
+
+
+describe('installed package contract guard', () => {
+    it('does not reuse an old installed daemon when no tarball is provided', () => {
+        const root = mkdtempSync(join(tmpdir(), 'abp-old-package-'))
+        try {
+            const script = `set -euo pipefail; source "$1"; DRY_RUN=0; HAPPY_PREFIX="$2"; HAPPY_TARBALL=""; install_happy`
+            const result = spawnSync('bash', ['-c', script, 'test', join(here, 'abp-install'), root], { encoding: 'utf8', env: { ...process.env, ABP_NODE: process.execPath } })
+            expect(result.status).not.toBe(0)
+            expect(result.stderr).toMatch(/requires assignment\/lineage contract 2/)
+        } finally { rmSync(root, { recursive: true, force: true }) }
     })
 })

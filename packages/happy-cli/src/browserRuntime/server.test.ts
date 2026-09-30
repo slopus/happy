@@ -223,6 +223,24 @@ describe('viewer ticket route (D2)', () => {
         expect(issued).toHaveLength(1)
     })
 
+    it('admits no operation, viewer tickets included, while admission is closed (checked before the credential)', async () => {
+        const fake = makeFake()
+        const issued: unknown[] = []
+        const verified: string[] = []
+        let open = false
+        const viewer = { issueTicket: (auth: AuthContext) => { issued.push(auth); return { ticket: 'tk', expiresAtMs: 42 } }, handleUpgrade: () => undefined, close: async () => undefined }
+        server = await startRuntimeServer({ api: fake.api, port: 0, health: () => ({}), viewer,
+            verifyToken: (bearer) => { verified.push(bearer); return verifyToken(bearer) },
+            admit: async () => { if (!open) throw new BrowserRuntimeError('RUNTIME_UNAVAILABLE', 'held', true) } })
+        for (const op of ['viewerTicket', 'getTask']) {
+            const held = await post(server.url, op, op === 'viewerTicket' ? { profileId: 'p1' } : { taskId: 't1' })
+            expect([held.status, held.json.error.code, held.json.error.retryable]).toEqual([503, 'RUNTIME_UNAVAILABLE', true])
+        }
+        expect([issued, fake.calls, verified]).toEqual([[], [], []])
+        open = true
+        expect((await post(server.url, 'viewerTicket', { profileId: 'p1' })).status).toBe(200)
+    })
+
     it('answers 503 when the Runtime has no viewer configured', async () => {
         const { base } = await start()
         const res = await post(base, 'viewerTicket', { profileId: 'p1' })

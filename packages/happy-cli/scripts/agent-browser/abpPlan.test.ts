@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest'
 import { parseRuntimeConfig } from '../../src/browserRuntime/runtimeConfig'
 import {
     DEFAULT_RUNTIME_PORT, PATHS, browserCreateArgs, chromiumSeccompProfile, daemonEnv, egressRules, egressRulesFile, fenceRule, firewallRules,
-    firewallRulesFile, happySettings, mergeInstallOptions, networkCreateArgs, permissionTable, runtimeConfig, runtimeCreateArgs, stackLayout, sudoersDropIn,
+    firewallRulesFile, happySettings, mergeInstallOptions, profileVolumeName, profileVolumeLabels, networkCreateArgs, permissionTable, runtimeConfig, runtimeCreateArgs, stackLayout, sudoersDropIn,
     systemdUnits, tmpfilesConf,
 } from './lib/abpPlan.mjs'
 
@@ -25,7 +25,7 @@ const base = () => mergeInstallOptions(undefined, {
 describe('install options', () => {
     it('defaults the Runtime API to loopback port 38700 and keeps identity from flags', () => {
         const options = base()
-        expect(options).toMatchObject({ schemaVersion: 1, machineId: 'machine-1', workspaceId: 'ws-1', runtimePort: DEFAULT_RUNTIME_PORT, maxAgentWindows: 4, retentionDays: 7, agentProfileId: 'main', happyPrefix: '/opt/abp/happy' })
+        expect(options).toMatchObject({ schemaVersion: 2, machineId: 'machine-1', workspaceId: 'ws-1', runtimePort: DEFAULT_RUNTIME_PORT, maxAgentWindows: 4, retentionDays: 7, agentProfileId: 'main', happyPrefix: '/opt/abp/happy' })
         expect(DEFAULT_RUNTIME_PORT).toBe(38700)
     })
 
@@ -33,7 +33,7 @@ describe('install options', () => {
         const saved = base()
         const merged = mergeInstallOptions(saved, { profiles: [{ profileId: 'main', principalId: 'user-2' }] })
         expect(merged.machineId).toBe('machine-1')
-        expect(merged.profiles).toEqual([{ profileId: 'main', principalId: 'user-2' }])
+        expect(merged.profiles).toEqual([{ profileId: 'main', principalId: 'user-2', assignmentId: expect.stringMatching(/^[0-9a-f]{32}$/) }])
         expect(merged.trustedIssuers).toEqual(saved.trustedIssuers)
     })
 
@@ -75,7 +75,7 @@ describe('install options', () => {
     it('allows exactly one profile named main in release 1 (the Desktop requests profile main)', () => {
         expect(() => mergeInstallOptions(base(), { profiles: [{ profileId: 'ops', principalId: 'u' }] })).toThrow(/exactly one profile named main/)
         expect(() => mergeInstallOptions(base(), { profiles: [{ profileId: 'main', principalId: 'u1' }, { profileId: 'ops', principalId: 'u2' }] })).toThrow(/exactly one profile named main/)
-        expect(mergeInstallOptions(base(), { profiles: [{ profileId: 'main', principalId: 'u9' }] }).profiles).toEqual([{ profileId: 'main', principalId: 'u9' }])
+        expect(mergeInstallOptions(base(), { profiles: [{ profileId: 'main', principalId: 'u9' }] }).profiles).toEqual([{ profileId: 'main', principalId: 'u9', assignmentId: expect.stringMatching(/^[0-9a-f]{32}$/) }])
     })
 
     it('refuses a private key given as the issuer key and never echoes it', () => {
@@ -143,7 +143,7 @@ describe('runtime.json', () => {
             profiles: [{ profileId: 'main', principalId: 'user-1' }],
         })
         // Endpoints come from ABP_PROFILES (the stack), so the file carries identity only.
-        expect(Object.keys(config.profiles[0]).sort()).toEqual(['principalId', 'profileId'])
+        expect(Object.keys(config.profiles[0]).sort()).toEqual(['assignmentId', 'principalId', 'profileId'])
         expect(() => parseRuntimeConfig(config)).not.toThrow()
     })
 
@@ -242,6 +242,7 @@ describe('system files', () => {
     it('orders firewall before proxy, stack and daemon, and supervises the stack and daemon', () => {
         const units = systemdUnits({ happyPrefix: '/opt/abp/happy' })
         expect(Object.keys(units).sort()).toEqual(['abp-egress-proxy.service', 'abp-egress.service', 'abp-firewall.service', 'abp-happy-daemon.service', 'abp-stack.service'])
+        expect(units['abp-profile-prune.timer']).toBeUndefined()
         expect(units['abp-firewall.service']).toMatch(/Type=oneshot[\s\S]*RemainAfterExit=yes/)
         expect(units['abp-firewall.service']).toMatch(/Before=.*abp-egress-proxy\.service.*abp-stack\.service.*abp-happy-daemon\.service/)
         expect(units['abp-stack.service']).toMatch(/Restart=always/)
@@ -440,7 +441,7 @@ describe('stack containers', () => {
         const args = browserCreateArgs(layout, layout.browsers[1], IMAGE_B)
         expect(args.some((arg: string) => arg.startsWith('--publish') || arg === '-p')).toBe(false)
         for (const flag of ['--cap-drop=ALL', '--security-opt=no-new-privileges', `--security-opt=seccomp=${PATHS.seccompProfile}`, '--read-only', '--user=10871:10871']) expect(args).toContain(flag)
-        expect(args).toContain('--mount=type=volume,source=abp-profile-ops,target=/home/browser/profile')
+        expect(args).toContain(`--mount=type=volume,source=${profileVolumeName('ops', layout.browsers[1].principalId)},target=/home/browser/profile`)
         expect(args).toContain('--network-alias=browser-ops')
         expect(args).toContain('--env=ABP_CDP_HOST=browser-ops:9223')
         expect(args.join(' ')).not.toMatch(/no-sandbox|seccomp=unconfined|--privileged|ABP_VNC_PASSWORD=/)
@@ -450,5 +451,50 @@ describe('stack containers', () => {
     it('refuses an image reference that is not a content digest', () => {
         expect(() => runtimeCreateArgs(layout, 'abp-runtime:latest')).toThrow()
         expect(() => browserCreateArgs(layout, layout.browsers[0], 'abp-browser:latest')).toThrow()
+    })
+})
+
+describe('per-user profile volumes', () => {
+    it('names the volume after the profile and a hash of its owner, never the owner itself', () => {
+        const name = profileVolumeName('main', 'user-1')
+        expect(name).toMatch(/^abp-profile-main-[0-9a-f]{16}$/)
+        expect(name).not.toContain('user-1')
+        expect(profileVolumeName('main', 'user-1')).toBe(name)
+        expect(profileVolumeName('main', 'user-2')).not.toBe(name)
+    })
+
+    it('labels a profile volume so pruning can tell it from the journal', () => {
+        expect(profileVolumeLabels('main', 'user-1')).toEqual([
+            'ai.saycode.abp=stack', 'ai.saycode.abp.role=profile', 'ai.saycode.abp.profile=main',
+            `ai.saycode.abp.principal=${profileVolumeName('main', 'user-1').slice('abp-profile-main-'.length)}`,
+        ])
+    })
+
+    it("mounts only the current owner's volume", () => {
+        const install = mergeInstallOptions(undefined, { machineId: 'm', workspaceId: 'w', profiles: [{ profileId: 'main', principalId: 'user-9' }],
+            issuers: [{ kid: 'k1', publicKeyPem: generateKeyPairSync('ed25519').publicKey.export({ type: 'spki', format: 'pem' }).toString() }] })
+        const plan = stackLayout(install)
+        expect(plan.browsers[0].volume).toBe(profileVolumeName('main', 'user-9'))
+        expect(plan.volumes).toEqual(['abp-state', profileVolumeName('main', 'user-9')])
+    })
+
+    it('removes all legacy automatic profile-retention settings', () => {
+        const base = { machineId: 'm', workspaceId: 'w', profiles: [{ profileId: 'main', principalId: 'u' }],
+            issuers: [{ kid: 'k1', publicKeyPem: generateKeyPairSync('ed25519').publicKey.export({ type: 'spki', format: 'pem' }).toString() }] }
+        expect(mergeInstallOptions(undefined, base).profileRetentionDays).toBeUndefined()
+        expect(mergeInstallOptions(undefined, { ...base, profileRetentionDays: 0 }).profileRetentionDays).toBeUndefined()
+        expect(mergeInstallOptions(undefined, { ...base, profileRetentionDays: -1 }).profileRetentionDays).toBeUndefined()
+    })
+})
+
+
+describe('assignment config upgrade', () => {
+    it('migrates schema 1 once and preserves the generation across installer reruns', () => {
+        const old = { ...base(), schemaVersion: 1, profiles: [{ profileId: 'main', principalId: 'user-1' }] }
+        const upgraded = mergeInstallOptions(old, {})
+        expect(upgraded.schemaVersion).toBe(2)
+        expect(upgraded.profiles[0].assignmentId).toMatch(/^[0-9a-f]{32}$/)
+        expect(mergeInstallOptions(upgraded, { profiles: old.profiles }).profiles).toEqual(upgraded.profiles)
+        expect(mergeInstallOptions(upgraded, { profiles: [{ profileId: 'main', principalId: 'user-2' }] }).profiles[0].assignmentId).not.toBe(upgraded.profiles[0].assignmentId)
     })
 })

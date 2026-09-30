@@ -3,8 +3,8 @@ import { mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'n
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
-import { PendingRevocationQueueError, createBrowserTaskSessionBroker, registerResumedBrowserSession, spawnResumedWithBrowserTaskRegistration } from './browserTaskBroker'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { PendingRevocationQueueError, browserTaskLineage, createBrowserTaskSessionBroker, registerResumedBrowserSession, spawnResumedWithBrowserTaskRegistration } from './browserTaskBroker'
 
 const dirs: string[] = []
 afterEach(async () => { await Promise.all(dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true }))) })
@@ -79,7 +79,8 @@ describe('daemon browser task broker hook', () => {
         expect(await registerResumedBrowserSession(broker, 'session-1')).toEqual({ registrationId: 'reg-2', sessionSecret: 'secret-2' })
         expect(calls.map((call) => [call.path, call.body])).toEqual([
             ['/v1/sessions/revoke', { schemaVersion: 1, agentSessionId: 'session-1', endSession: false }],
-            ['/v1/sessions/register', { schemaVersion: 1, bootId: 'boot-fixture' }],
+            // The session itself is the lineage: only a session the Runtime knows in the current assignment gets a grant again.
+            ['/v1/sessions/register', { schemaVersion: 1, bootId: 'boot-fixture', lineage: { parentSessionIds: ['session-1'] } }],
         ])
     })
 
@@ -257,5 +258,111 @@ describe('resumed session browser task registration', () => {
             ownerPid: () => undefined, onRevokeFailure: () => {},
         })
         expect(spawned).toEqual([{ APLUS_SESSION_ID: 'session-1' }])
+    })
+})
+
+describe('fork and recovery lineage', () => {
+    it('names the parent session and the provider conversation a spawn continues, and nothing for a fresh one', () => {
+        expect(browserTaskLineage({})).toBeUndefined()
+        expect(browserTaskLineage({ parentSessionId: 'session-1', resumeClaudeSessionId: 'conv-1' })).toEqual({ parentSessionIds: ['session-1'], conversationIds: ['claude:conv-1'] })
+        expect(browserTaskLineage({ resumeCodexThreadId: 'thread-1' })).toEqual({ conversationIds: ['codex:thread-1'] })
+    })
+
+    it('sends the lineage with the registration (daemon token), and spawns without a grant when the Runtime refuses it', async () => {
+        const { calls, request } = recorder({ '/v1/sessions/register': { status: 403, body: { ok: false, error: { code: 'SCOPE_DENIED', retryable: false } } } })
+        const broker = createBrowserTaskSessionBroker({ HAPPY_BROWSER_TASK_BROKER_SOCKET: '/run/abp/broker.sock', HAPPY_BROWSER_TASK_DAEMON_TOKEN_FILE: await tokenFile() }, request, { procRoot: await procRoot() })!
+        expect(await broker.register({ parentSessionIds: ['session-1'], conversationIds: ['claude:conv-1'] })).toBeUndefined()
+        expect(calls.map((call) => [call.path, call.headers['x-abp-daemon-token'], call.body])).toEqual([['/v1/sessions/register', 'synthetic-daemon-token-0123456789abcdef',
+            { schemaVersion: 1, bootId: 'boot-fixture', lineage: { parentSessionIds: ['session-1'], conversationIds: ['claude:conv-1'] } }]])
+    })
+})
+
+describe('bind while the Runtime holds admission (reassignment being verified)', () => {
+    const held = { status: 503, body: { ok: false, error: { code: 'RUNTIME_UNAVAILABLE', retryable: true } } }
+    const bound = { status: 200, body: { ok: true, result: { bound: true } } }
+    const denied = { status: 403, body: { ok: false, error: { code: 'SCOPE_DENIED', retryable: false } } }
+    const revoked = { status: 200, body: { ok: true, result: { revoked: true, grants: 0 } } }
+    /** Replies to /v1/sessions/bind in order (the last repeats); every call recorded. */
+    async function brokerWith(binds: Array<{ status: number; body: Record<string, unknown> }>, options: { bindRetryDeadlineMs?: number } = {}) {
+        const calls: Array<{ path: string; body?: unknown }> = []
+        const queue = [...binds]
+        const request = async (_socket: string, _method: 'GET' | 'POST', path: string, _headers: Record<string, string>, body?: unknown) => {
+            calls.push({ path, body })
+            if (path === '/v1/sessions/bind') return queue.length > 1 ? queue.shift()! : queue[0]
+            return revoked
+        }
+        const broker = createBrowserTaskSessionBroker({ HAPPY_BROWSER_TASK_BROKER_SOCKET: '/run/abp/broker.sock', HAPPY_BROWSER_TASK_DAEMON_TOKEN_FILE: await tokenFile() }, request,
+            { procRoot: await procRoot(), bindRetryBaseMs: 5, bindRetryDeadlineMs: options.bindRetryDeadlineMs ?? 60_000 })!
+        const paths = () => calls.map((call) => call.path)
+        return { broker, calls, paths }
+    }
+
+    it('keeps the registration and binds it once admission opens', async () => {
+        const h = await brokerWith([held, held, bound])
+        expect(await h.broker.bind('reg-1', 'session-1')).toBe(true)
+        await vi.waitFor(() => expect(h.paths()).toEqual(['/v1/sessions/bind', '/v1/sessions/bind', '/v1/sessions/bind']))
+        await new Promise((resolve) => setTimeout(resolve, 30))
+        expect(h.paths()).not.toContain('/v1/sessions/revoke')
+    })
+
+    it('revokes the registration when the Runtime then denies the bind, or is still closed at the deadline', async () => {
+        const deniedLater = await brokerWith([held, denied])
+        expect(await deniedLater.broker.bind('reg-1', 'session-1')).toBe(true)
+        await vi.waitFor(() => expect(deniedLater.calls.at(-1)).toEqual({ path: '/v1/sessions/revoke', body: { schemaVersion: 1, registrationId: 'reg-1', endSession: false } }))
+
+        const closed = await brokerWith([held], { bindRetryDeadlineMs: 40 })
+        expect(await closed.broker.bind('reg-2', 'session-2')).toBe(true)
+        await vi.waitFor(() => expect(closed.calls.at(-1)).toEqual({ path: '/v1/sessions/revoke', body: { schemaVersion: 1, registrationId: 'reg-2', endSession: false } }))
+        const binds = closed.paths().filter((path) => path === '/v1/sessions/bind').length
+        await new Promise((resolve) => setTimeout(resolve, 50))
+        expect(closed.paths().filter((path) => path === '/v1/sessions/bind')).toHaveLength(binds)
+    })
+
+    it('returns false at once for a denial (the caller revokes), and stops retrying when the session ends meanwhile', async () => {
+        expect(await (await brokerWith([denied])).broker.bind('reg-1', 'session-1')).toBe(false)
+
+        const h = await brokerWith([held])
+        expect(await h.broker.bind('reg-3', 'session-3')).toBe(true)
+        await h.broker.revoke({ agentSessionId: 'session-3' })
+        expect(h.calls.filter((call) => call.path === '/v1/sessions/revoke').map((call) => call.body)).toEqual([
+            { schemaVersion: 1, registrationId: 'reg-3', endSession: false },
+            { schemaVersion: 1, agentSessionId: 'session-3', endSession: false },
+        ])
+        const binds = h.paths().filter((path) => path === '/v1/sessions/bind').length
+        await new Promise((resolve) => setTimeout(resolve, 40))
+        expect(h.paths().filter((path) => path === '/v1/sessions/bind')).toHaveLength(binds)
+    })
+})
+
+describe('registration while the Runtime holds admission (start-up, reassignment check)', () => {
+    const held = { status: 503, body: { ok: false, error: { code: 'RUNTIME_UNAVAILABLE', retryable: true } } }
+    const registered = { status: 200, body: { ok: true, result: { registrationId: 'reg-1', sessionSecret: 'secret-1' } } }
+    async function brokerWith(replies: Array<{ status: number; body: Record<string, unknown> }>, registerRetryDeadlineMs = 60_000) {
+        const queue = [...replies]
+        let registers = 0
+        const request = async (_socket: string, _method: 'GET' | 'POST', path: string) => {
+            if (path !== '/v1/sessions/register') return { status: 500, body: {} }
+            registers++
+            return queue.length > 1 ? queue.shift()! : queue[0]
+        }
+        const broker = createBrowserTaskSessionBroker({ HAPPY_BROWSER_TASK_BROKER_SOCKET: '/run/abp/broker.sock', HAPPY_BROWSER_TASK_DAEMON_TOKEN_FILE: await tokenFile() }, request,
+            { procRoot: await procRoot(), bindRetryBaseMs: 5, registerRetryDeadlineMs })!
+        return { broker, registers: () => registers }
+    }
+
+    it('waits a bounded time for the hold to end before the spawn goes on', async () => {
+        const opens = await brokerWith([held, held, registered])
+        expect(await opens.broker.register()).toEqual({ registrationId: 'reg-1', sessionSecret: 'secret-1' })
+        expect(opens.registers()).toBe(3)
+        const stays = await brokerWith([held], 30)
+        expect(await stays.broker.register()).toBeUndefined()
+        expect(stays.registers()).toBeGreaterThan(1)
+        expect(stays.registers()).toBeLessThan(6)
+    })
+
+    it('does not retry a denial', async () => {
+        const denied = await brokerWith([{ status: 403, body: { ok: false, error: { code: 'SCOPE_DENIED', retryable: false } } }])
+        expect(await denied.broker.register({ parentSessionIds: ['session-1'] })).toBeUndefined()
+        expect(denied.registers()).toBe(1)
     })
 })

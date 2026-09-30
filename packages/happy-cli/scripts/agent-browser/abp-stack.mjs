@@ -7,7 +7,8 @@
 //   abp-stack upgrade (--images <dir> | --runtime-image <sha256:…> --browser-image <sha256:…>) [--ready-timeout <s>]
 //   abp-stack rollback [--ready-timeout <s>]
 //   abp-stack rotate-keys [--daemon-token] [--vnc-password]      (both when neither is given)
-//   abp-stack set-principal <profileId> <principalId>
+//   abp-stack set-principal <profileId> <principalId>              (switches to that owner's browser volume)
+//   abp-stack set-principal --resume | --abort
 //   abp-stack load <dir> [--set-initial]                          (docker load + digest check)
 //   abp-stack build --source <happy-cli dir> [--out <dir>] [--tag <tag>] [--set-initial]
 //   abp-stack run                                                 (abp-stack.service only)
@@ -15,7 +16,7 @@
 // Containers, networks and volumes carry the label ai.saycode.abp=stack. Images
 // are referenced only by content digest (sha256:…); /var/lib/abp/stack-state.json
 // records the current and previous digests. Volumes (abp-state, abp-profile-*)
-// are never removed here; see abp-uninstall --purge.
+// are retained unless explicitly removed with delete-profile-volume or abp-uninstall --purge.
 import { spawn, spawnSync } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import { closeSync, copyFileSync, existsSync, fchownSync, fsyncSync, mkdirSync, mkdtempSync, openSync, readFileSync, renameSync, rmSync, writeSync } from "node:fs";
@@ -23,13 +24,19 @@ import { request } from "node:http";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { PATHS, STACK_LABEL, browserCreateArgs, fenceRule, mergeInstallOptions, networkCreateArgs, runtimeConfig, runtimeCreateArgs, stackLayout } from "./lib/abpPlan.mjs";
+import { PATHS, STACK_LABEL, browserCreateArgs, fenceRule, legacyProfileVolumeName, profileVolumeName, profileVolumeLabels, mergeInstallOptions, networkCreateArgs, runtimeConfig, runtimeCreateArgs, stackLayout } from "./lib/abpPlan.mjs";
+
+import { PROFILE_COPY } from "./lib/profileCopy.mjs";
+
+const refusal = (message) => Object.assign(new Error(message), { exitCode: 78 });
 
 const IMAGE_ID = /^sha256:[0-9a-f]{64}$/;
 const IMAGE_LABEL = '{{index .Config.Labels "ai.saycode.abp.image"}}';
 const RESTART_BACKOFF_MS = { first: 2_000, max: 60_000, resetAfterRunningMs: 60_000 };
 const DEFAULT_READY_TIMEOUT_MS = 180_000;
 const DEFAULT_DRAIN_MS = 60_000;
+/** Browser stop: the entrypoint gives Chromium 20 s to exit and write its profile (cookies). */
+const BROWSER_STOP_S = 30;
 const EGRESS_CHECK_INTERVAL_MS = 10_000;
 const FIREWALL = `${PATHS.libexec}/abp-firewall`;
 /** Set by emergency-stop so the service stop skips the drain; removed by the next start. */
@@ -39,6 +46,7 @@ const EMERGENCY_FLAG = "/run/abp-stack-emergency";
  * the supervisor does not restart the container being replaced. Older than MAINTENANCE_MAX_MS = left
  * behind by a crashed operation, and ignored.
  */
+const START_REQUEST = "/run/abp-stack-start-request";
 const MAINTENANCE_FLAG = "/run/abp-stack-maintenance";
 const MAINTENANCE_MAX_MS = 15 * 60_000;
 const NETWORK_FORMAT = '{{range .IPAM.Config}}{{.Subnet}} {{.Gateway}}{{end}} {{index .Options "com.docker.network.bridge.name"}}';
@@ -51,16 +59,16 @@ const SECRET_FILES = {
 };
 
 /** Real host: docker/systemctl through spawnSync, atomic root-owned writes, loopback readiness. */
-function unixJson(socketPath, path, headers) {
+function unixJson(socketPath, path, headers, body) {
   return new Promise((resolve, reject) => {
-    const req = request({ socketPath, path, method: "GET", headers, timeout: 3_000 }, (res) => {
+    const req = request({ socketPath, path, method: body === undefined ? "GET" : "POST", headers: { ...headers, "content-type": "application/json" }, timeout: 3_000 }, (res) => {
       let data = "";
       res.on("data", (chunk) => { data += chunk; });
       res.on("end", () => { try { resolve({ status: res.statusCode, body: data ? JSON.parse(data) : undefined }); } catch { resolve({ status: res.statusCode }); } });
     });
     req.on("timeout", () => req.destroy(new Error("timeout")));
     req.on("error", reject);
-    req.end();
+    req.end(body === undefined ? undefined : JSON.stringify(body));
   });
 }
 
@@ -111,6 +119,8 @@ export function systemDeps() {
       }
     },
     /** Admin metrics over the root-only admin socket; undefined when the Runtime does not answer. */
+    adminReady: () => unixJson(PATHS.adminSocket, "/admin/ready", {}).then((r) => r.status === 200 ? r.body?.result : undefined, () => undefined),
+    openAdmission: (assignments) => unixJson(PATHS.adminSocket, "/admin/open-admission", {}, { assignments }).then((r) => r.status === 200 && r.body?.result?.admission === "open", () => false),
     adminMetrics: () => unixJson(PATHS.adminSocket, "/admin/metrics", {}).then((reply) => (reply.status === 200 ? reply.body?.result : undefined), () => undefined),
     /** Status of an authenticated, read-only broker call made with the given daemon token (200 = accepted). */
     brokerProbe: (token) => unixJson(PATHS.brokerSocket, "/v1/attention?afterSeq=0&waitMs=0", { "x-abp-daemon-token": token }).then((reply) => reply.status, () => 0),
@@ -145,7 +155,11 @@ export function createStack(deps) {
   const systemctl = (args, opts) => deps.run("systemctl", args, opts);
   const firewall = (args, opts) => deps.run(FIREWALL, args, opts);
   const iptables = (args, opts) => deps.run("iptables", ["-w", "-t", "filter", ...args], opts);
-  const readJson = (path) => JSON.parse(deps.readFile(path));
+  const readJson = (path) => {
+    const contents = deps.readFile(path);
+    try { return JSON.parse(contents); }
+    catch { throw refusal(`${basename(path)} is not valid JSON; operator recovery required`); }
+  };
   const install = () => readJson(PATHS.installConfig);
   const layout = () => stackLayout(install());
   const readState = () => (deps.exists(PATHS.stackState) ? readJson(PATHS.stackState) : { schemaVersion: 1, current: null, previous: null, history: [] });
@@ -161,10 +175,12 @@ export function createStack(deps) {
 
   function assertImages(ids) {
     for (const role of ["runtime", "browser"]) {
-      if (!IMAGE_ID.test(ids?.[role] ?? "")) throw new Error(`${role} image must be a content digest (sha256:<64 hex>)`);
+      if (!IMAGE_ID.test(ids?.[role] ?? "")) throw refusal(`${role} image must be a content digest (sha256:<64 hex>)`);
       const found = docker(["image", "inspect", "--format", "{{.Id}}", ids[role]], { allowFail: true });
       if (found.status !== 0) throw new Error(`${role} image ${ids[role]} is not loaded`);
-      if (found.stdout !== ids[role]) throw new Error(`${role} image digest mismatch`);
+      if (found.stdout !== ids[role]) throw refusal(`${role} image digest mismatch`);
+      const contract = docker(["image", "inspect", "--format", '{{index .Config.Labels "ai.saycode.abp.contract"}}', ids[role]]);
+      if (contract.stdout !== "2") throw refusal(`${role} image requires assignment contract 2; downgrade refused`);
     }
   }
 
@@ -183,6 +199,150 @@ export function createStack(deps) {
     if (!machineId) throw new Error("machineId is unresolved; run abp-install after the agent's Happy login");
     const config = runtimeConfig({ ...options, machineId }, { sessionGid: deps.groupId("abp-session"), daemonTokenSha256: daemonTokenSha256 ?? existing.daemonTokenSha256 });
     deps.writeFileAtomic(PATHS.runtimeConfig, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600, owner: "root", group: "root" });
+  }
+
+  /** The detached marks after a reassignment: the previous volume detached now, the new one attached. */
+  function markVolumes(marks, profileId, fromVolume, toVolume) {
+    const next = (marks ?? []).map((mark) => ({ ...mark }));
+    const entry = (volume) => next.find((mark) => mark.volume === volume) ?? next[next.push({ profileId, volume }) - 1];
+    entry(fromVolume).detachedAtMs = deps.now();
+    delete entry(toVolume).detachedAtMs;
+    return next;
+  }
+
+  const identity = (options) => Object.fromEntries(options.profiles.map(({ profileId, principalId, assignmentId }) => [profileId, { principalId, assignmentId }]));
+  const assignments = (options) => Object.fromEntries(options.profiles.map(({ profileId, assignmentId }) => [profileId, assignmentId]));
+  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  const writeInstall = (options) => deps.writeFileAtomic(PATHS.installConfig, `${JSON.stringify(options, null, 2)}\n`, { mode: 0o600, owner: "root", group: "root" });
+  function assertPackageContract(options) {
+    const marker = join(options.happyPrefix ?? PATHS.happyPrefix, "lib/node_modules/@buzzni/happy-cli/scripts/agent-browser/contract.json");
+    let contract;
+    try { contract = readJson(marker); } catch {}
+    if (contract?.contractVersion !== 2) throw refusal("installed Happy package requires assignment/lineage contract 2; install the current --happy-tarball");
+  }
+  /**
+   * checkPackage false (the periodic supervisor): abp-install swaps the package with two renames, and a tick
+   * between them must not stop a running stack; start, up, set-principal and upgrade still check it.
+   */
+  function assertStable(allowStartRecovery = false, { checkPackage = true } = {}) {
+    if (checkPackage) assertPackageContract(install());
+    const state = readState();
+    if (!allowStartRecovery && deps.exists(START_REQUEST)) throw refusal("unfinished service startup; use abp-stack up or assignment/migration recovery");
+    if (state.migrationHold) throw refusal("incomplete legacy migration; preserve both volumes and inspect before recovery");
+    if (state.transition) throw refusal("unfinished assignment transition; use set-principal --resume or --abort");
+    if (state.applied && !same(state.applied, identity(install()))) throw refusal("install identity differs from applied assignment; direct edits are refused");
+  }
+  function validConfig(options) {
+    assertPackageContract(options);
+    if (options.schemaVersion !== 2 || options.profiles.some((p) => !/^[0-9a-f]{32}$/.test(p.assignmentId ?? ""))) throw refusal("assignment schema 2 required; run the current installer");
+  }
+  function alignRuntimeConfig(options) { writeRuntimeConfig({ ...options, admissionHold: true }); }
+
+  /** Unknown-owner legacy volumes are quarantined, never removed or adopted on start. */
+  function checkLegacyVolumes(browsers, persist = true) {
+    const listed = docker(["volume", "ls", "-q"]).stdout.split("\n").filter(Boolean);
+    for (const browser of browsers) {
+      const legacy = legacyProfileVolumeName(browser.profileId);
+      if (!listed.includes(legacy)) continue;
+      const state = readState();
+      if (state.migrations?.some((m) => m.source === legacy && m.phase === "verified")) continue;
+      const legacyVolumes = [...(state.legacyVolumes ?? [])];
+      if (!legacyVolumes.some((m) => m.volume === legacy)) legacyVolumes.push({ volume: legacy, firstSeenAtMs: deps.now(), status: "quarantined" });
+      if (persist && legacyVolumes.length !== (state.legacyVolumes ?? []).length) writeState({ ...state, legacyVolumes });
+      throw refusal(`legacy profile volume ${legacy} is quarantined; explicit owner-verified migration required`);
+    }
+  }
+  function volumeInfo(volume) {
+    const result = docker(["volume", "inspect", volume], { allowFail: true });
+    if (result.status !== 0) {
+      if (/no such volume/i.test(result.stderr)) return undefined;
+      throw new Error(`cannot inspect volume ${volume}`);
+    }
+    const entries = JSON.parse(result.stdout);
+    if (!Array.isArray(entries) || entries.length !== 1 || entries[0].Name !== volume) throw new Error(`invalid volume inspection for ${volume}`);
+    return entries[0];
+  }
+  function validateVolume(volume, labels) {
+    const info = volumeInfo(volume);
+    if (!info || labels.some((label) => { const i = label.indexOf("="); return info.Labels?.[label.slice(0, i)] !== label.slice(i + 1); })) throw refusal(`profile volume labels mismatch: ${volume}`);
+  }
+  function ensureProfileVolume(browser) {
+    if (readState().migrations?.some((m) => m.target === browser.volume && m.phase !== "verified")) throw refusal(`incomplete migration: ${browser.volume}`);
+    if (!volumeInfo(browser.volume)) docker(["volume", "create", ...browser.volumeLabels.map((label) => `--label=${label}`), browser.volume]);
+    validateVolume(browser.volume, browser.volumeLabels);
+  }
+  function detached(volume) {
+    if (docker(["ps", "-aq", "--filter", `volume=${volume}`]).stdout) throw new Error(`volume ${volume} is attached to a container`);
+  }
+  function hasExpectedProfileMount(browser) {
+    const mounts = JSON.parse(docker(["inspect", "-f", "{{json .Mounts}}", browser.container]).stdout);
+    const profiles = mounts.filter((m) => m.Destination === "/home/browser/profile");
+    return profiles.length === 1 && profiles[0].Type === "volume" && profiles[0].Name === browser.volume && profiles[0].RW === true;
+  }
+  async function verifyAssignment(options) {
+    const deadline = deps.now() + DEFAULT_READY_TIMEOUT_MS;
+    for (;;) {
+      const ready = await deps.adminReady();
+      if (ready && ready.assignment?.state === "ready" && same(ready.assignment.applied, assignments(options)) && same(identity({ profiles: ready.profiles ?? [] }), identity(options)) && ["browsers", "writerLock", "disk", "revocations", "principalState"].every((key) => ready.checks?.[key] === true)) break;
+      if (deps.now() >= deadline) throw new Error("admin readiness or applied assignment mismatch");
+      await deps.sleep(1000);
+    }
+    const plan = stackLayout(options);
+    const current = readState().current;
+    for (const [name, expected] of [[plan.runtime.container, current.runtime], ...plan.browsers.map((b) => [b.container, current.browser])]) {
+      const actual = docker(["inspect", "-f", `{{.State.Running}} ${IMAGE_LABEL}`, name]).stdout;
+      if (actual !== `true ${expected}`) throw new Error(`unexpected container image: ${name}`);
+    }
+    for (const browser of plan.browsers) {
+      validateVolume(browser.volume, browser.volumeLabels);
+      if (!hasExpectedProfileMount(browser)) throw new Error(`wrong profile mount: ${browser.container}`);
+    }
+  }
+  async function releaseAdmission(options) {
+    if (!await deps.openAdmission(assignments(options))) throw new Error("Runtime refused to open assignment admission");
+    // Persist open only after the live process has verified the generation. On reboot start holds it again.
+    writeRuntimeConfig({ ...options, admissionHold: false });
+    unfence();
+  }
+  function clearStartRequest() { if (deps.exists(START_REQUEST)) deps.remove(START_REQUEST); }
+  async function startServiceHeld(options) {
+    validConfig(options);
+    assertImages(readState().current);
+    checkLegacyVolumes(stackLayout(options).browsers);
+    writeRuntimeConfig({ ...options, admissionHold: true });
+    deps.writeFileAtomic(START_REQUEST, JSON.stringify({ identity: identity(options), images: readState().current }), { mode: 0o600, owner: "root", group: "root" });
+    systemctl(["start", SERVICE]);
+    await verifyAssignment(options);
+  }
+  /** A rejection must not leave Docker containers alive outside systemd's cgroup. */
+  function stopRejectedStack() {
+    const ports = new Set([38700]);
+    for (const path of [PATHS.installConfig, PATHS.runtimeConfig]) {
+      try { const port = readJson(path).runtimePort; if (Number.isInteger(port) && port >= 1024 && port <= 65535) ports.add(port); } catch {}
+    }
+    for (const port of ports) {
+      if (iptables(["-C", "ABP-FENCE", ...fenceRule(port)], { allowFail: true }).status !== 0
+        && iptables(["-A", "ABP-FENCE", ...fenceRule(port)], { allowFail: true }).status !== 0) deps.log(`cannot fence Runtime port ${port}; stopping containers`);
+    }
+    const names = new Set(["abp-runtime", ...docker(["ps", "-aq", "--filter", `label=${STACK_LABEL}`]).stdout.split("\n").filter(Boolean)]);
+    try { for (const browser of layout().browsers) names.add(browser.container); } catch {}
+    for (const name of names) docker(["stop", "-t", name === "abp-runtime" ? "30" : String(BROWSER_STOP_S), name], { allowFail: true });
+    for (const name of names) ensureStopped(name);
+  }
+
+  async function applyOwners(options, marks) {
+    systemctl(["stop", SERVICE]);
+    verifyStopped();
+    writeInstall(options);
+    writeRuntimeConfig({ ...options, admissionHold: true });
+    writeState({ ...readState(), profileVolumes: marks, transition: { ...readState().transition, target: options, phase: "committed" } });
+    await startServiceHeld(options);
+    writeState({ ...readState(), applied: identity(options), transition: { ...readState().transition, phase: "verified" } });
+    await releaseAdmission(options);
+    // If we die before this write, start still holds admission and requires explicit recovery.
+    const { transition, ...state } = readState();
+    writeState(record(state, { action: "set-principal", result: "ready", profileId: transition.profileId }));
+    clearStartRequest();
   }
 
   /**
@@ -273,7 +433,7 @@ export function createStack(deps) {
   /** Every stack container is down (verified). */
   function verifyStopped() {
     const plan = layout();
-    for (const name of [plan.runtime.container, ...plan.browsers.map((browser) => browser.container)]) ensureStopped(name);
+    for (const name of new Set([plan.runtime.container, ...plan.browsers.map((browser) => browser.container), ...docker(["ps", "-aq", "--filter", `label=${STACK_LABEL}`]).stdout.split("\n").filter(Boolean)])) ensureStopped(name);
   }
 
   async function waitReady(runtimeImage, timeoutMs) {
@@ -293,14 +453,13 @@ export function createStack(deps) {
   }
 
   /** Runtime restart after quiesce() (configuration or secret change); throws unless the same digest is ready again. */
-  async function restartQuiescedRuntime(readyTimeoutMs = DEFAULT_READY_TIMEOUT_MS) {
+  async function restartQuiescedRuntime() {
+    const options = install();
+    writeRuntimeConfig({ ...options, admissionHold: true });
     const { runtime } = layout();
-    const restarted = docker(["restart", "-t", "30", runtime.container], { allowFail: true }).status === 0;
-    // The fence covers every host packet to the API port, the readiness probe included: lift it first.
-    iptables(["-F", "ABP-FENCE"], { allowFail: true });
-    if (!restarted) throw new Error("docker restart failed for the Runtime");
-    const ready = await waitReady(readState().current?.runtime, readyTimeoutMs);
-    if (!ready.ok) throw new Error("the restarted Runtime is not ready (abp-stack status)");
+    if (docker(["restart", "-t", "30", runtime.container], { allowFail: true }).status !== 0) throw new Error("docker restart failed for the Runtime");
+    await verifyAssignment(options);
+    await releaseAdmission(options);
   }
 
   function createAndStartBrowser(plan, browser, image) {
@@ -334,7 +493,9 @@ export function createStack(deps) {
       const [running, label] = docker(["inspect", "-f", `{{.State.Running}} ${IMAGE_LABEL}`, name], { allowFail: true }).stdout.split(" ");
       return running !== "true" || label !== image;
     };
-    const browsers = plan.browsers.filter((browser) => differs(browser.container, target.browser));
+    // A browser still on another volume (from before per-owner volumes) is replaced too.
+    const onOtherVolume = (browser) => !hasExpectedProfileMount(browser);
+    const browsers = plan.browsers.filter((browser) => differs(browser.container, target.browser) || onOtherVolume(browser));
     const runtime = differs(plan.runtime.container, target.runtime);
     const replaced = [...browsers.length ? ["browser"] : [], ...runtime ? ["runtime"] : []];
     const detail = { replaced, ...quiesced ? { quiesce: quiesced } : {} };
@@ -343,12 +504,18 @@ export function createStack(deps) {
       if (browsers.length && !egressInPlace()) throw new Error("browser egress firewall is not in place");
       if (runtime) stopAndRemove(plan.runtime.container, 30);
       for (const browser of browsers) {
-        stopAndRemove(browser.container, 10);
+        stopAndRemove(browser.container, BROWSER_STOP_S);
+        checkLegacyVolumes([browser]);
+        ensureProfileVolume(browser);
         createAndStartBrowser(plan, browser, target.browser);
       }
-      if (runtime) createAndStartRuntime(plan, target.runtime);
+      if (runtime) {
+        writeRuntimeConfig({ ...install(), admissionHold: true });
+        createAndStartRuntime(plan, target.runtime);
+      }
       writeState({ ...readState(), current: target, previous });
-      unfence();
+      await verifyAssignment(install());
+      await releaseAdmission(install());
       const ready = await waitReady(target.runtime, readyTimeoutMs);
       writeState(record(readState(), { action, from: before.current, to: target, result: ready.ok ? "ready" : "not-ready", ready: ready.body, ...detail }));
       return { ok: ready.ok, ready: ready.body, before };
@@ -371,41 +538,100 @@ export function createStack(deps) {
       systemctl(["stop", SERVICE]);
       verifyStopped();
       writeState({ ...readState(), current: target, previous });
-      systemctl(["start", SERVICE]);
+      const options = install();
+      await startServiceHeld(options);
+      writeState({ ...readState(), applied: identity(options) });
+      await releaseAdmission(options);
+      clearStartRequest();
       const ready = await waitReady(target.runtime, readyTimeoutMs);
       writeState(record(readState(), { action, from: before.current, to: target, result: ready.ok ? "ready" : "not-ready", ready: ready.body, ...quiesced ? { quiesce: quiesced } : {} }));
       return { ok: ready.ok, ready: ready.body, before };
     } catch (error) {
-      writeState(record(readState(), { action, from: before.current, to: target, result: "failed", error: error instanceof Error ? error.message : "failed", ...quiesced ? { quiesce: quiesced } : {} }));
+      try {
+        writeState(record(readState(), { action, from: before.current, to: target, result: "failed", error: error instanceof Error ? error.message : "failed", ...quiesced ? { quiesce: quiesced } : {} }));
+      } catch { deps.log(`${action}: failure history could not be written; stopping the stack`); }
+      // Do not leave an active delegated service/request for rollback to mistake for an ordinary
+      // running stack. Only remove the request after every container is verified stopped.
+      systemctl(["stop", SERVICE]);
+      verifyStopped();
+      clearStartRequest();
       return { ok: false, before };
     }
   }
 
   const stack = {
     locked,
+    assertStable,
     /** Recreates the stack containers from the current digests (volumes kept) behind a live egress firewall, then lifts the fence. */
     async start() {
-      const state = readState();
-      if (!state.current) throw new Error("no images installed (abp-install --images/--build-from, or abp-stack load --set-initial)");
-      if (!egressInPlace()) throw new Error("browser egress firewall is not in place (abp-firewall check-egress); not starting");
-      if (deps.exists(EMERGENCY_FLAG)) deps.remove(EMERGENCY_FLAG);
-      const plan = layout();
-      const old = docker(["ps", "-aq", "--filter", `label=${STACK_LABEL}`]).stdout.split("\n").filter(Boolean);
-      if (old.length) docker(["rm", "-f", ...old]);
-      for (const browser of plan.browsers) {
-        const found = docker(["network", "inspect", "-f", NETWORK_FORMAT, browser.network], { allowFail: true });
-        if (found.status === 0 && found.stdout === `${browser.subnet} ${browser.gateway} ${browser.bridge}`) continue;
-        if (found.status === 0) docker(["network", "rm", browser.network]);
-        docker(networkCreateArgs(browser));
-      }
-      for (const volume of plan.volumes) {
-        if (docker(["volume", "inspect", volume], { allowFail: true }).status !== 0) docker(["volume", "create", `--label=${STACK_LABEL}`, volume]);
-      }
-      for (const browser of plan.browsers) createAndStartBrowser(plan, browser, state.current.browser);
-      createAndStartRuntime(plan, state.current.runtime);
-      unfence();
-      lastEgressCheckMs = deps.now();
-      deps.log(`started runtime=${state.current.runtime} browser=${state.current.browser} profiles=${plan.browsers.length}`);
+      // A root-owned request delegates container creation only; the lock-owning caller verifies and
+      // opens admission. A stale request after a crash can therefore never open access on its own.
+      const delegated = deps.exists(START_REQUEST);
+      const release = delegated ? () => {} : await deps.opLock();
+      try {
+        const request = delegated ? readJson(START_REQUEST) : undefined;
+        const state = readState();
+        if (!state.current) throw refusal("no images installed (abp-install --images/--build-from, or abp-stack load --set-initial)");
+        if (!egressInPlace()) throw new Error("browser egress firewall is not in place (abp-firewall check-egress); not starting");
+        if (deps.exists(EMERGENCY_FLAG)) deps.remove(EMERGENCY_FLAG);
+        assertImages(state.current);
+        const options = install();
+        validConfig(options);
+        if (state.migrationHold) throw refusal("incomplete legacy migration; startup held");
+        if (state.transition && !["committed", "verified"].includes(state.transition.phase)) throw refusal("assignment transition blocked; use set-principal --resume or --abort");
+        if (!state.transition) assertStable(true);
+        else if (!same(identity(options), identity(state.transition.target))) throw refusal("transition target mismatch");
+        const plan = layout();
+        const fenced = await fence();
+        if (!fenced.ok) throw new Error(`startup fence failed: ${fenced.reason}`);
+        if (request) {
+          if (!same(request.identity, identity(options)) || !same(request.images, state.current)) throw refusal("stale delegated startup request");
+          const config = readJson(PATHS.runtimeConfig);
+          if (config.admissionHold !== true || !same(identity(config), identity(options))) throw refusal("delegated startup must hold the expected assignment");
+        } else alignRuntimeConfig(options);
+        const old = docker(["ps", "-aq", "--filter", `label=${STACK_LABEL}`]).stdout.split("\n").filter(Boolean);
+        for (const name of old) stopAndRemove(name, name === plan.runtime.container ? 30 : BROWSER_STOP_S);
+        checkLegacyVolumes(plan.browsers, !request);
+        for (const browser of plan.browsers) {
+          const found = docker(["network", "inspect", "-f", NETWORK_FORMAT, browser.network], { allowFail: true });
+          if (found.status === 0 && found.stdout === `${browser.subnet} ${browser.gateway} ${browser.bridge}`) continue;
+          if (found.status === 0) docker(["network", "rm", browser.network]);
+          docker(networkCreateArgs(browser));
+        }
+        // Only the current owners' volumes: a previous owner's stays detached indefinitely.
+        if (docker(["volume", "inspect", plan.runtime.volume], { allowFail: true }).status !== 0) docker(["volume", "create", `--label=${STACK_LABEL}`, plan.runtime.volume]);
+        for (const browser of plan.browsers) ensureProfileVolume(browser);
+        for (const browser of plan.browsers) createAndStartBrowser(plan, browser, state.current.browser);
+        createAndStartRuntime(plan, state.current.runtime);
+        if (!state.transition && !request) {
+          await verifyAssignment(options);
+          writeState({ ...readState(), applied: identity(options) });
+          await releaseAdmission(options);
+        }
+        lastEgressCheckMs = deps.now();
+        deps.log(`started runtime=${state.current.runtime} browser=${state.current.browser} profiles=${plan.browsers.length}`);
+      } catch (error) {
+        try { stopRejectedStack(); } catch (stopError) { throw new Error(`${error.message}; stop verification failed: ${stopError.message}`); }
+        throw error;
+      } finally { release(); }
+    },
+
+    up({ restart = false } = {}) {
+      return locked(async () => {
+        assertStable(true);
+        if (!restart && !deps.exists(START_REQUEST) && systemctl(["is-active", SERVICE], { allowFail: true }).stdout === "active"
+          && (await deps.adminReady())?.admission === "open") {
+          await verifyAssignment(install());
+          return;
+        }
+        systemctl(["stop", SERVICE]);
+        verifyStopped();
+        const options = install();
+        await startServiceHeld(options);
+        writeState({ ...readState(), applied: identity(options) });
+        await releaseAdmission(options);
+        clearStartRequest();
+      });
     },
 
     /**
@@ -414,32 +640,42 @@ export function createStack(deps) {
      * (exit 75 = writer lock held).
      */
     superviseOnce(backoff) {
-      const plan = layout();
-      if (deps.exists(MAINTENANCE_FLAG) && deps.now() - Number(deps.readFile(MAINTENANCE_FLAG)) < MAINTENANCE_MAX_MS) return;
-      if (deps.now() - lastEgressCheckMs >= EGRESS_CHECK_INTERVAL_MS) {
-        if (!egressInPlace()) {
-          deps.log("browser egress firewall missing and not restorable; browsers stopped until it is back");
-          for (const browser of plan.browsers) docker(["stop", "-t", "10", browser.container], { allowFail: true });
-          return;
-        }
-        lastEgressCheckMs = deps.now();
-      }
-      for (const name of [...plan.browsers.map((browser) => browser.container), plan.runtime.container]) {
-        const entry = backoff.get(name) ?? { delayMs: 0, nextAtMs: 0, runningSinceMs: undefined };
-        const [running, status] = docker(["inspect", "-f", "{{.State.Running}} {{.State.ExitCode}}", name], { allowFail: true }).stdout.split(" ");
-        if (running === "true") {
-          entry.runningSinceMs ??= deps.now();
-          if (deps.now() - entry.runningSinceMs >= RESTART_BACKOFF_MS.resetAfterRunningMs) entry.delayMs = 0;
-        } else {
-          entry.runningSinceMs = undefined;
-          if (deps.now() >= entry.nextAtMs) {
-            deps.log(`${name} exited status=${status || "missing"}; starting (backoff ${entry.delayMs} ms)`);
-            docker(["start", name], { allowFail: true });
-            entry.delayMs = Math.min(entry.delayMs ? entry.delayMs * 2 : RESTART_BACKOFF_MS.first, RESTART_BACKOFF_MS.max);
-            entry.nextAtMs = deps.now() + entry.delayMs;
+      try {
+        const plan = layout();
+        if (deps.now() - lastEgressCheckMs >= EGRESS_CHECK_INTERVAL_MS) {
+          if (!egressInPlace()) {
+            deps.log("browser egress firewall missing and not restorable; browsers stopped until it is back");
+            for (const browser of plan.browsers) docker(["stop", "-t", String(BROWSER_STOP_S), browser.container], { allowFail: true });
+            return;
           }
+          lastEgressCheckMs = deps.now();
         }
-        backoff.set(name, entry);
+        if (readState().transition || readState().migrationHold || deps.exists(START_REQUEST)) return;
+        assertStable(false, { checkPackage: false });
+        let maintenance;
+        try { maintenance = Number(deps.readFile(MAINTENANCE_FLAG)); }
+        catch (error) { if (error.code !== "ENOENT") throw error; }
+        if (maintenance !== undefined && deps.now() - maintenance < MAINTENANCE_MAX_MS) return;
+        for (const name of [...plan.browsers.map((browser) => browser.container), plan.runtime.container]) {
+          const entry = backoff.get(name) ?? { delayMs: 0, nextAtMs: 0, runningSinceMs: undefined };
+          const [running, status] = docker(["inspect", "-f", "{{.State.Running}} {{.State.ExitCode}}", name], { allowFail: true }).stdout.split(" ");
+          if (running === "true") {
+            entry.runningSinceMs ??= deps.now();
+            if (deps.now() - entry.runningSinceMs >= RESTART_BACKOFF_MS.resetAfterRunningMs) entry.delayMs = 0;
+          } else {
+            entry.runningSinceMs = undefined;
+            if (deps.now() >= entry.nextAtMs) {
+              deps.log(`${name} exited status=${status || "missing"}; starting (backoff ${entry.delayMs} ms)`);
+              docker(["start", name], { allowFail: true });
+              entry.delayMs = Math.min(entry.delayMs ? entry.delayMs * 2 : RESTART_BACKOFF_MS.first, RESTART_BACKOFF_MS.max);
+              entry.nextAtMs = deps.now() + entry.delayMs;
+            }
+          }
+          backoff.set(name, entry);
+        }
+      } catch (error) {
+        stopRejectedStack();
+        throw error;
       }
     },
 
@@ -451,7 +687,7 @@ export function createStack(deps) {
       const plan = layout();
       await fenceAndDrainBestEffort(deps.exists(EMERGENCY_FLAG) ? 0 : drainMs);
       docker(["stop", "-t", "30", plan.runtime.container], { allowFail: true });
-      for (const browser of plan.browsers) docker(["stop", "-t", "10", browser.container], { allowFail: true });
+      for (const browser of plan.browsers) docker(["stop", "-t", String(BROWSER_STOP_S), browser.container], { allowFail: true });
       verifyStopped();
     },
 
@@ -492,17 +728,34 @@ export function createStack(deps) {
       return ids;
     },
 
-    upgrade({ images, ids, readyTimeoutMs = DEFAULT_READY_TIMEOUT_MS }) {
+    upgrade({ images, ids, readyTimeoutMs = DEFAULT_READY_TIMEOUT_MS, noStart = false }) {
       return locked(async () => {
+        assertStable();
         const target = images ? stack.load(images) : ids;
         assertImages(target);
         const state = readState();
         if (!state.current) throw new Error("no current images; install first");
+        const changed = state.current.runtime !== target.runtime || state.current.browser !== target.browser;
+        if (noStart) {
+          await quiesce("stage-upgrade");
+          systemctl(["stop", SERVICE]);
+          verifyStopped();
+          writeState(record({ ...readState(), current: target, previous: changed ? state.current : state.previous }, { action: "stage-upgrade", result: "stopped", to: target }));
+          return { changed, started: false };
+        }
+        checkLegacyVolumes(layout().browsers);
         if (state.current.runtime === target.runtime && state.current.browser === target.browser) return { changed: false };
         const quiesced = await quiesce("upgrade");
         const switched = await switchTo(target, state.current, "upgrade", readyTimeoutMs, quiesced);
         if (switched.ok) return { changed: true, ready: switched.ready };
         deps.log("upgrade: new stack failed or not ready; rolling back to the previous digests (volumes kept)");
+        try { assertImages(state.current); }
+        catch (error) {
+          systemctl(["stop", SERVICE], { allowFail: true });
+          await fence();
+          verifyStopped();
+          throw new Error(`upgrade failed; previous images incompatible, stack stopped and fenced: ${error.message}`);
+        }
         const back = await switchTo(state.current, state.previous, "auto-rollback", readyTimeoutMs);
         throw new Error(back.ok ? "upgrade failed: rolled back to the previous digests"
           : "upgrade failed and the rolled back stack is not ready either; see abp-stack status and journalctl -u abp-stack");
@@ -511,6 +764,7 @@ export function createStack(deps) {
 
     rollback({ readyTimeoutMs = DEFAULT_READY_TIMEOUT_MS } = {}) {
       return locked(async () => {
+        assertStable();
         const state = readState();
         if (!state.previous) throw new Error("no previous digests recorded");
         assertImages(state.previous);
@@ -530,6 +784,7 @@ export function createStack(deps) {
      */
     rotateKeys({ daemonToken = true, vncPassword = true } = {}) {
       return locked(async () => {
+        assertStable();
         const done = [daemonToken && "daemon-token", vncPassword && "vnc-password"].filter(Boolean).join(",");
         const quiesced = await quiesce("rotate-keys");
         try {
@@ -564,22 +819,127 @@ export function createStack(deps) {
           writeState(record(readState(), { action: "rotate-keys", result: done, quiesce: quiesced }));
           deps.log(`rotated ${done}`);
         } catch (error) {
-          iptables(["-F", "ABP-FENCE"], { allowFail: true });
+          iptables(["-A", "ABP-FENCE", ...fenceRule(layout().runtimePort)], { allowFail: true });
           writeState(record(readState(), { action: "rotate-keys", result: "failed", keys: done, error: error instanceof Error ? error.message : "failed" }));
           throw error;
         }
       });
     },
 
-    setPrincipal(profileId, principalId) {
-      const options = install();
-      if (!options.profiles.some((profile) => profile.profileId === profileId)) throw new Error(`unknown profile ${profileId}`);
+    /** Whole-stack assignment transaction. Even rollback creates a fresh execution generation. */
+    setPrincipal(profileId, principalId, recovery) {
       return locked(async () => {
-        await quiesce("set-principal");
-        const merged = mergeInstallOptions(options, { profiles: options.profiles.map((profile) => (profile.profileId === profileId ? { profileId, principalId } : profile)) });
-        deps.writeFileAtomic(PATHS.installConfig, `${JSON.stringify(merged, null, 2)}\n`, { mode: 0o600, owner: "root", group: "root" });
-        writeRuntimeConfig(merged);
-        await restartQuiescedRuntime();
+        let journal = readState().transition;
+        if (recovery) {
+          if (!journal) throw new Error("no unfinished assignment transition");
+          const options = recovery === "abort" ? journal.before : (journal.requested ?? journal.target);
+          // The owner being left comes from the journal, not install.json (already the target after a commit).
+          const leaving = recovery === "abort" ? (journal.requested ?? journal.target) : journal.before;
+          const ownerIn = (config) => config.profiles.find((p) => p.profileId === journal.profileId).principalId;
+          const target = { ...options, profiles: options.profiles.map((p) => p.profileId === journal.profileId ? { ...p, assignmentId: randomBytes(16).toString("hex") } : p) };
+          writeState({ ...readState(), transition: { ...journal, target, phase: "prepared" } });
+          await applyOwners(target, markVolumes(readState().profileVolumes, journal.profileId, profileVolumeName(journal.profileId, ownerIn(leaving)), profileVolumeName(journal.profileId, ownerIn(target))));
+          return;
+        }
+        assertStable();
+        const options = install();
+        validConfig(options);
+        const current = options.profiles.find((p) => p.profileId === profileId);
+        if (!current) throw new Error(`unknown profile ${profileId}`);
+        if (current.principalId === principalId) {
+          await verifyAssignment(options);
+          return;
+        }
+        const target = mergeInstallOptions(options, { profiles: options.profiles.map((p) => p.profileId === profileId ? { profileId, principalId, assignmentId: randomBytes(16).toString("hex") } : p) });
+        const quiesced = await quiesce("set-principal");
+        const beforeMarks = readState().profileVolumes;
+        journal = { id: randomBytes(16).toString("hex"), profileId, before: options, target, requested: target, phase: "prepared", quiesced };
+        writeState({ ...readState(), transition: journal });
+        const marks = markVolumes(beforeMarks, profileId, profileVolumeName(profileId, current.principalId), profileVolumeName(profileId, principalId));
+        try { await applyOwners(target, marks); }
+        catch (error) {
+          const rollback = { ...options, profiles: options.profiles.map((p) => p.profileId === profileId ? { ...p, assignmentId: randomBytes(16).toString("hex") } : p) };
+          try {
+            writeState({ ...readState(), transition: { ...journal, target: rollback, phase: "prepared" } });
+            await applyOwners(rollback, beforeMarks);
+          } catch (restoreError) {
+            const failures = [];
+            try { writeState({ ...readState(), transition: { ...readState().transition, phase: "blocked" } }); }
+            catch (failure) { failures.push(`journal: ${failure.message}`); }
+            systemctl(["stop", SERVICE], { allowFail: true });
+            const service = systemctl(["is-active", SERVICE], { allowFail: true });
+            if (!["inactive", "failed"].includes(service.stdout)) failures.push("supervisor stop unverified");
+            // Docker containers can survive a failed systemd stop. Stop them directly, then inspect/kill.
+            try { stopRejectedStack(); verifyStopped(); }
+            catch (failure) { failures.push(`containers: ${failure.message}`); }
+            try { const fenced = await fence(); if (!fenced.ok) failures.push(`fence: ${fenced.reason}`); }
+            catch (failure) { failures.push(`fence: ${failure.message}`); }
+            const safety = failures.length ? `safety unverified: ${failures.join("; ")}` : "stopped and fenced";
+            throw new Error(`set-principal failed (${error.message}); restore failed (${restoreError.message}); ${safety}; use --resume or --abort`);
+          }
+          throw new Error(`set-principal failed (${error.message}); previous owner restored with a new assignment`);
+        }
+      });
+    },
+
+    migrateLegacyProfile(profileId, principalId, ownerVerified, resume = false) {
+      return locked(async () => {
+        const pending = readState().migrations?.find((m) => m.source === legacyProfileVolumeName(profileId) && m.phase !== "verified");
+        if (!resume) {
+          assertStable();
+          if (readState().migrations?.some((m) => m.source === legacyProfileVolumeName(profileId))) throw new Error("legacy source already has a migration owner; reassignment is forbidden");
+        }
+        else if (readState().transition || !readState().migrationHold || !pending || pending.target !== profileVolumeName(profileId, principalId)) throw new Error("no matching incomplete migration to resume");
+        if (!ownerVerified) throw new Error("legacy migration requires --owner-verified after confirming the actual owner");
+        if (!install().profiles.some((p) => p.profileId === profileId) || typeof principalId !== "string" || !/^[^\u0000-\u001f\u007f]{1,256}$/.test(principalId)) throw new Error("valid profile and owner required");
+        const source = legacyProfileVolumeName(profileId);
+        const target = profileVolumeName(profileId, principalId);
+        const info = volumeInfo(source);
+        if (!info || info.Labels?.["ai.saycode.abp"] !== "stack") throw new Error("legacy volume missing or not owned by this stack");
+        if (!resume && volumeInfo(target)) throw new Error("migration target already exists; never merged or overwritten");
+        if (resume && !same(pending.volumeLabels, profileVolumeLabels(profileId, principalId))) throw new Error("migration owner labels differ from the journal");
+        if (resume && volumeInfo(target)) validateVolume(target, pending.volumeLabels);
+        assertImages(readState().current);
+        if (!resume) await quiesce("migrate-legacy-profile");
+        // Persistent hold also suppresses the supervisor if this process dies during stop/copy.
+        const migration = pending ?? { id: randomBytes(16).toString("hex"), source, target, profileId, volumeLabels: profileVolumeLabels(profileId, principalId), ownerVerified: true, phase: "copying", atMs: deps.now() };
+        writeState({ ...readState(), migrationHold: true, migrations: pending ? readState().migrations : [...(readState().migrations ?? []), migration] });
+        systemctl(["stop", SERVICE]);
+        verifyStopped();
+        const old = docker(["ps", "-aq", "--filter", `label=${STACK_LABEL}`]).stdout.split("\n").filter(Boolean);
+        for (const name of old) stopAndRemove(name, BROWSER_STOP_S);
+        detached(source);
+        detached(target);
+        docker(["volume", "create", ...profileVolumeLabels(profileId, principalId).map((label) => `--label=${label}`), target]);
+        const result = docker(["run", "--rm", `--name=abp-migrate-${migration.id}`, `--label=${STACK_LABEL}`, "--label=ai.saycode.abp.role=migration", "--network=none", "--read-only", "--user=0:0", "--cap-drop=ALL", "--cap-add=CHOWN", "--cap-add=DAC_OVERRIDE", "--security-opt=no-new-privileges", "--entrypoint=python3", `--mount=type=volume,source=${source},target=/from,readonly`, `--mount=type=volume,source=${target},target=/to,volume-nocopy`, readState().current.browser, "-c", PROFILE_COPY, ...(resume ? ["--resume"] : [])]);
+        const verified = JSON.parse(result.stdout);
+        if (verified.verified !== true || !/^[0-9a-f]{64}$/.test(verified.sha256)) throw new Error("migration copy verification failed");
+        const state = readState();
+        writeState({ ...state, migrationHold: false, migrations: state.migrations.map((m) => m.target === target ? { ...m, phase: "verified", manifest: verified.sha256 } : m), legacyVolumes: (state.legacyVolumes ?? []).map((m) => m.volume === source ? { ...m, status: "migrated" } : m) });
+        const options = install();
+        await startServiceHeld(options);
+        writeState({ ...readState(), applied: identity(options) });
+        await releaseAdmission(options);
+        clearStartRequest();
+        return { source, target, verified: true };
+      });
+    },
+
+    deleteProfileVolume(volume, confirmation) {
+      return locked(async () => {
+        assertStable();
+        if (confirmation !== volume || typeof volume !== "string") throw new Error("exact volume name required in --confirm");
+        if (layout().browsers.some((b) => b.volume === volume)) throw new Error("current owner volume cannot be deleted");
+        const state = readState();
+        if (state.migrations?.some((m) => [m.source, m.target].includes(volume) && m.phase !== "verified")) throw new Error("incomplete migration volume cannot be deleted");
+        const info = volumeInfo(volume);
+        if (!info || info.Labels?.["ai.saycode.abp"] !== "stack") throw new Error("volume is not owned by this stack");
+        const labels = info.Labels;
+        const legacy = (state.legacyVolumes ?? []).some((m) => m.volume === volume) || (state.migrations ?? []).some((m) => m.source === volume);
+        if (!legacy && (labels["ai.saycode.abp.role"] !== "profile" || !/^[a-z0-9][a-z0-9-]{0,30}$/.test(labels["ai.saycode.abp.profile"] ?? "") || !/^[0-9a-f]{16}$/.test(labels["ai.saycode.abp.principal"] ?? "") || volume !== `abp-profile-${labels["ai.saycode.abp.profile"]}-${labels["ai.saycode.abp.principal"]}`)) throw new Error("profile volume name/labels mismatch");
+        detached(volume);
+        docker(["volume", "rm", volume]);
+        writeState(record({ ...state, profileVolumes: (state.profileVolumes ?? []).filter((m) => m.volume !== volume), legacyVolumes: (state.legacyVolumes ?? []).filter((m) => m.volume !== volume) }, { action: "delete-profile-volume", volume }));
       });
     },
 
@@ -588,6 +948,11 @@ export function createStack(deps) {
       const state = readState();
       const checks = [];
       const check = (name, ok, detail = "") => checks.push({ name, ok: Boolean(ok), detail });
+      check("migration hold", !state.migrationHold, JSON.stringify(state.migrations ?? []));
+      const admin = await deps.adminReady();
+      check("admission", admin?.admission === "open", admin?.admission ?? "unavailable");
+      check("assignment transition", !state.transition, state.transition?.phase ?? "none");
+      check("legacy quarantine", !(state.legacyVolumes ?? []).some((m) => m.status === "quarantined"), JSON.stringify(state.legacyVolumes ?? []));
       check("service", systemctl(["is-active", SERVICE], { allowFail: true }).stdout === "active");
       check("browser egress firewall", firewall(["check-egress"], { allowFail: true }).status === 0);
       const containers = [[plan.runtime.container, state.current?.runtime], ...plan.browsers.map((browser) => [browser.container, state.current?.browser])];
@@ -595,6 +960,12 @@ export function createStack(deps) {
         const [running, label] = docker(["inspect", "-f", `{{.State.Running}} ${IMAGE_LABEL}`, name], { allowFail: true }).stdout.split(" ");
         const pinned = Boolean(image) && label === image;
         check(`container ${name}`, running === "true" && pinned, `running=${running || "missing"} image=${pinned ? "pinned" : label || "none"}`);
+      }
+      for (const browser of plan.browsers) {
+        try {
+          validateVolume(browser.volume, browser.volumeLabels);
+          check(`profile mount ${browser.container}`, hasExpectedProfileMount(browser), `expected ${browser.volume}`);
+        } catch (error) { check(`profile mount ${browser.container}`, false, error.message); }
       }
       const published = docker(["ps", "--filter", `label=${STACK_LABEL}`, "--format", "{{.Names}}\t{{.Ports}}"], { allowFail: true }).stdout
         .split("\n").filter(Boolean).flatMap((line) => {
@@ -605,6 +976,18 @@ export function createStack(deps) {
       check("published ports", published.length === 1 && published[0] === expected, published.join("; ") || "none");
       const ready = await deps.ready(plan.runtimePort);
       check("runtime ready", ready.status === 200, JSON.stringify(ready.body ?? {}));
+      // Informational: previous owners' volumes and orphaned volumes are retained indefinitely.
+      const profileVolumes = docker(["volume", "ls", "-q", "--filter", "label=ai.saycode.abp.role=profile"], { allowFail: true });
+      if (profileVolumes.status === 0) {
+        const currentVolumes = plan.browsers.map((browser) => browser.volume);
+        const marks = state.profileVolumes ?? [];
+        const kept = marks.filter((mark) => mark.detachedAtMs !== undefined && !currentVolumes.includes(mark.volume));
+        const oldest = kept.length ? new Date(Math.min(...kept.map((mark) => mark.detachedAtMs))).toISOString().slice(0, 10) : undefined;
+        const unmarked = profileVolumes.stdout.split("\n").filter(Boolean).filter((volume) => !currentVolumes.includes(volume) && !marks.some((mark) => mark.volume === volume));
+        check("profile volumes", true, `current ${currentVolumes.join(", ")}; kept ${kept.length}${oldest ? ` (oldest detached ${oldest})` : ""}; unmarked ${unmarked.length}`);
+      } else {
+        check("profile volumes", false, "docker volume ls failed");
+      }
       // A sandboxed renderer/zygote lives in a nested PID namespace (NSpid has two ids); no process may carry --no-sandbox.
       const probe = "s=0; for p in $(pgrep -f -- '--type=([r]enderer|[z]ygote)'); do set -- $(grep '^NSpid:' /proc/$p/status 2>/dev/null); [ $# -ge 3 ] && s=$((s+1)); done; echo \"sandboxed $s\"; echo \"nosandbox $(pgrep -fc -- '--no-[s]andbox' || true)\"";
       for (const browser of plan.browsers) {
@@ -624,7 +1007,7 @@ export function createStack(deps) {
         const poc = join(packageDir, "scripts/browser-poc/images");
         const own = join(packageDir, "scripts/agent-browser/images");
         for (const [from, name] of [[join(poc, "runtime-entrypoint.sh"), "runtime-entrypoint.sh"], [join(poc, "cdp-proxy.py"), "cdp-proxy.py"], [join(poc, "instance-server.py"), "instance-server.py"],
-          [join(own, "runtime.Dockerfile"), "runtime.Dockerfile"], [join(own, "browser.Dockerfile"), "browser.Dockerfile"], [join(own, "browser-entrypoint.sh"), "browser-entrypoint.sh"],
+          [join(own, "runtime.Dockerfile"), "runtime.Dockerfile"], [join(own, "browser.Dockerfile"), "browser.Dockerfile"], [join(own, "browser-entrypoint.sh"), "browser-entrypoint.sh"], [join(own, "browser-shutdown.py"), "browser-shutdown.py"],
           [join(own, "chromium-policy.json"), "chromium-policy.json"]]) {
           deps.copyFile(from, join(staging, name));
         }
@@ -684,10 +1067,8 @@ export async function main(argv, deps = systemDeps()) {
   switch (command) {
     case "run": return runForeground(deps, stack);
     case "up": {
-      await stack.locked(async () => deps.run("systemctl", ["start", SERVICE]));
-      const ready = await waitForReady(deps, timeout);
-      console.log(ready ? "ready" : "started, not ready yet (abp-stack status)");
-      process.exitCode = ready ? 0 : 1;
+      await stack.up({ restart: args.includes("--restart") });
+      console.log("ready");
       return;
     }
     case "down": await stack.locked(async () => deps.run("systemctl", ["stop", SERVICE])); return;
@@ -714,7 +1095,7 @@ export async function main(argv, deps = systemDeps()) {
     case "upgrade": {
       const images = option(args, "--images");
       const ids = images ? undefined : { runtime: option(args, "--runtime-image"), browser: option(args, "--browser-image") };
-      console.log(JSON.stringify(await stack.upgrade({ images, ids, readyTimeoutMs: timeout })));
+      console.log(JSON.stringify(await stack.upgrade({ images, ids, readyTimeoutMs: timeout, noStart: args.includes("--no-start") })));
       return;
     }
     case "rollback": console.log(JSON.stringify(await stack.rollback({ readyTimeoutMs: timeout }))); return;
@@ -724,28 +1105,25 @@ export async function main(argv, deps = systemDeps()) {
       return;
     }
     case "set-principal":
-      if (!args[0] || !args[1]) throw new Error("usage: abp-stack set-principal <profileId> <principalId>");
-      await stack.setPrincipal(args[0], args[1]);
+      if (args.includes("--resume") || args.includes("--abort")) await stack.setPrincipal(undefined, undefined, args.includes("--abort") ? "abort" : "resume");
+      else {
+        if (!args[0] || !args[1]) throw new Error("usage: abp-stack set-principal <profileId> <principalId> | --resume | --abort");
+        await stack.setPrincipal(args[0], args[1]);
+      }
       return;
+    case "migrate-legacy-profile":
+      return stack.migrateLegacyProfile(args[0], option(args, "--owner"), args.includes("--owner-verified"), args.includes("--resume"));
+    case "delete-profile-volume":
+      return stack.deleteProfileVolume(args[0], option(args, "--confirm"));
     default:
-      throw new Error("usage: abp-stack up|down|emergency-stop|status|upgrade|rollback|rotate-keys|set-principal|load|build|run");
+      throw new Error("usage: abp-stack up|down|emergency-stop|status|upgrade|rollback|rotate-keys|set-principal|migrate-legacy-profile|delete-profile-volume|load|build|run");
   }
-}
-
-async function waitForReady(deps, timeoutMs = DEFAULT_READY_TIMEOUT_MS) {
-  const { runtimePort } = JSON.parse(deps.readFile(PATHS.installConfig));
-  const deadline = deps.now() + timeoutMs;
-  while (deps.now() < deadline) {
-    if ((await deps.ready(runtimePort)).status === 200) return true;
-    await deps.sleep(1_000);
-  }
-  return false;
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   main(process.argv.slice(2)).catch((error) => {
     process.stderr.write(`abp-stack: ${error instanceof Error ? error.message : "failed"}\n`);
-    process.exit(1);
+    process.exit(error?.exitCode === 78 ? 78 : 1);
   });
 }
 

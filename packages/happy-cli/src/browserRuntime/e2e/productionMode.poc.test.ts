@@ -69,8 +69,8 @@ describe('Runtime in production mode', () => {
         image = docker(['inspect', '-f', '{{.Config.Image}}', stack.env.containers.runtime])
         name = `abp-${stack.run}-runtime-prod`
         const config = JSON.stringify({
-            authMode: 'production', machineId: MACHINE, workspaceId: WORKSPACE,
-            profiles: [{ profileId: PROFILE_A, principalId: PRINCIPAL_A, cdpHttpUrl: 'http://browser-a:9223', instanceUrl: 'http://browser-a:9224/instance' }],
+            schemaVersion: 2, authMode: 'production', machineId: MACHINE, workspaceId: WORKSPACE,
+            profiles: [{ profileId: PROFILE_A, principalId: PRINCIPAL_A, assignmentId: 'a'.repeat(32), cdpHttpUrl: 'http://browser-a:9223', instanceUrl: 'http://browser-a:9224/instance' }],
             trustedIssuers: [{ kid: 'k1', publicKeyPem: issuer.publicKey.export({ type: 'spki', format: 'pem' }).toString() }],
             sites: [{ origin: SITE_A }, { origin: SITE_B }],
             runtimePort: 8787,
@@ -136,7 +136,7 @@ describe('Runtime in production mode', () => {
         expect(stderr).toMatch(new RegExp(`dropped root uid=${RUNTIME_UID} gid=${RUNTIME_UID}`))
         expect(stderr).toMatch(/listening .*mode=production admin=socket broker=socket flock=true/)
         expect(docker(['port', name])).not.toMatch(/8788/)
-        expect(await (await fetch(`${runtimeUrl}/v1/ready`)).json()).toEqual({ ok: true, ready: true, checks: { browsers: true, writerLock: true, disk: true, revocations: true } })
+        expect(await (await fetch(`${runtimeUrl}/v1/ready`)).json()).toEqual({ ok: true, ready: true, checks: { browsers: true, writerLock: true, disk: true, revocations: true, principalState: true, admission: true } })
         const metrics = socketCall('root', '/run/abp/admin.sock', 'GET', '/admin/metrics')
         expect(metrics.status).toBe(200)
         expect(metrics.body.result.browsers).toEqual({ [PROFILE_A]: { connected: true } })

@@ -96,17 +96,34 @@ remove_isolation() {
 remove_files() {
     say "units, tmpfiles, tools"
     try rm -f /etc/systemd/system/abp-firewall.service /etc/systemd/system/abp-egress.service /etc/systemd/system/abp-egress-proxy.service \
-        /etc/systemd/system/abp-stack.service /etc/systemd/system/abp-happy-daemon.service
+        /etc/systemd/system/abp-stack.service /etc/systemd/system/abp-happy-daemon.service \
+        /etc/systemd/system/abp-profile-prune.service /etc/systemd/system/abp-profile-prune.timer
     try systemctl daemon-reload
-    try rm -f /etc/tmpfiles.d/abp.conf /usr/local/sbin/abp-stack
+    try rm -f /etc/tmpfiles.d/abp.conf /usr/local/sbin/abp-stack /run/abp-stack-start-request
     try rm -rf "$LIBEXEC"
     if [ "$DRY_RUN" = 1 ] || [ -L /usr/local/bin/happy ]; then try rm -f /usr/local/bin/happy; fi
 }
 
 purge() {
     say "purge: volumes, images, configuration, secrets, Happy package"
-    local id image
-    for id in $(listed volume ls -q --filter "label=$LABEL"); do try docker volume rm "$id"; done
+    local id image volumes
+    local failed_volumes=""
+    if [ "$DRY_RUN" = 1 ]; then volumes=$(listed volume ls -q --filter "label=$LABEL")
+    elif ! volumes=$(docker volume ls -q --filter "label=$LABEL"); then
+        printf 'abp-uninstall: purge incomplete, cannot list volumes; configuration and state kept\n' >&2
+        return 1
+    fi
+    for id in $volumes; do
+        if ! run docker volume rm "$id"; then
+            printf 'abp-uninstall: warning: docker volume rm %s failed\n' "$id" >&2
+            failed_volumes="$failed_volumes $id"
+        fi
+    done
+    # Browser volumes hold users' logins: a purge that leaves one behind is not a purge.
+    if [ -n "$failed_volumes" ]; then
+        printf 'abp-uninstall: purge incomplete, volumes not removed:%s; configuration and state kept\n' "$failed_volumes" >&2
+        return 1
+    fi
     if [ "$DRY_RUN" = 1 ]; then
         try docker image rm --force "<current and previous digests from /var/lib/abp/stack-state.json>"
     elif [ -s /var/lib/abp/stack-state.json ]; then
@@ -119,9 +136,20 @@ purge() {
     try rm -rf /etc/abp /var/lib/abp /opt/abp /run/abp /run/abp-mcp
     try rm -f /etc/aplus/sandbox-policy.json /etc/aplus/claude-sandbox.json
     say "accounts agent, agent-sbx, abp-proxy, abp-runtime, abp-browser and groups abp-session, abp-work were kept (userdel/groupdel by hand if wanted)"
+    if [ -n "${PURGE_FAILED:-}" ]; then
+        printf 'abp-uninstall: purge incomplete, %s (docker volume rm them by hand)\n' "$PURGE_FAILED" >&2
+        return 1
+    fi
+}
+
+stop_profile_pruning() {
+    say "profile volume pruning (timer off, a running prune stopped)"
+    try systemctl disable --now abp-profile-prune.timer
+    try systemctl stop abp-profile-prune.service
 }
 
 main_uninstall() {
+    stop_profile_pruning
     fence_sessions
     if ! terminate_sessions; then
         say "KEPT the owner firewall rules and everything else: stop the remaining processes, then run abp-uninstall again"
@@ -131,7 +159,7 @@ main_uninstall() {
     remove_isolation
     remove_files
     if [ "$PURGE" = 0 ]; then
-        say "kept: volumes abp-state and abp-profile-*, /etc/abp, /var/lib/abp, /etc/aplus/sandbox-policy.json, /opt/abp, accounts (use --purge to delete)"
+        say "kept: volumes abp-state and abp-profile-* (previous owners' logins included; no automatic pruning any more), /etc/abp, /var/lib/abp, /etc/aplus/sandbox-policy.json, /opt/abp, accounts (use --purge to delete)"
         return 0
     fi
     purge

@@ -136,3 +136,27 @@ describe('server-signed interactive capabilities (abp2)', () => {
         expect(() => verifyToken(signWith(capability()), keys, now, new Set(['c2']), production)).toThrowError(BrowserRuntimeError)
     })
 })
+
+describe('profile assignment of agent grants', () => {
+    const assignmentPolicy = (assignmentId: string): VerifyPolicy => ({ authMode: 'harness', profileAssignments: new Map([['profile1' as ProfileId, assignmentId]]) })
+    const first = 'a'.repeat(32)
+    const later = 'b'.repeat(32)
+
+    it("accepts a grant only in its own assignment: an earlier one's, or one without any, fails even for the same owner", () => {
+        const token = mintAgentGrant({ ...grant(), assignmentId: first }, keys, 20)
+        expect(verifyToken(token, keys, 20, new Set(), assignmentPolicy(first)).credential).toMatchObject({ assignmentId: first })
+        expect(() => verifyToken(token, keys, 20, new Set(), assignmentPolicy(later))).toThrow(/earlier assignment/)
+        expect(() => verifyToken(mintAgentGrant(grant(), keys, 20), keys, 20, new Set(), assignmentPolicy(first))).toThrow(/earlier assignment/)
+        // A grant for a profile without a configured assignment is refused too.
+        expect(() => verifyToken(mintAgentGrant({ ...grant(), assignmentId: first, profileId: 'other' as ProfileId }, keys, 20), keys, 20, new Set(), assignmentPolicy(first)))
+            .toThrow(/earlier assignment/)
+        // Without configured assignments (harness) nothing changes.
+        expect(verifyToken(token, keys, 20)).toBeTruthy()
+    })
+
+    it('does not bind interactive capabilities to the assignment (their owner and 5 minute lifetime are the check)', () => {
+        const token = mintInteractiveCapability({ kind: 'interactive', capabilityId: 'c1', principalId: 'p1' as never, workspaceId: 'w1' as never, machineId: 'm1' as never,
+            viewerSessionId: 'v1', profileId: 'profile1' as ProfileId, operations: ['approve'], issuedAtMs: 10, expiresAtMs: 1000 }, keys, 20)
+        expect(verifyToken(token, keys, 20, new Set(), assignmentPolicy(later))).toBeTruthy()
+    })
+})

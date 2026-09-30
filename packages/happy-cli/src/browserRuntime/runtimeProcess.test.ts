@@ -43,8 +43,8 @@ async function rootStart(privilege: Partial<PrivilegeOps>) {
     await new Promise<void>((resolve) => probe.close(() => resolve()))
     const config = join(dir, 'runtime.json')
     await writeFile(config, JSON.stringify({
-        authMode: 'production', machineId: 'machine-h', workspaceId: 'workspace-1',
-        profiles: [{ profileId: 'profile-a', principalId: 'user-1', cdpHttpUrl: `http://127.0.0.1:${browserPort}`, instanceUrl: `http://127.0.0.1:${browserPort}/instance` }],
+        schemaVersion: 2, authMode: 'production', machineId: 'machine-h', workspaceId: 'workspace-1',
+        profiles: [{ profileId: 'profile-a', principalId: 'user-1', assignmentId: 'a'.repeat(32), cdpHttpUrl: `http://127.0.0.1:${browserPort}`, instanceUrl: `http://127.0.0.1:${browserPort}/instance` }],
         trustedIssuers: [{ kid: 'k1', publicKeyPem: generateKeyPairSync('ed25519').publicKey.export({ type: 'spki', format: 'pem' }).toString() }],
         runtimeHost: '127.0.0.1', runtimePort,
         brokerSocketPath: join(dir, 'broker.sock'), adminSocketPath: join(dir, 'admin.sock'),

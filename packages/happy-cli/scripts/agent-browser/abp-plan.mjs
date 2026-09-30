@@ -49,6 +49,7 @@ export function parseOptionFlags(argv) {
       case "--runtime-port": flags.runtimePort = Number(value); break;
       case "--max-agent-windows": flags.maxAgentWindows = Number(value); break;
       case "--retention-days": flags.retentionDays = Number(value); break;
+      case "--profile-retention-days": throw new Error("profiles are retained indefinitely; automatic retention is no longer supported");
       case "--viewer-origin": list("viewerOrigins", value); break;
       case "--egress-domain": list("egressDomains", value); break;
       case "--happy-prefix": flags.happyPrefix = value; break;
@@ -100,6 +101,13 @@ export function main(argv, out = (text) => process.stdout.write(text)) {
       const flags = parseOptionFlags(rest);
       // "auto" is resolved from the agent's Happy settings after the users exist.
       const merged = mergeInstallOptions(saved, { ...flags, machineId: flags.machineId ?? saved?.machineId ?? "auto" });
+      // An owner change must switch the browser volume and verify it; the installer only restarts.
+      for (const profile of merged.profiles) {
+        const before = saved?.profiles?.find((entry) => entry.profileId === profile.profileId);
+        if (before && before.principalId !== profile.principalId) {
+          throw new Error(`profiles: ${profile.profileId} already belongs to another owner; reassign it with abp-stack set-principal ${profile.profileId} <studio userId>`);
+        }
+      }
       return out(`${JSON.stringify(merged, null, 2)}\n`);
     }
     case "resolve-machine-id": {

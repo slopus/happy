@@ -4,11 +4,13 @@ import { describe, expect, it } from 'vitest'
 import { parseRuntimeConfig } from './runtimeConfig'
 
 const publicKeyPem = generateKeyPairSync('ed25519').publicKey.export({ type: 'spki', format: 'pem' }).toString()
+const ASSIGNMENT = '0123456789abcdef0123456789abcdef'
 const valid = () => ({
+    schemaVersion: 2,
     authMode: 'production',
     machineId: 'machine-h',
     workspaceId: 'workspace-1',
-    profiles: [{ profileId: 'profile-a', principalId: 'user-1' }],
+    profiles: [{ profileId: 'profile-a', principalId: 'user-1', assignmentId: ASSIGNMENT }],
     trustedIssuers: [{ kid: 'k1', publicKeyPem }],
     daemonTokenSha256: 'a'.repeat(64),
     sites: [{ origin: 'https://shop.example' }],
@@ -22,6 +24,24 @@ describe('parseRuntimeConfig', () => {
             brokerSocketPath: '/run/abp/broker.sock', adminSocketPath: '/run/abp/admin.sock',
         })
         expect(config.profilePrincipals.get('profile-a' as never)).toBe('user-1')
+        expect(config.profileAssignments?.get('profile-a' as never)).toBe(ASSIGNMENT)
+        expect(config.admissionHold).toBe(false)
+        expect(parseRuntimeConfig({ ...valid(), admissionHold: true }).admissionHold).toBe(true)
+    })
+
+    it('allows one profile under assignments (the broker ledger keys all profiles together; reassigning one would retire the others\' sessions)', () => {
+        const second = { profileId: 'profile-b', principalId: 'user-2', assignmentId: 'b'.repeat(32) }
+        expect(() => parseRuntimeConfig({ ...valid(), profiles: [...valid().profiles, second] })).toThrow(/one profile/)
+    })
+
+    it('requires schema 2 with an assignment per profile in production, and keeps schema 1 for the harness only', () => {
+        expect(() => parseRuntimeConfig({ ...valid(), schemaVersion: 1, profiles: [{ profileId: 'profile-a', principalId: 'user-1' }] })).toThrow(/schemaVersion/)
+        expect(() => parseRuntimeConfig({ ...valid(), profiles: [{ profileId: 'profile-a', principalId: 'user-1' }] })).toThrow(/assignmentId/)
+        expect(() => parseRuntimeConfig({ ...valid(), profiles: [{ profileId: 'profile-a', principalId: 'user-1', assignmentId: 'A'.repeat(32) }] })).toThrow(/assignmentId/)
+        expect(() => parseRuntimeConfig({ ...valid(), schemaVersion: 3 })).toThrow(/schemaVersion/)
+        const harness = parseRuntimeConfig({ authMode: 'harness', machineId: 'm', workspaceId: 'w', profiles: [{ profileId: 'p', principalId: 'u' }] })
+        expect(harness.profileAssignments).toBeUndefined()
+        expect(() => parseRuntimeConfig({ authMode: 'harness', machineId: 'm', workspaceId: 'w', admissionHold: true, profiles: [{ profileId: 'p', principalId: 'u' }] })).toThrow(/admissionHold/)
     })
 
     it('defaults the space quota to 4 (never above maxAgentWindows) and idle reclamation to 15 minutes', () => {
