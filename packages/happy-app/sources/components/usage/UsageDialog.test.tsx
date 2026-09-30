@@ -93,8 +93,8 @@ describe('UsageDialog', () => {
         vi.useRealTimers();
     });
 
-    it('uses a compact desktop card and viewport-filling narrow layout', () => {
-        expect(getUsageDialogLayout({ height: 900, width: 1280 })).toEqual({ height: 720, width: 560 });
+    it('uses a wide desktop dialog and keeps narrow layouts inside the viewport', () => {
+        expect(getUsageDialogLayout({ height: 900, width: 1280 })).toEqual({ height: 828, width: 1100 });
         expect(getUsageDialogLayout({ height: 760, width: 390 })).toEqual({ height: 736, width: 366 });
     });
 

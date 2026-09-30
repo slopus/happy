@@ -726,7 +726,7 @@ describe('UsagePanel', () => {
         expect(pressedStyles.some((style: any) => style?.backgroundColor === '#1F2A38')).toBe(true);
 
         const lowIntensity = renderer.root.find((node: any) => node.props.testID === 'codex-usage-day-2026-08-29');
-        expect(lowIntensity.props.style({ pressed: false })).toContainEqual({ opacity: 0.28 });
+        expect(lowIntensity.props.style({ pressed: false })).toContainEqual({ opacity: 0.4 });
         expect(lowIntensity.props.style({ pressed: true }))
             .not.toEqual(expect.arrayContaining([expect.objectContaining({ opacity: expect.any(Number) })]));
 
@@ -900,7 +900,7 @@ describe('UsagePanel', () => {
             return styles.find((style: any) => typeof style?.opacity === 'number')?.opacity;
         });
 
-        expect(opacities).toEqual([0.28, 0.5, 0.72, 1]);
+        expect(opacities).toEqual([0.4, 0.6, 0.8, 1]);
 
         act(() => renderer.unmount());
     });

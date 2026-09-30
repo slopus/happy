@@ -6,8 +6,8 @@ import { t } from '@/text';
 import { UsagePanel } from './UsagePanel';
 
 const VIEWPORT_GUTTER = 12;
-const DESKTOP_WIDTH = 560;
-const DESKTOP_MAX_HEIGHT = 720;
+const DESKTOP_WIDTH = 1100;
+const DESKTOP_MAX_HEIGHT = 900;
 
 type SafeAreaInsets = { bottom: number; left: number; right: number; top: number };
 
@@ -24,7 +24,7 @@ export function getUsageDialogLayout(viewport: { height: number; width: number }
     return {
         height: narrow
             ? availableHeight
-            : Math.min(DESKTOP_MAX_HEIGHT, Math.floor(viewport.height * 0.8), availableHeight),
+            : Math.min(DESKTOP_MAX_HEIGHT, Math.floor(viewport.height * 0.92), availableHeight),
         width: narrow ? availableWidth : Math.min(DESKTOP_WIDTH, availableWidth),
     };
 }
@@ -183,12 +183,12 @@ const styles = StyleSheet.create((theme) => ({
         borderBottomWidth: StyleSheet.hairlineWidth,
         flexDirection: 'row',
         justifyContent: 'space-between',
-        minHeight: 52,
-        paddingHorizontal: 14,
+        minHeight: 64,
+        paddingHorizontal: 24,
     },
     title: {
         color: theme.colors.text,
-        fontSize: 15,
+        fontSize: 20,
         fontWeight: '700',
     },
     closeButton: {

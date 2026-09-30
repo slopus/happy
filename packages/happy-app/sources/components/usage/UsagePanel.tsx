@@ -37,8 +37,8 @@ interface CodexUsageDay {
 }
 
 const CODEX_HEATMAP_DAYS = 365;
-const CODEX_HEATMAP_MAX_CELL_SIZE = 14;
-const CODEX_HEATMAP_MAX_GAP = 5;
+const CODEX_HEATMAP_MAX_CELL_SIZE = 16;
+const CODEX_HEATMAP_MAX_GAP = 4;
 const CODEX_HEATMAP_MIN_CELL_SIZE = 1;
 const CODEX_HEATMAP_MIN_GAP = 0;
 const CODEX_HEATMAP_MONTH_LABEL_SPACING = 24;
@@ -169,9 +169,9 @@ function getCodexHeatmapMonthLabels(weeks: Array<Array<CodexUsageDay | null>>, l
 
 function getCodexHeatmapOpacity(totalTokens: number, maxTokens: number): number {
     const normalized = Math.sqrt(totalTokens / Math.max(maxTokens, 1));
-    if (normalized <= 0.25) return 0.28;
-    if (normalized <= 0.5) return 0.5;
-    if (normalized <= 0.75) return 0.72;
+    if (normalized <= 0.25) return 0.4;
+    if (normalized <= 0.5) return 0.6;
+    if (normalized <= 0.75) return 0.8;
     return 1;
 }
 
@@ -249,7 +249,7 @@ const styles = StyleSheet.create((theme) => ({
     codexCard: {
         backgroundColor: theme.colors.surface,
         borderRadius: 16,
-        gap: 16,
+        gap: 12,
         marginHorizontal: 16,
         marginTop: 16,
         padding: 20,
@@ -338,19 +338,37 @@ const styles = StyleSheet.create((theme) => ({
         fontSize: 13,
     },
     heatmapSection: {
-        gap: 12,
+        gap: 20,
         marginHorizontal: 16,
-        marginTop: 24,
+        marginTop: 20,
+        marginBottom: 24,
+        padding: 20,
+        borderRadius: 16,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: theme.colors.divider,
+        backgroundColor: theme.colors.surface,
     },
     heatmapHeader: {
-        alignItems: 'baseline',
+        alignItems: 'center',
         flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 12,
         justifyContent: 'space-between',
     },
     heatmapTitle: {
         color: theme.colors.text,
         fontSize: 17,
         fontWeight: '600',
+    },
+    heatmapLegendRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 5,
+    },
+    heatmapLegendSwatch: {
+        height: 12,
+        width: 12,
+        borderRadius: 3,
     },
     heatmapLegend: {
         color: theme.colors.textSecondary,
@@ -403,9 +421,36 @@ const styles = StyleSheet.create((theme) => ({
         transform: [{ scale: 1.16 }],
         zIndex: 1,
     },
+    heatmapDetail: {
+        gap: 16,
+        padding: 20,
+        borderRadius: 12,
+        backgroundColor: theme.colors.surfaceHigh,
+    },
     heatmapSelection: {
+        color: theme.colors.text,
+        fontSize: 18,
+        fontWeight: '600',
+        lineHeight: 27,
+    },
+    heatmapBreakdown: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 24,
+    },
+    heatmapMetric: {
+        minWidth: 100,
+        flexGrow: 1,
+        gap: 6,
+    },
+    heatmapMetricLabel: {
         color: theme.colors.textSecondary,
-        fontSize: 13,
+        fontSize: 12,
+    },
+    heatmapMetricValue: {
+        color: theme.colors.text,
+        fontSize: 20,
+        fontWeight: '600',
     },
     statRow: {
         flexDirection: 'row',
@@ -735,7 +780,16 @@ export const UsagePanel: React.FC<{ sessionId?: string }> = ({ sessionId }) => {
                 <View style={styles.heatmapSection}>
                     <View style={styles.heatmapHeader}>
                         <Text style={styles.heatmapTitle}>{t('machine.codexUsageHeatmap')}</Text>
-                        <Text style={styles.heatmapLegend}>{t('machine.codexUsageHeatmapLegend')}</Text>
+                        <View style={styles.heatmapLegendRow}>
+                            <Text style={styles.heatmapLegend}>{t('machine.codexUsageHeatmapLegend')}</Text>
+                            {[0, 0.4, 0.6, 0.8, 1].map((opacity) => (
+                                <View key={opacity} style={[
+                                    styles.heatmapLegendSwatch,
+                                    opacity === 0 ? styles.heatmapCellInactive : styles.heatmapCellActive,
+                                    opacity > 0 && { opacity },
+                                ]} />
+                            ))}
+                        </View>
                     </View>
                     <View
                         onLayout={(event) => setHeatmapWidth(event.nativeEvent.layout.width)}
@@ -812,13 +866,33 @@ export const UsagePanel: React.FC<{ sessionId?: string }> = ({ sessionId }) => {
                         </View>
                     </View>
                     {displayedCodexUsageDay && (
-                        <Text style={styles.heatmapSelection}>
-                            {t('machine.codexUsageHeatmapDay', {
-                                date: displayedCodexUsageDay.date,
-                                tokens: formatCodexActivityTokens(displayedCodexUsageDay.totalTokens, currentLanguage),
-                                sessions: displayedCodexUsageDay.sessions,
-                            })}
-                        </Text>
+                        <View style={styles.heatmapDetail} testID="codex-usage-detail">
+                            <Text style={styles.heatmapSelection}>
+                                {t('machine.codexUsageHeatmapDay', {
+                                    date: displayedCodexUsageDay.date,
+                                    tokens: formatCodexActivityTokens(displayedCodexUsageDay.totalTokens, currentLanguage),
+                                    sessions: displayedCodexUsageDay.sessions,
+                                })}
+                            </Text>
+                            <View style={styles.heatmapBreakdown}>
+                                {([
+                                    ['machine.codexUsageInput', displayedCodexUsageDay.inputTokens],
+                                    ['machine.codexUsageOutput', displayedCodexUsageDay.outputTokens],
+                                ] as const).map(([label, tokens]) => (
+                                    <View key={label} style={styles.heatmapMetric}>
+                                        <Text style={styles.heatmapMetricLabel}>{t(label)}</Text>
+                                        <Text style={styles.heatmapMetricValue}>{typeof tokens === 'number' ? formatCodexActivityTokens(tokens, currentLanguage) : t('common.unknown')}</Text>
+                                        {label === 'machine.codexUsageInput' && (
+                                            <Text style={styles.heatmapMetricLabel}>
+                                                {`(${t('machine.codexUsageCached')}: ${typeof displayedCodexUsageDay.cachedInputTokens === 'number'
+                                                    ? formatCodexActivityTokens(displayedCodexUsageDay.cachedInputTokens, currentLanguage)
+                                                    : t('common.unknown')})`}
+                                            </Text>
+                                        )}
+                                    </View>
+                                ))}
+                            </View>
+                        </View>
                     )}
                 </View>
             )}
