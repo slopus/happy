@@ -60,4 +60,18 @@ describe('useOtaVersions runtime defaults', () => {
             'https://happy-app-ota-jacky.oss-cn-hangzhou.aliyuncs.com/meta/android/25/production/1783710188454.json',
         );
     });
+
+    it('preserves the existing iOS runtime when selecting OTA metadata', async () => {
+        const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+            ok: true,
+            json: async () => ({ id: 'ios-update-id', channel: 'production', git: {} }),
+        } as Response);
+
+        expect(getDefaultOtaRuntimeVersion('preview', 'ios')).toBe('23');
+        expect(getDefaultOtaRuntimeVersion('production', 'ios')).toBe('24');
+        await fetchOtaVersion('production', '1783710188454', 'ios');
+        expect(fetchMock).toHaveBeenCalledWith(
+            'https://happy-app-ota-jacky.oss-cn-hangzhou.aliyuncs.com/meta/ios/24/production/1783710188454.json',
+        );
+    });
 });

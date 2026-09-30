@@ -22,13 +22,15 @@ async function fixture() {
         writeFile(join(dist, 'bundles', 'main.js'), 'the same Android bundle'),
         writeFile(join(dist, 'assets', 'logo'), 'image bytes'),
         writeFile(join(dist, 'assets', 'logo-copy'), 'image bytes'),
-        writeFile(join(dist, 'metadata.json'), JSON.stringify({ fileMetadata: { android: {
-            bundle: 'bundles/main.js',
-            assets: [
-                { path: 'assets/logo', ext: 'png' },
-                { path: 'assets/logo-copy', ext: 'png' },
-            ],
-        } } })),
+        writeFile(join(dist, 'metadata.json'), JSON.stringify({ fileMetadata: Object.fromEntries(
+            ['android', 'ios'].map((platform) => [platform, {
+                bundle: 'bundles/main.js',
+                assets: [
+                    { path: 'assets/logo', ext: 'png' },
+                    { path: 'assets/logo-copy', ext: 'png' },
+                ],
+            }])
+        ) })),
         writeFile(statePath, '{}'), writeFile(outputPath, ''),
         copyFile(fakeAliyun, bin),
     ]);
@@ -36,9 +38,9 @@ async function fixture() {
     return { directory, dist, bin, statePath, logPath, outputPath };
 }
 
-function publish(f, variant, extraEnv = {}) {
+function publish(f, variant, extraEnv = {}, platform = 'android') {
     return spawnSync(process.execPath, [script, '--variant', variant, '--channel', variant,
-        '--platform', 'android', ...(variant === 'preview' ? ['--skip-latest'] : [])], {
+        '--platform', platform, ...(variant === 'preview' ? ['--skip-latest'] : [])], {
         encoding: 'utf8',
         env: { ...process.env, APP_ENV: variant, ALIYUN_BIN: f.bin, OTA_DIST_DIR: f.dist,
             FAKE_OSS_STATE: f.statePath, FAKE_ALIYUN_LOG: f.logPath,
@@ -70,6 +72,19 @@ test('preview and production manifests reuse one uploaded bundle and one dedupli
         assert.equal((log.match(/ossutil cp -r /g) || []).length, 2, log);
         assert.ok(log.indexOf('meta/android/25/production/') < log.indexOf('manifests/android/25/production/latest.json'));
         assert.match(production.stdout, /0 uploaded/);
+    } finally {
+        await rm(f.directory, { recursive: true, force: true });
+    }
+});
+
+test('preserves the iOS production OTA runtime when Android moves forward', async () => {
+    const f = await fixture();
+    try {
+        const result = publish(f, 'production', {}, 'ios');
+        assert.equal(result.status, 0, result.stderr);
+        const state = JSON.parse(await readFile(f.statePath, 'utf8'));
+        const manifest = JSON.parse(state['manifests/ios/24/production/latest.json'].text);
+        assert.equal(manifest.runtimeVersion, '24');
     } finally {
         await rm(f.directory, { recursive: true, force: true });
     }

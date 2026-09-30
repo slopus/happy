@@ -394,6 +394,7 @@ NODE_ENV=production APP_ENV="$VARIANT" \
 - APK 是构建产物，**不提交进 git**（`*.apk` 已隐含在 prebuild 产物链路中，不要 `git add`）
 - 不删除或复用已发布 tag；同一 App version 重发时在 tag/asset 中加入 runtime 与 commit SHA
 - 此流程纯属本机/内测分发；正式商店包仍走 EAS（`pnpm release:build:appstore`）
+- Expo 项目已切换至 `wangjs-jacky/paws`；本次仅核对并配置了 Android FCM。下次 iOS 构建或推送发布前，需在该项目配置对应 bundle ID 与 APNs 凭据。下次 EAS 商店构建前，还需核对新项目的远端 `versionCode` / `buildNumber`，避免远端自动递增从旧值重新开始。
 
 ## 九、自建 OTA：发布、版本管理与真机验证
 
@@ -404,7 +405,7 @@ NODE_ENV=production APP_ENV="$VARIANT" \
 - 自建 OTA 把 `expo export` 的产物上传到**阿里云 OSS 桶 `happy-app-ota-jacky`**（`oss-cn-hangzhou`），脚本 `scripts/publish-ota.js`。
 - 新发布的主包与资源按内容哈希放在 `updates/<platform>/shared/{bundles,assets}/`，预览和生产 manifest 可以引用相同对象；发布时先核对 OSS 对象的大小与 MD5，只上传缺失内容。`manifests/<platform>/<runtime>/<channel>/<stamp>.json` 仍是独立版本和回滚入口。清理共享对象前必须确认所有保留的历史 manifest 都不再引用它，不能仅按上传日期删除。
 - 发布用 OSS 凭证需要对目标桶拥有 `oss:ListObjects`、`oss:GetObject` 和 `oss:PutObject`；Web 的同桶复制也依赖这些权限。缺少列举权限时发布应直接失败，不能把远端对象当作不存在重新上传。
-- 当前 production 使用 **`runtimeVersion: 25`**，development/preview 使用 **runtime 24**（见 `scripts/ota-runtime-config.js`）。2026-09-30 更换 Firebase 原生配置和 Expo 推送项目时，两个频道各前移一个 runtime，防止旧 OTA 覆盖新包中的推送修复。**runtimeVersion 必须和装机包完全一致**，否则该机器永远跳过这次更新——各 runtime 是互不相通的独立通道 `manifests/<platform>/<runtime>/<channel>/`。改 runtime 只改共享配置，并运行对应契约测试；必须先出包含新原生配置的安装包，不能把此变更发布到旧 runtime。
+- Android 当前 production 使用 **`runtimeVersion: 25`**，development/preview 使用 **runtime 24**（见 `ota-runtime-versions.json`）。2026-09-30 更换 Firebase 原生配置和 Expo 推送项目时，Android 两个频道各前移一个 runtime，防止旧 OTA 覆盖新包中的推送修复。iOS 继续使用 production 24、development/preview 23（见 `ota-ios-runtime-versions.json`），由 `ios.runtimeVersion` 覆盖顶层值；发布脚本按平台选择版本。**runtimeVersion 必须和装机包完全一致**，否则该机器永远跳过这次更新——各 runtime 是互不相通的独立通道 `manifests/<platform>/<runtime>/<channel>/`。改 runtime 应修改对应平台的配置并运行契约测试；必须先出包含新原生配置的安装包，不能把此变更发布到旧 runtime。
 - **频道（channel）分流**：App 端 `updates.url` 指向 FC 服务 `happy-oa-server-...fcapp.run`，请求头 `expo-channel-name` **按构建变体注入**（`app.config.js` 的 `otaChannel` 映射）：
   - **dev / preview 包 → `preview` 频道**（给开发在真机预览 PR）
   - **production 包 → `production` 频道**（线上正式用户）

@@ -1,5 +1,5 @@
 const { execFileSync } = require('node:child_process');
-const { getBuildVariantConfig } = require('./scripts/ota-runtime-config.js');
+const { getBuildVariantConfig, getIosRuntimeVersion } = require('./scripts/ota-runtime-config.js');
 const expoProject = require('./expo-project.json');
 
 const variant = process.env.APP_ENV || 'development';
@@ -82,6 +82,7 @@ export default {
         scheme: "paws",
         userInterfaceStyle: "automatic",
         ios: {
+            runtimeVersion: getIosRuntimeVersion(variant),
             supportsTablet: true,
             bundleIdentifier: bundleId,
             config: {

@@ -66,8 +66,11 @@ jobs:
           while IFS= read -r file; do
             case "$file" in
               packages/happy-app/app.config.js|\
+              packages/happy-app/expo-project.json|\
+              packages/happy-app/google-services.json|\
               packages/happy-app/package.json|\
               packages/happy-app/ota-runtime-versions.json|\
+              packages/happy-app/ota-ios-runtime-versions.json|\
               packages/happy-app/eas.json|\
               packages/happy-app/android/*|\
               packages/happy-app/ios/*|\
