@@ -48,6 +48,11 @@ interface Registration {
     bootId?: string
     agentSessionId?: string
     createdAtMs: number
+    /**
+     * Each profile's owner when the daemon registered (spawned) the session. A grant is issued only while
+     * that is still the owner: after a reassignment the session gets nothing, until that owner is back.
+     */
+    principals?: Record<string, string>
     grantIds: string[]
     /**
      * Revocation started: no grant is issued any more, and the registration (with
@@ -241,7 +246,8 @@ export async function startBroker(options: BrokerOptions): Promise<Broker> {
             return exclusive(async () => {
                 const registrationId = `reg-${randomUUID()}`
                 const sessionSecret = randomBytes(32).toString('base64url')
-                registry.registrations[registrationId] = { secretSha256: sha256(sessionSecret).toString('hex'), createdAtMs: now(), grantIds: [], ...(body.owner ? { owner: body.owner } : {}), ...(body.bootId ? { bootId: body.bootId } : {}) }
+                registry.registrations[registrationId] = { secretSha256: sha256(sessionSecret).toString('hex'), createdAtMs: now(), grantIds: [],
+                    principals: Object.fromEntries(options.profiles), ...(body.owner ? { owner: body.owner } : {}), ...(body.bootId ? { bootId: body.bootId } : {}) }
                 await persist()
                 return { registrationId, sessionSecret }
             })
@@ -299,6 +305,8 @@ export async function startBroker(options: BrokerOptions): Promise<Broker> {
                 if (registration.agentSessionId !== body.agentSessionId) throw new BrowserRuntimeError('SCOPE_DENIED', 'secret belongs to another session')
                 const principalId = options.profiles.get(body.profileId as ProfileId)
                 if (!principalId) throw new BrowserRuntimeError('SCOPE_DENIED', 'profile is not allowed')
+                // Registrations from before owners were recorded have no owner to compare: refused (a new spawn registers again).
+                if (registration.principals?.[body.profileId] !== principalId) throw new BrowserRuntimeError('SCOPE_DENIED', 'the session was started for another owner of this profile')
                 const issuedAtMs = now()
                 const grantId = `grant-${randomUUID()}` as GrantId
                 const expiresAtMs = issuedAtMs + BROKER_GRANT_TTL_MS

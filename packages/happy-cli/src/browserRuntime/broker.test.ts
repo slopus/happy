@@ -1,6 +1,6 @@
 /** Broker authentication, durable registrations, grants and revocation recovery. */
 import { createHash } from 'node:crypto'
-import { chmod, mkdtemp, readFile, rm, stat } from 'node:fs/promises'
+import { chmod, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { request } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -29,7 +29,7 @@ function call(socketPath: string, method: string, path: string, headers: Record<
     })
 }
 
-async function harness(options: { dir?: string; revokeGrant?: (grantId: GrantId) => Promise<void>; recoveryRetryMs?: number; endSession?: (agentSessionId: string) => Promise<void>; sessionWaiting?: (agentSessionId: string) => Promise<boolean> } = {}) {
+async function harness(options: { dir?: string; owner?: string; revokeGrant?: (grantId: GrantId) => Promise<void>; recoveryRetryMs?: number; endSession?: (agentSessionId: string) => Promise<void>; sessionWaiting?: (agentSessionId: string) => Promise<boolean> } = {}) {
     const dir = options.dir ?? await mkdtemp(join(tmpdir(), 'abp-broker-'))
     if (!options.dir) cleanups.push(() => rm(dir, { recursive: true, force: true }))
     const store = await TaskStore.open(dir)
@@ -43,7 +43,7 @@ async function harness(options: { dir?: string; revokeGrant?: (grantId: GrantId)
         socketPath, stateDir: dir, attention,
         daemonTokenSha256: createHash('sha256').update(DAEMON_TOKEN).digest('hex'),
         identity: { machineId: 'machine-h' as never, workspaceId: 'workspace-1' as never },
-        profiles: new Map([['profile-a' as ProfileId, 'user-1' as PrincipalId]]),
+        profiles: new Map([['profile-a' as ProfileId, (options.owner ?? 'user-1') as PrincipalId]]),
         allowedOrigins: ['https://shop.example'],
         agentKey: keys.agentKey,
         revokeGrant: async (grantId) => { await options.revokeGrant?.(grantId); await store.revoke(grantId); revoked.push(grantId) },
@@ -342,6 +342,34 @@ describe('broker socket', () => {
         cleanups.splice(cleanups.indexOf(h.close), 1)
         const restarted = await harness({ dir: h.dir })
         expect((await restarted.grant(sessionSecret)).status).toBe(200)
+    })
+
+    it("binds a registration to the profile's owner at registration: after a reassignment its session gets no grant, until that owner is back", async () => {
+        const h = await harness()
+        const { sessionSecret } = await h.register()
+        await h.close()
+        cleanups.splice(cleanups.indexOf(h.close), 1)
+        const reassigned = await harness({ dir: h.dir, owner: 'user-2' })
+        const denied = await reassigned.grant(sessionSecret)
+        expect(denied.status).toBe(403)
+        expect(denied.body.error.code).toBe('SCOPE_DENIED')
+        await reassigned.close()
+        cleanups.splice(cleanups.indexOf(reassigned.close), 1)
+        const back = await harness({ dir: h.dir, owner: 'user-1' })
+        expect((await back.grant(sessionSecret)).status).toBe(200)
+    })
+
+    it("refuses a registration from before owners were recorded (whose owner cannot be told)", async () => {
+        const h = await harness()
+        const { sessionSecret } = await h.register()
+        await h.close()
+        cleanups.splice(cleanups.indexOf(h.close), 1)
+        const file = join(h.dir, 'broker-sessions.json')
+        const registry = JSON.parse(await readFile(file, 'utf8'))
+        for (const registration of Object.values(registry.registrations) as Array<Record<string, unknown>>) delete registration.principals
+        await writeFile(file, JSON.stringify(registry))
+        const restarted = await harness({ dir: h.dir })
+        expect((await restarted.grant(sessionSecret)).body.error.code).toBe('SCOPE_DENIED')
     })
 
     it('tells the daemon token only whether a session has a task waiting for the user', async () => {
